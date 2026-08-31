@@ -2,9 +2,11 @@
 
 ## Status
 
-In progress as of 2026-08-31. The database, authenticated workflow foundation, and read-only agency/client workspaces are deployed in the production Dashboard. The separate editor/build/delivery runtime remains staging-only, no customer Page Studio hostname receives production traffic, and the complete website builder is not yet production-ready.
+In progress as of 2026-08-31. The database, authenticated workflow foundation, read-only agency/client workspaces, and staged build/release control transactions are implemented. The separate editor/build/delivery runtime remains staging-only, no customer Page Studio hostname receives production traffic, and the complete website builder is not yet production-ready.
 
 Dashboard release commit: `0a7c8a1b9`
+
+Staged build/release control branch: `feature/page-studio-control-plane` through `f0caa8a88` (preview deployment pending at this documentation checkpoint).
 
 ## Decision
 
@@ -49,6 +51,9 @@ Implemented routes:
 - `POST /api/agency/page-studio/sites`
 - `POST /api/agency/page-studio/sites/:siteId/editor-sessions`
 - `POST /api/agency/page-studio/sites/:siteId/versions/:versionId/reviews`
+- `POST /api/agency/page-studio/sites/:siteId/versions/:versionId/builds`
+- `POST /api/agency/page-studio/sites/:siteId/releases/activate`
+- `POST /api/agency/page-studio/sites/:siteId/releases/rollback`
 - `GET /api/portal/page-studio/sites`
 - `POST /api/portal/page-studio/sites`
 - `POST /api/portal/page-studio/sites/:siteId/editor-sessions`
@@ -58,6 +63,10 @@ Implemented routes:
 - `POST /internal/page-studio/versions`
 - `POST /internal/page-studio/audit-events`
 - `POST /internal/page-studio/delivery/previews/authorize`
+- `GET /internal/page-studio/builds/:buildId`
+- `GET /internal/page-studio/releases/:releaseId`
+- `POST /internal/page-studio/releases/activate`
+- `POST /internal/page-studio/releases/rollback`
 
 Implemented behavior:
 
@@ -72,6 +81,12 @@ Implemented behavior:
 - only the current draft can enter review;
 - only the current submitted version can be approved, rejected, or returned to draft;
 - reviews record the locked digest and append audit evidence atomically.
+- build requests require `PAGE_STUDIO_PUBLISH`, derive tenant/client/site scope server-side, call the private Build Worker with the exact latest approval and digest, and recheck that approval under lock before recording a succeeded build;
+- build paths, manifest keys, validation keys, and digests must match their deterministic scope; failures store only a bounded generic summary and never persist worker/customer error content;
+- activation and rollback derive scope server-side and call the private Delivery Worker, which verifies the complete R2 artifact before the authoritative pointer transaction;
+- activation serializes hostname claims, compares `expectedActiveReleaseId`, rechecks the exact-digest approval and succeeded build, creates one immutable release, advances the pointer, updates state, and audits before commit;
+- rollback targets an existing same-scope/environment/hostname release backed by a succeeded build, creates no build or release, advances only the pointer/site reference, and audits before commit;
+- exact retries return their original immutable result, while changed idempotency payloads and stale pointers return stable 409 errors.
 
 ### Agency and client workspaces
 
@@ -105,6 +120,8 @@ On 2026-08-31, the Page Studio Dashboard release was fast-forwarded to `main` an
 
 The first database-backed remote smoke exposed a runtime integration fault: `server/utils/db.ts` resolved Cloudflare bindings through Nitro `useEvent()`, but Nitro async request context was disabled. The caught exception caused a fallback to the intentionally absent preview `DATABASE_URL`, producing a generic 500 and downstream 503. Sanitized server diagnostics identified the exact failure, a regression test reproduced the missing configuration, and `nitro.experimental.asyncContext` was enabled. A direct Hyperdrive probe then confirmed the isolated database and Page Studio tables were reachable. The final Delivery → control → Dashboard smoke now returns control health 200, unknown public host 404 `PUBLIC_HOST_NOT_FOUND`, missing checkpoint 404 `CHECKPOINT_NOT_FOUND`, and unknown Delivery site 404 instead of 503.
 
+The staged Dashboard branch declares preview-only `PAGE_STUDIO_BUILD` and `PAGE_STUDIO_DELIVERY` service bindings to `xeroflow-page-studio-build-staging` and `xeroflow-page-studio-delivery-staging`. `PAGE_STUDIO_RELEASE_ENVIRONMENT=staging` prevents that binding from accepting a production release action. No matching production bindings are declared; production therefore fails closed until standalone production Workers, domain readiness, and customer-routing acceptance are complete.
+
 ## Verification evidence
 
 - Clean `origin/main` baseline established before implementation.
@@ -122,22 +139,23 @@ The first database-backed remote smoke exposed a runtime integration fault: `ser
 - Browser verification confirms the public Page Studio feature page has the expected content hierarchy in desktop and mobile layouts with no console warnings or errors. Authenticated agency and portal workspace UAT remains gated on synthetic staging identities.
 - The pre-production full repository gate passed 1,931 test files with six skipped and 12,354 tests with 27 skipped. The guarded production build passed the Worker-size check at 24,991,289 raw bytes with 477,639 bytes remaining.
 - `pnpm audit --prod --audit-level high` reports 17 existing high-severity transitive advisories in Zero, Nuxt/tooling, and Cloudflare Think dependency chains. None involve the newly added direct `jose` dependency; remediation and reachability review remain a separate production-risk gate.
+- 34 focused build, catalog, activation, rollback, binding, route, stable-error, and replay tests pass for the staged publication chain. Targeted ESLint and `pnpm deploy:check` pass. Full Nuxt typecheck still exits on the existing unrelated inventory and reports no Page Studio diagnostics.
 
 ## Remaining release gates
 
-- [ ] Complete the machine-authenticated internal build, release, lead, analytics, and public host-resolution APIs. Checkpoint, latest-pointer, version registration, audit ingestion, and preview authorization are implemented.
+- [ ] Complete the machine-authenticated lead and analytics APIs. Checkpoint, latest-pointer, version registration, audit ingestion, preview authorization, build/release lookup, activation, rollback, and public host resolution are implemented.
 - [ ] Complete editor-session rollout. ES256 issuance, minimal role/entitlement capabilities, encrypted key installation, the Dashboard nonce ledger, preview revocation checks, and private/no-store responses are implemented; explicit revocation mutations and secure preview-cookie exchange remain.
 - [ ] Implement site detail/update and version-history APIs.
 - [ ] Design and implement the multi-page website model: page hierarchy, stable routes, page metadata/SEO, draft/review state, navigation visibility, and whole-site atomic publishing.
 - [ ] Design and implement reusable site-wide headers and footers with shared branding/content plus explicit per-page visibility overrides.
 - [ ] Design and implement responsive website navigation, including desktop menus, accessible mobile navigation, nested-page behavior, active states, keyboard/focus handling, and preview coverage at supported breakpoints.
-- [ ] Implement atomic activation and rollback transactions with optimistic pointer checks and append-only release audit.
+- [x] Implement atomic activation and rollback transactions with optimistic pointer checks and append-only release audit.
 - [ ] Implement domain, DNS verification, asset, lead-routing, and analytics control endpoints.
 - [x] Build the first agency and portal Nuxt UI v4 entry points with permission- and membership-scoped navigation.
 - [ ] Run authenticated browser accessibility and responsive checks for both new workspaces.
 - [x] Update the public feature catalogue, detail page, and marketing navigation for Page Studio. Pricing remains unchanged until the subscription packaging is finalized.
 - [x] Provision and deploy the service-binding-only staging control Worker with the matching Dashboard Pages preview secret and no public target.
-- [ ] Complete staging provisioning. Isolated R2 buckets, the private Build, Sandbox/container, control, and Delivery Workers plus asymmetric session keys are live; Web, routes, and staging hostnames remain.
+- [ ] Complete staging provisioning. Isolated R2 buckets, private Build/Sandbox/control/Delivery Workers, asymmetric session keys, and preview service-binding configuration are live or implemented; the Dashboard preview deployment, synthetic fixture, Web routes, DNS/TLS, and staging host acceptance remain.
 - [ ] Verify Cloudflare for SaaS custom-hostname entitlement before enabling customer domains.
 - [ ] Run staging security, rollback, capacity, form, analytics, and custom-host smoke gates.
 - [x] Run `pnpm deploy:check`, deploy the Dashboard control-plane surfaces through the guarded production script, and verify public production health.
