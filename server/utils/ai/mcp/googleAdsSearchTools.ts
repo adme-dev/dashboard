@@ -24,6 +24,7 @@ export const GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL = 'google_ads_plan_set_languages
 export const GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL = 'google_ads_plan_set_ad_schedule'
 export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
 export const GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL = 'google_ads_plan_set_campaign_conversion_goals'
+export const GOOGLE_ADS_PLAN_SET_CUSTOMER_GOAL_BIDDABILITY_TOOL = 'google_ads_plan_set_customer_goal_biddability'
 export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
 export const GOOGLE_ADS_PLAN_CREATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_create_conversion_action'
 export const GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_update_conversion_action'
@@ -207,6 +208,12 @@ const SetCampaignConversionGoalsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each campaign conversion goal may be specified only once' })
   }
 })
+const SetCustomerGoalBiddabilitySchema = z.strictObject({
+  ...CommonSchema,
+  category: ConversionCategorySchema,
+  origin: ConversionOriginSchema,
+  biddable: z.boolean()
+})
 const SetConversionPrimaryStateSchema = z.strictObject({
   ...CommonSchema,
   resourceName: z.string().trim().min(1).max(1_000),
@@ -335,6 +342,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL,
     'Plan campaign conversion-goal biddability by typed conversion category and origin. Explicit false values prevent campaign bidding on that goal.',
     SetCampaignConversionGoalsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_CUSTOMER_GOAL_BIDDABILITY_TOOL,
+    'Plan account-default conversion-goal biddability by typed category and origin. Google owns goal creation; this tool changes only biddability.',
+    SetCustomerGoalBiddabilitySchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL,
@@ -665,6 +677,19 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: 'set_campaign_conversion_goals',
         resourceType: 'conversion_goal',
         arguments: { campaignResourceName: args.campaignResourceName, goals: args.goals }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_CUSTOMER_GOAL_BIDDABILITY_TOOL) {
+      const args = SetCustomerGoalBiddabilitySchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_customer_goal_biddability',
+        resourceType: 'conversion_goal',
+        arguments: { category: args.category, origin: args.origin, biddable: args.biddable }
       }
     } else if (name === GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL) {
       const args = SetConversionPrimaryStateSchema.parse(rawArgs)

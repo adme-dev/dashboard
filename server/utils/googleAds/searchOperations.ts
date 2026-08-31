@@ -178,6 +178,11 @@ const SetCampaignConversionGoalsArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each campaign conversion goal may be specified only once' })
   }
 })
+const SetCustomerGoalBiddabilityArgumentsSchema = z.strictObject({
+  category: ConversionCategorySchema,
+  origin: ConversionOriginSchema,
+  biddable: z.boolean()
+})
 const SetConversionPrimaryStateArgumentsSchema = z.strictObject({
   resourceName: z.string().trim().min(1).max(1_000),
   primaryForGoal: z.boolean()
@@ -268,6 +273,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_ad_schedule',
       'set_devices',
       'set_campaign_conversion_goals',
+      'set_customer_goal_biddability',
       'set_conversion_primary_state',
       'create_conversion_action',
       'update_conversion_action'
@@ -354,6 +360,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_ad_schedule') return SetAdScheduleArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_devices') return SetDevicesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_conversion_action') return CreateConversionActionArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_conversion_action') return UpdateConversionActionArgumentsSchema.parse(argumentsValue)
@@ -891,6 +898,33 @@ function buildCampaignConversionGoalAction(context: BuildGoogleAdsActionContext)
   }
 }
 
+function buildCustomerGoalBiddabilityAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'conversion_goal') {
+    throw new Error('Customer goals require resource type conversion_goal')
+  }
+  const args = SetCustomerGoalBiddabilityArgumentsSchema.parse(context.input.arguments)
+  const resourceName = `customers/${context.customerId}/customerConversionGoals/${args.category}~${args.origin}`
+  const current = z.object({
+    resourceName: z.literal(resourceName),
+    category: z.literal(args.category),
+    origin: z.literal(args.origin),
+    biddable: z.boolean()
+  }).parse(context.currentState)
+  if (current.biddable === args.biddable) {
+    throw new Error('Customer conversion goal already matches the requested biddability')
+  }
+  return {
+    resourceName,
+    desiredState: { ...current, biddable: args.biddable },
+    providerOperations: [{
+      service: 'customerConversionGoals',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ update: { resourceName, biddable: args.biddable }, updateMask: 'biddable' }]
+    }]
+  }
+}
+
 function buildConversionPrimaryStateAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (context.input.resourceType !== 'conversion_action') {
     throw new Error('Conversion primary state requires resource type conversion_action')
@@ -1012,6 +1046,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_ad_schedule') return buildAdScheduleAction(context)
   if (context.input.operation === 'set_devices') return buildDeviceAction(context)
   if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
+  if (context.input.operation === 'set_customer_goal_biddability') return buildCustomerGoalBiddabilityAction(context)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
   if (context.input.operation === 'create_conversion_action') return buildCreateConversionAction(context)
   if (context.input.operation === 'update_conversion_action') return buildUpdateConversionAction(context)

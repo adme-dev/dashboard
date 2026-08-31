@@ -638,6 +638,34 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
+  it('sets customer conversion-goal biddability with an exact update mask', () => {
+    const resourceName = 'customers/1234567890/customerConversionGoals/REQUEST_QUOTE~WEBSITE'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_customer_goal_biddability',
+      'conversion_goal',
+      { category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: false },
+      { resourceName, category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true }
+    ))
+
+    expect(built).toEqual({
+      resourceName,
+      desiredState: { resourceName, category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: false },
+      providerOperations: [{
+        service: 'customerConversionGoals',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ update: { resourceName, biddable: false }, updateMask: 'biddable' }]
+      }]
+    })
+
+    expect(() => buildSearchGoogleAdsAction(context(
+      'set_customer_goal_biddability',
+      'conversion_goal',
+      { category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true },
+      { resourceName, category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true }
+    ))).toThrow('Customer conversion goal already matches the requested biddability')
+  })
+
   it('sets a conversion action to secondary with an exact update mask', () => {
     const resourceName = 'customers/1234567890/conversionActions/9001'
     const current = {
