@@ -1156,30 +1156,30 @@ const features: Record<string, Feature> = {
     ]
   },
   'google-ads-tracking': {
-    title: 'Google Ads Tracking',
+    title: 'Google Ads Control & Tracking',
     slug: 'google-ads-tracking',
     icon: 'i-lucide-bar-chart-3',
     category: 'Financial Operations',
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Google Ads performance and call reporting with approval and serving diagnostics, impression share, search-term and creative-copy evidence, spend tracking, budget alerts, and audit trails.',
+    description: 'Inspect, create, optimize, pause, and safely archive Google Ads resources through XeroFlow, with typed controls, human approvals, and a complete audit trail.',
     details: [
       {
-        title: 'Google Ads API Integration',
-        content: 'Connect multiple Google login identities and manager accounts via OAuth. Each secure credential profile discovers its own manager and child accounts, while overlapping customer access preserves the existing XeroFlow client mapping. XeroFlow syncs campaign data, spend metrics, and performance indicators through the Google Ads REST API, giving your media buying team one source of truth across every client and Google account structure in the agency.'
+        title: 'Typed QA Across Every Account',
+        content: 'Connect multiple Google login identities and manager accounts through OAuth, then inspect campaigns, ad groups, ads, keywords, targeting, assets, conversion actions, and recommendations without sharing credentials or writing raw Google Ads queries. Every result is bounded, tenant-scoped, and tied back to the correct XeroFlow client and connection.'
       },
       {
-        title: 'Delivery Diagnostics and Search Evidence',
-        content: 'See each ad’s approval and policy topics, the campaign’s exact serving limitations, and Search impression share split between budget and rank loss. Campaign-scoped search terms show clicks, cost and CPC; Performance Max is labelled as limited coverage rather than pretending to match Search. Synced headlines and descriptions make offer-expiry and claim reviews possible from the same client-scoped evidence.'
+        title: 'Governed Campaign Control',
+        content: 'Plan and apply campaign, budget, ad group, responsive search ad, keyword, location, schedule, device, audience, asset, Performance Max, conversion-goal, and recommendation changes through typed tools. New campaigns start paused, provider validation runs before execution, and immutable creative or structural changes are handled through purpose-built operations instead of unrestricted mutation access.'
       },
       {
-        title: 'Budget Management with Audit Trails',
-        content: 'Set and track budgets with full audit trails. Every budget change is logged with who changed it, when, and the previous value. When a client questions why their Google spend exceeded the agreed amount, you have a timestamped record showing exactly when the budget was adjusted and by whom. Transparency builds client trust.'
+        title: 'Approvals, Verification & Audit',
+        content: 'High-impact changes show the proposed before-and-after state and wait for an authorized person to confirm them. XeroFlow validates the exact Google Ads request, claims it once, performs the write, and reads the resource back before marking the action complete. Append-only events preserve the actor, policy decision, provider request ID, result, and any drift or recovery evidence.'
       },
       {
-        title: 'Cross-Platform Reporting',
-        content: 'Combine Google and Meta spend data in unified dashboards. See total advertising investment per client across both platforms, broken down by month. The AI system analyzes cross-platform patterns — like whether shifting budget from Google to Meta improved overall ROAS — and surfaces actionable recommendations in your AI chat and anomaly reports.'
+        title: 'Safe Automation by Default',
+        content: 'Opted-in accounts can automate tightly limited negative-keyword additions, guarded pauses, approved recommendation dismissals, and safe asset detachment. Versioned policies enforce scope, protected terms, thresholds, cooldowns, and atomic daily quotas. Ordinary delete requests pause or archive; permanent Google removal remains separately gated, owner-only, acknowledged, and reasoned.'
       }
     ]
   },

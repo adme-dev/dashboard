@@ -10,6 +10,7 @@ import {
   type GoogleCredentialRow,
 } from '~~/server/utils/googleCredentialProfiles'
 import { ofetch } from 'ofetch'
+import { googleAdsApiUrl } from '~~/server/utils/googleAds/version'
 
 /**
  * GET /api/agency/social/google/debug-campaigns?accountId=XXXX&loginCustomerId=YYYY
@@ -144,7 +145,7 @@ export default eventHandler(async (event) => {
   // Fetch customer info
   try {
     const customerResp = await ofetch(
-      `https://googleads.googleapis.com/v23/customers/${cleanId}/googleAds:searchStream`,
+      googleAdsApiUrl(`/customers/${cleanId}/googleAds:searchStream`),
       { method: 'POST', headers, body: { query: customerGaql } }
     )
     results.customer = customerResp
@@ -155,7 +156,7 @@ export default eventHandler(async (event) => {
   // Fetch campaigns
   try {
     const campaignResp = await ofetch(
-      `https://googleads.googleapis.com/v23/customers/${cleanId}/googleAds:searchStream`,
+      googleAdsApiUrl(`/customers/${cleanId}/googleAds:searchStream`),
       { method: 'POST', headers, body: { query: campaignGaql } }
     )
     results.campaigns = campaignResp

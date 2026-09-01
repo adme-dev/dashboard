@@ -282,7 +282,7 @@ export function createGoogleConversionActionDiscovery(
       // WEBPAGE supports an additional source paired with a website tag.
       // Sources:
       // https://developers.google.com/data-manager/api/devguides/events/send-events
-      // https://developers.google.com/google-ads/api/fields/v23/conversion_action
+      // https://developers.google.com/google-ads/api/fields/v25/conversion_action
       const query = `
         SELECT
           conversion_action.resource_name,

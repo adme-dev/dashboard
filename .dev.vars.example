@@ -44,6 +44,12 @@ RESEND_API_KEY=re_your_resend_api_key
 GROQ_API_KEY=gsk_your_groq_api_key
 AI_GOVERNED_CATALOG_MODE=legacy
 
+# XeroFlow Google Ads MCP control plane — keep dormant in local Wrangler unless testing deliberately.
+GOOGLE_ADS_MCP_READ_ENABLED=false
+GOOGLE_ADS_MCP_WRITE_ENABLED=false
+GOOGLE_ADS_MCP_AUTOMATION_ENABLED=false
+GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED=false
+
 # ============================================
 # Optional: Monday.com Integration
 # ============================================

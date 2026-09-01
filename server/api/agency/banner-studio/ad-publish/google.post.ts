@@ -85,9 +85,6 @@ export default defineEventHandler(async (event) => {
 
   // Create the ad via Google Ads API
   // For HTML5 banners, we need to create a media bundle asset
-  const developerToken = config.googleDeveloperToken
-  const apiBase = 'https://googleads.googleapis.com/v23'
-
   try {
     // Note: Google Ads HTML5 upload requires a zip bundle via the API.
     // For now, we create a record tracking the publish intent.

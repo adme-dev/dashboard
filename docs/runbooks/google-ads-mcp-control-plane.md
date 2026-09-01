@@ -1,0 +1,197 @@
+# Google Ads MCP Control Plane Runbook
+
+## What XeroFlow Provides
+
+XeroFlow exposes its own governed Google Ads MCP surface and calls the Google Ads
+REST API v25 through the OAuth connections already mapped to each client. It does
+not install or proxy Google's official MCP server. Google credentials, developer
+tokens, and unrestricted GAQL or mutate requests remain server-side.
+
+The control plane currently covers typed QA inventories plus governed Search and
+Performance Max operations for budgets, portfolio bidding strategies, campaigns,
+ad groups, responsive search ads, keywords, negative keywords, targeting,
+shared negative-keyword sets, audiences, assets and asset groups,
+listing groups, conversion actions and goals, and recommendations. Offline
+conversion uploads are outside this release because they contain customer event
+data rather than campaign configuration.
+
+## Default-Off Feature Flags
+
+All four flags default to `false`:
+
+```dotenv
+GOOGLE_ADS_MCP_READ_ENABLED=false
+GOOGLE_ADS_MCP_WRITE_ENABLED=false
+GOOGLE_ADS_MCP_AUTOMATION_ENABLED=false
+GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED=false
+```
+
+- `READ` projects bounded inventory, recommendation, validation, and status tools.
+- `WRITE` projects planning and proposal tools.
+- `AUTOMATION` permits only policy-approved automatic action classes.
+- `DESTRUCTIVE` permits explicit provider-removal tools. Keep it disabled unless
+  permanent removal is operationally required.
+
+An authenticated MCP grant must also carry `mcp:read` or `mcp:write`. Google Ads
+control requires the tenant's `MEDIA_BUYING` permission. Money, activation,
+conversion, and destructive actions retain their elevated role requirements even
+when a feature flag is enabled.
+
+## QA and Inspection Tools
+
+Use these bounded tools instead of raw GAQL:
+
+- `google_ads_list_campaigns`
+- `google_ads_list_ad_groups`
+- `google_ads_list_ads`
+- `google_ads_list_keywords`
+- `google_ads_list_targeting`
+- `google_ads_list_assets`
+- `google_ads_list_conversion_actions`
+- `google_ads_list_recommendations`
+- `google_ads_validate_action_plan`
+- `google_ads_get_action_status`
+
+Each inventory accepts typed filters and a maximum result count. Customer and
+resource names are checked against the selected tenant, client, connection, and
+Google customer before a provider request is made. Cross-customer response rows are
+discarded as a provider-boundary failure rather than returned to the caller.
+
+## Mutation Workflow
+
+Mutation tools deliberately create immutable plans; they do not expose raw Google
+Ads operations. A normal human-approved change follows this sequence:
+
+1. Call the relevant `google_ads_plan_*` tool with the desired state.
+2. Review the normalized diff, risk tier, policy decision, and expiry.
+3. Call `propose_google_ads_action` with the plan ID. XeroFlow sends the exact
+   provider operations through Google Ads `validateOnly` before saving a proposal.
+4. Confirm the pending action through the standard MCP confirmation tool. Rich or
+   destructive confirmations require `acknowledged: true`; permanent removal also
+   requires a typed reason.
+5. XeroFlow atomically claims the plan, checks policy and provider state again,
+   validates again, writes once, and performs a typed provider read-back.
+6. Poll `google_ads_get_action_status` until it reaches a terminal state.
+
+Use `google_ads_get_drift` to compare an existing provider resource with the
+immutable desired state in its action plan. For `verification_failed`,
+`recovery_required`, or `partially_verified` plans, `google_ads_reverify_resource`
+performs the same read-back and may reconcile the plan to `verified` only when every
+desired field matches. These tools never replay a mutation. Create and immutable-ad
+replacement plans currently fail closed when the provider-assigned replacement ID is
+not present in the immutable plan.
+
+Google Ads API v25 does not expose a remove operation for the underlying `Asset`
+resource. XeroFlow therefore blocks `remove_asset` at policy resolution. Use
+`google_ads_plan_archive_asset_link` to pause an account, campaign, or ad-group link
+reversibly (the default), or `google_ads_plan_detach_asset` for an explicitly approved
+permanent removal of that association. The immutable asset remains in the Google Ads
+account and can be reused. See Google's [Asset creation and usage documentation](https://developers.google.com/google-ads/api/docs/assets/working-with-assets)
+and the [v25 AssetOperation contract](https://developers.google.com/google-ads/api/reference/rpc/v25/AssetOperation).
+
+Terminal success is `verified` or, where explicitly allowed, `partially_verified`.
+`provider_rejected`, `verification_failed`, `recovery_required`, and `cancelled`
+need operator review. An ambiguous provider timeout is not retried blindly; the
+saved request identity and provider state must be reconciled first.
+
+Portfolio bidding uses `google_ads_plan_create_bidding_strategy` and
+`google_ads_plan_update_bidding_strategy`. Creation supports one v25 scheme per
+strategy: Target CPA, Target ROAS, Target Spend, Target Impression Share,
+Maximize Conversions, or Maximize Conversion Value. Update reads the provider's
+current strategy type first and permits only fields valid for that immutable type.
+Assigning the resulting portfolio resource to a campaign is a separate campaign
+update and therefore produces its own diff and approval.
+
+Responsive search ads are immutable creative resources. Use
+`google_ads_plan_replace_responsive_search_ad` to create a paused replacement and
+pause the original in one atomic `adGroupAds` mutation. The flow never deletes the
+original and verifies both ads as paused before the plan succeeds.
+
+Shared campaign negatives use `google_ads_plan_manage_shared_negative_set`.
+Creation writes the shared set, its negative keyword criteria, and every campaign
+attachment in one v25 bulk mutation. Updates are exact desired-state replacements:
+XeroFlow preserves unchanged provider rows, adds and removes only the keyword and
+campaign-link differences, never removes the shared set itself, and verifies the
+complete set after Google assigns IDs to new rows.
+
+## Safe Archive and Removal Semantics
+
+The default delete behavior is reversible:
+
+- pause a campaign, ad group, ad, or keyword;
+- archive it in XeroFlow where an archive operation exists; or
+- hide a conversion action when Google supports `HIDDEN`.
+
+Only tools whose names explicitly say `remove` may issue Google's irreversible
+provider removal. Destructive execution requires the destructive feature flag,
+owner/admin authorization, acknowledgement of the exact resource, and a reason of
+10–1000 characters. Provider removal is never eligible for automation.
+
+## Policy-Limited Automation
+
+Automation remains disabled until an enabled, versioned
+`google_ads_automation_policies` row matches the tenant, actor, client, connection,
+customer, action class, and requested resource. The only automatic classes are:
+
+- protected-term-aware negative-keyword additions;
+- deterministic guarded pauses;
+- allowlisted recommendation dismissals; and
+- asset detachment when the planned safety checks pass.
+
+Policy JSON supplies the allowed scope, protected terms, thresholds, cooldowns,
+per-run limits, and maximum daily actions. Quota is claimed atomically in
+`google_ads_automation_quota_reservations` using a UTC day. An execution attempt
+consumes its reservation even if Google rejects the request, which prevents rapid
+failure retries from bypassing the cap. A model can propose a policy change but
+cannot edit or activate its own authority.
+
+`google_ads_run_search_term_policy` reads a fresh bounded `search_term_view`
+window, aggregates duplicate terms across ad groups, excludes terms already targeted
+or excluded, rejects protected phrases and positive-keyword conflicts, and creates an
+automatic negative-keyword plan only when every impressions, clicks, spend, and
+maximum-conversions threshold passes. `google_ads_run_pause_policy` performs the same
+fresh-metrics check for one explicitly allowlisted campaign, ad group, ad, or keyword;
+it can only move an enabled entity to paused. Both runners stop before a provider read
+when the daily cap, cooldown, or recent manual-override window blocks the action, and
+record the policy version, data window, thresholds, and metric snapshot in append-only
+action evidence.
+
+## Staged Rollout
+
+1. Confirm migrations `338_google_ads_mcp_action_control.sql` and
+   `339_google_ads_automation_quota_reservations.sql` are applied.
+2. Enable `GOOGLE_ADS_MCP_READ_ENABLED` and run QA inventories against an internal
+   test customer. Verify tenant mappings and expected truncation behavior.
+3. Enable `GOOGLE_ADS_MCP_WRITE_ENABLED`. Create a paused test campaign structure,
+   confirm it, and verify provider read-back and append-only action events.
+4. Seed a narrow, versioned automation policy for one test account, then enable
+   `GOOGLE_ADS_MCP_AUTOMATION_ENABLED`. Exercise one allowlisted action and confirm
+   quota, cooldown, and protected-term behavior.
+5. Leave `GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED=false` for normal operations. If a
+   removal test is required, enable it only for the test window and disable it
+   immediately afterward.
+6. Expand account policies and campaign-family adapters only after their contract
+   and provider smoke tests pass.
+
+## Verification Commands
+
+Run from the repository root with the supported Node version:
+
+```bash
+pnpm exec vitest run test/config/googleAdsApiVersion.test.ts test/config/googleAdsMcpActionControlMigration.test.ts test/config/googleAdsMcpFlags.test.ts test/server/utils/googleAds*.test.ts test/ai/mcpGoogleAds*.test.ts
+pnpm exec eslint server/utils/googleAds server/utils/ai/mcp/googleAdsServer.ts server/utils/ai/mcp/googleAdsTools.ts server/utils/ai/mcp/googleAdsSearchTools.ts
+pnpm run typecheck
+```
+
+The repository has known pre-existing TypeScript diagnostics. Compare the complete
+typecheck output with the baseline and reject any new diagnostic in changed files.
+
+## Provider References
+
+- [Google Ads API release notes](https://developers.google.com/google-ads/api/docs/release-notes)
+- [Google Ads API sunset dates](https://developers.google.com/google-ads/api/docs/sunset-dates)
+- [REST mutate requests](https://developers.google.com/google-ads/api/rest/common/mutate)
+- [Portfolio bidding strategies](https://developers.google.com/google-ads/api/docs/campaigns/bidding/assign-strategies)
+- [Bidding strategy v25 fields](https://developers.google.com/google-ads/api/fields/v25/bidding_strategy)
+- [Shared negative-keyword sets](https://developers.google.com/google-ads/api/docs/targeting/shared-sets)
+- [Conversion goals overview](https://developers.google.com/google-ads/api/docs/conversions/goals/overview)

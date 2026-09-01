@@ -1,7 +1,7 @@
 /**
  * Google Ads API Client
  * Lightweight client using ofetch (matches metaClient.ts pattern)
- * API v23 — https://developers.google.com/google-ads/api/rest/reference/rest/v23
+ * API v25 — https://developers.google.com/google-ads/api/rest/reference/rest/v25
  */
 
 import { ofetch } from 'ofetch'
@@ -17,8 +17,10 @@ import {
   sanitizeDiagnosticText,
   type PolicyIssue,
 } from '~~/server/utils/adDiagnostics'
+import { executeGoogleAdsQuery } from '~~/server/utils/googleAds/query'
+import { GOOGLE_ADS_BASE_URL } from '~~/server/utils/googleAds/version'
 
-const GOOGLE_ADS_BASE = 'https://googleads.googleapis.com/v23'
+const GOOGLE_ADS_BASE = GOOGLE_ADS_BASE_URL
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
@@ -207,66 +209,40 @@ export async function gaqlQuery(
   loginCustomerId?: string,
   retries = 3
 ): Promise<any[]> {
-  const cleanCustomerId = customerId.replace(/-/g, '')
-
-  const headers: Record<string, string> = {
-    'Authorization': `Bearer ${token}`,
-    'developer-token': developerToken,
-    'Content-Type': 'application/json'
-  }
-  if (loginCustomerId) {
-    headers['login-customer-id'] = loginCustomerId.replace(/-/g, '')
-  }
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const response = await ofetch<any[]>(
-        `${GOOGLE_ADS_BASE}/customers/${cleanCustomerId}/googleAds:searchStream`,
-        {
-          method: 'POST',
-          headers,
-          body: { query }
-        }
+  try {
+    const result = await executeGoogleAdsQuery({
+      customerId,
+      query,
+      auth: {
+        accessToken: token,
+        developerToken,
+        loginCustomerId
+      },
+      retries,
+      preserveProviderErrors: true
+    })
+    return result.rows
+  } catch (error: unknown) {
+    const providerError = isObjectRecord(error) ? error : {}
+    const status = typeof providerError.status === 'number'
+      ? providerError.status
+      : typeof providerError.statusCode === 'number'
+        ? providerError.statusCode
+        : undefined
+    if ((status === 400 || status === 403) && providerError.data) {
+      const data = providerError.data
+      const dataRecord = isObjectRecord(data) ? data : {}
+      const envelope = isObjectRecord(dataRecord.error) ? dataRecord.error : {}
+      const details = Array.isArray(envelope.details) ? envelope.details : []
+      const firstDetail = details.length && isObjectRecord(details[0]) ? details[0] : {}
+      const errors = Array.isArray(firstDetail.errors) ? firstDetail.errors : []
+      console.error(
+        `[GoogleAds] GAQL ${status} diagnostic (customer [REDACTED]):`,
+        redactGoogleAdsDiagnostic(errors[0] ?? data)
       )
-
-      // searchStream returns an array of result batches
-      const results: any[] = []
-      if (Array.isArray(response)) {
-        for (const batch of response) {
-          if (batch.results) {
-            results.push(...batch.results)
-          }
-        }
-      }
-      return results
-    } catch (err: any) {
-      const status = err?.status || err?.statusCode
-      // Log detailed GAQL error info for debugging 4xx (bad query, permission
-      // denied, disabled customer, dev-token/login-customer-id problems). The
-      // GoogleAdsFailure errorCode in the body is what distinguishes them.
-      if ((status === 400 || status === 403) && err.data) {
-        const details = err.data?.error?.details?.[0]?.errors?.[0]
-        if (details) {
-          console.error(
-            `[GoogleAds] GAQL ${status} detail (customer [REDACTED]):`,
-            redactGoogleAdsDiagnostic(details)
-          )
-        } else {
-          console.error(
-            `[GoogleAds] GAQL ${status} body (customer [REDACTED]):`,
-            redactGoogleAdsDiagnostic(err.data)
-          )
-        }
-      }
-      if ((status === 429 || status === 500 || status === 503) && attempt < retries) {
-        const delay = Math.pow(2, attempt + 1) * 1000
-        await new Promise(resolve => setTimeout(resolve, delay))
-        continue
-      }
-      throw err
     }
+    throw error
   }
-  throw new Error('Google Ads API: max retries exceeded')
 }
 
 // ============================================
@@ -575,7 +551,7 @@ export interface GoogleBreakdownRow {
 
 /**
  * Get breakdown data for campaigns by a specific segment.
- * v23: age/gender use dedicated view resources; device/geo use campaign resource.
+ * v25: age/gender use dedicated view resources; device/geo use campaign resource.
  */
 export async function getBreakdownData(
   customerId: string,

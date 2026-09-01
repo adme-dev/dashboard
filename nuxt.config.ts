@@ -159,6 +159,12 @@ export default defineNuxtConfig({
     // endpoints serve the standalone mcp-server Worker (read-only tools over MCP to ChatGPT/Claude/Cursor).
     // Endpoints also require x-mcp-secret == MCP_INTERNAL_SECRET. Read via process.env. Hard gate.
     mcpServerEnabled: process.env.MCP_SERVER_ENABLED === 'true',
+    // XeroFlow Google Ads MCP control plane. Every capability stays independently dormant until
+    // its staged rollout gate is enabled; write, automation and irreversible removal fail closed.
+    googleAdsMcpReadEnabled: process.env.GOOGLE_ADS_MCP_READ_ENABLED === 'true',
+    googleAdsMcpWriteEnabled: process.env.GOOGLE_ADS_MCP_WRITE_ENABLED === 'true',
+    googleAdsMcpAutomationEnabled: process.env.GOOGLE_ADS_MCP_AUTOMATION_ENABLED === 'true',
+    googleAdsMcpDestructiveEnabled: process.env.GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED === 'true',
     // Client-portal co-pilot (portal-agent spec) — OFF by default. Its OWN gate so enabling the
     // agency chat (AI_TOOLS_ENABLED) never auto-exposes the customer-facing surface. Hard gate per §8.
     aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true',
