@@ -16,6 +16,20 @@ const emit = defineEmits<{
   'update:page': [page: number]
 }>()
 
+const config = useRuntimeConfig()
+const toast = useToast()
+const launchingSiteId = ref<string | null>(null)
+const editorUrl = computed(() => {
+  const value = config.public.pageStudioEditorUrl
+  if (typeof value !== 'string' || !value) return null
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' ? url.origin : null
+  } catch {
+    return null
+  }
+})
+
 const pageModel = computed({
   get: () => props.page,
   set: value => emit('update:page', value)
@@ -61,6 +75,38 @@ function statusColor(status: string): 'success' | 'warning' | 'info' | 'neutral'
   if (['building', 'deploying', 'review'].includes(status)) return 'info'
   if (['paused', 'blocked'].includes(status)) return 'warning'
   return 'neutral'
+}
+
+async function openBuilder(site: PageStudioSiteSummary) {
+  if (!editorUrl.value || launchingSiteId.value) return
+  launchingSiteId.value = site.id
+  try {
+    const response = await $fetch<{ session: { token: string } }>(
+      `/api/${props.audience}/page-studio/sites/${site.id}/editor-sessions`,
+      { method: 'POST' }
+    )
+    const form = document.createElement('form')
+    form.action = `${editorUrl.value}/launch`
+    form.method = 'POST'
+    const token = document.createElement('input')
+    token.type = 'hidden'
+    token.name = 'token'
+    token.value = response.session.token
+    form.append(token)
+    document.body.append(form)
+    form.submit()
+  } catch (error: unknown) {
+    const message = error && typeof error === 'object' && 'data' in error
+      && error.data && typeof error.data === 'object' && 'message' in error.data
+      ? String(error.data.message)
+      : 'The governed editor session could not be started.'
+    toast.add({
+      title: 'Page Studio could not open',
+      description: message,
+      color: 'error'
+    })
+    launchingSiteId.value = null
+  }
 }
 </script>
 
@@ -183,9 +229,22 @@ function statusColor(status: string): 'success' | 'warning' | 'info' | 'neutral'
             </div>
           </dl>
 
-          <div class="mt-auto flex items-center gap-2 border-t border-default pt-4 text-xs text-muted">
-            <UIcon name="i-lucide-shield-check" class="size-4 text-primary" />
-            <span>{{ audience === 'agency' ? 'Agency-managed release' : 'Managed by your agency' }}</span>
+          <div class="mt-auto flex items-center justify-between gap-3 border-t border-default pt-4">
+            <div class="flex min-w-0 items-center gap-2 text-xs text-muted">
+              <UIcon name="i-lucide-shield-check" class="size-4 shrink-0 text-primary" />
+              <span class="truncate">{{ audience === 'agency' ? 'Agency-managed release' : 'Managed by your agency' }}</span>
+            </div>
+            <UButton
+              v-if="editorUrl"
+              label="Open Builder"
+              icon="i-lucide-panel-top-open"
+              color="primary"
+              variant="soft"
+              size="sm"
+              :loading="launchingSiteId === site.id"
+              :disabled="launchingSiteId !== null && launchingSiteId !== site.id"
+              @click="openBuilder(site)"
+            />
           </div>
         </div>
       </UCard>

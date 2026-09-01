@@ -40,6 +40,8 @@
     "deploy:google-pmax-provider": "pnpm --dir workers/google-pmax-provider run deploy",
     "deploy:google-pmax-provider:dry-run": "pnpm --dir workers/google-pmax-provider run deploy:dry-run",
     "deploy:page-studio-control:dry-run": "pnpm --dir workers/page-studio-control run deploy:dry-run",
+    "deploy:page-studio-control:production": "pnpm --dir workers/page-studio-control run deploy:production",
+    "deploy:page-studio-control:production:dry-run": "pnpm --dir workers/page-studio-control run deploy:production:dry-run",
     "deploy:page-studio-control:staging": "pnpm --dir workers/page-studio-control run deploy:staging",
     "deploy:page-studio-control:staging:dry-run": "pnpm --dir workers/page-studio-control run deploy:staging:dry-run",
     "deploy:workers": "node scripts/deploy-workers.mjs",
