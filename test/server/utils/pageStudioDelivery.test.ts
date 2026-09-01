@@ -85,7 +85,8 @@ describe('Page Studio public host resolution', () => {
     expect(queryOne).toHaveBeenCalledOnce()
     const [sql, params] = queryOne.mock.calls[0]!
     expect(sql).toContain('pointer.environment IN (\'staging\', \'production\')')
-    expect(sql).toContain('site.status = \'active\'')
+    expect(sql).toContain('pointer.environment = \'staging\' AND site.status IN (\'draft\', \'active\')')
+    expect(sql).toContain('pointer.environment = \'production\' AND site.status = \'active\'')
     expect(sql).toContain('build.state = \'succeeded\'')
     expect(params).toEqual([HOSTNAME])
   })

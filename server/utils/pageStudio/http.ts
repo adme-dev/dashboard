@@ -4,6 +4,8 @@ import { PageStudioSiteError } from '~~/server/utils/pageStudio/sites'
 import { PageStudioVersionError } from '~~/server/utils/pageStudio/versions'
 import { PageStudioControlError } from '~~/server/utils/pageStudio/controlStore'
 import { PageStudioDeliveryError } from '~~/server/utils/pageStudio/delivery'
+import { PageStudioPublishingError } from '~~/server/utils/pageStudio/publishing'
+import { PageStudioBuildError } from '~~/server/utils/pageStudio/builds'
 import { PageStudioSessionError } from '~~/server/utils/pageStudio/sessions'
 
 interface StablePageStudioError {
@@ -29,7 +31,9 @@ export function projectPageStudioInternalError(error: unknown): {
   body: StablePageStudioError
 } {
   if (error instanceof PageStudioControlError
+    || error instanceof PageStudioBuildError
     || error instanceof PageStudioDeliveryError
+    || error instanceof PageStudioPublishingError
     || error instanceof PageStudioSessionError
     || error instanceof PageStudioSiteError
     || error instanceof PageStudioVersionError) {
@@ -79,7 +83,9 @@ export function pageStudioInternalHttpError(
 
 export function pageStudioHttpError(error: unknown): never {
   if (error instanceof PageStudioControlError
+    || error instanceof PageStudioBuildError
     || error instanceof PageStudioDeliveryError
+    || error instanceof PageStudioPublishingError
     || error instanceof PageStudioSessionError
     || error instanceof PageStudioSiteError
     || error instanceof PageStudioVersionError) {
