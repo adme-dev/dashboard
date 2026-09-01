@@ -212,8 +212,12 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   if (hasPermission('PAGE_STUDIO_VIEW')) {
     items.push(
       { type: 'label', label: 'Websites' },
-      { label: 'Page Studio', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close }
+      { label: 'Sites', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close }
     )
+    if (hasPermission('PAGE_STUDIO_APPROVE')) items.push({ label: 'Reviews', icon: 'i-lucide-badge-check', to: '/agency/page-studio/reviews', onSelect: close })
+    if (hasPermission('PAGE_STUDIO_PUBLISH')) items.push({ label: 'Releases', icon: 'i-lucide-rocket', to: '/agency/page-studio/releases', onSelect: close })
+    if (hasPermission('PAGE_STUDIO_DOMAINS')) items.push({ label: 'Domains & DNS', icon: 'i-lucide-globe-2', to: '/agency/page-studio/domains', onSelect: close })
+    if (hasPermission('PAGE_STUDIO_SUBSCRIPTIONS')) items.push({ label: 'Subscriptions', icon: 'i-lucide-gauge', to: '/agency/page-studio/subscriptions', onSelect: close })
   }
 
   // Time & Capacity — visible to all authenticated users
