@@ -196,7 +196,10 @@ export async function resolvePageStudioReleaseHost(
       AND build.state = 'succeeded'
      WHERE pointer.normalized_hostname = $1
        AND pointer.environment IN ('staging', 'production')
-       AND site.status = 'active'
+       AND (
+         (pointer.environment = 'staging' AND site.status IN ('draft', 'active'))
+         OR (pointer.environment = 'production' AND site.status = 'active')
+       )
        AND entitlement.status IN ('trial', 'active')
        AND entitlement.effective_from <= NOW()
        AND (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())`,

@@ -1,7 +1,11 @@
 import { z } from 'zod'
 
+import { PageStudioHostnameSchema } from '~~/server/utils/pageStudio/delivery'
+
 const ScopedId = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
 const Digest = z.string().regex(/^[a-f0-9]{64}$/)
+
+export const PageStudioControlIdSchema = ScopedId
 
 export const PageStudioControlScopeSchema = z.object({
   clientId: z.string().uuid(),
@@ -68,3 +72,21 @@ export const PageStudioIdempotencyKeySchema = z
   .min(1)
   .max(256)
   .regex(/^[\x21-\x7e]+$/)
+
+export const PageStudioReleaseActivationSchema = z.object({
+  actorId: ScopedId,
+  buildId: ScopedId,
+  environment: z.enum(['staging', 'production']),
+  expectedActiveReleaseId: ScopedId.nullable(),
+  hostname: PageStudioHostnameSchema,
+  scope: PageStudioControlScopeSchema
+}).strict()
+
+export const PageStudioReleaseRollbackSchema = z.object({
+  actorId: ScopedId,
+  environment: z.enum(['staging', 'production']),
+  expectedActiveReleaseId: ScopedId,
+  hostname: PageStudioHostnameSchema,
+  scope: PageStudioControlScopeSchema,
+  targetReleaseId: ScopedId
+}).strict()
