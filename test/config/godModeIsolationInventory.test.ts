@@ -8,7 +8,7 @@ import {
 } from '../../server/utils/godMode/featureGate'
 
 const API_INVENTORY = {
-  totalRouteFiles: 2067,
+  totalRouteFiles: 2073,
   mutationRouteFiles: 1139,
   explicitlyGuardedMutationFiles: 398,
   guardedMutationFilesWithTransactionCall: 46
