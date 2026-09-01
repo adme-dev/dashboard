@@ -162,12 +162,26 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   ] as NavigationMenuItem[]
 
   if (pageStudioNavigation.value.total > 0) {
-    items.splice(2, 0, {
-      label: 'Page Studio',
-      icon: 'i-lucide-panels-top-left',
-      to: '/portal/page-studio',
-      onSelect: close
-    })
+    items.splice(2, 0,
+      {
+        label: 'Page Studio',
+        icon: 'i-lucide-panels-top-left',
+        to: '/portal/page-studio',
+        onSelect: close
+      },
+      {
+        label: 'Domains & DNS',
+        icon: 'i-lucide-globe-2',
+        to: '/portal/page-studio/domains',
+        onSelect: close
+      },
+      {
+        label: 'Release history',
+        icon: 'i-lucide-history',
+        to: '/portal/page-studio/releases',
+        onSelect: close
+      }
+    )
   }
 
   return items
