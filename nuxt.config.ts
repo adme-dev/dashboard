@@ -285,6 +285,7 @@ export default defineNuxtConfig({
     public: {
       appName: process.env.APP_NAME || 'XeroFlow Agency',
       appUrl: process.env.APP_URL || 'http://localhost:3000',
+      pageStudioEditorUrl: process.env.NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL || '',
       // Presentation-only mirror; routes independently enforce the private gate.
       nearbyMarketDiscoveryEnabled: process.env.NEARBY_MARKET_DISCOVERY_ENABLED === 'true',
       // Restricted browser-only Maps credentials; never reuse the server Places key here.

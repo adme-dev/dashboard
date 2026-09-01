@@ -12,6 +12,7 @@ compatibility_flags = ["nodejs_compat", "no_handle_cross_request_promise_resolut
 [vars]
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
+NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = ""
 AI_GOVERNED_CATALOG_MODE = "legacy"
 EMAIL_FROM = "notification@adme.net.au"
 # Search Authority is globally armed for the Knox design-client pilot. The
@@ -260,6 +261,7 @@ script_name = "rate-limiter-worker"
 [env.production.vars]
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
+NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = "https://studio.xeroflow.io"
 AI_GOVERNED_CATALOG_MODE = "legacy"
 EMAIL_FROM = "notification@adme.net.au"
 SEARCH_AUTHORITY_ENABLED = "true"
@@ -319,6 +321,7 @@ id = "3865ea5568234fc7b0e9e3e595a30286"
 [env.preview.vars]
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
+NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = ""
 SEARCH_AUTHORITY_ENABLED = "false"
 NUXT_SEARCH_AUTHORITY_ENABLED = "false"
 NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED = "false"

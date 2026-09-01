@@ -6,6 +6,8 @@
     "types": "wrangler types --config wrangler.jsonc --include-runtime=false worker-configuration.d.ts",
     "typecheck": "pnpm types && tsc --noEmit",
     "test": "pnpm --dir ../.. exec vitest run test/workers/pageStudioControlWorker.test.ts",
+    "deploy:production": "wrangler deploy --config wrangler.jsonc",
+    "deploy:production:dry-run": "wrangler deploy --dry-run --outdir ../../.output/page-studio-control-production --config wrangler.jsonc",
     "deploy:dry-run": "wrangler deploy --dry-run --outdir ../../.output/page-studio-control --config wrangler.jsonc",
     "deploy:staging": "wrangler deploy --env staging --config wrangler.jsonc",
     "deploy:staging:dry-run": "wrangler deploy --env staging --dry-run --outdir ../../.output/page-studio-control-staging --config wrangler.jsonc"
