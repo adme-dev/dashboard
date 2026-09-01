@@ -212,7 +212,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   if (hasPermission('PAGE_STUDIO_VIEW')) {
     items.push(
       { type: 'label', label: 'Websites' },
-      { label: 'Sites', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close }
+      { label: 'Page Studio', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close }
     )
     if (hasPermission('PAGE_STUDIO_APPROVE')) items.push({ label: 'Reviews', icon: 'i-lucide-badge-check', to: '/agency/page-studio/reviews', onSelect: close })
     if (hasPermission('PAGE_STUDIO_PUBLISH')) items.push({ label: 'Releases', icon: 'i-lucide-rocket', to: '/agency/page-studio/releases', onSelect: close })

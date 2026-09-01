@@ -48,7 +48,7 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2067,
+      totalRouteFiles: 2073,
       mutationRouteFiles: 1139,
       explicitlyGuardedMutationFiles: 398,
       guardedMutationFilesWithTransactionCall: 46
