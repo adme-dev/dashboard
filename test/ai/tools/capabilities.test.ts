@@ -81,7 +81,7 @@ describe('get_capabilities', () => {
 
     expect(result.ok).toBe(true)
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
-    expect(tools).toHaveLength(95)
+    expect(tools).toHaveLength(164)
     expect(tools).toContainEqual({ name: 'run_adspend_sync', mode: 'inspection' })
     expect(tools).toContainEqual({ name: 'get_sync_status', mode: 'inspection' })
     expect(tools).toContainEqual({ name: 'get_ad_creative_text', mode: 'read' })
@@ -123,7 +123,7 @@ describe('get_capabilities', () => {
     expect((result as any).data.dataSync.adSpend).toHaveProperty('lastRunAt')
     expect((result as any).data.dataSync.adSpend).toHaveProperty('coverageBaselinePresent')
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-08-28.14', previousRelease: '2026-08-24.13', toolCount: 95, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-09-01.15', previousRelease: '2026-08-28.14', toolCount: 164, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   }, 15_000)
