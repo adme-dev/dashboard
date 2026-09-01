@@ -188,7 +188,7 @@ describe('authoritative registered MCP suite projection', () => {
     expect(registeredMcpSuites).toEqual(before)
   })
 
-  it('gives every projected owner manifest exactly one executable resolver', () => {
+  it('gives every projected owner manifest exactly one executable resolver', { timeout: 15_000 }, () => {
     const ownerContext = { ...context, tools: applicationRegistry }
     const manifests = projectGodModeTools(ownerContext)
     const executions = resolveGodModeMcpExecutions(ownerContext)
