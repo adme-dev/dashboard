@@ -235,8 +235,15 @@ async function openBuilder(site: PageStudioSiteSummary) {
               <span class="truncate">{{ audience === 'agency' ? 'Agency-managed release' : 'Managed by your agency' }}</span>
             </div>
             <UButton
-              v-if="editorUrl"
+              v-if="audience === 'agency'"
+              :to="`/agency/page-studio/${site.id}/edit`"
               label="Open Builder"
+              icon="i-lucide-panel-right-open"
+              size="sm"
+            />
+            <UButton
+              v-if="editorUrl"
+              label="Open Studio"
               icon="i-lucide-panel-top-open"
               color="primary"
               variant="soft"

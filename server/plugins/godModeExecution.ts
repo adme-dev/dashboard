@@ -15,6 +15,7 @@ import { registerGodModeSocialPublishingAccountMutationFamilies } from '~~/serve
 import { registerGodModeSocialInboxMutationFamilies } from '~~/server/utils/socialInbox/godModeMutations'
 import { registerGodModeTrackingSiteMutationFamily } from '~~/server/utils/tracking/godModeMutations'
 import { registerGodModeQrMutationFamilies } from '~~/server/utils/qr/godModeMutations'
+import { registerGodModePageStudioMutationFamilies } from '~~/server/utils/pageStudio/godModeMutations'
 import { registerGodModeSearchAuthorityMutationFamilies } from '~~/server/utils/searchAuthority/godModeMutations'
 import { prepareGodModeBannerRender } from '~~/server/utils/banner/godModeRender'
 import { registerGodModeMutationFamily } from '~~/server/utils/godMode/featureGate'
@@ -33,6 +34,7 @@ registerGodModeSocialInboxMutationFamilies()
 registerGodModeAgencyClientMutationFamilies()
 registerGodModeTrackingSiteMutationFamily()
 registerGodModeQrMutationFamilies()
+registerGodModePageStudioMutationFamilies()
 registerGodModeSearchAuthorityMutationFamilies()
 registerGodModeGoogleConversionActionMutationFamily()
 registerGodModeMeasurementConfigurationMutationFamilies()

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   recordPageStudioAuditEvent: vi.fn(),
   recordPageStudioCheckpoint: vi.fn(),
   registerPageStudioVersion: vi.fn(),
+  submitPageStudioVersionForReview: vi.fn(),
   requirePageStudioMachineAuth: vi.fn(),
   resolvePageStudioReleaseHost: vi.fn()
 }))
@@ -24,6 +25,7 @@ vi.mock('~~/server/utils/pageStudio/controlStore', () => ({
   recordPageStudioAuditEvent: (...args: unknown[]) => mocks.recordPageStudioAuditEvent(...args),
   recordPageStudioCheckpoint: (...args: unknown[]) => mocks.recordPageStudioCheckpoint(...args),
   registerPageStudioVersion: (...args: unknown[]) => mocks.registerPageStudioVersion(...args),
+  submitPageStudioVersionForReview: (...args: unknown[]) => mocks.submitPageStudioVersionForReview(...args),
   PageStudioControlError: class PageStudioControlError extends Error {}
 }))
 vi.mock('~~/server/utils/pageStudio/http', () => ({
@@ -101,6 +103,10 @@ describe('Page Studio internal control endpoints', () => {
     mocks.registerPageStudioVersion.mockResolvedValue({
       authorRole: 'client', checkpointId, createdAt: '2026-08-30T02:00:00.000Z',
       digest, id: '44444444-4444-4444-8444-444444444444', siteId: scope.siteId, status: 'draft'
+    })
+    mocks.submitPageStudioVersionForReview.mockResolvedValue({
+      authorRole: 'agency', checkpointId, createdAt: '2026-08-30T02:00:00.000Z',
+      digest, id: '44444444-4444-4444-8444-444444444444', siteId: scope.siteId, status: 'in_review'
     })
     mocks.recordPageStudioAuditEvent.mockResolvedValue({ acknowledged: true })
   })
@@ -186,6 +192,30 @@ describe('Page Studio internal control endpoints', () => {
       ...body, idempotencyKey: 'version-request-01HXYZ'
     })
     expect(event.responseStatus).toBe(201)
+  })
+
+  it('machine-authenticates a scoped version submission for review', async () => {
+    const body = {
+      actorRole: 'agency',
+      scope,
+      userId,
+      versionId: '44444444-4444-4444-8444-444444444444'
+    }
+    const event: TestEvent = {
+      body,
+      context: {},
+      headers: { 'idempotency-key': 'submit-proposal-01HXYZ' }
+    }
+    const { default: handler } = await import(
+      '~~/server/routes/internal/page-studio/version-submissions/index.post'
+    )
+
+    await expect(handler(event as never)).resolves.toMatchObject({ status: 'in_review' })
+    expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
+    expect(mocks.submitPageStudioVersionForReview).toHaveBeenCalledWith({
+      ...body,
+      idempotencyKey: 'submit-proposal-01HXYZ'
+    })
   })
 
   it('accepts only allowlisted audit fields and derives idempotency from the header', async () => {
