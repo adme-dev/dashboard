@@ -155,8 +155,8 @@ const features: Record<string, Feature> = {
         content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
       },
       {
-        title: 'From Landing Pages to Complete Websites',
-        content: 'Page Studio is designed for more than one-off promotional pages. The same project can grow into a multi-page website with reusable sections, responsive layouts, brand assets, structured content, and release history, while the agency keeps the implementation maintainable as client needs evolve.'
+        title: 'A Visual Multi-Page Builder',
+        content: 'Build a complete page tree with nested subpages, reusable hero, text, image, and call-to-action sections, responsive desktop, tablet, and mobile previews, page visibility, and per-page SEO. Revision-safe draft saves prevent one editing session from silently overwriting another.'
       },
       {
         title: 'Governed Preview and Publishing',

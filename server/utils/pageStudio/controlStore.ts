@@ -16,12 +16,16 @@ export class PageStudioControlError extends Error {
   constructor(
     readonly code:
       | 'AUDIT_EVENT_CONFLICT'
+      | 'BASE_DIGEST_MISMATCH'
       | 'CHECKPOINT_CONFLICT'
       | 'CHECKPOINT_DIGEST_MISMATCH'
       | 'CHECKPOINT_NOT_FOUND'
       | 'CHECKPOINT_SCOPE_INVALID'
       | 'CONTROL_SCOPE_NOT_FOUND'
-      | 'VERSION_CONFLICT',
+      | 'VERSION_CONFLICT'
+      | 'VERSION_NOT_CURRENT'
+      | 'VERSION_NOT_FOUND'
+      | 'VERSION_STATE_INVALID',
     readonly statusCode: number,
     message: string
   ) {
@@ -50,6 +54,14 @@ export interface PageStudioVersionRegistrationInput {
   userId: string
 }
 
+export interface PageStudioAiProposalAcceptanceInput {
+  authorRole: 'agency' | 'client'
+  baseDigest: string
+  checkpoint: PageStudioCheckpointInput
+  idempotencyKey: string
+  summary: string
+}
+
 export type PageStudioAuditAction
   = | 'workspace.created'
     | 'workspace.reconnected'
@@ -58,6 +70,7 @@ export type PageStudioAuditAction
     | 'workspace.terminated'
     | 'session.revoked'
     | 'version.registered'
+    | 'version.submitted'
 
 export type PageStudioAuditResourceType = 'checkpoint' | 'session' | 'version' | 'workspace'
 
@@ -385,6 +398,268 @@ export async function registerPageStudioVersion(
       metadata: { checkpointId: input.checkpointId, digest: input.digest }
     })
     return mapVersion(version, input.scope.siteId)
+  })
+}
+
+export async function submitPageStudioVersionForReview(
+  input: {
+    actorRole: 'agency' | 'client'
+    idempotencyKey: string
+    scope: PageStudioControlScope
+    userId: string
+    versionId: string
+  },
+  dependencies: { runTransaction?: RunTransaction } = {}
+) {
+  const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
+  return runTransaction(async (db) => {
+    await requireScopedSite(db, input.scope, 'FOR UPDATE')
+    const result = await db.query<VersionRow & { current_version_id: string | null }>(
+      `SELECT version.id, version.checkpoint_id, version.digest, version.author_id,
+              version.author_role, version.summary, version.status, version.created_at,
+              site.current_version_id
+       FROM page_studio_versions version
+       JOIN page_studio_sites site
+         ON site.tenant_id = version.tenant_id
+        AND site.client_id = version.client_id
+        AND site.id = version.site_id
+       WHERE version.tenant_id = $1 AND version.client_id = $2
+         AND version.site_id = $3 AND version.id = $4
+       FOR UPDATE OF version, site`,
+      [input.scope.tenantId, input.scope.clientId, input.scope.siteId, input.versionId]
+    )
+    const version = result.rows[0]
+    if (!version) {
+      throw new PageStudioControlError('VERSION_NOT_FOUND', 404, 'Page Studio version not found')
+    }
+    if (
+      version.current_version_id !== version.id
+      || version.author_id !== input.userId
+      || version.author_role !== input.actorRole
+    ) {
+      throw new PageStudioControlError(
+        'VERSION_NOT_CURRENT',
+        409,
+        'Only the current version can be submitted by its author'
+      )
+    }
+    if (version.status === 'in_review') return mapVersion(version, input.scope.siteId)
+    if (version.status !== 'draft') {
+      throw new PageStudioControlError(
+        'VERSION_STATE_INVALID',
+        422,
+        'Only a draft version can be submitted'
+      )
+    }
+    const updated = await db.query<VersionRow>(
+      `UPDATE page_studio_versions
+       SET status = 'in_review', submitted_at = NOW(), updated_at = NOW()
+       WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3 AND id = $4
+       RETURNING id, checkpoint_id, digest, author_id, author_role, summary, status, created_at`,
+      [input.scope.tenantId, input.scope.clientId, input.scope.siteId, input.versionId]
+    )
+    const submitted = updated.rows[0]
+    if (!submitted) throw new Error('Page Studio version submission returned no row')
+    await appendMutationAudit(db, {
+      scope: input.scope,
+      actorId: input.userId,
+      actorRole: input.actorRole,
+      action: 'version.submitted',
+      resourceType: 'version',
+      resourceId: submitted.id,
+      idempotencyKey: input.idempotencyKey,
+      metadata: { digest: submitted.digest }
+    })
+    return mapVersion(submitted, input.scope.siteId)
+  })
+}
+
+export async function acceptPageStudioAiProposal(
+  input: PageStudioAiProposalAcceptanceInput,
+  dependencies: { runTransaction?: RunTransaction } = {}
+) {
+  const { checkpoint } = input
+  if (
+    checkpoint.objectKey
+    !== expectedCheckpointObjectKey(checkpoint.scope, checkpoint.checkpointId)
+  ) {
+    throw new PageStudioControlError(
+      'CHECKPOINT_SCOPE_INVALID',
+      422,
+      'Checkpoint object key does not match the declared scope'
+    )
+  }
+
+  const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
+  return runTransaction(async (db) => {
+    const siteResult = await db.query<{
+      current_checkpoint_id: string | null
+      current_digest: string | null
+      current_version_id: string | null
+    }>(
+      `SELECT site.current_checkpoint_id, site.current_version_id,
+              current_checkpoint.digest AS current_digest
+       FROM page_studio_sites site
+       LEFT JOIN page_studio_checkpoints current_checkpoint
+         ON current_checkpoint.tenant_id = site.tenant_id
+        AND current_checkpoint.client_id = site.client_id
+        AND current_checkpoint.site_id = site.id
+        AND current_checkpoint.id = site.current_checkpoint_id
+       WHERE site.tenant_id = $1 AND site.client_id = $2 AND site.id = $3
+       FOR UPDATE OF site`,
+      [checkpoint.scope.tenantId, checkpoint.scope.clientId, checkpoint.scope.siteId]
+    )
+    const site = siteResult.rows[0]
+    if (!site) {
+      throw new PageStudioControlError(
+        'CONTROL_SCOPE_NOT_FOUND',
+        404,
+        'Page Studio site scope not found'
+      )
+    }
+
+    const existingVersion = await db.query<VersionRow>(
+      `SELECT id, checkpoint_id, digest, author_id, author_role, summary, status, created_at
+       FROM page_studio_versions
+       WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3 AND idempotency_key = $4
+       FOR SHARE`,
+      [
+        checkpoint.scope.tenantId,
+        checkpoint.scope.clientId,
+        checkpoint.scope.siteId,
+        input.idempotencyKey
+      ]
+    )
+    const replay = existingVersion.rows[0]
+    if (replay) {
+      const matches = replay.checkpoint_id === checkpoint.checkpointId
+        && replay.digest === checkpoint.digest
+        && replay.author_id === checkpoint.userId
+        && replay.author_role === input.authorRole
+        && replay.summary === input.summary
+        && replay.status === 'in_review'
+      if (!matches) {
+        throw new PageStudioControlError(
+          'VERSION_CONFLICT',
+          409,
+          'AI proposal idempotency key already represents a different request'
+        )
+      }
+      return { checkpointId: checkpoint.checkpointId, versionId: replay.id }
+    }
+
+    if (site.current_digest !== input.baseDigest) {
+      throw new PageStudioControlError(
+        'BASE_DIGEST_MISMATCH',
+        409,
+        'AI proposal base digest is no longer current'
+      )
+    }
+
+    const existingCheckpoint = await db.query<CheckpointRow>(
+      `SELECT id, tenant_id, client_id, site_id, digest, object_key, etag, author_id, created_at
+       FROM page_studio_checkpoints
+       WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3 AND id = $4
+       FOR SHARE`,
+      [
+        checkpoint.scope.tenantId,
+        checkpoint.scope.clientId,
+        checkpoint.scope.siteId,
+        checkpoint.checkpointId
+      ]
+    )
+    if (existingCheckpoint.rows[0]) {
+      if (!checkpointMatches(existingCheckpoint.rows[0], checkpoint)) {
+        throw new PageStudioControlError(
+          'CHECKPOINT_CONFLICT',
+          409,
+          'Checkpoint ID already represents different durable metadata'
+        )
+      }
+    } else {
+      await db.query(
+        `INSERT INTO page_studio_checkpoints (
+           id, tenant_id, client_id, site_id, digest, object_key, etag, author_id, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          checkpoint.checkpointId,
+          checkpoint.scope.tenantId,
+          checkpoint.scope.clientId,
+          checkpoint.scope.siteId,
+          checkpoint.digest,
+          checkpoint.objectKey,
+          checkpoint.etag,
+          checkpoint.userId,
+          checkpoint.createdAt
+        ]
+      )
+    }
+
+    const versionResult = await db.query<VersionRow>(
+      `INSERT INTO page_studio_versions (
+         tenant_id, client_id, site_id, checkpoint_id, digest,
+         author_id, author_role, summary, status, idempotency_key, submitted_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'in_review', $9, NOW())
+       RETURNING id, checkpoint_id, digest, author_id, author_role, summary, status, created_at`,
+      [
+        checkpoint.scope.tenantId,
+        checkpoint.scope.clientId,
+        checkpoint.scope.siteId,
+        checkpoint.checkpointId,
+        checkpoint.digest,
+        checkpoint.userId,
+        input.authorRole,
+        input.summary,
+        input.idempotencyKey
+      ]
+    )
+    const version = versionResult.rows[0]
+    if (!version) throw new Error('AI proposal version insert returned no row')
+
+    await db.query(
+      `UPDATE page_studio_sites
+       SET current_checkpoint_id = $4, current_version_id = $5, updated_at = NOW()
+       WHERE tenant_id = $1 AND client_id = $2 AND id = $3`,
+      [
+        checkpoint.scope.tenantId,
+        checkpoint.scope.clientId,
+        checkpoint.scope.siteId,
+        checkpoint.checkpointId,
+        version.id
+      ]
+    )
+    await appendMutationAudit(db, {
+      scope: checkpoint.scope,
+      actorId: checkpoint.userId,
+      actorRole: input.authorRole,
+      action: 'workspace.checkpointed',
+      resourceType: 'checkpoint',
+      resourceId: checkpoint.checkpointId,
+      idempotencyKey: `control:checkpoint:${checkpoint.checkpointId}`,
+      metadata: { digest: checkpoint.digest, objectKey: checkpoint.objectKey }
+    })
+    await appendMutationAudit(db, {
+      scope: checkpoint.scope,
+      actorId: checkpoint.userId,
+      actorRole: input.authorRole,
+      action: 'version.registered',
+      resourceType: 'version',
+      resourceId: version.id,
+      idempotencyKey: `control:version:${input.idempotencyKey}`,
+      metadata: { checkpointId: checkpoint.checkpointId, digest: checkpoint.digest }
+    })
+    await appendMutationAudit(db, {
+      scope: checkpoint.scope,
+      actorId: checkpoint.userId,
+      actorRole: input.authorRole,
+      action: 'version.submitted',
+      resourceType: 'version',
+      resourceId: version.id,
+      idempotencyKey: input.idempotencyKey,
+      metadata: { digest: checkpoint.digest }
+    })
+
+    return { checkpointId: checkpoint.checkpointId, versionId: version.id }
   })
 }
 

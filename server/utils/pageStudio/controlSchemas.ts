@@ -32,6 +32,20 @@ export const PageStudioVersionRegistrationSchema = z.object({
   userId: z.string().uuid()
 }).strict()
 
+export const PageStudioVersionSubmissionSchema = z.object({
+  actorRole: z.enum(['agency', 'client']),
+  scope: PageStudioControlScopeSchema,
+  userId: z.string().uuid(),
+  versionId: z.string().uuid()
+}).strict()
+
+export const PageStudioAiProposalAcceptanceSchema = z.object({
+  authorRole: z.enum(['agency', 'client']),
+  baseDigest: Digest,
+  checkpoint: PageStudioCheckpointSchema,
+  summary: z.string().trim().min(1).max(500)
+}).strict()
+
 export const PageStudioAuditEventSchema = z.object({
   action: z.enum([
     'workspace.created',

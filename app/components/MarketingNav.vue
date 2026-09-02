@@ -644,7 +644,7 @@ const featuresCol3a = [
 ]
 
 const featuresCol3b = [
-  { title: 'Page Studio', subtitle: 'Governed client website builder', icon: 'i-lucide-panels-top-left', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/page-studio' },
+  { title: 'Page Studio', subtitle: 'Visual multi-page website builder', icon: 'i-lucide-panels-top-left', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/page-studio' },
   { title: 'Banner Studio', subtitle: 'HTML5 ad design & animation', icon: 'i-lucide-palette', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/banner-studio' },
   { title: 'Bulk Ad Launch', subtitle: 'Publish ads across platforms', icon: 'i-lucide-rocket', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/bulk-ad-launch' },
   { title: 'Ad Export', subtitle: 'Platform-compliant ZIP export', icon: 'i-lucide-download', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/ad-platform-export' },

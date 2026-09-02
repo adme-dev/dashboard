@@ -5,6 +5,7 @@ import {
   recordPageStudioAuditEvent,
   recordPageStudioCheckpoint,
   registerPageStudioVersion,
+  submitPageStudioVersionForReview,
   type PageStudioControlQueryClient
 } from '~~/server/utils/pageStudio/controlStore'
 
@@ -281,6 +282,42 @@ describe('Page Studio internal control store', () => {
     await expect(registerPageStudioVersion(input, {
       runTransaction: conflictDb.runTransaction
     })).rejects.toMatchObject({ code: 'VERSION_CONFLICT', statusCode: 409 })
+  })
+
+  it('submits only the current author-owned draft and audits the review transition', async () => {
+    const versionId = '44444444-4444-4444-8444-444444444444'
+    const version = {
+      id: versionId,
+      checkpoint_id: checkpointId,
+      digest,
+      author_id: userId,
+      author_role: 'agency' as const,
+      summary: 'AI page proposal',
+      status: 'draft' as const,
+      created_at: '2026-08-30T02:00:00.000Z',
+      current_version_id: versionId
+    }
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites') && !sql.includes('JOIN')) return [{ id: scope.siteId }]
+      if (sql.includes('FROM page_studio_versions version')) return [version]
+      if (sql.includes('UPDATE page_studio_versions')) return [{ ...version, status: 'in_review' }]
+      return []
+    })
+
+    await expect(submitPageStudioVersionForReview({
+      actorRole: 'agency',
+      idempotencyKey: 'submit-proposal-01HXYZ',
+      scope,
+      userId,
+      versionId
+    }, { runTransaction: db.runTransaction })).resolves.toMatchObject({
+      id: versionId,
+      status: 'in_review'
+    })
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO page_studio_audit_events'),
+      expect.arrayContaining(['version.submitted', 'version', versionId, 'submit-proposal-01HXYZ'])
+    )
   })
 
   it('accepts only an exact typed audit replay and stores no caller-controlled metadata', async () => {
