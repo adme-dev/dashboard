@@ -46,6 +46,7 @@ export interface MeasurementReadinessSummary {
     live: boolean
   }
   profile: {
+    desiredEnabled: boolean
     enabled: boolean
     environment: MeasurementEnvironment
     cacheStatus: ClientMeasurementProfile['cacheStatus']

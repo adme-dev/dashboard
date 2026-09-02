@@ -14,6 +14,8 @@ function profileRow(version = 4) {
   return {
     id: PROFILE_ID,
     client_id: CLIENT_ID,
+    desired_enabled: true,
+    desired_state_source: 'existing_review',
     enabled: false,
     environment: 'test',
     collection_tier: 'backend_only',

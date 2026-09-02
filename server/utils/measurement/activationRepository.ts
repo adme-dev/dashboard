@@ -13,6 +13,8 @@ import {
 interface ProfileRow {
   id: string
   client_id: string
+  desired_enabled: boolean
+  desired_state_source: string
   enabled: boolean
   environment: string
   collection_tier: string
@@ -62,7 +64,8 @@ interface ReadinessRow {
 }
 
 const PROFILE_COLUMNS = `
-  id, client_id, enabled, environment, collection_tier, tracking_site_id,
+  id, client_id, desired_enabled, desired_state_source, enabled, environment,
+  collection_tier, tracking_site_id,
   first_party_hostname, hostname_status, consent_mode, vertical,
   outcome_authority, native_lifecycle_mode, portal_outcome_mode, config_version,
   cache_status, cache_version, cache_error_class, created_at, updated_at
@@ -100,7 +103,8 @@ export type ApprovalResult
     | { status: 'version_conflict', currentVersion: number }
 
 export type ActivationBlocker
-  = 'cache_stale'
+  = 'desired_disabled'
+    | 'cache_stale'
     | 'hostname_not_ready'
     | 'approval_missing'
     | 'approver_conflict'
@@ -153,7 +157,7 @@ export function createPostgresMeasurementActivationRepository(
               currentVersion: profile.configVersion
             }
           }
-          if (profile.enabled || profile.environment !== 'test') {
+          if (!profile.desiredEnabled || profile.enabled || profile.environment !== 'test') {
             return { status: 'not_available' as const }
           }
 
@@ -249,6 +253,9 @@ export function createPostgresMeasurementActivationRepository(
         }
         if (profile.enabled || profile.environment === 'live') {
           return { status: 'already_active' as const }
+        }
+        if (!profile.desiredEnabled) {
+          return { status: 'not_ready' as const, blockers: ['desired_disabled' as const] }
         }
 
         const approvalResult = await db.query(

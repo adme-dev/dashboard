@@ -27,6 +27,7 @@ interface ReadinessRow {
   client_id: string
   profile_id: string
   config_version: number | string
+  desired_enabled: boolean
   profile_enabled: boolean
   profile_environment: 'test' | 'live' | 'paused'
   cache_status: 'not_published' | 'fresh' | 'stale' | 'error'
@@ -88,6 +89,7 @@ export interface MeasurementReadinessEvidence {
   profileId: string
   configVersion: number
   profile: {
+    desiredEnabled: boolean
     enabled: boolean
     environment: 'test' | 'live' | 'paused'
     cacheStatus: 'not_published' | 'fresh' | 'stale' | 'error'
@@ -169,6 +171,7 @@ export function createPostgresMeasurementReadRepository(
         `SELECT p.client_id,
                 p.id AS profile_id,
                 p.config_version,
+                p.desired_enabled,
                 p.enabled AS profile_enabled,
                 p.environment AS profile_environment,
                 p.cache_status,
@@ -238,6 +241,7 @@ export function createPostgresMeasurementReadRepository(
         profileId: row.profile_id,
         configVersion: Number(row.config_version),
         profile: {
+          desiredEnabled: row.desired_enabled,
           enabled: row.profile_enabled,
           environment: row.profile_environment,
           cacheStatus: row.cache_status,

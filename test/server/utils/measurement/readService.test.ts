@@ -14,6 +14,7 @@ function evidence(overrides: Partial<MeasurementReadinessEvidence> = {}): Measur
     profileId: PROFILE_ID,
     configVersion: 4,
     profile: {
+      desiredEnabled: true,
       enabled: false,
       environment: 'test',
       cacheStatus: 'fresh',
@@ -73,6 +74,7 @@ describe('Measurement read service', () => {
   it('prioritizes blocked evidence and returns stable readiness blockers', async () => {
     const test = harness(evidence({
       profile: {
+        desiredEnabled: true,
         enabled: false,
         environment: 'test',
         cacheStatus: 'stale',
@@ -103,6 +105,7 @@ describe('Measurement read service', () => {
   it('keeps fully evidenced delivery separate from live activation eligibility', async () => {
     const test = harness(evidence({
       profile: {
+        desiredEnabled: true,
         enabled: true,
         environment: 'live',
         cacheStatus: 'fresh',
@@ -138,6 +141,7 @@ describe('Measurement read service', () => {
   it('does not reopen consumed approval gates after a profile is active', async () => {
     const test = harness(evidence({
       profile: {
+        desiredEnabled: true,
         enabled: true,
         environment: 'live',
         cacheStatus: 'fresh',
@@ -171,6 +175,7 @@ describe('Measurement read service', () => {
   it('marks a disabled test profile live-eligible when current evidence and approvals pass', async () => {
     const test = harness(evidence({
       profile: {
+        desiredEnabled: true,
         enabled: false,
         environment: 'test',
         cacheStatus: 'fresh',
@@ -200,9 +205,45 @@ describe('Measurement read service', () => {
     expect(result.blockers).toEqual([])
   })
 
+  it('keeps an explicit opt-out ineligible even when every delivery prerequisite is ready', async () => {
+    const test = harness(evidence({
+      profile: {
+        desiredEnabled: false,
+        enabled: false,
+        environment: 'test',
+        cacheStatus: 'fresh',
+        outcomeAuthority: 'zero_native'
+      },
+      liveApproved: true,
+      privacyApproved: true,
+      counts: {
+        destinations: 1,
+        readyDestinations: 1,
+        degradedDestinations: 0,
+        blockedDestinations: 0,
+        capabilities: 2,
+        readyCapabilities: 2,
+        degradedCapabilities: 0,
+        blockedCapabilities: 0,
+        activeMappings: 1,
+        outcomeEndpoints: 0,
+        readyOutcomeEndpoints: 0
+      }
+    }))
+
+    const result = await test.service.getReadiness(CLIENT_ID)
+
+    expect(result.liveEligible).toBe(false)
+    expect(result.blockers).toContainEqual({
+      code: 'desired_disabled',
+      message: 'Measurement signals were deliberately turned off for this client'
+    })
+  })
+
   it('does not report ready when a nested capability lacks ready evidence', async () => {
     const test = harness(evidence({
       profile: {
+        desiredEnabled: true,
         enabled: true,
         environment: 'live',
         cacheStatus: 'fresh',
@@ -246,6 +287,7 @@ describe('Measurement read service', () => {
   it('blocks only external-webhook authority when no tested outcome endpoint exists', async () => {
     const test = harness(evidence({
       profile: {
+        desiredEnabled: true,
         enabled: false,
         environment: 'test',
         cacheStatus: 'fresh',
