@@ -103,6 +103,27 @@ describe('Google Ads typed inventory reads', () => {
     })])
   })
 
+  it('reads customer-goal biddability independently from primary action state', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ conversionAction: {
+        resourceName: `customers/${customerId}/conversionActions/121`, id: '121',
+        name: 'Service booking', status: 'ENABLED', type: 'WEBPAGE',
+        category: 'BOOK_APPOINTMENT', origin: 'WEBSITE', primaryForGoal: true
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ customerConversionGoal: {
+        category: 'BOOK_APPOINTMENT', origin: 'WEBSITE', biddable: false
+      } }], more: 0 })
+
+    const result = await listGoogleAdsInventory({
+      kind: 'conversion_action', customerId, auth, maxResults: 25, status: 'ALL'
+    }, { query, now: () => new Date('2026-09-02T05:00:00.000Z') })
+
+    expect(result.items).toEqual([expect.objectContaining({
+      primaryState: 'primary', goalBiddability: 'not_biddable'
+    })])
+    expect(query.mock.calls[1]?.[0].query).toContain('FROM customer_conversion_goal')
+  })
+
   it('lists campaign and ad-group targeting as two typed bounded inventories', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [{ campaignCriterion: {

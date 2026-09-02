@@ -90,6 +90,9 @@ const ConversionActionSchema = z.object({
   ownerCustomer: z.string().optional(), countingType: z.string().optional()
 })
 type ConversionAction = z.infer<typeof ConversionActionSchema>
+const CustomerConversionGoalSchema = z.object({
+  category: z.string(), origin: z.string(), biddable: z.boolean()
+})
 
 export const GoogleAdsDeliveryClassSchema = z.enum([
   'website_tag', 'offline_click', 'google_hosted_call', 'google_hosted_local', 'external', 'unknown'
@@ -142,12 +145,20 @@ export function classifyGoogleAdsConversionAction(
   return { deliveryClass: 'unknown' as const, managementOwner: 'external' as const }
 }
 
-function normalizeConversionAction(action: ConversionAction, providerSyncedAt: string) {
+function normalizeConversionAction(
+  action: ConversionAction,
+  providerSyncedAt: string,
+  customerGoalBiddable?: boolean
+) {
   return {
     ...action,
     ...classifyGoogleAdsConversionAction(action),
     primaryState: action.primaryForGoal ? 'primary' as const : 'secondary' as const,
-    goalBiddability: action.primaryForGoal ? 'unknown' as const : 'not_biddable' as const,
+    goalBiddability: !action.primaryForGoal || customerGoalBiddable === false
+      ? 'not_biddable' as const
+      : customerGoalBiddable === true
+        ? 'biddable' as const
+        : 'unknown' as const,
     mappingState: 'unmapped' as const,
     providerSyncedAt,
     lastEvidenceAt: null
@@ -310,6 +321,35 @@ FROM conversion_action${where(statusFilter('conversion_action.status', input.sta
   const result = await dependencies.query({
     customerId: input.customerId, auth: input.auth, maxRows: input.maxResults, query
   })
+  if (input.kind === 'conversion_action') {
+    const goalResult = await dependencies.query({
+      customerId: input.customerId,
+      auth: input.auth,
+      maxRows: input.maxResults,
+      query: `SELECT customer_conversion_goal.category, customer_conversion_goal.origin,
+  customer_conversion_goal.biddable
+FROM customer_conversion_goal`
+    })
+    const biddability = new Map<string, boolean>()
+    for (const row of goalResult.rows) {
+      const container = z.object({ customerConversionGoal: z.unknown() }).safeParse(row)
+      if (!container.success) continue
+      const goal = CustomerConversionGoalSchema.safeParse(container.data.customerConversionGoal)
+      if (goal.success) biddability.set(`${goal.data.category}:${goal.data.origin}`, goal.data.biddable)
+    }
+    const providerSyncedAt = (dependencies.now ?? (() => new Date()))().toISOString()
+    const items = result.rows.map((row) => {
+      const action = ConversionActionSchema.parse(
+        z.object({ conversionAction: z.unknown() }).parse(row).conversionAction
+      )
+      return normalizeConversionAction(
+        action,
+        providerSyncedAt,
+        biddability.get(`${action.category}:${action.origin}`)
+      )
+    })
+    return resultEnvelope(input, result, items)
+  }
   return resultEnvelope(input, result, result.rows.map(normalize))
 }
 
