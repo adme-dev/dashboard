@@ -23,6 +23,15 @@ describe('Page Studio workspace navigation', () => {
     expect(layout).toContain(`to: '/portal/page-studio'`)
   })
 
+  it('launches Studio without exposing a parallel dashboard page builder', () => {
+    const workspace = read('app/components/page-studio/SiteWorkspace.vue')
+
+    expect(workspace).toContain('label="Launch Studio"')
+    expect(workspace).toContain('@click="launchStudio(site)"')
+    expect(workspace).not.toContain('label="Manage Pages"')
+    expect(workspace).not.toContain('/edit`')
+  })
+
   it('provides agency and portal workspace pages backed by their scoped APIs', () => {
     const agencyPage = 'app/pages/agency/page-studio/index.vue'
     const portalPage = 'app/pages/portal/page-studio/index.vue'
