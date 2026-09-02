@@ -17,6 +17,8 @@ function profileRow(version = 3, enabled = false, environment = 'test') {
   return {
     id: PROFILE_ID,
     client_id: CLIENT_ID,
+    desired_enabled: true,
+    desired_state_source: 'operator',
     enabled,
     environment,
     collection_tier: 'backend_only',
@@ -100,6 +102,49 @@ describe('Postgres measurement activation repository', () => {
       expect.stringMatching(/INSERT INTO measurement_config_audit/)
     ])
     expect(statements.at(-1)!.params.join(' ')).not.toContain('credential')
+  })
+
+  it('does not accept approvals while the client is explicitly opted out', async () => {
+    const db = {
+      query: vi.fn(async () => ({
+        rows: [{
+          ...profileRow(),
+          desired_enabled: false,
+          desired_state_source: 'explicit_opt_out'
+        }]
+      }))
+    }
+    const repository = createPostgresMeasurementActivationRepository({
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
+    })
+
+    await expect(repository.approve(approvalInput())).resolves.toEqual({ status: 'not_available' })
+    expect(db.query).toHaveBeenCalledOnce()
+  })
+
+  it('returns a typed desired-disabled blocker before reading approvals or readiness', async () => {
+    const db = {
+      query: vi.fn(async () => ({
+        rows: [{
+          ...profileRow(),
+          desired_enabled: false,
+          desired_state_source: 'explicit_opt_out'
+        }]
+      }))
+    }
+    const repository = createPostgresMeasurementActivationRepository({
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
+    })
+
+    await expect(repository.activate(activationInput())).resolves.toEqual({
+      status: 'not_ready',
+      blockers: ['desired_disabled']
+    })
+    expect(db.query).toHaveBeenCalledOnce()
   })
 
   it('rejects the same team member approving both gates before inserting', async () => {

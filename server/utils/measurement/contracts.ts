@@ -663,6 +663,7 @@ export const MeasurementReadinessStatusSchema = z.enum([
   'ready'
 ])
 export const MeasurementReadinessBlockerCodeSchema = z.enum([
+  'desired_disabled',
   'profile_disabled',
   'profile_paused',
   'cache_stale',
@@ -702,6 +703,7 @@ export const MeasurementReadinessSummarySchema = z.strictObject({
     live: z.boolean()
   }),
   profile: z.strictObject({
+    desiredEnabled: z.boolean(),
     enabled: z.boolean(),
     environment: MeasurementEnvironmentSchema,
     cacheStatus: z.enum(['not_published', 'fresh', 'stale', 'error']),

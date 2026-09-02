@@ -46,6 +46,7 @@ describe('Postgres measurement read repository', () => {
       client_id: CLIENT_ID,
       profile_id: PROFILE_ID,
       config_version: '4',
+      desired_enabled: false,
       profile_enabled: false,
       profile_environment: 'test',
       cache_status: 'fresh',
@@ -79,7 +80,7 @@ describe('Postgres measurement read repository', () => {
       configVersion: 4,
       liveApproved: false,
       privacyApproved: true,
-      profile: { outcomeAuthority: 'client_webhook' },
+      profile: { desiredEnabled: false, outcomeAuthority: 'client_webhook' },
       counts: {
         destinations: 2,
         readyDestinations: 1,
@@ -94,6 +95,7 @@ describe('Postgres measurement read repository', () => {
     })
     const readinessSql = queryOne.mock.calls[0]?.[0] as string
     expect(readinessSql).toMatch(/WHERE p\.client_id = \$1/)
+    expect(readinessSql).toContain('p.desired_enabled')
     expect(readinessSql).toMatch(/FROM measurement_activation_approvals/)
     expect(readinessSql).toMatch(/a\.config_version = p\.config_version/)
     expect(queryOne).toHaveBeenCalledWith(expect.any(String), [CLIENT_ID])

@@ -17,6 +17,8 @@ import {
 interface ProfileRow {
   id: string
   client_id: string
+  desired_enabled: boolean
+  desired_state_source: string
   enabled: boolean
   environment: string
   collection_tier: string
@@ -55,7 +57,8 @@ interface OutcomeEndpointRow {
 }
 
 const PROFILE_COLUMNS = `
-  id, client_id, enabled, environment, collection_tier, tracking_site_id,
+  id, client_id, desired_enabled, desired_state_source, enabled, environment,
+  collection_tier, tracking_site_id,
   first_party_hostname, hostname_status, consent_mode, vertical,
   outcome_authority, native_lifecycle_mode, portal_outcome_mode, config_version,
   cache_status, cache_version, cache_error_class, created_at, updated_at

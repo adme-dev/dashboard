@@ -151,6 +151,7 @@ function responseFor(request: string, options: { live?: boolean } = {}) {
       liveEligible: false,
       approvals: { privacy: false, live: false },
       profile: {
+        desiredEnabled: true,
         enabled: false,
         environment: 'test',
         cacheStatus: 'fresh',
