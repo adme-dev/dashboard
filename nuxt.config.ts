@@ -323,6 +323,10 @@ export default defineNuxtConfig({
     }
   },
 
+  // Keep generated Nuxt output local to each checkout. This repository is
+  // commonly built from concurrent worktrees, which must not share build state.
+  buildDir: '.nuxt',
+
   ignore: devWatcherIgnored,
 
   routeRules: {
