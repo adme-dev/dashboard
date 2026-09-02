@@ -18,6 +18,8 @@ function baseProfile(): MeasurementProfile {
   return {
     id: PROFILE_ID,
     clientId: CLIENT_ID,
+    desiredEnabled: true,
+    desiredStateSource: 'existing_review',
     enabled: false,
     environment: 'test',
     collectionTier: 'backend_only',
@@ -115,6 +117,8 @@ describe('Measurement profile service', () => {
 
     await expect(test.service.get(CLIENT_ID)).resolves.toMatchObject({
       clientId: CLIENT_ID,
+      desiredEnabled: true,
+      desiredStateSource: 'existing_review',
       enabled: false,
       environment: 'test'
     })
@@ -123,6 +127,52 @@ describe('Measurement profile service', () => {
       CLIENT_ID,
       { createIfMissing: true }
     )
+  })
+
+  it('records an explicit client opt-out without changing runtime delivery state', async () => {
+    const test = harness()
+
+    const result = await test.service.update({
+      clientId: CLIENT_ID,
+      expectedVersion: 1,
+      reason: 'Client requested measurement signals be turned off',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: { desiredEnabled: false }
+    })
+
+    expect(result.profile).toMatchObject({
+      desiredEnabled: false,
+      desiredStateSource: 'explicit_opt_out',
+      enabled: false,
+      environment: 'test'
+    })
+    expect(test.audits[0]?.changedFields).toEqual(['desiredEnabled', 'desiredStateSource'])
+  })
+
+  it('records an operator opt-in while keeping live activation gated', async () => {
+    const test = harness()
+    await test.service.update({
+      clientId: CLIENT_ID,
+      expectedVersion: 1,
+      reason: 'Record client opt-out',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: { desiredEnabled: false }
+    })
+
+    const result = await test.service.update({
+      clientId: CLIENT_ID,
+      expectedVersion: 2,
+      reason: 'Client requested measurement signals be restored',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: { desiredEnabled: true }
+    })
+
+    expect(result.profile).toMatchObject({
+      desiredEnabled: true,
+      desiredStateSource: 'operator',
+      enabled: false,
+      environment: 'test'
+    })
   })
 
   it('atomically versions and audits a tenant-scoped profile before publishing cache', async () => {
