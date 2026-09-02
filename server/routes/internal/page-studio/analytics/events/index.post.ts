@@ -1,4 +1,4 @@
-import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/contracts'
+import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
 import { pageStudioInternalHttpError } from '~~/server/utils/pageStudio/http'
 import { requirePageStudioMachineAuth } from '~~/server/utils/pageStudio/machineAuth'
 import {
