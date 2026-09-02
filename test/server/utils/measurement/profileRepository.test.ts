@@ -11,6 +11,8 @@ function row(version = 1) {
   return {
     id: PROFILE_ID,
     client_id: CLIENT_ID,
+    desired_enabled: true,
+    desired_state_source: 'existing_review',
     enabled: false,
     environment: 'test',
     collection_tier: 'backend_only',
@@ -45,13 +47,15 @@ describe('Postgres measurement profile repository', () => {
     expect(profile).toMatchObject({
       id: PROFILE_ID,
       clientId: CLIENT_ID,
+      desiredEnabled: true,
+      desiredStateSource: 'existing_review',
       collectionTier: 'backend_only',
       configVersion: 1
     })
     expect(queryOne).toHaveBeenCalledWith(expect.stringMatching(/WHERE client_id = \$1/), [CLIENT_ID])
   })
 
-  it('creates a dormant industry-derived profile on demand for a client without one', async () => {
+  it('creates a desired-on, runtime-safe profile on demand for a client without one', async () => {
     const queryOne = vi.fn(async () => row())
     const execute = vi.fn(async () => 1)
     const repository = createPostgresMeasurementProfileRepository({
@@ -64,6 +68,8 @@ describe('Postgres measurement profile repository', () => {
 
     expect(profile).toMatchObject({
       clientId: CLIENT_ID,
+      desiredEnabled: true,
+      desiredStateSource: 'existing_review',
       enabled: false,
       environment: 'test',
       vertical: 'automotive',
@@ -71,7 +77,7 @@ describe('Postgres measurement profile repository', () => {
     })
     expect(execute).toHaveBeenCalledWith(
       expect.stringMatching(
-        /INSERT INTO client_measurement_profiles[\s\S]*COALESCE\(NULLIF\(TRIM\(industry\), ''\), 'general'\)[\s\S]*FROM agency_clients[\s\S]*ON CONFLICT \(client_id\) DO NOTHING/
+        /INSERT INTO client_measurement_profiles \([\s\S]*client_id, vertical, desired_enabled, desired_state_source[\s\S]*TRUE, 'new_client_default'[\s\S]*FROM agency_clients[\s\S]*ON CONFLICT \(client_id\) DO NOTHING/
       ),
       [CLIENT_ID]
     )
@@ -115,6 +121,8 @@ describe('Postgres measurement profile repository', () => {
       nextProfile: {
         id: PROFILE_ID,
         clientId: CLIENT_ID,
+        desiredEnabled: true,
+        desiredStateSource: 'existing_review',
         enabled: false,
         environment: 'test',
         collectionTier: 'first_party_cname',

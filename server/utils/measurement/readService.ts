@@ -50,6 +50,12 @@ function readinessStatus(
 
 function readinessBlockers(evidence: MeasurementReadinessEvidence): ReadinessBlocker[] {
   const blockers: ReadinessBlocker[] = []
+  if (!evidence.profile.desiredEnabled) {
+    blockers.push({
+      code: 'desired_disabled',
+      message: 'Measurement signals were deliberately turned off for this client'
+    })
+  }
   if (evidence.profile.environment === 'paused') {
     blockers.push({ code: 'profile_paused', message: 'Measurement profile is paused' })
   }

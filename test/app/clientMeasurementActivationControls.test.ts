@@ -8,6 +8,8 @@ const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const profile = {
   id: '22222222-2222-4222-8222-222222222222',
   clientId: CLIENT_ID,
+  desiredEnabled: true,
+  desiredStateSource: 'operator' as const,
   enabled: false,
   environment: 'test' as const,
   collectionTier: 'backend_only' as const,
@@ -35,6 +37,7 @@ function readiness(overrides: Record<string, unknown> = {}) {
     status: 'onboarding' as const,
     liveEligible: false,
     profile: {
+      desiredEnabled: true,
       enabled: false,
       environment: 'test' as const,
       cacheStatus: 'fresh' as const,
@@ -146,6 +149,30 @@ describe('ClientMeasurementActivationControls', () => {
     expect(test.host.textContent).not.toContain('Privacy approval pending')
     expect(test.host.textContent).not.toContain('Live approval pending')
     expect(test.host.querySelector('[data-testid="open-owner-override"]')).toBeNull()
+    test.app.unmount()
+  })
+
+  it('withholds every approval and activation command while the client is opted out', async () => {
+    const test = mountControls({
+      profile: {
+        ...profile,
+        desiredEnabled: false,
+        desiredStateSource: 'explicit_opt_out'
+      },
+      approvals: { privacy: false, live: false },
+      liveEligible: false,
+      canOwnerOverride: true
+    })
+    await flushUi()
+
+    expect(test.host.textContent).toContain('Measurement signals are off')
+    expect(test.host.textContent).toContain('Approvals and activation are unavailable')
+    expect(test.host.textContent).not.toContain('Privacy approval pending')
+    expect(test.host.querySelector('[data-testid="open-privacy-approval"]')).toBeNull()
+    expect(test.host.querySelector('[data-testid="open-live-approval"]')).toBeNull()
+    expect(test.host.querySelector('[data-testid="open-owner-override"]')).toBeNull()
+    expect(test.host.querySelector('[data-testid="open-live-activation"]')).toBeNull()
+    expect(test.fetchMock).not.toHaveBeenCalled()
     test.app.unmount()
   })
 

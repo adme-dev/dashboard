@@ -8,6 +8,7 @@ import {
   ConversionDestinationCreateSchema,
   ConversionDestinationReadModelSchema,
   CreateConversionDestinationConfigurationSchema,
+  MeasurementEnquiryTypeSchema,
   MeasurementPlatformSchema,
   RecordDestinationValidationEvidenceSchema,
   UpdateConversionDestinationConfigurationSchema
@@ -255,6 +256,16 @@ describe('GA4 micro-conversion schema additions', () => {
       attribution: { gaClientId: '1234567890.1234567890' }
     })
     expect(withGaClientId.attribution.gaClientId).toBe('1234567890.1234567890')
+  })
+})
+
+describe('dealer website measurement identities', () => {
+  it('accepts service booking as an exact website enquiry type', () => {
+    expect(MeasurementEnquiryTypeSchema.safeParse('service_booking').success).toBe(true)
+  })
+
+  it('accepts directions clicks as a distinct canonical event', () => {
+    expect(CanonicalEventNameSchema.safeParse('directions_click').success).toBe(true)
   })
 })
 

@@ -30,6 +30,7 @@ import { acceptLead } from '~~/server/utils/leads/acceptance'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { allowRequest } from '~~/server/utils/leads/rateLimit'
 import {
+  classifyLegacyDealerLeadConversion,
   DealerLeadWebhookBodySchema,
   normalizeDealerLeadWebhookBody
 } from '~~/server/utils/leads/dealerLeadAdapter'
@@ -154,6 +155,7 @@ export default defineEventHandler(async (event) => {
     return { ok: true } // always-200
   }
   const input = normalizeDealerLeadWebhookBody(parsed.data)
+  const conversion = classifyLegacyDealerLeadConversion(input)
   const trustedSource: LeadSource = ep.source === 'webhook' ? 'webhook' : input.requestedSource
 
   const submittedKey = input.submittedKey
@@ -209,7 +211,13 @@ export default defineEventHandler(async (event) => {
         is_test: input.isTest
       },
       consentDecision: input.consentDecision,
-      leadCaptureMode: ep.lead_capture_mode ?? 'capture_only'
+      leadCaptureMode: ep.lead_capture_mode ?? 'capture_only',
+      ...(conversion.status === 'not_dealer_studio'
+        ? {}
+        : {
+            conversionEventName: conversion.canonicalEventName,
+            enquiryType: conversion.enquiryType
+          })
     })
 
     if (input.formId) {

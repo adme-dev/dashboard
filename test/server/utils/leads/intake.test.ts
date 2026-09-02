@@ -272,4 +272,29 @@ describe('first-party lead intake', () => {
       attribution: expect.objectContaining({ metaLeadId: '1234567890123456' })
     }))
   })
+
+  it('preserves an exact service-booking identity for trusted website conversions', async () => {
+    const appendOutbox = vi.fn(async () => ({ status: 'profile_not_found' as const }))
+    const service = createLeadIntakeService({
+      transaction: async callback => callback(db),
+      insertLead: vi.fn(async () => LEAD_ID),
+      appendOutbox: appendOutbox as never,
+      appendBrowserConfirmation: vi.fn(async () => false),
+      completeIntentMatch: vi.fn(),
+      linkIdentity: vi.fn(),
+      captureProductInterest: vi.fn(),
+      recordPersonaEvidence: vi.fn()
+    })
+
+    await service.ingest({
+      ...input(),
+      conversionEventName: 'web_conversion',
+      enquiryType: 'service_booking'
+    })
+
+    expect(appendOutbox).toHaveBeenCalledWith(db, expect.objectContaining({
+      eventName: 'web_conversion',
+      enquiryType: 'service_booking'
+    }))
+  })
 })

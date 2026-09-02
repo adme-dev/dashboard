@@ -1,10 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
-import { listGoogleAdsInventory } from '~~/server/utils/googleAds/inventory'
+import {
+  classifyGoogleAdsConversionAction,
+  listGoogleAdsInventory
+} from '~~/server/utils/googleAds/inventory'
 
 const auth = { accessToken: 'access', developerToken: 'developer', loginCustomerId: '9999999999' }
 const customerId = '1234567890'
 
 describe('Google Ads typed inventory reads', () => {
+  it.each([
+    [{ type: 'WEBPAGE', origin: 'WEBSITE', category: 'PHONE_CALL_LEAD', name: 'Phone click' }, 'website_tag', 'gtm'],
+    [{ type: 'CLICK_TO_CALL', origin: 'GOOGLE_HOSTED', category: 'PHONE_CALL_LEAD', name: 'Clicks to call' }, 'google_hosted_call', 'google'],
+    [{ type: 'STORE_VISITS', origin: 'GOOGLE_HOSTED', category: 'STORE_VISIT', name: 'Store visits' }, 'google_hosted_local', 'google'],
+    [{ type: 'UPLOAD_CLICKS', origin: 'IMPORT', category: 'SUBMIT_LEAD_FORM', name: 'CRM qualified lead' }, 'offline_click', 'xeroflow'],
+    [{ type: 'THIRD_PARTY', origin: 'WEBSITE', category: 'SUBMIT_LEAD_FORM', name: 'Partner lead' }, 'external', 'partner']
+  ] as const)('classifies $name without conflating delivery channels', (action, deliveryClass, managementOwner) => {
+    expect(classifyGoogleAdsConversionAction(action)).toMatchObject({ deliveryClass, managementOwner })
+  })
+
   it.each([
     ['campaign', 'campaign', { campaign: {
       resourceName: `customers/${customerId}/campaigns/60`, id: '60', name: 'Northern GAC',
@@ -54,6 +67,107 @@ describe('Google Ads typed inventory reads', () => {
     expect(JSON.stringify(result.items)).toContain(expectedValue)
     expect(query).toHaveBeenCalledWith(expect.objectContaining({ customerId, auth, maxRows: 25 }))
     expect(query.mock.calls[0]?.[0].query).toContain(`FROM ${from}`)
+  })
+
+  it('returns registry metadata for conversion actions', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ conversionAction: {
+        resourceName: `customers/${customerId}/conversionActions/120`,
+        id: '120',
+        name: 'Phone click',
+        status: 'ENABLED',
+        type: 'WEBPAGE',
+        category: 'PHONE_CALL_LEAD',
+        origin: 'WEBSITE',
+        primaryForGoal: false,
+        ownerCustomer: `customers/${customerId}`,
+        countingType: 'ONE_PER_CLICK'
+      } }],
+      more: 0,
+      requestId: 'actions-1'
+    })
+
+    const result = await listGoogleAdsInventory({
+      kind: 'conversion_action', customerId, auth, maxResults: 25, status: 'ALL'
+    }, { query, now: () => new Date('2026-09-02T05:00:00.000Z') })
+
+    expect(result.items).toEqual([expect.objectContaining({
+      id: '120',
+      deliveryClass: 'website_tag',
+      managementOwner: 'gtm',
+      primaryState: 'secondary',
+      goalBiddability: 'not_biddable',
+      mappingState: 'unmapped',
+      providerSyncedAt: '2026-09-02T05:00:00.000Z',
+      lastEvidenceAt: null
+    })])
+  })
+
+  it('reads customer-goal biddability independently from primary action state', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ conversionAction: {
+        resourceName: `customers/${customerId}/conversionActions/121`, id: '121',
+        name: 'Service booking', status: 'ENABLED', type: 'WEBPAGE',
+        category: 'BOOK_APPOINTMENT', origin: 'WEBSITE', primaryForGoal: true
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ customerConversionGoal: {
+        category: 'BOOK_APPOINTMENT', origin: 'WEBSITE', biddable: false
+      } }], more: 0 })
+
+    const result = await listGoogleAdsInventory({
+      kind: 'conversion_action', customerId, auth, maxResults: 25, status: 'ALL'
+    }, { query, now: () => new Date('2026-09-02T05:00:00.000Z') })
+
+    expect(result.items).toEqual([expect.objectContaining({
+      primaryState: 'primary', goalBiddability: 'not_biddable'
+    })])
+    expect(query.mock.calls[1]?.[0].query).toContain('FROM customer_conversion_goal')
+  })
+
+  it('exposes campaign goal binding and bounded recent action activity for Knox LDV', async () => {
+    const campaignResourceName = `customers/${customerId}/campaigns/24181437555`
+    const actionResourceName = `customers/${customerId}/conversionActions/901`
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ conversionAction: {
+        resourceName: actionResourceName, id: '901', name: 'Stock Enquiry', status: 'ENABLED',
+        type: 'UPLOAD_CLICKS', category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', primaryForGoal: true
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ customerConversionGoal: {
+        category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: true
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{
+        conversionAction: { resourceName: actionResourceName }, metrics: { allConversions: 0 }
+      }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ conversionGoalCampaignConfig: {
+        resourceName: `customers/${customerId}/conversionGoalCampaignConfigs/24181437555`,
+        campaign: campaignResourceName, goalConfigLevel: 'CUSTOMER'
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ campaignConversionGoal: {
+        resourceName: `customers/${customerId}/campaignConversionGoals/24181437555~SUBMIT_LEAD_FORM~WEBSITE`,
+        campaign: campaignResourceName, category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: true
+      } }], more: 0 })
+
+    const result = await listGoogleAdsInventory({
+      kind: 'conversion_action', customerId, auth, maxResults: 25, status: 'ALL',
+      campaignResourceName, activityWindow: 'LAST_30_DAYS'
+    }, { query, now: () => new Date('2026-09-02T05:00:00.000Z') })
+
+    expect(result.items).toEqual([expect.objectContaining({
+      resourceName: actionResourceName,
+      recentActivity: { window: 'LAST_30_DAYS', allConversions: 0, state: 'zero' }
+    })])
+    expect(result.campaignGoalBinding).toEqual({
+      campaignResourceName,
+      goalConfigLevel: 'CUSTOMER',
+      customConversionGoal: null,
+      goals: [{
+        resourceName: `customers/${customerId}/campaignConversionGoals/24181437555~SUBMIT_LEAD_FORM~WEBSITE`,
+        category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: true
+      }]
+    })
+    expect(query.mock.calls[2]?.[0].query).toContain('segments.date DURING LAST_30_DAYS')
+    expect(query.mock.calls[3]?.[0].query).toContain('FROM conversion_goal_campaign_config')
+    expect(query.mock.calls[4]?.[0].query).toContain('FROM campaign_conversion_goal')
   })
 
   it('lists campaign and ad-group targeting as two typed bounded inventories', async () => {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  classifyLegacyDealerLeadConversion,
+  normalizeDealerMeasurementEvent,
   DealerLeadWebhookBodySchema,
   normalizeDealerLeadWebhookBody
 } from '../../../../server/utils/leads/dealerLeadAdapter'
@@ -100,5 +102,79 @@ describe('universal dealer lead adapter', () => {
       key: 'endpoint-secret',
       customer: { full_name: 'x'.repeat(501), email: 'jane@example.com' }
     }).success).toBe(false)
+  })
+})
+
+describe('dealer measurement event normalization', () => {
+  it.each([
+    ['stock_enquiry', { canonicalEventName: 'web_conversion', enquiryType: 'stock' }],
+    ['model_variant_enquiry', { canonicalEventName: 'web_conversion', enquiryType: 'model_variant' }],
+    ['finance_enquiry', { canonicalEventName: 'web_conversion', enquiryType: 'finance' }],
+    ['test_drive_enquiry', { canonicalEventName: 'web_conversion', enquiryType: 'test_drive' }],
+    ['contact_us', { canonicalEventName: 'web_conversion', enquiryType: 'contact' }],
+    ['service_booking', { canonicalEventName: 'web_conversion', enquiryType: 'service_booking' }],
+    ['phone_click', { canonicalEventName: 'phone_click', enquiryType: null }],
+    ['directions_click', { canonicalEventName: 'directions_click', enquiryType: null }]
+  ] as const)('maps %s to one exact XeroFlow identity', (dealerEvent, expected) => {
+    expect(normalizeDealerMeasurementEvent(dealerEvent)).toEqual({
+      status: 'mapped',
+      dealerEvent,
+      ...expected
+    })
+  })
+
+  it('pauses an unknown event for configuration without returning fallback mappings', () => {
+    expect(normalizeDealerMeasurementEvent('generic_form')).toEqual({
+      status: 'configuration_required',
+      dealerEvent: 'generic_form'
+    })
+  })
+})
+describe('legacy Dealer Studio conversion classification', () => {
+  it.each([
+    [{ provider: 'dealerstudio.test', formId: 'knox-finance-enquiry' }, 'finance'],
+    [{ provider: 'dealer_studio', formName: 'Finance Enquiry' }, 'finance'],
+    [{ provider: 'dealerstudio', formId: 'knox-contact-enquiry' }, 'contact'],
+    [{ provider: 'dealerstudio', formId: 'knox-vehicle-enquiry' }, 'stock'],
+    [{ provider: 'dealerstudio', formId: 'knox-test-drive' }, 'test_drive'],
+    [{ provider: 'dealerstudio', fieldData: { enquiry_type: 'model_variant' } }, 'model_variant']
+  ])('maps one exact Dealer Studio alias to %s', (input, enquiryType) => {
+    expect(classifyLegacyDealerLeadConversion({
+      provider: input.provider,
+      formId: input.formId ?? null,
+      formName: input.formName ?? null,
+      fieldData: input.fieldData ?? {}
+    })).toMatchObject({
+      status: 'mapped',
+      canonicalEventName: 'web_conversion',
+      enquiryType
+    })
+  })
+
+  it('keeps trade-in and conflicting or unknown Dealer Studio forms fail-closed', () => {
+    expect(classifyLegacyDealerLeadConversion({
+      provider: 'dealerstudio', formId: 'knox-trade-in', formName: 'Trade In', fieldData: {}
+    })).toMatchObject({
+      status: 'configuration_required', canonicalEventName: 'web_conversion', enquiryType: null
+    })
+    expect(classifyLegacyDealerLeadConversion({
+      provider: 'dealerstudio', formId: 'knox-finance-enquiry', formName: 'Vehicle Enquiry', fieldData: {}
+    })).toMatchObject({
+      status: 'configuration_required', reason: 'conflicting_aliases', enquiryType: null
+    })
+    expect(classifyLegacyDealerLeadConversion({
+      provider: 'generic', formId: 'knox-vehicle-enquiry', formName: null, fieldData: {}
+    })).toEqual({ status: 'not_dealer_studio' })
+  })
+
+  it('does not guess from a malformed explicit enquiry type', () => {
+    expect(classifyLegacyDealerLeadConversion({
+      provider: 'dealerstudio',
+      formId: 'knox-finance-enquiry',
+      formName: 'Finance Enquiry',
+      fieldData: { enquiry_type: 'trade_in' }
+    })).toMatchObject({
+      status: 'configuration_required', reason: 'invalid_explicit_enquiry_type', enquiryType: null
+    })
   })
 })

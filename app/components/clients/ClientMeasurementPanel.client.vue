@@ -4,9 +4,12 @@ import ClientMeasurementActivationControls from '~/components/clients/ClientMeas
 import type {
   ClientMeasurementProfile,
   MeasurementAuditEntry,
+  MeasurementCallSummary,
   MeasurementCapability,
   MeasurementCapabilityStatus,
   MeasurementDestination,
+  MeasurementFreshnessResponse,
+  MeasurementReconciliationResponse,
   MeasurementReadinessStatus,
   MeasurementReadinessSummary,
   PaginatedMeasurementResponse
@@ -20,6 +23,7 @@ import {
 
 const props = defineProps<{
   clientId: string
+  clientName?: string
   canConfigure?: boolean
   canOwnerOverride?: boolean
 }>()
@@ -31,16 +35,47 @@ interface AttestationResponse {
   capabilities: Array<{ mode: string, status: AttestationStatus, blockingReason: string | null }>
 }
 
+interface ClassifiedGoogleConversionAction {
+  id: string
+  resourceName: string
+  name: string
+  status: string
+  type: string
+  category: string
+  origin: string
+  deliveryClass: string
+  managementOwner: string
+  primaryState: string
+  goalBiddability: string
+  mappingState: string
+  providerSyncedAt: string
+  lastEvidenceAt: string | null
+  recentActivity: null | {
+    window: string
+    allConversions: number
+    state: 'observed' | 'zero'
+  }
+}
+
 const toast = useToast()
 const apiFetch = $fetch as <T>(request: string) => Promise<T>
 const apiPost = $fetch as <T>(
   request: string,
   options: { method: 'POST', body: Record<string, unknown> }
 ) => Promise<T>
+const apiPut = $fetch as <T>(
+  request: string,
+  options: { method: 'PUT', body: Record<string, unknown> }
+) => Promise<T>
 const profile = ref<ClientMeasurementProfile | null>(null)
 const readiness = ref<MeasurementReadinessSummary | null>(null)
 const destinations = ref<MeasurementDestination[]>([])
 const auditEntries = ref<MeasurementAuditEntry[]>([])
+const reconciliation = ref<MeasurementReconciliationResponse | null>(null)
+const freshness = ref<MeasurementFreshnessResponse | null>(null)
+const callSummary = ref<MeasurementCallSummary | null>(null)
+const conversionActions = ref<ClassifiedGoogleConversionAction[]>([])
+const accountSearch = ref(props.clientName ?? '')
 const pending = ref(true)
 const loadError = ref<string | null>(null)
 const showDestinationEditor = ref(false)
@@ -48,7 +83,13 @@ const testingDestinationId = ref<string | null>(null)
 const readinessUnavailable = ref(false)
 const destinationsUnavailable = ref(false)
 const auditUnavailable = ref(false)
+const operationsUnavailable = ref(false)
 const operationNotice = ref<{ tone: 'success' | 'warning', message: string } | null>(null)
+const desiredStateOpen = ref(false)
+const desiredStateReason = ref('')
+const desiredStateConfirmed = ref(false)
+const desiredStatePending = ref(false)
+const desiredStateError = ref<string | null>(null)
 
 const titleCase = (value: string) => value
   .replaceAll('_', ' ')
@@ -99,10 +140,81 @@ const originLabels: Record<string, string> = {
 }
 
 const profileState = computed(() => {
-  if (!profile.value?.enabled) return 'Dormant'
+  if (!profile.value?.desiredEnabled) return 'Off'
+  if (!profile.value.enabled) return 'On — setup required'
   if (profile.value.environment === 'paused') return 'Paused'
   return profile.value.environment === 'live' ? 'Live' : 'Test enabled'
 })
+
+const profileStateColor = computed(() => {
+  if (!profile.value?.desiredEnabled) return 'neutral' as const
+  return profile.value.enabled && profile.value.environment === 'live'
+    ? 'success' as const
+    : 'warning' as const
+})
+
+const desiredStateAction = computed(() => profile.value?.desiredEnabled
+  ? 'Turn signals off'
+  : 'Set signals on')
+
+const canSubmitDesiredState = computed(() => Boolean(
+  profile.value
+  && desiredStateReason.value.trim()
+  && desiredStateConfirmed.value
+  && !desiredStatePending.value
+))
+
+function openDesiredStateDialog() {
+  desiredStateReason.value = ''
+  desiredStateConfirmed.value = false
+  desiredStateError.value = null
+  desiredStateOpen.value = true
+}
+
+function setDesiredStateOpen(open: boolean) {
+  if (open) return
+  desiredStateOpen.value = false
+}
+
+async function submitDesiredState() {
+  const current = profile.value
+  if (!current || !canSubmitDesiredState.value) return
+  const nextDesiredEnabled = !current.desiredEnabled
+  desiredStatePending.value = true
+  desiredStateError.value = null
+
+  try {
+    const result = await apiPut<{
+      profile: ClientMeasurementProfile
+      warnings: Array<{ code: string }>
+    }>(`/api/agency/measurement/clients/${props.clientId}/profile`, {
+      method: 'PUT',
+      body: {
+        expectedVersion: current.configVersion,
+        reason: desiredStateReason.value.trim(),
+        patch: { desiredEnabled: nextDesiredEnabled }
+      }
+    })
+    operationNotice.value = mutationNotice(result.warnings)
+    toast.add({
+      title: nextDesiredEnabled
+        ? 'Measurement signals set to on'
+        : 'Measurement signals turned off',
+      description: nextDesiredEnabled
+        ? 'Setup and delivery gates still have to pass before live delivery starts.'
+        : 'The client-wide opt-out was recorded in the configuration audit.',
+      color: 'success'
+    })
+    setDesiredStateOpen(false)
+    await refreshMeasurement()
+  } catch (error) {
+    const message = measurementErrorMessage(error, 'Measurement signal preference could not be saved')
+    desiredStateError.value = message
+    toast.add({ title: 'Signal preference not saved', description: message, color: 'error' })
+  } finally {
+    desiredStatePending.value = false
+  }
+}
 
 function statusColor(status: MeasurementCapabilityStatus | MeasurementReadinessStatus) {
   if (status === 'ready') return 'success' as const
@@ -110,6 +222,23 @@ function statusColor(status: MeasurementCapabilityStatus | MeasurementReadinessS
   if (status === 'blocked') return 'error' as const
   if (status === 'configured' || status === 'detected') return 'info' as const
   return 'neutral' as const
+}
+
+function operationStatusColor(status: string) {
+  if (['fresh', 'delivered', 'provider_accepted', 'healthy'].includes(status)) return 'success' as const
+  if (['stale', 'syncing', 'pending', 'provider_reporting_pending', 'success_empty'].includes(status)) return 'warning' as const
+  if (['failed', 'destination_not_configured', 'consent_denied'].includes(status)) return 'error' as const
+  return 'neutral' as const
+}
+
+function callWindow() {
+  const end = new Date()
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - 30)
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: end.toISOString().slice(0, 10)
+  }
 }
 
 function formatDateTime(value: string | null) {
@@ -202,13 +331,31 @@ async function refreshMeasurement() {
   readinessUnavailable.value = false
   destinationsUnavailable.value = false
   auditUnavailable.value = false
+  operationsUnavailable.value = false
 
   const basePath = `/api/agency/measurement/clients/${props.clientId}`
-  const [profileResult, readinessResult, destinationResult, auditResult] = await Promise.allSettled([
+  const accountQuery = accountSearch.value.trim()
+    ? `?accountQuery=${encodeURIComponent(accountSearch.value.trim())}`
+    : ''
+  const calls = callWindow()
+  const [
+    profileResult,
+    readinessResult,
+    destinationResult,
+    auditResult,
+    reconciliationResult,
+    freshnessResult,
+    callResult
+  ] = await Promise.allSettled([
     apiFetch<{ profile: ClientMeasurementProfile }>(basePath),
     apiFetch<MeasurementReadinessSummary>(`${basePath}/readiness`),
     apiFetch<PaginatedMeasurementResponse<MeasurementDestination>>(`${basePath}/destinations`),
-    apiFetch<PaginatedMeasurementResponse<MeasurementAuditEntry>>(`${basePath}/audit`)
+    apiFetch<PaginatedMeasurementResponse<MeasurementAuditEntry>>(`${basePath}/audit`),
+    apiFetch<MeasurementReconciliationResponse>(`${basePath}/reconciliation${accountQuery}`),
+    apiFetch<MeasurementFreshnessResponse>(`${basePath}/freshness`),
+    apiFetch<MeasurementCallSummary>(
+      `/api/agency/analytics/google-calls?startDate=${calls.startDate}&endDate=${calls.endDate}&clientId=${props.clientId}`
+    )
   ])
 
   if (profileResult.status === 'fulfilled') {
@@ -239,7 +386,34 @@ async function refreshMeasurement() {
     auditUnavailable.value = true
   }
 
+  reconciliation.value = reconciliationResult.status === 'fulfilled'
+    ? reconciliationResult.value
+    : null
+  freshness.value = freshnessResult.status === 'fulfilled' ? freshnessResult.value : null
+  callSummary.value = callResult.status === 'fulfilled' ? callResult.value : null
+  operationsUnavailable.value = [reconciliationResult, freshnessResult, callResult]
+    .some(result => result.status === 'rejected')
+
+  conversionActions.value = []
+  const resolvedConnectionId = reconciliation.value?.accountResolution?.status === 'resolved'
+    ? reconciliation.value.accountResolution.accounts?.[0]?.connectionId
+    : null
+  if (resolvedConnectionId) {
+    try {
+      const registry = await apiFetch<{ items: ClassifiedGoogleConversionAction[] }>(
+        `${basePath}/google-conversion-actions?connectionId=${encodeURIComponent(resolvedConnectionId)}&mode=registry&page=1&pageSize=100`
+      )
+      conversionActions.value = registry.items
+    } catch {
+      operationsUnavailable.value = true
+    }
+  }
+
   pending.value = false
+}
+
+function applyAccountSearch() {
+  void refreshMeasurement()
 }
 
 function mutationNotice(warnings: Array<{ code: string }>) {
@@ -434,6 +608,16 @@ void refreshMeasurement()
           <div v-if="profile" class="flex flex-wrap items-center gap-2">
             <UButton
               v-if="canConfigure"
+              data-testid="measurement-desired-state-action"
+              size="sm"
+              color="neutral"
+              variant="outline"
+              :icon="profile.desiredEnabled ? 'i-lucide-toggle-right' : 'i-lucide-toggle-left'"
+              :label="desiredStateAction"
+              @click="openDesiredStateDialog"
+            />
+            <UButton
+              v-if="canConfigure"
               :to="`/agency/tracking?clientId=${clientId}`"
               size="sm"
               color="neutral"
@@ -441,8 +625,15 @@ void refreshMeasurement()
               icon="i-lucide-container"
               label="Site tracking & GTM"
             />
-            <UBadge :color="profile.enabled ? 'success' : 'neutral'" variant="subtle">
+            <UBadge :color="profileStateColor" variant="subtle">
               {{ profileState }}
+            </UBadge>
+            <UBadge
+              v-if="profile.desiredStateSource === 'existing_review'"
+              color="warning"
+              variant="outline"
+            >
+              Existing client review
             </UBadge>
             <UBadge v-if="readiness" :color="statusColor(readiness.status)" variant="subtle">
               {{ titleCase(readiness.status) }}
@@ -549,6 +740,308 @@ void refreshMeasurement()
       :can-configure="canConfigure ?? false"
       @saved="handleProfileSaved"
     />
+
+    <section
+      v-if="!pending && !loadError && profile"
+      class="space-y-4"
+      data-testid="measurement-operations"
+    >
+      <div>
+        <p class="text-xs font-medium uppercase tracking-[0.16em] text-primary">
+          Measurement operations
+        </p>
+        <h3 class="mt-1 text-lg font-semibold text-highlighted">
+          Account, evidence, calls and freshness
+        </h3>
+        <p class="mt-1 text-sm text-muted">
+          Each layer keeps its own evidence and timestamp. A click is never presented as a connected call.
+        </p>
+      </div>
+
+      <UAlert
+        v-if="operationsUnavailable"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        title="Some operational evidence is unavailable"
+        description="Configuration remains visible. Retry before making measurement or bidding decisions."
+      />
+
+      <div class="grid gap-4 lg:grid-cols-2">
+        <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-dimmed">
+                Resolved Google Ads account
+              </p>
+              <h4 class="mt-1 font-semibold text-highlighted">
+                {{ reconciliation?.accountResolution?.status === 'resolved'
+                  ? reconciliation.accountResolution.matchedName
+                  : 'Account mapping not resolved' }}
+              </h4>
+            </div>
+            <UBadge
+              :color="reconciliation?.accountResolution?.status === 'resolved' ? 'success' : 'warning'"
+              variant="subtle"
+            >
+              {{ titleCase(reconciliation?.accountResolution?.status ?? 'unavailable') }}
+            </UBadge>
+          </div>
+          <dl
+            v-if="reconciliation?.accountResolution?.accounts?.[0]"
+            class="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2"
+          >
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Operating customer
+              </dt>
+              <dd class="mt-1 font-mono font-medium text-highlighted">
+                {{ reconciliation.accountResolution.accounts[0].operatingCustomerId }}
+              </dd>
+            </div>
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Account role
+              </dt>
+              <dd class="mt-1 font-medium text-highlighted">
+                {{ titleCase(reconciliation.accountResolution.accounts[0].accountRole) }}
+              </dd>
+            </div>
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Login customer
+              </dt>
+              <dd class="mt-1 font-mono font-medium text-highlighted">
+                {{ reconciliation.accountResolution.accounts[0].loginCustomerId ?? 'Direct login' }}
+              </dd>
+            </div>
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Connection
+              </dt>
+              <dd class="mt-1 break-all font-mono text-xs font-medium text-highlighted">
+                {{ reconciliation.accountResolution.accounts[0].connectionId }}
+              </dd>
+            </div>
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Resolution basis
+              </dt>
+              <dd class="mt-1 font-medium text-highlighted">
+                {{ titleCase(reconciliation.accountResolution.resolutionKind ?? 'unknown') }} ·
+                {{ titleCase(reconciliation.accountResolution.matchKind ?? 'unknown') }}
+              </dd>
+            </div>
+          </dl>
+          <form class="mt-4 border-t border-default pt-4" @submit.prevent="applyAccountSearch">
+            <UFormField
+              label="Dealership or group account"
+              help="Use the exact dealership alias. Group aggregation is never assumed."
+            >
+              <div class="flex flex-col gap-2 sm:flex-row">
+                <UInput
+                  v-model="accountSearch"
+                  data-testid="measurement-account-search"
+                  class="w-full"
+                  placeholder="e.g. Northern GAC"
+                />
+                <UButton
+                  type="submit"
+                  color="neutral"
+                  variant="outline"
+                  label="Resolve account"
+                  :disabled="!accountSearch.trim()"
+                />
+              </div>
+            </UFormField>
+          </form>
+        </article>
+
+        <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-dimmed">
+                Telephone evidence · last 30 days
+              </p>
+              <h4 class="mt-1 font-semibold text-highlighted">
+                Four separate layers
+              </h4>
+            </div>
+            <UBadge
+              :color="operationStatusColor(callSummary?.health.status ?? 'unavailable')"
+              variant="subtle"
+            >
+              {{ titleCase(callSummary?.health.status ?? 'unavailable') }}
+            </UBadge>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-3">
+            <div
+              v-for="item in [
+                { label: 'Website phone clicks', value: callSummary?.layers.websitePhoneClicks ?? 0 },
+                { label: 'Google-hosted interactions', value: callSummary?.layers.googleHostedCallInteractions ?? 0 },
+                { label: 'Connected calls', value: callSummary?.layers.connectedCalls ?? 0 },
+                { label: 'Qualified calls', value: callSummary?.layers.qualifiedCalls ?? 0 }
+              ]"
+              :key="item.label"
+              class="rounded-lg bg-elevated p-3"
+            >
+              <dt class="text-xs text-muted">
+                {{ item.label }}
+              </dt>
+              <dd class="mt-1 text-xl font-semibold tabular-nums text-highlighted">
+                {{ item.value }}
+              </dd>
+            </div>
+          </dl>
+          <p class="mt-3 text-xs text-muted">
+            {{ callSummary?.health.outcome ?? 'Call sync status unavailable' }}
+          </p>
+        </article>
+      </div>
+
+      <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h4 class="font-semibold text-highlighted">
+              Classified Google conversion actions
+            </h4>
+            <p class="mt-1 text-xs text-muted">
+              Website tags and Google-hosted interactions are separate delivery paths.
+            </p>
+          </div>
+          <UBadge color="neutral" variant="subtle">
+            {{ conversionActions.length }} actions
+          </UBadge>
+        </div>
+        <div v-if="conversionActions.length" class="mt-4 grid gap-3 lg:grid-cols-2">
+          <div
+            v-for="action in conversionActions"
+            :key="action.resourceName"
+            class="rounded-lg border border-default bg-elevated/40 p-4"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-medium text-highlighted">
+                  {{ action.name }}
+                </p>
+                <p class="mt-1 text-xs text-muted">
+                  {{ titleCase(action.deliveryClass) }} · {{ titleCase(action.managementOwner) }} managed
+                </p>
+              </div>
+              <UBadge :color="action.primaryState === 'primary' ? 'warning' : 'neutral'" variant="subtle">
+                {{ titleCase(action.primaryState) }}
+              </UBadge>
+            </div>
+            <dl class="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <dt class="text-dimmed">
+                  Provider type
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ titleCase(action.type) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-dimmed">
+                  Goal biddability
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ titleCase(action.goalBiddability) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-dimmed">
+                  Mapping
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ titleCase(action.mappingState) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-dimmed">
+                  Recent provider activity
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ action.recentActivity
+                    ? `${action.recentActivity.allConversions} conversions · ${titleCase(action.recentActivity.window)}`
+                    : 'Not requested' }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-dimmed">
+                  Last provider sync
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ formatDateTime(action.providerSyncedAt) }}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+        <p v-else class="mt-4 text-sm text-muted">
+          No provider actions are available for the resolved account.
+        </p>
+      </article>
+
+      <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+        <div class="flex items-center justify-between gap-3">
+          <h4 class="font-semibold text-highlighted">
+            Independent data freshness
+          </h4>
+          <span class="text-xs text-muted">No shared “last updated” shortcut</span>
+        </div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div
+            v-for="stream in freshness?.streams ?? []"
+            :key="stream.stream"
+            class="rounded-lg border border-default bg-elevated/40 p-3"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs font-medium text-highlighted">
+                {{ titleCase(stream.stream) }}
+              </p>
+              <UBadge :color="operationStatusColor(stream.status)" variant="subtle">
+                {{ titleCase(stream.status) }}
+              </UBadge>
+            </div>
+            <p class="mt-2 text-xs leading-5 text-muted">
+              {{ stream.reason }}
+            </p>
+            <p class="mt-2 text-xs text-dimmed">
+              {{ formatDateTime(stream.lastSuccessAt) }}
+            </p>
+          </div>
+        </div>
+      </article>
+
+      <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+        <div class="flex items-center justify-between gap-3">
+          <h4 class="font-semibold text-highlighted">
+            Website conversion reconciliation
+          </h4>
+          <span class="text-xs text-muted">Captured → consent → destination → delivery → provider</span>
+        </div>
+        <div class="mt-4 grid gap-3 lg:grid-cols-2">
+          <div
+            v-for="item in reconciliation?.reconciliation.items ?? []"
+            :key="`${item.identity.canonicalEventName}:${item.identity.enquiryType ?? 'none'}`"
+            class="rounded-lg border border-default bg-elevated/40 p-4"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-sm font-medium text-highlighted">
+                {{ titleCase(item.identity.enquiryType ?? item.identity.canonicalEventName) }}
+              </p>
+              <UBadge :color="operationStatusColor(item.state)" variant="subtle">
+                {{ titleCase(item.state) }}
+              </UBadge>
+            </div>
+            <p class="mt-2 text-xs leading-5 text-muted">
+              {{ item.diagnostic }}
+            </p>
+          </div>
+        </div>
+      </article>
+    </section>
 
     <div v-if="!pending && !loadError && profile" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div class="space-y-4">
@@ -870,6 +1363,67 @@ void refreshMeasurement()
         </div>
       </aside>
     </div>
+
+    <UModal
+      v-model:open="desiredStateOpen"
+      :title="desiredStateAction"
+      :description="profile?.desiredEnabled
+        ? 'Record a deliberate client-wide opt-out. Existing delivery remains fail-closed.'
+        : 'Restore desired-on policy. This does not bypass setup, consent, readiness, or approval gates.'"
+    >
+      <template #body>
+        <div class="space-y-4">
+          <UAlert
+            v-if="desiredStateError"
+            color="error"
+            icon="i-lucide-triangle-alert"
+            title="Preference not saved"
+            :description="desiredStateError"
+          />
+          <UFormField
+            label="Reason"
+            help="This explanation is written to the append-only measurement configuration audit."
+            required
+          >
+            <UTextarea
+              v-model="desiredStateReason"
+              data-testid="measurement-desired-state-reason"
+              class="w-full"
+              :rows="3"
+              placeholder="Record the client's direction and operator context"
+            />
+          </UFormField>
+          <UFormField label="Confirmation" required>
+            <UCheckbox
+              v-model="desiredStateConfirmed"
+              data-testid="measurement-desired-state-confirmed"
+              :label="profile?.desiredEnabled
+                ? 'I confirm the client deliberately opted out of measurement signals.'
+                : 'I confirm signals should be desired on; live delivery remains separately gated.'"
+            />
+          </UFormField>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            label="Cancel"
+            :disabled="desiredStatePending"
+            @click="setDesiredStateOpen(false)"
+          />
+          <UButton
+            data-testid="measurement-desired-state-submit"
+            :color="profile?.desiredEnabled ? 'error' : 'primary'"
+            :label="profile?.desiredEnabled ? 'Confirm signals off' : 'Confirm signals on'"
+            :loading="desiredStatePending"
+            :disabled="!canSubmitDesiredState"
+            @click="submitDesiredState"
+          />
+        </div>
+      </template>
+    </UModal>
 
     <UModal
       :open="attestOpen"

@@ -34,6 +34,8 @@ export interface MeasurementProfileUpdateResult {
 }
 
 const MUTABLE_PROFILE_FIELDS = [
+  'desiredEnabled',
+  'desiredStateSource',
   'enabled',
   'environment',
   'collectionTier',
@@ -160,6 +162,11 @@ export function createMeasurementProfileService(deps: MeasurementProfileServiceD
 
       const nextCollectionTier = input.patch.collectionTier ?? current.collectionTier
       const transportPatch: Partial<MeasurementProfile> = { ...input.patch }
+      if (input.patch.desiredEnabled !== undefined) {
+        transportPatch.desiredStateSource = input.patch.desiredEnabled
+          ? 'operator'
+          : 'explicit_opt_out'
+      }
       if (nextCollectionTier === 'first_party_cname') {
         const transportChanged = current.collectionTier !== 'first_party_cname'
           || input.patch.trackingSiteId !== undefined

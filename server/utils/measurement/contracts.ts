@@ -13,6 +13,9 @@ export const CollectionTierSchema = z.enum([
   'backend_only'
 ])
 export const ConsentModeSchema = z.enum(['off', 'au_optout', 'consent_gated'])
+export const MeasurementDesiredStateSourceSchema = z.enum([
+  'new_client_default', 'existing_review', 'operator', 'explicit_opt_out'
+])
 export const OutcomeAuthoritySchema = z.enum([
   'zero_native',
   'client_webhook',
@@ -30,11 +33,12 @@ export const CanonicalEventNameSchema = z.enum([
   'purchase',
   'web_conversion',
   'phone_click',
+  'directions_click',
   'add_to_wishlist',
   'form_submit'
 ])
 export const MeasurementEnquiryTypeSchema = z.enum([
-  'stock', 'finance', 'test_drive', 'contact', 'model_variant'
+  'stock', 'finance', 'test_drive', 'contact', 'model_variant', 'service_booking'
 ])
 
 export const MeasurementPlatformSchema = z.enum(MEASUREMENT_PLATFORMS)
@@ -96,6 +100,8 @@ export const CapabilityStateSchema = z.strictObject({
 
 const ClientMeasurementProfileCoreSchema = z.strictObject({
   clientId: z.string().uuid(),
+  desiredEnabled: z.boolean().default(true),
+  desiredStateSource: MeasurementDesiredStateSourceSchema.default('new_client_default'),
   enabled: z.boolean().default(false),
   environment: MeasurementEnvironmentSchema.default('test'),
   collectionTier: CollectionTierSchema.default('backend_only'),
@@ -163,6 +169,7 @@ export const ClientMeasurementProfileCreateSchema = ClientMeasurementProfileCore
   .superRefine(validateCollectionTransport)
 
 export const ClientMeasurementProfilePatchSchema = z.strictObject({
+  desiredEnabled: z.boolean().optional(),
   enabled: z.boolean().optional(),
   environment: MeasurementEnvironmentSchema.optional(),
   collectionTier: CollectionTierSchema.optional(),
@@ -656,6 +663,7 @@ export const MeasurementReadinessStatusSchema = z.enum([
   'ready'
 ])
 export const MeasurementReadinessBlockerCodeSchema = z.enum([
+  'desired_disabled',
   'profile_disabled',
   'profile_paused',
   'cache_stale',
@@ -695,6 +703,7 @@ export const MeasurementReadinessSummarySchema = z.strictObject({
     live: z.boolean()
   }),
   profile: z.strictObject({
+    desiredEnabled: z.boolean(),
     enabled: z.boolean(),
     environment: MeasurementEnvironmentSchema,
     cacheStatus: z.enum(['not_published', 'fresh', 'stale', 'error']),
@@ -805,6 +814,8 @@ export const ConversionDeliveryQueueMessageSchema = z.strictObject({
 })
 
 export type ClientMeasurementProfileCreate = z.infer<typeof ClientMeasurementProfileCreateSchema>
+export type CanonicalEventName = z.infer<typeof CanonicalEventNameSchema>
+export type MeasurementEnquiryType = z.infer<typeof MeasurementEnquiryTypeSchema>
 export type CanonicalConsentDecision = z.infer<typeof CanonicalConsentDecisionSchema>
 export type ClientMeasurementProfilePatch = z.infer<typeof ClientMeasurementProfilePatchSchema>
 export type ClientMeasurementProfileState = z.infer<typeof ClientMeasurementProfileStateSchema>

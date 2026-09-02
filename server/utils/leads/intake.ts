@@ -74,7 +74,7 @@ export interface IngestLeadInput {
   publishConversion?: boolean
   publishBrowserConfirmation?: boolean
   conversionEventName?: 'lead_created' | 'web_conversion'
-  enquiryType?: 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant' | null
+  enquiryType?: 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant' | 'service_booking' | null
 }
 
 export type IngestLeadResult
@@ -112,8 +112,8 @@ function optionalAttribution(
 }
 
 function canonicalEnquiryType(value: string | undefined) {
-  return ['stock', 'finance', 'test_drive', 'contact', 'model_variant'].includes(value ?? '')
-    ? value as 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant'
+  return ['stock', 'finance', 'test_drive', 'contact', 'model_variant', 'service_booking'].includes(value ?? '')
+    ? value as 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant' | 'service_booking'
     : null
 }
 

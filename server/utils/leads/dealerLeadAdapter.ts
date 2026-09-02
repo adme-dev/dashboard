@@ -38,11 +38,112 @@ const Vehicle = z.object({
 }).optional()
 
 export const CanonicalEnquiryTypeSchema = z.enum([
-  'stock', 'finance', 'test_drive', 'contact', 'model_variant'
+  'stock', 'finance', 'test_drive', 'contact', 'model_variant', 'service_booking'
 ])
 
 export type CanonicalEnquiryType = z.infer<typeof CanonicalEnquiryTypeSchema>
 
+const DEALER_STUDIO_PROVIDER_ALIASES = new Set([
+  'dealer_studio',
+  'dealerstudio',
+  'dealerstudio.test'
+])
+
+const LEGACY_DEALER_FORM_ALIASES: Readonly<Record<string, CanonicalEnquiryType>> = {
+  'knox-finance-enquiry': 'finance',
+  'finance-enquiry': 'finance',
+  'knox-contact-enquiry': 'contact',
+  'contact-enquiry': 'contact',
+  'contact-us': 'contact',
+  'knox-vehicle-enquiry': 'stock',
+  'vehicle-enquiry': 'stock',
+  'stock-enquiry': 'stock',
+  'knox-test-drive': 'test_drive',
+  'test-drive': 'test_drive',
+  'model-variant-enquiry': 'model_variant',
+  'service-booking': 'service_booking'
+}
+
+function legacyDealerAlias(value: string | null | undefined): CanonicalEnquiryType | null {
+  if (!value) return null
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  return LEGACY_DEALER_FORM_ALIASES[normalized] ?? null
+}
+
+/**
+ * Classifies the authenticated legacy Dealer Studio webhook without guessing.
+ * An explicit canonical type has authority. Lower-authority form aliases must
+ * agree, otherwise the conversion is deliberately left untyped so the outbox
+ * records a paused event rather than falling back to lead_created or fanning
+ * out to several provider actions.
+ */
+export function classifyLegacyDealerLeadConversion(input: {
+  provider: string
+  formId: string | null
+  formName: string | null
+  fieldData: Record<string, string>
+}) {
+  if (!DEALER_STUDIO_PROVIDER_ALIASES.has(input.provider.trim().toLowerCase())) {
+    return { status: 'not_dealer_studio' as const }
+  }
+
+  const explicit = input.fieldData.enquiry_type?.trim()
+  if (explicit) {
+    const parsed = CanonicalEnquiryTypeSchema.safeParse(explicit.toLowerCase())
+    if (!parsed.success) {
+      return {
+        status: 'configuration_required' as const,
+        canonicalEventName: 'web_conversion' as const,
+        enquiryType: null,
+        reason: 'invalid_explicit_enquiry_type' as const
+      }
+    }
+    return {
+      status: 'mapped' as const,
+      canonicalEventName: 'web_conversion' as const,
+      enquiryType: parsed.data,
+      matchedBy: 'explicit_enquiry_type' as const
+    }
+  }
+
+  const candidates = [
+    legacyDealerAlias(input.fieldData.provider_form_type),
+    legacyDealerAlias(input.formId),
+    legacyDealerAlias(input.formName)
+  ].filter((value): value is CanonicalEnquiryType => value !== null)
+  const identities = new Set(candidates)
+  if (identities.size === 1) {
+    return {
+      status: 'mapped' as const,
+      canonicalEventName: 'web_conversion' as const,
+      enquiryType: candidates[0]!,
+      matchedBy: 'bounded_form_alias' as const
+    }
+  }
+  return {
+    status: 'configuration_required' as const,
+    canonicalEventName: 'web_conversion' as const,
+    enquiryType: null,
+    reason: identities.size > 1 ? 'conflicting_aliases' as const : 'unknown_enquiry_type' as const
+  }
+}
+const DEALER_MEASUREMENT_EVENTS = {
+  stock_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'stock' },
+  model_variant_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'model_variant' },
+  finance_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'finance' },
+  test_drive_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'test_drive' },
+  contact_us: { canonicalEventName: 'web_conversion', enquiryType: 'contact' },
+  service_booking: { canonicalEventName: 'web_conversion', enquiryType: 'service_booking' },
+  phone_click: { canonicalEventName: 'phone_click', enquiryType: null },
+  directions_click: { canonicalEventName: 'directions_click', enquiryType: null }
+} as const
+
+export function normalizeDealerMeasurementEvent(dealerEvent: string) {
+  const normalized = dealerEvent.trim().toLowerCase()
+  const identity = DEALER_MEASUREMENT_EVENTS[normalized as keyof typeof DEALER_MEASUREMENT_EVENTS]
+  if (!identity) return { status: 'configuration_required' as const, dealerEvent }
+  return { status: 'mapped' as const, dealerEvent, ...identity }
+}
 export const LeadSubmittedV1Schema = z.object({
   type: z.literal('lead.submitted.v1'),
   id: z.string().trim().min(1).max(255),

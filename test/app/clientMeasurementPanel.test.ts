@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
-import ClientMeasurementPanel from '~~/app/components/clients/ClientMeasurementPanel.vue'
+import ClientMeasurementPanel from '~~/app/components/clients/ClientMeasurementPanel.client.vue'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const toastAdd = vi.fn()
@@ -31,6 +31,11 @@ const stubs = {
     props: ['modelValue'],
     emits: ['update:modelValue'],
     template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+  },
+  UInput: {
+    props: ['modelValue', 'placeholder'],
+    emits: ['update:modelValue'],
+    template: '<input :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', $event.target.value)">'
   },
   UCheckbox: {
     props: ['modelValue', 'label'],
@@ -114,6 +119,8 @@ function responseFor(request: string, options: { live?: boolean } = {}) {
       profile: {
         id: '22222222-2222-4222-8222-222222222222',
         clientId: CLIENT_ID,
+        desiredEnabled: true,
+        desiredStateSource: 'existing_review',
         enabled: false,
         environment: 'test',
         collectionTier: 'backend_only',
@@ -144,6 +151,7 @@ function responseFor(request: string, options: { live?: boolean } = {}) {
       liveEligible: false,
       approvals: { privacy: false, live: false },
       profile: {
+        desiredEnabled: true,
         enabled: false,
         environment: 'test',
         cacheStatus: 'fresh',
@@ -273,6 +281,86 @@ function responseFor(request: string, options: { live?: boolean } = {}) {
     }
   }
 
+  if (request.includes('/reconciliation')) {
+    return {
+      accountResolution: {
+        status: 'resolved', resolutionKind: 'direct', clientId: CLIENT_ID,
+        canonicalName: 'Northern Motor Group', matchedName: 'Northern GAC', matchKind: 'alias',
+        accounts: [{
+          connectionId: '77777777-7777-4777-8777-777777777777',
+          operatingCustomerId: '7583977544', loginCustomerId: '6692975433',
+          accountRole: 'dealer', connectionStatus: 'active', connectionAccountName: 'Northern GAC'
+        }]
+      },
+      reconciliation: {
+        clientId: CLIENT_ID,
+        expectedAccountCustomerId: '7583977544',
+        summary: { destination_not_configured: 1, not_observed: 7 },
+        items: [{
+          identity: { canonicalEventName: 'phone_click', enquiryType: null },
+          state: 'destination_not_configured',
+          diagnostic: 'Phone clicks captured; no Google Ads website action is mapped.',
+          known: ['Captured events: 12'], inferred: [],
+          blockers: ['destination_not_configured'], capturedCount: 12,
+          latestEvidenceAt: '2026-09-02T03:30:00.000Z', destination: null,
+          stages: { deliveryAttempted: 0, delivered: 0, failed: 0, providerAccepted: 0, providerReportingObserved: 0 }
+        }]
+      }
+    }
+  }
+
+  if (request.endsWith('/freshness')) {
+    return {
+      clientId: CLIENT_ID,
+      streams: [
+        { stream: 'spend', status: 'fresh', metricsAvailable: true, reason: 'spend data is fresh.', lastSuccessAt: '2026-09-02T04:00:00.000Z' },
+        { stream: 'campaign_conversions', status: 'syncing', metricsAvailable: false, reason: 'Conversion totals unavailable while historical resync is pending.', lastSuccessAt: '2026-09-02T03:00:00.000Z' },
+        { stream: 'conversion_actions', status: 'fresh', metricsAvailable: true, reason: 'conversion actions data is fresh.', lastSuccessAt: '2026-09-02T04:00:00.000Z' },
+        { stream: 'website_events', status: 'fresh', metricsAvailable: true, reason: 'website events data is fresh.', lastSuccessAt: '2026-09-02T03:30:00.000Z' },
+        { stream: 'provider_calls', status: 'fresh', metricsAvailable: true, reason: 'provider calls data is fresh.', lastSuccessAt: '2026-09-02T04:00:00.000Z' }
+      ]
+    }
+  }
+
+  if (request.includes('/api/agency/analytics/google-calls?')) {
+    return {
+      health: {
+        status: 'success_empty', outcome: 'sync successful; no calls returned',
+        verifiedCallTracking: false, lastSuccessAt: '2026-09-02T04:00:00.000Z'
+      },
+      layers: {
+        websitePhoneClicks: 12, googleHostedCallInteractions: 0,
+        connectedCalls: 0, qualifiedCalls: 0,
+        lastWebsiteEvidenceAt: '2026-09-02T03:30:00.000Z',
+        lastProviderCallSyncAt: '2026-09-02T04:00:00.000Z'
+      }
+    }
+  }
+
+  if (request.includes('/google-conversion-actions?') && request.includes('mode=registry')) {
+    return {
+      connection: { id: '77777777-7777-4777-8777-777777777777', accountId: '7583977544', accountName: 'Northern GAC' },
+      items: [
+        {
+          id: '901', resourceName: 'customers/7583977544/conversionActions/901', name: 'Website phone click',
+          status: 'ENABLED', type: 'WEBPAGE', category: 'PHONE_CALL_LEAD', origin: 'WEBSITE',
+          primaryForGoal: false, deliveryClass: 'website_tag', managementOwner: 'gtm',
+          primaryState: 'secondary', goalBiddability: 'not_biddable', mappingState: 'unmapped',
+          providerSyncedAt: '2026-09-02T04:00:00.000Z', lastEvidenceAt: null,
+          recentActivity: { window: 'LAST_30_DAYS', allConversions: 0, state: 'zero' }
+        },
+        {
+          id: '902', resourceName: 'customers/7583977544/conversionActions/902', name: 'Clicks to call',
+          status: 'ENABLED', type: 'CLICK_TO_CALL', category: 'PHONE_CALL_LEAD', origin: 'GOOGLE_HOSTED',
+          primaryForGoal: true, deliveryClass: 'google_hosted_call', managementOwner: 'google',
+          primaryState: 'primary', goalBiddability: 'biddable', mappingState: 'unmapped',
+          providerSyncedAt: '2026-09-02T04:00:00.000Z', lastEvidenceAt: null,
+          recentActivity: { window: 'LAST_30_DAYS', allConversions: 0, state: 'zero' }
+        }
+      ]
+    }
+  }
+
   throw new Error(`Unexpected request: ${request}`)
 }
 
@@ -291,11 +379,16 @@ describe('ClientMeasurementPanel', () => {
         `/api/agency/measurement/clients/${CLIENT_ID}`,
         `/api/agency/measurement/clients/${CLIENT_ID}/readiness`,
         `/api/agency/measurement/clients/${CLIENT_ID}/destinations`,
-        `/api/agency/measurement/clients/${CLIENT_ID}/audit`
+        `/api/agency/measurement/clients/${CLIENT_ID}/audit`,
+        `/api/agency/measurement/clients/${CLIENT_ID}/reconciliation`,
+        `/api/agency/measurement/clients/${CLIENT_ID}/freshness`,
+        expect.stringContaining(`/api/agency/analytics/google-calls?`),
+        expect.stringContaining(`/google-conversion-actions?connectionId=77777777-7777-4777-8777-777777777777&mode=registry`)
       ])
 
       expect(host.textContent).toContain('Zero is the canonical configuration and delivery-health source')
-      expect(host.textContent).toContain('Dormant')
+      expect(host.textContent).toContain('On — setup required')
+      expect(host.textContent).toContain('Existing client review')
       expect(host.textContent).toContain('Backend only')
       expect(host.textContent).toContain('Zero CRM')
       expect(host.textContent).toContain('Consent gated')
@@ -315,9 +408,78 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Document externally managed Google delivery')
       expect(host.textContent).toContain('Connected account linked')
       expect(host.textContent).toContain('Credential reference configured')
+      expect(host.textContent).toContain('Northern GAC')
+      expect(host.textContent).toContain('7583977544')
+      expect(host.textContent).toContain('6692975433')
+      expect(host.textContent).toContain('77777777-7777-4777-8777-777777777777')
+      expect(host.textContent).toContain('Direct · Alias')
+      expect(host.textContent).toContain('Website phone click')
+      expect(host.textContent).toContain('Website Tag')
+      expect(host.textContent).toContain('Clicks to call')
+      expect(host.textContent).toContain('Google Hosted Call')
+      expect(host.textContent).toContain('0 conversions · LAST 30 DAYS')
+      expect(host.textContent).toContain('Website phone clicks')
+      expect(host.textContent).toContain('12')
+      expect(host.textContent).toContain('sync successful; no calls returned')
+      expect(host.textContent).toContain('Conversion totals unavailable while historical resync is pending')
+      expect(host.textContent).toContain('Phone clicks captured; no Google Ads website action is mapped')
+      expect(host.querySelector('[data-testid="measurement-account-search"]')).not.toBeNull()
       expect(host.querySelector('[data-testid="measurement-profile-form"]')).not.toBeNull()
       expect(host.textContent).not.toContain('cloudflare/measurement')
       expect(host.textContent).not.toContain('access token')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('records an explicit client-wide signal opt-out without activating delivery', async () => {
+    const fetchMock = vi.fn(async (request: string, options?: {
+      method?: string
+      body?: Record<string, unknown>
+    }) => {
+      if (options?.method === 'PUT') {
+        return {
+          profile: {
+            ...responseFor(`/api/agency/measurement/clients/${CLIENT_ID}`).profile,
+            desiredEnabled: false,
+            desiredStateSource: 'explicit_opt_out',
+            configVersion: 5
+          },
+          warnings: []
+        }
+      }
+      return responseFor(request)
+    })
+    const { app, host } = mountPanel(fetchMock, { canConfigure: true })
+    await flushUi()
+
+    try {
+      host.querySelector<HTMLButtonElement>('[data-testid="measurement-desired-state-action"]')!.click()
+      await flushUi()
+      input(
+        host.querySelector('[data-testid="measurement-desired-state-reason"]')!,
+        'Client requested all signals be disabled'
+      )
+      check(host.querySelector('[data-testid="measurement-desired-state-confirmed"]')!)
+      await flushUi()
+      host.querySelector<HTMLButtonElement>('[data-testid="measurement-desired-state-submit"]')!.click()
+      await flushUi()
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/agency/measurement/clients/${CLIENT_ID}/profile`,
+        {
+          method: 'PUT',
+          body: {
+            expectedVersion: 4,
+            reason: 'Client requested all signals be disabled',
+            patch: { desiredEnabled: false }
+          }
+        }
+      )
+      expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Measurement signals turned off'
+      }))
     } finally {
       app.unmount()
       host.remove()
@@ -339,6 +501,24 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).not.toContain('Measurement data unavailable')
     } finally {
       app.unmount()
+    }
+  })
+
+  it('resolves an exact dealership alias without assuming group aggregation', async () => {
+    const fetchMock = vi.fn(async (request: string) => responseFor(request))
+    const { app, host } = mountPanel(fetchMock, { clientName: 'Northern GAC' })
+    await flushUi()
+
+    try {
+      expect(fetchMock.mock.calls.map(call => String(call[0]))).toContain(
+        `/api/agency/measurement/clients/${CLIENT_ID}/reconciliation?accountQuery=Northern%20GAC`
+      )
+      expect(host.querySelector<HTMLInputElement>('[data-testid="measurement-account-search"]')?.value)
+        .toBe('Northern GAC')
+      expect(host.textContent).toContain('Group aggregation is never assumed')
+    } finally {
+      app.unmount()
+      host.remove()
     }
   })
 

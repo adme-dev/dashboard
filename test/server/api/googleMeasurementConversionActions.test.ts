@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   persistRefresh: vi.fn(),
   refreshToken: vi.fn(),
   resolveConfig: vi.fn(),
-  list: vi.fn()
+  list: vi.fn(),
+  listInventory: vi.fn()
 }))
 
 let query: Record<string, string> = {}
@@ -44,6 +45,9 @@ vi.mock('~~/server/utils/googleConversionActions', () => ({
   googleConversionActionDiscovery: {
     list: (...args: unknown[]) => mocks.list(...args)
   }
+}))
+vi.mock('~~/server/utils/googleAds/inventory', () => ({
+  listGoogleAdsInventory: (...args: unknown[]) => mocks.listInventory(...args)
 }))
 vi.mock('h3', () => ({
   defineEventHandler: (handler: unknown) => handler,
@@ -94,6 +98,15 @@ describe('GET client Google conversion actions', () => {
       }],
       pagination: { page: 1, pageSize: 50, hasNextPage: false }
     })
+    mocks.listInventory.mockResolvedValue({
+      customerId: '3584435581',
+      kind: 'conversion_action',
+      items: [{
+        id: '9002', name: 'Clicks to call', type: 'CLICK_TO_CALL', origin: 'GOOGLE_HOSTED',
+        deliveryClass: 'google_hosted_call', managementOwner: 'google',
+        primaryState: 'secondary', goalBiddability: 'not_biddable'
+      }]
+    })
   })
 
   it('scopes the connection to the authorised client and returns no credential material', async () => {
@@ -103,7 +116,7 @@ describe('GET client Google conversion actions', () => {
 
     const result = await handler({ context: {} } as never)
 
-    expect(mocks.requireClientAccess).toHaveBeenCalledWith(expect.anything(), CLIENT_ID, 'configure')
+    expect(mocks.requireClientAccess).toHaveBeenCalledWith(expect.anything(), CLIENT_ID, 'view')
     expect(String(mocks.queryOne.mock.calls[0]?.[0])).toContain('sc.client_id = $1')
     expect(mocks.queryOne.mock.calls[0]?.[1]).toEqual([CLIENT_ID, CONNECTION_ID])
     expect(mocks.list).toHaveBeenCalledWith({
@@ -123,6 +136,29 @@ describe('GET client Google conversion actions', () => {
       items: expect.any(Array),
       pagination: { page: 1, pageSize: 50, hasNextPage: false }
     })
+    expect(JSON.stringify(result)).not.toMatch(/secret|accessToken|refreshToken|developerToken/i)
+  })
+
+  it('returns a classified registry through the exact tenant-bound connection', async () => {
+    query = { connectionId: CONNECTION_ID, page: '1', pageSize: '50', mode: 'registry' }
+    const handler = (await import(
+      '~~/server/api/agency/measurement/clients/[clientId]/google-conversion-actions.get'
+    )).default
+
+    const result = await handler({ context: {} } as never)
+
+    expect(mocks.listInventory).toHaveBeenCalledWith({
+      kind: 'conversion_action', customerId: '3584435581', status: 'ALL', maxResults: 50,
+      activityWindow: 'LAST_30_DAYS',
+      auth: {
+        accessToken: 'secret-access-token', developerToken: 'secret-developer-token',
+        loginCustomerId: '5250473322'
+      }
+    })
+    expect(result).toMatchObject({
+      items: [expect.objectContaining({ deliveryClass: 'google_hosted_call' })]
+    })
+    expect(mocks.list).not.toHaveBeenCalled()
     expect(JSON.stringify(result)).not.toMatch(/secret|accessToken|refreshToken|developerToken/i)
   })
 

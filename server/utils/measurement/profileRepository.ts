@@ -45,6 +45,8 @@ export interface MeasurementProfileRepository {
 interface MeasurementProfileRow {
   id: string
   client_id: string
+  desired_enabled: boolean
+  desired_state_source: string
   enabled: boolean
   environment: string
   collection_tier: string
@@ -65,7 +67,8 @@ interface MeasurementProfileRow {
 }
 
 const PROFILE_COLUMNS = `
-  id, client_id, enabled, environment, collection_tier, tracking_site_id,
+  id, client_id, desired_enabled, desired_state_source, enabled, environment,
+  collection_tier, tracking_site_id,
   first_party_hostname, hostname_status, consent_mode, vertical,
   outcome_authority, native_lifecycle_mode, portal_outcome_mode, config_version,
   cache_status, cache_version, cache_error_class, created_at, updated_at
@@ -79,6 +82,8 @@ export function mapMeasurementProfileRow(row: MeasurementProfileRow): Measuremen
   return ClientMeasurementProfileStateSchema.parse({
     id: row.id,
     clientId: row.client_id,
+    desiredEnabled: row.desired_enabled,
+    desiredStateSource: row.desired_state_source,
     enabled: row.enabled,
     environment: row.environment,
     collectionTier: row.collection_tier,
@@ -125,8 +130,11 @@ export function createPostgresMeasurementProfileRepository(
     async getByClientId(clientId, options) {
       if (options?.createIfMissing) {
         await deps.execute(
-          `INSERT INTO client_measurement_profiles (client_id, vertical)
-           SELECT id, COALESCE(NULLIF(TRIM(industry), ''), 'general')
+          `INSERT INTO client_measurement_profiles (
+             client_id, vertical, desired_enabled, desired_state_source
+           )
+           SELECT id, COALESCE(NULLIF(TRIM(industry), ''), 'general'),
+                  TRUE, 'new_client_default'
              FROM agency_clients
             WHERE id = $1
            ON CONFLICT (client_id) DO NOTHING`,
@@ -173,17 +181,19 @@ export function createPostgresMeasurementProfileRepository(
         const next = input.nextProfile
         const updatedResult = await db.query(
           `UPDATE client_measurement_profiles
-              SET enabled = $4,
-                  environment = $5,
-                  collection_tier = $6,
-                  tracking_site_id = $7,
-                  first_party_hostname = $8,
-                  hostname_status = $9,
-                  consent_mode = $10,
-                  vertical = $11,
-                  outcome_authority = $12,
-                  native_lifecycle_mode = $13,
-                  portal_outcome_mode = $14,
+              SET desired_enabled = $4,
+                  desired_state_source = $5,
+                  enabled = $6,
+                  environment = $7,
+                  collection_tier = $8,
+                  tracking_site_id = $9,
+                  first_party_hostname = $10,
+                  hostname_status = $11,
+                  consent_mode = $12,
+                  vertical = $13,
+                  outcome_authority = $14,
+                  native_lifecycle_mode = $15,
+                  portal_outcome_mode = $16,
                   config_version = config_version + 1,
                   cache_status = 'not_published',
                   cache_version = NULL,
@@ -192,7 +202,7 @@ export function createPostgresMeasurementProfileRepository(
                   live_approved_at = NULL,
                   privacy_approved_by = NULL,
                   privacy_approved_at = NULL,
-                  updated_by = $15
+                  updated_by = $17
             WHERE client_id = $1
               AND id = $2
               AND config_version = $3
@@ -201,6 +211,8 @@ export function createPostgresMeasurementProfileRepository(
             input.clientId,
             current.id,
             input.expectedVersion,
+            next.desiredEnabled,
+            next.desiredStateSource,
             next.enabled,
             next.environment,
             next.collectionTier,

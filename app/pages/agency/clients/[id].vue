@@ -1176,6 +1176,7 @@ async function saveKpiTargets() {
           <div v-if="activeTab === 'measurement' && canAccessMediaBuying">
             <ClientsClientMeasurementPanel
               :client-id="clientId"
+              :client-name="client?.name"
               :can-configure="canWrite"
               :can-owner-override="isOwner"
             />

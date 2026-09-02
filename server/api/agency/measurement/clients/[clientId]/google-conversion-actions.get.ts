@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { createError, defineEventHandler, getQuery, getRouterParam } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { refreshGoogleToken } from '~~/server/utils/googleAdsClient'
+import { listGoogleAdsInventory } from '~~/server/utils/googleAds/inventory'
 import {
   GOOGLE_CREDENTIAL_PROFILE_JOIN,
   GOOGLE_CREDENTIAL_PROFILE_SELECT,
@@ -19,7 +20,8 @@ import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 const QuerySchema = z.strictObject({
   connectionId: z.string().uuid(),
   page: z.coerce.number().int().min(1).max(100).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(50)
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+  mode: z.enum(['mappable', 'registry']).default('mappable')
 })
 
 interface ConnectionRow extends GoogleCredentialRow {
@@ -53,7 +55,7 @@ export default defineEventHandler(async (event) => {
   if (!clientId) {
     throw createError({ statusCode: 400, statusMessage: 'Client ID is required' })
   }
-  await requireMeasurementClientAccess(event, clientId, 'configure')
+  await requireMeasurementClientAccess(event, clientId, 'view')
 
   const parsedQuery = QuerySchema.safeParse(getQuery(event))
   if (!parsedQuery.success) {
@@ -110,11 +112,43 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    const operatingCustomerId = connection.account_id.replaceAll('-', '')
+    const managerCustomerId = loginCustomerId(connection.metadata)
+    if (parsedQuery.data.mode === 'registry') {
+      if (parsedQuery.data.page !== 1) {
+        throw new GoogleConversionActionDiscoveryError('GOOGLE_CONVERSION_ACTION_INPUT_INVALID')
+      }
+      const registry = await listGoogleAdsInventory({
+        kind: 'conversion_action',
+        customerId: operatingCustomerId,
+        status: 'ALL',
+        maxResults: parsedQuery.data.pageSize,
+        activityWindow: 'LAST_30_DAYS',
+        auth: {
+          accessToken,
+          developerToken: config.googleDeveloperToken,
+          ...(managerCustomerId ? { loginCustomerId: managerCustomerId } : {})
+        }
+      })
+      return {
+        connection: {
+          id: connection.id,
+          accountId: connection.account_id,
+          accountName: connection.account_name
+        },
+        items: registry.items,
+        pagination: {
+          page: 1,
+          pageSize: parsedQuery.data.pageSize,
+          hasNextPage: registry.truncated === true
+        }
+      }
+    }
     const result = await googleConversionActionDiscovery.list({
-      accountId: connection.account_id.replaceAll('-', ''),
+      accountId: operatingCustomerId,
       accessToken,
       developerToken: config.googleDeveloperToken,
-      loginCustomerId: loginCustomerId(connection.metadata),
+      loginCustomerId: managerCustomerId,
       page: parsedQuery.data.page,
       pageSize: parsedQuery.data.pageSize
     })
