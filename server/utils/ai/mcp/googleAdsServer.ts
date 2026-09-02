@@ -37,6 +37,8 @@ import {
   type GoogleAdsMcpToolDependencies
 } from './googleAdsTools'
 
+const SYNC_JOB_CAP = 25
+
 export function googleAdsMcpFlagsFromEnv(): GoogleAdsMcpFlags {
   return {
     read: process.env.GOOGLE_ADS_MCP_READ_ENABLED === 'true',
@@ -254,11 +256,16 @@ export function buildGoogleAdsMcpToolDependencies(
              FROM measurement_sync_jobs
             WHERE client_id = $1
             ORDER BY created_at DESC
-            LIMIT 25`,
+            LIMIT ${SYNC_JOB_CAP + 1}`,
           [input.clientId]
         )
       ])
-      return { ...freshness, jobs }
+      return {
+        ...freshness,
+        jobs: jobs.slice(0, SYNC_JOB_CAP),
+        limit: SYNC_JOB_CAP,
+        more: jobs.length > SYNC_JOB_CAP
+      }
     },
     listRecommendations: async (input) => {
       const session = await resolveGoogleAdsControlSession({

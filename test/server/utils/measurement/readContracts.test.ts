@@ -81,6 +81,7 @@ describe('Measurement read contracts', () => {
       liveEligible: false,
       approvals: { privacy: false, live: false },
       profile: {
+        desiredEnabled: true,
         enabled: false,
         environment: 'test',
         cacheStatus: 'fresh',
