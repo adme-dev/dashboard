@@ -94,5 +94,6 @@ describe('parseTrackPayload', () => {
     expect(TRACK_EVENT_NAMES).toContain('vehicle_view')
     expect(TRACK_EVENT_NAMES).toContain('form_submit')
     expect(TRACK_EVENT_NAMES).toContain('provider_interaction')
+    expect(TRACK_EVENT_NAMES).toContain('directions_click')
   })
 })

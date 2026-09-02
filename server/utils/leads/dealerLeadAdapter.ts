@@ -38,10 +38,28 @@ const Vehicle = z.object({
 }).optional()
 
 export const CanonicalEnquiryTypeSchema = z.enum([
-  'stock', 'finance', 'test_drive', 'contact', 'model_variant'
+  'stock', 'finance', 'test_drive', 'contact', 'model_variant', 'service_booking'
 ])
 
 export type CanonicalEnquiryType = z.infer<typeof CanonicalEnquiryTypeSchema>
+
+const DEALER_MEASUREMENT_EVENTS = {
+  stock_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'stock' },
+  model_variant_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'model_variant' },
+  finance_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'finance' },
+  test_drive_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'test_drive' },
+  contact_us: { canonicalEventName: 'web_conversion', enquiryType: 'contact' },
+  service_booking: { canonicalEventName: 'web_conversion', enquiryType: 'service_booking' },
+  phone_click: { canonicalEventName: 'phone_click', enquiryType: null },
+  directions_click: { canonicalEventName: 'directions_click', enquiryType: null }
+} as const
+
+export function normalizeDealerMeasurementEvent(dealerEvent: string) {
+  const normalized = dealerEvent.trim().toLowerCase()
+  const identity = DEALER_MEASUREMENT_EVENTS[normalized as keyof typeof DEALER_MEASUREMENT_EVENTS]
+  if (!identity) return { status: 'configuration_required' as const, dealerEvent }
+  return { status: 'mapped' as const, dealerEvent, ...identity }
+}
 
 export const LeadSubmittedV1Schema = z.object({
   type: z.literal('lead.submitted.v1'),

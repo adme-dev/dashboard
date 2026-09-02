@@ -115,6 +115,15 @@ describe('ClientMeasurementDestinationEditor', () => {
       expect(host.textContent).toContain('Dataset ID')
       expect(host.textContent).toContain('Meta CRM CAPI')
       expect(host.textContent).toContain('Qualified lead')
+      expect(host.textContent).toContain('Phone click')
+      expect(host.textContent).toContain('Directions click')
+      check(host.querySelector<HTMLInputElement>('[data-testid="mapping-web_conversion"]')!)
+      await nextTick()
+      expect(host.textContent).toContain('Service booking')
+      const websiteMapping = host.querySelector<HTMLInputElement>('[data-testid="mapping-web_conversion"]')!
+      websiteMapping.checked = false
+      websiteMapping.dispatchEvent(new Event('change', { bubbles: true }))
+      await nextTick()
       expect(host.textContent).toContain('Destination delivery remains dormant')
 
       select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, '33333333-3333-4333-8333-333333333333')

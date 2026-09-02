@@ -18,7 +18,7 @@ import { z } from 'zod'
 
 export const TRACK_EVENT_NAMES = [
   // core behaviour (fire in Slice 1)
-  'page_view', 'scroll', 'engagement', 'click', 'phone_click', 'outbound_click',
+  'page_view', 'scroll', 'engagement', 'click', 'phone_click', 'directions_click', 'outbound_click',
   'form_start', 'form_submit', 'form_abandonment', 'provider_interaction',
   // tag behavioural signals — dead_click is default-on; the rest fire only when
   // the tag's opt-in `behavioral` mode is enabled. Reserved so the endpoint never

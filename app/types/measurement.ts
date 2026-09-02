@@ -80,6 +80,7 @@ export interface MeasurementCapability {
 export interface MeasurementEventMapping {
   id: string
   canonicalEventName: string
+  enquiryType?: 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant' | 'service_booking' | null
   providerEventName: string
   isActive: boolean
 }

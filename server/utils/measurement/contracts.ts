@@ -30,11 +30,12 @@ export const CanonicalEventNameSchema = z.enum([
   'purchase',
   'web_conversion',
   'phone_click',
+  'directions_click',
   'add_to_wishlist',
   'form_submit'
 ])
 export const MeasurementEnquiryTypeSchema = z.enum([
-  'stock', 'finance', 'test_drive', 'contact', 'model_variant'
+  'stock', 'finance', 'test_drive', 'contact', 'model_variant', 'service_booking'
 ])
 
 export const MeasurementPlatformSchema = z.enum(MEASUREMENT_PLATFORMS)

@@ -126,8 +126,6 @@ export async function acceptLead(event: H3Event, input: {
     if (reservation) await releaseSubmissionIntentReservation(reservation)
     return intake
   }
-
-
   if (testRunId && input.trustedConnectorId) {
     if (reservation) {
       await leadCaptureTestRepository.appendServerEvent({
@@ -203,7 +201,7 @@ export async function acceptLead(event: H3Event, input: {
 }
 
 function canonicalEnquiryType(value: string | undefined) {
-  return ['stock', 'finance', 'test_drive', 'contact', 'model_variant'].includes(value ?? '')
-    ? value as 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant'
+  return ['stock', 'finance', 'test_drive', 'contact', 'model_variant', 'service_booking'].includes(value ?? '')
+    ? value as 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant' | 'service_booking'
     : null
 }

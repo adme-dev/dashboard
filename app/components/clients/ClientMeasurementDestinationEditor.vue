@@ -53,7 +53,9 @@ const mappingDefinitions: MappingDefinition[] = [
   { name: 'lead_won', label: 'Lead won' },
   { name: 'lead_lost', label: 'Lead lost' },
   { name: 'purchase', label: 'Purchase' },
-  { name: 'web_conversion', label: 'Web conversion' }
+  { name: 'web_conversion', label: 'Web conversion' },
+  { name: 'phone_click', label: 'Phone click' },
+  { name: 'directions_click', label: 'Directions click' }
 ]
 
 const platformOptions = MEASUREMENT_PLATFORMS.map(value => ({
@@ -103,7 +105,8 @@ const enquiryTypeItems = [
   { label: 'Finance application', value: 'finance' },
   { label: 'Test drive', value: 'test_drive' },
   { label: 'Contact enquiry', value: 'contact' },
-  { label: 'Model / variant enquiry', value: 'model_variant' }
+  { label: 'Model / variant enquiry', value: 'model_variant' },
+  { label: 'Service booking', value: 'service_booking' }
 ]
 
 const currentCapabilities = computed(() => capabilityDefinitions[platform.value])
@@ -386,7 +389,12 @@ void loadAccounts('meta')
         />
         <span v-if="accountError" role="alert" class="flex items-center gap-2 text-xs text-error">
           {{ accountError }}
-          <UButton label="Retry" size="xs" variant="link" @click="loadAccounts()" />
+          <UButton
+            label="Retry"
+            size="xs"
+            variant="link"
+            @click="loadAccounts()"
+          />
         </span>
         <span v-else-if="!accountsPending && !currentAccounts.length" class="text-xs text-warning">No connected account is available for this provider.</span>
       </UFormField>
@@ -469,7 +477,12 @@ void loadAccounts('meta')
             </span>
           </div>
           <UFormField v-if="selectedCapabilities[capability.mode]" label="Implementation owner">
-            <USelect v-model="capabilityOrigins[capability.mode]" :items="capabilityOriginItems" value-key="value" class="w-full" />
+            <USelect
+              v-model="capabilityOrigins[capability.mode]"
+              :items="capabilityOriginItems"
+              value-key="value"
+              class="w-full"
+            />
           </UFormField>
         </div>
       </div>
@@ -510,7 +523,12 @@ void loadAccounts('meta')
               label="Enquiry type"
               help="Choose an exact type when this destination represents one specific website action."
             >
-              <USelect v-model="mappingEnquiryTypes[mapping.name]" :items="enquiryTypeItems" value-key="value" class="w-full" />
+              <USelect
+                v-model="mappingEnquiryTypes[mapping.name]"
+                :items="enquiryTypeItems"
+                value-key="value"
+                class="w-full"
+              />
             </UFormField>
           </div>
         </div>
