@@ -21,6 +21,7 @@ const ParentFilters = {
   campaignResourceName: z.string().optional(),
   adGroupResourceName: z.string().optional()
 }
+const ConversionActivityWindowSchema = z.enum(['LAST_7_DAYS', 'LAST_30_DAYS', 'LAST_90_DAYS'])
 const InputSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('campaign'), ...BaseInput, status: EntityStatusSchema }),
   z.strictObject({ kind: z.literal('ad_group'), ...BaseInput, status: EntityStatusSchema, campaignResourceName: z.string().optional() }),
@@ -34,7 +35,11 @@ const InputSchema = z.discriminatedUnion('kind', [
     scope: z.enum(['CAMPAIGN', 'AD_GROUP', 'BOTH']).default('BOTH')
   }),
   z.strictObject({ kind: z.literal('asset'), ...BaseInput }),
-  z.strictObject({ kind: z.literal('conversion_action'), ...BaseInput, status: ConversionStatusSchema })
+  z.strictObject({
+    kind: z.literal('conversion_action'), ...BaseInput, status: ConversionStatusSchema,
+    campaignResourceName: z.string().optional(),
+    activityWindow: ConversionActivityWindowSchema.optional()
+  })
 ])
 
 export type ListGoogleAdsInventoryInput = z.input<typeof InputSchema>
@@ -93,6 +98,21 @@ type ConversionAction = z.infer<typeof ConversionActionSchema>
 const CustomerConversionGoalSchema = z.object({
   category: z.string(), origin: z.string(), biddable: z.boolean()
 })
+const ConversionActivitySchema = z.object({
+  conversionAction: z.object({ resourceName: z.string() }),
+  metrics: z.object({
+    allConversions: z.union([z.number(), z.string()]).transform(Number)
+      .refine(value => Number.isFinite(value) && value >= 0)
+  })
+})
+const CampaignGoalConfigSchema = z.object({
+  resourceName: z.string(), campaign: z.string(), goalConfigLevel: z.string(),
+  customConversionGoal: z.string().nullable().optional()
+})
+const CampaignConversionGoalSchema = z.object({
+  resourceName: z.string(), campaign: z.string(), category: z.string(),
+  origin: z.string(), biddable: z.boolean()
+})
 
 export const GoogleAdsDeliveryClassSchema = z.enum([
   'website_tag', 'offline_click', 'google_hosted_call', 'google_hosted_local', 'external', 'unknown'
@@ -148,7 +168,8 @@ export function classifyGoogleAdsConversionAction(
 function normalizeConversionAction(
   action: ConversionAction,
   providerSyncedAt: string,
-  customerGoalBiddable?: boolean
+  customerGoalBiddable?: boolean,
+  recentActivity?: { window: z.infer<typeof ConversionActivityWindowSchema>, allConversions: number }
 ) {
   return {
     ...action,
@@ -161,7 +182,13 @@ function normalizeConversionAction(
         : 'unknown' as const,
     mappingState: 'unmapped' as const,
     providerSyncedAt,
-    lastEvidenceAt: null
+    lastEvidenceAt: null,
+    recentActivity: recentActivity
+      ? {
+          ...recentActivity,
+          state: recentActivity.allConversions > 0 ? 'observed' as const : 'zero' as const
+        }
+      : null
   }
 }
 const CriterionSchema = z.object({
@@ -322,6 +349,13 @@ FROM conversion_action${where(statusFilter('conversion_action.status', input.sta
     customerId: input.customerId, auth: input.auth, maxRows: input.maxResults, query
   })
   if (input.kind === 'conversion_action') {
+    const actions = result.rows.map((row) => {
+      const action = ConversionActionSchema.parse(
+        z.object({ conversionAction: z.unknown() }).parse(row).conversionAction
+      )
+      assertCustomerResources(action, input.customerId)
+      return action
+    })
     const goalResult = await dependencies.query({
       customerId: input.customerId,
       auth: input.auth,
@@ -337,18 +371,118 @@ FROM customer_conversion_goal`
       const goal = CustomerConversionGoalSchema.safeParse(container.data.customerConversionGoal)
       if (goal.success) biddability.set(`${goal.data.category}:${goal.data.origin}`, goal.data.biddable)
     }
+    const recentActivity = new Map<string, number>()
+    if (input.activityWindow && actions.length > 0) {
+      const actionFilter = actions
+        .map(action => `'${action.resourceName}'`)
+        .join(', ')
+      const activityResult = await dependencies.query({
+        customerId: input.customerId,
+        auth: input.auth,
+        maxRows: input.maxResults,
+        query: `SELECT conversion_action.resource_name, metrics.all_conversions
+FROM conversion_action
+WHERE conversion_action.resource_name IN (${actionFilter})
+  AND segments.date DURING ${input.activityWindow}`
+      })
+      if (activityResult.more > 0) {
+        throw new Error('Google Ads conversion activity exceeds the safe read limit')
+      }
+      for (const row of activityResult.rows) {
+        const activity = ConversionActivitySchema.safeParse(row)
+        if (activity.success) {
+          assertCustomerResources(activity.data, input.customerId)
+          recentActivity.set(
+            activity.data.conversionAction.resourceName,
+            activity.data.metrics.allConversions
+          )
+        }
+      }
+    }
     const providerSyncedAt = (dependencies.now ?? (() => new Date()))().toISOString()
-    const items = result.rows.map((row) => {
-      const action = ConversionActionSchema.parse(
-        z.object({ conversionAction: z.unknown() }).parse(row).conversionAction
-      )
-      return normalizeConversionAction(
-        action,
-        providerSyncedAt,
-        biddability.get(`${action.category}:${action.origin}`)
-      )
+    const items = actions.map(action => normalizeConversionAction(
+      action,
+      providerSyncedAt,
+      biddability.get(`${action.category}:${action.origin}`),
+      input.activityWindow
+        ? {
+            window: input.activityWindow,
+            allConversions: recentActivity.get(action.resourceName) ?? 0
+          }
+        : undefined
+    ))
+    const envelope = resultEnvelope(input, result, items)
+    if (!input.campaignResourceName) {
+      return { ...envelope, activityWindow: input.activityWindow ?? null }
+    }
+
+    const campaignId = resourceId(input.campaignResourceName, input.customerId, 'campaigns')!
+    const configResult = await dependencies.query({
+      customerId: input.customerId,
+      auth: input.auth,
+      maxRows: 1,
+      query: `SELECT conversion_goal_campaign_config.resource_name,
+  conversion_goal_campaign_config.campaign,
+  conversion_goal_campaign_config.goal_config_level,
+  conversion_goal_campaign_config.custom_conversion_goal
+FROM conversion_goal_campaign_config
+WHERE campaign.id = ${campaignId}`
     })
-    return resultEnvelope(input, result, items)
+    const configContainer = configResult.rows[0]
+      ? z.object({ conversionGoalCampaignConfig: z.unknown() }).safeParse(configResult.rows[0])
+      : null
+    const config = configContainer?.success
+      ? CampaignGoalConfigSchema.parse(configContainer.data.conversionGoalCampaignConfig)
+      : null
+    if (config && config.campaign !== input.campaignResourceName) {
+      throw new Error('Google Ads returned a goal config outside the selected campaign')
+    }
+    if (config && config.resourceName !== `customers/${input.customerId}/conversionGoalCampaignConfigs/${campaignId}`) {
+      throw new Error('Google Ads returned a goal config outside the selected campaign')
+    }
+
+    const campaignGoalsResult = await dependencies.query({
+      customerId: input.customerId,
+      auth: input.auth,
+      maxRows: 500,
+      query: `SELECT campaign_conversion_goal.resource_name,
+  campaign_conversion_goal.campaign,
+  campaign_conversion_goal.category,
+  campaign_conversion_goal.origin,
+  campaign_conversion_goal.biddable
+FROM campaign_conversion_goal
+WHERE campaign.id = ${campaignId}`
+    })
+    if (campaignGoalsResult.more > 0) {
+      throw new Error('Google Ads campaign conversion goals exceed the safe read limit')
+    }
+    const goals = campaignGoalsResult.rows.map((row) => {
+      const container = z.object({ campaignConversionGoal: z.unknown() }).parse(row)
+      const goal = CampaignConversionGoalSchema.parse(container.campaignConversionGoal)
+      if (goal.campaign !== input.campaignResourceName) {
+        throw new Error('Google Ads returned a conversion goal outside the selected campaign')
+      }
+      const expectedResourceName = `customers/${input.customerId}/campaignConversionGoals/${campaignId}~${goal.category}~${goal.origin}`
+      if (goal.resourceName !== expectedResourceName) {
+        throw new Error('Google Ads returned a conversion goal outside the selected campaign')
+      }
+      return {
+        resourceName: goal.resourceName,
+        category: goal.category,
+        origin: goal.origin,
+        biddable: goal.biddable
+      }
+    })
+    return {
+      ...envelope,
+      activityWindow: input.activityWindow ?? null,
+      campaignGoalBinding: {
+        campaignResourceName: input.campaignResourceName,
+        goalConfigLevel: config?.goalConfigLevel ?? 'UNKNOWN',
+        customConversionGoal: config?.customConversionGoal ?? null,
+        goals
+      }
+    }
   }
   return resultEnvelope(input, result, result.rows.map(normalize))
 }

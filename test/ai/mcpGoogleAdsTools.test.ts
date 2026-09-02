@@ -157,6 +157,28 @@ describe('Google Ads MCP tool projection', () => {
     }, context)
   })
 
+  it('accepts one campaign binding and a bounded activity window for conversion inventory', async () => {
+    const deps = dependencies()
+    const campaignResourceName = 'customers/1234567890/campaigns/24181437555'
+    await expect(executeGoogleAdsTool('google_ads_list_conversion_actions', {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      maxResults: 25,
+      status: 'ENABLED',
+      campaignResourceName,
+      activityWindow: 'LAST_30_DAYS'
+    }, context, { ...off, read: true }, deps)).resolves.toMatchObject({ ok: true })
+
+    expect(deps.listInventory).toHaveBeenCalledWith('conversion_action', {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      maxResults: 25,
+      status: 'ENABLED',
+      campaignResourceName,
+      activityWindow: 'LAST_30_DAYS'
+    }, context)
+  })
+
   it.each([
     ['google_ads_resolve_measurement_account', { clientName: 'Northern GAC', aggregate: false }, 'resolveAccount'],
     ['google_ads_get_measurement_health', { clientId: CLIENT_ID }, 'readMeasurementHealth'],

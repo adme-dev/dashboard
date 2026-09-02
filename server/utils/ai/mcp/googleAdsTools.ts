@@ -100,7 +100,9 @@ const TargetingInventoryParams = z.strictObject({
 const AssetInventoryParams = z.strictObject(InventoryCommon)
 const ConversionActionInventoryParams = z.strictObject({
   ...InventoryCommon,
-  status: ConversionStatusSchema
+  status: ConversionStatusSchema,
+  campaignResourceName: CampaignResourceNameSchema.optional(),
+  activityWindow: z.enum(['LAST_7_DAYS', 'LAST_30_DAYS', 'LAST_90_DAYS']).optional()
 })
 const MeasurementClientParams = z.strictObject({
   clientId: z.string().uuid()
@@ -134,6 +136,7 @@ export interface GoogleAdsInventoryToolInput {
   maxResults: number
   status?: 'ALL' | 'ENABLED' | 'PAUSED' | 'REMOVED' | 'HIDDEN'
   campaignResourceName?: string
+  activityWindow?: 'LAST_7_DAYS' | 'LAST_30_DAYS' | 'LAST_90_DAYS'
   adGroupResourceName?: string
   includeNegative?: boolean
   scope?: 'CAMPAIGN' | 'AD_GROUP' | 'BOTH'
@@ -170,7 +173,7 @@ const inventoryTools: Record<string, {
   },
   [GOOGLE_ADS_LIST_CONVERSION_ACTIONS_TOOL]: {
     kind: 'conversion_action', schema: ConversionActionInventoryParams,
-    description: 'List bounded typed conversion actions with primary or secondary bidding state, category, origin, owner, and status.'
+    description: 'List bounded typed conversion actions with bidding state, category, origin, owner, optional recent activity, and optional campaign goal binding.'
   }
 }
 

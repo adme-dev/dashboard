@@ -123,6 +123,7 @@ export default defineEventHandler(async (event) => {
         customerId: operatingCustomerId,
         status: 'ALL',
         maxResults: parsedQuery.data.pageSize,
+        activityWindow: 'LAST_30_DAYS',
         auth: {
           accessToken,
           developerToken: config.googleDeveloperToken,

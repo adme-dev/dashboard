@@ -149,6 +149,7 @@ describe('GET client Google conversion actions', () => {
 
     expect(mocks.listInventory).toHaveBeenCalledWith({
       kind: 'conversion_action', customerId: '3584435581', status: 'ALL', maxResults: 50,
+      activityWindow: 'LAST_30_DAYS',
       auth: {
         accessToken: 'secret-access-token', developerToken: 'secret-developer-token',
         loginCustomerId: '5250473322'

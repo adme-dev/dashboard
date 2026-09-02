@@ -343,14 +343,16 @@ function responseFor(request: string, options: { live?: boolean } = {}) {
           status: 'ENABLED', type: 'WEBPAGE', category: 'PHONE_CALL_LEAD', origin: 'WEBSITE',
           primaryForGoal: false, deliveryClass: 'website_tag', managementOwner: 'gtm',
           primaryState: 'secondary', goalBiddability: 'not_biddable', mappingState: 'unmapped',
-          providerSyncedAt: '2026-09-02T04:00:00.000Z', lastEvidenceAt: null
+          providerSyncedAt: '2026-09-02T04:00:00.000Z', lastEvidenceAt: null,
+          recentActivity: { window: 'LAST_30_DAYS', allConversions: 0, state: 'zero' }
         },
         {
           id: '902', resourceName: 'customers/7583977544/conversionActions/902', name: 'Clicks to call',
           status: 'ENABLED', type: 'CLICK_TO_CALL', category: 'PHONE_CALL_LEAD', origin: 'GOOGLE_HOSTED',
           primaryForGoal: true, deliveryClass: 'google_hosted_call', managementOwner: 'google',
           primaryState: 'primary', goalBiddability: 'biddable', mappingState: 'unmapped',
-          providerSyncedAt: '2026-09-02T04:00:00.000Z', lastEvidenceAt: null
+          providerSyncedAt: '2026-09-02T04:00:00.000Z', lastEvidenceAt: null,
+          recentActivity: { window: 'LAST_30_DAYS', allConversions: 0, state: 'zero' }
         }
       ]
     }
@@ -411,6 +413,7 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Website Tag')
       expect(host.textContent).toContain('Clicks to call')
       expect(host.textContent).toContain('Google Hosted Call')
+      expect(host.textContent).toContain('0 conversions · LAST 30 DAYS')
       expect(host.textContent).toContain('Website phone clicks')
       expect(host.textContent).toContain('12')
       expect(host.textContent).toContain('sync successful; no calls returned')

@@ -50,6 +50,11 @@ interface ClassifiedGoogleConversionAction {
   mappingState: string
   providerSyncedAt: string
   lastEvidenceAt: string | null
+  recentActivity: null | {
+    window: string
+    allConversions: number
+    state: 'observed' | 'zero'
+  }
 }
 
 const toast = useToast()
@@ -853,6 +858,16 @@ void refreshMeasurement()
                 </dt>
                 <dd class="mt-1 text-highlighted">
                   {{ titleCase(action.mappingState) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-dimmed">
+                  Recent provider activity
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ action.recentActivity
+                    ? `${action.recentActivity.allConversions} conversions · ${titleCase(action.recentActivity.window)}`
+                    : 'Not requested' }}
                 </dd>
               </div>
               <div>

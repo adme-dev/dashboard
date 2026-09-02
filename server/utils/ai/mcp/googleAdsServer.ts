@@ -165,6 +165,7 @@ export function buildGoogleAdsMcpToolDependencies(
             ? { campaignResourceName: input.campaignResourceName }
             : {}),
           ...(input.adGroupResourceName ? { adGroupResourceName: input.adGroupResourceName } : {}),
+          ...(input.activityWindow ? { activityWindow: input.activityWindow } : {}),
           ...(input.includeNegative === undefined ? {} : { includeNegative: input.includeNegative }),
           ...(input.scope ? { scope: input.scope } : {})
         } as ListGoogleAdsInventoryInput),

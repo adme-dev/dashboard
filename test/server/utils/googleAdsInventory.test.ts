@@ -124,6 +124,52 @@ describe('Google Ads typed inventory reads', () => {
     expect(query.mock.calls[1]?.[0].query).toContain('FROM customer_conversion_goal')
   })
 
+  it('exposes campaign goal binding and bounded recent action activity for Knox LDV', async () => {
+    const campaignResourceName = `customers/${customerId}/campaigns/24181437555`
+    const actionResourceName = `customers/${customerId}/conversionActions/901`
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ conversionAction: {
+        resourceName: actionResourceName, id: '901', name: 'Stock Enquiry', status: 'ENABLED',
+        type: 'UPLOAD_CLICKS', category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', primaryForGoal: true
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ customerConversionGoal: {
+        category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: true
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{
+        conversionAction: { resourceName: actionResourceName }, metrics: { allConversions: 0 }
+      }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ conversionGoalCampaignConfig: {
+        resourceName: `customers/${customerId}/conversionGoalCampaignConfigs/24181437555`,
+        campaign: campaignResourceName, goalConfigLevel: 'CUSTOMER'
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ campaignConversionGoal: {
+        resourceName: `customers/${customerId}/campaignConversionGoals/24181437555~SUBMIT_LEAD_FORM~WEBSITE`,
+        campaign: campaignResourceName, category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: true
+      } }], more: 0 })
+
+    const result = await listGoogleAdsInventory({
+      kind: 'conversion_action', customerId, auth, maxResults: 25, status: 'ALL',
+      campaignResourceName, activityWindow: 'LAST_30_DAYS'
+    }, { query, now: () => new Date('2026-09-02T05:00:00.000Z') })
+
+    expect(result.items).toEqual([expect.objectContaining({
+      resourceName: actionResourceName,
+      recentActivity: { window: 'LAST_30_DAYS', allConversions: 0, state: 'zero' }
+    })])
+    expect(result.campaignGoalBinding).toEqual({
+      campaignResourceName,
+      goalConfigLevel: 'CUSTOMER',
+      customConversionGoal: null,
+      goals: [{
+        resourceName: `customers/${customerId}/campaignConversionGoals/24181437555~SUBMIT_LEAD_FORM~WEBSITE`,
+        category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: true
+      }]
+    })
+    expect(query.mock.calls[2]?.[0].query).toContain('segments.date DURING LAST_30_DAYS')
+    expect(query.mock.calls[3]?.[0].query).toContain('FROM conversion_goal_campaign_config')
+    expect(query.mock.calls[4]?.[0].query).toContain('FROM campaign_conversion_goal')
+  })
+
   it('lists campaign and ad-group targeting as two typed bounded inventories', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [{ campaignCriterion: {
