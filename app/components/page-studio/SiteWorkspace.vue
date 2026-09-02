@@ -244,16 +244,27 @@ async function launchStudio(site: PageStudioSiteSummary) {
               <UIcon name="i-lucide-shield-check" class="size-4 shrink-0 text-primary" />
               <span class="truncate">{{ audience === 'agency' ? 'Agency-managed release' : 'Managed by your agency' }}</span>
             </div>
-            <UButton
-              v-if="editorUrl"
-              label="Launch Studio"
-              icon="i-lucide-panels-top-left"
-              color="primary"
-              size="sm"
-              :loading="launchingSiteId === site.id"
-              :disabled="launchingSiteId !== null && launchingSiteId !== site.id"
-              @click="launchStudio(site)"
-            />
+            <div class="flex shrink-0 items-center gap-2">
+              <UButton
+                v-if="audience === 'agency'"
+                :to="`/agency/page-studio/${site.id}`"
+                label="Manage site"
+                icon="i-lucide-settings-2"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
+              <UButton
+                v-if="editorUrl"
+                label="Launch Studio"
+                icon="i-lucide-panels-top-left"
+                color="primary"
+                size="sm"
+                :loading="launchingSiteId === site.id"
+                :disabled="launchingSiteId !== null && launchingSiteId !== site.id"
+                @click="launchStudio(site)"
+              />
+            </div>
           </div>
         </div>
       </UCard>

@@ -235,6 +235,10 @@ service = "google-pmax-provider"
 [[env.production.services]]
 binding = "PAGE_STUDIO_BUILD"
 service = "xeroflow-page-studio-build"
+
+[[env.production.r2_buckets]]
+binding = "PAGE_STUDIO_CHECKPOINTS"
+bucket_name = "xeroflow-page-studio-checkpoints"
 [[env.production.services]]
 binding = "PAGE_STUDIO_DELIVERY"
 service = "xeroflow-page-studio-delivery"
@@ -310,6 +314,10 @@ PAGE_STUDIO_RELEASE_ENVIRONMENT = "production"
 [[env.preview.services]]
 binding = "PAGE_STUDIO_BUILD"
 service = "xeroflow-page-studio-build-staging"
+
+[[env.preview.r2_buckets]]
+binding = "PAGE_STUDIO_CHECKPOINTS"
+bucket_name = "xeroflow-page-studio-checkpoints-staging"
 [[env.preview.services]]
 binding = "PAGE_STUDIO_DELIVERY"
 service = "xeroflow-page-studio-delivery-staging"
