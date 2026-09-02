@@ -140,6 +140,34 @@ interface Feature {
 }
 
 const features: Record<string, Feature> = {
+  'measurement-control-plane': {
+    title: 'Measurement Control Plane',
+    slug: 'measurement-control-plane',
+    icon: 'i-lucide-route',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50 dark:bg-cyan-500/10',
+    categoryIconColor: 'text-cyan-600 dark:text-cyan-400',
+    description: 'Turn website, Google Ads, consent, delivery, call, and freshness evidence into one accountable measurement workflow without blurring what each source proves.',
+    details: [
+      {
+        title: 'The Right Account, Proven',
+        content: 'Dealership aliases, group identities, connected credentials, operating customer IDs, login customer IDs, and account roles are resolved together. Direct dealership measurement remains distinct from an explicitly requested group roll-up, and ambiguous names stop for operator review instead of selecting the first account that happens to match.'
+      },
+      {
+        title: 'A Signed Website Evidence Chain',
+        content: 'A privacy-minimised, signed dealer-platform contract records capture, consent, destination configuration, delivery, provider acceptance, and reporting evidence as separate stages. Stable event IDs make retries idempotent, diagnostics stay redacted, and browser Google Ads delivery remains observable without silently activating a second server-delivery path.'
+      },
+      {
+        title: 'Calls Kept in Honest Layers',
+        content: 'Website phone clicks, Google-hosted call interactions, connected calls, and qualified calls are reported independently. Duration and qualification are shown only when the relevant provider supplies them, while a successful empty Google sync is labelled as no calls returned rather than treated as proof that call tracking works.'
+      },
+      {
+        title: 'Freshness You Can Act On',
+        content: 'Spend, campaign conversions, conversion-action inventory, website events, and provider calls each carry their own freshness. Historical syncs expose their requested, covered, and missing date ranges plus job progress, so incomplete conversion totals become an actionable blocker instead of quietly disappearing from a report.'
+      }
+    ]
+  },
   'page-studio': {
     title: 'Page Studio',
     slug: 'page-studio',

@@ -242,6 +242,7 @@ const categories = [
     iconColor: 'text-cyan-600',
     features: [
       { title: 'Search Authority & AI Trust', slug: 'search-authority-ai-trust', icon: 'i-lucide-search-check', description: 'Turn Search Console and technical evidence into approved guides, safe menu discovery, attributable outcomes, governed tasks, and transparent client reporting.' },
+      { title: 'Measurement Control Plane', slug: 'measurement-control-plane', icon: 'i-lucide-route', description: 'Resolve the right ad account, reconcile signed website evidence, separate every call layer, and see independent freshness before trusting conversion totals.' },
       { title: 'Cross-Platform Dashboard', slug: 'cross-platform-dashboard', icon: 'i-lucide-layout-dashboard', description: 'Aggregated performance across Meta, Google, and other ad platforms in a unified view. Ads Manager–style campaign columns with a saveable layout, one-click Meta Ads preset, and per-campaign health scores that flag what to scale or cut against each client\'s own KPI targets.' },
       { title: 'Hourly Breakdowns', slug: 'hourly-breakdowns', icon: 'i-lucide-clock-4', description: 'Granular hourly performance data with spend, impressions, and conversion trends throughout the day.' },
       { title: 'Campaign Alerts', slug: 'campaign-alerts', icon: 'i-lucide-bell-ring', description: 'Detects ad-spend pacing problems and keeps campaign review available for every synced Meta and Google campaign — including on-demand AI analysis that proposes a daily budget beside the rule-based number.' },
