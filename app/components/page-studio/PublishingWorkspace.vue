@@ -164,7 +164,7 @@ async function publishApprovedVersion() {
           @click="refreshAll"
         />
         <UButton
-          to="/agency/page-studio"
+          :to="`/agency/page-studio/${siteId}/edit`"
           label="Launch Studio"
           icon="i-lucide-external-link"
           trailing
@@ -267,8 +267,8 @@ async function publishApprovedVersion() {
             </p>
             <template #footer>
               <UButton
-                to="/agency/page-studio"
-                label="Open site launcher"
+                :to="`/agency/page-studio/${siteId}/edit`"
+                label="Open in Studio"
                 icon="i-lucide-panel-top-open"
                 block
               />
@@ -278,14 +278,7 @@ async function publishApprovedVersion() {
       </template>
 
       <template #pages>
-        <UAlert
-          class="mt-5"
-          title="Page management is the next delivery phase"
-          description="The canonical hierarchy already exists in Studio. This tab will expose routes, parent pages, visibility, SEO, shell inheritance, homepage selection and redirects."
-          color="neutral"
-          variant="subtle"
-          icon="i-lucide-files"
-        />
+        <PageStudioPagesWorkspace :site-id="siteId" />
       </template>
       <template #builds>
         <UCard class="mt-5">
