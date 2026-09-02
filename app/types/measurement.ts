@@ -143,7 +143,10 @@ export interface MeasurementReconciliationItem {
 export interface MeasurementReconciliationResponse {
   accountResolution: null | {
     status: string
+    clientId?: string
+    canonicalName?: string
     matchedName?: string
+    matchKind?: string
     resolutionKind?: string
     accounts?: Array<{
       connectionId: string

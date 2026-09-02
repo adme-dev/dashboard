@@ -654,7 +654,7 @@ void refreshMeasurement()
           </div>
           <dl
             v-if="reconciliation?.accountResolution?.accounts?.[0]"
-            class="mt-4 grid grid-cols-2 gap-3 text-sm"
+            class="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2"
           >
             <div class="rounded-lg bg-elevated p-3">
               <dt class="text-xs text-muted">
@@ -670,6 +670,31 @@ void refreshMeasurement()
               </dt>
               <dd class="mt-1 font-medium text-highlighted">
                 {{ titleCase(reconciliation.accountResolution.accounts[0].accountRole) }}
+              </dd>
+            </div>
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Login customer
+              </dt>
+              <dd class="mt-1 font-mono font-medium text-highlighted">
+                {{ reconciliation.accountResolution.accounts[0].loginCustomerId ?? 'Direct login' }}
+              </dd>
+            </div>
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Connection
+              </dt>
+              <dd class="mt-1 break-all font-mono text-xs font-medium text-highlighted">
+                {{ reconciliation.accountResolution.accounts[0].connectionId }}
+              </dd>
+            </div>
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Resolution basis
+              </dt>
+              <dd class="mt-1 font-medium text-highlighted">
+                {{ titleCase(reconciliation.accountResolution.resolutionKind ?? 'unknown') }} ·
+                {{ titleCase(reconciliation.accountResolution.matchKind ?? 'unknown') }}
               </dd>
             </div>
           </dl>
