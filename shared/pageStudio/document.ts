@@ -3,6 +3,23 @@ import { z } from 'zod'
 export const PAGE_STUDIO_BLOCK_TYPES = ['hero', 'text', 'image', 'cta'] as const
 export const PAGE_STUDIO_BLOCK_BACKGROUNDS = ['canvas', 'muted', 'brand', 'dark'] as const
 export const PAGE_STUDIO_PAGE_VISIBILITIES = ['visible', 'hidden'] as const
+export const PAGE_STUDIO_PAGE_STATUSES = ['draft', 'visible', 'archived'] as const
+export const PAGE_STUDIO_SHELL_MODES = ['inherit', 'custom', 'hidden'] as const
+
+const PageStudioRoutePathSchema = z.string().trim().max(2048).regex(
+  /^\/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*)?$/,
+  'Routes must be lowercase paths beginning with /'
+)
+
+const PageStudioRedirectSchema = z.object({
+  id: z.string().uuid(),
+  fromPath: PageStudioRoutePathSchema,
+  toPath: z.string().trim().min(1).max(2048).refine(
+    value => value.startsWith('/') || /^https:\/\/[a-z0-9.-]+(?:[/:?#]|$)/i.test(value),
+    'Redirect destinations must be an internal path or an HTTPS URL'
+  ),
+  statusCode: z.union([z.literal(301), z.literal(302)])
+}).strict()
 
 const PageStudioBlockSchema = z.object({
   id: z.string().uuid(),
@@ -24,6 +41,9 @@ const PageStudioPageSchema = z.object({
   title: z.string().trim().min(1).max(160),
   slug: z.string().trim().toLowerCase().max(80).regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?)?$/),
   visibility: z.enum(PAGE_STUDIO_PAGE_VISIBILITIES).default('visible'),
+  status: z.enum(PAGE_STUDIO_PAGE_STATUSES).optional(),
+  headerMode: z.enum(PAGE_STUDIO_SHELL_MODES).optional(),
+  footerMode: z.enum(PAGE_STUDIO_SHELL_MODES).optional(),
   seoTitle: z.string().max(160).default(''),
   seoDescription: z.string().max(320).default(''),
   blocks: z.array(PageStudioBlockSchema).max(60)
@@ -31,7 +51,9 @@ const PageStudioPageSchema = z.object({
 
 export const PageStudioDocumentSchema = z.object({
   schemaVersion: z.literal(1),
-  pages: z.array(PageStudioPageSchema).min(1).max(100)
+  pages: z.array(PageStudioPageSchema).min(1).max(100),
+  homepageId: z.string().uuid().optional(),
+  redirects: z.array(PageStudioRedirectSchema).max(250).optional()
 }).strict().superRefine((document, context) => {
   const ids = new Set<string>()
   const pageById = new Map(document.pages.map(page => [page.id, page]))
@@ -71,6 +93,41 @@ export const PageStudioDocumentSchema = z.object({
   if (homeCount !== 1) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'A document must contain exactly one homepage', path: ['pages'] })
   }
+
+  const homepage = document.homepageId
+    ? pageById.get(document.homepageId)
+    : document.pages.find(page => page.parentId === null && page.slug === '')
+  if (!homepage || homepage.parentId !== null || homepage.slug !== '') {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'The homepage ID must reference the root page at /', path: ['homepageId'] })
+  } else if (homepage.status === 'archived') {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'The homepage cannot be archived', path: ['homepageId'] })
+  }
+
+  const routeFor = (pageId: string): string => {
+    const segments: string[] = []
+    const visited = new Set<string>()
+    let page = pageById.get(pageId)
+    while (page && !visited.has(page.id)) {
+      visited.add(page.id)
+      if (page.slug) segments.unshift(page.slug)
+      page = page.parentId ? pageById.get(page.parentId) : undefined
+    }
+    return segments.length ? `/${segments.join('/')}` : '/'
+  }
+  const pageRoutes = new Set(document.pages.map(page => routeFor(page.id)))
+  const redirectSources = new Set<string>()
+  document.redirects?.forEach((redirect, index) => {
+    if (redirect.fromPath === redirect.toPath) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'A redirect cannot point to itself', path: ['redirects', index, 'toPath'] })
+    }
+    if (redirectSources.has(redirect.fromPath)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Redirect source routes must be unique', path: ['redirects', index, 'fromPath'] })
+    }
+    if (pageRoutes.has(redirect.fromPath)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'A redirect cannot replace an existing page route', path: ['redirects', index, 'fromPath'] })
+    }
+    redirectSources.add(redirect.fromPath)
+  })
 })
 
 export const PageStudioDocumentSaveSchema = z.object({
@@ -80,4 +137,5 @@ export const PageStudioDocumentSaveSchema = z.object({
 
 export type PageStudioBlock = z.infer<typeof PageStudioBlockSchema>
 export type PageStudioPage = z.infer<typeof PageStudioPageSchema>
+export type PageStudioRedirect = z.infer<typeof PageStudioRedirectSchema>
 export type PageStudioDocument = z.infer<typeof PageStudioDocumentSchema>
