@@ -126,6 +126,7 @@ export async function acceptLead(event: H3Event, input: {
     if (reservation) await releaseSubmissionIntentReservation(reservation)
     return intake
   }
+
   if (testRunId && input.trustedConnectorId) {
     if (reservation) {
       await leadCaptureTestRepository.appendServerEvent({
