@@ -45,6 +45,7 @@ interface InventoryDependencies {
     more: number
     requestId?: string
   }>
+  now?: () => Date
 }
 
 const defaultDependencies: InventoryDependencies = {
@@ -88,6 +89,70 @@ const ConversionActionSchema = z.object({
   type: z.string(), category: z.string(), origin: z.string(), primaryForGoal: z.boolean(),
   ownerCustomer: z.string().optional(), countingType: z.string().optional()
 })
+type ConversionAction = z.infer<typeof ConversionActionSchema>
+
+export const GoogleAdsDeliveryClassSchema = z.enum([
+  'website_tag', 'offline_click', 'google_hosted_call', 'google_hosted_local', 'external', 'unknown'
+])
+export const GoogleAdsManagementOwnerSchema = z.enum([
+  'xeroflow', 'gtm', 'google', 'partner', 'external'
+])
+
+const HOSTED_CALL_TYPES = new Set([
+  'CALL_FROM_ADS', 'CALL_FROM_WEBSITE', 'CLICK_TO_CALL', 'PHONE_CALL_LEAD'
+])
+const HOSTED_LOCAL_TYPES = new Set([
+  'LOCAL_ACTIONS', 'STORE_SALES', 'STORE_VISITS'
+])
+const OFFLINE_CLICK_TYPES = new Set([
+  'UPLOAD_CLICKS', 'UPLOAD_CALLS'
+])
+
+/**
+ * Classify a provider action by how evidence reaches Google and who operates
+ * that path. Type and origin are used instead of names so translated or renamed
+ * actions cannot turn a website click into a provider-hosted call.
+ */
+export function classifyGoogleAdsConversionAction(
+  action: Pick<ConversionAction, 'type' | 'origin' | 'category' | 'name'>
+) {
+  const type = action.type.toUpperCase()
+  const origin = action.origin.toUpperCase()
+  if (type === 'THIRD_PARTY' || origin === 'PARTNER') {
+    return { deliveryClass: 'external' as const, managementOwner: 'partner' as const }
+  }
+  if (HOSTED_CALL_TYPES.has(type)) {
+    return { deliveryClass: 'google_hosted_call' as const, managementOwner: 'google' as const }
+  }
+  if (HOSTED_LOCAL_TYPES.has(type) || (origin === 'GOOGLE_HOSTED' && action.category.toUpperCase().includes('LOCAL'))) {
+    return { deliveryClass: 'google_hosted_local' as const, managementOwner: 'google' as const }
+  }
+  if (OFFLINE_CLICK_TYPES.has(type) || origin === 'IMPORT') {
+    return { deliveryClass: 'offline_click' as const, managementOwner: 'xeroflow' as const }
+  }
+  if (origin === 'WEBSITE') {
+    return { deliveryClass: 'website_tag' as const, managementOwner: 'gtm' as const }
+  }
+  if (origin === 'GOOGLE_HOSTED') {
+    return { deliveryClass: 'external' as const, managementOwner: 'google' as const }
+  }
+  if (origin === 'APP') {
+    return { deliveryClass: 'external' as const, managementOwner: 'external' as const }
+  }
+  return { deliveryClass: 'unknown' as const, managementOwner: 'external' as const }
+}
+
+function normalizeConversionAction(action: ConversionAction, providerSyncedAt: string) {
+  return {
+    ...action,
+    ...classifyGoogleAdsConversionAction(action),
+    primaryState: action.primaryForGoal ? 'primary' as const : 'secondary' as const,
+    goalBiddability: action.primaryForGoal ? 'unknown' as const : 'not_biddable' as const,
+    mappingState: 'unmapped' as const,
+    providerSyncedAt,
+    lastEvidenceAt: null
+  }
+}
 const CriterionSchema = z.object({
   resourceName: z.string(), campaign: z.string().optional(), adGroup: z.string().optional(),
   status: z.string().optional(), type: z.string(), negative: z.boolean().default(false),
@@ -236,7 +301,11 @@ FROM ad_group_criterion${where(filters)}`
   conversion_action.origin, conversion_action.primary_for_goal, conversion_action.owner_customer,
   conversion_action.counting_type
 FROM conversion_action${where(statusFilter('conversion_action.status', input.status))}`
-    normalize = row => ConversionActionSchema.parse(z.object({ conversionAction: z.unknown() }).parse(row).conversionAction)
+    const providerSyncedAt = (dependencies.now ?? (() => new Date()))().toISOString()
+    normalize = row => normalizeConversionAction(
+      ConversionActionSchema.parse(z.object({ conversionAction: z.unknown() }).parse(row).conversionAction),
+      providerSyncedAt
+    )
   }
   const result = await dependencies.query({
     customerId: input.customerId, auth: input.auth, maxRows: input.maxResults, query

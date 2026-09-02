@@ -1,10 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
-import { listGoogleAdsInventory } from '~~/server/utils/googleAds/inventory'
+import {
+  classifyGoogleAdsConversionAction,
+  listGoogleAdsInventory
+} from '~~/server/utils/googleAds/inventory'
 
 const auth = { accessToken: 'access', developerToken: 'developer', loginCustomerId: '9999999999' }
 const customerId = '1234567890'
 
 describe('Google Ads typed inventory reads', () => {
+  it.each([
+    [{ type: 'WEBPAGE', origin: 'WEBSITE', category: 'PHONE_CALL_LEAD', name: 'Phone click' }, 'website_tag', 'gtm'],
+    [{ type: 'CLICK_TO_CALL', origin: 'GOOGLE_HOSTED', category: 'PHONE_CALL_LEAD', name: 'Clicks to call' }, 'google_hosted_call', 'google'],
+    [{ type: 'STORE_VISITS', origin: 'GOOGLE_HOSTED', category: 'STORE_VISIT', name: 'Store visits' }, 'google_hosted_local', 'google'],
+    [{ type: 'UPLOAD_CLICKS', origin: 'IMPORT', category: 'SUBMIT_LEAD_FORM', name: 'CRM qualified lead' }, 'offline_click', 'xeroflow'],
+    [{ type: 'THIRD_PARTY', origin: 'WEBSITE', category: 'SUBMIT_LEAD_FORM', name: 'Partner lead' }, 'external', 'partner']
+  ] as const)('classifies $name without conflating delivery channels', (action, deliveryClass, managementOwner) => {
+    expect(classifyGoogleAdsConversionAction(action)).toMatchObject({ deliveryClass, managementOwner })
+  })
+
   it.each([
     ['campaign', 'campaign', { campaign: {
       resourceName: `customers/${customerId}/campaigns/60`, id: '60', name: 'Northern GAC',
@@ -54,6 +67,40 @@ describe('Google Ads typed inventory reads', () => {
     expect(JSON.stringify(result.items)).toContain(expectedValue)
     expect(query).toHaveBeenCalledWith(expect.objectContaining({ customerId, auth, maxRows: 25 }))
     expect(query.mock.calls[0]?.[0].query).toContain(`FROM ${from}`)
+  })
+
+  it('returns registry metadata for conversion actions', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ conversionAction: {
+        resourceName: `customers/${customerId}/conversionActions/120`,
+        id: '120',
+        name: 'Phone click',
+        status: 'ENABLED',
+        type: 'WEBPAGE',
+        category: 'PHONE_CALL_LEAD',
+        origin: 'WEBSITE',
+        primaryForGoal: false,
+        ownerCustomer: `customers/${customerId}`,
+        countingType: 'ONE_PER_CLICK'
+      } }],
+      more: 0,
+      requestId: 'actions-1'
+    })
+
+    const result = await listGoogleAdsInventory({
+      kind: 'conversion_action', customerId, auth, maxResults: 25, status: 'ALL'
+    }, { query, now: () => new Date('2026-09-02T05:00:00.000Z') })
+
+    expect(result.items).toEqual([expect.objectContaining({
+      id: '120',
+      deliveryClass: 'website_tag',
+      managementOwner: 'gtm',
+      primaryState: 'secondary',
+      goalBiddability: 'not_biddable',
+      mappingState: 'unmapped',
+      providerSyncedAt: '2026-09-02T05:00:00.000Z',
+      lastEvidenceAt: null
+    })])
   })
 
   it('lists campaign and ad-group targeting as two typed bounded inventories', async () => {
