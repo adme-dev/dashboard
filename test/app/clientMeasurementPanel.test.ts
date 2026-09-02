@@ -32,6 +32,11 @@ const stubs = {
     emits: ['update:modelValue'],
     template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   },
+  UInput: {
+    props: ['modelValue', 'placeholder'],
+    emits: ['update:modelValue'],
+    template: '<input :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', $event.target.value)">'
+  },
   UCheckbox: {
     props: ['modelValue', 'label'],
     emits: ['update:modelValue'],
@@ -273,6 +278,62 @@ function responseFor(request: string, options: { live?: boolean } = {}) {
     }
   }
 
+  if (request.includes('/reconciliation')) {
+    return {
+      accountResolution: {
+        status: 'resolved', resolutionKind: 'direct', clientId: CLIENT_ID,
+        canonicalName: 'Northern Motor Group', matchedName: 'Northern GAC', matchKind: 'alias',
+        accounts: [{
+          connectionId: '77777777-7777-4777-8777-777777777777',
+          operatingCustomerId: '7583977544', loginCustomerId: '6692975433',
+          accountRole: 'dealer', connectionStatus: 'active', connectionAccountName: 'Northern GAC'
+        }]
+      },
+      reconciliation: {
+        clientId: CLIENT_ID,
+        expectedAccountCustomerId: '7583977544',
+        summary: { destination_not_configured: 1, not_observed: 7 },
+        items: [{
+          identity: { canonicalEventName: 'phone_click', enquiryType: null },
+          state: 'destination_not_configured',
+          diagnostic: 'Phone clicks captured; no Google Ads website action is mapped.',
+          known: ['Captured events: 12'], inferred: [],
+          blockers: ['destination_not_configured'], capturedCount: 12,
+          latestEvidenceAt: '2026-09-02T03:30:00.000Z', destination: null,
+          stages: { deliveryAttempted: 0, delivered: 0, failed: 0, providerAccepted: 0, providerReportingObserved: 0 }
+        }]
+      }
+    }
+  }
+
+  if (request.endsWith('/freshness')) {
+    return {
+      clientId: CLIENT_ID,
+      streams: [
+        { stream: 'spend', status: 'fresh', metricsAvailable: true, reason: 'spend data is fresh.', lastSuccessAt: '2026-09-02T04:00:00.000Z' },
+        { stream: 'campaign_conversions', status: 'syncing', metricsAvailable: false, reason: 'Conversion totals unavailable while historical resync is pending.', lastSuccessAt: '2026-09-02T03:00:00.000Z' },
+        { stream: 'conversion_actions', status: 'fresh', metricsAvailable: true, reason: 'conversion actions data is fresh.', lastSuccessAt: '2026-09-02T04:00:00.000Z' },
+        { stream: 'website_events', status: 'fresh', metricsAvailable: true, reason: 'website events data is fresh.', lastSuccessAt: '2026-09-02T03:30:00.000Z' },
+        { stream: 'provider_calls', status: 'fresh', metricsAvailable: true, reason: 'provider calls data is fresh.', lastSuccessAt: '2026-09-02T04:00:00.000Z' }
+      ]
+    }
+  }
+
+  if (request.includes('/api/agency/analytics/google-calls?')) {
+    return {
+      health: {
+        status: 'success_empty', outcome: 'sync successful; no calls returned',
+        verifiedCallTracking: false, lastSuccessAt: '2026-09-02T04:00:00.000Z'
+      },
+      layers: {
+        websitePhoneClicks: 12, googleHostedCallInteractions: 0,
+        connectedCalls: 0, qualifiedCalls: 0,
+        lastWebsiteEvidenceAt: '2026-09-02T03:30:00.000Z',
+        lastProviderCallSyncAt: '2026-09-02T04:00:00.000Z'
+      }
+    }
+  }
+
   throw new Error(`Unexpected request: ${request}`)
 }
 
@@ -291,7 +352,10 @@ describe('ClientMeasurementPanel', () => {
         `/api/agency/measurement/clients/${CLIENT_ID}`,
         `/api/agency/measurement/clients/${CLIENT_ID}/readiness`,
         `/api/agency/measurement/clients/${CLIENT_ID}/destinations`,
-        `/api/agency/measurement/clients/${CLIENT_ID}/audit`
+        `/api/agency/measurement/clients/${CLIENT_ID}/audit`,
+        `/api/agency/measurement/clients/${CLIENT_ID}/reconciliation`,
+        `/api/agency/measurement/clients/${CLIENT_ID}/freshness`,
+        expect.stringContaining(`/api/agency/analytics/google-calls?`)
       ])
 
       expect(host.textContent).toContain('Zero is the canonical configuration and delivery-health source')
@@ -315,6 +379,14 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Document externally managed Google delivery')
       expect(host.textContent).toContain('Connected account linked')
       expect(host.textContent).toContain('Credential reference configured')
+      expect(host.textContent).toContain('Northern GAC')
+      expect(host.textContent).toContain('7583977544')
+      expect(host.textContent).toContain('Website phone clicks')
+      expect(host.textContent).toContain('12')
+      expect(host.textContent).toContain('sync successful; no calls returned')
+      expect(host.textContent).toContain('Conversion totals unavailable while historical resync is pending')
+      expect(host.textContent).toContain('Phone clicks captured; no Google Ads website action is mapped')
+      expect(host.querySelector('[data-testid="measurement-account-search"]')).not.toBeNull()
       expect(host.querySelector('[data-testid="measurement-profile-form"]')).not.toBeNull()
       expect(host.textContent).not.toContain('cloudflare/measurement')
       expect(host.textContent).not.toContain('access token')
@@ -339,6 +411,24 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).not.toContain('Measurement data unavailable')
     } finally {
       app.unmount()
+    }
+  })
+
+  it('resolves an exact dealership alias without assuming group aggregation', async () => {
+    const fetchMock = vi.fn(async (request: string) => responseFor(request))
+    const { app, host } = mountPanel(fetchMock, { clientName: 'Northern GAC' })
+    await flushUi()
+
+    try {
+      expect(fetchMock.mock.calls.map(call => String(call[0]))).toContain(
+        `/api/agency/measurement/clients/${CLIENT_ID}/reconciliation?accountQuery=Northern%20GAC`
+      )
+      expect(host.querySelector<HTMLInputElement>('[data-testid="measurement-account-search"]')?.value)
+        .toBe('Northern GAC')
+      expect(host.textContent).toContain('Group aggregation is never assumed')
+    } finally {
+      app.unmount()
+      host.remove()
     }
   })
 

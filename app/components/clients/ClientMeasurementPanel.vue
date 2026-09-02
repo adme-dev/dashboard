@@ -4,9 +4,12 @@ import ClientMeasurementActivationControls from '~/components/clients/ClientMeas
 import type {
   ClientMeasurementProfile,
   MeasurementAuditEntry,
+  MeasurementCallSummary,
   MeasurementCapability,
   MeasurementCapabilityStatus,
   MeasurementDestination,
+  MeasurementFreshnessResponse,
+  MeasurementReconciliationResponse,
   MeasurementReadinessStatus,
   MeasurementReadinessSummary,
   PaginatedMeasurementResponse
@@ -20,6 +23,7 @@ import {
 
 const props = defineProps<{
   clientId: string
+  clientName?: string
   canConfigure?: boolean
   canOwnerOverride?: boolean
 }>()
@@ -41,6 +45,10 @@ const profile = ref<ClientMeasurementProfile | null>(null)
 const readiness = ref<MeasurementReadinessSummary | null>(null)
 const destinations = ref<MeasurementDestination[]>([])
 const auditEntries = ref<MeasurementAuditEntry[]>([])
+const reconciliation = ref<MeasurementReconciliationResponse | null>(null)
+const freshness = ref<MeasurementFreshnessResponse | null>(null)
+const callSummary = ref<MeasurementCallSummary | null>(null)
+const accountSearch = ref(props.clientName ?? '')
 const pending = ref(true)
 const loadError = ref<string | null>(null)
 const showDestinationEditor = ref(false)
@@ -48,6 +56,7 @@ const testingDestinationId = ref<string | null>(null)
 const readinessUnavailable = ref(false)
 const destinationsUnavailable = ref(false)
 const auditUnavailable = ref(false)
+const operationsUnavailable = ref(false)
 const operationNotice = ref<{ tone: 'success' | 'warning', message: string } | null>(null)
 
 const titleCase = (value: string) => value
@@ -110,6 +119,23 @@ function statusColor(status: MeasurementCapabilityStatus | MeasurementReadinessS
   if (status === 'blocked') return 'error' as const
   if (status === 'configured' || status === 'detected') return 'info' as const
   return 'neutral' as const
+}
+
+function operationStatusColor(status: string) {
+  if (['fresh', 'delivered', 'provider_accepted', 'healthy'].includes(status)) return 'success' as const
+  if (['stale', 'syncing', 'pending', 'provider_reporting_pending', 'success_empty'].includes(status)) return 'warning' as const
+  if (['failed', 'destination_not_configured', 'consent_denied'].includes(status)) return 'error' as const
+  return 'neutral' as const
+}
+
+function callWindow() {
+  const end = new Date()
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - 30)
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: end.toISOString().slice(0, 10)
+  }
 }
 
 function formatDateTime(value: string | null) {
@@ -202,13 +228,31 @@ async function refreshMeasurement() {
   readinessUnavailable.value = false
   destinationsUnavailable.value = false
   auditUnavailable.value = false
+  operationsUnavailable.value = false
 
   const basePath = `/api/agency/measurement/clients/${props.clientId}`
-  const [profileResult, readinessResult, destinationResult, auditResult] = await Promise.allSettled([
+  const accountQuery = accountSearch.value.trim()
+    ? `?accountQuery=${encodeURIComponent(accountSearch.value.trim())}`
+    : ''
+  const calls = callWindow()
+  const [
+    profileResult,
+    readinessResult,
+    destinationResult,
+    auditResult,
+    reconciliationResult,
+    freshnessResult,
+    callResult
+  ] = await Promise.allSettled([
     apiFetch<{ profile: ClientMeasurementProfile }>(basePath),
     apiFetch<MeasurementReadinessSummary>(`${basePath}/readiness`),
     apiFetch<PaginatedMeasurementResponse<MeasurementDestination>>(`${basePath}/destinations`),
-    apiFetch<PaginatedMeasurementResponse<MeasurementAuditEntry>>(`${basePath}/audit`)
+    apiFetch<PaginatedMeasurementResponse<MeasurementAuditEntry>>(`${basePath}/audit`),
+    apiFetch<MeasurementReconciliationResponse>(`${basePath}/reconciliation${accountQuery}`),
+    apiFetch<MeasurementFreshnessResponse>(`${basePath}/freshness`),
+    apiFetch<MeasurementCallSummary>(
+      `/api/agency/analytics/google-calls?startDate=${calls.startDate}&endDate=${calls.endDate}&clientId=${props.clientId}`
+    )
   ])
 
   if (profileResult.status === 'fulfilled') {
@@ -239,7 +283,19 @@ async function refreshMeasurement() {
     auditUnavailable.value = true
   }
 
+  reconciliation.value = reconciliationResult.status === 'fulfilled'
+    ? reconciliationResult.value
+    : null
+  freshness.value = freshnessResult.status === 'fulfilled' ? freshnessResult.value : null
+  callSummary.value = callResult.status === 'fulfilled' ? callResult.value : null
+  operationsUnavailable.value = [reconciliationResult, freshnessResult, callResult]
+    .some(result => result.status === 'rejected')
+
   pending.value = false
+}
+
+function applyAccountSearch() {
+  void refreshMeasurement()
 }
 
 function mutationNotice(warnings: Array<{ code: string }>) {
@@ -549,6 +605,199 @@ void refreshMeasurement()
       :can-configure="canConfigure ?? false"
       @saved="handleProfileSaved"
     />
+
+    <section
+      v-if="!pending && !loadError && profile"
+      class="space-y-4"
+      data-testid="measurement-operations"
+    >
+      <div>
+        <p class="text-xs font-medium uppercase tracking-[0.16em] text-primary">
+          Measurement operations
+        </p>
+        <h3 class="mt-1 text-lg font-semibold text-highlighted">
+          Account, evidence, calls and freshness
+        </h3>
+        <p class="mt-1 text-sm text-muted">
+          Each layer keeps its own evidence and timestamp. A click is never presented as a connected call.
+        </p>
+      </div>
+
+      <UAlert
+        v-if="operationsUnavailable"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        title="Some operational evidence is unavailable"
+        description="Configuration remains visible. Retry before making measurement or bidding decisions."
+      />
+
+      <div class="grid gap-4 lg:grid-cols-2">
+        <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-dimmed">
+                Resolved Google Ads account
+              </p>
+              <h4 class="mt-1 font-semibold text-highlighted">
+                {{ reconciliation?.accountResolution?.status === 'resolved'
+                  ? reconciliation.accountResolution.matchedName
+                  : 'Account mapping not resolved' }}
+              </h4>
+            </div>
+            <UBadge
+              :color="reconciliation?.accountResolution?.status === 'resolved' ? 'success' : 'warning'"
+              variant="subtle"
+            >
+              {{ titleCase(reconciliation?.accountResolution?.status ?? 'unavailable') }}
+            </UBadge>
+          </div>
+          <dl
+            v-if="reconciliation?.accountResolution?.accounts?.[0]"
+            class="mt-4 grid grid-cols-2 gap-3 text-sm"
+          >
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Operating customer
+              </dt>
+              <dd class="mt-1 font-mono font-medium text-highlighted">
+                {{ reconciliation.accountResolution.accounts[0].operatingCustomerId }}
+              </dd>
+            </div>
+            <div class="rounded-lg bg-elevated p-3">
+              <dt class="text-xs text-muted">
+                Account role
+              </dt>
+              <dd class="mt-1 font-medium text-highlighted">
+                {{ titleCase(reconciliation.accountResolution.accounts[0].accountRole) }}
+              </dd>
+            </div>
+          </dl>
+          <form class="mt-4 border-t border-default pt-4" @submit.prevent="applyAccountSearch">
+            <UFormField
+              label="Dealership or group account"
+              help="Use the exact dealership alias. Group aggregation is never assumed."
+            >
+              <div class="flex flex-col gap-2 sm:flex-row">
+                <UInput
+                  v-model="accountSearch"
+                  data-testid="measurement-account-search"
+                  class="w-full"
+                  placeholder="e.g. Northern GAC"
+                />
+                <UButton
+                  type="submit"
+                  color="neutral"
+                  variant="outline"
+                  label="Resolve account"
+                  :disabled="!accountSearch.trim()"
+                />
+              </div>
+            </UFormField>
+          </form>
+        </article>
+
+        <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-dimmed">
+                Telephone evidence · last 30 days
+              </p>
+              <h4 class="mt-1 font-semibold text-highlighted">
+                Four separate layers
+              </h4>
+            </div>
+            <UBadge
+              :color="operationStatusColor(callSummary?.health.status ?? 'unavailable')"
+              variant="subtle"
+            >
+              {{ titleCase(callSummary?.health.status ?? 'unavailable') }}
+            </UBadge>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-3">
+            <div
+              v-for="item in [
+                { label: 'Website phone clicks', value: callSummary?.layers.websitePhoneClicks ?? 0 },
+                { label: 'Google-hosted interactions', value: callSummary?.layers.googleHostedCallInteractions ?? 0 },
+                { label: 'Connected calls', value: callSummary?.layers.connectedCalls ?? 0 },
+                { label: 'Qualified calls', value: callSummary?.layers.qualifiedCalls ?? 0 }
+              ]"
+              :key="item.label"
+              class="rounded-lg bg-elevated p-3"
+            >
+              <dt class="text-xs text-muted">
+                {{ item.label }}
+              </dt>
+              <dd class="mt-1 text-xl font-semibold tabular-nums text-highlighted">
+                {{ item.value }}
+              </dd>
+            </div>
+          </dl>
+          <p class="mt-3 text-xs text-muted">
+            {{ callSummary?.health.outcome ?? 'Call sync status unavailable' }}
+          </p>
+        </article>
+      </div>
+
+      <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+        <div class="flex items-center justify-between gap-3">
+          <h4 class="font-semibold text-highlighted">
+            Independent data freshness
+          </h4>
+          <span class="text-xs text-muted">No shared “last updated” shortcut</span>
+        </div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div
+            v-for="stream in freshness?.streams ?? []"
+            :key="stream.stream"
+            class="rounded-lg border border-default bg-elevated/40 p-3"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs font-medium text-highlighted">
+                {{ titleCase(stream.stream) }}
+              </p>
+              <UBadge :color="operationStatusColor(stream.status)" variant="subtle">
+                {{ titleCase(stream.status) }}
+              </UBadge>
+            </div>
+            <p class="mt-2 text-xs leading-5 text-muted">
+              {{ stream.reason }}
+            </p>
+            <p class="mt-2 text-xs text-dimmed">
+              {{ formatDateTime(stream.lastSuccessAt) }}
+            </p>
+          </div>
+        </div>
+      </article>
+
+      <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+        <div class="flex items-center justify-between gap-3">
+          <h4 class="font-semibold text-highlighted">
+            Website conversion reconciliation
+          </h4>
+          <span class="text-xs text-muted">Captured → consent → destination → delivery → provider</span>
+        </div>
+        <div class="mt-4 grid gap-3 lg:grid-cols-2">
+          <div
+            v-for="item in reconciliation?.reconciliation.items ?? []"
+            :key="`${item.identity.canonicalEventName}:${item.identity.enquiryType ?? 'none'}`"
+            class="rounded-lg border border-default bg-elevated/40 p-4"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-sm font-medium text-highlighted">
+                {{ titleCase(item.identity.enquiryType ?? item.identity.canonicalEventName) }}
+              </p>
+              <UBadge :color="operationStatusColor(item.state)" variant="subtle">
+                {{ titleCase(item.state) }}
+              </UBadge>
+            </div>
+            <p class="mt-2 text-xs leading-5 text-muted">
+              {{ item.diagnostic }}
+            </p>
+          </div>
+        </div>
+      </article>
+    </section>
 
     <div v-if="!pending && !loadError && profile" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div class="space-y-4">

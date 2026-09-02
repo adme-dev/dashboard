@@ -129,6 +129,65 @@ export interface PaginatedMeasurementResponse<T> {
   }
 }
 
+export interface MeasurementReconciliationItem {
+  identity: { canonicalEventName: string, enquiryType: string | null }
+  state: 'not_observed' | 'captured' | 'consent_denied' | 'destination_not_configured' | 'pending' | 'delivered' | 'provider_accepted' | 'provider_reporting_pending' | 'failed' | 'stale'
+  diagnostic: string
+  known: string[]
+  inferred: string[]
+  blockers: string[]
+  capturedCount: number
+  latestEvidenceAt: string | null
+}
+
+export interface MeasurementReconciliationResponse {
+  accountResolution: null | {
+    status: string
+    matchedName?: string
+    resolutionKind?: string
+    accounts?: Array<{
+      connectionId: string
+      operatingCustomerId: string
+      loginCustomerId: string | null
+      accountRole: string
+    }>
+  }
+  reconciliation: {
+    clientId: string
+    expectedAccountCustomerId: string | null
+    summary: Record<string, number>
+    items: MeasurementReconciliationItem[]
+  }
+}
+
+export interface MeasurementFreshnessResponse {
+  clientId: string
+  streams: Array<{
+    stream: 'spend' | 'campaign_conversions' | 'conversion_actions' | 'website_events' | 'provider_calls'
+    status: 'fresh' | 'stale' | 'syncing' | 'failed' | 'unavailable'
+    metricsAvailable: boolean
+    reason: string
+    lastSuccessAt: string | null
+  }>
+}
+
+export interface MeasurementCallSummary {
+  health: {
+    status: string
+    outcome: string
+    verifiedCallTracking: boolean
+    lastSuccessAt: string | null
+  }
+  layers: {
+    websitePhoneClicks: number
+    googleHostedCallInteractions: number
+    connectedCalls: number
+    qualifiedCalls: number
+    lastWebsiteEvidenceAt: string | null
+    lastProviderCallSyncAt: string | null
+  }
+}
+
 export interface PortalMeasurementSignalSummary {
   status: MeasurementCapabilityStatus
   owners: Array<'zero' | 'gtm' | 'partner' | 'external'>
