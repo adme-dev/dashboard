@@ -403,42 +403,75 @@ const defaultDeps: GoogleCallSyncDeps = {
   execute
 }
 
-async function noteSyncAttempt(deps: GoogleCallSyncDeps, connectionId: string): Promise<void> {
+async function noteSyncAttempt(
+  deps: GoogleCallSyncDeps,
+  connectionId: string,
+  startDate: string,
+  endDate: string
+): Promise<void> {
   await deps.execute(
-    `INSERT INTO google_ads_call_sync_state (connection_id, last_attempt_at, updated_at)
-     VALUES ($1, NOW(), NOW())
+    `INSERT INTO google_ads_call_sync_state (
+       connection_id, last_attempt_at, last_requested_start_date,
+       last_requested_end_date, current_job_state, updated_at
+     ) VALUES ($1, NOW(), $2::date, $3::date, 'running', NOW())
      ON CONFLICT (connection_id) DO UPDATE SET
        last_attempt_at = NOW(),
+       last_requested_start_date = EXCLUDED.last_requested_start_date,
+       last_requested_end_date = EXCLUDED.last_requested_end_date,
+       current_job_state = 'running',
        updated_at = NOW()`,
-    [connectionId]
+    [connectionId, startDate, endDate]
   )
 }
 
-async function noteSyncSuccess(deps: GoogleCallSyncDeps, connectionId: string, rows: number): Promise<void> {
+async function noteSyncSuccess(
+  deps: GoogleCallSyncDeps,
+  connectionId: string,
+  rows: number,
+  startDate: string,
+  endDate: string
+): Promise<void> {
   await deps.execute(
     `INSERT INTO google_ads_call_sync_state (
-       connection_id, last_attempt_at, last_success_at, last_row_count, last_error, updated_at
-     ) VALUES ($1, NOW(), NOW(), $2, NULL, NOW())
+       connection_id, last_attempt_at, last_success_at, last_row_count, last_error,
+       last_requested_start_date, last_requested_end_date, covered_start_date,
+       covered_end_date, current_job_state, updated_at
+     ) VALUES ($1, NOW(), NOW(), $2, NULL, $3::date, $4::date, $3::date, $4::date, 'completed', NOW())
      ON CONFLICT (connection_id) DO UPDATE SET
        last_attempt_at = NOW(),
        last_success_at = NOW(),
        last_row_count = EXCLUDED.last_row_count,
        last_error = NULL,
+       last_requested_start_date = EXCLUDED.last_requested_start_date,
+       last_requested_end_date = EXCLUDED.last_requested_end_date,
+       covered_start_date = EXCLUDED.covered_start_date,
+       covered_end_date = EXCLUDED.covered_end_date,
+       current_job_state = 'completed',
        updated_at = NOW()`,
-    [connectionId, rows]
+    [connectionId, rows, startDate, endDate]
   )
 }
 
-async function noteSyncFailure(deps: GoogleCallSyncDeps, connectionId: string, message: string): Promise<void> {
+async function noteSyncFailure(
+  deps: GoogleCallSyncDeps,
+  connectionId: string,
+  message: string,
+  startDate: string,
+  endDate: string
+): Promise<void> {
   await deps.execute(
     `INSERT INTO google_ads_call_sync_state (
-       connection_id, last_attempt_at, last_error, updated_at
-     ) VALUES ($1, NOW(), $2, NOW())
+       connection_id, last_attempt_at, last_error, last_requested_start_date,
+       last_requested_end_date, current_job_state, updated_at
+     ) VALUES ($1, NOW(), $2, $3::date, $4::date, 'failed', NOW())
      ON CONFLICT (connection_id) DO UPDATE SET
        last_attempt_at = NOW(),
        last_error = EXCLUDED.last_error,
+       last_requested_start_date = EXCLUDED.last_requested_start_date,
+       last_requested_end_date = EXCLUDED.last_requested_end_date,
+       current_job_state = 'failed',
        updated_at = NOW()`,
-    [connectionId, message.slice(0, 2000)]
+    [connectionId, message.slice(0, 2000), startDate, endDate]
   )
 }
 
@@ -476,7 +509,7 @@ export async function syncGoogleAdsCalls(options: {
   // https://developers.google.com/google-ads/api/docs/best-practices/quotas#search_requests
   async function syncConnection(connection: GoogleCallConnection): Promise<void> {
     try {
-      await noteSyncAttempt(deps, connection.id)
+      await noteSyncAttempt(deps, connection.id, startDate, endDate)
       const credential = await deps.resolveCredential(connection)
       let accessToken = credential.accessToken
       if (
@@ -544,13 +577,13 @@ export async function syncGoogleAdsCalls(options: {
         const statement = buildGoogleCallUpsert(calls.slice(offset, offset + GOOGLE_CALL_UPSERT_CHUNK))
         await deps.execute(statement.text, statement.values)
       }
-      await noteSyncSuccess(deps, connection.id, calls.length)
+      await noteSyncSuccess(deps, connection.id, calls.length, startDate, endDate)
       result.connectionsSynced++
       result.callsUpserted += calls.length
     } catch (error) {
       const message = `${connection.account_name || connection.account_id}: ${syncErrorMessage(error)}`
       result.errors.push(message)
-      await noteSyncFailure(deps, connection.id, message)
+      await noteSyncFailure(deps, connection.id, message, startDate, endDate)
     }
   }
 
