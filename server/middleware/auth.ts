@@ -44,6 +44,10 @@ const publicRoutes = [
   // sites have no session cookie; tenancy is enforced by the embedded write key
   // (resolveSiteByWriteKey) + soft Origin allowlist inside the handler.
   '/api/public/track',
+  // Dealer-platform measurement evidence is machine-to-machine and has no staff
+  // session. The handler independently enforces an endpoint binding, HMAC
+  // signature, replay window, nonce, rate limit, consent and delivery policy.
+  '/api/public/measurement-evidence/',
   // Public QR redirect (GET /q/:code proxies to /api/q/:code) — anonymous
   // scanners have no session cookie; tenancy is enforced inside the handler
   // by resolving the code itself, not by auth.

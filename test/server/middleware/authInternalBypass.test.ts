@@ -84,6 +84,18 @@ describe('auth middleware internal bearer endpoints', () => {
     expect(validateSession).not.toHaveBeenCalled()
   })
 
+  it('lets dealer measurement evidence reach its HMAC guard', async () => {
+    await expect(handler(fakeEvent('/api/public/measurement-evidence/endpoint-key'))).resolves.toBeUndefined()
+    expect(validateSession).not.toHaveBeenCalled()
+  })
+
+  it('does not broaden the dealer evidence bypass to sibling public routes', async () => {
+    await expect(handler(fakeEvent('/api/public/measurement-evidence-private/endpoint-key'))).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'Authentication required'
+    })
+  })
+
   it('lets a Banner Studio asset capability reach its inline HMAC guard', async () => {
     await expect(handler(fakeEvent('/api/public/banner-assets/v1.asset.signature'))).resolves.toBeUndefined()
     expect(validateSession).not.toHaveBeenCalled()
