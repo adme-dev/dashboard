@@ -10,16 +10,16 @@ describe('Page Studio workspace navigation', () => {
     expect(layout).toContain('hasPermission')
     expect(layout).toContain(`hasPermission('PAGE_STUDIO_VIEW')`)
     expect(layout).toContain(`label: 'Websites'`)
-    expect(layout).toContain(`label: 'Page Studio'`)
+    expect(layout).toContain(`label: 'Demo Sites'`)
     expect(layout).toContain(`to: '/agency/page-studio'`)
   })
 
-  it('shows Page Studio in the client portal only when the user has an assigned site', () => {
+  it('shows Websites in the client portal only when the user has an assigned site', () => {
     const layout = read('app/layouts/portal.vue')
 
     expect(layout).toContain(`'/api/portal/page-studio/sites'`)
     expect(layout).toContain('pageStudioNavigation.value.total > 0')
-    expect(layout).toContain(`label: 'Page Studio'`)
+    expect(layout).toContain(`label: 'Websites'`)
     expect(layout).toContain(`to: '/portal/page-studio'`)
   })
 
