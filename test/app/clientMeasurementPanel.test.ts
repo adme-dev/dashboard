@@ -334,6 +334,28 @@ function responseFor(request: string, options: { live?: boolean } = {}) {
     }
   }
 
+  if (request.includes('/google-conversion-actions?') && request.includes('mode=registry')) {
+    return {
+      connection: { id: '77777777-7777-4777-8777-777777777777', accountId: '7583977544', accountName: 'Northern GAC' },
+      items: [
+        {
+          id: '901', resourceName: 'customers/7583977544/conversionActions/901', name: 'Website phone click',
+          status: 'ENABLED', type: 'WEBPAGE', category: 'PHONE_CALL_LEAD', origin: 'WEBSITE',
+          primaryForGoal: false, deliveryClass: 'website_tag', managementOwner: 'gtm',
+          primaryState: 'secondary', goalBiddability: 'not_biddable', mappingState: 'unmapped',
+          providerSyncedAt: '2026-09-02T04:00:00.000Z', lastEvidenceAt: null
+        },
+        {
+          id: '902', resourceName: 'customers/7583977544/conversionActions/902', name: 'Clicks to call',
+          status: 'ENABLED', type: 'CLICK_TO_CALL', category: 'PHONE_CALL_LEAD', origin: 'GOOGLE_HOSTED',
+          primaryForGoal: true, deliveryClass: 'google_hosted_call', managementOwner: 'google',
+          primaryState: 'primary', goalBiddability: 'biddable', mappingState: 'unmapped',
+          providerSyncedAt: '2026-09-02T04:00:00.000Z', lastEvidenceAt: null
+        }
+      ]
+    }
+  }
+
   throw new Error(`Unexpected request: ${request}`)
 }
 
@@ -355,7 +377,8 @@ describe('ClientMeasurementPanel', () => {
         `/api/agency/measurement/clients/${CLIENT_ID}/audit`,
         `/api/agency/measurement/clients/${CLIENT_ID}/reconciliation`,
         `/api/agency/measurement/clients/${CLIENT_ID}/freshness`,
-        expect.stringContaining(`/api/agency/analytics/google-calls?`)
+        expect.stringContaining(`/api/agency/analytics/google-calls?`),
+        expect.stringContaining(`/google-conversion-actions?connectionId=77777777-7777-4777-8777-777777777777&mode=registry`)
       ])
 
       expect(host.textContent).toContain('Zero is the canonical configuration and delivery-health source')
@@ -384,6 +407,10 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('6692975433')
       expect(host.textContent).toContain('77777777-7777-4777-8777-777777777777')
       expect(host.textContent).toContain('Direct · Alias')
+      expect(host.textContent).toContain('Website phone click')
+      expect(host.textContent).toContain('Website Tag')
+      expect(host.textContent).toContain('Clicks to call')
+      expect(host.textContent).toContain('Google Hosted Call')
       expect(host.textContent).toContain('Website phone clicks')
       expect(host.textContent).toContain('12')
       expect(host.textContent).toContain('sync successful; no calls returned')

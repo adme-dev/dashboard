@@ -35,6 +35,23 @@ interface AttestationResponse {
   capabilities: Array<{ mode: string, status: AttestationStatus, blockingReason: string | null }>
 }
 
+interface ClassifiedGoogleConversionAction {
+  id: string
+  resourceName: string
+  name: string
+  status: string
+  type: string
+  category: string
+  origin: string
+  deliveryClass: string
+  managementOwner: string
+  primaryState: string
+  goalBiddability: string
+  mappingState: string
+  providerSyncedAt: string
+  lastEvidenceAt: string | null
+}
+
 const toast = useToast()
 const apiFetch = $fetch as <T>(request: string) => Promise<T>
 const apiPost = $fetch as <T>(
@@ -48,6 +65,7 @@ const auditEntries = ref<MeasurementAuditEntry[]>([])
 const reconciliation = ref<MeasurementReconciliationResponse | null>(null)
 const freshness = ref<MeasurementFreshnessResponse | null>(null)
 const callSummary = ref<MeasurementCallSummary | null>(null)
+const conversionActions = ref<ClassifiedGoogleConversionAction[]>([])
 const accountSearch = ref(props.clientName ?? '')
 const pending = ref(true)
 const loadError = ref<string | null>(null)
@@ -290,6 +308,21 @@ async function refreshMeasurement() {
   callSummary.value = callResult.status === 'fulfilled' ? callResult.value : null
   operationsUnavailable.value = [reconciliationResult, freshnessResult, callResult]
     .some(result => result.status === 'rejected')
+
+  conversionActions.value = []
+  const resolvedConnectionId = reconciliation.value?.accountResolution?.status === 'resolved'
+    ? reconciliation.value.accountResolution.accounts?.[0]?.connectionId
+    : null
+  if (resolvedConnectionId) {
+    try {
+      const registry = await apiFetch<{ items: ClassifiedGoogleConversionAction[] }>(
+        `${basePath}/google-conversion-actions?connectionId=${encodeURIComponent(resolvedConnectionId)}&mode=registry&page=1&pageSize=100`
+      )
+      conversionActions.value = registry.items
+    } catch {
+      operationsUnavailable.value = true
+    }
+  }
 
   pending.value = false
 }
@@ -763,6 +796,80 @@ void refreshMeasurement()
           </p>
         </article>
       </div>
+
+      <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h4 class="font-semibold text-highlighted">
+              Classified Google conversion actions
+            </h4>
+            <p class="mt-1 text-xs text-muted">
+              Website tags and Google-hosted interactions are separate delivery paths.
+            </p>
+          </div>
+          <UBadge color="neutral" variant="subtle">
+            {{ conversionActions.length }} actions
+          </UBadge>
+        </div>
+        <div v-if="conversionActions.length" class="mt-4 grid gap-3 lg:grid-cols-2">
+          <div
+            v-for="action in conversionActions"
+            :key="action.resourceName"
+            class="rounded-lg border border-default bg-elevated/40 p-4"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-medium text-highlighted">
+                  {{ action.name }}
+                </p>
+                <p class="mt-1 text-xs text-muted">
+                  {{ titleCase(action.deliveryClass) }} · {{ titleCase(action.managementOwner) }} managed
+                </p>
+              </div>
+              <UBadge :color="action.primaryState === 'primary' ? 'warning' : 'neutral'" variant="subtle">
+                {{ titleCase(action.primaryState) }}
+              </UBadge>
+            </div>
+            <dl class="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <dt class="text-dimmed">
+                  Provider type
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ titleCase(action.type) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-dimmed">
+                  Goal biddability
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ titleCase(action.goalBiddability) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-dimmed">
+                  Mapping
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ titleCase(action.mappingState) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-dimmed">
+                  Last provider sync
+                </dt>
+                <dd class="mt-1 text-highlighted">
+                  {{ formatDateTime(action.providerSyncedAt) }}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+        <p v-else class="mt-4 text-sm text-muted">
+          No provider actions are available for the resolved account.
+        </p>
+      </article>
 
       <article class="rounded-xl border border-default bg-default p-5 shadow-xs">
         <div class="flex items-center justify-between gap-3">
