@@ -1814,7 +1814,7 @@ export interface ClientRequestMessage {
 // Leads engine — see docs/superpowers/specs/2026-04-30-leads-engine-design.md
 // ============================================================================
 
-export type LeadSource = 'meta' | 'google' | 'manual' | 'webhook' | 'csv' | 'email' | 'qr'
+export type LeadSource = 'meta' | 'google' | 'manual' | 'webhook' | 'csv' | 'email' | 'qr' | 'page_studio'
 export type LeadStatus =
   | 'new' | 'contacted' | 'qualified' | 'won' | 'lost' | 'spam_suspected'
 export type LeadDeliveryStatus =
