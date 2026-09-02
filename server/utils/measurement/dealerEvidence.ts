@@ -68,6 +68,7 @@ export interface DealerEvidenceEndpoint {
   sourceSystem: string
   status: 'disabled' | 'test' | 'live' | 'paused'
   replayWindowSeconds: number
+  rateLimitPerMinute: number
   trackingSiteId: string | null
   currentSecret: string
   previousSecret: string | null
@@ -95,6 +96,7 @@ export class DealerEvidenceError extends Error {
 
 interface DealerEvidenceServiceDependencies {
   resolveEndpoint(endpointKey: string): Promise<DealerEvidenceEndpoint | null>
+  consumeRateLimit(endpoint: DealerEvidenceEndpoint): Promise<boolean>
   persist(input: PersistDealerEvidenceInput): Promise<PersistDealerEvidenceResult>
   now?: () => Date
 }
@@ -168,6 +170,9 @@ export function createDealerEvidenceService(dependencies: DealerEvidenceServiceD
         throw new DealerEvidenceError('endpoint_unavailable', 404)
       }
       verifySignature(request, endpoint, now)
+      if (!await dependencies.consumeRateLimit(endpoint)) {
+        throw new DealerEvidenceError('rate_limited', 429)
+      }
       let parsedBody: unknown
       try {
         parsedBody = JSON.parse(request.rawBody)

@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
       throw createError({
         statusCode: error.statusCode,
         statusMessage: error.statusCode >= 500 ? 'Evidence unavailable' : 'Evidence rejected',
-        data: { code: error.code }
+        data: { code: 'evidence_rejected' }
       })
     }
     throw error

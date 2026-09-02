@@ -8,6 +8,7 @@ import {
   type PersistDealerEvidenceInput,
   type PersistDealerEvidenceResult
 } from '~~/server/utils/measurement/dealerEvidence'
+import { checkAndConsume } from '~~/server/utils/rateLimit'
 
 interface EndpointRow {
   id: string
@@ -17,6 +18,7 @@ interface EndpointRow {
   source_system: string
   status: DealerEvidenceEndpoint['status']
   replay_window_seconds: number | string
+  rate_limit_per_minute: number | string
   tracking_site_id: string | null
   current_secret_ref: string
   previous_secret_ref: string | null
@@ -46,6 +48,7 @@ export function createPostgresDealerEvidenceRepository(
       const row = await dependencies.queryOne<EndpointRow>(
         `SELECT oe.id, oe.client_id, oe.profile_id, oe.endpoint_key,
                 oe.source_system, oe.status, oe.replay_window_seconds,
+                oe.rate_limit_per_minute,
                 p.tracking_site_id, oe.current_secret_ref,
                 oe.previous_secret_ref, oe.previous_secret_valid_until,
                 oe.allow_server_delivery, oe.browser_server_dedup_validated
@@ -69,6 +72,7 @@ export function createPostgresDealerEvidenceRepository(
         sourceSystem: row.source_system,
         status: row.status,
         replayWindowSeconds: Number(row.replay_window_seconds),
+        rateLimitPerMinute: Number(row.rate_limit_per_minute),
         trackingSiteId: row.tracking_site_id,
         currentSecret,
         previousSecret,
@@ -183,9 +187,21 @@ export function createPostgresDealerEvidenceRepository(
 export function createDefaultDealerEvidenceRepository(
   resolveSecret: (reference: string) => Promise<string | null> | string | null
 ) {
-  return createPostgresDealerEvidenceRepository({
+  const repository = createPostgresDealerEvidenceRepository({
     queryOne: defaultQueryOne,
     transaction: defaultTransaction as unknown as DealerEvidenceRepositoryDependencies['transaction'],
     resolveSecret
   })
+  return {
+    ...repository,
+    async consumeRateLimit(endpoint: DealerEvidenceEndpoint) {
+      const result = await checkAndConsume({
+        key: `dealer-measurement-evidence:${endpoint.id}`,
+        limit: endpoint.rateLimitPerMinute,
+        windowSeconds: 60,
+        failureMode: 'closed'
+      })
+      return result.allowed
+    }
+  }
 }

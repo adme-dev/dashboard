@@ -14,6 +14,7 @@ const ENDPOINT = {
   sourceSystem: 'dealer_platform',
   status: 'test' as const,
   replayWindowSeconds: 300,
+  rateLimitPerMinute: 60,
   trackingSiteId: 'northern-gac-site',
   currentSecret: 'current-secret',
   previousSecret: null,
@@ -59,11 +60,15 @@ function signedRequest(body: unknown, overrides: Record<string, string> = {}) {
   }
 }
 
-function service(persist = vi.fn(async () => ({ status: 'created' as const }))) {
+function service(
+  persist = vi.fn(async () => ({ status: 'created' as const })),
+  consumeRateLimit = vi.fn(async () => true)
+) {
   return {
     persist,
     value: createDealerEvidenceService({
       resolveEndpoint: vi.fn(async () => ENDPOINT),
+      consumeRateLimit,
       persist,
       now: () => new Date('2026-09-02T05:00:00.000Z')
     })
@@ -105,6 +110,19 @@ describe('dealer measurement evidence contract', () => {
     const { value: stale } = service()
     await expect(stale.ingest(signedRequest(payload(), { timestamp: '1788324000' })))
       .rejects.toMatchObject({ code: 'timestamp_outside_window', statusCode: 401 })
+  })
+
+  it('fails closed when the signed endpoint exceeds its configured request limit', async () => {
+    const consumeRateLimit = vi.fn(async () => false)
+    const { value, persist } = service(
+      vi.fn(async () => ({ status: 'created' as const })),
+      consumeRateLimit
+    )
+
+    await expect(value.ingest(signedRequest(payload())))
+      .rejects.toMatchObject({ code: 'rate_limited', statusCode: 429 })
+    expect(consumeRateLimit).toHaveBeenCalledWith(ENDPOINT)
+    expect(persist).not.toHaveBeenCalled()
   })
 
   it('rejects client and site mismatches before persistence', async () => {
