@@ -1,16 +1,17 @@
-# PRD: Northern GAC Measurement Control Plane
+# PRD: Knox LDV Measurement Control Plane
 
 **Status:** Proposed
 **Date:** 2026-09-02
 **Product:** XeroFlow Agency Dashboard
-**Pilot client:** Northern GAC
+**Primary incident and pilot:** Knox LDV
+**Supporting prior evidence:** Northern GAC
 **Owner:** Agency media operations
 **Implementation baseline:** Current `main`; do not implement from the stale `release/send-scan-foundation` checkout
 **Companion application:** `/Users/paulgiurin/Documents/Projects/promotion-knoxgwmhaval`
 
 ## 1. Executive summary
 
-XeroFlow must become the reliable control plane and evidence layer for Northern GAC's advertising measurement. An operator or authorized Owner God Mode MCP client must be able to determine which Google Ads account is in scope, which conversion actions exist, which website events map to them, whether each signal was captured and delivered, whether a telephone call actually connected, and why evidence is missing.
+XeroFlow must become the reliable control plane and evidence layer for Knox LDV's advertising measurement. An operator or authorized Owner God Mode MCP client must be able to determine which Google Ads account and campaign are in scope, which conversion actions and campaign goals exist, whether those actions have recent provider activity, which website events map to them, whether each signal was captured and delivered, whether a telephone call actually connected, and why evidence is missing.
 
 This is not primarily a credential repair. Owner God Mode authentication and the stored Google Ads OAuth connections are working. The immediate problems are ambiguous dealer-versus-group account resolution, incomplete website-event coverage, disconnected evidence between the dealer platform and XeroFlow, and reporting that can make a successful empty sync look like verified tracking.
 
@@ -18,7 +19,36 @@ The work must extend XeroFlow's existing Measurement Signal Hub, Google Ads MCP 
 
 ## 2. Background and verified facts
 
-### 2.1 Account identity
+### 2.1 Knox LDV incident evidence
+
+The primary pilot is Knox LDV, XeroFlow client `2e15c35e-0f11-43ae-b13d-7fd1000570d4`:
+
+| Scope | Identifier |
+|---|---|
+| Google connection | `6e252890-f426-498a-a074-0d25bf0f3bea` |
+| Google customer | `3892176492` |
+| Affected campaign | `24181437555` |
+
+Read-only evidence collected through XeroFlow's stored OAuth connection showed:
+
+- the campaign is enabled, uses `MAXIMIZE_CONVERSIONS`, and is limited because conversion tracking is incomplete;
+- its goal configuration level is `CUSTOMER`;
+- `SUBMIT_LEAD_FORM` + `WEBSITE` and `PHONE_CALL_LEAD` + `CALL_FROM_ADS` are both biddable;
+- five enabled Primary `UPLOAD_CLICKS` actions and the enabled Primary `Calls from ads` action each reported `metrics.all_conversions = 0` for `LAST_30_DAYS`;
+- first-party raw signal capture is active: 417 `page_view`, 14 `phone_click`, and 7 `form_submit` events; phone clicks include two `gclid` and one `gbraid`, while form submissions contain no click identifier;
+- the Measurement profile is `enabled=false`, `environment=test`, `collection_tier=backend_only`;
+- all five Google destinations are `enabled=false`, `environment=test`, and only `configured`;
+- there are zero canonical conversion events and zero delivery attempts;
+- all five stored Knox leads are setup tests (`is_test=true`), so normal conversion, notification, CRM, and delivery side effects were correctly suppressed; there are no genuine lead intents to backfill;
+- Knox has no standard `lead_connectors` row. Its active Dealer Studio path is the authenticated legacy generic endpoint, which previously emitted `lead_created` because it carried no connector authority, while the five Google mappings all require a typed `web_conversion`;
+- current form metadata provides exact bounded identities: `knox-finance-enquiry` / “Finance Enquiry” -> `finance`, `knox-contact-enquiry` -> `contact`, `knox-vehicle-enquiry` -> `stock`, and `knox-test-drive` -> `test_drive`; `knox-trade-in` has no matching action and must fail closed;
+- read-only Google Data Manager `validateOnly` accepted all five configured destination/action payloads with a recent click identifier and no provider errors. Readiness evidence initially failed to persist because the test contract credited only `google_data_manager`, while Knox configures `google_enhanced_conversions_for_leads`.
+
+The incident root cause is therefore not OAuth or an inaccessible provider account. First-party signals exist, but the governed routing and delivery layer was never activated. Provider actions being enabled, Primary, and campaign-biddable does not prove XeroFlow delivered any events to them.
+
+Northern GAC remains useful supporting evidence for dealer-versus-group account resolution, website phone/directions coverage, and call-layer semantics. It is no longer the primary rollout target.
+
+### 2.2 Northern account identity (supporting evidence)
 
 The following active Google Ads connections were verified on 2026-09-02:
 
@@ -29,7 +59,7 @@ The following active Google Ads connections were verified on 2026-09-02:
 
 The canonical XeroFlow client is Northern Motor Group, client ID `efd1e1c6-f227-4b2f-b36d-19880bdba0e0`. Its aliases include Northern GAC, Northern Kia, Northern MG, and Northern Nissan. A query naming Northern GAC can therefore resolve to the group client and select the wrong Google account unless account scope is explicit.
 
-### 2.2 Northern GAC website measurement
+### 2.3 Northern GAC website measurement
 
 The dealer website is `https://www.northerngac.com.au`. Its live application uses:
 
@@ -51,7 +81,7 @@ The five current Northern GAC website action labels are:
 
 Google-hosted `Clicks to call`, `Calls from ads`, local directions, website visits, and other-engagement actions also exist in the account. Those provider-hosted actions are not evidence that the dealer website's ordinary `tel:` or directions links are configured as Google Ads website conversions.
 
-### 2.3 Existing XeroFlow capability on `main`
+### 2.4 Existing XeroFlow capability on `main`
 
 The following work is already implemented and must be reused:
 
@@ -75,7 +105,7 @@ Key merged work includes:
 | Google Ads MCP control plane | PR #486, squash commit `b4f162758` |
 | Google Ads MCP catalog fixes | PRs #487 and #488 |
 
-### 2.4 Current production evidence
+### 2.5 Current Northern production evidence
 
 - Google call synchronization completed successfully for both Northern accounts but returned zero `call_view` rows.
 - This proves only that the query ran successfully and Google returned no call records for the window. It does not prove end-to-end call tracking is operational.
@@ -86,7 +116,7 @@ Key merged work includes:
 
 Today, an operator cannot answer the following questions from one trustworthy XeroFlow view or MCP response:
 
-1. Did "Northern GAC" resolve to its dealer account or the motor-group account?
+1. Did Knox LDV resolve to customer `3892176492`, and is campaign `24181437555` using account or campaign-specific goals?
 2. Is a named action a website conversion, a Google-hosted local action, or an offline outcome?
 3. Was a phone click captured on the website?
 4. Was the click eligible under consent?
@@ -94,13 +124,16 @@ Today, an operator cannot answer the following questions from one trustworthy Xe
 6. Did Google accept and later report the conversion?
 7. Did a telephone call connect, and did it meet the qualified-call threshold?
 8. Is missing data caused by configuration, consent, credentials, sync lag, or genuinely zero activity?
+9. Were Knox `phone_click` and form signals only captured, or were they normalized, routed, and delivered to an exact provider action?
 
 Without these distinctions, account selection can be wrong, micro-conversions can be mistaken for business outcomes, and a green synchronization state can conceal an empty measurement layer.
 
 ## 4. Goals
 
+- Make every new client's measurement profile desired-on by default while keeping runtime delivery fail-closed until credential, consent, exact mapping, freshness, verification, and approval gates pass.
 - Resolve dealer, group, connection, login customer, and operating customer deterministically.
 - Maintain a classified inventory of Google conversion actions and goals.
+- Expose campaign goal binding and bounded recent action activity without unrestricted GAQL.
 - Map website event types to exact provider actions without fan-out ambiguity.
 - Ingest privacy-minimized evidence from the dealer platform using an authenticated, idempotent contract.
 - Reconcile event capture, consent, destination configuration, delivery, provider acceptance, and provider reporting.
@@ -132,12 +165,19 @@ Without these distinctions, account selection can be wrong, micro-conversions ca
 
 ## 7. Functional requirements
 
+### FR-0: Desired-on policy with fail-closed delivery
+
+New client Measurement profiles must default to desired-on. Desired state is policy intent, not permission to send: runtime `enabled`, environment, credential, consent, mapping, freshness, controlled provider verification, and approval gates remain independent and fail closed. The operator UI must say `On — setup required` when desired state is on but delivery is not ready.
+
+Existing profiles must be backfilled as `existing_review`; the migration must not set runtime `enabled=true` or environment `live`. Operators must be able to record an audited client-wide opt-out and restore desired-on state. Individual signal mappings retain their existing audited `is_active` switch for signal-level opt-out. Readiness may advance automatically from verified evidence, but no blind bulk live activation is permitted.
+
 ### FR-1: Deterministic client and account resolution
 
 XeroFlow must model the relationship between a canonical client, its dealership aliases, and multiple advertising accounts. Account roles must support at least `dealer`, `brand`, `group`, `reporting_only`, and `default_measurement`.
 
 For the pilot:
 
+- "Knox LDV" must resolve directly to Google customer `3892176492` through connection `6e252890-f426-498a-a074-0d25bf0f3bea`.
 - "Northern GAC" must resolve to Google customer `7583977544`.
 - "Northern Motor Group" must resolve to `6692975433`.
 - Group aggregation must be explicitly requested.
@@ -155,6 +195,7 @@ Extend the existing live Google action inventory into a persistent or reproducib
 - delivery class: `website_tag`, `offline_click`, `google_hosted_call`, `google_hosted_local`, `external`, or `unknown`;
 - management owner: `xeroflow`, `gtm`, `google`, `partner`, or `external`;
 - last provider sync, last evidence, and current mapping state.
+- bounded recent provider activity, including an explicit zero result, and optional campaign goal-config/category-origin binding.
 
 The UI and MCP must explicitly distinguish a website `phone_click` action from Google's provider-hosted `Clicks to call` action.
 
@@ -176,6 +217,8 @@ The dealer-platform adapter must normalize:
 | `directions_click` | new canonical `directions_click` |
 
 Unknown conversion types must pause for configuration and must never fan out to every action.
+
+The authenticated legacy generic Dealer Studio path must not fall back to `lead_created`. It must use an explicit canonical `enquiry_type` when present, otherwise a bounded exact form/provider-type alias. Conflicting, invalid, trade-in, or unknown identities must persist as a paused untyped `web_conversion` with zero deliveries. Provider setup tests remain synthetic and must never publish normal conversion work.
 
 `add_to_wishlist` and generic `form_submit` may remain GA4 analytical micro-conversions. They must not become Primary Google Ads campaign goals by default.
 
@@ -329,11 +372,12 @@ Use plain-language status messages with the evidence timestamp and owner of the 
 - [ ] Audit any desired uncommitted work against `main` file by file before salvaging it.
 - [ ] Confirm migrations 313, 335, 338, and 339 are applied in the target environment.
 
-### Phase 1: Resolve Northern GAC deterministically
+### Phase 1: Resolve pilot accounts deterministically
 
 - [ ] Define account-role and alias-resolution contracts.
 - [ ] Add the minimum schema/configuration required for dealer-versus-group account selection.
 - [ ] Seed or configure Northern GAC -> customer `7583977544` and Northern Motor Group -> `6692975433`.
+- [ ] Seed or configure Knox LDV -> customer `3892176492` through its exact tenant-bound connection.
 - [ ] Return resolution evidence from UI, internal tools, and MCP.
 - [ ] Add ambiguity, tenant-isolation, and manager-account tests.
 
@@ -369,9 +413,16 @@ Use plain-language status messages with the evidence timestamp and owner of the 
 - [ ] Add browser/UI tests for account selection, mapping, empty calls, stale data, and actionable blockers.
 - [ ] Update public feature documentation.
 
-### Phase 6: Pilot and rollout
+### Phase 6: Knox pilot and rollout
 
-- [ ] Validate Northern GAC using customer `7583977544` in test/read-only mode.
+- [ ] Validate Knox LDV using customer `3892176492` and campaign `24181437555` in test/read-only mode.
+- [ ] Confirm campaign goal-config level, category/origin biddability, and per-action `LAST_30_DAYS` activity through the bounded read contract.
+- [ ] Show Knox as desired on with setup required; deliberately activate runtime profile/destinations only after credential, consent, exact typed mapping, fresh config, controlled verification, and approval prerequisites pass.
+- [ ] Re-run controlled Google `validateOnly` evidence so each configured ECL capability reaches ready through the provider-test contract; never edit readiness status manually.
+- [ ] Verify real Dealer Studio submissions use the authenticated legacy endpoint and one exact typed `web_conversion`; keep setup-test rows suppressed and `knox-trade-in` paused.
+- [ ] Route captured `phone_click` through its canonical identity; keep generic `form_submit` analytical until a deterministic typed enquiry mapping is known.
+- [ ] Treat existing clients as review/backfill candidates; never bulk-enable live delivery from raw signal presence alone.
+- [ ] Retain Northern GAC as a supporting read-only resolver/call-layer case using customer `7583977544`.
 - [ ] Confirm the five existing enquiry actions remain correctly mapped.
 - [ ] Confirm website phone and directions actions are Secondary before any live mapping.
 - [ ] Verify captured and unmapped events produce a degraded, actionable state.
@@ -381,7 +432,7 @@ Use plain-language status messages with the evidence timestamp and owner of the 
 
 ## 11. Acceptance criteria
 
-1. A query for Northern GAC resolves to Google customer `7583977544`, while a query for Northern Motor Group resolves to `6692975433`.
+1. A query for Knox LDV resolves to Google customer `3892176492`; Northern GAC and Northern Motor Group continue to resolve to `7583977544` and `6692975433` respectively.
 2. Ambiguous names never silently select an account.
 3. UI and MCP results disclose the resolved customer, connection, account role, and resolution basis.
 4. Conversion actions are classified by origin, delivery class, owner, status, and Primary/Secondary state.
@@ -398,6 +449,12 @@ Use plain-language status messages with the evidence timestamp and owner of the 
 15. MCP never returns credential material and emits precise credential/configuration/provider error classes.
 16. All externally significant writes remain planned, approved, audited, idempotent, and verified by provider read-back.
 17. Automated tests cover account ambiguity, tenant isolation, ingestion authentication, idempotency, consent, action classification, mapping, freshness, and call-layer separation.
+18. A bounded conversion-action read can return campaign goal-config level, category/origin biddability, and explicit zero recent activity without accepting raw GAQL.
+19. Knox's captured raw signals alongside zero canonical conversion/delivery rows are reported as routing not activated, never as OAuth failure or provider delivery success.
+20. A newly created Measurement profile is desired on but runtime-disabled/test until its gates pass; existing profiles are review-only and are never bulk live-activated.
+21. A deliberate client-wide opt-out and each signal-level mapping opt-out are explicit and audited.
+22. Knox Dealer Studio finance, contact, vehicle, and test-drive forms route to one exact typed mapping; unknown, conflicting, invalid, and trade-in forms pause without delivery or `lead_created` fallback.
+23. Google validate-only records readiness only for configured covered server capabilities, and fails when the configured/covered intersection is empty.
 
 ## 12. Worktree and branch incorporation audit
 
@@ -450,7 +507,7 @@ At each implementation checkpoint:
 - run `pnpm run typecheck` and compare known baseline diagnostics;
 - run the repository's inventory/gate checks affected by new MCP tools or routes;
 - run `pnpm run build` before deployment because this is production-sensitive;
-- run migrations automatically against the configured database and verify resulting schema;
+- validate migration contracts locally and report the exact production migration command for separately authorized execution; do not mutate a live database during branch implementation;
 - use an authenticated browser for Measurement UI and live provider verification;
 - inspect the exact target customer and proposed payload before any Google Ads mutation;
 - update the relevant public feature pages before declaring the feature complete.
@@ -459,7 +516,7 @@ At each implementation checkpoint:
 
 From XeroFlow or Owner God Mode MCP, an authorized operator can answer all of the following without manually reconstructing evidence across systems:
 
-- Which Google Ads account is Northern GAC using?
+- Which Google Ads account and campaign goal configuration is Knox LDV using?
 - Which conversion actions and campaign goals exist?
 - Which website events map to which exact actions?
 - Were phone and directions clicks captured and consent-eligible?
