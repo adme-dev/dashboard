@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   classifyLegacyDealerLeadConversion,
+  normalizeDealerMeasurementEvent,
   DealerLeadWebhookBodySchema,
   normalizeDealerLeadWebhookBody
 } from '../../../../server/utils/leads/dealerLeadAdapter'
@@ -104,6 +105,31 @@ describe('universal dealer lead adapter', () => {
   })
 })
 
+describe('dealer measurement event normalization', () => {
+  it.each([
+    ['stock_enquiry', { canonicalEventName: 'web_conversion', enquiryType: 'stock' }],
+    ['model_variant_enquiry', { canonicalEventName: 'web_conversion', enquiryType: 'model_variant' }],
+    ['finance_enquiry', { canonicalEventName: 'web_conversion', enquiryType: 'finance' }],
+    ['test_drive_enquiry', { canonicalEventName: 'web_conversion', enquiryType: 'test_drive' }],
+    ['contact_us', { canonicalEventName: 'web_conversion', enquiryType: 'contact' }],
+    ['service_booking', { canonicalEventName: 'web_conversion', enquiryType: 'service_booking' }],
+    ['phone_click', { canonicalEventName: 'phone_click', enquiryType: null }],
+    ['directions_click', { canonicalEventName: 'directions_click', enquiryType: null }]
+  ] as const)('maps %s to one exact XeroFlow identity', (dealerEvent, expected) => {
+    expect(normalizeDealerMeasurementEvent(dealerEvent)).toEqual({
+      status: 'mapped',
+      dealerEvent,
+      ...expected
+    })
+  })
+
+  it('pauses an unknown event for configuration without returning fallback mappings', () => {
+    expect(normalizeDealerMeasurementEvent('generic_form')).toEqual({
+      status: 'configuration_required',
+      dealerEvent: 'generic_form'
+    })
+  })
+})
 describe('legacy Dealer Studio conversion classification', () => {
   it.each([
     [{ provider: 'dealerstudio.test', formId: 'knox-finance-enquiry' }, 'finance'],

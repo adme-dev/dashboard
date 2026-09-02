@@ -38,7 +38,7 @@ const Vehicle = z.object({
 }).optional()
 
 export const CanonicalEnquiryTypeSchema = z.enum([
-  'stock', 'finance', 'test_drive', 'contact', 'model_variant'
+  'stock', 'finance', 'test_drive', 'contact', 'model_variant', 'service_booking'
 ])
 
 export type CanonicalEnquiryType = z.infer<typeof CanonicalEnquiryTypeSchema>
@@ -60,7 +60,8 @@ const LEGACY_DEALER_FORM_ALIASES: Readonly<Record<string, CanonicalEnquiryType>>
   'stock-enquiry': 'stock',
   'knox-test-drive': 'test_drive',
   'test-drive': 'test_drive',
-  'model-variant-enquiry': 'model_variant'
+  'model-variant-enquiry': 'model_variant',
+  'service-booking': 'service_booking'
 }
 
 function legacyDealerAlias(value: string | null | undefined): CanonicalEnquiryType | null {
@@ -125,6 +126,23 @@ export function classifyLegacyDealerLeadConversion(input: {
     enquiryType: null,
     reason: identities.size > 1 ? 'conflicting_aliases' as const : 'unknown_enquiry_type' as const
   }
+}
+const DEALER_MEASUREMENT_EVENTS = {
+  stock_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'stock' },
+  model_variant_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'model_variant' },
+  finance_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'finance' },
+  test_drive_enquiry: { canonicalEventName: 'web_conversion', enquiryType: 'test_drive' },
+  contact_us: { canonicalEventName: 'web_conversion', enquiryType: 'contact' },
+  service_booking: { canonicalEventName: 'web_conversion', enquiryType: 'service_booking' },
+  phone_click: { canonicalEventName: 'phone_click', enquiryType: null },
+  directions_click: { canonicalEventName: 'directions_click', enquiryType: null }
+} as const
+
+export function normalizeDealerMeasurementEvent(dealerEvent: string) {
+  const normalized = dealerEvent.trim().toLowerCase()
+  const identity = DEALER_MEASUREMENT_EVENTS[normalized as keyof typeof DEALER_MEASUREMENT_EVENTS]
+  if (!identity) return { status: 'configuration_required' as const, dealerEvent }
+  return { status: 'mapped' as const, dealerEvent, ...identity }
 }
 export const LeadSubmittedV1Schema = z.object({
   type: z.literal('lead.submitted.v1'),

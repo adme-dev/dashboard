@@ -71,6 +71,11 @@ function dependencies(plan = actionPlan()) {
     recordValidation: vi.fn().mockResolvedValue(undefined),
     listRecommendations: vi.fn().mockResolvedValue({ recommendations: [] }),
     listInventory: vi.fn().mockResolvedValue({ items: [] }),
+    resolveAccount: vi.fn().mockResolvedValue({ status: 'resolved', accounts: [] }),
+    readMeasurementHealth: vi.fn().mockResolvedValue({ status: 'healthy' }),
+    readReconciliation: vi.fn().mockResolvedValue({ items: [] }),
+    readCallSummary: vi.fn().mockResolvedValue({ layers: {} }),
+    readSyncStatus: vi.fn().mockResolvedValue({ streams: [] }),
     proposePlan: vi.fn().mockResolvedValue({ proposalId: 'proposal-12345' }),
     executeAutomatic: vi.fn().mockResolvedValue({ ok: true, status: 'verified' }),
     runSearchTermPolicy: vi.fn().mockResolvedValue({ executed: false, reason: 'no_candidates' }),
@@ -150,6 +155,43 @@ describe('Google Ads MCP tool projection', () => {
       maxResults: 25,
       status: 'ENABLED'
     }, context)
+  })
+
+  it('accepts one campaign binding and a bounded activity window for conversion inventory', async () => {
+    const deps = dependencies()
+    const campaignResourceName = 'customers/1234567890/campaigns/24181437555'
+    await expect(executeGoogleAdsTool('google_ads_list_conversion_actions', {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      maxResults: 25,
+      status: 'ENABLED',
+      campaignResourceName,
+      activityWindow: 'LAST_30_DAYS'
+    }, context, { ...off, read: true }, deps)).resolves.toMatchObject({ ok: true })
+
+    expect(deps.listInventory).toHaveBeenCalledWith('conversion_action', {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      maxResults: 25,
+      status: 'ENABLED',
+      campaignResourceName,
+      activityWindow: 'LAST_30_DAYS'
+    }, context)
+  })
+
+  it.each([
+    ['google_ads_resolve_measurement_account', { clientName: 'Northern GAC', aggregate: false }, 'resolveAccount'],
+    ['google_ads_get_measurement_health', { clientId: CLIENT_ID }, 'readMeasurementHealth'],
+    ['google_ads_get_conversion_reconciliation', { clientId: CLIENT_ID, accountQuery: 'Northern GAC' }, 'readReconciliation'],
+    ['google_ads_get_call_summary', { clientId: CLIENT_ID, startDate: '2026-09-01', endDate: '2026-09-02' }, 'readCallSummary'],
+    ['google_ads_get_sync_status', { clientId: CLIENT_ID }, 'readSyncStatus']
+  ] as const)('projects and dispatches the measurement read %s', async (name, args, dependency) => {
+    expect(googleAdsReadTools.map(tool => tool.name)).toContain(name)
+    const deps = dependencies()
+    await expect(executeGoogleAdsTool(
+      name, args, context, { ...off, read: true }, deps
+    )).resolves.toMatchObject({ ok: true })
+    expect(deps[dependency]).toHaveBeenCalledWith(expect.objectContaining(args), context)
   })
 
   it('rejects cross-customer-shaped parent filters at the typed MCP boundary', async () => {

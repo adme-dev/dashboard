@@ -33,11 +33,12 @@ export const CanonicalEventNameSchema = z.enum([
   'purchase',
   'web_conversion',
   'phone_click',
+  'directions_click',
   'add_to_wishlist',
   'form_submit'
 ])
 export const MeasurementEnquiryTypeSchema = z.enum([
-  'stock', 'finance', 'test_drive', 'contact', 'model_variant'
+  'stock', 'finance', 'test_drive', 'contact', 'model_variant', 'service_booking'
 ])
 
 export const MeasurementPlatformSchema = z.enum(MEASUREMENT_PLATFORMS)
@@ -813,6 +814,8 @@ export const ConversionDeliveryQueueMessageSchema = z.strictObject({
 })
 
 export type ClientMeasurementProfileCreate = z.infer<typeof ClientMeasurementProfileCreateSchema>
+export type CanonicalEventName = z.infer<typeof CanonicalEventNameSchema>
+export type MeasurementEnquiryType = z.infer<typeof MeasurementEnquiryTypeSchema>
 export type CanonicalConsentDecision = z.infer<typeof CanonicalConsentDecisionSchema>
 export type ClientMeasurementProfilePatch = z.infer<typeof ClientMeasurementProfilePatchSchema>
 export type ClientMeasurementProfileState = z.infer<typeof ClientMeasurementProfileStateSchema>
