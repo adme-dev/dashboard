@@ -63,6 +63,10 @@ const apiPost = $fetch as <T>(
   request: string,
   options: { method: 'POST', body: Record<string, unknown> }
 ) => Promise<T>
+const apiPut = $fetch as <T>(
+  request: string,
+  options: { method: 'PUT', body: Record<string, unknown> }
+) => Promise<T>
 const profile = ref<ClientMeasurementProfile | null>(null)
 const readiness = ref<MeasurementReadinessSummary | null>(null)
 const destinations = ref<MeasurementDestination[]>([])
@@ -81,6 +85,11 @@ const destinationsUnavailable = ref(false)
 const auditUnavailable = ref(false)
 const operationsUnavailable = ref(false)
 const operationNotice = ref<{ tone: 'success' | 'warning', message: string } | null>(null)
+const desiredStateOpen = ref(false)
+const desiredStateReason = ref('')
+const desiredStateConfirmed = ref(false)
+const desiredStatePending = ref(false)
+const desiredStateError = ref<string | null>(null)
 
 const titleCase = (value: string) => value
   .replaceAll('_', ' ')
@@ -131,10 +140,81 @@ const originLabels: Record<string, string> = {
 }
 
 const profileState = computed(() => {
-  if (!profile.value?.enabled) return 'Dormant'
+  if (!profile.value?.desiredEnabled) return 'Off'
+  if (!profile.value.enabled) return 'On — setup required'
   if (profile.value.environment === 'paused') return 'Paused'
   return profile.value.environment === 'live' ? 'Live' : 'Test enabled'
 })
+
+const profileStateColor = computed(() => {
+  if (!profile.value?.desiredEnabled) return 'neutral' as const
+  return profile.value.enabled && profile.value.environment === 'live'
+    ? 'success' as const
+    : 'warning' as const
+})
+
+const desiredStateAction = computed(() => profile.value?.desiredEnabled
+  ? 'Turn signals off'
+  : 'Set signals on')
+
+const canSubmitDesiredState = computed(() => Boolean(
+  profile.value
+  && desiredStateReason.value.trim()
+  && desiredStateConfirmed.value
+  && !desiredStatePending.value
+))
+
+function openDesiredStateDialog() {
+  desiredStateReason.value = ''
+  desiredStateConfirmed.value = false
+  desiredStateError.value = null
+  desiredStateOpen.value = true
+}
+
+function setDesiredStateOpen(open: boolean) {
+  if (open) return
+  desiredStateOpen.value = false
+}
+
+async function submitDesiredState() {
+  const current = profile.value
+  if (!current || !canSubmitDesiredState.value) return
+  const nextDesiredEnabled = !current.desiredEnabled
+  desiredStatePending.value = true
+  desiredStateError.value = null
+
+  try {
+    const result = await apiPut<{
+      profile: ClientMeasurementProfile
+      warnings: Array<{ code: string }>
+    }>(`/api/agency/measurement/clients/${props.clientId}/profile`, {
+      method: 'PUT',
+      body: {
+        expectedVersion: current.configVersion,
+        reason: desiredStateReason.value.trim(),
+        patch: { desiredEnabled: nextDesiredEnabled }
+      }
+    })
+    operationNotice.value = mutationNotice(result.warnings)
+    toast.add({
+      title: nextDesiredEnabled
+        ? 'Measurement signals set to on'
+        : 'Measurement signals turned off',
+      description: nextDesiredEnabled
+        ? 'Setup and delivery gates still have to pass before live delivery starts.'
+        : 'The client-wide opt-out was recorded in the configuration audit.',
+      color: 'success'
+    })
+    setDesiredStateOpen(false)
+    await refreshMeasurement()
+  } catch (error) {
+    const message = measurementErrorMessage(error, 'Measurement signal preference could not be saved')
+    desiredStateError.value = message
+    toast.add({ title: 'Signal preference not saved', description: message, color: 'error' })
+  } finally {
+    desiredStatePending.value = false
+  }
+}
 
 function statusColor(status: MeasurementCapabilityStatus | MeasurementReadinessStatus) {
   if (status === 'ready') return 'success' as const
@@ -528,6 +608,16 @@ void refreshMeasurement()
           <div v-if="profile" class="flex flex-wrap items-center gap-2">
             <UButton
               v-if="canConfigure"
+              data-testid="measurement-desired-state-action"
+              size="sm"
+              color="neutral"
+              variant="outline"
+              :icon="profile.desiredEnabled ? 'i-lucide-toggle-right' : 'i-lucide-toggle-left'"
+              :label="desiredStateAction"
+              @click="openDesiredStateDialog"
+            />
+            <UButton
+              v-if="canConfigure"
               :to="`/agency/tracking?clientId=${clientId}`"
               size="sm"
               color="neutral"
@@ -535,8 +625,15 @@ void refreshMeasurement()
               icon="i-lucide-container"
               label="Site tracking & GTM"
             />
-            <UBadge :color="profile.enabled ? 'success' : 'neutral'" variant="subtle">
+            <UBadge :color="profileStateColor" variant="subtle">
               {{ profileState }}
+            </UBadge>
+            <UBadge
+              v-if="profile.desiredStateSource === 'existing_review'"
+              color="warning"
+              variant="outline"
+            >
+              Existing client review
             </UBadge>
             <UBadge v-if="readiness" :color="statusColor(readiness.status)" variant="subtle">
               {{ titleCase(readiness.status) }}
@@ -1266,6 +1363,67 @@ void refreshMeasurement()
         </div>
       </aside>
     </div>
+
+    <UModal
+      v-model:open="desiredStateOpen"
+      :title="desiredStateAction"
+      :description="profile?.desiredEnabled
+        ? 'Record a deliberate client-wide opt-out. Existing delivery remains fail-closed.'
+        : 'Restore desired-on policy. This does not bypass setup, consent, readiness, or approval gates.'"
+    >
+      <template #body>
+        <div class="space-y-4">
+          <UAlert
+            v-if="desiredStateError"
+            color="error"
+            icon="i-lucide-triangle-alert"
+            title="Preference not saved"
+            :description="desiredStateError"
+          />
+          <UFormField
+            label="Reason"
+            help="This explanation is written to the append-only measurement configuration audit."
+            required
+          >
+            <UTextarea
+              v-model="desiredStateReason"
+              data-testid="measurement-desired-state-reason"
+              class="w-full"
+              :rows="3"
+              placeholder="Record the client's direction and operator context"
+            />
+          </UFormField>
+          <UFormField label="Confirmation" required>
+            <UCheckbox
+              v-model="desiredStateConfirmed"
+              data-testid="measurement-desired-state-confirmed"
+              :label="profile?.desiredEnabled
+                ? 'I confirm the client deliberately opted out of measurement signals.'
+                : 'I confirm signals should be desired on; live delivery remains separately gated.'"
+            />
+          </UFormField>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            label="Cancel"
+            :disabled="desiredStatePending"
+            @click="setDesiredStateOpen(false)"
+          />
+          <UButton
+            data-testid="measurement-desired-state-submit"
+            :color="profile?.desiredEnabled ? 'error' : 'primary'"
+            :label="profile?.desiredEnabled ? 'Confirm signals off' : 'Confirm signals on'"
+            :loading="desiredStatePending"
+            :disabled="!canSubmitDesiredState"
+            @click="submitDesiredState"
+          />
+        </div>
+      </template>
+    </UModal>
 
     <UModal
       :open="attestOpen"

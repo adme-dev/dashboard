@@ -152,7 +152,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'The Right Account, Proven',
-        content: 'Dealership aliases, group identities, connected credentials, operating customer IDs, login customer IDs, and account roles are resolved together. Direct dealership measurement remains distinct from an explicitly requested group roll-up, and ambiguous names stop for operator review instead of selecting the first account that happens to match.'
+        content: 'Measurement is desired on when a new client is added, so setup cannot disappear behind a silent disabled state. Live delivery still waits for the right credential, consent, deterministic mapping, fresh configuration, controlled verification, and approval. Existing clients enter review instead of receiving blind bulk activation, and a deliberate client-wide or individual-signal opt-out stays explicit and audited. Dealership aliases, group identities, connected credentials, operating customer IDs, login customer IDs, and account roles are resolved together; ambiguous names stop for operator review.'
       },
       {
         title: 'A Signed Website Evidence Chain',

@@ -13,6 +13,8 @@ describe('measurement control plane marketing contract', () => {
   })
 
   it('describes account, evidence, call, and freshness boundaries honestly', () => {
+    expect(detailPage).toContain('Measurement is desired on when a new client is added')
+    expect(detailPage).toContain('Existing clients enter review instead of receiving blind bulk activation')
     expect(detailPage).toContain('ambiguous names stop for operator review')
     expect(detailPage).toContain('browser Google Ads delivery remains observable')
     expect(detailPage).toContain('successful empty Google sync is labelled as no calls returned')

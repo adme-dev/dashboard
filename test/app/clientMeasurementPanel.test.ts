@@ -119,6 +119,8 @@ function responseFor(request: string, options: { live?: boolean } = {}) {
       profile: {
         id: '22222222-2222-4222-8222-222222222222',
         clientId: CLIENT_ID,
+        desiredEnabled: true,
+        desiredStateSource: 'existing_review',
         enabled: false,
         environment: 'test',
         collectionTier: 'backend_only',
@@ -384,7 +386,8 @@ describe('ClientMeasurementPanel', () => {
       ])
 
       expect(host.textContent).toContain('Zero is the canonical configuration and delivery-health source')
-      expect(host.textContent).toContain('Dormant')
+      expect(host.textContent).toContain('On — setup required')
+      expect(host.textContent).toContain('Existing client review')
       expect(host.textContent).toContain('Backend only')
       expect(host.textContent).toContain('Zero CRM')
       expect(host.textContent).toContain('Consent gated')
@@ -423,6 +426,59 @@ describe('ClientMeasurementPanel', () => {
       expect(host.querySelector('[data-testid="measurement-profile-form"]')).not.toBeNull()
       expect(host.textContent).not.toContain('cloudflare/measurement')
       expect(host.textContent).not.toContain('access token')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('records an explicit client-wide signal opt-out without activating delivery', async () => {
+    const fetchMock = vi.fn(async (request: string, options?: {
+      method?: string
+      body?: Record<string, unknown>
+    }) => {
+      if (options?.method === 'PUT') {
+        return {
+          profile: {
+            ...responseFor(`/api/agency/measurement/clients/${CLIENT_ID}`).profile,
+            desiredEnabled: false,
+            desiredStateSource: 'explicit_opt_out',
+            configVersion: 5
+          },
+          warnings: []
+        }
+      }
+      return responseFor(request)
+    })
+    const { app, host } = mountPanel(fetchMock, { canConfigure: true })
+    await flushUi()
+
+    try {
+      host.querySelector<HTMLButtonElement>('[data-testid="measurement-desired-state-action"]')!.click()
+      await flushUi()
+      input(
+        host.querySelector('[data-testid="measurement-desired-state-reason"]')!,
+        'Client requested all signals be disabled'
+      )
+      check(host.querySelector('[data-testid="measurement-desired-state-confirmed"]')!)
+      await flushUi()
+      host.querySelector<HTMLButtonElement>('[data-testid="measurement-desired-state-submit"]')!.click()
+      await flushUi()
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/agency/measurement/clients/${CLIENT_ID}/profile`,
+        {
+          method: 'PUT',
+          body: {
+            expectedVersion: 4,
+            reason: 'Client requested all signals be disabled',
+            patch: { desiredEnabled: false }
+          }
+        }
+      )
+      expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Measurement signals turned off'
+      }))
     } finally {
       app.unmount()
       host.remove()
