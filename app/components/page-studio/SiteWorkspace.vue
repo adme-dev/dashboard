@@ -87,7 +87,7 @@ function statusColor(status: string): 'success' | 'warning' | 'info' | 'neutral'
   return 'neutral'
 }
 
-async function openBuilder(site: PageStudioSiteSummary) {
+async function launchStudio(site: PageStudioSiteSummary) {
   if (!editorUrl.value || launchingSiteId.value) return
   launchingSiteId.value = site.id
   try {
@@ -245,22 +245,14 @@ async function openBuilder(site: PageStudioSiteSummary) {
               <span class="truncate">{{ audience === 'agency' ? 'Agency-managed release' : 'Managed by your agency' }}</span>
             </div>
             <UButton
-              v-if="audience === 'agency'"
-              :to="`/agency/page-studio/${site.id}/edit`"
-              label="Manage Pages"
-              icon="i-lucide-panel-right-open"
-              size="sm"
-            />
-            <UButton
               v-if="editorUrl"
               label="Launch Studio"
-              icon="i-lucide-panel-top-open"
+              icon="i-lucide-panels-top-left"
               color="primary"
-              variant="soft"
               size="sm"
               :loading="launchingSiteId === site.id"
               :disabled="launchingSiteId !== null && launchingSiteId !== site.id"
-              @click="openBuilder(site)"
+              @click="launchStudio(site)"
             />
           </div>
         </div>
