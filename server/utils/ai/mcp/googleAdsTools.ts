@@ -31,6 +31,11 @@ export const GOOGLE_ADS_LIST_KEYWORDS_TOOL = 'google_ads_list_keywords'
 export const GOOGLE_ADS_LIST_TARGETING_TOOL = 'google_ads_list_targeting'
 export const GOOGLE_ADS_LIST_ASSETS_TOOL = 'google_ads_list_assets'
 export const GOOGLE_ADS_LIST_CONVERSION_ACTIONS_TOOL = 'google_ads_list_conversion_actions'
+export const GOOGLE_ADS_RESOLVE_MEASUREMENT_ACCOUNT_TOOL = 'google_ads_resolve_measurement_account'
+export const GOOGLE_ADS_GET_MEASUREMENT_HEALTH_TOOL = 'google_ads_get_measurement_health'
+export const GOOGLE_ADS_GET_CONVERSION_RECONCILIATION_TOOL = 'google_ads_get_conversion_reconciliation'
+export const GOOGLE_ADS_GET_CALL_SUMMARY_TOOL = 'google_ads_get_call_summary'
+export const GOOGLE_ADS_GET_SYNC_STATUS_TOOL = 'google_ads_get_sync_status'
 export const GOOGLE_ADS_PROPOSE_ACTION_TOOL = 'propose_google_ads_action'
 export const GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL = 'google_ads_run_search_term_policy'
 export const GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL = 'google_ads_run_pause_policy'
@@ -97,6 +102,31 @@ const ConversionActionInventoryParams = z.strictObject({
   ...InventoryCommon,
   status: ConversionStatusSchema
 })
+const MeasurementClientParams = z.strictObject({
+  clientId: z.string().uuid()
+})
+const MeasurementReconciliationParams = MeasurementClientParams.extend({
+  accountQuery: z.string().trim().min(1).max(200).optional()
+})
+const MeasurementAccountResolutionParams = z.strictObject({
+  clientName: z.string().trim().min(1).max(200),
+  aggregate: z.boolean().default(false)
+})
+const DateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+const CallSummaryParams = MeasurementClientParams.extend({
+  startDate: DateOnlySchema,
+  endDate: DateOnlySchema
+}).refine(value => value.startDate <= value.endDate, {
+  message: 'startDate must be on or before endDate'
+})
+
+const measurementReadSchemas: Record<string, z.ZodType> = {
+  [GOOGLE_ADS_RESOLVE_MEASUREMENT_ACCOUNT_TOOL]: MeasurementAccountResolutionParams,
+  [GOOGLE_ADS_GET_MEASUREMENT_HEALTH_TOOL]: MeasurementClientParams,
+  [GOOGLE_ADS_GET_CONVERSION_RECONCILIATION_TOOL]: MeasurementReconciliationParams,
+  [GOOGLE_ADS_GET_CALL_SUMMARY_TOOL]: CallSummaryParams,
+  [GOOGLE_ADS_GET_SYNC_STATUS_TOOL]: MeasurementClientParams
+}
 
 export interface GoogleAdsInventoryToolInput {
   clientId: string
@@ -164,6 +194,31 @@ export const googleAdsReadTools: McpToolManifest[] = [
     ListRecommendationsParams
   ),
   descriptor(
+    GOOGLE_ADS_RESOLVE_MEASUREMENT_ACCOUNT_TOOL,
+    'Resolve a client or dealership alias to deterministic Google Ads operating and login customers. Ambiguity is returned as data and is never guessed.',
+    MeasurementAccountResolutionParams
+  ),
+  descriptor(
+    GOOGLE_ADS_GET_MEASUREMENT_HEALTH_TOOL,
+    'Read independent measurement stream freshness and conversion reconciliation health for one client.',
+    MeasurementClientParams
+  ),
+  descriptor(
+    GOOGLE_ADS_GET_CONVERSION_RECONCILIATION_TOOL,
+    'Read the evidence chain and actionable blockers for all expected dealer website conversions.',
+    MeasurementReconciliationParams
+  ),
+  descriptor(
+    GOOGLE_ADS_GET_CALL_SUMMARY_TOOL,
+    'Read website phone clicks, Google-hosted interactions, connected calls, and qualified calls as separate measures.',
+    CallSummaryParams
+  ),
+  descriptor(
+    GOOGLE_ADS_GET_SYNC_STATUS_TOOL,
+    'Read spend, conversion, action-inventory, website-event, and provider-call freshness plus bounded resync progress.',
+    MeasurementClientParams
+  ),
+  descriptor(
     GOOGLE_ADS_VALIDATE_PLAN_TOOL,
     'Validate a server-issued Google Ads action plan without applying the change. Requires the plan ID returned by a typed Google Ads tool.'
   ),
@@ -227,6 +282,7 @@ export function getGoogleAdsToolSchema(name: string): z.ZodType | null {
   const planningSchema = getGoogleAdsSearchPlanningToolSchema(name)
   if (planningSchema) return planningSchema
   if (inventoryTools[name]) return inventoryTools[name].schema
+  if (measurementReadSchemas[name]) return measurementReadSchemas[name]
   if (name === GOOGLE_ADS_LIST_RECOMMENDATIONS_TOOL) return ListRecommendationsParams
   if (name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL) return RunSearchTermPolicyParams
   if (name === GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL) return RunPausePolicyParams
@@ -264,6 +320,11 @@ export interface GoogleAdsMcpToolDependencies {
     input: GoogleAdsInventoryToolInput,
     context: ToolContext
   ): Promise<unknown>
+  resolveAccount(input: z.infer<typeof MeasurementAccountResolutionParams>, context: ToolContext): Promise<unknown>
+  readMeasurementHealth(input: z.infer<typeof MeasurementClientParams>, context: ToolContext): Promise<unknown>
+  readReconciliation(input: z.infer<typeof MeasurementReconciliationParams>, context: ToolContext): Promise<unknown>
+  readCallSummary(input: z.infer<typeof CallSummaryParams>, context: ToolContext): Promise<unknown>
+  readSyncStatus(input: z.infer<typeof MeasurementClientParams>, context: ToolContext): Promise<unknown>
   listRecommendations(
     input: ListGoogleAdsRecommendationsToolInput,
     context: ToolContext
@@ -326,6 +387,39 @@ export async function executeGoogleAdsTool(
       }
     } catch {
       return { ok: false, error: 'Google Ads inventory read failed.', code: 'handler_error' }
+    }
+  }
+
+  const measurementReadSchema = measurementReadSchemas[name]
+  if (measurementReadSchema) {
+    const readArgs = measurementReadSchema.safeParse(args)
+    if (!readArgs.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+    try {
+      if (name === GOOGLE_ADS_RESOLVE_MEASUREMENT_ACCOUNT_TOOL) {
+        return { ok: true, data: await dependencies.resolveAccount(
+          MeasurementAccountResolutionParams.parse(readArgs.data), context
+        ) }
+      }
+      if (name === GOOGLE_ADS_GET_MEASUREMENT_HEALTH_TOOL) {
+        return { ok: true, data: await dependencies.readMeasurementHealth(
+          MeasurementClientParams.parse(readArgs.data), context
+        ) }
+      }
+      if (name === GOOGLE_ADS_GET_CONVERSION_RECONCILIATION_TOOL) {
+        return { ok: true, data: await dependencies.readReconciliation(
+          MeasurementReconciliationParams.parse(readArgs.data), context
+        ) }
+      }
+      if (name === GOOGLE_ADS_GET_CALL_SUMMARY_TOOL) {
+        return { ok: true, data: await dependencies.readCallSummary(
+          CallSummaryParams.parse(readArgs.data), context
+        ) }
+      }
+      return { ok: true, data: await dependencies.readSyncStatus(
+        MeasurementClientParams.parse(readArgs.data), context
+      ) }
+    } catch {
+      return { ok: false, error: 'Google Ads measurement read failed.', code: 'handler_error' }
     }
   }
 
