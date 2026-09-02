@@ -164,7 +164,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   if (pageStudioNavigation.value.total > 0) {
     items.splice(2, 0,
       {
-        label: 'Page Studio',
+        label: 'Websites',
         icon: 'i-lucide-panels-top-left',
         to: '/portal/page-studio',
         onSelect: close
