@@ -65,7 +65,12 @@ function context(
       scopes: platform === 'google_data_manager'
         ? ['https://www.googleapis.com/auth/datamanager']
         : []
-    }
+    },
+    configuredCapabilityModes: platform === 'meta'
+      ? ['meta_web_capi', 'meta_crm_capi', 'meta_conversion_leads']
+      : platform === 'google_data_manager'
+        ? ['google_data_manager']
+        : ['ga4_measurement_protocol']
   }
 }
 
@@ -212,6 +217,29 @@ describe('measurement provider test service', () => {
     expect(test.deliverGoogle).toHaveBeenCalledWith(expect.objectContaining({
       accessToken: 'google-access',
       validateOnly: true
+    }))
+  })
+
+  it('records accepted Google validate-only evidence for configured ECL without requiring Data Manager', async () => {
+    const googleContext = context('google_data_manager')
+    googleContext.configuredCapabilityModes = ['google_enhanced_conversions_for_leads']
+    const test = setup(googleContext)
+
+    const result = await test.service.run({
+      ...baseInput(),
+      mode: 'google_validate_only',
+      clickIdentifier: { type: 'gclid', value: 'approved-test-gclid' }
+    })
+
+    expect(result.validation).toMatchObject({ recorded: true, healthStatus: 'ready' })
+    expect(test.recordValidation).toHaveBeenCalledWith(expect.objectContaining({
+      capabilities: [{
+        mode: 'google_enhanced_conversions_for_leads',
+        status: 'ready',
+        blockingReason: null
+      }],
+      directlyExercised: ['google_enhanced_conversions_for_leads'],
+      inferred: []
     }))
   })
 

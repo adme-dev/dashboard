@@ -57,7 +57,7 @@ describe('measurement provider test repository', () => {
         scopes: ['https://www.googleapis.com/auth/datamanager'],
         metadata: { google_login_customer_id: '111-222-3333' },
         allowed_origins: [],
-        capability_modes: []
+        capability_modes: ['google_enhanced_conversions_for_leads']
       }] })
       .mockResolvedValueOnce({ rows: [{
         id: '33333333-3333-4333-8333-333333333333',
@@ -87,7 +87,8 @@ describe('measurement provider test repository', () => {
           operatingAccountId: '3584435581',
           loginAccountId: '1112223333'
         },
-        credential: { refreshToken: 'profile-refresh-token' }
+        credential: { refreshToken: 'profile-refresh-token' },
+        configuredCapabilityModes: ['google_enhanced_conversions_for_leads']
       }
     })
     expect(resolveCredential).toHaveBeenCalledWith(expect.objectContaining({
@@ -97,6 +98,39 @@ describe('measurement provider test repository', () => {
     expect(contextSql).toContain('LEFT JOIN google_credential_profiles gcp')
     expect(contextSql).toContain('gcp.refresh_token_encrypted AS profile_refresh_token_encrypted')
     expect(contextSql).not.toContain('sc.access_token')
+  })
+
+  it('rejects Google validation when no configured server capability is covered', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
+      .mockResolvedValueOnce({ rows: [{
+        profile_id: '77777777-7777-4777-8777-777777777777',
+        profile_enabled: false,
+        profile_environment: 'test',
+        destination_enabled: false,
+        destination_environment: 'test',
+        destination_config_version: 3,
+        platform: 'google_data_manager',
+        external_destination_id: '1234567890',
+        credential_ref: null,
+        provider_event_name: 'QualifiedLead',
+        account_id: '3584435581',
+        scopes: ['https://www.googleapis.com/auth/datamanager'],
+        metadata: {},
+        allowed_origins: [],
+        capability_modes: ['google_tag_enhanced_conversions']
+      }] })
+    const repository = createPostgresMeasurementProviderTestRepository(
+      async callback => callback({ query })
+    )
+
+    await expect(repository.reserve({
+      ...input,
+      mode: 'google_validate_only',
+      clickIdentifier: { type: 'gclid', value: 'test-click-id' }
+    } as never)).resolves.toEqual({ status: 'capability_not_configured' })
+    expect(query).toHaveBeenCalledTimes(3)
   })
 
   it('reserves a dormant tenant-owned destination without persisting transient identifiers', async () => {

@@ -7,6 +7,7 @@ import {
 import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEventIdentity'
 import {
   TEST_PLATFORM,
+  coveredCapabilityModes,
   type MeasurementPlatform,
   type ProviderTestMode
 } from '~~/shared/utils/measurementPlatform'
@@ -189,6 +190,11 @@ export function createPostgresMeasurementProviderTestRepository(
         const capabilityModes = Array.isArray(row.capability_modes)
           ? row.capability_modes.filter((mode): mode is string => typeof mode === 'string')
           : []
+        const configuredCapabilityModes = coveredCapabilityModes(input.mode)
+          .filter(mode => capabilityModes.includes(mode))
+        if (configuredCapabilityModes.length === 0) {
+          return { status: 'capability_not_configured' }
+        }
         let metaDeliveryMode: 'crm' | 'web' = 'crm'
         if (input.mode === 'meta_test_events') {
           const requestedCapabilityConfigured = input.deliveryMode === 'web'
@@ -268,6 +274,7 @@ export function createPostgresMeasurementProviderTestRepository(
           status: 'reserved',
           context: {
             run: runSummary(inserted),
+            configuredCapabilityModes,
             delivery: {
               eventId: inserted.id,
               eventName: input.canonicalEventName,

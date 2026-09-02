@@ -3,7 +3,6 @@ import {
   CAPABILITY_DEFINITIONS,
   MEASUREMENT_PLATFORMS,
   PLATFORM_MODE_PREFIX,
-  TEST_COVERAGE,
   TEST_PLATFORM,
   coveredCapabilityModes,
   directlyExercisedModes,
@@ -48,15 +47,18 @@ describe('measurementPlatform', () => {
     expect(coveredCapabilityModes('meta_test_events')).not.toContain('meta_pixel')
   })
 
-  it('covers exactly one capability for google and ga4', () => {
-    expect(coveredCapabilityModes('google_validate_only')).toEqual(['google_data_manager'])
+  it('covers both configured Google server-delivery capabilities and exactly one for ga4', () => {
+    expect(coveredCapabilityModes('google_validate_only')).toEqual([
+      'google_enhanced_conversions_for_leads',
+      'google_data_manager'
+    ])
     expect(coveredCapabilityModes('ga4_debug_validation')).toEqual(['ga4_measurement_protocol'])
   })
 
   it('treats tag capabilities as attestation-only', () => {
     expect(isAttestationOnly('meta_pixel')).toBe(true)
     expect(isAttestationOnly('google_tag_enhanced_conversions')).toBe(true)
-    expect(isAttestationOnly('google_enhanced_conversions_for_leads')).toBe(true)
+    expect(isAttestationOnly('google_enhanced_conversions_for_leads')).toBe(false)
   })
 
   it('does not treat test-covered capabilities as attestation-only', () => {
