@@ -176,19 +176,19 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-rocket',
     categoryIconBg: 'bg-rose-50 dark:bg-rose-500/10',
     categoryIconColor: 'text-rose-600 dark:text-rose-400',
-    description: 'Plan, build, review, and release client websites through one governed workspace shared by the agency and client portal.',
+    description: 'Build client websites in a dedicated visual Studio and govern every approved release from XeroFlow.',
     details: [
       {
         title: 'One Website Workspace, Two Deliberate Views',
         content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
       },
       {
-        title: 'A Visual Multi-Page Builder',
-        content: 'Build a complete page tree with nested subpages, reusable hero, text, image, and call-to-action sections, responsive desktop, tablet, and mobile previews, page visibility, and per-page SEO. Revision-safe draft saves prevent one editing session from silently overwriting another.'
+        title: 'Studio for Visual Authoring',
+        content: 'Build a complete page tree with nested subpages, canonical sections, responsive desktop, tablet, and mobile previews, page visibility, shell inheritance, and per-page SEO. Revision-safe checkpoints prevent one editing session from silently overwriting another.'
       },
       {
         title: 'Governed Preview and Publishing',
-        content: 'Drafts, editor sessions, checkpoints, review submissions, approvals, and immutable releases are separated so editing does not silently become production. Preview credentials are short-lived and scoped, service-to-service calls remain private, and the release path is designed for auditable promotion and rollback.'
+        content: 'Drafts, editor sessions, checkpoints, reviews, approvals, server-owned builds, and immutable releases are separated so editing does not silently become production. XeroFlow verifies the approved R2 checkpoint and synchronises navigation, footer, theme, SEO, and integrations with the activated release.'
       },
       {
         title: 'Cloudflare Delivery and Domains',
