@@ -232,6 +232,12 @@ service = "agency-crm-search-analytics-key-manager"
 [[env.production.services]]
 binding = "GOOGLE_PMAX_PROVIDER"
 service = "google-pmax-provider"
+[[env.production.services]]
+binding = "PAGE_STUDIO_BUILD"
+service = "xeroflow-page-studio-build"
+[[env.production.services]]
+binding = "PAGE_STUDIO_DELIVERY"
+service = "xeroflow-page-studio-delivery"
 
 [[env.production.durable_objects.bindings]]
 name = "CHAT_ROOMS"
