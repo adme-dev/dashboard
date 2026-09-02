@@ -172,4 +172,19 @@ describe('canonical lead acceptance side effects', () => {
     expect(mocks.notifyOnNewLead).not.toHaveBeenCalled()
     expect(mocks.markCrmPromotionQueued).not.toHaveBeenCalled()
   })
+
+  it('preserves a typed legacy website conversion without granting connector test authority', async () => {
+    await acceptLead({} as any, {
+      ...input('capture_only'),
+      conversionEventName: 'web_conversion',
+      enquiryType: 'finance'
+    })
+
+    expect(mocks.authorizeCanonicalTest).not.toHaveBeenCalled()
+    expect(mocks.ingest).toHaveBeenCalledWith(expect.objectContaining({
+      conversionEventName: 'web_conversion',
+      enquiryType: 'finance',
+      publishConversion: true
+    }))
+  })
 })
