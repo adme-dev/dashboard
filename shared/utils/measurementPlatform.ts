@@ -59,7 +59,7 @@ export const TEST_PLATFORM: Record<ProviderTestMode, MeasurementPlatform> = {
  */
 export const TEST_COVERAGE: Record<ProviderTestMode, readonly string[]> = {
   meta_test_events: ['meta_web_capi', 'meta_crm_capi', 'meta_conversion_leads'],
-  google_validate_only: ['google_data_manager'],
+  google_validate_only: ['google_enhanced_conversions_for_leads', 'google_data_manager'],
   ga4_debug_validation: ['ga4_measurement_protocol']
 }
 

@@ -118,6 +118,7 @@ export interface ProviderTestRunSummary {
 
 export interface ReservedProviderTestContext {
   run: ProviderTestRunSummary
+  configuredCapabilityModes: string[]
   delivery: {
     eventId: string
     eventName: string
@@ -414,11 +415,12 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
       const blockingReason = blockingReasonFor(providerResult, evidenceStatus)
       const deliveryMode = input.mode === 'meta_test_events' ? input.deliveryMode : null
       const covered = coveredCapabilityModes(input.mode)
+        .filter(mode => context.configuredCapabilityModes.includes(mode))
       const directlyExercised = directlyExercisedModes(
         input.mode,
         deliveryMode,
         input.canonicalEventName
-      )
+      ).filter(mode => covered.includes(mode))
 
       let validation = {
         recorded: false,
