@@ -14,6 +14,8 @@ export type MeasurementCapabilityStatus
 export interface ClientMeasurementProfile {
   id: string
   clientId: string
+  desiredEnabled: boolean
+  desiredStateSource: 'new_client_default' | 'existing_review' | 'operator' | 'explicit_opt_out'
   enabled: boolean
   environment: MeasurementEnvironment
   collectionTier: 'cloudflare_owned' | 'first_party_cname' | 'shared_endpoint' | 'backend_only'

@@ -13,6 +13,9 @@ export const CollectionTierSchema = z.enum([
   'backend_only'
 ])
 export const ConsentModeSchema = z.enum(['off', 'au_optout', 'consent_gated'])
+export const MeasurementDesiredStateSourceSchema = z.enum([
+  'new_client_default', 'existing_review', 'operator', 'explicit_opt_out'
+])
 export const OutcomeAuthoritySchema = z.enum([
   'zero_native',
   'client_webhook',
@@ -96,6 +99,8 @@ export const CapabilityStateSchema = z.strictObject({
 
 const ClientMeasurementProfileCoreSchema = z.strictObject({
   clientId: z.string().uuid(),
+  desiredEnabled: z.boolean().default(true),
+  desiredStateSource: MeasurementDesiredStateSourceSchema.default('new_client_default'),
   enabled: z.boolean().default(false),
   environment: MeasurementEnvironmentSchema.default('test'),
   collectionTier: CollectionTierSchema.default('backend_only'),
@@ -163,6 +168,7 @@ export const ClientMeasurementProfileCreateSchema = ClientMeasurementProfileCore
   .superRefine(validateCollectionTransport)
 
 export const ClientMeasurementProfilePatchSchema = z.strictObject({
+  desiredEnabled: z.boolean().optional(),
   enabled: z.boolean().optional(),
   environment: MeasurementEnvironmentSchema.optional(),
   collectionTier: CollectionTierSchema.optional(),
