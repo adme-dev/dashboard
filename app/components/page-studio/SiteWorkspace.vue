@@ -37,11 +37,11 @@ const pageModel = computed({
 
 const audienceCopy = computed(() => props.audience === 'agency'
   ? {
-      eyebrow: 'Agency workspace',
-      title: 'Websites under management',
-      description: 'Track every client website provisioned through Page Studio from one governed workspace.',
-      emptyTitle: 'No Page Studio sites yet',
-      emptyDescription: 'Sites will appear here when a client subscription is provisioned.'
+      eyebrow: 'Reference environment',
+      title: 'Page Studio demo sites',
+      description: 'Open maintained, non-customer websites for demonstrations, release rehearsals and safe battle testing.',
+      emptyTitle: 'No demo sites yet',
+      emptyDescription: 'Governed reference sites will appear here after their synthetic client entitlement is provisioned.'
     }
   : {
       eyebrow: 'Client workspace',
@@ -49,6 +49,16 @@ const audienceCopy = computed(() => props.audience === 'agency'
       description: 'Review the websites assigned to your portal account and follow their release status.',
       emptyTitle: 'No websites assigned',
       emptyDescription: 'Contact your agency team if a website should be available in this portal.'
+    })
+
+const rolloutCopy = computed(() => props.audience === 'agency'
+  ? {
+      title: 'Governed demo environment',
+      description: 'Demo sites exercise the same page, component, AI, review and release controls as customer websites without using customer data or infrastructure.'
+    }
+  : {
+      title: 'Managed website workspace',
+      description: 'Website editing, previews, publishing and domains remain subject to your agency release controls.'
     })
 
 function formattedDate(value: string) {
@@ -144,8 +154,8 @@ async function openBuilder(site: PageStudioSiteSummary) {
       color="info"
       variant="subtle"
       icon="i-lucide-rocket"
-      title="Staged Page Studio rollout"
-      description="Website editing, previews, publishing and domains are being introduced behind release controls. This workspace currently shows the sites available to your account."
+      :title="rolloutCopy.title"
+      :description="rolloutCopy.description"
     />
 
     <UAlert
@@ -237,13 +247,13 @@ async function openBuilder(site: PageStudioSiteSummary) {
             <UButton
               v-if="audience === 'agency'"
               :to="`/agency/page-studio/${site.id}/edit`"
-              label="Open Builder"
+              label="Manage Pages"
               icon="i-lucide-panel-right-open"
               size="sm"
             />
             <UButton
               v-if="editorUrl"
-              label="Open Studio"
+              label="Launch Studio"
               icon="i-lucide-panel-top-open"
               color="primary"
               variant="soft"

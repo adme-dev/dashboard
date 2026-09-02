@@ -2,7 +2,7 @@
 import type { PageStudioSiteSummary } from '~/types'
 
 definePageMeta({ layout: 'agency' })
-useHead({ title: 'Page Studio | XeroFlow Agency' })
+useHead({ title: 'Demo Sites | XeroFlow Agency' })
 
 interface PageStudioSitesResponse {
   sites: PageStudioSiteSummary[]
@@ -26,7 +26,7 @@ const errorMessage = computed(() => error.value?.statusMessage || error.value?.m
 <template>
   <div class="flex-1 min-w-0">
     <UDashboardPanel>
-      <UDashboardNavbar title="Page Studio" />
+      <UDashboardNavbar title="Demo Sites" />
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <PageStudioSiteWorkspace
           audience="agency"

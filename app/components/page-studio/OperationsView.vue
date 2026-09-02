@@ -78,9 +78,18 @@ const rows = computed(() => records.value.map((record) => {
   <UDashboardPanel :id="`page-studio-${section}`">
     <template #header>
       <UDashboardNavbar :title="config.title" :description="config.description">
-        <template #leading><UDashboardSidebarCollapse /></template>
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
         <template #right>
-          <UButton label="Refresh" icon="i-lucide-refresh-cw" color="neutral" variant="outline" :loading="pending" @click="refresh" />
+          <UButton
+            label="Refresh"
+            icon="i-lucide-refresh-cw"
+            color="neutral"
+            variant="outline"
+            :loading="pending"
+            @click="refresh"
+          />
         </template>
       </UDashboardNavbar>
     </template>
@@ -88,31 +97,53 @@ const rows = computed(() => records.value.map((record) => {
     <template #body>
       <div class="space-y-5">
         <UAlert
-          v-if="section === 'domains'" color="warning" variant="subtle" icon="i-lucide-hard-hat"
-          title="Public delivery runtime not connected"
-          description="DNS state is real, but hostnames must remain non-active until the artifact-serving worker and production deployment path are connected."
+          v-if="section === 'domains'"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-hard-hat"
+          title="Public hostname activation is gated"
+          description="DNS state is real. A hostname remains pending until DNS, TLS, build verification and atomic release activation have all passed."
         />
         <div v-if="pending" class="space-y-3" aria-busy="true">
           <USkeleton class="h-16" /><USkeleton class="h-56" />
         </div>
         <UAlert
-          v-else-if="error" color="error" variant="subtle" icon="i-lucide-circle-alert"
+          v-else-if="error"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
           title="Unable to load Page Studio data"
           description="The control-plane request failed. Refresh or check the selected organisation and your Page Studio permissions."
         />
         <UCard v-else-if="rows.length" :ui="{ body: '!p-0' }">
           <template #header>
             <div class="flex items-center gap-3">
-              <div class="flex size-9 items-center justify-center rounded-lg bg-elevated"><UIcon :name="config.icon" class="size-4 text-primary" /></div>
-              <div><p class="font-medium">{{ rows.length }} record{{ rows.length === 1 ? '' : 's' }}</p><p class="text-xs text-muted">Current control-plane state</p></div>
+              <div class="flex size-9 items-center justify-center rounded-lg bg-elevated">
+                <UIcon :name="config.icon" class="size-4 text-primary" />
+              </div>
+              <div>
+                <p class="font-medium">
+                  {{ rows.length }} record{{ rows.length === 1 ? '' : 's' }}
+                </p><p class="text-xs text-muted">
+                  Current control-plane state
+                </p>
+              </div>
             </div>
           </template>
           <UTable :columns="columns" :data="rows" class="w-full" />
         </UCard>
         <UCard v-else>
           <div class="flex min-h-52 flex-col items-center justify-center gap-3 text-center">
-            <div class="flex size-11 items-center justify-center rounded-xl bg-elevated"><UIcon :name="config.icon" class="size-5 text-muted" /></div>
-            <div><h2 class="font-semibold">Nothing to show yet</h2><p class="mt-1 max-w-md text-sm text-muted">{{ config.empty }}</p></div>
+            <div class="flex size-11 items-center justify-center rounded-xl bg-elevated">
+              <UIcon :name="config.icon" class="size-5 text-muted" />
+            </div>
+            <div>
+              <h2 class="font-semibold">
+                Nothing to show yet
+              </h2><p class="mt-1 max-w-md text-sm text-muted">
+                {{ config.empty }}
+              </p>
+            </div>
           </div>
         </UCard>
       </div>
