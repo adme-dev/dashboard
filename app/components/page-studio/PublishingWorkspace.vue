@@ -134,7 +134,7 @@ async function publishApprovedVersion() {
 </script>
 
 <template>
-  <section class="space-y-6">
+  <section class="mx-auto w-full max-w-screen-2xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-2">
         <UButton
