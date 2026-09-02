@@ -319,4 +319,41 @@ describe('canonical conversion outbox', () => {
     })
     expect(statements.some(sql => /INSERT INTO conversion_deliveries/.test(sql))).toBe(false)
   })
+
+  it('pauses an untyped lead conversion even when several destinations are enabled', async () => {
+    const statements: string[] = []
+    const db = {
+      query: vi.fn(async (sql: string) => {
+        statements.push(sql)
+        if (/FROM client_measurement_profiles/.test(sql)) return { rows: [profile()] }
+        if (/FROM conversion_destinations/.test(sql)) {
+          return { rows: [{ id: DESTINATION_ID }, { id: '66666666-6666-4666-8666-666666666666' }] }
+        }
+        if (/INSERT INTO conversion_events/.test(sql)) {
+          return { rows: [{
+            id: EVENT_ID, client_id: CLIENT_ID, profile_id: PROFILE_ID,
+            event_name: 'web_conversion', enquiry_type: null, source_system: 'zero_lead',
+            source_entity_type: 'lead', source_entity_id: OPPORTUNITY_ID,
+            source_event_id: 'legacy-untyped-lead-1', occurred_at: new Date(input().occurredAt),
+            idempotency_key: 'v1:untyped', config_version: 4, consent_mode: 'consent_gated',
+            attribution: input().attribution, value: null, currency_code: null,
+            outbox_status: 'paused', last_error_class: 'unmapped_enquiry_type'
+          }] }
+        }
+        return { rows: [] }
+      })
+    }
+
+    const result = await appendCanonicalConversionEvent(db, {
+      ...input(), eventName: 'web_conversion', sourceSystem: 'zero_lead',
+      sourceEntityType: 'lead', sourceEventId: 'legacy-untyped-lead-1'
+    })
+
+    expect(result).toMatchObject({
+      status: 'created',
+      event: { outboxStatus: 'paused', policyReason: 'unmapped_enquiry_type' },
+      deliveryCount: 0
+    })
+    expect(statements.some(sql => /INSERT INTO conversion_deliveries/.test(sql))).toBe(false)
+  })
 })

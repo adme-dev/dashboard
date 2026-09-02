@@ -12,6 +12,7 @@ import {
   markCrmPromotionSkipped
 } from '~~/server/utils/leads/crmPromotionState'
 import type { CanonicalConsentDecision } from '~~/server/utils/measurement/contracts'
+import type { CanonicalEnquiryType } from '~~/server/utils/leads/dealerLeadAdapter'
 import { resolveCrmAccessPolicy } from '~~/server/utils/leads/crmAccessPolicy'
 import {
   releaseSubmissionIntentReservation,
@@ -43,6 +44,8 @@ export async function acceptLead(event: H3Event, input: {
   identityFingerprintSecret?: string
   trustedConnectorId?: string
   testRunId?: string | null
+  conversionEventName?: 'lead_created' | 'web_conversion'
+  enquiryType?: CanonicalEnquiryType | null
 }): Promise<AcceptLeadResult> {
   if (input.leadCaptureMode === 'analytics_only') {
     return { status: 'mode_skipped' }
@@ -99,6 +102,11 @@ export async function acceptLead(event: H3Event, input: {
       }
     : baseLead
 
+  const conversionEventName = input.conversionEventName
+    ?? (input.trustedConnectorId ? 'web_conversion' : 'lead_created')
+  const enquiryType = conversionEventName === 'web_conversion'
+    ? input.enquiryType ?? canonicalEnquiryType(lead.field_data.enquiry_type)
+    : null
   let intake
   try {
     intake = await leadIntakeService.ingest({
@@ -113,10 +121,8 @@ export async function acceptLead(event: H3Event, input: {
       emailEvidenceGuard: input.emailEvidenceGuard,
       publishConversion: !isSynthetic,
       publishBrowserConfirmation: !isSynthetic,
-      conversionEventName: input.trustedConnectorId ? 'web_conversion' : 'lead_created',
-      enquiryType: input.trustedConnectorId
-        ? canonicalEnquiryType(lead.field_data.enquiry_type)
-        : null
+      conversionEventName,
+      enquiryType
     })
   } catch (error) {
     if (reservation) await releaseSubmissionIntentReservation(reservation)

@@ -189,6 +189,47 @@ describe('generic lead webhook measurement handoff', () => {
     )
   })
 
+  it('routes an authenticated Knox Dealer Studio form to one typed web conversion', async () => {
+    await handler({
+      context: { params: { token: 'token-1' } },
+      body: {
+        key: 'secret',
+        provider: 'dealerstudio',
+        lead_id: 'knox-real-lead-1',
+        form_id: 'knox-finance-enquiry',
+        form_name: 'Finance Enquiry',
+        customer: { email: 'buyer@example.com' },
+        is_test: false
+      }
+    } as any)
+
+    expect(acceptLead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      conversionEventName: 'web_conversion',
+      enquiryType: 'finance',
+      lead: expect.objectContaining({ is_test: false })
+    }))
+    expect(acceptLead.mock.calls[0][1]).not.toHaveProperty('trustedConnectorId')
+  })
+
+  it('marks an unclassified Dealer Studio form as an untyped web conversion instead of lead_created', async () => {
+    await handler({
+      context: { params: { token: 'token-1' } },
+      body: {
+        key: 'secret',
+        provider: 'dealerstudio',
+        lead_id: 'knox-trade-in-1',
+        form_id: 'knox-trade-in',
+        customer: { email: 'buyer@example.com' },
+        is_test: false
+      }
+    } as any)
+
+    expect(acceptLead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      conversionEventName: 'web_conversion',
+      enquiryType: null
+    }))
+  })
+
   it('does not allow a provider request flag to enable CRM promotion', async () => {
     await handler({
       context: { params: { token: 'token-1' } },
