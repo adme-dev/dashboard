@@ -1163,8 +1163,12 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Inspect, create, optimize, pause, and safely archive Google Ads resources through XeroFlow, with typed controls, human approvals, and a complete audit trail.',
+    description: 'Automatically enrol every managed client in measurement, then inspect and safely control Google Ads resources through XeroFlow with typed controls, human approvals, and a complete audit trail.',
     details: [
+      {
+        title: 'Measurement On by Default',
+        content: 'Every newly created or imported client is automatically enrolled in XeroFlow measurement, so setup cannot be missed because nobody opened a configuration screen. Collection and conversion intent start on by default; provider delivery becomes live only after the exact account, conversion destinations, consent policy, validation evidence, and approvals are in place. Explicit client and signal-level opt-outs always win.'
+      },
       {
         title: 'Typed QA Across Every Account',
         content: 'Connect multiple Google login identities and manager accounts through OAuth, then inspect campaigns, ad groups, ads, keywords, targeting, assets, conversion actions, and recommendations without sharing credentials or writing raw Google Ads queries. Every result is bounded, tenant-scoped, and tied back to the correct XeroFlow client and connection.'

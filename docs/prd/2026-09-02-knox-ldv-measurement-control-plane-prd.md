@@ -167,7 +167,7 @@ Without these distinctions, account selection can be wrong, micro-conversions ca
 
 ### FR-0: Desired-on policy with fail-closed delivery
 
-New client Measurement profiles must default to desired-on. Desired state is policy intent, not permission to send: runtime `enabled`, environment, credential, consent, mapping, freshness, controlled provider verification, and approval gates remain independent and fail closed. The operator UI must say `On — setup required` when desired state is on but delivery is not ready.
+Every client creation path must automatically provision a Measurement profile that defaults to desired-on; enrolment must not depend on an operator first opening the Measurement screen. Desired state is policy intent, not permission to send: runtime `enabled`, environment, credential, consent, mapping, freshness, controlled provider verification, and approval gates remain independent and fail closed. The operator UI must say `On — setup required` when desired state is on but delivery is not ready.
 
 Existing profiles must be backfilled as `existing_review`; the migration must not set runtime `enabled=true` or environment `live`. Operators must be able to record an audited client-wide opt-out and restore desired-on state. Individual signal mappings retain their existing audited `is_active` switch for signal-level opt-out. Readiness may advance automatically from verified evidence, but no blind bulk live activation is permitted.
 
@@ -451,7 +451,7 @@ Use plain-language status messages with the evidence timestamp and owner of the 
 17. Automated tests cover account ambiguity, tenant isolation, ingestion authentication, idempotency, consent, action classification, mapping, freshness, and call-layer separation.
 18. A bounded conversion-action read can return campaign goal-config level, category/origin biddability, and explicit zero recent activity without accepting raw GAQL.
 19. Knox's captured raw signals alongside zero canonical conversion/delivery rows are reported as routing not activated, never as OAuth failure or provider delivery success.
-20. A newly created Measurement profile is desired on but runtime-disabled/test until its gates pass; existing profiles are review-only and are never bulk live-activated.
+20. Every newly created client is automatically given a desired-on Measurement profile, without requiring an operator visit, but runtime delivery remains disabled/test until its gates pass; existing profiles are review-only and are never bulk live-activated.
 21. A deliberate client-wide opt-out and each signal-level mapping opt-out are explicit and audited.
 22. Knox Dealer Studio finance, contact, vehicle, and test-drive forms route to one exact typed mapping; unknown, conflicting, invalid, and trade-in forms pause without delivery or `lead_created` fallback.
 23. Google validate-only records readiness only for configured covered server capabilities, and fails when the configured/covered intersection is empty.
