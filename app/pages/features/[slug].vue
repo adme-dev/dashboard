@@ -176,7 +176,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-rocket',
     categoryIconBg: 'bg-rose-50 dark:bg-rose-500/10',
     categoryIconColor: 'text-rose-600 dark:text-rose-400',
-    description: 'Build client websites in a dedicated visual Studio and govern every approved release from XeroFlow.',
+    description: 'Build responsive client websites with canonical components and AI-assisted Studio workflows, then govern assets, leads, analytics, releases, domains and rollback from XeroFlow.',
     details: [
       {
         title: 'One Website Workspace, Two Deliberate Views',
@@ -184,7 +184,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Studio for Visual Authoring',
-        content: 'Build a complete page tree with nested subpages, responsive desktop, tablet, and mobile previews, page visibility, shell inheritance, and per-page SEO. A curated library adds canonical sections, page layouts, headers, footers, and complete site starters as ordinary editable content, while revision-safe checkpoints prevent one editing session from silently overwriting another.'
+        content: 'Build a complete page tree with nested subpages, responsive desktop, tablet, and mobile previews, page visibility, shell inheritance, and per-page SEO. Compact preset galleries add canonical sections, page layouts, headers, navigation, mobile menus, footers, themes, and complete site starters as ordinary editable content. AI proposals use the same typed components and controlled operations as manual editing, while revision-safe checkpoints prevent one session from silently overwriting another.'
       },
       {
         title: 'Governed Preview and Publishing',

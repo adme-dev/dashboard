@@ -94,6 +94,7 @@ export type IssuePageStudioSessionInput = PageStudioSessionActorInput & (
 export interface IssuedPageStudioSession {
   capabilities: PageStudioSessionCapability[]
   expiresAt: number
+  sessionId: string
   token: string
 }
 
@@ -423,6 +424,11 @@ export async function issuePageStudioSession(
       ]
     )
 
-    return { capabilities: claims.capabilities, expiresAt: claims.expiresAt, token }
+    return {
+      capabilities: claims.capabilities,
+      expiresAt: claims.expiresAt,
+      sessionId: claims.nonce,
+      token
+    }
   })
 }
