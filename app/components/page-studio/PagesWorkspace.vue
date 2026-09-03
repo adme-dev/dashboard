@@ -18,9 +18,11 @@ interface DocumentState {
 
 const props = defineProps<{ siteId: string }>()
 const toast = useToast()
+const { editorOrigin, launchPageStudio } = usePageStudioLauncher()
 const selectedId = ref('')
 const draft = ref<PageStudioDocument | null>(null)
 const saving = ref(false)
+const launchingStudio = ref(false)
 
 const endpoint = computed(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/document`)
 const { data, status, error, refresh } = await useFetch<DocumentState>(endpoint)
@@ -140,6 +142,23 @@ async function reloadDraft() {
   await refresh()
   resetDraft(data.value)
 }
+
+async function openStudio() {
+  if (launchingStudio.value) return
+  launchingStudio.value = true
+  try {
+    await launchPageStudio(props.siteId)
+  } catch (launchError: unknown) {
+    const failure = launchError as { data?: { statusMessage?: string, message?: string }, message?: string }
+    toast.add({
+      title: 'Page Studio did not open',
+      description: failure.data?.statusMessage || failure.data?.message || failure.message || 'Try again or check the editor configuration.',
+      color: 'error'
+    })
+  } finally {
+    launchingStudio.value = false
+  }
+}
 </script>
 
 <template>
@@ -180,11 +199,13 @@ async function reloadDraft() {
             @click="reloadDraft"
           />
           <UButton
-            :to="`/agency/page-studio/${siteId}/edit`"
             label="Open in Studio"
             icon="i-lucide-panel-top-open"
             color="neutral"
             variant="outline"
+            :loading="launchingStudio"
+            :disabled="!editorOrigin"
+            @click="openStudio"
           />
           <UButton
             label="Save pages"
