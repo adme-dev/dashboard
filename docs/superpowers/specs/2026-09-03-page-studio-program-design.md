@@ -9,6 +9,12 @@ Page Studio has two deliberate surfaces:
 
 The dashboard must never become a second visual builder. Every site instead has a permanent management page from which an authorised operator can launch Studio and govern the full path to production.
 
+### Canonical editor source
+
+The only Page Studio visual editor is the private `adme-dev/xeroflow-page-studio` repository and its separately deployed runtime. It is XeroFlow's independently maintained derivative of the MIT-licensed Airship snapshot at commit `1063ba0002e33b2e19de586f2330b4356e51e8f5`.
+
+The dashboard must not contain a canvas, visual inspector, responsive frame renderer, component composer, template composer, inline editor, or competing AI page builder. Dashboard routes may issue signed editor sessions and redirect into the canonical Studio, but they must not render an editor locally. See `docs/architecture/page-studio-editor-source-of-truth.md`.
+
 ## Non-negotiable release model
 
 - A build may only consume an immutable checkpoint already stored in the Page Studio checkpoint R2 bucket.
@@ -93,4 +99,3 @@ The website navigation remains Page Studio, Reviews, Releases, Domains & DNS, an
 - Immutable R2 checkpoints are the source of truth for authored manifests.
 - Immutable R2 artifacts are the source of truth for published output.
 - Derived site metadata is synchronised from the manifest selected by the active release.
-

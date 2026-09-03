@@ -1,13 +1,23 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'agency' })
-useHead({ title: 'Page Studio Builder | XeroFlow Agency' })
+useHead({ title: 'Page Studio | XeroFlow Agency' })
 
 const route = useRoute()
-const siteId = computed(() => String(route.params.siteId || ''))
+const rawSiteId = route.params.siteId
+const siteId = Array.isArray(rawSiteId) ? rawSiteId[0] : rawSiteId
+
+if (!siteId) {
+  throw createError({ statusCode: 404, statusMessage: 'Page Studio site not found' })
+}
+
+await navigateTo(`/agency/page-studio/${encodeURIComponent(siteId)}`, {
+  redirectCode: 308,
+  replace: true,
+})
 </script>
 
 <template>
-  <div class="h-[calc(100dvh-4rem)] min-w-0 flex-1 overflow-hidden">
-    <PageStudioBuilderShell :site-id="siteId" />
-  </div>
+  <UCard>
+    Redirecting to the governed Page Studio workspace.
+  </UCard>
 </template>
