@@ -184,7 +184,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Studio for Visual Authoring',
-        content: 'Build a complete page tree with nested subpages, canonical sections, responsive desktop, tablet, and mobile previews, page visibility, shell inheritance, and per-page SEO. Revision-safe checkpoints prevent one editing session from silently overwriting another.'
+        content: 'Build a complete page tree with nested subpages, responsive desktop, tablet, and mobile previews, page visibility, shell inheritance, and per-page SEO. A curated library adds canonical sections, page layouts, headers, footers, and complete site starters as ordinary editable content, while revision-safe checkpoints prevent one editing session from silently overwriting another.'
       },
       {
         title: 'Governed Preview and Publishing',
@@ -1058,15 +1058,15 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'A universal signed gateway — CRM optional',
-        content: 'Websites and form providers can send a versioned lead.submitted.v1 receipt directly to XeroFlow using replay-protected HMAC signatures and copy-once rotating secrets. XeroFlow stores and routes confirmed leads in capture-only mode, so an external CRM is an optional downstream destination rather than a prerequisite.',
+        content: 'Websites and form providers can send a versioned lead.submitted.v1 receipt directly to XeroFlow using replay-protected HMAC signatures and copy-once rotating secrets. XeroFlow stores and routes confirmed leads in capture-only mode, so an external CRM is an optional downstream destination rather than a prerequisite.'
       },
       {
         title: 'Contained end-to-end testing',
-        content: 'Start a 15-minute, origin-bound test from the setup guide and follow append-only evidence from tracker load through browser correlation to the trusted receipt. Synthetic leads are hidden from default reporting and cannot notify staff, route to live destinations, promote into CRM, or publish normal conversion events.',
+        content: 'Start a 15-minute, origin-bound test from the setup guide and follow append-only evidence from tracker load through browser correlation to the trusted receipt. Synthetic leads are hidden from default reporting and cannot notify staff, route to live destinations, promote into CRM, or publish normal conversion events.'
       },
       {
         title: 'Exact enquiry-to-conversion mapping',
-        content: 'Stock, finance, test-drive, contact, and model/variant enquiries can map to separate provider conversion actions. Typed destinations use exact matching; an unknown type pauses for configuration instead of sending one enquiry to every action.',
+        content: 'Stock, finance, test-drive, contact, and model/variant enquiries can map to separate provider conversion actions. Typed destinations use exact matching; an unknown type pauses for configuration instead of sending one enquiry to every action.'
       },
       {
         title: 'Real-time, not polled',
@@ -1089,8 +1089,8 @@ const features: Record<string, Feature> = {
         content: 'Per-destination filters: "AutoGate only for the EV campaign", "AutoGate only when make is Hyundai", "SMS only if budget > $5,000", or "Slack only if utm_source = facebook". Optional delays run from immediate to 24 hours. HMAC-signed outbound webhooks and stable AutoGate identifiers let receivers safely dedupe retries.'
       },
       {
-        title: "Senses test data and treats it differently",
-        content: 'Google\'s test data and XeroFlow signed test runs are stored as synthetic evidence but excluded from normal side effects. Toggle "Show test leads" when an authorised operator needs to inspect one; staff notifications, routing, CRM promotion, and conversion fan-out remain suppressed.',
+        title: 'Senses test data and treats it differently',
+        content: 'Google\'s test data and XeroFlow signed test runs are stored as synthetic evidence but excluded from normal side effects. Toggle "Show test leads" when an authorised operator needs to inspect one; staff notifications, routing, CRM promotion, and conversion fan-out remain suppressed.'
       },
       {
         title: 'Marketer-friendly setup',
