@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import type { PageStudioDocumentResponse } from '~/types'
 import type { PageStudioBlock, PageStudioDocument, PageStudioPage } from '~~/shared/pageStudio/document'
+import {
+  applyShellPreset,
+  instantiatePagePreset,
+  instantiateSectionPreset,
+  instantiateSitePreset,
+  type PagePresetId,
+  type SectionPresetId,
+  type ShellPresetId,
+  type SitePresetId
+} from '~~/shared/pageStudio/presets'
+
+type BasicBlockType = 'hero' | 'text' | 'image' | 'cta'
 
 const props = defineProps<{ siteId: string }>()
 const toast = useToast()
@@ -19,6 +31,35 @@ const preview = ref(false)
 const saving = ref(false)
 const addPageOpen = ref(false)
 const deletePageOpen = ref(false)
+const libraryOpen = ref(false)
+
+function setDevice(value: 'desktop' | 'tablet' | 'mobile') {
+  device.value = value
+}
+
+function togglePreview() {
+  preview.value = !preview.value
+}
+
+async function reload() {
+  await refresh()
+}
+
+function openLibrary() {
+  libraryOpen.value = true
+}
+
+function openDeletePage() {
+  deletePageOpen.value = true
+}
+
+function closeAddPage() {
+  addPageOpen.value = false
+}
+
+function closeDeletePage() {
+  deletePageOpen.value = false
+}
 const pageTitleDraft = ref('')
 const pageSlugDraft = ref('')
 const pageParentDraft = ref(ROOT_PAGE)
@@ -145,7 +186,7 @@ function deletePage() {
   deletePageOpen.value = false
 }
 
-function newBlock(type: PageStudioBlock['type']): PageStudioBlock {
+function newBlock(type: BasicBlockType): PageStudioBlock {
   const copy = {
     hero: { eyebrow: 'Introducing', heading: 'A clear page headline', body: 'Explain the value in one concise paragraph.', buttonLabel: 'Get started', background: 'dark' as const },
     text: { eyebrow: 'Our approach', heading: 'Tell the story', body: 'Add useful detail that helps visitors understand what comes next.', buttonLabel: '', background: 'canvas' as const },
@@ -158,11 +199,59 @@ function newBlock(type: PageStudioBlock['type']): PageStudioBlock {
   }
 }
 
-function addBlock(type: PageStudioBlock['type']) {
+function addBlock(type: BasicBlockType) {
   if (!selectedPage.value) return
   const block = newBlock(type)
   selectedPage.value.blocks.push(block)
   selectedBlockId.value = block.id
+}
+
+function applySection(id: SectionPresetId) {
+  if (!selectedPage.value) return
+  const next = instantiateSectionPreset(id, () => crypto.randomUUID())
+  const selectedIndex = selectedPage.value.blocks.findIndex(block => block.id === selectedBlockId.value)
+  selectedPage.value.blocks.splice(selectedIndex < 0 ? selectedPage.value.blocks.length : selectedIndex + 1, 0, next)
+  selectedBlockId.value = next.id
+  libraryOpen.value = false
+}
+
+function applyPage(id: PagePresetId) {
+  if (!selectedPage.value) return
+  selectedPage.value.blocks = instantiatePagePreset(id, () => crypto.randomUUID())
+  selectedBlockId.value = selectedPage.value.blocks[0]?.id ?? null
+  libraryOpen.value = false
+}
+
+function applyShell(id: ShellPresetId) {
+  if (!draft.value) return
+  draft.value = applyShellPreset(draft.value, id, () => crypto.randomUUID())
+  if (draft.value.shell && data.value?.site.name) draft.value.shell.siteName = data.value.site.name
+}
+
+function applySite(id: SitePresetId) {
+  if (!data.value) return
+  const next = instantiateSitePreset(id, () => crypto.randomUUID())
+  if (next.pages.length > data.value.pageLimit) {
+    toast.add({ title: 'Site template exceeds the page limit', description: `This subscription allows ${data.value.pageLimit} pages.`, color: 'warning' })
+    return
+  }
+  if (next.shell) next.shell.siteName = data.value.site.name
+  draft.value = next
+  selectedPageId.value = next.homepageId || next.pages[0]?.id || null
+  selectedBlockId.value = next.pages[0]?.blocks[0]?.id || null
+  libraryOpen.value = false
+}
+
+function addBlockItem() {
+  if (!selectedBlock.value) return
+  selectedBlock.value.items ||= []
+  if (selectedBlock.value.items.length >= 12) return
+  selectedBlock.value.items.push({ id: crypto.randomUUID(), title: 'New item', body: '', label: '', value: '', imageUrl: '', imageAlt: '', href: '' })
+}
+
+function removeBlockItem(id: string) {
+  if (!selectedBlock.value?.items) return
+  selectedBlock.value.items = selectedBlock.value.items.filter(item => item.id !== id)
 }
 
 function duplicateBlock() {
@@ -203,8 +292,9 @@ async function save() {
     revision.value = response.revision
     savedSnapshot.value = JSON.stringify(response.document)
     toast.add({ title: 'Draft saved', description: `Revision ${response.revision}`, color: 'success' })
-  } catch (saveError: any) {
-    toast.add({ title: 'Draft was not saved', description: saveError?.data?.message || saveError?.statusMessage || 'Try again.', color: 'error' })
+  } catch (saveError: unknown) {
+    const failure = saveError as { data?: { message?: string }, statusMessage?: string }
+    toast.add({ title: 'Draft was not saved', description: failure.data?.message || failure.statusMessage || 'Try again.', color: 'error' })
   } finally {
     saving.value = false
   }
@@ -215,29 +305,108 @@ async function save() {
   <div class="flex h-full min-h-0 flex-col bg-default">
     <header class="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-default px-3 py-2 sm:px-4">
       <div class="flex min-w-0 items-center gap-3">
-        <UButton to="/agency/page-studio" icon="i-lucide-arrow-left" color="neutral" variant="ghost" aria-label="Back to Page Studio" />
+        <UButton
+          to="/agency/page-studio"
+          icon="i-lucide-arrow-left"
+          color="neutral"
+          variant="ghost"
+          aria-label="Back to Page Studio"
+        />
         <div class="min-w-0">
-          <div class="flex items-center gap-2"><h1 class="truncate text-sm font-semibold text-highlighted sm:text-base">{{ data?.site.name || 'Page Studio Builder' }}</h1><UBadge color="warning" variant="subtle">Draft</UBadge></div>
-          <p class="truncate font-mono text-[11px] text-muted">{{ selectedPage ? pagePathById.get(selectedPage.id) : '/' }}</p>
+          <div class="flex items-center gap-2">
+            <h1 class="truncate text-sm font-semibold text-highlighted sm:text-base">
+              {{ data?.site.name || 'Page Studio Builder' }}
+            </h1><UBadge color="warning" variant="subtle">
+              Draft
+            </UBadge>
+          </div>
+          <p class="truncate font-mono text-[11px] text-muted">
+            {{ selectedPage ? pagePathById.get(selectedPage.id) : '/' }}
+          </p>
         </div>
       </div>
       <div class="flex items-center gap-2">
         <div class="hidden items-center rounded-md border border-default bg-elevated p-0.5 sm:flex">
-          <UButton v-for="option in [{ id: 'desktop', icon: 'i-lucide-monitor' }, { id: 'tablet', icon: 'i-lucide-tablet' }, { id: 'mobile', icon: 'i-lucide-smartphone' }]" :key="option.id" :icon="option.icon" size="xs" color="neutral" :variant="device === option.id ? 'solid' : 'ghost'" :aria-label="`${option.id} preview`" @click="device = option.id as typeof device" />
+          <UButton
+            v-for="option in [{ id: 'desktop', icon: 'i-lucide-monitor' }, { id: 'tablet', icon: 'i-lucide-tablet' }, { id: 'mobile', icon: 'i-lucide-smartphone' }]"
+            :key="option.id"
+            :icon="option.icon"
+            size="xs"
+            color="neutral"
+            :variant="device === option.id ? 'solid' : 'ghost'"
+            :aria-label="`${option.id} preview`"
+            @click="setDevice(option.id as typeof device)"
+          />
         </div>
-        <UButton :label="preview ? 'Edit' : 'Preview'" :icon="preview ? 'i-lucide-pencil' : 'i-lucide-eye'" color="neutral" variant="outline" @click="preview = !preview" />
-        <UButton label="Save draft" icon="i-lucide-cloud-upload" :loading="saving" :disabled="!dirty" @click="save" />
+        <UButton
+          :label="preview ? 'Edit' : 'Preview'"
+          :icon="preview ? 'i-lucide-pencil' : 'i-lucide-eye'"
+          color="neutral"
+          variant="outline"
+          @click="togglePreview"
+        />
+        <UButton
+          label="Save draft"
+          icon="i-lucide-cloud-upload"
+          :loading="saving"
+          :disabled="!dirty"
+          @click="save"
+        />
       </div>
     </header>
 
-    <UAlert v-if="error" color="error" variant="subtle" icon="i-lucide-circle-alert" title="Builder unavailable" :description="errorMessage" class="m-4"><template #actions><UButton label="Try again" color="error" variant="soft" @click="refresh" /></template></UAlert>
-    <div v-else-if="pending || !draft || !selectedPage" class="grid flex-1 place-items-center"><div class="space-y-3 text-center"><UIcon name="i-lucide-loader-circle" class="mx-auto size-6 animate-spin text-muted" /><p class="text-sm text-muted">Opening builder...</p></div></div>
+    <UAlert
+      v-if="error"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
+      title="Builder unavailable"
+      :description="errorMessage"
+      class="m-4"
+    >
+      <template #actions>
+        <UButton
+          label="Try again"
+          color="error"
+          variant="soft"
+          @click="reload"
+        />
+      </template>
+    </UAlert>
+    <div v-else-if="pending || !draft || !selectedPage" class="grid flex-1 place-items-center">
+      <div class="space-y-3 text-center">
+        <UIcon name="i-lucide-loader-circle" class="mx-auto size-6 animate-spin text-muted" /><p class="text-sm text-muted">
+          Opening builder...
+        </p>
+      </div>
+    </div>
 
     <div v-else class="grid min-h-0 flex-1 grid-cols-1 overflow-auto lg:grid-cols-[15rem_minmax(0,1fr)_20rem] lg:overflow-hidden">
       <aside v-if="!preview" class="border-b border-default bg-elevated/30 lg:overflow-y-auto lg:border-b-0 lg:border-r">
-        <div class="flex items-center justify-between px-3 py-3"><div><h2 class="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Pages</h2><p class="mt-1 text-[11px] text-muted">{{ pages.length }} of {{ data.pageLimit }}</p></div><UButton icon="i-lucide-plus" size="xs" label="Add" @click="openAddPage" /></div>
+        <div class="flex items-center justify-between px-3 py-3">
+          <div>
+            <h2 class="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+              Pages
+            </h2><p class="mt-1 text-[11px] text-muted">
+              {{ pages.length }} of {{ data.pageLimit }}
+            </p>
+          </div><UButton
+            icon="i-lucide-plus"
+            size="xs"
+            label="Add"
+            @click="openAddPage"
+          />
+        </div>
         <nav class="space-y-1 px-2 pb-3" aria-label="Website pages">
-          <UButton v-for="entry in orderedPages" :key="entry.page.id" color="neutral" :variant="selectedPageId === entry.page.id ? 'soft' : 'ghost'" class="w-full justify-start" :style="{ paddingLeft: `${0.5 + entry.depth * 0.85}rem` }" @click="selectPage(entry.page)">
+          <UButton
+            v-for="entry in orderedPages"
+            :key="entry.page.id"
+            color="neutral"
+            :variant="selectedPageId === entry.page.id ? 'soft' : 'ghost'"
+            class="w-full justify-start"
+            :style="{ paddingLeft: `${0.5 + entry.depth * 0.85}rem` }"
+            @click="selectPage(entry.page)"
+          >
             <UIcon :name="entry.page.slug === '' ? 'i-lucide-house' : 'i-lucide-file'" class="size-4 shrink-0" /><span class="min-w-0 flex-1 truncate text-left">{{ entry.page.title }}</span><UIcon v-if="entry.page.visibility === 'hidden'" name="i-lucide-eye-off" class="size-3.5 shrink-0 text-muted" />
           </UButton>
         </nav>
@@ -245,52 +414,310 @@ async function save() {
 
       <main class="flex min-h-[38rem] min-w-0 flex-col lg:min-h-0">
         <div v-if="!preview" class="flex min-h-12 items-center justify-between gap-3 border-b border-default px-3">
-          <div class="min-w-0"><p class="truncate text-sm font-medium text-highlighted">{{ selectedPage.title }}</p><p class="truncate font-mono text-[11px] text-muted">{{ pagePathById.get(selectedPage.id) }}</p></div>
-          <UDropdownMenu :items="addSectionItems"><UButton label="Add section" icon="i-lucide-plus" size="sm" color="neutral" variant="outline" /></UDropdownMenu>
+          <div class="min-w-0">
+            <p class="truncate text-sm font-medium text-highlighted">
+              {{ selectedPage.title }}
+            </p><p class="truncate font-mono text-[11px] text-muted">
+              {{ pagePathById.get(selectedPage.id) }}
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <UButton
+              label="Library"
+              icon="i-lucide-library-big"
+              size="sm"
+              color="neutral"
+              variant="outline"
+              @click="openLibrary"
+            />
+            <UDropdownMenu :items="addSectionItems">
+              <UButton
+                label="Add section"
+                icon="i-lucide-plus"
+                size="sm"
+                color="neutral"
+                variant="outline"
+              />
+            </UDropdownMenu>
+          </div>
         </div>
-        <PageStudioBuilderCanvas class="min-h-0 flex-1" :device="device" :page="selectedPage" :preview="preview" :selected-block-id="selectedBlockId" @select="selectedBlockId = $event" />
+        <PageStudioBuilderCanvas
+          class="min-h-0 flex-1"
+          :device="device"
+          :page="selectedPage"
+          :shell="draft.shell"
+          :preview="preview"
+          :selected-block-id="selectedBlockId"
+          @select="selectedBlockId = $event"
+        />
       </main>
 
       <aside v-if="!preview" class="border-t border-default bg-default lg:overflow-y-auto lg:border-l lg:border-t-0">
-        <div class="border-b border-default px-4 py-3"><h2 class="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Inspector</h2></div>
+        <div class="border-b border-default px-4 py-3">
+          <h2 class="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+            Inspector
+          </h2>
+        </div>
         <div class="space-y-5 p-4 @container">
           <section class="space-y-4">
-            <div class="flex items-center justify-between"><h3 class="text-sm font-semibold text-highlighted">Page</h3><UButton v-if="selectedPage.slug !== ''" icon="i-lucide-trash-2" color="error" variant="ghost" size="xs" aria-label="Delete page" @click="deletePageOpen = true" /></div>
-            <UFormField label="Page title"><UInput v-model="selectedPage.title" class="w-full" /></UFormField>
-            <UFormField v-if="selectedPage.slug !== ''" label="Slug" :help="pagePathById.get(selectedPage.id)"><UInput v-model="selectedPage.slug" class="w-full" /></UFormField>
-            <UFormField label="Visibility"><USelect v-model="selectedPage.visibility" :items="visibilityOptions" value-key="value" class="w-full" /></UFormField>
-            <UFormField label="SEO title"><UInput v-model="selectedPage.seoTitle" class="w-full" /></UFormField>
-            <UFormField label="SEO description"><UTextarea v-model="selectedPage.seoDescription" :rows="3" class="w-full" /></UFormField>
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-highlighted">
+                Page
+              </h3><UButton
+                v-if="selectedPage.slug !== ''"
+                icon="i-lucide-trash-2"
+                color="error"
+                variant="ghost"
+                size="xs"
+                aria-label="Delete page"
+                @click="openDeletePage"
+              />
+            </div>
+            <UFormField label="Page title">
+              <UInput v-model="selectedPage.title" class="w-full" />
+            </UFormField>
+            <UFormField v-if="selectedPage.slug !== ''" label="Slug" :help="pagePathById.get(selectedPage.id)">
+              <UInput v-model="selectedPage.slug" class="w-full" />
+            </UFormField>
+            <UFormField label="Visibility">
+              <USelect
+                v-model="selectedPage.visibility"
+                :items="visibilityOptions"
+                value-key="value"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="SEO title">
+              <UInput v-model="selectedPage.seoTitle" class="w-full" />
+            </UFormField>
+            <UFormField label="SEO description">
+              <UTextarea v-model="selectedPage.seoDescription" :rows="3" class="w-full" />
+            </UFormField>
           </section>
 
           <section v-if="selectedBlock" class="space-y-4 border-t border-default pt-5">
-            <div class="flex items-center justify-between gap-2"><div><h3 class="text-sm font-semibold capitalize text-highlighted">{{ selectedBlock.type }} section</h3><p class="text-[11px] text-muted">Content and presentation</p></div><div class="flex"><UButton icon="i-lucide-arrow-up" size="xs" color="neutral" variant="ghost" aria-label="Move section up" @click="moveBlock(-1)" /><UButton icon="i-lucide-arrow-down" size="xs" color="neutral" variant="ghost" aria-label="Move section down" @click="moveBlock(1)" /><UButton icon="i-lucide-copy" size="xs" color="neutral" variant="ghost" aria-label="Duplicate section" @click="duplicateBlock" /><UButton icon="i-lucide-trash-2" size="xs" color="error" variant="ghost" aria-label="Delete section" @click="removeBlock" /></div></div>
-            <UFormField v-if="selectedBlock.type !== 'image' && selectedBlock.type !== 'cta'" label="Eyebrow"><UInput v-model="selectedBlock.eyebrow" class="w-full" /></UFormField>
-            <UFormField label="Heading"><UInput v-model="selectedBlock.heading" class="w-full" /></UFormField>
-            <UFormField label="Body"><UTextarea v-model="selectedBlock.body" :rows="5" class="w-full" /></UFormField>
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-semibold capitalize text-highlighted">
+                  {{ selectedBlock.type }} section
+                </h3><p class="text-[11px] text-muted">
+                  Content and presentation
+                </p>
+              </div><div class="flex">
+                <UButton
+                  icon="i-lucide-arrow-up"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  aria-label="Move section up"
+                  @click="moveBlock(-1)"
+                /><UButton
+                  icon="i-lucide-arrow-down"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  aria-label="Move section down"
+                  @click="moveBlock(1)"
+                /><UButton
+                  icon="i-lucide-copy"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  aria-label="Duplicate section"
+                  @click="duplicateBlock"
+                /><UButton
+                  icon="i-lucide-trash-2"
+                  size="xs"
+                  color="error"
+                  variant="ghost"
+                  aria-label="Delete section"
+                  @click="removeBlock"
+                />
+              </div>
+            </div>
+            <UFormField v-if="selectedBlock.type !== 'image' && selectedBlock.type !== 'cta'" label="Eyebrow">
+              <UInput v-model="selectedBlock.eyebrow" class="w-full" />
+            </UFormField>
+            <UFormField label="Heading">
+              <UInput v-model="selectedBlock.heading" class="w-full" />
+            </UFormField>
+            <UFormField label="Body">
+              <UTextarea v-model="selectedBlock.body" :rows="5" class="w-full" />
+            </UFormField>
             <template v-if="selectedBlock.type === 'image'">
-              <UFormField label="Image URL"><UInput v-model="selectedBlock.imageUrl" class="w-full" placeholder="https://..." /></UFormField>
-              <UFormField label="Alternative text"><UInput v-model="selectedBlock.imageAlt" class="w-full" /></UFormField>
+              <UFormField label="Image URL">
+                <UInput v-model="selectedBlock.imageUrl" class="w-full" placeholder="https://..." />
+              </UFormField>
+              <UFormField label="Alternative text">
+                <UInput v-model="selectedBlock.imageAlt" class="w-full" />
+              </UFormField>
             </template>
             <template v-if="selectedBlock.type === 'hero' || selectedBlock.type === 'cta'">
-              <UFormField label="Button label"><UInput v-model="selectedBlock.buttonLabel" class="w-full" /></UFormField>
-              <UFormField label="Button link"><UInput v-model="selectedBlock.buttonHref" class="w-full" placeholder="/contact" /></UFormField>
+              <UFormField label="Button label">
+                <UInput v-model="selectedBlock.buttonLabel" class="w-full" />
+              </UFormField>
+              <UFormField label="Button link">
+                <UInput v-model="selectedBlock.buttonHref" class="w-full" placeholder="/contact" />
+              </UFormField>
             </template>
+            <section v-if="selectedBlock.items" class="space-y-3 border-t border-default pt-4">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <h4 class="text-sm font-medium text-highlighted">
+                    Items
+                  </h4><p class="text-[11px] text-muted">
+                    {{ selectedBlock.items.length }} of 12
+                  </p>
+                </div>
+                <UButton
+                  label="Add item"
+                  icon="i-lucide-plus"
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  :disabled="selectedBlock.items.length >= 12"
+                  @click="addBlockItem"
+                />
+              </div>
+              <UCard v-for="item in selectedBlock.items" :key="item.id" class="bg-elevated/40">
+                <div class="space-y-3">
+                  <div class="flex justify-end">
+                    <UButton
+                      icon="i-lucide-trash-2"
+                      aria-label="Remove item"
+                      size="xs"
+                      color="error"
+                      variant="ghost"
+                      @click="removeBlockItem(item.id)"
+                    />
+                  </div>
+                  <UFormField label="Title">
+                    <UInput v-model="item.title" class="w-full" />
+                  </UFormField>
+                  <UFormField label="Body">
+                    <UTextarea v-model="item.body" :rows="3" class="w-full" />
+                  </UFormField>
+                  <div class="grid grid-cols-1 gap-3 @lg:grid-cols-2">
+                    <UFormField label="Label">
+                      <UInput v-model="item.label" class="w-full" />
+                    </UFormField>
+                    <UFormField label="Value">
+                      <UInput v-model="item.value" class="w-full" />
+                    </UFormField>
+                  </div>
+                  <UFormField label="Image URL">
+                    <UInput v-model="item.imageUrl" class="w-full" placeholder="https://..." />
+                  </UFormField>
+                  <UFormField label="Alternative text">
+                    <UInput v-model="item.imageAlt" class="w-full" />
+                  </UFormField>
+                  <UFormField label="Link">
+                    <UInput v-model="item.href" class="w-full" placeholder="/destination" />
+                  </UFormField>
+                </div>
+              </UCard>
+            </section>
             <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
-              <UFormField label="Alignment"><USelect v-model="selectedBlock.alignment" :items="alignmentOptions" value-key="value" class="w-full" /></UFormField>
-              <UFormField label="Background"><USelect v-model="selectedBlock.background" :items="backgroundOptions" value-key="value" class="w-full" /></UFormField>
+              <UFormField label="Alignment">
+                <USelect
+                  v-model="selectedBlock.alignment"
+                  :items="alignmentOptions"
+                  value-key="value"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Background">
+                <USelect
+                  v-model="selectedBlock.background"
+                  :items="backgroundOptions"
+                  value-key="value"
+                  class="w-full"
+                />
+              </UFormField>
             </div>
           </section>
         </div>
       </aside>
     </div>
 
+    <PageStudioTemplateLibrarySlideover
+      v-model:open="libraryOpen"
+      :page-count="pages.length"
+      :page-limit="data?.pageLimit || 0"
+      @apply-section="applySection"
+      @apply-page="applyPage"
+      @apply-shell="applyShell"
+      @apply-site="applySite"
+    />
+
     <UModal v-model:open="addPageOpen">
-      <template #content><div class="space-y-5 p-6"><div><h2 class="text-lg font-semibold text-highlighted">Add page</h2><p class="mt-1 text-sm text-muted">Create a top-level page or nest it beneath another page.</p></div><div class="grid grid-cols-1 gap-4 @container"><UFormField label="Page title"><UInput v-model="pageTitleDraft" autofocus class="w-full" @blur="pageSlugDraft ||= slugify(pageTitleDraft)" /></UFormField><UFormField label="Slug"><UInput v-model="pageSlugDraft" class="w-full" placeholder="about-us" /></UFormField><UFormField label="Parent page"><USelect v-model="pageParentDraft" :items="parentOptions" value-key="value" class="w-full" /></UFormField></div><div class="flex justify-end gap-2"><UButton label="Cancel" color="neutral" variant="ghost" @click="addPageOpen = false" /><UButton label="Add page" icon="i-lucide-plus" :disabled="!pageTitleDraft.trim()" @click="addPage" /></div></div></template>
+      <template #content>
+        <div class="space-y-5 p-6">
+          <div>
+            <h2 class="text-lg font-semibold text-highlighted">
+              Add page
+            </h2><p class="mt-1 text-sm text-muted">
+              Create a top-level page or nest it beneath another page.
+            </p>
+          </div><div class="grid grid-cols-1 gap-4 @container">
+            <UFormField label="Page title">
+              <UInput
+                v-model="pageTitleDraft"
+                autofocus
+                class="w-full"
+                @blur="pageSlugDraft ||= slugify(pageTitleDraft)"
+              />
+            </UFormField><UFormField label="Slug">
+              <UInput v-model="pageSlugDraft" class="w-full" placeholder="about-us" />
+            </UFormField><UFormField label="Parent page">
+              <USelect
+                v-model="pageParentDraft"
+                :items="parentOptions"
+                value-key="value"
+                class="w-full"
+              />
+            </UFormField>
+          </div><div class="flex justify-end gap-2">
+            <UButton
+              label="Cancel"
+              color="neutral"
+              variant="ghost"
+              @click="closeAddPage"
+            /><UButton
+              label="Add page"
+              icon="i-lucide-plus"
+              :disabled="!pageTitleDraft.trim()"
+              @click="addPage"
+            />
+          </div>
+        </div>
+      </template>
     </UModal>
 
     <UModal v-model:open="deletePageOpen">
-      <template #content><div class="space-y-5 p-6"><div><h2 class="text-lg font-semibold text-highlighted">Delete {{ selectedPage?.title }}?</h2><p class="mt-2 text-sm leading-6 text-muted">The page will be removed from this draft. Any child pages will move up one level. Save the draft to make this change durable.</p></div><div class="flex justify-end gap-2"><UButton label="Cancel" color="neutral" variant="ghost" @click="deletePageOpen = false" /><UButton label="Delete page" icon="i-lucide-trash-2" color="error" @click="deletePage" /></div></div></template>
+      <template #content>
+        <div class="space-y-5 p-6">
+          <div>
+            <h2 class="text-lg font-semibold text-highlighted">
+              Delete {{ selectedPage?.title }}?
+            </h2><p class="mt-2 text-sm leading-6 text-muted">
+              The page will be removed from this draft. Any child pages will move up one level. Save the draft to make this change durable.
+            </p>
+          </div><div class="flex justify-end gap-2">
+            <UButton
+              label="Cancel"
+              color="neutral"
+              variant="ghost"
+              @click="closeDeletePage"
+            /><UButton
+              label="Delete page"
+              icon="i-lucide-trash-2"
+              color="error"
+              @click="deletePage"
+            />
+          </div>
+        </div>
+      </template>
     </UModal>
   </div>
 </template>
