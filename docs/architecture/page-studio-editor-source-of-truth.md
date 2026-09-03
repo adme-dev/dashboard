@@ -27,7 +27,7 @@ The Agency Dashboard owns:
 - reviews, approvals, builds, releases, rollback, domains, and subscriptions;
 - audit history, policy, production state, and operational visibility.
 
-The Dashboard must never implement a second visual website builder. In particular, it must not add local canvas, frame, inspector, component-renderer, template-composer, or AI page-composer components under `app/components/page-studio/`. The compatibility route `/agency/page-studio/:siteId/edit` redirects to the governed site workspace, where the signed **Launch Studio** action opens the canonical editor.
+The Dashboard must never implement a second visual website builder. In particular, it must not add local canvas, frame, inspector, component-renderer, template-composer, or AI page-composer components under `app/components/page-studio/`. The compatibility route `/agency/page-studio/:siteId/edit` issues a signed, short-lived editor session and posts it to the canonical Studio launch endpoint; it never renders an editor locally.
 
 ## Data and migration policy
 

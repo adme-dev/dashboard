@@ -20,10 +20,12 @@ describe('Page Studio editor source-of-truth boundary', () => {
     }
   })
 
-  it('keeps the old edit URL as a management-workspace redirect', () => {
+  it('keeps the old edit URL as a signed canonical Studio launcher', () => {
     const route = readFileSync('app/pages/agency/page-studio/[siteId]/edit.vue', 'utf8')
 
-    expect(route).toContain('navigateTo(`/agency/page-studio/${encodeURIComponent(siteId)}`')
+    expect(route).toContain('/editor-sessions')
+    expect(route).toContain("form.action = `${editorOrigin}/launch`")
+    expect(route).toContain('token.value = response.session.token')
     expect(route).not.toContain('PageStudioBuilder')
     expect(route).not.toContain('BuilderCanvas')
   })
