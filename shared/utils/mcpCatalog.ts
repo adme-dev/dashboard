@@ -1,6 +1,6 @@
 /** Release marker returned by the exact Pages projection and forwarded by the MCP transport. */
-export const MCP_CATALOG_RELEASE = '2026-09-01.15'
-export const MCP_PREVIOUS_CATALOG_RELEASE = '2026-08-28.14'
+export const MCP_CATALOG_RELEASE = '2026-09-03.1'
+export const MCP_PREVIOUS_CATALOG_RELEASE = '2026-09-01.15'
 export const MCP_MIN_TOOL_COUNT = 164
 export const MCP_SERVER_VERSION = '1.0.4'
 
