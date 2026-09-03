@@ -37,11 +37,14 @@ export async function listAgencyPageStudioReviews(tenantId: string) {
 
 export async function listAgencyPageStudioReleases(tenantId: string) {
   return queryRows(`
-    SELECT release.id, client.name AS "clientName", site.name AS "siteName",
+    SELECT release.id, site.id::text AS "siteId",
+           client.name AS "clientName", site.name AS "siteName",
            release.environment, release.normalized_hostname AS hostname,
            release.build_id AS "buildId", build.state AS "buildState",
            publisher.name AS "publishedBy", release.published_at AS "publishedAt",
-           (pointer.active_release_id = release.id) AS active
+           release.published_at AS "createdAt",
+           (pointer.active_release_id = release.id) AS active,
+           CASE WHEN pointer.active_release_id = release.id THEN 'active' ELSE 'historical' END AS status
     FROM page_studio_releases release
     JOIN page_studio_sites site
       ON site.tenant_id = release.tenant_id
@@ -68,11 +71,14 @@ export async function listAgencyPageStudioReleases(tenantId: string) {
 
 export async function listAgencyPageStudioDomains(tenantId: string) {
   return queryRows(`
-    SELECT domain.id, client.name AS "clientName", site.name AS "siteName",
+    SELECT domain.id, site.id::text AS "siteId",
+           client.name AS "clientName", site.name AS "siteName",
            domain.normalized_hostname AS hostname,
+           'production'::text AS environment,
            domain.hostname_status AS "hostnameStatus",
            domain.dns_status AS "dnsStatus", domain.tls_status AS "tlsStatus",
            domain.lifecycle_state AS "lifecycleState",
+           domain.lifecycle_state AS status,
            domain.failure_summary AS "failureSummary",
            domain.verified_at AS "verifiedAt", domain.activated_at AS "activatedAt",
            domain.updated_at AS "updatedAt"
@@ -90,7 +96,8 @@ export async function listAgencyPageStudioDomains(tenantId: string) {
 
 export async function listAgencyPageStudioSubscriptions(tenantId: string) {
   return queryRows(`
-    SELECT entitlement.id, client.name AS "clientName",
+    SELECT entitlement.id, entitlement.client_id::text AS "clientId",
+           client.name AS "clientName",
            entitlement.plan_key AS "planKey", entitlement.status,
            entitlement.active_site_limit AS "siteLimit",
            entitlement.pages_per_site_limit AS "pagesPerSiteLimit",

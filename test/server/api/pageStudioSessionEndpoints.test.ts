@@ -35,7 +35,12 @@ testGlobal.setResponseHeader = setResponseHeader
 
 const SITE_ID = '11111111-1111-4111-8111-111111111111'
 const CLIENT_ID = '22222222-2222-4222-8222-222222222222'
-const session = { token: 'signed-token', expiresAt: 1_900, capabilities: ['workspace:create'] }
+const session = {
+  token: 'signed-token',
+  expiresAt: 1_900,
+  sessionId: '55555555-5555-4555-8555-555555555555',
+  capabilities: ['workspace:create']
+}
 
 describe('Page Studio editor-session endpoints', () => {
   beforeEach(() => {

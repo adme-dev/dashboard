@@ -200,7 +200,7 @@ const categories = [
     iconBg: 'bg-rose-50 dark:bg-rose-500/10',
     iconColor: 'text-rose-600',
     features: [
-      { title: 'Page Studio', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Build client websites in Studio, then govern approvals, immutable releases, domains and rollback from one control plane.' },
+      { title: 'Page Studio', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Build with canonical components and AI in Studio, then govern assets, leads, analytics, releases, domains and rollback from one control plane.' },
       { title: 'Bulk Ad Launch', slug: 'bulk-ad-launch', icon: 'i-lucide-rocket', description: 'Select creatives from Banner Studio and launch dozens of ads to Meta in one click.' },
       { title: 'Ad Platform Export', slug: 'ad-platform-export', icon: 'i-lucide-download', description: 'Export HTML5 banners for 14 ad platforms with automatic clickTag injection and compliance validation.' },
       { title: 'Ad Previews', slug: 'ad-previews', icon: 'i-lucide-monitor-smartphone', description: 'Preview banners in 8 platform mockups — Meta Feed, Stories, Reels, LinkedIn, and more.' },
@@ -320,7 +320,7 @@ const categories = [
       { title: 'Measurement Health', slug: 'portal-measurement', icon: 'i-lucide-activity', description: 'Show clients how browser events, server delivery, and CRM outcomes contribute to measurement — with ownership and evidence kept distinct.' },
       { title: 'Meetings & Video Reviews', slug: 'portal-meetings-reviews', icon: 'i-lucide-video', description: 'Share upcoming meetings, recordings, and review-ready video so decisions and feedback stay attached to the client relationship.' },
       { title: 'Briefs & Social Workspace', slug: 'portal-briefs-social', icon: 'i-lucide-panels-top-left', description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.' },
-      { title: 'Page Studio Workspace', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Give each client a scoped website view while the agency governs approved versions, releases and production domains.' }
+      { title: 'Page Studio Workspace', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Give each client a scoped website view while the agency governs assets, leads, analytics, approved versions, releases and production domains.' }
     ]
   },
   {

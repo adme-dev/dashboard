@@ -7,12 +7,17 @@ const root = resolve(import.meta.dirname, '../..')
 describe('Page Studio publishing workspace', () => {
   it('keeps Studio authoring separate from site management', () => {
     const workspace = readFileSync(resolve(root, 'app/components/page-studio/SiteWorkspace.vue'), 'utf8')
-    const management = readFileSync(resolve(root, 'app/components/page-studio/PublishingWorkspace.vue'), 'utf8')
+    const management = readFileSync(resolve(root, 'app/components/page-studio/PublishingWorkspace.client.vue'), 'utf8')
 
     expect(workspace).toContain('label="Manage site"')
     expect(workspace).toContain('label="Launch Studio"')
     expect(management).toContain('Governed publishing')
     expect(management).toContain('Publish approved version')
+    expect(management).toContain('PageStudioAssetsWorkspace')
+    expect(management).toContain('PageStudioFormSubmissionsWorkspace')
+    expect(management).toContain('PageStudioAnalyticsWorkspace')
+    expect(management).toContain('PageStudioDomainsWorkspace')
+    expect(management).toContain('PageStudioSessionsWorkspace')
     expect(management).not.toContain('manifest:')
     expect(management).not.toContain('assets:')
   })

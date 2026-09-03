@@ -1,5 +1,6 @@
 <script setup lang="ts">
 interface SiteSummary {
+  clientId?: string
   id: string
   name: string
   route: string
@@ -32,6 +33,7 @@ interface DomainSummary {
 }
 
 interface SubscriptionSummary {
+  clientId?: string
   id: string
   siteId?: string
 }
@@ -64,10 +66,10 @@ function rows<T>(value: CollectionResponse<T> | null | undefined, key: keyof Col
 }
 
 const site = computed(() => rows<SiteSummary>(sitesData.value, 'sites').find(item => item.id === props.siteId))
-const releases = computed(() => rows<ReleaseSummary>(releasesData.value, 'releases').filter(item => !item.siteId || item.siteId === props.siteId))
-const reviews = computed(() => rows<ReviewSummary>(reviewsData.value, 'reviews').filter(item => !item.siteId || item.siteId === props.siteId))
-const domains = computed(() => rows<DomainSummary>(domainsData.value, 'domains').filter(item => !item.siteId || item.siteId === props.siteId))
-const subscriptions = computed(() => rows<SubscriptionSummary>(subscriptionsData.value, 'subscriptions').filter(item => !item.siteId || item.siteId === props.siteId))
+const releases = computed(() => rows<ReleaseSummary>(releasesData.value, 'releases').filter(item => item.siteId === props.siteId))
+const reviews = computed(() => rows<ReviewSummary>(reviewsData.value, 'reviews').filter(item => item.siteId === props.siteId))
+const domains = computed(() => rows<DomainSummary>(domainsData.value, 'domains').filter(item => item.siteId === props.siteId))
+const subscriptions = computed(() => rows<SubscriptionSummary>(subscriptionsData.value, 'subscriptions').filter(item => item.clientId === site.value?.clientId))
 const activeRelease = computed(() => releases.value.find(release => release.status === 'active') || releases.value[0])
 const approvedCount = computed(() => reviews.value.filter(review => review.decision === 'approved').length)
 const approvedReview = computed(() => reviews.value.find(review => review.decision === 'approved' && review.versionId))
@@ -79,6 +81,9 @@ const failed = computed(() => Boolean(sitesError.value || releasesError.value ||
 const tabs = [
   { label: 'Overview', slot: 'overview' as const },
   { label: 'Pages', slot: 'pages' as const },
+  { label: 'Assets', slot: 'assets' as const },
+  { label: 'Forms', slot: 'forms' as const },
+  { label: 'Analytics', slot: 'analytics' as const },
   { label: 'Builds', slot: 'builds' as const },
   { label: 'Releases', slot: 'releases' as const },
   { label: 'Domains', slot: 'domains' as const },
@@ -303,6 +308,15 @@ async function publishApprovedVersion() {
       <template #pages>
         <PageStudioPagesWorkspace :site-id="siteId" />
       </template>
+      <template #assets>
+        <PageStudioAssetsWorkspace :site-id="siteId" />
+      </template>
+      <template #forms>
+        <PageStudioFormSubmissionsWorkspace :site-id="siteId" />
+      </template>
+      <template #analytics>
+        <PageStudioAnalyticsWorkspace :site-id="siteId" />
+      </template>
       <template #builds>
         <UCard class="mt-5">
           <template #header>
@@ -384,40 +398,22 @@ async function publishApprovedVersion() {
       </template>
 
       <template #domains>
-        <UCard class="mt-5">
-          <template #header>
-            <h2 class="font-semibold text-highlighted">
-              Domains and DNS
-            </h2>
-          </template>
-          <div v-if="domains.length" class="divide-y divide-default">
-            <div v-for="domain in domains" :key="domain.id" class="flex flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p class="font-medium text-highlighted">
-                  {{ domain.hostname }}
-                </p><p class="mt-1 text-sm text-muted">
-                  {{ domain.environment }}
-                </p>
-              </div>
-              <UBadge :label="domain.status" :color="domain.status === 'active' ? 'success' : 'warning'" variant="subtle" />
-            </div>
-          </div>
-          <p v-else class="text-sm text-muted">
-            No domains are connected to this site.
-          </p>
-        </UCard>
+        <PageStudioDomainsWorkspace :site-id="siteId" />
       </template>
 
       <template #settings>
-        <UCard class="mt-5">
-          <template #header>
-            <h2 class="font-semibold text-highlighted">
-              Subscriptions
-            </h2>
-          </template><p class="text-sm text-muted">
-            {{ subscriptions.length }} active or historical subscription record{{ subscriptions.length === 1 ? '' : 's' }} are attached to this site.
-          </p>
-        </UCard>
+        <div class="space-y-4 pt-5">
+          <UCard>
+            <template #header>
+              <h2 class="font-semibold text-highlighted">
+                Subscriptions
+              </h2>
+            </template><p class="text-sm text-muted">
+              {{ subscriptions.length }} active or historical subscription record{{ subscriptions.length === 1 ? '' : 's' }} are attached to this site.
+            </p>
+          </UCard>
+          <PageStudioSessionsWorkspace :site-id="siteId" />
+        </div>
       </template>
     </UTabs>
 

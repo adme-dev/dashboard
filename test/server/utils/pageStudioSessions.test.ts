@@ -141,6 +141,7 @@ describe('Page Studio editor sessions', () => {
         'model:invoke'
       ],
       expiresAt: 1_900,
+      sessionId: '44444444-4444-4444-8444-444444444444',
       token: 'signed-token'
     })
 
