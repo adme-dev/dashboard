@@ -19,6 +19,7 @@ const emit = defineEmits<{
 const config = useRuntimeConfig()
 const toast = useToast()
 const launchingSiteId = ref<string | null>(null)
+const { launchPageStudio } = usePageStudioLauncher()
 const editorUrl = computed(() => {
   const value = config.public.pageStudioEditorUrl
   if (typeof value !== 'string' || !value) return null
@@ -91,20 +92,7 @@ async function launchStudio(site: PageStudioSiteSummary) {
   if (!editorUrl.value || launchingSiteId.value) return
   launchingSiteId.value = site.id
   try {
-    const response = await $fetch<{ session: { token: string } }>(
-      `/api/${props.audience}/page-studio/sites/${site.id}/editor-sessions`,
-      { method: 'POST' }
-    )
-    const form = document.createElement('form')
-    form.action = `${editorUrl.value}/launch`
-    form.method = 'POST'
-    const token = document.createElement('input')
-    token.type = 'hidden'
-    token.name = 'token'
-    token.value = response.session.token
-    form.append(token)
-    document.body.append(form)
-    form.submit()
+    await launchPageStudio(site.id, props.audience)
   } catch (error: unknown) {
     const message = error && typeof error === 'object' && 'data' in error
       && error.data && typeof error.data === 'object' && 'message' in error.data

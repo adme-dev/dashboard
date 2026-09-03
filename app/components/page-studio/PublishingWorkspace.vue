@@ -47,8 +47,10 @@ type CollectionResponse<T> = {
 
 const props = defineProps<{ siteId: string }>()
 const toast = useToast()
+const { editorOrigin, launchPageStudio } = usePageStudioLauncher()
 const publishModalOpen = ref(false)
 const publishing = ref(false)
+const launchingStudio = ref(false)
 
 const { data: sitesData, status: sitesStatus, error: sitesError, refresh: refreshSites } = await useFetch<CollectionResponse<SiteSummary>>('/api/agency/page-studio/sites')
 const { data: releasesData, status: releasesStatus, error: releasesError, refresh: refreshReleases } = await useFetch<CollectionResponse<ReleaseSummary>>('/api/agency/page-studio/releases')
@@ -95,6 +97,23 @@ async function refreshAll() {
 
 function openPublishModal() {
   publishModalOpen.value = true
+}
+
+async function openStudio() {
+  if (launchingStudio.value) return
+  launchingStudio.value = true
+  try {
+    await launchPageStudio(props.siteId)
+  } catch (error: unknown) {
+    const failure = error as { data?: { statusMessage?: string, message?: string }, message?: string }
+    toast.add({
+      title: 'Page Studio did not open',
+      description: failure.data?.statusMessage || failure.data?.message || failure.message || 'Try again or check the editor configuration.',
+      color: 'error'
+    })
+  } finally {
+    launchingStudio.value = false
+  }
 }
 
 function closePublishModal() {
@@ -164,10 +183,12 @@ async function publishApprovedVersion() {
           @click="refreshAll"
         />
         <UButton
-          :to="`/agency/page-studio/${siteId}/edit`"
           label="Launch Studio"
           icon="i-lucide-external-link"
           trailing
+          :loading="launchingStudio"
+          :disabled="!editorOrigin"
+          @click="openStudio"
         />
       </div>
     </div>
@@ -267,10 +288,12 @@ async function publishApprovedVersion() {
             </p>
             <template #footer>
               <UButton
-                :to="`/agency/page-studio/${siteId}/edit`"
                 label="Open in Studio"
                 icon="i-lucide-panel-top-open"
                 block
+                :loading="launchingStudio"
+                :disabled="!editorOrigin"
+                @click="openStudio"
               />
             </template>
           </UCard>
