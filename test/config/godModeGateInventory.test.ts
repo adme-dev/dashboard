@@ -188,15 +188,18 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/mondayConnection.ts\tconst serviceToken = process.env.MONDAY_API_TOKEN\tprovider_infrastructure_availability'
     )
-    expect(inventory.rows).toHaveLength(1563)
+    expect(inventory.rows).toHaveLength(1565)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 108,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1624,
       ordinary_user_behavior: 174,
-      unrelated_configuration: 429
+      unrelated_configuration: 431
     })
-    expect(inventory.digest).toBe('f676156c079506a4350d1e764143c3b23274c80019d7f708687d2eb3afc30d88')
+    expect(inventory.digest).toBe('37bf46ab479e7f86ffcfd5dd6b8d7c961e93a94481f51984bf6b5cab9b038471')
+    expect(inventory.rows).toContain(
+      'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
+    )
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',

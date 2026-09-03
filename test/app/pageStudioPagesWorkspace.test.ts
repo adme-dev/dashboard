@@ -5,11 +5,17 @@ const workspace = readFileSync('app/components/page-studio/PagesWorkspace.vue', 
 const settings = readFileSync('app/components/page-studio/PageSettingsPanel.vue', 'utf8')
 const redirects = readFileSync('app/components/page-studio/RedirectManager.vue', 'utf8')
 const publishing = readFileSync('app/components/page-studio/PublishingWorkspace.vue', 'utf8')
+const launcher = readFileSync('app/composables/usePageStudioLauncher.ts', 'utf8')
 
 describe('Page Studio Pages workspace', () => {
   it('mounts permanent page management in the site workspace', () => {
     expect(publishing).toContain('<PageStudioPagesWorkspace :site-id="siteId" />')
-    expect(publishing).toContain(':to="`/agency/page-studio/${siteId}/edit`"')
+    expect(publishing).toContain('@click="openStudio"')
+    expect(publishing).not.toContain('/edit')
+    expect(launcher).toContain(`window.open('about:blank', targetName)`)
+    expect(launcher).toContain(`form.method = 'POST'`)
+    expect(launcher).toContain('form.target = targetName')
+    expect(launcher).toContain('/editor-sessions')
   })
 
   it('uses the governed revisioned document endpoint', () => {
