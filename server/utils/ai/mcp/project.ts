@@ -83,6 +83,19 @@ export interface McpProjectionContext {
   governanceBypass?: boolean
 }
 
+/**
+ * MCP requires every tool `inputSchema` to be a JSON Schema whose top-level `type` is `"object"`.
+ * Zod renders a discriminated union (e.g. google_ads_plan_create_asset) as a bare `oneOf` with no
+ * top-level type, which hosts reject — and one rejected entry hides the ENTIRE tools/list (2026-09-03
+ * outage). Lift such schemas under an explicit object wrapper; runtime parsing still uses the Zod schema.
+ */
+export function toMcpInputSchema(schema: z.ZodType): Record<string, unknown> {
+  const json = z.toJSONSchema(schema) as Record<string, unknown>
+  if (json.type === 'object') return json
+  const { $schema, ...rest } = json
+  return { ...($schema ? { $schema } : {}), type: 'object', ...rest }
+}
+
 /** Append a data-not-instructions note for tools whose output carries untrusted text (prompt-injection). */
 function mcpDescription(t: AiTool<unknown>): string {
   return t.returnsUntrusted

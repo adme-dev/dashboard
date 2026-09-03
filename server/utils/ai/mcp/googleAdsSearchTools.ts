@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
-import type { McpToolManifest } from '~~/server/utils/ai/mcp/project'
+import { toMcpInputSchema, type McpToolManifest } from '~~/server/utils/ai/mcp/project'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PlanGoogleAdsActionInput } from '~~/server/utils/googleAds/actionPlanner'
 import {
@@ -787,7 +787,7 @@ function manifest(name: string, description: string, schema: z.ZodType): McpTool
   return {
     name,
     description,
-    inputSchema: z.toJSONSchema(schema) as Record<string, unknown>
+    inputSchema: toMcpInputSchema(schema)
   }
 }
 

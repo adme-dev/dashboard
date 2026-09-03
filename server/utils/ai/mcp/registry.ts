@@ -8,6 +8,7 @@ import {
   type McpExecutionDescriptor,
   type McpExecutionResolver,
   type McpProjectionContext,
+  toMcpInputSchema,
   type McpToolManifest
 } from './project'
 import {
@@ -240,7 +241,7 @@ function resolveOwnerCatalog(
       throw new Error(`Expected exactly one MCP execution resolver for ${manifest.name}; received ${rows.length}`)
     }
     const descriptor = rows[0]!.descriptor
-    const descriptorSchema = z.toJSONSchema(descriptor.tool.parameters) as Record<string, unknown>
+    const descriptorSchema = toMcpInputSchema(descriptor.tool.parameters)
     if (JSON.stringify(sortedJsonValue(descriptorSchema)) !== JSON.stringify(sortedJsonValue(manifest.inputSchema))) {
       throw new Error(`MCP execution schema conflicts with projected manifest for ${manifest.name}`)
     }

@@ -60,7 +60,8 @@ vi.mock('~~/server/utils/ai/tools/remember', () => ({
 vi.mock('~~/server/utils/ai/mcp/project', () => ({
   projectReadOnlyTools: mocks.projectReadOnly,
   projectGodModeCatalogTools: mocks.projectOwnerCatalog,
-  executeReadOnlyTool: mocks.executeReadOnly
+  executeReadOnlyTool: mocks.executeReadOnly,
+  toMcpInputSchema: (schema: { toJSONSchema?: unknown }) => ({ type: 'object', ...(schema as object) })
 }))
 vi.mock('~~/server/utils/ai/mcp/registry', () => ({
   projectRegisteredMcpTools: mocks.projectRegistered,
@@ -221,8 +222,8 @@ describe('signed internal MCP list/call endpoints', () => {
     await expect(toolsHandler(requestEvent)).resolves.toEqual({
       tools: [{ name: 'get_tasks', description: 'read', inputSchema: {} }],
       catalog: {
-        release: '2026-09-01.15',
-        previousRelease: '2026-08-28.14',
+        release: '2026-09-03.1',
+        previousRelease: '2026-09-01.15',
         toolCount: 1,
         source: 'fresh_server_projection',
         fullOwnerProjection: false,
@@ -333,8 +334,8 @@ describe('signed internal MCP list/call endpoints', () => {
         { name: 'create_task', description: 'owner write', inputSchema: {} }
       ],
       catalog: {
-        release: '2026-09-01.15',
-        previousRelease: '2026-08-28.14',
+        release: '2026-09-03.1',
+        previousRelease: '2026-09-01.15',
         toolCount: 2,
         source: 'fresh_server_projection',
         fullOwnerProjection: true,
