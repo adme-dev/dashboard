@@ -373,7 +373,7 @@ git commit -m "feat: preserve safe web conversion context"
 - Produces/consumes DOM event `xeroflow:lead-confirmed` with a caller-owned
   conversion `detail.eventId`; it must not reuse the separate form-attempt id.
 
-- [ ] **Step 1: Add failing confirmed-success tests**
+- [x] **Step 1: Add failing confirmed-success tests**
 
 ```ts
 it('emits one confirmed lead with the caller-owned event id', () => {
@@ -386,7 +386,7 @@ it('emits one confirmed lead with the caller-owned event id', () => {
 })
 ```
 
-- [ ] **Step 2: Confirm RED, implement wrapper/listener, verify GREEN**
+- [x] **Step 2: Confirm RED, implement wrapper/listener, verify GREEN**
 
 ```bash
 pnpm vitest run test/public/track-tag.test.ts
@@ -397,7 +397,7 @@ arbitrary `detail` fields. Allowlist `form_id`, `form_name`,
 `submission_event_id`, `vehicle_id`, `vehicle_make`, `vehicle_model`, `value`,
 and `currency`.
 
-- [ ] **Step 3: Document provider integration examples**
+- [x] **Step 3: Document provider integration examples**
 
 ```js
 const submissionEventId = window.xf.track('form_submit', {
@@ -412,7 +412,7 @@ providerForm.onSuccess(() => {
 })
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add public/track.js test/public/track-tag.test.ts docs/integrations/xeroflow-confirmed-web-conversions.md
@@ -421,12 +421,12 @@ git commit -m "feat: add confirmed web lead contract"
 
 ## Checkpoint A — collection readiness
 
-- [ ] Public-tag, tracking-schema, persistence, consent, and promotion tests pass.
-- [ ] Migrations 338 and 339 are applied and inspected.
-- [ ] No new provider delivery can occur.
-- [ ] Test a successful and failed sample form: only success creates
+- [x] Public-tag, tracking-schema, persistence, consent, and promotion tests pass.
+- [x] Migrations 338 and 339 are applied and inspected.
+- [x] No new provider delivery can occur.
+- [x] Test a successful and failed sample form: only success creates
   `generate_lead`.
-- [ ] Review all modified files end-to-end and verify no contact fields enter the
+- [x] Review all modified files end-to-end and verify no contact fields enter the
   canonical event.
 
 ---
