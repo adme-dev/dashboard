@@ -835,11 +835,16 @@ git commit -m "feat: expose redacted measurement lineage"
 
 - [ ] **Step 1: Invoke and apply the mandatory frontend-design skill**
 
+  Blocked on 2026-09-04: the project-documented path and installed skill roots
+  contain no `frontend-design/SKILL.md`. The available `frontend-ui-engineering`
+  guidance and all project Nuxt UI/form constraints were applied; this checkbox
+  remains open until the mandated skill is restored.
+
 Read the project-specified frontend-design skill before modifying any filters or
 destination forms. Use `UFormField`, `USelectMenu`, `UInput`, `UButton`, `UTable`,
 `UBadge`, `USlideover`, and container-aware grids only.
 
-- [ ] **Step 2: Add failing component tests**
+- [x] **Step 2: Add failing component tests**
 
 ```ts
 expect(wrapper.text()).toContain('Signal health')
@@ -848,7 +853,7 @@ expect(wrapper.find('[data-testid="measurement-event-lineage"]').exists()).toBe(
 expect(wrapper.html()).not.toContain('accessToken')
 ```
 
-- [ ] **Step 3: Confirm RED, implement overview/explorer, verify GREEN**
+- [x] **Step 3: Confirm RED, implement overview/explorer, verify GREEN**
 
 ```bash
 pnpm vitest run test/app/measurementSignalCentre.test.ts
@@ -856,10 +861,15 @@ pnpm vitest run test/app/measurementSignalCentre.test.ts
 
 - [ ] **Step 4: Verify in an authenticated browser**
 
+  Blocked on 2026-09-04: Chrome DevTools could not acquire its locked profile,
+  no Codex Browser/Chrome extension surface was connected, and Kimi WebBridge
+  reported `no extension connected`. Automated component, accessibility-name,
+  Nuxt UI control, and filtered typecheck verification passed.
+
 Check responsive widths, dark mode, loading/empty/error states, filters, lineage
 slideover, network responses, console, and accessibility names.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add 'app/pages/agency/measurement/[clientId].vue' app/components/measurement/SignalOverview.vue app/components/measurement/SignalEventExplorer.vue test/app/measurementSignalCentre.test.ts
