@@ -2776,6 +2776,35 @@ const features: Record<string, Feature> = {
     ]
   },
 
+  'measurement-signal-centre': {
+    title: 'Measurement Signal Centre',
+    slug: 'measurement-signal-centre',
+    icon: 'i-lucide-waypoints',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Govern privacy-safe browser and server-side measurement across TikTok, Meta, Google, and GA4 from one explainable control plane.',
+    details: [
+      {
+        title: 'One canonical signal path',
+        content: 'XeroFlow records consent-aware website activity, confirmed lead outcomes, and provider delivery as distinct evidence. The same canonical event vocabulary can feed TikTok Pixel and Events API, Meta browser and server destinations, Google Data Manager, and GA4 without treating an early form interaction as a completed lead.'
+      },
+      {
+        title: 'Privacy-safe identity handling',
+        content: 'Collection follows the client’s consent decision and stores only the attribution context needed for the approved measurement purpose. Direct identifiers are redacted from operator and client views, and eligible contact data is normalised and hashed only at the provider boundary when an approved destination requires matching.'
+      },
+      {
+        title: 'Explainable delivery health',
+        content: 'Marketing teams can separate captured, consent-skipped, queued, delivered, accepted, rejected, and dead-lettered signals. A redacted event explorer links each canonical event to its destination outcome and provider receipt so gaps can be diagnosed without exposing credentials or raw visitor identifiers.'
+      },
+      {
+        title: 'Controlled activation and rollback',
+        content: 'Every destination begins disabled in test mode. Fresh provider evidence, consent review, and two-person approval are required before live activation. Operators can pause a client or destination immediately, preserve the audit trail, and return to test mode while an issue is investigated.'
+      }
+    ]
+  },
+
   'website-audience-intelligence': {
     title: 'Website Audience Intelligence',
     slug: 'website-audience-intelligence',

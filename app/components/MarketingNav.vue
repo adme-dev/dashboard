@@ -625,6 +625,7 @@ const featuresCol1 = [
 const featuresCol2 = [
   { title: 'Xero Integration', subtitle: 'Sync invoices and accounts', icon: 'i-lucide-link', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
   { title: 'Ad Spend', subtitle: 'Meta & multi-account Google Ads tracking', icon: 'i-lucide-bar-chart-3', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/ad-spend' },
+  { title: 'Measurement Signal Centre', subtitle: 'Privacy-safe server-side measurement', icon: 'i-lucide-waypoints', iconBg: 'bg-cyan-500/15', iconColor: 'text-cyan-400', to: '/features/measurement-signal-centre' },
   { title: 'EOM Engine', subtitle: 'Automated invoice generation', icon: 'i-lucide-receipt', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
   { title: 'Lead Capture & Routing', subtitle: 'Real-time Meta + Google ad inquiries', icon: 'i-lucide-inbox', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/features/lead-capture-routing' },
 ]
