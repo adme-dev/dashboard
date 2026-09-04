@@ -17,6 +17,7 @@ import { createMeasurementReadService } from '~~/server/utils/measurement/readSe
 import {
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
+  deliverTikTokEvent,
   refreshGoogleDataManagerAccessToken
 } from '~~/workers/measurement-delivery/src/providers'
 import { resolveMeasurementProviderCredential } from '~~/workers/measurement-delivery/src/credential'
@@ -88,6 +89,7 @@ export function createMeasurementProviderTestRuntime(event: H3Event) {
     repository: createPostgresMeasurementProviderTestRepository(),
     deliverMeta: input => deliverMetaConversionEvent({ ...input, fetch: providerFetch }),
     deliverGoogle: input => deliverGoogleDataManagerEvent({ ...input, fetch: providerFetch }),
+    deliverTikTok: input => deliverTikTokEvent({ ...input, fetch: providerFetch }),
     refreshGoogleAccessToken: input => refreshGoogleDataManagerAccessToken({
       ...input,
       fetch: providerFetch

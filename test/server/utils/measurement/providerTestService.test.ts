@@ -24,28 +24,37 @@ function baseInput() {
 }
 
 function context(
-  platform: 'meta' | 'google_data_manager',
+  platform: 'meta' | 'google_data_manager' | 'tiktok',
   metaDeliveryMode: 'crm' | 'web' = 'crm'
 ) {
+  const mode = platform === 'meta'
+    ? 'meta_test_events' as const
+    : platform === 'tiktok'
+      ? 'tiktok_test_events' as const
+      : 'google_validate_only' as const
   return {
     run: {
       id: ids.run,
-      mode: platform === 'meta' ? 'meta_test_events' as const : 'google_validate_only' as const,
+      mode,
       status: 'requested' as const
     },
     delivery: {
       eventId: '66666666-6666-4666-8666-666666666666',
-      eventName: 'lead_qualified',
-      providerEventName: 'QualifiedLead',
+      eventName: platform === 'tiktok' ? 'web_conversion' : 'lead_qualified',
+      providerEventName: platform === 'tiktok' ? 'SubmitForm' : 'QualifiedLead',
       occurredAt: '2026-07-17T08:00:00.000Z',
       idempotencyKey: ids.idempotency,
-      externalDestinationId: '573284833843027',
+      externalDestinationId: platform === 'tiktok' ? 'C1234567890' : '573284833843027',
       operatingAccountId: '4221552633',
       loginAccountId: '4221552633',
       metaDeliveryMode
     },
     credential: {
-      credentialRef: platform === 'meta' ? 'MEASUREMENT_PROVIDER_META_BIG_GARAGE' : null,
+      credentialRef: platform === 'meta'
+        ? 'MEASUREMENT_PROVIDER_META_BIG_GARAGE'
+        : platform === 'tiktok'
+          ? 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE'
+          : null,
       accessToken: platform === 'meta' ? 'meta-token' : null,
       refreshToken: platform === 'google_data_manager' ? 'google-refresh' : null,
       scopes: platform === 'google_data_manager'
@@ -72,12 +81,19 @@ function setup(reserved = context('meta')) {
     errorClass: null,
     redactedDiagnostic: null
   }))
+  const deliverTikTok = vi.fn(async () => ({
+    outcome: 'accepted' as const,
+    providerRequestId: 'tiktok-log-1',
+    errorClass: null,
+    redactedDiagnostic: null
+  }))
   const refreshGoogleAccessToken = vi.fn(async () => 'google-access')
   const resolveProviderCredential = vi.fn(async () => 'meta-dataset-token')
   const service = createMeasurementProviderTestService({
     repository,
     deliverMeta,
     deliverGoogle,
+    deliverTikTok,
     refreshGoogleAccessToken,
     resolveProviderCredential,
     graphApiVersion: 'v25.0',
@@ -90,12 +106,156 @@ function setup(reserved = context('meta')) {
     repository,
     deliverMeta,
     deliverGoogle,
+    deliverTikTok,
     refreshGoogleAccessToken,
     resolveProviderCredential
   }
 }
 
 describe('measurement provider test service', () => {
+  it('sends an approved TikTok event only through Test Events and stores bounded evidence', async () => {
+    const test = setup(context('tiktok'))
+
+    const result = await test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'web_conversion',
+      mode: 'tiktok_test_events',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      ttclid: 'click-1',
+      ttp: 'browser-1',
+      eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+      clientUserAgent: 'Approved TikTok Test Browser'
+    })
+
+    expect(test.deliverTikTok).toHaveBeenCalledWith(expect.objectContaining({
+      accessToken: 'meta-dataset-token',
+      environment: 'test',
+      testEventCode: 'TEST123456',
+      delivery: expect.objectContaining({
+        externalDestinationId: 'C1234567890',
+        attribution: expect.objectContaining({
+          browserEventId: 'browser-event-1',
+          ttclid: 'click-1',
+          ttp: 'browser-1'
+        })
+      })
+    }))
+    expect(test.resolveProviderCredential).toHaveBeenCalledWith(
+      'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE'
+    )
+    expect(test.repository.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'accepted',
+      providerRequestId: 'tiktok-log-1'
+    }))
+    expect(result).toMatchObject({
+      run: {
+        mode: 'tiktok_test_events',
+        status: 'accepted',
+        providerRequestId: 'tiktok-log-1'
+      }
+    })
+    expect(JSON.stringify(result)).not.toMatch(/TEST123456|browser-event-1|click-1|browser-1/)
+  })
+
+  it('fails closed when the TikTok Test Events credential is unavailable', async () => {
+    const testContext = context('tiktok')
+    testContext.credential.credentialRef = null
+    const test = setup(testContext)
+
+    await test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'web_conversion',
+      mode: 'tiktok_test_events',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      ttclid: 'click-1',
+      ttp: null,
+      eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+      clientUserAgent: 'Approved TikTok Test Browser'
+    })
+
+    expect(test.resolveProviderCredential).not.toHaveBeenCalled()
+    expect(test.deliverTikTok).not.toHaveBeenCalled()
+    expect(test.repository.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      errorClass: 'tiktok_events_api_credential_unavailable'
+    }))
+  })
+
+  it('records a missing TikTok Pixel/Data Source id without calling the provider', async () => {
+    const testContext = context('tiktok')
+    testContext.delivery.externalDestinationId = ''
+    const test = setup(testContext)
+
+    await test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'web_conversion',
+      mode: 'tiktok_test_events',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      ttclid: null,
+      ttp: 'browser-1',
+      eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+      clientUserAgent: 'Approved TikTok Test Browser'
+    })
+
+    expect(test.deliverTikTok).not.toHaveBeenCalled()
+    expect(test.repository.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      errorClass: 'tiktok_pixel_id_missing'
+    }))
+  })
+
+  it('stores only redacted evidence when TikTok rejects a test event', async () => {
+    const test = setup(context('tiktok'))
+    test.deliverTikTok.mockResolvedValueOnce({
+      outcome: 'permanent_failure',
+      providerRequestId: 'tiktok-rejected-1',
+      errorClass: 'tiktok_api_40002',
+      redactedDiagnostic: 'TikTok Events API rejected the event'
+    })
+
+    const result = await test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'web_conversion',
+      mode: 'tiktok_test_events',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      ttclid: 'click-1',
+      ttp: null,
+      eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+      clientUserAgent: 'Approved TikTok Test Browser'
+    })
+
+    expect(test.repository.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      providerRequestId: 'tiktok-rejected-1',
+      errorClass: 'tiktok_api_40002',
+      redactedError: 'TikTok Events API rejected the event'
+    }))
+    expect(JSON.stringify(result)).not.toMatch(/TEST123456|browser-event-1|click-1/)
+  })
+
+  it('rejects TikTok tests without ttclid or ttp before reserving provider traffic', async () => {
+    const test = setup(context('tiktok'))
+
+    await expect(test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'web_conversion',
+      mode: 'tiktok_test_events',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      ttclid: null,
+      ttp: null,
+      eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+      clientUserAgent: 'Approved TikTok Test Browser'
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+    expect(test.deliverTikTok).not.toHaveBeenCalled()
+  })
+
   it('sends an approved Meta event only through Test Events and stores redacted evidence', async () => {
     const test = setup()
 
@@ -326,6 +486,8 @@ describe('measurement provider test service', () => {
           wbraid: null,
           fbc: 'fb.1.1234567890123.approved-click',
           fbp: null,
+          ttclid: null,
+          ttp: null,
           eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
           clientUserAgent: 'Approved Pilot Browser'
         }

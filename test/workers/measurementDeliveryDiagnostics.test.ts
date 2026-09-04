@@ -1,6 +1,62 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { retrieveGoogleDataManagerRequestStatus } from '../../workers/measurement-delivery/src/diagnostics'
+import {
+  deriveTikTokTestHealth,
+  retrieveGoogleDataManagerRequestStatus
+} from '../../workers/measurement-delivery/src/diagnostics'
+
+describe('TikTok Test Events diagnostics', () => {
+  it('maps fresh accepted test evidence to ready without exposing provider data', () => {
+    expect(deriveTikTokTestHealth({
+      status: 'accepted',
+      completedAt: '2026-07-17T08:00:00.000Z',
+      errorClass: null
+    }, new Date('2026-07-17T09:00:00.000Z'))).toEqual({
+      healthStatus: 'ready',
+      evidenceAt: '2026-07-17T08:00:00.000Z',
+      reason: null
+    })
+  })
+
+  it('degrades stale or pending TikTok test evidence with stable reasons', () => {
+    expect(deriveTikTokTestHealth({
+      status: 'accepted',
+      completedAt: '2026-07-15T08:00:00.000Z',
+      errorClass: null
+    }, new Date('2026-07-17T09:00:00.000Z'))).toEqual({
+      healthStatus: 'degraded',
+      evidenceAt: '2026-07-15T08:00:00.000Z',
+      reason: 'tiktok_test_evidence_stale'
+    })
+    expect(deriveTikTokTestHealth({
+      status: 'requested',
+      completedAt: null,
+      errorClass: null
+    }, new Date('2026-07-17T09:00:00.000Z'))).toMatchObject({
+      healthStatus: 'degraded',
+      reason: 'tiktok_test_evidence_pending'
+    })
+  })
+
+  it('blocks configuration failures but degrades transient provider failures', () => {
+    expect(deriveTikTokTestHealth({
+      status: 'failed',
+      completedAt: '2026-07-17T08:00:00.000Z',
+      errorClass: 'tiktok_events_api_credential_unavailable'
+    }, new Date('2026-07-17T09:00:00.000Z'))).toMatchObject({
+      healthStatus: 'blocked',
+      reason: 'tiktok_events_api_credential_unavailable'
+    })
+    expect(deriveTikTokTestHealth({
+      status: 'failed',
+      completedAt: '2026-07-17T08:00:00.000Z',
+      errorClass: 'provider_http_503'
+    }, new Date('2026-07-17T09:00:00.000Z'))).toMatchObject({
+      healthStatus: 'degraded',
+      reason: 'tiktok_test_delivery_transient'
+    })
+  })
+})
 
 describe('Google Data Manager delivery diagnostics', () => {
   it('aggregates terminal success and preserves warning counts without raw payloads', async () => {

@@ -1,10 +1,12 @@
 import { z } from 'zod'
+import { CanonicalEventNameSchema } from '~~/server/utils/measurement/contracts'
 import { MeasurementError } from '~~/server/utils/measurement/errors'
 import type {
   GoogleDeliveryInput,
   MetaDeliveryInput,
   ProviderDeliveryResult,
-  RefreshGoogleAccessTokenInput
+  RefreshGoogleAccessTokenInput,
+  TikTokDeliveryInput
 } from '~~/workers/measurement-delivery/src/providers'
 
 const GOOGLE_DATA_MANAGER_SCOPE = 'https://www.googleapis.com/auth/datamanager'
@@ -15,15 +17,7 @@ const CommonProviderTestSchema = z.strictObject({
   clientId: z.string().uuid(),
   destinationId: z.string().uuid(),
   expectedConfigVersion: z.number().int().positive(),
-  canonicalEventName: z.enum([
-    'lead_created',
-    'lead_contacted',
-    'lead_qualified',
-    'lead_won',
-    'lead_lost',
-    'purchase',
-    'web_conversion'
-  ]),
+  canonicalEventName: CanonicalEventNameSchema,
   occurredAt: z.string().datetime({ offset: true }),
   idempotencyKey: z.string().uuid(),
   reason: z.string().trim().min(1).max(1000),
@@ -34,6 +28,19 @@ const CommonProviderTestSchema = z.strictObject({
 const MetaProviderTestCommonSchema = CommonProviderTestSchema.extend({
   mode: z.literal('meta_test_events'),
   testEventCode: z.string().trim().min(4).max(128).regex(/^[a-z0-9_-]+$/i)
+})
+
+const SafeWebEventSourceUrlSchema = z.string().trim().url().max(2048).refine((value) => {
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'https:' || url.protocol === 'http:')
+      && !url.username
+      && !url.password
+      && !url.search
+      && !url.hash
+  } catch {
+    return false
+  }
 })
 
 const MetaCrmProviderTestSchema = MetaProviderTestCommonSchema.extend({
@@ -47,18 +54,7 @@ const MetaWebProviderTestSchema = MetaProviderTestCommonSchema.extend({
   browserEventId: z.string().trim().min(1).max(128),
   fbc: z.string().trim().max(512).regex(META_BROWSER_IDENTIFIER_PATTERN).nullable().default(null),
   fbp: z.string().trim().max(512).regex(META_BROWSER_IDENTIFIER_PATTERN).nullable().default(null),
-  eventSourceUrl: z.string().trim().url().max(2048).refine((value) => {
-    try {
-      const url = new URL(value)
-      return (url.protocol === 'https:' || url.protocol === 'http:')
-        && !url.username
-        && !url.password
-        && !url.search
-        && !url.hash
-    } catch {
-      return false
-    }
-  }),
+  eventSourceUrl: SafeWebEventSourceUrlSchema,
   clientUserAgent: z.string().trim().min(1).max(1024)
 }).superRefine((value, context) => {
   if (!value.fbc && !value.fbp) {
@@ -85,10 +81,29 @@ const GoogleProviderTestSchema = CommonProviderTestSchema.extend({
   })
 })
 
+const TikTokProviderTestSchema = CommonProviderTestSchema.extend({
+  mode: z.literal('tiktok_test_events'),
+  testEventCode: z.string().trim().min(4).max(128).regex(/^[a-z0-9_-]+$/i),
+  browserEventId: z.string().trim().min(1).max(128),
+  ttclid: z.string().trim().min(1).max(512).nullable().default(null),
+  ttp: z.string().trim().min(1).max(512).nullable().default(null),
+  eventSourceUrl: SafeWebEventSourceUrlSchema,
+  clientUserAgent: z.string().trim().min(1).max(1024)
+}).superRefine((value, context) => {
+  if (!value.ttclid && !value.ttp) {
+    context.addIssue({
+      code: 'custom',
+      path: ['ttclid'],
+      message: 'TikTok Test Events require ttclid or ttp browser context'
+    })
+  }
+})
+
 export const MeasurementProviderTestInputSchema = z.union([
   MetaCrmProviderTestSchema,
   MetaWebProviderTestSchema,
-  GoogleProviderTestSchema
+  GoogleProviderTestSchema,
+  TikTokProviderTestSchema
 ])
 
 export type MeasurementProviderTestInput = z.infer<typeof MeasurementProviderTestInputSchema>
@@ -147,6 +162,7 @@ interface ProviderTestServiceDeps {
   repository: MeasurementProviderTestRepository
   deliverMeta(input: Omit<MetaDeliveryInput, 'fetch'>): Promise<ProviderDeliveryResult>
   deliverGoogle(input: Omit<GoogleDeliveryInput, 'fetch'>): Promise<ProviderDeliveryResult>
+  deliverTikTok(input: Omit<TikTokDeliveryInput, 'fetch'>): Promise<ProviderDeliveryResult>
   refreshGoogleAccessToken(input: Omit<RefreshGoogleAccessTokenInput, 'fetch'>): Promise<string>
   resolveProviderCredential(credentialRef: string): Promise<string | null>
   graphApiVersion: string
@@ -241,7 +257,16 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
               input.clientUserAgent
             ]
           : [input.testEventCode, input.metaLeadId]
-        : [input.clickIdentifier.value]
+        : input.mode === 'tiktok_test_events'
+          ? [
+              input.testEventCode,
+              input.browserEventId,
+              input.ttclid,
+              input.ttp,
+              input.eventSourceUrl,
+              input.clientUserAgent
+            ]
+          : [input.clickIdentifier.value]
       const normalizedReason = input.reason.toLocaleLowerCase()
       if (transientValues.some(value => (
         value && normalizedReason.includes(value.toLocaleLowerCase())
@@ -254,10 +279,11 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
 
       const { context } = reserved
       const isMetaWeb = input.mode === 'meta_test_events' && input.deliveryMode === 'web'
+      const isTikTok = input.mode === 'tiktok_test_events'
       const baseDelivery = {
         ...context.delivery,
         attribution: {
-          browserEventId: isMetaWeb ? input.browserEventId : null,
+          browserEventId: isMetaWeb || isTikTok ? input.browserEventId : null,
           metaLeadId: input.mode === 'meta_test_events' && input.deliveryMode === 'crm'
             ? input.metaLeadId
             : null,
@@ -272,8 +298,10 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
             : null,
           fbc: isMetaWeb ? input.fbc : null,
           fbp: isMetaWeb ? input.fbp : null,
-          eventSourceUrl: isMetaWeb ? input.eventSourceUrl : null,
-          clientUserAgent: isMetaWeb ? input.clientUserAgent : null
+          ttclid: isTikTok ? input.ttclid : null,
+          ttp: isTikTok ? input.ttp : null,
+          eventSourceUrl: isMetaWeb || isTikTok ? input.eventSourceUrl : null,
+          clientUserAgent: isMetaWeb || isTikTok ? input.clientUserAgent : null
         }
       }
 
@@ -302,6 +330,37 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
                   providerRequestId: null,
                   errorClass: 'meta_capi_credential_unavailable',
                   redactedDiagnostic: 'Meta CAPI secret binding is unavailable'
+                }
+          }
+        } else if (input.mode === 'tiktok_test_events') {
+          if (!context.delivery.externalDestinationId) {
+            providerResult = {
+              outcome: 'permanent_failure',
+              providerRequestId: null,
+              errorClass: 'tiktok_pixel_id_missing',
+              redactedDiagnostic: 'TikTok Pixel/Data Source id is not configured'
+            }
+          } else if (!context.credential.credentialRef) {
+            providerResult = {
+              outcome: 'permanent_failure',
+              providerRequestId: null,
+              errorClass: 'tiktok_events_api_credential_unavailable',
+              redactedDiagnostic: 'TikTok Events API secret binding is unavailable'
+            }
+          } else {
+            const accessToken = await deps.resolveProviderCredential(context.credential.credentialRef)
+            providerResult = accessToken
+              ? await deps.deliverTikTok({
+                  delivery: baseDelivery,
+                  accessToken,
+                  environment: 'test',
+                  testEventCode: input.testEventCode
+                })
+              : {
+                  outcome: 'permanent_failure',
+                  providerRequestId: null,
+                  errorClass: 'tiktok_events_api_credential_unavailable',
+                  redactedDiagnostic: 'TikTok Events API secret binding is unavailable'
                 }
           }
         } else if (!context.credential.scopes.includes(GOOGLE_DATA_MANAGER_SCOPE)) {

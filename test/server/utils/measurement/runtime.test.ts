@@ -40,7 +40,8 @@ describe('createMeasurementProviderTestRuntime', () => {
     const dependencies = mockCreateProviderTestService.mock.calls[0]?.[0]
     expect(dependencies).toEqual(expect.objectContaining({
       googleClientId: 'request-client-id',
-      googleClientSecret: 'request-client-secret'
+      googleClientSecret: 'request-client-secret',
+      deliverTikTok: expect.any(Function)
     }))
   })
 })
