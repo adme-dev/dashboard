@@ -24,10 +24,14 @@ export const CanonicalEventNameSchema = z.enum([
   'lead_won',
   'lead_lost',
   'purchase',
-  'web_conversion'
+  'web_conversion',
+  'vehicle_view',
+  'site_search',
+  'phone_contact',
+  'test_drive_booked'
 ])
 
-export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager'])
+export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager', 'tiktok'])
 export const CapabilityModeSchema = z.enum([
   'meta_pixel',
   'meta_web_capi',
@@ -35,7 +39,9 @@ export const CapabilityModeSchema = z.enum([
   'meta_conversion_leads',
   'google_tag_enhanced_conversions',
   'google_enhanced_conversions_for_leads',
-  'google_data_manager'
+  'google_data_manager',
+  'tiktok_pixel',
+  'tiktok_events_api'
 ])
 export const CapabilityStatusSchema = z.enum([
   'not_configured',
@@ -47,6 +53,15 @@ export const CapabilityStatusSchema = z.enum([
   'blocked'
 ])
 export const ManagementOriginSchema = z.enum(['zero', 'gtm', 'partner', 'external'])
+
+function capabilityBelongsToPlatform(
+  platform: z.infer<typeof MeasurementPlatformSchema>,
+  mode: z.infer<typeof CapabilityModeSchema>
+): boolean {
+  if (platform === 'meta') return mode.startsWith('meta_')
+  if (platform === 'google_data_manager') return mode.startsWith('google_')
+  return mode.startsWith('tiktok_')
+}
 
 const FirstPartyHostnameSchema = z.string()
   .trim()
@@ -231,10 +246,7 @@ export const ConversionDestinationCreateSchema = z.strictObject({
     }
     seen.add(capability.mode)
 
-    const belongsToPlatform = destination.platform === 'meta'
-      ? capability.mode.startsWith('meta_')
-      : capability.mode.startsWith('google_')
-    if (!belongsToPlatform) {
+    if (!capabilityBelongsToPlatform(destination.platform, capability.mode)) {
       ctx.addIssue({
         code: 'custom',
         path: ['capabilities', index, 'mode'],
@@ -309,10 +321,7 @@ const DestinationConfigurationInputSchema = z.strictObject({
     }
     capabilityModes.add(capability.mode)
 
-    const belongsToPlatform = destination.platform === 'meta'
-      ? capability.mode.startsWith('meta_')
-      : capability.mode.startsWith('google_')
-    if (!belongsToPlatform) {
+    if (!capabilityBelongsToPlatform(destination.platform, capability.mode)) {
       ctx.addIssue({
         code: 'custom',
         path: ['capabilities', index, 'mode'],

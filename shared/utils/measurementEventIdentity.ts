@@ -14,7 +14,8 @@ const DOWNSTREAM_LIFECYCLE_EVENTS = new Set([
 
 const WEB_DELIVERY_CAPABILITIES = new Set([
   'meta_web_capi',
-  'google_tag_enhanced_conversions'
+  'google_tag_enhanced_conversions',
+  'tiktok_events_api'
 ])
 
 export function classifyMeasurementEventIdentity(

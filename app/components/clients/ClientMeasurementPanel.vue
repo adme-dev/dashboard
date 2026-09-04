@@ -74,7 +74,9 @@ const capabilityLabels: Record<string, string> = {
   meta_conversion_leads: 'Meta Conversion Leads',
   google_tag_enhanced_conversions: 'Google tag enhanced conversions',
   google_enhanced_conversions_for_leads: 'Google enhanced conversions for leads',
-  google_data_manager: 'Google Data Manager'
+  google_data_manager: 'Google Data Manager',
+  tiktok_pixel: 'TikTok Pixel',
+  tiktok_events_api: 'TikTok Events API'
 }
 
 const originLabels: Record<string, string> = {
@@ -86,7 +88,8 @@ const originLabels: Record<string, string> = {
 
 const platformLabels: Record<MeasurementDestination['platform'], string> = {
   meta: 'Meta',
-  google_data_manager: 'Google Data Manager'
+  google_data_manager: 'Google Data Manager',
+  tiktok: 'TikTok'
 }
 
 const profileState = computed(() => {

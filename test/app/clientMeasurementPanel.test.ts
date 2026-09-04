@@ -180,9 +180,45 @@ function responseFor(request: string) {
             }
           ],
           mappings: []
+        },
+        {
+          id: '66666666-6666-4666-8666-666666666666',
+          platform: 'tiktok',
+          socialConnectionId: null,
+          externalDestinationId: 'C1234567890',
+          credentialConfigured: true,
+          enabled: false,
+          environment: 'test',
+          healthStatus: 'configured',
+          configVersion: 1,
+          lastValidatedAt: null,
+          lastSuccessAt: null,
+          lastFailureAt: null,
+          providerRequestId: null,
+          errorClass: null,
+          redactedError: null,
+          capabilities: [
+            {
+              id: 'capability-4',
+              mode: 'tiktok_events_api',
+              status: 'configured',
+              managementOrigin: 'zero',
+              canZeroMutate: true,
+              evidenceAt: null,
+              blockingReason: null
+            }
+          ],
+          mappings: [
+            {
+              id: 'mapping-2',
+              canonicalEventName: 'vehicle_view',
+              providerEventName: 'ViewContent',
+              isActive: false
+            }
+          ]
         }
       ],
-      pagination: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 }
+      pagination: { page: 1, pageSize: 100, totalItems: 3, totalPages: 1 }
     }
   }
 
@@ -242,12 +278,15 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Live approval pending')
       expect(host.textContent).toContain('Meta')
       expect(host.textContent).toContain('Google Data Manager')
+      expect(host.textContent).toContain('TikTok')
       expect(host.textContent).toContain('Meta Pixel')
       expect(host.textContent).toContain('Managed in Google Tag Manager')
       expect(host.textContent).toContain('Meta CRM CAPI')
       expect(host.textContent).toContain('Managed by Zero')
       expect(host.textContent).toContain('Externally managed')
       expect(host.textContent).toContain('lead_qualified → QualifiedLead')
+      expect(host.textContent).toContain('TikTok Events API')
+      expect(host.textContent).toContain('vehicle_view → ViewContent')
       expect(host.textContent).toContain('Server-only lifecycle event')
       expect(host.textContent).toContain('Document externally managed Google delivery')
       expect(host.textContent).toContain('Connected account linked')

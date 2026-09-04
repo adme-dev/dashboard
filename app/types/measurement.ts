@@ -1,4 +1,35 @@
 export type MeasurementEnvironment = 'test' | 'live' | 'paused'
+export const MEASUREMENT_PLATFORMS = ['meta', 'google_data_manager', 'tiktok'] as const
+export type MeasurementPlatform = typeof MEASUREMENT_PLATFORMS[number]
+
+export const MEASUREMENT_CAPABILITY_MODES = [
+  'meta_pixel',
+  'meta_web_capi',
+  'meta_crm_capi',
+  'meta_conversion_leads',
+  'google_tag_enhanced_conversions',
+  'google_enhanced_conversions_for_leads',
+  'google_data_manager',
+  'tiktok_pixel',
+  'tiktok_events_api'
+] as const
+export type MeasurementCapabilityMode = typeof MEASUREMENT_CAPABILITY_MODES[number]
+
+export const CANONICAL_MEASUREMENT_EVENT_NAMES = [
+  'lead_created',
+  'lead_contacted',
+  'lead_qualified',
+  'lead_won',
+  'lead_lost',
+  'purchase',
+  'web_conversion',
+  'vehicle_view',
+  'site_search',
+  'phone_contact',
+  'test_drive_booked'
+] as const
+export type CanonicalMeasurementEventName = typeof CANONICAL_MEASUREMENT_EVENT_NAMES[number]
+
 export type MeasurementReadinessStatus = 'onboarding' | 'paused' | 'blocked' | 'degraded' | 'ready'
 export type MeasurementCapabilityStatus
   = | 'not_configured'
@@ -67,7 +98,7 @@ export interface MeasurementReadinessSummary {
 
 export interface MeasurementCapability {
   id: string
-  mode: string
+  mode: MeasurementCapabilityMode
   status: MeasurementCapabilityStatus
   managementOrigin: 'zero' | 'gtm' | 'partner' | 'external'
   canZeroMutate: boolean
@@ -77,14 +108,14 @@ export interface MeasurementCapability {
 
 export interface MeasurementEventMapping {
   id: string
-  canonicalEventName: string
+  canonicalEventName: CanonicalMeasurementEventName
   providerEventName: string
   isActive: boolean
 }
 
 export interface MeasurementDestination {
   id: string
-  platform: 'meta' | 'google_data_manager'
+  platform: MeasurementPlatform
   socialConnectionId?: string | null
   externalDestinationId: string
   credentialConfigured: boolean

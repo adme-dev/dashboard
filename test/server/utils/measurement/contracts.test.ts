@@ -79,6 +79,24 @@ describe('ClientMeasurementProfileCreateSchema', () => {
 })
 
 describe('ConversionDestinationCreateSchema', () => {
+  it('accepts a dormant TikTok destination with TikTok-owned capabilities', () => {
+    const result = ConversionDestinationCreateSchema.parse({
+      profileId: PROFILE_ID,
+      platform: 'tiktok',
+      externalDestinationId: 'C1234567890',
+      capabilities: [
+        { mode: 'tiktok_pixel', managementOrigin: 'gtm', canZeroMutate: false },
+        { mode: 'tiktok_events_api', managementOrigin: 'zero', canZeroMutate: true }
+      ]
+    })
+
+    expect(result).toMatchObject({
+      platform: 'tiktok',
+      enabled: false,
+      environment: 'test'
+    })
+  })
+
   it('keeps Meta web CAPI and CRM CAPI as independently evidenced capabilities', () => {
     const result = ConversionDestinationCreateSchema.parse({
       profileId: PROFILE_ID,
@@ -148,6 +166,19 @@ describe('ConversionDestinationCreateSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('rejects non-TikTok capabilities on a TikTok destination', () => {
+    const result = ConversionDestinationCreateSchema.safeParse({
+      profileId: PROFILE_ID,
+      platform: 'tiktok',
+      externalDestinationId: 'C1234567890',
+      capabilities: [
+        { mode: 'meta_web_capi', managementOrigin: 'zero', canZeroMutate: true }
+      ]
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   it('prevents Zero mutation authority for externally managed capabilities', () => {
     const result = ConversionDestinationCreateSchema.safeParse({
       profileId: PROFILE_ID,
@@ -177,6 +208,39 @@ describe('ConversionDestinationCreateSchema', () => {
 })
 
 describe('CreateConversionDestinationConfigurationSchema', () => {
+  it('defines a dormant TikTok Events API destination with an inactive mapping', () => {
+    const result = CreateConversionDestinationConfigurationSchema.parse({
+      clientId: CLIENT_ID,
+      expectedProfileVersion: 1,
+      reason: 'Configure Werribee TikTok test delivery',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      destination: {
+        platform: 'tiktok',
+        socialConnectionId: null,
+        externalDestinationId: 'C1234567890',
+        credentialRef: 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE',
+        capabilities: [{
+          mode: 'tiktok_events_api',
+          status: 'configured',
+          managementOrigin: 'zero',
+          canZeroMutate: true,
+          blockingReason: null
+        }],
+        mappings: [{
+          canonicalEventName: 'web_conversion',
+          providerEventName: 'SubmitForm',
+          isActive: false
+        }]
+      }
+    })
+
+    expect(result.destination).toMatchObject({
+      platform: 'tiktok',
+      externalDestinationId: 'C1234567890',
+      mappings: [{ canonicalEventName: 'web_conversion', isActive: false }]
+    })
+  })
+
   it('rejects credential references outside the purpose-scoped measurement namespace', () => {
     const result = CreateConversionDestinationConfigurationSchema.safeParse({
       clientId: CLIENT_ID,
@@ -580,6 +644,20 @@ describe('CanonicalConversionEventSchema', () => {
     expect(result.eventName).toBe('lead_qualified')
     expect(result.sourceSystem).toBe('zero_crm')
     expect(result.configVersion).toBe(1)
+  })
+
+  it('accepts the approved automotive full-funnel canonical event names', () => {
+    for (const eventName of [
+      'vehicle_view',
+      'site_search',
+      'phone_contact',
+      'test_drive_booked'
+    ] as const) {
+      expect(CanonicalConversionEventSchema.parse({
+        ...qualifiedEvent,
+        eventName
+      }).eventName).toBe(eventName)
+    }
   })
 
   it('accepts the documented 16-digit Meta lead identifier format', () => {
