@@ -800,18 +800,18 @@ git commit -m "feat: expose measurement signal summary"
   destination, outcome, receipt id, and redacted reason.
 - Supports bounded date/state/event/platform filters and cursor pagination.
 
-- [ ] **Step 1: Add failing filter/redaction/tenant tests**
+- [x] **Step 1: Add failing filter/redaction/tenant tests**
 
 Assert email, phone, tokens, raw attribution values, provider bodies, and database
 errors are absent from serialized responses.
 
-- [ ] **Step 2: Confirm RED, implement, verify GREEN**
+- [x] **Step 2: Confirm RED, implement, verify GREEN**
 
 ```bash
 pnpm vitest run test/server/utils/measurement/eventLineage.test.ts test/server/api/measurementSignalEvents.test.ts
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add server/utils/measurement/eventLineage.ts 'server/api/agency/measurement/clients/[clientId]/signals/index.get.ts' test/server/utils/measurement/eventLineage.test.ts test/server/api/measurementSignalEvents.test.ts
