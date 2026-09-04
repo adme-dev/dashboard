@@ -106,8 +106,34 @@ export const ROUTES: Record<string, string[]> = {
   '30 20 * * *': ['/api/cron/google-ai-max-readiness']
 }
 
+// Absolute URLs fetched with a plain GET (no cron secret). Used for the
+// social-dashboard scraped-inventory cache warmers: the GitHub Actions
+// refresh workflow is blocked (403) by bot protection on socials.driveagent.io,
+// whereas a request from inside Cloudflare is not. Each warmer re-scrapes one
+// dealer site (~25s) and repopulates the KV cache the feeds serve from.
+const EXTERNAL_ROUTES: Record<string, string[]> = {
+  '15 */2 * * *': [
+    'https://socials.driveagent.io/api/feeds/scrapers/gws-kia?refresh=true',
+    'https://socials.driveagent.io/api/feeds/scrapers/digitaldealer?site=https://southmorangmg.com.au&refresh=true',
+    'https://socials.driveagent.io/api/feeds/scrapers/digitaldealer?site=https://northernmg.com.au&refresh=true',
+  ],
+}
+
 export default {
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext) {
+    const external = EXTERNAL_ROUTES[controller.cron]
+    if (external) {
+      await Promise.all(external.map(async (url) => {
+        try {
+          const resp = await fetch(url, { headers: { 'user-agent': 'XeroFlow pages-cron feed-refresh' } })
+          const text = await resp.text()
+          console.log('pages-cron.external', { cron: controller.cron, url, status: resp.status, body: text.slice(0, 200) })
+        } catch (err) {
+          console.error('pages-cron.external.error', { cron: controller.cron, url, error: String(err) })
+        }
+      }))
+      return
+    }
     const paths = ROUTES[controller.cron]
     if (!paths) {
       console.warn('pages-cron: unknown cron', controller.cron)

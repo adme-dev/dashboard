@@ -23,7 +23,8 @@ crons = [
   "30 20 * * *",    # read-only Google AI Max readiness scan
   "45 21 * * *",    # pre-morning ad-spend refresh (07:45 Melbourne)
   "15 22 * * *",    # sync-ad-creatives (creative text into campaign_creatives, 08:15 Melbourne)
-  "15 23 * * *"     # alert if the pre-morning sync has not moved data within 90 minutes
+  "15 23 * * *",  # alert if the pre-morning sync has not moved data within 90 minutes
+  "15 */2 * * *"   # dealer inventory scrape refresh on socials.driveagent.io (EXTERNAL_ROUTES)
 ]
 
 # Workers Logs so a cron slot that did not fire is distinguishable from one that fired and got a
