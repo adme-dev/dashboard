@@ -221,6 +221,118 @@ describe('public/track.js transport', () => {
     expect(JSON.parse(requests[0].body).events[0].event_id).toBe(eventId)
   })
 
+  it('emits one confirmed lead with the caller-owned conversion event ID', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+
+    const eventId = (window as any).xf.createEventId()
+    const returnedEventId = (window as any).xf.confirmLead(
+      { form_id: 'vehicle-enquiry' },
+      { eventId }
+    )
+    const events = requests.map(request => JSON.parse(request.body).events[0])
+
+    expect(returnedEventId).toBe(eventId)
+    expect(events.filter(event => event.event_name === 'generate_lead')).toEqual([
+      expect.objectContaining({ event_id: eventId })
+    ])
+  })
+
+  it('keeps form-attempt and confirmed-conversion IDs distinct and allowlists DOM detail', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+
+    const submissionEventId = (window as any).xf.track('form_submit', {
+      form_id: 'vehicle-enquiry'
+    })
+    const conversionEventId = (window as any).xf.createEventId()
+    document.dispatchEvent(new CustomEvent('xeroflow:lead-confirmed', {
+      detail: {
+        eventId: conversionEventId,
+        form_id: 'vehicle-enquiry',
+        form_name: 'Vehicle enquiry',
+        submission_event_id: submissionEventId,
+        vehicle_id: 'stock-123',
+        vehicle_make: 'Toyota',
+        vehicle_model: 'RAV4',
+        value: 1,
+        currency: 'AUD',
+        email: 'must-not-copy@example.com',
+        message: 'Private free text'
+      }
+    }))
+
+    const events = requests.map(request => JSON.parse(request.body).events[0])
+    const confirmed = events.filter(event => event.event_name === 'generate_lead')
+    expect(confirmed).toHaveLength(1)
+    expect(confirmed[0]).toMatchObject({
+      event_id: conversionEventId,
+      event_data: {
+        form_id: 'vehicle-enquiry',
+        form_name: 'Vehicle enquiry',
+        submission_event_id: submissionEventId,
+        vehicle_id: 'stock-123',
+        vehicle_make: 'Toyota',
+        vehicle_model: 'RAV4',
+        value: 1,
+        currency: 'AUD'
+      }
+    })
+    expect(conversionEventId).not.toBe(submissionEventId)
+    expect(JSON.stringify(confirmed[0])).not.toContain('must-not-copy@example.com')
+    expect(JSON.stringify(confirmed[0])).not.toContain('Private free text')
+  })
+
+  it('ignores confirmed-lead DOM events without a valid caller-owned event ID', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+
+    document.dispatchEvent(new CustomEvent('xeroflow:lead-confirmed', {
+      detail: { form_id: 'vehicle-enquiry' }
+    }))
+    document.dispatchEvent(new CustomEvent('xeroflow:lead-confirmed', {
+      detail: { eventId: ' '.repeat(129), form_id: 'vehicle-enquiry' }
+    }))
+
+    expect(requests).toHaveLength(0)
+  })
+
+  it('does not emit a confirmed lead when marketing consent is denied', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    ;(window as any).xf.setConsent({
+      tracking: true,
+      analytics: true,
+      marketing: false
+    })
+    requests = []
+
+    ;(window as any).xf.confirmLead(
+      { form_id: 'vehicle-enquiry' },
+      { eventId: (window as any).xf.createEventId() }
+    )
+
+    expect(requests).toHaveLength(0)
+  })
+
+  it('rejects a confirmed lead that reuses its form-attempt event ID', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+    const submissionEventId = (window as any).xf.createEventId()
+
+    const result = (window as any).xf.confirmLead(
+      { form_id: 'vehicle-enquiry', submission_event_id: submissionEventId },
+      { eventId: submissionEventId }
+    )
+
+    expect(result).toBeUndefined()
+    expect(requests).toHaveLength(0)
+  })
+
   it('forwards email click IDs from the landing URL attribution', () => {
     window.history.pushState({}, '', '/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=click-1')
     loadTag()

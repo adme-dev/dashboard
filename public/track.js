@@ -171,11 +171,15 @@
     return Date.now() + '-' + Math.random().toString(36).substring(2, 11)
   }
 
-  function resolveEventId(options) {
+  function callerEventId(options) {
     var supplied = options && typeof options.eventId === 'string'
       ? options.eventId.trim()
       : ''
-    return supplied && supplied.length <= 128 ? supplied : generateEventId()
+    return supplied && supplied.length <= 128 ? supplied : null
+  }
+
+  function resolveEventId(options) {
+    return callerEventId(options) || generateEventId()
   }
 
   // Use the site's already-installed GTM container without fetching Zero's
@@ -389,6 +393,7 @@
     // Marketing events require marketing consent
     var marketingEvents = [
       'lead',
+      'generate_lead',
       'test_drive',
       'trade_in',
       'finance_application',
@@ -672,6 +677,42 @@
     // Push to dataLayer for sGTM (if GTM is enabled and event qualifies)
     pushToDataLayer(eventName, eventData, eventId)
     return eventId
+  }
+
+  var CONFIRMED_LEAD_STRING_LIMITS = {
+    form_id: 128,
+    form_name: 256,
+    submission_event_id: 128,
+    vehicle_id: 128,
+    vehicle_make: 128,
+    vehicle_model: 128,
+    currency: 3,
+  }
+
+  function confirmedLeadData(data) {
+    var result = {}
+    if (!data || typeof data !== 'object') return result
+
+    for (var field in CONFIRMED_LEAD_STRING_LIMITS) {
+      if (!Object.prototype.hasOwnProperty.call(CONFIRMED_LEAD_STRING_LIMITS, field)) continue
+      if (typeof data[field] !== 'string') continue
+      var value = data[field].trim()
+      if (!value) continue
+      result[field] = value.slice(0, CONFIRMED_LEAD_STRING_LIMITS[field])
+    }
+
+    if (typeof data.value === 'number' && isFinite(data.value)) {
+      result.value = data.value
+    }
+    return result
+  }
+
+  function confirmLead(data, options) {
+    var eventId = callerEventId(options)
+    if (!eventId) return
+    var safeData = confirmedLeadData(data)
+    if (safeData.submission_event_id === eventId) return
+    return track('generate_lead', safeData, { eventId: eventId })
   }
 
   // Detect vehicle context from page URL and structured data
@@ -1073,6 +1114,24 @@
   // State for cleanup
   var _engagementInterval = null
   var _behavioralCleanups = []
+  var _confirmedLeadListenerAttached = false
+
+  function setupConfirmedLeadListener() {
+    if (_confirmedLeadListenerAttached) return
+
+    function onConfirmedLead(event) {
+      var detail = event && event.detail
+      if (!detail || typeof detail !== 'object') return
+      confirmLead(detail, { eventId: detail.eventId })
+    }
+
+    document.addEventListener('xeroflow:lead-confirmed', onConfirmedLead)
+    _confirmedLeadListenerAttached = true
+    _behavioralCleanups.push(function () {
+      document.removeEventListener('xeroflow:lead-confirmed', onConfirmedLead)
+      _confirmedLeadListenerAttached = false
+    })
+  }
 
   // -- Rage Click Detection --
   function setupRageClickDetection() {
@@ -1388,6 +1447,8 @@
       })
     }
 
+    setupConfirmedLeadListener()
+
     // Track page view
     trackPageView()
 
@@ -1491,6 +1552,7 @@
   window.xf = {
     init: init,
     track: track,
+    confirmLead: confirmLead,
     setConsent: setConsent,
     createEventId: generateEventId,
     destroy: destroy,
