@@ -637,7 +637,7 @@ git commit -m "feat: deliver TikTok Events API conversions"
 - Resolves purpose-scoped TikTok credential refs through the existing resolver.
 - Records the same delivery outcome vocabulary as Meta and Google.
 
-- [ ] **Step 1: Add failing routing and claim tests**
+- [x] **Step 1: Add failing routing and claim tests**
 
 ```ts
 expect(claim).toMatchObject({
@@ -654,25 +654,25 @@ expect(claim).toMatchObject({
 Assert missing TikTok credentials record
 `tiktok_events_api_credential_unavailable` without making a provider request.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```bash
 pnpm vitest run test/workers/measurementDeliveryProcessor.test.ts test/workers/measurementDeliveryRepository.test.ts
 ```
 
-- [ ] **Step 3: Add the TikTok branch and repository projection**
+- [x] **Step 3: Add the TikTok branch and repository projection**
 
 Use the provider registry pattern already established for Meta and Google. Keep
 provider calls outside the database claim transaction.
 
-- [ ] **Step 4: Verify GREEN and worker typecheck**
+- [x] **Step 4: Verify GREEN and worker typecheck**
 
 ```bash
 pnpm vitest run test/workers/measurementDeliveryProcessor.test.ts test/workers/measurementDeliveryRepository.test.ts
 pnpm --dir workers/measurement-delivery exec tsc --noEmit
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add workers/measurement-delivery/src/delivery.ts workers/measurement-delivery/src/repository.ts workers/measurement-delivery/src/index.ts test/workers/measurementDeliveryProcessor.test.ts test/workers/measurementDeliveryRepository.test.ts
