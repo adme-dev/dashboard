@@ -11,7 +11,30 @@ type BrowserConversionRow = Pick<
   | 'gclid'
   | 'gbraid'
   | 'wbraid'
+  | 'fbc'
+  | 'fbp'
+  | 'ttclid'
+  | 'ttp'
+  | 'page_url'
+  | 'ua'
 >
+
+function safeEventSourceUrl(value: string | null): string | null {
+  if (!value) return null
+  try {
+    const url = new URL(value)
+    if (!['http:', 'https:'].includes(url.protocol)) return null
+    const safeUrl = `${url.origin}${url.pathname}`
+    return safeUrl.length <= 2048 ? safeUrl : null
+  } catch {
+    return null
+  }
+}
+
+function safeUserAgent(value: string | null): string | null {
+  const candidate = value?.trim()
+  return candidate ? candidate.slice(0, 1024) : null
+}
 
 export function buildBrowserCanonicalConversion(input: {
   row: BrowserConversionRow
@@ -36,7 +59,14 @@ export function buildBrowserCanonicalConversion(input: {
       metaLeadId: null,
       gclid: input.row.gclid,
       gbraid: input.row.gbraid,
-      wbraid: input.row.wbraid
+      wbraid: input.row.wbraid,
+      fbc: input.row.fbc,
+      fbp: input.row.fbp,
+      ttclid: input.row.ttclid,
+      ttp: input.row.ttp,
+      gaClientId: null,
+      eventSourceUrl: safeEventSourceUrl(input.row.page_url),
+      clientUserAgent: safeUserAgent(input.row.ua)
     }
   }
 }

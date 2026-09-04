@@ -714,7 +714,25 @@ const CanonicalAttributionSchema = z.strictObject({
   metaLeadId: z.string().regex(/^\d{15,16}$/, 'Meta lead ID must contain 15 or 16 digits').nullable().default(null),
   gclid: z.string().trim().min(1).max(512).nullable().default(null),
   gbraid: z.string().trim().min(1).max(512).nullable().default(null),
-  wbraid: z.string().trim().min(1).max(512).nullable().default(null)
+  wbraid: z.string().trim().min(1).max(512).nullable().default(null),
+  fbc: z.string().trim().min(1).max(512).nullable().default(null),
+  fbp: z.string().trim().min(1).max(512).nullable().default(null),
+  ttclid: z.string().trim().min(1).max(512).nullable().default(null),
+  ttp: z.string().trim().min(1).max(512).nullable().default(null),
+  gaClientId: z.string().trim().min(1).max(128).nullable().default(null),
+  eventSourceUrl: z.string().trim().url().max(2048).refine((value) => {
+    try {
+      const url = new URL(value)
+      return ['http:', 'https:'].includes(url.protocol)
+        && !url.username
+        && !url.password
+        && !url.search
+        && !url.hash
+    } catch {
+      return false
+    }
+  }, 'Event source URL must not contain credentials, query data, or a fragment').nullable().default(null),
+  clientUserAgent: z.string().trim().min(1).max(1024).nullable().default(null)
 })
 
 const EMPTY_CANONICAL_ATTRIBUTION = {
@@ -722,7 +740,14 @@ const EMPTY_CANONICAL_ATTRIBUTION = {
   metaLeadId: null,
   gclid: null,
   gbraid: null,
-  wbraid: null
+  wbraid: null,
+  fbc: null,
+  fbp: null,
+  ttclid: null,
+  ttp: null,
+  gaClientId: null,
+  eventSourceUrl: null,
+  clientUserAgent: null
 }
 
 export const CanonicalConversionEventSchema = z.strictObject({

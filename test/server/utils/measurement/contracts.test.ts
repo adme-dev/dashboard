@@ -563,7 +563,14 @@ describe('CanonicalConversionEventSchema', () => {
       metaLeadId: '123456789012345',
       gclid: null,
       gbraid: null,
-      wbraid: null
+      wbraid: null,
+      fbc: null,
+      fbp: null,
+      ttclid: null,
+      ttp: null,
+      gaClientId: null,
+      eventSourceUrl: null,
+      clientUserAgent: null
     }
   } as const
 
@@ -582,6 +589,61 @@ describe('CanonicalConversionEventSchema', () => {
     })
 
     expect(result.attribution.metaLeadId).toBe('1234567890123456')
+  })
+
+  it('accepts the bounded web attribution context needed for server-side delivery', () => {
+    const result = CanonicalConversionEventSchema.parse({
+      ...qualifiedEvent,
+      attribution: {
+        ...qualifiedEvent.attribution,
+        fbc: 'fb.1.1234567890123.approved-click',
+        fbp: 'fb.1.1234567890123.browser-id',
+        ttclid: 'tiktok-click-1',
+        ttp: 'tiktok-browser-1',
+        gaClientId: '1234567890.1234567890',
+        eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+        clientUserAgent: 'Test Browser'
+      }
+    })
+
+    expect(result.attribution).toMatchObject({
+      fbc: 'fb.1.1234567890123.approved-click',
+      fbp: 'fb.1.1234567890123.browser-id',
+      ttclid: 'tiktok-click-1',
+      ttp: 'tiktok-browser-1',
+      gaClientId: '1234567890.1234567890',
+      eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+      clientUserAgent: 'Test Browser'
+    })
+  })
+
+  it('rejects unsafe event source URLs with credentials, query data, or fragments', () => {
+    for (const eventSourceUrl of [
+      'https://operator@example.com/enquire',
+      'https://example.com/enquire?email=person%40example.com',
+      'https://example.com/enquire#contact'
+    ]) {
+      expect(CanonicalConversionEventSchema.safeParse({
+        ...qualifiedEvent,
+        attribution: { ...qualifiedEvent.attribution, eventSourceUrl }
+      }).success).toBe(false)
+    }
+  })
+
+  it('rejects oversized browser identifiers and user-agent context', () => {
+    for (const [field, value] of [
+      ['fbc', 'x'.repeat(513)],
+      ['fbp', 'x'.repeat(513)],
+      ['ttclid', 'x'.repeat(513)],
+      ['ttp', 'x'.repeat(513)],
+      ['gaClientId', 'x'.repeat(129)],
+      ['clientUserAgent', 'x'.repeat(1025)]
+    ] as const) {
+      expect(CanonicalConversionEventSchema.safeParse({
+        ...qualifiedEvent,
+        attribution: { ...qualifiedEvent.attribution, [field]: value }
+      }).success).toBe(false)
+    }
   })
 
   it('rejects an overlong Meta lead identifier instead of truncating it', () => {
@@ -629,7 +691,14 @@ describe('CanonicalConversionEventSchema', () => {
       metaLeadId: null,
       gclid: null,
       gbraid: null,
-      wbraid: null
+      wbraid: null,
+      fbc: null,
+      fbp: null,
+      ttclid: null,
+      ttp: null,
+      gaClientId: null,
+      eventSourceUrl: null,
+      clientUserAgent: null
     })
   })
 })
