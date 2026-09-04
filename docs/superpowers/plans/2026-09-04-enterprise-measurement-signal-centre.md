@@ -979,7 +979,7 @@ git commit -m "docs: publish server-side measurement operations"
 - Returns non-zero when consent, confirmed conversion, deduplication, destination
   health, or redaction gates fail.
 
-- [ ] **Step 1: Add failing readiness-script contract tests**
+- [x] **Step 1: Add failing readiness-script contract tests**
 
 ```ts
 expect(source).toContain('consentGranted')
@@ -989,7 +989,7 @@ expect(source).toContain('destinationHealth')
 expect(source).not.toContain('TIKTOK_ACCESS_TOKEN=')
 ```
 
-- [ ] **Step 2: Implement deterministic readiness checks**
+- [x] **Step 2: Implement deterministic readiness checks**
 
 The script accepts `MEASUREMENT_BASE_URL`, `MEASUREMENT_CLIENT_ID`, and an
 authorised test session source, prints aggregate PASS/FAIL checks, and never
@@ -1008,6 +1008,11 @@ node scripts/verify-werribee-measurement.mjs
 git add scripts/verify-werribee-measurement.mjs test/config/werribeeMeasurementReadinessScript.test.ts docs/runbooks/werribee-tiktok-measurement-activation.md
 git commit -m "test: verify Werribee measurement readiness"
 ```
+
+Implementation and contract evidence were committed in `43cb3bbf2`. The live
+test-mode run and evidence record remain open because no Werribee client UUID or
+temporary authorised session file was available in this workspace; the checker
+failed closed with exit code 2 rather than inferring either value.
 
 ### Task 17: Complete release verification
 
