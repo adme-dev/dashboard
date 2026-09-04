@@ -140,7 +140,8 @@ deliveries settle. Compare:
 |---|---|
 | Authoritative form/lead record | Exactly one confirmed synthetic lead |
 | XeroFlow canonical events | Exactly one `lead_created` for that lead and event ID |
-| XeroFlow delivery lineage | One TikTok delivery outcome for the canonical event; no unexplained duplicate |
+| XeroFlow provider test | Exactly one accepted TikTok test run with a provider request ID and fresh ready evidence |
+| XeroFlow delivery lineage | One canonical row for the confirmed event and no normal live delivery while the destination remains dormant |
 | TikTok Test Events | Browser/server copies visible with matching event name and shared `event_id` |
 | Consent-denied test | No TikTok marketing delivery |
 | Abandoned enquiry | No confirmed `lead_created` |
@@ -150,6 +151,27 @@ Count differences must be explained event by event. Expected provider-side
 deduplication is not an unexplained duplicate; a second XeroFlow canonical event
 or delivery for the same idempotency key is. Repeat the test after any config
 change because changes invalidate the prior version’s evidence and approvals.
+
+### Automated readiness check
+
+Place one currently authorised agency session in a temporary owner-readable JSON
+file containing exactly one field: `cookie` or `authorization`. Set its file mode
+to `600`; do not put the file inside the repository. Then run:
+
+```bash
+MEASUREMENT_BASE_URL=http://localhost:3000 \
+MEASUREMENT_CLIENT_ID=<werribee-client-uuid> \
+MEASUREMENT_AUTH_FILE=/secure/temporary/werribee-measurement-auth.json \
+node scripts/verify-werribee-measurement.mjs
+```
+
+Use the deployed XeroFlow origin only when that environment is explicitly in
+scope. The checker performs authenticated GET requests only, limits event lineage
+to 100 confirmed events, and prints aggregate PASS/FAIL lines rather than API
+response bodies. It exits non-zero when consented TikTok context, confirmed
+conversions, delivery uniqueness, fresh test-mode destination evidence, or
+redaction checks fail. Delete the temporary auth file after the evidence is
+recorded.
 
 ## 5. Two-person approval and activation
 
