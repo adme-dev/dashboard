@@ -277,6 +277,14 @@ void refreshMeasurement()
           </div>
 
           <div v-if="profile" class="flex flex-wrap items-center gap-2">
+            <UButton
+              :to="`/agency/measurement/${clientId}`"
+              label="Open Signal Centre"
+              icon="i-lucide-chart-no-axes-combined"
+              color="neutral"
+              variant="outline"
+              size="xs"
+            />
             <UBadge :color="profile.enabled ? 'success' : 'neutral'" variant="subtle">
               {{ profileState }}
             </UBadge>
