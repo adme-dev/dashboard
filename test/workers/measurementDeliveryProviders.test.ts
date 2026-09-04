@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
+  deliverTikTokEvent,
   refreshGoogleDataManagerAccessToken
 } from '../../workers/measurement-delivery/src/providers'
 
@@ -23,6 +24,8 @@ const baseDelivery = {
     wbraid: null,
     fbc: null,
     fbp: null,
+    ttclid: null,
+    ttp: null,
     eventSourceUrl: null,
     clientUserAgent: null
   }
@@ -335,5 +338,266 @@ describe('measurement delivery provider adapters', () => {
       retryable: false,
       message: 'Google OAuth refresh failed'
     })
+  })
+
+  it('sends a TikTok Events API 2.0 web event with browser deduplication and match context', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      code: 0,
+      message: 'OK',
+      request_id: 'tiktok-request-1',
+      data: {}
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await deliverTikTokEvent({
+      delivery: {
+        ...baseDelivery,
+        eventName: 'lead_created',
+        providerEventName: 'SubmitForm',
+        externalDestinationId: 'C1234567890',
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          ttclid: 'click-1',
+          ttp: 'browser-1',
+          eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+          clientUserAgent: 'Test Browser'
+        }
+      },
+      accessToken: 'tiktok-access-token',
+      environment: 'test',
+      testEventCode: 'TEST123456',
+      fetch
+    })
+
+    expect(result).toEqual({
+      outcome: 'accepted',
+      providerRequestId: 'tiktok-request-1',
+      errorClass: null,
+      redactedDiagnostic: null
+    })
+    const [url, request] = fetch.mock.calls[0]!
+    expect(url).toBe('https://business-api.tiktok.com/open_api/v1.3/event/track/')
+    expect(request.headers).toEqual({
+      'Access-Token': 'tiktok-access-token',
+      'Content-Type': 'application/json'
+    })
+    expect(JSON.parse(request.body as string)).toEqual({
+      event_source: 'web',
+      event_source_id: 'C1234567890',
+      test_event_code: 'TEST123456',
+      data: [{
+        event: 'SubmitForm',
+        event_time: 1784268000,
+        event_id: 'browser-event-1',
+        user: {
+          ttclid: 'click-1',
+          ttp: 'browser-1',
+          user_agent: 'Test Browser'
+        },
+        page: {
+          url: 'https://www.werribeetoyota.com.au/enquire'
+        }
+      }]
+    })
+  })
+
+  it('refuses TikTok delivery without a browser event ID', async () => {
+    const fetch = vi.fn()
+
+    await expect(deliverTikTokEvent({
+      delivery: {
+        ...baseDelivery,
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: null,
+          ttclid: 'click-1',
+          eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire'
+        }
+      },
+      accessToken: 'tiktok-access-token',
+      fetch
+    })).resolves.toMatchObject({
+      outcome: 'permanent_failure',
+      errorClass: 'missing_tiktok_event_id'
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('retries TikTok delivery while browser match context is still arriving', async () => {
+    const fetch = vi.fn()
+
+    await expect(deliverTikTokEvent({
+      delivery: {
+        ...baseDelivery,
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          ttclid: null,
+          ttp: null,
+          eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire'
+        }
+      },
+      accessToken: 'tiktok-access-token',
+      fetch
+    })).resolves.toMatchObject({
+      outcome: 'retryable',
+      errorClass: 'tiktok_browser_context_unavailable'
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('refuses TikTok delivery with an invalid canonical timestamp', async () => {
+    const fetch = vi.fn()
+
+    await expect(deliverTikTokEvent({
+      delivery: {
+        ...baseDelivery,
+        occurredAt: 'not-a-timestamp',
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          ttclid: 'click-1',
+          eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire'
+        }
+      },
+      accessToken: 'tiktok-access-token',
+      fetch
+    })).resolves.toMatchObject({
+      outcome: 'permanent_failure',
+      errorClass: 'invalid_event_timestamp'
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('refuses to attach a TikTok Test Events code to live delivery', async () => {
+    const fetch = vi.fn()
+
+    await expect(deliverTikTokEvent({
+      delivery: {
+        ...baseDelivery,
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          ttclid: 'click-1',
+          eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire'
+        }
+      },
+      accessToken: 'tiktok-access-token',
+      environment: 'live',
+      testEventCode: 'TEST123456',
+      fetch
+    })).resolves.toMatchObject({
+      outcome: 'permanent_failure',
+      errorClass: 'tiktok_test_code_live_forbidden'
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [429, 'retryable'],
+    [500, 'retryable'],
+    [401, 'permanent_failure']
+  ] as const)('classifies TikTok HTTP %s as %s', async (status, outcome) => {
+    const fetch = vi.fn(async () => new Response('provider detail must not escape', { status }))
+
+    await expect(deliverTikTokEvent({
+      delivery: {
+        ...baseDelivery,
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          ttclid: 'click-1',
+          eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire'
+        }
+      },
+      accessToken: 'tiktok-access-token',
+      fetch
+    })).resolves.toEqual({
+      outcome,
+      providerRequestId: null,
+      errorClass: `provider_http_${status}`,
+      redactedDiagnostic: `TikTok Events API returned HTTP ${status}`
+    })
+  })
+
+  it('retries a malformed TikTok success response without retaining response content', async () => {
+    const fetch = vi.fn(async () => new Response('credential-bearing malformed response', {
+      status: 200,
+      headers: { 'content-type': 'text/plain' }
+    }))
+
+    const result = await deliverTikTokEvent({
+      delivery: {
+        ...baseDelivery,
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          ttp: 'browser-1',
+          eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire'
+        }
+      },
+      accessToken: 'tiktok-access-token',
+      fetch
+    })
+
+    expect(result).toEqual({
+      outcome: 'retryable',
+      providerRequestId: null,
+      errorClass: 'tiktok_response_invalid',
+      redactedDiagnostic: 'TikTok Events API returned an invalid response'
+    })
+    expect(JSON.stringify(result)).not.toContain('credential-bearing')
+  })
+
+  it('classifies a TikTok API-level rejection even when HTTP succeeds', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      code: 40002,
+      message: 'provider detail must not escape',
+      request_id: 'tiktok-rejected-1'
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    await expect(deliverTikTokEvent({
+      delivery: {
+        ...baseDelivery,
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          ttclid: 'click-1',
+          eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire'
+        }
+      },
+      accessToken: 'tiktok-access-token',
+      fetch
+    })).resolves.toEqual({
+      outcome: 'permanent_failure',
+      providerRequestId: 'tiktok-rejected-1',
+      errorClass: 'tiktok_api_40002',
+      redactedDiagnostic: 'TikTok Events API rejected the event'
+    })
+  })
+
+  it('truncates the TikTok provider request ID retained in the receipt', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      code: 0,
+      message: 'OK',
+      request_id: 'r'.repeat(300)
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await deliverTikTokEvent({
+      delivery: {
+        ...baseDelivery,
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          ttclid: 'click-1',
+          eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire'
+        }
+      },
+      accessToken: 'tiktok-access-token',
+      fetch
+    })
+
+    expect(result.outcome).toBe('accepted')
+    expect(result.providerRequestId).toHaveLength(255)
   })
 })
