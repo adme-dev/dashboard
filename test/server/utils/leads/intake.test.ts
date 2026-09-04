@@ -23,6 +23,13 @@ function input() {
       attribution: {
         browserEventId: 'browser-event-1',
         gclid: 'gclid-1',
+        fbc: 'fb.1.123.click',
+        fbp: 'fb.1.123.browser',
+        ttclid: 'tiktok-click-1',
+        ttp: 'tiktok-browser-1',
+        gaClientId: '123.456',
+        eventSourceUrl: 'https://rebtyota.com.au/new-vehicles/?secret=drop#form',
+        clientUserAgent: 'Werribee browser',
         utm_source: 'google',
         email: 'must-not-enter-conversion-outbox@example.com'
       },
@@ -68,7 +75,14 @@ describe('first-party lead intake', () => {
         metaLeadId: null,
         gclid: 'gclid-1',
         gbraid: null,
-        wbraid: null
+        wbraid: null,
+        fbc: 'fb.1.123.click',
+        fbp: 'fb.1.123.browser',
+        ttclid: 'tiktok-click-1',
+        ttp: 'tiktok-browser-1',
+        gaClientId: '123.456',
+        eventSourceUrl: 'https://rebtyota.com.au/new-vehicles/',
+        clientUserAgent: 'Werribee browser'
       }
     })
     expect(JSON.stringify(appendOutbox.mock.calls)).not.toContain('pilot@example.com')

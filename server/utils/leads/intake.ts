@@ -16,6 +16,10 @@ import type {
   CanonicalConsentDecision
 } from '~~/server/utils/measurement/contracts'
 import {
+  safeMeasurementSourceUrl,
+  safeMeasurementUserAgent
+} from '~~/server/utils/measurement/attributionSafety'
+import {
   completeSubmissionIntentMatch as defaultCompleteIntentMatch
 } from '~~/server/utils/leads/submissionIntent'
 
@@ -80,7 +84,18 @@ function canonicalAttribution(lead: InsertLeadInput) {
       : null,
     gclid: optionalAttribution(lead.attribution, 'gclid', 512),
     gbraid: optionalAttribution(lead.attribution, 'gbraid', 512),
-    wbraid: optionalAttribution(lead.attribution, 'wbraid', 512)
+    wbraid: optionalAttribution(lead.attribution, 'wbraid', 512),
+    fbc: optionalAttribution(lead.attribution, 'fbc', 512),
+    fbp: optionalAttribution(lead.attribution, 'fbp', 512),
+    ttclid: optionalAttribution(lead.attribution, 'ttclid', 512),
+    ttp: optionalAttribution(lead.attribution, 'ttp', 512),
+    gaClientId: optionalAttribution(lead.attribution, 'gaClientId', 128),
+    eventSourceUrl: safeMeasurementSourceUrl(
+      optionalAttribution(lead.attribution, 'eventSourceUrl', 4096)
+    ),
+    clientUserAgent: safeMeasurementUserAgent(
+      optionalAttribution(lead.attribution, 'clientUserAgent', 4096)
+    )
   }
 }
 
