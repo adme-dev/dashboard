@@ -312,11 +312,16 @@
 
   // Consent cookie name — MUST match the server (track.post.ts reads '_xf_consent').
   var CONSENT_COOKIE_NAME = '_xf_consent'
+  var _explicitConsentCookieValue = null
+
+  function getConsentCookieValue() {
+    return _explicitConsentCookieValue || getCookie(CONSENT_COOKIE_NAME)
+  }
 
   // Read and parse the consent cookie
   // Returns null if no cookie or parse failure
   function getConsent() {
-    var raw = getCookie(CONSENT_COOKIE_NAME)
+    var raw = getConsentCookieValue()
     if (!raw) return null
     try {
       var parsed = JSON.parse(raw)
@@ -324,6 +329,45 @@
     } catch (e) {
       return null
     }
+  }
+
+  function pushConsentUpdate(snapshot) {
+    window.dataLayer = window.dataLayer || []
+    window.dataLayer.push({
+      event: 'xeroflow_consent_update',
+      xeroflow_consent: {
+        tracking: snapshot.tracking ? 'granted' : 'denied',
+        analytics: snapshot.analytics ? 'granted' : 'denied',
+        marketing: snapshot.marketing ? 'granted' : 'denied',
+      },
+    })
+  }
+
+  // Stable bridge for a site-owned consent manager. The browser records only an
+  // explicit choice; regional defaults and the immutable per-event snapshot
+  // remain server responsibilities.
+  function setConsent(choice) {
+    if (
+      !choice
+      || typeof choice.tracking !== 'boolean'
+      || typeof choice.analytics !== 'boolean'
+      || typeof choice.marketing !== 'boolean'
+    ) {
+      throw new TypeError(
+        'XeroFlow consent requires tracking, analytics and marketing booleans'
+      )
+    }
+
+    var snapshot = {
+      tracking: choice.tracking,
+      analytics: choice.analytics,
+      marketing: choice.marketing,
+      updatedAt: new Date().toISOString(),
+    }
+    _explicitConsentCookieValue = JSON.stringify(snapshot)
+    setCookie(CONSENT_COOKIE_NAME, _explicitConsentCookieValue, COOKIE_DAYS)
+    pushConsentUpdate(snapshot)
+    return snapshot
   }
 
   // Gate an event against the current consent state.
@@ -589,7 +633,7 @@
       // Forward the raw consent cookie value: it lives on the dealer domain, so
       // our cross-origin endpoint can't read it — relaying it here keeps the
       // server-stored consent snapshot accurate. null when not set.
-      consent: getCookie(CONSENT_COOKIE_NAME) || null,
+      consent: getConsentCookieValue() || null,
     }
 
     // POST cross-origin to OUR origin with the write key on the query string.
@@ -902,7 +946,7 @@
         phone: phone || undefined,
       },
       attribution: intentAttribution(getAttributionTouches()),
-      consent: getCookie(CONSENT_COOKIE_NAME) || null,
+      consent: getConsentCookieValue() || null,
     }
     var url = (_scriptOrigin || '') + '/api/public/lead-intent?k=' + encodeURIComponent(WRITE_KEY)
     var body = JSON.stringify(payload)
@@ -1444,6 +1488,7 @@
   window.xf = {
     init: init,
     track: track,
+    setConsent: setConsent,
     createEventId: generateEventId,
     destroy: destroy,
     linkSession: linkSession,

@@ -248,6 +248,70 @@ describe('public/track.js transport', () => {
     expect(parseTrackPayload(payload).ok).toBe(true)
   })
 
+  it('stores an explicit consent choice and forwards it with later events', () => {
+    ;(window as any).dataLayer = []
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+
+    const choice = (window as any).xf.setConsent({
+      tracking: true,
+      analytics: true,
+      marketing: false
+    })
+    ;(window as any).xf.track('page_view', {})
+
+    expect(choice).toMatchObject({
+      tracking: true,
+      analytics: true,
+      marketing: false
+    })
+    expect(choice.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(JSON.parse(requests[0].body).consent).toBe(JSON.stringify(choice))
+    expect((window as any).dataLayer).toContainEqual({
+      event: 'xeroflow_consent_update',
+      xeroflow_consent: {
+        tracking: 'granted',
+        analytics: 'granted',
+        marketing: 'denied'
+      }
+    })
+  })
+
+  it('rejects malformed consent without replacing the current choice', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+    const first = (window as any).xf.setConsent({
+      tracking: true,
+      analytics: false,
+      marketing: false
+    })
+
+    expect(() => (window as any).xf.setConsent({ marketing: true })).toThrow(TypeError)
+    ;(window as any).xf.track('page_view', {})
+    expect(JSON.parse(requests[0].body).consent).toBe(JSON.stringify(first))
+  })
+
+  it('lets a later explicit consent choice supersede the earlier choice', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+    ;(window as any).xf.setConsent({
+      tracking: true,
+      analytics: false,
+      marketing: false
+    })
+    const latest = (window as any).xf.setConsent({
+      tracking: true,
+      analytics: true,
+      marketing: true
+    })
+    ;(window as any).xf.track('page_view', {})
+    expect(JSON.parse(requests[0].body).consent).toBe(JSON.stringify(latest))
+    expect(latest.marketing).toBe(true)
+  })
+
   it('sends only submission identity and attribution to the reconciliation endpoint', () => {
     document.cookie = '_xf_consent=' + encodeURIComponent(JSON.stringify({
       tracking: true,
