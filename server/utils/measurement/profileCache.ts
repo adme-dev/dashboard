@@ -26,7 +26,10 @@ function parseExisting(raw: string | null): MeasurementProfileCacheProjection | 
   if (!raw) return null
   try {
     const result = MeasurementProfileCacheProjectionSchema.safeParse(JSON.parse(raw))
-    return result.success ? result.data : null
+    // The repository runs with TypeScript strictness disabled, which makes Zod's
+    // inferred object properties optional. Runtime parsing still proves the
+    // complete strict projection before this boundary cast.
+    return result.success ? result.data as MeasurementProfileCacheProjection : null
   } catch {
     return null
   }
