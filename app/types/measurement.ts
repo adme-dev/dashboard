@@ -1,5 +1,5 @@
 export type MeasurementEnvironment = 'test' | 'live' | 'paused'
-export const MEASUREMENT_PLATFORMS = ['meta', 'google_data_manager', 'tiktok'] as const
+export const MEASUREMENT_PLATFORMS = ['meta', 'google_data_manager', 'ga4', 'tiktok'] as const
 export type MeasurementPlatform = typeof MEASUREMENT_PLATFORMS[number]
 
 export const MEASUREMENT_CAPABILITY_MODES = [
@@ -10,6 +10,7 @@ export const MEASUREMENT_CAPABILITY_MODES = [
   'google_tag_enhanced_conversions',
   'google_enhanced_conversions_for_leads',
   'google_data_manager',
+  'ga4_measurement_protocol',
   'tiktok_pixel',
   'tiktok_events_api'
 ] as const
@@ -26,7 +27,11 @@ export const CANONICAL_MEASUREMENT_EVENT_NAMES = [
   'vehicle_view',
   'site_search',
   'phone_contact',
-  'test_drive_booked'
+  'test_drive_booked',
+  'phone_click',
+  'directions_click',
+  'add_to_wishlist',
+  'form_submit'
 ] as const
 export type CanonicalMeasurementEventName = typeof CANONICAL_MEASUREMENT_EVENT_NAMES[number]
 

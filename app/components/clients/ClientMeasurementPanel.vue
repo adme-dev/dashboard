@@ -75,6 +75,7 @@ const capabilityLabels: Record<string, string> = {
   google_tag_enhanced_conversions: 'Google tag enhanced conversions',
   google_enhanced_conversions_for_leads: 'Google enhanced conversions for leads',
   google_data_manager: 'Google Data Manager',
+  ga4_measurement_protocol: 'GA4 Measurement Protocol',
   tiktok_pixel: 'TikTok Pixel',
   tiktok_events_api: 'TikTok Events API'
 }
@@ -89,6 +90,7 @@ const originLabels: Record<string, string> = {
 const platformLabels: Record<MeasurementDestination['platform'], string> = {
   meta: 'Meta',
   google_data_manager: 'Google Data Manager',
+  ga4: 'Google Analytics 4',
   tiktok: 'TikTok'
 }
 

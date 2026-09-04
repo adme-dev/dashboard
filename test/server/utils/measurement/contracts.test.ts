@@ -97,6 +97,19 @@ describe('ConversionDestinationCreateSchema', () => {
     })
   })
 
+  it('preserves the existing GA4 Measurement Protocol destination contract', () => {
+    const result = ConversionDestinationCreateSchema.parse({
+      profileId: PROFILE_ID,
+      platform: 'ga4',
+      externalDestinationId: 'G-ABC1234567',
+      capabilities: [
+        { mode: 'ga4_measurement_protocol', managementOrigin: 'zero', canZeroMutate: true }
+      ]
+    })
+
+    expect(result).toMatchObject({ platform: 'ga4', enabled: false, environment: 'test' })
+  })
+
   it('keeps Meta web CAPI and CRM CAPI as independently evidenced capabilities', () => {
     const result = ConversionDestinationCreateSchema.parse({
       profileId: PROFILE_ID,
@@ -652,6 +665,20 @@ describe('CanonicalConversionEventSchema', () => {
       'site_search',
       'phone_contact',
       'test_drive_booked'
+    ] as const) {
+      expect(CanonicalConversionEventSchema.parse({
+        ...qualifiedEvent,
+        eventName
+      }).eventName).toBe(eventName)
+    }
+  })
+
+  it('preserves canonical web action names already accepted by live storage', () => {
+    for (const eventName of [
+      'phone_click',
+      'directions_click',
+      'add_to_wishlist',
+      'form_submit'
     ] as const) {
       expect(CanonicalConversionEventSchema.parse({
         ...qualifiedEvent,

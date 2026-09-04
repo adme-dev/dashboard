@@ -8,15 +8,21 @@ import {
 describe('measurement frontend contracts', () => {
   it('exposes TikTok and the approved automotive event vocabulary', () => {
     expect(MEASUREMENT_PLATFORMS).toContain('tiktok')
+    expect(MEASUREMENT_PLATFORMS).toContain('ga4')
     expect(MEASUREMENT_CAPABILITY_MODES).toEqual(expect.arrayContaining([
       'tiktok_pixel',
-      'tiktok_events_api'
+      'tiktok_events_api',
+      'ga4_measurement_protocol'
     ]))
     expect(CANONICAL_MEASUREMENT_EVENT_NAMES).toEqual(expect.arrayContaining([
       'vehicle_view',
       'site_search',
       'phone_contact',
-      'test_drive_booked'
+      'test_drive_booked',
+      'phone_click',
+      'directions_click',
+      'add_to_wishlist',
+      'form_submit'
     ]))
   })
 })

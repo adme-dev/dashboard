@@ -28,10 +28,14 @@ export const CanonicalEventNameSchema = z.enum([
   'vehicle_view',
   'site_search',
   'phone_contact',
-  'test_drive_booked'
+  'test_drive_booked',
+  'phone_click',
+  'directions_click',
+  'add_to_wishlist',
+  'form_submit'
 ])
 
-export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager', 'tiktok'])
+export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager', 'ga4', 'tiktok'])
 export const CapabilityModeSchema = z.enum([
   'meta_pixel',
   'meta_web_capi',
@@ -40,6 +44,7 @@ export const CapabilityModeSchema = z.enum([
   'google_tag_enhanced_conversions',
   'google_enhanced_conversions_for_leads',
   'google_data_manager',
+  'ga4_measurement_protocol',
   'tiktok_pixel',
   'tiktok_events_api'
 ])
@@ -60,6 +65,7 @@ function capabilityBelongsToPlatform(
 ): boolean {
   if (platform === 'meta') return mode.startsWith('meta_')
   if (platform === 'google_data_manager') return mode.startsWith('google_')
+  if (platform === 'ga4') return mode.startsWith('ga4_')
   return mode.startsWith('tiktok_')
 }
 
