@@ -5,6 +5,12 @@ import { portalSocialNavItems } from '~/utils/portalSocialNavigation'
 const { user, stats, logout } = usePortalAuth()
 const open = ref(false)
 const layoutFetch = $fetch as <T>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
+const { data: pageStudioNavigation } = useFetch<{
+  total: number
+}>('/api/portal/page-studio/sites', {
+  query: { page: 1, pageSize: 1 },
+  default: () => ({ total: 0 })
+})
 
 const close = () => {
   open.value = false
@@ -25,48 +31,75 @@ onMounted(async () => {
 })
 const navBadge = (value?: number) => value && value > 0 ? value.toString() : undefined
 
-const mainNav = computed<NavigationMenuItem[]>(() => [
-  { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/portal', exact: true, onSelect: close },
-  {
-    label: 'Jobs',
-    icon: 'i-lucide-folder-kanban',
-    to: stats.value?.activeProjects ? '/portal/projects?status=active' : '/portal/projects?view=upcoming',
-    badge: navBadge(stats.value?.activeProjects),
-    onSelect: close
-  },
-  { label: 'Approvals', icon: 'i-lucide-check-circle', to: stats.value?.pendingApprovals ? '/portal/approvals?status=pending' : '/portal/approvals', badge: navBadge(stats.value?.pendingApprovals), onSelect: close },
-  { label: 'Video reviews', icon: 'i-lucide-clapperboard', to: '/portal/video-reviews', onSelect: close },
-  { label: 'Requests', icon: 'i-lucide-message-square-plus', to: stats.value?.openRequests ? '/portal/requests?view=open' : '/portal/requests?view=resolved', badge: navBadge(stats.value?.openRequests), onSelect: close },
-  { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },
-  { label: 'CRM', icon: 'i-lucide-contact', to: '/portal/crm', onSelect: close },
-  { label: 'Measurement', icon: 'i-lucide-activity', to: '/portal/measurement', onSelect: close },
-  ...portalSocialNavItems(close),
-  { label: 'Meetings', icon: 'i-lucide-video', to: '/portal/meetings?view=upcoming', onSelect: close },
-  ...(user.value?.permissions?.canSubmitRequests
-    ? [
-        { label: 'Briefs', icon: 'i-lucide-file-text', to: '/portal/briefs?status=submitted', onSelect: close }
-      ]
-    : []),
-  { label: 'Gallery', icon: 'i-lucide-image', to: '/portal/gallery', onSelect: close },
-  { label: 'Features', icon: 'i-lucide-sparkles', to: '/portal/features', onSelect: close },
-  ...(user.value?.permissions?.canViewAnalytics
-    ? [
-        { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/portal/analytics?metric=leads', onSelect: close }
-      ]
-    : []),
-  ...(user.value?.permissions?.canViewInvoices
-    ? [
-        { label: 'Invoices', icon: 'i-lucide-receipt', to: '/portal/invoices?view=current', onSelect: close }
-      ]
-    : []),
-  {
-    label: 'Notifications',
-    icon: 'i-lucide-bell',
-    to: unreadCount.value || stats.value?.unreadNotifications ? '/portal/notifications?view=unread' : '/portal/notifications',
-    badge: navBadge(unreadCount.value || stats.value?.unreadNotifications),
-    onSelect: close
+const mainNav = computed<NavigationMenuItem[]>(() => {
+  const items = [
+    { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/portal', exact: true, onSelect: close },
+    {
+      label: 'Jobs',
+      icon: 'i-lucide-folder-kanban',
+      to: stats.value?.activeProjects ? '/portal/projects?status=active' : '/portal/projects?view=upcoming',
+      badge: navBadge(stats.value?.activeProjects),
+      onSelect: close
+    },
+    { label: 'Approvals', icon: 'i-lucide-check-circle', to: stats.value?.pendingApprovals ? '/portal/approvals?status=pending' : '/portal/approvals', badge: navBadge(stats.value?.pendingApprovals), onSelect: close },
+    { label: 'Video reviews', icon: 'i-lucide-clapperboard', to: '/portal/video-reviews', onSelect: close },
+    { label: 'Requests', icon: 'i-lucide-message-square-plus', to: stats.value?.openRequests ? '/portal/requests?view=open' : '/portal/requests?view=resolved', badge: navBadge(stats.value?.openRequests), onSelect: close },
+    { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },
+    { label: 'CRM', icon: 'i-lucide-contact', to: '/portal/crm', onSelect: close },
+    { label: 'Measurement', icon: 'i-lucide-activity', to: '/portal/measurement', onSelect: close },
+    ...portalSocialNavItems(close),
+    { label: 'Meetings', icon: 'i-lucide-video', to: '/portal/meetings?view=upcoming', onSelect: close },
+    ...(user.value?.permissions?.canSubmitRequests
+      ? [
+          { label: 'Briefs', icon: 'i-lucide-file-text', to: '/portal/briefs?status=submitted', onSelect: close }
+        ]
+      : []),
+    { label: 'Gallery', icon: 'i-lucide-image', to: '/portal/gallery', onSelect: close },
+    { label: 'Features', icon: 'i-lucide-sparkles', to: '/portal/features', onSelect: close },
+    ...(user.value?.permissions?.canViewAnalytics
+      ? [
+          { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/portal/analytics?metric=leads', onSelect: close }
+        ]
+      : []),
+    ...(user.value?.permissions?.canViewInvoices
+      ? [
+          { label: 'Invoices', icon: 'i-lucide-receipt', to: '/portal/invoices?view=current', onSelect: close }
+        ]
+      : []),
+    {
+      label: 'Notifications',
+      icon: 'i-lucide-bell',
+      to: unreadCount.value || stats.value?.unreadNotifications ? '/portal/notifications?view=unread' : '/portal/notifications',
+      badge: navBadge(unreadCount.value || stats.value?.unreadNotifications),
+      onSelect: close
+    }
+  ] as NavigationMenuItem[]
+
+  if (pageStudioNavigation.value.total > 0) {
+    items.splice(1, 0,
+      {
+        label: 'Websites',
+        icon: 'i-lucide-panels-top-left',
+        to: '/portal/page-studio',
+        onSelect: close
+      },
+      {
+        label: 'Domains & DNS',
+        icon: 'i-lucide-globe-2',
+        to: '/portal/page-studio/domains',
+        onSelect: close
+      },
+      {
+        label: 'Release history',
+        icon: 'i-lucide-history',
+        to: '/portal/page-studio/releases',
+        onSelect: close
+      }
+    )
   }
-])
+
+  return items
+})
 
 const footerItems: NavigationMenuItem[] = [
   { label: 'Settings', icon: 'i-lucide-settings', to: '/portal/settings', onSelect: close }

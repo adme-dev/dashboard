@@ -1,5 +1,6 @@
 <script setup lang="ts">
 interface SiteSummary {
+  clientId?: string
   id: string
   name: string
   route: string
@@ -32,6 +33,7 @@ interface DomainSummary {
 }
 
 interface SubscriptionSummary {
+  clientId?: string
   id: string
   siteId?: string
 }
@@ -47,8 +49,10 @@ type CollectionResponse<T> = {
 
 const props = defineProps<{ siteId: string }>()
 const toast = useToast()
+const { editorOrigin, launchPageStudio } = usePageStudioLauncher()
 const publishModalOpen = ref(false)
 const publishing = ref(false)
+const launchingStudio = ref(false)
 
 const { data: sitesData, status: sitesStatus, error: sitesError, refresh: refreshSites } = await useFetch<CollectionResponse<SiteSummary>>('/api/agency/page-studio/sites')
 const { data: releasesData, status: releasesStatus, error: releasesError, refresh: refreshReleases } = await useFetch<CollectionResponse<ReleaseSummary>>('/api/agency/page-studio/releases')
@@ -62,10 +66,10 @@ function rows<T>(value: CollectionResponse<T> | null | undefined, key: keyof Col
 }
 
 const site = computed(() => rows<SiteSummary>(sitesData.value, 'sites').find(item => item.id === props.siteId))
-const releases = computed(() => rows<ReleaseSummary>(releasesData.value, 'releases').filter(item => !item.siteId || item.siteId === props.siteId))
-const reviews = computed(() => rows<ReviewSummary>(reviewsData.value, 'reviews').filter(item => !item.siteId || item.siteId === props.siteId))
-const domains = computed(() => rows<DomainSummary>(domainsData.value, 'domains').filter(item => !item.siteId || item.siteId === props.siteId))
-const subscriptions = computed(() => rows<SubscriptionSummary>(subscriptionsData.value, 'subscriptions').filter(item => !item.siteId || item.siteId === props.siteId))
+const releases = computed(() => rows<ReleaseSummary>(releasesData.value, 'releases').filter(item => item.siteId === props.siteId))
+const reviews = computed(() => rows<ReviewSummary>(reviewsData.value, 'reviews').filter(item => item.siteId === props.siteId))
+const domains = computed(() => rows<DomainSummary>(domainsData.value, 'domains').filter(item => item.siteId === props.siteId))
+const subscriptions = computed(() => rows<SubscriptionSummary>(subscriptionsData.value, 'subscriptions').filter(item => item.clientId === site.value?.clientId))
 const activeRelease = computed(() => releases.value.find(release => release.status === 'active') || releases.value[0])
 const approvedCount = computed(() => reviews.value.filter(review => review.decision === 'approved').length)
 const approvedReview = computed(() => reviews.value.find(review => review.decision === 'approved' && review.versionId))
@@ -77,6 +81,9 @@ const failed = computed(() => Boolean(sitesError.value || releasesError.value ||
 const tabs = [
   { label: 'Overview', slot: 'overview' as const },
   { label: 'Pages', slot: 'pages' as const },
+  { label: 'Assets', slot: 'assets' as const },
+  { label: 'Forms', slot: 'forms' as const },
+  { label: 'Analytics', slot: 'analytics' as const },
   { label: 'Builds', slot: 'builds' as const },
   { label: 'Releases', slot: 'releases' as const },
   { label: 'Domains', slot: 'domains' as const },
@@ -95,6 +102,23 @@ async function refreshAll() {
 
 function openPublishModal() {
   publishModalOpen.value = true
+}
+
+async function openStudio() {
+  if (launchingStudio.value) return
+  launchingStudio.value = true
+  try {
+    await launchPageStudio(props.siteId)
+  } catch (error: unknown) {
+    const failure = error as { data?: { statusMessage?: string, message?: string }, message?: string }
+    toast.add({
+      title: 'Page Studio did not open',
+      description: failure.data?.statusMessage || failure.data?.message || failure.message || 'Try again or check the editor configuration.',
+      color: 'error'
+    })
+  } finally {
+    launchingStudio.value = false
+  }
 }
 
 function closePublishModal() {
@@ -134,7 +158,7 @@ async function publishApprovedVersion() {
 </script>
 
 <template>
-  <section class="space-y-6">
+  <section class="mx-auto w-full max-w-screen-2xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-2">
         <UButton
@@ -164,10 +188,12 @@ async function publishApprovedVersion() {
           @click="refreshAll"
         />
         <UButton
-          to="/agency/page-studio"
           label="Launch Studio"
           icon="i-lucide-external-link"
           trailing
+          :loading="launchingStudio"
+          :disabled="!editorOrigin"
+          @click="openStudio"
         />
       </div>
     </div>
@@ -267,10 +293,12 @@ async function publishApprovedVersion() {
             </p>
             <template #footer>
               <UButton
-                to="/agency/page-studio"
-                label="Open site launcher"
+                label="Open in Studio"
                 icon="i-lucide-panel-top-open"
                 block
+                :loading="launchingStudio"
+                :disabled="!editorOrigin"
+                @click="openStudio"
               />
             </template>
           </UCard>
@@ -278,14 +306,16 @@ async function publishApprovedVersion() {
       </template>
 
       <template #pages>
-        <UAlert
-          class="mt-5"
-          title="Page management is the next delivery phase"
-          description="The canonical hierarchy already exists in Studio. This tab will expose routes, parent pages, visibility, SEO, shell inheritance, homepage selection and redirects."
-          color="neutral"
-          variant="subtle"
-          icon="i-lucide-files"
-        />
+        <PageStudioPagesWorkspace :site-id="siteId" />
+      </template>
+      <template #assets>
+        <PageStudioAssetsWorkspace :site-id="siteId" />
+      </template>
+      <template #forms>
+        <PageStudioFormSubmissionsWorkspace :site-id="siteId" />
+      </template>
+      <template #analytics>
+        <PageStudioAnalyticsWorkspace :site-id="siteId" />
       </template>
       <template #builds>
         <UCard class="mt-5">
@@ -368,40 +398,22 @@ async function publishApprovedVersion() {
       </template>
 
       <template #domains>
-        <UCard class="mt-5">
-          <template #header>
-            <h2 class="font-semibold text-highlighted">
-              Domains and DNS
-            </h2>
-          </template>
-          <div v-if="domains.length" class="divide-y divide-default">
-            <div v-for="domain in domains" :key="domain.id" class="flex flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p class="font-medium text-highlighted">
-                  {{ domain.hostname }}
-                </p><p class="mt-1 text-sm text-muted">
-                  {{ domain.environment }}
-                </p>
-              </div>
-              <UBadge :label="domain.status" :color="domain.status === 'active' ? 'success' : 'warning'" variant="subtle" />
-            </div>
-          </div>
-          <p v-else class="text-sm text-muted">
-            No domains are connected to this site.
-          </p>
-        </UCard>
+        <PageStudioDomainsWorkspace :site-id="siteId" />
       </template>
 
       <template #settings>
-        <UCard class="mt-5">
-          <template #header>
-            <h2 class="font-semibold text-highlighted">
-              Subscriptions
-            </h2>
-          </template><p class="text-sm text-muted">
-            {{ subscriptions.length }} active or historical subscription record{{ subscriptions.length === 1 ? '' : 's' }} are attached to this site.
-          </p>
-        </UCard>
+        <div class="space-y-4 pt-5">
+          <UCard>
+            <template #header>
+              <h2 class="font-semibold text-highlighted">
+                Subscriptions
+              </h2>
+            </template><p class="text-sm text-muted">
+              {{ subscriptions.length }} active or historical subscription record{{ subscriptions.length === 1 ? '' : 's' }} are attached to this site.
+            </p>
+          </UCard>
+          <PageStudioSessionsWorkspace :site-id="siteId" />
+        </div>
       </template>
     </UTabs>
 

@@ -2292,3 +2292,30 @@ export interface MediaRenderJob {
   createdAt: string
   updatedAt: string
 }
+
+export interface PageStudioSiteSummary {
+  id: string
+  clientId: string
+  name: string
+  route: string
+  starterVersion: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PageStudioDocumentSite {
+  clientId: string
+  id: string
+  name: string
+  route: string
+}
+
+export interface PageStudioDocumentResponse {
+  id: string
+  document: import('~~/shared/pageStudio/document').PageStudioDocument
+  pageLimit: number
+  revision: number
+  site: PageStudioDocumentSite
+  updatedAt: string | null
+}
