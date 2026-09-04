@@ -567,7 +567,7 @@ git commit -m "feat: allow TikTok measurement destinations"
 - Produces `deliverTikTokEvent(input: TikTokDeliveryInput)`.
 - Reuses `ProviderDeliveryResult` and `MeasurementProviderDelivery`.
 
-- [ ] **Step 1: Add failing adapter tests**
+- [x] **Step 1: Add failing adapter tests**
 
 ```ts
 await expect(deliverTikTokEvent({
@@ -593,26 +593,28 @@ await expect(deliverTikTokEvent({
 Also test: no event id; no TikTok match input; invalid timestamp; test marker in
 live mode; `429`; `500`; `401`; malformed JSON; and request-id truncation.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```bash
 pnpm vitest run test/workers/measurementDeliveryProviders.test.ts
 ```
 
-- [ ] **Step 3: Implement the minimal adapter**
+- [x] **Step 3: Implement the minimal adapter**
 
-Post to TikTok Events API 2.0 using bearer authentication, the destination id,
+Post to TikTok Events API 2.0 using TikTok's documented `Access-Token` header,
+the destination id,
 same browser event id, event time, page context, `ttclid`, `_ttp`, and user agent.
 Use `httpFailure()` for transport classification and `responseObject()` for safe
-receipt parsing. Do not log request bodies.
+receipt parsing. Do not log request bodies. This corrects the original bearer-header
+wording against TikTok's official Test Events request example.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```bash
 pnpm vitest run test/workers/measurementDeliveryProviders.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add workers/measurement-delivery/src/providers.ts test/workers/measurementDeliveryProviders.test.ts
