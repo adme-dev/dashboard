@@ -1021,13 +1021,13 @@ failed closed with exit code 2 rather than inferring either value.
 - Modify only files required to fix failures caused by this feature, with a
   matching regression test in the same commit.
 
-- [ ] **Step 1: Re-read every modified/new file end-to-end**
+- [x] **Step 1: Re-read every modified/new file end-to-end**
 
 Check import aliases, provider/platform unions, constraint names, USelectMenu
 values, computed reactivity, duplicate UI, colour construction, SSRF boundaries,
 redaction, tenant scope, and test/live defaults.
 
-- [ ] **Step 2: Run focused and full verification**
+- [x] **Step 2: Run focused and full verification**
 
 ```bash
 pnpm vitest run test/public/track-tag.test.ts test/server/utils/tracking test/server/utils/measurement test/workers/measurementDeliveryProviders.test.ts test/workers/measurementDeliveryProcessor.test.ts test/app/measurementSignalCentre.test.ts test/app/portalMeasurementSignalHealth.test.ts
@@ -1037,7 +1037,7 @@ pnpm run build
 pnpm run deploy:check
 ```
 
-- [ ] **Step 3: Inspect the complete change set and secrets boundary**
+- [x] **Step 3: Inspect the complete change set and secrets boundary**
 
 ```bash
 git diff --check
@@ -1048,7 +1048,7 @@ git diff --cached
 Search staged content for credential-shaped values and inspect every match; do
 not use the search result alone as proof that a reference is a secret.
 
-- [ ] **Step 4: Commit any verification-only fix atomically**
+- [x] **Step 4: Commit any verification-only fix atomically**
 
 For each fix, stage only the implementation file named by the failing test and
 that test file, inspect the staged diff, then commit with:
@@ -1060,6 +1060,35 @@ git commit -m "fix: harden measurement release verification"
 
 Production deployment and live TikTok activation are intentionally excluded and
 require the separate authorised runbook action.
+
+Release verification completed on 2026-09-04:
+
+- the focused measurement, tracking, delivery, UI, marketing, and pilot suite
+  passed 343 tests across 48 files;
+- the production build completed, including 160 prerendered routes and the
+  Cloudflare worker wrapper, despite non-fatal sandbox DNS warnings from remote
+  font and icon providers;
+- `pnpm run deploy:check` confirmed the immutable target as
+  `agency-dashboard / main`;
+- the full typecheck still exits non-zero with the repository's documented
+  baseline error set. A feature-owned Zod inference diagnostic was removed in
+  `a790514af`; the remaining filtered matches are in the older agency tracking
+  page and an unrelated invoicing module;
+- the full Vitest run passed 6,748 tests across 1,199 files and reported 55
+  failures across 23 unrelated test files plus three unhandled errors. No
+  Signal Centre or measurement delivery test failed;
+- `git diff --check` passes for the committed feature range
+  (`03f44394b..a790514af`). Every credential-shaped match was reviewed and was
+  a binding reference, documentation wording, redaction fixture, or explicit
+  test token;
+  no live credential was committed;
+- TikTok destination configuration and controlled Test Events operations were
+  added in `67e53871e`. The release-only cache fix and its focused regression
+  coverage were committed separately in `a790514af`.
+
+The authenticated Werribee test-mode run, provider Events Manager evidence, and
+production activation remain open under Task 16 because this workspace does not
+contain the Werribee client UUID or a temporary authorised session file.
 
 ## Dependency graph
 
