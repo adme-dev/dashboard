@@ -440,7 +440,14 @@ git commit -m "feat: add confirmed web lead contract"
 - Modify: `server/utils/measurement/contracts.ts`
 - Modify: `test/server/utils/measurement/contracts.test.ts`
 - Modify: `app/types/measurement.ts`
-- Modify: `test/app/clientMeasurementDestinationEditor.test.ts`
+- Create: `test/app/measurementTikTokContracts.test.ts`
+- Modify: `app/components/clients/ClientMeasurementPanel.vue`
+- Modify: `test/app/clientMeasurementPanel.test.ts`
+- Modify: `shared/utils/measurementEventIdentity.ts`
+- Modify: `test/shared/measurementEventIdentity.test.ts`
+
+The separate frontend contract test avoids absorbing unrelated in-progress form
+work already present in `clientMeasurementDestinationEditor.test.ts`.
 
 **Interfaces:**
 
@@ -450,7 +457,7 @@ git commit -m "feat: add confirmed web lead contract"
   and `test_drive_booked` for the approved automotive full-funnel mappings.
 - TikTok mappings must use TikTok capabilities only.
 
-- [ ] **Step 1: Add failing TikTok schema tests**
+- [x] **Step 1: Add failing TikTok schema tests**
 
 ```ts
 const result = CreateConversionDestinationConfigurationSchema.parse({
@@ -462,7 +469,7 @@ const result = CreateConversionDestinationConfigurationSchema.parse({
     platform: 'tiktok',
     socialConnectionId: null,
     externalDestinationId: 'C1234567890',
-    credentialRef: 'measurement:tiktok:werribee',
+    credentialRef: 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE',
     capabilities: [{
       mode: 'tiktok_events_api',
       status: 'configured',
@@ -480,16 +487,16 @@ const result = CreateConversionDestinationConfigurationSchema.parse({
 expect(result.destination.platform).toBe('tiktok')
 ```
 
-- [ ] **Step 2: Confirm RED, implement platform ownership mapping, verify GREEN**
+- [x] **Step 2: Confirm RED, implement platform ownership mapping, verify GREEN**
 
 ```bash
-pnpm vitest run test/server/utils/measurement/contracts.test.ts test/app/clientMeasurementDestinationEditor.test.ts
+pnpm vitest run test/server/utils/measurement/contracts.test.ts test/app/measurementTikTokContracts.test.ts test/app/clientMeasurementPanel.test.ts test/shared/measurementEventIdentity.test.ts
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
-git add server/utils/measurement/contracts.ts test/server/utils/measurement/contracts.test.ts app/types/measurement.ts test/app/clientMeasurementDestinationEditor.test.ts
+git add server/utils/measurement/contracts.ts test/server/utils/measurement/contracts.test.ts app/types/measurement.ts test/app/measurementTikTokContracts.test.ts app/components/clients/ClientMeasurementPanel.vue test/app/clientMeasurementPanel.test.ts shared/utils/measurementEventIdentity.ts test/shared/measurementEventIdentity.test.ts
 git commit -m "feat: define TikTok measurement contracts"
 ```
 
