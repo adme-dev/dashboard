@@ -559,6 +559,7 @@
     var touches = getAttributionTouches()
     var utmParams = touches.last || getUtmParams()
     var fbCookies = getFbCookies()
+    var tiktokBrowserId = getCookie('_ttp')
 
     var payload = {
       client_id: clientId,
@@ -577,6 +578,7 @@
       fbc: fbCookies.fbc,
       fbp: fbCookies.fbp,
       ttclid: utmParams.ttclid,
+      ttp: tiktokBrowserId,
       msclkid: utmParams.msclkid,
       gbraid: utmParams.gbraid,
       wbraid: utmParams.wbraid,
@@ -624,6 +626,7 @@
           fbc: payload.fbc,
           fbp: payload.fbp,
           ttclid: payload.ttclid,
+          ttp: payload.ttp,
           msclkid: payload.msclkid,
           li_fat_id: payload.li_fat_id,
           email_click_id: payload.email_click_id,

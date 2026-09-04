@@ -49,6 +49,8 @@ describe('public/track.js transport', () => {
     })
     vi.stubGlobal('fetch', fetchSpy)
     document.cookie = '_xf_consent=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+    document.cookie = '_ttp=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+    window.history.replaceState({}, '', '/')
     localStorage.clear()
     sessionStorage.clear()
   })
@@ -230,6 +232,24 @@ describe('public/track.js transport', () => {
     expect(parsed.ok).toBe(true)
     if (parsed.ok) {
       expect(parsed.payload.events[0].attribution?.email_click_id).toBe('click-1')
+    }
+  })
+
+  it('forwards TikTok click and browser identifiers', () => {
+    window.history.pushState({}, '', '/vehicles?ttclid=tiktok-click-1')
+    document.cookie = '_ttp=tiktok-browser-1; path=/'
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+    ;(window as any).xf.track('vehicle_view', { vehicle_id: 'stock-1' })
+
+    const parsed = parseTrackPayload(JSON.parse(requests[0].body))
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.payload.events[0].attribution).toMatchObject({
+        ttclid: 'tiktok-click-1',
+        ttp: 'tiktok-browser-1'
+      })
     }
   })
 
