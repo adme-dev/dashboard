@@ -80,7 +80,7 @@ describe('social route navigation coverage', () => {
     const budgetIndex = layout.indexOf('// Budget Tracker')
     const socialIndex = layout.indexOf('// Social — paid + organic social operations')
     const leadsIndex = layout.indexOf('// Leads — inbound inquiries')
-    const creativeIndex = layout.indexOf('// Creative — canAccessCreative')
+    const creativeIndex = layout.indexOf('// Page Studio has its own permission')
 
     expect(socialIndex).toBeGreaterThan(budgetIndex)
     expect(socialIndex).toBeLessThan(leadsIndex)
