@@ -61,7 +61,8 @@ describe('portal Measurement page', () => {
       }],
       destinations: [
         { platform: 'meta', label: 'Meta', status: 'ready', deliveryState: 'dormant', lastSuccessAt: '2026-07-17T01:30:00.000Z' },
-        { platform: 'google_data_manager', label: 'Google Data Manager', status: 'configured', deliveryState: 'dormant', lastSuccessAt: null }
+        { platform: 'google_data_manager', label: 'Google Data Manager', status: 'configured', deliveryState: 'dormant', lastSuccessAt: null },
+        { platform: 'tiktok', label: 'TikTok', status: 'ready', deliveryState: 'dormant', lastSuccessAt: '2026-09-04T01:30:00.000Z' }
       ],
       delivery: {
         acceptedCount: 5,
@@ -71,6 +72,11 @@ describe('portal Measurement page', () => {
         lastAcceptedAt: '2026-07-17T01:15:00.000Z',
         lastDeliveredAt: '2026-07-17T01:20:00.000Z',
         lastRejectedAt: '2026-07-17T01:25:00.000Z'
+      },
+      funnel: { visits: 120, confirmedLeads: 9 },
+      freshness: {
+        lastCollectionAt: '2026-09-04T01:25:00.000Z',
+        lastDeliveryAt: '2026-09-04T01:30:00.000Z'
       },
       lastValidatedAt: '2026-07-17T02:00:00.000Z',
       nextSteps: ['One or more provider destinations still needs validation.', 'Live-delivery approval is still pending.']
@@ -93,6 +99,12 @@ describe('portal Measurement page', () => {
       expect(host.textContent).toContain('Found')
       expect(host.textContent).toContain('Google Tag Manager')
       expect(host.textContent).toContain('Server-side tracking')
+      expect(host.textContent).toContain('Website visits')
+      expect(host.textContent).toContain('120')
+      expect(host.textContent).toContain('Confirmed leads')
+      expect(host.textContent).toContain('9')
+      expect(host.textContent).toContain('Last signal collected')
+      expect(host.textContent).toContain('Last provider delivery')
       expect(host.textContent).toContain('Set up')
       expect(host.textContent).toContain('Externally managed')
       expect(host.textContent).toContain('CRM outcomes')
@@ -106,6 +118,7 @@ describe('portal Measurement page', () => {
       expect(host.textContent).toContain('2 rejected')
       expect(host.textContent).toContain('Meta')
       expect(host.textContent).toContain('Google Data Manager')
+      expect(host.textContent).toContain('TikTok')
       expect(host.textContent).toContain('Dormant')
       expect(host.textContent).toContain('One or more provider destinations still needs validation.')
       expect(host.textContent).not.toContain('Configure destination')
@@ -115,6 +128,7 @@ describe('portal Measurement page', () => {
       expect(host.textContent).not.toContain('capabilities')
       expect(host.textContent).not.toContain('active mappings')
       expect(host.textContent).not.toContain('backend_only')
+      expect(host.innerHTML).not.toMatch(/ttclid|ttp|credentialRef|accessToken/i)
     } finally {
       app.unmount()
     }

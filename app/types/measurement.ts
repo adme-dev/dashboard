@@ -203,6 +203,14 @@ export interface PortalMeasurementHealth {
     lastDeliveredAt: string | null
     lastRejectedAt: string | null
   }
+  funnel: {
+    visits: number
+    confirmedLeads: number
+  }
+  freshness: {
+    lastCollectionAt: string | null
+    lastDeliveryAt: string | null
+  }
   lastValidatedAt: string | null
   nextSteps: string[]
 }

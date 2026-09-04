@@ -104,6 +104,23 @@ describe('portal measurement health endpoint', () => {
             { mode: 'google_data_manager', status: 'configured', managementOrigin: 'external', evidenceAt: null }
           ],
           mappings: []
+        },
+        {
+          id: 'tiktok-secret-id',
+          platform: 'tiktok',
+          externalDestinationId: 'tiktok-pixel-secret-id',
+          credentialConfigured: true,
+          enabled: false,
+          environment: 'test',
+          healthStatus: 'ready',
+          providerRequestId: 'tiktok-provider-request-secret',
+          redactedError: null,
+          lastSuccessAt: '2026-09-04T01:30:00.000Z',
+          capabilities: [
+            { mode: 'tiktok_pixel', status: 'detected', managementOrigin: 'gtm', evidenceAt: '2026-09-04T01:00:00.000Z' },
+            { mode: 'tiktok_events_api', status: 'ready', managementOrigin: 'zero', evidenceAt: '2026-09-04T01:30:00.000Z' }
+          ],
+          mappings: [{ canonicalEventName: 'web_conversion', providerEventName: 'SubmitForm', isActive: true }]
         }
       ]
     })
@@ -119,7 +136,11 @@ describe('portal measurement health endpoint', () => {
       outcome_accepted_count: '8',
       outcome_rejected_count: '2',
       last_outcome_sync_at: '2026-07-17T01:10:00.000Z',
-      last_endpoint_received_at: null
+      last_endpoint_received_at: null,
+      visit_count: '120',
+      confirmed_lead_count: '9',
+      last_collection_at: '2026-09-04T01:25:00.000Z',
+      last_delivery_at: '2026-09-04T01:30:00.000Z'
     })
   })
 
@@ -142,18 +163,33 @@ describe('portal measurement health endpoint', () => {
       },
       signals: {
         browser: { status: 'detected', owners: ['gtm'] },
-        server: { status: 'configured', owners: ['external'] },
+        server: { status: 'configured', owners: ['external', 'zero'] },
         crm: { status: 'ready', owners: ['zero'] }
       },
-      eventIdentity: [{
-        canonicalEventName: 'lead_qualified',
-        mode: 'server_only',
-        label: 'Server-only lifecycle event'
-      }],
+      eventIdentity: [
+        {
+          canonicalEventName: 'lead_qualified',
+          mode: 'server_only',
+          label: 'Server-only lifecycle event'
+        },
+        {
+          canonicalEventName: 'web_conversion',
+          mode: 'browser_server_dedup',
+          label: 'Shared browser/server event ID'
+        }
+      ],
       delivery: {
         acceptedCount: 5,
         deliveredCount: 4,
         rejectedCount: 1
+      },
+      funnel: {
+        visits: 120,
+        confirmedLeads: 9
+      },
+      freshness: {
+        lastCollectionAt: '2026-09-04T01:25:00.000Z',
+        lastDeliveryAt: '2026-09-04T01:30:00.000Z'
       }
     })
 
@@ -167,6 +203,8 @@ describe('portal measurement health endpoint', () => {
       'eventIdentity',
       'destinations',
       'delivery',
+      'funnel',
+      'freshness',
       'lastValidatedAt',
       'nextSteps'
     ])
@@ -188,10 +226,13 @@ describe('portal measurement health endpoint', () => {
     expect(output).not.toContain('destination-secret-id')
     expect(output).not.toContain('573284833843027')
     expect(output).not.toContain('customers/123')
+    expect(output).not.toContain('tiktok-pixel-secret-id')
     expect(output).not.toContain('credentialConfigured')
     expect(output).not.toContain('provider-request-secret')
+    expect(output).not.toContain('tiktok-provider-request-secret')
     expect(output).not.toContain('internal diagnostic text')
     expect(output).not.toContain('internal-cache-failure')
+    expect(output).not.toMatch(/accessToken|credentialRef|ttclid|ttp|fbc|fbp|gclid/i)
   })
 
   it('does not construct measurement runtimes when portal authentication fails', async () => {
@@ -267,6 +308,8 @@ describe('portal measurement health endpoint', () => {
 
     const sql = String(mockQueryOne.mock.calls[0]?.[0])
     expect(sql).toContain('WITH delivery AS')
+    expect(sql).toContain('FROM tracking_events')
+    expect(sql).toContain('FROM conversion_events')
     expect(sql).toContain('updated_at >= NOW() - INTERVAL \'24 hours\'')
     expect(sql).toContain('authority_mode = (')
     expect(sql).toContain('status IN (\'test\', \'live\', \'paused\')')

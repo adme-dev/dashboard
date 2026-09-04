@@ -210,6 +210,35 @@ void refreshHealth()
             </div>
           </section>
 
+          <section class="rounded-xl border border-default bg-default p-5 shadow-xs sm:p-6">
+            <div>
+              <h2 class="font-semibold text-highlighted">
+                Measurement funnel
+              </h2>
+              <p class="mt-1 text-sm text-muted">
+                Aggregate website collection and confirmed lead evidence. Visitor identifiers stay private.
+              </p>
+            </div>
+            <dl class="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-default bg-default sm:grid-cols-2 lg:grid-cols-4">
+              <div class="bg-elevated/40 p-4">
+                <dt class="text-xs font-medium uppercase tracking-wide text-dimmed">Website visits</dt>
+                <dd class="mt-2 text-2xl font-semibold tabular-nums text-highlighted">{{ health.funnel.visits }}</dd>
+              </div>
+              <div class="bg-elevated/40 p-4">
+                <dt class="text-xs font-medium uppercase tracking-wide text-dimmed">Confirmed leads</dt>
+                <dd class="mt-2 text-2xl font-semibold tabular-nums text-highlighted">{{ health.funnel.confirmedLeads }}</dd>
+              </div>
+              <div class="bg-elevated/40 p-4">
+                <dt class="text-xs font-medium uppercase tracking-wide text-dimmed">Last signal collected</dt>
+                <dd class="mt-2 text-sm font-medium text-highlighted">{{ formatDateTime(health.freshness.lastCollectionAt) }}</dd>
+              </div>
+              <div class="bg-elevated/40 p-4">
+                <dt class="text-xs font-medium uppercase tracking-wide text-dimmed">Last provider delivery</dt>
+                <dd class="mt-2 text-sm font-medium text-highlighted">{{ formatDateTime(health.freshness.lastDeliveryAt) }}</dd>
+              </div>
+            </dl>
+          </section>
+
           <section>
             <div>
               <h2 class="font-semibold text-highlighted">

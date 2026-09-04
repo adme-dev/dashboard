@@ -52,8 +52,32 @@ export default defineEventHandler(async (event) => {
          FROM outcome_endpoints
          WHERE client_id = $1
            AND status IN ('test', 'live', 'paused')
+       ), tracking AS (
+         SELECT
+           COUNT(*) FILTER (WHERE event_name = 'page_view') AS visit_count,
+           MAX(received_at) AS last_collection_at
+         FROM tracking_events
+         WHERE client_id = $1
+       ), canonical AS (
+         SELECT COUNT(*) FILTER (WHERE event_name = 'lead_created') AS confirmed_lead_count
+         FROM conversion_events
+         WHERE client_id = $1
        )
-       SELECT * FROM delivery CROSS JOIN outcome CROSS JOIN endpoint`,
+       SELECT delivery.*,
+              outcome.*,
+              endpoint.*,
+              tracking.*,
+              canonical.*,
+              GREATEST(
+                delivery.last_accepted_at,
+                delivery.last_delivered_at,
+                delivery.last_rejected_at
+              ) AS last_delivery_at
+         FROM delivery
+         CROSS JOIN outcome
+         CROSS JOIN endpoint
+         CROSS JOIN tracking
+         CROSS JOIN canonical`,
       [clientId]
     )
   ])
