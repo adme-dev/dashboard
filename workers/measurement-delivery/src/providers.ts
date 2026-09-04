@@ -16,8 +16,8 @@ export interface MeasurementProviderDelivery {
     wbraid: string | null
     fbc: string | null
     fbp: string | null
-    ttclid?: string | null
-    ttp?: string | null
+    ttclid: string | null
+    ttp: string | null
     eventSourceUrl: string | null
     clientUserAgent: string | null
   }

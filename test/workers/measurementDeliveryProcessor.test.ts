@@ -43,6 +43,8 @@ function claim(overrides: Record<string, unknown> = {}) {
       wbraid: null,
       fbc: null,
       fbp: null,
+      ttclid: null,
+      ttp: null,
       eventSourceUrl: null,
       clientUserAgent: null
     },
@@ -66,12 +68,19 @@ function setup(claims: Array<ReturnType<typeof claim> | null>) {
     errorClass: null,
     redactedDiagnostic: null
   }))
+  const deliverTikTok = vi.fn(async () => ({
+    outcome: 'accepted' as const,
+    providerRequestId: 'tiktok-request-1',
+    errorClass: null,
+    redactedDiagnostic: null
+  }))
   const refreshGoogleAccessToken = vi.fn(async () => 'fresh-google-token')
   const resolveProviderCredential = vi.fn(async () => 'meta-dataset-token')
   const processor = createMeasurementDeliveryProcessor({
     repository: { claimNext, complete },
     deliverMeta,
     deliverGoogle,
+    deliverTikTok,
     refreshGoogleAccessToken,
     resolveProviderCredential,
     workerId: () => 'measurement-worker:test',
@@ -87,6 +96,7 @@ function setup(claims: Array<ReturnType<typeof claim> | null>) {
     complete,
     deliverMeta,
     deliverGoogle,
+    deliverTikTok,
     refreshGoogleAccessToken,
     resolveProviderCredential
   }
@@ -151,6 +161,63 @@ describe('measurement delivery processor', () => {
     expect(state.complete).toHaveBeenCalledWith(meta, expect.objectContaining({
       errorClass: 'meta_capi_credential_unavailable'
     }), expect.any(Date))
+  })
+
+  it('routes TikTok through its purpose-scoped Events API credential', async () => {
+    const tiktok = claim({
+      platform: 'tiktok',
+      providerEventName: 'SubmitForm',
+      externalDestinationId: 'C1234567890',
+      credentialRef: 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE',
+      attribution: {
+        ...claim().attribution,
+        browserEventId: 'browser-event-1',
+        ttclid: 'click-1',
+        ttp: 'browser-1',
+        eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire'
+      }
+    })
+    const state = setup([tiktok, null])
+    state.resolveProviderCredential.mockResolvedValueOnce('tiktok-events-api-token')
+
+    await expect(state.processor.process(MESSAGE)).resolves.toMatchObject({
+      claimed: 1,
+      accepted: 1
+    })
+    expect(state.resolveProviderCredential).toHaveBeenCalledWith(
+      'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE'
+    )
+    expect(state.deliverTikTok).toHaveBeenCalledWith({
+      delivery: tiktok,
+      accessToken: 'tiktok-events-api-token',
+      environment: 'live',
+      fetch: expect.any(Function)
+    })
+    expect(state.complete).toHaveBeenCalledWith(tiktok, expect.objectContaining({
+      outcome: 'accepted',
+      providerRequestId: 'tiktok-request-1'
+    }), expect.any(Date))
+  })
+
+  it('fails closed when a TikTok Events API credential is unavailable', async () => {
+    const tiktok = claim({
+      platform: 'tiktok',
+      credentialRef: 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE'
+    })
+    const state = setup([tiktok, null])
+    state.resolveProviderCredential.mockResolvedValueOnce(null)
+
+    await expect(state.processor.process(MESSAGE)).resolves.toMatchObject({
+      claimed: 1,
+      permanentFailure: 1
+    })
+    expect(state.deliverTikTok).not.toHaveBeenCalled()
+    expect(state.complete).toHaveBeenCalledWith(tiktok, {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'tiktok_events_api_credential_unavailable',
+      redactedDiagnostic: 'TikTok Events API secret binding is unavailable'
+    }, expect.any(Date))
   })
 
   it('policy-skips Google delivery until the connected account has the Data Manager scope', async () => {
