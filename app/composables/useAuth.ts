@@ -50,6 +50,9 @@ export const useAuth = () => {
   const canAccessReports = computed(() => hasRole(PERMISSIONS.MANAGEMENT))
   const userPermissionGroups = computed(() => user.value?.permissionGroups || [])
   const hasPermission = (group: string) => userPermissionGroups.value.includes(group)
+  // Page Studio has its own granular permission family. Keep the legacy
+  // Creative role as a compatibility fallback for existing staff.
+  const canAccessPageStudio = computed(() => canAccessCreative.value || hasPermission('PAGE_STUDIO_VIEW'))
 
   // Fetch current user
   const fetchUser = async () => {
@@ -162,6 +165,7 @@ export const useAuth = () => {
     canAccessSales,
     canAccessClients,
     canAccessCreative,
+    canAccessPageStudio,
     canAccessMediaBuying,
     canAccessAdmin,
     canAccessHr,
