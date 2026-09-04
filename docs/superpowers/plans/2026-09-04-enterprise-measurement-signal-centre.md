@@ -156,7 +156,7 @@ pnpm vitest run test/public/track-tag.test.ts
 
 Expected: all public-tag tests pass.
 
-- [ ] **Step 5: Review scope and commit**
+- [x] **Step 5: Review scope and commit**
 
 ```bash
 git diff --check -- public/track.js test/public/track-tag.test.ts
@@ -179,7 +179,7 @@ git commit -m "feat: add explicit tracking consent bridge"
 - Produces optional bounded `attribution.ttp` and existing
   `attribution.ttclid`.
 
-- [ ] **Step 1: Add failing transport and schema tests**
+- [x] **Step 1: Add failing transport and schema tests**
 
 ```ts
 it('forwards TikTok click and browser identifiers', () => {
@@ -196,7 +196,7 @@ it('forwards TikTok click and browser identifiers', () => {
 })
 ```
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```bash
 pnpm vitest run test/public/track-tag.test.ts test/server/utils/tracking/track-schema.test.ts
@@ -204,7 +204,7 @@ pnpm vitest run test/public/track-tag.test.ts test/server/utils/tracking/track-s
 
 Expected: `_ttp` is absent/rejected.
 
-- [ ] **Step 3: Add bounded `ttp` capture and validation**
+- [x] **Step 3: Add bounded `ttp` capture and validation**
 
 ```ts
 ttp: z.string().max(512).nullable().optional()
@@ -213,13 +213,13 @@ ttp: z.string().max(512).nullable().optional()
 Read `_ttp` with the existing cookie helper and copy it into the event attribution
 object. Do not generate a replacement value.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```bash
 pnpm vitest run test/public/track-tag.test.ts test/server/utils/tracking/track-schema.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add public/track.js server/utils/tracking/track-schema.ts test/public/track-tag.test.ts test/server/utils/tracking/track-schema.test.ts
@@ -241,7 +241,7 @@ git commit -m "feat: capture TikTok browser attribution"
 - Consumes `TrackPayload.events[].attribution.ttp` from Task 2.
 - Produces nullable `TrackingEventRow.ttp` and `tracking_events.ttp`.
 
-- [ ] **Step 1: Add failing row/persistence tests**
+- [x] **Step 1: Add failing row/persistence tests**
 
 ```ts
 expect(buildEventRows(site, {
@@ -252,13 +252,13 @@ expect(buildEventRows(site, {
 Assert the persistence insert includes `ttp` between TikTok click identity and
 the remaining attribution fields.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```bash
 pnpm vitest run test/server/utils/tracking/event-insert.test.ts test/server/utils/tracking/eventPersistence.test.ts
 ```
 
-- [ ] **Step 3: Add the nullable column and mapping**
+- [x] **Step 3: Add the nullable column and mapping**
 
 ```sql
 ALTER TABLE tracking_events
@@ -268,21 +268,21 @@ ALTER TABLE tracking_events
 Add `ttp` to `TrackingEventRow`, `ATTR_KEYS`, the insert column list, and insert
 parameters.
 
-- [ ] **Step 4: Apply the migration immediately**
+- [x] **Step 4: Apply the migration immediately**
 
 ```bash
 export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-)
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/338_tracking_tiktok_browser_id.sql
 ```
 
-- [ ] **Step 5: Verify GREEN and migration state**
+- [x] **Step 5: Verify GREEN and migration state**
 
 ```bash
 pnpm vitest run test/server/utils/tracking/event-insert.test.ts test/server/utils/tracking/eventPersistence.test.ts
 psql "$DATABASE_URL" -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'tracking_events' AND column_name = 'ttp'"
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/database/migrations/338_tracking_tiktok_browser_id.sql server/utils/tracking/event-insert.ts server/utils/tracking/eventPersistence.ts test/server/utils/tracking/event-insert.test.ts test/server/utils/tracking/eventPersistence.test.ts
