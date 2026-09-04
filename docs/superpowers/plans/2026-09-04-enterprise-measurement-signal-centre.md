@@ -302,10 +302,12 @@ git commit -m "feat: persist TikTok browser attribution"
 **Interfaces:**
 
 - Consumes tracking-row `ttclid`, `ttp`, page URL, and user agent.
-- Produces nullable canonical fields `ttclid`, `ttp`, `eventSourceUrl`, and
-  `clientUserAgent` without copying event data or PII.
+- Produces nullable canonical fields `ttclid`, `ttp`, `gaClientId`,
+  `eventSourceUrl`, and `clientUserAgent` without copying event data or PII.
+- Preserves the bounded `gaClientId` compatibility key already present in live
+  canonical rows instead of deleting useful GA4 correlation data.
 
-- [ ] **Step 1: Write failing allowlist/promotion tests**
+- [x] **Step 1: Write failing allowlist/promotion tests**
 
 ```ts
 expect(buildBrowserCanonicalConversion({
@@ -326,22 +328,22 @@ expect(buildBrowserCanonicalConversion({
 })
 ```
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```bash
 pnpm vitest run test/server/utils/measurement/contracts.test.ts test/server/utils/tracking/browserCanonicalConversion.test.ts
 ```
 
-- [ ] **Step 3: Extend the Zod contract and database constraint**
+- [x] **Step 3: Extend the Zod contract and database constraint**
 
 Replace the canonical attribution check so the only permitted keys are:
 
 ```text
 browserEventId, metaLeadId, gclid, gbraid, wbraid, fbc, fbp, ttclid, ttp,
-eventSourceUrl, clientUserAgent
+gaClientId, eventSourceUrl, clientUserAgent
 ```
 
-- [ ] **Step 4: Apply migration and verify GREEN**
+- [x] **Step 4: Apply migration and verify GREEN**
 
 ```bash
 export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-)
@@ -349,7 +351,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/339_measur
 pnpm vitest run test/server/utils/measurement/contracts.test.ts test/server/utils/tracking/browserCanonicalConversion.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/database/migrations/339_measurement_web_attribution.sql server/utils/measurement/contracts.ts server/utils/tracking/browserCanonicalConversion.ts test/server/utils/measurement/contracts.test.ts test/server/utils/tracking/browserCanonicalConversion.test.ts

@@ -118,6 +118,7 @@ interface MeasurementAttribution {
   fbp: string | null
   ttclid: string | null
   ttp: string | null
+  gaClientId: string | null
   eventSourceUrl: string | null
   clientUserAgent: string | null
 }
@@ -127,6 +128,10 @@ Values are identifiers/context only. Raw email, phone, names, free text, and raw
 IP remain prohibited. Provider-compatible hashed identity is resolved from an
 authorised lead/CRM source only at the delivery boundary and is discarded after
 request construction.
+
+`gaClientId` remains in the envelope as a bounded compatibility field because
+existing canonical conversion rows already use it for GA4 correlation. It is
+not treated as contact PII and is never exposed as a raw value in reporting.
 
 ## Provider policy
 
