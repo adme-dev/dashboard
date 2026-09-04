@@ -947,17 +947,17 @@ reachable without an attached extension session.
 - Runbook consumes the exact Gate 0–3 evidence and never embeds credentials.
 - Marketing pages describe Signal Centre and privacy-safe server-side measurement.
 
-- [ ] **Step 1: Add failing marketing content test**
+- [x] **Step 1: Add failing marketing content test**
 
 Assert the feature index, detailed entry, and mega menu include the same stable
 feature slug and do not claim guaranteed attribution or regulatory compliance.
 
-- [ ] **Step 2: Write the activation runbook and public feature copy**
+- [x] **Step 2: Write the activation runbook and public feature copy**
 
 The runbook includes exact test, diagnostics, reconciliation, two-person approval,
 seven-day soak, pause, and rollback steps.
 
-- [ ] **Step 3: Verify and commit**
+- [x] **Step 3: Verify and commit**
 
 ```bash
 pnpm vitest run test/config/measurementMarketingPages.test.ts
