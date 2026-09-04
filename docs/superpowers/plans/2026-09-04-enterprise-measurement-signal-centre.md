@@ -505,48 +505,53 @@ git commit -m "feat: define TikTok measurement contracts"
 **Files:**
 
 - Create: `server/database/migrations/340_measurement_tiktok_destination.sql`
-- Modify: `test/server/utils/measurement/destinationRepository.test.ts`
-- Modify: `test/server/utils/measurement/providerTestRepository.test.ts`
+- Create: `test/config/measurementTikTokDestinationMigration.test.ts`
+- Verify: `test/server/utils/measurement/destinationRepository.test.ts`
+- Verify: `test/server/utils/measurement/providerTestRepository.test.ts`
 
 **Interfaces:**
 
-- Allows `tiktok` in `conversion_destinations`, `conversion_deliveries`, and
-  `measurement_provider_test_runs` platform checks.
+- Allows `tiktok` in `conversion_destinations` and
+  `measurement_provider_test_runs` platform checks. `conversion_deliveries`
+  has no platform column and continues to reference the destination instead.
 - Allows `tiktok_pixel` and `tiktok_events_api` wherever capability values are
   constrained.
 - Allows the approved automotive canonical event names wherever canonical event
   names are constrained.
+- Preserves the deployed `ga4` / `ga4_measurement_protocol` destination contract
+  and existing web action names.
 
-- [ ] **Step 1: Add migration contract tests**
+- [x] **Step 1: Add migration contract tests**
 
 Assert the migration drops each named legacy check and recreates an explicit
-allowlist containing `meta`, `google_data_manager`, and `tiktok`.
+allowlist containing `meta`, `google_data_manager`, `ga4` where already
+supported, and `tiktok`.
 
-- [ ] **Step 2: Create the additive constraint migration**
+- [x] **Step 2: Create the additive constraint migration**
 
 ```sql
 ALTER TABLE conversion_destinations
   DROP CONSTRAINT IF EXISTS conversion_destinations_platform_check;
 ALTER TABLE conversion_destinations
   ADD CONSTRAINT conversion_destinations_platform_check
-  CHECK (platform IN ('meta', 'google_data_manager', 'tiktok'));
+  CHECK (platform IN ('meta', 'google_data_manager', 'ga4', 'tiktok'));
 ```
 
 Apply the equivalent explicit constraint to every provider-scoped measurement
 table identified by the repository tests.
 
-- [ ] **Step 3: Apply and verify**
+- [x] **Step 3: Apply and verify**
 
 ```bash
 export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-)
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/340_measurement_tiktok_destination.sql
-pnpm vitest run test/server/utils/measurement/destinationRepository.test.ts test/server/utils/measurement/providerTestRepository.test.ts
+pnpm vitest run test/config/measurementTikTokDestinationMigration.test.ts test/server/utils/measurement/destinationRepository.test.ts test/server/utils/measurement/providerTestRepository.test.ts
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
-git add server/database/migrations/340_measurement_tiktok_destination.sql test/server/utils/measurement/destinationRepository.test.ts test/server/utils/measurement/providerTestRepository.test.ts
+git add server/database/migrations/340_measurement_tiktok_destination.sql test/config/measurementTikTokDestinationMigration.test.ts
 git commit -m "feat: allow TikTok measurement destinations"
 ```
 
