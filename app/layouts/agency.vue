@@ -24,6 +24,7 @@ const {
   canAccessSales,
   canAccessReports,
   canAccessCreative,
+  canAccessPageStudio,
   canAccessAdmin,
   canAccessHr,
   canAccessAiTraining,
@@ -341,11 +342,17 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     )
   }
 
-  // Creative — canAccessCreative
-  if (canAccessCreative.value) {
+  // Page Studio has its own permission; remaining creative tools retain the
+  // broader Creative role gate.
+  if (canAccessPageStudio.value) {
     items.push(
       { type: 'label', label: 'Creative' },
-      { label: 'Page Studio', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close },
+      { label: 'Page Studio', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close }
+    )
+  }
+  if (canAccessCreative.value) {
+    items.push(
+      ...(!canAccessPageStudio.value ? [{ type: 'label' as const, label: 'Creative' }] : []),
       { label: 'Banner Studio', icon: 'i-lucide-palette', to: '/agency/banner-studio', onSelect: close },
       { label: 'Templates', icon: 'i-lucide-layout-template', to: '/agency/banner-studio/templates', onSelect: close },
       { label: 'Brand Kits', icon: 'i-lucide-paintbrush', to: '/agency/banner-studio/brand-kits', onSelect: close },
