@@ -24,11 +24,11 @@ const {
   canAccessSales,
   canAccessReports,
   canAccessCreative,
-  canAccessPageStudio,
   canAccessAdmin,
   canAccessHr,
   canAccessAiTraining,
-  canAccessAutomation
+  canAccessAutomation,
+  hasPermission
 } = useAuth()
 
 const close = () => {
@@ -184,6 +184,20 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Intake', icon: 'i-lucide-inbox', to: '/agency/intake', onSelect: close },
       { label: 'Client Portal', icon: 'i-lucide-globe', to: '/agency/client-portal', onSelect: close }
     )
+  }
+
+  // Website operations have their own permission family and section. Keep
+  // publishing, review, DNS, and subscription controls discoverable without
+  // coupling them to Banner Studio's Creative permission.
+  if (hasPermission('PAGE_STUDIO_VIEW')) {
+    items.push(
+      { type: 'label', label: 'Websites' },
+      { label: 'Demo Sites', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close }
+    )
+    if (hasPermission('PAGE_STUDIO_APPROVE')) items.push({ label: 'Reviews', icon: 'i-lucide-badge-check', to: '/agency/page-studio/reviews', onSelect: close })
+    if (hasPermission('PAGE_STUDIO_PUBLISH')) items.push({ label: 'Releases', icon: 'i-lucide-rocket', to: '/agency/page-studio/releases', onSelect: close })
+    if (hasPermission('PAGE_STUDIO_DOMAINS')) items.push({ label: 'Domains & DNS', icon: 'i-lucide-globe-2', to: '/agency/page-studio/domains', onSelect: close })
+    if (hasPermission('PAGE_STUDIO_SUBSCRIPTIONS')) items.push({ label: 'Subscriptions', icon: 'i-lucide-gauge', to: '/agency/page-studio/subscriptions', onSelect: close })
   }
 
   // Time & Capacity — visible to all authenticated users
@@ -342,17 +356,10 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     )
   }
 
-  // Page Studio has its own permission; remaining creative tools retain the
-  // broader Creative role gate.
-  if (canAccessPageStudio.value) {
-    items.push(
-      { type: 'label', label: 'Creative' },
-      { label: 'Page Studio', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close }
-    )
-  }
+  // Creative — canAccessCreative
   if (canAccessCreative.value) {
     items.push(
-      ...(!canAccessPageStudio.value ? [{ type: 'label' as const, label: 'Creative' }] : []),
+      { type: 'label', label: 'Creative' },
       { label: 'Banner Studio', icon: 'i-lucide-palette', to: '/agency/banner-studio', onSelect: close },
       { label: 'Templates', icon: 'i-lucide-layout-template', to: '/agency/banner-studio/templates', onSelect: close },
       { label: 'Brand Kits', icon: 'i-lucide-paintbrush', to: '/agency/banner-studio/brand-kits', onSelect: close },
