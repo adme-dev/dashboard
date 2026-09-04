@@ -760,7 +760,7 @@ git commit -m "feat: validate TikTok measurement health"
 - API requires measurement read permission and client scope.
 - Identifier coverage returns percentages/counts only.
 
-- [ ] **Step 1: Add failing aggregate and tenant-scope tests**
+- [x] **Step 1: Add failing aggregate and tenant-scope tests**
 
 ```ts
 expect(await summarize(rows)).toEqual(expect.objectContaining({
@@ -772,13 +772,13 @@ expect(await summarize(rows)).toEqual(expect.objectContaining({
 }))
 ```
 
-- [ ] **Step 2: Confirm RED, implement smallest SQL/read service, verify GREEN**
+- [x] **Step 2: Confirm RED, implement smallest SQL/read service, verify GREEN**
 
 ```bash
 pnpm vitest run test/server/utils/measurement/signalSummary.test.ts test/server/api/measurementSignalSummary.test.ts
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add server/utils/measurement/signalSummary.ts 'server/api/agency/measurement/clients/[clientId]/signals/summary.get.ts' test/server/utils/measurement/signalSummary.test.ts test/server/api/measurementSignalSummary.test.ts
