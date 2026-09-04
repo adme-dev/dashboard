@@ -247,6 +247,7 @@ export default defineNuxtConfig({
     public: {
       appName: process.env.APP_NAME || 'XeroFlow Agency',
       appUrl: process.env.APP_URL || 'http://localhost:3000',
+      pageStudioEditorUrl: process.env.NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL || '',
       zeroServerUrl: process.env.NUXT_PUBLIC_ZERO_SERVER_URL || 'http://localhost:4848',
       sendEnabled: process.env.NUXT_PUBLIC_SEND_ENABLED === 'true',
       sendPublicEnabled: process.env.NUXT_PUBLIC_SEND_PUBLIC_ENABLED === 'true',
