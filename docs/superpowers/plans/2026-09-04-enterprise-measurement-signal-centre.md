@@ -891,7 +891,7 @@ git commit -m "feat: add agency measurement Signal Centre"
 - Produces funnel totals, last collection/delivery, platform health, and
   plain-language blockers only.
 
-- [ ] **Step 1: Add failing portal redaction and rendering tests**
+- [x] **Step 1: Add failing portal redaction and rendering tests**
 
 ```ts
 expect(response).toMatchObject({
@@ -903,13 +903,13 @@ expect(response).toMatchObject({
 expect(JSON.stringify(response)).not.toMatch(/token|credentialRef|ttclid|ttp/i)
 ```
 
-- [ ] **Step 2: Confirm RED, implement safe projection/UI, verify GREEN**
+- [x] **Step 2: Confirm RED, implement safe projection/UI, verify GREEN**
 
 ```bash
 pnpm vitest run test/server/api/portalMeasurementHealth.test.ts test/app/portalMeasurementSignalHealth.test.ts
 ```
 
-- [ ] **Step 3: Verify authenticated tenant isolation and commit**
+- [x] **Step 3: Verify authenticated tenant isolation and commit**
 
 ```bash
 git add server/api/portal/measurement.get.ts app/pages/portal/measurement.vue test/server/api/portalMeasurementHealth.test.ts test/app/portalMeasurementSignalHealth.test.ts
@@ -918,11 +918,15 @@ git commit -m "feat: show client measurement signal health"
 
 ## Checkpoint C — operational visibility
 
-- [ ] Summary, lineage, agency component, and portal tests pass.
-- [ ] Agency users can explain captured, skipped, delivered, and failed counts.
-- [ ] Portal users see only tenant-scoped aggregate health.
+- [x] Summary, lineage, agency component, and portal tests pass.
+- [x] Agency users can explain captured, skipped, delivered, and failed counts.
+- [x] Portal users see only tenant-scoped aggregate health.
 - [ ] Browser verification passes in light/dark mode and mobile/desktop widths.
-- [ ] Redaction tests prove raw identifiers, PII, and credentials are absent.
+- [x] Redaction tests prove raw identifiers, PII, and credentials are absent.
+
+Browser verification remains open: Chrome DevTools could not acquire its locked
+profile, Chrome control reported no connected browser, and Kimi WebBridge was
+reachable without an attached extension session.
 
 ---
 
