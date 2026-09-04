@@ -685,8 +685,18 @@ git commit -m "feat: route TikTok measurement deliveries"
 
 - Modify: `server/utils/measurement/providerTestService.ts`
 - Modify: `test/server/utils/measurement/providerTestService.test.ts`
+- Modify: `server/utils/measurement/providerTestRepository.ts`
+- Modify: `test/server/utils/measurement/providerTestRepository.test.ts`
+- Modify: `server/utils/measurement/runtime.ts`
+- Modify: `test/server/utils/measurement/runtime.test.ts`
+- Modify: `server/utils/measurement/healthRepository.ts`
+- Modify: `test/server/utils/measurement/healthRepository.test.ts`
 - Modify: `workers/measurement-delivery/src/diagnostics.ts`
 - Modify: `test/workers/measurementDeliveryDiagnostics.test.ts`
+
+The repository, runtime, and shared health-evidence ownership switch are required
+to make the TikTok service branch reachable and persistable; the original four-file
+list covered only the isolated service and diagnostic functions.
 
 **Interfaces:**
 
@@ -694,7 +704,7 @@ git commit -m "feat: route TikTok measurement deliveries"
 - Diagnostic output maps to `ready`, `degraded`, or `blocked` plus a redacted
   stable reason.
 
-- [ ] **Step 1: Add failing provider-test/diagnostic tests**
+- [x] **Step 1: Add failing provider-test/diagnostic tests**
 
 ```ts
 expect(await service.run({ ...command, platform: 'tiktok' })).toMatchObject({
@@ -707,13 +717,13 @@ expect(await service.run({ ...command, platform: 'tiktok' })).toMatchObject({
 Test missing token, missing Pixel id, rejected test event, stale diagnostic, and
 ready evidence.
 
-- [ ] **Step 2: Confirm RED, implement, verify GREEN**
+- [x] **Step 2: Confirm RED, implement, verify GREEN**
 
 ```bash
 pnpm vitest run test/server/utils/measurement/providerTestService.test.ts test/workers/measurementDeliveryDiagnostics.test.ts
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add server/utils/measurement/providerTestService.ts test/server/utils/measurement/providerTestService.test.ts workers/measurement-delivery/src/diagnostics.ts test/workers/measurementDeliveryDiagnostics.test.ts
@@ -722,13 +732,13 @@ git commit -m "feat: validate TikTok measurement health"
 
 ## Checkpoint B — TikTok test delivery
 
-- [ ] Measurement contract, repository, adapter, processor, and diagnostics tests
+- [x] Measurement contract, repository, adapter, processor, and diagnostics tests
   pass.
-- [ ] Worker typecheck passes.
-- [ ] New TikTok destination remains disabled/test by default.
+- [x] Worker typecheck passes.
+- [x] New TikTok destination remains disabled/test by default.
 - [ ] A synthetic event reaches TikTok Test Events with a provider receipt.
 - [ ] Browser Pixel and Events API copies share event name/id and appear once.
-- [ ] No token or payload content appears in logs, database diagnostics, or test
+- [x] No token or payload content appears in logs, database diagnostics, or test
   snapshots.
 
 ---
