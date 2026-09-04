@@ -44,7 +44,7 @@ export const PortalMeasurementHealthSchema = z.strictObject({
     label: z.string().min(1).max(100)
   })).max(20),
   destinations: z.array(z.strictObject({
-    platform: z.enum(['meta', 'google_data_manager']),
+    platform: z.enum(['meta', 'google_data_manager', 'ga4', 'tiktok']),
     label: z.string().min(1).max(100),
     status: PortalCapabilityStatusSchema,
     deliveryState: z.enum(['dormant', 'test', 'live', 'paused']),
@@ -58,6 +58,14 @@ export const PortalMeasurementHealthSchema = z.strictObject({
     lastAcceptedAt: z.string().datetime({ offset: true }).nullable(),
     lastDeliveredAt: z.string().datetime({ offset: true }).nullable(),
     lastRejectedAt: z.string().datetime({ offset: true }).nullable()
+  }),
+  funnel: z.strictObject({
+    visits: z.number().int().nonnegative(),
+    confirmedLeads: z.number().int().nonnegative()
+  }),
+  freshness: z.strictObject({
+    lastCollectionAt: z.string().datetime({ offset: true }).nullable(),
+    lastDeliveryAt: z.string().datetime({ offset: true }).nullable()
   }),
   lastValidatedAt: z.string().datetime({ offset: true }).nullable(),
   nextSteps: z.array(z.string().min(1).max(300)).max(10)
@@ -85,15 +93,15 @@ interface PortalCapabilityInput {
   mode: string
   status: CapabilityStatus
   managementOrigin: ManagementOrigin
-  evidenceAt: string | null
+  evidenceAt?: string | null
 }
 
 interface PortalDestinationInput {
-  platform: 'meta' | 'google_data_manager'
+  platform: 'meta' | 'google_data_manager' | 'ga4' | 'tiktok'
   enabled: boolean
   environment: 'test' | 'live' | 'paused'
   healthStatus: CapabilityStatus
-  lastSuccessAt: string | null
+  lastSuccessAt?: string | null
   capabilities: PortalCapabilityInput[]
   mappings: Array<{ isActive: boolean, canonicalEventName?: string }>
 }
@@ -111,6 +119,10 @@ export interface PortalMeasurementAggregateRow {
   outcome_rejected_count?: number | string | null
   last_outcome_sync_at?: Date | string | null
   last_endpoint_received_at?: Date | string | null
+  visit_count?: number | string | null
+  confirmed_lead_count?: number | string | null
+  last_collection_at?: Date | string | null
+  last_delivery_at?: Date | string | null
 }
 
 const STATUS_PRIORITY: Record<CapabilityStatus, number> = {
@@ -123,8 +135,17 @@ const STATUS_PRIORITY: Record<CapabilityStatus, number> = {
   ready: 1
 }
 
-const BROWSER_MODES = new Set(['meta_pixel', 'google_tag_enhanced_conversions'])
-const SERVER_MODES = new Set(['meta_web_capi', 'google_data_manager'])
+const BROWSER_MODES = new Set([
+  'meta_pixel',
+  'google_tag_enhanced_conversions',
+  'tiktok_pixel'
+])
+const SERVER_MODES = new Set([
+  'meta_web_capi',
+  'google_data_manager',
+  'ga4_measurement_protocol',
+  'tiktok_events_api'
+])
 const CRM_MODES = new Set([
   'meta_crm_capi',
   'meta_conversion_leads',
@@ -157,7 +178,7 @@ function iso(value: Date | string | null | undefined) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
-function latest(values: Array<string | null>) {
+function latest(values: Array<string | null | undefined>) {
   const timestamps = values
     .filter((value): value is string => Boolean(value))
     .map(value => new Date(value).getTime())
@@ -188,6 +209,13 @@ function authorityLabel(authority: PortalProfileInput['outcomeAuthority']) {
   if (authority === 'client_webhook') return 'Client webhook'
   if (authority === 'connector_sync') return 'Connected CRM sync'
   return 'Manual import'
+}
+
+function platformLabel(platform: PortalDestinationInput['platform']) {
+  if (platform === 'meta') return 'Meta'
+  if (platform === 'google_data_manager') return 'Google Data Manager'
+  if (platform === 'ga4') return 'Google Analytics 4'
+  return 'TikTok'
 }
 
 function eventIdentity(destinations: PortalDestinationInput[]) {
@@ -270,7 +298,7 @@ export function buildPortalMeasurementHealth(input: {
     eventIdentity: eventIdentity(relevantDestinations),
     destinations: input.destinations.map(destination => ({
       platform: destination.platform,
-      label: destination.platform === 'meta' ? 'Meta' : 'Google Data Manager',
+      label: platformLabel(destination.platform),
       status: destination.healthStatus,
       deliveryState: destination.enabled ? destination.environment : 'dormant',
       lastSuccessAt: iso(destination.lastSuccessAt)
@@ -283,6 +311,14 @@ export function buildPortalMeasurementHealth(input: {
       lastAcceptedAt: iso(aggregate.last_accepted_at),
       lastDeliveredAt: iso(aggregate.last_delivered_at),
       lastRejectedAt: iso(aggregate.last_rejected_at)
+    },
+    funnel: {
+      visits: numberValue(aggregate.visit_count),
+      confirmedLeads: numberValue(aggregate.confirmed_lead_count)
+    },
+    freshness: {
+      lastCollectionAt: iso(aggregate.last_collection_at),
+      lastDeliveryAt: iso(aggregate.last_delivery_at)
     },
     lastValidatedAt: iso(input.readiness.lastValidatedAt),
     nextSteps: [...new Set([

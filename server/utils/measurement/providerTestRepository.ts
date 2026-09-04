@@ -30,7 +30,7 @@ interface ProviderContextRow extends GoogleRefreshCredentialRow {
   profile_config_version: number | string
   destination_enabled: boolean
   destination_environment: string
-  platform: 'meta' | 'google_data_manager'
+  platform: 'meta' | 'google_data_manager' | 'tiktok'
   external_destination_id: string
   credential_ref: string | null
   provider_event_name: string | null
@@ -75,7 +75,9 @@ function runSummary(row: TestRunRow): ProviderTestRunSummary {
 }
 
 function expectedPlatform(mode: ProviderTestMode) {
-  return mode === 'meta_test_events' ? 'meta' : 'google_data_manager'
+  if (mode === 'meta_test_events') return 'meta'
+  if (mode === 'tiktok_test_events') return 'tiktok'
+  return 'google_data_manager'
 }
 
 function normalizedOrigin(value: unknown): string | null {
@@ -139,7 +141,11 @@ export function createPostgresMeasurementProviderTestRepository(
                ON sc.client_id = d.client_id
               AND sc.id = d.social_connection_id
                AND sc.status = 'active'
-               AND sc.platform = CASE WHEN d.platform = 'meta' THEN 'meta' ELSE 'google' END
+               AND sc.platform = CASE
+                 WHEN d.platform = 'meta' THEN 'meta'
+                 WHEN d.platform = 'google_data_manager' THEN 'google'
+                 ELSE NULL
+               END
              ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
              LEFT JOIN tracking_sites ts
                ON ts.client_id = d.client_id
@@ -172,7 +178,7 @@ export function createPostgresMeasurementProviderTestRepository(
         ) return { status: 'not_test_mode' }
         if (row.platform !== expectedPlatform(input.mode)) return { status: 'not_found' }
         if (!row.provider_event_name) return { status: 'mapping_not_found' }
-        if (!row.account_id) return { status: 'connection_not_found' }
+        if (row.platform !== 'tiktok' && !row.account_id) return { status: 'connection_not_found' }
         const capabilityModes = Array.isArray(row.capability_modes)
           ? row.capability_modes.filter((mode): mode is string => typeof mode === 'string')
           : []
@@ -198,6 +204,17 @@ export function createPostgresMeasurementProviderTestRepository(
             if (!eventSourceOrigin || !approvedOrigins.includes(eventSourceOrigin)) {
               return { status: 'source_origin_not_approved' }
             }
+          }
+        } else if (input.mode === 'tiktok_test_events') {
+          if (!capabilityModes.includes('tiktok_events_api')) {
+            return { status: 'capability_not_configured' }
+          }
+          const approvedOrigins = Array.isArray(row.allowed_origins)
+            ? row.allowed_origins.map(normalizedOrigin).filter((origin): origin is string => Boolean(origin))
+            : []
+          const eventSourceOrigin = normalizedOrigin(input.eventSourceUrl)
+          if (!eventSourceOrigin || !approvedOrigins.includes(eventSourceOrigin)) {
+            return { status: 'source_origin_not_approved' }
           }
         }
 
@@ -238,7 +255,7 @@ export function createPostgresMeasurementProviderTestRepository(
         }
 
         const metadata = record(row.metadata)
-        const operatingAccountId = row.account_id.replaceAll('-', '')
+        const operatingAccountId = row.account_id?.replaceAll('-', '') ?? ''
         const loginAccountId = (
           stringValue(metadata.google_login_customer_id)
           ?? stringValue(metadata.login_customer_id)

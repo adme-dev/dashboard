@@ -33,6 +33,7 @@ export interface TrackingEventRow {
   fbc: string | null
   fbp: string | null
   ttclid: string | null
+  ttp: string | null
   msclkid: string | null
   li_fat_id: string | null
   event_data: Record<string, unknown>
@@ -45,7 +46,7 @@ export interface TrackingEventRow {
 
 const ATTR_KEYS = [
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
-  'gclid', 'gbraid', 'wbraid', 'fbclid', 'fbc', 'fbp', 'ttclid', 'msclkid', 'li_fat_id'
+  'gclid', 'gbraid', 'wbraid', 'fbclid', 'fbc', 'fbp', 'ttclid', 'ttp', 'msclkid', 'li_fat_id'
 ] as const
 
 export function buildEventRows(

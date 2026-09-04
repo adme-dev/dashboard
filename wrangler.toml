@@ -121,6 +121,7 @@ service = "agency-workflows"
 [vars]
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
+META_LOGIN_CONFIG_ID = "1740422843746070"
 EMAIL_FROM = "notification@adme.net.au"
 # Private internal Send v1. SEND_ENABLED is the product flag consumed at build
 # time; the NUXT_* aliases keep both server and client runtime config enabled on

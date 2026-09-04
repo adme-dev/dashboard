@@ -65,7 +65,13 @@ describe('opportunity stage transition service', () => {
             lead_id: LEAD_ID,
             source: 'meta',
             source_lead_id: '1234567890123456',
-            attribution: { browserEventId: 'browser-event-1', gclid: 'gclid-1' }
+            attribution: {
+              browserEventId: 'browser-event-1',
+              gclid: 'gclid-1',
+              ttclid: 'tiktok-click-1',
+              ttp: 'tiktok-browser-1',
+              eventSourceUrl: 'https://rebtyota.com.au/enquiry/?lead=private'
+            }
           }] }
         }
         return { rows: [] }
@@ -104,7 +110,14 @@ describe('opportunity stage transition service', () => {
         metaLeadId: '1234567890123456',
         gclid: 'gclid-1',
         gbraid: null,
-        wbraid: null
+        wbraid: null,
+        fbc: null,
+        fbp: null,
+        ttclid: 'tiktok-click-1',
+        ttp: 'tiktok-browser-1',
+        gaClientId: null,
+        eventSourceUrl: 'https://rebtyota.com.au/enquiry/',
+        clientUserAgent: null
       }
     }))
     expect(statements.map(statement => statement.sql)).toEqual([

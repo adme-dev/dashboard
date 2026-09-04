@@ -2586,6 +2586,8 @@ watch(debouncedDraftPreviewSignature, () => {
                 </div>
               </template>
             </div>
+
+            <DealerFeedsMetaCatalogManager />
           </section>
         </div>
       </div>

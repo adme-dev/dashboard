@@ -151,6 +151,11 @@ export async function queryOne<T = any>(sql: string, params?: any[]): Promise<T 
   return rows[0] || null
 }
 
+// Freshness-aware aliases used by governed mutation paths. The current driver
+// has no separate cache layer, so both helpers intentionally share the normal
+// request-scoped query implementation.
+export const queryOneFresh = queryOne
+
 // Query helper that returns a count value
 export async function queryCount(sql: string, params?: any[]): Promise<number> {
   const result = await query<{ count: string }>(sql, params)
@@ -223,6 +228,8 @@ export async function transaction<T>(callback: (db: Pool) => Promise<T>): Promis
     }
   })
 }
+
+export const transactionWithoutRetry = transaction
 
 // --- Legacy getDb() — returns a Pool-like object backed by the active driver ---
 export function getDb() {

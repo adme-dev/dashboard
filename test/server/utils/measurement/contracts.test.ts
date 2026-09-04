@@ -79,6 +79,37 @@ describe('ClientMeasurementProfileCreateSchema', () => {
 })
 
 describe('ConversionDestinationCreateSchema', () => {
+  it('accepts a dormant TikTok destination with TikTok-owned capabilities', () => {
+    const result = ConversionDestinationCreateSchema.parse({
+      profileId: PROFILE_ID,
+      platform: 'tiktok',
+      externalDestinationId: 'C1234567890',
+      capabilities: [
+        { mode: 'tiktok_pixel', managementOrigin: 'gtm', canZeroMutate: false },
+        { mode: 'tiktok_events_api', managementOrigin: 'zero', canZeroMutate: true }
+      ]
+    })
+
+    expect(result).toMatchObject({
+      platform: 'tiktok',
+      enabled: false,
+      environment: 'test'
+    })
+  })
+
+  it('preserves the existing GA4 Measurement Protocol destination contract', () => {
+    const result = ConversionDestinationCreateSchema.parse({
+      profileId: PROFILE_ID,
+      platform: 'ga4',
+      externalDestinationId: 'G-ABC1234567',
+      capabilities: [
+        { mode: 'ga4_measurement_protocol', managementOrigin: 'zero', canZeroMutate: true }
+      ]
+    })
+
+    expect(result).toMatchObject({ platform: 'ga4', enabled: false, environment: 'test' })
+  })
+
   it('keeps Meta web CAPI and CRM CAPI as independently evidenced capabilities', () => {
     const result = ConversionDestinationCreateSchema.parse({
       profileId: PROFILE_ID,
@@ -148,6 +179,19 @@ describe('ConversionDestinationCreateSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('rejects non-TikTok capabilities on a TikTok destination', () => {
+    const result = ConversionDestinationCreateSchema.safeParse({
+      profileId: PROFILE_ID,
+      platform: 'tiktok',
+      externalDestinationId: 'C1234567890',
+      capabilities: [
+        { mode: 'meta_web_capi', managementOrigin: 'zero', canZeroMutate: true }
+      ]
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   it('prevents Zero mutation authority for externally managed capabilities', () => {
     const result = ConversionDestinationCreateSchema.safeParse({
       profileId: PROFILE_ID,
@@ -177,6 +221,39 @@ describe('ConversionDestinationCreateSchema', () => {
 })
 
 describe('CreateConversionDestinationConfigurationSchema', () => {
+  it('defines a dormant TikTok Events API destination with an inactive mapping', () => {
+    const result = CreateConversionDestinationConfigurationSchema.parse({
+      clientId: CLIENT_ID,
+      expectedProfileVersion: 1,
+      reason: 'Configure Werribee TikTok test delivery',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      destination: {
+        platform: 'tiktok',
+        socialConnectionId: null,
+        externalDestinationId: 'C1234567890',
+        credentialRef: 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE',
+        capabilities: [{
+          mode: 'tiktok_events_api',
+          status: 'configured',
+          managementOrigin: 'zero',
+          canZeroMutate: true,
+          blockingReason: null
+        }],
+        mappings: [{
+          canonicalEventName: 'web_conversion',
+          providerEventName: 'SubmitForm',
+          isActive: false
+        }]
+      }
+    })
+
+    expect(result.destination).toMatchObject({
+      platform: 'tiktok',
+      externalDestinationId: 'C1234567890',
+      mappings: [{ canonicalEventName: 'web_conversion', isActive: false }]
+    })
+  })
+
   it('rejects credential references outside the purpose-scoped measurement namespace', () => {
     const result = CreateConversionDestinationConfigurationSchema.safeParse({
       clientId: CLIENT_ID,
@@ -563,7 +640,14 @@ describe('CanonicalConversionEventSchema', () => {
       metaLeadId: '123456789012345',
       gclid: null,
       gbraid: null,
-      wbraid: null
+      wbraid: null,
+      fbc: null,
+      fbp: null,
+      ttclid: null,
+      ttp: null,
+      gaClientId: null,
+      eventSourceUrl: null,
+      clientUserAgent: null
     }
   } as const
 
@@ -575,6 +659,34 @@ describe('CanonicalConversionEventSchema', () => {
     expect(result.configVersion).toBe(1)
   })
 
+  it('accepts the approved automotive full-funnel canonical event names', () => {
+    for (const eventName of [
+      'vehicle_view',
+      'site_search',
+      'phone_contact',
+      'test_drive_booked'
+    ] as const) {
+      expect(CanonicalConversionEventSchema.parse({
+        ...qualifiedEvent,
+        eventName
+      }).eventName).toBe(eventName)
+    }
+  })
+
+  it('preserves canonical web action names already accepted by live storage', () => {
+    for (const eventName of [
+      'phone_click',
+      'directions_click',
+      'add_to_wishlist',
+      'form_submit'
+    ] as const) {
+      expect(CanonicalConversionEventSchema.parse({
+        ...qualifiedEvent,
+        eventName
+      }).eventName).toBe(eventName)
+    }
+  })
+
   it('accepts the documented 16-digit Meta lead identifier format', () => {
     const result = CanonicalConversionEventSchema.parse({
       ...qualifiedEvent,
@@ -582,6 +694,61 @@ describe('CanonicalConversionEventSchema', () => {
     })
 
     expect(result.attribution.metaLeadId).toBe('1234567890123456')
+  })
+
+  it('accepts the bounded web attribution context needed for server-side delivery', () => {
+    const result = CanonicalConversionEventSchema.parse({
+      ...qualifiedEvent,
+      attribution: {
+        ...qualifiedEvent.attribution,
+        fbc: 'fb.1.1234567890123.approved-click',
+        fbp: 'fb.1.1234567890123.browser-id',
+        ttclid: 'tiktok-click-1',
+        ttp: 'tiktok-browser-1',
+        gaClientId: '1234567890.1234567890',
+        eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+        clientUserAgent: 'Test Browser'
+      }
+    })
+
+    expect(result.attribution).toMatchObject({
+      fbc: 'fb.1.1234567890123.approved-click',
+      fbp: 'fb.1.1234567890123.browser-id',
+      ttclid: 'tiktok-click-1',
+      ttp: 'tiktok-browser-1',
+      gaClientId: '1234567890.1234567890',
+      eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+      clientUserAgent: 'Test Browser'
+    })
+  })
+
+  it('rejects unsafe event source URLs with credentials, query data, or fragments', () => {
+    for (const eventSourceUrl of [
+      'https://operator@example.com/enquire',
+      'https://example.com/enquire?email=person%40example.com',
+      'https://example.com/enquire#contact'
+    ]) {
+      expect(CanonicalConversionEventSchema.safeParse({
+        ...qualifiedEvent,
+        attribution: { ...qualifiedEvent.attribution, eventSourceUrl }
+      }).success).toBe(false)
+    }
+  })
+
+  it('rejects oversized browser identifiers and user-agent context', () => {
+    for (const [field, value] of [
+      ['fbc', 'x'.repeat(513)],
+      ['fbp', 'x'.repeat(513)],
+      ['ttclid', 'x'.repeat(513)],
+      ['ttp', 'x'.repeat(513)],
+      ['gaClientId', 'x'.repeat(129)],
+      ['clientUserAgent', 'x'.repeat(1025)]
+    ] as const) {
+      expect(CanonicalConversionEventSchema.safeParse({
+        ...qualifiedEvent,
+        attribution: { ...qualifiedEvent.attribution, [field]: value }
+      }).success).toBe(false)
+    }
   })
 
   it('rejects an overlong Meta lead identifier instead of truncating it', () => {
@@ -629,7 +796,14 @@ describe('CanonicalConversionEventSchema', () => {
       metaLeadId: null,
       gclid: null,
       gbraid: null,
-      wbraid: null
+      wbraid: null,
+      fbc: null,
+      fbp: null,
+      ttclid: null,
+      ttp: null,
+      gaClientId: null,
+      eventSourceUrl: null,
+      clientUserAgent: null
     })
   })
 })

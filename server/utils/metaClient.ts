@@ -6,20 +6,15 @@
 
 import { ofetch } from 'ofetch'
 import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
+import {
+  getMetaOAuthScopes,
+  META_BASELINE_OAUTH_SCOPES,
+  type MetaOAuthIntent,
+} from '~~/server/utils/metaPermissions'
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
 
-export const META_MARKETING_OAUTH_SCOPES = [
-  'ads_management',
-  'ads_read',
-  'pages_show_list',
-  'pages_read_engagement',
-  'pages_manage_ads',
-  'pages_manage_metadata',
-  'leads_retrieval',
-  'business_management',
-  'catalog_management',
-]
+export const META_MARKETING_OAUTH_SCOPES = [...META_BASELINE_OAUTH_SCOPES]
 
 // ============================================
 // Types
@@ -125,14 +120,24 @@ export interface CreateAdParams {
 /**
  * Build the Meta OAuth authorization URL
  */
-export function getMetaAuthUrl(appId: string, redirectUri: string, state: string): string {
+export function getMetaAuthUrl(
+  appId: string,
+  redirectUri: string,
+  state: string,
+  intent: MetaOAuthIntent = 'baseline',
+  loginConfigId = '',
+): string {
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
     state,
-    scope: META_MARKETING_OAUTH_SCOPES.join(','),
     response_type: 'code'
   })
+  if (intent === 'catalog' && loginConfigId) {
+    params.set('config_id', loginConfigId)
+  } else {
+    params.set('scope', getMetaOAuthScopes(intent).join(','))
+  }
   return `https://www.facebook.com/v25.0/dialog/oauth?${params.toString()}`
 }
 

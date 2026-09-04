@@ -35,6 +35,7 @@ interface ConversionEventRow {
   idempotency_key: string
   config_version: number | string
   consent_mode: string
+  consent_decision: 'granted' | 'denied' | 'unknown'
   attribution: unknown
   outbox_status: string
   last_error_class: string | null
@@ -117,7 +118,7 @@ function deliveryPolicy(
 const EVENT_COLUMNS = `
   id, client_id, profile_id, event_name, source_system, source_entity_type,
   source_entity_id, source_event_id, occurred_at, idempotency_key,
-  config_version, consent_mode, attribution, outbox_status, last_error_class
+  config_version, consent_mode, consent_decision, attribution, outbox_status, last_error_class
 `
 
 /**
@@ -174,9 +175,9 @@ export async function appendCanonicalConversionEvent(
     `INSERT INTO conversion_events (
        client_id, profile_id, event_name, source_system, source_entity_type,
        source_entity_id, source_event_id, occurred_at, idempotency_key,
-       config_version, consent_mode, attribution, outbox_status, last_error_class
+       config_version, consent_mode, consent_decision, attribution, outbox_status, last_error_class
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15
      )
      ON CONFLICT DO NOTHING
      RETURNING ${EVENT_COLUMNS}`,
@@ -192,6 +193,7 @@ export async function appendCanonicalConversionEvent(
       idempotencyKey,
       Number(profile.config_version),
       profile.consent_mode,
+      input.consentDecision,
       JSON.stringify(input.attribution),
       policy.status,
       policy.reason

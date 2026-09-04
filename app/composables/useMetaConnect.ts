@@ -20,12 +20,14 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
     }
   }
 
-  async function connect() {
+  async function connect(intent: 'baseline' | 'catalog' = 'baseline') {
     try {
       state.status = 'loading'
       state.error = ''
 
-      const { url } = await apiFetch<{ url: string }>('/api/agency/social/meta/connect')
+      const { url } = await apiFetch<{ url: string }>(
+        `/api/agency/social/meta/connect?intent=${encodeURIComponent(intent)}`,
+      )
       popup = openPopup(url)
 
       if (!popup) {

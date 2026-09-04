@@ -24,10 +24,18 @@ export const CanonicalEventNameSchema = z.enum([
   'lead_won',
   'lead_lost',
   'purchase',
-  'web_conversion'
+  'web_conversion',
+  'vehicle_view',
+  'site_search',
+  'phone_contact',
+  'test_drive_booked',
+  'phone_click',
+  'directions_click',
+  'add_to_wishlist',
+  'form_submit'
 ])
 
-export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager'])
+export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager', 'ga4', 'tiktok'])
 export const CapabilityModeSchema = z.enum([
   'meta_pixel',
   'meta_web_capi',
@@ -35,7 +43,10 @@ export const CapabilityModeSchema = z.enum([
   'meta_conversion_leads',
   'google_tag_enhanced_conversions',
   'google_enhanced_conversions_for_leads',
-  'google_data_manager'
+  'google_data_manager',
+  'ga4_measurement_protocol',
+  'tiktok_pixel',
+  'tiktok_events_api'
 ])
 export const CapabilityStatusSchema = z.enum([
   'not_configured',
@@ -47,6 +58,16 @@ export const CapabilityStatusSchema = z.enum([
   'blocked'
 ])
 export const ManagementOriginSchema = z.enum(['zero', 'gtm', 'partner', 'external'])
+
+function capabilityBelongsToPlatform(
+  platform: z.infer<typeof MeasurementPlatformSchema>,
+  mode: z.infer<typeof CapabilityModeSchema>
+): boolean {
+  if (platform === 'meta') return mode.startsWith('meta_')
+  if (platform === 'google_data_manager') return mode.startsWith('google_')
+  if (platform === 'ga4') return mode.startsWith('ga4_')
+  return mode.startsWith('tiktok_')
+}
 
 const FirstPartyHostnameSchema = z.string()
   .trim()
@@ -231,10 +252,7 @@ export const ConversionDestinationCreateSchema = z.strictObject({
     }
     seen.add(capability.mode)
 
-    const belongsToPlatform = destination.platform === 'meta'
-      ? capability.mode.startsWith('meta_')
-      : capability.mode.startsWith('google_')
-    if (!belongsToPlatform) {
+    if (!capabilityBelongsToPlatform(destination.platform, capability.mode)) {
       ctx.addIssue({
         code: 'custom',
         path: ['capabilities', index, 'mode'],
@@ -309,10 +327,7 @@ const DestinationConfigurationInputSchema = z.strictObject({
     }
     capabilityModes.add(capability.mode)
 
-    const belongsToPlatform = destination.platform === 'meta'
-      ? capability.mode.startsWith('meta_')
-      : capability.mode.startsWith('google_')
-    if (!belongsToPlatform) {
+    if (!capabilityBelongsToPlatform(destination.platform, capability.mode)) {
       ctx.addIssue({
         code: 'custom',
         path: ['capabilities', index, 'mode'],
@@ -714,7 +729,25 @@ const CanonicalAttributionSchema = z.strictObject({
   metaLeadId: z.string().regex(/^\d{15,16}$/, 'Meta lead ID must contain 15 or 16 digits').nullable().default(null),
   gclid: z.string().trim().min(1).max(512).nullable().default(null),
   gbraid: z.string().trim().min(1).max(512).nullable().default(null),
-  wbraid: z.string().trim().min(1).max(512).nullable().default(null)
+  wbraid: z.string().trim().min(1).max(512).nullable().default(null),
+  fbc: z.string().trim().min(1).max(512).nullable().default(null),
+  fbp: z.string().trim().min(1).max(512).nullable().default(null),
+  ttclid: z.string().trim().min(1).max(512).nullable().default(null),
+  ttp: z.string().trim().min(1).max(512).nullable().default(null),
+  gaClientId: z.string().trim().min(1).max(128).nullable().default(null),
+  eventSourceUrl: z.string().trim().url().max(2048).refine((value) => {
+    try {
+      const url = new URL(value)
+      return ['http:', 'https:'].includes(url.protocol)
+        && !url.username
+        && !url.password
+        && !url.search
+        && !url.hash
+    } catch {
+      return false
+    }
+  }, 'Event source URL must not contain credentials, query data, or a fragment').nullable().default(null),
+  clientUserAgent: z.string().trim().min(1).max(1024).nullable().default(null)
 })
 
 const EMPTY_CANONICAL_ATTRIBUTION = {
@@ -722,7 +755,14 @@ const EMPTY_CANONICAL_ATTRIBUTION = {
   metaLeadId: null,
   gclid: null,
   gbraid: null,
-  wbraid: null
+  wbraid: null,
+  fbc: null,
+  fbp: null,
+  ttclid: null,
+  ttp: null,
+  gaClientId: null,
+  eventSourceUrl: null,
+  clientUserAgent: null
 }
 
 export const CanonicalConversionEventSchema = z.strictObject({

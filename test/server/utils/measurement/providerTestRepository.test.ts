@@ -19,6 +19,75 @@ const input = {
 }
 
 describe('measurement provider test repository', () => {
+  it('reserves a dormant TikTok destination without requiring a social OAuth connection', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        id: null,
+        profile_id: '77777777-7777-4777-8777-777777777777',
+        profile_enabled: false,
+        profile_environment: 'test',
+        profile_config_version: 3,
+        destination_enabled: false,
+        destination_environment: 'test',
+        platform: 'tiktok',
+        external_destination_id: 'C1234567890',
+        credential_ref: 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE',
+        provider_event_name: 'SubmitForm',
+        account_id: null,
+        refresh_token: null,
+        scopes: [],
+        metadata: {},
+        allowed_origins: ['https://www.werribeetoyota.com.au'],
+        capability_modes: ['tiktok_events_api']
+      }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '33333333-3333-4333-8333-333333333333',
+        mode: 'tiktok_test_events',
+        status: 'requested',
+        provider_request_id: null,
+        error_class: null,
+        redacted_error: null,
+        completed_at: null
+      }] })
+    const repository = createPostgresMeasurementProviderTestRepository(async callback => callback({ query }))
+
+    const result = await repository.reserve({
+      ...input,
+      canonicalEventName: 'web_conversion',
+      mode: 'tiktok_test_events',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      ttclid: 'click-1',
+      ttp: 'browser-1',
+      eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+      clientUserAgent: 'Approved TikTok Test Browser',
+      deliveryMode: undefined,
+      metaLeadId: undefined
+    } as never)
+
+    expect(result).toMatchObject({
+      status: 'reserved',
+      context: {
+        delivery: {
+          externalDestinationId: 'C1234567890',
+          operatingAccountId: '',
+          loginAccountId: ''
+        },
+        credential: {
+          credentialRef: 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE'
+        }
+      }
+    })
+    const contextSql = query.mock.calls[1]![0] as string
+    expect(contextSql).toContain("WHEN d.platform = 'google_data_manager' THEN 'google'")
+    const insertParams = query.mock.calls[2]![1] as unknown[]
+    expect(insertParams).not.toContain('TEST123456')
+    expect(insertParams).not.toContain('browser-event-1')
+    expect(insertParams).not.toContain('click-1')
+    expect(insertParams).not.toContain('browser-1')
+  })
+
   it('resolves Google credentials from an encrypted profile instead of legacy token columns', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })

@@ -13,6 +13,7 @@ const result = computed(() => ({
   platform: route.query.platform as string || 'unknown',
   success: route.query.success === 'true',
   accounts: parseInt(String(route.query.accounts || '0'), 10),
+  intent: route.query.intent as string || null,
   error: route.query.error as string || null,
 }))
 
@@ -25,9 +26,13 @@ const platformNames: Record<string, string> = {
   snapchat: 'Snapchat Ads',
   twitter: 'X (Twitter) Ads',
   microsoft_ads: 'Microsoft Ads',
+  gtm: 'Google Tag Manager',
 }
 
 const platformName = computed(() => platformNames[result.value.platform] || result.value.platform)
+const isMetaCatalogConnection = computed(() => (
+  result.value.platform === 'meta' && result.value.intent === 'catalog'
+))
 
 onMounted(() => {
   hasOpener.value = !!window.opener
@@ -47,8 +52,16 @@ onMounted(() => {
         <div class="w-14 h-14 rounded-full bg-success/10 flex items-center justify-center mx-auto">
           <UIcon name="i-lucide-check" class="w-7 h-7 text-success" />
         </div>
-        <p class="text-base font-semibold">{{ platformName }} connected</p>
-        <p class="text-sm text-muted">
+        <p class="text-base font-semibold">
+          {{ isMetaCatalogConnection ? 'Meta catalog access connected' : `${platformName} connected` }}
+        </p>
+        <p v-if="isMetaCatalogConnection" class="text-sm text-muted">
+          Business catalog access is ready. {{ result.accounts }} ad account{{ result.accounts !== 1 ? 's' : '' }} linked.
+        </p>
+        <p v-else-if="result.platform === 'gtm'" class="text-sm text-muted">
+          XeroFlow can now discover and manage the Tag Manager containers this account can access.
+        </p>
+        <p v-else class="text-sm text-muted">
           {{ result.accounts }} ad account{{ result.accounts !== 1 ? 's' : '' }} linked successfully.
         </p>
         <p v-if="hasOpener" class="text-xs text-muted">This window will close automatically...</p>

@@ -74,7 +74,10 @@ const capabilityLabels: Record<string, string> = {
   meta_conversion_leads: 'Meta Conversion Leads',
   google_tag_enhanced_conversions: 'Google tag enhanced conversions',
   google_enhanced_conversions_for_leads: 'Google enhanced conversions for leads',
-  google_data_manager: 'Google Data Manager'
+  google_data_manager: 'Google Data Manager',
+  ga4_measurement_protocol: 'GA4 Measurement Protocol',
+  tiktok_pixel: 'TikTok Pixel',
+  tiktok_events_api: 'TikTok Events API'
 }
 
 const originLabels: Record<string, string> = {
@@ -86,7 +89,9 @@ const originLabels: Record<string, string> = {
 
 const platformLabels: Record<MeasurementDestination['platform'], string> = {
   meta: 'Meta',
-  google_data_manager: 'Google Data Manager'
+  google_data_manager: 'Google Data Manager',
+  ga4: 'Google Analytics 4',
+  tiktok: 'TikTok'
 }
 
 const profileState = computed(() => {
@@ -228,6 +233,18 @@ function toggleProviderTest(destinationId: string) {
     : destinationId
 }
 
+function canVerifyDestination(destination: MeasurementDestination) {
+  return Boolean(
+    props.canConfigure
+    && profile.value
+    && !profile.value.enabled
+    && profile.value.environment === 'test'
+    && !destination.enabled
+    && destination.environment === 'test'
+    && destination.mappings.some(mapping => mapping.isActive)
+  )
+}
+
 async function handleActivationCompleted(result: {
   kind: 'privacy' | 'live' | 'owner_override' | 'activation'
   warnings: Array<{ code: string }>
@@ -272,6 +289,14 @@ void refreshMeasurement()
           </div>
 
           <div v-if="profile" class="flex flex-wrap items-center gap-2">
+            <UButton
+              :to="`/agency/measurement/${clientId}`"
+              label="Open Signal Centre"
+              icon="i-lucide-chart-no-axes-combined"
+              color="neutral"
+              variant="outline"
+              size="xs"
+            />
             <UBadge :color="profile.enabled ? 'success' : 'neutral'" variant="subtle">
               {{ profileState }}
             </UBadge>
@@ -489,15 +514,22 @@ void refreshMeasurement()
                   Canonical event mappings
                 </p>
                 <UButton
-                  v-if="canConfigure && !profile.enabled && profile.environment === 'test' && !destination.enabled && destination.environment === 'test' && destination.mappings.some(mapping => mapping.isActive)"
-                  :label="testingDestinationId === destination.id ? 'Hide provider test' : 'Run provider test'"
+                  v-if="canVerifyDestination(destination)"
+                  :label="testingDestinationId === destination.id ? 'Close verification' : 'Verify destination'"
                   icon="i-lucide-flask-conical"
                   size="xs"
                   color="neutral"
                   variant="outline"
+                  :data-testid="`verify-destination-${destination.id}`"
                   @click="toggleProviderTest(destination.id)"
                 />
               </div>
+              <p
+                v-if="canVerifyDestination(destination)"
+                class="mt-2 text-xs text-muted"
+              >
+                Controlled verification sends one provider Test Events request and never activates live delivery.
+              </p>
               <div v-if="destination.mappings.length" class="mt-2 flex flex-wrap gap-2">
                 <span
                   v-for="mapping in destination.mappings"

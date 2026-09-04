@@ -2,6 +2,7 @@ import { GoogleOAuthRefreshError } from './providers'
 import type {
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
+  deliverTikTokEvent,
   MeasurementProviderDelivery,
   ProviderDeliveryResult,
   refreshGoogleDataManagerAccessToken
@@ -21,7 +22,7 @@ export interface MeasurementDeliveryClaim extends MeasurementProviderDelivery {
   deliveryId: string
   destinationId: string
   attemptNumber: number
-  platform: 'meta' | 'google_data_manager'
+  platform: 'meta' | 'google_data_manager' | 'tiktok'
   profileEnabled: boolean
   profileEnvironment: 'test' | 'live' | 'paused'
   profileCacheCurrent: boolean
@@ -55,6 +56,7 @@ interface DeliveryProcessorDeps {
   repository: DeliveryRepository
   deliverMeta: typeof deliverMetaConversionEvent
   deliverGoogle: typeof deliverGoogleDataManagerEvent
+  deliverTikTok: typeof deliverTikTokEvent
   refreshGoogleAccessToken: typeof refreshGoogleDataManagerAccessToken
   resolveProviderCredential(credentialRef: string): Promise<string | null>
   workerId: () => string
@@ -209,6 +211,36 @@ export function createMeasurementDeliveryProcessor(deps: DeliveryProcessorDeps) 
                     redactedDiagnostic: 'Google OAuth grant is no longer valid'
                   }
                 : networkFailure()
+            }
+          }
+        }
+
+        if (!deliveryResult && claim.platform === 'tiktok') {
+          if (!claim.credentialRef) {
+            deliveryResult = {
+              outcome: 'permanent_failure',
+              providerRequestId: null,
+              errorClass: 'tiktok_events_api_credential_unavailable',
+              redactedDiagnostic: 'TikTok Events API secret binding is unavailable'
+            }
+          } else {
+            try {
+              const accessToken = await deps.resolveProviderCredential(claim.credentialRef)
+              deliveryResult = accessToken
+                ? await deps.deliverTikTok({
+                    delivery: claim,
+                    accessToken,
+                    environment: 'live',
+                    fetch: deps.fetch
+                  })
+                : {
+                    outcome: 'permanent_failure',
+                    providerRequestId: null,
+                    errorClass: 'tiktok_events_api_credential_unavailable',
+                    redactedDiagnostic: 'TikTok Events API secret binding is unavailable'
+                  }
+            } catch {
+              deliveryResult = networkFailure()
             }
           }
         }

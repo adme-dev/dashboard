@@ -1,4 +1,8 @@
 import type { AppendCanonicalConversionEvent } from '~~/server/utils/measurement/contracts'
+import {
+  safeMeasurementSourceUrl,
+  safeMeasurementUserAgent
+} from '~~/server/utils/measurement/attributionSafety'
 import type { TrackingEventRow } from '~~/server/utils/tracking/event-insert'
 
 type BrowserConversionRow = Pick<
@@ -11,6 +15,12 @@ type BrowserConversionRow = Pick<
   | 'gclid'
   | 'gbraid'
   | 'wbraid'
+  | 'fbc'
+  | 'fbp'
+  | 'ttclid'
+  | 'ttp'
+  | 'page_url'
+  | 'ua'
 >
 
 export function buildBrowserCanonicalConversion(input: {
@@ -36,7 +46,14 @@ export function buildBrowserCanonicalConversion(input: {
       metaLeadId: null,
       gclid: input.row.gclid,
       gbraid: input.row.gbraid,
-      wbraid: input.row.wbraid
+      wbraid: input.row.wbraid,
+      fbc: input.row.fbc,
+      fbp: input.row.fbp,
+      ttclid: input.row.ttclid,
+      ttp: input.row.ttp,
+      gaClientId: null,
+      eventSourceUrl: safeMeasurementSourceUrl(input.row.page_url),
+      clientUserAgent: safeMeasurementUserAgent(input.row.ua)
     }
   }
 }

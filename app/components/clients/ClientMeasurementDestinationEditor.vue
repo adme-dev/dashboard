@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import type { MeasurementPlatform } from '~/types/measurement'
+import { isMeasurementProviderCredentialRef } from '~~/shared/utils/measurementProviderCredential'
 
 const props = defineProps<{
   clientId: string
@@ -11,7 +13,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-type Platform = 'meta' | 'google_data_manager'
+type Platform = Extract<MeasurementPlatform, 'meta' | 'google_data_manager' | 'tiktok'>
 type ManagementOrigin = 'zero' | 'gtm' | 'partner' | 'external'
 
 interface ConnectedAccount {
@@ -55,6 +57,10 @@ const capabilityDefinitions: Record<Platform, CapabilityDefinition[]> = {
     { mode: 'google_tag_enhanced_conversions', label: 'Google tag enhanced conversions', description: 'Browser conversion tags enriched with consented first-party data.', defaultOrigin: 'gtm' },
     { mode: 'google_enhanced_conversions_for_leads', label: 'Google enhanced conversions for leads', description: 'Qualified and downstream lead outcomes matched to ad clicks.', defaultOrigin: 'zero' },
     { mode: 'google_data_manager', label: 'Google Data Manager', description: 'Server-side audience and conversion data delivery.', defaultOrigin: 'zero' }
+  ],
+  tiktok: [
+    { mode: 'tiktok_pixel', label: 'TikTok Pixel', description: 'Consent-aware browser events using the shared event ID.', defaultOrigin: 'gtm' },
+    { mode: 'tiktok_events_api', label: 'TikTok Events API', description: 'Server-side web and confirmed conversion delivery with provider deduplication.', defaultOrigin: 'zero' }
   ]
 }
 
@@ -65,18 +71,27 @@ const mappingDefinitions: MappingDefinition[] = [
   { name: 'lead_won', label: 'Lead won' },
   { name: 'lead_lost', label: 'Lead lost' },
   { name: 'purchase', label: 'Purchase' },
-  { name: 'web_conversion', label: 'Web conversion' }
+  { name: 'web_conversion', label: 'Web conversion' },
+  { name: 'vehicle_view', label: 'Vehicle view' },
+  { name: 'site_search', label: 'Site search' },
+  { name: 'phone_contact', label: 'Phone contact' },
+  { name: 'test_drive_booked', label: 'Test drive booked' },
+  { name: 'phone_click', label: 'Phone click' },
+  { name: 'directions_click', label: 'Directions click' },
+  { name: 'add_to_wishlist', label: 'Add to wishlist' },
+  { name: 'form_submit', label: 'Form submit' }
 ]
 
 const platform = ref<Platform>('meta')
 const socialConnectionId = ref('')
+const credentialRef = ref('')
 const externalDestinationId = ref('')
 const selectedCapabilities = reactive<Record<string, boolean>>({})
 const capabilityOrigins = reactive<Record<string, ManagementOrigin>>({})
 const activeMappings = reactive<Record<string, boolean>>({})
 const providerEventNames = reactive<Record<string, string>>({})
 const reason = ref('')
-const accounts = ref<Record<Platform, ConnectedAccount[]>>({ meta: [], google_data_manager: [] })
+const accounts = ref<Record<Platform, ConnectedAccount[]>>({ meta: [], google_data_manager: [], tiktok: [] })
 const accountsPending = ref(true)
 const accountError = ref<string | null>(null)
 const googleActions = ref<GoogleConversionAction[]>([])
@@ -98,7 +113,13 @@ const currentAccounts = computed(() => accounts.value[platform.value].filter(acc
 )))
 const selectedCapabilityRows = computed(() => currentCapabilities.value.filter(definition => selectedCapabilities[definition.mode]))
 const selectedMappingRows = computed(() => mappingDefinitions.filter(definition => activeMappings[definition.name]))
-const requiresConnection = computed(() => selectedCapabilityRows.value.some(definition => capabilityOrigins[definition.mode] === 'zero'))
+const hasZeroManagedCapability = computed(() => selectedCapabilityRows.value.some(definition => capabilityOrigins[definition.mode] === 'zero'))
+const requiresConnection = computed(() => platform.value !== 'tiktok' && hasZeroManagedCapability.value)
+const requiresCredentialRef = computed(() => platform.value === 'tiktok' && hasZeroManagedCapability.value)
+const credentialRefIsValid = computed(() => {
+  const value = credentialRef.value.trim()
+  return value ? isMeasurementProviderCredentialRef(value) : !requiresCredentialRef.value
+})
 const mappingsComplete = computed(() => selectedMappingRows.value.every(definition => providerEventNames[definition.name]?.trim()))
 const selectedGoogleAction = computed(() => googleActions.value.find(action => action.id === externalDestinationId.value) ?? null)
 // Data Manager supports both offline-click actions and WEBPAGE actions used as
@@ -123,6 +144,7 @@ const canSave = computed(() => (
   externalDestinationId.value.trim().length > 0
   && selectedCapabilityRows.value.length > 0
   && (!requiresConnection.value || Boolean(socialConnectionId.value))
+  && credentialRefIsValid.value
   && mappingsComplete.value
   && googleActionCompatible.value
   && Boolean(reason.value.trim())
@@ -132,6 +154,7 @@ const canSave = computed(() => (
 function resetPlatformState() {
   googleActionRequestId += 1
   socialConnectionId.value = ''
+  credentialRef.value = ''
   externalDestinationId.value = ''
   reason.value = ''
   saveError.value = null
@@ -181,6 +204,11 @@ async function loadAccounts(targetPlatform: Platform = platform.value) {
   const requestId = ++accountRequestId
   accountsPending.value = true
   accountError.value = null
+  if (targetPlatform === 'tiktok') {
+    accounts.value = { ...accounts.value, tiktok: [] }
+    accountsPending.value = false
+    return
+  }
   try {
     const endpoint = targetPlatform === 'meta'
       ? '/api/agency/social/meta/accounts'
@@ -239,6 +267,9 @@ async function saveDestination() {
         destination: {
           platform: platform.value,
           socialConnectionId: socialConnectionId.value || null,
+          ...(platform.value === 'tiktok'
+            ? { credentialRef: credentialRef.value.trim() || null }
+            : {}),
           externalDestinationId: externalDestinationId.value.trim(),
           capabilities: selectedCapabilityRows.value.map(definition => ({
             mode: definition.mode,
@@ -289,13 +320,14 @@ void loadAccounts('meta')
     <div class="mt-5 grid gap-5 md:grid-cols-2">
       <label class="space-y-1.5 text-sm">
         <span class="font-medium text-highlighted">Provider</span>
-        <select v-model="platform" class="w-full rounded-md border border-default bg-default px-3 py-2 text-sm">
+        <select v-model="platform" data-testid="measurement-platform" class="w-full rounded-md border border-default bg-default px-3 py-2 text-sm">
           <option value="meta">Meta</option>
           <option value="google_data_manager">Google Data Manager</option>
+          <option value="tiktok">TikTok</option>
         </select>
       </label>
 
-      <label class="space-y-1.5 text-sm">
+      <label v-if="platform !== 'tiktok'" class="space-y-1.5 text-sm">
         <span class="font-medium text-highlighted">Connected credential source</span>
         <select
           v-model="socialConnectionId"
@@ -317,15 +349,31 @@ void loadAccounts('meta')
         <span v-else-if="!accountsPending && !currentAccounts.length" class="text-xs text-warning">No connected account is available for this provider.</span>
       </label>
 
+      <UFormField
+        v-else
+        label="Cloudflare secret binding reference"
+        help="Enter the purpose-scoped binding name only. Never paste the TikTok access token here."
+        :error="credentialRef && !credentialRefIsValid ? 'Use a MEASUREMENT_PROVIDER_… binding name.' : undefined"
+      >
+        <UInput
+          v-model="credentialRef"
+          data-testid="measurement-credential-ref"
+          autocomplete="off"
+          maxlength="128"
+          placeholder="MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE"
+          class="w-full font-mono"
+        />
+      </UFormField>
+
       <label class="space-y-1.5 text-sm md:col-span-2">
-        <span class="font-medium text-highlighted">{{ platform === 'meta' ? 'Dataset ID' : 'Conversion Action ID' }}</span>
+        <span class="font-medium text-highlighted">{{ platform === 'meta' ? 'Dataset ID' : platform === 'tiktok' ? 'Pixel / Data Source ID' : 'Conversion Action ID' }}</span>
         <input
-          v-if="platform === 'meta'"
+          v-if="platform !== 'google_data_manager'"
           v-model="externalDestinationId"
           data-testid="measurement-destination-id"
           type="text"
           maxlength="255"
-          placeholder="e.g. 573284833843027"
+          :placeholder="platform === 'tiktok' ? 'e.g. CABC1234567890' : 'e.g. 573284833843027'"
           class="w-full rounded-md border border-default bg-default px-3 py-2 font-mono text-sm"
         >
         <select
@@ -392,6 +440,9 @@ void loadAccounts('meta')
       <p v-if="requiresConnection && !socialConnectionId" class="mt-3 text-sm text-warning">
         Zero-managed capabilities require a connected credential source.
       </p>
+      <p v-if="requiresCredentialRef && !credentialRefIsValid" class="mt-3 text-sm text-warning">
+        TikTok Events API requires a purpose-scoped Cloudflare secret binding reference.
+      </p>
     </div>
 
     <div class="mt-6 border-t border-default pt-5">
@@ -399,7 +450,7 @@ void loadAccounts('meta')
         Canonical event mappings
       </h4>
       <p class="mt-1 text-sm text-muted">
-        Choose which Zero lifecycle statuses map to provider events. Qualified lead is represented once as <code>lead_qualified</code>.
+        Choose which canonical browser or lifecycle signals map to provider events. Qualified lead is represented once as <code>lead_qualified</code>.
       </p>
       <div class="mt-4 grid gap-3 lg:grid-cols-2">
         <div v-for="mapping in mappingDefinitions" :key="mapping.name" class="rounded-lg border border-default p-3">

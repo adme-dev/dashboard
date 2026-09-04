@@ -14,6 +14,11 @@ describe('measurement event identity classification', () => {
       .toEqual({ mode: 'browser_server_dedup', label: 'Shared browser/server event ID' })
   })
 
+  it('requires shared browser/server identity for TikTok Events API web events', () => {
+    expect(classifyMeasurementEventIdentity('web_conversion', ['tiktok_pixel', 'tiktok_events_api']))
+      .toEqual({ mode: 'browser_server_dedup', label: 'Shared browser/server event ID' })
+  })
+
   it('keeps CRM CAPI lead events server-only when no web delivery capability is configured', () => {
     expect(classifyMeasurementEventIdentity('lead_created', ['meta_crm_capi', 'meta_conversion_leads']))
       .toEqual({ mode: 'server_only', label: 'Server-only provider event' })

@@ -49,6 +49,15 @@ describe('Measurement profile cache publisher', () => {
     expect(kv.put).not.toHaveBeenCalled()
   })
 
+  it('accepts a complete current projection without rewriting it', async () => {
+    const kv = cache(JSON.stringify(projection))
+    const publisher = createMeasurementProfileCachePublisher(kv)
+
+    await publisher.publish(projection)
+
+    expect(kv.put).not.toHaveBeenCalled()
+  })
+
   it('replaces a divergent same-version value with the canonical projection', async () => {
     const kv = cache(JSON.stringify({ ...projection, consentMode: 'off' }))
     const publisher = createMeasurementProfileCachePublisher(kv)

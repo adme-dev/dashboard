@@ -315,7 +315,7 @@ async function selectTenant(tenantId: string | any) {
           color="primary"
           :loading="metaConnectState.status === 'loading'"
           type="button"
-          @click="connectMeta"
+          @click="connectMeta()"
         />
       </div>
 
@@ -324,7 +324,10 @@ async function selectTenant(tenantId: string | any) {
       </div>
 
       <div v-if="metaConnectState.status === 'loading'" class="mt-4 text-sm text-muted">
-        Opening Meta login... if nothing happens, allow popups or <button type="button" class="underline" @click="connectMeta">try again</button>.
+        Opening Meta login... if nothing happens, allow popups or
+        <UButton type="button" color="neutral" variant="link" class="p-0" @click="connectMeta()">
+          try again
+        </UButton>.
       </div>
 
       <div v-if="metaAccounts?.length" class="mt-4 space-y-3">

@@ -34,11 +34,11 @@ const INSERT_TRACKING_EVENT_SQL = `
   INSERT INTO tracking_events (
     site_id, client_id, event_id, anon_id, session_id, event_name, page_url, referrer,
     utm_source, utm_medium, utm_campaign, utm_term, utm_content,
-    gclid, gbraid, wbraid, fbclid, fbc, fbp, ttclid, msclkid, li_fat_id,
+    gclid, gbraid, wbraid, fbclid, fbc, fbp, ttclid, ttp, msclkid, li_fat_id,
     event_data, consent, ua, ip_hash, origin, occurred_at
   )
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-          $23,$24,$25,$26,$27,$28)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
+          $24,$25,$26,$27,$28,$29)
   ON CONFLICT (site_id, event_id) DO NOTHING
   RETURNING event_id
 `
@@ -48,7 +48,7 @@ function insertParams(row: TrackingEventRow): unknown[] {
     row.site_id, row.client_id, row.event_id, row.anon_id, row.session_id, row.event_name,
     row.page_url, row.referrer, row.utm_source, row.utm_medium, row.utm_campaign,
     row.utm_term, row.utm_content, row.gclid, row.gbraid, row.wbraid, row.fbclid,
-    row.fbc, row.fbp, row.ttclid, row.msclkid, row.li_fat_id,
+    row.fbc, row.fbp, row.ttclid, row.ttp, row.msclkid, row.li_fat_id,
     JSON.stringify(row.event_data), JSON.stringify(row.consent), row.ua, row.ip_hash,
     row.origin, row.occurred_at
   ]

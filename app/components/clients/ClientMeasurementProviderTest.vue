@@ -31,6 +31,8 @@ const metaLeadId = ref('')
 const browserEventId = ref('')
 const fbc = ref('')
 const fbp = ref('')
+const ttclid = ref('')
+const ttp = ref('')
 const eventSourceUrl = ref('')
 const clientUserAgent = ref('')
 const clickType = ref<'gclid' | 'gbraid' | 'wbraid'>('gclid')
@@ -56,6 +58,8 @@ const isMetaWeb = computed(() => (
   props.destination.platform === 'meta'
   && selectedIdentity.value.mode === 'browser_server_dedup'
 ))
+const isTikTok = computed(() => props.destination.platform === 'tiktok')
+const requiresBrowserContext = computed(() => isMetaWeb.value || isTikTok.value)
 const metaLeadIdIsValid = computed(() => /^\d{15,16}$/.test(metaLeadId.value.trim()))
 const eventSourceUrlIsValid = computed(() => {
   try {
@@ -89,7 +93,7 @@ const showMetaLeadIdError = computed(() => (
   && !metaLeadIdIsValid.value
 ))
 const showEventSourceUrlError = computed(() => (
-  isMetaWeb.value
+  requiresBrowserContext.value
   && Boolean(eventSourceUrl.value)
   && !eventSourceUrlIsValid.value
 ))
@@ -105,6 +109,39 @@ const metaInputsReady = computed(() => (
     : metaLeadIdIsValid.value)
   && metaCapabilityReady.value
 ))
+const tiktokInputsReady = computed(() => (
+  Boolean(testEventCode.value.trim())
+  && Boolean(browserEventId.value.trim())
+  && Boolean(ttclid.value.trim() || ttp.value.trim())
+  && eventSourceUrlIsValid.value
+  && Boolean(clientUserAgent.value.trim())
+  && deliveryCapabilityModes.value.includes('tiktok_events_api')
+))
+const providerHeading = computed(() => (
+  props.destination.platform === 'meta'
+    ? 'Meta Test Events'
+    : isTikTok.value
+      ? 'TikTok Test Events'
+      : 'Google validate-only'
+))
+const providerDescription = computed(() => {
+  if (props.destination.platform === 'meta') {
+    return isMetaWeb.value
+      ? 'Sends one website server event to the dataset Test Events stream using the shared browser event ID. Temporary browser context is never stored by Zero.'
+      : 'Sends one CRM event to the dataset Test Events stream. The temporary code and identifiers are never stored by Zero.'
+  }
+  if (isTikTok.value) {
+    return 'Sends one server event to TikTok Test Events using the shared browser event ID. The test code and browser identifiers are never stored by Zero.'
+  }
+  return 'Validates one request against the exact conversion action without executing a conversion. The click identifier is never stored by Zero.'
+})
+const runButtonLabel = computed(() => (
+  props.destination.platform === 'meta'
+    ? 'Send Meta test event'
+    : isTikTok.value
+      ? 'Send TikTok test event'
+      : 'Validate Google request'
+))
 
 const canRun = computed(() => (
   Boolean(canonicalEventName.value)
@@ -112,7 +149,9 @@ const canRun = computed(() => (
   && confirmed.value
   && (props.destination.platform === 'meta'
     ? metaInputsReady.value
-    : Boolean(clickValue.value.trim()))
+    : isTikTok.value
+      ? tiktokInputsReady.value
+      : Boolean(clickValue.value.trim()))
   && !pending.value
 ))
 
@@ -136,6 +175,8 @@ function resetTransientApproval(preserveResult = false) {
   browserEventId.value = ''
   fbc.value = ''
   fbp.value = ''
+  ttclid.value = ''
+  ttp.value = ''
   eventSourceUrl.value = ''
   clientUserAgent.value = ''
   clickValue.value = ''
@@ -178,6 +219,8 @@ watch(
     browserEventId,
     fbc,
     fbp,
+    ttclid,
+    ttp,
     eventSourceUrl,
     clientUserAgent,
     clickType,
@@ -196,7 +239,11 @@ async function runTest() {
   const isMeta = props.destination.platform === 'meta'
   const submittedContext = {
     canonicalEventName: canonicalEventName.value,
-    deliveryLabel: isMeta ? (isMetaWeb.value ? 'Web CAPI' : 'CRM CAPI') : 'Google validate-only'
+    deliveryLabel: isMeta
+      ? (isMetaWeb.value ? 'Web CAPI' : 'CRM CAPI')
+      : isTikTok.value
+        ? 'TikTok Events API'
+        : 'Google validate-only'
   }
 
   try {
@@ -226,7 +273,17 @@ async function runTest() {
               metaLeadId: metaLeadId.value.trim(),
               browserEventId: null
             }
-        : {
+        : isTikTok.value
+          ? {
+              mode: 'tiktok_test_events',
+              testEventCode: testEventCode.value.trim(),
+              browserEventId: browserEventId.value.trim(),
+              ttclid: ttclid.value.trim() || null,
+              ttp: ttp.value.trim() || null,
+              eventSourceUrl: eventSourceUrl.value.trim(),
+              clientUserAgent: clientUserAgent.value.trim()
+            }
+          : {
             mode: 'google_validate_only',
             clickIdentifier: { type: clickType.value, value: clickValue.value.trim() }
           })
@@ -255,14 +312,10 @@ async function runTest() {
     <div class="flex items-start justify-between gap-4">
       <div>
         <h5 class="text-sm font-semibold text-highlighted">
-          {{ destination.platform === 'meta' ? 'Meta Test Events' : 'Google validate-only' }}
+          {{ providerHeading }}
         </h5>
         <p class="mt-1 text-xs leading-5 text-muted">
-          {{ destination.platform === 'meta'
-            ? isMetaWeb
-              ? 'Sends one website server event to the dataset Test Events stream using the shared browser event ID. Temporary browser context is never stored by Zero.'
-              : 'Sends one CRM event to the dataset Test Events stream. The temporary code and identifiers are never stored by Zero.'
-            : 'Validates one request against the exact conversion action without executing a conversion. The click identifier is never stored by Zero.' }}
+          {{ providerDescription }}
         </p>
       </div>
       <UButton
@@ -414,6 +467,80 @@ async function runTest() {
           </div>
         </template>
 
+        <template v-else-if="isTikTok">
+          <UFormField label="Temporary Test Events code">
+            <UInput
+              v-model="testEventCode"
+              data-testid="provider-test-code"
+              autocomplete="off"
+              maxlength="128"
+              required
+              aria-required="true"
+              class="w-full font-mono"
+            />
+          </UFormField>
+          <UFormField label="Shared browser event ID" help="Required; use the event ID from the same approved browser conversion.">
+            <UInput
+              v-model="browserEventId"
+              data-testid="provider-test-browser-event-id"
+              autocomplete="off"
+              maxlength="128"
+              required
+              aria-required="true"
+              class="w-full font-mono"
+            />
+          </UFormField>
+          <UFormField label="Approved TikTok click ID" help="Provide at least one consent-eligible ttclid or _ttp value from the same browser event.">
+            <UInput
+              v-model="ttclid"
+              data-testid="provider-test-ttclid"
+              autocomplete="off"
+              maxlength="512"
+              class="w-full font-mono"
+            />
+          </UFormField>
+          <UFormField label="Approved TikTok first-party cookie">
+            <UInput
+              v-model="ttp"
+              data-testid="provider-test-ttp"
+              autocomplete="off"
+              maxlength="512"
+              class="w-full font-mono"
+            />
+          </UFormField>
+          <UFormField
+            label="Event source URL"
+            help="Use an approved tracking-site URL without credentials, query parameters, or a fragment."
+            :error="showEventSourceUrlError ? 'Enter a clean HTTP or HTTPS URL without query parameters.' : undefined"
+          >
+            <UInput
+              v-model="eventSourceUrl"
+              data-testid="provider-test-source-url"
+              type="url"
+              autocomplete="off"
+              maxlength="2048"
+              required
+              aria-required="true"
+              :aria-invalid="showEventSourceUrlError"
+              class="w-full font-mono"
+            />
+          </UFormField>
+          <UFormField label="Approved browser user agent" help="Required; copy it from the same approved browser event.">
+            <UInput
+              v-model="clientUserAgent"
+              data-testid="provider-test-user-agent"
+              autocomplete="off"
+              maxlength="1024"
+              required
+              aria-required="true"
+              class="w-full font-mono"
+            />
+          </UFormField>
+          <p v-if="!deliveryCapabilityModes.includes('tiktok_events_api')" role="status" class="text-sm text-warning sm:col-span-2">
+            Zero does not own a runnable TikTok Events API capability for this destination.
+          </p>
+        </template>
+
         <template v-else>
           <label class="space-y-1.5 text-sm">
             <span class="font-medium text-highlighted">Click identifier type</span>
@@ -487,7 +614,7 @@ async function runTest() {
       </div>
       <UButton
         data-testid="run-provider-test"
-        :label="destination.platform === 'meta' ? 'Send Meta test event' : 'Validate Google request'"
+        :label="runButtonLabel"
         icon="i-lucide-flask-conical"
         :loading="pending"
         :disabled="!canRun"

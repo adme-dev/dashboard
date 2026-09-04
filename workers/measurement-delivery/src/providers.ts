@@ -16,12 +16,15 @@ export interface MeasurementProviderDelivery {
     wbraid: string | null
     fbc: string | null
     fbp: string | null
+    ttclid: string | null
+    ttp: string | null
     eventSourceUrl: string | null
     clientUserAgent: string | null
   }
 }
 
 const META_CRM_LEAD_EVENT_SOURCE = 'XeroFlow'
+const TIKTOK_EVENTS_API_URL = 'https://business-api.tiktok.com/open_api/v1.3/event/track/'
 
 export interface ProviderDeliveryResult {
   outcome: 'accepted' | 'retryable' | 'permanent_failure'
@@ -45,6 +48,14 @@ export interface GoogleDeliveryInput {
   delivery: MeasurementProviderDelivery
   accessToken: string
   validateOnly?: boolean
+  fetch: FetchLike
+}
+
+export interface TikTokDeliveryInput {
+  delivery: MeasurementProviderDelivery
+  accessToken: string
+  environment?: 'test' | 'live'
+  testEventCode?: string
   fetch: FetchLike
 }
 
@@ -289,6 +300,123 @@ export async function deliverGoogleDataManagerEvent(
   return {
     outcome: 'accepted',
     providerRequestId: body.requestId.slice(0, 255),
+    errorClass: null,
+    redactedDiagnostic: null
+  }
+}
+
+export async function deliverTikTokEvent(
+  input: TikTokDeliveryInput
+): Promise<ProviderDeliveryResult> {
+  const { delivery } = input
+  if (input.testEventCode && (input.environment ?? 'live') !== 'test') {
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'tiktok_test_code_live_forbidden',
+      redactedDiagnostic: 'TikTok Test Events codes are restricted to test delivery'
+    }
+  }
+  if (input.testEventCode && !/^[a-z0-9_-]{4,128}$/i.test(input.testEventCode)) {
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'invalid_tiktok_test_event_code',
+      redactedDiagnostic: 'TikTok Test Events code is not valid'
+    }
+  }
+  if (!delivery.attribution.browserEventId) {
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'missing_tiktok_event_id',
+      redactedDiagnostic: 'TikTok delivery requires a browser event ID'
+    }
+  }
+  if (
+    (!delivery.attribution.ttclid && !delivery.attribution.ttp)
+    || !delivery.attribution.eventSourceUrl
+  ) {
+    return {
+      outcome: 'retryable',
+      providerRequestId: null,
+      errorClass: 'tiktok_browser_context_unavailable',
+      redactedDiagnostic: 'TikTok browser match context is not available yet'
+    }
+  }
+
+  const occurredAt = new Date(delivery.occurredAt)
+  if (!Number.isFinite(occurredAt.getTime())) {
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'invalid_event_timestamp',
+      redactedDiagnostic: 'Canonical event timestamp is invalid'
+    }
+  }
+
+  // TikTok Events API 2.0 uses its Access-Token header rather than the
+  // Authorization bearer convention used by Meta and Google.
+  // https://ads.tiktok.com/gateway/docs/index?doc_id=1771100984456193
+  const response = await input.fetch(TIKTOK_EVENTS_API_URL, {
+    method: 'POST',
+    headers: {
+      'Access-Token': input.accessToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      event_source: 'web',
+      event_source_id: delivery.externalDestinationId,
+      ...(input.testEventCode ? { test_event_code: input.testEventCode } : {}),
+      data: [{
+        event: delivery.providerEventName,
+        event_time: Math.floor(occurredAt.getTime() / 1000),
+        event_id: delivery.attribution.browserEventId,
+        user: {
+          ...(delivery.attribution.ttclid ? { ttclid: delivery.attribution.ttclid } : {}),
+          ...(delivery.attribution.ttp ? { ttp: delivery.attribution.ttp } : {}),
+          ...(delivery.attribution.clientUserAgent
+            ? { user_agent: delivery.attribution.clientUserAgent }
+            : {})
+        },
+        page: { url: delivery.attribution.eventSourceUrl }
+      }]
+    })
+  })
+  if (!response.ok) return httpFailure('TikTok Events API', response.status)
+
+  const body = await responseObject(response)
+  if (typeof body.code !== 'number' || !Number.isFinite(body.code)) {
+    return {
+      outcome: 'retryable',
+      providerRequestId: null,
+      errorClass: 'tiktok_response_invalid',
+      redactedDiagnostic: 'TikTok Events API returned an invalid response'
+    }
+  }
+
+  const providerRequestId = typeof body.request_id === 'string' && body.request_id.length > 0
+    ? body.request_id.slice(0, 255)
+    : null
+  if (body.code !== 0) {
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId,
+      errorClass: `tiktok_api_${Math.trunc(body.code)}`,
+      redactedDiagnostic: 'TikTok Events API rejected the event'
+    }
+  }
+  if (!providerRequestId) {
+    return {
+      outcome: 'retryable',
+      providerRequestId: null,
+      errorClass: 'tiktok_request_id_missing',
+      redactedDiagnostic: 'TikTok Events API did not return a request ID'
+    }
+  }
+  return {
+    outcome: 'accepted',
+    providerRequestId,
     errorClass: null,
     redactedDiagnostic: null
   }

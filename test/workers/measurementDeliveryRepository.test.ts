@@ -41,7 +41,9 @@ function deliveryRow() {
     tracking_ua: null,
     tracking_gclid: null,
     tracking_gbraid: null,
-    tracking_wbraid: null
+    tracking_wbraid: null,
+    tracking_ttclid: null,
+    tracking_ttp: null
   }
 }
 
@@ -189,6 +191,59 @@ describe('measurement delivery repository', () => {
     })
   })
 
+  it('projects TikTok browser identity and its purpose-scoped destination into the claim', async () => {
+    const row = {
+      ...deliveryRow(),
+      platform: 'tiktok',
+      provider_event_name: 'SubmitForm',
+      external_destination_id: 'C1234567890',
+      credential_ref: 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE',
+      account_id: null,
+      attribution: {
+        browserEventId: 'browser-event-1',
+        ttclid: 'click-1',
+        eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire?email=removed'
+      },
+      capability_modes: ['tiktok_events_api'],
+      tracking_ttp: 'browser-1',
+      tracking_page_url: 'https://www.werribeetoyota.com.au/enquire?email=also-removed',
+      tracking_ua: 'Test Browser'
+    }
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (/SELECT[\s\S]*FOR UPDATE OF d SKIP LOCKED/.test(sql)) return { rows: [row] }
+        if (/UPDATE conversion_deliveries/.test(sql)) return { rows: [{ attempt_count: 1 }] }
+        return { rows: [] }
+      })
+    }
+    const repository = createMeasurementDeliveryRepository({
+      transaction: (async (callback: (db: typeof client) => Promise<unknown>) => callback(client)) as never
+    })
+
+    const claim = await repository.claimNext({
+      schemaVersion: 1,
+      clientId: CLIENT_ID,
+      eventId: EVENT_ID,
+      enqueuedAt: NOW.toISOString()
+    }, 'measurement-worker:test', NOW)
+
+    expect(claim).toMatchObject({
+      platform: 'tiktok',
+      externalDestinationId: 'C1234567890',
+      credentialRef: 'MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE',
+      attribution: {
+        browserEventId: 'browser-event-1',
+        ttclid: 'click-1',
+        ttp: 'browser-1',
+        eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+        clientUserAgent: 'Test Browser'
+      }
+    })
+    expect(client.query.mock.calls[0]?.[0]).toMatch(/te\.ttclid, te\.ttp/)
+    expect(client.query.mock.calls[0]?.[0]).toMatch(/browser\.ttclid AS tracking_ttclid/)
+    expect(client.query.mock.calls[0]?.[0]).toMatch(/browser\.ttp AS tracking_ttp/)
+  })
+
   it('atomically appends an accepted attempt and updates delivery and destination health', async () => {
     const statements: Array<{ sql: string, params: unknown[] }> = []
     const client = {
@@ -286,6 +341,42 @@ describe('measurement delivery repository', () => {
       claimed.destinationId,
       'validating',
       false,
+      false
+    ]))
+  })
+
+  it('marks an accepted TikTok delivery ready without scheduling Google diagnostics', async () => {
+    const statements: Array<{ sql: string, params: unknown[] }> = []
+    const client = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        statements.push({ sql, params })
+        return { rows: [] }
+      })
+    }
+    const repository = createMeasurementDeliveryRepository({
+      transaction: (async (callback: (db: typeof client) => Promise<unknown>) => callback(client)) as never
+    })
+    const claimed = {
+      ...deliveryRow(),
+      clientId: CLIENT_ID,
+      deliveryId: DELIVERY_ID,
+      destinationId: deliveryRow().destination_id,
+      attemptNumber: 1,
+      platform: 'tiktok'
+    } as never
+
+    await repository.complete(claimed, {
+      outcome: 'accepted',
+      providerRequestId: 'tiktok-request-1',
+      errorClass: null,
+      redactedDiagnostic: null
+    }, NOW)
+
+    expect(statements[1]?.params).toEqual(expect.arrayContaining(['not_required']))
+    expect(statements[2]?.params).toEqual(expect.arrayContaining([
+      claimed.destinationId,
+      'ready',
+      true,
       false
     ]))
   })

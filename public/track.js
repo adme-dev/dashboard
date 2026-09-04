@@ -171,11 +171,15 @@
     return Date.now() + '-' + Math.random().toString(36).substring(2, 11)
   }
 
-  function resolveEventId(options) {
+  function callerEventId(options) {
     var supplied = options && typeof options.eventId === 'string'
       ? options.eventId.trim()
       : ''
-    return supplied && supplied.length <= 128 ? supplied : generateEventId()
+    return supplied && supplied.length <= 128 ? supplied : null
+  }
+
+  function resolveEventId(options) {
+    return callerEventId(options) || generateEventId()
   }
 
   // Use the site's already-installed GTM container without fetching Zero's
@@ -312,11 +316,16 @@
 
   // Consent cookie name — MUST match the server (track.post.ts reads '_xf_consent').
   var CONSENT_COOKIE_NAME = '_xf_consent'
+  var _explicitConsentCookieValue = null
+
+  function getConsentCookieValue() {
+    return _explicitConsentCookieValue || getCookie(CONSENT_COOKIE_NAME)
+  }
 
   // Read and parse the consent cookie
   // Returns null if no cookie or parse failure
   function getConsent() {
-    var raw = getCookie(CONSENT_COOKIE_NAME)
+    var raw = getConsentCookieValue()
     if (!raw) return null
     try {
       var parsed = JSON.parse(raw)
@@ -324,6 +333,45 @@
     } catch (e) {
       return null
     }
+  }
+
+  function pushConsentUpdate(snapshot) {
+    window.dataLayer = window.dataLayer || []
+    window.dataLayer.push({
+      event: 'xeroflow_consent_update',
+      xeroflow_consent: {
+        tracking: snapshot.tracking ? 'granted' : 'denied',
+        analytics: snapshot.analytics ? 'granted' : 'denied',
+        marketing: snapshot.marketing ? 'granted' : 'denied',
+      },
+    })
+  }
+
+  // Stable bridge for a site-owned consent manager. The browser records only an
+  // explicit choice; regional defaults and the immutable per-event snapshot
+  // remain server responsibilities.
+  function setConsent(choice) {
+    if (
+      !choice
+      || typeof choice.tracking !== 'boolean'
+      || typeof choice.analytics !== 'boolean'
+      || typeof choice.marketing !== 'boolean'
+    ) {
+      throw new TypeError(
+        'XeroFlow consent requires tracking, analytics and marketing booleans'
+      )
+    }
+
+    var snapshot = {
+      tracking: choice.tracking,
+      analytics: choice.analytics,
+      marketing: choice.marketing,
+      updatedAt: new Date().toISOString(),
+    }
+    _explicitConsentCookieValue = JSON.stringify(snapshot)
+    setCookie(CONSENT_COOKIE_NAME, _explicitConsentCookieValue, COOKIE_DAYS)
+    pushConsentUpdate(snapshot)
+    return snapshot
   }
 
   // Gate an event against the current consent state.
@@ -345,6 +393,7 @@
     // Marketing events require marketing consent
     var marketingEvents = [
       'lead',
+      'generate_lead',
       'test_drive',
       'trade_in',
       'finance_application',
@@ -515,6 +564,7 @@
     var touches = getAttributionTouches()
     var utmParams = touches.last || getUtmParams()
     var fbCookies = getFbCookies()
+    var tiktokBrowserId = getCookie('_ttp')
 
     var payload = {
       client_id: clientId,
@@ -533,6 +583,7 @@
       fbc: fbCookies.fbc,
       fbp: fbCookies.fbp,
       ttclid: utmParams.ttclid,
+      ttp: tiktokBrowserId,
       msclkid: utmParams.msclkid,
       gbraid: utmParams.gbraid,
       wbraid: utmParams.wbraid,
@@ -580,6 +631,7 @@
           fbc: payload.fbc,
           fbp: payload.fbp,
           ttclid: payload.ttclid,
+          ttp: payload.ttp,
           msclkid: payload.msclkid,
           li_fat_id: payload.li_fat_id,
           email_click_id: payload.email_click_id,
@@ -589,7 +641,7 @@
       // Forward the raw consent cookie value: it lives on the dealer domain, so
       // our cross-origin endpoint can't read it — relaying it here keeps the
       // server-stored consent snapshot accurate. null when not set.
-      consent: getCookie(CONSENT_COOKIE_NAME) || null,
+      consent: getConsentCookieValue() || null,
     }
 
     // POST cross-origin to OUR origin with the write key on the query string.
@@ -625,6 +677,42 @@
     // Push to dataLayer for sGTM (if GTM is enabled and event qualifies)
     pushToDataLayer(eventName, eventData, eventId)
     return eventId
+  }
+
+  var CONFIRMED_LEAD_STRING_LIMITS = {
+    form_id: 128,
+    form_name: 256,
+    submission_event_id: 128,
+    vehicle_id: 128,
+    vehicle_make: 128,
+    vehicle_model: 128,
+    currency: 3,
+  }
+
+  function confirmedLeadData(data) {
+    var result = {}
+    if (!data || typeof data !== 'object') return result
+
+    for (var field in CONFIRMED_LEAD_STRING_LIMITS) {
+      if (!Object.prototype.hasOwnProperty.call(CONFIRMED_LEAD_STRING_LIMITS, field)) continue
+      if (typeof data[field] !== 'string') continue
+      var value = data[field].trim()
+      if (!value) continue
+      result[field] = value.slice(0, CONFIRMED_LEAD_STRING_LIMITS[field])
+    }
+
+    if (typeof data.value === 'number' && isFinite(data.value)) {
+      result.value = data.value
+    }
+    return result
+  }
+
+  function confirmLead(data, options) {
+    var eventId = callerEventId(options)
+    if (!eventId) return
+    var safeData = confirmedLeadData(data)
+    if (safeData.submission_event_id === eventId) return
+    return track('generate_lead', safeData, { eventId: eventId })
   }
 
   // Detect vehicle context from page URL and structured data
@@ -902,7 +990,7 @@
         phone: phone || undefined,
       },
       attribution: intentAttribution(getAttributionTouches()),
-      consent: getCookie(CONSENT_COOKIE_NAME) || null,
+      consent: getConsentCookieValue() || null,
     }
     var url = (_scriptOrigin || '') + '/api/public/lead-intent?k=' + encodeURIComponent(WRITE_KEY)
     var body = JSON.stringify(payload)
@@ -1026,6 +1114,24 @@
   // State for cleanup
   var _engagementInterval = null
   var _behavioralCleanups = []
+  var _confirmedLeadListenerAttached = false
+
+  function setupConfirmedLeadListener() {
+    if (_confirmedLeadListenerAttached) return
+
+    function onConfirmedLead(event) {
+      var detail = event && event.detail
+      if (!detail || typeof detail !== 'object') return
+      confirmLead(detail, { eventId: detail.eventId })
+    }
+
+    document.addEventListener('xeroflow:lead-confirmed', onConfirmedLead)
+    _confirmedLeadListenerAttached = true
+    _behavioralCleanups.push(function () {
+      document.removeEventListener('xeroflow:lead-confirmed', onConfirmedLead)
+      _confirmedLeadListenerAttached = false
+    })
+  }
 
   // -- Rage Click Detection --
   function setupRageClickDetection() {
@@ -1341,6 +1447,8 @@
       })
     }
 
+    setupConfirmedLeadListener()
+
     // Track page view
     trackPageView()
 
@@ -1444,6 +1552,8 @@
   window.xf = {
     init: init,
     track: track,
+    confirmLead: confirmLead,
+    setConsent: setConsent,
     createEventId: generateEventId,
     destroy: destroy,
     linkSession: linkSession,

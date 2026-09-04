@@ -13,6 +13,72 @@ export interface GoogleDiagnosticResult {
   retryable: boolean
 }
 
+export interface TikTokTestEvidence {
+  status: 'requested' | 'accepted' | 'failed'
+  completedAt: string | null
+  errorClass: string | null
+}
+
+export interface TikTokTestHealth {
+  healthStatus: 'ready' | 'degraded' | 'blocked'
+  evidenceAt: string | null
+  reason: string | null
+}
+
+const TIKTOK_TEST_EVIDENCE_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+function transientTikTokTestFailure(errorClass: string | null): boolean {
+  return errorClass === 'provider_network_error'
+    || errorClass === 'tiktok_response_invalid'
+    || errorClass === 'tiktok_request_id_missing'
+    || errorClass === 'tiktok_browser_context_unavailable'
+    || errorClass === 'provider_http_408'
+    || errorClass === 'provider_http_429'
+    || /^provider_http_5\d\d$/.test(errorClass ?? '')
+}
+
+export function deriveTikTokTestHealth(
+  evidence: TikTokTestEvidence,
+  now: Date
+): TikTokTestHealth {
+  if (evidence.status === 'requested') {
+    return {
+      healthStatus: 'degraded',
+      evidenceAt: null,
+      reason: 'tiktok_test_evidence_pending'
+    }
+  }
+
+  const completedAt = evidence.completedAt ? new Date(evidence.completedAt) : null
+  const evidenceAt = completedAt && Number.isFinite(completedAt.getTime())
+    ? completedAt.toISOString()
+    : null
+  if (evidence.status === 'accepted') {
+    const age = completedAt ? now.getTime() - completedAt.getTime() : Number.POSITIVE_INFINITY
+    if (!Number.isFinite(age) || age < 0 || age > TIKTOK_TEST_EVIDENCE_MAX_AGE_MS) {
+      return {
+        healthStatus: 'degraded',
+        evidenceAt,
+        reason: 'tiktok_test_evidence_stale'
+      }
+    }
+    return { healthStatus: 'ready', evidenceAt, reason: null }
+  }
+
+  if (transientTikTokTestFailure(evidence.errorClass)) {
+    return {
+      healthStatus: 'degraded',
+      evidenceAt,
+      reason: 'tiktok_test_delivery_transient'
+    }
+  }
+  return {
+    healthStatus: 'blocked',
+    evidenceAt,
+    reason: evidence.errorClass ?? 'tiktok_test_delivery_rejected'
+  }
+}
+
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
 interface RetrieveGoogleRequestStatusInput {

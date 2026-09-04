@@ -7,6 +7,7 @@ import { createMeasurementDiagnosticRepository } from './diagnosticRepository'
 import {
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
+  deliverTikTokEvent,
   refreshGoogleDataManagerAccessToken
 } from './providers'
 import { createMeasurementDeliveryRepository } from './repository'
@@ -61,6 +62,7 @@ export default {
       repository,
       deliverMeta: deliverMetaConversionEvent,
       deliverGoogle: deliverGoogleDataManagerEvent,
+      deliverTikTok: deliverTikTokEvent,
       refreshGoogleAccessToken: refreshGoogleDataManagerAccessToken,
       resolveProviderCredential: credentialRef => resolveMeasurementProviderCredential(
         env,

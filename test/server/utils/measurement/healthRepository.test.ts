@@ -125,6 +125,44 @@ describe('Postgres measurement health repository', () => {
     expect(db.query).toHaveBeenCalledTimes(3)
   })
 
+  it('accepts TikTok Events API evidence only for a TikTok destination', async () => {
+    const db = {
+      query: vi.fn(async (sql: string) => {
+        if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) {
+          return { rows: [{ id: PROFILE_ID, config_version: 3 }] }
+        }
+        if (/conversion_destinations[\s\S]*FOR UPDATE/.test(sql)) {
+          return { rows: [{ platform: 'tiktok', config_version: 3, health_status: 'validating' }] }
+        }
+        if (/conversion_destination_capabilities[\s\S]*FOR UPDATE/.test(sql)) {
+          return { rows: [{ id: CAPABILITY_ID, mode: 'tiktok_events_api', status: 'validating' }] }
+        }
+        if (/SELECT CASE/.test(sql)) return { rows: [{ health_status: 'ready' }] }
+        if (/UPDATE conversion_destinations/.test(sql)) {
+          return { rows: [{ health_status: 'ready', last_validated_at: input().observedAt }] }
+        }
+        return { rows: [] }
+      })
+    }
+    const repository = createPostgresMeasurementHealthRepository({
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => callback(db)) as never
+    })
+
+    await expect(repository.recordValidation({
+      ...input(),
+      actor: { type: 'system', id: 'measurement-tiktok-validator' },
+      reason: 'TikTok Test Events validation completed',
+      providerRequestId: 'tiktok-request-1',
+      capabilities: [{ mode: 'tiktok_events_api', status: 'ready', blockingReason: null }]
+    })).resolves.toMatchObject({
+      status: 'recorded',
+      evidence: {
+        healthStatus: 'ready',
+        capabilities: [{ mode: 'tiktok_events_api', status: 'ready', blockingReason: null }]
+      }
+    })
+  })
+
   it('writes the supplied actor type to the audit row', async () => {
     const statements: Array<{ sql: string, params: unknown[] }> = []
     const db = {

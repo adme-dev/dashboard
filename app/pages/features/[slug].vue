@@ -1025,8 +1025,8 @@ const features: Record<string, Feature> = {
     description: 'OAuth-connected Meta Ads spend syncing with daily breakdowns and campaign-level budgets. Know exactly what you are spending across every client account.',
     details: [
       {
-        title: 'OAuth-Connected Accounts',
-        content: 'Connect your Meta Business accounts through a secure OAuth flow. XeroFlow pulls ad account data, campaign structures, and spend metrics directly from the Meta Graph API. Multiple ad accounts can be mapped to the correct XeroFlow clients, so agencies managing dozens of client accounts see all their spend in one consolidated view without switching between Business Manager tabs.'
+        title: 'OAuth Accounts and Business Catalogs',
+        content: 'Connect Meta through OAuth and store only the permissions Meta confirms were granted. Standard spend and lead access stays separate from optional catalog consent. When catalog access is approved, authorised operators can choose an accessible Meta Business, create vehicle or commerce catalogs, rename them, and delete disposable catalogs with an exact-name confirmation safeguard.'
       },
       {
         title: 'Daily Spend Syncing',
@@ -2772,6 +2772,35 @@ const features: Record<string, Feature> = {
       {
         title: 'Always current',
         content: 'A daily sync refreshes the last two weeks of GA4 data to absorb Google Analytics reprocessing, which can revise figures for several days after the fact. The client report is never stale and never contradicts what the client sees in their own GA4 property when they check the same date range.'
+      }
+    ]
+  },
+
+  'measurement-signal-centre': {
+    title: 'Measurement Signal Centre',
+    slug: 'measurement-signal-centre',
+    icon: 'i-lucide-waypoints',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Govern privacy-safe browser and server-side measurement across TikTok, Meta, Google, and GA4 from one explainable control plane.',
+    details: [
+      {
+        title: 'One canonical signal path',
+        content: 'XeroFlow records consent-aware website activity, confirmed lead outcomes, and provider delivery as distinct evidence. The same canonical event vocabulary can feed TikTok Pixel and Events API, Meta browser and server destinations, Google Data Manager, and GA4 without treating an early form interaction as a completed lead.'
+      },
+      {
+        title: 'Privacy-safe identity handling',
+        content: 'Collection follows the client’s consent decision and stores only the attribution context needed for the approved measurement purpose. Direct identifiers are redacted from operator and client views, and eligible contact data is normalised and hashed only at the provider boundary when an approved destination requires matching.'
+      },
+      {
+        title: 'Explainable delivery health',
+        content: 'Marketing teams can separate captured, consent-skipped, queued, delivered, accepted, rejected, and dead-lettered signals. A redacted event explorer links each canonical event to its destination outcome and provider receipt so gaps can be diagnosed without exposing credentials or raw visitor identifiers.'
+      },
+      {
+        title: 'Controlled activation and rollback',
+        content: 'Every destination begins disabled in test mode. Fresh provider evidence, consent review, and two-person approval are required before live activation. Operators can pause a client or destination immediately, preserve the audit trail, and return to test mode while an issue is investigated.'
       }
     ]
   },

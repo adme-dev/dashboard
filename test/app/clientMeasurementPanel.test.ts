@@ -22,6 +22,11 @@ const stubs = {
   ClientsClientMeasurementProfileForm: {
     template: '<div data-testid="measurement-profile-form" />'
   },
+  ClientsClientMeasurementProviderTest: {
+    props: ['destination'],
+    emits: ['close', 'completed'],
+    template: '<div data-testid="provider-test">{{ destination.platform }} verification form</div>'
+  },
   UTextarea: {
     props: ['modelValue'],
     emits: ['update:modelValue'],
@@ -180,9 +185,45 @@ function responseFor(request: string) {
             }
           ],
           mappings: []
+        },
+        {
+          id: '66666666-6666-4666-8666-666666666666',
+          platform: 'tiktok',
+          socialConnectionId: null,
+          externalDestinationId: 'C1234567890',
+          credentialConfigured: true,
+          enabled: false,
+          environment: 'test',
+          healthStatus: 'configured',
+          configVersion: 1,
+          lastValidatedAt: null,
+          lastSuccessAt: null,
+          lastFailureAt: null,
+          providerRequestId: null,
+          errorClass: null,
+          redactedError: null,
+          capabilities: [
+            {
+              id: 'capability-4',
+              mode: 'tiktok_events_api',
+              status: 'configured',
+              managementOrigin: 'zero',
+              canZeroMutate: true,
+              evidenceAt: null,
+              blockingReason: null
+            }
+          ],
+          mappings: [
+            {
+              id: 'mapping-2',
+              canonicalEventName: 'vehicle_view',
+              providerEventName: 'ViewContent',
+              isActive: true
+            }
+          ]
         }
       ],
-      pagination: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 }
+      pagination: { page: 1, pageSize: 100, totalItems: 3, totalPages: 1 }
     }
   }
 
@@ -242,12 +283,15 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Live approval pending')
       expect(host.textContent).toContain('Meta')
       expect(host.textContent).toContain('Google Data Manager')
+      expect(host.textContent).toContain('TikTok')
       expect(host.textContent).toContain('Meta Pixel')
       expect(host.textContent).toContain('Managed in Google Tag Manager')
       expect(host.textContent).toContain('Meta CRM CAPI')
       expect(host.textContent).toContain('Managed by Zero')
       expect(host.textContent).toContain('Externally managed')
       expect(host.textContent).toContain('lead_qualified → QualifiedLead')
+      expect(host.textContent).toContain('TikTok Events API')
+      expect(host.textContent).toContain('vehicle_view → ViewContent')
       expect(host.textContent).toContain('Server-only lifecycle event')
       expect(host.textContent).toContain('Document externally managed Google delivery')
       expect(host.textContent).toContain('Connected account linked')
@@ -311,6 +355,34 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Saved in Zero; edge publication needs attention')
     } finally {
       app.unmount()
+    }
+  })
+
+  it('exposes controlled destination verification without implying live activation', async () => {
+    const fetchMock = vi.fn(async (request: string) => responseFor(request))
+    Object.assign(globalThis, { $fetch: fetchMock })
+
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementPanel, { clientId: CLIENT_ID, canConfigure: true })
+    })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    app.mount(host)
+    await flushUi()
+
+    try {
+      const button = host.querySelector<HTMLButtonElement>('[data-testid="verify-destination-66666666-6666-4666-8666-666666666666"]')
+      expect(button).not.toBeNull()
+      expect(host.textContent).toContain('Controlled verification sends one provider Test Events request and never activates live delivery.')
+
+      button!.click()
+      await flushUi()
+
+      expect(host.textContent).toContain('tiktok verification form')
+      expect(host.textContent).toContain('Close verification')
+    } finally {
+      app.unmount()
+      host.remove()
     }
   })
 })

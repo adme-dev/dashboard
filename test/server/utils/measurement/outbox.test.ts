@@ -106,6 +106,8 @@ describe('canonical conversion outbox', () => {
       expect.stringMatching(/INSERT INTO conversion_deliveries/)
     ])
     expect(statements[1]?.sql).not.toMatch(/[dm]\.config_version =/)
+    expect(statements[2]?.sql).toContain('consent_decision')
+    expect(statements[2]?.params).toContain('granted')
     expect(JSON.stringify(statements)).not.toContain('customer@example.com')
   })
 

@@ -24,6 +24,7 @@ function trackingRow(overrides: Partial<TrackingEventRow> = {}): TrackingEventRo
     fbc: null,
     fbp: null,
     ttclid: null,
+    ttp: 'tiktok-browser-1',
     msclkid: null,
     li_fat_id: null,
     event_data: { stockId: 'FORD-123', email: 'must-not-promote@example.com' },
@@ -39,7 +40,7 @@ function trackingRow(overrides: Partial<TrackingEventRow> = {}): TrackingEventRo
 describe('tracking event persistence', () => {
   it('atomically stores a new event and appends a consented browser conversion to the governed outbox', async () => {
     const db = {
-      query: vi.fn(async (sql: string) => (
+      query: vi.fn(async (sql: string, _params?: unknown[]) => (
         sql.includes('INSERT INTO tracking_events')
           ? { rows: [{ event_id: '48fdb3af-0df1-4b24-9f08-d5ab065e1ac1' }] }
           : { rows: [] }
@@ -59,6 +60,9 @@ describe('tracking event persistence', () => {
     })
 
     expect(result).toEqual({ stored: 1, promoted: 1, promotionFailures: 0 })
+    const insertCall = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO tracking_events'))
+    expect(String(insertCall?.[0])).toContain('ttclid, ttp, msclkid')
+    expect(insertCall?.[1]?.[20]).toBe('tiktok-browser-1')
     expect(appendOutbox).toHaveBeenCalledWith(db, expect.objectContaining({
       eventName: 'web_conversion',
       consentDecision: 'granted',

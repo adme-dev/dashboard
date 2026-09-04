@@ -6,6 +6,10 @@ import {
 import type {
   AppendCanonicalConversionEventResult
 } from '~~/server/utils/measurement/outbox'
+import {
+  safeMeasurementSourceUrl,
+  safeMeasurementUserAgent
+} from '~~/server/utils/measurement/attributionSafety'
 
 const OpportunityStageTransitionSchema = z.strictObject({
   clientId: z.string().uuid(),
@@ -108,7 +112,18 @@ function canonicalAttribution(lead: LinkedLeadRow | undefined) {
     metaLeadId: lead?.source === 'meta' && /^\d{15,16}$/.test(sourceLeadId) ? sourceLeadId : null,
     gclid: optionalAttribution(lead?.attribution, 'gclid'),
     gbraid: optionalAttribution(lead?.attribution, 'gbraid'),
-    wbraid: optionalAttribution(lead?.attribution, 'wbraid')
+    wbraid: optionalAttribution(lead?.attribution, 'wbraid'),
+    fbc: optionalAttribution(lead?.attribution, 'fbc'),
+    fbp: optionalAttribution(lead?.attribution, 'fbp'),
+    ttclid: optionalAttribution(lead?.attribution, 'ttclid'),
+    ttp: optionalAttribution(lead?.attribution, 'ttp'),
+    gaClientId: optionalAttribution(lead?.attribution, 'gaClientId'),
+    eventSourceUrl: safeMeasurementSourceUrl(
+      optionalAttribution(lead?.attribution, 'eventSourceUrl')
+    ),
+    clientUserAgent: safeMeasurementUserAgent(
+      optionalAttribution(lead?.attribution, 'clientUserAgent')
+    )
   }
 }
 

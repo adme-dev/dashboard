@@ -10,6 +10,12 @@ const row = {
   gclid: 'approved-click-id',
   gbraid: null,
   wbraid: null,
+  fbc: 'fb.1.1234567890123.approved-click',
+  fbp: 'fb.1.1234567890123.browser-id',
+  ttclid: 'tiktok-click-1',
+  ttp: 'tiktok-browser-1',
+  page_url: 'https://www.werribeetoyota.com.au/enquire?email=must-not-copy%40example.com#form',
+  ua: 'Test Browser',
   event_data: { stockId: 'FORD-123', email: 'must-not-copy@example.com' }
 }
 
@@ -35,10 +41,18 @@ describe('browser canonical conversion bridge', () => {
         metaLeadId: null,
         gclid: 'approved-click-id',
         gbraid: null,
-        wbraid: null
+        wbraid: null,
+        fbc: 'fb.1.1234567890123.approved-click',
+        fbp: 'fb.1.1234567890123.browser-id',
+        ttclid: 'tiktok-click-1',
+        ttp: 'tiktok-browser-1',
+        gaClientId: null,
+        eventSourceUrl: 'https://www.werribeetoyota.com.au/enquire',
+        clientUserAgent: 'Test Browser'
       }
     })
     expect(JSON.stringify(result)).not.toContain('must-not-copy@example.com')
+    expect(JSON.stringify(result)).not.toContain('must-not-copy%40example.com')
     expect(JSON.stringify(result)).not.toContain('FORD-123')
   })
 

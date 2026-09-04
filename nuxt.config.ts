@@ -409,6 +409,17 @@ export default defineNuxtConfig({
   // Environment variable validation helper
   // This ensures required vars are set in production
   hooks: {
+    'build:manifest'(manifest) {
+      // Route chunks are already discovered and loaded by the client entry.
+      // Repeating every non-entry script throughout Nuxt's server-side preload
+      // graph adds about 1 MiB to the Cloudflare Function without changing
+      // correctness. Keep entry scripts and CSS preload metadata intact.
+      for (const resource of Object.values(manifest)) {
+        if (resource.resourceType === 'script' && !resource.isEntry) {
+          resource.preload = false
+        }
+      }
+    },
     'nitro:config'() {
       // Runtime secrets are injected by Cloudflare Pages and are often absent
       // during local production builds. Enable this in CI/release validation with

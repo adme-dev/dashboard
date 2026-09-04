@@ -10,7 +10,7 @@ describe('buildEventRows', () => {
   const payload: TrackPayload = { events: [{
     event_id: 'e1', event_name: 'page_view', anon_id: 'a1', session_id: 's1',
     page_url: 'https://www.kia.gws.com.au/', referrer: null, occurred_at: 1748600000000,
-    attribution: { gclid: 'G', utm_source: 'google' }, event_data: { depth: 25 }
+    attribution: { gclid: 'G', utm_source: 'google', ttp: 'tiktok-browser-1' }, event_data: { depth: 25 }
   }] }
 
   it('produces one parameter tuple per event with flattened attribution', () => {
@@ -21,6 +21,7 @@ describe('buildEventRows', () => {
     expect(r.client_id).toBe('client-1')
     expect(r.event_id).toBe('e1')
     expect(r.gclid).toBe('G')
+    expect(r.ttp).toBe('tiktok-browser-1')
     expect(r.utm_source).toBe('google')
     expect(r.origin).toBe('https://www.kia.gws.com.au')
     expect(r.event_data).toEqual({ depth: 25 })
