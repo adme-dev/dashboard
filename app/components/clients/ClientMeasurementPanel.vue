@@ -233,6 +233,18 @@ function toggleProviderTest(destinationId: string) {
     : destinationId
 }
 
+function canVerifyDestination(destination: MeasurementDestination) {
+  return Boolean(
+    props.canConfigure
+    && profile.value
+    && !profile.value.enabled
+    && profile.value.environment === 'test'
+    && !destination.enabled
+    && destination.environment === 'test'
+    && destination.mappings.some(mapping => mapping.isActive)
+  )
+}
+
 async function handleActivationCompleted(result: {
   kind: 'privacy' | 'live' | 'owner_override' | 'activation'
   warnings: Array<{ code: string }>
@@ -502,15 +514,22 @@ void refreshMeasurement()
                   Canonical event mappings
                 </p>
                 <UButton
-                  v-if="canConfigure && !profile.enabled && profile.environment === 'test' && !destination.enabled && destination.environment === 'test' && destination.mappings.some(mapping => mapping.isActive)"
-                  :label="testingDestinationId === destination.id ? 'Hide provider test' : 'Run provider test'"
+                  v-if="canVerifyDestination(destination)"
+                  :label="testingDestinationId === destination.id ? 'Close verification' : 'Verify destination'"
                   icon="i-lucide-flask-conical"
                   size="xs"
                   color="neutral"
                   variant="outline"
+                  :data-testid="`verify-destination-${destination.id}`"
                   @click="toggleProviderTest(destination.id)"
                 />
               </div>
+              <p
+                v-if="canVerifyDestination(destination)"
+                class="mt-2 text-xs text-muted"
+              >
+                Controlled verification sends one provider Test Events request and never activates live delivery.
+              </p>
               <div v-if="destination.mappings.length" class="mt-2 flex flex-wrap gap-2">
                 <span
                   v-for="mapping in destination.mappings"

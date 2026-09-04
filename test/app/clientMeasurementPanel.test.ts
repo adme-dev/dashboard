@@ -22,6 +22,11 @@ const stubs = {
   ClientsClientMeasurementProfileForm: {
     template: '<div data-testid="measurement-profile-form" />'
   },
+  ClientsClientMeasurementProviderTest: {
+    props: ['destination'],
+    emits: ['close', 'completed'],
+    template: '<div data-testid="provider-test">{{ destination.platform }} verification form</div>'
+  },
   UTextarea: {
     props: ['modelValue'],
     emits: ['update:modelValue'],
@@ -213,7 +218,7 @@ function responseFor(request: string) {
               id: 'mapping-2',
               canonicalEventName: 'vehicle_view',
               providerEventName: 'ViewContent',
-              isActive: false
+              isActive: true
             }
           ]
         }
@@ -350,6 +355,34 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Saved in Zero; edge publication needs attention')
     } finally {
       app.unmount()
+    }
+  })
+
+  it('exposes controlled destination verification without implying live activation', async () => {
+    const fetchMock = vi.fn(async (request: string) => responseFor(request))
+    Object.assign(globalThis, { $fetch: fetchMock })
+
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementPanel, { clientId: CLIENT_ID, canConfigure: true })
+    })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    app.mount(host)
+    await flushUi()
+
+    try {
+      const button = host.querySelector<HTMLButtonElement>('[data-testid="verify-destination-66666666-6666-4666-8666-666666666666"]')
+      expect(button).not.toBeNull()
+      expect(host.textContent).toContain('Controlled verification sends one provider Test Events request and never activates live delivery.')
+
+      button!.click()
+      await flushUi()
+
+      expect(host.textContent).toContain('tiktok verification form')
+      expect(host.textContent).toContain('Close verification')
+    } finally {
+      app.unmount()
+      host.remove()
     }
   })
 })
