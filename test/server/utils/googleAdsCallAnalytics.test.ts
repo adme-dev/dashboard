@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   deriveGoogleAdsCallSyncHealth,
   getGoogleAdsCallAnalytics
@@ -9,6 +9,7 @@ vi.mock('~~/server/utils/db', () => ({ queryRows }))
 
 describe('Google Ads call analytics health', () => {
   beforeEach(() => queryRows.mockReset())
+  afterEach(() => vi.useRealTimers())
 
   it('distinguishes a valid empty provider response from verified call tracking', () => {
     expect(deriveGoogleAdsCallSyncHealth({
@@ -37,7 +38,12 @@ describe('Google Ads call analytics health', () => {
     }).status).toBe(status)
   })
 
-  it('reports telephone layers separately without turning phone clicks into calls', async () => {
+  it.each([
+    ['2026-09-02T05:00:00.000Z', 'healthy', true],
+    ['2026-09-04T04:00:00.001Z', 'stale', false]
+  ] as const)('reports telephone layers separately with %s sync freshness', async (now, status, verifiedCallTracking) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(now))
     queryRows
       .mockResolvedValueOnce([{
         total_calls: '5', answered_calls: '3', missed_calls: '2', unknown_calls: '0',
@@ -72,7 +78,7 @@ describe('Google Ads call analytics health', () => {
       qualifiedCalls: 2
     }))
     expect(result.health).toMatchObject({
-      status: 'healthy', verifiedCallTracking: true,
+      status, verifiedCallTracking,
       requestedRange: { startDate: '2026-09-01', endDate: '2026-09-02' }
     })
   })

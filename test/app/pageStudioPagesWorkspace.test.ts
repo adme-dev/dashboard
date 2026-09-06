@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { runInNewContext } from 'node:vm'
+import { Window } from 'happy-dom'
+import { ModuleKind, ScriptTarget, transpileModule } from 'typescript'
+import { describe, expect, it, vi } from 'vitest'
 
 const workspace = readFileSync('app/components/page-studio/PagesWorkspace.vue', 'utf8')
 const settings = readFileSync('app/components/page-studio/PageSettingsPanel.vue', 'utf8')
@@ -14,8 +17,66 @@ describe('Page Studio Pages workspace', () => {
     expect(publishing).not.toContain('/edit')
     expect(launcher).toContain(`window.open('about:blank', targetName)`)
     expect(launcher).toContain(`form.method = 'POST'`)
-    expect(launcher).toContain('form.target = targetName')
+    expect(launcher).toContain(`studioTab.document.createElement('form')`)
+    expect(launcher).toContain('studioTab.document.body.append(form)')
     expect(launcher).toContain('/editor-sessions')
+  })
+
+  it('submits the session token inside the Studio tab with its opener detached', async () => {
+    const dashboard = new Window({ url: 'https://dashboard.example.test/agency/page-studio' })
+    const studio = new Window({ url: 'about:blank' })
+    const studioTab = {
+      document: studio.document,
+      opener: dashboard as Window | null,
+      closed: false,
+      focus: vi.fn(),
+      close: vi.fn()
+    }
+    const open = vi.fn(() => studioTab)
+    const fetchSession = vi.fn(async () => ({ session: { token: 'signed-session-fixture' } }))
+    const submit = vi.spyOn(studio.HTMLFormElement.prototype, 'submit').mockImplementation(function () {
+      expect(this.ownerDocument).toBe(studio.document)
+      expect(this.parentElement).toBe(studio.document.body)
+      expect(this.method.toUpperCase()).toBe('POST')
+      expect(this.action).toBe('https://studio.example.test/launch')
+      expect(['', '_self']).toContain(this.target)
+      expect(this.querySelector('input[name="token"]')?.getAttribute('value')).toBe('signed-session-fixture')
+      expect(studioTab.opener).toBeNull()
+      expect(dashboard.document.querySelector('form')).toBeNull()
+    })
+
+    try {
+      // Compile the real Nuxt composable for its client branch without starting Nuxt.
+      const { outputText } = transpileModule(launcher.replaceAll('import.meta.client', 'true'), {
+        compilerOptions: { target: ScriptTarget.ES2022, module: ModuleKind.CommonJS }
+      })
+      const moduleExports = {} as {
+        usePageStudioLauncher: () => { launchPageStudio: (siteId: string) => Promise<void> }
+      }
+      runInNewContext(outputText, {
+        exports: moduleExports,
+        useRuntimeConfig: () => ({ public: { pageStudioEditorUrl: 'https://studio.example.test' } }),
+        computed: (getter: () => unknown) => ({ get value() { return getter() } }),
+        crypto: { randomUUID: () => 'test-id' },
+        window: { open },
+        document: dashboard.document,
+        $fetch: fetchSession,
+        URL
+      })
+      await moduleExports.usePageStudioLauncher().launchPageStudio('site/one')
+
+      expect(open).toHaveBeenCalledWith('about:blank', 'xeroflow-page-studio-test-id')
+      expect(fetchSession).toHaveBeenCalledWith(
+        '/api/agency/page-studio/sites/site%2Fone/editor-sessions', { method: 'POST' }
+      )
+      expect(submit).toHaveBeenCalledOnce()
+      expect(studioTab.focus).toHaveBeenCalledOnce()
+      expect(studioTab.close).not.toHaveBeenCalled()
+    } finally {
+      submit.mockRestore()
+      await studio.happyDOM.close()
+      await dashboard.happyDOM.close()
+    }
   })
 
   it('uses the governed revisioned document endpoint', () => {
