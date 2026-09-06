@@ -1,7 +1,9 @@
 # Page Studio guarded checkpoint commits
 
-Status: additive backend/client preparation, 6 September 2026. Not deployed and
-not a completed fix for live cross-tab saves. Dashboard base: `b442ae430b846da7cc66249f9d22242d478d6816`.
+Status: paired save-safety implementation, 7 September 2026. Not deployed;
+authenticated staging remains required. With user approval, the isolated branch
+`fix/page-studio-production-save` is based on the actual live release
+`2793d65f7b26a6f8455964f78ec0e97fafaad0d0`, not the divergent main branch.
 Paired Studio work: `fix/studio-save-reliability` (draft PR 37).
 
 ## Contract and decision
@@ -46,12 +48,35 @@ observed while this transaction held the lock, not a guarantee after response
 delivery. A superseded retry never rewinds the head or creates another audit.
 Consumers must also bind the response to their pending local operation.
 
+## AI acceptance and legacy cutoff
+
+AI acceptance requires `expectedCheckpointId` as well as `baseDigest`. The site
+lock checks identity before content, preventing same-content/new-ID ABA races.
+The immutable checkpoint audit binds both original values. Exact retries return
+the full checkpoint receipt plus the original `versionId`, even after approval,
+rejection, publication or a newer checkpoint. Mutable review status is not part
+of request identity; retries never rewind the head or reopen a review.
+
+The legacy checkpoint endpoint remains available only before a site's first
+`workspace.checkpointed` audit with `commitProtocol: "cas-v1"`. This activation
+lookup scopes tenant, client and site under the same writer lock, and does not
+depend on the current head or actor. After activation, all legacy writes,
+including exact legacy retries, fail closed with HTTP 409. No migration is needed.
+
 ## Rollout holds
 
-The old `POST /checkpoints` contract remains unchanged. Old browser/Worker
-consumers are still unguarded; this endpoint's existence does not protect them.
-The new Studio `commitCheckpointIfCurrent` method is opt-in and never falls back
-to a legacy write on 404, 409 or dependency failure.
+The paired Studio browser and internal Worker routes require stable operation
+identity and the guarded base. They never fall back to legacy writes. AI jobs use
+the actual admitted checkpoint ID, and acceptance replays against that immutable
+R2 base rather than substituting a newer head. Immutable preview snapshots prevent
+late hydration from replacing newer preview content.
+
+This is a coordinated protocol upgrade, not a rolling-version-compatible change.
+Old AI callers omit the required base; old Dashboard schemas reject the new field.
+Deploy compatible Dashboard and Worker/container artifacts together, verify the
+staging fixture, and handle already-open editors without discarding drafts.
+Rollback must retain the guarded endpoint and permanent legacy fence; rolling
+Dashboard back to unguarded code is not a safe data-integrity rollback.
 
 Before adopting this protocol:
 
@@ -70,6 +95,14 @@ No migration, production database, provider, token lifetime, DNS or unrelated
 Dashboard/TikTok changes are included.
 
 ## Verification
+
+Latest production-based local evidence (7 September): 83 tests pass, including
+17 disposable PostgreSQL cases, AI acceptance and strict endpoint tests. The real
+database cases include legacy/first-guarded contention in both lock orderings,
+permanent activation after manual/AI saves, and exact AI replay receipts. Nine
+deployment-guard tests pass. Focused strict TypeScript passes on this release base.
+Full application build/static checks and authenticated staging remain separate
+gates; the evidence below records the earlier main-based preparation only.
 
 - 65 focused Dashboard tests pass across nine files. Eleven tests use disposable
   PostgreSQL 17, separate connections and observed lock waits, including two writers,

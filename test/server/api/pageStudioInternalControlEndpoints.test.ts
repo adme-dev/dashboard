@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  acceptPageStudioAiProposal: vi.fn(),
   authorizePageStudioPreview: vi.fn(),
   getLatestPageStudioCheckpoint: vi.fn(),
   recordPageStudioAuditEvent: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('~~/server/utils/pageStudio/machineAuth', () => ({
   requirePageStudioMachineAuth: (...args: unknown[]) => mocks.requirePageStudioMachineAuth(...args)
 }))
 vi.mock('~~/server/utils/pageStudio/controlStore', () => ({
+  acceptPageStudioAiProposal: (...args: unknown[]) => mocks.acceptPageStudioAiProposal(...args),
   getLatestPageStudioCheckpoint: (...args: unknown[]) => mocks.getLatestPageStudioCheckpoint(...args),
   recordPageStudioAuditEvent: (...args: unknown[]) => mocks.recordPageStudioAuditEvent(...args),
   recordPageStudioCheckpoint: (...args: unknown[]) => mocks.recordPageStudioCheckpoint(...args),
@@ -111,6 +113,42 @@ describe('Page Studio internal control endpoints', () => {
       digest, id: '44444444-4444-4444-8444-444444444444', siteId: scope.siteId, status: 'in_review'
     })
     mocks.recordPageStudioAuditEvent.mockResolvedValue({ acknowledged: true })
+  })
+
+  it.each([undefined, null, ''])('rejects an AI acceptance without a valid durable base %s before calling the store', async (expectedCheckpointId) => {
+    const { default: handler } = await import('~~/server/routes/internal/page-studio/ai-proposals/accept.post')
+    const body = {
+      authorRole: 'agency', baseDigest: 'b'.repeat(64), checkpoint,
+      ...(expectedCheckpointId === undefined ? {} : { expectedCheckpointId }),
+      summary: 'Apply the approved proposal'
+    }
+    const event: TestEvent = { body, context: {}, headers: { 'idempotency-key': 'accept_proposal_endpoint' } }
+    await expect(handler(event as never)).resolves.toEqual({
+      error: { code: 'INVALID_INPUT', message: 'Invalid AI proposal acceptance' }
+    })
+    expect(event.responseStatus).toBe(400)
+    expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
+    expect(mocks.acceptPageStudioAiProposal).not.toHaveBeenCalled()
+    expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
+  })
+
+  it('returns the complete AI acceptance receipt with 201 and a validated base and operation key', async () => {
+    const { default: handler } = await import('~~/server/routes/internal/page-studio/ai-proposals/accept.post')
+    const body = {
+      authorRole: 'agency', baseDigest: 'b'.repeat(64), checkpoint,
+      expectedCheckpointId: 'checkpoint_original_base', summary: 'Apply the approved proposal'
+    }
+    const receipt = {
+      acknowledged: true, checkpointId, currentCheckpointId: 'checkpoint_later_edit', isCurrent: false,
+      versionId: '44444444-4444-4444-8444-444444444444'
+    }
+    mocks.acceptPageStudioAiProposal.mockResolvedValue(receipt)
+    const event: TestEvent = { body, context: {}, headers: { 'idempotency-key': 'accept_proposal_endpoint' } }
+    await expect(handler(event as never)).resolves.toEqual(receipt)
+    expect(event.responseStatus).toBe(201)
+    expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
+    expect(mocks.acceptPageStudioAiProposal).toHaveBeenCalledWith({ ...body, idempotencyKey: 'accept_proposal_endpoint' })
+    expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
   })
 
   it('passes an explicit base and a matching operation key to the guarded commit endpoint', async () => {

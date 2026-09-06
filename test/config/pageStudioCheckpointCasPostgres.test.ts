@@ -349,6 +349,141 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
     expect(await snapshot()).toEqual(before)
   })
 
+  it('rejects an AI proposal based on an earlier identity despite an unchanged content digest', async () => {
+    const options = { runTransaction: transactionFor(observer) }
+    const base = checkpoint('checkpoint_ai_aba_base', 'a')
+    const identicalContent = checkpoint('checkpoint_ai_aba_new_identity', 'a')
+    await recordPageStudioCheckpoint(base, options)
+    await commitPageStudioCheckpoint({ checkpoint: identicalContent, expectedCheckpointId: base.checkpointId }, options)
+    const before = await snapshot()
+    await expect(acceptPageStudioAiProposal({
+      checkpoint: checkpoint('checkpoint_ai_aba_stale', 'b'),
+      expectedCheckpointId: base.checkpointId, baseDigest: base.digest,
+      authorRole: 'client', idempotencyKey: 'accept-ai-aba', summary: 'Stale identity proposal'
+    }, options)).rejects.toMatchObject({ code: 'CHECKPOINT_BASE_MISMATCH', statusCode: 409 })
+    expect(await snapshot()).toEqual(before)
+  })
+
+  it('returns a superseded exact AI receipt without duplicating rows or rewinding the head', async () => {
+    const options = { runTransaction: transactionFor(observer) }
+    const base = checkpoint('checkpoint_ai_retry_base', 'a')
+    await recordPageStudioCheckpoint(base, options)
+    const request = {
+      checkpoint: checkpoint('checkpoint_ai_retry_accepted', 'b'),
+      expectedCheckpointId: base.checkpointId, baseDigest: base.digest,
+      authorRole: 'client' as const, idempotencyKey: 'accept-ai-retry', summary: 'Retryable proposal'
+    }
+    const receipt = await acceptPageStudioAiProposal(request, options)
+    expect(receipt).toEqual({
+      acknowledged: true, checkpointId: request.checkpoint.checkpointId,
+      currentCheckpointId: request.checkpoint.checkpointId, isCurrent: true,
+      versionId: expect.any(String)
+    })
+    const accepted = await snapshot()
+    await expect(acceptPageStudioAiProposal(request, options)).resolves.toEqual(receipt)
+    expect(await snapshot()).toEqual(accepted)
+    const newer = checkpoint('checkpoint_ai_retry_newer', 'c')
+    await commitPageStudioCheckpoint({ checkpoint: newer, expectedCheckpointId: request.checkpoint.checkpointId }, options)
+    const before = await snapshot()
+    expect(before).toEqual({ current_checkpoint_id: newer.checkpointId, checkpoints: 3, audits: 5, versions: 1 })
+    await expect(acceptPageStudioAiProposal(request, options)).resolves.toEqual({
+      ...receipt, currentCheckpointId: newer.checkpointId, isCurrent: false
+    })
+    expect(await snapshot()).toEqual(before)
+    // An idempotency key does not authorize changing the proposal's original base.
+    await expect(acceptPageStudioAiProposal({ ...request, expectedCheckpointId: newer.checkpointId }, options))
+      .rejects.toMatchObject({ code: 'CHECKPOINT_CONFLICT', statusCode: 409 })
+    expect(await snapshot()).toEqual(before)
+  })
+
+  it.each(['manual', 'ai'] as const)('permanently cuts off legacy saves after %s activates guarded commits', async (activationKind) => {
+    const options = { runTransaction: transactionFor(observer) }
+    const base = checkpoint('checkpoint_cutoff_legacy_base', 'a')
+    const guarded = checkpoint('checkpoint_cutoff_guarded', 'b')
+    await recordPageStudioCheckpoint(base, options)
+    if (activationKind === 'manual') {
+      await commitPageStudioCheckpoint({ checkpoint: guarded, expectedCheckpointId: base.checkpointId }, options)
+    } else {
+      await acceptPageStudioAiProposal({
+        checkpoint: guarded, expectedCheckpointId: base.checkpointId, baseDigest: base.digest,
+        authorRole: 'client', idempotencyKey: 'accept-cutoff-ai', summary: 'Activate guarded commits'
+      }, options)
+    }
+    const afterActivation = await snapshot()
+    await expect(recordPageStudioCheckpoint(checkpoint('checkpoint_cutoff_new_legacy', 'c'), options))
+      .rejects.toMatchObject({ code: 'CHECKPOINT_BASE_REQUIRED', statusCode: 409 })
+    expect(await snapshot()).toEqual(afterActivation)
+    // Simulate restoring an old head within this disposable fixture. Activation
+    // must be remembered by immutable history, not inferred from the current head.
+    await observer.query('UPDATE page_studio_sites SET current_checkpoint_id = $2 WHERE id = $1', [scope.siteId, base.checkpointId])
+    const restored = await snapshot()
+    await expect(recordPageStudioCheckpoint(checkpoint('checkpoint_cutoff_after_restore', 'd'), options))
+      .rejects.toMatchObject({ code: 'CHECKPOINT_BASE_REQUIRED', statusCode: 409 })
+    await expect(recordPageStudioCheckpoint(base, options))
+      .rejects.toMatchObject({ code: 'CHECKPOINT_BASE_REQUIRED', statusCode: 409 })
+    expect(await snapshot()).toEqual(restored)
+  })
+
+  it.each(['legacy', 'guarded'] as const)('serializes a legacy/first-guarded race when %s acquires the lock first', async (winnerKind) => {
+    const base = checkpoint('checkpoint_legacy_race_base', 'a')
+    await recordPageStudioCheckpoint(base, { runTransaction: transactionFor(observer) })
+    const first = await connect()
+    const second = await connect()
+    const secondPid = (await second.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
+    const locked = deferred()
+    const release = deferred()
+    const gatedTransaction = async <T>(callback: (db: PageStudioControlQueryClient) => Promise<T>): Promise<T> => {
+      return transactionFor(first)(async (db) => {
+        let firstQuery = true
+        return callback({
+          async query<R>(sql: string, params?: unknown[]) {
+            const result = await db.query<R>(sql, params)
+            if (firstQuery) {
+              firstQuery = false
+              locked.resolve()
+              await release.promise
+            }
+            return result
+          }
+        })
+      })
+    }
+    const legacy = checkpoint('checkpoint_legacy_race_unguarded', 'b')
+    const guarded = checkpoint('checkpoint_legacy_race_guarded', 'c')
+    const execute = (kind: 'legacy' | 'guarded', runTransaction: ReturnType<typeof transactionFor>): Promise<unknown> => kind === 'legacy'
+      ? recordPageStudioCheckpoint(legacy, { runTransaction })
+      : commitPageStudioCheckpoint({ checkpoint: guarded, expectedCheckpointId: base.checkpointId }, { runTransaction })
+    const winningRequest = capture(execute(winnerKind, gatedTransaction))
+    void winningRequest.then(() => locked.resolve())
+    let losingRequest: Promise<Outcome<unknown>> | undefined
+    try {
+      await locked.promise
+      losingRequest = capture(execute(winnerKind === 'legacy' ? 'guarded' : 'legacy', transactionFor(second)))
+      await waitForLock(secondPid)
+    } finally {
+      release.resolve()
+      await Promise.all([winningRequest, losingRequest])
+    }
+    expect(await winningRequest).toMatchObject({ ok: true })
+    expect(await losingRequest).toMatchObject({
+      ok: false,
+      error: {
+        code: winnerKind === 'legacy' ? 'CHECKPOINT_BASE_MISMATCH' : 'CHECKPOINT_BASE_REQUIRED', statusCode: 409
+      }
+    })
+    expect(await snapshot()).toEqual({
+      current_checkpoint_id: winnerKind === 'legacy' ? legacy.checkpointId : guarded.checkpointId,
+      checkpoints: 2, audits: 2, versions: 0
+    })
+    if (winnerKind === 'legacy') {
+      // A rejected first guarded attempt must not activate the cutoff.
+      const followup = checkpoint('checkpoint_legacy_race_followup', 'd')
+      await expect(recordPageStudioCheckpoint(followup, { runTransaction: transactionFor(observer) }))
+        .resolves.toEqual({ acknowledged: true })
+      expect(await snapshot()).toEqual({ current_checkpoint_id: followup.checkpointId, checkpoints: 3, audits: 3, versions: 0 })
+    }
+  }, 20_000)
+
   it.each(['manual', 'ai'] as const)('serializes an AI/manual race when %s acquires the site lock first', async (winnerKind) => {
     const base = checkpoint('checkpoint_race_base', 'a')
     await recordPageStudioCheckpoint(base, { runTransaction: transactionFor(observer) })
@@ -378,7 +513,7 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
     const execute = (kind: 'manual' | 'ai', runTransaction: ReturnType<typeof transactionFor>): Promise<unknown> => kind === 'manual'
       ? commitPageStudioCheckpoint({ checkpoint: manualCheckpoint, expectedCheckpointId: base.checkpointId }, { runTransaction })
       : acceptPageStudioAiProposal({
-          checkpoint: aiCheckpoint, baseDigest: base.digest, authorRole: 'client',
+          checkpoint: aiCheckpoint, expectedCheckpointId: base.checkpointId, baseDigest: base.digest, authorRole: 'client',
           idempotencyKey: 'accept-race-ai', summary: 'Synthetic concurrency proposal'
         }, { runTransaction })
     const winningRequest = capture(execute(winnerKind, gatedTransaction))
@@ -396,7 +531,7 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
     expect(await winningRequest).toMatchObject({ ok: true })
     expect(await losingRequest).toMatchObject({
       ok: false,
-      error: { code: winnerKind === 'manual' ? 'BASE_DIGEST_MISMATCH' : 'CHECKPOINT_BASE_MISMATCH', statusCode: 409 }
+      error: { code: 'CHECKPOINT_BASE_MISMATCH', statusCode: 409 }
     })
     expect(await snapshot()).toEqual({
       current_checkpoint_id: winnerKind === 'manual' ? manualCheckpoint.checkpointId : aiCheckpoint.checkpointId,
