@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getLatestPageStudioCheckpoint: vi.fn(),
   recordPageStudioAuditEvent: vi.fn(),
   recordPageStudioCheckpoint: vi.fn(),
+  commitPageStudioCheckpoint: vi.fn(),
   registerPageStudioVersion: vi.fn(),
   submitPageStudioVersionForReview: vi.fn(),
   requirePageStudioMachineAuth: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock('~~/server/utils/pageStudio/controlStore', () => ({
   getLatestPageStudioCheckpoint: (...args: unknown[]) => mocks.getLatestPageStudioCheckpoint(...args),
   recordPageStudioAuditEvent: (...args: unknown[]) => mocks.recordPageStudioAuditEvent(...args),
   recordPageStudioCheckpoint: (...args: unknown[]) => mocks.recordPageStudioCheckpoint(...args),
+  commitPageStudioCheckpoint: (...args: unknown[]) => mocks.commitPageStudioCheckpoint(...args),
   registerPageStudioVersion: (...args: unknown[]) => mocks.registerPageStudioVersion(...args),
   submitPageStudioVersionForReview: (...args: unknown[]) => mocks.submitPageStudioVersionForReview(...args),
   PageStudioControlError: class PageStudioControlError extends Error {}
@@ -109,6 +111,49 @@ describe('Page Studio internal control endpoints', () => {
       digest, id: '44444444-4444-4444-8444-444444444444', siteId: scope.siteId, status: 'in_review'
     })
     mocks.recordPageStudioAuditEvent.mockResolvedValue({ acknowledged: true })
+  })
+
+  it('passes an explicit base and a matching operation key to the guarded commit endpoint', async () => {
+    const { default: handler } = await import('~~/server/routes/internal/page-studio/checkpoints/commit.post')
+    const body = { checkpoint, expectedCheckpointId: null }
+    const receipt = { acknowledged: true, checkpointId, currentCheckpointId: checkpointId, isCurrent: true }
+    mocks.commitPageStudioCheckpoint.mockResolvedValue(receipt)
+    const event: TestEvent = { body, context: {}, headers: { 'idempotency-key': checkpointId } }
+    await expect(handler(event as never)).resolves.toEqual(receipt)
+    expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
+    expect(mocks.commitPageStudioCheckpoint).toHaveBeenCalledWith(body)
+    expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [{ checkpoint }, checkpointId],
+    [{ checkpoint, expectedCheckpointId: '' }, checkpointId],
+    [{ checkpoint, expectedCheckpointId: null, force: true }, checkpointId],
+    [{ checkpoint, expectedCheckpointId: null }, 'other-operation'],
+    [{ checkpoint, expectedCheckpointId: null }, undefined]
+  ])('rejects incomplete or unbound guarded commits', async (body, key) => {
+    const { default: handler } = await import('~~/server/routes/internal/page-studio/checkpoints/commit.post')
+    const event: TestEvent = { body, context: {}, headers: key ? { 'idempotency-key': key as string } : {} }
+    await expect(handler(event as never)).resolves.toEqual({
+      error: { code: 'INVALID_INPUT', message: 'Invalid checkpoint commit request' }
+    })
+    expect(event.responseStatus).toBe(400)
+    expect(mocks.commitPageStudioCheckpoint).not.toHaveBeenCalled()
+    expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
+  })
+
+  it('authenticates before inspecting the guarded commit body', async () => {
+    const { default: handler } = await import('~~/server/routes/internal/page-studio/checkpoints/commit.post')
+    mocks.requirePageStudioMachineAuth.mockImplementationOnce(() => {
+      throw Object.assign(new Error('denied'), { statusCode: 403 })
+    })
+    const body = Object.defineProperty({}, 'checkpoint', { get: () => {
+      throw new Error('body inspected')
+    } })
+    const event: TestEvent = { body, context: {}, headers: {} }
+    await handler(event as never)
+    expect(event.responseStatus).toBe(403)
+    expect(mocks.commitPageStudioCheckpoint).not.toHaveBeenCalled()
   })
 
   it('authenticates before accepting a checkpoint and binds the idempotency header to its id', async () => {

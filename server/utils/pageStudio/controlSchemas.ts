@@ -23,6 +23,11 @@ export const PageStudioCheckpointSchema = z.object({
   userId: z.string().uuid()
 }).strict()
 
+export const PageStudioCheckpointCommitSchema = z.object({
+  checkpoint: PageStudioCheckpointSchema,
+  expectedCheckpointId: ScopedId.nullable()
+}).strict()
+
 export const PageStudioVersionRegistrationSchema = z.object({
   authorRole: z.enum(['agency', 'client']),
   checkpointId: ScopedId,
