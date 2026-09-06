@@ -23,6 +23,11 @@ export const PageStudioCheckpointSchema = z.object({
   userId: z.string().uuid()
 }).strict()
 
+export const PageStudioCheckpointCommitSchema = z.object({
+  checkpoint: PageStudioCheckpointSchema,
+  expectedCheckpointId: ScopedId.nullable()
+}).strict()
+
 export const PageStudioVersionRegistrationSchema = z.object({
   authorRole: z.enum(['agency', 'client']),
   checkpointId: ScopedId,
@@ -42,6 +47,7 @@ export const PageStudioVersionSubmissionSchema = z.object({
 export const PageStudioAiProposalAcceptanceSchema = z.object({
   authorRole: z.enum(['agency', 'client']),
   baseDigest: Digest,
+  expectedCheckpointId: ScopedId,
   checkpoint: PageStudioCheckpointSchema,
   summary: z.string().trim().min(1).max(500)
 }).strict()
