@@ -32,7 +32,7 @@ Reference implementation: standalone Page Studio `758b701` / `130536a`.
 - [ ] Connect a revision-bound preview through standalone Studio (next increment).
 - [x] Verify focused checks, full build, browser and independent review; record the
   existing repository typecheck failure in the [verification report](2026-09-07-page-studio-content-admin-verification.md).
-- [ ] Commit the verified increment.
+- [x] Commit the verified increment: `2205fa204`.
 
 Next: automate business/resource provisioning and self-service ownership, then
 billing, domain/email and operational modules from the versioned product checklist.
