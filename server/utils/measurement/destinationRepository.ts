@@ -551,10 +551,10 @@ export function createPostgresMeasurementDestinationRepository(
             ? currentDestination.credentialConfigured
             : input.patch.credentialRef !== null
 
+          const platformPrefix = currentDestination.platform === 'google_data_manager'
+            ? 'google_' : `${currentDestination.platform}_`
           const invalidPlatformMode = capabilities.some(capability => (
-            currentDestination.platform === 'meta'
-              ? !capability.mode.startsWith('meta_')
-              : !capability.mode.startsWith('google_')
+            !capability.mode.startsWith(platformPrefix)
           ))
           const configuredZeroCapability = capabilities.some(capability => (
             capability.managementOrigin === 'zero' && capability.status === 'configured'
