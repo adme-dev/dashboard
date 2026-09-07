@@ -180,7 +180,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'One Website Workspace, Two Deliberate Views',
-        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
+        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Configured sites also provide a content workspace for names, descriptions and review status, with read-only access and protection against conflicting saves. Content storage must be connected before this workspace becomes available. Saving content does not publish a website.'
       },
       {
         title: 'Studio for Visual Authoring',

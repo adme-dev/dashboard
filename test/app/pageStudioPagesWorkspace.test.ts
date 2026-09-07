@@ -14,7 +14,8 @@ describe('Page Studio Pages workspace', () => {
     expect(publishing).not.toContain('/edit')
     expect(launcher).toContain(`window.open('about:blank', targetName)`)
     expect(launcher).toContain(`form.method = 'POST'`)
-    expect(launcher).toContain('form.target = targetName')
+    expect(launcher).toContain('studioTab.document.createElement(\'form\')')
+    expect(launcher).toContain('studioTab.opener = null')
     expect(launcher).toContain('/editor-sessions')
   })
 

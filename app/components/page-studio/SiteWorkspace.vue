@@ -243,6 +243,14 @@ async function launchStudio(site: PageStudioSiteSummary) {
                 size="sm"
               />
               <UButton
+                v-if="audience === 'portal'"
+                :to="`/portal/page-studio/${site.id}/content`"
+                label="Manage content"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
+              <UButton
                 v-if="editorUrl"
                 label="Launch Studio"
                 icon="i-lucide-panels-top-left"

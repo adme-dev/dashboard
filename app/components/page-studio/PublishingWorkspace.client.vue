@@ -81,6 +81,7 @@ const failed = computed(() => Boolean(sitesError.value || releasesError.value ||
 const tabs = [
   { label: 'Overview', slot: 'overview' as const },
   { label: 'Pages', slot: 'pages' as const },
+  { label: 'Content', slot: 'content' as const },
   { label: 'Assets', slot: 'assets' as const },
   { label: 'Forms', slot: 'forms' as const },
   { label: 'Analytics', slot: 'analytics' as const },
@@ -240,7 +241,7 @@ async function publishApprovedVersion() {
       </div>
     </div>
 
-    <UTabs :items="tabs" class="w-full">
+    <UTabs :items="tabs" :unmount-on-hide="false" class="w-full">
       <template #overview>
         <div class="grid grid-cols-1 gap-4 pt-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
           <UCard>
@@ -307,6 +308,9 @@ async function publishApprovedVersion() {
 
       <template #pages>
         <PageStudioPagesWorkspace :site-id="siteId" />
+      </template>
+      <template #content>
+        <PageStudioBusinessContentWorkspace :key="siteId" :site-id="siteId" audience="agency" />
       </template>
       <template #assets>
         <PageStudioAssetsWorkspace :site-id="siteId" />
