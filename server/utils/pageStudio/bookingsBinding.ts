@@ -1,6 +1,7 @@
 export interface PageStudioBookingsBinding {
   listBookings: (options?: { status?: string, limit?: number }) => Promise<unknown>
   applyAuthorizedBooking: (actor: 'operator', bookingId: string, command: unknown) => Promise<unknown>
+  createBooking: (booking: unknown, requestKey?: string) => Promise<unknown>
 }
 
 export class PageStudioBookingsError extends Error {
@@ -28,5 +29,14 @@ export async function applyScopedPageStudioBooking(binding: PageStudioBookingsBi
     return await binding.applyAuthorizedBooking('operator', bookingId, command)
   } catch (error) {
     throw new PageStudioBookingsError('BOOKINGS_FAILED', error instanceof Error ? error.message : 'Booking command failed')
+  }
+}
+
+export async function createScopedPageStudioBooking(binding: PageStudioBookingsBinding | undefined, booking: unknown, requestKey: string) {
+  if (!binding) throw new PageStudioBookingsError('BOOKINGS_UNAVAILABLE', 'Page Studio booking service is not configured')
+  try {
+    return await binding.createBooking(booking, requestKey)
+  } catch (error) {
+    throw new PageStudioBookingsError('BOOKINGS_FAILED', error instanceof Error ? error.message : 'Booking enquiry failed')
   }
 }
