@@ -53,6 +53,29 @@ Generated from `dist/_worker.js`. Source maps are excluded, matching the release
 - `chunks/m/24a.mjs` — 174.0 KiB
 - `chunks/m/c6.mjs` — 155.4 KiB
 
+## Imports in the eight largest shared modules
+
+- `@cloudflare/puppeteer`
+- `@react-email/render`
+- `cloudflare:sockets`
+- `cloudflare:workers`
+- `node:async_hooks`
+- `node:buffer`
+- `node:crypto`
+- `node:dns`
+- `node:events`
+- `node:fs/promises`
+- `node:net`
+- `node:path`
+- `node:process`
+- `node:stream`
+- `node:string_decoder`
+- `node:timers`
+- `node:tls`
+- `node:util`
+- `node:util/types`
+- `node:zlib`
+
 ## Interpretation
 
-The wrapped artifact does not retain stable source route names, so the first list is a content-reference signal rather than an exact route-size attribution. The dominant raw weight is shared `chunks/m/*` runtime code. Extraction should target dependencies reachable from those shared modules and preserve the existing service-binding and scope contracts. Re-run this inventory after each extraction and require the guarded size check to pass with its configured margin.
+The wrapped artifact does not retain stable source route names, so the first list is a content-reference signal rather than an exact route-size attribution. The dominant raw weight is shared `chunks/m/*` runtime code. The import list identifies externalized or compatibility-heavy roots to inspect before extraction. Preserve the existing service-binding and scope contracts, re-run this inventory after each change, and require the guarded size check to pass with its configured margin.
