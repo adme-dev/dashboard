@@ -4,6 +4,8 @@ useHead({ title: 'Booking enquiry | XeroFlow' })
 const toast = useToast()
 const saving = ref(false)
 const errorMessage = ref<string | null>(null)
+const turnstileSiteKey = computed(() => String(useRuntimeConfig().public.turnstileSiteKey || ''))
+const turnstileToken = ref('')
 const form = reactive({
   name: '', email: '', phone: '', pickup: '', dropoff: '', travelAt: '',
   durationMinutes: 60, passengers: 1, occasion: '', vehicleId: ''
@@ -14,11 +16,15 @@ async function submit() {
     errorMessage.value = 'Complete the required customer and trip details.'
     return
   }
+  if (turnstileSiteKey.value && !turnstileToken.value) {
+    errorMessage.value = 'Complete the human verification challenge before submitting.'
+    return
+  }
   saving.value = true
   try {
     await $fetch('/api/portal/page-studio/bookings', {
       method: 'POST',
-      headers: { 'x-turnstile-token': 'portal-managed' },
+      headers: { 'x-turnstile-token': turnstileToken.value || 'portal-managed' },
       body: {
         bookingId: crypto.randomUUID(), requestKey: crypto.randomUUID(),
         customer: { name: form.name, email: form.email, phone: form.phone },
@@ -88,6 +94,13 @@ async function submit() {
             />
           </UFormField>
         </div>
+        <EmailPublicTurnstile
+          v-if="turnstileSiteKey"
+          :site-key="turnstileSiteKey"
+          theme="dark"
+          @verified="turnstileToken = $event"
+          @expired="turnstileToken = ''"
+        />
         <div class="flex justify-end">
           <UButton
             label="Submit enquiry"
