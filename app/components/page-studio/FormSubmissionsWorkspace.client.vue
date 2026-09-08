@@ -9,8 +9,8 @@ interface Submission {
   submittedAt: string
 }
 
-const props = defineProps<{ siteId: string }>()
-const endpoint = computed(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
+const props = withDefaults(defineProps<{ audience?: 'agency' | 'portal', siteId: string }>(), { audience: 'agency' })
+const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
 const { data, status, error, refresh } = await useFetch<{ submissions: Submission[] }>(endpoint)
 const submissions = computed(() => data.value?.submissions ?? [])
 const columns = [
@@ -50,7 +50,7 @@ async function refreshSubmissions() {
             Form submissions
           </h2>
           <p class="mt-1 text-sm text-muted">
-            Release-authorized submissions routed into XeroFlow Leads with consent and idempotency controls.
+            Release-authorized submissions routed through the site's scoped form service with consent and idempotency controls.
           </p>
         </div>
         <UButton
