@@ -24,10 +24,15 @@ export default eventHandler(async (event) => {
         ON site.tenant_id = proposal.tenant_id
        AND site.client_id = proposal.client_id
        AND site.id = proposal.site_id
-      WHERE proposal.client_id = $1 AND proposal.site_id = $2
+      JOIN page_studio_site_memberships membership
+        ON membership.tenant_id = site.tenant_id
+       AND membership.client_id = site.client_id
+       AND membership.site_id = site.id
+       AND membership.user_id = $2
+      WHERE proposal.client_id = $1 AND proposal.site_id = $3
       ORDER BY proposal.revision DESC
       LIMIT 1
-    `, [user.clientId, siteId])
+    `, [user.clientId, user.id, siteId])
     if (!row) throw createError({ statusCode: 404, statusMessage: 'Setup proposal not found' })
 
     const requestKey = `page-studio-${row.siteId}-${row.revision}`

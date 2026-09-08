@@ -66,6 +66,7 @@ describe('portal Page Studio provisioning handoff', () => {
       serviceAvailable: true
     })
     expect(binding.readProvisioning).toHaveBeenCalledWith('page-studio-s1-2')
+    expect(mocks.queryOne).toHaveBeenCalledWith(expect.stringContaining('membership.user_id = $2'), ['c1', 'u1', 's1'])
   })
 
   it('returns a pending service state when the optional status binding is absent', async () => {
