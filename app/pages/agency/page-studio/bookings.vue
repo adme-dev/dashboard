@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'agency' })
 useHead({ title: 'Booking Queue | XeroFlow Agency' })
 
-interface Booking { id: string, version: number, status: string, customerName?: string | null, pickupAt?: string | null, pickupLocation?: string | null, dropoffLocation?: string | null, quoteAmountCents?: number | null, currency?: string | null, quoteExpiresAt?: string | null, quoteVersion?: number | null }
+interface Booking { id: string, version: number, status: string, customerName?: string | null, pickupAt?: string | null, pickupLocation?: string | null, dropoffLocation?: string | null, quoteAmountCents?: number | null, currency?: string | null, quoteExpiresAt?: string | null, quoteVersion?: number | null, vehicleId?: string | null }
 const status = ref('all')
 const { data, pending, error, refresh } = await useFetch<{ bookings: Booking[] }>('/api/agency/page-studio/bookings', { query: computed(() => ({ status: status.value === 'all' ? undefined : status.value })), default: () => ({ bookings: [] }) })
 const columns = [
@@ -24,6 +24,7 @@ const approvalOpen = ref(false)
 const approving = ref(false)
 const approvalError = ref<string | null>(null)
 const decisionStatus = ref<'approved' | 'rejected' | 'completed' | 'cancelled'>('approved')
+const approvalVehicleId = ref('')
 function openQuote(booking: Booking) {
   selectedBooking.value = booking
   quoteForm.amountCents = booking.quoteAmountCents ?? 0
@@ -58,24 +59,28 @@ async function saveQuote() {
 function openApproval(booking: Booking) {
   selectedBooking.value = booking
   decisionStatus.value = 'approved'
+  approvalVehicleId.value = booking.vehicleId ?? ''
   approvalError.value = null
   approvalOpen.value = true
 }
 function openDecision(booking: Booking) {
   selectedBooking.value = booking
   decisionStatus.value = 'rejected'
+  approvalVehicleId.value = ''
   approvalError.value = null
   approvalOpen.value = true
 }
 function openCompletion(booking: Booking) {
   selectedBooking.value = booking
   decisionStatus.value = 'completed'
+  approvalVehicleId.value = ''
   approvalError.value = null
   approvalOpen.value = true
 }
 function openCancellation(booking: Booking) {
   selectedBooking.value = booking
   decisionStatus.value = 'cancelled'
+  approvalVehicleId.value = ''
   approvalError.value = null
   approvalOpen.value = true
 }
@@ -87,7 +92,11 @@ async function approveBooking() {
   try {
     await $fetch(`/api/agency/page-studio/bookings/${encodeURIComponent(booking.id)}/command`, {
       method: 'POST',
-      body: { actor: 'operator', bookingId: booking.id, expectedVersion: booking.version, idempotencyKey: `${decisionStatus.value}-${booking.id}-${Date.now()}`, nextStatus: decisionStatus.value }
+      body: {
+        actor: 'operator', bookingId: booking.id, expectedVersion: booking.version,
+        idempotencyKey: `${decisionStatus.value}-${booking.id}-${Date.now()}`, nextStatus: decisionStatus.value,
+        ...(decisionStatus.value === 'approved' ? { vehicleId: approvalVehicleId.value.trim() || null } : {})
+      }
     })
     approvalOpen.value = false
     await refresh()
@@ -244,6 +253,9 @@ async function approveBooking() {
       <p class="text-sm text-muted">
         This uses the current booking version and will be rejected if another operator has changed the booking.
       </p>
+      <UFormField v-if="decisionStatus === 'approved'" label="Vehicle ID" help="Assign the vehicle that should be held for this booking. Leave blank to assign it later.">
+        <UInput v-model="approvalVehicleId" placeholder="e.g. limo-01" class="w-full" />
+      </UFormField>
     </template>
     <template #footer>
       <div class="flex w-full justify-end gap-3">
