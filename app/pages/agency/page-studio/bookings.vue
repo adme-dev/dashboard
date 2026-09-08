@@ -105,6 +105,13 @@ async function approveBooking() {
       <UDashboardNavbar title="Booking queue">
         <template #right>
           <UButton
+            label="Driver sheet"
+            icon="i-lucide-printer"
+            color="neutral"
+            variant="outline"
+            to="/agency/page-studio/bookings/driver-sheet"
+          />
+          <UButton
             label="Refresh"
             icon="i-lucide-refresh-cw"
             color="neutral"
