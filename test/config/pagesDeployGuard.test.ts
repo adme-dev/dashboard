@@ -171,6 +171,20 @@ CRM_SEARCH_PROVIDER_APIS_ENABLED = "true"
     expect(workflowSource).toContain('pnpm crm-search:release:production')
   })
 
+  it('gates the manual preview upload on CI and the immutable preview command', async () => {
+    const workflow = await readFile(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8')
+    const preview = workflow.split('\n  preview_deploy:')[1]?.split('\n  release_artifact:')[0]
+    expect(preview).toBeDefined()
+    expect(preview).toContain('needs: ci')
+    expect(preview).toContain("github.event_name == 'workflow_dispatch' && inputs.release_action == 'preview'")
+    expect(preview).toContain('environment: preview_deploy')
+    expect(preview).toContain('ref: ${{ github.sha }}')
+    expect(preview).toContain('pnpm deploy:check')
+    expect(preview).toContain('pnpm deploy:preview')
+    expect(preview).not.toMatch(/deploy:production|crm-search:release:production|wrangler pages deploy/)
+    expect(preview).not.toContain('CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL')
+  })
+
   it('rejects unsupported branch names', () => {
     expect(() => buildPagesDeployArgs('dealer-network')).toThrow(/unsupported Pages branch/i)
   })

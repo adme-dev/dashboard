@@ -141,3 +141,31 @@ failed only on 30-second timeouts in the desktop/mobile governance scroll tests
 the other CI run; the exact stalled browser operation is not yet identified.
 The ledger retains this intermittent failure for investigation. Neither run
 executed a deployment job.
+
+### Manual GitHub preview upload path
+
+The CI workflow now offers `release_action=preview` on manual dispatch. It waits
+for the existing build/full-suite/social/target-guard CI job, checks out the exact
+workflow SHA, and runs `pnpm deploy:check` followed by `pnpm deploy:preview` on a
+GitHub runner. The preview job has a separate `preview_deploy` environment and a
+serialized preview deployment group. The target remains `agency-dashboard` /
+`preview`; production still uses its existing signed release path.
+
+Only Cloudflare secret **names** were inspected: repository-level
+`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` exist. Their validity/permissions
+must be proved by the deployment, not inferred from their presence. No secret
+values were read or changed. The origin smoke checks the preview alias; exact
+Cloudflare deployment/source readback remains required after the job succeeds.
+
+Dispatch the reviewed source branch with:
+
+```sh
+gh workflow run ci.yml --repo adme-dev/dashboard \
+  --ref feature/page-studio-business-admin -f release_action=preview
+```
+
+Validation: YAML parses; four deployment/workflow contract suites pass 34 tests,
+including a new regression requiring manual dispatch, CI dependency, exact-SHA
+checkout and the fixed preview command. No build or assertion is skipped to
+publish the preview. This path is implemented to investigate the local upload
+transport issue; no successful remote upload is claimed until verified.
