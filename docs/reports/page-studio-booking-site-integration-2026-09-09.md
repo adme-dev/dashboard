@@ -1,6 +1,7 @@
 # Booking site integration — 9 September 2026
 
-Status: implemented locally; remote booking acceptance and production rollout remain open.
+Status: deployed to preview; private Worker staging checks pass. Authenticated
+Dashboard-to-Worker booking acceptance and production rollout remain open.
 
 ## Dashboard boundary
 
@@ -169,3 +170,28 @@ including a new regression requiring manual dispatch, CI dependency, exact-SHA
 checkout and the fixed preview command. No build or assertion is skipped to
 publish the preview. This path is implemented to investigate the local upload
 transport issue; no successful remote upload is claimed until verified.
+
+### Verified preview deployment and private staging services
+
+Run `34279199633` completed CI and preview deployment successfully at
+`0d4ee392200d0fa55e5f39d4c3ba640f17035bb6`. Cloudflare readback confirms preview
+deployment `5d72b6f7-0acb-4a00-a474-71ed1fec259b`, source `0d4ee39`:
+https://5d72b6f7.agency-dashboard-6cm.pages.dev . The booking page's Nuxt shell,
+JavaScript and stylesheet return 200. Both anonymous booking APIs return 401.
+This verifies upload and basic access denial; it does not verify a signed-in
+booking journey. Production remains `60f2171`.
+
+The GitHub build passed the unchanged artifact guard at 25,055,958 raw bytes
+(412,970 remaining) and 6,581,773 gzip bytes (3,168,227 remaining).
+
+Foundation `6ba824d` passes Linux and Windows CI (`34280451448`). Two private
+staging Business Content Workers are now deployed with separate D1 databases
+and all 16 migrations. The remote test proves content persistence/concurrent
+write rejection, all five scope fields, customer-role denial, same-ID booking
+isolation, rejection and replay. Direct D1 readback confirms one transition
+event only in site A and no email queued. Resource IDs, repeatable commands and
+limitations are in foundation `docs/research/2026-09-09-business-content-staging.md`.
+
+These are synthetic service-level fixtures. They are not yet bound into this
+Dashboard preview or attached to real portal memberships/entitlements. BOOK-07
+remains open until that authenticated two-site acceptance is completed.
