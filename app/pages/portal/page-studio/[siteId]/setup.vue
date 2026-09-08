@@ -9,12 +9,26 @@ interface ProvisioningStatus {
   serviceAvailable: boolean
 }
 
+interface SetupProposal {
+  revision: number
+  status: 'proposed' | 'accepted' | 'rejected'
+  source: 'template' | 'chat'
+  brief?: string | null
+  plan?: { missingFacts?: string[] }
+}
+
 const route = useRoute()
 const toast = useToast()
 const siteId = computed(() => String(route.params.siteId || ''))
 const retrying = ref(false)
+const revising = ref(false)
+const revisionBrief = ref('')
 const { data, pending, error, refresh } = await useFetch<ProvisioningStatus>(
   () => `/api/portal/page-studio/sites/${encodeURIComponent(siteId.value)}/provision`,
+  { watch: [siteId] }
+)
+const { data: proposalData, refresh: refreshProposal } = await useFetch<{ proposal: SetupProposal }>(
+  () => `/api/portal/page-studio/sites/${encodeURIComponent(siteId.value)}/setup-proposal`,
   { watch: [siteId] }
 )
 
@@ -47,6 +61,27 @@ async function retryProvisioning() {
     toast.add({ title: 'Setup could not resume', description: message, color: 'error' })
   } finally {
     retrying.value = false
+  }
+}
+
+async function reviseProposal() {
+  if (!proposalData.value?.proposal || revising.value || !revisionBrief.value.trim()) return
+  revising.value = true
+  try {
+    await $fetch(`/api/portal/page-studio/sites/${encodeURIComponent(siteId.value)}/setup-proposal`, {
+      method: 'PATCH',
+      body: { expectedRevision: proposalData.value.proposal.revision, setupBrief: revisionBrief.value.trim() }
+    })
+    revisionBrief.value = ''
+    toast.add({ title: 'Details submitted', description: 'A new proposal revision is ready for agency review.', color: 'success' })
+    await Promise.all([refresh(), refreshProposal()])
+  } catch (caught: unknown) {
+    const message = caught && typeof caught === 'object' && 'data' in caught && caught.data && typeof caught.data === 'object' && 'statusMessage' in caught.data
+      ? String(caught.data.statusMessage)
+      : 'The additional details could not be submitted.'
+    toast.add({ title: 'Details not submitted', description: message, color: 'error' })
+  } finally {
+    revising.value = false
   }
 }
 </script>
@@ -123,6 +158,50 @@ async function retryProvisioning() {
         title="Waiting for agency review"
         description="Resources are not created until the setup proposal is accepted."
       />
+
+      <UCard v-if="proposalData?.proposal && proposalData.proposal.status === 'proposed'">
+        <div class="space-y-4">
+          <div>
+            <h2 class="text-base font-semibold text-highlighted">
+              Complete your setup details
+            </h2>
+            <p class="mt-1 text-sm leading-6 text-muted">
+              Answer any open questions below. Your agency will review the updated proposal before provisioning starts.
+            </p>
+          </div>
+          <UAlert
+            v-if="proposalData.proposal.plan?.missingFacts?.length"
+            color="warning"
+            variant="subtle"
+            title="Still needed"
+          >
+            <template #description>
+              <ul class="mt-2 list-disc space-y-1 pl-5">
+                <li v-for="fact in proposalData.proposal.plan.missingFacts" :key="fact">
+                  {{ fact }}
+                </li>
+              </ul>
+            </template>
+          </UAlert>
+          <UFormField label="Additional business details" help="Include confirmed prices, hours, locations, policies, contact details, or other facts. The system will not invent them.">
+            <UTextarea
+              v-model="revisionBrief"
+              class="w-full"
+              :rows="5"
+              placeholder="For example: bookings are available 7 days a week; airport transfers start at $220; call 03 9000 0000."
+            />
+          </UFormField>
+          <div class="flex justify-end">
+            <UButton
+              label="Submit details for review"
+              color="primary"
+              :loading="revising"
+              :disabled="!revisionBrief.trim()"
+              @click="reviseProposal"
+            />
+          </div>
+        </div>
+      </UCard>
 
       <div class="flex justify-end gap-3">
         <UButton
