@@ -200,7 +200,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Bookings With Operator Approval',
-        content: 'Public enquiries are protected by Cloudflare Turnstile and remain enquiries until an authorised operator reviews the trip, quote and availability. Versioned commands, idempotency and site membership checks keep customer intake, agency decisions and provisioning auditable. Email, billing and remote service bindings remain environment-gated until configured.'
+        content: 'Public enquiries are protected by Cloudflare Turnstile and remain enquiries until an authorised operator reviews the trip, quote and availability. Agency and portal booking screens select a website explicitly, with site membership checks on every request. Versioned commands and idempotency keep customer intake and agency decisions auditable. Email, billing and remote service bindings remain environment-gated until configured.'
       }
     ]
   },

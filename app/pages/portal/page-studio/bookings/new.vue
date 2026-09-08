@@ -2,16 +2,29 @@
 definePageMeta({ layout: 'portal' })
 useHead({ title: 'Booking enquiry | XeroFlow' })
 const toast = useToast()
+const { siteId, selectSite } = usePageStudioBookingSite()
+const requestId = ref(crypto.randomUUID())
 const saving = ref(false)
 const errorMessage = ref<string | null>(null)
 const turnstileSiteKey = computed(() => String(useRuntimeConfig().public.turnstileSiteKey || ''))
 const turnstileToken = ref('')
+const captchaAttempt = ref(0)
+watch(siteId, () => {
+  requestId.value = crypto.randomUUID()
+  turnstileToken.value = ''
+  captchaAttempt.value++
+})
 const form = reactive({
   name: '', email: '', phone: '', pickup: '', dropoff: '', travelAt: '',
-  durationMinutes: 60, passengers: 1, occasion: '', vehicleId: ''
+  durationMinutes: 60, passengers: 1, occasion: ''
 })
 async function submit() {
+  if (saving.value) return
   errorMessage.value = null
+  if (!siteId.value) {
+    errorMessage.value = 'Choose the website for this enquiry.'
+    return
+  }
   if (!form.name || !form.email || !form.phone || !form.pickup || !form.dropoff || !form.travelAt) {
     errorMessage.value = 'Complete the required customer and trip details.'
     return
@@ -22,24 +35,28 @@ async function submit() {
       : 'Booking security is not configured for this portal. Ask your agency to enable Cloudflare Turnstile.'
     return
   }
+  const submittedSiteId = siteId.value
   saving.value = true
   try {
     await $fetch('/api/portal/page-studio/bookings', {
       method: 'POST',
+      query: { siteId: submittedSiteId },
       headers: { 'x-turnstile-token': turnstileToken.value },
       body: {
-        bookingId: crypto.randomUUID(), requestKey: crypto.randomUUID(),
+        bookingId: requestId.value, requestKey: requestId.value,
         customer: { name: form.name, email: form.email, phone: form.phone },
         pickup: form.pickup, dropoff: form.dropoff, travelAt: form.travelAt,
         durationMinutes: form.durationMinutes, passengers: form.passengers,
-        occasion: form.occasion, vehicleId: form.vehicleId || null
+        occasion: form.occasion, vehicleId: null
       }
     })
     toast.add({ title: 'Enquiry submitted', description: 'Your agency will review the trip and follow up with a quote.', color: 'success' })
-    await navigateTo('/portal/page-studio/bookings')
+    await navigateTo({ path: '/portal/page-studio/bookings', query: { siteId: submittedSiteId } })
   } catch (error: unknown) {
     errorMessage.value = error && typeof error === 'object' && 'data' in error && error.data && typeof error.data === 'object' && 'statusMessage' in error.data ? String(error.data.statusMessage) : 'The booking enquiry could not be submitted.'
   } finally {
+    turnstileToken.value = ''
+    captchaAttempt.value++
     saving.value = false
   }
 }
@@ -63,7 +80,14 @@ async function submit() {
       :description="errorMessage"
     />
     <UCard>
-      <div class="space-y-5">
+      <PageStudioBookingSitePicker
+        audience="portal"
+        :site-id="siteId"
+        :disabled="saving"
+        class="mb-5"
+        @update:site-id="selectSite"
+      />
+      <div class="@container space-y-5">
         <UAlert
           v-if="!turnstileSiteKey"
           color="warning"
@@ -106,6 +130,7 @@ async function submit() {
         </div>
         <EmailPublicTurnstile
           v-if="turnstileSiteKey"
+          :key="captchaAttempt"
           :site-key="turnstileSiteKey"
           theme="dark"
           @verified="turnstileToken = $event"
@@ -116,6 +141,7 @@ async function submit() {
             label="Submit enquiry"
             color="primary"
             :loading="saving"
+            :disabled="!siteId || !turnstileSiteKey"
             @click="submit"
           />
         </div>

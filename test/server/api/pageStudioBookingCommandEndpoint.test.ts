@@ -1,27 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fixture, installBookingHttpGlobals, scope, siteRow } from '../../fixtures/pageStudioBookings'
 
-const mocks = vi.hoisted(() => ({ access: vi.fn() }))
-vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: (...args: unknown[]) => mocks.access(...args) }))
-const globals = globalThis as typeof globalThis & { eventHandler: <T>(handler: T) => T, getRouterParam: (event: { bookingId?: string }) => string | undefined, readBody: (event: { body?: unknown }) => Promise<unknown>, createError: (input: Record<string, unknown>) => Error & Record<string, unknown> }
-globals.eventHandler = handler => handler
-globals.getRouterParam = event => event.bookingId
-globals.readBody = async event => event.body
-globals.createError = input => Object.assign(new Error(String(input.statusMessage)), input)
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), query: vi.fn(), enabled: vi.fn(), verify: vi.fn() }))
+vi.mock('~~/server/utils/db', () => ({ queryOneFresh: (...args: unknown[]) => mocks.query(...args) }))
+vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: (...args: unknown[]) => mocks.auth(...args) }))
+vi.mock('~~/server/utils/clientAuth', () => ({ requireClientAuth: (...args: unknown[]) => mocks.auth(...args) }))
+vi.mock('~~/server/utils/turnstile', () => ({ isTurnstileEnabled: () => mocks.enabled(), verifyTurnstile: (...args: unknown[]) => mocks.verify(...args) }))
+installBookingHttpGlobals()
+beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.auth.mockResolvedValue({ tenantId: scope.tenantId, user: { id: 'operator-1' }, id: 'user-1', clientId: scope.clientId })
+  mocks.query.mockResolvedValue(siteRow)
+  mocks.enabled.mockReturnValue(true)
+  mocks.verify.mockResolvedValue(true)
+})
 
-describe('agency Page Studio booking commands', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mocks.access.mockResolvedValue({ tenantId: 't1', user: { id: 'operator-1' } })
-  })
-  it('derives the operator actor from permissioned agency auth', async () => {
-    const binding = { listBookings: vi.fn(), applyAuthorizedBooking: vi.fn().mockResolvedValue({ event: { nextStatus: 'approved' } }) }
+const command = { actor: 'operator', bookingId: 'booking-1', expectedVersion: 0, idempotencyKey: 'cmd-1', nextStatus: 'approved', vehicleId: 'limo-1' }
+describe('scoped operator commands', () => {
+  it('requires approval permission and removes the transport booking ID before RPC', async () => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/bookings/[bookingId]/command.post')
-    await expect(handler({ bookingId: 'b1', body: { actor: 'operator', bookingId: 'b1', expectedVersion: 1, idempotencyKey: 'cmd-1', nextStatus: 'approved' }, context: { cloudflare: { env: { PAGE_STUDIO_BOOKINGS: binding } } } } as never)).resolves.toEqual({ actorId: 'operator-1', booking: { event: { nextStatus: 'approved' } } })
-    expect(binding.applyAuthorizedBooking).toHaveBeenCalledWith('operator', 'b1', expect.objectContaining({ nextStatus: 'approved' }))
-    expect(mocks.access).toHaveBeenCalledWith(expect.anything(), 'PAGE_STUDIO_APPROVE')
+    const { event, service } = fixture()
+    await expect(handler({ ...event, bookingId: 'booking-1', body: command } as never)).resolves.toMatchObject({ actorId: 'operator-1', booking: { aggregate: { booking: { id: 'booking-1', status: 'approved' }, version: 1 } } })
+    expect(mocks.auth).toHaveBeenCalledWith(expect.anything(), 'PAGE_STUDIO_APPROVE')
+    expect(service.applyScopedBookingCommand).toHaveBeenCalledWith(scope, 'operator', 'booking-1', { actor: 'operator', expectedVersion: 0, idempotencyKey: 'cmd-1', nextStatus: 'approved', vehicleId: 'limo-1' })
   })
-  it('rejects a command whose body booking id does not match the route', async () => {
+  it.each([{ ...command, bookingId: 'other' }, { ...command, actor: 'customer' }, { ...command, scope }])('rejects invalid or authority-bearing commands: %j', async (body) => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/bookings/[bookingId]/command.post')
-    await expect(handler({ bookingId: 'b1', body: { actor: 'operator', bookingId: 'b2', expectedVersion: 1, idempotencyKey: 'cmd-1', nextStatus: 'approved' }, context: {} } as never)).rejects.toMatchObject({ statusCode: 400 })
+    const { event, service } = fixture()
+    await expect(handler({ ...event, bookingId: 'booking-1', body } as never)).rejects.toMatchObject({ statusCode: 400 })
+    expect(service.applyScopedBookingCommand).not.toHaveBeenCalled()
+  })
+  it('denies a command for an unavailable site', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/bookings/[bookingId]/command.post')
+    const { event, service } = fixture()
+    mocks.query.mockResolvedValue(null)
+    await expect(handler({ ...event, bookingId: 'booking-1', body: command } as never)).rejects.toMatchObject({ statusCode: 404 })
+    expect(service.applyScopedBookingCommand).not.toHaveBeenCalled()
   })
 })

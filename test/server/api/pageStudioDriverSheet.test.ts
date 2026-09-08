@@ -1,22 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { aggregate, fixture, installBookingHttpGlobals, scope, siteId, siteRow } from '../../fixtures/pageStudioBookings'
 
-const mocks = vi.hoisted(() => ({ access: vi.fn(), list: vi.fn() }))
-vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: (...args: unknown[]) => mocks.access(...args) }))
-vi.mock('~~/server/utils/pageStudio/bookingsBinding', () => ({ listScopedPageStudioBookings: (...args: unknown[]) => mocks.list(...args) }))
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), query: vi.fn(), enabled: vi.fn(), verify: vi.fn() }))
+vi.mock('~~/server/utils/db', () => ({ queryOneFresh: (...args: unknown[]) => mocks.query(...args) }))
+vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: (...args: unknown[]) => mocks.auth(...args) }))
+vi.mock('~~/server/utils/clientAuth', () => ({ requireClientAuth: (...args: unknown[]) => mocks.auth(...args) }))
+vi.mock('~~/server/utils/turnstile', () => ({ isTurnstileEnabled: () => mocks.enabled(), verifyTurnstile: (...args: unknown[]) => mocks.verify(...args) }))
+installBookingHttpGlobals()
+beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.auth.mockResolvedValue({ tenantId: scope.tenantId, user: { id: 'operator-1' }, id: 'user-1', clientId: scope.clientId })
+  mocks.query.mockResolvedValue(siteRow)
+  mocks.enabled.mockReturnValue(true)
+  mocks.verify.mockResolvedValue(true)
+})
 
-const globals = globalThis as typeof globalThis & { eventHandler: <T>(handler: T) => T }
-globals.eventHandler = handler => handler
-
-describe('agency Page Studio driver sheet', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mocks.access.mockResolvedValue({ tenantId: 'tenant-1' })
-    mocks.list.mockImplementation(async (_binding: unknown, options: { status: string }) => options.status === 'approved' ? [{ booking: { id: 'b1', status: 'approved', customer: { name: 'Alex', phone: '0400' }, pickup: 'Airport', dropoff: 'Hotel', travelAt: '2026-10-01T10:00:00Z', passengers: 2, vehicleId: 'van-1', occasion: 'Transfer' } }] : [])
-  })
-
-  it('returns normalized approved and customer-confirmed dispatch rows', async () => {
+describe('scoped driver sheet', () => {
+  it('requests only approved and customer-confirmed trips for the selected site', async () => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/bookings/driver-sheet.get')
-    await expect(handler({ context: { cloudflare: { env: { PAGE_STUDIO_BOOKINGS: {} } } } } as never)).resolves.toEqual({ tenantId: 'tenant-1', bookings: [expect.objectContaining({ id: 'b1', customer: 'Alex', vehicleId: 'van-1' })] })
-    expect(mocks.list).toHaveBeenCalledTimes(2)
+    const { event, service } = fixture()
+    service.listScopedBookings.mockImplementation(async (_scope, options) => [aggregate(options.status)])
+    const result = await handler(event as never)
+    expect(result).toMatchObject({ tenantId: scope.tenantId, siteId, bookings: [expect.objectContaining({ customer: 'Alex', phone: '0400000000', pickup: 'Airport' }), expect.objectContaining({ customer: 'Alex' })] })
+    expect(service.listScopedBookings).toHaveBeenCalledWith(scope, { status: 'approved', limit: 100 })
+    expect(service.listScopedBookings).toHaveBeenCalledWith(scope, { status: 'customer-confirmed', limit: 100 })
+    expect(setHeader).toHaveBeenCalledWith(expect.anything(), 'cache-control', 'private, no-store')
+  })
+  it('denies dispatch access before RPC when agency permission is missing', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/bookings/driver-sheet.get')
+    const { event, service } = fixture()
+    mocks.auth.mockRejectedValue(Object.assign(new Error('Forbidden'), { statusCode: 403 }))
+    await expect(handler(event as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.query).not.toHaveBeenCalled()
+    expect(service.listScopedBookings).not.toHaveBeenCalled()
   })
 })

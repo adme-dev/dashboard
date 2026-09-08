@@ -1,23 +1,22 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+import type { PageStudioBookingAggregate } from '~~/shared/pageStudio/bookings'
+
 definePageMeta({ layout: 'portal' })
 useHead({ title: 'Booking enquiries | XeroFlow' })
 
-interface BookingAggregate { booking?: Record<string, unknown>, version?: number, id?: string, status?: string }
-const { data, pending, error, refresh } = await useFetch<{ bookings: BookingAggregate[] }>('/api/portal/page-studio/bookings', { default: () => ({ bookings: [] }) })
-const rows = computed(() => data.value.bookings.map((aggregate) => {
-  const booking = aggregate.booking ?? aggregate as unknown as Record<string, unknown>
-  const customer = booking.customer && typeof booking.customer === 'object' ? booking.customer as Record<string, unknown> : null
-  const trip = booking.trip && typeof booking.trip === 'object' ? booking.trip as Record<string, unknown> : null
-  return {
-    id: String(booking.id ?? ''),
-    status: String(booking.status ?? 'unknown'),
-    pickup: String(booking.pickup ?? trip?.pickupLocation ?? '—'),
-    dropoff: String(booking.dropoff ?? trip?.dropoffLocation ?? '—'),
-    travelAt: typeof booking.travelAt === 'string' ? booking.travelAt : typeof trip?.pickupAt === 'string' ? trip.pickupAt : null,
-    customer: String(customer?.name ?? '—')
-  }
-}))
-const columns = [
+const { siteId, selectSite } = usePageStudioBookingSite()
+const { data, pending, error, refresh, clear } = await useFetch<{ siteId?: string, bookings: PageStudioBookingAggregate[] }>('/api/portal/page-studio/bookings', { immediate: false, watch: false, query: { siteId }, default: () => ({ bookings: [] }) })
+watch(siteId, () => {
+  if (siteId.value) refresh()
+  else clear()
+}, { immediate: true })
+const rows = computed(() => (data.value?.siteId === siteId.value ? data.value.bookings : []).map(({ booking }) => ({
+  id: booking.id, status: booking.status, pickup: booking.pickup, dropoff: booking.dropoff,
+  travelAt: booking.travelAt, customer: booking.customer.name
+})))
+type BookingRow = (typeof rows.value)[number]
+const columns: TableColumn<BookingRow>[] = [
   { accessorKey: 'customer', header: 'Customer' },
   { accessorKey: 'travelAt', header: 'Pickup' },
   { accessorKey: 'pickup', header: 'From' },
@@ -39,12 +38,13 @@ const columns = [
         </p>
       </div>
       <UButton
-        to="/portal/page-studio/bookings/new"
+        :to="{ path: '/portal/page-studio/bookings/new', query: { siteId } }"
         label="New enquiry"
         icon="i-lucide-plus"
         color="primary"
       />
     </div>
+    <PageStudioBookingSitePicker audience="portal" :site-id="siteId" @update:site-id="selectSite" />
     <UAlert
       color="info"
       variant="subtle"
@@ -53,13 +53,13 @@ const columns = [
       description="Every enquiry is checked for availability before a quote or customer confirmation is issued."
     />
     <UAlert
-      v-if="error"
+      v-if="siteId && error"
       color="error"
       variant="subtle"
       title="Booking enquiries unavailable"
-      description="The booking service is not connected in this environment."
+      description="Bookings could not be loaded for this website. Refresh or ask your agency to check access."
     />
-    <UCard v-else>
+    <UCard v-else-if="siteId">
       <template #header>
         <div class="flex items-center justify-between gap-3">
           <h2 class="font-semibold text-highlighted">
@@ -71,7 +71,7 @@ const columns = [
             color="neutral"
             variant="outline"
             :loading="pending"
-            @click="refresh"
+            @click="() => refresh()"
           />
         </div>
       </template>

@@ -1,3 +1,4 @@
+import { PageStudioBookingsError } from '~~/server/utils/pageStudio/bookingsBinding'
 import { PageStudioBusinessContentError } from '~~/server/utils/pageStudio/businessContent'
 import { setResponseStatus, type H3Event } from 'h3'
 
@@ -33,7 +34,8 @@ export function projectPageStudioInternalError(error: unknown): {
   statusCode: number
   body: StablePageStudioError
 } {
-  if (error instanceof PageStudioBusinessContentError
+  if (error instanceof PageStudioBookingsError
+    || error instanceof PageStudioBusinessContentError
     || error instanceof PageStudioControlError
     || error instanceof PageStudioBuildError
     || error instanceof PageStudioDeliveryError
@@ -88,7 +90,8 @@ export function pageStudioInternalHttpError(
 }
 
 export function pageStudioHttpError(error: unknown): never {
-  if (error instanceof PageStudioBusinessContentError
+  if (error instanceof PageStudioBookingsError
+    || error instanceof PageStudioBusinessContentError
     || error instanceof PageStudioControlError
     || error instanceof PageStudioBuildError
     || error instanceof PageStudioDeliveryError

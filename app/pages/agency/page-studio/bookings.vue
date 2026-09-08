@@ -1,11 +1,20 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 definePageMeta({ layout: 'agency' })
 useHead({ title: 'Booking Queue | XeroFlow Agency' })
 
 interface Booking { id: string, version: number, status: string, customerName?: string | null, pickupAt?: string | null, pickupLocation?: string | null, dropoffLocation?: string | null, quoteAmountCents?: number | null, currency?: string | null, quoteExpiresAt?: string | null, quoteVersion?: number | null, vehicleId?: string | null }
 const status = ref('all')
-const { data, pending, error, refresh } = await useFetch<{ bookings: Booking[] }>('/api/agency/page-studio/bookings', { query: computed(() => ({ status: status.value === 'all' ? undefined : status.value })), default: () => ({ bookings: [] }) })
-const columns = [
+const { siteId, selectSite } = usePageStudioBookingSite()
+const selectedSiteId = ref('')
+const { data, pending, error, refresh, clear } = await useFetch<{ siteId?: string, bookings: Booking[] }>('/api/agency/page-studio/bookings', { immediate: false, watch: false, query: computed(() => ({ siteId: siteId.value, status: status.value === 'all' ? undefined : status.value })), default: () => ({ bookings: [] }) })
+const bookings = computed(() => data.value?.siteId === siteId.value ? data.value.bookings : [])
+watch([siteId, status], () => {
+  if (siteId.value) refresh()
+  else clear()
+}, { immediate: true })
+const columns: TableColumn<Booking>[] = [
   { accessorKey: 'customerName', header: 'Customer' },
   { accessorKey: 'pickupAt', header: 'Pickup' },
   { accessorKey: 'pickupLocation', header: 'From' },
@@ -14,7 +23,7 @@ const columns = [
   { accessorKey: 'status', header: 'Status' },
   { id: 'actions', header: '' }
 ]
-const filters = [{ label: 'All statuses', value: 'all' }, { label: 'Enquiry', value: 'enquiry' }, { label: 'Quoted', value: 'quoted' }, { label: 'Approved', value: 'approved' }, { label: 'Customer confirmed', value: 'customer-confirmed' }, { label: 'Completed', value: 'completed' }, { label: 'Cancelled', value: 'cancelled' }]
+const filters = [{ label: 'All statuses', value: 'all' }, { label: 'Rejected', value: 'rejected' }, { label: 'Enquiry', value: 'enquiry' }, { label: 'Quoted', value: 'quoted' }, { label: 'Approved', value: 'approved' }, { label: 'Customer confirmed', value: 'customer-confirmed' }, { label: 'Completed', value: 'completed' }, { label: 'Cancelled', value: 'cancelled' }]
 const quoteOpen = ref(false)
 const quoteSaving = ref(false)
 const quoteError = ref<string | null>(null)
@@ -26,6 +35,7 @@ const approvalError = ref<string | null>(null)
 const decisionStatus = ref<'approved' | 'rejected' | 'completed' | 'cancelled'>('approved')
 const approvalVehicleId = ref('')
 function openQuote(booking: Booking) {
+  selectedSiteId.value = siteId.value
   selectedBooking.value = booking
   quoteForm.amountCents = booking.quoteAmountCents ?? 0
   quoteForm.currency = booking.currency ?? 'AUD'
@@ -42,6 +52,7 @@ async function saveQuote() {
   try {
     await $fetch(`/api/agency/page-studio/bookings/${encodeURIComponent(booking.id)}/command`, {
       method: 'POST',
+      query: { siteId: selectedSiteId.value },
       body: {
         actor: 'operator', bookingId: booking.id, expectedVersion: booking.version,
         idempotencyKey: `quote-${booking.id}-${Date.now()}`, nextStatus: quoteForm.nextStatus,
@@ -57,6 +68,7 @@ async function saveQuote() {
   }
 }
 function openApproval(booking: Booking) {
+  selectedSiteId.value = siteId.value
   selectedBooking.value = booking
   decisionStatus.value = 'approved'
   approvalVehicleId.value = booking.vehicleId ?? ''
@@ -64,6 +76,7 @@ function openApproval(booking: Booking) {
   approvalOpen.value = true
 }
 function openDecision(booking: Booking) {
+  selectedSiteId.value = siteId.value
   selectedBooking.value = booking
   decisionStatus.value = 'rejected'
   approvalVehicleId.value = ''
@@ -71,6 +84,7 @@ function openDecision(booking: Booking) {
   approvalOpen.value = true
 }
 function openCompletion(booking: Booking) {
+  selectedSiteId.value = siteId.value
   selectedBooking.value = booking
   decisionStatus.value = 'completed'
   approvalVehicleId.value = ''
@@ -78,6 +92,7 @@ function openCompletion(booking: Booking) {
   approvalOpen.value = true
 }
 function openCancellation(booking: Booking) {
+  selectedSiteId.value = siteId.value
   selectedBooking.value = booking
   decisionStatus.value = 'cancelled'
   approvalVehicleId.value = ''
@@ -92,6 +107,7 @@ async function approveBooking() {
   try {
     await $fetch(`/api/agency/page-studio/bookings/${encodeURIComponent(booking.id)}/command`, {
       method: 'POST',
+      query: { siteId: selectedSiteId.value },
       body: {
         actor: 'operator', bookingId: booking.id, expectedVersion: booking.version,
         idempotencyKey: `${decisionStatus.value}-${booking.id}-${Date.now()}`, nextStatus: decisionStatus.value,
@@ -106,6 +122,11 @@ async function approveBooking() {
     approving.value = false
   }
 }
+watch(siteId, () => {
+  quoteOpen.value = false
+  approvalOpen.value = false
+  selectedBooking.value = null
+})
 </script>
 
 <template>
@@ -118,7 +139,7 @@ async function approveBooking() {
             icon="i-lucide-printer"
             color="neutral"
             variant="outline"
-            to="/agency/page-studio/bookings/driver-sheet"
+            :to="{ path: '/agency/page-studio/bookings/driver-sheet', query: { siteId } }"
           />
           <UButton
             label="Refresh"
@@ -126,11 +147,13 @@ async function approveBooking() {
             color="neutral"
             variant="outline"
             :loading="pending"
-            @click="refresh"
+            :disabled="!siteId"
+            @click="() => refresh()"
           />
         </template>
       </UDashboardNavbar>
       <div class="flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
+        <PageStudioBookingSitePicker audience="agency" :site-id="siteId" @update:site-id="selectSite" />
         <UAlert
           color="info"
           variant="subtle"
@@ -138,22 +161,24 @@ async function approveBooking() {
           title="Operator approval required"
           description="Review enquiries and quotes before any customer confirmation or vehicle hold is created."
         />
-        <USelectMenu
-          v-model="status"
-          :items="filters"
-          value-key="value"
-          class="w-full sm:w-64"
-          placeholder="Filter status"
-        />
+        <UFormField label="Booking status">
+          <USelectMenu
+            v-model="status"
+            :items="filters"
+            value-key="value"
+            class="w-full sm:w-64"
+            placeholder="Filter status"
+          />
+        </UFormField>
         <UAlert
-          v-if="error"
+          v-if="siteId && error"
           color="error"
           title="Booking service unavailable"
-          description="The private booking Worker binding is not configured for this environment."
+          description="Bookings could not be loaded for this website. Refresh or ask your agency to check access."
         />
-        <UCard v-else>
-          <UTable :data="data.bookings" :columns="columns" :loading="pending">
-            <template #actions-data="{ row }">
+        <UCard v-else-if="siteId">
+          <UTable :data="bookings" :columns="columns" :loading="pending">
+            <template #actions-cell="{ row }">
               <UButton
                 v-if="['enquiry', 'quoted'].includes(row.original.status)"
                 label="Quote"
@@ -232,7 +257,7 @@ async function approveBooking() {
           color="neutral"
           variant="ghost"
           :disabled="quoteSaving"
-          @click="quoteOpen = false"
+          @click="() => { quoteOpen = false }"
         /><UButton
           label="Save quote"
           color="primary"
@@ -264,7 +289,7 @@ async function approveBooking() {
           color="neutral"
           variant="ghost"
           :disabled="approving"
-          @click="approvalOpen = false"
+          @click="() => { approvalOpen = false }"
         />
         <UButton
           :label="decisionStatus === 'approved' ? 'Approve booking' : decisionStatus === 'rejected' ? 'Reject booking' : decisionStatus === 'completed' ? 'Complete booking' : 'Cancel booking'"
