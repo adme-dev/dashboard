@@ -117,3 +117,27 @@ repository's `pnpm typecheck` script supplies the required 16 GB ceiling.
 The full test run exercised the preceding compiled Worker bundle; it is not
 proof that this increment has been built or deployed. Fresh build/deployment and
 staging booking acceptance remain required.
+
+### Guarded preview attempt
+
+The fresh `pnpm deploy:preview` build of `1e4b66194` passed the unchanged size
+guard: raw 25,055,940 bytes (412,988 bytes remaining); gzip 6,581,775 bytes.
+Wrangler then failed uploading assets at 252/921 with `EPIPE` and
+`UND_ERR_CONNECT_TIMEOUT`. Remote preview readback still identifies
+`54e83ed7-44ae-47f2-b4d6-765f0ef6e9c3`, source `1384a3e`. No new preview or
+production deployment was created. RELEASE-01 remains open. Logs are
+`/private/tmp/page-studio-booking-preview-deploy.log` and
+`/private/tmp/page-studio-booking-preview-wrangler.log`.
+
+Foundation GitHub Linux CI exposed an undeclared `zod` dependency in the Business
+Content Worker's existing Cloudflare email event adapter. Local dependency
+resolution had masked it. That manifest/lockfile repair is being verified in the
+foundation worktree; the earlier local green result is not a green remote CI
+claim.
+
+Dashboard CI `34256840416` passed for `1e4b66194`. Duplicate CI `34256846349`
+failed only on 30-second timeouts in the desktop/mobile governance scroll tests
+(`test/app/aiGovernanceControlPlane.test.ts`). Those cases pass locally and in
+the other CI run; the exact stalled browser operation is not yet identified.
+The ledger retains this intermittent failure for investigation. Neither run
+executed a deployment job.
