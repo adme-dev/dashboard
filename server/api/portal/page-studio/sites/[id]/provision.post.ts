@@ -2,6 +2,7 @@ import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import { queryOne } from '~~/server/utils/db'
 import { z } from 'zod'
+import { dispatchPageStudioProvisioning, type PageStudioProvisionerBinding } from '~~/server/utils/pageStudio/provisioningBinding'
 
 const Body = z.object({ expectedRevision: z.number().int().min(1) }).strict()
 
@@ -35,14 +36,17 @@ export default eventHandler(async (event) => {
     `, [user.clientId, siteId, parsed.data.expectedRevision])
     if (!row) throw createError({ statusCode: 404, statusMessage: 'Setup proposal not found' })
     if (row.status !== 'accepted') throw createError({ statusCode: 409, statusMessage: 'Setup proposal must be accepted before provisioning' })
-    return {
-      provisioning: {
-        requestKey: `page-studio-${row.siteId}-${row.revision}`,
-        scope: { tenantId: row.tenantId, clientId: row.clientId, siteId: row.siteId },
-        source: row.source,
-        plan: row.plan
-      }
+    const request = {
+      requestKey: `page-studio-${row.siteId}-${row.revision}`,
+      scope: { businessId: row.clientId, tenantId: row.tenantId, clientId: row.clientId, siteId: row.siteId, environment: 'staging' as const },
+      source: row.source,
+      plan: row.plan
     }
+    const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
+    const binding = env?.PAGE_STUDIO_PROVISIONER as PageStudioProvisionerBinding | undefined
+    const templateId = typeof row.plan.templateId === 'string' ? row.plan.templateId : 'limousine-v1'
+    const job = await dispatchPageStudioProvisioning(binding, { ...request, templateId, now: new Date().toISOString() })
+    return { provisioning: { ...request, job } }
   } catch (error) {
     pageStudioHttpError(error)
   }

@@ -22,14 +22,22 @@ describe('portal Page Studio provisioning handoff', () => {
   })
 
   it('emits a stable scoped request only for an accepted revision', async () => {
-    mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 1, status: 'accepted', source: 'chat', plan: { pages: ['home'] } })
+    mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 1, status: 'accepted', source: 'chat', plan: { pages: ['home'], templateId: 'limousine-v1' } })
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.post')
-    await expect(handler({ id: 's1', body: { expectedRevision: 1 } } as never)).resolves.toEqual({ provisioning: expect.objectContaining({ requestKey: 'page-studio-s1-1', scope: { tenantId: 't1', clientId: 'c1', siteId: 's1' } }) })
+    const binding = { createProvisioning: vi.fn().mockResolvedValue({ phase: 'requested' }) }
+    await expect(handler({ id: 's1', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).resolves.toEqual({ provisioning: expect.objectContaining({ requestKey: 'page-studio-s1-1', scope: expect.objectContaining({ tenantId: 't1', clientId: 'c1', siteId: 's1' }), job: { phase: 'requested' } }) })
+    expect(binding.createProvisioning).toHaveBeenCalledOnce()
   })
 
   it('rejects a proposal that has not been accepted', async () => {
     mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 1, status: 'proposed', source: 'template', plan: {} })
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.post')
     await expect(handler({ id: 's1', body: { expectedRevision: 1 } } as never)).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('fails explicitly when the provisioner binding is unavailable', async () => {
+    mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 1, status: 'accepted', source: 'template', plan: { templateId: 'retail-v1' } })
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.post')
+    await expect(handler({ id: 's1', body: { expectedRevision: 1 }, context: {} } as never)).rejects.toMatchObject({ statusCode: 503 })
   })
 })
