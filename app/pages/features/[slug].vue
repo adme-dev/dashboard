@@ -193,6 +193,14 @@ const features: Record<string, Feature> = {
       {
         title: 'Cloudflare Delivery and Domains',
         content: 'The delivery architecture uses Cloudflare Workers and Pages for private build, sandbox, control, and delivery services. Domain registration and custom-domain workflows can be layered into the governed release process as the staged rollout advances, without handing clients unrestricted infrastructure access.'
+      },
+      {
+        title: 'Self-Service Business Setup',
+        content: 'Clients can choose a reusable starter or describe their business in the portal. The setup proposal lists pages, collections and enabled modules, calls out missing operational facts, and waits for agency review before provisioning. Limousine, floristry, retail, IT goods, and import/export foundations share the same scoped content and usage contracts, while bookings and commerce operations remain explicit modules.'
+      },
+      {
+        title: 'Bookings With Operator Approval',
+        content: 'Public enquiries are protected by Cloudflare Turnstile and remain enquiries until an authorised operator reviews the trip, quote and availability. Versioned commands, idempotency and site membership checks keep customer intake, agency decisions and provisioning auditable. Email, billing and remote service bindings remain environment-gated until configured.'
       }
     ]
   },
