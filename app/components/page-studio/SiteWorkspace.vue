@@ -23,7 +23,7 @@ const createOpen = ref(false)
 const creating = ref(false)
 const reviewing = ref(false)
 const createError = ref<string | null>(null)
-const proposal = ref<{ modules: string[], pages: string[], collections: string[], missingFacts: string[], requiresAgencyReview: boolean } | null>(null)
+const proposal = ref<{ modules: string[], pages: string[], collections: string[], missingFacts: string[], questions?: string[], requiresAgencyReview: boolean } | null>(null)
 const createForm = reactive({ name: '', route: '', starterVersion: 'limousine-v1', setupSource: 'template', setupBrief: '' })
 const starterOptions = [
   { label: 'Limousine and tours', value: 'limousine-v1' },
@@ -439,8 +439,8 @@ async function reviewSetup() {
                 Details still needed
               </p>
               <ul class="mt-2 list-disc space-y-1 pl-5 text-muted">
-                <li v-for="fact in proposal.missingFacts" :key="fact">
-                  {{ fact }}
+                <li v-for="question in proposal.questions?.length ? proposal.questions : proposal.missingFacts" :key="question">
+                  {{ question }}
                 </li>
               </ul>
             </div>
