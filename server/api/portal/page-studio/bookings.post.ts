@@ -2,6 +2,7 @@ import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import { createScopedPageStudioBooking, type PageStudioBookingsBinding } from '~~/server/utils/pageStudio/bookingsBinding'
 import { z } from 'zod'
+import { isTurnstileEnabled, verifyTurnstile } from '~~/server/utils/turnstile'
 
 const Body = z.object({
   bookingId: z.string().trim().min(1).max(128), requestKey: z.string().trim().min(1).max(128),
@@ -16,6 +17,10 @@ export default eventHandler(async (event) => {
     const parsed = Body.safeParse(await readBody(event))
     const turnstileToken = getHeader(event, 'x-turnstile-token')
     if (!parsed.success || !turnstileToken || turnstileToken.length > 2048) throw createError({ statusCode: 400, statusMessage: 'Invalid booking enquiry' })
+    if (isTurnstileEnabled()) {
+      const ip = getHeader(event, 'cf-connecting-ip') || getHeader(event, 'x-forwarded-for')?.split(',')[0]?.trim()
+      if (!await verifyTurnstile(turnstileToken, ip)) throw createError({ statusCode: 403, statusMessage: 'Booking captcha verification failed' })
+    }
     const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
     const binding = env?.PAGE_STUDIO_BOOKINGS as PageStudioBookingsBinding | undefined
     const booking = await createScopedPageStudioBooking(binding, {
