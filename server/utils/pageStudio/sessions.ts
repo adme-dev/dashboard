@@ -107,6 +107,15 @@ interface SessionEnvironment {
   privateKey: string
 }
 
+export interface PageStudioSessionAuthorizationInput {
+  authorRole: 'agency' | 'client'
+  checkpoint: {
+    scope: { clientId: string, siteId: string, tenantId: string }
+    userId: string
+  }
+  requiredCapabilities?: PageStudioSessionCapability[]
+}
+
 interface IssuePageStudioSessionDependencies {
   event?: H3Event
   nonce?: () => string
@@ -159,6 +168,25 @@ export function resolvePageStudioSessionEnvironment(
     )
   }
   return { issuer, privateKey }
+}
+
+export function resolvePageStudioSessionPublicKey(event?: H3Event): string {
+  const env = (event?.context as CloudflareContext | undefined)?.cloudflare?.env
+  const bound = env && Object.prototype.hasOwnProperty.call(env, 'PAGE_STUDIO_SESSION_PUBLIC_KEY')
+    ? env.PAGE_STUDIO_SESSION_PUBLIC_KEY
+    : undefined
+  const value = bound === undefined ? process.env.PAGE_STUDIO_SESSION_PUBLIC_KEY : bound
+  if (typeof value !== 'string'
+    || value.length < 128
+    || value.length > 16_384
+    || !value.includes('BEGIN PUBLIC KEY')) {
+    throw new PageStudioSessionError(
+      'SESSION_ISSUER_UNAVAILABLE',
+      503,
+      'Page Studio session verification is not configured'
+    )
+  }
+  return value
 }
 
 function validatedClaims(input: PageStudioSessionClaims): PageStudioSessionClaims {
@@ -271,6 +299,25 @@ export async function verifyPageStudioSessionToken(
       401,
       expired ? 'Page Studio session token has expired' : 'Page Studio session token is invalid',
       { cause: error }
+    )
+  }
+}
+
+export function authorizePageStudioSession(
+  claims: PageStudioSessionClaims,
+  input: PageStudioSessionAuthorizationInput
+): void {
+  const required = input.requiredCapabilities ?? ['workspace:checkpoint', 'model:invoke']
+  if (claims.role !== input.authorRole
+    || claims.userId !== input.checkpoint.userId
+    || claims.tenantId !== input.checkpoint.scope.tenantId
+    || claims.clientId !== input.checkpoint.scope.clientId
+    || claims.siteId !== input.checkpoint.scope.siteId
+    || required.some(capability => !claims.capabilities.includes(capability))) {
+    throw new PageStudioSessionError(
+      'SESSION_TOKEN_INVALID',
+      403,
+      'Page Studio session is not authorized for this proposal'
     )
   }
 }
