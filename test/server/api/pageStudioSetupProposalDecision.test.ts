@@ -25,7 +25,7 @@ describe('portal setup proposal decisions', () => {
   it('accepts only the expected proposed revision', async () => {
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/setup-proposal.post')
     await expect(handler({ id: 'site-1', body: { decision: 'accepted', expectedRevision: 1 } } as never)).resolves.toEqual({ proposal: expect.objectContaining({ status: 'accepted' }) })
-    expect(mocks.queryOne).toHaveBeenCalledWith(expect.stringContaining('status = \'proposed\''), ['accepted', 'user-1', 'client-1', 'site-1', 1])
+    expect(mocks.queryOne).toHaveBeenCalledWith(expect.stringContaining('membership.user_id = $6'), ['accepted', 'user-1', 'client-1', 'site-1', 1, 'user-1'])
   })
 
   it('fails closed for viewers', async () => {

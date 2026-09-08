@@ -19,9 +19,16 @@ export default eventHandler(async (event) => {
       UPDATE page_studio_setup_proposals
       SET status = $1, reviewed_by = $2, reviewed_at = NOW(), updated_at = NOW()
       WHERE client_id = $3 AND site_id = $4 AND revision = $5 AND status = 'proposed'
+        AND EXISTS (
+          SELECT 1 FROM page_studio_site_memberships membership
+          WHERE membership.tenant_id = page_studio_setup_proposals.tenant_id
+            AND membership.client_id = page_studio_setup_proposals.client_id
+            AND membership.site_id = page_studio_setup_proposals.site_id
+            AND membership.user_id = $6
+        )
       RETURNING id, site_id AS "siteId", revision, source, brief, plan, status,
                 reviewed_by AS "reviewedBy", reviewed_at AS "reviewedAt"
-    `, [parsed.data.decision, user.id, user.clientId, siteId, parsed.data.expectedRevision])
+    `, [parsed.data.decision, user.id, user.clientId, siteId, parsed.data.expectedRevision, user.id])
     if (!updated) throw createError({ statusCode: 409, statusMessage: 'Setup proposal changed or was already decided' })
     return { proposal: updated }
   } catch (error) {
