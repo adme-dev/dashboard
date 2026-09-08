@@ -14,7 +14,7 @@ const columns = [
   { accessorKey: 'status', header: 'Status' },
   { id: 'actions', header: '' }
 ]
-const filters = [{ label: 'All statuses', value: 'all' }, { label: 'Enquiry', value: 'enquiry' }, { label: 'Quoted', value: 'quoted' }, { label: 'Approved', value: 'approved' }]
+const filters = [{ label: 'All statuses', value: 'all' }, { label: 'Enquiry', value: 'enquiry' }, { label: 'Quoted', value: 'quoted' }, { label: 'Approved', value: 'approved' }, { label: 'Customer confirmed', value: 'customer-confirmed' }, { label: 'Completed', value: 'completed' }, { label: 'Cancelled', value: 'cancelled' }]
 const quoteOpen = ref(false)
 const quoteSaving = ref(false)
 const quoteError = ref<string | null>(null)
@@ -23,7 +23,7 @@ const quoteForm = reactive({ amountCents: 0, currency: 'AUD', expiresAt: '', nex
 const approvalOpen = ref(false)
 const approving = ref(false)
 const approvalError = ref<string | null>(null)
-const decisionStatus = ref<'approved' | 'rejected'>('approved')
+const decisionStatus = ref<'approved' | 'rejected' | 'completed' | 'cancelled'>('approved')
 function openQuote(booking: Booking) {
   selectedBooking.value = booking
   quoteForm.amountCents = booking.quoteAmountCents ?? 0
@@ -67,6 +67,18 @@ function openDecision(booking: Booking) {
   approvalError.value = null
   approvalOpen.value = true
 }
+function openCompletion(booking: Booking) {
+  selectedBooking.value = booking
+  decisionStatus.value = 'completed'
+  approvalError.value = null
+  approvalOpen.value = true
+}
+function openCancellation(booking: Booking) {
+  selectedBooking.value = booking
+  decisionStatus.value = 'cancelled'
+  approvalError.value = null
+  approvalOpen.value = true
+}
 async function approveBooking() {
   const booking = selectedBooking.value
   if (!booking) return
@@ -80,7 +92,7 @@ async function approveBooking() {
     approvalOpen.value = false
     await refresh()
   } catch (error: unknown) {
-    approvalError.value = error && typeof error === 'object' && 'data' in error && error.data && typeof error.data === 'object' && 'statusMessage' in error.data ? String(error.data.statusMessage) : 'The booking could not be approved. Refresh and retry if it changed.'
+    approvalError.value = error && typeof error === 'object' && 'data' in error && error.data && typeof error.data === 'object' && 'statusMessage' in error.data ? String(error.data.statusMessage) : 'The booking decision could not be applied. Refresh and retry if it changed.'
   } finally {
     approving.value = false
   }
@@ -150,6 +162,22 @@ async function approveBooking() {
                 variant="ghost"
                 @click="openDecision(row.original)"
               />
+              <UButton
+                v-if="row.original.status === 'customer-confirmed'"
+                label="Complete"
+                size="xs"
+                color="success"
+                variant="soft"
+                @click="openCompletion(row.original)"
+              />
+              <UButton
+                v-if="['approved', 'customer-confirmed'].includes(row.original.status)"
+                label="Cancel"
+                size="xs"
+                color="error"
+                variant="ghost"
+                @click="openCancellation(row.original)"
+              />
             </template>
           </UTable>
         </UCard>
@@ -198,7 +226,7 @@ async function approveBooking() {
       </div>
     </template>
   </UModal>
-  <UModal v-model:open="approvalOpen" :title="decisionStatus === 'approved' ? 'Approve booking' : 'Reject booking'" description="Confirm this operator decision using the current booking version.">
+  <UModal v-model:open="approvalOpen" :title="decisionStatus === 'approved' ? 'Approve booking' : decisionStatus === 'rejected' ? 'Reject booking' : decisionStatus === 'completed' ? 'Complete booking' : 'Cancel booking'" description="Confirm this operator decision using the current booking version.">
     <template #body>
       <UAlert
         v-if="approvalError"
@@ -220,8 +248,8 @@ async function approveBooking() {
           @click="approvalOpen = false"
         />
         <UButton
-          :label="decisionStatus === 'approved' ? 'Approve booking' : 'Reject booking'"
-          :color="decisionStatus === 'approved' ? 'success' : 'error'"
+          :label="decisionStatus === 'approved' ? 'Approve booking' : decisionStatus === 'rejected' ? 'Reject booking' : decisionStatus === 'completed' ? 'Complete booking' : 'Cancel booking'"
+          :color="decisionStatus === 'approved' || decisionStatus === 'completed' ? 'success' : 'error'"
           :loading="approving"
           @click="approveBooking"
         />
