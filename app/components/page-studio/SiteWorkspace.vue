@@ -23,7 +23,7 @@ const createOpen = ref(false)
 const creating = ref(false)
 const reviewing = ref(false)
 const createError = ref<string | null>(null)
-const proposal = ref<{ modules: string[], pages: string[], collections: string[], requiresAgencyReview: boolean } | null>(null)
+const proposal = ref<{ modules: string[], pages: string[], collections: string[], missingFacts: string[], requiresAgencyReview: boolean } | null>(null)
 const createForm = reactive({ name: '', route: '', starterVersion: 'limousine-v1', setupSource: 'template', setupBrief: '' })
 const starterOptions = [
   { label: 'Limousine and tours', value: 'limousine-v1' },
@@ -424,8 +424,18 @@ async function reviewSetup() {
             <p class="text-muted">
               Collections: {{ proposal.collections.join(', ') }}
             </p>
+            <div v-if="proposal.missingFacts.length" class="rounded-lg border border-warning/30 bg-warning/5 p-3">
+              <p class="font-medium text-highlighted">
+                Details still needed
+              </p>
+              <ul class="mt-2 list-disc space-y-1 pl-5 text-muted">
+                <li v-for="fact in proposal.missingFacts" :key="fact">
+                  {{ fact }}
+                </li>
+              </ul>
+            </div>
             <p class="text-xs text-muted">
-              An agency review is required before resources are provisioned or published.
+              An agency review is required before resources are provisioned or published. Missing details are never invented.
             </p>
           </div>
         </UCard>

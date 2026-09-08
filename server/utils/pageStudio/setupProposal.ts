@@ -30,8 +30,21 @@ export interface PageStudioSetupProposal {
   modules: string[]
   pages: string[]
   collections: string[]
+  missingFacts: string[]
   requiresAgencyReview: boolean
 }
+
+const FACT_CHECKS: Array<{ label: string, modules: string[], pattern: RegExp }> = [
+  { label: 'business contact details', modules: ['business-content'], pattern: /\b(phone|mobile|tel|email|contact)\b/i },
+  { label: 'service area or delivery locations', modules: ['business-content'], pattern: /\b(location|area| suburb|city|region|service area|deliver)\b/i },
+  { label: 'booking hours, timezone and availability rules', modules: ['bookings'], pattern: /\b(hour|opening|availability|timezone|time zone|calendar)\b/i },
+  { label: 'approved rates and minimum hire rules', modules: ['bookings'], pattern: /\b(rate|price|pricing|cost|minimum hire|surcharge)\b/i },
+  { label: 'product names, prices and availability', modules: ['catalogue'], pattern: /\b(product|price|catalog|catalogue|sku|availability)\b/i },
+  { label: 'delivery zones, fees and lead times', modules: ['delivery'], pattern: /\b(delivery|shipping|dispatch|zone|fee|lead time)\b/i },
+  { label: 'payment and fulfilment provider', modules: ['orders'], pattern: /\b(payment|stripe|paypal|checkout|fulfil|fulfillment)\b/i },
+  { label: 'inventory source and stock policy', modules: ['inventory'], pattern: /\b(stock|inventory|warehouse|erp|sku)\b/i },
+  { label: 'enquiry notification recipient', modules: ['enquiries'], pattern: /\b(notification|notify|recipient|inbox|email)\b/i }
+]
 
 export function createPageStudioSetupProposal(input: PageStudioSetupProposalInput): PageStudioSetupProposal {
   const text = input.setupBrief ?? ''
@@ -50,6 +63,9 @@ export function createPageStudioSetupProposal(input: PageStudioSetupProposalInpu
   if (modules.includes('orders')) pages.push('orders')
   if (modules.includes('enquiries')) pages.push('enquiries')
   if (modules.includes('inventory')) collections.push('inventory')
+  const missingFacts = FACT_CHECKS
+    .filter(check => check.modules.some(module => modules.includes(module)) && !check.pattern.test(text))
+    .map(check => check.label)
   return {
     businessName: input.businessName,
     setupSource: input.setupSource,
@@ -57,6 +73,7 @@ export function createPageStudioSetupProposal(input: PageStudioSetupProposalInpu
     modules,
     pages,
     collections,
+    missingFacts,
     requiresAgencyReview: true
   }
 }
