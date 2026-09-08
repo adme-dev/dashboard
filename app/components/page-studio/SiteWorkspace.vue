@@ -337,6 +337,15 @@ async function reviewSetup() {
                 size="sm"
               />
               <UButton
+                v-if="audience === 'portal'"
+                :to="`/portal/page-studio/${site.id}/setup`"
+                label="Setup status"
+                icon="i-lucide-activity"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+              />
+              <UButton
                 v-if="editorUrl"
                 label="Launch Studio"
                 icon="i-lucide-panels-top-left"

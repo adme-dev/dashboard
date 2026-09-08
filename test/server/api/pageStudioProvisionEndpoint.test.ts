@@ -47,4 +47,35 @@ describe('portal Page Studio provisioning handoff', () => {
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.post')
     await expect(handler({ id: 's1', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).rejects.toMatchObject({ statusCode: 503 })
   })
+
+  it('reports proposal and resumable provisioning status when the service is available', async () => {
+    mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 2, status: 'accepted', source: 'chat' })
+    const binding = {
+      readProvisioning: vi.fn().mockResolvedValue({
+        requestKey: 'page-studio-s1-2',
+        scope: { tenantId: 't1', clientId: 'c1', businessId: 'c1', siteId: 's1', environment: 'staging' },
+        phase: 'resources-created',
+        attempts: 1
+      })
+    }
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.get')
+    await expect(handler({ id: 's1', context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).resolves.toEqual({
+      proposal: { revision: 2, status: 'accepted', source: 'chat' },
+      requestKey: 'page-studio-s1-2',
+      provisioning: expect.objectContaining({ phase: 'resources-created' }),
+      serviceAvailable: true
+    })
+    expect(binding.readProvisioning).toHaveBeenCalledWith('page-studio-s1-2')
+  })
+
+  it('returns a pending service state when the optional status binding is absent', async () => {
+    mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 1, status: 'accepted', source: 'template' })
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.get')
+    await expect(handler({ id: 's1', context: {} } as never)).resolves.toEqual({
+      proposal: { revision: 1, status: 'accepted', source: 'template' },
+      requestKey: 'page-studio-s1-1',
+      provisioning: null,
+      serviceAvailable: false
+    })
+  })
 })

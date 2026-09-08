@@ -1,5 +1,6 @@
 export interface PageStudioProvisionerBinding {
   createProvisioning: (job: unknown) => Promise<unknown>
+  readProvisioning?: (requestKey: string) => Promise<unknown>
 }
 
 export class PageStudioProvisioningError extends Error {
@@ -40,5 +41,29 @@ export async function dispatchPageStudioProvisioning(
     return result
   } catch (error) {
     throw new PageStudioProvisioningError('PROVISIONER_FAILED', error instanceof Error ? error.message : 'Provisioning request failed')
+  }
+}
+
+export async function readPageStudioProvisioning(
+  binding: PageStudioProvisionerBinding | undefined,
+  input: { requestKey: string, scope: { businessId: string, clientId: string, environment: 'preview' | 'staging' | 'production', siteId: string, tenantId: string } }
+) {
+  if (!binding?.readProvisioning) return null
+  try {
+    const result = await binding.readProvisioning(input.requestKey) as { requestKey?: unknown, scope?: Record<string, unknown> } | null
+    if (result === null) return null
+    const scope = result?.scope
+    if (result?.requestKey !== input.requestKey
+      || !scope
+      || scope.businessId !== input.scope.businessId
+      || scope.clientId !== input.scope.clientId
+      || scope.environment !== input.scope.environment
+      || scope.siteId !== input.scope.siteId
+      || scope.tenantId !== input.scope.tenantId) {
+      throw new Error('Provisioning service returned a mismatched scope')
+    }
+    return result
+  } catch (error) {
+    throw new PageStudioProvisioningError('PROVISIONER_FAILED', error instanceof Error ? error.message : 'Provisioning status request failed')
   }
 }
