@@ -20,6 +20,10 @@ export const PageStudioSiteBody = z.object({
   setupBrief: z.string().trim().max(4000).optional()
 }).strict()
 
+export const PageStudioSetupProposalBody = PageStudioSiteBody.omit({ clientId: true }).extend({
+  scope: z.string().trim().min(1).max(160).default('portal')
+}).strict()
+
 export const PageStudioSiteQuery = z.object({
   clientId: z.string().uuid().optional(),
   status: z.enum(['draft', 'active', 'suspended', 'archived']).optional(),

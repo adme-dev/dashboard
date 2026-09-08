@@ -21,7 +21,9 @@ const toast = useToast()
 const launchingSiteId = ref<string | null>(null)
 const createOpen = ref(false)
 const creating = ref(false)
+const reviewing = ref(false)
 const createError = ref<string | null>(null)
+const proposal = ref<{ modules: string[], pages: string[], collections: string[], requiresAgencyReview: boolean } | null>(null)
 const createForm = reactive({ name: '', route: '', starterVersion: 'limousine-v1', setupSource: 'template', setupBrief: '' })
 const starterOptions = [
   { label: 'Limousine and tours', value: 'limousine-v1' },
@@ -155,6 +157,34 @@ async function createSite() {
     creating.value = false
   }
 }
+
+async function reviewSetup() {
+  createError.value = null
+  if (!createForm.name.trim() || !/^[a-z0-9](?:[a-z0-9-]{0,62})$/.test(createForm.route)) {
+    createError.value = 'Enter a site name and a lowercase route using letters, numbers and hyphens.'
+    return
+  }
+  reviewing.value = true
+  try {
+    const result = await $fetch<{ proposal: typeof proposal.value }>('/api/portal/page-studio/setup-proposal', {
+      method: 'POST',
+      body: {
+        name: createForm.name.trim(),
+        route: createForm.route,
+        starterVersion: createForm.starterVersion,
+        setupSource: createForm.setupSource,
+        ...(createForm.setupBrief.trim() ? { setupBrief: createForm.setupBrief.trim() } : {})
+      }
+    })
+    proposal.value = result.proposal
+  } catch (error: unknown) {
+    createError.value = error && typeof error === 'object' && 'data' in error && error.data && typeof error.data === 'object' && 'statusMessage' in error.data
+      ? String(error.data.statusMessage)
+      : 'The setup proposal could not be generated.'
+  } finally {
+    reviewing.value = false
+  }
+}
 </script>
 
 <template>
@@ -189,7 +219,7 @@ async function createSite() {
           label="New website"
           icon="i-lucide-plus"
           color="primary"
-          @click="createOpen = true"
+          @click="proposal = null; createOpen = true"
         />
       </div>
     </div>
@@ -373,6 +403,23 @@ async function createSite() {
             placeholder="We offer wedding flowers, same-day delivery and online enquiries..."
           />
         </UFormField>
+        <UCard v-if="proposal" variant="subtle">
+          <div class="space-y-3 text-sm">
+            <div class="flex items-center gap-2 font-medium text-highlighted">
+              <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
+              Proposed setup
+            </div>
+            <p class="text-muted">
+              Pages: {{ proposal.pages.join(', ') }}
+            </p>
+            <p class="text-muted">
+              Collections: {{ proposal.collections.join(', ') }}
+            </p>
+            <p class="text-xs text-muted">
+              An agency review is required before resources are provisioned or published.
+            </p>
+          </div>
+        </UCard>
       </div>
     </template>
     <template #footer>
@@ -382,9 +429,17 @@ async function createSite() {
           color="neutral"
           variant="ghost"
           :disabled="creating"
-          @click="createOpen = false"
+          @click="proposal = null; createOpen = false"
         />
         <UButton
+          v-if="!proposal"
+          label="Review setup"
+          color="primary"
+          :loading="reviewing"
+          @click="reviewSetup"
+        />
+        <UButton
+          v-else
           label="Create website"
           color="primary"
           :loading="creating"
