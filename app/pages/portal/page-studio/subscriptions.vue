@@ -1,6 +1,6 @@
 <script setup lang="ts">
-definePageMeta({ layout: "portal", middleware: "portal-auth" });
-useHead({ title: "Subscription & usage | Client Portal" });
+definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
+useHead({ title: 'Subscription & usage | Client Portal' })
 </script>
 
 <template>

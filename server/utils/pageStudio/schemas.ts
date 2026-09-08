@@ -1,6 +1,13 @@
 import { z } from 'zod'
 
-export const PAGE_STUDIO_STARTERS = ['automotive-campaign-v1'] as const
+export const PAGE_STUDIO_STARTERS = [
+  'automotive-campaign-v1',
+  'limousine-v1',
+  'floristry-v1',
+  'retail-v1',
+  'it-goods-v1',
+  'import-export-v1'
+] as const
 
 export const PageStudioSiteId = z.string().uuid()
 

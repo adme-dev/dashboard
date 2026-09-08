@@ -323,7 +323,14 @@ async function createSite() {
   <UModal v-model:open="createOpen" :title="'Create a website'" :description="'Choose a starter and reserve a site route for your business.'">
     <template #body>
       <div class="space-y-4">
-        <UAlert v-if="createError" color="error" variant="subtle" icon="i-lucide-circle-alert" title="Website could not be created" :description="createError" />
+        <UAlert
+          v-if="createError"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+          title="Website could not be created"
+          :description="createError"
+        />
         <UFormField label="Website name" required>
           <UInput v-model="createForm.name" class="w-full" placeholder="Northside Supply" />
         </UFormField>
@@ -331,14 +338,30 @@ async function createSite() {
           <UInput v-model="createForm.route" class="w-full" placeholder="northside-supply" />
         </UFormField>
         <UFormField label="Starter template" required>
-          <USelectMenu v-model="createForm.starterVersion" :items="starterOptions" value-key="value" class="w-full" />
+          <USelectMenu
+            v-model="createForm.starterVersion"
+            :items="starterOptions"
+            value-key="value"
+            class="w-full"
+          />
         </UFormField>
       </div>
     </template>
     <template #footer>
       <div class="flex w-full justify-end gap-3">
-        <UButton label="Cancel" color="neutral" variant="ghost" :disabled="creating" @click="createOpen = false" />
-        <UButton label="Create website" color="primary" :loading="creating" @click="createSite" />
+        <UButton
+          label="Cancel"
+          color="neutral"
+          variant="ghost"
+          :disabled="creating"
+          @click="createOpen = false"
+        />
+        <UButton
+          label="Create website"
+          color="primary"
+          :loading="creating"
+          @click="createSite"
+        />
       </div>
     </template>
   </UModal>

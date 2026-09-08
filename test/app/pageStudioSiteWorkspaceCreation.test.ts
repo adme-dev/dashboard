@@ -6,8 +6,8 @@ const source = readFileSync(resolve(process.cwd(), 'app/components/page-studio/S
 
 describe('Page Studio self-service creation surface', () => {
   it('keeps creation portal-only and uses the governed endpoint', () => {
-    expect(source).toContain("v-if=\"audience === 'portal'\"")
-    expect(source).toContain("$fetch('/api/portal/page-studio/sites'")
+    expect(source).toContain('v-if="audience === \'portal\'"')
+    expect(source).toContain('$fetch(\'/api/portal/page-studio/sites\'')
     expect(source).toContain('UFormField label="Website name"')
     expect(source).toContain('UFormField label="Starter template"')
   })
