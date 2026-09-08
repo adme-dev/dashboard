@@ -26,7 +26,9 @@ export default eventHandler(async (event) => {
         pickupLocation: booking.trip?.pickupLocation ?? booking.pickupLocation ?? null,
         dropoffLocation: booking.trip?.dropoffLocation ?? booking.dropoffLocation ?? null,
         currency: booking.quote?.currency ?? null,
-        quoteAmountMinor: booking.quote?.amountMinor ?? null
+        quoteAmountCents: booking.quote?.amountCents ?? null,
+        quoteExpiresAt: booking.quote?.expiresAt ?? null,
+        quoteVersion: booking.quote?.version ?? null
       }
     })
     return { tenantId, bookings }

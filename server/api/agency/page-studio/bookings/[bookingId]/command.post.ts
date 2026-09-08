@@ -10,7 +10,7 @@ const Body = z.object({
   idempotencyKey: z.string().trim().min(1).max(128),
   nextStatus: z.enum(['enquiry', 'quoted', 'approved', 'rejected', 'cancelled', 'completed']),
   quote: z.object({
-    amountMinor: z.number().int().min(0), currency: z.string().length(3), expiresAt: z.string().datetime()
+    amountCents: z.number().int().min(0).max(100_000_000), currency: z.string().regex(/^[A-Z]{3}$/), expiresAt: z.string().datetime(), version: z.number().int().min(1)
   }).strict().optional()
 }).strict()
 
