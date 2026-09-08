@@ -200,7 +200,7 @@ const categories = [
     iconBg: 'bg-rose-50 dark:bg-rose-500/10',
     iconColor: 'text-rose-600',
     features: [
-      { title: 'Page Studio', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Build and launch responsive websites with self-service starters, scoped business content, agency review, bookings, usage controls, domains, releases and rollback.' },
+      { title: 'Page Studio', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Build and launch responsive websites with self-service starters, scoped business content, agency review, site-specific booking tools, usage controls, domains, releases and rollback.' },
       { title: 'Bulk Ad Launch', slug: 'bulk-ad-launch', icon: 'i-lucide-rocket', description: 'Select creatives from Banner Studio and launch dozens of ads to Meta in one click.' },
       { title: 'Ad Platform Export', slug: 'ad-platform-export', icon: 'i-lucide-download', description: 'Export HTML5 banners for 14 ad platforms with automatic clickTag injection and compliance validation.' },
       { title: 'Ad Previews', slug: 'ad-previews', icon: 'i-lucide-monitor-smartphone', description: 'Preview banners in 8 platform mockups — Meta Feed, Stories, Reels, LinkedIn, and more.' },

@@ -323,12 +323,12 @@ async function reviewSetup() {
             </div>
           </dl>
 
-          <div class="mt-auto flex items-center justify-between gap-3 border-t border-default pt-4">
+          <div class="mt-auto flex flex-col gap-3 border-t border-default pt-4">
             <div class="flex min-w-0 items-center gap-2 text-xs text-muted">
               <UIcon name="i-lucide-shield-check" class="size-4 shrink-0 text-primary" />
               <span class="truncate">{{ audience === 'agency' ? 'Agency-managed release' : 'Managed by your agency' }}</span>
             </div>
-            <div class="flex shrink-0 items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <UButton
                 v-if="audience === 'agency'"
                 :to="`/agency/page-studio/${site.id}`"
@@ -342,6 +342,15 @@ async function reviewSetup() {
                 v-if="audience === 'portal'"
                 :to="`/portal/page-studio/${site.id}/content`"
                 label="Manage content"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
+              <UButton
+                v-if="site.bookingEnabled"
+                :to="{ path: `/${audience}/page-studio/bookings`, query: { siteId: site.id } }"
+                label="Bookings"
+                icon="i-lucide-calendar-check"
                 color="neutral"
                 variant="outline"
                 size="sm"

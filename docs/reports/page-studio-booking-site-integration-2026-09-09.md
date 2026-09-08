@@ -269,3 +269,37 @@ separate deployment credentials still need verification in the next deployment.
 Foundation CI `34285497095` passed Linux but Windows hit two 10-second Git fixture
 setup timeouts. Only the completed failed Windows job was rerun to investigate
 transience; do not describe that retry as passing until it completes.
+
+### Site-scoped booking navigation
+
+Website cards now show a Bookings link when the current entitlement includes
+bookings. The link carries that card's site ID to the audience's booking screen.
+The action row wraps below its governance label so narrow cards can accommodate
+all links. Marketing feature copy is synchronized. The site list LEFT JOINs its
+matching entitlement by ID, tenant and client, preserving non-booking sites in
+the list while returning a `bookingEnabled` display flag. Portal display also
+requires a viewer/editor membership. The API and list share the same entitlement
+predicate: active/draft site, active/trial entitlement, current effective window,
+and a valid string-array module grant containing bookings. The flag grants no
+authority; actual booking requests still recheck fresh scope and permissions.
+
+The new server regression failed before implementation. Five focused suites now
+pass 49 tests, including mounted portal/agency links, exact site query, reactive
+removal, invalid grants and inactive entitlements. Full local tests run outside
+the sandbox pass 13,146 tests with 27 existing skips (2,015 files passed, six
+skipped). Typecheck retains 926 existing diagnostics, zero in modified/new files;
+scoped lint and the deployment target check pass. A read-only query on the
+isolated Neon staging branch confirms all three synthetic memberships produce
+eligible rows under the new scoped entitlement join. Logs use the prefix
+`/private/tmp/page-studio-booking-navigation-`.
+
+The fresh application build passes the unchanged artifact guard: raw 25,057,951
+bytes (410,977 remaining), gzip 6,582,277 bytes. Navigation is not yet deployed or
+verified in a real browser. The preceding preview release `34286857822` now
+passes CI and deployment at `cf40b4a24`; Cloudflare independently confirms preview
+`32b39722-0e22-4702-9147-78fa9538c0e2` and all six intended service bindings,
+including both named booking entrypoints. The isolated Hyperdrive IDs remain
+unchanged. Keep BOOK-07 open for connected acceptance and browser navigation.
+
+Wrangler has now refreshed the existing Cloudflare login successfully. A fresh
+production list confirms `1a61474f` / `60f2171`; the prior OAuth 401 is resolved.

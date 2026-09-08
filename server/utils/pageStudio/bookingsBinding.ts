@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { queryOneFresh } from '~~/server/utils/db'
+import { hasPageStudioBookingEntitlement } from '~~/server/utils/pageStudio/bookingEntitlement'
 import { PageStudioContentScopeSchema, samePageStudioContentScope, type PageStudioContentScope } from '~~/shared/pageStudio/businessContent'
 import { PageStudioBookingAggregateSchema, PageStudioBookingCommandSchema, PageStudioBookingEnquirySchema, PageStudioBookingStatusSchema } from '~~/shared/pageStudio/bookings'
 
@@ -51,9 +52,7 @@ async function authorise(request: PageStudioBookingRequest, writing: boolean, de
          WHERE tenant_id <> '__default__' ORDER BY updated_at DESC, tenant_id LIMIT 1)`}`,
   portal ? [actor.clientId, siteId, actor.actorId] : [actor.tenantId, siteId])
   if (!row) throw fail('BOOKING_SITE_NOT_FOUND', 'Website not found', 404)
-  const modules = z.object({ allowedModules: z.array(z.string()) }).safeParse(row.plan_metadata)
-  if (!['draft', 'active'].includes(row.site_status) || !['trial', 'active'].includes(row.entitlement_status)
-    || row.entitlement_effective !== true || !modules.success || !modules.data.allowedModules.includes('bookings')
+  if (!hasPageStudioBookingEntitlement({ siteStatus: row.site_status, entitlementStatus: row.entitlement_status, effective: row.entitlement_effective, planMetadata: row.plan_metadata })
     || (portal && !(writing ? ['editor'] : ['editor', 'viewer']).includes(row.membership_role ?? ''))
     || (writing && actor.role === 'agency' && !actor.canApprove)) {
     throw fail('BOOKING_ACCESS_DENIED', 'Booking access denied', 403)

@@ -2909,6 +2909,7 @@ export interface PortalAnalyticsPrintReport {
 }
 
 export interface PageStudioSiteSummary {
+  bookingEnabled?: boolean
   id: string
   clientId: string
   name: string

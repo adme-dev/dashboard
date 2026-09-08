@@ -1,4 +1,5 @@
 import { queryRows, transaction } from '~~/server/utils/db'
+import { hasPageStudioBookingEntitlement } from '~~/server/utils/pageStudio/bookingEntitlement'
 
 export interface PageStudioQueryClient {
   query<T = Record<string, unknown>>(
@@ -52,6 +53,10 @@ interface EntitlementRow {
 }
 
 interface SiteRow {
+  booking_entitlement_status?: string | null
+  booking_entitlement_effective?: boolean | null
+  booking_plan_metadata?: unknown
+  booking_membership_allowed?: boolean
   id: string
   tenant_id: string
   client_id: string
@@ -67,6 +72,7 @@ interface SiteRow {
 }
 
 export interface PageStudioSite {
+  bookingEnabled: boolean
   id: string
   tenantId: string
   clientId: string
@@ -92,6 +98,12 @@ export interface PageStudioSiteList {
 
 function mapSite(row: SiteRow): PageStudioSite {
   return {
+    bookingEnabled: row.booking_membership_allowed === true && hasPageStudioBookingEntitlement({
+      siteStatus: row.status,
+      entitlementStatus: row.booking_entitlement_status,
+      effective: row.booking_entitlement_effective,
+      planMetadata: row.booking_plan_metadata
+    }),
     id: row.id,
     tenantId: row.tenant_id,
     clientId: row.client_id,
@@ -366,8 +378,15 @@ export async function listAgencyPageStudioSites(input: {
             site.name, site.route, site.starter_version, site.status,
             site.created_at, site.updated_at,
             proposal.status AS setup_proposal_status, proposal.revision AS setup_proposal_revision,
+            entitlement.status AS booking_entitlement_status,
+            entitlement.plan_metadata AS booking_plan_metadata,
+            (entitlement.effective_from <= NOW() AND
+             (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())) AS booking_entitlement_effective,
+            TRUE AS booking_membership_allowed,
             COUNT(*) OVER()::text AS total_count
      FROM page_studio_sites site
+     LEFT JOIN page_studio_entitlements entitlement ON entitlement.id = site.entitlement_id
+      AND entitlement.tenant_id = site.tenant_id AND entitlement.client_id = site.client_id
      LEFT JOIN LATERAL (
        SELECT status, revision FROM page_studio_setup_proposals
        WHERE tenant_id = site.tenant_id AND client_id = site.client_id AND site_id = site.id
@@ -396,8 +415,15 @@ export async function listPortalPageStudioSites(input: {
             site.name, site.route, site.starter_version, site.status,
             site.created_at, site.updated_at,
             proposal.status AS setup_proposal_status, proposal.revision AS setup_proposal_revision,
+            entitlement.status AS booking_entitlement_status,
+            entitlement.plan_metadata AS booking_plan_metadata,
+            (entitlement.effective_from <= NOW() AND
+             (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())) AS booking_entitlement_effective,
+            membership.role IN ('viewer', 'editor') AS booking_membership_allowed,
             COUNT(*) OVER()::text AS total_count
      FROM page_studio_sites site
+     LEFT JOIN page_studio_entitlements entitlement ON entitlement.id = site.entitlement_id
+      AND entitlement.tenant_id = site.tenant_id AND entitlement.client_id = site.client_id
      JOIN page_studio_site_memberships membership
        ON membership.tenant_id = site.tenant_id
       AND membership.client_id = site.client_id
