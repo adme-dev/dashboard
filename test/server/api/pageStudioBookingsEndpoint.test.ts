@@ -22,7 +22,7 @@ describe('agency Page Studio booking queue endpoint', () => {
   it('returns the scoped queue from the binding', async () => {
     const binding = { listBookings: vi.fn().mockResolvedValue([{ id: 'booking-1', status: 'quoted' }]) }
     const { default: handler } = await import('~~/server/api/agency/page-studio/bookings.get')
-    await expect(handler({ query: { status: 'quoted', limit: '10' }, context: { cloudflare: { env: { PAGE_STUDIO_BOOKINGS: binding } } } } as never)).resolves.toEqual({ tenantId: 'tenant-1', bookings: [{ id: 'booking-1', status: 'quoted' }] })
+    await expect(handler({ query: { status: 'quoted', limit: '10' }, context: { cloudflare: { env: { PAGE_STUDIO_BOOKINGS: binding } } } } as never)).resolves.toEqual({ tenantId: 'tenant-1', bookings: [expect.objectContaining({ id: 'booking-1', status: 'quoted', version: 0 })] })
     expect(binding.listBookings).toHaveBeenCalledWith({ status: 'quoted', limit: 10 })
   })
 })

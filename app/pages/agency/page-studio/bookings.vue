@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'agency' })
 useHead({ title: 'Booking Queue | XeroFlow Agency' })
 
-interface Booking { id: string, status: string, customerName?: string, pickupAt?: string, pickupLocation?: string, dropoffLocation?: string }
+interface Booking { id: string, version: number, status: string, customerName?: string | null, pickupAt?: string | null, pickupLocation?: string | null, dropoffLocation?: string | null, quoteAmountMinor?: number | null, currency?: string | null }
 const status = ref('all')
 const { data, pending, error, refresh } = await useFetch<{ bookings: Booking[] }>('/api/agency/page-studio/bookings', { query: computed(() => ({ status: status.value === 'all' ? undefined : status.value })), default: () => ({ bookings: [] }) })
 const columns = [
@@ -10,6 +10,7 @@ const columns = [
   { accessorKey: 'pickupAt', header: 'Pickup' },
   { accessorKey: 'pickupLocation', header: 'From' },
   { accessorKey: 'dropoffLocation', header: 'To' },
+  { accessorKey: 'quoteAmountMinor', header: 'Quote (minor)' },
   { accessorKey: 'status', header: 'Status' }
 ]
 const filters = [{ label: 'All statuses', value: 'all' }, { label: 'Enquiry', value: 'enquiry' }, { label: 'Quoted', value: 'quoted' }, { label: 'Approved', value: 'approved' }]
