@@ -73,6 +73,28 @@ const rows = computed(() => records.value.map((record) => {
     builds: `${record.buildCount ?? 0} / ${record.buildLimit}`
   }
 }))
+
+const usageAlerts = computed(() => {
+  if (props.section !== 'subscriptions') return []
+  const alerts: Array<{ id: string, title: string, description: string }> = []
+  for (const record of records.value) {
+    const checks = [
+      { label: 'active sites', used: Number(record.siteCount ?? 0), limit: Number(record.siteLimit ?? 0) },
+      { label: 'custom domains', used: Number(record.domainCount ?? 0), limit: Number(record.domainLimit ?? 0) },
+      { label: 'monthly builds', used: Number(record.buildCount ?? 0), limit: Number(record.buildLimit ?? 0) }
+    ]
+    for (const check of checks) {
+      if (check.limit <= 0 || check.used / check.limit < 0.8) continue
+      const percentage = Math.round((check.used / check.limit) * 100)
+      alerts.push({
+        id: `${String(record.id)}-${check.label}`,
+        title: `${record.clientName ?? 'Client'} is at ${percentage}% of its ${check.label} allowance`,
+        description: `${check.used} of ${check.limit} ${check.label} are currently used. Review the plan before creating more.`
+      })
+    }
+  }
+  return alerts
+})
 </script>
 
 <template>
@@ -104,6 +126,15 @@ const rows = computed(() => records.value.map((record) => {
           icon="i-lucide-hard-hat"
           title="Public hostname activation is gated"
           description="DNS state is real. A hostname remains pending until DNS, TLS, build verification and atomic release activation have all passed."
+        />
+        <UAlert
+          v-for="alert in usageAlerts"
+          :key="alert.id"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-gauge"
+          :title="alert.title"
+          :description="alert.description"
         />
         <div v-if="pending" class="space-y-3" aria-busy="true">
           <USkeleton class="h-16" /><USkeleton class="h-56" />
