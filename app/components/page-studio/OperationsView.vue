@@ -69,7 +69,8 @@ const rows = computed(() => records.value.map((record) => {
   return {
     client: record.clientName, plan: titleCase(record.planKey), status: titleCase(record.status),
     sites: `${record.siteCount} / ${record.siteLimit}`,
-    domains: `${record.domainCount} / ${record.domainLimit}`, builds: record.buildLimit
+    domains: `${record.domainCount} / ${record.domainLimit}`,
+    builds: `${record.buildCount ?? 0} / ${record.buildLimit}`
   }
 }))
 </script>
