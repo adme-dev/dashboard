@@ -176,7 +176,7 @@ CRM_SEARCH_PROVIDER_APIS_ENABLED = "true"
     const preview = workflow.split('\n  preview_deploy:')[1]?.split('\n  release_artifact:')[0]
     expect(preview).toBeDefined()
     expect(preview).toContain('needs: ci')
-    expect(preview).toContain("github.event_name == 'workflow_dispatch' && inputs.release_action == 'preview'")
+    expect(preview).toContain('github.event_name == \'workflow_dispatch\' && inputs.release_action == \'preview\'')
     expect(preview).toContain('environment: preview_deploy')
     expect(preview).toContain('ref: ${{ github.sha }}')
     expect(preview).toContain('pnpm deploy:check')
