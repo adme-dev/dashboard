@@ -58,6 +58,8 @@ describe('createPageStudioSite', () => {
       name: 'Spring campaign',
       route: 'spring-campaign',
       starterVersion: 'automotive-campaign-v1',
+      setupSource: 'chat',
+      setupBrief: 'Need bookings and service pages',
       tenantId: 'tenant-alpha'
     }, { runTransaction: db.runTransaction })).resolves.toMatchObject({
       id: SITE_ID,
@@ -72,7 +74,7 @@ describe('createPageStudioSite', () => {
     ])
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO page_studio_audit_events'),
-      expect.arrayContaining(['site.created', SITE_ID, ACTOR_ID])
+      expect.arrayContaining(['site.created', SITE_ID, ACTOR_ID, expect.stringContaining('setupSource')])
     )
   })
 

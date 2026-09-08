@@ -25,6 +25,8 @@ export default eventHandler(async (event) => {
       portalUserId: user.id,
       route: parsed.data.route,
       starterVersion: parsed.data.starterVersion,
+      setupSource: parsed.data.setupSource,
+      setupBrief: parsed.data.setupBrief,
       tenantId
     })
     return { site }

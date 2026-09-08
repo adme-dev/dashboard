@@ -37,6 +37,8 @@ export interface CreatePageStudioSiteInput {
   portalUserId?: string
   route: string
   starterVersion: string
+  setupSource?: 'template' | 'chat'
+  setupBrief?: string
   tenantId: string
 }
 
@@ -239,7 +241,12 @@ export async function createPageStudioSite(
           input.actorRole,
           'site.created',
           site.id,
-          JSON.stringify({ route: site.route, starterVersion: site.starter_version })
+          JSON.stringify({
+            route: site.route,
+            starterVersion: site.starter_version,
+            setupSource: input.setupSource ?? 'template',
+            ...(input.setupBrief ? { setupBrief: input.setupBrief } : {})
+          })
         ]
       )
 

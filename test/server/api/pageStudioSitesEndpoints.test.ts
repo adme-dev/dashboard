@@ -170,6 +170,26 @@ describe('Page Studio site endpoints', () => {
     expect(mocks.createPageStudioSite).toHaveBeenCalledWith(expect.objectContaining({ starterVersion: 'retail-v1' }))
   })
 
+  it('passes a client setup path and brief into the governed site service', async () => {
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/index.post')
+    const event = {
+      context: {},
+      body: {
+        name: 'Fantasy Limo',
+        route: 'fantasy-limo',
+        starterVersion: 'limousine-v1',
+        setupSource: 'chat',
+        setupBrief: 'Need airport transfers, wedding packages and a booking enquiry form.'
+      }
+    }
+
+    await expect(handler(event as never)).resolves.toEqual({ site })
+    expect(mocks.createPageStudioSite).toHaveBeenCalledWith(expect.objectContaining({
+      setupSource: 'chat',
+      setupBrief: event.body.setupBrief
+    }))
+  })
+
   it('denies portal viewers before resolving an entitlement or creating a site', async () => {
     mocks.requireClientAuth.mockResolvedValue({ ...portalUser, role: 'viewer' })
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/index.post')

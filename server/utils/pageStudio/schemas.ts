@@ -15,7 +15,9 @@ export const PageStudioSiteBody = z.object({
   clientId: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(160),
   route: z.string().trim().toLowerCase().regex(/^[a-z0-9](?:[a-z0-9-]{0,62})$/),
-  starterVersion: z.enum(PAGE_STUDIO_STARTERS)
+  starterVersion: z.enum(PAGE_STUDIO_STARTERS),
+  setupSource: z.enum(['template', 'chat']).default('template'),
+  setupBrief: z.string().trim().max(4000).optional()
 }).strict()
 
 export const PageStudioSiteQuery = z.object({

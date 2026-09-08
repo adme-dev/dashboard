@@ -22,13 +22,17 @@ const launchingSiteId = ref<string | null>(null)
 const createOpen = ref(false)
 const creating = ref(false)
 const createError = ref<string | null>(null)
-const createForm = reactive({ name: '', route: '', starterVersion: 'limousine-v1' })
+const createForm = reactive({ name: '', route: '', starterVersion: 'limousine-v1', setupSource: 'template', setupBrief: '' })
 const starterOptions = [
   { label: 'Limousine and tours', value: 'limousine-v1' },
   { label: 'Floristry', value: 'floristry-v1' },
   { label: 'Retail', value: 'retail-v1' },
   { label: 'IT goods', value: 'it-goods-v1' },
   { label: 'Import and export', value: 'import-export-v1' }
+]
+const setupSourceOptions = [
+  { label: 'Start from this template', value: 'template' },
+  { label: 'Describe what you need', value: 'chat' }
 ]
 const { launchPageStudio } = usePageStudioLauncher()
 const editorUrl = computed(() => {
@@ -129,11 +133,18 @@ async function createSite() {
   try {
     await $fetch('/api/portal/page-studio/sites', {
       method: 'POST',
-      body: { name: createForm.name.trim(), route: createForm.route, starterVersion: createForm.starterVersion }
+      body: {
+        name: createForm.name.trim(),
+        route: createForm.route,
+        starterVersion: createForm.starterVersion,
+        setupSource: createForm.setupSource,
+        ...(createForm.setupBrief.trim() ? { setupBrief: createForm.setupBrief.trim() } : {})
+      }
     })
     createOpen.value = false
     createForm.name = ''
     createForm.route = ''
+    createForm.setupBrief = ''
     toast.add({ title: 'Website created', description: 'Your new website is ready for content setup.', color: 'success' })
     emit('refresh')
   } catch (error: unknown) {
@@ -343,6 +354,23 @@ async function createSite() {
             :items="starterOptions"
             value-key="value"
             class="w-full"
+          />
+        </UFormField>
+        <UFormField label="Setup path" required>
+          <USelectMenu
+            v-model="createForm.setupSource"
+            :items="setupSourceOptions"
+            value-key="value"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField label="Setup brief" help="Describe the pages, services or workflows you want the agency to configure after creation.">
+          <UTextarea
+            v-model="createForm.setupBrief"
+            class="w-full"
+            :rows="4"
+            maxlength="4000"
+            placeholder="We offer wedding flowers, same-day delivery and online enquiries..."
           />
         </UFormField>
       </div>
