@@ -51,6 +51,21 @@ describe('authenticated business content adapter', () => {
     }
     expect(service.readContent).not.toHaveBeenCalled()
   })
+  it('selects an explicitly configured staging binding without falling back to preview', async () => {
+    const { env, query, service } = setup()
+    const stagingScope = { ...scope, environment: 'staging' as const }
+    env.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'staging'
+    env.PAGE_STUDIO_CONTENT_BINDINGS = JSON.stringify([{ scope: stagingScope, bindingName: 'CONTENT_TEST' }])
+    service.readContent.mockResolvedValueOnce({ ...revision, content: { ...content, scope: stagingScope } })
+    expect(await readPageStudioBusinessContent({ actor, siteId, env }, { query })).toMatchObject({ revision: 1 })
+    expect(service.readContent).toHaveBeenCalledWith(stagingScope)
+  })
+  it('fails closed for an invalid content environment', async () => {
+    const { env, query, service } = setup()
+    env.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'live'
+    await expect(readPageStudioBusinessContent({ actor, siteId, env }, { query })).rejects.toMatchObject({ statusCode: 503 })
+    expect(service.readContent).not.toHaveBeenCalled()
+  })
   it('rejects response scope mismatches and unexpected write revisions', async () => {
     const { env, query, service } = setup()
     service.readContent.mockResolvedValueOnce({ ...revision, content: { ...content, scope: { ...scope, businessId: 'other' } } })

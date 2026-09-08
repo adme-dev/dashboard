@@ -47,6 +47,7 @@ const BindingsSchema = z.array(z.object({
   scope: PageStudioContentScopeSchema,
   bindingName: z.string().regex(/^[A-Z][A-Z0-9_]{2,80}$/)
 }).strict()).max(500)
+const ContentEnvironmentSchema = z.enum(['preview', 'staging', 'production'])
 const unavailable = () => new PageStudioBusinessContentError('CONTENT_NOT_CONFIGURED', 503, 'Business content setup is pending')
 
 const FormSubmissionResponseSchema = z.object({
@@ -90,14 +91,18 @@ async function authorise(request: Request, writing: boolean, dependencies: Depen
     throw new PageStudioBusinessContentError('CONTENT_ACCESS_DENIED', 403, 'Business content access denied')
   }
   let bindings: z.infer<typeof BindingsSchema>
+  let environment: z.infer<typeof ContentEnvironmentSchema> = 'preview'
   try {
     const raw = request.env.PAGE_STUDIO_CONTENT_BINDINGS
     if (typeof raw !== 'string' || raw.length > 250_000) throw unavailable()
     bindings = BindingsSchema.parse(JSON.parse(raw))
+    if (request.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== undefined) {
+      environment = ContentEnvironmentSchema.parse(request.env.PAGE_STUDIO_CONTENT_ENVIRONMENT)
+    }
   } catch { throw unavailable() }
   const matches = bindings.filter(binding => binding.scope.tenantId === row.tenant_id
     && binding.scope.clientId === row.client_id && binding.scope.siteId === siteId
-    && binding.scope.environment === 'preview')
+    && binding.scope.environment === environment)
   if (matches.length !== 1) throw unavailable()
   const binding = matches[0]!
   const service = Object.hasOwn(request.env, binding.bindingName) ? request.env[binding.bindingName] : null
