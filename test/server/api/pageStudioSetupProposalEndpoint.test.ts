@@ -31,6 +31,17 @@ describe('portal Page Studio setup proposal endpoint', () => {
     expect(edgeGenerate).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Do not add facts'), expect.objectContaining({ featureKey: 'page_studio_setup_questions' }))
   })
 
+  it('falls back to deterministic questions when model output is malformed or empty', async () => {
+    edgeGenerate.mockResolvedValue('```json\n{"questions":[]}\n```')
+    const { default: handler } = await import('~~/server/api/portal/page-studio/setup-proposal.post')
+    const result = await handler({ body: {
+      name: 'Fantasy Limo', route: 'fantasy-limo', starterVersion: 'limousine-v1', setupSource: 'chat', setupBrief: 'Airport transfers.'
+    } } as never)
+    const questions = (result as { proposal: { questions: string[] } }).proposal.questions
+    expect(questions.length).toBeGreaterThan(0)
+    expect(questions[0]).toContain('confirmed')
+  })
+
   it('returns a deterministic, review-required proposal from a chat brief', async () => {
     const { default: handler } = await import('~~/server/api/portal/page-studio/setup-proposal.post')
     const result = await handler({ body: {
