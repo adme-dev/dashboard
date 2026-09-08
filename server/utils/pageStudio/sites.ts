@@ -20,6 +20,7 @@ export class PageStudioSiteError extends Error {
       | 'PORTAL_CREATION_DISABLED'
       | 'PORTAL_USER_OUT_OF_SCOPE'
       | 'ENTITLEMENT_SCOPE_AMBIGUOUS'
+      | 'MODULE_NOT_INCLUDED'
       | 'SITE_ROUTE_CONFLICT',
     readonly statusCode: number,
     message: string
@@ -47,6 +48,7 @@ interface EntitlementRow {
   id: string
   active_site_limit: number
   portal_creation_enabled: boolean
+  plan_metadata?: unknown
 }
 
 interface SiteRow {
@@ -105,6 +107,14 @@ function mapSite(row: SiteRow): PageStudioSite {
   }
 }
 
+function entitlementModules(metadata: unknown): Set<string> | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const raw = (metadata as Record<string, unknown>).allowedModules
+  if (!Array.isArray(raw)) return null
+  const modules = raw.filter((module): module is string => typeof module === 'string' && module.length > 0)
+  return modules.length > 0 ? new Set(modules) : new Set()
+}
+
 const defaultRunTransaction: RunPageStudioTransaction = async callback =>
   transaction(async db => callback(db as unknown as PageStudioQueryClient))
 
@@ -117,7 +127,7 @@ export async function createPageStudioSite(
   try {
     return await runTransaction(async (db) => {
       const entitlementResult = await db.query<EntitlementRow>(
-        `SELECT id, active_site_limit, portal_creation_enabled
+        `SELECT id, active_site_limit, portal_creation_enabled, plan_metadata
          FROM page_studio_entitlements
          WHERE tenant_id = $1
            AND client_id = $2
@@ -158,6 +168,21 @@ export async function createPageStudioSite(
           409,
           'The client has reached its active-site limit'
         )
+      }
+
+      const allowedModules = entitlementModules(entitlement.plan_metadata)
+      const requestedModules = input.setupProposal?.plan.modules
+      if (allowedModules && Array.isArray(requestedModules)) {
+        const disallowedModule = requestedModules.find(module =>
+          typeof module === 'string' && !allowedModules.has(module)
+        )
+        if (disallowedModule) {
+          throw new PageStudioSiteError(
+            'MODULE_NOT_INCLUDED',
+            403,
+            `The ${disallowedModule} module is not included in this subscription`
+          )
+        }
       }
 
       const clientResult = await db.query<{ id: string }>(

@@ -202,4 +202,37 @@ describe('createPageStudioSite', () => {
       statusCode: 403
     })
   })
+
+  it('rejects setup proposals that request modules outside the subscription allowlist', async () => {
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_entitlements')) {
+        return [{
+          id: ENTITLEMENT_ID,
+          active_site_limit: 1,
+          portal_creation_enabled: true,
+          plan_metadata: { allowedModules: ['business-content', 'bookings'] }
+        }]
+      }
+      return successfulRows(sql)
+    })
+
+    await expect(createPageStudioSite({
+      actorId: ACTOR_ID,
+      actorRole: 'agency',
+      clientId: CLIENT_ID,
+      name: 'Restricted site',
+      route: 'restricted-site',
+      starterVersion: 'limousine-v1',
+      setupProposal: {
+        source: 'chat',
+        plan: { modules: ['business-content', 'catalogue'] }
+      },
+      tenantId: 'tenant-alpha'
+    }, { runTransaction: db.runTransaction })).rejects.toMatchObject({
+      code: 'MODULE_NOT_INCLUDED',
+      statusCode: 403
+    })
+
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO page_studio_sites'))).toBe(false)
+  })
 })
