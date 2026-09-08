@@ -234,3 +234,38 @@ suites pass 55 tests; scoped ESLint and `pnpm deploy:check` pass. The new connec
 configuration still needs preview deployment and authenticated content/booking
 read/write verification. Operator authentication, Turnstile intake, vehicle holds,
 email orchestration and the customer launch remain separate open gates.
+
+### Preview CI repair and browser acceptance follow-up
+
+Preview run `34285354290` at `c7b949761` failed its full suite; deployment was
+skipped. It exposed two stale config checks: the isolation test allowed only the
+previous two services, and the asset test's handwritten TOML subset parser could
+not read the new multiline JSON strings. Both failures reproduced locally. The
+isolation check now asserts the exact six staging service/entrypoint objects;
+the asset check uses the existing `smol-toml` dependency and retains every
+production binding assertion. Production configuration is unchanged.
+
+All 67 focused tests pass. The full local suite passed 13,122 tests, with five
+browser assertions failing and two Worker suites unable to run because of Chrome
+and localhost sandbox restrictions. The four affected suites pass outside the
+sandbox (see `/private/tmp/page-studio-release-config-runtime-tests.log`). Scoped
+ESLint and `pnpm deploy:check` pass. CI's separate 15-second CRM caller-scan timeout
+did not reproduce in the focused or full local run; its assertions, source roots
+and timeout remain unchanged. Track recurrence rather than claiming a timing fix.
+No new application build is needed for these test-only changes; the failed CI's
+application build passed, and the next release must still run its complete gates.
+
+A real authenticated Kimi browser session on the existing preview displayed only
+synthetic client A's assigned site. The site card has Manage content, Setup status
+and Submissions links but no booking entry point; add discoverable site-scoped
+booking navigation and verify it in the browser before closing BOOK-07. Browser
+sign-in used a directly seeded synthetic magic link, not email delivery. Cleanup
+verified `/api/portal/auth/me` 200 for the exact synthetic editor, logout 200,
+then auth/me 401, and closed the sole test tab. No test browser session remains.
+
+The subsequent local Cloudflare OAuth status read returned 401, so `60f2171`
+remains the last verified production source, not a fresh readback. GitHub's
+separate deployment credentials still need verification in the next deployment.
+Foundation CI `34285497095` passed Linux but Windows hit two 10-second Git fixture
+setup timeouts. Only the completed failed Windows job was rerun to investigate
+transience; do not describe that retry as passing until it completes.

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { parse } from 'smol-toml'
 import { describe, expect, it } from 'vitest'
 
 import { assertPreviewBindingReadback } from '../../scripts/crm-search/preview-binding-guard.mjs'
@@ -416,8 +417,15 @@ describe('CRM search preview binding isolation', () => {
     expect(previewBindings).toContain('service = "xeroflow-page-studio-build-staging"')
     expect(previewBindings).toContain('binding = "PAGE_STUDIO_DELIVERY"')
     expect(previewBindings).toContain('service = "xeroflow-page-studio-delivery-staging"')
-    expect(previewBindings.match(/\[\[env\.preview\.services\]\]/gu)).toHaveLength(2)
-    expect(previewBindings.match(/^service = /gmu)).toHaveLength(2)
+    const parsed = parse(config) as { env: { preview: { services: unknown[] } } }
+    expect(parsed.env.preview.services).toEqual([
+      { binding: 'PAGE_STUDIO_BUILD', service: 'xeroflow-page-studio-build-staging' },
+      { binding: 'PAGE_STUDIO_DELIVERY', service: 'xeroflow-page-studio-delivery-staging' },
+      { binding: 'PAGE_STUDIO_CONTENT_A', service: 'xeroflow-business-content-staging-a' },
+      { binding: 'PAGE_STUDIO_BOOKINGS_A', service: 'xeroflow-business-content-staging-a', entrypoint: 'ScopedBookingsEntrypoint' },
+      { binding: 'PAGE_STUDIO_CONTENT_B', service: 'xeroflow-business-content-staging-b' },
+      { binding: 'PAGE_STUDIO_BOOKINGS_B', service: 'xeroflow-business-content-staging-b', entrypoint: 'ScopedBookingsEntrypoint' }
+    ])
     expect(previewBindings).not.toMatch(/agency-files|durable_objects/u)
   })
 })
