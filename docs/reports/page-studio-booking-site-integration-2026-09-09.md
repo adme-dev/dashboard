@@ -192,6 +192,45 @@ isolation, rejection and replay. Direct D1 readback confirms one transition
 event only in site A and no email queued. Resource IDs, repeatable commands and
 limitations are in foundation `docs/research/2026-09-09-business-content-staging.md`.
 
-These are synthetic service-level fixtures. They are not yet bound into this
-Dashboard preview or attached to real portal memberships/entitlements. BOOK-07
-remains open until that authenticated two-site acceptance is completed.
+These are synthetic service-level fixtures. The authenticated staging preparation
+below now adds portal memberships/entitlements. BOOK-07 remains open until the
+Dashboard preview is connected and authenticated service acceptance is completed.
+
+### Authenticated staging identities and connection configuration
+
+Verified the live Pages API's preview `HYPERDRIVE` and `HYPERDRIVE_FRESH` bindings
+both use `3865ea5568234fc7b0e9e3e595a30286`. Hyperdrive's origin matches Neon's
+`staging/page-studio` branch `br-long-mountain-a4f73v10`, project
+`square-tooth-23821574`, database `neondb`:
+`ep-raspy-water-a4v6q356.us-east-1.aws.neon.tech`. Wrangler's experimental config
+download omits Hyperdrive, so the Pages API readback is necessary.
+
+Executed `scripts/fixtures/page-studio-booking-staging.sql` on that exact branch.
+It refuses a database containing anything other than the known initial synthetic
+client/staff fixture, creates two additional clients/sites/entitlements and three
+portal users, and gives each editor access to its own site plus one read-only
+viewer for site A. No provider account, password, mail request or billing charge
+is created. This seed intentionally refuses a second run; inspect existing
+fixtures rather than overwriting them.
+
+On preview `5d72b6f7`, all three identities passed real magic-link verification,
+authenticated identity readback, consumed-link replay denial (401), foreign-site
+booking denial (404), and logout/session revocation (401). Their own-site reads
+reach the explicit missing-binding response (503). The test inserts ten-minute
+hashed magic links directly into the isolated database; it proves verification
+and sessions, not email delivery or the complete signup flow. The initial
+headerless request returned 403; requests carrying same-origin browser headers
+passed without modifying application controls. Independent Neon readback confirms
+one consumed link/login per user and zero remaining sessions.
+
+Evidence: `/private/tmp/page-studio-staging-auth-evidence.json` and
+`/private/tmp/page-studio-live-config-status/safe-readback.json`. Local token files
+are excluded from the repository and tokens have been consumed.
+
+The reviewed preview configuration now maps those two site scopes to their
+dedicated content Workers and `ScopedBookingsEntrypoint` service bindings.
+Production and root bindings remain unchanged. Six focused config/API/adapter
+suites pass 55 tests; scoped ESLint and `pnpm deploy:check` pass. The new connection
+configuration still needs preview deployment and authenticated content/booking
+read/write verification. Operator authentication, Turnstile intake, vehicle holds,
+email orchestration and the customer launch remain separate open gates.
