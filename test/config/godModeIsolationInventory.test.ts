@@ -8,10 +8,12 @@ import {
 } from '../../server/utils/godMode/featureGate'
 
 const API_INVENTORY = {
-  totalRouteFiles: 2108,
-  mutationRouteFiles: 1158,
-  explicitlyGuardedMutationFiles: 402,
-  guardedMutationFilesWithTransactionCall: 46
+  // Driver sheet, portal booking list, portal submissions and the guarded,
+  // transactional setup-proposal revision endpoint have been reviewed.
+  totalRouteFiles: 2112,
+  mutationRouteFiles: 1159,
+  explicitlyGuardedMutationFiles: 403,
+  guardedMutationFilesWithTransactionCall: 47
 } as const
 
 const DEFERRED_MUTATION_FAMILIES = [{
@@ -48,10 +50,10 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2108,
-      mutationRouteFiles: 1158,
-      explicitlyGuardedMutationFiles: 402,
-      guardedMutationFilesWithTransactionCall: 46
+      totalRouteFiles: 2112,
+      mutationRouteFiles: 1159,
+      explicitlyGuardedMutationFiles: 403,
+      guardedMutationFilesWithTransactionCall: 47
     })
   })
 

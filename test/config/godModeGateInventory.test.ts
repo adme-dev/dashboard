@@ -1,7 +1,16 @@
+import type { H3Event } from 'h3'
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import {
+  getGodModeRouteAuditState,
+  isApplicationCapabilityEnabled,
+  prepareRegisteredGodModeMutation,
+  registerGodModeMutationFamily,
+  seedGodModeRouteAuditState
+} from '../../server/utils/godMode/featureGate'
 
 const { mockAppendGodModeAuditEvent, mockResolveGodModeAuthority } = vi.hoisted(() => ({
   mockAppendGodModeAuditEvent: vi.fn(),
@@ -11,7 +20,7 @@ vi.mock('../../server/utils/godMode/audit', () => ({
   appendGodModeAuditEvent: mockAppendGodModeAuditEvent
 }))
 vi.mock('../../server/utils/godMode/authority', () => ({
-  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args),
+  resolveGodModeAuthority: (...args: unknown[]) => mockResolveGodModeAuthority(...args),
   isActiveGodModeAuthority: (authority: unknown, actorUserId: string) => {
     const candidate = authority as Record<string, unknown> | null
     return candidate?.active === true
@@ -20,14 +29,6 @@ vi.mock('../../server/utils/godMode/authority', () => ({
       && candidate.emergencyDisabled === false
   }
 }))
-
-import {
-  getGodModeRouteAuditState,
-  isApplicationCapabilityEnabled,
-  prepareRegisteredGodModeMutation,
-  registerGodModeMutationFamily,
-  seedGodModeRouteAuditState
-} from '../../server/utils/godMode/featureGate'
 
 const INVENTORY_ROOTS = ['server', 'app', 'shared'] as const
 const TASK_3_OWNED_FILES = new Set([
@@ -56,12 +57,12 @@ const TASK_3_GATE_ROUTING = [
   ['server/plugins/godModeAudit.ts', 'terminal persistence', 'ordinary_user_behavior', 'trusted request audit state']
 ] as const
 
-type GateClass =
-  | 'identity_tenant_hard_boundary'
-  | 'provider_infrastructure_availability'
-  | 'application_governance_bypass'
-  | 'ordinary_user_behavior'
-  | 'unrelated_configuration'
+type GateClass
+  = | 'identity_tenant_hard_boundary'
+    | 'provider_infrastructure_availability'
+    | 'application_governance_bypass'
+    | 'ordinary_user_behavior'
+    | 'unrelated_configuration'
 
 function listSourceFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -72,9 +73,12 @@ function listSourceFiles(root: string): string[] {
 }
 
 function classifyGate(file: string, line: string): GateClass {
-  if (/GOD_MODE_DISABLED|AI_GATEWAY_URL/i.test(line)
+  if (/GOD_MODE_DISABLED|AI_GATEWAY_URL|PAGE_STUDIO_SESSION_PUBLIC_KEY/i.test(line)
     || (file === 'server/utils/godMode/authority.ts' && /process\.env/.test(line))) {
     return 'provider_infrastructure_availability'
+  }
+  if (file.startsWith('server/api/portal/page-studio/') && /user\.role/.test(line)) {
+    return 'identity_tenant_hard_boundary'
   }
   if (/requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|roleHasPermission\(|hasRole\(|isReadOnlyRole\(|feature.?flag|suite.?enabled|(?:^|[_A-Z])ENABLED(?:\b|_)/i.test(line)) {
     return 'application_governance_bypass'
@@ -134,7 +138,7 @@ describe('God mode gate inventory', () => {
       },
       res: { statusCode: 200, statusMessage: 'OK' }
     }
-  }) as any
+  }) as unknown as H3Event
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -150,7 +154,7 @@ describe('God mode gate inventory', () => {
   it('freezes every pre-existing direct gate with an explicit classification', () => {
     const inventory = legacyInventory()
     expect(inventory.rows).toContain(
-      "server/utils/godMode/authority.ts\t&& Object.prototype.hasOwnProperty.call(cloudflareEnv, 'GOD_MODE_DISABLED')\tprovider_infrastructure_availability"
+      'server/utils/godMode/authority.ts\t&& Object.prototype.hasOwnProperty.call(cloudflareEnv, \'GOD_MODE_DISABLED\')\tprovider_infrastructure_availability'
     )
     expect(inventory.rows).toContain(
       'server/utils/godMode/authority.ts\t: runtimeEnv.GOD_MODE_DISABLED\tprovider_infrastructure_availability'
@@ -183,20 +187,33 @@ describe('God mode gate inventory', () => {
       'server/utils/leads/destinations/autogate.ts\tconst password = process.env.AUTOGATE_LEAD_API_PASSWORD\tunrelated_configuration'
     )
     expect(inventory.rows).toContain(
-      "server/utils/spendSyncJobs.ts\t`SELECT id FROM team_members WHERE is_active = TRUE AND user_role = 'owner'`\tidentity_tenant_hard_boundary"
+      'server/utils/spendSyncJobs.ts\t`SELECT id FROM team_members WHERE is_active = TRUE AND user_role = \'owner\'`\tidentity_tenant_hard_boundary'
     )
     expect(inventory.rows).toContain(
       'server/utils/mondayConnection.ts\tconst serviceToken = process.env.MONDAY_API_TOKEN\tprovider_infrastructure_availability'
     )
-    expect(inventory.rows).toHaveLength(1565)
+    // Four portal role checks, the Turnstile public configuration and the
+    // session verification key are reviewed additions. Portal identity and
+    // verification configuration never become God-mode bypass candidates.
+    expect(inventory.rows).toContain(
+      'server/utils/pageStudio/sessions.ts\tconst value = bound === undefined ? process.env.PAGE_STUDIO_SESSION_PUBLIC_KEY : bound\tprovider_infrastructure_availability'
+    )
+    expect(inventory.rows.filter(row => row.startsWith('server/api/portal/page-studio/') && row.includes('user.role')))
+      .toEqual(expect.arrayContaining([
+        expect.stringContaining('setup-proposal.patch.ts'),
+        expect.stringContaining('provision.post.ts')
+      ]))
+    expect(inventory.rows.filter(row => row.startsWith('server/api/portal/page-studio/') && row.includes('user.role'))
+      .every(row => row.endsWith('\tidentity_tenant_hard_boundary'))).toBe(true)
+    expect(inventory.rows).toHaveLength(1571)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 108,
-      provider_infrastructure_availability: 227,
+      identity_tenant_hard_boundary: 113,
+      provider_infrastructure_availability: 229,
       application_governance_bypass: 1624,
-      ordinary_user_behavior: 174,
+      ordinary_user_behavior: 173,
       unrelated_configuration: 431
     })
-    expect(inventory.digest).toBe('37bf46ab479e7f86ffcfd5dd6b8d7c961e93a94481f51984bf6b5cab9b038471')
+    expect(inventory.digest).toBe('3aae87e9f7e1bce5cd06c0a38941a8ac865e6ac5f5594089f46e7cd392b9717e')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
@@ -211,13 +228,13 @@ describe('God mode gate inventory', () => {
   })
 
   it('preserves the normal application gate for non-owners', async () => {
-    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as any
+    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as unknown as H3Event
     await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
   })
 
   it('evaluates asynchronous normal gates before applying active-owner authority', async () => {
     const normalGate = vi.fn().mockResolvedValue(true)
-    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as any
+    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as unknown as H3Event
     await expect(isApplicationCapabilityEnabled(event, normalGate)).resolves.toBe(true)
     expect(normalGate).toHaveBeenCalledTimes(1)
   })
