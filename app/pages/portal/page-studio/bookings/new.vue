@@ -16,15 +16,17 @@ async function submit() {
     errorMessage.value = 'Complete the required customer and trip details.'
     return
   }
-  if (turnstileSiteKey.value && !turnstileToken.value) {
-    errorMessage.value = 'Complete the human verification challenge before submitting.'
+  if (!turnstileToken.value) {
+    errorMessage.value = turnstileSiteKey.value
+      ? 'Complete the human verification challenge before submitting.'
+      : 'Booking security is not configured for this portal. Ask your agency to enable Cloudflare Turnstile.'
     return
   }
   saving.value = true
   try {
     await $fetch('/api/portal/page-studio/bookings', {
       method: 'POST',
-      headers: { 'x-turnstile-token': turnstileToken.value || 'portal-managed' },
+      headers: { 'x-turnstile-token': turnstileToken.value },
       body: {
         bookingId: crypto.randomUUID(), requestKey: crypto.randomUUID(),
         customer: { name: form.name, email: form.email, phone: form.phone },
@@ -62,6 +64,14 @@ async function submit() {
     />
     <UCard>
       <div class="space-y-5">
+        <UAlert
+          v-if="!turnstileSiteKey"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-shield-alert"
+          title="Booking security is not configured"
+          description="Cloudflare Turnstile must be enabled before this form can submit an enquiry."
+        />
         <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
           <UFormField label="Name" required>
             <UInput v-model="form.name" class="w-full" />
