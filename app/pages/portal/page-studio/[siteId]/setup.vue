@@ -38,7 +38,7 @@ const phaseLabel = computed(() => {
 })
 
 const phaseColor = computed((): 'success' | 'warning' | 'info' | 'neutral' => {
-  if (data.value?.provisioning?.phase === 'completed') return 'success'
+  if (data.value?.provisioning?.phase === 'complete') return 'success'
   if (data.value?.provisioning?.phase === 'failed') return 'warning'
   if (data.value?.proposal.status !== 'accepted') return 'neutral'
   return 'info'
@@ -136,7 +136,7 @@ async function reviseProposal() {
             {{ phaseLabel }}
           </UBadge>
         </div>
-        <UProgress v-if="data.provisioning && data.provisioning.phase !== 'failed'" class="mt-6" :value="data.provisioning.phase === 'completed' ? 100 : 60" />
+        <UProgress v-if="data.provisioning && data.provisioning.phase !== 'failed'" class="mt-6" :value="data.provisioning.phase === 'complete' ? 100 : 60" />
         <p v-if="data.provisioning?.error" class="mt-4 text-sm text-warning">
           {{ data.provisioning.error }}
         </p>
