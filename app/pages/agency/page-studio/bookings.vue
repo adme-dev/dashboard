@@ -23,6 +23,7 @@ const quoteForm = reactive({ amountCents: 0, currency: 'AUD', expiresAt: '', nex
 const approvalOpen = ref(false)
 const approving = ref(false)
 const approvalError = ref<string | null>(null)
+const decisionStatus = ref<'approved' | 'rejected'>('approved')
 function openQuote(booking: Booking) {
   selectedBooking.value = booking
   quoteForm.amountCents = booking.quoteAmountCents ?? 0
@@ -56,6 +57,13 @@ async function saveQuote() {
 }
 function openApproval(booking: Booking) {
   selectedBooking.value = booking
+  decisionStatus.value = 'approved'
+  approvalError.value = null
+  approvalOpen.value = true
+}
+function openDecision(booking: Booking) {
+  selectedBooking.value = booking
+  decisionStatus.value = 'rejected'
   approvalError.value = null
   approvalOpen.value = true
 }
@@ -67,7 +75,7 @@ async function approveBooking() {
   try {
     await $fetch(`/api/agency/page-studio/bookings/${encodeURIComponent(booking.id)}/command`, {
       method: 'POST',
-      body: { actor: 'operator', bookingId: booking.id, expectedVersion: booking.version, idempotencyKey: `approve-${booking.id}-${Date.now()}`, nextStatus: 'approved' }
+      body: { actor: 'operator', bookingId: booking.id, expectedVersion: booking.version, idempotencyKey: `${decisionStatus.value}-${booking.id}-${Date.now()}`, nextStatus: decisionStatus.value }
     })
     approvalOpen.value = false
     await refresh()
@@ -134,6 +142,14 @@ async function approveBooking() {
                 variant="soft"
                 @click="openApproval(row.original)"
               />
+              <UButton
+                v-if="['enquiry', 'quoted'].includes(row.original.status)"
+                label="Reject"
+                size="xs"
+                color="error"
+                variant="ghost"
+                @click="openDecision(row.original)"
+              />
             </template>
           </UTable>
         </UCard>
@@ -182,12 +198,12 @@ async function approveBooking() {
       </div>
     </template>
   </UModal>
-  <UModal v-model:open="approvalOpen" title="Approve booking" description="Confirm that the current quote and trip details are ready for customer confirmation.">
+  <UModal v-model:open="approvalOpen" :title="decisionStatus === 'approved' ? 'Approve booking' : 'Reject booking'" description="Confirm this operator decision using the current booking version.">
     <template #body>
       <UAlert
         v-if="approvalError"
         color="error"
-        title="Approval failed"
+        title="Decision failed"
         :description="approvalError"
       />
       <p class="text-sm text-muted">
@@ -204,8 +220,8 @@ async function approveBooking() {
           @click="approvalOpen = false"
         />
         <UButton
-          label="Approve booking"
-          color="success"
+          :label="decisionStatus === 'approved' ? 'Approve booking' : 'Reject booking'"
+          :color="decisionStatus === 'approved' ? 'success' : 'error'"
           :loading="approving"
           @click="approveBooking"
         />
