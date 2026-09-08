@@ -20,6 +20,9 @@ const quoteSaving = ref(false)
 const quoteError = ref<string | null>(null)
 const selectedBooking = ref<Booking | null>(null)
 const quoteForm = reactive({ amountCents: 0, currency: 'AUD', expiresAt: '', nextStatus: 'quoted' })
+const approvalOpen = ref(false)
+const approving = ref(false)
+const approvalError = ref<string | null>(null)
 function openQuote(booking: Booking) {
   selectedBooking.value = booking
   quoteForm.amountCents = booking.quoteAmountCents ?? 0
@@ -49,6 +52,29 @@ async function saveQuote() {
     quoteError.value = error && typeof error === 'object' && 'data' in error && error.data && typeof error.data === 'object' && 'statusMessage' in error.data ? String(error.data.statusMessage) : 'The quote could not be saved. Refresh and retry if the booking changed.'
   } finally {
     quoteSaving.value = false
+  }
+}
+function openApproval(booking: Booking) {
+  selectedBooking.value = booking
+  approvalError.value = null
+  approvalOpen.value = true
+}
+async function approveBooking() {
+  const booking = selectedBooking.value
+  if (!booking) return
+  approving.value = true
+  approvalError.value = null
+  try {
+    await $fetch(`/api/agency/page-studio/bookings/${encodeURIComponent(booking.id)}/command`, {
+      method: 'POST',
+      body: { actor: 'operator', bookingId: booking.id, expectedVersion: booking.version, idempotencyKey: `approve-${booking.id}-${Date.now()}`, nextStatus: 'approved' }
+    })
+    approvalOpen.value = false
+    await refresh()
+  } catch (error: unknown) {
+    approvalError.value = error && typeof error === 'object' && 'data' in error && error.data && typeof error.data === 'object' && 'statusMessage' in error.data ? String(error.data.statusMessage) : 'The booking could not be approved. Refresh and retry if it changed.'
+  } finally {
+    approving.value = false
   }
 }
 </script>
@@ -100,6 +126,14 @@ async function saveQuote() {
                 variant="soft"
                 @click="openQuote(row.original)"
               />
+              <UButton
+                v-if="row.original.status === 'quoted'"
+                label="Approve"
+                size="xs"
+                color="success"
+                variant="soft"
+                @click="openApproval(row.original)"
+              />
             </template>
           </UTable>
         </UCard>
@@ -144,6 +178,36 @@ async function saveQuote() {
           color="primary"
           :loading="quoteSaving"
           @click="saveQuote"
+        />
+      </div>
+    </template>
+  </UModal>
+  <UModal v-model:open="approvalOpen" title="Approve booking" description="Confirm that the current quote and trip details are ready for customer confirmation.">
+    <template #body>
+      <UAlert
+        v-if="approvalError"
+        color="error"
+        title="Approval failed"
+        :description="approvalError"
+      />
+      <p class="text-sm text-muted">
+        This uses the current booking version and will be rejected if another operator has changed the booking.
+      </p>
+    </template>
+    <template #footer>
+      <div class="flex w-full justify-end gap-3">
+        <UButton
+          label="Cancel"
+          color="neutral"
+          variant="ghost"
+          :disabled="approving"
+          @click="approvalOpen = false"
+        />
+        <UButton
+          label="Approve booking"
+          color="success"
+          :loading="approving"
+          @click="approveBooking"
         />
       </div>
     </template>
