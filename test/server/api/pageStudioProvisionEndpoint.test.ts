@@ -78,4 +78,17 @@ describe('portal Page Studio provisioning handoff', () => {
       serviceAvailable: false
     })
   })
+
+  it('fails closed when provisioning status returns a foreign scope', async () => {
+    mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 1, status: 'accepted', source: 'template' })
+    const binding = {
+      readProvisioning: vi.fn().mockResolvedValue({
+        requestKey: 'page-studio-s1-1',
+        scope: { tenantId: 'foreign', clientId: 'c1', businessId: 'c1', siteId: 's1', environment: 'staging' },
+        phase: 'requested'
+      })
+    }
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.get')
+    await expect(handler({ id: 's1', context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).rejects.toMatchObject({ statusCode: 503 })
+  })
 })
