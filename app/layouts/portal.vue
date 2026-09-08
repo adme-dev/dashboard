@@ -180,6 +180,12 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
         icon: 'i-lucide-history',
         to: '/portal/page-studio/releases',
         onSelect: close
+      },
+      {
+        label: 'Subscription & usage',
+        icon: 'i-lucide-gauge',
+        to: '/portal/page-studio/subscriptions',
+        onSelect: close
       }
     )
   }
