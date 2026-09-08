@@ -28,7 +28,7 @@ export default eventHandler(async (event) => {
         status: 'proposed' | 'accepted' | 'rejected'
       }>(`
         SELECT proposal.tenant_id, proposal.client_id, proposal.site_id,
-               proposal.revision, proposal.source, proposal.brief, proposal.plan
+               proposal.revision, proposal.source, proposal.brief, proposal.plan, proposal.status
         FROM page_studio_setup_proposals proposal
         WHERE proposal.client_id = $1 AND proposal.site_id = $2
           AND EXISTS (

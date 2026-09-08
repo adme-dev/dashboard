@@ -40,4 +40,19 @@ describe('portal setup proposal revisions', () => {
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/setup-proposal.patch')
     await expect(handler({ id: 'site-1', body: { expectedRevision: 1, setupBrief: 'facts' } } as never)).rejects.toMatchObject({ statusCode: 409 })
   })
+
+  it('reads the persisted approval status and refuses to revise an accepted plan', async () => {
+    const query = vi.fn().mockResolvedValueOnce({ rows: [{
+      tenant_id: 'tenant-1', client_id: 'client-1', site_id: 'site-1',
+      revision: 1, source: 'chat', status: 'accepted', plan: {}
+    }] })
+    mocks.transaction.mockImplementationOnce(async (callback: (db: unknown) => Promise<unknown>) => callback({ query }))
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/setup-proposal.patch')
+
+    await expect(handler({ id: 'site-1', body: { expectedRevision: 1, setupBrief: 'Changed facts' } } as never))
+      .rejects.toMatchObject({ statusCode: 409 })
+    expect(query).toHaveBeenCalledTimes(1)
+    // A mocked row can otherwise hide a missing column in the real SELECT.
+    expect(query.mock.calls[0]?.[0].split('FROM')[0]).toContain('proposal.status')
+  })
 })
