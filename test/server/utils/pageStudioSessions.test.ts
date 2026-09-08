@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   issuePageStudioSession,
   authorizePageStudioSession,
+  assertPageStudioSessionActive,
   MAX_PAGE_STUDIO_SESSION_LIFETIME_SECONDS,
   PAGE_STUDIO_SESSION_AUDIENCE,
   PAGE_STUDIO_SESSION_TOKEN_TYPE,
@@ -80,6 +81,20 @@ describe('Page Studio editor sessions', () => {
         userId: ACTOR_ID
       }
     })).toThrow(/not authorized/)
+  })
+
+  it('rejects a session that is missing, revoked, or changed in the session store', async () => {
+    const session = claims({ capabilities: ['workspace:checkpoint', 'model:invoke'] })
+    const queryOne = vi.fn(async () => null)
+
+    await expect(assertPageStudioSessionActive(session, queryOne)).rejects.toMatchObject({
+      code: 'SESSION_TOKEN_INVALID',
+      statusCode: 403
+    })
+    expect(queryOne).toHaveBeenCalledWith(
+      expect.stringContaining('revoked_at IS NULL'),
+      expect.arrayContaining([session.nonce, session.tenantId, session.userId])
+    )
   })
 
   it('signs the exact Page Studio ES256 token contract', async () => {

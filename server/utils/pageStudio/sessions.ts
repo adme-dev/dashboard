@@ -116,6 +116,11 @@ export interface PageStudioSessionAuthorizationInput {
   requiredCapabilities?: PageStudioSessionCapability[]
 }
 
+export type PageStudioSessionQueryOne = <T = Record<string, unknown>>(
+  sql: string,
+  params?: unknown[]
+) => Promise<T | null>
+
 interface IssuePageStudioSessionDependencies {
   event?: H3Event
   nonce?: () => string
@@ -318,6 +323,45 @@ export function authorizePageStudioSession(
       'SESSION_TOKEN_INVALID',
       403,
       'Page Studio session is not authorized for this proposal'
+    )
+  }
+}
+
+export async function assertPageStudioSessionActive(
+  claims: PageStudioSessionClaims,
+  queryOne: PageStudioSessionQueryOne
+): Promise<void> {
+  const row = await queryOne<{ nonce: string }>(
+    `SELECT nonce
+       FROM page_studio_sessions
+      WHERE nonce = $1
+        AND tenant_id = $2
+        AND client_id = $3::uuid
+        AND site_id = $4::uuid
+        AND user_id = $5
+        AND role = $6
+        AND capabilities = $7::jsonb
+        AND issued_at = to_timestamp($8)
+        AND expires_at = to_timestamp($9)
+        AND revoked_at IS NULL
+        AND expires_at > NOW()`,
+    [
+      claims.nonce,
+      claims.tenantId,
+      claims.clientId,
+      claims.siteId,
+      claims.userId,
+      claims.role,
+      JSON.stringify(claims.capabilities),
+      claims.issuedAt,
+      claims.expiresAt
+    ]
+  )
+  if (!row) {
+    throw new PageStudioSessionError(
+      'SESSION_TOKEN_INVALID',
+      403,
+      'Page Studio session is revoked or no longer active'
     )
   }
 }

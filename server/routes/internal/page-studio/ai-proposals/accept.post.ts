@@ -5,7 +5,9 @@ import {
 } from '~~/server/utils/pageStudio/controlSchemas'
 import { pageStudioInternalHttpError } from '~~/server/utils/pageStudio/http'
 import { requirePageStudioMachineAuth } from '~~/server/utils/pageStudio/machineAuth'
+import { queryOne } from '~~/server/utils/db'
 import {
+  assertPageStudioSessionActive,
   authorizePageStudioSession,
   resolvePageStudioSessionEnvironment,
   resolvePageStudioSessionPublicKey,
@@ -41,6 +43,7 @@ export default eventHandler(async (event) => {
       sessionEnvironment.issuer
     )
     authorizePageStudioSession(session, parsed.data)
+    await assertPageStudioSessionActive(session, queryOne)
     setResponseStatus(event, 201)
     return await acceptPageStudioAiProposal({
       ...parsed.data,
