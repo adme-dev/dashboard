@@ -5,6 +5,7 @@ import {
   createPageStudioSite,
   resolvePortalPageStudioTenant
 } from '~~/server/utils/pageStudio/sites'
+import { createPageStudioSetupProposal } from '~~/server/utils/pageStudio/setupProposal'
 
 export default eventHandler(async (event) => {
   try {
@@ -17,6 +18,12 @@ export default eventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Invalid Page Studio site' })
     }
     const tenantId = await resolvePortalPageStudioTenant(user.clientId)
+    const setupProposal = createPageStudioSetupProposal({
+      businessName: parsed.data.name,
+      starterVersion: parsed.data.starterVersion,
+      setupSource: parsed.data.setupSource,
+      setupBrief: parsed.data.setupBrief
+    })
     const site = await createPageStudioSite({
       actorId: user.id,
       actorRole: 'client',
@@ -27,6 +34,11 @@ export default eventHandler(async (event) => {
       starterVersion: parsed.data.starterVersion,
       setupSource: parsed.data.setupSource,
       setupBrief: parsed.data.setupBrief,
+      setupProposal: {
+        source: parsed.data.setupSource,
+        brief: parsed.data.setupBrief,
+        plan: setupProposal
+      },
       tenantId
     })
     return { site }

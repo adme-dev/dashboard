@@ -39,6 +39,7 @@ export interface CreatePageStudioSiteInput {
   starterVersion: string
   setupSource?: 'template' | 'chat'
   setupBrief?: string
+  setupProposal?: { source: 'template' | 'chat', brief?: string, plan: Record<string, unknown> }
   tenantId: string
 }
 
@@ -193,6 +194,16 @@ export async function createPageStudioSite(
           [input.clientId]
         )
         membershipUserId = primaryContact.rows[0]?.id
+      }
+
+      if (input.setupProposal) {
+        await db.query(
+          `INSERT INTO page_studio_setup_proposals (
+             tenant_id, client_id, site_id, revision, source, brief, plan, created_by
+           ) VALUES ($1, $2, $3, 1, $4, $5, $6::jsonb, $7)`,
+          [input.tenantId, input.clientId, site.id, input.setupProposal.source,
+            input.setupProposal.brief ?? null, JSON.stringify(input.setupProposal.plan), input.actorId]
+        )
       }
 
       const siteResult = await db.query<SiteRow>(
