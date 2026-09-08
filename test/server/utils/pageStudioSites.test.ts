@@ -78,6 +78,42 @@ describe('createPageStudioSite', () => {
     )
   })
 
+  it('persists a setup proposal after the site row exists', async () => {
+    const portalUserId = '55555555-5555-4555-8555-555555555555'
+    const db = database(sql => sql.includes('FROM client_users')
+      ? [{ id: portalUserId }]
+      : successfulRows(sql))
+
+    await expect(createPageStudioSite({
+      actorId: ACTOR_ID,
+      actorRole: 'client',
+      clientId: CLIENT_ID,
+      name: 'Limo site',
+      portalUserId,
+      route: 'limo-site',
+      starterVersion: 'limousine-v1',
+      setupSource: 'chat',
+      setupBrief: 'Bookings and fleet pages',
+      setupProposal: {
+        source: 'chat',
+        brief: 'Bookings and fleet pages',
+        plan: { pages: ['home'], modules: ['bookings'] }
+      },
+      tenantId: 'tenant-alpha'
+    }, { runTransaction: db.runTransaction })).resolves.toMatchObject({ id: SITE_ID })
+
+    const siteInsert = db.query.mock.invocationCallOrder.findIndex((order, index) =>
+      String(db.query.mock.calls[index]?.[0]).includes('INSERT INTO page_studio_sites'))
+    const proposalInsert = db.query.mock.invocationCallOrder.findIndex((order, index) =>
+      String(db.query.mock.calls[index]?.[0]).includes('INSERT INTO page_studio_setup_proposals'))
+    expect(siteInsert).toBeGreaterThanOrEqual(0)
+    expect(proposalInsert).toBeGreaterThan(siteInsert)
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO page_studio_setup_proposals'),
+      ['tenant-alpha', CLIENT_ID, SITE_ID, 'chat', 'Bookings and fleet pages', JSON.stringify({ pages: ['home'], modules: ['bookings'] }), ACTOR_ID]
+    )
+  })
+
   it('rejects creation before inserting a site when the entitlement is exhausted', async () => {
     const db = database((sql) => {
       if (sql.includes('FROM page_studio_entitlements')) {

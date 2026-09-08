@@ -196,16 +196,6 @@ export async function createPageStudioSite(
         membershipUserId = primaryContact.rows[0]?.id
       }
 
-      if (input.setupProposal) {
-        await db.query(
-          `INSERT INTO page_studio_setup_proposals (
-             tenant_id, client_id, site_id, revision, source, brief, plan, created_by
-           ) VALUES ($1, $2, $3, 1, $4, $5, $6::jsonb, $7)`,
-          [input.tenantId, input.clientId, site.id, input.setupProposal.source,
-            input.setupProposal.brief ?? null, JSON.stringify(input.setupProposal.plan), input.actorId]
-        )
-      }
-
       const siteResult = await db.query<SiteRow>(
         `INSERT INTO page_studio_sites (
            tenant_id, client_id, entitlement_id, name, route, starter_version,
@@ -226,6 +216,16 @@ export async function createPageStudioSite(
       )
       const site = siteResult.rows[0]
       if (!site) throw new Error('Page Studio site insert returned no row')
+
+      if (input.setupProposal) {
+        await db.query(
+          `INSERT INTO page_studio_setup_proposals (
+             tenant_id, client_id, site_id, revision, source, brief, plan, created_by
+           ) VALUES ($1, $2, $3, 1, $4, $5, $6::jsonb, $7)`,
+          [input.tenantId, input.clientId, site.id, input.setupProposal.source,
+            input.setupProposal.brief ?? null, JSON.stringify(input.setupProposal.plan), input.actorId]
+        )
+      }
 
       if (membershipUserId) {
         await db.query(
