@@ -23,6 +23,7 @@ export async function dispatchPageStudioProvisioning(
       phase: 'requested',
       attempts: 0,
       error: null,
+      plan: input.plan,
       resources: { contentBinding: null, database: null, site: null },
       scope: input.scope,
       templateId: input.templateId,

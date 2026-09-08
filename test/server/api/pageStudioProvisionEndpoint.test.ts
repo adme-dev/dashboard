@@ -27,6 +27,9 @@ describe('portal Page Studio provisioning handoff', () => {
     const binding = { createProvisioning: vi.fn().mockImplementation((job: { requestKey: string, scope: unknown }) => ({ requestKey: job.requestKey, scope: job.scope, phase: 'requested' })) }
     await expect(handler({ id: 's1', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).resolves.toEqual({ provisioning: expect.objectContaining({ requestKey: 'page-studio-s1-1', scope: expect.objectContaining({ tenantId: 't1', clientId: 'c1', siteId: 's1' }), job: expect.objectContaining({ phase: 'requested' }) }) })
     expect(binding.createProvisioning).toHaveBeenCalledOnce()
+    expect(binding.createProvisioning.mock.calls[0][0]).toEqual(expect.objectContaining({
+      plan: { pages: ['home'], templateId: 'limousine-v1' }
+    }))
   })
 
   it('rejects a proposal that has not been accepted', async () => {
