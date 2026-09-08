@@ -41,12 +41,23 @@ interface Request {
 interface ContentService {
   readContent: (scope: PageStudioContentScope) => Promise<unknown>
   writeContent: (request: unknown) => Promise<unknown>
+  listFormSubmissions?: (options?: { limit?: number, formId?: string, pageId?: string }) => Promise<unknown>
 }
 const BindingsSchema = z.array(z.object({
   scope: PageStudioContentScopeSchema,
   bindingName: z.string().regex(/^[A-Z][A-Z0-9_]{2,80}$/)
 }).strict()).max(500)
 const unavailable = () => new PageStudioBusinessContentError('CONTENT_NOT_CONFIGURED', 503, 'Business content setup is pending')
+
+const FormSubmissionResponseSchema = z.object({
+  fieldData: z.record(z.string().min(1).max(120), z.union([z.string().max(10_000), z.number().finite(), z.boolean(), z.null()])).refine(value => Object.keys(value).length <= 100),
+  formId: z.string().min(1).max(128),
+  id: z.string().min(1).max(128),
+  pageId: z.string().min(1).max(128),
+  scope: PageStudioContentScopeSchema,
+  submittedAt: z.string().datetime()
+}).strict()
+const FormSubmissionListSchema = z.array(FormSubmissionResponseSchema).max(100)
 
 async function authorise(request: Request, writing: boolean, dependencies: Dependencies) {
   const { actor, siteId } = request
@@ -99,6 +110,18 @@ function decode(result: unknown, scope: PageStudioContentScope) {
   const parsed = PageStudioContentRevisionSchema.safeParse(result)
   if (!parsed.success || !samePageStudioContentScope(parsed.data.content.scope, scope)) {
     throw new PageStudioBusinessContentError('CONTENT_RESPONSE_INVALID', 502, 'Business content response could not be verified')
+  }
+  return parsed.data
+}
+
+export async function listPageStudioBusinessSubmissions(request: Request, options: { limit?: number, formId?: string, pageId?: string } = {}, dependencies: Dependencies = {}) {
+  const { scope, service } = await authorise(request, false, dependencies)
+  if (typeof service.listFormSubmissions !== 'function') throw unavailable()
+  const limit = Math.max(1, Math.min(100, Math.trunc(options.limit ?? 50)))
+  const result = await callService(() => service.listFormSubmissions!({ ...options, limit }))
+  const parsed = FormSubmissionListSchema.safeParse(result)
+  if (!parsed.success || parsed.data.some(submission => !samePageStudioContentScope(submission.scope, scope))) {
+    throw new PageStudioBusinessContentError('CONTENT_RESPONSE_INVALID', 502, 'Business content submissions could not be verified')
   }
   return parsed.data
 }

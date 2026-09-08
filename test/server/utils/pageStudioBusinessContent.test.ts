@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readPageStudioBusinessContent, writePageStudioBusinessContent } from '~~/server/utils/pageStudio/businessContent'
+import { listPageStudioBusinessSubmissions, readPageStudioBusinessContent, writePageStudioBusinessContent } from '~~/server/utils/pageStudio/businessContent'
 
 const siteId = 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020'
 const actor = { role: 'client' as const, actorId: 'user_test', clientId: 'client_test' }
@@ -8,7 +8,7 @@ const row = { tenant_id: scope.tenantId, client_id: scope.clientId, site_status:
 const content = { schemaVersion: 1, scope, collections: [] }
 const revision = { content, revision: 1, actorId: actor.actorId, createdAt: '2026-09-07 12:00:00' }
 function setup(overrides = {}) {
-  const service = { readContent: vi.fn().mockResolvedValue(revision), writeContent: vi.fn().mockResolvedValue(revision) }
+  const service = { readContent: vi.fn().mockResolvedValue(revision), writeContent: vi.fn().mockResolvedValue(revision), listFormSubmissions: vi.fn().mockResolvedValue([]) }
   const env = { PAGE_STUDIO_CONTENT_BINDINGS: JSON.stringify([{ scope, bindingName: 'CONTENT_TEST' }]), CONTENT_TEST: service }
   const query = vi.fn().mockResolvedValue({ ...row, ...overrides })
   return { service, env, query }
@@ -71,5 +71,27 @@ describe('authenticated business content adapter', () => {
     expect(await readPageStudioBusinessContent({ actor, siteId, env }, { query })).toMatchObject({ revision: 0, content: null })
     await expect(writePageStudioBusinessContent({ actor, siteId, env, body: { collections: [], expectedRevision: 0, actorId: 'forged' } }, { query })).rejects.toMatchObject({ statusCode: 400 })
     expect(service.writeContent).not.toHaveBeenCalled()
+  })
+  it('reads only scope-matching form submissions through the configured service', async () => {
+    const { env, query, service } = setup()
+    service.listFormSubmissions.mockResolvedValueOnce([{
+      fieldData: { email: 'guest@example.com' },
+      formId: 'form_booking',
+      id: 'submission_one',
+      pageId: 'page_home',
+      scope,
+      submittedAt: '2026-09-08T10:00:00.000Z'
+    }])
+    const result = await listPageStudioBusinessSubmissions({ actor, siteId, env }, { formId: 'form_booking', limit: 10 }, { query })
+    expect(result).toHaveLength(1)
+    expect(service.listFormSubmissions).toHaveBeenCalledWith({ formId: 'form_booking', limit: 10 })
+    service.listFormSubmissions.mockResolvedValueOnce([{ ...result[0], scope: { ...scope, businessId: 'foreign' } }])
+    await expect(listPageStudioBusinessSubmissions({ actor, siteId, env }, {}, { query })).rejects.toMatchObject({ statusCode: 502 })
+  })
+  it('fails honestly when the configured service has no submission reader', async () => {
+    const { env, query, service } = setup()
+    const serviceWithoutReader = { ...service, listFormSubmissions: undefined }
+    env.CONTENT_TEST = serviceWithoutReader
+    await expect(listPageStudioBusinessSubmissions({ actor, siteId, env }, {}, { query })).rejects.toMatchObject({ statusCode: 503 })
   })
 })
