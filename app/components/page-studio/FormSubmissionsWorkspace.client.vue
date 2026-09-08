@@ -1,7 +1,8 @@
 <script setup lang="ts">
 interface Submission {
-  fields: Record<string, string>
+  fields: Record<string, unknown>
   formId: string
+  formName?: string | null
   id: string
   isTest: boolean
   pageRoute: string
@@ -19,10 +20,18 @@ const columns = [
   { accessorKey: 'submitted', header: 'Submitted' },
   { accessorKey: 'mode', header: 'Mode' }
 ]
+function displayField(value: unknown) {
+  if (value === null || value === undefined || value === '') return 'Not provided'
+  if (Array.isArray(value)) return value.map(item => String(item)).join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
 const rows = computed(() => submissions.value.map(submission => ({
-  name: submission.fields.full_name || submission.fields.name || 'Unnamed contact',
-  form: `${submission.formId} · ${submission.pageRoute || '/'}`,
-  contact: submission.fields.email || submission.fields.phone || submission.fields.phone_number || 'Not provided',
+  name: submission.fields.full_name || submission.fields.name
+    ? displayField(submission.fields.full_name || submission.fields.name)
+    : 'Unnamed contact',
+  form: `${submission.formName || submission.formId} · ${submission.pageRoute || '/'}`,
+  contact: displayField(submission.fields.email || submission.fields.phone || submission.fields.phone_number),
   submitted: new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(submission.submittedAt)),
   mode: submission.isTest ? 'Synthetic' : 'Live'
 })))
