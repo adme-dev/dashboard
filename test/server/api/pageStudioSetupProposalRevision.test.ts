@@ -11,7 +11,10 @@ const globals = globalThis as typeof globalThis & {
   createError: (input: Record<string, unknown>) => Error & Record<string, unknown>
 }
 globals.eventHandler = handler => handler
-globals.getRouterParam = event => event.id
+globals.getRouterParam = (event, key) => {
+  expect(key).toBe('siteId')
+  return event.id
+}
 globals.readBody = async event => event.body
 globals.createError = input => Object.assign(new Error(String(input.statusMessage)), input)
 
@@ -27,7 +30,7 @@ describe('portal setup proposal revisions', () => {
   })
 
   it('creates a new reviewable revision from customer supplied facts', async () => {
-    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/setup-proposal.patch')
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/setup-proposal.patch')
     await expect(handler({ id: 'site-1', body: { expectedRevision: 1, setupBrief: 'Phone 03 9000 0000, rates from $200, available every day' } } as never)).resolves.toEqual({ proposal: { id: 'proposal-2', revision: 2, status: 'proposed' } })
     const callbackDb = mocks.transaction.mock.calls[0][0]
     expect(callbackDb).toBeTypeOf('function')
@@ -37,7 +40,7 @@ describe('portal setup proposal revisions', () => {
     mocks.transaction.mockImplementationOnce(async (callback: (db: unknown) => Promise<unknown>) => callback({
       query: vi.fn().mockResolvedValueOnce({ rows: [{ tenant_id: 'tenant-1', client_id: 'client-1', site_id: 'site-1', revision: 2, source: 'template', status: 'proposed', plan: {} }] })
     }))
-    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/setup-proposal.patch')
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/setup-proposal.patch')
     await expect(handler({ id: 'site-1', body: { expectedRevision: 1, setupBrief: 'facts' } } as never)).rejects.toMatchObject({ statusCode: 409 })
   })
 
@@ -47,7 +50,7 @@ describe('portal setup proposal revisions', () => {
       revision: 1, source: 'chat', status: 'accepted', plan: {}
     }] })
     mocks.transaction.mockImplementationOnce(async (callback: (db: unknown) => Promise<unknown>) => callback({ query }))
-    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/setup-proposal.patch')
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/setup-proposal.patch')
 
     await expect(handler({ id: 'site-1', body: { expectedRevision: 1, setupBrief: 'Changed facts' } } as never))
       .rejects.toMatchObject({ statusCode: 409 })

@@ -12,7 +12,7 @@ export default eventHandler(async (event) => {
   try {
     const user = await requireClientAuth(event)
     if (!['admin', 'manager'].includes(user.role)) throw createError({ statusCode: 403, statusMessage: 'Page Studio editing access denied' })
-    const siteId = getRouterParam(event, 'id')
+    const siteId = getRouterParam(event, 'siteId')
     const parsed = Body.safeParse(await readBody(event))
     if (!siteId || !parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid setup proposal decision' })
     const updated = await queryOne(`

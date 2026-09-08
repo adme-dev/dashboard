@@ -11,7 +11,10 @@ const globals = globalThis as typeof globalThis & {
   createError: (input: Record<string, unknown>) => Error & Record<string, unknown>
 }
 globals.eventHandler = handler => handler
-globals.getRouterParam = event => event.id
+globals.getRouterParam = (event, key) => {
+  expect(key).toBe('siteId')
+  return event.id
+}
 globals.readBody = async event => event.body
 globals.createError = input => Object.assign(new Error(String(input.statusMessage)), input)
 
@@ -23,14 +26,14 @@ describe('portal setup proposal decisions', () => {
   })
 
   it('accepts only the expected proposed revision', async () => {
-    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/setup-proposal.post')
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/setup-proposal.post')
     await expect(handler({ id: 'site-1', body: { decision: 'accepted', expectedRevision: 1 } } as never)).resolves.toEqual({ proposal: expect.objectContaining({ status: 'accepted' }) })
     expect(mocks.queryOne).toHaveBeenCalledWith(expect.stringContaining('membership.user_id = $6'), ['accepted', 'user-1', 'client-1', 'site-1', 1, 'user-1'])
   })
 
   it('fails closed for viewers', async () => {
     mocks.requireClientAuth.mockResolvedValue({ id: 'user-1', clientId: 'client-1', role: 'viewer' })
-    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/setup-proposal.post')
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/setup-proposal.post')
     await expect(handler({ id: 'site-1', body: { decision: 'accepted', expectedRevision: 1 } } as never)).rejects.toMatchObject({ statusCode: 403 })
     expect(mocks.queryOne).not.toHaveBeenCalled()
   })

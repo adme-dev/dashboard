@@ -303,3 +303,45 @@ unchanged. Keep BOOK-07 open for connected acceptance and browser navigation.
 
 Wrangler has now refreshed the existing Cloudflare login successfully. A fresh
 production list confirms `1a61474f` / `60f2171`; the prior OAuth 401 is resolved.
+
+### Deployed content acceptance exposed a router collision
+
+On preview `32b39722`, all three synthetic identities authenticated successfully
+and client A's scoped booking list returned 200 with the expected scope and
+no-store headers. Its content request then followed an unexpected 302 to staff
+`/auth/login`, ultimately receiving HTML rather than JSON. A separate diagnostic
+confirmed the redirect; no content write was reached. All three smoke sessions
+and the separate diagnostic session were logged out and their subsequent
+identity requests returned 401. No mail was sent. Evidence:
+`/private/tmp/page-studio-connected-staging-evidence-attempt1.json`,
+`/private/tmp/page-studio-content-response-diagnostic.json`, and
+`/private/tmp/page-studio-content-anonymous-headers.txt`.
+
+The installed H3/radix router reproduces the cause: sibling dynamic directories
+`[id]` and `[siteId]` under the same portal site prefix cause the later branch
+(content, forms and editor session routes) to fall through to the Nuxt renderer.
+Five setup/provision handlers now live under the existing `[siteId]` directory
+and read the canonical parameter. Public URLs are unchanged. No authentication
+check was removed. Updated handler tests assert the requested parameter name;
+a filesystem-derived test registers all twelve actual site routes with the
+installed H3 router and checks dispatch and extracted site IDs against a renderer
+fallback. Ten cases failed before the move; the routing/endpoint set passes all
+25 checks after it.
+
+Full tests pass 13,157 checks with 27 existing skips, except the frozen security
+gate inventory fingerprint needed its path update. Independent recomputation
+normalizing only the three moved role-gate paths reproduces the exact previous
+digest; counts, gate text and classifications are unchanged. The reviewed new
+digest is pinned. All 33 focused routing/endpoint/inventory tests pass after that
+review. The fresh build and deployment guard pass: raw 25,057,991 bytes
+(410,937 remaining), gzip 6,582,178 bytes. Inspection of the emitted artifact
+confirms all twelve portal site API routes use the canonical parameter, including
+both content methods. Scoped lint passes. Evidence:
+`/private/tmp/page-studio-route-gate-inventory-review.json` and
+`/private/tmp/page-studio-portal-route-*.log`. Deployed connected content acceptance
+must be repeated with fresh links after publishing this repair.
+
+Follow-up retained for provisioning review: the existing provision POST checks
+client ownership and manager/admin role but lacks the explicit site-membership
+join present on provision GET. Reconcile that with the required site-scoped
+provisioning authority before enabling live self-service resource creation.

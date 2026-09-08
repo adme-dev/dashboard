@@ -5,7 +5,7 @@ import { queryOne } from '~~/server/utils/db'
 export default eventHandler(async (event) => {
   try {
     const user = await requireClientAuth(event)
-    const siteId = getRouterParam(event, 'id')
+    const siteId = getRouterParam(event, 'siteId')
     if (!siteId) throw createError({ statusCode: 400, statusMessage: 'Site is required' })
     const proposal = await queryOne(`
       SELECT id, site_id AS "siteId", revision, source, brief, plan, status,

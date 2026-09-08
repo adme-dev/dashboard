@@ -213,7 +213,7 @@ describe('God mode gate inventory', () => {
       ordinary_user_behavior: 173,
       unrelated_configuration: 431
     })
-    expect(inventory.digest).toBe('3aae87e9f7e1bce5cd06c0a38941a8ac865e6ac5f5594089f46e7cd392b9717e')
+    expect(inventory.digest).toBe('934c2d219e2a9638013f5ffb4fc2b28858eafe1844278cc84c503f4574515a08')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

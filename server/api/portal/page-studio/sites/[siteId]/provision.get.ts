@@ -6,7 +6,7 @@ import { readPageStudioProvisioning, type PageStudioProvisionerBinding } from '~
 export default eventHandler(async (event) => {
   try {
     const user = await requireClientAuth(event)
-    const siteId = getRouterParam(event, 'id')
+    const siteId = getRouterParam(event, 'siteId')
     if (!siteId) throw createError({ statusCode: 400, statusMessage: 'Invalid site' })
     const row = await queryOne<{
       tenantId: string

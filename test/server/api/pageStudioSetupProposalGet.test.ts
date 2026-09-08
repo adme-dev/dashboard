@@ -6,11 +6,14 @@ vi.mock('~~/server/utils/db', () => ({ queryOne: (...args: unknown[]) => mocks.q
 
 const globals = globalThis as typeof globalThis & {
   eventHandler: <T>(handler: T) => T
-  getRouterParam: (event: { id?: string }) => string | undefined
+  getRouterParam: (event: { id?: string }, key: string) => string | undefined
   createError: (input: Record<string, unknown>) => Error & Record<string, unknown>
 }
 globals.eventHandler = handler => handler
-globals.getRouterParam = event => event.id
+globals.getRouterParam = (event, key) => {
+  expect(key).toBe('siteId')
+  return event.id
+}
 globals.createError = input => Object.assign(new Error(String(input.statusMessage)), input)
 
 describe('portal setup proposal reads', () => {
@@ -21,7 +24,7 @@ describe('portal setup proposal reads', () => {
   })
 
   it('requires membership in the requested site', async () => {
-    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/setup-proposal.get')
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/setup-proposal.get')
     await expect(handler({ id: 'site-1' } as never)).resolves.toEqual({ proposal: expect.objectContaining({ id: 'proposal-1' }) })
     expect(mocks.queryOne).toHaveBeenCalledWith(expect.stringContaining('membership.user_id = $2'), ['client-1', 'user-1', 'site-1'])
   })
