@@ -24,8 +24,8 @@ describe('portal Page Studio provisioning handoff', () => {
   it('emits a stable scoped request only for an accepted revision', async () => {
     mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 1, status: 'accepted', source: 'chat', plan: { pages: ['home'], templateId: 'limousine-v1' } })
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.post')
-    const binding = { createProvisioning: vi.fn().mockResolvedValue({ phase: 'requested' }) }
-    await expect(handler({ id: 's1', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).resolves.toEqual({ provisioning: expect.objectContaining({ requestKey: 'page-studio-s1-1', scope: expect.objectContaining({ tenantId: 't1', clientId: 'c1', siteId: 's1' }), job: { phase: 'requested' } }) })
+    const binding = { createProvisioning: vi.fn().mockImplementation((job: { requestKey: string, scope: unknown }) => ({ requestKey: job.requestKey, scope: job.scope, phase: 'requested' })) }
+    await expect(handler({ id: 's1', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).resolves.toEqual({ provisioning: expect.objectContaining({ requestKey: 'page-studio-s1-1', scope: expect.objectContaining({ tenantId: 't1', clientId: 'c1', siteId: 's1' }), job: expect.objectContaining({ phase: 'requested' }) }) })
     expect(binding.createProvisioning).toHaveBeenCalledOnce()
   })
 
@@ -39,5 +39,12 @@ describe('portal Page Studio provisioning handoff', () => {
     mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 1, status: 'accepted', source: 'template', plan: { templateId: 'retail-v1' } })
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.post')
     await expect(handler({ id: 's1', body: { expectedRevision: 1 }, context: {} } as never)).rejects.toMatchObject({ statusCode: 503 })
+  })
+
+  it('rejects a mismatched Worker response scope', async () => {
+    mocks.queryOne.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 's1', revision: 1, status: 'accepted', source: 'template', plan: { templateId: 'retail-v1' } })
+    const binding = { createProvisioning: vi.fn().mockResolvedValue({ requestKey: 'page-studio-s1-1', scope: { tenantId: 'other', clientId: 'c1', businessId: 'c1', siteId: 's1', environment: 'staging' } }) }
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[id]/provision.post')
+    await expect(handler({ id: 's1', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).rejects.toMatchObject({ statusCode: 503 })
   })
 })
