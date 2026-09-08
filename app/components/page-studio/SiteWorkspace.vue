@@ -19,6 +19,17 @@ const emit = defineEmits<{
 const config = useRuntimeConfig()
 const toast = useToast()
 const launchingSiteId = ref<string | null>(null)
+const createOpen = ref(false)
+const creating = ref(false)
+const createError = ref<string | null>(null)
+const createForm = reactive({ name: '', route: '', starterVersion: 'limousine-v1' })
+const starterOptions = [
+  { label: 'Limousine and tours', value: 'limousine-v1' },
+  { label: 'Floristry', value: 'floristry-v1' },
+  { label: 'Retail', value: 'retail-v1' },
+  { label: 'IT goods', value: 'it-goods-v1' },
+  { label: 'Import and export', value: 'import-export-v1' }
+]
 const { launchPageStudio } = usePageStudioLauncher()
 const editorUrl = computed(() => {
   const value = config.public.pageStudioEditorUrl
@@ -106,6 +117,33 @@ async function launchStudio(site: PageStudioSiteSummary) {
     launchingSiteId.value = null
   }
 }
+
+async function createSite() {
+  if (props.audience !== 'portal' || creating.value) return
+  createError.value = null
+  if (!createForm.name.trim() || !/^[a-z0-9](?:[a-z0-9-]{0,62})$/.test(createForm.route)) {
+    createError.value = 'Enter a site name and a lowercase route using letters, numbers and hyphens.'
+    return
+  }
+  creating.value = true
+  try {
+    await $fetch('/api/portal/page-studio/sites', {
+      method: 'POST',
+      body: { name: createForm.name.trim(), route: createForm.route, starterVersion: createForm.starterVersion }
+    })
+    createOpen.value = false
+    createForm.name = ''
+    createForm.route = ''
+    toast.add({ title: 'Website created', description: 'Your new website is ready for content setup.', color: 'success' })
+    emit('refresh')
+  } catch (error: unknown) {
+    createError.value = error && typeof error === 'object' && 'data' in error && error.data && typeof error.data === 'object' && 'statusMessage' in error.data
+      ? String(error.data.statusMessage)
+      : 'The website could not be created. Check your plan allowance and try again.'
+  } finally {
+    creating.value = false
+  }
+}
 </script>
 
 <template>
@@ -134,6 +172,13 @@ async function launchStudio(site: PageStudioSiteSummary) {
           variant="outline"
           :loading="pending"
           @click="emit('refresh')"
+        />
+        <UButton
+          v-if="audience === 'portal'"
+          label="New website"
+          icon="i-lucide-plus"
+          color="primary"
+          @click="createOpen = true"
         />
       </div>
     </div>
@@ -274,4 +319,27 @@ async function launchStudio(site: PageStudioSiteSummary) {
       class="justify-end"
     />
   </section>
+
+  <UModal v-model:open="createOpen" :title="'Create a website'" :description="'Choose a starter and reserve a site route for your business.'">
+    <template #body>
+      <div class="space-y-4">
+        <UAlert v-if="createError" color="error" variant="subtle" icon="i-lucide-circle-alert" title="Website could not be created" :description="createError" />
+        <UFormField label="Website name" required>
+          <UInput v-model="createForm.name" class="w-full" placeholder="Northside Supply" />
+        </UFormField>
+        <UFormField label="Site route" help="Lowercase letters, numbers and hyphens only." required>
+          <UInput v-model="createForm.route" class="w-full" placeholder="northside-supply" />
+        </UFormField>
+        <UFormField label="Starter template" required>
+          <USelectMenu v-model="createForm.starterVersion" :items="starterOptions" value-key="value" class="w-full" />
+        </UFormField>
+      </div>
+    </template>
+    <template #footer>
+      <div class="flex w-full justify-end gap-3">
+        <UButton label="Cancel" color="neutral" variant="ghost" :disabled="creating" @click="createOpen = false" />
+        <UButton label="Create website" color="primary" :loading="creating" @click="createSite" />
+      </div>
+    </template>
+  </UModal>
 </template>
