@@ -47,7 +47,29 @@ Cloudflare's production deployment list currently identifies deployment
 is `b442ae430`; a branch comparison alone does not identify the deployed source.
 This report does not claim a new production deployment.
 
-The guarded preview upload and deployed acceptance remain pending at this
-checkpoint. Business Content/provisioner bindings, live AI session verification
+Both guarded preview attempts passed the size check but failed uploading assets
+at 252/920. Wrangler logs show `UND_ERR_CONNECT_TIMEOUT`, `ETIMEDOUT` and `EPIPE`;
+the second attempt also used IPv4-first DNS ordering. Remote readback after the
+retry still identifies preview deployment `54e83ed7-44ae-47f2-b4d6-765f0ef6e9c3`,
+source `1384a3e`, and no deployment for `e3e4ac7`. No new preview or production
+release was created. The retry's raw/gzip totals were 25,045,343 / 6,580,419 bytes.
+
+The Dashboard branch is published in draft PR
+https://github.com/adme-dev/dashboard/pull/519. Its first full CI run reported
+13,086 passing tests, 27 skipped tests and three failures: two stale security
+inventories and a Google Ads health fixture whose fixed date had aged past its
+freshness threshold. Commit `c592c1c13` refreshes the reviewed inventories,
+explicitly classifies portal identity and session-key configuration as hard
+boundaries, and freezes the analytics test clock. Commit `727a641e0` also fixes
+the proposal revision query to select the approval status it checks, with an
+accepted-plan rejection regression. All 23 affected tests and scoped ESLint
+pass locally. Build/CI evidence above is for the earlier bundle-fix commit;
+fresh CI is required for these follow-ups.
+
+Business Content/provisioner bindings, live AI session verification
 configuration, commercial plans and Fantasy Limo client launch requirements
-remain tracked in the foundation checklist and open-items ledger.
+remain tracked in the foundation checklist and open-items ledger. Booking
+bindings also need an explicit authenticated tenant/client/site scope contract
+before general deployment: the current booking adapter accepts options or an
+ID without carrying caller scope. This is a release prerequisite, not proof of
+multi-tenant isolation.
