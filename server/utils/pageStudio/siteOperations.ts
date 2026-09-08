@@ -230,17 +230,21 @@ export async function getPageStudioAssetObject(tenantId: string, siteId: string,
 export async function listPageStudioSubmissions(tenantId: string, siteId: string) {
   await requirePageStudioSiteScope(tenantId, siteId)
   return queryRows(`
-    SELECT DISTINCT ON (lead.id)
-           lead.id::text, lead.form_id AS "formId", lead.form_name AS "formName",
-           lead.page_id AS "pageId", lead.page_name AS "pageRoute",
-           lead.field_data AS fields, lead.attribution, lead.submitted_at AS "submittedAt",
-           lead.is_test AS "isTest", audit.metadata->>'releaseId' AS "releaseId"
-      FROM page_studio_audit_events audit
-      JOIN leads lead ON lead.id::text = audit.resource_id
-     WHERE audit.tenant_id = $1 AND audit.site_id = $2
-       AND audit.resource_type = 'lead' AND audit.action IN ('lead.created', 'lead.duplicate')
-       AND lead.deleted_at IS NULL
-     ORDER BY lead.id, audit.occurred_at DESC
+    SELECT *
+      FROM (
+        SELECT DISTINCT ON (lead.id)
+               lead.id::text, lead.form_id AS "formId", lead.form_name AS "formName",
+               lead.page_id AS "pageId", lead.page_name AS "pageRoute",
+               lead.field_data AS fields, lead.attribution, lead.submitted_at AS "submittedAt",
+               lead.is_test AS "isTest", audit.metadata->>'releaseId' AS "releaseId"
+          FROM page_studio_audit_events audit
+          JOIN leads lead ON lead.id::text = audit.resource_id
+         WHERE audit.tenant_id = $1 AND audit.site_id = $2
+           AND audit.resource_type = 'lead' AND audit.action IN ('lead.created', 'lead.duplicate')
+           AND lead.deleted_at IS NULL
+         ORDER BY lead.id, audit.occurred_at DESC
+      ) submissions
+     ORDER BY "submittedAt" DESC
      LIMIT $3
   `, [tenantId, siteId, MAX_SITE_OPERATION_ROWS])
 }
