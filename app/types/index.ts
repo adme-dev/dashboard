@@ -2917,6 +2917,8 @@ export interface PageStudioSiteSummary {
   status: string
   createdAt: string
   updatedAt: string
+  setupProposalStatus?: 'proposed' | 'accepted' | 'rejected' | null
+  setupProposalRevision?: number | null
 }
 
 export interface PageStudioDocumentSite {

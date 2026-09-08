@@ -289,9 +289,19 @@ async function reviewSetup() {
                 {{ formattedRoute(site.route) }}
               </p>
             </div>
-            <UBadge :color="statusColor(site.status)" variant="subtle">
-              {{ statusLabel(site.status) }}
-            </UBadge>
+            <div class="flex flex-col items-end gap-1">
+              <UBadge :color="statusColor(site.status)" variant="subtle">
+                {{ statusLabel(site.status) }}
+              </UBadge>
+              <UBadge
+                v-if="audience === 'portal' && site.setupProposalStatus"
+                :color="site.setupProposalStatus === 'accepted' ? 'success' : site.setupProposalStatus === 'rejected' ? 'warning' : 'info'"
+                variant="outline"
+                size="xs"
+              >
+                Setup {{ statusLabel(site.setupProposalStatus) }}
+              </UBadge>
+            </div>
           </div>
 
           <dl class="grid grid-cols-2 gap-3 text-sm">

@@ -60,6 +60,8 @@ interface SiteRow {
   status: string
   created_at: string
   updated_at: string
+  setup_proposal_status?: 'proposed' | 'accepted' | 'rejected' | null
+  setup_proposal_revision?: number | null
 }
 
 export interface PageStudioSite {
@@ -73,6 +75,8 @@ export interface PageStudioSite {
   status: string
   createdAt: string
   updatedAt: string
+  setupProposalStatus: 'proposed' | 'accepted' | 'rejected' | null
+  setupProposalRevision: number | null
 }
 
 interface ListedSiteRow extends SiteRow {
@@ -95,7 +99,9 @@ function mapSite(row: SiteRow): PageStudioSite {
     starterVersion: row.starter_version,
     status: row.status,
     createdAt: row.created_at,
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
+    setupProposalStatus: row.setup_proposal_status ?? null,
+    setupProposalRevision: row.setup_proposal_revision ?? null
   }
 }
 
@@ -334,8 +340,14 @@ export async function listAgencyPageStudioSites(input: {
     `SELECT site.id, site.tenant_id, site.client_id, site.entitlement_id,
             site.name, site.route, site.starter_version, site.status,
             site.created_at, site.updated_at,
+            proposal.status AS setup_proposal_status, proposal.revision AS setup_proposal_revision,
             COUNT(*) OVER()::text AS total_count
      FROM page_studio_sites site
+     LEFT JOIN LATERAL (
+       SELECT status, revision FROM page_studio_setup_proposals
+       WHERE tenant_id = site.tenant_id AND client_id = site.client_id AND site_id = site.id
+       ORDER BY revision DESC LIMIT 1
+     ) proposal ON TRUE
      WHERE ${where.join(' AND ')}
      ORDER BY site.updated_at DESC, site.id
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -358,15 +370,21 @@ export async function listPortalPageStudioSites(input: {
     `SELECT site.id, site.tenant_id, site.client_id, site.entitlement_id,
             site.name, site.route, site.starter_version, site.status,
             site.created_at, site.updated_at,
+            proposal.status AS setup_proposal_status, proposal.revision AS setup_proposal_revision,
             COUNT(*) OVER()::text AS total_count
      FROM page_studio_sites site
      JOIN page_studio_site_memberships membership
        ON membership.tenant_id = site.tenant_id
       AND membership.client_id = site.client_id
       AND membership.site_id = site.id
+     LEFT JOIN LATERAL (
+       SELECT status, revision FROM page_studio_setup_proposals
+       WHERE tenant_id = site.tenant_id AND client_id = site.client_id AND site_id = site.id
+       ORDER BY revision DESC LIMIT 1
+     ) proposal ON TRUE
      WHERE site.client_id = $1
-       AND membership.user_id = $2
-       AND site.status <> 'archived'
+      AND membership.user_id = $2
+      AND site.status <> 'archived'
      ORDER BY site.updated_at DESC, site.id
      LIMIT $3 OFFSET $4`,
     [input.clientId, input.userId, input.limit, input.offset]
