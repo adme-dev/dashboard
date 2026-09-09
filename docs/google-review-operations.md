@@ -35,12 +35,12 @@ Set `SOCIAL_AUTOMATION_ENABLED=false` to stop automatic drafts/sends. Remove `SO
 
 ## Release evidence — 2026-09-09
 
-- Pages app commit: `119e8846e`; deployment `1a1c35a0.agency-dashboard-6cm.pages.dev` on production branch `main`.
+- Pages app commit: `0f35ccd09`; deployment `3ec493fc.agency-dashboard-6cm.pages.dev` on production branch `main`. Sync errors remain visible while the connected-location count and retry action stay available.
 - Preserved the previously deployed measurement capability fix `60f217138` by building directly on its commit.
 - 722 relevant tests passed. Production build and guarded deployment passed. Repository-wide typecheck still reports existing errors; it is not a clean typecheck baseline.
-- `social-inbox-cron` deployed with `*/5 * * * *`; existing Pages `CRON_SECRET` installed securely. An empty-client authenticated production probe returned HTTP 200 without importing or replying.
+- `social-inbox-cron` deployed with `*/5 * * * *`; existing Pages `CRON_SECRET` installed securely. An empty-client authenticated production probe returned HTTP 200 without importing or replying. The first observed scheduled invocation also returned HTTP 200 with no Worker exceptions; it synced two accounts and processed five automation candidates before its request budget expired. Candidate processing is not evidence of five public replies.
 - Eleven misplaced Google locations reassigned from Geelong GWM Haval to their corresponding existing client groups. Twelve active Google locations now span eight clients. `repair-google-review-clients.mjs` refuses unexpected mappings or linked history, locks posts/accounts during the repair, and stores prior client metadata for auditing.
 - Sixteen Google-only rules activated: one approval rule and one guarded autopilot rule for each of eight clients.
-- Google still denies `mybusiness.googleapis.com` activation as `paul@adme.net.au`. The user recalls an earlier application under `advertising@adme.net.au`; checking that approval requires its Google sign-in. Do not describe Google ingestion as live until a successful real sync is verified.
+- Google still denies `mybusiness.googleapis.com` activation as `paul@adme.net.au`. The user has signed in as `advertising@adme.net.au`, and the Business Profile access workflow lists the dealership profiles. Google Cloud separately requires a passkey identity check before that account's project/API access can be inspected. No new access application has been submitted. Do not describe Google ingestion as live until a successful real sync is verified.
 
 Other sessions must include this release's commits before their next production deployment. The shared working checkout was not switched or reset.
