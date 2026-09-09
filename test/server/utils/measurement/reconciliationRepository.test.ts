@@ -54,7 +54,10 @@ describe('measurement reconciliation repository', () => {
       }])
     const repository = createMeasurementReconciliationRepository({ queryRows })
 
-    const result = await repository.list({ clientId: CLIENT_ID })
+    const result = await repository.list({
+      clientId: CLIENT_ID,
+      now: new Date('2026-09-02T05:00:00.000Z')
+    })
     expect(result.items.find(item => item.identity.enquiryType === 'stock')).toMatchObject({
       state: 'destination_not_configured',
       blockers: ['destination_not_configured']

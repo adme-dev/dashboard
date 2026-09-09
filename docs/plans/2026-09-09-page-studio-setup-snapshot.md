@@ -30,3 +30,13 @@ readable. Existing marketing claims are unchanged by this internal handoff fix.
 ONB-04 remains open for live executor authority, owned Worker routing, durable
 site/content seeding, checkpointing and authenticated end-to-end setup. Generated
 starter routes do not yet fulfil every accepted semantic page/module request.
+
+## Preview gate repair
+
+Preview run 34323273292 built successfully, then stopped on one unrelated test
+(13,170 passed, 27 skipped). The measurement reconciliation mapping fixture used
+2 September evidence with the wall clock; it crossed the seven-day stale threshold
+on 9 September. The failure reproduces locally. The test now supplies the same
+fixed evaluation time as its adjacent test, preserving the mapping assertion and
+production stale-evidence policy. Focused measurement regression coverage is run
+before restarting the full preview gates. The failed run did not deploy.
