@@ -37,6 +37,16 @@ The Foundation companion's remote smoke imports this real proposal generator
 and adapter. Release results are retained in its
 `docs/research/2026-09-09-provisioning-coordinator.md`.
 
+Preview release workflow `34310852788` passed full CI, the guarded deployment
+and live origin smoke. Cloudflare readback confirms deployment
+`895adc61-dcbc-4bbb-935e-ec1f125b2cd1`, source `be51d2c`:
+<https://895adc61.agency-dashboard-6cm.pages.dev>. CI raw Worker size was
+25,059,802 bytes (409,126 remaining), gzip 6,582,736. Production was not deployed.
+Post-deploy curl checks returned homepage 200 and anonymous provisioning status
+401. An initial Python urllib homepage probe returned 403; the cause of the
+client-specific difference was not established. Signed-in setup acceptance is
+still a separate open item.
+
 Remaining: resource executor with ownership/idempotency, execution-time entitlement
 checks, interrupted creation recovery, billing reconciliation, and authenticated
 customer setup acceptance. The current handoff still derives business ID from
