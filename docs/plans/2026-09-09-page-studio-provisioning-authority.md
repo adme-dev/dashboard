@@ -14,8 +14,13 @@ Delivery is split into two independently reviewable increments:
   `coordinator_63697b6881a445099691ae8894e80afd`, 18 seconds. A second editor's
   retry preserves the first actor. All three synthetic jobs are retired; D1
   readback reports `failed / total 3 / consistent 3`, with no claims or resources.
-- [ ] Publish the authenticated producer to guarded Dashboard preview and record
-  deployed acceptance separately from the local-adapter/private-service probe.
+- [x] Publish producer 7b1c4f55e through guarded preview 34345442685. Cloudflare
+  deployment 418d031d-8aaf-4296-87c3-96736151c9e6 is confirmed. Deployed portal
+  acceptance passes (13 seconds): two authenticated editors, original-owner
+  replay, owner spoofing and foreign-site denials, durable status readback and
+  both sessions revoked. Synthetic site 201 is separate from checkpoint fixtures
+  101/102. Its entitlement is now disabled/expired and its D1 job retired with
+  original actor intact; readbacks confirm zero sessions and failed/1/1.
 - [ ] Add and verify execution-time live authority, seed readback and executor
   integration. No new internal authority endpoint is implemented in this increment.
 
