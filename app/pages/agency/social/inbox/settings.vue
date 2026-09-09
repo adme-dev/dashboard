@@ -54,7 +54,7 @@ const savingPolicy = ref(false)
 const deletingPolicy = ref<string | null>(null)
 
 const currentClientName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || 'Selected client')
-const googleBusinessConnectedCount = computed(() => googleBusinessAccounts.value.filter(account => account.is_active && !account.last_error).length)
+const googleBusinessConnectedCount = computed(() => googleBusinessAccounts.value.filter(account => account.is_active).length)
 const googleBusinessIssueCount = computed(() =>
   googleBusinessAccounts.value.filter(account => !account.is_active || account.last_error || isExpired(account.token_expires_at)).length
 )
@@ -100,7 +100,7 @@ async function refreshGoogleBusinessAccounts() {
     if (clientId.value === requestedClientId) {
       googleBusinessAccounts.value = accounts.filter(account => account.platform === 'google-business').map(account => ({
         ...account,
-        last_error: account.review_sync_error || account.last_error,
+        last_error: account.last_error || account.review_sync_error,
         last_synced_at: account.review_last_attempt_at || account.last_synced_at
       }))
     }
