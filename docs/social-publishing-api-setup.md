@@ -1,6 +1,6 @@
 # Social Publishing API Setup
 
-Last checked: 2026-06-04
+Google Business Profile last checked: 2026-09-09
 
 This is the setup reminder for `/agency/social/publishing/accounts` OAuth connections.
 Those account connections are reused by publishing and by the engagement inbox review sync.
@@ -15,11 +15,12 @@ Domain split:
 Status verified on 2026-09-09:
 
 - The active shared OAuth client belongs to project `gen-lang-client-0818792107`, number `14351276985`.
-- OAuth refresh and Account Management requests succeed. Twelve active locations are connected.
-- Reviews fail with `403 SERVICE_DISABLED`: `mybusiness.googleapis.com` is not enabled for that project.
-- Enabling that service as `paul@adme.net.au` returns `PERMISSION_DENIED` (`servicemanagement.services.bind`). The service is absent from the API library.
-- The older project `my-business-api-271101` (`65723781223`) also denies enabling the same service. Switching to its stale OAuth credentials will not solve this.
-- Google requires Business Profile API approval before the legacy Google My Business service becomes available. Obtain approval for the active project/account, then enable `mybusiness.googleapis.com` and verify a real reviews.list response.
+- The project is owned by `paul@adme.net.au` and has the approved Account Management quota of 300 requests/minute. Twelve active locations are connected.
+- The legacy review API was disabled. Paul could not enable it because the Google account lacked access to that private API, despite owning the project.
+- `advertising@adme.net.au` could enable the private API. A temporary, time-limited Service Usage Admin grant on the existing project allowed Advertising to enable `mybusiness.googleapis.com`; the grant was then removed. Enable operation: `operations/acat.p2-14351276985-b05fb3d9-b75e-44fd-95a2-c74158659b94`.
+- All twelve locations now return HTTP 200 from `reviews.list` through the existing production OAuth connection. Two locations return no reviews. Live imports are verified in the Reviews screen.
+- Advertising's separate `wise-trainer-382200` project (`803122782506`) is not approved: Account Management quota is zero, and reviews return 404 `Method not found`, even though the legacy API could be enabled. A temporary verification OAuth client there was removed. API visibility/enablement alone is not proof of project approval.
+- The older project `my-business-api-271101` (`65723781223`) is not used. Do not switch to its stale credentials.
 
 The connection does not require enabling local-post publishing. Shared Google OAuth credentials must remain consistent with stored refresh tokens; do not replace them with the older project's credentials.
 
