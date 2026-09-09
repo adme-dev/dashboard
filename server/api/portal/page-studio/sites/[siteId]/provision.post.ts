@@ -21,15 +21,27 @@ export default eventHandler(async (event) => {
       status: string
       source: 'template' | 'chat'
       plan: Record<string, unknown>
+      canProvision: boolean
+      pagesPerSiteLimit: number
     }>(`
       SELECT site.tenant_id AS "tenantId", proposal.client_id AS "clientId",
              proposal.site_id AS "siteId", proposal.revision, proposal.status,
-             proposal.source, proposal.plan
+             proposal.source, proposal.plan,
+             (site.status IN ('draft', 'active')
+              AND entitlement.status IN ('trial', 'active')
+              AND entitlement.portal_creation_enabled
+              AND entitlement.effective_from <= NOW()
+              AND (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())) AS "canProvision",
+             entitlement.pages_per_site_limit AS "pagesPerSiteLimit"
       FROM page_studio_setup_proposals proposal
       JOIN page_studio_sites site
         ON site.tenant_id = proposal.tenant_id
        AND site.client_id = proposal.client_id
        AND site.id = proposal.site_id
+      JOIN page_studio_entitlements entitlement
+        ON entitlement.tenant_id = site.tenant_id
+       AND entitlement.client_id = site.client_id
+       AND entitlement.id = site.entitlement_id
       JOIN page_studio_site_memberships membership
         ON membership.tenant_id = site.tenant_id
        AND membership.client_id = site.client_id
@@ -42,6 +54,11 @@ export default eventHandler(async (event) => {
     `, [user.clientId, siteId, parsed.data.expectedRevision, user.id])
     if (!row) throw createError({ statusCode: 404, statusMessage: 'Setup proposal not found' })
     if (row.status !== 'accepted') throw createError({ statusCode: 409, statusMessage: 'Setup proposal must be accepted before provisioning' })
+    if (row.canProvision !== true) throw createError({ statusCode: 403, statusMessage: 'An active Page Studio subscription with site creation enabled is required' })
+    if (!Number.isInteger(row.pagesPerSiteLimit) || row.pagesPerSiteLimit < 1
+      || (Array.isArray(row.plan.pages) && row.plan.pages.length > row.pagesPerSiteLimit)) {
+      throw createError({ statusCode: 403, statusMessage: 'The setup proposal exceeds the subscription page allowance' })
+    }
     const request = {
       requestKey: `page-studio-${row.siteId}-${row.revision}`,
       scope: { businessId: row.clientId, tenantId: row.tenantId, clientId: row.clientId, siteId: row.siteId, environment: 'staging' as const },
@@ -50,8 +67,7 @@ export default eventHandler(async (event) => {
     }
     const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
     const binding = env?.PAGE_STUDIO_PROVISIONER as PageStudioProvisionerBinding | undefined
-    const templateId = typeof row.plan.templateId === 'string' ? row.plan.templateId : 'limousine-v1'
-    const job = await dispatchPageStudioProvisioning(binding, { ...request, templateId, now: new Date().toISOString() })
+    const job = await dispatchPageStudioProvisioning(binding, { ...request, now: new Date().toISOString() })
     return { provisioning: { ...request, job } }
   } catch (error) {
     pageStudioHttpError(error)

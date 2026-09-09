@@ -308,6 +308,12 @@ PAGE_STUDIO_RELEASE_ENVIRONMENT = "production"
 
 [env.preview]
 
+# Shared setup queue exists before any new customer's content Worker/database.
+# The coordinator remains private and has no resource executor or cron enabled.
+[[env.preview.services]]
+binding = "PAGE_STUDIO_PROVISIONER"
+service = "xeroflow-provisioning-staging"
+
 # Page Studio staging services are private WorkerEntrypoint bindings. Production
 # bindings remain deliberately absent until the standalone production workers
 # and customer-routing acceptance gates are complete.

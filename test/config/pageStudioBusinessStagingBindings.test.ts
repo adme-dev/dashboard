@@ -11,6 +11,13 @@ interface Config {
 const config = parse(readFileSync('wrangler.toml', 'utf8')) as Config
 
 describe('Page Studio private staging connections', () => {
+  it('binds the shared setup coordinator only in preview', () => {
+    expect(config.env!.preview.services!.filter(service => service.binding === 'PAGE_STUDIO_PROVISIONER'))
+      .toEqual([{ binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-staging' }])
+    for (const environment of [config, config.env!.production]) {
+      expect(environment.services?.some(service => service.binding === 'PAGE_STUDIO_PROVISIONER') ?? false).toBe(false)
+    }
+  })
   it('maps each synthetic site to its own content and named booking service', () => {
     const preview = config.env!.preview
     expect(preview.vars?.PAGE_STUDIO_CONTENT_ENVIRONMENT).toBe('staging')

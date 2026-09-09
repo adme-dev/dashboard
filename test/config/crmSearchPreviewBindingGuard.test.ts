@@ -419,6 +419,7 @@ describe('CRM search preview binding isolation', () => {
     expect(previewBindings).toContain('service = "xeroflow-page-studio-delivery-staging"')
     const parsed = parse(config) as { env: { preview: { services: unknown[] } } }
     expect(parsed.env.preview.services).toEqual([
+      { binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-staging' },
       { binding: 'PAGE_STUDIO_BUILD', service: 'xeroflow-page-studio-build-staging' },
       { binding: 'PAGE_STUDIO_DELIVERY', service: 'xeroflow-page-studio-delivery-staging' },
       { binding: 'PAGE_STUDIO_CONTENT_A', service: 'xeroflow-business-content-staging-a' },
