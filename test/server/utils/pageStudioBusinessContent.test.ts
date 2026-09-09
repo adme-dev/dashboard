@@ -110,3 +110,69 @@ describe('authenticated business content adapter', () => {
     await expect(listPageStudioBusinessSubmissions({ actor, siteId, env }, {}, { query })).rejects.toMatchObject({ statusCode: 503 })
   })
 })
+
+describe('authenticated provisioned content routing', () => {
+  function dynamicSetup(overrides = {}) {
+    const query = vi.fn().mockResolvedValue({ ...row, ...overrides })
+    const resolvedScope = { ...scope, businessId: row.client_id, environment: 'staging' as const }
+    const resolvedContent = { ...content, scope: resolvedScope }
+    const result = { ...revision, content: resolvedContent }
+    const router = { readContent: vi.fn().mockResolvedValue(result), writeContent: vi.fn().mockResolvedValue(result), listFormSubmissions: vi.fn().mockResolvedValue([]) }
+    const env: Record<string, unknown> = { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ROUTER: router }
+    return { env, query, resolvedContent, resolvedScope, result, router }
+  }
+  it('derives provisioned scope from the authorised database row without a per-site binding', async () => {
+    const s = dynamicSetup()
+    expect(await readPageStudioBusinessContent({ actor, siteId, env: s.env }, { query: s.query })).toMatchObject({ revision: 1, canEdit: true })
+    expect(s.router.readContent).toHaveBeenCalledWith(s.resolvedScope)
+    expect(await writePageStudioBusinessContent({ actor, siteId, env: s.env, body: { collections: [], expectedRevision: 0 } }, { query: s.query })).toEqual(s.result)
+    expect(s.router.writeContent).toHaveBeenCalledWith({ actorId: actor.actorId, content: s.resolvedContent, expectedRevision: 0 })
+    expect(s.query).toHaveBeenCalledTimes(2)
+  })
+  it('passes fresh scope on every submission list and rejects foreign results', async () => {
+    const s = dynamicSetup()
+    expect(await listPageStudioBusinessSubmissions({ actor, siteId, env: s.env }, { limit: 7, formId: 'form_one' }, { query: s.query })).toEqual([])
+    expect(s.router.listFormSubmissions).toHaveBeenCalledWith({ scope: s.resolvedScope, options: { limit: 7, formId: 'form_one' } })
+    s.router.listFormSubmissions.mockResolvedValueOnce([{ fieldData: {}, formId: 'form_one', id: 'one', pageId: 'home', scope, submittedAt: '2026-09-10T01:00:00.000Z' }])
+    await expect(listPageStudioBusinessSubmissions({ actor, siteId, env: s.env }, {}, { query: s.query })).rejects.toMatchObject({ statusCode: 502 })
+  })
+  it('keeps editor, viewer and agency permissions ahead of all routing calls', async () => {
+    const s = dynamicSetup({ membership_role: 'viewer' })
+    expect(await readPageStudioBusinessContent({ actor, siteId, env: s.env }, { query: s.query })).toMatchObject({ canEdit: false })
+    await expect(writePageStudioBusinessContent({ actor, siteId, env: s.env, body: { collections: [], expectedRevision: 0 } }, { query: s.query })).rejects.toMatchObject({ statusCode: 403 })
+    await expect(writePageStudioBusinessContent({ actor: { role: 'agency', tenantId: row.tenant_id, actorId: 'agency_user', canEdit: false }, siteId, env: s.env, body: { collections: [], expectedRevision: 0 } }, { query: s.query })).rejects.toMatchObject({ statusCode: 403 })
+    expect(s.router.writeContent).not.toHaveBeenCalled()
+    s.query.mockResolvedValueOnce({ ...row, entitlement_effective: false })
+    await expect(readPageStudioBusinessContent({ actor, siteId, env: s.env }, { query: s.query })).rejects.toMatchObject({ statusCode: 403 })
+    expect(s.router.readContent).toHaveBeenCalledOnce()
+  })
+  it('represents inactive routes as pending setup and hides resolver failures', async () => {
+    const s = dynamicSetup()
+    s.router.readContent.mockRejectedValueOnce(new Error('Content route is inactive'))
+    await expect(readPageStudioBusinessContent({ actor, siteId, env: s.env }, { query: s.query })).rejects.toMatchObject({ code: 'CONTENT_NOT_CONFIGURED', statusCode: 503 })
+    s.router.readContent.mockRejectedValueOnce(new Error('private database identifiers'))
+    await expect(readPageStudioBusinessContent({ actor, siteId, env: s.env }, { query: s.query })).rejects.toMatchObject({ statusCode: 502, message: 'Business content service is unavailable' })
+  })
+  it('requires an explicit environment and rejects malformed configuration before dispatch', async () => {
+    const s = dynamicSetup()
+    delete s.env.PAGE_STUDIO_CONTENT_ENVIRONMENT
+    await expect(readPageStudioBusinessContent({ actor, siteId, env: s.env }, { query: s.query })).rejects.toMatchObject({ statusCode: 503 })
+    s.env.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'staging'
+    s.env.PAGE_STUDIO_CONTENT_BINDINGS = '{invalid'
+    await expect(readPageStudioBusinessContent({ actor, siteId, env: s.env }, { query: s.query })).rejects.toMatchObject({ statusCode: 503 })
+    expect(s.router.readContent).not.toHaveBeenCalled()
+  })
+  it('keeps explicit legacy fixtures separate and never bypasses an ambiguous mapping', async () => {
+    const s = dynamicSetup()
+    const legacyScope = { ...scope, environment: 'staging' as const }
+    const legacy = { readContent: vi.fn().mockResolvedValue({ ...revision, content: { ...content, scope: legacyScope } }), writeContent: vi.fn() }
+    s.env.PAGE_STUDIO_CONTENT_BINDINGS = JSON.stringify([{ scope: legacyScope, bindingName: 'LEGACY_CONTENT' }])
+    s.env.LEGACY_CONTENT = legacy
+    await readPageStudioBusinessContent({ actor, siteId, env: s.env }, { query: s.query })
+    expect(legacy.readContent).toHaveBeenCalledWith(legacyScope)
+    expect(s.router.readContent).not.toHaveBeenCalled()
+    s.env.PAGE_STUDIO_CONTENT_BINDINGS = JSON.stringify(Array(2).fill({ scope: legacyScope, bindingName: 'LEGACY_CONTENT' }))
+    await expect(readPageStudioBusinessContent({ actor, siteId, env: s.env }, { query: s.query })).rejects.toMatchObject({ statusCode: 503 })
+    expect(s.router.readContent).not.toHaveBeenCalled()
+  })
+})

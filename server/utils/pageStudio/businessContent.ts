@@ -43,6 +43,11 @@ interface ContentService {
   writeContent: (request: unknown) => Promise<unknown>
   listFormSubmissions?: (options?: { limit?: number, formId?: string, pageId?: string }) => Promise<unknown>
 }
+interface ContentRouterService {
+  readContent: ContentService['readContent']
+  writeContent: ContentService['writeContent']
+  listFormSubmissions: (request: { scope: PageStudioContentScope, options: { limit?: number, formId?: string, pageId?: string } }) => Promise<unknown>
+}
 const BindingsSchema = z.array(z.object({
   scope: PageStudioContentScopeSchema,
   bindingName: z.string().regex(/^[A-Z][A-Z0-9_]{2,80}$/)
@@ -94,8 +99,11 @@ async function authorise(request: Request, writing: boolean, dependencies: Depen
   let environment: z.infer<typeof ContentEnvironmentSchema> = 'preview'
   try {
     const raw = request.env.PAGE_STUDIO_CONTENT_BINDINGS
-    if (typeof raw !== 'string' || raw.length > 250_000) throw unavailable()
-    bindings = BindingsSchema.parse(JSON.parse(raw))
+    if (raw === undefined) bindings = []
+    else {
+      if (typeof raw !== 'string' || raw.length > 250_000) throw unavailable()
+      bindings = BindingsSchema.parse(JSON.parse(raw))
+    }
     if (request.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== undefined) {
       environment = ContentEnvironmentSchema.parse(request.env.PAGE_STUDIO_CONTENT_ENVIRONMENT)
     }
@@ -103,12 +111,36 @@ async function authorise(request: Request, writing: boolean, dependencies: Depen
   const matches = bindings.filter(binding => binding.scope.tenantId === row.tenant_id
     && binding.scope.clientId === row.client_id && binding.scope.siteId === siteId
     && binding.scope.environment === environment)
-  if (matches.length !== 1) throw unavailable()
+  if (matches.length > 1) throw unavailable()
+  const canEdit = actor.role === 'agency' ? actor.canEdit : row.membership_role === 'editor'
+  if (matches.length === 0) {
+    // Provisioning currently defines one business per client. Match that same
+    // server-owned projection; never accept business IDs from browser input.
+    if (request.env.PAGE_STUDIO_CONTENT_ENVIRONMENT === undefined) throw unavailable()
+    const scope = PageStudioContentScopeSchema.safeParse({
+      tenantId: row.tenant_id, clientId: row.client_id, businessId: row.client_id,
+      siteId, environment
+    })
+    const router = Object.hasOwn(request.env, 'PAGE_STUDIO_CONTENT_ROUTER') ? request.env.PAGE_STUDIO_CONTENT_ROUTER : null
+    if (!scope.success || !router || typeof router !== 'object'
+      || !('readContent' in router) || typeof router.readContent !== 'function'
+      || !('writeContent' in router) || typeof router.writeContent !== 'function'
+      || !('listFormSubmissions' in router) || typeof router.listFormSubmissions !== 'function') throw unavailable()
+    const routing = router as ContentRouterService
+    // Scope accompanies every routed operation. In particular, the native
+    // per-site submission reader has no scope parameter, while this bridge must.
+    const service: ContentService = {
+      readContent: value => routing.readContent(value),
+      writeContent: value => routing.writeContent(value),
+      listFormSubmissions: (options = {}) => routing.listFormSubmissions({ scope: scope.data, options })
+    }
+    return { scope: scope.data, service, canEdit }
+  }
   const binding = matches[0]!
   const service = Object.hasOwn(request.env, binding.bindingName) ? request.env[binding.bindingName] : null
   if (!service || typeof service !== 'object' || !('readContent' in service) || !('writeContent' in service)
     || typeof service.readContent !== 'function' || typeof service.writeContent !== 'function') throw unavailable()
-  return { scope: binding.scope, service: service as ContentService, canEdit: actor.role === 'agency' ? actor.canEdit : row.membership_role === 'editor' }
+  return { scope: binding.scope, service: service as ContentService, canEdit }
 }
 
 function decode(result: unknown, scope: PageStudioContentScope) {
@@ -135,6 +167,7 @@ async function callService(operation: () => Promise<unknown>, writing = false) {
   try {
     return await operation()
   } catch (error) {
+    if (error instanceof Error && error.message === 'Content route is inactive') throw unavailable()
     if (writing && error instanceof Error && error.message === 'Content revision conflict') {
       throw new PageStudioBusinessContentError('CONTENT_CONFLICT', 409, 'Content changed in another session. Reload before saving again.')
     }

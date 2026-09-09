@@ -18,6 +18,13 @@ describe('Page Studio private staging connections', () => {
       expect(environment.services?.some(service => service.binding === 'PAGE_STUDIO_PROVISIONER') ?? false).toBe(false)
     }
   })
+  it('binds the private provisioned-content router only in preview', () => {
+    expect(config.env!.preview.services!.filter(service => service.binding === 'PAGE_STUDIO_CONTENT_ROUTER'))
+      .toEqual([{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }])
+    for (const environment of [config, config.env!.production]) {
+      expect(environment.services?.some(service => service.binding === 'PAGE_STUDIO_CONTENT_ROUTER' || service.service === 'xeroflow-content-router-staging') ?? false).toBe(false)
+    }
+  })
   it('maps each synthetic site to its own content and named booking service', () => {
     const preview = config.env!.preview
     expect(preview.vars?.PAGE_STUDIO_CONTENT_ENVIRONMENT).toBe('staging')

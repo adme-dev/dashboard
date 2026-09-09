@@ -328,6 +328,11 @@ bucket_name = "xeroflow-page-studio-checkpoints-staging"
 binding = "PAGE_STUDIO_DELIVERY"
 service = "xeroflow-page-studio-delivery-staging"
 
+# Private, activation-gated content routing for provisioned sites.
+[[env.preview.services]]
+binding = "PAGE_STUDIO_CONTENT_ROUTER"
+service = "xeroflow-content-router-staging"
+
 # Synthetic two-client acceptance only. Each site's content and booking calls
 # reach its own private Worker/D1 scope; bookings use the scoped named entrypoint.
 [[env.preview.services]]

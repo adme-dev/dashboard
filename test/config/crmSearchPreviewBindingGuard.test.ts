@@ -422,6 +422,7 @@ describe('CRM search preview binding isolation', () => {
       { binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-staging' },
       { binding: 'PAGE_STUDIO_BUILD', service: 'xeroflow-page-studio-build-staging' },
       { binding: 'PAGE_STUDIO_DELIVERY', service: 'xeroflow-page-studio-delivery-staging' },
+      { binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' },
       { binding: 'PAGE_STUDIO_CONTENT_A', service: 'xeroflow-business-content-staging-a' },
       { binding: 'PAGE_STUDIO_BOOKINGS_A', service: 'xeroflow-business-content-staging-a', entrypoint: 'ScopedBookingsEntrypoint' },
       { binding: 'PAGE_STUDIO_CONTENT_B', service: 'xeroflow-business-content-staging-b' },
