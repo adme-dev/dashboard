@@ -21,8 +21,11 @@ Delivery is split into two independently reviewable increments:
   both sessions revoked. Synthetic site 201 is separate from checkpoint fixtures
   101/102. Its entitlement is now disabled/expired and its D1 job retired with
   original actor intact; readbacks confirm zero sessions and failed/1/1.
-- [ ] Add and verify execution-time live authority, seed readback and executor
-  integration. No new internal authority endpoint is implemented in this increment.
+- [x] Implement the machine-authenticated live authority endpoint and fresh SQL
+  checks; 79 focused tests pass, including 21 real PostgreSQL cases.
+- [ ] Publish and verify live authority on the private Cloudflare control path.
+- [ ] Connect authority and seed readback to the resource executor. No customer
+  executor or cron is enabled.
 
 The producer derives the initiating UUID from requireClientAuth, never the body.
 It reads an existing scoped request before dispatch and preserves its original
@@ -30,8 +33,8 @@ actor. Exact retries, concurrent first requests and a lost create response may
 recover only a fully validated matching stored job. Changed plans, snapshots,
 scope or missing historical actors fail closed. A retry does not transfer ownership.
 
-Next increment: a machine-authenticated internal authorization endpoint will accept a request key and
-full scope, then reads the job through the trusted coordinator binding. It checks
+The machine-authenticated internal authorization endpoint accepts a request key
+and full scope, then reads the job through the trusted coordinator binding. It checks
 the original portal user's current status/role, exact editor membership, latest
 accepted proposal, site status and active entitlement through queryOneFresh.
 The accepted plan/setup must still match the stored job and current page/module
@@ -53,3 +56,27 @@ Producer verification: 38 focused tests and the full built-artifact suite pass
 Build size: raw 25,063,869 / 25,468,928; gzip 6,584,409 bytes. Repository-wide
 typecheck exits 2 with 927 errors outside the modified files; this is not a clean
 whole-repository typecheck result. No migration or executor activation is included.
+
+Live authority implementation: `/internal/page-studio/provisioning/authorize`
+uses machine authentication before body/service/database access and marks all
+responses no-store. It accepts only staging scope with Dashboard UUIDs and
+businessId equal to clientId. The stored job must have the producer-derived key,
+original actor, accepted setup and a nonterminal phase. Fresh SQL checks active
+client/user, manager/admin role, exact editor membership, site state, latest
+proposal (including newer unaccepted revisions), entitlement dates/status/site
+creation, nonarchived site count, page allowance and explicit module allowances.
+Missing allowedModules retains the existing legacy unrestricted policy; malformed
+explicit metadata fails closed. Changed plans/setup and terminal/ownerless jobs
+are denied. Database failures return a sanitized 503.
+
+Foundation DashboardControlClient.authorizeProvisioning reads this endpoint and
+compares the full returned job with the executor's retained copy, rejecting any
+changed phase, resource, timestamp or actor. It is a fresh check, not a token or
+lease; every executor effect still requires its own immediate lease fence.
+No migration is needed. Private staging acceptance remains to be recorded.
+
+Final local authority validation: 13,236 tests pass (27 skipped), including all
+21 PostgreSQL authority cases. Build and deploy target guard pass; raw Worker
+25,068,370 / 25,468,928 bytes, gzip 6,585,726. Targeted lint passes. Final global
+typecheck reports the prior 927 errors outside modified files; no clean global
+typecheck is claimed. These checks do not yet establish deployed authority.

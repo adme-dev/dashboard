@@ -14,7 +14,7 @@ export interface PageStudioProvisionerBinding {
 }
 
 export class PageStudioProvisioningError extends Error {
-  constructor(readonly code: 'PROVISIONER_UNAVAILABLE' | 'PROVISIONER_FAILED' | 'INVALID_PROVISIONING_PLAN' | 'PROVISIONING_OWNER_REQUIRED', message: string, readonly statusCode = 503) {
+  constructor(readonly code: 'PROVISIONER_UNAVAILABLE' | 'PROVISIONER_FAILED' | 'INVALID_PROVISIONING_PLAN' | 'PROVISIONING_OWNER_REQUIRED' | 'PROVISIONING_AUTHORITY_DENIED' | 'PROVISIONING_NOT_FOUND' | 'INVALID_PROVISIONING_REQUEST', message: string, readonly statusCode = 503) {
     super(message)
     this.name = 'PageStudioProvisioningError'
   }
@@ -57,6 +57,8 @@ const JobSnapshot = z.object({
   scope: Scope, setup: SetupSnapshot.optional(), templateId: SavedPlan.shape.starterVersion,
   updatedAt: z.string().min(1).max(64)
 }).strict()
+
+export { JobSnapshot as PageStudioProvisioningJobSchema, Scope as PageStudioProvisioningScopeSchema, SetupSnapshot as PageStudioProvisioningSetupSchema }
 
 function matchingJob(result: unknown, expected: z.infer<typeof JobSnapshot>) {
   const parsed = JobSnapshot.safeParse(result)
