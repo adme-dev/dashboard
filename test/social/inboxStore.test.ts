@@ -100,7 +100,7 @@ describe('recordInbound', () => {
       }
     }
     await recordInbound(db, 'client-1', 'acct-1', ev)
-    expect(fullSql.some(s => /automation_state\s*=\s*'pending'/.test(s))).toBe(true)
+    expect(fullSql.some(s => /automation_state\s*=\s*CASE WHEN \$4::boolean THEN 'pending'/.test(s))).toBe(true)
   })
 
   it('uses author identity as the conversation participant fallback', async () => {

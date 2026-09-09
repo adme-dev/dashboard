@@ -562,8 +562,12 @@ const features: Record<string, Feature> = {
         content: 'Reply to a review directly from the dashboard and it posts back to the platform. Average rating and a per-star distribution sit at the top so you can read the room before you respond.'
       },
       {
-        title: 'AI Responses On The Roadmap',
-        content: 'Review replies plug into the same engine as the engagement inbox, so AI-drafted and rule-based responses (with approval guardrails) layer on as the automation phase ships.'
+        title: 'Personalised Thanks, Human Care',
+        content: 'Enable personalised replies for new 4–5-star reviews using the reviewer and business name. Reviews rated 3 stars or below are marked urgent for staff. Dedicated review-alert emails can notify the nominated team as soon as polling finds new feedback.'
+      },
+      {
+        title: 'Safe Sync and Clear Connection Health',
+        content: 'Reviews sync from authorised Google Business and Facebook connections. Historical and already-answered reviews are kept out of automatic replies, and Google review state is checked again before sending. Connection errors identify missing API access or permissions so failed syncs are visible.'
       }
     ]
   },
@@ -583,7 +587,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Guardrails You Can Trust',
-        content: 'Autopilot never fires blind. A deterministic safety rule forces any complaint, legal threat, or sensitive message to a human — always. On top of that: a confidence floor, per-rule hourly rate limits, business-hours gating, and exactly-one-reply-per-message idempotency. Every action is written to an auditable queue, and a global kill-switch keeps automation dormant until you turn it on.'
+        content: 'Autopilot never fires blind. A deterministic safety rule routes reviews rated 3 stars or below, complaints, legal threats, and sensitive messages to a human. Historical and already-answered reviews never receive an automatic reply. On top of that: a confidence floor, per-rule hourly rate limits, business-hours gating, and exactly-one-reply-per-message idempotency. Every action is written to an auditable queue, and a global kill-switch keeps automation dormant until you turn it on.'
       },
       {
         title: 'On-Brand, Never Invented',

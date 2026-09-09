@@ -15,6 +15,8 @@ interface SocialAccountRow {
   metadata: Record<string, unknown> | string | null
   created_at: string
   has_refresh_token: boolean
+  review_sync_error: string | null
+  review_last_attempt_at: string | null
   linked_facebook_account_id: string | null
   linked_facebook_account_name: string | null
   linked_facebook_is_active: boolean | null
@@ -45,10 +47,13 @@ export default defineEventHandler(async (event) => {
     `SELECT sa.id, sa.client_id, sa.platform, sa.platform_account_id, sa.account_name, sa.is_active,
             sa.last_error, sa.token_expires_at, sa.last_synced_at, sa.metadata, sa.created_at,
             (NULLIF(sa.refresh_token, '') IS NOT NULL) AS has_refresh_token,
+            review_cursor.last_error AS review_sync_error, review_cursor.last_synced_at AS review_last_attempt_at,
             linked_fb.id AS linked_facebook_account_id,
             linked_fb.account_name AS linked_facebook_account_name,
             linked_fb.is_active AS linked_facebook_is_active
        FROM social_accounts sa
+       LEFT JOIN social_sync_cursors review_cursor
+         ON review_cursor.social_account_id = sa.id AND review_cursor.channel_type = 'review'
        LEFT JOIN social_accounts linked_fb
          ON sa.platform = 'instagram'
         AND linked_fb.client_id = sa.client_id
@@ -83,6 +88,8 @@ export default defineEventHandler(async (event) => {
       metadata,
       created_at: row.created_at,
       has_refresh_token: row.has_refresh_token,
+      review_sync_error: row.review_sync_error ?? null,
+      review_last_attempt_at: row.review_last_attempt_at ?? null,
       linked_facebook_account_id: row.linked_facebook_account_id,
       linked_facebook_account_name: row.linked_facebook_account_name,
       connection_health: health.health,

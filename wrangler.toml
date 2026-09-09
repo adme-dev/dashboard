@@ -119,6 +119,10 @@ service = "agency-workflows"
 # Environment Variables (non-secret)
 # ============================================
 [vars]
+# Google review automation is limited by per-client, rating-scoped rules.
+SOCIAL_AUTOMATION_ENABLED = "true"
+# Dedicated review alerts; general notification settings are unchanged.
+SOCIAL_REVIEW_ALERT_EMAILS = "paul@adme.net.au"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = "https://studio.xeroflow.io"

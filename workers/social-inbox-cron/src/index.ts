@@ -17,6 +17,7 @@ export default {
       headers: { 'x-cron-secret': env.CRON_SECRET },
     })
     const text = await resp.text()
+    if (!resp.ok) throw new Error(`Social inbox sync returned HTTP ${resp.status}`)
     console.log('social-inbox-cron.run', {
       status: resp.status,
       body: text.slice(0, 200),

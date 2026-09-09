@@ -7,6 +7,7 @@
 // delivery (webhook retry / overlapping poll window) inserts no message row and must not
 // move any counter — so the conversation bump runs AFTER, gated on rows-affected.
 import type { NormalizedEvent } from './types'
+import { isRecentReview } from './reviewSafety'
 
 export interface DbRunner {
   queryOne<T = unknown>(sql: string, params?: unknown[]): Promise<T | null>
@@ -190,10 +191,11 @@ async function bumpConversationForInbound(db: DbRunner, conversationId: string, 
        message_count = message_count + 1,
        unread_count = unread_count + 1,
        status = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
-       automation_state = 'pending',
+       automation_state = CASE WHEN $4::boolean THEN 'pending' ELSE NULL END,
        updated_at = NOW()
      WHERE id = $1`,
-    [conversationId, ev.message.platformTimestamp ?? null, (ev.message.content ?? '').slice(0, 200)]
+    [conversationId, ev.message.platformTimestamp ?? null, (ev.message.content ?? '').slice(0, 200),
+      ev.channelType !== 'review' || (isRecentReview(ev.message.platformTimestamp) && !ev.message.metadata?.reviewHasReply)]
   )
 }
 
@@ -235,21 +237,27 @@ export async function recordInbound(db: DbRunner, clientId: string, accountId: s
 /** Record an outbound reply we just sent (direction='out'); always a genuinely-new row. */
 export async function recordOutbound(
   db: DbRunner, conversationId: string, clientId: string,
-  args: { platformMessageId: string | null, content: string, sentByUserId: string, messageType?: string }
+  args: { platformMessageId: string | null, content: string, sentByUserId: string, messageType?: string, aiGenerated?: boolean }
 ): Promise<void> {
-  await db.execute(
+  const inserted = await db.execute(
     `INSERT INTO social_messages
-       (conversation_id, client_id, platform_message_id, direction, message_type, content, sent_by_user_id, platform_timestamp)
-     VALUES ($1,$2,$3,'out',$4,$5,$6, NOW())`,
-    [conversationId, clientId, args.platformMessageId, args.messageType ?? 'text', args.content, args.sentByUserId]
+       (conversation_id, client_id, platform_message_id, direction, message_type, content, sent_by_user_id, platform_timestamp, ai_generated)
+     VALUES ($1,$2,$3,'out',$4,$5,$6, NOW(),$7)
+     ON CONFLICT (conversation_id, platform_message_id) WHERE platform_message_id IS NOT NULL DO NOTHING`,
+    [conversationId, clientId, args.platformMessageId, args.messageType ?? 'text', args.content, args.sentByUserId, args.aiGenerated ?? false]
   )
+  if (!inserted && args.platformMessageId) {
+    await db.execute(`UPDATE social_messages SET content = $3, sent_by_user_id = $4, platform_timestamp = NOW(), ai_generated = $5
+      WHERE conversation_id = $1 AND platform_message_id = $2 AND direction = 'out'`,
+    [conversationId, args.platformMessageId, args.content, args.sentByUserId, args.aiGenerated ?? false])
+  }
   await db.execute(
     `UPDATE social_conversations SET
        last_message_at = NOW(), last_message_preview = $2, last_message_direction = 'out',
-       message_count = message_count + 1, unread_count = 0,
+       message_count = message_count + $3, unread_count = 0,
        first_response_at = COALESCE(first_response_at, NOW()),
        updated_at = NOW()
      WHERE id = $1`,
-    [conversationId, args.content.slice(0, 200)]
+    [conversationId, args.content.slice(0, 200), inserted > 0 ? 1 : 0]
   )
 }

@@ -10,7 +10,7 @@ crons = [
 ]
 
 [vars]
-APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+APP_BASE_URL = "https://app.xeroflow.io"
 
 # CRON_SECRET is set as a secret, not a var — must match the Pages project's
 # CRON_SECRET so /api/cron/sync-social-inbox accepts the x-cron-secret header:

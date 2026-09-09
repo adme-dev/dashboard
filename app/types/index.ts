@@ -1727,6 +1727,8 @@ export interface PortalSocialNewsDraft {
 }
 
 export interface SocialAccount {
+  review_sync_error?: string | null
+  review_last_attempt_at?: string | null
   id: string
   client_id: string
   platform: SocialPublishPlatform

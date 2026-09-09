@@ -12,56 +12,18 @@ Domain split:
 
 ## Google Business Profile
 
-Current status:
+Status verified on 2026-09-09:
 
-- Cloud project: `my-business-api-271101`
-- Project number: `65723781223`
-- OAuth app: `ADME Agency Dashboard`
-- Production origin: `https://app.xeroflow.io`
-- Production callback: `https://app.xeroflow.io/api/agency/social/publishing/accounts/callback/google-business`
-- OAuth consent works and requests `https://www.googleapis.com/auth/business.manage`.
-- API access is not approved yet. The Account Management API quota is currently `0 QPM`, which Google documents as "project has not yet been approved".
+- The active shared OAuth client belongs to project `gen-lang-client-0818792107`, number `14351276985`.
+- OAuth refresh and Account Management requests succeed. Twelve active locations are connected.
+- Reviews fail with `403 SERVICE_DISABLED`: `mybusiness.googleapis.com` is not enabled for that project.
+- Enabling that service as `paul@adme.net.au` returns `PERMISSION_DENIED` (`servicemanagement.services.bind`). The service is absent from the API library.
+- The older project `my-business-api-271101` (`65723781223`) also denies enabling the same service. Switching to its stale OAuth credentials will not solve this.
+- Google requires Business Profile API approval before the legacy Google My Business service becomes available. Obtain approval for the active project/account, then enable `mybusiness.googleapis.com` and verify a real reviews.list response.
 
-Required Google approval step:
+The connection does not require enabling local-post publishing. Shared Google OAuth credentials must remain consistent with stored refresh tokens; do not replace them with the older project's credentials.
 
-1. Sign in as a Google account that owns or manages a verified, active Google Business Profile.
-2. Open `https://support.google.com/business/contact/api_default`.
-3. Select `Application For Basic API Access`.
-4. Use the project ID and project number above.
-5. Confirm the Google Business Profile has been verified and active for 60+ days and has a representative business website.
-6. Wait for Google's follow-up approval email.
-7. Re-check quotas in Google Cloud. Approval should move Business Profile API quota from `0 QPM` to `300 QPM`.
-
-After approval, enable the full Business Profile API set Google lists in Basic setup:
-
-- Google My Business API
-- My Business Account Management API
-- My Business Lodging API
-- My Business Place Actions API
-- My Business Notifications API
-- My Business Verifications API
-- My Business Business Information API
-- My Business Q&A API
-
-Notes:
-
-- The `Google My Business API` v4 service is needed for Local Posts (`mybusiness.googleapis.com/v4/.../localPosts`).
-- If the legacy service page fails to load or is not visible, the project is probably still not approved.
-- Workspace users can also receive `403 PERMISSION_DENIED` if Google Business Profile Manager is disabled in Google Workspace Admin.
-- The dashboard ships this channel dormant. Keep `GOOGLE_BUSINESS_PUBLISHING_ENABLED=false` or unset until Google approves API access and production OAuth secrets are ready. The flag currently gates the Google Business connection, so reviews cannot be connected while it is off.
-
-Production activation:
-
-1. Cloudflare Pages production secrets must include:
-   - `GOOGLE_BUSINESS_CLIENT_ID`
-   - `GOOGLE_BUSINESS_CLIENT_SECRET`
-   - `GOOGLE_BUSINESS_REDIRECT_URI=https://app.xeroflow.io/api/agency/social/publishing/accounts/callback/google-business`
-   - `SOCIAL_OAUTH_STATE_SECRET`
-2. Set `GOOGLE_BUSINESS_PUBLISHING_ENABLED=true`.
-3. Reconnect each Google Business Profile location from `/agency/social/publishing/accounts`.
-4. Run a manual inbox refresh from `/agency/social/inbox` and confirm the Google Business review channel reports healthy in the account health drawer.
-5. Check `/agency/social/inbox/reviews` for imported reviews.
-6. Publish a low-risk local post and confirm it appears in Google Business Profile Manager if local posts are being activated at the same time.
+The current application workflow is linked from https://support.google.com/business/contact/api_default (Application For Basic API Access). Activation and review automation checks are documented in [Google review operations](google-review-operations.md).
 
 Reference links:
 

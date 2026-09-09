@@ -6,6 +6,7 @@ import type {
   AutomationRule, AutomationContext, ReplyDraft, EffectiveMode,
 } from './automationTypes'
 import { detectReplyRisk, isWithinBusinessHours, evaluateRuleConditions } from './guardrails'
+import { isRecentReview } from './reviewSafety'
 
 export interface EngineDb {
   queryOne<T = any>(sql: string, params?: any[]): Promise<T | null>
@@ -50,7 +51,7 @@ export function resolveEffectiveMode(
     return { mode: 'skip', notes: `rate limit reached (${usage.recentCount}/${rule.rate_limit})` }
   }
   // HARD rule: a low review rating IS a complaint by definition — force a human regardless of wording.
-  if (ctx.rating != null && ctx.rating <= 2) {
+  if ((ctx.channelType === 'review' && ctx.rating !== 4 && ctx.rating !== 5) || (ctx.rating != null && ctx.rating <= 3)) {
     return { mode: 'approval', notes: `forced to human — low rating ${ctx.rating}` }
   }
   // HARD negative-sentiment / PR-risk guard (deterministic, primary).
@@ -98,14 +99,20 @@ export async function runAutomationForConversation(db: EngineDb, deps: EngineDep
     `UPDATE social_conversations SET automation_state = NULL, updated_at = NOW() WHERE id = $1`, [conversationId])
 
   const conv = await db.queryOne<any>(
-    `SELECT id, client_id, platform, channel_type, rating FROM social_conversations WHERE id = $1`, [conversationId])
+    `SELECT id, client_id, platform, channel_type, rating, first_response_at,
+       (SELECT account_name FROM social_accounts WHERE id = social_account_id) AS business_name
+     FROM social_conversations WHERE id = $1`, [conversationId])
   if (!conv) return
+  if (conv.channel_type === 'review' && conv.first_response_at) { await clearState(); return }
 
   const inbound = await db.queryOne<any>(
-    `SELECT id, content, author_name FROM social_messages
+    `SELECT id, content, author_name, platform_timestamp, metadata FROM social_messages
        WHERE conversation_id = $1 AND direction = 'in'
        ORDER BY platform_timestamp DESC NULLS LAST, created_at DESC LIMIT 1`, [conversationId])
   if (!inbound) { await clearState(); return }
+  if (conv.channel_type === 'review' && (!isRecentReview(inbound.platform_timestamp) || inbound.metadata?.reviewHasReply)) {
+    await clearState(); return
+  }
 
   // Idempotency: never act twice on the same inbound message.
   const existing = await db.queryOne<{ id: string }>(
@@ -119,11 +126,15 @@ export async function runAutomationForConversation(db: EngineDb, deps: EngineDep
     conversationId, clientId: conv.client_id, platform: conv.platform, channelType: conv.channel_type,
     rating: conv.rating ?? null, inboundMessageId: inbound.id, inboundContent: inbound.content ?? '',
     participantName: inbound.author_name ?? null, now: new Date(),
+    businessName: conv.business_name ?? null,
   }
 
   const rule = selectRule(rules, ctx)
   // No rule, or the matched rule is suggest-only → engine does nothing automatic.
   if (!rule || rule.mode === 'suggest' || rule.mode === 'off') { await clearState(); return }
+  if (conv.channel_type === 'review' && rule.created_at && new Date(inbound.platform_timestamp) < new Date(rule.created_at)) {
+    await clearState(); return
+  }
 
   const draft = await deps.generateDraft(ctx, rule.action.aiPrompt ?? '')
   if (!draft.reply) {
@@ -167,25 +178,33 @@ export async function runAutomationForConversation(db: EngineDb, deps: EngineDep
   // Mark conversation's automation snapshot for the UI badge.
   await db.execute(
     `UPDATE social_conversations SET automation_state = $2, updated_at = NOW() WHERE id = $1`,
-    [conversationId, decision.mode === 'autopilot' ? 'auto_replied' : 'awaiting_approval'])
+    [conversationId, decision.mode === 'autopilot' ? 'processing' : 'awaiting_approval'])
 
   if (decision.mode === 'autopilot') {
-    const res = await deps.dispatch({
-      conversationId, clientId: conv.client_id, content: draft.reply, aiGenerated: true, queueId,
-    })
+    let res: { ok: boolean, error?: string }
+    try {
+      res = await deps.dispatch({
+        conversationId, clientId: conv.client_id, content: draft.reply, aiGenerated: true, queueId,
+      })
+    } catch (error) {
+      res = { ok: false, error: error instanceof Error ? error.message : 'Dispatch failed' }
+    }
     await db.execute(
       `UPDATE social_response_queue SET status = $2, error = $3, updated_at = NOW() WHERE id = $1`,
       [queueId, res.ok ? 'sent' : 'failed', res.ok ? null : (res.error ?? 'dispatch failed')])
+    await db.execute(`UPDATE social_conversations SET automation_state = $2, updated_at = NOW() WHERE id = $1`,
+      [conversationId, res.ok ? 'auto_replied' : 'failed'])
   }
   // approval path: nothing more — the queue row waits for a human.
 }
 
 /** Cron entry: process up to `limit` pending conversations. Caller MUST gate on the master switch. */
-export async function processPendingAutomation(db: EngineDb, deps: EngineDeps, limit = 50): Promise<{ processed: number }> {
+export async function processPendingAutomation(db: EngineDb, deps: EngineDeps, limit = 50, canContinue: () => boolean = () => true): Promise<{ processed: number }> {
   const pending = await db.queryRows<{ id: string }>(
     `SELECT id FROM social_conversations WHERE automation_state = 'pending' ORDER BY updated_at ASC LIMIT $1`, [limit])
   let processed = 0
   for (const row of pending) {
+    if (!canContinue()) break
     // Atomically claim the conversation so two overlapping cron ticks can't both process it.
     const claimed = await db.queryOne<{ id: string }>(
       `UPDATE social_conversations SET automation_state = 'processing', updated_at = NOW()

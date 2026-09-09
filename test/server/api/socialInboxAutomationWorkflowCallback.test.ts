@@ -60,6 +60,7 @@ describe('social inbox automation workflow callback', () => {
     process.env = {
       ...oldEnv,
       AGENCY_WORKFLOWS_ENABLED: 'true',
+      SOCIAL_AUTOMATION_ENABLED: 'true',
       WORKFLOW_CALLBACK_SECRET: 'workflow-secret'
     }
     vi.clearAllMocks()
@@ -76,6 +77,13 @@ describe('social inbox automation workflow callback', () => {
     })).rejects.toMatchObject({ statusCode: 401 })
 
     expect(mockQueryOne).not.toHaveBeenCalled()
+    expect(mockRunAutomationForConversation).not.toHaveBeenCalled()
+  })
+
+  it('honours the social automation kill switch even when agency workflows are enabled', async () => {
+    process.env.SOCIAL_AUTOMATION_ENABLED = 'false'
+    const result = await workflowCallback({ headers: { 'x-workflow-secret': 'workflow-secret' }, body: validPayload() })
+    expect(result.result).toMatchObject({ skipped: true, reason: 'social_automation_disabled' })
     expect(mockRunAutomationForConversation).not.toHaveBeenCalled()
   })
 
