@@ -127,7 +127,7 @@ describe('runAutomationForConversation — orchestration with fakes', () => {
     }
     await runAutomationForConversation(db as any, deps as any, 'c1')
     expect(deps.generateDraft).toHaveBeenCalledOnce()
-    expect(deps.dispatch).toHaveBeenCalledOnce()
+    expect(deps.dispatch).toHaveBeenCalledWith(expect.objectContaining({ expectedReviewContent: inboundRow.content }))
   })
 
   it('records failed delivery without claiming the review was auto-replied', async () => {

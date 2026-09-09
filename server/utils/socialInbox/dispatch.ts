@@ -35,7 +35,7 @@ interface FullDb {
 export async function dispatchReply(
   db: FullDb,
   conversationId: string,
-  args: { content: string; sentByUserId: string; aiGenerated?: boolean },
+  args: { content: string; sentByUserId: string; aiGenerated?: boolean; expectedReviewContent?: string },
 ): Promise<{ ok: boolean; platformMessageId?: string; error?: string; clientId?: string }> {
   const conv = await db.queryOne<any>(
     `SELECT c.*, a.platform_account_id, a.access_token, a.refresh_token, a.token_expires_at,
@@ -60,16 +60,16 @@ export async function dispatchReply(
     return { ok: false, error: error instanceof Error ? error.message : 'Token refresh failed' }
   }
   const automaticReview = args.sentByUserId === 'automation' && conv.channel_type === 'review'
-  const inbound = automaticReview ? await db.queryOne<{ content: string }>(
-    `SELECT content FROM social_messages WHERE conversation_id = $1 AND direction = 'in'
-     ORDER BY platform_timestamp DESC NULLS LAST, created_at DESC LIMIT 1`, [conversationId]) : null
+  if (automaticReview && conv.platform === 'google-business' && args.expectedReviewContent == null) {
+    return { ok: false, error: 'Review drafting snapshot is missing. Generate a fresh reply.' }
+  }
   const r = await provider.reply({
     accountId: conv.platform_account_id, accessToken,
     conversationId: target, content: args.content, channelType: conv.channel_type,
     // IG DMs route through the linked Page (stored on the IG account row at metadata.via_page_id).
     viaPageId: conv.account_metadata?.via_page_id,
     onlyIfUnanswered: automaticReview,
-    expectedReviewContent: inbound?.content,
+    expectedReviewContent: automaticReview ? args.expectedReviewContent : undefined,
   })
   if (r.status !== 'success') return { ok: false, error: r.error || 'reply failed' }
 

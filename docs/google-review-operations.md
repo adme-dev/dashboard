@@ -2,14 +2,14 @@
 
 ## Behaviour
 
-Google reviews use the existing Social > Engagement > Reviews inbox and the same connected Business Profile locations as publishing. The companion `social-inbox-cron` Worker polls every five minutes; it is deployed separately from Pages. Account ordering rotates through stale connections when a request budget is reached. Each Google poll checks the newest page and advances one historical page. Interrupted pages retain their cursor for retry.
+Google reviews use the existing Social > Engagement > Reviews inbox and the same connected Business Profile locations as publishing. The companion `social-inbox-cron` Worker polls every five minutes; it is deployed separately from Pages. Account ordering rotates through stale connections when a request budget is reached. Each Google poll checks the newest page and advances one historical page. Interrupted pages retain their cursor for retry. A single scoped database read skips unchanged Google messages, leaving the request budget for new reviews and historical pages. Edited review text and owner replies update their existing rows without increasing counters or triggering another automatic reply.
 
 Per-client rules created by `scripts/configure-google-review-automation.mjs`:
 
 - 4–5 stars: personalised thank-you, confidence at least 0.9, at most 10 automatic replies per client rule per hour. Risky or uncertain responses require approval.
 - 1–3 stars: staff approval only, urgent inbox priority, dedicated email alert for newly received unanswered reviews.
 - Reviews from before rule activation, older than 24 hours, or already answered are never automatically replied to. Historical imports remain visible to staff without an email flood.
-- Before an automatic Google reply, the provider re-reads the review and rejects it if it has been answered, changed, or is no longer safe and positive.
+- Before an automatic Google reply, the provider re-reads the review and rejects it if it has been answered, changed from the text used to generate the draft, or is no longer safe and positive.
 - Queue message uniqueness prevents concurrent automation sends. Google owner replies use a stable message identity so imports and manual edits do not duplicate outbound messages.
 
 `SOCIAL_AUTOMATION_ENABLED=true` activates only matching configured rules. `SOCIAL_REVIEW_ALERT_EMAILS` explicitly opts named recipients into review-only notifications; initially `paul@adme.net.au`. Failed deliveries remain pending for retry. Resend receives a per-review idempotency key. General notification settings are not changed.
@@ -37,7 +37,7 @@ Set `SOCIAL_AUTOMATION_ENABLED=false` to stop automatic drafts/sends. Remove `SO
 
 - Pages app commit: `0f35ccd09`; deployment `3ec493fc.agency-dashboard-6cm.pages.dev` on production branch `main`. Sync errors remain visible while the connected-location count and retry action stay available.
 - Preserved the previously deployed measurement capability fix `60f217138` by building directly on its commit.
-- 722 relevant tests passed. Production build and guarded deployment passed. Repository-wide typecheck still reports existing errors; it is not a clean typecheck baseline.
+- 731 relevant tests passed after the repeat-sync and drafting-snapshot fixes. Production build and guarded deployment passed. Repository-wide typecheck still reports existing errors; it is not a clean typecheck baseline.
 - `social-inbox-cron` deployed with `*/5 * * * *`; existing Pages `CRON_SECRET` installed securely. An empty-client authenticated production probe returned HTTP 200 without importing or replying. The first observed scheduled invocation also returned HTTP 200 with no Worker exceptions; it synced two accounts and processed five automation candidates before its request budget expired. Candidate processing is not evidence of five public replies.
 - Eleven misplaced Google locations reassigned from Geelong GWM Haval to their corresponding existing client groups. Twelve active Google locations now span eight clients. `repair-google-review-clients.mjs` refuses unexpected mappings or linked history, locks posts/accounts during the repair, and stores prior client metadata for auditing.
 - Sixteen Google-only rules activated: one approval rule and one guarded autopilot rule for each of eight clients.

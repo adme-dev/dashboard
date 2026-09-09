@@ -169,6 +169,28 @@ async function insertMessage(db: DbRunner, conversationId: string, clientId: str
 
 async function mergeDuplicateMessageMetadata(db: DbRunner, conversationId: string, ev: NormalizedEvent): Promise<void> {
   const metadata = ev.message.metadata ?? {}
+  if (ev.platform === 'google-business' && ev.channelType === 'review' && ev.message.platformMessageId) {
+    // Google reviews/replies are editable. Refresh their existing row without treating
+    // an edit as a new unread message or another automation opportunity.
+    await db.execute(`WITH refreshed AS (
+      UPDATE social_messages SET content = $3, author_id = $4, author_name = $5,
+        message_type = $6, attachments = $7::jsonb,
+        platform_timestamp = COALESCE($8::timestamptz, platform_timestamp),
+        metadata = COALESCE(metadata, '{}'::jsonb) || $9::jsonb
+      WHERE conversation_id = $1 AND platform_message_id = $2 AND direction = $10
+      RETURNING content, platform_timestamp, direction
+    ) UPDATE social_conversations c SET
+        last_message_preview = LEFT(r.content, 200),
+        last_message_at = COALESCE(r.platform_timestamp, c.last_message_at),
+        last_message_direction = r.direction, updated_at = NOW()
+      FROM refreshed r WHERE c.id = $1
+        AND r.platform_timestamp >= c.last_message_at`,
+    [conversationId, ev.message.platformMessageId, ev.message.content ?? '',
+      ev.message.authorId ?? null, ev.message.authorName ?? null, ev.message.messageType,
+      JSON.stringify(ev.message.attachments ?? []), ev.message.platformTimestamp ?? null,
+      JSON.stringify(metadata), ev.message.direction])
+    return
+  }
   if (!ev.message.platformMessageId || !Object.keys(metadata).length) return
 
   await db.execute(

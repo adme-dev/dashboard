@@ -26,6 +26,7 @@ import { flagReviewForAttention, processReviewAlerts } from '~~/server/utils/soc
 import { sendReviewAlertEmail } from '~~/server/utils/socialInbox/reviewAlertEmail'
 import { isRecentReview } from '~~/server/utils/socialInbox/reviewSafety'
 import { buildSocialInboxAccountsQuery } from '~~/server/utils/socialInbox/syncAccounts'
+import { filterChangedGoogleReviews } from '~~/server/utils/socialInbox/reviewSyncChanges'
 
 /**
  * POST /api/cron/sync-social-inbox
@@ -123,7 +124,11 @@ export default defineEventHandler(async (event) => {
           `${acct.platform}:${channel}`
         )
         let pageComplete = true
-        for (const item of items.filter(i => i.channelType === channel)) {
+        const channelItems = items.filter(i => i.channelType === channel)
+        const changedItems = acct.platform === 'google-business' && channel === 'review'
+          ? await filterChangedGoogleReviews({ queryRows }, acct.client_id, acct.id, channelItems)
+          : channelItems
+        for (const item of changedItems) {
           if (budget.expired(deliveryReserveMs)) {
             skipped++
             timedOut = true
@@ -193,8 +198,8 @@ export default defineEventHandler(async (event) => {
     const engineDb = { queryOne, queryRows, execute }
     const deps = {
       generateDraft: generateReplyDraft,
-      dispatch: (a: { conversationId: string, clientId: string, content: string, aiGenerated: boolean, queueId: string }) =>
-        dispatchReply(engineDb, a.conversationId, { content: a.content, sentByUserId: 'automation', aiGenerated: a.aiGenerated })
+      dispatch: (a: { conversationId: string, clientId: string, content: string, aiGenerated: boolean, queueId: string, expectedReviewContent: string }) =>
+        dispatchReply(engineDb, a.conversationId, { content: a.content, sentByUserId: 'automation', aiGenerated: a.aiGenerated, expectedReviewContent: a.expectedReviewContent })
     }
     const r = await processPendingAutomation(engineDb, deps, 5, () => !budget.expired(10_000))
     automated = r.processed

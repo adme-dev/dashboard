@@ -15,7 +15,8 @@ const inboxAutomationDeps: EngineDeps = {
   dispatch: args => dispatchReply(inboxAutomationDb, args.conversationId, {
     content: args.content,
     sentByUserId: 'automation',
-    aiGenerated: args.aiGenerated
+    aiGenerated: args.aiGenerated,
+    expectedReviewContent: args.expectedReviewContent
   })
 }
 

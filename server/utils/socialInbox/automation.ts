@@ -16,7 +16,7 @@ export interface EngineDb {
 
 export interface EngineDeps {
   generateDraft(ctx: AutomationContext, brandPrompt: string): Promise<ReplyDraft>
-  dispatch(args: { conversationId: string; clientId: string; content: string; aiGenerated: boolean; queueId: string }):
+  dispatch(args: { conversationId: string; clientId: string; content: string; aiGenerated: boolean; queueId: string; expectedReviewContent: string }):
     Promise<{ ok: boolean; platformMessageId?: string; error?: string }>
 }
 
@@ -184,7 +184,7 @@ export async function runAutomationForConversation(db: EngineDb, deps: EngineDep
     let res: { ok: boolean, error?: string }
     try {
       res = await deps.dispatch({
-        conversationId, clientId: conv.client_id, content: draft.reply, aiGenerated: true, queueId,
+        conversationId, clientId: conv.client_id, content: draft.reply, aiGenerated: true, queueId, expectedReviewContent: ctx.inboundContent,
       })
     } catch (error) {
       res = { ok: false, error: error instanceof Error ? error.message : 'Dispatch failed' }
