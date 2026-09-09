@@ -29,10 +29,27 @@ describe('portal Page Studio provisioning handoff', () => {
     mocks.requireClientAuth.mockResolvedValue({ id: 'u1', clientId: 'c1', role: 'manager' })
   })
 
-  it('emits a stable scoped request only for an accepted revision', async () => {
-    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'chat', plan: savedPlan() })
+  it('retains only the accepted row business name, source, brief and revision', async () => {
+    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 4, status: 'accepted', source: 'chat', brief: 'Our accepted florist brief', plan: savedPlan('floristry-v1') })
+    const binding = { createProvisioning: vi.fn().mockImplementation(job => Promise.resolve(job)) }
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')
-    const binding = { createProvisioning: vi.fn().mockImplementation((job: { requestKey: string, scope: unknown }) => ({ requestKey: job.requestKey, scope: job.scope, phase: 'requested' })) }
+    await handler({ id: 'site_one', body: { expectedRevision: 4 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)
+    expect(binding.createProvisioning.mock.calls[0]?.[0].setup).toEqual({ businessName: 'New business', proposalRevision: 4, source: 'chat', brief: 'Our accepted florist brief' })
+    expect(mocks.queryOneFresh.mock.calls[0]?.[0]).toContain('proposal.brief')
+  })
+
+  it('rejects a chat proposal without its retained brief before dispatch', async () => {
+    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'chat', brief: null, plan: savedPlan() })
+    const binding = { createProvisioning: vi.fn() }
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')
+    await expect(handler({ id: 'site_one', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).rejects.toMatchObject({ statusCode: 422 })
+    expect(binding.createProvisioning).not.toHaveBeenCalled()
+  })
+
+  it('emits a stable scoped request only for an accepted revision', async () => {
+    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'chat', brief: 'Customer website', plan: savedPlan() })
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')
+    const binding = { createProvisioning: vi.fn().mockImplementation(job => Promise.resolve(job)) }
     await expect(handler({ id: 'site_one', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).resolves.toEqual({ provisioning: expect.objectContaining({ requestKey: 'page-studio-site_one-1', scope: expect.objectContaining({ tenantId: 't1', clientId: 'c1', siteId: 'site_one' }), job: expect.objectContaining({ phase: 'requested' }) }) })
     expect(binding.createProvisioning).toHaveBeenCalledOnce()
     expect(binding.createProvisioning.mock.calls[0][0]).toEqual(expect.objectContaining({
@@ -42,7 +59,7 @@ describe('portal Page Studio provisioning handoff', () => {
 
   it.each(['floristry-v1', 'retail-v1', 'it-goods-v1', 'import-export-v1'])('preserves the reviewed %s template and modules', async (templateId) => {
     const plan = savedPlan(templateId)
-    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'chat', plan })
+    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'chat', brief: 'Customer website', plan })
     const binding = { createProvisioning: vi.fn().mockImplementation(job => Promise.resolve(job)) }
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')
     await handler({ id: 'site_one', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)
@@ -52,7 +69,7 @@ describe('portal Page Studio provisioning handoff', () => {
   })
 
   it('rejects an unsupported saved template before invoking resource creation', async () => {
-    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'chat', plan: savedPlan('unknown-template') })
+    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'chat', brief: 'Customer website', plan: savedPlan('unknown-template') })
     const binding = { createProvisioning: vi.fn() }
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')
     await expect(handler({ id: 'site_one', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).rejects.toMatchObject({ statusCode: 422 })
@@ -63,7 +80,7 @@ describe('portal Page Studio provisioning handoff', () => {
     { canProvision: false, pagesPerSiteLimit: 10 },
     { canProvision: true, pagesPerSiteLimit: 1 }
   ])('denies setup when the subscription or page allowance is insufficient: %j', async (limits) => {
-    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'chat', plan: savedPlan(), ...limits })
+    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'chat', brief: 'Customer website', plan: savedPlan(), ...limits })
     const binding = { createProvisioning: vi.fn() }
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')
     await expect(handler({ id: 'site_one', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).rejects.toMatchObject({ statusCode: 403 })
@@ -85,6 +102,13 @@ describe('portal Page Studio provisioning handoff', () => {
   it('rejects a mismatched Worker response scope', async () => {
     mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'template', plan: savedPlan('retail-v1') })
     const binding = { createProvisioning: vi.fn().mockResolvedValue({ requestKey: 'page-studio-site_one-1', scope: { tenantId: 'other', clientId: 'c1', businessId: 'c1', siteId: 'site_one', environment: 'staging' } }) }
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')
+    await expect(handler({ id: 'site_one', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).rejects.toMatchObject({ statusCode: 503 })
+  })
+
+  it.each(['missing', 'changed'])('rejects a %s setup snapshot in the Worker response', async (mode) => {
+    mocks.queryOneFresh.mockResolvedValue({ tenantId: 't1', clientId: 'c1', siteId: 'site_one', canProvision: true, pagesPerSiteLimit: 20, revision: 1, status: 'accepted', source: 'template', plan: savedPlan('retail-v1') })
+    const binding = { createProvisioning: vi.fn().mockImplementation(job => Promise.resolve({ ...job, setup: mode === 'missing' ? undefined : { ...job.setup, businessName: 'Another business' } })) }
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')
     await expect(handler({ id: 'site_one', body: { expectedRevision: 1 }, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } } as never)).rejects.toMatchObject({ statusCode: 503 })
   })

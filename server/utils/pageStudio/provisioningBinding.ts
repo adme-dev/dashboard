@@ -27,6 +27,15 @@ const SavedPlan = z.object({
   collections: z.array(z.string().min(1).max(100)).min(1).max(32)
 })
 
+const SetupSnapshot = z.object({
+  businessName: z.string().trim().min(2).max(120),
+  proposalRevision: z.number().int().min(1),
+  source: z.enum(['template', 'chat']),
+  brief: z.string().trim().max(4000).optional()
+}).strict().superRefine((setup, context) => {
+  if (setup.source === 'chat' && !setup.brief) context.addIssue({ code: 'custom', path: ['brief'], message: 'Chat setup requires the accepted brief' })
+})
+
 /** Translate the retained, reviewed Dashboard proposal into the Worker contract.
  * Scope always comes from the authenticated site lookup, not proposal metadata.
  */
@@ -46,10 +55,13 @@ export function normalizePageStudioProvisioningPlan(input: unknown, scope: PageS
 
 export async function dispatchPageStudioProvisioning(
   binding: PageStudioProvisionerBinding | undefined,
-  input: { requestKey: string, scope: PageStudioProvisioningScope, now: string, plan: Record<string, unknown> }
+  input: { requestKey: string, scope: PageStudioProvisioningScope, now: string, plan: Record<string, unknown>, revision: number, source: 'template' | 'chat', brief?: string | null }
 ) {
   if (!binding) throw new PageStudioProvisioningError('PROVISIONER_UNAVAILABLE', 'Page Studio provisioning service is not configured')
   const plan = normalizePageStudioProvisioningPlan(input.plan, input.scope)
+  const parsedSetup = SetupSnapshot.safeParse({ businessName: input.plan.businessName, proposalRevision: input.revision, source: input.source, ...(input.brief == null ? {} : { brief: input.brief }) })
+  if (!parsedSetup.success) throw new PageStudioProvisioningError('INVALID_PROVISIONING_PLAN', 'The accepted setup proposal is missing a valid business name, revision or brief', 422)
+  const setup = parsedSetup.data
   const id = input.requestKey.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 128)
   try {
     const result = await binding.createProvisioning({
@@ -61,18 +73,22 @@ export async function dispatchPageStudioProvisioning(
       plan,
       resources: { contentBinding: null, database: null, site: null },
       scope: input.scope,
+      setup,
       templateId: plan.templateId,
       updatedAt: input.now
-    }) as { requestKey?: unknown, scope?: Record<string, unknown> }
+    }) as { requestKey?: unknown, scope?: Record<string, unknown>, setup?: unknown }
     const scope = result?.scope
+    const returnedSetup = SetupSnapshot.safeParse(result?.setup)
     if (result?.requestKey !== input.requestKey
       || !scope
       || scope.businessId !== input.scope.businessId
       || scope.clientId !== input.scope.clientId
       || scope.environment !== input.scope.environment
       || scope.siteId !== input.scope.siteId
-      || scope.tenantId !== input.scope.tenantId) {
-      throw new Error('Provisioning service returned a mismatched scope')
+      || scope.tenantId !== input.scope.tenantId
+      || !returnedSetup.success
+      || JSON.stringify(returnedSetup.data) !== JSON.stringify(setup)) {
+      throw new Error('Provisioning service returned a mismatched scope or setup context')
     }
     return result
   } catch (error) {

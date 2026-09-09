@@ -20,13 +20,14 @@ export default eventHandler(async (event) => {
       revision: number
       status: string
       source: 'template' | 'chat'
+      brief: string | null
       plan: Record<string, unknown>
       canProvision: boolean
       pagesPerSiteLimit: number
     }>(`
       SELECT site.tenant_id AS "tenantId", proposal.client_id AS "clientId",
              proposal.site_id AS "siteId", proposal.revision, proposal.status,
-             proposal.source, proposal.plan,
+             proposal.source, proposal.brief, proposal.plan,
              (site.status IN ('draft', 'active')
               AND entitlement.status IN ('trial', 'active')
               AND entitlement.portal_creation_enabled
@@ -63,6 +64,8 @@ export default eventHandler(async (event) => {
       requestKey: `page-studio-${row.siteId}-${row.revision}`,
       scope: { businessId: row.clientId, tenantId: row.tenantId, clientId: row.clientId, siteId: row.siteId, environment: 'staging' as const },
       source: row.source,
+      revision: row.revision,
+      brief: row.brief,
       plan: row.plan
     }
     const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
