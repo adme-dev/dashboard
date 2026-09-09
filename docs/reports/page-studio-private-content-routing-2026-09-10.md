@@ -28,8 +28,17 @@ guard and touched-file lint pass. Full build passes with 25,069,362 raw Worker
 bytes (399,566 below the guard). The full suite passes 13,222 tests with 48
 skipped (2021 passing files); database-only fixtures are not enabled in this run.
 Global typecheck reports the existing 927 errors, with zero diagnostics in the
-changed files. Guarded preview publication is next. Foundation router source
-4fb547d is committed/pushed and its private staging deployment is underway. Foundation evidence and lifecycle limits
+changed files. Guarded preview run 34400642124 succeeded at source
+35290e0456777d8afd0983fd4841c855afe8b7c6. Independent Cloudflare readback verifies
+deployment bb6cecbf-376f-407c-924e-1198bfc174dc on the preview branch/environment,
+the exact PAGE_STUDIO_CONTENT_ROUTER -> xeroflow-content-router-staging binding,
+and no production router binding. The immutable feature page returns HTTP 200:
+https://bb6cecbf.agency-dashboard-6cm.pages.dev/features/page-studio .
+The stable preview alias points to that deployment.
+
+Foundation router source 4fb547d is deployed privately as
+8ea6d415-748b-4278-976c-a82e606bb4f3 with 100% verified; six live scope/activation
+denial checks pass. Foundation evidence and lifecycle limits
 are recorded in its docs/research/2026-09-10-private-content-router.md.
 
 The router is an integration boundary, not completed self-service provisioning.
