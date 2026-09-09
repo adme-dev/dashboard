@@ -23,7 +23,8 @@ Delivery is split into two independently reviewable increments:
   original actor intact; readbacks confirm zero sessions and failed/1/1.
 - [x] Implement the machine-authenticated live authority endpoint and fresh SQL
   checks; 79 focused tests pass, including 21 real PostgreSQL cases.
-- [ ] Publish and verify live authority on the private Cloudflare control path.
+- [x] Publish 577b0cbe3 to preview 5e3d9077 and pass ten private-gateway
+  authority checks; synthetic jobs retired and fixture cleanup verified.
 - [ ] Connect authority and seed readback to the resource executor. No customer
   executor or cron is enabled.
 
@@ -73,10 +74,26 @@ Foundation DashboardControlClient.authorizeProvisioning reads this endpoint and
 compares the full returned job with the executor's retained copy, rejecting any
 changed phase, resource, timestamp or actor. It is a fresh check, not a token or
 lease; every executor effect still requires its own immediate lease fence.
-No migration is needed. Private staging acceptance remains to be recorded.
+No migration is needed. Private staging acceptance is recorded below.
 
 Final local authority validation: 13,236 tests pass (27 skipped), including all
 21 PostgreSQL authority cases. Build and deploy target guard pass; raw Worker
 25,068,370 / 25,468,928 bytes, gzip 6,585,726. Targeted lint passes. Final global
 typecheck reports the prior 927 errors outside modified files; no clean global
-typecheck is claimed. These checks do not yet establish deployed authority.
+typecheck is claimed. Deployed authority is independently verified below.
+
+Deployed acceptance — 10 September 2026 (Melbourne): Dashboard 577b0cbe3 passed
+[guarded preview 34351352972](https://github.com/adme-dev/dashboard/actions/runs/34351352972)
+and Cloudflare independently confirms preview 5e3d9077-d8d9-47ee-8ab2-3eff96b95add
+(source 577b0cb), https://5e3d9077.agency-dashboard-6cm.pages.dev. CI passes 13,215
+tests / 48 skipped; local explicit PostgreSQL execution adds the 21 skipped cases.
+Anonymous authority requests return 401. Ten real private-gateway allow/deny cases
+pass across original owner, membership, site/page/module limits, proposal status,
+restoration and entitlement expiry. Original actor and full returned job match.
+An initial probe using reordered Foundation template modules was correctly denied;
+its synthetic job was retired and the fixture corrected to the exact accepted
+Dashboard plan on a new proposal revision. No endpoint relaxation was needed.
+Both scoped test jobs are retired with actor intact, consistent timestamps, empty
+resources and no claim. Neon readback verifies zero sessions, restored managers/
+editors/limits and a disabled/expired entitlement. Full details are in Foundation
+`docs/research/2026-09-09-live-provisioning-authority.md`. No executor is enabled.
