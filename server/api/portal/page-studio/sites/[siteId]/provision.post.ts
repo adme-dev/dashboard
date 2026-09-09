@@ -1,6 +1,6 @@
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
 import { z } from 'zod'
 import { dispatchPageStudioProvisioning, type PageStudioProvisionerBinding } from '~~/server/utils/pageStudio/provisioningBinding'
 
@@ -13,7 +13,7 @@ export default eventHandler(async (event) => {
     const siteId = getRouterParam(event, 'siteId')
     const parsed = Body.safeParse(await readBody(event))
     if (!siteId || !parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid provisioning request' })
-    const row = await queryOne<{
+    const row = await queryOneFresh<{
       tenantId: string
       clientId: string
       siteId: string
@@ -30,10 +30,16 @@ export default eventHandler(async (event) => {
         ON site.tenant_id = proposal.tenant_id
        AND site.client_id = proposal.client_id
        AND site.id = proposal.site_id
+      JOIN page_studio_site_memberships membership
+        ON membership.tenant_id = site.tenant_id
+       AND membership.client_id = site.client_id
+       AND membership.site_id = site.id
+       AND membership.user_id = $4
+       AND membership.role = 'editor'
       WHERE proposal.client_id = $1 AND proposal.site_id = $2
         AND proposal.revision = $3
       LIMIT 1
-    `, [user.clientId, siteId, parsed.data.expectedRevision])
+    `, [user.clientId, siteId, parsed.data.expectedRevision, user.id])
     if (!row) throw createError({ statusCode: 404, statusMessage: 'Setup proposal not found' })
     if (row.status !== 'accepted') throw createError({ statusCode: 409, statusMessage: 'Setup proposal must be accepted before provisioning' })
     const request = {
