@@ -38,3 +38,19 @@ the published evidence head. This Dashboard change resolves the endpoint absence
 recorded there. Still open: live authority/seed-readback adapters, initiating actor
 persistence, executor ordering/wiring, compatible non-limousine readers, real R2/
 Dashboard acceptance, accepted page/module mapping and authenticated setup.
+
+## Preview follow-up
+
+Source 492483dd9 passed full push CI 34335836866 and PR CI 34335842197.
+Guarded preview run 34338478262 built successfully but stopped before deployment:
+the repository-wide CRM caller scan exceeded its 15-second limit under the full
+CI load. All 13,176 other tests passed (27 skipped). The scan now has a bounded
+60-second timeout; its source roots and security assertions are unchanged.
+
+Review also found latest-checkpoint reads used the general, potentially cached
+connection. They now default to queryOneFresh so committed/removed editor heads
+are read through HYPERDRIVE_FRESH. Two regression tests first reproduced stale
+and resurrected heads, then passed with the fix. All 32 focused checkpoint and
+endpoint tests and scoped lint pass. Staging's general connection already has
+caching disabled, so remote staging acceptance alone cannot prove this repair.
+No schema, user-facing feature or permission policy changes are introduced.

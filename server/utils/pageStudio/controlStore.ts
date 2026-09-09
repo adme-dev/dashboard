@@ -1,4 +1,4 @@
-import { queryOne, transaction } from '~~/server/utils/db'
+import { queryOneFresh, transaction } from '~~/server/utils/db'
 import { PageStudioCheckpointCommitSchema } from '~~/server/utils/pageStudio/controlSchemas'
 
 export interface PageStudioControlScope {
@@ -311,9 +311,9 @@ async function persistPageStudioCheckpoint(
 
 export async function getLatestPageStudioCheckpoint(
   scope: PageStudioControlScope,
-  dependencies: { queryOne?: typeof queryOne } = {}
+  dependencies: { queryOne?: typeof queryOneFresh } = {}
 ): Promise<{ checkpointId: string, digest: string, objectKey: string } | null> {
-  const readOne = dependencies.queryOne ?? queryOne
+  const readOne = dependencies.queryOne ?? queryOneFresh
   const row = await readOne<{ checkpoint_id: string, digest: string, object_key: string }>(
     `SELECT checkpoint.id AS checkpoint_id, checkpoint.digest, checkpoint.object_key
      FROM page_studio_sites site

@@ -134,9 +134,10 @@ describe('retired CRM search transport', () => {
       : []).toEqual([])
   })
 
+  // This parses every production source file while the full CI suite shares CPU.
   it('accepts only POST body callers across every production source root', () => {
     expect(collectCrmSearchCallerViolations(['app', 'server', 'shared', 'scripts', 'workers'])).toEqual([])
-  }, 15_000)
+  }, 60_000)
 
   it.each([
     [
