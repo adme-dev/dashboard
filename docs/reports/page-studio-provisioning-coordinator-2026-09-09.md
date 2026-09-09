@@ -26,6 +26,13 @@ branch `br-long-mountain-a4f73v10`, confirming the entitlement columns and joins
 against the actual schema. Endpoint denial tests mock query results; they do not
 by themselves prove live entitlement revocation or the full customer journey.
 
+The retained read-only `page-studio-provisioning-entitlement-proof.sql` also ran
+against that isolated branch. All 13 synthetic cases matched: active/trial
+allowed; disabled portal, future/expired/suspended entitlement, inactive site,
+viewer membership, foreign entitlement tenant/client, wrong entitlement ID and
+insufficient/zero page allowance denied. The inner SQL is extracted from the
+endpoint. No persisted rows were changed.
+
 The Foundation companion's remote smoke imports this real proposal generator
 and adapter. Release results are retained in its
 `docs/research/2026-09-09-provisioning-coordinator.md`.
