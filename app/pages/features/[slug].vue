@@ -196,7 +196,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Self-Service Business Setup',
-        content: 'Clients can choose a reusable starter or describe their business in the portal. The setup proposal lists pages, collections and enabled modules, calls out missing operational facts, and waits for agency review before provisioning. Limousine, floristry, retail, IT goods, and import/export foundations share the same scoped content and usage contracts, while bookings and commerce operations remain explicit modules.'
+        content: 'Clients can choose a reusable starter or describe their business in the portal. The setup proposal lists pages, collections and enabled modules, calls out missing operational facts, and waits for agency review before provisioning. Setup requests retain their original initiator, so an interrupted request can be retried without transferring ownership. Limousine, floristry, retail, IT goods, and import/export foundations share the same scoped content and usage contracts, while bookings and commerce operations remain explicit modules.'
       },
       {
         title: 'Bookings With Operator Approval',

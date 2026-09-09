@@ -70,7 +70,7 @@ export default eventHandler(async (event) => {
     }
     const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
     const binding = env?.PAGE_STUDIO_PROVISIONER as PageStudioProvisionerBinding | undefined
-    const job = await dispatchPageStudioProvisioning(binding, { ...request, now: new Date().toISOString() })
+    const job = await dispatchPageStudioProvisioning(binding, { ...request, initiatingUserId: user.id, now: new Date().toISOString() })
     return { provisioning: { ...request, job } }
   } catch (error) {
     pageStudioHttpError(error)

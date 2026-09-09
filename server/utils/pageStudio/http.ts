@@ -11,6 +11,7 @@ import { PageStudioBuildError } from '~~/server/utils/pageStudio/builds'
 import { PageStudioDocumentError } from '~~/server/utils/pageStudio/documents'
 import { PageStudioSessionError } from '~~/server/utils/pageStudio/sessions'
 import { PageStudioSiteOperationError } from '~~/server/utils/pageStudio/siteOperations'
+import { PageStudioProvisioningError } from '~~/server/utils/pageStudio/provisioningBinding'
 
 interface StablePageStudioError {
   error: { code: string, message: string }
@@ -35,6 +36,7 @@ export function projectPageStudioInternalError(error: unknown): {
   body: StablePageStudioError
 } {
   if (error instanceof PageStudioBookingsError
+    || error instanceof PageStudioProvisioningError
     || error instanceof PageStudioBusinessContentError
     || error instanceof PageStudioControlError
     || error instanceof PageStudioBuildError
@@ -91,6 +93,7 @@ export function pageStudioInternalHttpError(
 
 export function pageStudioHttpError(error: unknown): never {
   if (error instanceof PageStudioBookingsError
+    || error instanceof PageStudioProvisioningError
     || error instanceof PageStudioBusinessContentError
     || error instanceof PageStudioControlError
     || error instanceof PageStudioBuildError

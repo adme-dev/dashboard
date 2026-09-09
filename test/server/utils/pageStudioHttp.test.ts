@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import { PageStudioControlError } from '~~/server/utils/pageStudio/controlStore'
+import { PageStudioProvisioningError } from '~~/server/utils/pageStudio/provisioningBinding'
 import { projectPageStudioInternalError } from '~~/server/utils/pageStudio/http'
 
 describe('Page Studio internal HTTP error projection', () => {
+  it('preserves the explicit provisioning owner reconciliation code', () => {
+    expect(projectPageStudioInternalError(new PageStudioProvisioningError('PROVISIONING_OWNER_REQUIRED', 'Setup owner requires reconciliation', 409))).toEqual({
+      statusCode: 409,
+      body: { error: { code: 'PROVISIONING_OWNER_REQUIRED', message: 'Setup owner requires reconciliation' } }
+    })
+  })
   it('projects typed control errors to the stable top-level wire contract', () => {
     expect(projectPageStudioInternalError(new PageStudioControlError(
       'CHECKPOINT_CONFLICT',
