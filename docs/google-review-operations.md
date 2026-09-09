@@ -32,3 +32,15 @@ The existing Facebook imports are separate from Google. Accounts returning error
 ## Rollback
 
 Set `SOCIAL_AUTOMATION_ENABLED=false` to stop automatic drafts/sends. Remove `SOCIAL_REVIEW_ALERT_EMAILS` to pause review emails while retaining pending alerts. Disable the companion Worker's cron to stop polling. No schema migrations are required for these changes.
+
+## Release evidence — 2026-09-09
+
+- Pages app commit: `119e8846e`; deployment `1a1c35a0.agency-dashboard-6cm.pages.dev` on production branch `main`.
+- Preserved the previously deployed measurement capability fix `60f217138` by building directly on its commit.
+- 722 relevant tests passed. Production build and guarded deployment passed. Repository-wide typecheck still reports existing errors; it is not a clean typecheck baseline.
+- `social-inbox-cron` deployed with `*/5 * * * *`; existing Pages `CRON_SECRET` installed securely. An empty-client authenticated production probe returned HTTP 200 without importing or replying.
+- Eleven misplaced Google locations reassigned from Geelong GWM Haval to their corresponding existing client groups. Twelve active Google locations now span eight clients. `repair-google-review-clients.mjs` refuses unexpected mappings or linked history, locks posts/accounts during the repair, and stores prior client metadata for auditing.
+- Sixteen Google-only rules activated: one approval rule and one guarded autopilot rule for each of eight clients.
+- Google still denies `mybusiness.googleapis.com` activation as `paul@adme.net.au`. The user recalls an earlier application under `advertising@adme.net.au`; checking that approval requires its Google sign-in. Do not describe Google ingestion as live until a successful real sync is verified.
+
+Other sessions must include this release's commits before their next production deployment. The shared working checkout was not switched or reset.
