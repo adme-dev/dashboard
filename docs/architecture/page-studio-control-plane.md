@@ -2,6 +2,11 @@
 
 ## Status
 
+9 September follow-up: the strict conditional checkpoint endpoint now implements
+expected-head comparison and replay receipts under the existing scoped transaction.
+It supports the Foundation first-checkpoint helper without replacing later editor
+heads. See [verification and remaining integration](../reports/page-studio-conditional-checkpoint-2026-09-09.md).
+
 In progress as of 2026-09-01. The database, authenticated workflow foundation, read-only agency/client workspaces, staged build/release control transactions, and a full synthetic staging activation/rollback acceptance are implemented. The separate editor/build/delivery runtime remains staging-only, no customer Page Studio hostname receives production traffic, and the complete website builder is not yet production-ready.
 
 Dashboard release commit: `0a7c8a1b9`

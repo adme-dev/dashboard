@@ -1,4 +1,5 @@
 import { queryOne, transaction } from '~~/server/utils/db'
+import { PageStudioCheckpointCommitSchema } from '~~/server/utils/pageStudio/controlSchemas'
 
 export interface PageStudioControlScope {
   tenantId: string
@@ -20,6 +21,7 @@ export class PageStudioControlError extends Error {
       | 'CHECKPOINT_CONFLICT'
       | 'CHECKPOINT_DIGEST_MISMATCH'
       | 'CHECKPOINT_NOT_FOUND'
+      | 'CHECKPOINT_NOT_CURRENT'
       | 'CHECKPOINT_SCOPE_INVALID'
       | 'CONTROL_SCOPE_NOT_FOUND'
       | 'VERSION_CONFLICT'
@@ -194,10 +196,30 @@ function checkpointMatches(row: CheckpointRow, input: PageStudioCheckpointInput)
     && timestamp(row.created_at) === timestamp(input.createdAt)
 }
 
-export async function recordPageStudioCheckpoint(
+export interface PageStudioCheckpointReceipt {
+  acknowledged: true
+  checkpointId: string
+  currentCheckpointId: string | null
+  isCurrent: boolean
+}
+
+/** Legacy callers retain their acknowledgement contract. New callers must use the guarded commit. */
+export async function recordPageStudioCheckpoint(input: PageStudioCheckpointInput, dependencies: { runTransaction?: RunTransaction } = {}): Promise<{ acknowledged: true }> {
+  await persistPageStudioCheckpoint(input, dependencies)
+  return { acknowledged: true }
+}
+
+/** Lock the site before comparing its head, inserting the immutable checkpoint and auditing. */
+export async function commitPageStudioCheckpoint(input: { checkpoint: PageStudioCheckpointInput, expectedCheckpointId: string | null }, dependencies: { runTransaction?: RunTransaction } = {}): Promise<PageStudioCheckpointReceipt> {
+  const parsed = PageStudioCheckpointCommitSchema.parse(input)
+  return persistPageStudioCheckpoint(parsed.checkpoint, dependencies, parsed.expectedCheckpointId)
+}
+
+async function persistPageStudioCheckpoint(
   input: PageStudioCheckpointInput,
-  dependencies: { runTransaction?: RunTransaction } = {}
-): Promise<{ acknowledged: true }> {
+  dependencies: { runTransaction?: RunTransaction },
+  expectedCheckpointId?: string | null
+): Promise<PageStudioCheckpointReceipt> {
   if (input.objectKey !== expectedCheckpointObjectKey(input.scope, input.checkpointId)) {
     throw new PageStudioControlError(
       'CHECKPOINT_SCOPE_INVALID',
@@ -208,7 +230,18 @@ export async function recordPageStudioCheckpoint(
 
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
-    await requireScopedSite(db, input.scope, 'FOR UPDATE')
+    let currentCheckpointId: string | null = null
+    if (expectedCheckpointId === undefined) {
+      await requireScopedSite(db, input.scope, 'FOR UPDATE')
+    } else {
+      const site = await db.query<{ current_checkpoint_id: string | null }>(
+        `SELECT current_checkpoint_id FROM page_studio_sites
+         WHERE tenant_id = $1 AND client_id = $2 AND id = $3 FOR UPDATE`,
+        [input.scope.tenantId, input.scope.clientId, input.scope.siteId]
+      )
+      if (!site.rows[0]) throw new PageStudioControlError('CONTROL_SCOPE_NOT_FOUND', 404, 'Page Studio site scope not found')
+      currentCheckpointId = site.rows[0].current_checkpoint_id
+    }
     const existing = await db.query<CheckpointRow>(
       `SELECT id, tenant_id, client_id, site_id, digest, object_key, etag, author_id, created_at
        FROM page_studio_checkpoints
@@ -224,9 +257,13 @@ export async function recordPageStudioCheckpoint(
           'Checkpoint id already represents different content'
         )
       }
-      return { acknowledged: true }
+      return { acknowledged: true, checkpointId: input.checkpointId, currentCheckpointId,
+        isCurrent: currentCheckpointId === input.checkpointId }
     }
 
+    if (expectedCheckpointId !== undefined && currentCheckpointId !== expectedCheckpointId) {
+      throw new PageStudioControlError('CHECKPOINT_NOT_CURRENT', 409, 'The editor checkpoint changed; reload before saving')
+    }
     const inserted = await db.query<{ id: string }>(
       `INSERT INTO page_studio_checkpoints (
          id, tenant_id, client_id, site_id, digest, object_key, etag, author_id, created_at
@@ -268,7 +305,7 @@ export async function recordPageStudioCheckpoint(
       idempotencyKey: `control:checkpoint:${input.checkpointId}`,
       metadata: { authorId: input.userId, digest: input.digest }
     })
-    return { acknowledged: true }
+    return { acknowledged: true, checkpointId: input.checkpointId, currentCheckpointId: input.checkpointId, isCurrent: true }
   })
 }
 
