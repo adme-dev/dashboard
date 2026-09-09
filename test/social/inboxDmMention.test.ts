@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  normalizeMetaMentionWebhook, normalizeMetaMessageWebhook, normalizeMetaCommentWebhook,
+  normalizeMetaMentionWebhook, normalizeMetaMessageWebhook, normalizeMetaCommentWebhook
 } from '~~/server/utils/socialInbox/normalize'
 import {
-  metaScopeSet, metaSubscribedFields, buildMetaAuthUrl, META_MESSAGING_SCOPES, isSocialDmEnabled,
+  metaScopeSet, metaSubscribedFields, buildMetaAuthUrl, META_MESSAGING_SCOPES,
+  META_USER_CONTENT_SCOPES, isSocialDmEnabled, isSocialUserContentEnabled
 } from '~~/server/utils/socialOAuth/meta'
 import { buildMessengerSend } from '~~/server/utils/social-providers/facebook'
 
@@ -13,8 +14,8 @@ describe('normalizeMetaMentionWebhook', () => {
       field: 'mention',
       value: {
         item: 'comment', comment_id: 'c_99', post_id: 'p_1', sender_id: 'u7', sender_name: 'Dana',
-        message: 'hey @brand', permalink_url: 'https://fb/c99', created_time: 1700000000,
-      },
+        message: 'hey @brand', permalink_url: 'https://fb/c99', created_time: 1700000000
+      }
     }
     const ev = normalizeMetaMentionWebhook('facebook', change)!
     expect(ev.channelType).toBe('mention')
@@ -42,7 +43,7 @@ describe('normalizeMetaMessageWebhook', () => {
   it('maps an inbound Messenger DM keyed on the sender PSID', () => {
     const messaging = {
       sender: { id: 'PSID_1' }, recipient: { id: 'PAGE_1' }, timestamp: 1700000000000,
-      message: { mid: 'mid_1', text: 'hello there' },
+      message: { mid: 'mid_1', text: 'hello there' }
     }
     const ev = normalizeMetaMessageWebhook('facebook', messaging)!
     expect(ev.channelType).toBe('dm')
@@ -60,7 +61,7 @@ describe('normalizeMetaMessageWebhook', () => {
 
   it('maps an attachment-only DM', () => {
     const ev = normalizeMetaMessageWebhook('instagram', {
-      sender: { id: 'IGSID' }, message: { mid: 'm2', attachments: [{ type: 'image', payload: { url: 'https://x/img.jpg' } }] },
+      sender: { id: 'IGSID' }, message: { mid: 'm2', attachments: [{ type: 'image', payload: { url: 'https://x/img.jpg' } }] }
     })!
     expect(ev.message.messageType).toBe('image')
     expect(ev.message.attachments).toEqual([{ url: 'https://x/img.jpg', type: 'image' }])
@@ -74,7 +75,7 @@ describe('normalizeMetaMessageWebhook', () => {
 describe('comment normalizer still works (regression guard)', () => {
   it('maps a feed comment add', () => {
     const ev = normalizeMetaCommentWebhook('facebook', {
-      field: 'feed', value: { item: 'comment', verb: 'add', comment_id: 'c1', post_id: 'p1', message: 'hi', from: { id: 'u', name: 'U' } },
+      field: 'feed', value: { item: 'comment', verb: 'add', comment_id: 'c1', post_id: 'p1', message: 'hi', from: { id: 'u', name: 'U' } }
     })!
     expect(ev.channelType).toBe('comment')
     expect(ev.platformConversationId).toBe('p1')
@@ -87,6 +88,16 @@ describe('Meta OAuth scope/field gating (App-Review-gated DM channels)', () => {
     expect(metaScopeSet(false)).toContain('instagram_manage_comments')
     const withMsg = metaScopeSet(true)
     for (const s of META_MESSAGING_SCOPES) expect(withMsg).toContain(s)
+  })
+
+  it('gates Page user-content access independently until Meta approves it', () => {
+    expect(metaScopeSet(false, false)).not.toContain('pages_read_user_content')
+    const withUserContent = metaScopeSet(false, true)
+    for (const scope of META_USER_CONTENT_SCOPES) expect(withUserContent).toContain(scope)
+
+    process.env.SOCIAL_USER_CONTENT_ENABLED = 'true'
+    expect(isSocialUserContentEnabled()).toBe(true)
+    delete process.env.SOCIAL_USER_CONTENT_ENABLED
   })
 
   it('subscribed fields = feed only by default; feed,mention,messages when enabled', () => {

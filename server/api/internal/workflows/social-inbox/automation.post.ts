@@ -3,6 +3,7 @@ import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { runAutomationForConversation, type EngineDb, type EngineDeps } from '~~/server/utils/socialInbox/automation'
 import { generateReplyDraft } from '~~/server/utils/socialInbox/aiDraft'
 import { dispatchReply } from '~~/server/utils/socialInbox/dispatch'
+import { isSocialAutomationEnabled } from '~~/server/utils/socialInbox/automationGate'
 import {
   SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
   normalizeSocialInboxAutomationWorkflowPayload
@@ -14,7 +15,8 @@ const inboxAutomationDeps: EngineDeps = {
   dispatch: args => dispatchReply(inboxAutomationDb, args.conversationId, {
     content: args.content,
     sentByUserId: 'automation',
-    aiGenerated: args.aiGenerated
+    aiGenerated: args.aiGenerated,
+    expectedReviewContent: args.expectedReviewContent
   })
 }
 
@@ -33,6 +35,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const payload = await readWorkflowPayload(event)
+  if (!isSocialAutomationEnabled()) {
+    return { ok: true, result: { ok: true, skipped: true, reason: 'social_automation_disabled' } }
+  }
   const conversation = await queryOne<{ id: string }>(
     `SELECT id FROM social_conversations WHERE id = $1 AND client_id = $2`,
     [payload.conversationId, payload.clientId]

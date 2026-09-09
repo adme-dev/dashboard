@@ -16,6 +16,7 @@
 import type { SocialPostProvider, PostParams, PostResult, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { providerFetch } from './http'
+import { detectReplyRisk } from '~~/server/utils/socialInbox/guardrails'
 
 const GBP_API_BASE = 'https://mybusiness.googleapis.com/v4'
 
@@ -369,10 +370,10 @@ interface GoogleBusinessReplyError {
 }
 
 /** Pure: map a GBP reviews.list response to InboxItems + next cursor. */
-export function mapGoogleReviews(api: GoogleBusinessReviewListResponse): FetchInboxResult {
+export function mapGoogleReviews(api: GoogleBusinessReviewListResponse, locationResourceName?: string): FetchInboxResult {
   const items: InboxItem[] = []
   for (const r of api.reviews ?? []) {
-    const platformConversationId = String(r.name ?? r.reviewId ?? '')
+    const platformConversationId = String(r.name || (locationResourceName && r.reviewId ? `${locationResourceName}/reviews/${r.reviewId}` : r.reviewId) || '')
     const platformMessageId = String(r.reviewId ?? r.name ?? '')
     items.push({
       channelType: 'review' as const,
@@ -383,7 +384,10 @@ export function mapGoogleReviews(api: GoogleBusinessReviewListResponse): FetchIn
       authorName: r.reviewer?.displayName,
       content: r.comment ?? '',
       messageType: 'review',
-      metadata: r.reviewer?.profilePhotoUrl ? { authorAvatarUrl: r.reviewer.profilePhotoUrl } : undefined,
+      metadata: {
+        ...(r.reviewer?.profilePhotoUrl ? { authorAvatarUrl: r.reviewer.profilePhotoUrl } : {}),
+        reviewHasReply: Boolean(r.reviewReply?.comment)
+      },
       rating: GBP_STAR[r.starRating] ?? undefined,
       platformTimestamp: r.createTime
     })
@@ -412,15 +416,45 @@ export function mapGoogleReviews(api: GoogleBusinessReviewListResponse): FetchIn
 
 googleBusinessProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
   const locationResourceName = buildGoogleBusinessLocationResourceName(accountId)
-  const url = new URL(`${GBP_API_BASE}/${locationResourceName}/reviews`)
-  url.searchParams.set('pageSize', '50')
-  if (cursor) url.searchParams.set('pageToken', cursor)
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
-  if (!res.ok) throw new Error(`gbp fetchInbox ${res.status}`)
-  return mapGoogleReviews(await res.json())
+  const loadPage = async (pageToken?: string | null) => {
+    const url = new URL(`${GBP_API_BASE}/${locationResourceName}/reviews`)
+    url.searchParams.set('pageSize', '50')
+    url.searchParams.set('orderBy', 'updateTime desc')
+    if (pageToken) url.searchParams.set('pageToken', pageToken)
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+    if (!res.ok) {
+      // A stale backfill token must not permanently stop polling the latest reviews.
+      if (pageToken && res.status === 400) return null
+      const data = await res.json().catch(() => ({})) as { error?: { message?: string, status?: string, details?: Array<{ reason?: string }> } }
+      const reason = data.error?.details?.find(detail => detail.reason)?.reason || data.error?.status || 'UNKNOWN'
+      const message = (data.error?.message || 'Review request failed').replaceAll(accessToken, '[redacted]')
+      throw new Error(`Google reviews ${res.status} ${reason}: ${message}`.slice(0, 500))
+    }
+    return mapGoogleReviews(await res.json(), locationResourceName)
+  }
+  // Always check the newest reviews, even while the historical import advances.
+  const newest = (await loadPage())!
+  if (!cursor) return newest
+  const older = await loadPage(cursor)
+  if (!older) return newest
+  const seen = new Set(newest.items.map(item => item.platformMessageId))
+  return { items: [...newest.items, ...older.items.filter(item => !seen.has(item.platformMessageId))], nextCursor: older.nextCursor }
+
 }
 
-googleBusinessProvider.reply = async ({ accessToken, conversationId, content }: ReplyParams): Promise<ReplyResult> => {
+googleBusinessProvider.reply = async ({ accessToken, conversationId, content, onlyIfUnanswered, expectedReviewContent }: ReplyParams): Promise<ReplyResult> => {
+  if (!/^accounts\/[^/?#]+\/locations\/[^/?#]+\/reviews\/[^/?#]+$/.test(conversationId)) {
+    return { platformMessageId: '', status: 'failed', error: 'Invalid Google review resource. Refresh reviews before replying.' }
+  }
+  if (onlyIfUnanswered) {
+    const current = await fetch(`${GBP_API_BASE}/${conversationId}`, { headers: { Authorization: `Bearer ${accessToken}` } })
+    if (!current.ok) return { platformMessageId: '', status: 'failed', error: `Could not verify current Google review (${current.status}); human review required.` }
+    const review = await current.json() as GoogleBusinessReview
+    if (review.reviewReply?.comment || !['FOUR', 'FIVE'].includes(review.starRating || '') || detectReplyRisk(review.comment || '').risky
+      || (expectedReviewContent !== undefined && (review.comment || '') !== expectedReviewContent)) {
+      return { platformMessageId: '', status: 'failed', error: 'Google review has been answered or changed; human review required.' }
+    }
+  }
   // conversationId = full review resource name; reply endpoint is `.../reviews/{id}/reply` (PUT)
   const res = await fetch(`${GBP_API_BASE}/${conversationId}/reply`, {
     method: 'PUT',
@@ -429,6 +463,6 @@ googleBusinessProvider.reply = async ({ accessToken, conversationId, content }: 
   })
   const j = await res.json().catch((): GoogleBusinessReplyError => ({})) as GoogleBusinessReplyError
   return res.ok
-    ? { platformMessageId: String(conversationId), status: 'success' }
+    ? { platformMessageId: `${conversationId.split('/').pop()}:reply`, status: 'success' }
     : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
 }

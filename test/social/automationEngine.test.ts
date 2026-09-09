@@ -127,7 +127,18 @@ describe('runAutomationForConversation — orchestration with fakes', () => {
     }
     await runAutomationForConversation(db as any, deps as any, 'c1')
     expect(deps.generateDraft).toHaveBeenCalledOnce()
-    expect(deps.dispatch).toHaveBeenCalledOnce()
+    expect(deps.dispatch).toHaveBeenCalledWith(expect.objectContaining({ expectedReviewContent: inboundRow.content }))
+  })
+
+  it('records failed delivery without claiming the review was auto-replied', async () => {
+    const db = fakeDb({ conv: [convRow], inbound: [inboundRow], rules: [rule()] })
+    await runAutomationForConversation(db as any, {
+      generateDraft: vi.fn(async () => ({ reply: 'Thanks', confidence: .99, risk: false })),
+      dispatch: vi.fn(async () => { throw new Error('Network unavailable') }),
+    }, 'c1')
+    expect(db.execute).toHaveBeenCalledWith(expect.stringContaining('UPDATE social_response_queue'), ['q1','failed','Network unavailable'])
+    expect(db.execute).toHaveBeenCalledWith(expect.stringContaining('UPDATE social_conversations'), ['c1','failed'])
+    expect(db.execute.mock.calls.some(call => (call[1] as any[])?.includes('auto_replied'))).toBe(false)
   })
 
   it('autopilot + risky inbound → queue row, NO dispatch', async () => {

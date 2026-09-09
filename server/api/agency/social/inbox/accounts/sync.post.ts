@@ -1,3 +1,4 @@
+import { getCachedBinding } from '~~/server/utils/email'
 import { requireAuth } from '~~/server/utils/auth'
 import { MANUAL_SYNC_RUN_TIMEOUT_MS } from '~~/server/utils/socialInbox/syncBudget'
 
@@ -39,7 +40,7 @@ export default defineEventHandler(async (event) => {
   const body: { clientId?: string | null } = await readBody<{ clientId?: string | null }>(event).catch(() => ({}))
   const result = await internalFetch<SocialInboxSyncResult>('/api/cron/sync-social-inbox', {
     method: 'POST',
-    headers: { 'x-cron-secret': process.env.CRON_SECRET || '' },
+    headers: { 'x-cron-secret': event.context.cloudflare?.env?.CRON_SECRET || getCachedBinding('CRON_SECRET') || process.env.CRON_SECRET || '' },
     body: {
       ...(body?.clientId ? { clientId: body.clientId } : {}),
       maxMs: MANUAL_SYNC_RUN_TIMEOUT_MS

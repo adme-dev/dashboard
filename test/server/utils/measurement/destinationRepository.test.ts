@@ -147,6 +147,50 @@ function updateInput(): UpdateConversionDestinationConfiguration {
 }
 
 describe('Postgres measurement destination repository', () => {
+  it.each([
+    ['tiktok', 'tiktok_events_api', true],
+    ['tiktok', 'tiktok_pixel', true],
+    ['ga4', 'ga4_measurement_protocol', true],
+    ['google_data_manager', 'google_data_manager', true],
+    ['meta', 'meta_crm_capi', true],
+    ['tiktok', 'google_data_manager', false],
+    ['tiktok', 'meta_pixel', false]
+  ] as const)('validates %s destination updates with %s capabilities', async (platform, mode, valid) => {
+    const ownMode = platform === 'tiktok' ? 'tiktok_events_api'
+      : platform === 'ga4' ? 'ga4_measurement_protocol'
+        : platform === 'meta' ? 'meta_crm_capi' : 'google_data_manager'
+    const row = (version: number) => ({ ...destinationRow(version), platform, social_connection_id: null })
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) return { rows: [profileRow(2)] }
+        if (/conversion_destinations[\s\S]*FOR UPDATE/.test(sql)) return { rows: [row(2)] }
+        if (/FROM conversion_destination_capabilities/.test(sql)) return { rows: [{ ...capabilityRow(), platform, mode: ownMode }] }
+        if (/FROM conversion_event_mappings/.test(sql)) return { rows: [mappingRow()] }
+        if (/UPDATE client_measurement_profiles/.test(sql)) return { rows: [profileRow(3)] }
+        if (/UPDATE conversion_destinations/.test(sql)) return { rows: [row(3)] }
+        if (/INSERT INTO conversion_destination_capabilities/.test(sql)) return { rows: [{ ...capabilityRow(3), platform, mode: params[3] }] }
+        if (/INSERT INTO conversion_event_mappings/.test(sql)) return { rows: [mappingRow(3)] }
+        return { rows: [] }
+      })
+    }
+    const repository = createPostgresMeasurementDestinationRepository({
+      query: vi.fn() as never, queryOne: vi.fn() as never,
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => callback(db)) as never
+    })
+    const input = updateInput()
+    input.patch.capabilities![0]!.mode = mode
+    const result = await repository.update(input)
+    if (valid) {
+      expect(result).toMatchObject({ status: 'updated', profile: { configVersion: 3 },
+        destination: { platform, enabled: false, environment: 'test', configVersion: 3,
+          capabilities: [expect.objectContaining({ mode })] } })
+      expect(db.query.mock.calls.some(([sql]) => /INSERT INTO measurement_config_audit/.test(sql))).toBe(true)
+    } else {
+      expect(result).toEqual({ status: 'invalid_configuration' })
+      expect(db.query.mock.calls.some(([sql]) => /UPDATE|INSERT|DELETE/.test(sql.replace(/FOR UPDATE/g, '')))).toBe(false)
+    }
+  })
+
   it('returns a paginated tenant-scoped read model without credential references', async () => {
     const queryOne = vi.fn(async () => ({ count: '1' }))
     const query = vi.fn()

@@ -111,7 +111,7 @@ describe('mapGoogleReviews', () => {
     })
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
-    expect(String(fetchSpy.mock.calls[0]![0])).toBe('https://mybusiness.googleapis.com/v4/accounts/acc1/locations/loc1/reviews?pageSize=50')
+    expect(String(fetchSpy.mock.calls[0]![0])).toBe('https://mybusiness.googleapis.com/v4/accounts/acc1/locations/loc1/reviews?pageSize=50&orderBy=updateTime+desc')
     expect(result.items[0]).toMatchObject({ platformMessageId: 'r1', rating: 5 })
   })
 })

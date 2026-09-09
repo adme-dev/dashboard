@@ -37,6 +37,7 @@ export interface AutomationRule {
   business_hours: BusinessHours | null
   priority: number
   enabled: boolean
+  created_at?: string
 }
 
 /** The inbound context the engine evaluates a rule against. */
@@ -49,6 +50,7 @@ export interface AutomationContext {
   inboundMessageId: string
   inboundContent: string
   participantName: string | null
+  businessName?: string | null
   now: Date
 }
 

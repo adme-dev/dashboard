@@ -7,6 +7,7 @@
 // delivery (webhook retry / overlapping poll window) inserts no message row and must not
 // move any counter — so the conversation bump runs AFTER, gated on rows-affected.
 import type { NormalizedEvent } from './types'
+import { isRecentReview } from './reviewSafety'
 
 export interface DbRunner {
   queryOne<T = unknown>(sql: string, params?: unknown[]): Promise<T | null>
@@ -168,6 +169,28 @@ async function insertMessage(db: DbRunner, conversationId: string, clientId: str
 
 async function mergeDuplicateMessageMetadata(db: DbRunner, conversationId: string, ev: NormalizedEvent): Promise<void> {
   const metadata = ev.message.metadata ?? {}
+  if (ev.platform === 'google-business' && ev.channelType === 'review' && ev.message.platformMessageId) {
+    // Google reviews/replies are editable. Refresh their existing row without treating
+    // an edit as a new unread message or another automation opportunity.
+    await db.execute(`WITH refreshed AS (
+      UPDATE social_messages SET content = $3, author_id = $4, author_name = $5,
+        message_type = $6, attachments = $7::jsonb,
+        platform_timestamp = COALESCE($8::timestamptz, platform_timestamp),
+        metadata = COALESCE(metadata, '{}'::jsonb) || $9::jsonb
+      WHERE conversation_id = $1 AND platform_message_id = $2 AND direction = $10
+      RETURNING content, platform_timestamp, direction
+    ) UPDATE social_conversations c SET
+        last_message_preview = LEFT(r.content, 200),
+        last_message_at = COALESCE(r.platform_timestamp, c.last_message_at),
+        last_message_direction = r.direction, updated_at = NOW()
+      FROM refreshed r WHERE c.id = $1
+        AND r.platform_timestamp >= c.last_message_at`,
+    [conversationId, ev.message.platformMessageId, ev.message.content ?? '',
+      ev.message.authorId ?? null, ev.message.authorName ?? null, ev.message.messageType,
+      JSON.stringify(ev.message.attachments ?? []), ev.message.platformTimestamp ?? null,
+      JSON.stringify(metadata), ev.message.direction])
+    return
+  }
   if (!ev.message.platformMessageId || !Object.keys(metadata).length) return
 
   await db.execute(
@@ -190,10 +213,11 @@ async function bumpConversationForInbound(db: DbRunner, conversationId: string, 
        message_count = message_count + 1,
        unread_count = unread_count + 1,
        status = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
-       automation_state = 'pending',
+       automation_state = CASE WHEN $4::boolean THEN 'pending' ELSE NULL END,
        updated_at = NOW()
      WHERE id = $1`,
-    [conversationId, ev.message.platformTimestamp ?? null, (ev.message.content ?? '').slice(0, 200)]
+    [conversationId, ev.message.platformTimestamp ?? null, (ev.message.content ?? '').slice(0, 200),
+      ev.channelType !== 'review' || (isRecentReview(ev.message.platformTimestamp) && !ev.message.metadata?.reviewHasReply)]
   )
 }
 
@@ -235,21 +259,27 @@ export async function recordInbound(db: DbRunner, clientId: string, accountId: s
 /** Record an outbound reply we just sent (direction='out'); always a genuinely-new row. */
 export async function recordOutbound(
   db: DbRunner, conversationId: string, clientId: string,
-  args: { platformMessageId: string | null, content: string, sentByUserId: string, messageType?: string }
+  args: { platformMessageId: string | null, content: string, sentByUserId: string, messageType?: string, aiGenerated?: boolean }
 ): Promise<void> {
-  await db.execute(
+  const inserted = await db.execute(
     `INSERT INTO social_messages
-       (conversation_id, client_id, platform_message_id, direction, message_type, content, sent_by_user_id, platform_timestamp)
-     VALUES ($1,$2,$3,'out',$4,$5,$6, NOW())`,
-    [conversationId, clientId, args.platformMessageId, args.messageType ?? 'text', args.content, args.sentByUserId]
+       (conversation_id, client_id, platform_message_id, direction, message_type, content, sent_by_user_id, platform_timestamp, ai_generated)
+     VALUES ($1,$2,$3,'out',$4,$5,$6, NOW(),$7)
+     ON CONFLICT (conversation_id, platform_message_id) WHERE platform_message_id IS NOT NULL DO NOTHING`,
+    [conversationId, clientId, args.platformMessageId, args.messageType ?? 'text', args.content, args.sentByUserId, args.aiGenerated ?? false]
   )
+  if (!inserted && args.platformMessageId) {
+    await db.execute(`UPDATE social_messages SET content = $3, sent_by_user_id = $4, platform_timestamp = NOW(), ai_generated = $5
+      WHERE conversation_id = $1 AND platform_message_id = $2 AND direction = 'out'`,
+    [conversationId, args.platformMessageId, args.content, args.sentByUserId, args.aiGenerated ?? false])
+  }
   await db.execute(
     `UPDATE social_conversations SET
        last_message_at = NOW(), last_message_preview = $2, last_message_direction = 'out',
-       message_count = message_count + 1, unread_count = 0,
+       message_count = message_count + $3, unread_count = 0,
        first_response_at = COALESCE(first_response_at, NOW()),
        updated_at = NOW()
      WHERE id = $1`,
-    [conversationId, args.content.slice(0, 200)]
+    [conversationId, args.content.slice(0, 200), inserted > 0 ? 1 : 0]
   )
 }

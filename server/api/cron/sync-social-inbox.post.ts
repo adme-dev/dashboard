@@ -1,4 +1,4 @@
-import { defineEventHandler, getHeader, createError } from 'h3'
+import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getProvider } from '~~/server/utils/social-providers/registry'
 import { normalizeInboxItem } from '~~/server/utils/socialInbox/normalize'
@@ -20,7 +20,13 @@ import {
   normaliseSyncMaxMs,
   withSyncTimeout
 } from '~~/server/utils/socialInbox/syncBudget'
+import { getCachedBinding } from '~~/server/utils/email'
 import { createNotification } from '~~/server/utils/notifications'
+import { flagReviewForAttention, processReviewAlerts } from '~~/server/utils/socialInbox/reviewAlerts'
+import { sendReviewAlertEmail } from '~~/server/utils/socialInbox/reviewAlertEmail'
+import { isRecentReview } from '~~/server/utils/socialInbox/reviewSafety'
+import { buildSocialInboxAccountsQuery } from '~~/server/utils/socialInbox/syncAccounts'
+import { filterChangedGoogleReviews } from '~~/server/utils/socialInbox/reviewSyncChanges'
 
 /**
  * POST /api/cron/sync-social-inbox
@@ -39,8 +45,6 @@ interface SocialInboxSyncChannelRun {
   error?: string
 }
 
-type SqlParam = string | number | boolean | null
-
 interface SocialInboxAccountRow {
   id: string
   client_id: string
@@ -58,22 +62,19 @@ function getErrorMessage(error: unknown) {
 
 export default defineEventHandler(async (event) => {
   const secret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && secret !== process.env.CRON_SECRET) {
+  const expectedSecret = event.context.cloudflare?.env?.CRON_SECRET || getCachedBinding('CRON_SECRET') || process.env.CRON_SECRET
+  if (!expectedSecret || secret !== expectedSecret) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
   const body: { clientId?: string | null, maxMs?: number | null } = await readBody<{ clientId?: string | null, maxMs?: number | null }>(event).catch(() => ({}))
   const budget = createSyncBudget(normaliseSyncMaxMs(body?.maxMs, DEFAULT_SYNC_RUN_TIMEOUT_MS))
-  const params: SqlParam[] = []
-  let sql = `SELECT id, client_id, platform, platform_account_id, account_name, access_token, refresh_token, token_expires_at
-       FROM social_accounts WHERE is_active = TRUE AND access_token IS NOT NULL`
-  if (body?.clientId) {
-    params.push(body.clientId)
-    sql += ` AND client_id = $${params.length}`
-  }
-
+  const { sql, params } = buildSocialInboxAccountsQuery(body?.clientId)
   const accounts = await queryRows<SocialInboxAccountRow>(sql, params)
 
+  // Deliver queued alerts before polling so a large account set cannot starve them.
+  let alertsDelivered = await processReviewAlerts({ queryRows, execute }, sendReviewAlertEmail, () => !budget.expired(20_000))
+  const deliveryReserveMs = 20_000
   let synced = 0
   let skipped = 0
   let timedOut = false
@@ -92,7 +93,7 @@ export default defineEventHandler(async (event) => {
         synced: 0
       }
       channels.push(channelRun)
-      const providerTimeoutMs = budget.timeoutFor(PROVIDER_SYNC_TIMEOUT_MS)
+      const providerTimeoutMs = budget.timeoutFor(PROVIDER_SYNC_TIMEOUT_MS, deliveryReserveMs)
       if (providerTimeoutMs < 1_000) {
         skipped++
         timedOut = true
@@ -122,19 +123,34 @@ export default defineEventHandler(async (event) => {
           providerTimeoutMs,
           `${acct.platform}:${channel}`
         )
-        for (const item of items.filter(i => i.channelType === channel)) {
-          if (budget.expired(1_000)) {
+        let pageComplete = true
+        const channelItems = items.filter(i => i.channelType === channel)
+        const changedItems = acct.platform === 'google-business' && channel === 'review'
+          ? await filterChangedGoogleReviews({ queryRows }, acct.client_id, acct.id, channelItems)
+          : channelItems
+        for (const item of changedItems) {
+          if (budget.expired(deliveryReserveMs)) {
             skipped++
             timedOut = true
+            pageComplete = false
+            channelRun.status = 'skipped'
+            channelRun.error = 'Partial page saved; remaining items will be retried.'
             break
           }
           const normalized = normalizeInboxItem(acct.platform, item)
           const res = await recordInbound({ queryOne, execute }, acct.client_id, acct.id, normalized)
+          if (item.channelType === 'review' && normalized.message.direction === 'in') {
+            await flagReviewForAttention({ execute }, res.conversationId, {
+              rating: item.rating, platformTimestamp: item.platformTimestamp,
+              hasReply: Boolean(item.metadata?.reviewHasReply)
+            })
+          }
           if (res.inserted) {
             synced++
             channelRun.synced++
             emitInboxEvent({ clientId: acct.client_id, type: 'message.added', conversationId: res.conversationId }, event)
-            if (normalized.message.direction === 'in') {
+            if (normalized.message.direction === 'in' && (item.channelType !== 'review'
+              || (isRecentReview(item.platformTimestamp) && !item.metadata?.reviewHasReply))) {
               await onInboundRecorded({ queryOne, queryRows, execute }, {
                 notifyAssigned: (userId, conversationId, clientId) => createNotification({
                   userId, type: 'social_assigned', title: 'New conversation assigned',
@@ -157,7 +173,7 @@ export default defineEventHandler(async (event) => {
            VALUES ($1, $2, $3, NOW(), NULL, NOW())
            ON CONFLICT (social_account_id, channel_type) DO UPDATE SET
              cursor = EXCLUDED.cursor, last_synced_at = NOW(), last_error = NULL, updated_at = NOW()`,
-          [acct.id, channel, nextCursor ?? null]
+          [acct.id, channel, pageComplete ? (nextCursor ?? null) : (cur?.cursor ?? null)]
         )
       } catch (error: unknown) {
         const message = getErrorMessage(error)
@@ -176,15 +192,16 @@ export default defineEventHandler(async (event) => {
   }
 
   // --- Phase 2b: automation pass (fully dormant unless the master gate is on) ---
+  alertsDelivered += await processReviewAlerts({ queryRows, execute }, sendReviewAlertEmail, () => !budget.expired(10_000))
   let automated = 0
   if (!budget.expired(5_000) && isSocialAutomationEnabled()) {
     const engineDb = { queryOne, queryRows, execute }
     const deps = {
       generateDraft: generateReplyDraft,
-      dispatch: (a: { conversationId: string, clientId: string, content: string, aiGenerated: boolean, queueId: string }) =>
-        dispatchReply(engineDb, a.conversationId, { content: a.content, sentByUserId: 'automation', aiGenerated: a.aiGenerated })
+      dispatch: (a: { conversationId: string, clientId: string, content: string, aiGenerated: boolean, queueId: string, expectedReviewContent: string }) =>
+        dispatchReply(engineDb, a.conversationId, { content: a.content, sentByUserId: 'automation', aiGenerated: a.aiGenerated, expectedReviewContent: a.expectedReviewContent })
     }
-    const r = await processPendingAutomation(engineDb, deps, 50)
+    const r = await processPendingAutomation(engineDb, deps, 5, () => !budget.expired(10_000))
     automated = r.processed
   }
 
@@ -211,5 +228,5 @@ export default defineEventHandler(async (event) => {
   }
 
   console.log('social-inbox-sync.run', { accounts: accounts.length, synced, automated, breaches, skipped, timedOut })
-  return { synced, automated, breaches, skipped, timedOut, channels }
+  return { synced, automated, breaches, alertsDelivered, skipped, timedOut, channels }
 })

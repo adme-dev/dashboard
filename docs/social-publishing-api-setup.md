@@ -1,6 +1,6 @@
 # Social Publishing API Setup
 
-Last checked: 2026-06-04
+Google Business Profile last checked: 2026-09-09
 
 This is the setup reminder for `/agency/social/publishing/accounts` OAuth connections.
 Those account connections are reused by publishing and by the engagement inbox review sync.
@@ -12,56 +12,19 @@ Domain split:
 
 ## Google Business Profile
 
-Current status:
+Status verified on 2026-09-09:
 
-- Cloud project: `my-business-api-271101`
-- Project number: `65723781223`
-- OAuth app: `ADME Agency Dashboard`
-- Production origin: `https://app.xeroflow.io`
-- Production callback: `https://app.xeroflow.io/api/agency/social/publishing/accounts/callback/google-business`
-- OAuth consent works and requests `https://www.googleapis.com/auth/business.manage`.
-- API access is not approved yet. The Account Management API quota is currently `0 QPM`, which Google documents as "project has not yet been approved".
+- The active shared OAuth client belongs to project `gen-lang-client-0818792107`, number `14351276985`.
+- The project is owned by `paul@adme.net.au` and has the approved Account Management quota of 300 requests/minute. Twelve active locations are connected.
+- The legacy review API was disabled. Paul could not enable it because the Google account lacked access to that private API, despite owning the project.
+- `advertising@adme.net.au` could enable the private API. A temporary, time-limited Service Usage Admin grant on the existing project allowed Advertising to enable `mybusiness.googleapis.com`; the grant was then removed. Enable operation: `operations/acat.p2-14351276985-b05fb3d9-b75e-44fd-95a2-c74158659b94`.
+- All twelve locations now return HTTP 200 from `reviews.list` through the existing production OAuth connection. Two locations return no reviews. Live imports are verified in the Reviews screen.
+- Advertising's separate `wise-trainer-382200` project (`803122782506`) is not approved: Account Management quota is zero, and reviews return 404 `Method not found`, even though the legacy API could be enabled. A temporary verification OAuth client there was removed. API visibility/enablement alone is not proof of project approval.
+- The older project `my-business-api-271101` (`65723781223`) is not used. Do not switch to its stale credentials.
 
-Required Google approval step:
+The connection does not require enabling local-post publishing. Shared Google OAuth credentials must remain consistent with stored refresh tokens; do not replace them with the older project's credentials.
 
-1. Sign in as a Google account that owns or manages a verified, active Google Business Profile.
-2. Open `https://support.google.com/business/contact/api_default`.
-3. Select `Application For Basic API Access`.
-4. Use the project ID and project number above.
-5. Confirm the Google Business Profile has been verified and active for 60+ days and has a representative business website.
-6. Wait for Google's follow-up approval email.
-7. Re-check quotas in Google Cloud. Approval should move Business Profile API quota from `0 QPM` to `300 QPM`.
-
-After approval, enable the full Business Profile API set Google lists in Basic setup:
-
-- Google My Business API
-- My Business Account Management API
-- My Business Lodging API
-- My Business Place Actions API
-- My Business Notifications API
-- My Business Verifications API
-- My Business Business Information API
-- My Business Q&A API
-
-Notes:
-
-- The `Google My Business API` v4 service is needed for Local Posts (`mybusiness.googleapis.com/v4/.../localPosts`).
-- If the legacy service page fails to load or is not visible, the project is probably still not approved.
-- Workspace users can also receive `403 PERMISSION_DENIED` if Google Business Profile Manager is disabled in Google Workspace Admin.
-- The dashboard ships this channel dormant. Keep `GOOGLE_BUSINESS_PUBLISHING_ENABLED=false` or unset until Google approves API access and production OAuth secrets are ready. The flag currently gates the Google Business connection, so reviews cannot be connected while it is off.
-
-Production activation:
-
-1. Cloudflare Pages production secrets must include:
-   - `GOOGLE_BUSINESS_CLIENT_ID`
-   - `GOOGLE_BUSINESS_CLIENT_SECRET`
-   - `GOOGLE_BUSINESS_REDIRECT_URI=https://app.xeroflow.io/api/agency/social/publishing/accounts/callback/google-business`
-   - `SOCIAL_OAUTH_STATE_SECRET`
-2. Set `GOOGLE_BUSINESS_PUBLISHING_ENABLED=true`.
-3. Reconnect each Google Business Profile location from `/agency/social/publishing/accounts`.
-4. Run a manual inbox refresh from `/agency/social/inbox` and confirm the Google Business review channel reports healthy in the account health drawer.
-5. Check `/agency/social/inbox/reviews` for imported reviews.
-6. Publish a low-risk local post and confirm it appears in Google Business Profile Manager if local posts are being activated at the same time.
+The current application workflow is linked from https://support.google.com/business/contact/api_default (Application For Basic API Access). Activation and review automation checks are documented in [Google review operations](google-review-operations.md).
 
 Reference links:
 

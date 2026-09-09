@@ -54,7 +54,7 @@ const savingPolicy = ref(false)
 const deletingPolicy = ref<string | null>(null)
 
 const currentClientName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || 'Selected client')
-const googleBusinessConnectedCount = computed(() => googleBusinessAccounts.value.filter(account => account.is_active && !account.last_error).length)
+const googleBusinessConnectedCount = computed(() => googleBusinessAccounts.value.filter(account => account.is_active).length)
 const googleBusinessIssueCount = computed(() =>
   googleBusinessAccounts.value.filter(account => !account.is_active || account.last_error || isExpired(account.token_expires_at)).length
 )
@@ -98,7 +98,11 @@ async function refreshGoogleBusinessAccounts() {
   try {
     const accounts = await socialApi.listAccounts(requestedClientId)
     if (clientId.value === requestedClientId) {
-      googleBusinessAccounts.value = accounts.filter(account => account.platform === 'google-business')
+      googleBusinessAccounts.value = accounts.filter(account => account.platform === 'google-business').map(account => ({
+        ...account,
+        last_error: account.last_error || account.review_sync_error,
+        last_synced_at: account.review_last_attempt_at || account.last_synced_at
+      }))
     }
   } catch (e: any) {
     toast.add({
@@ -126,15 +130,16 @@ async function syncGoogleBusinessReviews() {
   if (!clientId.value) return
   googleBusinessSyncing.value = true
   try {
-    const result = await apiFetch<{ synced?: number; skipped?: number; timedOut?: boolean }>('/api/agency/social/inbox/accounts/sync', {
+    const result = await apiFetch<{ synced?: number; skipped?: number; timedOut?: boolean; channels?: Array<{ platform: string; status: string; error?: string }> }>('/api/agency/social/inbox/accounts/sync', {
       method: 'POST',
       body: { clientId: clientId.value }
     })
     await refreshGoogleBusinessAccounts()
+    const failures = (result.channels || []).filter(channel => channel.platform === 'google-business' && channel.status !== 'success')
     toast.add({
-      title: result.timedOut ? 'Review sync partially completed' : 'Review sync complete',
-      description: `${result.synced ?? 0} synced${result.skipped ? `, ${result.skipped} skipped` : ''}`,
-      color: result.timedOut ? 'warning' : 'success'
+      title: failures.length ? 'Google review sync needs attention' : result.timedOut ? 'Review sync partially completed' : 'Review sync complete',
+      description: failures.length ? failures[0]?.error || `${failures.length} Google locations could not sync.` : `${result.synced ?? 0} synced${result.skipped ? `, ${result.skipped} skipped` : ''}`,
+      color: failures.length ? 'error' : result.timedOut ? 'warning' : 'success'
     })
   } catch (e: any) {
     toast.add({ title: 'Review sync failed', description: e?.data?.statusMessage || e?.message, color: 'error' })

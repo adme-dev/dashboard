@@ -9,6 +9,22 @@ const ev: NormalizedEvent = {
 }
 
 describe('recordInbound', () => {
+  it.each(['in', 'out'] as const)('refreshes edited Google %s review content without queuing automation or incrementing counters', async direction => {
+    const calls: { sql: string, params?: unknown[] }[] = []
+    const db: DbRunner = {
+      async queryOne<T>() { return { id: 'conv-1' } as T },
+      async execute(sql, params) { calls.push({ sql, params }); return /INSERT INTO social_messages/.test(sql) ? 0 : 1 }
+    }
+    const result = await recordInbound(db, 'client-1', 'acct-1', {
+      ...ev, platform: 'google-business', channelType: 'review',
+      message: { ...ev.message, direction, messageType: direction === 'in' ? 'review' : 'review_reply', content: 'Edited text' }
+    })
+    expect(result.inserted).toBe(false)
+    const update = calls.find(call => /UPDATE social_messages SET[\s\S]*content =/.test(call.sql))
+    expect(update?.params).toContain('Edited text')
+    expect(update?.sql).toContain('last_message_preview')
+    expect(update?.sql).not.toMatch(/message_count|unread_count|automation_state/)
+  })
   it('ensures the conversation then inserts the message and bumps counters', async () => {
     const calls: string[] = []
     const db: DbRunner = {
@@ -100,7 +116,7 @@ describe('recordInbound', () => {
       }
     }
     await recordInbound(db, 'client-1', 'acct-1', ev)
-    expect(fullSql.some(s => /automation_state\s*=\s*'pending'/.test(s))).toBe(true)
+    expect(fullSql.some(s => /automation_state\s*=\s*CASE WHEN \$4::boolean THEN 'pending'/.test(s))).toBe(true)
   })
 
   it('uses author identity as the conversation participant fallback', async () => {

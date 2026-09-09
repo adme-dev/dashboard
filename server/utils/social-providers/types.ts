@@ -85,6 +85,9 @@ export interface FetchInboxResult {
 }
 
 export interface ReplyParams {
+  /** Automation must check live Google review state before sending. */
+  onlyIfUnanswered?: boolean
+  expectedReviewContent?: string
   accountId: string
   accessToken: string
   /** resolved reply target: comment id (comment) / object id (review/mention) / participant PSID (dm) */

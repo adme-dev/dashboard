@@ -3,6 +3,7 @@
 // Keeps the "where does a reply go on each channel" rule in ONE place.
 import { getProviderOrThrow } from '~~/server/utils/social-providers/registry'
 import { recordOutbound } from './store'
+import { resolveSocialAccountAccessToken } from './tokenRefresh'
 
 interface TargetDb { queryOne<T = any>(sql: string, params?: any[]): Promise<T | null> }
 
@@ -34,24 +35,41 @@ interface FullDb {
 export async function dispatchReply(
   db: FullDb,
   conversationId: string,
-  args: { content: string; sentByUserId: string; aiGenerated?: boolean },
+  args: { content: string; sentByUserId: string; aiGenerated?: boolean; expectedReviewContent?: string },
 ): Promise<{ ok: boolean; platformMessageId?: string; error?: string; clientId?: string }> {
   const conv = await db.queryOne<any>(
-    `SELECT c.*, a.platform_account_id, a.access_token, a.metadata AS account_metadata
+    `SELECT c.*, a.platform_account_id, a.access_token, a.refresh_token, a.token_expires_at,
+            a.is_active, a.metadata AS account_metadata
        FROM social_conversations c JOIN social_accounts a ON a.id = c.social_account_id
       WHERE c.id = $1`, [conversationId])
   if (!conv) return { ok: false, error: 'conversation not found' }
+  if (conv.is_active === false) return { ok: false, error: 'Account is disconnected. Reconnect before replying.' }
 
   let provider
   try { provider = getProviderOrThrow(conv.platform) } catch (e: any) { return { ok: false, error: String(e?.message ?? e) } }
   if (!provider.reply) return { ok: false, error: `${conv.platform} replies not supported` }
 
   const target = await resolveReplyTarget(db, conversationId, conv)
+  let accessToken: string
+  try {
+    accessToken = await resolveSocialAccountAccessToken({ db, account: {
+      id: conv.social_account_id, platform: conv.platform, access_token: conv.access_token,
+      refresh_token: conv.refresh_token, token_expires_at: conv.token_expires_at
+    } })
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Token refresh failed' }
+  }
+  const automaticReview = args.sentByUserId === 'automation' && conv.channel_type === 'review'
+  if (automaticReview && conv.platform === 'google-business' && args.expectedReviewContent == null) {
+    return { ok: false, error: 'Review drafting snapshot is missing. Generate a fresh reply.' }
+  }
   const r = await provider.reply({
-    accountId: conv.platform_account_id, accessToken: conv.access_token,
+    accountId: conv.platform_account_id, accessToken,
     conversationId: target, content: args.content, channelType: conv.channel_type,
     // IG DMs route through the linked Page (stored on the IG account row at metadata.via_page_id).
     viaPageId: conv.account_metadata?.via_page_id,
+    onlyIfUnanswered: automaticReview,
+    expectedReviewContent: automaticReview ? args.expectedReviewContent : undefined,
   })
   if (r.status !== 'success') return { ok: false, error: r.error || 'reply failed' }
 
@@ -59,6 +77,8 @@ export async function dispatchReply(
     platformMessageId: r.platformMessageId || null,
     content: args.content,
     sentByUserId: args.sentByUserId,
+    messageType: conv.channel_type === 'review' ? 'review_reply' : 'text',
+    aiGenerated: args.aiGenerated,
   })
   return { ok: true, platformMessageId: r.platformMessageId, clientId: conv.client_id }
 }
