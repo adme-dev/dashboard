@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 const source = readFileSync(resolve(process.cwd(), 'app/components/page-studio/SiteWorkspace.vue'), 'utf8')
 
 describe('Page Studio self-service creation surface', () => {
-  it('keeps creation portal-only and uses the governed endpoint', () => {
+  it('keeps portal proposal creation on the governed portal endpoint', () => {
     expect(source).toContain('v-if="audience === \'portal\'"')
     expect(source).toContain('$fetch(\'/api/portal/page-studio/sites\'')
     expect(source).toContain('UFormField label="Website name"')
