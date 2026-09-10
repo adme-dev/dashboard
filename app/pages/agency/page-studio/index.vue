@@ -2,7 +2,7 @@
 import type { PageStudioSiteSummary } from '~/types'
 
 definePageMeta({ layout: 'agency' })
-useHead({ title: 'Demo Sites | XeroFlow Agency' })
+useHead({ title: 'Client websites | XeroFlow Agency' })
 
 interface PageStudioSitesResponse {
   sites: PageStudioSiteSummary[]
@@ -24,22 +24,22 @@ const errorMessage = computed(() => error.value?.statusMessage || error.value?.m
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
-    <UDashboardPanel>
-      <UDashboardNavbar title="Demo Sites" />
-      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
-        <PageStudioSiteWorkspace
-          audience="agency"
-          :sites="data.sites"
-          :total="data.total"
-          :page="page"
-          :page-size="pageSize"
-          :pending="pending"
-          :error-message="errorMessage"
-          @refresh="refresh"
-          @update:page="page = $event"
-        />
-      </div>
-    </UDashboardPanel>
-  </div>
+  <UDashboardPanel id="agency-page-studio">
+    <template #header>
+      <UDashboardNavbar title="Client websites" />
+    </template>
+    <template #body>
+      <PageStudioSiteWorkspace
+        audience="agency"
+        :sites="data.sites"
+        :total="data.total"
+        :page="page"
+        :page-size="pageSize"
+        :pending="pending"
+        :error-message="errorMessage"
+        @refresh="refresh"
+        @update:page="page = $event"
+      />
+    </template>
+  </UDashboardPanel>
 </template>

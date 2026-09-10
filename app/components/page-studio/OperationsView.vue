@@ -82,6 +82,7 @@ const rows = computed(() => records.value.map((record) => {
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
+          <PageStudioEntitlementGrant v-if="audience === 'agency' && section === 'subscriptions'" @granted="refresh()" />
           <UButton
             label="Refresh"
             icon="i-lucide-refresh-cw"
