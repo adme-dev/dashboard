@@ -4,10 +4,11 @@ The deployed portal could issue signed sessions but could not launch Studio:
 preview had an empty editor URL, and portal CSP allowed only same-origin form
 submissions. A popup inherits that CSP.
 
-The portal Website Builder pages now allow form submissions to the configured
+Portal documents now allow form submissions to the configured
 HTTPS editor origin. Empty, invalid, credential-bearing, wildcard and directive-
-injecting configuration retains the same-origin policy. Other portal pages and
-API responses keep their existing form policy and hardening headers. Preview
+injecting configuration retains the same-origin policy. Every portal document needs this origin because sidebar navigation preserves
+the document CSP; portal APIs keep their existing form policy. All other
+hardening directives remain unchanged. Preview
 configuration selects `https://studio-staging.xeroflow.io`.
 
 Cloudflare Sandbox staging version `462e5828-091c-45d1-b5ce-67ecdf93d2d9`
@@ -21,9 +22,10 @@ and retained confirmation topics for unverified business details. The preview
 provisioning environment is explicitly `staging`; generation-2 production remains
 disabled. No migration or real-client approval is performed in this change.
 
-Verification: the launch-policy regression failed before the change; all 17
-portal middleware tests now pass. Combined setup/authority/portal checks: 101
-tests across nine files pass. All 39 approval/authority tests also pass against
+Verification: the launch-policy regression failed before the change; all 19
+portal middleware tests now pass (including three sidebar-navigation cases that
+failed before correcting the initial URL-only policy). Combined setup/authority/portal checks: 101
+tests across nine files passed before the two additional middleware cases. All 39 approval/authority tests also pass against
 an isolated localhost PostgreSQL cluster, including concurrent proposal decisions
 and immediate revocation. The deployment target guard passes for
 `agency-dashboard`. Browser launch/save/reconnect and deployed preview readback
@@ -32,3 +34,6 @@ remain pending until this release is built and published.
 The synthetic portal website list is `/portal/page-studio`; there is no portal
 `/portal/page-studio/:siteId` detail page. Real Fantasy Limo remains a draft at
 `https://app.xeroflow.io/agency/page-studio/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
+
+The first preview build was stopped before deployment to include the
+client-side-navigation correction. Browser acceptance remains pending.

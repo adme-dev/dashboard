@@ -99,16 +99,18 @@ describe('portal response security middleware', () => {
     expect(testGlobal.setHeader).not.toHaveBeenCalled()
   })
 
-  it('permits the configured editor origin for website launch forms', () => {
-    editorUrl = 'https://studio-staging.xeroflow.io/editor?view=canvas'
-    const event = { path: '/portal/page-studio' }
-    portalSecurityMiddleware(event as never)
-    const csp = vi.mocked(testGlobal.setHeader).mock.calls
-      .find(([, name]) => name === 'Content-Security-Policy')?.[2]
-    expect(csp?.split('; ').find(value => value.startsWith('form-action ')))
-      .toBe('form-action \'self\' https://studio-staging.xeroflow.io')
-    expect(csp).toContain('frame-ancestors \'none\'')
-  })
+  it.each(['/portal/page-studio', '/portal', '/portal/login', '/portal/projects'])(
+    'permits editor launch after client-side navigation from %s', (path) => {
+      editorUrl = 'https://studio-staging.xeroflow.io/editor?view=canvas'
+      const event = { path }
+      portalSecurityMiddleware(event as never)
+      const csp = vi.mocked(testGlobal.setHeader).mock.calls
+        .find(([, name]) => name === 'Content-Security-Policy')?.[2]
+      expect(csp?.split('; ').find(value => value.startsWith('form-action ')))
+        .toBe('form-action \'self\' https://studio-staging.xeroflow.io')
+      expect(csp).toContain('frame-ancestors \'none\'')
+    }
+  )
 
   it.each([
     '', undefined, 'invalid', 'http://studio-staging.xeroflow.io',
@@ -124,7 +126,7 @@ describe('portal response security middleware', () => {
       .toBe('form-action \'self\'')
   })
 
-  it.each(['/portal/login', '/portal/page-studio-other', '/api/portal/dashboard'])(
+  it.each(['/api/portal/dashboard', '/api/client-portal/analytics/personas'])(
     'does not add editor form destinations to %s', (path) => {
       editorUrl = 'https://studio-staging.xeroflow.io'
       portalSecurityMiddleware({ path } as never)

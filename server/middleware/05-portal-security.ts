@@ -43,8 +43,9 @@ export default defineEventHandler((event) => {
   setHeader(event, 'Expires', '0')
 
   // The editor opens through a signed form POST in a popup, which inherits
-  // this document's policy. Allow only its configured origin on website pages.
-  const editorOrigin = hasPrefix(pathname, '/portal/page-studio')
+  // this document's policy. Portal navigation is client-side, so every portal
+  // document needs the configured origin, including the initial login document.
+  const editorOrigin = isPortalPage
     ? editorFormOrigin(useRuntimeConfig(event).public.pageStudioEditorUrl)
     : ''
   const csp = editorOrigin
