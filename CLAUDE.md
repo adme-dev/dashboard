@@ -114,6 +114,8 @@ const showModal = ref(false)
 - Tailwind CSS via Nuxt UI — use utility classes
 - Dark mode supported — always use semantic colors (`text-muted`, `bg-elevated`, `border-default`) over hardcoded colors
 - Responsive: mobile-first, use `sm:`, `md:`, `lg:` breakpoints
+- Every new or modified page must keep overflowing content reachable by scrolling. Agency pages sit inside a fixed-height shell that clips overflow: use `UDashboardPanel` with its scrolling body, or give the page container `flex-1 min-h-0 overflow-y-auto`.
+- Verify long content at desktop and narrow viewport sizes, including reaching the final section. Do not rely on document scrolling inside the agency shell or remove overflow containment globally from boards and studio canvases.
 
 ### Dark Mode on Marketing / Public Pages
 - `colorMode.preference` is `'dark'` — dark mode is the **default** for all users
