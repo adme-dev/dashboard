@@ -205,15 +205,17 @@ describe('God mode gate inventory', () => {
       ]))
     expect(inventory.rows.filter(row => row.startsWith('server/api/portal/page-studio/') && row.includes('user.role'))
       .every(row => row.endsWith('\tidentity_tenant_hard_boundary'))).toBe(true)
-    expect(inventory.rows).toHaveLength(1571)
+    // Agency provisioning adds two fresh SQL staff-identity checks. The prior
+    // digest is unchanged when those lines are removed; no bypass was added.
+    expect(inventory.rows).toHaveLength(1573)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 113,
+      identity_tenant_hard_boundary: 115,
       provider_infrastructure_availability: 229,
       application_governance_bypass: 1624,
       ordinary_user_behavior: 173,
       unrelated_configuration: 431
     })
-    expect(inventory.digest).toBe('934c2d219e2a9638013f5ffb4fc2b28858eafe1844278cc84c503f4574515a08')
+    expect(inventory.digest).toBe('62ce2d3473e31d083120711275040d4480d3aca372cc4a2e76106892e40df937')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

@@ -36,7 +36,7 @@ const SetupSnapshot = z.object({
   if (setup.source === 'chat' && !setup.brief) context.addIssue({ code: 'custom', path: ['brief'], message: 'Chat setup requires the accepted brief' })
 })
 
-const Actor = z.object({ kind: z.literal('client-user'), userId: z.string().uuid() }).strict()
+const Actor = z.object({ kind: z.enum(['client-user', 'agency-user']), userId: z.string().uuid() }).strict()
 const ContentId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/)
 const Scope = z.object({
   businessId: ContentId, clientId: ContentId, tenantId: ContentId,
@@ -72,6 +72,9 @@ function matchingJob(result: unknown, expected: z.infer<typeof JobSnapshot>) {
     throw new PageStudioProvisioningError('PROVISIONER_FAILED', 'Provisioning service returned a mismatched job, scope or setup context')
   }
   if (!parsed.data.actor) throw new PageStudioProvisioningError('PROVISIONING_OWNER_REQUIRED', 'This setup has no initiating owner and requires reconciliation', 409)
+  if (parsed.data.actor.kind !== expected.actor?.kind) {
+    throw new PageStudioProvisioningError('PROVISIONER_FAILED', 'Provisioning request belongs to a different actor kind')
+  }
   return { ...parsed.data, actor: parsed.data.actor }
 }
 
@@ -92,17 +95,25 @@ export function normalizePageStudioProvisioningPlan(input: unknown, scope: PageS
   }
 }
 
-export async function dispatchPageStudioProvisioning(
-  binding: PageStudioProvisionerBinding | undefined,
-  input: { initiatingUserId: string, requestKey: string, scope: PageStudioProvisioningScope, now: string, plan: Record<string, unknown>, revision: number, source: 'template' | 'chat', brief?: string | null }
-) {
-  if (!binding) throw new PageStudioProvisioningError('PROVISIONER_UNAVAILABLE', 'Page Studio provisioning service is not configured')
+export interface PageStudioProvisioningDispatchInput {
+  initiatingUserId: string
+  initiatingActorKind?: 'client-user' | 'agency-user'
+  requestKey: string
+  scope: PageStudioProvisioningScope
+  now: string
+  plan: Record<string, unknown>
+  revision: number
+  source: 'template' | 'chat'
+  brief?: string | null
+}
+
+export function createPageStudioProvisioningJob(input: PageStudioProvisioningDispatchInput) {
   const plan = normalizePageStudioProvisioningPlan(input.plan, input.scope)
   const parsedSetup = SetupSnapshot.safeParse({ businessName: input.plan.businessName, proposalRevision: input.revision, source: input.source, ...(input.brief == null ? {} : { brief: input.brief }) })
   if (!parsedSetup.success) throw new PageStudioProvisioningError('INVALID_PROVISIONING_PLAN', 'The accepted setup proposal is missing a valid business name, revision or brief', 422)
   const id = input.requestKey.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 128)
   const candidate = JobSnapshot.safeParse({
-    actor: { kind: 'client-user', userId: input.initiatingUserId },
+    actor: { kind: input.initiatingActorKind ?? 'client-user', userId: input.initiatingUserId },
     id,
     requestKey: input.requestKey,
     phase: 'requested',
@@ -116,20 +127,29 @@ export async function dispatchPageStudioProvisioning(
     updatedAt: input.now
   })
   if (!candidate.success) throw new PageStudioProvisioningError('INVALID_PROVISIONING_PLAN', 'Invalid initiating identity or provisioning context', 422)
+  return candidate.data
+}
+
+export async function dispatchPageStudioProvisioning(
+  binding: PageStudioProvisionerBinding | undefined,
+  input: PageStudioProvisioningDispatchInput
+) {
+  if (!binding) throw new PageStudioProvisioningError('PROVISIONER_UNAVAILABLE', 'Page Studio provisioning service is not configured')
+  const candidate = createPageStudioProvisioningJob(input)
   if (!binding.readProvisioning) throw new PageStudioProvisioningError('PROVISIONER_UNAVAILABLE', 'Page Studio provisioning service cannot reconcile existing requests')
   try {
     const existing = await binding.readProvisioning(input.requestKey, input.scope)
-    if (existing !== null) return matchingJob(existing, candidate.data)
+    if (existing !== null) return matchingJob(existing, candidate)
     let result: unknown
     try {
-      result = await binding.createProvisioning(candidate.data)
+      result = await binding.createProvisioning(candidate)
     } catch (error) {
       // A competing first request or lost acknowledgement may already be durable.
       const retained = await binding.readProvisioning(input.requestKey, input.scope)
-      if (retained !== null) return matchingJob(retained, candidate.data)
+      if (retained !== null) return matchingJob(retained, candidate)
       throw error
     }
-    const saved = matchingJob(result, candidate.data)
+    const saved = matchingJob(result, candidate)
     if (saved.actor.userId !== input.initiatingUserId) throw new Error('Provisioning service returned a mismatched initiating actor')
     return saved
   } catch (error) {

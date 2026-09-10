@@ -12,8 +12,10 @@ const API_INVENTORY = {
   // transactional setup-proposal revision and website-access grant endpoints
   // have been reviewed. The grant uses PAGE_STUDIO_SUBSCRIPTIONS and a durable
   // transactional audit; it does not register a God-mode mutation bypass.
-  totalRouteFiles: 2113,
-  mutationRouteFiles: 1160,
+  // Agency proposal/provision endpoints use requireAgencyPageStudioAccess, scoped
+  // saved plans and fresh authority. Neither registers a God-mode bypass.
+  totalRouteFiles: 2115,
+  mutationRouteFiles: 1162,
   explicitlyGuardedMutationFiles: 403,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -52,8 +54,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2113,
-      mutationRouteFiles: 1160,
+      totalRouteFiles: 2115,
+      mutationRouteFiles: 1162,
       explicitlyGuardedMutationFiles: 403,
       guardedMutationFilesWithTransactionCall: 47
     })

@@ -27,6 +27,19 @@ describe('live provisioning authority', () => {
     expect(mocks.queryOneFresh.mock.calls[0][1]).toEqual([scope.tenantId, scope.clientId, scope.siteId, userId])
   })
 
+  it('authorizes a retained agency job through fresh staff permissions', async () => {
+    const saved = { ...await job(), actor: { kind: 'agency-user', userId } }
+    const binding = { createProvisioning: vi.fn(), readProvisioning: async () => saved }
+    await expect(authorizePageStudioProvisioning(binding, request)).resolves.toEqual({ job: saved, userId })
+    const sql = mocks.queryOneFresh.mock.calls[0][0]
+    expect(sql).toContain('JOIN team_members owner')
+    expect(sql).toContain('role_permission_groups')
+    expect(sql).not.toContain('JOIN client_users')
+    expect(sql).not.toContain('entitlement.portal_creation_enabled')
+    mocks.queryOneFresh.mockResolvedValueOnce(null)
+    await expect(authorizePageStudioProvisioning(binding, request)).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED' })
+  })
+
   it('preserves generation version 2 in fresh authority without changing the accepted plan', async () => {
     const saved = { ...await job(), generationVersion: 2 }
     const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn().mockResolvedValue(saved) }

@@ -31,6 +31,9 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
     // Real query execution against the relevant migration columns. Migration/FK
     // coverage lives in pageStudioControlPlaneMigrationPostgres.test.ts.
     await client.query(`
+      CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN, user_role TEXT, custom_role_id UUID);
+      CREATE TABLE custom_roles (id UUID PRIMARY KEY, slug TEXT, is_system BOOLEAN, is_read_only BOOLEAN);
+      CREATE TABLE role_permission_groups (role_id UUID, permission_group TEXT);
       CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN);
       CREATE TABLE client_users (id UUID PRIMARY KEY, client_id UUID, status TEXT, role TEXT);
       CREATE TABLE page_studio_sites (id UUID PRIMARY KEY, tenant_id TEXT, client_id UUID, entitlement_id UUID, status TEXT);
@@ -41,6 +44,9 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
       CREATE TABLE page_studio_setup_proposals (tenant_id TEXT, client_id UUID, site_id UUID,
         revision INTEGER, status TEXT, source TEXT, brief TEXT, plan JSONB);
     `)
+    await client.query('INSERT INTO team_members VALUES ($1, TRUE, \'owner\', NULL)', [userId])
+    await client.query('INSERT INTO custom_roles VALUES (\'60000000-0000-4000-8000-000000000201\', \'owner\', TRUE, FALSE), (\'60000000-0000-4000-8000-000000000202\', \'limited\', FALSE, FALSE)')
+    await client.query('INSERT INTO role_permission_groups VALUES (\'60000000-0000-4000-8000-000000000201\', \'PAGE_STUDIO_EDIT\')')
     await client.query('INSERT INTO agency_clients VALUES ($1, TRUE)', [scope.clientId])
     await client.query('INSERT INTO client_users VALUES ($1, $2, \'active\', \'manager\')', [userId, scope.clientId])
     await client.query('INSERT INTO page_studio_sites VALUES ($1, $2, $3, $4, \'draft\')', [scope.siteId, scope.tenantId, scope.clientId, entitlementId])
@@ -52,6 +58,7 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
   })
   beforeEach(async () => {
     await client.query('BEGIN')
+    saved = { ...saved, actor: { kind: 'client-user', userId } }
   })
   afterEach(async () => {
     await client.query('ROLLBACK')
@@ -63,6 +70,40 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
     } finally {
       await client.end()
     }
+  })
+
+  it('allows agency provisioning without a portal owner and honors custom-role permission changes', async () => {
+    saved = { ...saved, actor: { kind: 'agency-user', userId } }
+    await client.query('DELETE FROM client_users')
+    await client.query('DELETE FROM page_studio_site_memberships')
+    await client.query('UPDATE page_studio_entitlements SET portal_creation_enabled=FALSE')
+    await expect(authorize()).resolves.toMatchObject({ userId, job: { actor: { kind: 'agency-user' } } })
+    await client.query('UPDATE team_members SET custom_role_id=\'60000000-0000-4000-8000-000000000202\'')
+    await expect(authorize()).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED' })
+    await client.query('INSERT INTO role_permission_groups VALUES (\'60000000-0000-4000-8000-000000000202\', \'PAGE_STUDIO_EDIT\')')
+    await expect(authorize()).resolves.toMatchObject({ userId })
+    await client.query('UPDATE custom_roles SET is_read_only=TRUE WHERE slug=\'limited\'')
+    await expect(authorize()).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED' })
+  })
+
+  it.each([
+    'UPDATE team_members SET is_active=FALSE',
+    'UPDATE team_members SET user_role=\'viewer\'',
+    'DELETE FROM role_permission_groups',
+    'UPDATE custom_roles SET is_read_only=TRUE',
+    'DELETE FROM custom_roles',
+    'UPDATE agency_clients SET is_active=FALSE',
+    'UPDATE page_studio_sites SET tenant_id=\'foreign\'',
+    'UPDATE page_studio_entitlements SET status=\'suspended\'',
+    'UPDATE page_studio_entitlements SET active_site_limit=0',
+    'UPDATE page_studio_entitlements SET pages_per_site_limit=1',
+    'UPDATE page_studio_entitlements SET effective_until=NOW() - INTERVAL \'1 second\'',
+    'UPDATE page_studio_setup_proposals SET status=\'rejected\''
+  ])('revokes an agency job immediately after %s', async (mutation) => {
+    saved = { ...saved, actor: { kind: 'agency-user', userId } }
+    await expect(authorize()).resolves.toMatchObject({ userId })
+    await client.query(mutation)
+    await expect(authorize()).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED' })
   })
 
   it('excludes archived sites and other clients from the site allowance', async () => {

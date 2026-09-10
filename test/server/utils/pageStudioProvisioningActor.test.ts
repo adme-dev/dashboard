@@ -51,6 +51,17 @@ describe('authenticated provisioning actor', () => {
     expect(s.binding.createProvisioning).toHaveBeenCalledOnce()
   })
 
+  it('retains an agency actor through retries and rejects switching actor kind', async () => {
+    const s = coordinator()
+    const agency = { ...input(), initiatingActorKind: 'agency-user' as const }
+    const first = await dispatchPageStudioProvisioning(s.binding, agency)
+    expect(first.actor).toEqual({ kind: 'agency-user', userId: owner })
+    const replay = await dispatchPageStudioProvisioning(s.binding, { ...agency, initiatingUserId: other })
+    expect(replay.actor).toEqual(first.actor)
+    await expect(dispatchPageStudioProvisioning(s.binding, input())).rejects.toMatchObject({ code: 'PROVISIONER_FAILED' })
+    expect(s.binding.createProvisioning).toHaveBeenCalledOnce()
+  })
+
   it('recovers a lost response without changing the saved actor', async () => {
     const s = coordinator()
     s.lose()
