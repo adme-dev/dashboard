@@ -98,7 +98,9 @@ await refreshSummary()
 
     <section class="border-t border-default pt-6">
       <div class="mb-4">
-        <h2 class="text-lg font-semibold text-highlighted">Configuration and validation</h2>
+        <h2 class="text-lg font-semibold text-highlighted">
+          Configuration and validation
+        </h2>
         <p class="mt-1 text-sm text-muted">
           Destination changes, test events and live activation continue through the governed approval controls.
         </p>
