@@ -283,8 +283,8 @@ describe('permissionGroupForRoles (singular — first match)', () => {
     expect(permissionGroupForRoles([])).toBeNull()
   })
 
-  it('should return null for partial match', () => {
-    expect(permissionGroupForRoles(['owner'])).toBeNull()
+  it('should resolve the owner-only HR_ADMIN group', () => {
+    expect(permissionGroupForRoles(['owner'])).toBe('HR_ADMIN')
   })
 })
 
@@ -336,15 +336,16 @@ describe('isReadOnlyRole', () => {
 })
 
 describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
-  it('should give owner all 10 permission groups', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(10)
+  it('should give owner every registered permission group', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(PERMISSION_GROUPS.length)
     for (const group of PERMISSION_GROUPS) {
       expect(SYSTEM_ROLE_PERMISSIONS['owner']).toContain(group)
     }
   })
 
-  it('should give admin all 10 permission groups', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['admin']).toHaveLength(10)
+  it('should give admin every group except owner-only HR administration', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['admin']).toHaveLength(PERMISSION_GROUPS.length - 1)
+    expect(SYSTEM_ROLE_PERMISSIONS['admin']).not.toContain('HR_ADMIN')
   })
 
   it('should give viewer zero permission groups', () => {
@@ -359,8 +360,8 @@ describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
     expect(SYSTEM_ROLE_PERMISSIONS['member']).toHaveLength(0)
   })
 
-  it('should give creative only CREATIVE', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['creative']).toEqual(['CREATIVE'])
+  it('should give creative its discipline and Website Builder editing access', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['creative']).toEqual(['CREATIVE', 'PAGE_STUDIO_VIEW', 'PAGE_STUDIO_EDIT'])
   })
 
   it('should give media_buyer only MEDIA_BUYING', () => {
@@ -375,8 +376,8 @@ describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
     expect(SYSTEM_ROLE_PERMISSIONS['sales']).toEqual(['SALES', 'CLIENTS'])
   })
 
-  it('should give account_manager CLIENTS, MEDIA_BUYING, and INVOICE_OWN_CLIENTS', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['account_manager']).toEqual(['CLIENTS', 'MEDIA_BUYING', 'INVOICE_OWN_CLIENTS'])
+  it('should give account_manager client operations and Website Builder editing access', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['account_manager']).toEqual(['CLIENTS', 'MEDIA_BUYING', 'INVOICE_OWN_CLIENTS', 'PAGE_STUDIO_VIEW', 'PAGE_STUDIO_EDIT'])
   })
 })
 
