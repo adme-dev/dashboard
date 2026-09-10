@@ -42,11 +42,11 @@ describe.runIf(Boolean(databaseUrl))('access grants on disposable PostgreSQL', (
     await pool.query(`CREATE SCHEMA "${schema}"`)
     initialized = true
     const control = readFileSync('server/database/migrations/402_page_studio_control_plane.sql', 'utf8')
-    const billing = readFileSync('server/database/migrations/301_billing_plan_entitlements_usage.sql', 'utf8')
+    const billing = readFileSync('server/database/migrations/416_page_studio_access_audit.sql', 'utf8')
     await run(async (db) => {
       await db.query('CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN NOT NULL); CREATE TABLE team_members (id UUID PRIMARY KEY)')
       await db.query(control.slice(control.indexOf('CREATE TABLE IF NOT EXISTS page_studio_entitlements'), control.indexOf('CREATE TABLE IF NOT EXISTS page_studio_sites')))
-      await db.query(billing.slice(billing.indexOf('CREATE TABLE IF NOT EXISTS billing_entitlement_audit'), billing.indexOf('DROP TRIGGER IF EXISTS trg_billing_usage_events_append_only')))
+      await db.query(billing.replace(/^BEGIN;|^COMMIT;/gm, ''))
       await db.query('INSERT INTO agency_clients VALUES ($1, TRUE)', [body.clientId])
       await db.query('INSERT INTO team_members VALUES ($1)', [actorId])
     })
@@ -89,6 +89,15 @@ describe.runIf(Boolean(databaseUrl))('access grants on disposable PostgreSQL', (
     expect(second.entitlement.id).not.toBe(first.entitlement.id)
     expect(second.entitlement.tenantId).toBe('other-authorized-tenant')
     expect(second.replayed).toBe(false)
+  })
+
+  it('prevents committed access evidence from being updated or deleted', async () => {
+    await grant()
+    await expect(run(db => db.query('UPDATE billing_entitlement_audit SET action = $1', ['changed']))).rejects.toThrow('append-only')
+    await expect(run(db => db.query('DELETE FROM billing_entitlement_audit'))).rejects.toThrow('append-only')
+    await run(async (db) => {
+      expect((await db.query('SELECT * FROM billing_entitlement_audit WHERE action = $1', ['grant_created'])).rows).toHaveLength(1)
+    })
   })
 
   it('rolls back the entitlement when audit insertion fails', async () => {

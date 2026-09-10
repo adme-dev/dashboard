@@ -1,5 +1,13 @@
 # Website access grants
 
+Production integration PR 522 adds standalone audit migration 416 because the
+release branch lacks the broader billing migration. It was applied and verified
+on the configured database; the existing audit table is retained. The real PG
+test now exercises that migration and includes a fifth case proving access
+evidence cannot be updated or deleted. Production checkpoint/AI-save safeguards
+are preserved in the separate release integration; do not overwrite them from
+this branch. The test counts below describe the original grant increment.
+
 The Website Builder could only list entitlements, leaving a real client without
 a normal administration path to create its first website. The subscriptions
 screen now offers a permission-gated Grant website access dialog. Operators
