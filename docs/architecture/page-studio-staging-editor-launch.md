@@ -37,3 +37,26 @@ The synthetic portal website list is `/portal/page-studio`; there is no portal
 
 The first preview build was stopped before deployment to include the
 client-side-navigation correction. Browser acceptance remains pending.
+
+## Browser Origin regression
+
+Preview `4f2b5884-5d3d-4977-8959-85998ab2fafc` deployed source
+`f4a434c52a9ec10eb6218460c0bc6abd081334ac` successfully at
+`2026-09-10T22:56:58.440701Z`. Live portal headers contain the exact staging
+form destination, and the Launch Studio button is visible after sidebar navigation.
+A desktop accessibility click creates the popup and reaches the staging Worker,
+which rejects its null Origin. Synthetic JavaScript clicks are separately subject
+to Chrome's popup blocking and must not be mistaken for successful UI acceptance.
+
+The popup inherits the portal's `no-referrer` policy. HTML form POSTs under that
+policy send `Origin: null`. The popup document now explicitly selects
+`strict-origin`, retaining only the origin and suppressing HTTPS-to-HTTP referrers.
+The main portal still uses `no-referrer`; Worker origin checks are unchanged.
+[MDN documents the effect on Origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy).
+
+A real Chrome regression served the exact launcher HTML under a `no-referrer`
+response header at localhost:4381 and submitted synthetic fixture text to :4382.
+Before the meta change: POST Origin was `null`, with no Referer. After: Origin was
+`http://127.0.0.1:4381` and Referer was `http://127.0.0.1:4381/`. No real token
+was used in this regression. The popup-policy correction still needs deployment
+and the full authenticated browser editor/save/reconnect check.

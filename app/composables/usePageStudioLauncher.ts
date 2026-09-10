@@ -9,6 +9,7 @@ export function usePageStudioLauncher() {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="referrer" content="strict-origin">
     <title>Opening XeroFlow Page Studio</title>
     <style>
       @keyframes spin { to { transform: rotate(360deg); } }
