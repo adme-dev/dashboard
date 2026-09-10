@@ -71,7 +71,7 @@ export async function verifyPageStudioProvisioningJobAuthority(input: unknown) {
       AND owner.user_role NOT IN ('viewer', 'guest')
     JOIN custom_roles staff_role ON
       ((owner.custom_role_id IS NOT NULL AND staff_role.id = owner.custom_role_id)
-       OR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role AND staff_role.is_system = TRUE))
+       OR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))
       AND staff_role.is_read_only = FALSE
     JOIN role_permission_groups staff_permission ON staff_permission.role_id = staff_role.id
       AND staff_permission.permission_group = 'PAGE_STUDIO_EDIT'

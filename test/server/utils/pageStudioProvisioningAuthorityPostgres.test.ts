@@ -31,7 +31,8 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
     // Real query execution against the relevant migration columns. Migration/FK
     // coverage lives in pageStudioControlPlaneMigrationPostgres.test.ts.
     await client.query(`
-      CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN, user_role TEXT, custom_role_id UUID);
+      CREATE TYPE user_role AS ENUM ('owner', 'admin', 'sales', 'member', 'viewer', 'guest');
+      CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN, user_role user_role, custom_role_id UUID);
       CREATE TABLE custom_roles (id UUID PRIMARY KEY, slug TEXT, is_system BOOLEAN, is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups (role_id UUID, permission_group TEXT);
       CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN);

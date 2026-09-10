@@ -207,6 +207,7 @@ describe('God mode gate inventory', () => {
       .every(row => row.endsWith('\tidentity_tenant_hard_boundary'))).toBe(true)
     // Agency provisioning adds two fresh SQL staff-identity checks. The prior
     // digest is unchanged when those lines are removed; no bypass was added.
+    // The role slug comparison casts the persisted user_role enum to text.
     expect(inventory.rows).toHaveLength(1573)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 115,
@@ -215,7 +216,7 @@ describe('God mode gate inventory', () => {
       ordinary_user_behavior: 173,
       unrelated_configuration: 431
     })
-    expect(inventory.digest).toBe('62ce2d3473e31d083120711275040d4480d3aca372cc4a2e76106892e40df937')
+    expect(inventory.digest).toBe('795cd697a0919c8ed9ab9a6e1a4fa1ac33b69f3216f7279fed05233a4b30c9fa')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
