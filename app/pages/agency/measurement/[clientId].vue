@@ -60,7 +60,7 @@ await refreshSummary()
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-screen-2xl space-y-6 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+  <div class="mx-auto min-h-0 w-full max-w-screen-2xl flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
     <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <div class="flex items-center gap-2 text-sm text-muted">
@@ -98,7 +98,9 @@ await refreshSummary()
 
     <section class="border-t border-default pt-6">
       <div class="mb-4">
-        <h2 class="text-lg font-semibold text-highlighted">Configuration and validation</h2>
+        <h2 class="text-lg font-semibold text-highlighted">
+          Configuration and validation
+        </h2>
         <p class="mt-1 text-sm text-muted">
           Destination changes, test events and live activation continue through the governed approval controls.
         </p>
