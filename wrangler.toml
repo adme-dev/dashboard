@@ -125,6 +125,7 @@ service = "agency-workflows"
 # Environment Variables (non-secret)
 # ============================================
 [vars]
+PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "production"
 # Google review automation is limited by per-client, rating-scoped rules.
 SOCIAL_AUTOMATION_ENABLED = "true"
 # Dedicated review alerts; general notification settings are unchanged.

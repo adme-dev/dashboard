@@ -23,6 +23,21 @@ jobs:
         os: [ubuntu-latest]
         node: [24]
 
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: page_studio_ci_only
+          POSTGRES_DB: page_studio_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -47,6 +62,15 @@ jobs:
           test/server/utils/db.test.ts test/server/utils/dbFreshDriver.test.ts
           test/server/utils/dbHyperdriveFresh.test.ts test/server/utils/roleResolver.test.ts
           test/config/cloudflareHyperdriveBindings.test.ts
+
+      - name: Website setup authority and approval PostgreSQL tests
+        run: >-
+          pnpm exec vitest run
+          test/server/utils/pageStudioProvisioningAuthorityPostgres.test.ts
+          test/server/api/pageStudioAgencySetupProposalPostgres.test.ts
+        env:
+          PAGE_STUDIO_AUTHORITY_DATABASE_TEST_URL: postgresql://postgres:page_studio_ci_only@127.0.0.1:5432/page_studio_test
+        timeout-minutes: 5
 
       - name: Social publishing regression tests
         run: pnpm run test:social-publishing

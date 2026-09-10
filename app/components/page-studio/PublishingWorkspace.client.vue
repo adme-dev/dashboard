@@ -158,7 +158,7 @@ async function publishApprovedVersion() {
 </script>
 
 <template>
-  <section class="mx-auto w-full max-w-screen-2xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <section class="mx-auto min-h-0 w-full max-w-screen-2xl flex-1 space-y-6 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-2">
         <UButton
@@ -205,6 +205,8 @@ async function publishApprovedVersion() {
       color="error"
       icon="i-lucide-circle-alert"
     />
+
+    <PageStudioAgencySetup v-if="site" :key="siteId" :site-id="siteId" />
 
     <div class="grid grid-cols-1 overflow-hidden rounded-xl border border-default bg-default md:grid-cols-4">
       <div class="border-b border-default p-4 md:border-b-0 md:border-r">

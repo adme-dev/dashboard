@@ -9,6 +9,7 @@ import { PageStudioBuildError } from '~~/server/utils/pageStudio/builds'
 import { PageStudioDocumentError } from '~~/server/utils/pageStudio/documents'
 import { PageStudioSessionError } from '~~/server/utils/pageStudio/sessions'
 import { PageStudioSiteOperationError } from '~~/server/utils/pageStudio/siteOperations'
+import { PageStudioProvisioningError } from '~~/server/utils/pageStudio/provisioningBinding'
 
 interface StablePageStudioError {
   error: { code: string, message: string }
@@ -40,7 +41,8 @@ export function projectPageStudioInternalError(error: unknown): {
     || error instanceof PageStudioSessionError
     || error instanceof PageStudioSiteOperationError
     || error instanceof PageStudioSiteError
-    || error instanceof PageStudioVersionError) {
+    || error instanceof PageStudioVersionError
+    || error instanceof PageStudioProvisioningError) {
     return {
       statusCode: error.statusCode,
       body: { error: { code: error.code, message: error.message } }
@@ -94,7 +96,8 @@ export function pageStudioHttpError(error: unknown): never {
     || error instanceof PageStudioSessionError
     || error instanceof PageStudioSiteOperationError
     || error instanceof PageStudioSiteError
-    || error instanceof PageStudioVersionError) {
+    || error instanceof PageStudioVersionError
+    || error instanceof PageStudioProvisioningError) {
     throw createError({
       statusCode: error.statusCode,
       statusMessage: error.message,

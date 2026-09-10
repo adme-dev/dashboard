@@ -147,6 +147,10 @@ const features: Record<string, Feature> = {
         content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
       },
       {
+        title: 'Review Website Setup',
+        content: 'Start with an industry template or describe the website requirements in a brief. Review the proposed pages, business features and missing information before approving the current plan. The workspace shows when automated setup is available and tracks its progress. Approving a setup plan does not publish a website.'
+      },
+      {
         title: 'Studio for Visual Authoring',
         content: 'Build a complete page tree with nested subpages, responsive desktop, tablet, and mobile previews, page visibility, shell inheritance, and per-page SEO. Compact preset galleries add canonical sections, page layouts, headers, navigation, mobile menus, footers, themes, and complete site starters as ordinary editable content. AI proposals use the same typed components and controlled operations as manual editing, while revision-safe checkpoints prevent one session from silently overwriting another.'
       },
