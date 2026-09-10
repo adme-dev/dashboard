@@ -1,5 +1,48 @@
 # Website setup workflow verification — 10 September 2026
 
+## Setup workflow live; launch fact review correction — 11 September 2026
+
+This section supersedes earlier release and Docker-pending statuses below.
+PR 524 merged as `b2659103b85d9821ac52ce12cbb2251573d2fb43`; CI run
+`34473220609` passed on source `e79f6cd870fff709fc3d7fc223a28d4e6f72b055`.
+Guarded production deployment `3c3ff5d4-1d76-4190-a360-3fbe6fb3268b` on
+`agency-dashboard` succeeded at `2026-09-10T15:39:39.566151Z` and was independently
+read back. The signed-in Fantasy Limo management page displays Website setup.
+An initial failed build resolved Nuxt imports through shared worktree dependencies;
+a local frozen-lockfile install corrected this, and the full release then passed.
+
+The real brief foundation was saved through the signed-in management form as
+proposal `e6f832eb-5430-49b0-9a07-3fb05efbe985`, revision 1, status `proposed`,
+for site `c34f6347-cc63-4ed7-9a5a-da165ebefed2`. Independent database readback
+confirmed the 1,421-character brief and no reviewer. It explicitly retains the
+full later brief and unconfirmed client facts. No approval, provisioning job,
+public release, domain, charge or client notification was created.
+
+Saving it exposed a production planner bug: mentioning phone, email, availability
+and rates as *unconfirmed* cleared every launch confirmation topic. The focused
+correction removes keyword-based fact confirmation and retains module-relevant
+review topics regardless of free text. Two regression cases failed before the fix;
+93 related tests and changed-file lint pass afterward. Structured fact approval
+remains open; this correction does not implement it. Revision 1 is preserved;
+a normal revision must be saved after the correction is deployed. At this entry,
+the correction is local and not yet published.
+
+Docker recovered through supported force-stop/start after ordinary restart failed;
+engine 29.2.0 responds. No reset or prune was performed. Full private staging
+container deployment succeeded: sandbox Worker version
+`3304649d-bd1b-4bd5-914d-73e043a8e486`, image digest
+`sha256:4f4d41901efbcd932dbe070480d267b9422697238ed7cb0c8259a2b3bf634ff4`.
+Independent container API readback confirms that image. This is rollout evidence,
+not a successful editor/container runtime acceptance test. Generation-2 producer,
+production coordinator binding, retained-job acceptance and actual Fantasy Limo
+site content remain unfinished. Approved contact details, recipient, fleet/photos,
+rates, operating rules and domain/mail ownership still require client facts.
+
+Evidence: `/private/tmp/page-studio-setup-production-readback.json`,
+`/private/tmp/page-studio-setup-production-browser.json`,
+`/private/tmp/page-studio-generation2-container-readback.json`, and Dashboard
+`docs/reports/page-studio-setup-workflow-verification-2026-09-10.md`.
+
 ## Production prerequisites published; setup workflow under verification — 10 September 2026
 
 This section supersedes the earlier prerequisite build/deployment status below.

@@ -16,13 +16,20 @@ describe('createPageStudioSetupProposal', () => {
     ]))
   })
 
-  it('does not ask for facts already present in the brief', () => {
+  it.each([
+    'Phone 03 9000 0000, email hello@example.com. We operate 24 hours in Melbourne with calendar availability. Rates start at $200 with a two-hour minimum hire.',
+    'Still unconfirmed: approved phone and booking-recipient email; approved rates, minimum hire and surcharges; operating hours/timezone and availability; service area list. Leave these unset and retain them for client confirmation.'
+  ])('retains launch confirmation topics regardless of unverified brief text: %s', (setupBrief) => {
     const proposal = createPageStudioSetupProposal({
       businessName: 'City Cars', starterVersion: 'limousine-v1', setupSource: 'chat',
-      setupBrief: 'Phone 03 9000 0000, email hello@example.com. We operate 24 hours in Melbourne with calendar availability. Rates start at $200 with a two-hour minimum hire.'
+      setupBrief
     })
-    expect(proposal.missingFacts).not.toContain('business contact details')
-    expect(proposal.missingFacts).not.toContain('booking hours, timezone and availability rules')
-    expect(proposal.missingFacts).not.toContain('approved rates and minimum hire rules')
+    expect(proposal.missingFacts).toEqual([
+      'business contact details',
+      'service area or delivery locations',
+      'booking hours, timezone and availability rules',
+      'approved rates and minimum hire rules',
+      'enquiry notification recipient'
+    ])
   })
 })
