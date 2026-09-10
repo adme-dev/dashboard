@@ -22,3 +22,18 @@ GitHub CI now starts an isolated PostgreSQL 14 service and runs the 34 authority
 Neon project `square-tooth-23821574`, branch `br-long-mountain-a4f73v10` is confirmed as the non-primary `staging/page-studio` branch. Read-only inspection found four synthetic clients, no Xero connection, one existing staging owner (`10000000-0000-4000-8000-000000000002`, domain xeroflow.invalid), and no custom-role records. A persisted permission policy is therefore missing for the intended full-job agency fixture. Do not weaken fresh authorization or substitute a real client's owner; create an explicitly scoped test policy/fixture and record cleanup before running it.
 
 No live permission records, sessions, proposals, jobs or customer resources were created by this investigation. Existing retired 201 fixtures remain retired. Full retained-job acceptance also needs generation-version-2 producer selection and consumer/editor compatibility verification; the current Dashboard builder still omits generationVersion. Those are outstanding integrations, not proof that setup is complete. Production and Fantasy Limo's real website remain unchanged by this source fix.
+
+## Verified release
+
+Source `1637d99fb8b09dec714e44194cd1227bc4734a1e` passed guarded preview deployment.
+Cloudflare readback confirms deployment `f29adc27-0df1-4c9a-abe8-199e44b0b84f`,
+project agency-dashboard, successful preview stage, exact source and clean marker.
+Build, prerender and Worker size guards pass (raw 25,115,698; gzip 6,597,186 bytes).
+Anonymous setup GET remains 401. CI `34458649302` passed, including the new real
+PostgreSQL authority/proposal gate. No full retained-job success is claimed.
+
+The Docker CLI version check succeeds, but the engine health/version socket
+responses have empty bodies and info probes stall. The first info probe required
+Ctrl-C after its soft timeout; no daemon/container changes occurred. Foundation
+has no repository secrets or deployment environments configured, so no existing
+CI deployment credential can be used for the container rollout.
