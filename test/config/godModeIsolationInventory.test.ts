@@ -9,9 +9,11 @@ import {
 
 const API_INVENTORY = {
   // Driver sheet, portal booking list, portal submissions and the guarded,
-  // transactional setup-proposal revision endpoint have been reviewed.
-  totalRouteFiles: 2112,
-  mutationRouteFiles: 1159,
+  // transactional setup-proposal revision and website-access grant endpoints
+  // have been reviewed. The grant uses PAGE_STUDIO_SUBSCRIPTIONS and a durable
+  // transactional audit; it does not register a God-mode mutation bypass.
+  totalRouteFiles: 2113,
+  mutationRouteFiles: 1160,
   explicitlyGuardedMutationFiles: 403,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -50,8 +52,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2112,
-      mutationRouteFiles: 1159,
+      totalRouteFiles: 2113,
+      mutationRouteFiles: 1160,
       explicitlyGuardedMutationFiles: 403,
       guardedMutationFilesWithTransactionCall: 47
     })

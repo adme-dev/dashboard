@@ -199,6 +199,10 @@ const features: Record<string, Feature> = {
         content: 'Clients can choose a reusable starter or describe their business in the portal. The setup proposal lists pages, collections and enabled modules, calls out missing operational facts, and waits for agency review before provisioning. Setup requests retain their original initiator, so an interrupted request can be retried without transferring ownership. Authorization checks current site access, the accepted plan and subscription allowances before resource work. Limousine, floristry, retail, IT goods, and import/export foundations share the same scoped content and usage contracts, while bookings and commerce operations remain explicit modules.'
       },
       {
+        title: 'Website Access and Allowances',
+        content: 'Authorised agency staff can record a client’s website access period, permitted modules and limits for sites, pages, storage, domains, AI operations, builds and traffic. Trial access requires an expiry, while client website creation can be enabled separately. Each grant records its reason and actor in the billing audit; matching retries return the original result and competing grants cannot replace existing access. These access grants do not create charges or a paid billing subscription. Renewal, plan changes and provider billing remain separate rollout work.'
+      },
+      {
         title: 'Bookings With Operator Approval',
         content: 'Public enquiries are protected by Cloudflare Turnstile and remain enquiries until an authorised operator reviews the trip, quote and availability. Eligible websites offer a Bookings link in their workspace, opening the selected website’s history. Agency and portal booking screens retain explicit website selection, with site membership checks on every request. Versioned commands and idempotency keep customer intake and agency decisions auditable. Email, billing and remote service bindings remain environment-gated until configured.'
       }
