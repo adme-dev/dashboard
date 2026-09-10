@@ -212,7 +212,9 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   if (hasPermission('PAGE_STUDIO_VIEW')) {
     items.push(
       { type: 'label', label: 'Websites' },
-      { label: 'Demo Sites', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close }
+      { label: 'Demo Sites', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close },
+      { label: 'Bookings', icon: 'i-lucide-calendar-check', to: '/agency/page-studio/bookings', onSelect: close },
+      { label: 'Driver sheet', icon: 'i-lucide-truck', to: '/agency/page-studio/bookings/driver-sheet', onSelect: close }
     )
     if (hasPermission('PAGE_STUDIO_APPROVE')) items.push(
       { label: 'Reviews', icon: 'i-lucide-badge-check', to: '/agency/page-studio/reviews', onSelect: close },

@@ -170,6 +170,12 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
         onSelect: close
       },
       {
+        label: 'Bookings',
+        icon: 'i-lucide-calendar-check',
+        to: '/portal/page-studio/bookings',
+        onSelect: close
+      },
+      {
         label: 'Domains & DNS',
         icon: 'i-lucide-globe-2',
         to: '/portal/page-studio/domains',
