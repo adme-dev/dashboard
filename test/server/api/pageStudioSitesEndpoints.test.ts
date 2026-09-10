@@ -91,7 +91,7 @@ describe('Page Studio site endpoints', () => {
     }))
   })
 
-  it('creates an agency site from validated input and the selected tenant', async () => {
+  it.each(['automotive-campaign-v1', 'limousine-v1', 'floristry-v1', 'retail-v1', 'it-goods-v1', 'import-export-v1'])('creates an agency site for %s with the selected tenant', async (starterVersion) => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/sites/index.post')
     const event = {
       context: {},
@@ -99,7 +99,7 @@ describe('Page Studio site endpoints', () => {
         clientId: site.clientId,
         name: site.name,
         route: site.route,
-        starterVersion: site.starterVersion
+        starterVersion
       }
     }
 
@@ -111,7 +111,7 @@ describe('Page Studio site endpoints', () => {
       clientId: site.clientId,
       name: site.name,
       route: site.route,
-      starterVersion: site.starterVersion,
+      starterVersion,
       tenantId: 'tenant-alpha'
     })
   })
