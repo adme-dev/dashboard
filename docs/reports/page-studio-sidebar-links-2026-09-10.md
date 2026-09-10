@@ -33,4 +33,17 @@ pass 19 tests. Both layouts pass ESLint; deploy:check passes. Agency navigation
 uses the existing Nuxt UI scrolling sidebar; portal content retains overflow-y-auto.
 The production scrolling fix is separately live in PR #521. This sidebar change
 is for the application-platform preview and does not publish its pending features
-to production. Preview deployment and authenticated browser verification pending.
+to production.
+
+Preview source 8ef10b61776d2b771fbd2bf1c96279055f71086b is independently
+verified on deployment 46ac3234-7edb-43e4-9747-4b4b0964dfae in agency-dashboard,
+branch preview. Both served sidebar bundles exactly match local SHA256 hashes.
+The corrected build explicitly preserves SEARCH_AUTHORITY_ENABLED=true, matching
+the standard preview workflow. It supersedes intermediate deployment 0fadfa68,
+whose local build omitted that flag. Worker size is 25,069,679 raw bytes,
+399,249 below the guard; no production deployment occurred in this change.
+
+Production was independently inspected in the signed-in browser and still has
+the five earlier links. Preview browser redirects to staff login; no magic link
+was requested. Authenticated visual verification and production promotion remain
+open as NAV-01 in the Foundation ledger. Both temporary browser tabs were closed.
