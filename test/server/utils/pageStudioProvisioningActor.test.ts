@@ -43,6 +43,7 @@ describe('authenticated provisioning actor', () => {
     const s = coordinator()
     const first = await dispatchPageStudioProvisioning(s.binding, input())
     expect(first.actor).toEqual({ kind: 'client-user', userId: owner })
+    expect(first).not.toHaveProperty('generationVersion')
     s.set({ ...first, phase: 'resources-created' })
     const replay = await dispatchPageStudioProvisioning(s.binding, { ...input(), initiatingUserId: other })
     expect(replay.actor).toEqual(first.actor)
@@ -88,7 +89,7 @@ describe('authenticated provisioning actor', () => {
     expect(s.binding.createProvisioning).not.toHaveBeenCalled()
   })
 
-  it.each(['id', 'actor', 'plan', 'setup', 'resources', 'scope', 'unknown'])('rejects a malformed or mismatched %s acknowledgement', async (field) => {
+  it.each(['id', 'actor', 'plan', 'setup', 'resources', 'scope', 'generationVersion', 'unknown'])('rejects a malformed or mismatched %s acknowledgement', async (field) => {
     const s = coordinator()
     s.binding.createProvisioning.mockImplementationOnce(async (input) => {
       const job = input as Job
@@ -98,6 +99,7 @@ describe('authenticated provisioning actor', () => {
       if (field === 'setup') return { ...job, setup: { ...job.setup, proposalRevision: 2 } }
       if (field === 'resources') return { ...job, resources: {} }
       if (field === 'scope') return { ...job, scope: { ...job.scope, tenantId: 'foreign' } }
+      if (field === 'generationVersion') return { ...job, generationVersion: 2 }
       return { ...job, unknown: true }
     })
     await expect(dispatchPageStudioProvisioning(s.binding, input())).rejects.toMatchObject({ code: 'PROVISIONER_FAILED', statusCode: 503 })

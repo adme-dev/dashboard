@@ -47,6 +47,7 @@ const JobKey = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)
 // Keep this service boundary aligned with Foundation's ProvisioningJobSchema.
 const JobSnapshot = z.object({
   actor: Actor.optional(), id: JobKey, requestKey: JobKey,
+  generationVersion: z.literal(2).optional(),
   attempts: z.number().int().min(0).max(20), error: z.string().max(1000).nullable(),
   phase: z.enum(['requested', 'validated', 'resources-created', 'site-seeded', 'content-seeded', 'complete', 'failed']),
   plan: z.object({
@@ -63,6 +64,7 @@ export { JobSnapshot as PageStudioProvisioningJobSchema, Scope as PageStudioProv
 function matchingJob(result: unknown, expected: z.infer<typeof JobSnapshot>) {
   const parsed = JobSnapshot.safeParse(result)
   if (!parsed.success || parsed.data.id !== expected.id || parsed.data.requestKey !== expected.requestKey
+    || parsed.data.generationVersion !== expected.generationVersion
     || parsed.data.templateId !== expected.templateId
     || JSON.stringify(parsed.data.scope) !== JSON.stringify(expected.scope)
     || JSON.stringify(parsed.data.plan) !== JSON.stringify(expected.plan)
