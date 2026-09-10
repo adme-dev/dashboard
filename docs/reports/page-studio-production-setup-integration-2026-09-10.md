@@ -50,9 +50,37 @@ queryOne. A real uncached route is required before integrating provisioning
 authority. See [Cloudflare query caching guidance](https://developers.cloudflare.com/hyperdrive/concepts/query-caching/).
 Readback: `/private/tmp/page-studio-production-hyperdrive-readback.jsonl`.
 
+## Uncached read integration
+
+The integration now binds the existing cache-disabled Hyperdrive configuration
+and sends queryOneFresh/queryFresh through its separate request client. If that
+binding is absent, the authoritative read uses direct Neon; it never substitutes
+the cached connection. Request cleanup closes both clients, and concurrent calls
+share one connection attempt per mode. Ordinary query and transaction behavior
+is preserved in this increment.
+
+- Before implementation, all 8 new freshness/driver regression cases fail.
+- Database, driver and configuration checks: 30 passed after implementation.
+- Added CI gate for Website Builder, database and permission regressions:
+  293 passed, 5 skipped locally (36 passing files, 1 skipped file).
+- Full suite: 6,786 passed, the same 39 baseline failures and 26 skips, and the
+  same 3 pre-existing unhandled errors. No new failing labels.
+- New files/config tests pass lint; db.ts has 34 existing-rule diagnostics versus
+  36 in the unchanged production base. New connection types use explicit types.
+- Initial and final typechecks retain the same 798 diagnostics as the permission
+  increment, with no additions. Deployment target guard passes.
+- Logs: `/private/tmp/page-studio-production-fresh-{red,green,full}.log`,
+  `/private/tmp/page-studio-production-fresh-final-typecheck.log`,
+  `/private/tmp/page-studio-production-fresh-lint.json`, and
+  `/private/tmp/page-studio-production-setup-ci-gate.log`.
+
+The existing production transactionWithoutRetry alias still calls transaction,
+which retries. That separate prerequisite must be reconciled before introducing
+coordinated setup effects that require an actual one-attempt transaction boundary.
+
 ## Outstanding delivery
 
-Integrate and verify the uncached database path, setup APIs/UI, private authority
+Verify the deployed uncached database path, integrate setup APIs/UI, private authority
 gateway, environment-scoped provisioning and accepted-plan generation version 2.
 The preview producer/authority currently hardcodes staging, so copying it into
 production without environment integration is insufficient. Preserve existing

@@ -27,6 +27,10 @@ describe('Cloudflare Hyperdrive production binding', () => {
       binding: 'HYPERDRIVE',
       id: HYPERDRIVE_ID
     })
+    expect(config.hyperdrive).toContainEqual({
+      binding: 'HYPERDRIVE_FRESH',
+      id: '90228af3e2cc461bbc09accc3b47bd9f'
+    })
   })
 
   it('keeps standalone DB-writing workers on the same Hyperdrive config', () => {
@@ -40,10 +44,10 @@ describe('Cloudflare Hyperdrive production binding', () => {
 
   it('keeps the shared Pages DB utility on Hyperdrive before DATABASE_URL fallback', () => {
     const dbUtil = readFileSync('server/utils/db.ts', 'utf8')
-    const queryHelper = dbUtil.slice(dbUtil.indexOf('export async function query'))
+    const queryHelper = dbUtil.slice(dbUtil.indexOf('async function queryWithFreshness'))
 
-    expect(dbUtil).toContain('cloudflare?.env?.HYPERDRIVE?.connectionString')
-    expect(queryHelper.indexOf('getHyperdriveClient()')).toBeLessThan(queryHelper.indexOf('getSql()'))
+    expect(dbUtil).toContain('freshness === \'fresh\' ? env.HYPERDRIVE_FRESH : env.HYPERDRIVE')
+    expect(queryHelper.indexOf('getHyperdriveClient(freshness)')).toBeLessThan(queryHelper.indexOf('getSql()'))
     expect(dbUtil).toContain('fallback')
   })
 
