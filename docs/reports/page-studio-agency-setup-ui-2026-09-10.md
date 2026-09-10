@@ -28,3 +28,19 @@ Review covered scoped parameterized SQL, server `~~/` imports, returned data min
 Dashboard backend source bb2bad7a3 CI 34450750184 passed, but deployment jobs were skipped. Compatible Foundation staging executor/coordinator receivers are already deployed; the staging control gateway points to https://preview.agency-dashboard-6cm.pages.dev. This UI must ship with its backend through the guarded Dashboard preview command before a retained job is attempted.
 
 Production remains the separately integrated release/send-scan-foundation line. Selectively integrate these changes while preserving its newer checkpoint/AI protections; do not overwrite production with the older broad feature branch. The production Fantasy Limo draft remains at `/agency/page-studio/c34f6347-cc63-4ed7-9a5a-da165ebefed2`. Full retained-job acceptance, other consumer/editor compatibility, initial content/checkpoint, scoped Studio activation and a working booking/review website are outstanding. Missing client facts and commercial approval remain prerequisites for dependent live actions.
+
+## Verified preview release
+
+Guarded `pnpm deploy:preview` completed successfully from clean source
+`271600cd73c82d0df16631cee78a2961b71cf090`. Build, prerender and Worker checks pass
+(raw 25,115,692 bytes; gzip 6,597,192 bytes). Cloudflare independently confirms
+preview deployment `4b488f6c-55db-46b3-aa62-32bd21fd556b` on agency-dashboard,
+source commit and clean marker, with alias https://preview.agency-dashboard-6cm.pages.dev.
+The public feature route returns 200 and anonymous setup GET returns 401.
+No authenticated full-management or retained-job acceptance is claimed: the
+previous preview browser tab was closed. Production integration and Fantasy Limo
+content/editor/booking delivery remain outstanding.
+
+Release logs/readback: `/private/tmp/agency-setup-preview-deploy.log`,
+`/private/tmp/agency-setup-preview-readback.json`. Foundation preserves a portable
+copy at `docs/research/evidence/2026-09-10-agency-setup-preview.json`.
