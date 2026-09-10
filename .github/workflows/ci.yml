@@ -39,6 +39,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Website Builder and database authority regression tests
+        run: >-
+          pnpm exec vitest run
+          test/server/utils/pageStudio test/server/api/pageStudio
+          test/components/pageStudio test/app/pageStudio
+          test/server/utils/db.test.ts test/server/utils/dbFreshDriver.test.ts
+          test/server/utils/dbHyperdriveFresh.test.ts test/server/utils/roleResolver.test.ts
+          test/config/cloudflareHyperdriveBindings.test.ts
+
       - name: Social publishing regression tests
         run: pnpm run test:social-publishing
         timeout-minutes: 15
