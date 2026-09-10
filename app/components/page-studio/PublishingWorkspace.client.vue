@@ -159,7 +159,7 @@ async function publishApprovedVersion() {
 </script>
 
 <template>
-  <section class="mx-auto w-full max-w-screen-2xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <section class="mx-auto min-h-0 w-full max-w-screen-2xl flex-1 space-y-6 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-2">
         <UButton
@@ -241,6 +241,8 @@ async function publishApprovedVersion() {
       </div>
     </div>
 
+    <PageStudioAgencySetup :key="siteId" :site-id="siteId" />
+
     <UTabs :items="tabs" :unmount-on-hide="false" class="w-full">
       <template #overview>
         <div class="grid grid-cols-1 gap-4 pt-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
@@ -290,7 +292,7 @@ async function publishApprovedVersion() {
               </h2>
             </template>
             <p class="text-sm leading-6 text-muted">
-              Open Studio to edit the site. A saved checkpoint enters review before an approved version can be published here.
+              Prepare the initial content through website setup, then open Studio to edit the site. Review the saved version before publishing.
             </p>
             <template #footer>
               <UButton
