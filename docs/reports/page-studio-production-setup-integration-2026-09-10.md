@@ -92,3 +92,19 @@ Full retained-job acceptance and the actual Fantasy Limo checkpoint, editor,
 reviewed site and stored booking submission remain unproved. Client contact,
 pricing, asset and commercial inputs remain required before their dependent
 public actions. This report does not claim a new production deployment.
+
+## Review artifact and build
+
+Draft [PR 523](https://github.com/adme-dev/dashboard/pull/523) contains permission
+commit `df1f86c5b` and uncached-read commit `db2bb9d59`. CI `34466550628` succeeds
+for exact source `db2bb9d59e1da6facc93fef704aba37dd7842b9e` (automatic deployment
+is skipped on this branch). The local release build completes with 160 routes
+prerendered, the Cloudflare Nitro bundle and the final worker wrapper generated.
+Build log: `/private/tmp/page-studio-production-prerequisites-build.log`.
+
+The existing fresh Hyperdrive origin uses Neon's pooler hostname. Cloudflare's
+[Neon setup guidance](https://developers.cloudflare.com/hyperdrive/examples/connect-to-postgres/postgres-database-providers/neon/)
+recommends disabling Neon connection pooling for Hyperdrive. Verify the live
+binding with a read-only Worker probe and reconcile the origin configuration
+before treating runtime compatibility as proven. No origin configuration was
+changed during this source integration.
