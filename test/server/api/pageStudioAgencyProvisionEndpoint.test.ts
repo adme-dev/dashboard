@@ -26,7 +26,7 @@ function event(body: unknown = { expectedRevision: 1 }) {
     stored = job
     return job
   }) }
-  return { siteId, body, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } }, binding }
+  return { siteId, body, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_PROVISIONER: binding } } }, binding }
 }
 
 describe('agency accepted setup dispatch', () => {
@@ -44,6 +44,22 @@ describe('agency accepted setup dispatch', () => {
     expect(mocks.access).toHaveBeenCalledWith(e, 'PAGE_STUDIO_EDIT')
     expect(mocks.queryOneFresh.mock.calls[1][0]).toContain('JOIN team_members owner')
     expect(mocks.queryOneFresh.mock.invocationCallOrder[1]).toBeLessThan(e.binding.createProvisioning.mock.invocationCallOrder[0]!)
+  })
+  it('uses production scope when configured by the server', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')
+    const e = event()
+    e.context.cloudflare.env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'production'
+    const result = await handler(e as never)
+    expect(result.provisioning.job.scope.environment).toBe('production')
+    expect(e.binding.readProvisioning).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ environment: 'production' }))
+  })
+  it('does not create a staging job when the environment setting is absent', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')
+    const e = event()
+    e.context.cloudflare.env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = ''
+    await expect(handler(e as never)).rejects.toMatchObject({ statusCode: 503 })
+    expect(e.binding.createProvisioning).not.toHaveBeenCalled()
+    expect(e.binding.readProvisioning).not.toHaveBeenCalled()
   })
   it.each([{ expectedRevision: 1, actor: { kind: 'agency-user', userId } }, { expectedRevision: 0 }, { expectedRevision: 1, tenantId: 'foreign' }])('rejects body identity or invalid revision before database access', async (body) => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')

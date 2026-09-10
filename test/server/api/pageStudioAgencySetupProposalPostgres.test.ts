@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ transaction: vi.fn(), access: vi.fn() }))
-vi.mock('~~/server/utils/db', () => ({ transaction: mocks.transaction }))
+const mocks = vi.hoisted(() => ({ transaction: vi.fn(), queryOne: vi.fn(), access: vi.fn() }))
+vi.mock('~~/server/utils/db', () => ({ transaction: mocks.transaction, queryOne: mocks.queryOne }))
 vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: mocks.access }))
 interface TestEvent { siteId: string, body: unknown }
 const globals = globalThis as typeof globalThis & {
@@ -28,7 +28,9 @@ describe.runIf(Boolean(databaseUrl))('agency setup proposal transactions on disp
   let db: pg.Client
   let connected = false
   let handler: (event: never) => Promise<unknown>
+  let decisionHandler: (event: never) => Promise<unknown>
   const create = (expectedRevision = 0) => handler({ siteId, body: { expectedRevision, setupSource: 'template' } } as never)
+  const decide = (expectedRevision: number) => decisionHandler({ siteId, body: { expectedRevision, decision: 'accepted' } } as never)
   beforeAll(async () => {
     expect(['localhost', '127.0.0.1']).toContain(new URL(databaseUrl!).hostname)
     db = new pg.Client({ connectionString: databaseUrl })
@@ -50,6 +52,7 @@ describe.runIf(Boolean(databaseUrl))('agency setup proposal transactions on disp
       NOW() - INTERVAL '1 hour', NULL, 15, 1, '{"allowedModules":["business-content","bookings","enquiries"]}')`, [entitlementId, clientId])
     await db.query(`INSERT INTO page_studio_sites VALUES ($1, 'agency-setup-test', $2, $3, 'Agency Limo Fixture', 'limousine-v1', 'draft')`, [siteId, clientId, entitlementId])
     mocks.access.mockResolvedValue({ tenantId: 'agency-setup-test', user: { id: userId } })
+    mocks.queryOne.mockImplementation(async (sql: string, params: unknown[]) => (await db.query(sql, params)).rows[0] ?? null)
     mocks.transaction.mockImplementation(async (callback: (client: pg.Client) => Promise<unknown>) => {
       const client = new pg.Client({ connectionString: databaseUrl })
       await client.connect()
@@ -67,6 +70,7 @@ describe.runIf(Boolean(databaseUrl))('agency setup proposal transactions on disp
       }
     })
     handler = (await import('~~/server/api/agency/page-studio/sites/[siteId]/setup-proposal.post')).default
+    decisionHandler = (await import('~~/server/api/agency/page-studio/setup-proposals/[siteId]/decision.post')).default
   })
   beforeEach(async () => {
     await db.query('DELETE FROM page_studio_setup_proposals')
@@ -101,5 +105,23 @@ describe.runIf(Boolean(databaseUrl))('agency setup proposal transactions on disp
     await db.query('UPDATE page_studio_entitlements SET effective_until=NOW() - INTERVAL \'1 second\'')
     await expect(create()).rejects.toMatchObject({ statusCode: 403 })
     expect((await db.query('SELECT COUNT(*)::int AS count FROM page_studio_setup_proposals')).rows[0].count).toBe(0)
+  })
+  it('rejects approval of a superseded revision without changing either proposal', async () => {
+    await create()
+    await create(1)
+    await expect(decide(1)).rejects.toMatchObject({ statusCode: 409 })
+    expect((await db.query('SELECT revision, status FROM page_studio_setup_proposals ORDER BY revision')).rows)
+      .toEqual([{ revision: 1, status: 'proposed' }, { revision: 2, status: 'proposed' }])
+  })
+  it('serializes approval against a concurrent revision so only one wins', async () => {
+    await create()
+    const results = await Promise.allSettled([decide(1), create(1)])
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    const rejected = results.find(result => result.status === 'rejected') as PromiseRejectedResult
+    expect(rejected.reason).toMatchObject({ statusCode: 409 })
+    const rows = (await db.query('SELECT revision, status FROM page_studio_setup_proposals ORDER BY revision')).rows
+    expect(rows).toEqual(rows.length === 1
+      ? [{ revision: 1, status: 'accepted' }]
+      : [{ revision: 1, status: 'proposed' }, { revision: 2, status: 'proposed' }])
   })
 })

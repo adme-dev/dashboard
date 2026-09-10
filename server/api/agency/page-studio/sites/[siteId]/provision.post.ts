@@ -3,7 +3,7 @@ import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access
 import { queryOneFresh } from '~~/server/utils/db'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import { verifyPageStudioProvisioningJobAuthority } from '~~/server/utils/pageStudio/provisioningAuthority'
-import { createPageStudioProvisioningJob, dispatchPageStudioProvisioning, type PageStudioProvisionerBinding } from '~~/server/utils/pageStudio/provisioningBinding'
+import { createPageStudioProvisioningJob, dispatchPageStudioProvisioning, requirePageStudioProvisioningRuntime } from '~~/server/utils/pageStudio/provisioningBinding'
 
 const Body = z.object({ expectedRevision: z.number().int().min(1) }).strict()
 
@@ -36,21 +36,21 @@ export default eventHandler(async (event) => {
     if (row.tenantId !== tenantId || row.siteId !== siteId.data || row.status !== 'accepted' || row.revision !== parsed.data.expectedRevision) {
       throw createError({ statusCode: 409, statusMessage: 'The current setup proposal must be accepted before provisioning' })
     }
+    const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
+    const { binding, environment } = requirePageStudioProvisioningRuntime(env)
     const request = {
       initiatingActorKind: 'agency-user' as const,
       initiatingUserId: user.id,
       requestKey: `page-studio-${row.siteId}-${row.revision}`,
-      scope: { businessId: row.clientId, tenantId, clientId: row.clientId, siteId: row.siteId, environment: 'staging' as const },
+      scope: { businessId: row.clientId, tenantId, clientId: row.clientId, siteId: row.siteId, environment },
       source: row.source, revision: row.revision, brief: row.brief, plan: row.plan,
       now: new Date().toISOString()
     }
-    await verifyPageStudioProvisioningJobAuthority(createPageStudioProvisioningJob(request))
-    const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
-    const binding = env?.PAGE_STUDIO_PROVISIONER as PageStudioProvisionerBinding | undefined
+    await verifyPageStudioProvisioningJobAuthority(createPageStudioProvisioningJob(request), environment)
     const job = await dispatchPageStudioProvisioning(binding, request)
     // A retry preserves its original owner. Never substitute the current caller
     // if that owner has lost permission since the job was retained.
-    if (job.actor.userId !== user.id) await verifyPageStudioProvisioningJobAuthority(job)
+    if (job.actor.userId !== user.id) await verifyPageStudioProvisioningJobAuthority(job, environment)
     return { provisioning: { requestKey: request.requestKey, scope: request.scope, job } }
   } catch (error) {
     pageStudioHttpError(error)

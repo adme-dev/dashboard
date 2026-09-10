@@ -4,14 +4,14 @@ import {
   normalizePageStudioProvisioningPlan, PageStudioProvisioningError,
   PageStudioProvisioningJobSchema, PageStudioProvisioningScopeSchema,
   PageStudioProvisioningSetupSchema, readPageStudioProvisioning,
-  type PageStudioProvisionerBinding
+  type PageStudioProvisionerBinding, type PageStudioProvisioningEnvironment
 } from '~~/server/utils/pageStudio/provisioningBinding'
 
 const Request = z.object({
   requestKey: PageStudioProvisioningJobSchema.shape.requestKey,
   scope: PageStudioProvisioningScopeSchema.extend({
     businessId: z.string().uuid(), clientId: z.string().uuid(), siteId: z.string().uuid(),
-    environment: z.literal('staging')
+    environment: z.enum(['staging', 'production'])
   })
 }).strict().refine(input => input.scope.businessId === input.scope.clientId)
 
@@ -35,26 +35,28 @@ function denied(): never {
 }
 
 /** A fresh check, not a reusable grant. Executors must also compare job state and fence their lease. */
-export async function authorizePageStudioProvisioning(binding: PageStudioProvisionerBinding | undefined, input: unknown) {
+export async function authorizePageStudioProvisioning(binding: PageStudioProvisionerBinding | undefined, input: unknown, environment: PageStudioProvisioningEnvironment) {
   const parsed = Request.safeParse(input)
   if (!parsed.success) throw new PageStudioProvisioningError('INVALID_PROVISIONING_REQUEST', 'Invalid provisioning authority request', 400)
+  if (parsed.data.scope.environment !== environment) denied()
   if (!binding?.readProvisioning) throw new PageStudioProvisioningError('PROVISIONER_UNAVAILABLE', 'Provisioning authority requires the coordinator', 503)
   const retained = await readPageStudioProvisioning(binding, parsed.data)
   if (retained === null) throw new PageStudioProvisioningError('PROVISIONING_NOT_FOUND', 'Provisioning request not found', 404)
-  return await verifyPageStudioProvisioningJobAuthority(retained)
+  return await verifyPageStudioProvisioningJobAuthority(retained, environment)
 }
 
 /** Server-owned producer preflight and executor authority share the same fresh
  * checks. This helper does not read a retained job: callers must derive the
  * candidate from authenticated staff plus a scoped, saved proposal.
  */
-export async function verifyPageStudioProvisioningJobAuthority(input: unknown) {
+export async function verifyPageStudioProvisioningJobAuthority(input: unknown, environment: PageStudioProvisioningEnvironment) {
   const decoded = PageStudioProvisioningJobSchema.safeParse(input)
   if (!decoded.success) throw new PageStudioProvisioningError('PROVISIONER_FAILED', 'Invalid retained provisioning job')
   const job = decoded.data
   const validatedScope = Request.safeParse({ requestKey: job.requestKey, scope: job.scope })
   if (!validatedScope.success) denied()
   const { scope } = validatedScope.data
+  if (scope.environment !== environment) denied()
   if (!job.actor) throw new PageStudioProvisioningError('PROVISIONING_OWNER_REQUIRED', 'The setup owner requires reconciliation', 409)
   if (!job.setup || ['failed', 'complete'].includes(job.phase)
     || job.id !== job.requestKey || job.requestKey !== `page-studio-${scope.siteId}-${job.setup.proposalRevision}`

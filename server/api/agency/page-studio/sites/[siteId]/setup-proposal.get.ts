@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryOneFresh } from '~~/server/utils/db'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
-import { PageStudioProvisioningError, PageStudioProvisioningJobSchema, readPageStudioProvisioning, type PageStudioProvisionerBinding } from '~~/server/utils/pageStudio/provisioningBinding'
+import { PageStudioProvisioningError, PageStudioProvisioningJobSchema, readPageStudioProvisioning, getPageStudioProvisioningRuntime } from '~~/server/utils/pageStudio/provisioningBinding'
 
 export default eventHandler(async (event) => {
   setHeader(event, 'cache-control', 'no-store')
@@ -37,12 +37,12 @@ export default eventHandler(async (event) => {
       throw createError({ statusCode: 404, statusMessage: 'Website not found' })
     }
     const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
-    const binding = env?.PAGE_STUDIO_PROVISIONER as PageStudioProvisionerBinding | undefined
+    const runtime = getPageStudioProvisioningRuntime(env)
     let provisioning: { phase: string, updatedAt: string } | null = null
-    if (row.revision && row.status === 'accepted' && binding?.readProvisioning) {
-      const saved = await readPageStudioProvisioning(binding, {
+    if (row.revision && row.status === 'accepted' && runtime) {
+      const saved = await readPageStudioProvisioning(runtime.binding, {
         requestKey: `page-studio-${row.siteId}-${row.revision}`,
-        scope: { tenantId, clientId: row.clientId, businessId: row.clientId, siteId: row.siteId, environment: 'staging' }
+        scope: { tenantId, clientId: row.clientId, businessId: row.clientId, siteId: row.siteId, environment: runtime.environment }
       })
       if (saved !== null) {
         const parsed = PageStudioProvisioningJobSchema.safeParse(saved)
@@ -55,7 +55,7 @@ export default eventHandler(async (event) => {
       supported: ['limousine-v1', 'floristry-v1', 'retail-v1', 'it-goods-v1', 'import-export-v1'].includes(row.starterVersion),
       proposal: row.revision ? { revision: row.revision, status: row.status, source: row.source, brief: row.brief, plan: row.plan } : null,
       provisioning,
-      serviceAvailable: Boolean(binding?.readProvisioning && binding?.createProvisioning)
+      serviceAvailable: Boolean(runtime)
     }
   } catch (error) {
     pageStudioHttpError(error)

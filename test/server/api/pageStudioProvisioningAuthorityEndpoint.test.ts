@@ -24,14 +24,14 @@ describe('internal provisioning authority endpoint', () => {
   })
 
   it('uses only the trusted binding and prevents caching of the authority result', async () => {
-    const binding = { readProvisioning: vi.fn() }
+    const binding = { readProvisioning: vi.fn(), createProvisioning: vi.fn() }
     const body = { requestKey: 'request', scope: {} }
-    const event = { context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding } } } }
+    const event = { context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_PROVISIONER: binding } } } }
     mocks.readBody.mockResolvedValue(body)
     mocks.authorize.mockResolvedValue({ job: {}, userId: 'original-owner' })
     const { default: handler } = await import('~~/server/routes/internal/page-studio/provisioning/authorize.post')
     await expect(handler(event as never)).resolves.toEqual({ job: {}, userId: 'original-owner' })
     expect(mocks.setHeader).toHaveBeenCalledWith(event, 'cache-control', 'no-store')
-    expect(mocks.authorize).toHaveBeenCalledWith(binding, body)
+    expect(mocks.authorize).toHaveBeenCalledWith(binding, body, 'staging')
   })
 })

@@ -19,7 +19,7 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
   let connected = false
   let saved: Awaited<ReturnType<typeof dispatchPageStudioProvisioning>>
   const schema = `authority_${randomUUID().replaceAll('-', '')}`
-  const authorize = () => authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => saved }, request)
+  const authorize = () => authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => saved }, request, 'staging')
 
   beforeAll(async () => {
     expect(['localhost', '127.0.0.1']).toContain(new URL(databaseUrl!).hostname)

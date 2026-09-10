@@ -21,37 +21,53 @@ describe('live provisioning authority', () => {
   it('rereads the persisted owner and current proposal before authorizing', async () => {
     const saved = await job()
     const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn().mockResolvedValue(saved) }
-    await expect(authorizePageStudioProvisioning(binding, request)).resolves.toEqual({ job: saved, userId })
+    await expect(authorizePageStudioProvisioning(binding, request, 'staging')).resolves.toEqual({ job: saved, userId })
     expect(binding.readProvisioning).toHaveBeenCalledWith(request.requestKey, scope)
     expect(binding.createProvisioning).not.toHaveBeenCalled()
     expect(mocks.queryOneFresh.mock.calls[0][1]).toEqual([scope.tenantId, scope.clientId, scope.siteId, userId])
   })
 
+  it('authorizes production only when the trusted runtime and retained scope agree', async () => {
+    const productionScope = { ...scope, environment: 'production' as const }
+    const original = await job()
+    const saved = { ...original, scope: productionScope, plan: { ...original.plan, scope: productionScope } }
+    const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn().mockResolvedValue(saved) }
+    await expect(authorizePageStudioProvisioning(binding, { ...request, scope: productionScope }, 'production')).resolves.toEqual({ job: saved, userId })
+    expect(binding.readProvisioning).toHaveBeenCalledWith(request.requestKey, productionScope)
+  })
+
+  it('rejects a staging request at a production authority before service or database access', async () => {
+    const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn() }
+    await expect(authorizePageStudioProvisioning(binding, request, 'production')).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED', statusCode: 403 })
+    expect(binding.readProvisioning).not.toHaveBeenCalled()
+    expect(mocks.queryOneFresh).not.toHaveBeenCalled()
+  })
+
   it('authorizes a retained agency job through fresh staff permissions', async () => {
     const saved = { ...await job(), actor: { kind: 'agency-user', userId } }
     const binding = { createProvisioning: vi.fn(), readProvisioning: async () => saved }
-    await expect(authorizePageStudioProvisioning(binding, request)).resolves.toEqual({ job: saved, userId })
+    await expect(authorizePageStudioProvisioning(binding, request, 'staging')).resolves.toEqual({ job: saved, userId })
     const sql = mocks.queryOneFresh.mock.calls[0][0]
     expect(sql).toContain('JOIN team_members owner')
     expect(sql).toContain('role_permission_groups')
     expect(sql).not.toContain('JOIN client_users')
     expect(sql).not.toContain('entitlement.portal_creation_enabled')
     mocks.queryOneFresh.mockResolvedValueOnce(null)
-    await expect(authorizePageStudioProvisioning(binding, request)).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED' })
+    await expect(authorizePageStudioProvisioning(binding, request, 'staging')).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED' })
   })
 
   it('preserves generation version 2 in fresh authority without changing the accepted plan', async () => {
     const saved = { ...await job(), generationVersion: 2 }
     const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn().mockResolvedValue(saved) }
-    await expect(authorizePageStudioProvisioning(binding, request)).resolves.toEqual({ job: saved, userId })
+    await expect(authorizePageStudioProvisioning(binding, request, 'staging')).resolves.toEqual({ job: saved, userId })
     expect(binding.createProvisioning).not.toHaveBeenCalled()
     mocks.queryOneFresh.mockResolvedValueOnce({ ...row(), canProvision: false })
-    await expect(authorizePageStudioProvisioning(binding, request)).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED' })
+    await expect(authorizePageStudioProvisioning(binding, request, 'staging')).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED' })
   })
 
   it('rejects unsupported generation versions before database access', async () => {
     const saved = { ...await job(), generationVersion: 3 }
-    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => saved }, request)).rejects.toMatchObject({ code: 'PROVISIONER_FAILED' })
+    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => saved }, request, 'staging')).rejects.toMatchObject({ code: 'PROVISIONER_FAILED' })
     expect(mocks.queryOneFresh).not.toHaveBeenCalled()
   })
 
@@ -68,7 +84,7 @@ describe('live provisioning authority', () => {
   ])('denies absent authority or changed reviewed context: %j', async (current) => {
     const saved = await job()
     mocks.queryOneFresh.mockResolvedValue(current)
-    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => saved }, request)).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED', statusCode: 403 })
+    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => saved }, request, 'staging')).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED', statusCode: 403 })
   })
 
   it.each([
@@ -80,26 +96,26 @@ describe('live provisioning authority', () => {
   ])('rejects a %s stored job before database access', async (mode, code, statusCode) => {
     const saved = await job()
     const changed = mode === 'ownerless' ? { ...saved, actor: undefined } : mode === 'foreign' ? { ...saved, scope: { ...scope, tenantId: 'other' } } : mode === 'wrong-id' ? { ...saved, id: 'unrelated-job' } : { ...saved, phase: mode }
-    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => changed }, request)).rejects.toMatchObject({ code, statusCode })
+    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => changed }, request, 'staging')).rejects.toMatchObject({ code, statusCode })
     expect(mocks.queryOneFresh).not.toHaveBeenCalled()
   })
 
   it('does not expose database failures as an authorization result', async () => {
     const saved = await job()
     mocks.queryOneFresh.mockRejectedValueOnce(new Error('private database detail'))
-    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => saved }, request)).rejects.toMatchObject({ code: 'PROVISIONER_FAILED', statusCode: 503, message: 'Provisioning authority could not be verified' })
+    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => saved }, request, 'staging')).rejects.toMatchObject({ code: 'PROVISIONER_FAILED', statusCode: 503, message: 'Provisioning authority could not be verified' })
   })
 
   it('does not treat an unavailable coordinator as a missing job', async () => {
-    await expect(authorizePageStudioProvisioning(undefined, request)).rejects.toMatchObject({ code: 'PROVISIONER_UNAVAILABLE', statusCode: 503 })
-    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => null }, request)).rejects.toMatchObject({ code: 'PROVISIONING_NOT_FOUND', statusCode: 404 })
+    await expect(authorizePageStudioProvisioning(undefined, request, 'staging')).rejects.toMatchObject({ code: 'PROVISIONER_UNAVAILABLE', statusCode: 503 })
+    await expect(authorizePageStudioProvisioning({ createProvisioning: vi.fn(), readProvisioning: async () => null }, request, 'staging')).rejects.toMatchObject({ code: 'PROVISIONING_NOT_FOUND', statusCode: 404 })
     expect(mocks.queryOneFresh).not.toHaveBeenCalled()
   })
 
   it('rejects supplied actor data or foreign business identity before service access', async () => {
     const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn() }
     for (const input of [{ ...request, userId }, { ...request, scope: { ...scope, businessId: 'other' } }]) {
-      await expect(authorizePageStudioProvisioning(binding, input)).rejects.toMatchObject({ statusCode: 400 })
+      await expect(authorizePageStudioProvisioning(binding, input, 'staging')).rejects.toMatchObject({ statusCode: 400 })
     }
     expect(binding.readProvisioning).not.toHaveBeenCalled()
   })

@@ -13,6 +13,26 @@ export interface PageStudioProvisionerBinding {
   readProvisioning?: (requestKey: string, scope: PageStudioProvisioningScope) => Promise<unknown>
 }
 
+export type PageStudioProvisioningEnvironment = 'staging' | 'production'
+
+export function getPageStudioProvisioningRuntime(env: Record<string, unknown> | undefined): {
+  environment: PageStudioProvisioningEnvironment
+  binding: PageStudioProvisionerBinding
+} | null {
+  const environment = env?.PAGE_STUDIO_PROVISIONING_ENVIRONMENT
+  const binding = env?.PAGE_STUDIO_PROVISIONER as PageStudioProvisionerBinding | undefined
+  if ((environment !== 'staging' && environment !== 'production')
+    || typeof binding?.createProvisioning !== 'function'
+    || typeof binding?.readProvisioning !== 'function') return null
+  return { environment, binding }
+}
+
+export function requirePageStudioProvisioningRuntime(env: Record<string, unknown> | undefined) {
+  const runtime = getPageStudioProvisioningRuntime(env)
+  if (!runtime) throw new PageStudioProvisioningError('PROVISIONER_UNAVAILABLE', 'Website provisioning is not configured for this environment')
+  return runtime
+}
+
 export class PageStudioProvisioningError extends Error {
   constructor(readonly code: 'PROVISIONER_UNAVAILABLE' | 'PROVISIONER_FAILED' | 'INVALID_PROVISIONING_PLAN' | 'PROVISIONING_OWNER_REQUIRED' | 'PROVISIONING_AUTHORITY_DENIED' | 'PROVISIONING_NOT_FOUND' | 'INVALID_PROVISIONING_REQUEST', message: string, readonly statusCode = 503) {
     super(message)

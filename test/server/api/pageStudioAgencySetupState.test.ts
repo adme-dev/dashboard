@@ -18,7 +18,7 @@ const siteId = '50000000-0000-4000-8000-000000000901'
 const clientId = '20000000-0000-4000-8000-000000000901'
 const scope = { tenantId: 'agency-state', siteId, clientId, businessId: clientId, environment: 'staging' as const }
 const row = () => ({ ...scope, name: 'Agency Limo Fixture', starterVersion: 'limousine-v1', revision: null, status: null, source: null, brief: null, plan: null })
-const event = () => ({ siteId, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: { readProvisioning: mocks.readProvisioning, createProvisioning: vi.fn() } } } } })
+const event = () => ({ siteId, context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_PROVISIONER: { readProvisioning: mocks.readProvisioning, createProvisioning: vi.fn() } } } } })
 
 describe('agency website setup state', () => {
   beforeEach(() => {
@@ -39,6 +39,14 @@ describe('agency website setup state', () => {
     mocks.queryOneFresh.mockResolvedValue({ ...row(), revision: 2, status: 'accepted', source: 'template', plan: { pages: ['home'] } })
     await expect(handler(event() as never)).resolves.toMatchObject({ proposal: { revision: 2, status: 'accepted' } })
     expect(mocks.readProvisioning).toHaveBeenCalledWith(`page-studio-${siteId}-2`, scope)
+  })
+  it('reads provisioning progress from the configured production scope', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/setup-proposal.get')
+    mocks.queryOneFresh.mockResolvedValue({ ...row(), revision: 2, status: 'accepted', source: 'template', plan: { pages: ['home'] } })
+    const e = event()
+    e.context.cloudflare.env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'production'
+    await handler(e as never)
+    expect(mocks.readProvisioning).toHaveBeenCalledWith(`page-studio-${siteId}-2`, { ...scope, environment: 'production' })
   })
   it('returns verified progress without exposing provider resources or raw failure details', async () => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/setup-proposal.get')
