@@ -1,0 +1,15 @@
+{
+  "fixture": "Exact launchDocument.write HTML from usePageStudioLauncher.ts, served with Referrer-Policy no-referrer; synthetic form only",
+  "before": {
+    "origin": "null",
+    "referer": null,
+    "method": "POST"
+  },
+  "after": {
+    "origin": "http://127.0.0.1:4381",
+    "referer": "http://127.0.0.1:4381/",
+    "method": "POST"
+  },
+  "policy": "strict-origin",
+  "productionBrowserAcceptance": false
+}
