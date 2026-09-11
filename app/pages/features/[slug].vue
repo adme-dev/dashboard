@@ -193,6 +193,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Cloudflare Delivery and Domains',
         content: 'The delivery architecture uses Cloudflare Workers and Pages for private build, sandbox, control, and delivery services. Domain registration and custom-domain workflows can be layered into the governed release process as the staged rollout advances, without handing clients unrestricted infrastructure access.'
+      },
+      {
+        title: 'Website Access and Allowances',
+        content: 'Authorised agency staff can record a client’s website access period, permitted modules and limits for sites, pages, storage, domains, AI operations, builds and traffic. Trial access requires an expiry, while client website creation can be enabled separately. Each grant records its reason and actor in the billing audit; matching retries return the original result and competing grants cannot replace existing access. These access grants do not create charges or a paid billing subscription. Renewal, plan changes and provider billing remain separate rollout work.'
       }
     ]
   },

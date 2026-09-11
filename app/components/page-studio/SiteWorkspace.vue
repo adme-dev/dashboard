@@ -38,11 +38,11 @@ const pageModel = computed({
 
 const audienceCopy = computed(() => props.audience === 'agency'
   ? {
-      eyebrow: 'Reference environment',
-      title: 'Page Studio demo sites',
-      description: 'Open maintained, non-customer websites for demonstrations, release rehearsals and safe battle testing.',
-      emptyTitle: 'No demo sites yet',
-      emptyDescription: 'Governed reference sites will appear here after their synthetic client entitlement is provisioned.'
+      eyebrow: 'Website Builder',
+      title: 'Client websites',
+      description: 'Create client website drafts, open Studio and follow each website through setup, review and publishing.',
+      emptyTitle: 'No websites yet',
+      emptyDescription: 'Create a website for a client with an active subscription and available site allowance.'
     }
   : {
       eyebrow: 'Client workspace',
@@ -54,8 +54,8 @@ const audienceCopy = computed(() => props.audience === 'agency'
 
 const rolloutCopy = computed(() => props.audience === 'agency'
   ? {
-      title: 'Governed demo environment',
-      description: 'Demo sites exercise the same page, component, AI, review and release controls as customer websites without using customer data or infrastructure.'
+      title: 'Website setup and publishing',
+      description: 'Draft workspaces, reference sites and live client websites share this portfolio. A saved draft still needs content setup and a reviewed release before publication.'
     }
   : {
       title: 'Managed website workspace',
@@ -124,7 +124,8 @@ async function launchStudio(site: PageStudioSiteSummary) {
         </p>
       </div>
 
-      <div class="flex items-center gap-3">
+      <div class="flex flex-wrap items-center gap-3">
+        <PageStudioAgencySiteCreate v-if="audience === 'agency'" @created="emit('update:page', 1); emit('refresh')" />
         <UBadge color="neutral" variant="subtle" size="lg">
           {{ total }} {{ total === 1 ? 'site' : 'sites' }}
         </UBadge>

@@ -4,8 +4,11 @@ Status: reconciled onto freshly fetched current `origin/main`
 `3f8675ed5b3f563a200b116d30a85d3051d49229` on 11 September 2026 in
 `fix/page-studio-current-main`. Only the reviewed checkpoint protocol changes
 from `13aaf46b3` and `1c2380c85` were applied; their divergent release lineage
-was not merged. This reconciliation has not yet been deployed. The currently
-published Dashboard remains the verified QR export repair (`b923c6db`).
+was not merged. PR529 is merged as `3369a09edef497439d2e4ab7fa2e8e7b4828136d`.
+The clean merged source was deployed to `agency-dashboard` as
+`bee07364-2f1c-425f-9c9b-70d8b46ebcdf` at `2026-09-11T05:19:31.259329Z`.
+Cloudflare's canonical production deployment was independently read back with
+that source and `commit_dirty: false`.
 
 The standalone Studio staging runtime already carries the guarded protocol.
 Revalidate the paired authenticated save/reload and AI flows after Dashboard
@@ -124,7 +127,15 @@ Current-main reconciliation evidence (11 September):
   lock-unavailable error. It passes in isolation; the cause is not yet established.
   Both its test and `scripts/lakebase-pilot` match current main. Preserve this as
   an open regression item; do not describe the full local suite as green.
-- Remote CI and the authenticated deployed pairing remain pending.
+- Both PR CI runs (`34564411750`, `34564379523`) passed, including PostgreSQL 17,
+  production builds and the full suite. The merge tree matches the tested source.
+- Final deployed build: 25,423,800 raw bytes, 45,128 bytes remaining;
+  gzip 6,600,212 bytes. Authenticated production reads preserved Fantasy Limo
+  and the reference site, the QR sidebar, and the exact reported SVG download
+  (HTTP 200, 23,286 bytes, matching the delivered Desktop file).
+- Reference-site launch returned the parent buttons to an enabled state.
+  The child editor tab was not inspected; authenticated deployed editor
+  save/reload and AI acceptance remain unverified for this pairing.
 
 The concurrency cases observe actual blocked database connections before
 releasing competing transactions. They cover manual/manual, AI/manual and

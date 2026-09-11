@@ -10,7 +10,7 @@ describe('Page Studio workspace navigation', () => {
     expect(layout).toContain('hasPermission')
     expect(layout).toContain(`hasPermission('PAGE_STUDIO_VIEW')`)
     expect(layout).toContain(`label: 'Websites'`)
-    expect(layout).toContain(`label: 'Demo Sites'`)
+    expect(layout).toContain(`label: 'Client websites'`)
     expect(layout).toContain(`to: '/agency/page-studio'`)
   })
 
