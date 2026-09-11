@@ -120,6 +120,7 @@ async function launchStudio(site: PageStudioSiteSummary) {
       description: message,
       color: 'error'
     })
+  } finally {
     launchingSiteId.value = null
   }
 }

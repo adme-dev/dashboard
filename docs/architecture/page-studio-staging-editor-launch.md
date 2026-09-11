@@ -58,5 +58,30 @@ A real Chrome regression served the exact launcher HTML under a `no-referrer`
 response header at localhost:4381 and submitted synthetic fixture text to :4382.
 Before the meta change: POST Origin was `null`, with no Referer. After: Origin was
 `http://127.0.0.1:4381` and Referer was `http://127.0.0.1:4381/`. No real token
-was used in this regression. The popup-policy correction still needs deployment
-and the full authenticated browser editor/save/reconnect check.
+was used in this regression.
+
+## Deployed browser acceptance and remaining runtime failure
+
+Preview `4a733703-70c9-40f2-ac95-9afdc4879353` deployed clean source
+`30e73b87b099d75db96cf48b60e904fe2bed9f26` successfully at
+`2026-09-10T23:59:14.842405Z`, independently confirmed through Cloudflare.
+Chrome DevTools then completed real magic-link verification and a trusted click
+on Launch Studio. The signed popup exchange reached the exact staging workspace
+and rendered both desktop and mobile previews plus the canonical editor controls.
+
+Editing the homepage SEO description and leaving the field displayed `Saved`.
+Checkpoint `checkpoint_6bdf3b8c-cf93-4113-a8d9-d1dfa4af219c` was recorded at
+`2026-09-11T00:09:56.482Z`, digest
+`25abd3b3fdcd75be873d49b7067db430bdb10c7844716fdcdc267e7d28bf164d`.
+Independent R2 readback validates the 7,355-byte snapshot, its scope, matching
+digest and exact synthetic description. Reconnect restored that description.
+However, one iframe returned HTTP 410 `STALE_PREVIEW_URL`; a repeated reconnect
+subsequently showed that error in both frames. Full reconnect acceptance remains
+open until runtime recovery is fixed and retested. Durable save is independently
+proven; no real customer content or business runtime was provisioned.
+
+The portal launch button also remained disabled after a successful handoff.
+Its loading state now resets in `finally`. A mounted Vue regression failed on
+successful handoff before the fix and now verifies repeat launch after success
+and failure, plus duplicate-click suppression while pending. The focused launch,
+creation and portal-policy suite passes all 23 tests; changed code passes ESLint.
