@@ -1,4 +1,4 @@
-import { queryOne, transaction } from '~~/server/utils/db'
+import { queryOneFresh, transaction } from '~~/server/utils/db'
 
 export interface PageStudioControlScope {
   tenantId: string
@@ -357,9 +357,11 @@ async function persistPageStudioCheckpoint(
 
 export async function getLatestPageStudioCheckpoint(
   scope: PageStudioControlScope,
-  dependencies: { queryOne?: typeof queryOne } = {}
+  dependencies: { queryOne?: typeof queryOneFresh } = {}
 ): Promise<{ checkpointId: string, digest: string, objectKey: string } | null> {
-  const readOne = dependencies.queryOne ?? queryOne
+  // A saved head must be visible on immediate launch/reload; Hyperdrive may
+  // otherwise cache the previous checkpoint (including an empty result).
+  const readOne = dependencies.queryOne ?? queryOneFresh
   const row = await readOne<{ checkpoint_id: string, digest: string, object_key: string }>(
     `SELECT checkpoint.id AS checkpoint_id, checkpoint.digest, checkpoint.object_key
      FROM page_studio_sites site
