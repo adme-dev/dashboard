@@ -22,3 +22,9 @@ Validation: targeted server and rendered Vue tests cover saved routes/SEO/forms,
 - Repository-wide typecheck reports 626 errors outside the changed files. No errors reference this increment's changed runtime/UI files; global typecheck is not reported as passing.
 - Review checked complete modified runtime files, new UI and schemas, test cases, scoped joins, immutable digest and publishing approval checks, stale writes, aliases, Nuxt UI, escaping and scrolling structure. No user data is written by the document read.
 - Disposable PostgreSQL plus focused server/UI run: 34 tests passed, including all 18 real PostgreSQL checkpoint/document tests. The first run exposed the UUID/text audit parameter bug; the final run passed after the explicit cast. The guarded release rebuild and CI recheck the final source after that fix.
+
+## Live verification follow-up
+
+The initial source3a34ad5fd deployed successfully as7cf8cb46-60df-4250-8899-0b1fb5508edf at2026-09-11T09:32:11.37019Z after two transport failures; the successful guarded retry used Node IPv4-first with network-family autoselection disabled. Both CI runs34582812189 and34582857467 passed. Authenticated document GET returns200/private-no-store, document:null, the same checkpoint02aa6dc8 and all eight routes/SEO/two forms.
+
+The real browser rendered all eight pages but exposed an existing outer-layout clipping issue: the site's1700px content sat inside a913px overflow-hidden agency container with no scroll owner. The management route now uses the same bounded UDashboardPanel pattern as the portfolio, with an overflow-y-auto body. This is included before closing EDITOR-02; final deployment and browser scroll verification must supersede this initial release.

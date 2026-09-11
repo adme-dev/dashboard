@@ -25,5 +25,8 @@ describe('Page Studio publishing workspace', () => {
   it('provides the permanent site management route', () => {
     const page = readFileSync(resolve(root, 'app/pages/agency/page-studio/[siteId]/index.vue'), 'utf8')
     expect(page).toContain('PageStudioPublishingWorkspace')
+    expect(page).toContain('<UDashboardPanel id="agency-page-studio-site"')
+    expect(page).toContain('body: \'p-0 min-h-0 overflow-y-auto\'')
+    expect(page).toContain('root: \'min-h-0 max-h-svh\'')
   })
 })
