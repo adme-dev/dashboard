@@ -11,6 +11,7 @@ import {
   sha256File
 } from './crm-search/build-artifact.mjs'
 import { runFrozenPagesRelease } from './crm-search/deploy-pages-artifact.mjs'
+import { verifyCurrentMainSource } from './pages-source-guard.mjs'
 
 export const ALLOWED_PAGES_PROJECT = 'agency-dashboard'
 const ALLOWED_BRANCHES = new Set(['main', 'preview'])
@@ -197,8 +198,10 @@ export function runSourcePagesDeploy({
   const target = verifyPagesDeployTarget({ configPath })
   const deployArgs = buildPagesDeployArgs(branch)
   assertDormantCrmSearch(readFileSync(configPath, 'utf8'), branch)
+  const source = verifyCurrentMainSource({ repositoryRoot })
 
   console.log(`Pages deploy guard: ${target.configuredProject} / ${branch} / CRM search dormant`)
+  console.log(`Pages source guard: ${JSON.stringify(source)}`)
   if (checkOnly) return
   if (capture('git', ['status', '--short'], repositoryRoot) !== '') {
     throw new Error('crm_search_dirty_tree')
@@ -210,7 +213,12 @@ export function runSourcePagesDeploy({
     repositoryRoot,
     branch
   })
-  execute('pnpm', ['exec', ...deployArgs], repositoryRoot)
+  // Main or the worktree may have changed during the long Nuxt build.
+  verifyCurrentMainSource({ repositoryRoot, expectedSourceCommit: source.sourceCommit })
+  if (capture('git', ['status', '--short'], repositoryRoot) !== '') {
+    throw new Error('crm_search_dirty_tree')
+  }
+  execute('pnpm', ['exec', ...deployArgs, '--commit-hash', source.sourceCommit], repositoryRoot)
 }
 
 function runPagesReleaseCommand({ args }) {
@@ -439,7 +447,9 @@ export async function runCrmSearchPagesRelease({
   buildPagesDeployArgs(branch)
   const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 
+  const source = verifyCurrentMainSource({ repositoryRoot })
   console.log(`Pages deploy guard: ${target.configuredProject} / ${branch}`)
+  console.log(`Pages source guard: ${JSON.stringify(source)}`)
   if (checkOnly) return
   if (capture('git', ['status', '--short'], repositoryRoot) !== '') {
     throw new Error('crm_search_dirty_tree')
@@ -479,7 +489,13 @@ export async function runCrmSearchPagesRelease({
     recordDeploymentPhase: event => recordProductionDeploymentPhase({
       databaseUrl: approvalDatabaseUrl, approval: approvalEnvelope.payload, event
     }),
-    execute
+    execute: (request) => {
+      verifyCurrentMainSource({ repositoryRoot, expectedSourceCommit: source.sourceCommit })
+      if (capture('git', ['status', '--short'], repositoryRoot) !== '') {
+        throw new Error('crm_search_dirty_tree')
+      }
+      return execute(request)
+    }
   })
 }
 

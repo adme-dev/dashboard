@@ -235,6 +235,17 @@ Do not wait for the user to run migrations manually — execute them as part of 
 
 ## Deployment
 
+### Current branch and release integrity (MANDATORY)
+
+User instruction recorded 11 September 2026: always work on and release the correct, current branch. Never leave old branches behind and later merge or deploy them as if they were current.
+
+- Start new work from freshly fetched `origin/main` in a short-lived branch. Before resuming existing work, verify its repository, branch, upstream and divergence from current `origin/main`.
+- Before merging or releasing, fetch the remote again and prove that the candidate includes the latest `origin/main`. A local branch name or Cloudflare `--branch main` label is not evidence of current application source.
+- Never blindly merge or deploy a stale, divergent branch. Reconcile still-needed changes onto the current base, review the resulting diff and run the required checks. Preserve unrelated and uncommitted work while doing this.
+- Verify established features and navigation, including QR Codes, alongside the changed feature before release. Record the source commit, current main commit, deployment target and deployment ID; verify the live deployment against that record.
+- After successful integration and verification, retire completed branches and owned worktrees. Account for remaining unmerged work in the ledger before cleanup; do not delete another contributor's active work or keep obsolete branches as future release bases.
+- Emergency restoration may select a verified existing successful production artifact. Record its exact source and any temporarily unavailable newer changes, then reconcile those changes onto current main before another release.
+
 Deploy to Cloudflare Pages via Wrangler:
 
 ```bash

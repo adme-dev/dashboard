@@ -1,17 +1,38 @@
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as sourceGuard from '../../scripts/pages-source-guard.mjs'
 
 import {
   ALLOWED_PAGES_PROJECT,
   assertDormantCrmSearch,
   assertPagesDeployTarget,
   buildPagesDeployArgs,
-  flattenRedirectedPagesConfig
+  flattenRedirectedPagesConfig,
+  runCrmSearchPagesRelease,
+  runSourcePagesDeploy
 } from '../../scripts/deploy-pages.mjs'
 
 describe('Pages deployment target guard', () => {
+  it.each(['main', 'preview'])('blocks stale source in %s checks and both deployment paths', async (branch) => {
+    const guard = vi.spyOn(sourceGuard, 'verifyCurrentMainSource').mockImplementation(() => {
+      throw new Error('stale source fixture')
+    })
+    const execute = vi.fn()
+    try {
+      for (const checkOnly of [true, false]) {
+        expect(() => runSourcePagesDeploy({ branch, checkOnly, execute }))
+          .toThrow('stale source fixture')
+        await expect(runCrmSearchPagesRelease({ branch, checkOnly, execute }))
+          .rejects.toThrow('stale source fixture')
+      }
+      expect(execute).not.toHaveBeenCalled()
+    } finally {
+      guard.mockRestore()
+    }
+  })
+
   it('allows only the XeroFlow agency-dashboard Pages project', () => {
     expect(ALLOWED_PAGES_PROJECT).toBe('agency-dashboard')
     expect(() => assertPagesDeployTarget({
