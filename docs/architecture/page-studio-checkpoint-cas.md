@@ -152,3 +152,29 @@ PAGE_STUDIO_DATABASE_TEST_URL=postgresql://test_user@127.0.0.1:55439/page_studio
 
 The suite creates and drops only generated synthetic schemas. Do not point this
 command at an application database, even if it runs on localhost.
+
+## Production editor pairing and checkpoint freshness — 11 September 2026
+
+The separate production Sandbox now runs version
+`22922bdd-8242-475e-83d1-f7f162d78b3c`, Foundation source `0ff9400`, with
+its verified container image and exact Fantasy Limo site/hostname allowlist.
+The private eight-page draft was committed as
+`checkpoint_fantasy_initial_20260911`; the receipt, exact retry and reconnect
+succeeded. The live editor opens, exposes the booking/enquiry forms, and reports
+Saved after changing the booking page title to “Request a booking”. A fresh
+frame response contains that saved title. Desktop/mobile preview scroll verified.
+No customer site publication or operational booking submission is claimed.
+
+The control-plane latest-checkpoint lookup was still using cached `queryOne`.
+This can return an empty/old head after a successful write through Hyperdrive.
+The default lookup now uses `queryOneFresh` and the existing cache-disabled
+`HYPERDRIVE_FRESH` binding, retaining the exact scoped pointer query and existing
+injected database interface. Read errors propagate instead of falling back to a
+cached checkpoint. No migration or global query-cache change is required.
+Tests exercise stale empty and previous-head cache results, plus fresh-read failure.
+The initial immediate reconnect returned 500 before a later reconnect succeeded;
+that observation is consistent with stale reads but was not conclusively traced.
+This correction addresses the independently verified cached-read code path.
+
+At this entry the freshness correction is local, pending final checks and release.
+Dashboard production remains clean main657f77 / Pages deployment5c605429.
