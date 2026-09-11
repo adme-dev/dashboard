@@ -126,53 +126,77 @@ export async function loadApprovedPageStudioReleaseCheckpoint(input: {
     throw new PageStudioReleaseCheckpointError('VERSION_NOT_APPROVED', 'The requested version does not have an approved immutable checkpoint', 409)
   }
 
-  const expectedKey = `tenants/${input.scope.tenantId}/clients/${input.scope.clientId}/sites/${input.scope.siteId}/checkpoints/${row.checkpoint_id}.json`
-  if (row.object_key !== expectedKey) {
+  const checkpoint = await loadPageStudioCheckpoint({
+    scope: input.scope,
+    bucket: input.bucket,
+    checkpointId: row.checkpoint_id,
+    objectKey: row.object_key,
+    digests: [row.checkpoint_digest, row.version_digest]
+  })
+  return { ...checkpoint, releaseMetadata: derivePageStudioReleaseMetadata(checkpoint.manifest) }
+}
+
+/** Read an immutable checkpoint only after its pointer has been authorised by the caller. */
+export async function loadPageStudioCheckpoint(input: {
+  scope: PageStudioReleaseScope
+  bucket: PageStudioCheckpointBucket
+  checkpointId: string
+  objectKey: string
+  digests: string[]
+}): Promise<{ checkpointId: string, digest: string, manifest: unknown }> {
+  const expectedKey = `tenants/${input.scope.tenantId}/clients/${input.scope.clientId}/sites/${input.scope.siteId}/checkpoints/${input.checkpointId}.json`
+  if (input.objectKey !== expectedKey) {
     throw new PageStudioReleaseCheckpointError('CHECKPOINT_KEY_MISMATCH', 'The checkpoint object key is outside the canonical site scope')
   }
-
   const object = await input.bucket.get(expectedKey)
-  if (!object) {
-    throw new PageStudioReleaseCheckpointError('CHECKPOINT_NOT_FOUND', 'The approved checkpoint object is missing')
-  }
+  if (!object) throw new PageStudioReleaseCheckpointError('CHECKPOINT_NOT_FOUND', 'The saved checkpoint object is missing')
   if (typeof object.size === 'number' && object.size > MAX_CHECKPOINT_BYTES) {
-    throw new PageStudioReleaseCheckpointError('CHECKPOINT_TOO_LARGE', 'The approved checkpoint exceeds the 8 MB limit')
+    throw new PageStudioReleaseCheckpointError('CHECKPOINT_TOO_LARGE', 'The checkpoint exceeds the 8 MB limit')
   }
 
-  const text = await new Response(object.body).text()
-  if (text.length > MAX_CHECKPOINT_BYTES) {
-    throw new PageStudioReleaseCheckpointError('CHECKPOINT_TOO_LARGE', 'The approved checkpoint exceeds the 8 MB limit')
+  // Bound the actual streamed bytes as well as R2 metadata.
+  const reader = object.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for (;;) {
+      const result = await reader.read()
+      if (result.done) break
+      size += result.value.byteLength
+      if (size > MAX_CHECKPOINT_BYTES) {
+        await reader.cancel()
+        throw new PageStudioReleaseCheckpointError('CHECKPOINT_TOO_LARGE', 'The checkpoint exceeds the 8 MB limit')
+      }
+      chunks.push(result.value)
+    }
+  } finally {
+    reader.releaseLock()
   }
-
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
   let parsed: unknown
   try {
-    parsed = JSON.parse(text)
+    parsed = JSON.parse(new TextDecoder().decode(bytes))
   } catch {
-    throw new PageStudioReleaseCheckpointError('CHECKPOINT_INVALID', 'The approved checkpoint is not valid JSON')
+    throw new PageStudioReleaseCheckpointError('CHECKPOINT_INVALID', 'The checkpoint is not valid JSON')
   }
-
   const envelope = parseEnvelope(parsed)
-  if (envelope.checkpointId !== row.checkpoint_id || !sameScope(envelope.scope, input.scope)) {
-    throw new PageStudioReleaseCheckpointError('CHECKPOINT_SCOPE_MISMATCH', 'The approved checkpoint does not belong to the requested site')
+  if (envelope.checkpointId !== input.checkpointId || !sameScope(envelope.scope, input.scope)) {
+    throw new PageStudioReleaseCheckpointError('CHECKPOINT_SCOPE_MISMATCH', 'The checkpoint does not belong to the requested site')
   }
-
   const manifest = envelope.manifest as { id?: unknown }
   if (!manifest || typeof manifest !== 'object' || manifest.id !== input.scope.siteId) {
     throw new PageStudioReleaseCheckpointError('MANIFEST_SITE_MISMATCH', 'The checkpoint manifest does not belong to the requested site')
   }
-
   const digest = await sha256(canonicalJson(envelope.manifest))
-  const expectedDigests = [envelope.digest, row.checkpoint_digest, row.version_digest]
-  if (expectedDigests.some(expected => expected !== digest)) {
-    throw new PageStudioReleaseCheckpointError('CHECKPOINT_DIGEST_MISMATCH', 'The checkpoint digest does not match its approved version')
+  if (!input.digests.length || [envelope.digest, ...input.digests].some(expected => expected !== digest)) {
+    throw new PageStudioReleaseCheckpointError('CHECKPOINT_DIGEST_MISMATCH', 'The checkpoint digest does not match its saved pointer')
   }
-
-  return {
-    checkpointId: row.checkpoint_id,
-    digest,
-    manifest: envelope.manifest,
-    releaseMetadata: derivePageStudioReleaseMetadata(envelope.manifest)
-  }
+  return { checkpointId: input.checkpointId, digest, manifest: envelope.manifest }
 }
 
 export async function attachPageStudioReleaseMetadataToBuild(input: {

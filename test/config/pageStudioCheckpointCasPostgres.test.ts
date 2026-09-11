@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
+import { defaultPageStudioDocument, savePageStudioDocument } from '~~/server/utils/pageStudio/documents'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   acceptPageStudioAiProposal,
@@ -135,6 +136,7 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
     await observer.query(`CREATE SCHEMA "${schema}"`)
     await observer.query(bootstrapSql)
     await observer.query(migrationSql)
+    await observer.query(readFileSync(new URL('../../server/database/migrations/404_page_studio_documents.sql', import.meta.url), 'utf8'))
     const tenantId = 'tenant-cas'
     const clientId = '20000000-0000-4000-8000-000000000001'
     const ownerId = '30000000-0000-4000-8000-000000000001'
@@ -168,6 +170,25 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
         await observer.end()
       }
     }
+  })
+
+  it('saves a legacy draft with an empty outer join, then rejects it after Studio takes ownership', async () => {
+    const input = {
+      actorId: '30000000-0000-4000-8000-000000000001',
+      document: defaultPageStudioDocument('Legacy draft'),
+      expectedRevision: 0,
+      siteId: scope.siteId,
+      tenantId: scope.tenantId
+    }
+    const saved = await transactionFor(observer)(db => savePageStudioDocument(db, input))
+    expect(saved.revision).toBe(1)
+    await recordPageStudioCheckpoint(checkpoint('checkpoint_studio', 'a'), { runTransaction: transactionFor(observer) })
+    await expect(transactionFor(observer)(db => savePageStudioDocument(db, { ...input, expectedRevision: 1 })))
+      .rejects.toMatchObject({ code: 'STUDIO_DOCUMENT_REQUIRED', statusCode: 409 })
+    const unchanged = await observer.query('SELECT revision, document FROM page_studio_documents WHERE site_id = $1', [scope.siteId])
+    expect(Number(unchanged.rows[0].revision)).toBe(1)
+    expect(unchanged.rows[0].document).toEqual(input.document)
+    expect((await snapshot()).current_checkpoint_id).toBe('checkpoint_studio')
   })
 
   it('allows only one of two lock-contending writers based on the same checkpoint', async () => {

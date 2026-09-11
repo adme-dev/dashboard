@@ -320,7 +320,7 @@ const categories = [
       { title: 'Measurement Health', slug: 'portal-measurement', icon: 'i-lucide-activity', description: 'Show clients how browser events, server delivery, and CRM outcomes contribute to measurement — with ownership and evidence kept distinct.' },
       { title: 'Meetings & Video Reviews', slug: 'portal-meetings-reviews', icon: 'i-lucide-video', description: 'Share upcoming meetings, recordings, and review-ready video so decisions and feedback stay attached to the client relationship.' },
       { title: 'Briefs & Social Workspace', slug: 'portal-briefs-social', icon: 'i-lucide-panels-top-left', description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.' },
-      { title: 'Page Studio Workspace', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Give each client a scoped website view while the agency governs assets, leads, analytics, approved versions, releases and production domains.' }
+      { title: 'Page Studio Workspace', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'View saved website pages, SEO and form counts, open the same draft in Studio, and give each client a scoped website view while the agency governs assets, leads, analytics, approved versions, releases and production domains.' }
     ]
   },
   {
