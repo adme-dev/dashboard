@@ -85,3 +85,14 @@ Its loading state now resets in `finally`. A mounted Vue regression failed on
 successful handoff before the fix and now verifies repeat launch after success
 and failure, plus duplicate-click suppression while pending. The focused launch,
 creation and portal-policy suite passes all 23 tests; changed code passes ESLint.
+
+The follow-up preview `1b291f6e-e235-4fa0-bd54-8db350e318b4` deployed clean
+source `062ff5c42e336c1274e0523ea7d4ea94fb74f29f` successfully at
+`2026-09-11T00:26:31.771092Z`. Live Chrome confirms the launcher resets and
+opens the editor again with both frames and the saved description. A fresh signed
+session followed by immediate reconnect also rendered both frames with the saved
+edit and no console warnings/errors. Extended-session stale-runtime recovery
+remains open; the evidence does not establish its cause. A later 401 after session
+expiry is separate from the 410. Portal logout returned 200, test tabs closed,
+R2 harness closed and Worker tail stopped. No explicit workspace termination was
+performed; the existing five-minute idle policy remains in effect.
