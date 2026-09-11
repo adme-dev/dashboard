@@ -184,3 +184,39 @@ export async function listPortalPageStudioDomains(clientId: string, userId: stri
     LIMIT $3
   `, [clientId, userId, MAX_OPERATION_ROWS])
 }
+
+export async function listPortalPageStudioSubscriptions(clientId: string) {
+  return queryRows(`
+    SELECT entitlement.id, client.name AS "clientName",
+           entitlement.plan_key AS "planKey", entitlement.status,
+           entitlement.active_site_limit AS "siteLimit",
+           entitlement.pages_per_site_limit AS "pagesPerSiteLimit",
+           entitlement.custom_domain_limit AS "domainLimit",
+           entitlement.monthly_build_limit AS "buildLimit",
+           COUNT(DISTINCT site.id)::integer AS "siteCount",
+           COUNT(DISTINCT domain.id)::integer AS "domainCount",
+           COUNT(DISTINCT build.id)::integer AS "buildCount",
+           entitlement.effective_from AS "effectiveFrom",
+           entitlement.effective_until AS "effectiveUntil"
+    FROM page_studio_entitlements entitlement
+    JOIN agency_clients client ON client.id = entitlement.client_id
+    LEFT JOIN page_studio_sites site
+      ON site.tenant_id = entitlement.tenant_id
+     AND site.client_id = entitlement.client_id
+     AND site.entitlement_id = entitlement.id
+    LEFT JOIN page_studio_domains domain
+      ON domain.tenant_id = site.tenant_id
+     AND domain.client_id = site.client_id
+     AND domain.site_id = site.id
+     AND domain.lifecycle_state <> 'detached'
+    LEFT JOIN page_studio_builds build
+      ON build.tenant_id = site.tenant_id
+     AND build.client_id = site.client_id
+     AND build.site_id = site.id
+     AND build.created_at >= date_trunc('month', CURRENT_TIMESTAMP)
+    WHERE entitlement.client_id = $1
+    GROUP BY entitlement.id, client.name
+    ORDER BY entitlement.updated_at DESC
+    LIMIT $2
+  `, [clientId, MAX_OPERATION_ROWS])
+}

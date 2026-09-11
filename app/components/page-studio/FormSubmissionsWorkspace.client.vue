@@ -1,15 +1,16 @@
 <script setup lang="ts">
 interface Submission {
-  fields: Record<string, string>
+  fields: Record<string, unknown>
   formId: string
+  formName?: string | null
   id: string
   isTest: boolean
   pageRoute: string
   submittedAt: string
 }
 
-const props = defineProps<{ siteId: string }>()
-const endpoint = computed(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
+const props = withDefaults(defineProps<{ audience?: 'agency' | 'portal', siteId: string }>(), { audience: 'agency' })
+const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
 const { data, status, error, refresh } = await useFetch<{ submissions: Submission[] }>(endpoint)
 const submissions = computed(() => data.value?.submissions ?? [])
 const columns = [
@@ -19,10 +20,18 @@ const columns = [
   { accessorKey: 'submitted', header: 'Submitted' },
   { accessorKey: 'mode', header: 'Mode' }
 ]
+function displayField(value: unknown) {
+  if (value === null || value === undefined || value === '') return 'Not provided'
+  if (Array.isArray(value)) return value.map(item => String(item)).join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
 const rows = computed(() => submissions.value.map(submission => ({
-  name: submission.fields.full_name || submission.fields.name || 'Unnamed contact',
-  form: `${submission.formId} · ${submission.pageRoute || '/'}`,
-  contact: submission.fields.email || submission.fields.phone || submission.fields.phone_number || 'Not provided',
+  name: submission.fields.full_name || submission.fields.name
+    ? displayField(submission.fields.full_name || submission.fields.name)
+    : 'Unnamed contact',
+  form: `${submission.formName || submission.formId} · ${submission.pageRoute || '/'}`,
+  contact: displayField(submission.fields.email || submission.fields.phone || submission.fields.phone_number),
   submitted: new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(submission.submittedAt)),
   mode: submission.isTest ? 'Synthetic' : 'Live'
 })))
@@ -41,7 +50,7 @@ async function refreshSubmissions() {
             Form submissions
           </h2>
           <p class="mt-1 text-sm text-muted">
-            Release-authorized submissions routed into XeroFlow Leads with consent and idempotency controls.
+            Release-authorized submissions routed through the site's scoped form service with consent and idempotency controls.
           </p>
         </div>
         <UButton

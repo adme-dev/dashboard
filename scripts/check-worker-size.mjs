@@ -13,6 +13,7 @@ const GZIP_RELEASE_BUDGET_BYTES = 9_750_000
 async function deployedBytes(directory) {
   let raw = 0
   let gzip = 0
+  const files = []
 
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (entry.name.endsWith('.map') || entry.name.startsWith('wrangler.')) continue
@@ -22,14 +23,16 @@ async function deployedBytes(directory) {
       const nested = await deployedBytes(absolutePath)
       raw += nested.raw
       gzip += nested.gzip
+      files.push(...nested.files)
     } else if (entry.isFile()) {
       const contents = await readFile(absolutePath)
       raw += contents.byteLength
       gzip += gzipSync(contents, { level: constants.Z_BEST_COMPRESSION }).byteLength
+      files.push({ path: path.relative(workerDir, absolutePath), bytes: contents.byteLength })
     }
   }
 
-  return { raw, gzip }
+  return { raw, gzip, files }
 }
 
 const bytes = await deployedBytes(workerDir)
@@ -44,6 +47,12 @@ const summary = `raw ${bytes.raw} / ${RAW_RELEASE_BUDGET_BYTES} bytes (${margin(
 console.log(`[worker-size] ${summary}`)
 
 if (rawRemaining < 0 || gzipRemaining < 0) {
+  const largest = bytes.files
+    .sort((left, right) => right.bytes - left.bytes)
+    .slice(0, 12)
+    .map(file => `${file.bytes} ${file.path}`)
+    .join('; ')
+  console.error(`[worker-size] largest deployed files: ${largest}`)
   throw new Error(
     `Worker exceeds the immutable Cloudflare Pages safety budget: ${summary}. `
     + 'Move server functionality to a standalone Worker before deploying Pages.'

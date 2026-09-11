@@ -8,10 +8,16 @@ import {
 } from '../../server/utils/godMode/featureGate'
 
 const API_INVENTORY = {
-  totalRouteFiles: 2093,
-  mutationRouteFiles: 1150,
-  explicitlyGuardedMutationFiles: 399,
-  guardedMutationFilesWithTransactionCall: 46
+  // Driver sheet, portal booking list, portal submissions and the guarded,
+  // transactional setup-proposal revision and website-access grant endpoints
+  // have been reviewed. The grant uses PAGE_STUDIO_SUBSCRIPTIONS and a durable
+  // transactional audit; it does not register a God-mode mutation bypass.
+  // Agency setup-state read and proposal/provision endpoints use requireAgencyPageStudioAccess, scoped
+  // saved plans and fresh authority. Neither registers a God-mode bypass.
+  totalRouteFiles: 2116,
+  mutationRouteFiles: 1162,
+  explicitlyGuardedMutationFiles: 403,
+  guardedMutationFilesWithTransactionCall: 47
 } as const
 
 const DEFERRED_MUTATION_FAMILIES = [{
@@ -48,10 +54,10 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2093,
-      mutationRouteFiles: 1150,
-      explicitlyGuardedMutationFiles: 399,
-      guardedMutationFilesWithTransactionCall: 46
+      totalRouteFiles: 2116,
+      mutationRouteFiles: 1162,
+      explicitlyGuardedMutationFiles: 403,
+      guardedMutationFilesWithTransactionCall: 47
     })
   })
 

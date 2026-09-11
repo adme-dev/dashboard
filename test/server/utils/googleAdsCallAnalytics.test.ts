@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   deriveGoogleAdsCallSyncHealth,
   getGoogleAdsCallAnalytics
@@ -8,7 +8,12 @@ const { queryRows } = vi.hoisted(() => ({ queryRows: vi.fn() }))
 vi.mock('~~/server/utils/db', () => ({ queryRows }))
 
 describe('Google Ads call analytics health', () => {
-  beforeEach(() => queryRows.mockReset())
+  beforeEach(() => {
+    queryRows.mockReset()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-02T05:00:00.000Z'))
+  })
+  afterEach(() => vi.useRealTimers())
 
   it('distinguishes a valid empty provider response from verified call tracking', () => {
     expect(deriveGoogleAdsCallSyncHealth({

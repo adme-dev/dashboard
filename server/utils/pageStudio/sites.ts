@@ -1,4 +1,5 @@
 import { queryRows, transaction } from '~~/server/utils/db'
+import { hasPageStudioBookingEntitlement } from '~~/server/utils/pageStudio/bookingEntitlement'
 
 export interface PageStudioQueryClient {
   query<T = Record<string, unknown>>(
@@ -20,6 +21,7 @@ export class PageStudioSiteError extends Error {
       | 'PORTAL_CREATION_DISABLED'
       | 'PORTAL_USER_OUT_OF_SCOPE'
       | 'ENTITLEMENT_SCOPE_AMBIGUOUS'
+      | 'MODULE_NOT_INCLUDED'
       | 'SITE_ROUTE_CONFLICT',
     readonly statusCode: number,
     message: string
@@ -37,6 +39,9 @@ export interface CreatePageStudioSiteInput {
   portalUserId?: string
   route: string
   starterVersion: string
+  setupSource?: 'template' | 'chat'
+  setupBrief?: string
+  setupProposal?: { source: 'template' | 'chat', brief?: string, plan: Record<string, unknown> }
   tenantId: string
 }
 
@@ -44,9 +49,14 @@ interface EntitlementRow {
   id: string
   active_site_limit: number
   portal_creation_enabled: boolean
+  plan_metadata?: unknown
 }
 
 interface SiteRow {
+  booking_entitlement_status?: string | null
+  booking_entitlement_effective?: boolean | null
+  booking_plan_metadata?: unknown
+  booking_membership_allowed?: boolean
   id: string
   tenant_id: string
   client_id: string
@@ -57,9 +67,12 @@ interface SiteRow {
   status: string
   created_at: string
   updated_at: string
+  setup_proposal_status?: 'proposed' | 'accepted' | 'rejected' | null
+  setup_proposal_revision?: number | null
 }
 
 export interface PageStudioSite {
+  bookingEnabled: boolean
   id: string
   tenantId: string
   clientId: string
@@ -70,6 +83,8 @@ export interface PageStudioSite {
   status: string
   createdAt: string
   updatedAt: string
+  setupProposalStatus: 'proposed' | 'accepted' | 'rejected' | null
+  setupProposalRevision: number | null
 }
 
 interface ListedSiteRow extends SiteRow {
@@ -83,6 +98,12 @@ export interface PageStudioSiteList {
 
 function mapSite(row: SiteRow): PageStudioSite {
   return {
+    bookingEnabled: row.booking_membership_allowed === true && hasPageStudioBookingEntitlement({
+      siteStatus: row.status,
+      entitlementStatus: row.booking_entitlement_status,
+      effective: row.booking_entitlement_effective,
+      planMetadata: row.booking_plan_metadata
+    }),
     id: row.id,
     tenantId: row.tenant_id,
     clientId: row.client_id,
@@ -92,8 +113,18 @@ function mapSite(row: SiteRow): PageStudioSite {
     starterVersion: row.starter_version,
     status: row.status,
     createdAt: row.created_at,
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
+    setupProposalStatus: row.setup_proposal_status ?? null,
+    setupProposalRevision: row.setup_proposal_revision ?? null
   }
+}
+
+function entitlementModules(metadata: unknown): Set<string> | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const raw = (metadata as Record<string, unknown>).allowedModules
+  if (!Array.isArray(raw)) return null
+  const modules = raw.filter((module): module is string => typeof module === 'string' && module.length > 0)
+  return modules.length > 0 ? new Set(modules) : new Set()
 }
 
 const defaultRunTransaction: RunPageStudioTransaction = async callback =>
@@ -108,7 +139,7 @@ export async function createPageStudioSite(
   try {
     return await runTransaction(async (db) => {
       const entitlementResult = await db.query<EntitlementRow>(
-        `SELECT id, active_site_limit, portal_creation_enabled
+        `SELECT id, active_site_limit, portal_creation_enabled, plan_metadata
          FROM page_studio_entitlements
          WHERE tenant_id = $1
            AND client_id = $2
@@ -149,6 +180,21 @@ export async function createPageStudioSite(
           409,
           'The client has reached its active-site limit'
         )
+      }
+
+      const allowedModules = entitlementModules(entitlement.plan_metadata)
+      const requestedModules = input.setupProposal?.plan.modules
+      if (allowedModules && Array.isArray(requestedModules)) {
+        const disallowedModule = requestedModules.find(module =>
+          typeof module === 'string' && !allowedModules.has(module)
+        )
+        if (disallowedModule) {
+          throw new PageStudioSiteError(
+            'MODULE_NOT_INCLUDED',
+            403,
+            `The ${disallowedModule} module is not included in this subscription`
+          )
+        }
       }
 
       const clientResult = await db.query<{ id: string }>(
@@ -214,6 +260,16 @@ export async function createPageStudioSite(
       const site = siteResult.rows[0]
       if (!site) throw new Error('Page Studio site insert returned no row')
 
+      if (input.setupProposal) {
+        await db.query(
+          `INSERT INTO page_studio_setup_proposals (
+             tenant_id, client_id, site_id, revision, source, brief, plan, created_by
+           ) VALUES ($1, $2, $3, 1, $4, $5, $6::jsonb, $7)`,
+          [input.tenantId, input.clientId, site.id, input.setupProposal.source,
+            input.setupProposal.brief ?? null, JSON.stringify(input.setupProposal.plan), input.actorId]
+        )
+      }
+
       if (membershipUserId) {
         await db.query(
           `INSERT INTO page_studio_site_memberships (
@@ -239,7 +295,12 @@ export async function createPageStudioSite(
           input.actorRole,
           'site.created',
           site.id,
-          JSON.stringify({ route: site.route, starterVersion: site.starter_version })
+          JSON.stringify({
+            route: site.route,
+            starterVersion: site.starter_version,
+            setupSource: input.setupSource ?? 'template',
+            ...(input.setupBrief ? { setupBrief: input.setupBrief } : {})
+          })
         ]
       )
 
@@ -316,8 +377,21 @@ export async function listAgencyPageStudioSites(input: {
     `SELECT site.id, site.tenant_id, site.client_id, site.entitlement_id,
             site.name, site.route, site.starter_version, site.status,
             site.created_at, site.updated_at,
+            proposal.status AS setup_proposal_status, proposal.revision AS setup_proposal_revision,
+            entitlement.status AS booking_entitlement_status,
+            entitlement.plan_metadata AS booking_plan_metadata,
+            (entitlement.effective_from <= NOW() AND
+             (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())) AS booking_entitlement_effective,
+            TRUE AS booking_membership_allowed,
             COUNT(*) OVER()::text AS total_count
      FROM page_studio_sites site
+     LEFT JOIN page_studio_entitlements entitlement ON entitlement.id = site.entitlement_id
+      AND entitlement.tenant_id = site.tenant_id AND entitlement.client_id = site.client_id
+     LEFT JOIN LATERAL (
+       SELECT status, revision FROM page_studio_setup_proposals
+       WHERE tenant_id = site.tenant_id AND client_id = site.client_id AND site_id = site.id
+       ORDER BY revision DESC LIMIT 1
+     ) proposal ON TRUE
      WHERE ${where.join(' AND ')}
      ORDER BY site.updated_at DESC, site.id
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -340,15 +414,28 @@ export async function listPortalPageStudioSites(input: {
     `SELECT site.id, site.tenant_id, site.client_id, site.entitlement_id,
             site.name, site.route, site.starter_version, site.status,
             site.created_at, site.updated_at,
+            proposal.status AS setup_proposal_status, proposal.revision AS setup_proposal_revision,
+            entitlement.status AS booking_entitlement_status,
+            entitlement.plan_metadata AS booking_plan_metadata,
+            (entitlement.effective_from <= NOW() AND
+             (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())) AS booking_entitlement_effective,
+            membership.role IN ('viewer', 'editor') AS booking_membership_allowed,
             COUNT(*) OVER()::text AS total_count
      FROM page_studio_sites site
+     LEFT JOIN page_studio_entitlements entitlement ON entitlement.id = site.entitlement_id
+      AND entitlement.tenant_id = site.tenant_id AND entitlement.client_id = site.client_id
      JOIN page_studio_site_memberships membership
        ON membership.tenant_id = site.tenant_id
       AND membership.client_id = site.client_id
       AND membership.site_id = site.id
+     LEFT JOIN LATERAL (
+       SELECT status, revision FROM page_studio_setup_proposals
+       WHERE tenant_id = site.tenant_id AND client_id = site.client_id AND site_id = site.id
+       ORDER BY revision DESC LIMIT 1
+     ) proposal ON TRUE
      WHERE site.client_id = $1
-       AND membership.user_id = $2
-       AND site.status <> 'archived'
+      AND membership.user_id = $2
+      AND site.status <> 'archived'
      ORDER BY site.updated_at DESC, site.id
      LIMIT $3 OFFSET $4`,
     [input.clientId, input.userId, input.limit, input.offset]

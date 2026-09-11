@@ -1,0 +1,200 @@
+import { z } from 'zod'
+import { queryOneFresh } from '~~/server/utils/db'
+import {
+  PageStudioBusinessContentSchema,
+  PageStudioContentEditSchema,
+  PageStudioContentRevisionSchema,
+  PageStudioContentScopeSchema,
+  samePageStudioContentScope,
+  type PageStudioContentScope,
+  type PageStudioContentState
+} from '~~/shared/pageStudio/businessContent'
+
+export class PageStudioBusinessContentError extends Error {
+  constructor(readonly code: string, readonly statusCode: number, message: string) {
+    super(message)
+    this.name = 'PageStudioBusinessContentError'
+  }
+}
+
+// Construct actors only after requireAgencyPageStudioAccess / requireClientAuth.
+export type PageStudioContentActor = { actorId: string } & (
+  | { role: 'agency', tenantId: string, canEdit: boolean }
+  | { role: 'client', clientId: string }
+)
+interface ScopeRow {
+  tenant_id: string
+  client_id: string
+  site_status: string
+  entitlement_status: string
+  entitlement_effective: boolean
+  membership_role?: string | null
+}
+interface Dependencies {
+  query?: (sql: string, params: unknown[]) => Promise<ScopeRow | null>
+}
+interface Request {
+  actor: PageStudioContentActor
+  siteId: string
+  env: Record<string, unknown>
+}
+interface ContentService {
+  readContent: (scope: PageStudioContentScope) => Promise<unknown>
+  writeContent: (request: unknown) => Promise<unknown>
+  listFormSubmissions?: (options?: { limit?: number, formId?: string, pageId?: string }) => Promise<unknown>
+}
+interface ContentRouterService {
+  readContent: ContentService['readContent']
+  writeContent: ContentService['writeContent']
+  listFormSubmissions: (request: { scope: PageStudioContentScope, options: { limit?: number, formId?: string, pageId?: string } }) => Promise<unknown>
+}
+const BindingsSchema = z.array(z.object({
+  scope: PageStudioContentScopeSchema,
+  bindingName: z.string().regex(/^[A-Z][A-Z0-9_]{2,80}$/)
+}).strict()).max(500)
+const ContentEnvironmentSchema = z.enum(['preview', 'staging', 'production'])
+const unavailable = () => new PageStudioBusinessContentError('CONTENT_NOT_CONFIGURED', 503, 'Business content setup is pending')
+
+const FormSubmissionResponseSchema = z.object({
+  fieldData: z.record(z.string().min(1).max(120), z.union([z.string().max(10_000), z.number().finite(), z.boolean(), z.null()])).refine(value => Object.keys(value).length <= 100),
+  formId: z.string().min(1).max(128),
+  id: z.string().min(1).max(128),
+  pageId: z.string().min(1).max(128),
+  scope: PageStudioContentScopeSchema,
+  submittedAt: z.string().datetime()
+}).strict()
+const FormSubmissionListSchema = z.array(FormSubmissionResponseSchema).max(100)
+
+async function authorise(request: Request, writing: boolean, dependencies: Dependencies) {
+  const { actor, siteId } = request
+  if (!z.string().uuid().safeParse(siteId).success) {
+    throw new PageStudioBusinessContentError('INVALID_SITE', 400, 'Invalid website ID')
+  }
+  const query = dependencies.query ?? ((sql, params) => queryOneFresh<ScopeRow>(sql, params))
+  const portal = actor.role === 'client'
+  const row = await query(`
+    SELECT site.tenant_id, site.client_id, site.status AS site_status,
+           entitlement.status AS entitlement_status,
+           (entitlement.effective_from <= NOW()
+            AND (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())) AS entitlement_effective
+           ${portal
+              ? `, (SELECT membership.role FROM page_studio_site_memberships membership
+                WHERE membership.tenant_id = site.tenant_id AND membership.client_id = site.client_id
+                  AND membership.site_id = site.id AND membership.user_id = $3) AS membership_role`
+              : ''}
+      FROM page_studio_sites site
+      JOIN page_studio_entitlements entitlement
+        ON entitlement.tenant_id = site.tenant_id AND entitlement.client_id = site.client_id
+       AND entitlement.id = site.entitlement_id
+     WHERE site.${portal ? 'client_id' : 'tenant_id'} = $1 AND site.id = $2`,
+  portal ? [actor.clientId, siteId, actor.actorId] : [actor.tenantId, siteId])
+  if (!row) throw new PageStudioBusinessContentError('SITE_NOT_FOUND', 404, 'Website not found')
+  if (!['draft', 'active'].includes(row.site_status)
+    || !['trial', 'active'].includes(row.entitlement_status) || row.entitlement_effective !== true
+    || (writing && actor.role === 'agency' && !actor.canEdit)
+    || (portal && !(writing ? ['editor'] : ['editor', 'viewer']).includes(row.membership_role ?? ''))) {
+    throw new PageStudioBusinessContentError('CONTENT_ACCESS_DENIED', 403, 'Business content access denied')
+  }
+  let bindings: z.infer<typeof BindingsSchema>
+  let environment: z.infer<typeof ContentEnvironmentSchema> = 'preview'
+  try {
+    const raw = request.env.PAGE_STUDIO_CONTENT_BINDINGS
+    if (raw === undefined) bindings = []
+    else {
+      if (typeof raw !== 'string' || raw.length > 250_000) throw unavailable()
+      bindings = BindingsSchema.parse(JSON.parse(raw))
+    }
+    if (request.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== undefined) {
+      environment = ContentEnvironmentSchema.parse(request.env.PAGE_STUDIO_CONTENT_ENVIRONMENT)
+    }
+  } catch { throw unavailable() }
+  const matches = bindings.filter(binding => binding.scope.tenantId === row.tenant_id
+    && binding.scope.clientId === row.client_id && binding.scope.siteId === siteId
+    && binding.scope.environment === environment)
+  if (matches.length > 1) throw unavailable()
+  const canEdit = actor.role === 'agency' ? actor.canEdit : row.membership_role === 'editor'
+  if (matches.length === 0) {
+    // Provisioning currently defines one business per client. Match that same
+    // server-owned projection; never accept business IDs from browser input.
+    if (request.env.PAGE_STUDIO_CONTENT_ENVIRONMENT === undefined) throw unavailable()
+    const scope = PageStudioContentScopeSchema.safeParse({
+      tenantId: row.tenant_id, clientId: row.client_id, businessId: row.client_id,
+      siteId, environment
+    })
+    const router = Object.hasOwn(request.env, 'PAGE_STUDIO_CONTENT_ROUTER') ? request.env.PAGE_STUDIO_CONTENT_ROUTER : null
+    if (!scope.success || !router || typeof router !== 'object'
+      || !('readContent' in router) || typeof router.readContent !== 'function'
+      || !('writeContent' in router) || typeof router.writeContent !== 'function'
+      || !('listFormSubmissions' in router) || typeof router.listFormSubmissions !== 'function') throw unavailable()
+    const routing = router as ContentRouterService
+    // Scope accompanies every routed operation. In particular, the native
+    // per-site submission reader has no scope parameter, while this bridge must.
+    const service: ContentService = {
+      readContent: value => routing.readContent(value),
+      writeContent: value => routing.writeContent(value),
+      listFormSubmissions: (options = {}) => routing.listFormSubmissions({ scope: scope.data, options })
+    }
+    return { scope: scope.data, service, canEdit }
+  }
+  const binding = matches[0]!
+  const service = Object.hasOwn(request.env, binding.bindingName) ? request.env[binding.bindingName] : null
+  if (!service || typeof service !== 'object' || !('readContent' in service) || !('writeContent' in service)
+    || typeof service.readContent !== 'function' || typeof service.writeContent !== 'function') throw unavailable()
+  return { scope: binding.scope, service: service as ContentService, canEdit }
+}
+
+function decode(result: unknown, scope: PageStudioContentScope) {
+  const parsed = PageStudioContentRevisionSchema.safeParse(result)
+  if (!parsed.success || !samePageStudioContentScope(parsed.data.content.scope, scope)) {
+    throw new PageStudioBusinessContentError('CONTENT_RESPONSE_INVALID', 502, 'Business content response could not be verified')
+  }
+  return parsed.data
+}
+
+export async function listPageStudioBusinessSubmissions(request: Request, options: { limit?: number, formId?: string, pageId?: string } = {}, dependencies: Dependencies = {}) {
+  const { scope, service } = await authorise(request, false, dependencies)
+  if (typeof service.listFormSubmissions !== 'function') throw unavailable()
+  const limit = Math.max(1, Math.min(100, Math.trunc(options.limit ?? 50)))
+  const result = await callService(() => service.listFormSubmissions!({ ...options, limit }))
+  const parsed = FormSubmissionListSchema.safeParse(result)
+  if (!parsed.success || parsed.data.some(submission => !samePageStudioContentScope(submission.scope, scope))) {
+    throw new PageStudioBusinessContentError('CONTENT_RESPONSE_INVALID', 502, 'Business content submissions could not be verified')
+  }
+  return parsed.data
+}
+
+async function callService(operation: () => Promise<unknown>, writing = false) {
+  try {
+    return await operation()
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Content route is inactive') throw unavailable()
+    if (writing && error instanceof Error && error.message === 'Content revision conflict') {
+      throw new PageStudioBusinessContentError('CONTENT_CONFLICT', 409, 'Content changed in another session. Reload before saving again.')
+    }
+    throw new PageStudioBusinessContentError('CONTENT_SERVICE_UNAVAILABLE', 502, 'Business content service is unavailable')
+  }
+}
+
+export async function readPageStudioBusinessContent(request: Request, dependencies: Dependencies = {}): Promise<PageStudioContentState & { canEdit: boolean }> {
+  const { scope, service, canEdit } = await authorise(request, false, dependencies)
+  const result = await callService(() => service.readContent(scope))
+  return result === null ? { content: null, revision: 0, actorId: null, createdAt: null, canEdit } : { ...decode(result, scope), canEdit }
+}
+
+export async function writePageStudioBusinessContent(request: Request & { body: unknown }, dependencies: Dependencies = {}) {
+  const { scope, service } = await authorise(request, true, dependencies)
+  const parsed = PageStudioContentEditSchema.safeParse(request.body)
+  if (!parsed.success) throw new PageStudioBusinessContentError('CONTENT_INVALID', 400, 'Invalid business content')
+  const proposed = PageStudioBusinessContentSchema.safeParse({ schemaVersion: 1, scope, collections: parsed.data.collections })
+  if (!proposed.success) throw new PageStudioBusinessContentError('CONTENT_INVALID', 400, 'Invalid business content')
+  const result = decode(await callService(() => service.writeContent({
+    actorId: request.actor.actorId,
+    content: proposed.data,
+    expectedRevision: parsed.data.expectedRevision
+  }), true), scope)
+  if (result.revision !== parsed.data.expectedRevision + 1 || result.actorId !== request.actor.actorId
+    || JSON.stringify(result.content) !== JSON.stringify(proposed.data)) {
+    throw new PageStudioBusinessContentError('CONTENT_RESPONSE_INVALID', 502, 'Saved content response could not be verified. Reload to check the accepted revision.')
+  }
+  return result
+}

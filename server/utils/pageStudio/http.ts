@@ -1,3 +1,5 @@
+import { PageStudioBookingsError } from '~~/server/utils/pageStudio/bookingsBinding'
+import { PageStudioBusinessContentError } from '~~/server/utils/pageStudio/businessContent'
 import { setResponseStatus, type H3Event } from 'h3'
 
 import { PageStudioSiteError } from '~~/server/utils/pageStudio/sites'
@@ -9,6 +11,7 @@ import { PageStudioBuildError } from '~~/server/utils/pageStudio/builds'
 import { PageStudioDocumentError } from '~~/server/utils/pageStudio/documents'
 import { PageStudioSessionError } from '~~/server/utils/pageStudio/sessions'
 import { PageStudioSiteOperationError } from '~~/server/utils/pageStudio/siteOperations'
+import { PageStudioProvisioningError } from '~~/server/utils/pageStudio/provisioningBinding'
 
 interface StablePageStudioError {
   error: { code: string, message: string }
@@ -32,7 +35,10 @@ export function projectPageStudioInternalError(error: unknown): {
   statusCode: number
   body: StablePageStudioError
 } {
-  if (error instanceof PageStudioControlError
+  if (error instanceof PageStudioBookingsError
+    || error instanceof PageStudioProvisioningError
+    || error instanceof PageStudioBusinessContentError
+    || error instanceof PageStudioControlError
     || error instanceof PageStudioBuildError
     || error instanceof PageStudioDeliveryError
     || error instanceof PageStudioPublishingError
@@ -86,7 +92,10 @@ export function pageStudioInternalHttpError(
 }
 
 export function pageStudioHttpError(error: unknown): never {
-  if (error instanceof PageStudioControlError
+  if (error instanceof PageStudioBookingsError
+    || error instanceof PageStudioProvisioningError
+    || error instanceof PageStudioBusinessContentError
+    || error instanceof PageStudioControlError
     || error instanceof PageStudioBuildError
     || error instanceof PageStudioDeliveryError
     || error instanceof PageStudioPublishingError

@@ -2909,6 +2909,7 @@ export interface PortalAnalyticsPrintReport {
 }
 
 export interface PageStudioSiteSummary {
+  bookingEnabled?: boolean
   id: string
   clientId: string
   name: string
@@ -2917,6 +2918,8 @@ export interface PageStudioSiteSummary {
   status: string
   createdAt: string
   updatedAt: string
+  setupProposalStatus?: 'proposed' | 'accepted' | 'rejected' | null
+  setupProposalRevision?: number | null
 }
 
 export interface PageStudioDocumentSite {

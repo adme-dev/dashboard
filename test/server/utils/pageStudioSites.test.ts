@@ -58,6 +58,8 @@ describe('createPageStudioSite', () => {
       name: 'Spring campaign',
       route: 'spring-campaign',
       starterVersion: 'automotive-campaign-v1',
+      setupSource: 'chat',
+      setupBrief: 'Need bookings and service pages',
       tenantId: 'tenant-alpha'
     }, { runTransaction: db.runTransaction })).resolves.toMatchObject({
       id: SITE_ID,
@@ -72,7 +74,43 @@ describe('createPageStudioSite', () => {
     ])
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO page_studio_audit_events'),
-      expect.arrayContaining(['site.created', SITE_ID, ACTOR_ID])
+      expect.arrayContaining(['site.created', SITE_ID, ACTOR_ID, expect.stringContaining('setupSource')])
+    )
+  })
+
+  it('persists a setup proposal after the site row exists', async () => {
+    const portalUserId = '55555555-5555-4555-8555-555555555555'
+    const db = database(sql => sql.includes('FROM client_users')
+      ? [{ id: portalUserId }]
+      : successfulRows(sql))
+
+    await expect(createPageStudioSite({
+      actorId: ACTOR_ID,
+      actorRole: 'client',
+      clientId: CLIENT_ID,
+      name: 'Limo site',
+      portalUserId,
+      route: 'limo-site',
+      starterVersion: 'limousine-v1',
+      setupSource: 'chat',
+      setupBrief: 'Bookings and fleet pages',
+      setupProposal: {
+        source: 'chat',
+        brief: 'Bookings and fleet pages',
+        plan: { pages: ['home'], modules: ['bookings'] }
+      },
+      tenantId: 'tenant-alpha'
+    }, { runTransaction: db.runTransaction })).resolves.toMatchObject({ id: SITE_ID })
+
+    const siteInsert = db.query.mock.invocationCallOrder.findIndex((order, index) =>
+      String(db.query.mock.calls[index]?.[0]).includes('INSERT INTO page_studio_sites'))
+    const proposalInsert = db.query.mock.invocationCallOrder.findIndex((order, index) =>
+      String(db.query.mock.calls[index]?.[0]).includes('INSERT INTO page_studio_setup_proposals'))
+    expect(siteInsert).toBeGreaterThanOrEqual(0)
+    expect(proposalInsert).toBeGreaterThan(siteInsert)
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO page_studio_setup_proposals'),
+      ['tenant-alpha', CLIENT_ID, SITE_ID, 'chat', 'Bookings and fleet pages', JSON.stringify({ pages: ['home'], modules: ['bookings'] }), ACTOR_ID]
     )
   })
 
@@ -163,5 +201,38 @@ describe('createPageStudioSite', () => {
       code: 'PORTAL_CREATION_DISABLED',
       statusCode: 403
     })
+  })
+
+  it('rejects setup proposals that request modules outside the subscription allowlist', async () => {
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_entitlements')) {
+        return [{
+          id: ENTITLEMENT_ID,
+          active_site_limit: 1,
+          portal_creation_enabled: true,
+          plan_metadata: { allowedModules: ['business-content', 'bookings'] }
+        }]
+      }
+      return successfulRows(sql)
+    })
+
+    await expect(createPageStudioSite({
+      actorId: ACTOR_ID,
+      actorRole: 'agency',
+      clientId: CLIENT_ID,
+      name: 'Restricted site',
+      route: 'restricted-site',
+      starterVersion: 'limousine-v1',
+      setupProposal: {
+        source: 'chat',
+        plan: { modules: ['business-content', 'catalogue'] }
+      },
+      tenantId: 'tenant-alpha'
+    }, { runTransaction: db.runTransaction })).rejects.toMatchObject({
+      code: 'MODULE_NOT_INCLUDED',
+      statusCode: 403
+    })
+
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO page_studio_sites'))).toBe(false)
   })
 })

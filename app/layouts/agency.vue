@@ -212,9 +212,14 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   if (hasPermission('PAGE_STUDIO_VIEW')) {
     items.push(
       { type: 'label', label: 'Websites' },
-      { label: 'Demo Sites', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close }
+      { label: 'Client websites', icon: 'i-lucide-panels-top-left', to: '/agency/page-studio', onSelect: close },
+      { label: 'Bookings', icon: 'i-lucide-calendar-check', to: '/agency/page-studio/bookings', onSelect: close },
+      { label: 'Driver sheet', icon: 'i-lucide-truck', to: '/agency/page-studio/bookings/driver-sheet', onSelect: close }
     )
-    if (hasPermission('PAGE_STUDIO_APPROVE')) items.push({ label: 'Reviews', icon: 'i-lucide-badge-check', to: '/agency/page-studio/reviews', onSelect: close })
+    if (hasPermission('PAGE_STUDIO_APPROVE')) items.push(
+      { label: 'Reviews', icon: 'i-lucide-badge-check', to: '/agency/page-studio/reviews', onSelect: close },
+      { label: 'Setup proposals', icon: 'i-lucide-list-checks', to: '/agency/page-studio/setup-proposals', onSelect: close }
+    )
     if (hasPermission('PAGE_STUDIO_PUBLISH')) items.push({ label: 'Releases', icon: 'i-lucide-rocket', to: '/agency/page-studio/releases', onSelect: close })
     if (hasPermission('PAGE_STUDIO_DOMAINS')) items.push({ label: 'Domains & DNS', icon: 'i-lucide-globe-2', to: '/agency/page-studio/domains', onSelect: close })
     if (hasPermission('PAGE_STUDIO_SUBSCRIPTIONS')) items.push({ label: 'Subscriptions', icon: 'i-lucide-gauge', to: '/agency/page-studio/subscriptions', onSelect: close })

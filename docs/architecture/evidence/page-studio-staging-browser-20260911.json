@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-11",
+  "environment": "staging",
+  "dashboardDeployment": "1b291f6e-e235-4fa0-bd54-8db350e318b4",
+  "dashboardSource": "062ff5c42e336c1274e0523ea7d4ea94fb74f29f",
+  "sandboxVersion": "462e5828-091c-45d1-b5ce-67ecdf93d2d9",
+  "siteId": "5ddc69f4-bd4f-4179-ba6f-e23412133cb0",
+  "checkpointId": "checkpoint_6bdf3b8c-cf93-4113-a8d9-d1dfa4af219c",
+  "digest": "25abd3b3fdcd75be873d49b7067db430bdb10c7844716fdcdc267e7d28bf164d",
+  "r2Bytes": 7355,
+  "manifestValid": true,
+  "browserEdit": "Synthetic staging acceptance: browser edit saved and restored on reconnect.",
+  "savedStatusObserved": true,
+  "freshReconnect": {
+    "restoredEdit": true,
+    "desktopRendered": true,
+    "mobileRendered": true,
+    "consoleErrors": 0,
+    "consoleWarnings": 0
+  },
+  "launchButtonAfterHandoff": {
+    "disabled": false,
+    "loading": false
+  },
+  "openIssue": "Earlier extended-session reconnects returned STALE_PREVIEW_URL (410); cause not established.",
+  "cleanup": {
+    "portalLogoutStatus": 200,
+    "chromeTestTabsClosed": true,
+    "r2HarnessClosed": true,
+    "workerTailStopped": true,
+    "explicitWorkspaceTermination": false
+  }
+}

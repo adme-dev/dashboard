@@ -200,7 +200,7 @@ const categories = [
     iconBg: 'bg-rose-50 dark:bg-rose-500/10',
     iconColor: 'text-rose-600',
     features: [
-      { title: 'Page Studio', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Build with canonical components and AI in Studio, then govern assets, leads, analytics, releases, domains and rollback from one control plane.' },
+      { title: 'Page Studio', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Create client drafts, review setup plans and track website preparation with scoped access, usage limits, content, bookings, domains and governed releases.' },
       { title: 'Bulk Ad Launch', slug: 'bulk-ad-launch', icon: 'i-lucide-rocket', description: 'Select creatives from Banner Studio and launch dozens of ads to Meta in one click.' },
       { title: 'Ad Platform Export', slug: 'ad-platform-export', icon: 'i-lucide-download', description: 'Export HTML5 banners for 14 ad platforms with automatic clickTag injection and compliance validation.' },
       { title: 'Ad Previews', slug: 'ad-previews', icon: 'i-lucide-monitor-smartphone', description: 'Preview banners in 8 platform mockups — Meta Feed, Stories, Reels, LinkedIn, and more.' },
@@ -223,11 +223,11 @@ const categories = [
       { title: 'Lead Capture & Routing', slug: 'lead-capture-routing', icon: 'i-lucide-inbox', description: 'Signed gateways, native ad forms, and dedicated inbound email that securely captures each client\'s CRM conversation — with safe tests and exact automotive routing into one real-time inbox.' },
       { title: 'Xero Integration', slug: 'xero-integration', icon: 'i-lucide-link', description: 'Two-way sync with Xero for invoices, expenses, contacts, project allocations, and chart of accounts. Reconcile Agency Gross Income and unallocated-source reconciliation in one place.' },
       { title: 'EOM Engine', slug: 'eom-engine', icon: 'i-lucide-file-spreadsheet', description: 'End-of-month invoice generation with configurable line items, tax, and auto-upload to Xero.' },
-  { title: 'Meta Ads Tracking', slug: 'meta-ads-tracking', icon: 'i-lucide-megaphone', description: 'OAuth-connected Meta Ads spend syncing with policy issues, ad-set learning state, frequency, CPM, daily breakdowns, and campaign budgets.' },
-  { title: 'Google Ads Control & Tracking', slug: 'google-ads-tracking', icon: 'i-lucide-bar-chart-3', description: 'Default-on client measurement enrolment, secure multi-account reporting, and governed campaign and conversion controls through XeroFlow\'s Google Ads MCP.' },
-  { title: 'Google Tag Manager', slug: 'google-tag-manager', icon: 'i-lucide-container', description: 'Connect GTM, monitor account and binding health in Admin, publish isolated versions, verify live tags, roll back safely, and expose audited owner MCP operations.' },
-  { title: 'Google AI Max Readiness', slug: 'google-ai-max-readiness', icon: 'i-lucide-scan-search', description: 'A read-only portfolio audit for Google Search campaigns affected by the AI Max migration, with effective-control evidence, change history, and action-ready exports.' },
-  { title: 'Governed Google PMax Launches', slug: 'governed-google-pmax-launches', icon: 'i-lucide-shield-check', description: 'Turn approved vehicle briefs into exact paused Google PMax campaigns, then require independent evidence and approval before activation can begin spend.' },
+      { title: 'Meta Ads Tracking', slug: 'meta-ads-tracking', icon: 'i-lucide-megaphone', description: 'OAuth-connected Meta Ads spend syncing with policy issues, ad-set learning state, frequency, CPM, daily breakdowns, and campaign budgets.' },
+      { title: 'Google Ads Control & Tracking', slug: 'google-ads-tracking', icon: 'i-lucide-bar-chart-3', description: 'Default-on client measurement enrolment, secure multi-account reporting, and governed campaign and conversion controls through XeroFlow\'s Google Ads MCP.' },
+      { title: 'Google Tag Manager', slug: 'google-tag-manager', icon: 'i-lucide-container', description: 'Connect GTM, monitor account and binding health in Admin, publish isolated versions, verify live tags, roll back safely, and expose audited owner MCP operations.' },
+      { title: 'Google AI Max Readiness', slug: 'google-ai-max-readiness', icon: 'i-lucide-scan-search', description: 'A read-only portfolio audit for Google Search campaigns affected by the AI Max migration, with effective-control evidence, change history, and action-ready exports.' },
+      { title: 'Governed Google PMax Launches', slug: 'governed-google-pmax-launches', icon: 'i-lucide-shield-check', description: 'Turn approved vehicle briefs into exact paused Google PMax campaigns, then require independent evidence and approval before activation can begin spend.' },
       { title: 'Profit & Loss', slug: 'profit-loss', icon: 'i-lucide-trending-up', description: 'Real-time P&L dashboards with revenue, expenses, and margin analysis per client.' },
       { title: 'Budget Management', slug: 'budget-management', icon: 'i-lucide-wallet', description: 'Set monthly budgets per client and campaign. Get alerts when spend approaches limits.' },
       { title: 'Rate Cards', slug: 'rate-cards', icon: 'i-lucide-credit-card', description: 'Define service pricing with rate cards. Fuzzy match to Xero accounts, variance dashboards, and AI integration.' },
@@ -299,7 +299,7 @@ const categories = [
       { title: 'AI Training Pipeline', slug: 'ai-training-pipeline', icon: 'i-lucide-graduation-cap', description: 'Extract training data from conversations, upload knowledge entries, and manage training datasets.' },
       { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context.' },
       { title: 'LoRA Adapters', slug: 'lora-adapters', icon: 'i-lucide-cpu', description: 'Fine-tune AI models with your agency data. Custom adapters with traffic routing and A/B testing.' },
-      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Give Claude, Cursor, or ChatGPT governed Godmode access to live operations and a mixed creative model fleet — with explicit freshness, current creative-source discovery, standalone action audit, audio, video, and separate vision-inspection controls.' },
+      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Give Claude, Cursor, or ChatGPT governed Godmode access to live operations and a mixed creative model fleet — with explicit freshness, current creative-source discovery, standalone action audit, audio, video, and separate vision-inspection controls.' }
     ]
   },
   {
@@ -320,7 +320,7 @@ const categories = [
       { title: 'Measurement Health', slug: 'portal-measurement', icon: 'i-lucide-activity', description: 'Show clients how browser events, server delivery, and CRM outcomes contribute to measurement — with ownership and evidence kept distinct.' },
       { title: 'Meetings & Video Reviews', slug: 'portal-meetings-reviews', icon: 'i-lucide-video', description: 'Share upcoming meetings, recordings, and review-ready video so decisions and feedback stay attached to the client relationship.' },
       { title: 'Briefs & Social Workspace', slug: 'portal-briefs-social', icon: 'i-lucide-panels-top-left', description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.' },
-      { title: 'Page Studio Workspace', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Give each client a scoped website view while the agency governs assets, leads, analytics, approved versions, releases and production domains.' }
+      { title: 'Page Studio Workspace', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Give each client a scoped website view, with permission-checked business content and form records for connected sites, plus agency-governed releases and domains.' }
     ]
   },
   {

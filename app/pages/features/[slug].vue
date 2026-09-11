@@ -180,7 +180,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'One Website Workspace, Two Deliberate Views',
-        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
+        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Staff with editing access can select an active client and industry starter to create a website draft, subject to the client’s subscription and site allowance. Draft creation reserves the workspace. Staff can prepare a setup proposal from the saved industry starter or a website brief, review its pages and missing business details, and request preparation after approval. The management page reports queued, running, completed or failed setup without assuming that a draft is already editable or published. Setup actions remain subject to current permissions, entitlement limits and the connected environment. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Configured sites also provide a content workspace for names, descriptions and review status, with read-only access and protection against conflicting saves. Connected sites keep business content and form records attached to the selected website, with access checked on every request. Sites awaiting content activation show setup as pending. Saving content does not publish a website.'
       },
       {
         title: 'Studio for Visual Authoring',
@@ -193,6 +193,18 @@ const features: Record<string, Feature> = {
       {
         title: 'Cloudflare Delivery and Domains',
         content: 'The delivery architecture uses Cloudflare Workers and Pages for private build, sandbox, control, and delivery services. Domain registration and custom-domain workflows can be layered into the governed release process as the staged rollout advances, without handing clients unrestricted infrastructure access.'
+      },
+      {
+        title: 'Self-Service Business Setup',
+        content: 'Clients can choose a reusable starter or describe their business in the portal. The setup proposal lists pages, collections and enabled modules, calls out missing operational facts, and waits for agency review before provisioning. Setup requests retain their original initiator, so an interrupted request can be retried without transferring ownership. Authorization checks current site access, the accepted plan and subscription allowances before resource work. Limousine, floristry, retail, IT goods, and import/export foundations share the same scoped content and usage contracts, while bookings and commerce operations remain explicit modules.'
+      },
+      {
+        title: 'Website Access and Allowances',
+        content: 'Authorised agency staff can record a client’s website access period, permitted modules and limits for sites, pages, storage, domains, AI operations, builds and traffic. Trial access requires an expiry, while client website creation can be enabled separately. Each grant records its reason and actor in the billing audit; matching retries return the original result and competing grants cannot replace existing access. These access grants do not create charges or a paid billing subscription. Renewal, plan changes and provider billing remain separate rollout work.'
+      },
+      {
+        title: 'Bookings With Operator Approval',
+        content: 'Public enquiries are protected by Cloudflare Turnstile and remain enquiries until an authorised operator reviews the trip, quote and availability. Eligible websites offer a Bookings link in their workspace, opening the selected website’s history. Agency and portal booking screens retain explicit website selection, with site membership checks on every request. Versioned commands and idempotency keep customer intake and agency decisions auditable. Email, billing and remote service bindings remain environment-gated until configured.'
       }
     ]
   },

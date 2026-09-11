@@ -1,6 +1,13 @@
 import { z } from 'zod'
 
-export const PAGE_STUDIO_STARTERS = ['automotive-campaign-v1'] as const
+export const PAGE_STUDIO_STARTERS = [
+  'automotive-campaign-v1',
+  'limousine-v1',
+  'floristry-v1',
+  'retail-v1',
+  'it-goods-v1',
+  'import-export-v1'
+] as const
 
 export const PageStudioSiteId = z.string().uuid()
 
@@ -8,7 +15,13 @@ export const PageStudioSiteBody = z.object({
   clientId: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(160),
   route: z.string().trim().toLowerCase().regex(/^[a-z0-9](?:[a-z0-9-]{0,62})$/),
-  starterVersion: z.enum(PAGE_STUDIO_STARTERS)
+  starterVersion: z.enum(PAGE_STUDIO_STARTERS),
+  setupSource: z.enum(['template', 'chat']).default('template'),
+  setupBrief: z.string().trim().max(4000).optional()
+}).strict()
+
+export const PageStudioSetupProposalBody = PageStudioSiteBody.omit({ clientId: true }).extend({
+  scope: z.string().trim().min(1).max(160).default('portal')
 }).strict()
 
 export const PageStudioSiteQuery = z.object({

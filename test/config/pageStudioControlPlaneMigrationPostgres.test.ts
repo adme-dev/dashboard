@@ -3,6 +3,7 @@ import pg from 'pg'
 import { describe, expect, it } from 'vitest'
 import {
   getLatestPageStudioCheckpoint,
+  commitPageStudioCheckpoint,
   recordPageStudioAuditEvent,
   recordPageStudioCheckpoint,
   registerPageStudioVersion,
@@ -266,6 +267,40 @@ describe.runIf(Boolean(databaseUrl))('Page Studio migration on disposable Postgr
         'DELETE FROM page_studio_audit_events WHERE id = $1',
         [audit.rows[0].id]
       )).rejects.toThrow(/append-only/)
+      // Real concurrent transactions share one expected editor head. Only one wins.
+      const concurrentTransaction = async <T>(callback: (db: PageStudioControlQueryClient) => Promise<T>): Promise<T> => {
+        const connection = new pg.Client({ connectionString: databaseUrl })
+        await connection.connect()
+        try {
+          await connection.query(`SET search_path TO "${schema}", pg_catalog`)
+          await connection.query('BEGIN')
+          try {
+            const result = await callback(connection as unknown as PageStudioControlQueryClient)
+            await connection.query('COMMIT')
+            return result
+          } catch (error) {
+            await connection.query('ROLLBACK')
+            throw error
+          }
+        } finally { await connection.end() }
+      }
+      const proposals = ['guarded_a', 'guarded_b'].map(id => ({
+        ...checkpointInput, checkpointId: id,
+        objectKey: `tenants/${tenantId}/clients/${clientId}/sites/${siteId}/checkpoints/${id}.json`
+      }))
+      const outcomes = await Promise.allSettled(proposals.map(checkpoint => commitPageStudioCheckpoint({ checkpoint, expectedCheckpointId: controlCheckpointId }, { runTransaction: concurrentTransaction })))
+      expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+      expect(outcomes.filter(result => result.status === 'rejected')).toHaveLength(1)
+      const winner = outcomes.findIndex(result => result.status === 'fulfilled')
+      const winning = proposals[winner]
+      await expect(commitPageStudioCheckpoint({ checkpoint: winning, expectedCheckpointId: controlCheckpointId }, { runTransaction })).resolves.toMatchObject({ isCurrent: true, checkpointId: winning.checkpointId })
+      const third = { ...checkpointInput, checkpointId: 'guarded_c', objectKey: `tenants/${tenantId}/clients/${clientId}/sites/${siteId}/checkpoints/guarded_c.json` }
+      await commitPageStudioCheckpoint({ checkpoint: third, expectedCheckpointId: winning.checkpointId }, { runTransaction })
+      await expect(commitPageStudioCheckpoint({ checkpoint: winning, expectedCheckpointId: controlCheckpointId }, { runTransaction })).resolves.toMatchObject({ isCurrent: false, currentCheckpointId: third.checkpointId })
+      const guardedRows = await client.query('SELECT id FROM page_studio_checkpoints WHERE id LIKE \'guarded_%\'')
+      expect(guardedRows.rows).toHaveLength(2)
+      const guardedAudits = await client.query('SELECT id FROM page_studio_audit_events WHERE resource_id LIKE \'guarded_%\'')
+      expect(guardedAudits.rows).toHaveLength(2)
     } finally {
       await client.query('SET search_path TO public, pg_catalog').catch(() => undefined)
       await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`).catch(() => undefined)

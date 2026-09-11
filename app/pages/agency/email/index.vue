@@ -37,11 +37,18 @@ const tabs = [
     </div>
 
     <div class="flex-1 overflow-auto px-6 py-4">
-      <EmailListsPanel v-if="tab === 'lists'" />
-      <EmailSubscribersPanel v-else-if="tab === 'subscribers'" />
-      <EmailSuppressionPanel v-else-if="tab === 'suppressions'" />
-      <EmailTemplatesPanel v-else-if="tab === 'templates'" />
-      <EmailCampaignsPanel v-else-if="tab === 'campaigns'" />
+      <!-- Agency routes already render in the browser. Exclude their email
+           panels from the Pages server bundle as well. -->
+      <ClientOnly>
+        <EmailListsPanel v-if="tab === 'lists'" />
+        <EmailSubscribersPanel v-else-if="tab === 'subscribers'" />
+        <EmailSuppressionPanel v-else-if="tab === 'suppressions'" />
+        <EmailTemplatesPanel v-else-if="tab === 'templates'" />
+        <EmailCampaignsPanel v-else-if="tab === 'campaigns'" />
+        <template #fallback>
+          <USkeleton class="h-48 w-full" />
+        </template>
+      </ClientOnly>
     </div>
   </div>
 </template>
