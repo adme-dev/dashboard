@@ -1,4 +1,6 @@
-import QRCode from 'qrcode'
+// The package root also loads Node PNG/file renderers. SVG generation needs only
+// the pure matrix encoder, which can be bundled without undeployed Worker modules.
+import QRCode from 'qrcode/lib/core/qrcode.js'
 
 export type EcLevel = 'L' | 'M' | 'Q' | 'H'
 export interface QrMatrix { size: number, get(r: number, c: number): boolean }
