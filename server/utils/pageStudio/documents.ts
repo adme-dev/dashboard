@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto'
 
 import type { PageStudioDocument } from '~~/shared/pageStudio/document'
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
+import { PageStudioSavedPagesSchema, type PageStudioSavedPages } from '~~/shared/pageStudio/savedPages'
+import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '~~/server/utils/pageStudio/releaseCheckpoint'
 import type { PageStudioQueryClient } from '~~/server/utils/pageStudio/sites'
 
 export class PageStudioDocumentError extends Error {
   constructor(
-    readonly code: 'DOCUMENT_CONFLICT' | 'PAGE_LIMIT_REACHED' | 'SITE_NOT_FOUND',
+    readonly code: 'DOCUMENT_CONFLICT' | 'PAGE_LIMIT_REACHED' | 'SITE_NOT_FOUND' | 'STUDIO_DOCUMENT_REQUIRED' | 'CHECKPOINT_UNAVAILABLE',
     readonly statusCode: number,
     message: string
   ) {
@@ -17,6 +19,10 @@ export class PageStudioDocumentError extends Error {
 
 interface DocumentRow {
   client_id: string
+  current_checkpoint_id: string | null
+  checkpoint_digest: string | null
+  checkpoint_object_key: string | null
+  checkpoint_created_at: string | null
   document: PageStudioDocument | null
   name: string
   pages_per_site_limit: number
@@ -27,7 +33,8 @@ interface DocumentRow {
 
 export interface PageStudioDocumentState {
   id: string
-  document: PageStudioDocument
+  document: PageStudioDocument | null
+  studio?: PageStudioSavedPages
   pageLimit: number
   revision: number
   site: {
@@ -84,7 +91,9 @@ function mapState(siteId: string, row: DocumentRow): PageStudioDocumentState {
 }
 
 const scopedDocumentSql = `
-  SELECT site.client_id, site.name, site.route,
+  SELECT site.client_id, site.name, site.route, site.current_checkpoint_id,
+         checkpoint.digest AS checkpoint_digest, checkpoint.object_key AS checkpoint_object_key,
+         checkpoint.created_at AS checkpoint_created_at,
          entitlement.pages_per_site_limit,
          draft.revision::text, draft.document, draft.updated_at
   FROM page_studio_sites site
@@ -96,15 +105,44 @@ const scopedDocumentSql = `
     ON draft.tenant_id = site.tenant_id
    AND draft.client_id = site.client_id
    AND draft.site_id = site.id
+  LEFT JOIN page_studio_checkpoints checkpoint
+    ON checkpoint.tenant_id = site.tenant_id
+   AND checkpoint.client_id = site.client_id
+   AND checkpoint.site_id = site.id
+   AND checkpoint.id = site.current_checkpoint_id
   WHERE site.tenant_id = $1 AND site.id = $2 AND site.status <> 'archived'`
 
 export async function getPageStudioDocument(
   tenantId: string,
-  siteId: string
+  siteId: string,
+  bucket?: PageStudioCheckpointBucket
 ): Promise<PageStudioDocumentState> {
-  const row = await queryOne<DocumentRow>(scopedDocumentSql, [tenantId, siteId])
+  const row = await queryOneFresh<DocumentRow>(scopedDocumentSql, [tenantId, siteId])
   if (!row) throw new PageStudioDocumentError('SITE_NOT_FOUND', 404, 'Page Studio site not found')
-  return mapState(siteId, row)
+  if (!row.current_checkpoint_id) return mapState(siteId, row)
+  if (!bucket || !row.checkpoint_digest || !row.checkpoint_object_key) {
+    throw new PageStudioDocumentError('CHECKPOINT_UNAVAILABLE', 503, 'The saved website could not be loaded. Please try again.')
+  }
+  const checkpoint = await loadPageStudioCheckpoint({
+    scope: { tenantId, clientId: row.client_id, siteId },
+    bucket,
+    checkpointId: row.current_checkpoint_id,
+    objectKey: row.checkpoint_object_key,
+    digests: [row.checkpoint_digest]
+  })
+  const parsed = PageStudioSavedPagesSchema.safeParse(checkpoint.manifest)
+  if (!parsed.success) {
+    throw new PageStudioDocumentError('CHECKPOINT_UNAVAILABLE', 422, 'This saved website must be opened in Studio.')
+  }
+  return {
+    id: siteId,
+    document: null,
+    studio: { checkpointId: checkpoint.checkpointId, pages: parsed.data.pages },
+    pageLimit: row.pages_per_site_limit,
+    revision: Number(row.revision ?? 0),
+    site: { clientId: row.client_id, id: siteId, name: row.name, route: row.route },
+    updatedAt: row.checkpoint_created_at
+  }
 }
 
 export async function savePageStudioDocument(
@@ -117,9 +155,10 @@ export async function savePageStudioDocument(
     tenantId: string
   }
 ): Promise<PageStudioDocumentState> {
-  const scoped = await db.query<DocumentRow>(`${scopedDocumentSql} FOR UPDATE OF site, entitlement, draft`, [input.tenantId, input.siteId])
+  const scoped = await db.query<DocumentRow>(`${scopedDocumentSql} FOR UPDATE OF site, entitlement`, [input.tenantId, input.siteId])
   const row = scoped.rows[0]
   if (!row) throw new PageStudioDocumentError('SITE_NOT_FOUND', 404, 'Page Studio site not found')
+  requireDashboardDocument(row)
   if (input.document.pages.length > row.pages_per_site_limit) {
     throw new PageStudioDocumentError('PAGE_LIMIT_REACHED', 409, `This subscription allows ${row.pages_per_site_limit} pages per site`)
   }
@@ -155,7 +194,7 @@ export async function savePageStudioDocument(
     `INSERT INTO page_studio_audit_events (
        tenant_id, client_id, site_id, actor_id, actor_role, action,
        resource_type, resource_id, metadata
-     ) VALUES ($1, $2, $3, $4, 'agency', 'document.saved', 'document', $3, $5::jsonb)`,
+     ) VALUES ($1, $2, $3, $4, 'agency', 'document.saved', 'document', ($3::uuid)::text, $5::jsonb)`,
     [input.tenantId, row.client_id, input.siteId, input.actorId, JSON.stringify({ revision: nextRevision })]
   )
 
@@ -174,5 +213,12 @@ export async function replayPageStudioDocumentSave(
 ): Promise<PageStudioDocumentState> {
   const row = await db.query<DocumentRow>(scopedDocumentSql, [tenantId, siteId])
   if (!row.rows[0]) throw new PageStudioDocumentError('SITE_NOT_FOUND', 404, 'Page Studio site not found')
+  requireDashboardDocument(row.rows[0])
   return mapState(siteId, row.rows[0])
+}
+
+function requireDashboardDocument(row: DocumentRow) {
+  if (row.current_checkpoint_id) {
+    throw new PageStudioDocumentError('STUDIO_DOCUMENT_REQUIRED', 409, 'This website is edited in Studio. Reload Pages to see the saved website.')
+  }
 }

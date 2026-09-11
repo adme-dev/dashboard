@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PageStudioSavedPages } from '~~/shared/pageStudio/savedPages'
 import { PageStudioDocumentSchema, type PageStudioDocument, type PageStudioPage, type PageStudioRedirect } from '~~/shared/pageStudio/document'
 import {
   flattenPageStudioPages,
@@ -10,7 +11,8 @@ import {
 } from '~~/shared/pageStudio/pages'
 
 interface DocumentState {
-  document: PageStudioDocument
+  document: PageStudioDocument | null
+  studio?: PageStudioSavedPages
   pageLimit: number
   revision: number
   updatedAt: string | null
@@ -28,13 +30,23 @@ const endpoint = computed(() => `/api/agency/page-studio/sites/${encodeURICompon
 const { data, status, error, refresh } = await useFetch<DocumentState>(endpoint)
 
 function resetDraft(state: DocumentState | null | undefined) {
-  if (!state) return
+  if (!state?.document) {
+    draft.value = null
+    selectedId.value = ''
+    return
+  }
   draft.value = structuredClone(state.document)
   const homepageId = pageStudioHomepageId(state.document)
   if (!selectedId.value || !state.document.pages.some(page => page.id === selectedId.value)) selectedId.value = homepageId
 }
 
 watch(data, resetDraft, { immediate: true })
+
+// Returning from the separate Studio tab should show the newly saved website.
+const visibility = useDocumentVisibility()
+watch(visibility, (value) => {
+  if (value === 'visible' && !dirty.value && !saving.value) void refresh()
+})
 
 const flatPages = computed(() => draft.value ? flattenPageStudioPages(draft.value) : [])
 const selectedPage = computed(() => draft.value?.pages.find(page => page.id === selectedId.value) || null)
@@ -179,6 +191,16 @@ async function openStudio() {
       <USkeleton class="h-96 w-full" />
       <USkeleton class="h-96 w-full" />
     </div>
+    <PageStudioSavedPages
+      v-else-if="data?.studio"
+      :saved="data.studio"
+      :page-limit="data.pageLimit"
+      :updated-at="data.updatedAt"
+      :launching="launchingStudio"
+      :can-launch="Boolean(editorOrigin)"
+      @reload="reloadDraft"
+      @edit="openStudio"
+    />
     <template v-else-if="draft">
       <div class="flex flex-col gap-3 border-b border-default pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>

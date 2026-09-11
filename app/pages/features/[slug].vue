@@ -184,7 +184,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Studio for Visual Authoring',
-        content: 'Build a complete page tree with nested subpages, responsive desktop, tablet, and mobile previews, page visibility, shell inheritance, and per-page SEO. Compact preset galleries add canonical sections, page layouts, headers, navigation, mobile menus, footers, themes, and complete site starters as ordinary editable content. AI proposals use the same typed components and controlled operations as manual editing, while revision-safe checkpoints prevent one session from silently overwriting another.'
+        content: 'The website workspace shows the pages, SEO and form counts from your saved Studio website. Open Studio to edit the same draft, then return to see the latest saved changes. Build a complete page tree with nested subpages, responsive desktop, tablet, and mobile previews, page visibility, shell inheritance, and per-page SEO. Compact preset galleries add canonical sections, page layouts, headers, navigation, mobile menus, footers, themes, and complete site starters as ordinary editable content. AI proposals use the same typed components and controlled operations as manual editing, while revision-safe checkpoints prevent one session from silently overwriting another.'
       },
       {
         title: 'Governed Preview and Publishing',
