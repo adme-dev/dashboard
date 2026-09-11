@@ -17,6 +17,8 @@ export class PageStudioControlError extends Error {
     readonly code:
       | 'AUDIT_EVENT_CONFLICT'
       | 'BASE_DIGEST_MISMATCH'
+      | 'CHECKPOINT_BASE_MISMATCH'
+      | 'CHECKPOINT_BASE_REQUIRED'
       | 'CHECKPOINT_CONFLICT'
       | 'CHECKPOINT_DIGEST_MISMATCH'
       | 'CHECKPOINT_NOT_FOUND'
@@ -44,6 +46,18 @@ export interface PageStudioCheckpointInput {
   userId: string
 }
 
+export interface PageStudioCheckpointCommitInput {
+  checkpoint: PageStudioCheckpointInput
+  expectedCheckpointId: string | null
+}
+
+export interface PageStudioCheckpointCommitReceipt {
+  acknowledged: true
+  checkpointId: string
+  currentCheckpointId: string | null
+  isCurrent: boolean
+}
+
 export interface PageStudioVersionRegistrationInput {
   authorRole: 'agency' | 'client'
   checkpointId: string
@@ -57,6 +71,7 @@ export interface PageStudioVersionRegistrationInput {
 export interface PageStudioAiProposalAcceptanceInput {
   authorRole: 'agency' | 'client'
   baseDigest: string
+  expectedCheckpointId: string
   checkpoint: PageStudioCheckpointInput
   idempotencyKey: string
   summary: string
@@ -132,9 +147,9 @@ async function requireScopedSite(
   db: PageStudioControlQueryClient,
   scope: PageStudioControlScope,
   lock: 'FOR SHARE' | 'FOR UPDATE'
-): Promise<void> {
-  const result = await db.query<{ id: string }>(
-    `SELECT id
+): Promise<{ current_checkpoint_id: string | null }> {
+  const result = await db.query<{ id: string, current_checkpoint_id: string | null }>(
+    `SELECT id, current_checkpoint_id
      FROM page_studio_sites
      WHERE tenant_id = $1 AND client_id = $2 AND id = $3
      ${lock}`,
@@ -147,6 +162,7 @@ async function requireScopedSite(
       'Page Studio site scope not found'
     )
   }
+  return result.rows[0]
 }
 
 async function appendMutationAudit(
@@ -159,7 +175,7 @@ async function appendMutationAudit(
     resourceType: PageStudioAuditResourceType
     resourceId: string
     idempotencyKey: string
-    metadata: Record<string, string>
+    metadata: Record<string, string | null>
   }
 ): Promise<void> {
   await db.query(
@@ -198,6 +214,29 @@ export async function recordPageStudioCheckpoint(
   input: PageStudioCheckpointInput,
   dependencies: { runTransaction?: RunTransaction } = {}
 ): Promise<{ acknowledged: true }> {
+  await persistPageStudioCheckpoint(input, dependencies)
+  return { acknowledged: true }
+}
+
+/** Additive guarded protocol. Legacy callers are not made safe by this endpoint. */
+export async function commitPageStudioCheckpoint(
+  input: PageStudioCheckpointCommitInput,
+  dependencies: { runTransaction?: RunTransaction } = {}
+): Promise<PageStudioCheckpointCommitReceipt> {
+  const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, dependencies, input)
+  return {
+    acknowledged: true,
+    checkpointId: input.checkpoint.checkpointId,
+    currentCheckpointId,
+    isCurrent: currentCheckpointId === input.checkpoint.checkpointId
+  }
+}
+
+async function persistPageStudioCheckpoint(
+  input: PageStudioCheckpointInput,
+  dependencies: { runTransaction?: RunTransaction },
+  guard?: Pick<PageStudioCheckpointCommitInput, 'expectedCheckpointId'>
+): Promise<string | null> {
   if (input.objectKey !== expectedCheckpointObjectKey(input.scope, input.checkpointId)) {
     throw new PageStudioControlError(
       'CHECKPOINT_SCOPE_INVALID',
@@ -208,7 +247,23 @@ export async function recordPageStudioCheckpoint(
 
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
-    await requireScopedSite(db, input.scope, 'FOR UPDATE')
+    const site = await requireScopedSite(db, input.scope, 'FOR UPDATE')
+    if (!guard) {
+      // Activation is permanent for this site, even if a later head changes.
+      // Read under the same lock as every writer so legacy requests cannot race it.
+      const activated = await db.query<{ id: string }>(
+        `SELECT id FROM page_studio_audit_events
+         WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3
+           AND action = 'workspace.checkpointed'
+           AND metadata->>'commitProtocol' = 'cas-v1'
+         LIMIT 1`,
+        [input.scope.tenantId, input.scope.clientId, input.scope.siteId]
+      )
+      if (activated.rows[0]) {
+        throw new PageStudioControlError('CHECKPOINT_BASE_REQUIRED', 409,
+          'This site requires a checkpoint base; reconnect with an updated editor')
+      }
+    }
     const existing = await db.query<CheckpointRow>(
       `SELECT id, tenant_id, client_id, site_id, digest, object_key, etag, author_id, created_at
        FROM page_studio_checkpoints
@@ -224,7 +279,31 @@ export async function recordPageStudioCheckpoint(
           'Checkpoint id already represents different content'
         )
       }
-      return { acknowledged: true }
+      if (guard) {
+        // The immutable audit is committed with the checkpoint. It binds the operation
+        // to its original base, including null, without a second persistence system.
+        const receipt = await db.query<{ metadata: Record<string, unknown> }>(
+          `SELECT metadata FROM page_studio_audit_events
+           WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3
+             AND idempotency_key = $4 AND action = 'workspace.checkpointed'
+             AND resource_type = 'checkpoint' AND resource_id = $5`,
+          [input.scope.tenantId, input.scope.clientId, input.scope.siteId,
+            `control:checkpoint:${input.checkpointId}`, input.checkpointId]
+        )
+        const metadata = receipt.rows[0]?.metadata
+        if (metadata?.commitProtocol !== 'cas-v1'
+          || metadata.expectedCheckpointId !== guard.expectedCheckpointId) {
+          throw new PageStudioControlError('CHECKPOINT_CONFLICT', 409,
+            'Checkpoint id already represents a different commit request')
+        }
+      }
+      // A retry confirms this operation committed, not that it is still the head.
+      return site.current_checkpoint_id
+    }
+
+    if (guard && site.current_checkpoint_id !== guard.expectedCheckpointId) {
+      throw new PageStudioControlError('CHECKPOINT_BASE_MISMATCH', 409,
+        'Checkpoint base is no longer current')
     }
 
     const inserted = await db.query<{ id: string }>(
@@ -266,9 +345,13 @@ export async function recordPageStudioCheckpoint(
       resourceType: 'checkpoint',
       resourceId: input.checkpointId,
       idempotencyKey: `control:checkpoint:${input.checkpointId}`,
-      metadata: { authorId: input.userId, digest: input.digest }
+      metadata: {
+        authorId: input.userId,
+        digest: input.digest,
+        ...(guard ? { commitProtocol: 'cas-v1', expectedCheckpointId: guard.expectedCheckpointId } : {})
+      }
     })
-    return { acknowledged: true }
+    return input.checkpointId
   })
 }
 
@@ -479,6 +562,11 @@ export async function acceptPageStudioAiProposal(
   dependencies: { runTransaction?: RunTransaction } = {}
 ) {
   const { checkpoint } = input
+  if (typeof input.expectedCheckpointId !== 'string'
+    || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(input.expectedCheckpointId)) {
+    throw new PageStudioControlError('CHECKPOINT_BASE_MISMATCH', 422,
+      'AI proposal requires its original durable checkpoint identity')
+  }
   if (
     checkpoint.objectKey
     !== expectedCheckpointObjectKey(checkpoint.scope, checkpoint.checkpointId)
@@ -537,7 +625,6 @@ export async function acceptPageStudioAiProposal(
         && replay.author_id === checkpoint.userId
         && replay.author_role === input.authorRole
         && replay.summary === input.summary
-        && replay.status === 'in_review'
       if (!matches) {
         throw new PageStudioControlError(
           'VERSION_CONFLICT',
@@ -545,9 +632,41 @@ export async function acceptPageStudioAiProposal(
           'AI proposal idempotency key already represents a different request'
         )
       }
-      return { checkpointId: checkpoint.checkpointId, versionId: replay.id }
+      const original = await db.query<CheckpointRow>(
+        `SELECT id, tenant_id, client_id, site_id, digest, object_key, etag, author_id, created_at
+         FROM page_studio_checkpoints
+         WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3 AND id = $4`,
+        [checkpoint.scope.tenantId, checkpoint.scope.clientId, checkpoint.scope.siteId, checkpoint.checkpointId]
+      )
+      const receipt = await db.query<{ metadata: Record<string, unknown> }>(
+        `SELECT metadata FROM page_studio_audit_events
+         WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3
+           AND idempotency_key = $4 AND action = 'workspace.checkpointed'
+           AND resource_type = 'checkpoint' AND resource_id = $5`,
+        [checkpoint.scope.tenantId, checkpoint.scope.clientId, checkpoint.scope.siteId,
+          `control:checkpoint:${checkpoint.checkpointId}`, checkpoint.checkpointId]
+      )
+      const metadata = receipt.rows[0]?.metadata
+      if (!original.rows[0] || !checkpointMatches(original.rows[0], checkpoint)
+        || metadata?.commitProtocol !== 'cas-v1'
+        || metadata.expectedCheckpointId !== input.expectedCheckpointId
+        || metadata.baseDigest !== input.baseDigest) {
+        throw new PageStudioControlError('CHECKPOINT_CONFLICT', 409,
+          'AI proposal replay does not match its original durable request')
+      }
+      return {
+        acknowledged: true as const,
+        checkpointId: checkpoint.checkpointId,
+        currentCheckpointId: site.current_checkpoint_id,
+        isCurrent: site.current_checkpoint_id === checkpoint.checkpointId,
+        versionId: replay.id
+      }
     }
 
+    if (site.current_checkpoint_id !== input.expectedCheckpointId) {
+      throw new PageStudioControlError('CHECKPOINT_BASE_MISMATCH', 409,
+        'AI proposal base checkpoint is no longer current')
+    }
     if (site.current_digest !== input.baseDigest) {
       throw new PageStudioControlError(
         'BASE_DIGEST_MISMATCH',
@@ -636,7 +755,11 @@ export async function acceptPageStudioAiProposal(
       resourceType: 'checkpoint',
       resourceId: checkpoint.checkpointId,
       idempotencyKey: `control:checkpoint:${checkpoint.checkpointId}`,
-      metadata: { digest: checkpoint.digest, objectKey: checkpoint.objectKey }
+      metadata: {
+        digest: checkpoint.digest, objectKey: checkpoint.objectKey,
+        commitProtocol: 'cas-v1', expectedCheckpointId: input.expectedCheckpointId,
+        baseDigest: input.baseDigest
+      }
     })
     await appendMutationAudit(db, {
       scope: checkpoint.scope,
@@ -659,7 +782,13 @@ export async function acceptPageStudioAiProposal(
       metadata: { digest: checkpoint.digest }
     })
 
-    return { checkpointId: checkpoint.checkpointId, versionId: version.id }
+    return {
+      acknowledged: true as const,
+      checkpointId: checkpoint.checkpointId,
+      currentCheckpointId: checkpoint.checkpointId,
+      isCurrent: true,
+      versionId: version.id
+    }
   })
 }
 

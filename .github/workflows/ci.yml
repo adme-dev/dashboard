@@ -54,6 +54,22 @@ jobs:
         os: [ubuntu-latest]
         node: [24.18.0]
 
+    services:
+      page-studio-postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: page_studio_checkpoint_cas_test
+          POSTGRES_USER: page_studio_test
+          # Disposable runner-local fixtures; no application credentials.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U page_studio_test -d page_studio_checkpoint_cas_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -69,6 +85,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Page Studio checkpoint concurrency and migration tests
+        run: pnpm exec vitest run test/config/pageStudioCheckpointCasPostgres.test.ts test/config/pageStudioControlPlaneMigrationPostgres.test.ts
+        timeout-minutes: 5
+        env:
+          PAGE_STUDIO_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
       # The full suite exercises the real Nitro Cloudflare Worker output. A
       # clean CI checkout has no dist artifact, so build the exact boundary
