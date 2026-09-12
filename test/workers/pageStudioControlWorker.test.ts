@@ -128,6 +128,25 @@ describe('Page Studio control gateway Worker', () => {
     expect(checkpointRequest.headers.get('x-xeroflow-preview-token')).toBeNull()
   })
 
+  it('forwards the signed editor session only for exact AI acceptance POST requests', async () => {
+    const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
+    vi.stubGlobal('fetch', fetchMock)
+    const path = '/internal/page-studio/ai-proposals/accept'
+    await worker.fetch(request(path, {
+      method: 'POST',
+      headers: { 'x-page-studio-session': 'signed-editor-session', 'authorization': 'Bearer untrusted' },
+      body: '{}'
+    }), environment(), {} as never)
+    const forwarded = fetchMock.mock.calls[0]?.[0]
+    expect(forwarded.headers.get('x-page-studio-session')).toBe('signed-editor-session')
+    expect(forwarded.headers.get('authorization')).toBe(`Bearer ${secret}`)
+
+    for (const [method, target] of [['GET', path], ['POST', `${path}/other`], ['POST', '/internal/page-studio/checkpoints']]) {
+      await worker.fetch(request(target, { method, headers: { 'x-page-studio-session': 'must-not-pass' } }), environment(), {} as never)
+      expect(fetchMock.mock.calls.at(-1)?.[0].headers.get('x-page-studio-session')).toBeNull()
+    }
+  })
+
   it('fails closed for unapproved origins and weak or oversized credentials', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)

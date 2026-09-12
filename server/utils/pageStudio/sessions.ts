@@ -107,6 +107,20 @@ interface SessionEnvironment {
   privateKey: string
 }
 
+export interface PageStudioSessionAuthorizationInput {
+  authorRole: 'agency' | 'client'
+  checkpoint: {
+    scope: { clientId: string, siteId: string, tenantId: string }
+    userId: string
+  }
+  requiredCapabilities?: PageStudioSessionCapability[]
+}
+
+export type PageStudioSessionQueryOne = <T = Record<string, unknown>>(
+  sql: string,
+  params?: unknown[]
+) => Promise<T | null>
+
 interface IssuePageStudioSessionDependencies {
   event?: H3Event
   nonce?: () => string
@@ -159,6 +173,25 @@ export function resolvePageStudioSessionEnvironment(
     )
   }
   return { issuer, privateKey }
+}
+
+export function resolvePageStudioSessionPublicKey(event?: H3Event): string {
+  const env = (event?.context as CloudflareContext | undefined)?.cloudflare?.env
+  const bound = env && Object.prototype.hasOwnProperty.call(env, 'PAGE_STUDIO_SESSION_PUBLIC_KEY')
+    ? env.PAGE_STUDIO_SESSION_PUBLIC_KEY
+    : undefined
+  const value = bound === undefined ? process.env.PAGE_STUDIO_SESSION_PUBLIC_KEY : bound
+  if (typeof value !== 'string'
+    || value.length < 128
+    || value.length > 16_384
+    || !value.includes('BEGIN PUBLIC KEY')) {
+    throw new PageStudioSessionError(
+      'SESSION_ISSUER_UNAVAILABLE',
+      503,
+      'Page Studio session verification is not configured'
+    )
+  }
+  return value
 }
 
 function validatedClaims(input: PageStudioSessionClaims): PageStudioSessionClaims {
@@ -271,6 +304,64 @@ export async function verifyPageStudioSessionToken(
       401,
       expired ? 'Page Studio session token has expired' : 'Page Studio session token is invalid',
       { cause: error }
+    )
+  }
+}
+
+export function authorizePageStudioSession(
+  claims: PageStudioSessionClaims,
+  input: PageStudioSessionAuthorizationInput
+): void {
+  const required = input.requiredCapabilities ?? ['workspace:checkpoint', 'model:invoke']
+  if (claims.role !== input.authorRole
+    || claims.userId !== input.checkpoint.userId
+    || claims.tenantId !== input.checkpoint.scope.tenantId
+    || claims.clientId !== input.checkpoint.scope.clientId
+    || claims.siteId !== input.checkpoint.scope.siteId
+    || required.some(capability => !claims.capabilities.includes(capability))) {
+    throw new PageStudioSessionError(
+      'SESSION_TOKEN_INVALID',
+      403,
+      'Page Studio session is not authorized for this proposal'
+    )
+  }
+}
+
+export async function assertPageStudioSessionActive(
+  claims: PageStudioSessionClaims,
+  queryOne: PageStudioSessionQueryOne
+): Promise<void> {
+  const row = await queryOne<{ nonce: string }>(
+    `SELECT nonce
+       FROM page_studio_sessions
+      WHERE nonce = $1
+        AND tenant_id = $2
+        AND client_id = $3::uuid
+        AND site_id = $4::uuid
+        AND user_id = $5
+        AND role = $6
+        AND capabilities = $7::jsonb
+        AND issued_at = to_timestamp($8)
+        AND expires_at = to_timestamp($9)
+        AND revoked_at IS NULL
+        AND expires_at > NOW()`,
+    [
+      claims.nonce,
+      claims.tenantId,
+      claims.clientId,
+      claims.siteId,
+      claims.userId,
+      claims.role,
+      JSON.stringify(claims.capabilities),
+      claims.issuedAt,
+      claims.expiresAt
+    ]
+  )
+  if (!row) {
+    throw new PageStudioSessionError(
+      'SESSION_TOKEN_INVALID',
+      403,
+      'Page Studio session is revoked or no longer active'
     )
   }
 }

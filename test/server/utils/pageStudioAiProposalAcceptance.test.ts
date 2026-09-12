@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { PageStudioAiProposalAcceptanceSchema } from '../../../server/utils/pageStudio/controlSchemas'
 import {
   acceptPageStudioAiProposal,
   PageStudioControlError,
@@ -180,5 +181,21 @@ describe('acceptPageStudioAiProposal', () => {
     const db = database({ head: input.checkpoint.checkpointId, replay: true, receiptMetadata: undefined })
     await expect(acceptPageStudioAiProposal(input, db)).rejects.toMatchObject({ statusCode: 409 })
     expect(db.queries.some(sql => /^\s*(INSERT|UPDATE)\b/.test(sql))).toBe(false)
+  })
+})
+
+// The deployed hosted Worker sends this guarded envelope. Staging must accept
+// its base identity while rejecting legacy requests that can overwrite a newer head.
+describe('hosted AI acceptance wire contract', () => {
+  const { idempotencyKey: _key, ...body } = input
+
+  it('accepts the current Worker envelope without dropping its checkpoint base', () => {
+    const parsed = PageStudioAiProposalAcceptanceSchema.parse(body)
+    expect(parsed).toEqual(body)
+  })
+
+  it('rejects acceptance without the original checkpoint identity', () => {
+    const { expectedCheckpointId: _base, ...legacy } = body
+    expect(PageStudioAiProposalAcceptanceSchema.safeParse(legacy).success).toBe(false)
   })
 })
