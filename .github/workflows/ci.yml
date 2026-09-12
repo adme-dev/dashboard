@@ -92,8 +92,8 @@ jobs:
         env:
           PAGE_STUDIO_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
-      - name: Page Studio access grant concurrency and audit tests
-        run: pnpm exec vitest run test/server/utils/pageStudioEntitlementGrantsPostgres.test.ts
+      - name: Page Studio access grant and submissions database tests
+        run: pnpm exec vitest run test/server/utils/pageStudioEntitlementGrantsPostgres.test.ts test/server/utils/pageStudioSubmissionsPostgres.test.ts
         timeout-minutes: 5
         env:
           PAGE_STUDIO_GRANT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
