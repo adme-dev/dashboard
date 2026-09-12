@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import { z } from 'zod'
 
 import { queryOne, transaction } from '~~/server/utils/db'
 
@@ -23,7 +24,32 @@ export interface PageStudioBuildWorker {
     scope: { tenantId: string, clientId: string, siteId: string }
     versionDigest: string
     versionId: string
-  }): Promise<PageStudioWorkerBuildResult>
+  }): Promise<PageStudioWorkerBuildResult | z.infer<typeof validationFailureSchema>>
+}
+
+// RPC does not preserve custom Error properties. Accept only bounded remediation
+// codes, never worker messages or paths that could contain customer content.
+const validationFailureSchema = z.object({
+  success: z.literal(false),
+  error: z.object({
+    code: z.literal('BUILD_VALIDATION_FAILED'),
+    issueCount: z.number().int().positive().max(1_000_000),
+    issues: z.array(z.discriminatedUnion('code', [
+      z.object({ code: z.literal('missing_seo_description'), pageIndex: z.number().int().min(0).max(9999) }).strict(),
+      z.object({ code: z.literal('missing_canonical_origin') }).strict(),
+      z.object({ code: z.literal('invalid_content') }).strict()
+    ])).min(1).max(20)
+  }).strict().refine(error => error.issueCount >= error.issues.length)
+}).strict()
+
+function validationMessage(error: z.infer<typeof validationFailureSchema>['error']): string {
+  const guidance = error.issues.slice(0, 5).map((issue) => {
+    if (issue.code === 'missing_seo_description') return `add an SEO description to page ${issue.pageIndex + 1}`
+    if (issue.code === 'missing_canonical_origin') return 'set the website canonical HTTPS address'
+    return 'review the website content for validation errors'
+  })
+  if (error.issueCount > 5) guidance.push(`${error.issueCount - 5} further validation issues remain`)
+  return `Cannot publish: ${[...new Set(guidance)].join('; ')}.`
 }
 
 interface PageStudioWorkerBuildResult {
@@ -376,6 +402,14 @@ export async function buildApprovedPageStudioVersion(
       versionDigest: authority.digest,
       versionId: input.versionId
     })
+    if (result?.success === false) {
+      const failure = validationFailureSchema.safeParse(result)
+      await persistFailedBuild(input, authority, runTransaction)
+      if (!failure.success) {
+        throw new PageStudioBuildError('BUILD_RESULT_INVALID', 502, 'Page Studio build worker returned invalid metadata')
+      }
+      throw new PageStudioBuildError('BUILD_VALIDATION_FAILED', 422, validationMessage(failure.data.error))
+    }
     return await persistSuccessfulBuild(input, authority, result, runTransaction)
   } catch (error) {
     if (error instanceof PageStudioBuildError) throw error
