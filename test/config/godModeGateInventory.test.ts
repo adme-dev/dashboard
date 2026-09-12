@@ -188,15 +188,18 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/mondayConnection.ts\tconst serviceToken = process.env.MONDAY_API_TOKEN\tprovider_infrastructure_availability'
     )
-    expect(inventory.rows).toHaveLength(1565)
+    expect(inventory.rows).toContain(
+      'server/utils/pageStudio/sessions.ts\tconst value = bound === undefined ? process.env.PAGE_STUDIO_SESSION_PUBLIC_KEY : bound\tunrelated_configuration'
+    )
+    expect(inventory.rows).toHaveLength(1566)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 108,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1624,
       ordinary_user_behavior: 174,
-      unrelated_configuration: 431
+      unrelated_configuration: 432
     })
-    expect(inventory.digest).toBe('37bf46ab479e7f86ffcfd5dd6b8d7c961e93a94481f51984bf6b5cab9b038471')
+    expect(inventory.digest).toBe('265fd7e89f9eee49a7f4fa154dcf7bf8096594762f64a841c8549532867563e4')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
