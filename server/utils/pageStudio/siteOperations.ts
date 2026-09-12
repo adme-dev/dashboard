@@ -232,7 +232,7 @@ export async function listPageStudioSubmissions(tenantId: string, siteId: string
   return queryRows(`
     SELECT DISTINCT ON (lead.id)
            lead.id::text, lead.form_id AS "formId", lead.form_name AS "formName",
-           lead.page_id AS "pageId", lead.page_name AS "pageRoute",
+           lead.page_id AS "pageId", audit.metadata->>'pageRoute' AS "pageRoute",
            lead.field_data AS fields, lead.attribution, lead.submitted_at AS "submittedAt",
            lead.is_test AS "isTest", audit.metadata->>'releaseId' AS "releaseId"
       FROM page_studio_audit_events audit
