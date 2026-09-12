@@ -60,6 +60,46 @@ function input() {
 }
 
 describe('Page Studio approved build orchestration', () => {
+  it('turns structured RPC validation failures into actionable errors and a failed build', async () => {
+    const db = database(sql => sql.includes('latest_review') ? [authority()] : [])
+    const worker = { build: vi.fn().mockResolvedValue({ success: false, error: {
+      code: 'BUILD_VALIDATION_FAILED', issueCount: 2,
+      issues: [{ code: 'missing_seo_description', pageIndex: 1 }, { code: 'missing_canonical_origin' }]
+    } }) }
+    await expect(buildApprovedPageStudioVersion(input(), {
+      queryOne: vi.fn().mockResolvedValue(authority()), runTransaction: db.runTransaction, worker
+    })).rejects.toMatchObject({ code: 'BUILD_VALIDATION_FAILED', statusCode: 422,
+      message: 'Cannot publish: add an SEO description to page 2; set the website canonical HTTPS address.' })
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('\'failed\''), expect.any(Array))
+    expect(db.query.mock.calls.some(([sql]) => sql.includes('build.succeeded'))).toBe(false)
+  })
+
+  it.each([
+    { code: 'BUILD_VALIDATION_FAILED', issueCount: 1, issues: [{ code: 'private-error', message: 'secret' }] },
+    { code: 'BUILD_VALIDATION_FAILED', issueCount: 1, issues: [{ code: 'missing_seo_description', pageIndex: -1 }] },
+    { code: 'BUILD_VALIDATION_FAILED', issueCount: 1, issues: Array.from({ length: 21 }, () => ({ code: 'invalid_content' })) }
+  ])('does not expose malformed worker validation details', async (error) => {
+    const db = database(sql => sql.includes('latest_review') ? [authority()] : [])
+    await expect(buildApprovedPageStudioVersion(input(), {
+      queryOne: vi.fn().mockResolvedValue(authority()), runTransaction: db.runTransaction,
+      worker: { build: vi.fn().mockResolvedValue({ success: false, error }) }
+    })).rejects.toMatchObject({ code: 'BUILD_RESULT_INVALID', statusCode: 502 })
+  })
+
+  it('bounds guidance while reporting omitted issues', async () => {
+    const db = database(sql => sql.includes('latest_review') ? [authority()] : [])
+    const error = await buildApprovedPageStudioVersion(input(), {
+      queryOne: vi.fn().mockResolvedValue(authority()), runTransaction: db.runTransaction,
+      worker: { build: vi.fn().mockResolvedValue({ success: false, error: {
+        code: 'BUILD_VALIDATION_FAILED', issueCount: 30,
+        issues: Array.from({ length: 20 }, (_, pageIndex) => ({ code: 'missing_seo_description', pageIndex }))
+      } }) }
+    }).catch(error => error)
+    expect(error).toMatchObject({ code: 'BUILD_VALIDATION_FAILED', statusCode: 422 })
+    expect(error.message).toContain('25 further validation issues remain')
+    expect(error.message.length).toBeLessThanOrEqual(500)
+  })
+
   it('calls the private worker with the exact approval and records only its deterministic result', async () => {
     const db = database((sql) => {
       if (sql.includes('latest_review')) return [authority()]
