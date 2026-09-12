@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   acceptPageStudioAiProposal: vi.fn(),
+  verifySession: vi.fn(),
+  authorizeSession: vi.fn(),
+  assertSessionActive: vi.fn(),
   authorizePageStudioPreview: vi.fn(),
   getLatestPageStudioCheckpoint: vi.fn(),
   recordPageStudioAuditEvent: vi.fn(),
@@ -19,6 +22,13 @@ vi.mock('~~/server/utils/pageStudio/delivery', async importOriginal => ({
   resolvePageStudioReleaseHost: (...args: unknown[]) => mocks.resolvePageStudioReleaseHost(...args)
 }))
 
+vi.mock('~~/server/utils/pageStudio/sessions', () => ({
+  resolvePageStudioSessionEnvironment: () => ({ issuer: 'https://app.xeroflow.io' }),
+  resolvePageStudioSessionPublicKey: () => 'public-key',
+  verifyPageStudioSessionToken: (...args: unknown[]) => mocks.verifySession(...args),
+  authorizePageStudioSession: (...args: unknown[]) => mocks.authorizeSession(...args),
+  assertPageStudioSessionActive: (...args: unknown[]) => mocks.assertSessionActive(...args)
+}))
 vi.mock('~~/server/utils/pageStudio/machineAuth', () => ({
   requirePageStudioMachineAuth: (...args: unknown[]) => mocks.requirePageStudioMachineAuth(...args)
 }))
@@ -91,6 +101,8 @@ const checkpoint = {
 describe('Page Studio internal control endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.verifySession.mockResolvedValue({ nonce: 'test-session' })
+    mocks.assertSessionActive.mockResolvedValue(undefined)
     mocks.requirePageStudioMachineAuth.mockReturnValue({ service: 'page-studio' })
     mocks.authorizePageStudioPreview.mockResolvedValue({
       hostname: 'site.preview.staging.pages.xeroflow.com',
@@ -143,12 +155,34 @@ describe('Page Studio internal control endpoints', () => {
       versionId: '44444444-4444-4444-8444-444444444444'
     }
     mocks.acceptPageStudioAiProposal.mockResolvedValue(receipt)
-    const event: TestEvent = { body, context: {}, headers: { 'idempotency-key': 'accept_proposal_endpoint' } }
+    const event: TestEvent = { body, context: {}, headers: { 'idempotency-key': 'accept_proposal_endpoint', 'x-page-studio-session': 'signed-session' } }
     await expect(handler(event as never)).resolves.toEqual(receipt)
     expect(event.responseStatus).toBe(201)
+    expect(mocks.verifySession).toHaveBeenCalledWith('signed-session', 'public-key', 'https://app.xeroflow.io')
+    expect(mocks.authorizeSession).toHaveBeenCalledWith({ nonce: 'test-session' }, body)
+    expect(mocks.assertSessionActive).toHaveBeenCalledWith({ nonce: 'test-session' }, expect.any(Function))
     expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
     expect(mocks.acceptPageStudioAiProposal).toHaveBeenCalledWith({ ...body, idempotencyKey: 'accept_proposal_endpoint' })
     expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
+  })
+
+  it.each(['missing', 'invalid', 'foreign', 'revoked'])('rejects %s editor authority before AI acceptance writes', async (kind) => {
+    const { default: handler } = await import('~~/server/routes/internal/page-studio/ai-proposals/accept.post')
+    const body = { authorRole: 'agency', baseDigest: 'b'.repeat(64), checkpoint,
+      expectedCheckpointId: 'checkpoint_original_base', summary: 'Apply the approved proposal' }
+    const event: TestEvent = { body, context: {}, headers: {
+      'idempotency-key': 'accept_proposal_endpoint',
+      ...(kind === 'missing' ? {} : { 'x-page-studio-session': 'signed-session' })
+    } }
+    const denied = Object.assign(new Error('Session denied'), { statusCode: 403 })
+    if (kind === 'invalid') mocks.verifySession.mockRejectedValueOnce(denied)
+    if (kind === 'foreign') mocks.authorizeSession.mockImplementationOnce(() => {
+      throw denied
+    })
+    if (kind === 'revoked') mocks.assertSessionActive.mockRejectedValueOnce(denied)
+    await handler(event as never)
+    expect(event.responseStatus).toBe(kind === 'missing' ? 401 : 403)
+    expect(mocks.acceptPageStudioAiProposal).not.toHaveBeenCalled()
   })
 
   it('passes an explicit base and a matching operation key to the guarded commit endpoint', async () => {
