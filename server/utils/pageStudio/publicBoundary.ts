@@ -167,10 +167,10 @@ function pageStudioSourceLeadId(input: LeadSubmission): string {
 function canonicalFields(fields: Record<string, string>): Record<string, string> {
   const result = { ...fields }
   const aliases: Array<[string, string[]]> = [
-    ['full_name', ['field_name', 'name']],
+    ['full_name', ['field_name', 'name', 'field_full_name']],
     ['email', ['field_email']],
     ['phone', ['field_phone']],
-    ['message', ['field_goal', 'comments', 'enquiry']]
+    ['message', ['field_goal', 'comments', 'enquiry', 'field_message']]
   ]
   for (const [target, candidates] of aliases) {
     if (result[target]) continue
