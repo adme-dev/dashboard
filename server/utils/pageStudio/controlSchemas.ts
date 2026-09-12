@@ -47,6 +47,7 @@ export const PageStudioVersionSubmissionSchema = z.object({
 export const PageStudioAiProposalAcceptanceSchema = z.object({
   authorRole: z.enum(['agency', 'client']),
   baseDigest: Digest,
+  expectedCheckpointId: ScopedId,
   checkpoint: PageStudioCheckpointSchema,
   summary: z.string().trim().min(1).max(500)
 }).strict()
