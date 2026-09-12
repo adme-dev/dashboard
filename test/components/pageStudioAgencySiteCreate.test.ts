@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, createApp, h, nextTick, reactive, ref } from 'vue'
-import AgencySiteCreate from '~~/app/components/page-studio/AgencySiteCreate.vue'
+import AgencySiteCreate from '~~/app/components/page-studio/AgencySiteCreate.client.vue'
 
 const allowed = ref(true)
 const canWrite = ref(true)
