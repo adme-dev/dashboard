@@ -69,6 +69,12 @@ function forwardedRequest(request: Request, config: GatewayConfiguration): Reque
     const previewToken = request.headers.get(PREVIEW_TOKEN_HEADER)
     if (previewToken !== null) headers.set(PREVIEW_TOKEN_HEADER, previewToken)
   }
+  // The acceptance handler verifies this signed editor session as well as the
+  // gateway credential. Other control routes must never receive the session.
+  if (request.method === 'POST' && incomingUrl.pathname === '/internal/page-studio/ai-proposals/accept') {
+    const sessionToken = request.headers.get('x-page-studio-session')
+    if (sessionToken !== null) headers.set('x-page-studio-session', sessionToken)
+  }
   headers.set('authorization', `Bearer ${config.secret}`)
   headers.set('x-xeroflow-service', 'page-studio')
 
