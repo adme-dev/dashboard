@@ -87,7 +87,7 @@ export default defineEventHandler(async (event) => {
     const buildValue = buildResponse.build && typeof buildResponse.build === 'object'
       ? buildResponse.build as Record<string, unknown>
       : buildResponse
-    const buildId = typeof buildValue.id === 'string' ? buildValue.id : null
+    const buildId = typeof buildValue.buildId === 'string' ? buildValue.buildId : null
     if (!buildId) {
       throw new PageStudioReleaseCheckpointError('BUILD_RESPONSE_INVALID', 'The Page Studio build route did not return a build identifier', 502)
     }
