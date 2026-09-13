@@ -302,6 +302,9 @@ async function publishApprovedVersion() {
               />
             </template>
           </UCard>
+          <div class="min-w-0 lg:col-span-2">
+            <PageStudioAgencySetup :key="siteId" :site-id="siteId" />
+          </div>
         </div>
       </template>
 

@@ -98,6 +98,12 @@ jobs:
         env:
           PAGE_STUDIO_GRANT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
+      - name: Page Studio setup and provisioning authority database tests
+        run: pnpm exec vitest run test/server/api/pageStudioAgencySetupProposalPostgres.test.ts test/server/utils/pageStudioProvisioningAuthorityPostgres.test.ts
+        timeout-minutes: 5
+        env:
+          PAGE_STUDIO_AUTHORITY_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
+
       # The full suite exercises the real Nitro Cloudflare Worker output. A
       # clean CI checkout has no dist artifact, so build the exact boundary
       # under test before running source and Workerd integration coverage.
