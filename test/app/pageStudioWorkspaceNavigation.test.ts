@@ -24,7 +24,7 @@ describe('Page Studio workspace navigation', () => {
   })
 
   it('launches Studio without exposing a parallel dashboard page builder', () => {
-    const workspace = read('app/components/page-studio/SiteWorkspace.vue')
+    const workspace = read('app/components/page-studio/SiteWorkspace.client.vue')
 
     expect(workspace).toContain('label="Launch Studio"')
     expect(workspace).toContain('@click="launchStudio(site)"')
@@ -46,7 +46,7 @@ describe('Page Studio workspace navigation', () => {
   })
 
   it('uses a shared Nuxt UI workspace with explicit loading, error, and empty states', () => {
-    const componentPath = 'app/components/page-studio/SiteWorkspace.vue'
+    const componentPath = 'app/components/page-studio/SiteWorkspace.client.vue'
 
     expect(existsSync(componentPath)).toBe(true)
     const component = read(componentPath)

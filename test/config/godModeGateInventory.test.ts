@@ -199,7 +199,8 @@ describe('God mode gate inventory', () => {
       ordinary_user_behavior: 174,
       unrelated_configuration: 432
     })
-    expect(inventory.digest).toBe('cdc92fd51878c0a94ae607e7250719497eba85739442259a41cae2f526a9209c')
+    // SiteWorkspace moved to .client.vue; its unchanged runtime-config row is the only inventory difference.
+    expect(inventory.digest).toBe('726928a1f39865520bb289135b47eb88a7a0156dafbc1bb745c5a4970fbc2277')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, createApp, defineComponent, h, nextTick, reactive, ref } from 'vue'
-import SiteWorkspace from '~~/app/components/page-studio/SiteWorkspace.vue'
+import SiteWorkspace from '~~/app/components/page-studio/SiteWorkspace.client.vue'
 import type { PageStudioSiteSummary } from '~/types'
 
 const launch = vi.fn()
