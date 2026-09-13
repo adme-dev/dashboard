@@ -1,4 +1,5 @@
 import { queryOne } from '~~/server/utils/db'
+import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import {
   attachPageStudioReleaseMetadataToBuild,
   loadApprovedPageStudioReleaseCheckpoint,
@@ -18,11 +19,6 @@ interface PublishBody {
   expectedActiveReleaseId?: unknown
 }
 
-function actorTenantId(actor: Record<string, unknown>) {
-  const value = actor.tenantId ?? actor.tenant_id
-  return typeof value === 'string' && value ? value : null
-}
-
 function forwardedAuthHeaders(event: Parameters<typeof getHeader>[0]) {
   const headers: Record<string, string> = {}
   const cookie = getHeader(event, 'cookie')
@@ -33,10 +29,7 @@ function forwardedAuthHeaders(event: Parameters<typeof getHeader>[0]) {
 }
 
 export default defineEventHandler(async (event) => {
-  const actor = await requireAuth(event) as unknown as Record<string, unknown>
-  await requireRole(event, ['admin', 'owner', 'agency'])
-
-  const tenantId = actorTenantId(actor)
+  const { tenantId } = await requireAgencyPageStudioAccess(event, 'PAGE_STUDIO_PUBLISH')
   const siteId = getRouterParam(event, 'siteId')
   const versionId = getRouterParam(event, 'versionId')
   if (!tenantId || !siteId || !versionId) {

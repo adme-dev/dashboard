@@ -69,6 +69,14 @@ describe('Page Studio generated form lead fields', () => {
     expect(mocks.acceptLead.mock.calls[1][1].lead.field_data).toMatchObject({ full_name: 'Legacy Name', message: 'Legacy Message' })
   })
 
+  it('maps the email-address field generated in production while retaining alias precedence', async () => {
+    const fields = { field_full_name: 'Synthetic Form Test', field_email_address: 'generated@example.invalid', field_message: 'Production AI verification' }
+    await acceptPageStudioPublicLead({} as H3Event, { ...input, fields })
+    expect(mocks.acceptLead.mock.calls[0][1].lead.field_data).toMatchObject({ ...fields, email: fields.field_email_address })
+    await acceptPageStudioPublicLead({} as H3Event, { ...input, fields: { ...fields, field_email: 'legacy@example.invalid' } })
+    expect(mocks.acceptLead.mock.calls[1][1].lead.field_data.email).toBe('legacy@example.invalid')
+  })
+
   it('keeps synthetic submissions out of assignment and notification routing', async () => {
     await acceptPageStudioPublicLead({} as H3Event, input)
     expect(mocks.acceptLead.mock.calls[0][1]).toMatchObject({

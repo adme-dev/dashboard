@@ -8,11 +8,12 @@ import {
 } from '../../server/utils/godMode/featureGate'
 
 const API_INVENTORY = {
-  // Page Studio access grants add one POST route. Its delegated subscription
-  // permission gate does not register a God mode mutation bypass.
+  // Page Studio publication now delegates its selected-tenant permission check
+  // to requireAgencyPageStudioAccess; this lexical inventory counts inline gates.
+  // Delegated permission gates do not register a God mode mutation bypass.
   totalRouteFiles: 2094,
   mutationRouteFiles: 1151,
-  explicitlyGuardedMutationFiles: 399,
+  explicitlyGuardedMutationFiles: 398,
   guardedMutationFilesWithTransactionCall: 46
 } as const
 
@@ -52,7 +53,7 @@ describe('God mode route isolation inventory', () => {
     expect(API_INVENTORY).toEqual({
       totalRouteFiles: 2094,
       mutationRouteFiles: 1151,
-      explicitlyGuardedMutationFiles: 399,
+      explicitlyGuardedMutationFiles: 398,
       guardedMutationFilesWithTransactionCall: 46
     })
   })
