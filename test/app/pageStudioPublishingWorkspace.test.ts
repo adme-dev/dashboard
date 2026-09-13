@@ -6,7 +6,7 @@ const root = resolve(import.meta.dirname, '../..')
 
 describe('Page Studio publishing workspace', () => {
   it('keeps Studio authoring separate from site management', () => {
-    const workspace = readFileSync(resolve(root, 'app/components/page-studio/SiteWorkspace.vue'), 'utf8')
+    const workspace = readFileSync(resolve(root, 'app/components/page-studio/SiteWorkspace.client.vue'), 'utf8')
     const management = readFileSync(resolve(root, 'app/components/page-studio/PublishingWorkspace.client.vue'), 'utf8')
 
     expect(workspace).toContain('label="Manage site"')
