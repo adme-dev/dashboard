@@ -20,6 +20,7 @@ const canApprove = computed(() => canWrite.value && hasPermission('PAGE_STUDIO_A
 const toast = useToast()
 const saving = ref(false)
 const editing = ref(false)
+const editRevision = ref(0)
 const message = ref<string | null>(null)
 const form = reactive({ setupSource: 'template' as 'template' | 'chat', setupBrief: '' })
 const approaches = [{ label: 'Use the starter template', value: 'template' }, { label: 'Use a website brief', value: 'chat' }]
@@ -41,6 +42,7 @@ const confirmLabel = computed(() => confirmation.value?.action === 'provision' ?
 function revise() {
   if (!canEdit.value || blocked.value || proposal.value?.status === 'accepted') return
   form.setupSource = proposal.value?.source ?? 'template'
+  editRevision.value = proposal.value?.revision ?? 0
   form.setupBrief = proposal.value?.brief ?? ''
   editing.value = true
   message.value = null
@@ -55,6 +57,10 @@ function failure(error: unknown) {
 async function saveProposal() {
   if (!canEdit.value || blocked.value || proposal.value?.status === 'accepted') return
   message.value = null
+  if (editRevision.value !== (proposal.value?.revision ?? 0)) {
+    message.value = 'The setup proposal changed. Copy your details, cancel changes and review the current revision before editing again.'
+    return
+  }
   if (form.setupSource === 'chat' && !form.setupBrief.trim()) {
     message.value = 'Enter a website brief before creating the proposal.'
     return
@@ -62,7 +68,7 @@ async function saveProposal() {
   saving.value = true
   try {
     await $fetch(`/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/setup-proposal`, {
-      method: 'POST', body: { expectedRevision: proposal.value?.revision ?? 0, setupSource: form.setupSource, setupBrief: form.setupBrief.trim() }
+      method: 'POST', body: { expectedRevision: editRevision.value, setupSource: form.setupSource, setupBrief: form.setupBrief.trim() }
     })
     editing.value = false
     await refresh()

@@ -229,12 +229,21 @@ async function launchStudio(site: PageStudioSiteSummary) {
             </div>
           </dl>
 
-          <div class="mt-auto flex items-center justify-between gap-3 border-t border-default pt-4">
+          <div class="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4">
             <div class="flex min-w-0 items-center gap-2 text-xs text-muted">
               <UIcon name="i-lucide-shield-check" class="size-4 shrink-0 text-primary" />
               <span class="truncate">{{ audience === 'agency' ? 'Agency-managed release' : 'Managed by your agency' }}</span>
             </div>
-            <div class="flex shrink-0 items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <UButton
+                v-if="audience === 'portal'"
+                :to="`/portal/page-studio/${site.id}/setup`"
+                label="Website setup"
+                icon="i-lucide-list-checks"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
               <UButton
                 v-if="audience === 'agency'"
                 :to="`/agency/page-studio/${site.id}`"
