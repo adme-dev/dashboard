@@ -1,3 +1,4 @@
+import { PageStudioProvisioningError } from '~~/server/utils/pageStudio/provisioningBinding'
 import { setResponseStatus, type H3Event } from 'h3'
 
 import { PageStudioSiteError } from '~~/server/utils/pageStudio/sites'
@@ -32,7 +33,8 @@ export function projectPageStudioInternalError(error: unknown): {
   statusCode: number
   body: StablePageStudioError
 } {
-  if (error instanceof PageStudioControlError
+  if (error instanceof PageStudioProvisioningError
+    || error instanceof PageStudioControlError
     || error instanceof PageStudioBuildError
     || error instanceof PageStudioDeliveryError
     || error instanceof PageStudioPublishingError
@@ -86,7 +88,8 @@ export function pageStudioInternalHttpError(
 }
 
 export function pageStudioHttpError(error: unknown): never {
-  if (error instanceof PageStudioControlError
+  if (error instanceof PageStudioProvisioningError
+    || error instanceof PageStudioControlError
     || error instanceof PageStudioBuildError
     || error instanceof PageStudioDeliveryError
     || error instanceof PageStudioPublishingError
