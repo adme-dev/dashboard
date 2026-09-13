@@ -13,3 +13,9 @@ Migration `415_page_studio_setup_proposals.sql` is additive and was applied succ
 Current-main reconciliation restores only these setup files from the historical implementation. Newer saved-page, checkpoint, publishing, submission and QR changes remain intact. Both permission inventories account for four added API files (three mutations) and two fresh staff-role checks. No God-mode mutation bypass was added.
 
 Local validation: 111 focused tests pass; new and changed application code passes lint; production build is 25,438,109 raw bytes, 30,819 below the unchanged limit. Full CI and guarded current-main production deployment are required before claiming this workflow is live.
+
+## Customer plan review
+
+The customer website portfolio links to a scoped setup page. Current client authentication and an exact site membership govern reads; only an admin/manager with editor membership and current portal-creation entitlement can submit a plan. Site and entitlement locks serialize first creation, revisions and agency decisions. Accepted plans remain immutable. Customer details do not establish confirmed facts automatically or approve/publish a site.
+
+Progress uses the explicitly configured provisioning environment and reports only phase/time. The page retains failed draft text, blocks stale revisions after refresh and permits vertical scrolling. No new provisioner binding, account signup, payment, mail or public release is activated by this increment. Customer plan reads/revisions are being verified on current main before production rollout.

@@ -64,6 +64,18 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('agency website setup controls', () => {
+  it('does not submit a draft over a revised proposal after refreshing', async () => {
+    state.value.proposal = proposal()
+    const host = await mount()
+    button(host, 'Revise proposal')!.click()
+    await flush()
+    state.value.proposal = proposal('proposed', 2)
+    await flush()
+    button(host, 'Save revised proposal')!.click()
+    await flush()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('proposal changed')
+  })
   it('creates a proposal for the mounted site without client or actor overrides', async () => {
     const host = await mount()
     button(host, 'Create setup proposal')!.click()
