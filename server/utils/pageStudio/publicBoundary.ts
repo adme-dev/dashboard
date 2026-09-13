@@ -168,7 +168,7 @@ function canonicalFields(fields: Record<string, string>): Record<string, string>
   const result = { ...fields }
   const aliases: Array<[string, string[]]> = [
     ['full_name', ['field_name', 'name', 'field_full_name']],
-    ['email', ['field_email']],
+    ['email', ['field_email', 'field_email_address']],
     ['phone', ['field_phone']],
     ['message', ['field_goal', 'comments', 'enquiry', 'field_message']]
   ]
