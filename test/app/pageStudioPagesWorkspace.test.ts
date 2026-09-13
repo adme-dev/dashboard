@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const workspace = readFileSync('app/components/page-studio/PagesWorkspace.vue', 'utf8')
-const settings = readFileSync('app/components/page-studio/PageSettingsPanel.vue', 'utf8')
-const redirects = readFileSync('app/components/page-studio/RedirectManager.vue', 'utf8')
+const workspace = readFileSync('app/components/page-studio/PagesWorkspace.client.vue', 'utf8')
+const settings = readFileSync('app/components/page-studio/PageSettingsPanel.client.vue', 'utf8')
+const redirects = readFileSync('app/components/page-studio/RedirectManager.client.vue', 'utf8')
 const publishing = readFileSync('app/components/page-studio/PublishingWorkspace.client.vue', 'utf8')
 const launcher = readFileSync('app/composables/usePageStudioLauncher.ts', 'utf8')
 

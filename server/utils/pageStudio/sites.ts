@@ -1,4 +1,6 @@
+import { z } from 'zod'
 import { queryRows, transaction } from '~~/server/utils/db'
+import { createPageStudioSetupProposal } from '~~/server/utils/pageStudio/setupProposal'
 
 export interface PageStudioQueryClient {
   query<T = Record<string, unknown>>(
@@ -20,7 +22,8 @@ export class PageStudioSiteError extends Error {
       | 'PORTAL_CREATION_DISABLED'
       | 'PORTAL_USER_OUT_OF_SCOPE'
       | 'ENTITLEMENT_SCOPE_AMBIGUOUS'
-      | 'SITE_ROUTE_CONFLICT',
+      | 'SITE_ROUTE_CONFLICT'
+      | 'SETUP_ENTITLEMENT_EXCEEDED',
     readonly statusCode: number,
     message: string
   ) {
@@ -37,6 +40,7 @@ export interface CreatePageStudioSiteInput {
   portalUserId?: string
   route: string
   starterVersion: string
+  setup?: { setupSource: 'template' | 'chat', setupBrief?: string }
   tenantId: string
 }
 
@@ -44,6 +48,8 @@ interface EntitlementRow {
   id: string
   active_site_limit: number
   portal_creation_enabled: boolean
+  pages_per_site_limit: number
+  plan_metadata: unknown
 }
 
 interface SiteRow {
@@ -108,7 +114,7 @@ export async function createPageStudioSite(
   try {
     return await runTransaction(async (db) => {
       const entitlementResult = await db.query<EntitlementRow>(
-        `SELECT id, active_site_limit, portal_creation_enabled
+        `SELECT id, active_site_limit, portal_creation_enabled, pages_per_site_limit, plan_metadata
          FROM page_studio_entitlements
          WHERE tenant_id = $1
            AND client_id = $2
@@ -125,6 +131,21 @@ export async function createPageStudioSite(
           403,
           'The client does not have an active Page Studio subscription'
         )
+      }
+      if (entitlementResult.rows.length !== 1) {
+        throw new PageStudioSiteError('ENTITLEMENT_SCOPE_AMBIGUOUS', 409, 'The website subscription scope must be resolved before creating a site')
+      }
+      const proposal = input.setup
+        ? createPageStudioSetupProposal({
+            businessName: input.name, starterVersion: input.starterVersion, ...input.setup
+          })
+        : null
+      if (proposal) {
+        const metadata = z.object({ allowedModules: z.array(z.string().min(1)).optional() }).safeParse(entitlement.plan_metadata)
+        if (!Number.isInteger(entitlement.pages_per_site_limit) || proposal.pages.length > entitlement.pages_per_site_limit
+          || !metadata.success || (metadata.data.allowedModules && proposal.modules.some(module => !metadata.data.allowedModules!.includes(module)))) {
+          throw new PageStudioSiteError('SETUP_ENTITLEMENT_EXCEEDED', 403, 'The setup proposal exceeds this website entitlement')
+        }
       }
       if (input.actorRole === 'client' && !entitlement.portal_creation_enabled) {
         throw new PageStudioSiteError(
@@ -162,12 +183,15 @@ export async function createPageStudioSite(
         throw new PageStudioSiteError('CLIENT_NOT_FOUND', 404, 'Client not found')
       }
 
+      if (input.actorRole === 'client' && (!input.portalUserId || input.portalUserId !== input.actorId)) {
+        throw new PageStudioSiteError('PORTAL_USER_OUT_OF_SCOPE', 403, 'Portal user is outside the client scope')
+      }
       let membershipUserId = input.portalUserId
       if (membershipUserId) {
         const portalUser = await db.query<{ id: string }>(
           `SELECT id
            FROM client_users
-           WHERE id = $1 AND client_id = $2 AND status = 'active'
+           WHERE id = $1 AND client_id = $2 AND status = 'active' AND role IN ('admin', 'manager')
            FOR SHARE`,
           [membershipUserId, input.clientId]
         )
@@ -222,6 +246,16 @@ export async function createPageStudioSite(
            VALUES ($1, $2, $3, $4, 'editor')
            ON CONFLICT (site_id, user_id) DO NOTHING`,
           [input.tenantId, input.clientId, site.id, membershipUserId]
+        )
+      }
+
+      if (proposal) {
+        await db.query(
+          `INSERT INTO page_studio_setup_proposals
+             (tenant_id, client_id, site_id, revision, source, brief, plan, status, created_by)
+           VALUES ($1, $2, $3, 1, $4, $5, $6::jsonb, 'proposed', $7)`,
+          [input.tenantId, input.clientId, site.id, input.setup!.setupSource,
+            input.setup!.setupBrief || null, JSON.stringify(proposal), input.actorId]
         )
       }
 

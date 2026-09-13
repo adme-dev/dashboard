@@ -4,7 +4,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ transaction: vi.fn(), queryOne: vi.fn(), access: vi.fn(), portalAccess: vi.fn() }))
-vi.mock('~~/server/utils/db', () => ({ transaction: mocks.transaction, queryOne: mocks.queryOne, queryOneFresh: mocks.queryOne }))
+vi.mock('~~/server/utils/db', () => ({ transaction: mocks.transaction, queryOne: mocks.queryOne, queryOneFresh: mocks.queryOne, queryRows: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: mocks.access }))
 vi.mock('~~/server/utils/clientAuth', () => ({ requireClientAuth: mocks.portalAccess }))
 interface TestEvent { siteId: string, body: unknown }
@@ -58,6 +58,16 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
       NOW() - INTERVAL '1 hour', NULL, 15, 1, '{"allowedModules":["business-content","bookings","enquiries"]}')`, [entitlementId, clientId])
     await db.query(`INSERT INTO page_studio_sites VALUES ($1, 'agency-setup-test', $2, $3, 'Agency Limo Fixture', 'limousine-v1', 'draft')`, [siteId, clientId, entitlementId])
     await db.query(`INSERT INTO page_studio_site_memberships VALUES ('agency-setup-test', $1, $2, $3, 'editor')`, [clientId, siteId, userId])
+    await db.query(`
+      ALTER TABLE page_studio_sites ALTER COLUMN id SET DEFAULT gen_random_uuid();
+      ALTER TABLE page_studio_sites ADD COLUMN route TEXT UNIQUE;
+      ALTER TABLE page_studio_sites ADD COLUMN created_by UUID;
+      ALTER TABLE page_studio_sites ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE page_studio_sites ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE page_studio_site_memberships ADD UNIQUE (site_id, user_id);
+      CREATE TABLE page_studio_audit_events (tenant_id TEXT, client_id UUID, site_id UUID, actor_id TEXT,
+        actor_role TEXT, action TEXT, resource_type TEXT, resource_id TEXT, metadata JSONB);
+    `)
     mocks.access.mockResolvedValue({ tenantId: 'agency-setup-test', user: { id: userId } })
     mocks.queryOne.mockImplementation(async (sql: string, params: unknown[]) => (await db.query(sql, params)).rows[0] ?? null)
     mocks.transaction.mockImplementation(async (callback: (client: pg.Client) => Promise<unknown>) => {
@@ -85,6 +95,11 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
     await db.query('UPDATE page_studio_site_memberships SET role=\'editor\'')
     await db.query('UPDATE page_studio_entitlements SET portal_creation_enabled=TRUE')
     await db.query('DELETE FROM page_studio_setup_proposals')
+    await db.query('DELETE FROM page_studio_site_memberships WHERE site_id <> $1', [siteId])
+    await db.query('DELETE FROM page_studio_sites WHERE id <> $1', [siteId])
+    await db.query('DELETE FROM page_studio_audit_events')
+    await db.query('UPDATE page_studio_entitlements SET active_site_limit=1, pages_per_site_limit=15')
+
     await db.query('UPDATE page_studio_entitlements SET effective_until=NULL')
   })
   afterAll(async () => {
@@ -163,6 +178,47 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
       await expect(create(1)).rejects.toMatchObject({ statusCode: 404 })
     } finally { await db.query('UPDATE page_studio_site_memberships SET user_id=$1', [userId]) }
   })
+  async function createWebsite(route = 'new-limo') {
+    const { createPageStudioSite } = await import('~~/server/utils/pageStudio/sites')
+    return createPageStudioSite({ actorId: userId, actorRole: 'client', clientId, portalUserId: userId,
+      tenantId: 'agency-setup-test', name: 'New Limo', route, starterVersion: 'limousine-v1',
+      setup: { setupSource: 'chat', setupBrief: 'Airport transfers with booking enquiries' } })
+  }
+  it('atomically saves the customer website, editor membership and first review proposal', async () => {
+    await db.query('UPDATE page_studio_entitlements SET active_site_limit=2')
+    const site = await createWebsite()
+    expect((await db.query('SELECT source, brief, revision, status, created_by, plan FROM page_studio_setup_proposals WHERE site_id=$1', [site.id])).rows)
+      .toEqual([expect.objectContaining({ source: 'chat', brief: 'Airport transfers with booking enquiries', revision: 1,
+        status: 'proposed', created_by: userId, plan: expect.objectContaining({ requiresAgencyReview: true }) })])
+    expect((await db.query('SELECT user_id, role FROM page_studio_site_memberships WHERE site_id=$1', [site.id])).rows)
+      .toEqual([{ user_id: userId, role: 'editor' }])
+  })
+  it('serializes concurrent customer creation against the last available site allowance', async () => {
+    await db.query('UPDATE page_studio_entitlements SET active_site_limit=2')
+    const results = await Promise.allSettled([createWebsite('first-limo'), createWebsite('second-limo')])
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    expect((results.find(result => result.status === 'rejected') as PromiseRejectedResult).reason).toMatchObject({ code: 'ENTITLEMENT_LIMIT_REACHED' })
+    expect((await db.query('SELECT COUNT(*)::int AS count FROM page_studio_setup_proposals')).rows[0].count).toBe(1)
+  })
+  it('rolls back the website and membership if proposal storage fails', async () => {
+    await db.query('UPDATE page_studio_entitlements SET active_site_limit=2')
+    await db.query(`ALTER TABLE page_studio_setup_proposals ADD CONSTRAINT reject_fixture CHECK (brief <> 'Airport transfers with booking enquiries')`)
+    try {
+      await expect(createWebsite()).rejects.toMatchObject({ code: '23514' })
+      expect((await db.query('SELECT COUNT(*)::int AS count FROM page_studio_sites')).rows[0].count).toBe(1)
+      expect((await db.query('SELECT COUNT(*)::int AS count FROM page_studio_site_memberships')).rows[0].count).toBe(1)
+      expect((await db.query('SELECT COUNT(*)::int AS count FROM page_studio_audit_events')).rows[0].count).toBe(0)
+    } finally { await db.query('ALTER TABLE page_studio_setup_proposals DROP CONSTRAINT reject_fixture') }
+  })
+  it('rejects a fresh role downgrade or a proposal outside page limits before saving a website', async () => {
+    await db.query('UPDATE page_studio_entitlements SET active_site_limit=2, pages_per_site_limit=1')
+    await expect(createWebsite()).rejects.toMatchObject({ code: 'SETUP_ENTITLEMENT_EXCEEDED' })
+    await db.query('UPDATE page_studio_entitlements SET pages_per_site_limit=15')
+    await db.query(`UPDATE client_users SET role='viewer'`)
+    await expect(createWebsite()).rejects.toMatchObject({ code: 'PORTAL_USER_OUT_OF_SCOPE' })
+    expect((await db.query('SELECT COUNT(*)::int AS count FROM page_studio_sites')).rows[0].count).toBe(1)
+  })
+
   function provisioningEvent() {
     let retained: unknown = null
     const binding = {
