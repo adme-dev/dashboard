@@ -42,6 +42,7 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
     await db.query(`CREATE SCHEMA "${schema}"`)
     await db.query(`SET search_path TO "${schema}", pg_catalog`)
     await db.query(`
+      CREATE TABLE client_users (id UUID PRIMARY KEY, client_id UUID, status TEXT, role TEXT);
       CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN);
       CREATE TABLE page_studio_entitlements (id UUID PRIMARY KEY, tenant_id TEXT, client_id UUID, status TEXT,
         effective_from TIMESTAMPTZ, effective_until TIMESTAMPTZ, pages_per_site_limit INTEGER, active_site_limit INTEGER,
@@ -52,6 +53,7 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
     `)
     await db.query(readFileSync(new URL('../../../server/database/migrations/415_page_studio_setup_proposals.sql', import.meta.url), 'utf8'))
     await db.query('INSERT INTO agency_clients VALUES ($1, TRUE)', [clientId])
+    await db.query('INSERT INTO client_users VALUES ($1, $2, \'active\', \'manager\')', [userId, clientId])
     await db.query(`INSERT INTO page_studio_entitlements (id, tenant_id, client_id, status, effective_from, effective_until, pages_per_site_limit, active_site_limit, plan_metadata) VALUES ($1, 'agency-setup-test', $2, 'trial',
       NOW() - INTERVAL '1 hour', NULL, 15, 1, '{"allowedModules":["business-content","bookings","enquiries"]}')`, [entitlementId, clientId])
     await db.query(`INSERT INTO page_studio_sites VALUES ($1, 'agency-setup-test', $2, $3, 'Agency Limo Fixture', 'limousine-v1', 'draft')`, [siteId, clientId, entitlementId])
@@ -79,6 +81,7 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
   })
   beforeEach(async () => {
     mocks.portalAccess.mockResolvedValue({ clientId, id: userId, role: 'manager' })
+    await db.query('UPDATE client_users SET status=\'active\', role=\'manager\'')
     await db.query('UPDATE page_studio_site_memberships SET role=\'editor\'')
     await db.query('UPDATE page_studio_entitlements SET portal_creation_enabled=TRUE')
     await db.query('DELETE FROM page_studio_setup_proposals')
@@ -159,5 +162,57 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
       await expect(read({ siteId, context: {} } as never)).rejects.toMatchObject({ statusCode: 404 })
       await expect(create(1)).rejects.toMatchObject({ statusCode: 404 })
     } finally { await db.query('UPDATE page_studio_site_memberships SET user_id=$1', [userId]) }
+  })
+  function provisioningEvent() {
+    let retained: unknown = null
+    const binding = {
+      readProvisioning: vi.fn(async () => retained),
+      createProvisioning: vi.fn(async (job) => {
+        retained = job
+        return job
+      })
+    }
+    return { siteId, body: { expectedRevision: 1 }, binding,
+      context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding, PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging' } } } }
+  }
+  it('creates one immutable customer-owned job from the accepted SQL proposal across retries', async () => {
+    await create()
+    await decide(1)
+    const provision = (await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')).default
+    const event = provisioningEvent()
+    const first = await provision(event as never)
+    expect(await provision(event as never)).toEqual(first)
+    expect(first).toEqual({ provisioning: { phase: 'requested', updatedAt: expect.any(String) } })
+    expect(event.binding.createProvisioning).toHaveBeenCalledOnce()
+    expect(event.binding.createProvisioning.mock.calls[0][0]).toMatchObject({
+      actor: { kind: 'client-user', userId },
+      scope: { tenantId: 'agency-setup-test', clientId, businessId: clientId, siteId, environment: 'staging' },
+      setup: { proposalRevision: 1 }
+    })
+  })
+  it.each([
+    'UPDATE client_users SET status=\'inactive\'',
+    'UPDATE client_users SET role=\'viewer\'',
+    'UPDATE page_studio_entitlements SET portal_creation_enabled=FALSE',
+    'UPDATE page_studio_entitlements SET effective_until=NOW() - INTERVAL \'1 second\''
+  ])('denies fresh authority revoked after approval: %s', async (sql) => {
+    await create()
+    await decide(1)
+    await db.query(sql)
+    const provision = (await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')).default
+    const event = provisioningEvent()
+    await expect(provision(event as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(event.binding.createProvisioning).not.toHaveBeenCalled()
+    expect(event.binding.readProvisioning).not.toHaveBeenCalled()
+  })
+  it('cannot provision another client website using a valid but foreign portal session', async () => {
+    await create()
+    await decide(1)
+    mocks.portalAccess.mockResolvedValue({ clientId: '20000000-0000-4000-8000-000000000902', id: userId, role: 'admin' })
+    const provision = (await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')).default
+    const event = provisioningEvent()
+    await expect(provision(event as never)).rejects.toMatchObject({ statusCode: 404 })
+    expect(event.binding.readProvisioning).not.toHaveBeenCalled()
+    expect(event.binding.createProvisioning).not.toHaveBeenCalled()
   })
 })

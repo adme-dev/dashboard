@@ -19,3 +19,9 @@ Local validation: 111 focused tests pass; new and changed application code passe
 The customer website portfolio links to a scoped setup page. Current client authentication and an exact site membership govern reads; only an admin/manager with editor membership and current portal-creation entitlement can submit a plan. Site and entitlement locks serialize first creation, revisions and agency decisions. Accepted plans remain immutable. Customer details do not establish confirmed facts automatically or approve/publish a site.
 
 Progress uses the explicitly configured provisioning environment and reports only phase/time. The page retains failed draft text, blocks stale revisions after refresh and permits vertical scrolling. No new provisioner binding, account signup, payment, mail or public release is activated by this increment. Customer plan reads/revisions are being verified on current main before production rollout.
+
+## Customer-requested preparation
+
+An authenticated admin/manager with editor membership can explicitly start the current agency-accepted revision when the provisioner service and environment are configured. The request accepts only `expectedRevision`; customer, site scope, actor and environment are derived server-side. Fresh SQL preflight checks active client/user, membership, site, accepted snapshot and current entitlement before contacting the coordinator. Retries keep the initial customer owner and fixed revision key. The portal receives phase/time only.
+
+The action is hidden for unapproved plans, viewers, unavailable infrastructure or existing jobs. Failed acknowledgements refresh the persisted status before another attempt. No new binding or automatic execution is enabled in this increment. The portal sidebar now constrains long client names to its width. Production enablement still requires positive two-customer provisioning and dispatch acceptance.

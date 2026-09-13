@@ -64,6 +64,42 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('portal setup review and details', () => {
+  it('starts the accepted revision only after an explicit customer action', async () => {
+    state.value.proposal = proposal('accepted', 2)
+    const host = await mount()
+    expect(fetchMock).not.toHaveBeenCalled()
+    button(host, 'Start website setup')!.click()
+    await flush()
+    expect(fetchMock).toHaveBeenCalledWith(`/api/portal/page-studio/sites/${siteId}/provision`, { method: 'POST', body: { expectedRevision: 2 } })
+    expect(refresh).toHaveBeenCalled()
+  })
+  it.each([
+    { serviceAvailable: false },
+    { canEdit: false },
+    { provisioning: { phase: 'requested' } },
+    { provisioning: { phase: 'failed' } },
+    { proposal: proposal('proposed') }
+  ])('hides setup start when the current state does not allow it', async (change) => {
+    state.value.proposal = proposal('accepted')
+    Object.assign(state.value, change)
+    const host = await mount()
+    expect(button(host, 'Start website setup')).toBeUndefined()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it('refreshes after a failed acknowledgement before offering another attempt', async () => {
+    state.value.proposal = proposal('accepted')
+    fetchMock.mockRejectedValueOnce(new Error('private-provider-error'))
+    refresh.mockImplementationOnce(() => {
+      state.value.provisioning = { phase: 'requested' }
+    })
+    const host = await mount()
+    button(host, 'Start website setup')!.click()
+    await flush()
+    expect(refresh).toHaveBeenCalled()
+    expect(button(host, 'Start website setup')).toBeUndefined()
+    expect(host.textContent).not.toContain('private-provider-error')
+  })
+
   it('submits a first plan with no caller-controlled customer or actor', async () => {
     const host = await mount()
     button(host, 'Submit plan for review')!.click()

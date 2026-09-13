@@ -17,6 +17,7 @@ const failure = ref<string | null>(null)
 const { data, pending, error, refresh } = useFetch<SetupState>(() => `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/setup-proposal`, { server: false })
 const blocked = computed(() => saving.value || pending.value || Boolean(error.value))
 const editable = computed(() => data.value?.supported && data.value.canEdit && data.value.proposal?.status !== 'accepted')
+const canStart = computed(() => data.value?.supported && data.value.canEdit && data.value.serviceAvailable && data.value.proposal?.status === 'accepted' && !data.value.provisioning)
 const status = computed(() => {
   if (data.value?.provisioning?.phase === 'complete') return 'Initial website content saved'
   if (data.value?.provisioning?.phase === 'failed') return 'Setup needs attention'
@@ -25,6 +26,24 @@ const status = computed(() => {
   if (data.value?.proposal?.status === 'rejected') return 'Changes requested'
   return data.value?.proposal ? 'Awaiting review' : 'Prepare your website plan'
 })
+async function startSetup() {
+  if (!canStart.value || blocked.value) return
+  saving.value = true
+  failure.value = null
+  try {
+    await $fetch(`/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/provision`, {
+      method: 'POST', body: { expectedRevision: data.value!.proposal!.revision }
+    })
+    toast.add({ title: 'Website setup requested', description: 'Refresh the status to follow its progress.', color: 'success' })
+  } catch {
+    failure.value = 'The setup request could not be confirmed. Check the refreshed status before trying again, or contact your agency.'
+  } finally {
+    // A lost acknowledgement may still have created the job. Refresh before
+    // offering a retry, whose server key is fixed to the accepted revision.
+    await refresh()
+    saving.value = false
+  }
+}
 function edit() {
   if (!editable.value || blocked.value) return
   brief.value = data.value?.proposal?.brief ?? ''
@@ -165,8 +184,15 @@ async function save() {
             :disabled="blocked"
             @click="edit"
           />
+          <UButton
+            v-if="canStart"
+            label="Start website setup"
+            :loading="saving"
+            :disabled="blocked"
+            @click="startSetup"
+          />
           <p v-if="data.proposal?.status === 'accepted' && !data.provisioning" class="text-sm text-muted">
-            Your plan is approved. Your agency will confirm when website setup can start.
+            {{ canStart ? 'Your plan is approved. Start setup to prepare its initial website content. Publishing follows a separate review.' : 'Your plan is approved. Your agency will confirm when website setup can start.' }}
           </p>
           <p v-else-if="data.proposal?.status === 'accepted'" class="text-sm text-muted">
             Contact your agency if the approved plan needs to change. Publishing follows a separate review.
