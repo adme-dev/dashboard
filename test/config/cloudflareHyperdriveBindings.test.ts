@@ -3,6 +3,8 @@ import { parse } from 'smol-toml'
 import { describe, expect, it } from 'vitest'
 
 interface HyperdriveConfig {
+  services?: Array<{ binding: string, service: string }>
+  vars?: Record<string, string>
   hyperdrive?: Array<Record<string, unknown>>
   env?: { preview?: HyperdriveConfig, production?: HyperdriveConfig }
 }
@@ -47,6 +49,16 @@ describe('Cloudflare Hyperdrive production binding', () => {
     ])
     expect(PAGE_STUDIO_STAGING_HYPERDRIVE_ID).not.toBe(HYPERDRIVE_ID)
     expect(PAGE_STUDIO_STAGING_HYPERDRIVE_ID).not.toBe(HYPERDRIVE_FRESH_ID)
+  })
+
+  it('connects only preview to the private staging provisioner with an explicit environment', () => {
+    const config = readToml('wrangler.toml')
+    expect(config.env?.preview?.services?.filter(service => service.binding === 'PAGE_STUDIO_PROVISIONER'))
+      .toEqual([{ binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-staging' }])
+    expect(config.env?.preview?.vars?.PAGE_STUDIO_PROVISIONING_ENVIRONMENT).toBe('staging')
+    expect(config.services?.some(service => service.binding === 'PAGE_STUDIO_PROVISIONER')).not.toBe(true)
+    expect(config.env?.production?.services?.some(service => service.binding === 'PAGE_STUDIO_PROVISIONER')).not.toBe(true)
+    expect(config.env?.production?.vars?.PAGE_STUDIO_PROVISIONING_ENVIRONMENT).toBeUndefined()
   })
 
   it('keeps standalone DB-writing workers on the same Hyperdrive config', () => {

@@ -311,6 +311,11 @@ PAGE_STUDIO_RELEASE_ENVIRONMENT = "production"
 # Page Studio staging services are private WorkerEntrypoint bindings. Production
 # bindings remain deliberately absent until the standalone production workers
 # and customer-routing acceptance gates are complete.
+# Private setup coordinator. This never binds production to staging resources.
+[[env.preview.services]]
+binding = "PAGE_STUDIO_PROVISIONER"
+service = "xeroflow-provisioning-staging"
+
 [[env.preview.services]]
 binding = "PAGE_STUDIO_BUILD"
 service = "xeroflow-page-studio-build-staging"
@@ -369,6 +374,7 @@ NUXT_PUBLIC_SEND_ENABLED = "false"
 NUXT_PUBLIC_SEND_PUBLIC_ENABLED = "false"
 CRM_SEARCH_RELEASE_ENVIRONMENT = "preview"
 PAGE_STUDIO_RELEASE_ENVIRONMENT = "staging"
+PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "staging"
 
 # ============================================
 # Scheduled Triggers
