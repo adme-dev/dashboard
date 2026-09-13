@@ -191,16 +191,16 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/pageStudio/sessions.ts\tconst value = bound === undefined ? process.env.PAGE_STUDIO_SESSION_PUBLIC_KEY : bound\tunrelated_configuration'
     )
-    expect(inventory.rows).toHaveLength(1569)
+    expect(inventory.rows).toHaveLength(1570)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 110,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
-      ordinary_user_behavior: 176,
+      ordinary_user_behavior: 177,
       unrelated_configuration: 432
     })
-    // Add portal role checks for setup reads and revisions; no mutation bypass is registered.
-    expect(inventory.digest).toBe('b0a2c6498fc1767c6a60171a6de660076bb310f50184d624816363e6b52defeb')
+    // Add the portal provisioning role check; no mutation bypass is registered.
+    expect(inventory.digest).toBe('b800ac2dbb355fe23ab2fb2e5fbc0b3bfaa11ec68e4e87a1e1456082bbf24f8f')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

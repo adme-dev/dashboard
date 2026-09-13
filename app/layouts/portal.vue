@@ -220,17 +220,18 @@ async function handleLogout() {
       :ui="{ footer: 'lg:border-t lg:border-default' }"
     >
       <template #header="{ collapsed }">
-        <div class="flex items-center gap-3 px-3 py-2">
+        <div class="flex min-w-0 w-full items-center gap-3 px-3 py-2">
           <UAvatar
             v-if="user?.clientLogo"
+            class="shrink-0"
             :src="user.clientLogo"
             :alt="user?.clientName"
             size="sm"
           />
-          <div v-else class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+          <div v-else class="w-8 h-8 shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
             <UIcon name="i-lucide-building-2" class="text-primary" />
           </div>
-          <div v-if="!collapsed" class="min-w-0">
+          <div v-if="!collapsed" class="min-w-0 flex-1">
             <p class="font-semibold text-sm truncate">
               {{ user?.clientName }}
             </p>
