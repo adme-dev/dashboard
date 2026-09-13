@@ -47,9 +47,9 @@ const audienceCopy = computed(() => props.audience === 'agency'
   : {
       eyebrow: 'Client workspace',
       title: 'Your websites',
-      description: 'Review the websites assigned to your portal account and follow their release status.',
+      description: 'Create a website draft, describe what you need and follow setup through review and publishing.',
       emptyTitle: 'No websites assigned',
-      emptyDescription: 'Contact your agency team if a website should be available in this portal.'
+      emptyDescription: 'Create a website with an available subscription allowance, or contact your agency team to arrange access.'
     })
 
 const rolloutCopy = computed(() => props.audience === 'agency'
@@ -126,6 +126,7 @@ async function launchStudio(site: PageStudioSiteSummary) {
 
       <div class="flex flex-wrap items-center gap-3">
         <PageStudioAgencySiteCreate v-if="audience === 'agency'" @created="emit('update:page', 1); emit('refresh')" />
+        <PageStudioPortalSiteCreate v-else @created="emit('update:page', 1); emit('refresh')" />
         <UBadge color="neutral" variant="subtle" size="lg">
           {{ total }} {{ total === 1 ? 'site' : 'sites' }}
         </UBadge>

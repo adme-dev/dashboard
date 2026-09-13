@@ -160,6 +160,21 @@ describe('Page Studio site endpoints', () => {
     }))
   })
 
+  it('passes a validated setup brief without accepting client authority or a pre-approved plan', async () => {
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/index.post')
+    const body = { name: site.name, route: site.route, starterVersion: 'limousine-v1', setupSource: 'chat', setupBrief: '  Airport limousine hire  ' }
+    await handler({ context: {}, body } as never)
+    expect(mocks.createPageStudioSite).toHaveBeenCalledWith(expect.objectContaining({
+      setup: { setupSource: 'chat', setupBrief: 'Airport limousine hire' },
+      clientId: portalUser.clientId, actorId: portalUser.id
+    }))
+    mocks.createPageStudioSite.mockClear()
+    for (const invalid of [{ ...body, setupBrief: ' ' }, { ...body, plan: { status: 'accepted' } }, { ...body, clientId: site.clientId }]) {
+      await expect(handler({ context: {}, body: invalid } as never)).rejects.toMatchObject({ statusCode: 400 })
+    }
+    expect(mocks.createPageStudioSite).not.toHaveBeenCalled()
+  })
+
   it('denies portal viewers before resolving an entitlement or creating a site', async () => {
     mocks.requireClientAuth.mockResolvedValue({ ...portalUser, role: 'viewer' })
     const { default: handler } = await import('~~/server/api/portal/page-studio/sites/index.post')

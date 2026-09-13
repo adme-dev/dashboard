@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, createApp, h, nextTick, reactive, ref, shallowRef } from 'vue'
 import { CalendarDate } from '@internationalized/date'
-import EntitlementGrant from '~~/app/components/page-studio/EntitlementGrant.vue'
+import EntitlementGrant from '~~/app/components/page-studio/EntitlementGrant.client.vue'
 
 const allowed = ref(true)
 const canWrite = ref(true)
