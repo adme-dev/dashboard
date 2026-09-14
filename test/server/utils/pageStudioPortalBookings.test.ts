@@ -141,8 +141,9 @@ describe('authenticated client staff booking intake', () => {
     auth.actor.role = 'viewer'
     query.mockResolvedValue({ ...row, user_role: 'viewer', membership_role: 'viewer' })
     const result = await listPortalPageStudioBookings(auth, { limit: 10 }, { query })
-    expect(result[0]).toMatchObject({ id })
-    expect(result[0]).not.toHaveProperty('scope')
+    expect(result.bookings[0]).toMatchObject({ id })
+    expect(result.canCreate).toBe(false)
+    expect(result.bookings[0]).not.toHaveProperty('scope')
     list.mockResolvedValue([aggregate, aggregate])
     await expect(listPortalPageStudioBookings(auth, { limit: 10 }, { query })).rejects.toMatchObject({ statusCode: 502 })
     await expect(listPortalPageStudioBookings(auth, { limit: 1 }, { query })).rejects.toMatchObject({ statusCode: 502 })

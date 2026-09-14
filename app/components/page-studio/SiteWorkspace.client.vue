@@ -238,6 +238,15 @@ async function launchStudio(site: PageStudioSiteSummary) {
             <div class="flex flex-wrap items-center gap-2">
               <UButton
                 v-if="audience === 'portal'"
+                :to="`/portal/page-studio/bookings?siteId=${site.id}`"
+                label="Bookings"
+                icon="i-lucide-calendar-check"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
+              <UButton
+                v-if="audience === 'portal'"
                 :to="`/portal/page-studio/${site.id}/setup`"
                 label="Website setup"
                 icon="i-lucide-list-checks"

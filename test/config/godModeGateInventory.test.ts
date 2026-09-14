@@ -194,16 +194,16 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/middleware/05-portal-security.ts\t? editorFormOrigin(useRuntimeConfig(event).public.pageStudioEditorUrl)\tunrelated_configuration'
     )
-    expect(inventory.rows).toHaveLength(1577)
+    expect(inventory.rows).toHaveLength(1578)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 114,
+      identity_tenant_hard_boundary: 115,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
       ordinary_user_behavior: 179,
       unrelated_configuration: 433
     })
     // Add the configured portal form origin; no mutation bypass is registered.
-    expect(inventory.digest).toBe('6f28d8d7dc68a18137f87ca12b608e7f926fd6ccfb6df2302d51336958e3a147')
+    expect(inventory.digest).toBe('d9bc207b5b996c90ccfaa97e857f63c2b7ad6a22becbf3b12b211290f34b6731')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

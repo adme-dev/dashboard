@@ -53,7 +53,7 @@ describe.runIf(Boolean(databaseUrl))('portal booking authority on disposable Pos
     }
   })
   it('derives tenant from the authenticated client website and denies another client or user', async () => {
-    await expect(read()).resolves.toEqual([])
+    await expect(read()).resolves.toEqual({ bookings: [], canCreate: true })
     await expect(write()).resolves.toMatchObject({ replayed: false })
     expect(create.mock.calls[0]![0]).toEqual({ tenantId: 'selected', clientId, businessId: clientId, siteId, environment: 'staging' })
     await expect(read(randomUUID())).rejects.toMatchObject({ statusCode: 404 })
@@ -77,12 +77,13 @@ describe.runIf(Boolean(databaseUrl))('portal booking authority on disposable Pos
   })
   it('preserves viewer read access while denying mutation after membership downgrade', async () => {
     await client.query('UPDATE page_studio_site_memberships SET role=\'viewer\'')
-    await expect(read()).resolves.toEqual([])
+    await expect(read()).resolves.toEqual({ bookings: [], canCreate: false })
     await expect(write()).rejects.toMatchObject({ statusCode: 403 })
     expect(create).not.toHaveBeenCalled()
   })
   it('rejects fresh portal-user role downgrade even with a cached manager actor', async () => {
     await client.query('UPDATE client_users SET role=\'viewer\'')
+    await expect(read()).resolves.toEqual({ bookings: [], canCreate: false })
     await expect(write()).rejects.toMatchObject({ statusCode: 403 })
     expect(create).not.toHaveBeenCalled()
   })

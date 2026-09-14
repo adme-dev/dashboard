@@ -25,4 +25,14 @@ Local verification: 90 focused tests passed across operator/portal helpers, port
 
 The dedicated portal PostgreSQL suite joins the existing booking DB CI step. Production bundle size and full integration remain CI/release gates.
 
-Pending: portal booking form/list UI and navigation, pagination, live authenticated staging acceptance with fresh isolated fixtures, explicit production router binding and release verification. Anonymous visitor intake, availability reservation, notifications, customer confirmation and billing remain separate roadmap outcomes. No live writes, merge or deployment accompanied this API recovery.
+Pending: pagination, live authenticated staging acceptance with fresh isolated fixtures, explicit production router binding and release verification. Anonymous visitor intake, availability reservation, notifications, customer confirmation and billing remain separate roadmap outcomes. No live writes, merge or deployment accompanied this API recovery.
+
+## Portal workspace implementation
+
+The portal website card now links to `/portal/page-studio/bookings?siteId=<uuid>`. The list response includes `canCreate`, derived from the same fresh client-user role, exact site membership and entitlement check used for authorization. A manager with viewer membership, or a user whose role was downgraded, sees the list without a creation action. The server still repeats write authorization on every POST.
+
+The enquiry slideover uses Nuxt UI fields, a calendar and an explicit browser-timezone pickup time. Required-field validation prevents invalid submission. While the workspace stays mounted, each website retains its draft and frozen submitted intent; closing/reopening resumes the same request. An immutable-payload conflict offers an explicit separate-enquiry action, which starts a new key. Drafts are not persisted across a browser reload or leaving this workspace. Saving an enquiry does not reserve a vehicle or confirm a trip.
+
+Local UI evidence: 76 focused tests passed including 12 real PostgreSQL capability tests; both route/gate inventory guards passed. Chrome at 1440×900 and 393×650 verified the visible site link, vertical page scrolling, mobile slideover scrolling, no page horizontal overflow, unchanged retry payload after close/resume, explicit new key after 409 and viewer action hiding. No page errors were recorded. Endpoints were intercepted with synthetic data, so this is not live staging acceptance. Screenshots were visually reviewed.
+
+The application-wide Vue typecheck remains blocked by existing repository errors. One new calendar draft typing error was corrected; an isolated strict TypeScript check of the exact initializer passed. No full application typecheck pass is claimed.

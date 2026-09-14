@@ -25,7 +25,7 @@ const { default: post } = await import('~~/server/api/portal/page-studio/booking
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.auth.mockResolvedValue(user)
-  mocks.list.mockResolvedValue([])
+  mocks.list.mockResolvedValue({ bookings: [], canCreate: true })
   mocks.create.mockResolvedValue({ booking: { id: 'saved' }, replayed: false })
 })
 describe('portal booking endpoint boundaries', () => {
@@ -44,7 +44,7 @@ describe('portal booking endpoint boundaries', () => {
   it('derives read scope from the selected client and validates filters', async () => {
     const input = event()
     input.query = { siteId, status: 'approved', limit: '10' }
-    await expect(get(input as never)).resolves.toEqual({ siteId, bookings: [] })
+    await expect(get(input as never)).resolves.toEqual({ siteId, bookings: [], canCreate: true })
     expect(mocks.list).toHaveBeenCalledWith({ actor: { userId: user.id, clientId: user.clientId, role: user.role }, siteId, env: input.context.cloudflare!.env }, { status: 'approved', limit: 10 })
   })
   it.each([get, post])('rejects caller-supplied tenant/client filters', async (handler) => {
