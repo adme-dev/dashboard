@@ -1,4 +1,4 @@
-<!-- app/components/email/CampaignReportDrawer.vue -->
+<!-- app/components/email/CampaignReportDrawer.client.vue -->
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { describeEmailActionError } from '~~/app/utils/emailActionError'

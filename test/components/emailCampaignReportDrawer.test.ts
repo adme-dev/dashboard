@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
-import CampaignReportDrawer from '~~/app/components/email/CampaignReportDrawer.vue'
+import CampaignReportDrawer from '~~/app/components/email/CampaignReportDrawer.client.vue'
 
 const fetchMock = vi.fn()
 const toastAddMock = vi.fn()

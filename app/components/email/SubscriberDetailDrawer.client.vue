@@ -1,4 +1,4 @@
-<!-- app/components/email/SubscriberDetailDrawer.vue -->
+<!-- app/components/email/SubscriberDetailDrawer.client.vue -->
 <script setup lang="ts">
 import { describeEmailActionError } from '~~/app/utils/emailActionError'
 
