@@ -11,8 +11,8 @@ const API_INVENTORY = {
   // Page Studio publication now delegates its selected-tenant permission check
   // to requireAgencyPageStudioAccess; this lexical inventory counts inline gates.
   // Delegated permission gates do not register a God mode mutation bypass.
-  totalRouteFiles: 2105,
-  mutationRouteFiles: 1158,
+  totalRouteFiles: 2109,
+  mutationRouteFiles: 1160,
   explicitlyGuardedMutationFiles: 401,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -51,8 +51,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2105,
-      mutationRouteFiles: 1158,
+      totalRouteFiles: 2109,
+      mutationRouteFiles: 1160,
       explicitlyGuardedMutationFiles: 401,
       guardedMutationFilesWithTransactionCall: 47
     })

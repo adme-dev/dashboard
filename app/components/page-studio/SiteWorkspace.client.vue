@@ -264,6 +264,14 @@ async function launchStudio(site: PageStudioSiteSummary) {
                 size="sm"
               />
               <UButton
+                :to="`/${audience}/page-studio/${site.id}/content`"
+                label="Business content"
+                icon="i-lucide-database"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
+              <UButton
                 v-if="editorUrl"
                 label="Launch Studio"
                 icon="i-lucide-panels-top-left"
