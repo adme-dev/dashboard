@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 import { refreshPageStudioDomain } from '~~/server/utils/pageStudio/siteOperations'
+import { PageStudioDomainAttachmentError } from '~~/server/utils/pageStudio/domainAttachmentProvider'
 
-const db = vi.hoisted(() => ({ queryOne: vi.fn(), queryRows: vi.fn(), execute: vi.fn(), transaction: vi.fn() }))
-vi.mock('~~/server/utils/db', () => db)
+const service = vi.hoisted(() => ({ prepare: vi.fn(), saveVerification: vi.fn() }))
+vi.mock('~~/server/utils/pageStudio/domainAttachment', () => ({ domainAttachmentService: () => service }))
 
 const hostname = 'www.customer.example'
 const providerId = 'a'.repeat(32)
@@ -25,16 +26,15 @@ function dns(answers: unknown[], status = 0) {
 }
 const cname = (name = hostname, data = target) => ({ type: 5, name, data })
 function responses(providerBody: unknown, dnsBody: unknown) {
-  fetcher.mockResolvedValueOnce(Response.json(providerBody)).mockResolvedValueOnce(Response.json(dnsBody))
+  service.prepare.mockResolvedValue({ current: { id: input.domainId, normalized_hostname: hostname, cloudflare_hostname_id: providerId }, provider: (providerBody as { result: unknown }).result })
+  fetcher.mockResolvedValueOnce(Response.json(dnsBody))
 }
 
 describe('Page Studio domain activation', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     vi.stubGlobal('fetch', fetcher)
-    db.queryOne.mockResolvedValueOnce({ client_id: 'client', custom_domain_limit: 2, entitlement_id: 'entitlement', tenant_id: 'tenant' })
-      .mockResolvedValueOnce({ cloudflare_hostname_id: providerId, normalized_hostname: hostname })
-    db.execute.mockResolvedValue(1)
+    service.saveVerification.mockResolvedValue(undefined)
   })
 
   it('keeps a prevalidated hostname inactive while DNS still points to the old website', async () => {
@@ -49,7 +49,7 @@ describe('Page Studio domain activation', () => {
     const result = await refreshPageStudioDomain(input)
     expect(result.lifecycleState).toBe('active')
     expect(result.ownershipValidation).toMatchObject({ cnameTarget: target, dnsVerified: true })
-    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(fetcher).toHaveBeenCalledTimes(1)
     expect(fetcher.mock.calls.every(([, init]) => init.redirect === 'manual' && init.signal instanceof AbortSignal)).toBe(true)
   })
 
@@ -73,17 +73,10 @@ describe('Page Studio domain activation', () => {
     expect((await refreshPageStudioDomain(input)).lifecycleState).not.toBe('active')
   })
 
-  it.each([{ id: 'c'.repeat(32) }, { hostname: 'other-customer.example' }])('rejects a provider identity mismatch without writing state', async (override) => {
-    responses(provider(override), dns([cname()]))
-    await expect(refreshPageStudioDomain(input)).rejects.toMatchObject({ code: 'DOMAIN_PROVIDER_MISMATCH' })
-    expect(db.execute).not.toHaveBeenCalled()
-  })
-
   it('does not reactivate a domain detached while provider verification was running', async () => {
     responses(provider(), dns([cname()]))
-    db.execute.mockResolvedValueOnce(0)
+    service.saveVerification.mockRejectedValueOnce(new PageStudioDomainAttachmentError('DOMAIN_CHANGED', 409, 'Domain changed'))
     await expect(refreshPageStudioDomain(input)).rejects.toMatchObject({ code: 'DOMAIN_CHANGED' })
-    expect(db.execute).toHaveBeenCalledTimes(1)
-    expect(db.execute.mock.calls[0][0]).toContain('lifecycle_state <> \'detached\'')
+    expect(service.saveVerification).toHaveBeenCalledTimes(1)
   })
 })
