@@ -19,3 +19,5 @@ All portal documents, including login and project pages, need the allowance beca
 - Browser network was intercepted with synthetic session data. No production credentials or customer data were used, and no request reached a live Studio service. This does not prove the live authenticated portal-to-editor journey, which remains a release acceptance check.
 
 No merge or deployment was performed as part of this recovery. Before release, refresh main, preserve the current font/navigation and other integrations, run required checks, and verify the deployed portal login-to-editor journey on the exact released source.
+
+Full CI on rebased source `cf2cea998` passed 13,345 tests but rejected the frozen security-gate inventory: the middleware adds one configured-origin runtime lookup. The follow-up explicitly records that line as unrelated configuration, updates the measured count/digest and leaves all authorization/bypass classifications unchanged. Required CI is rerun before integration.
