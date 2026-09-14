@@ -195,6 +195,10 @@ const features: Record<string, Feature> = {
         content: 'The delivery architecture uses Cloudflare Workers and Pages for private build, sandbox, control, and delivery services. Domain registration and custom-domain workflows can be layered into the governed release process as the staged rollout advances, without handing clients unrestricted infrastructure access.'
       },
       {
+        title: 'Business Content Where Connected',
+        content: 'Manage website collections such as services, fleet and testimonials from the agency workspace or client portal once content storage is connected. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release.'
+      },
+      {
         title: 'Booking Operations Where Connected',
         content: 'The website booking queue lets authorised agency operators review enquiries, save quotes with an expiry date, and record approval, rejection, cancellation and completion decisions. Signed-in business administrators and managers with website editing access can record customer enquiries in their portal and resume the same request after an interrupted response. Each view belongs to the selected website and requires active booking access. Updates check the current booking version, and retries retain the same request so delayed responses do not create duplicate actions. Vehicle reservations, trip confirmation and customer notifications remain separate operational steps during the staged rollout.'
       },

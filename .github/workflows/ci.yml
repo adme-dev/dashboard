@@ -104,10 +104,11 @@ jobs:
         env:
           PAGE_STUDIO_AUTHORITY_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
-      - name: Page Studio booking authority database tests
-        run: pnpm exec vitest run test/server/utils/pageStudioBookingsPostgres.test.ts test/server/utils/pageStudioPortalBookingsPostgres.test.ts
+      - name: Page Studio booking and content authority database tests
+        run: pnpm exec vitest run test/server/utils/pageStudioBookingsPostgres.test.ts test/server/utils/pageStudioPortalBookingsPostgres.test.ts test/server/utils/pageStudioBusinessContentPostgres.test.ts
         timeout-minutes: 5
         env:
+          PAGE_STUDIO_CONTENT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
           PAGE_STUDIO_BOOKINGS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
       # The full suite exercises the real Nitro Cloudflare Worker output. A
