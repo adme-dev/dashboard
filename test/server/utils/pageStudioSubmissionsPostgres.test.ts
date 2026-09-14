@@ -3,7 +3,7 @@ import pg from 'pg'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import type { H3Event } from 'h3'
-import { acceptPageStudioPublicLead } from '~~/server/utils/pageStudio/publicBoundary'
+import { acceptPageStudioPublicLead, acceptPageStudioPublicAnalyticsEvent } from '~~/server/utils/pageStudio/publicBoundary'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listPageStudioSubmissions } from '~~/server/utils/pageStudio/siteOperations'
 
@@ -66,7 +66,9 @@ describe.runIf(Boolean(databaseUrl))('public intake receipts and fresh authority
     formId: 'quote', idempotencyKey: 'synthetic-public-request', occurredAt: '2026-09-14T00:00:00.000Z', pageId: 'quote', pageRoute: '/quote',
     releaseId: 'release', versionDigest: 'a'.repeat(64), scope: { tenantId: 'tenant', clientId: 'client', siteId: 'site' }
   }
-  const submit = (value = input) => acceptPageStudioPublicLead({} as H3Event, value)
+  const event = (environment: unknown = 'production') => ({ context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: environment } } } }) as H3Event
+  const submit = (value = input, environment: unknown = 'production') => acceptPageStudioPublicLead(event(environment), value)
+  const analytics = (environment: unknown = 'production') => acceptPageStudioPublicAnalyticsEvent(event(environment), { eventId: 'page_view', kind: 'page_view', occurredAt: input.occurredAt, pageId: input.pageId, pageRoute: input.pageRoute, releaseId: input.releaseId, scope: input.scope, versionDigest: input.versionDigest, idempotencyKey: 'analytics-request' })
   async function withLeadTransaction<T>(operation: (connection: pg.PoolClient) => Promise<T>) {
     const connection = await pool.connect()
     try {
@@ -93,6 +95,7 @@ describe.runIf(Boolean(databaseUrl))('public intake receipts and fresh authority
       CREATE TABLE page_studio_releases (tenant_id text, client_id text, site_id text, id text, build_id text, environment text);
       CREATE TABLE page_studio_builds (tenant_id text, client_id text, site_id text, id text, version_digest text, state text);
       CREATE TABLE page_studio_release_pointers (tenant_id text, client_id text, site_id text, environment text, active_release_id text);
+      CREATE TABLE page_studio_analytics_events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id text, client_id text, site_id text, release_id text, version_digest text, event_id text, kind text, page_id text, page_route text, occurred_at timestamptz, idempotency_key text UNIQUE, delivery_status text, canonical_event_id text, updated_at timestamptz);
       CREATE TABLE leads (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), client_id text, source text, source_lead_id text, form_id text, form_name text, ad_id text, ad_name text, campaign_id text, campaign_name text, page_id text, field_data jsonb, attribution jsonb, submitted_at timestamptz, deleted_at timestamptz, assigned_to text, created_by text, is_test boolean, test_run_id text);
       CREATE UNIQUE INDEX lead_source_identity ON leads (source, source_lead_id) WHERE deleted_at IS NULL;
       CREATE TABLE page_studio_audit_events (tenant_id text, client_id text, site_id text, actor_id text, actor_role text, action text, resource_type text, resource_id text, idempotency_key text, metadata jsonb, occurred_at timestamptz);
@@ -101,7 +104,7 @@ describe.runIf(Boolean(databaseUrl))('public intake receipts and fresh authority
     await client.query(readFileSync('server/database/migrations/417_page_studio_lead_receipt_indexes.sql', 'utf8'))
   })
   beforeEach(async () => {
-    await client.query(`TRUNCATE agency_clients, page_studio_sites, page_studio_entitlements, page_studio_releases, page_studio_builds, page_studio_release_pointers, leads, page_studio_audit_events;
+    await client.query(`TRUNCATE page_studio_analytics_events, agency_clients, page_studio_sites, page_studio_entitlements, page_studio_releases, page_studio_builds, page_studio_release_pointers, leads, page_studio_audit_events;
       INSERT INTO agency_clients VALUES ('client',true);
       INSERT INTO page_studio_sites VALUES ('tenant','client','site','access','release','active','{"synthetic":true}');
       INSERT INTO page_studio_entitlements VALUES ('tenant','client','access','active',NOW()-INTERVAL '1 day',NULL);
@@ -123,6 +126,64 @@ describe.runIf(Boolean(databaseUrl))('public intake receipts and fresh authority
       await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
       await client.end()
     }
+  })
+  it.each(['staging', 'production'])('accepts lead and analytics only for the configured %s release', async (environment) => {
+    await client.query('UPDATE page_studio_releases SET environment=$1', [environment])
+    await client.query('UPDATE page_studio_release_pointers SET environment=$1', [environment])
+    const other = environment === 'staging' ? 'production' : 'staging'
+    await expect(submit(input, other)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(analytics(other)).rejects.toMatchObject({ statusCode: 403 })
+    expect((await client.query('SELECT COUNT(*)::int AS count FROM leads')).rows[0].count).toBe(0)
+    await expect(submit(input, environment)).resolves.toMatchObject({ duplicate: false })
+    await expect(analytics(environment)).resolves.toEqual({ accepted: true })
+    expect((await client.query('SELECT COUNT(*)::int AS count FROM page_studio_analytics_events')).rows[0].count).toBe(1)
+    await client.query('DELETE FROM page_studio_release_pointers')
+    await expect(submit(input, environment)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(analytics(environment)).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it.each([null, '', 'preview', 'invalid'])('rejects missing or invalid trusted configuration %s before intake', async (environment) => {
+    await expect(submit(input, environment)).rejects.toMatchObject({ statusCode: 503 })
+    await expect(analytics(environment)).rejects.toMatchObject({ statusCode: 503 })
+    expect((await client.query('SELECT COUNT(*)::int AS count FROM page_studio_audit_events')).rows[0].count).toBe(0)
+  })
+  it.each(['staging', 'production'])('requires the release and pointer environments both match %s', async (environment) => {
+    const other = environment === 'staging' ? 'production' : 'staging'
+    await client.query('UPDATE page_studio_releases SET environment=$1', [environment])
+    await client.query('UPDATE page_studio_release_pointers SET environment=$1', [other])
+    await expect(submit(input, environment)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(analytics(environment)).rejects.toMatchObject({ statusCode: 403 })
+    await client.query('UPDATE page_studio_releases SET environment=$1', [other])
+    await client.query('UPDATE page_studio_release_pointers SET environment=$1', [environment])
+    await expect(submit(input, environment)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(analytics(environment)).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it.each(['staging', 'production'])('rechecks %s analytics authority inside its transaction after pointer revocation', async (environment) => {
+    await client.query('UPDATE page_studio_releases SET environment=$1', [environment])
+    await client.query('UPDATE page_studio_release_pointers SET environment=$1', [environment])
+    db.transaction.mockImplementationOnce(async (operation) => {
+      await client.query('DELETE FROM page_studio_release_pointers')
+      return withLeadTransaction(operation)
+    })
+    await expect(analytics(environment)).rejects.toMatchObject({ statusCode: 403 })
+    expect((await client.query('SELECT COUNT(*)::int AS count FROM page_studio_analytics_events')).rows[0].count).toBe(0)
+  })
+  it.each(['staging', 'production'])('rechecks %s lead authority after reservation before insertion', async (environment) => {
+    await client.query('UPDATE page_studio_releases SET environment=$1', [environment])
+    await client.query('UPDATE page_studio_release_pointers SET environment=$1', [environment])
+    const execute = db.execute.getMockImplementation()!
+    db.execute.mockImplementationOnce(async (sql, params) => {
+      const result = await execute(sql, params)
+      await client.query('DELETE FROM page_studio_release_pointers')
+      return result
+    })
+    await expect(submit(input, environment)).rejects.toMatchObject({ statusCode: 403 })
+    expect(intake.accept).not.toHaveBeenCalled()
+    expect((await client.query('SELECT COUNT(*)::int AS count FROM leads')).rows[0].count).toBe(0)
+  })
+  it('cannot redirect a staging request to production authority using a forged payload environment', async () => {
+    const forged = { ...input, environment: 'production' }
+    await expect(submit(forged, 'staging')).rejects.toMatchObject({ statusCode: 403 })
+    expect((await client.query('SELECT COUNT(*)::int AS count FROM leads')).rows[0].count).toBe(0)
   })
   it('uses actual scoped receipt and lead uniqueness across concurrent requests', async () => {
     const results = await Promise.allSettled([submit(), submit(), submit({ ...input, fields: { ...input.fields, vehicle_count: '3' } })])

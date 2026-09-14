@@ -65,7 +65,7 @@ describe('Page Studio generated form lead fields', () => {
   })
 
   it('maps the actual AI-generated contact fields without discarding submitted keys', async () => {
-    await acceptPageStudioPublicLead({} as H3Event, input)
+    await acceptPageStudioPublicLead({ context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event, input)
     expect(mocks.acceptLead.mock.calls[0][1].lead.field_data).toEqual({
       ...input.fields,
       full_name: 'Synthetic Form Test',
@@ -77,9 +77,9 @@ describe('Page Studio generated form lead fields', () => {
 
   it('keeps explicit canonical values and the existing alias precedence', async () => {
     const fields = { ...input.fields, full_name: 'Canonical Name', message: 'Canonical Message', email: 'canonical@example.invalid' }
-    await acceptPageStudioPublicLead({} as H3Event, { ...input, fields })
+    await acceptPageStudioPublicLead({ context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event, { ...input, fields })
     expect(mocks.acceptLead.mock.calls[0][1].lead.field_data).toEqual(fields)
-    await acceptPageStudioPublicLead({} as H3Event, {
+    await acceptPageStudioPublicLead({ context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event, {
       ...input, idempotencyKey: 'independent-alias-request', fields: { ...input.fields, field_name: 'Legacy Name', field_goal: 'Legacy Message' }
     })
     expect(mocks.acceptLead.mock.calls[1][1].lead.field_data).toMatchObject({ full_name: 'Legacy Name', message: 'Legacy Message' })
@@ -87,14 +87,14 @@ describe('Page Studio generated form lead fields', () => {
 
   it('maps the email-address field generated in production while retaining alias precedence', async () => {
     const fields = { field_full_name: 'Synthetic Form Test', field_email_address: 'generated@example.invalid', field_message: 'Production AI verification' }
-    await acceptPageStudioPublicLead({} as H3Event, { ...input, fields })
+    await acceptPageStudioPublicLead({ context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event, { ...input, fields })
     expect(mocks.acceptLead.mock.calls[0][1].lead.field_data).toMatchObject({ ...fields, email: fields.field_email_address })
-    await acceptPageStudioPublicLead({} as H3Event, { ...input, idempotencyKey: 'independent-email-request', fields: { ...fields, field_email: 'legacy@example.invalid' } })
+    await acceptPageStudioPublicLead({ context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event, { ...input, idempotencyKey: 'independent-email-request', fields: { ...fields, field_email: 'legacy@example.invalid' } })
     expect(mocks.acceptLead.mock.calls[1][1].lead.field_data.email).toBe('legacy@example.invalid')
   })
 
   it('keeps synthetic submissions out of assignment and notification routing', async () => {
-    await acceptPageStudioPublicLead({} as H3Event, input)
+    await acceptPageStudioPublicLead({ context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event, input)
     expect(mocks.acceptLead.mock.calls[0][1]).toMatchObject({
       lead: { is_test: true, assigned_to: null }, leadCaptureMode: 'capture_only', runRules: false
     })
@@ -104,7 +104,7 @@ describe('Page Studio generated form lead fields', () => {
 
   it('rejects an inactive release before any lead or metadata write', async () => {
     mocks.queryOneFresh.mockResolvedValue(null)
-    await expect(acceptPageStudioPublicLead({} as H3Event, input)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(acceptPageStudioPublicLead({ context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event, input)).rejects.toMatchObject({ statusCode: 403 })
     expect(mocks.acceptLead).not.toHaveBeenCalled()
     expect(mocks.upsertFormMetadata).not.toHaveBeenCalled()
     expect(mocks.execute).not.toHaveBeenCalled()
