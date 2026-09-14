@@ -219,6 +219,9 @@ id = "90228af3e2cc461bbc09accc3b47bd9f"
 binding = "AGENCY_WORKFLOWS"
 service = "agency-workflows"
 [[env.production.services]]
+binding = "PAGE_STUDIO_MANAGEMENT"
+service = "xeroflow-page-studio-management-production"
+[[env.production.services]]
 binding = "TRANSACTIONAL_EMAIL"
 service = "xeroflow-transactional-email"
 [[env.production.services]]
@@ -360,6 +363,10 @@ id = "3865ea5568234fc7b0e9e3e595a30286"
 [[env.preview.hyperdrive]]
 binding = "HYPERDRIVE_FRESH"
 id = "3865ea5568234fc7b0e9e3e595a30286"
+
+[[env.preview.services]]
+binding = "PAGE_STUDIO_MANAGEMENT"
+service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
 APP_NAME = "XeroFlow Agency"

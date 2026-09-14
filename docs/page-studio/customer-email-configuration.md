@@ -20,8 +20,32 @@ Before delivery can be enabled, a separate reviewed implementation must supply s
 
 ## Migration and release status
 
-Migration 418 is reserved for this change. It has been applied only to a disposable local PostgreSQL test schema. **No staging or production database has been migrated by this task.** The parent agent must identify and review exact database targets before additive migration execution and code release. Until then a missing column returns a safe setup-pending 503.
+Migration 418 was applied and independently read back on the identified production
+`br-small-hall-a4qtwjgo` and staging `br-long-mountain-a4f73v10` branches of Neon
+project `square-tooth-23821574`, database `neondb`. The column, default and validated
+constraint are confirmed; no customer settings or email were created by the
+migration. Missing schema on any other target returns a safe setup-pending 503.
 
-This is a local review candidate, not a deployed feature. It started at Dashboard main `52ed8304f310cc2057218f872f559d173993792a`; it has been reconciled onto main `95c835f84864fcd64b9694393b076b2597a50b40`, including fresh staff authentication. Future integration must still include the latest main before PR/release checks. The parent owns domain verification, authentication changes and release coordination.
+This remains a review candidate, not a deployed feature. It is reconciled onto
+Dashboard main `78bf3ddd24bef1e2f639243e9160257df68bc82f`, including fresh staff
+authentication and durable initial domain attachment. Integration must still
+include freshly fetched main and pass the complete release checks.
 
 Meaningful coverage includes strict input and forged-readiness rejection, HTTP identity/body bounds, portal/staff revocation, environment isolation, concurrent compare-and-swap, audit rollback, additive migration replay and preservation through the actual release-metadata trigger. The dedicated disposable PostgreSQL suite is included in the existing CI content/bookings database step using `PAGE_STUDIO_EMAIL_DATABASE_TEST_URL`.
+
+
+## Private service boundary
+
+Settings SQL, fresh permissions, revision CAS and atomic audits execute in the
+private Page Studio management Worker. Pages authenticates agency/portal requests
+and passes only the selected actor/site and expected environment over its service
+binding. The Worker independently validates those values and uses its own fixed,
+cache-disabled Hyperdrive configuration. Public fetch always denies. No public
+routes, cron, customer Worker binding or automatic RPC write retry is configured.
+Provider email sending/forwarding remains disconnected.
+
+Both Worker configurations and generated module-local binding types are under
+`workers/page-studio-management/`. Stage and verify the exact private Worker source,
+Hyperdrive origin/cache policy and denial behavior before adding the production
+Pages binding. A Pages build must pass the unchanged raw/gzip budget. Never use
+unbound-service errors as email-delivery acceptance.

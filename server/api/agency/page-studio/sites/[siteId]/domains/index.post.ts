@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import { PageStudioSiteId } from '~~/server/utils/pageStudio/schemas'
-import { attachPageStudioDomain } from '~~/server/utils/pageStudio/siteOperations'
+import { attachPageStudioDomain } from '~~/server/utils/pageStudio/domainManagementClient'
 
 const DomainBody = z.object({
   hostname: z.string().trim().toLowerCase().max(253)
@@ -17,6 +17,7 @@ export default eventHandler(async (event) => {
     const body = DomainBody.safeParse(await readBody(event))
     if (!siteId.success || !body.success) throw createError({ statusCode: 400, statusMessage: 'Invalid Page Studio hostname' })
     const domain = await attachPageStudioDomain({
+      kind: 'agency',
       actorId: user.id,
       event,
       hostname: body.data.hostname,

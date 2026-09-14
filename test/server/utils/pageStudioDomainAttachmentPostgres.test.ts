@@ -1,17 +1,18 @@
+import { handleDomainManagement } from '../../../workers/page-studio-management/src/domainManagement'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { domainAttachmentService, type DomainDatabase, type DomainTransaction } from '~~/server/utils/pageStudio/domainAttachment'
-import type { DomainHostname } from '~~/server/utils/pageStudio/domainAttachmentProvider'
+import { domainAttachmentService, type DomainDatabase, type DomainTransaction } from '../../../workers/page-studio-management/src/domainAttachment'
+import { readPortalDomainConfiguration } from '../../../workers/page-studio-management/src/portalDomains'
+import { listPortalPageStudioDomains } from '../../../workers/page-studio-management/src/domainAggregate'
+import type { DomainHostname } from '../../../workers/page-studio-management/src/domainAttachmentProvider'
 
-vi.mock('~~/server/utils/db', () => ({ transactionWithoutRetry: vi.fn(() => {
-  throw new Error('Live database access prohibited')
-}) }))
 const url = process.env.PAGE_STUDIO_DOMAINS_DATABASE_TEST_URL
 const ids = { client: randomUUID(), otherClient: randomUUID(), site: randomUUID(), site2: randomUUID(), otherSite: randomUUID(), entitlement: randomUUID(), otherEntitlement: randomUUID(), staff: randomUUID(), role: randomUUID() }
+const portalId = randomUUID()
 const config = { apiToken: 'local-only', zoneId: 'a'.repeat(32), cnameTarget: 'sites.example.com' }
-const input = { actorId: ids.staff, tenantId: 'domain-test', siteId: ids.site, hostname: 'customer.example.com' }
+const input = { kind: 'agency' as const, actorId: ids.staff, tenantId: 'domain-test', siteId: ids.site, hostname: 'customer.example.com' }
 const other = { ...input, siteId: ids.otherSite }
 const providerRows = new Map<string, DomainHostname>()
 const provider = { create: vi.fn(), get: vi.fn(), find: vi.fn() }
@@ -33,11 +34,13 @@ describe.runIf(Boolean(url))('durable domain attachment on disposable PostgreSQL
     await execute(`CREATE SCHEMA "${schema}"`)
     connected = true
     await execute(`CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN NOT NULL);
+      CREATE TABLE client_users(id UUID PRIMARY KEY,client_id UUID,status TEXT,role TEXT);
+      CREATE TABLE page_studio_site_memberships(tenant_id TEXT,client_id UUID,site_id UUID,user_id UUID,role TEXT);
       CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN,user_role TEXT,custom_role_id UUID);
       CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,PRIMARY KEY(role_id,permission_group));
       CREATE TABLE page_studio_entitlements(id UUID PRIMARY KEY,tenant_id TEXT,client_id UUID,status TEXT,effective_from TIMESTAMPTZ,effective_until TIMESTAMPTZ,custom_domain_limit INTEGER);
-      CREATE TABLE page_studio_sites(id UUID PRIMARY KEY,tenant_id TEXT,client_id UUID,entitlement_id UUID,status TEXT,UNIQUE(tenant_id,client_id,id));
+      CREATE TABLE page_studio_sites(id UUID PRIMARY KEY,tenant_id TEXT,client_id UUID,entitlement_id UUID,status TEXT,name TEXT DEFAULT 'Website',UNIQUE(tenant_id,client_id,id));
       CREATE TABLE page_studio_audit_events(tenant_id TEXT,client_id UUID,site_id UUID,actor_id UUID,actor_role TEXT,action TEXT,resource_type TEXT,resource_id UUID,metadata JSONB);`)
     const control = readFileSync('server/database/migrations/402_page_studio_control_plane.sql', 'utf8')
     await execute(control.slice(control.indexOf('CREATE TABLE IF NOT EXISTS page_studio_domains ('), control.indexOf('CREATE TABLE IF NOT EXISTS page_studio_assets (')))
@@ -64,13 +67,15 @@ describe.runIf(Boolean(url))('durable domain attachment on disposable PostgreSQL
   beforeEach(async () => {
     providerRows.clear()
     vi.resetAllMocks()
-    await execute('TRUNCATE page_studio_domain_operations,page_studio_domains,page_studio_audit_events,page_studio_sites,page_studio_entitlements,role_permission_groups,custom_roles,team_members,agency_clients CASCADE')
+    await execute('TRUNCATE client_users,page_studio_site_memberships,page_studio_domain_operations,page_studio_domains,page_studio_audit_events,page_studio_sites,page_studio_entitlements,role_permission_groups,custom_roles,team_members,agency_clients CASCADE')
     await execute('INSERT INTO agency_clients VALUES ($1,TRUE),($2,TRUE)', [ids.client, ids.otherClient])
     await execute('INSERT INTO team_members VALUES ($1,TRUE,\'admin\',$2)', [ids.staff, ids.role])
     await execute('INSERT INTO custom_roles VALUES ($1,\'custom-domain-editor\',FALSE,FALSE)', [ids.role])
     await execute('INSERT INTO role_permission_groups VALUES ($1,\'PAGE_STUDIO_EDIT\')', [ids.role])
     await execute('INSERT INTO page_studio_entitlements VALUES ($1,\'domain-test\',$2,\'active\',NOW()-INTERVAL \'1 hour\',NOW()+INTERVAL \'1 hour\',2),($3,\'domain-test\',$4,\'active\',NOW()-INTERVAL \'1 hour\',NOW()+INTERVAL \'1 hour\',2)', [ids.entitlement, ids.client, ids.otherEntitlement, ids.otherClient])
-    await execute('INSERT INTO page_studio_sites VALUES ($1,\'domain-test\',$2,$3,\'draft\'),($4,\'domain-test\',$2,$3,\'draft\'),($5,\'domain-test\',$6,$7,\'draft\')', [ids.site, ids.client, ids.entitlement, ids.site2, ids.otherSite, ids.otherClient, ids.otherEntitlement])
+    await execute('INSERT INTO page_studio_sites(id,tenant_id,client_id,entitlement_id,status) VALUES ($1,\'domain-test\',$2,$3,\'draft\'),($4,\'domain-test\',$2,$3,\'draft\'),($5,\'domain-test\',$6,$7,\'draft\')', [ids.site, ids.client, ids.entitlement, ids.site2, ids.otherSite, ids.otherClient, ids.otherEntitlement])
+    await execute('INSERT INTO client_users VALUES ($1,$2,\'active\',\'admin\')', [portalId, ids.client])
+    await execute('INSERT INTO page_studio_site_memberships VALUES ($1,$2,$3,$4,\'editor\')', [input.tenantId, ids.client, ids.site, portalId])
     provider.find.mockImplementation(async (host: string) => providerRows.get(host) ?? null)
     provider.get.mockImplementation(async (id: string) => [...providerRows.values()].find(row => row.id === id) ?? null)
     provider.create.mockImplementation(async (host: string, owner: string) => {
@@ -88,6 +93,113 @@ describe.runIf(Boolean(url))('durable domain attachment on disposable PostgreSQL
     } finally {
       await pool.end()
     }
+  })
+  const portal = () => ({ ...input, kind: 'portal' as const, actorId: portalId, clientId: ids.client })
+  const rpcEnv = { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging', HYPERDRIVE_FRESH: { connectionString: 'injected-local-only' } }
+  const rpcInput = () => ({ actor: { kind: 'portal', actorId: portalId, clientId: ids.client }, expectedEnvironment: 'staging', siteId: ids.site })
+  it('executes actual portal RPC reserve/list/retry against isolated PostgreSQL without provider configuration', async () => {
+    const request = { ...rpcInput(), operation: 'attach', hostname: input.hostname }
+    const first = await handleDomainManagement(request, rpcEnv, tx)
+    expect(first).toMatchObject({ ok: true, scopeId: ids.client, siteId: ids.site, actorKind: 'portal', environment: 'staging', value: { id: expect.any(String) } })
+    expect(await handleDomainManagement(request, rpcEnv, tx)).toEqual(first)
+    const listed = await handleDomainManagement({ ...rpcInput(), operation: 'list' }, rpcEnv, tx)
+    expect(listed).toMatchObject({ ok: true, value: { siteId: ids.site, canManage: true, domains: [{ hostname: input.hostname }] } })
+    expect((await execute('SELECT COUNT(*)::int AS count FROM page_studio_domains')).rows[0].count).toBe(1)
+    expect((await execute('SELECT COUNT(*)::int AS count FROM page_studio_domain_operations')).rows[0].count).toBe(1)
+    expect(provider.create).not.toHaveBeenCalled()
+  })
+  it('rechecks portal permissions inside the real RPC after account revocation', async () => {
+    await execute('UPDATE client_users SET status=\'inactive\'')
+    expect(await handleDomainManagement({ ...rpcInput(), operation: 'attach', hostname: input.hostname }, rpcEnv, tx)).toMatchObject({ ok: false, error: { code: 'DOMAIN_ACCESS_DENIED', statusCode: 403 } })
+    expect((await execute('SELECT COUNT(*)::int AS count FROM page_studio_domains')).rows[0].count).toBe(0)
+  })
+  it('does not accept a foreign site under the selected portal client through RPC', async () => {
+    expect(await handleDomainManagement({ ...rpcInput(), siteId: ids.otherSite, operation: 'attach', hostname: input.hostname }, rpcEnv, tx)).toMatchObject({ ok: false, error: { code: 'DOMAIN_ACCESS_DENIED' } })
+  })
+  it('keeps RPC viewer list read-only and rejects a fresh viewer mutation', async () => {
+    await execute('UPDATE client_users SET role=\'viewer\'')
+    expect(await handleDomainManagement({ ...rpcInput(), operation: 'list' }, rpcEnv, tx)).toMatchObject({ ok: true, value: { canManage: false, domains: [] } })
+    expect(await handleDomainManagement({ ...rpcInput(), operation: 'attach', hostname: input.hostname }, rpcEnv, tx)).toMatchObject({ ok: false, error: { code: 'DOMAIN_ACCESS_DENIED' } })
+  })
+  it('reports agency read-only capability when current role lacks edit permission', async () => {
+    await execute('DELETE FROM role_permission_groups')
+    await execute('INSERT INTO role_permission_groups VALUES ($1,\'PAGE_STUDIO_VIEW\')', [ids.role])
+    const actor = { kind: 'agency', actorId: ids.staff, tenantId: input.tenantId }
+    expect(await handleDomainManagement({ actor, operation: 'list', siteId: ids.site, expectedEnvironment: 'staging' }, rpcEnv, tx)).toMatchObject({ ok: true, value: { canManage: false } })
+    expect(await handleDomainManagement({ actor, operation: 'attach', siteId: ids.site, hostname: input.hostname, expectedEnvironment: 'staging' }, rpcEnv, tx)).toMatchObject({ ok: false, error: { code: 'DOMAIN_ACCESS_DENIED' } })
+  })
+  it('does not claim editing capability from a system fallback without the engine-required policy row', async () => {
+    await execute('UPDATE team_members SET custom_role_id=NULL')
+    const actor = { kind: 'agency', actorId: ids.staff, tenantId: input.tenantId }
+    expect(await handleDomainManagement({ actor, operation: 'list', siteId: ids.site, expectedEnvironment: 'staging' }, rpcEnv, tx)).toMatchObject({ ok: true, value: { canManage: false } })
+    expect(await handleDomainManagement({ actor, operation: 'attach', siteId: ids.site, hostname: input.hostname, expectedEnvironment: 'staging' }, rpcEnv, tx)).toMatchObject({ ok: false, error: { code: 'DOMAIN_ACCESS_DENIED' } })
+  })
+  it('lets a viewer read projected instructions while preventing edits', async () => {
+    await service().prepare(portal())
+    await execute('UPDATE client_users SET role=\'viewer\'')
+    const view = await readPortalDomainConfiguration(portal(), tx)
+    expect(view).toMatchObject({ siteId: ids.site, canManage: false })
+    expect(view.domains).toHaveLength(1)
+    expect(JSON.stringify(view)).not.toContain('cloudflare_hostname_id')
+    expect(JSON.stringify(view)).not.toContain('owner_token')
+    await expect(service().prepare(portal())).rejects.toMatchObject({ code: 'DOMAIN_ACCESS_DENIED' })
+  })
+  it('rejects a different selected client or substituted tenant before portal access', async () => {
+    await expect(service().prepare({ ...portal(), clientId: ids.otherClient })).rejects.toMatchObject({ code: 'DOMAIN_ACCESS_DENIED' })
+    await expect(readPortalDomainConfiguration({ ...portal(), tenantId: 'foreign' }, tx)).rejects.toMatchObject({ code: 'DOMAIN_ACCESS_DENIED' })
+    expect(provider.find).not.toHaveBeenCalled()
+  })
+  it('rechecks portal membership revoked during provider preflight', async () => {
+    provider.find.mockImplementationOnce(async () => {
+      await execute('DELETE FROM page_studio_site_memberships')
+      return null
+    })
+    await expect(service().prepare(portal())).rejects.toMatchObject({ code: 'DOMAIN_ACCESS_DENIED' })
+    expect(provider.create).not.toHaveBeenCalled()
+  })
+  it('retains a portal attempt after post-create revocation and reconciles after restored authority', async () => {
+    const create = provider.create.getMockImplementation()!
+    provider.create.mockImplementationOnce(async (host, owner) => {
+      const result = await create(host, owner)
+      await execute('UPDATE client_users SET status=\'inactive\'')
+      return result
+    })
+    await expect(service().prepare(portal())).rejects.toMatchObject({ code: 'DOMAIN_ACCESS_DENIED' })
+    expect((await execute('SELECT state FROM page_studio_domain_operations')).rows[0].state).toBe('creating')
+    await execute('UPDATE client_users SET status=\'active\'')
+    await expect(service().prepare(portal())).resolves.toMatchObject({ operation: { state: 'attached' } })
+    await expect(service().prepare(portal())).resolves.toMatchObject({ operation: { state: 'attached' } })
+    expect(provider.create).toHaveBeenCalledOnce()
+  })
+  it.each([
+    'UPDATE client_users SET status=\'inactive\'',
+    'UPDATE agency_clients SET is_active=FALSE',
+    'UPDATE page_studio_sites SET status=\'archived\'',
+    'UPDATE page_studio_entitlements SET effective_until=NOW()-INTERVAL \'1 second\'',
+    'UPDATE page_studio_site_memberships SET role=\'blocked\''
+  ])('revokes both scoped and aggregate portal reads freshly: %s', async (change) => {
+    await service().prepare(portal())
+    expect(await listPortalPageStudioDomains(ids.client, portalId, { query: execute })).toHaveLength(1)
+    await execute(change)
+    await expect(readPortalDomainConfiguration(portal(), tx)).rejects.toMatchObject({ code: 'DOMAIN_ACCESS_DENIED' })
+    expect(await listPortalPageStudioDomains(ids.client, portalId, { query: execute })).toEqual([])
+  })
+  it('attributes a portal connection to its real client actor without inserting a staff foreign key', async () => {
+    const result = await service().prepare({ ...input, kind: 'portal', actorId: portalId, clientId: ids.client })
+    expect(result.operation?.state).toBe('attached')
+    expect((await execute('SELECT created_by FROM page_studio_domains')).rows[0].created_by).toBeNull()
+    expect((await execute('SELECT actor_id,actor_role FROM page_studio_audit_events')).rows[0]).toEqual({ actor_id: portalId, actor_role: 'client' })
+    expect(provider.create).toHaveBeenCalledOnce()
+  })
+  it.each([
+    'UPDATE client_users SET role=\'viewer\'',
+    'UPDATE client_users SET status=\'inactive\'',
+    'UPDATE page_studio_site_memberships SET role=\'viewer\'',
+    'DELETE FROM page_studio_site_memberships'
+  ])('blocks portal mutations after fresh authority changes: %s', async (change) => {
+    await execute(change)
+    await expect(service().prepare({ ...input, kind: 'portal', actorId: portalId, clientId: ids.client })).rejects.toMatchObject({ code: 'DOMAIN_ACCESS_DENIED' })
+    expect(provider.create).not.toHaveBeenCalled()
   })
   it.each([
     ['ALTER TABLE page_studio_domain_operations RENAME TO hidden_operations', 'ALTER TABLE hidden_operations RENAME TO page_studio_domain_operations'],

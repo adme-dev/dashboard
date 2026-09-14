@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import { PageStudioSiteId } from '~~/server/utils/pageStudio/schemas'
-import { refreshPageStudioDomain } from '~~/server/utils/pageStudio/siteOperations'
+import { refreshPageStudioDomain } from '~~/server/utils/pageStudio/domainManagementClient'
 
 const DomainId = z.string().uuid()
 
@@ -14,6 +14,7 @@ export default eventHandler(async (event) => {
     const domainId = DomainId.safeParse(getRouterParam(event, 'domainId'))
     if (!siteId.success || !domainId.success) throw createError({ statusCode: 400, statusMessage: 'Invalid Page Studio domain ID' })
     return { domain: await refreshPageStudioDomain({
+      kind: 'agency',
       actorId: user.id,
       domainId: domainId.data,
       event,

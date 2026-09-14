@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readPageStudioEmailConfiguration, writePageStudioEmailConfiguration } from '~~/server/utils/pageStudio/emailConfiguration'
+import { readPageStudioEmailConfiguration, writePageStudioEmailConfiguration } from '~~/workers/page-studio-management/src/emailConfiguration'
 
-vi.mock('~~/server/utils/db', () => ({ transactionWithoutRetry: vi.fn() }))
 const siteId = '10000000-0000-4000-8000-000000000001'
 const clientId = '10000000-0000-4000-8000-000000000002'
 const actorId = '10000000-0000-4000-8000-000000000003'

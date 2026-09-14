@@ -86,6 +86,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Page Studio management generated binding reproducibility
+        run: |
+          pnpm --dir workers/page-studio-management run types
+          git diff --exit-code -- workers/page-studio-management/worker-staging.d.ts workers/page-studio-management/worker-production.d.ts
+        timeout-minutes: 5
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_LOG_PATH: ${{ runner.temp }}/page-studio-management-types.log
+
+      - name: Page Studio management strict Worker typecheck
+        run: pnpm --dir workers/page-studio-management run typecheck
+        timeout-minutes: 5
+
+      - name: Page Studio management immutable deployment targets
+        run: |
+          node workers/page-studio-management/deploy.mjs staging --check-only
+          node workers/page-studio-management/deploy.mjs production --check-only
+        timeout-minutes: 5
+
       - name: Page Studio checkpoint concurrency and migration tests
         run: pnpm exec vitest run test/config/pageStudioCheckpointCasPostgres.test.ts test/config/pageStudioControlPlaneMigrationPostgres.test.ts
         timeout-minutes: 5

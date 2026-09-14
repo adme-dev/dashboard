@@ -7,15 +7,13 @@ import {
   beforeEach,
   describe,
   expect,
-  it,
-  vi
+  it
 } from 'vitest'
 import {
   readPageStudioEmailConfiguration,
   writePageStudioEmailConfiguration
-} from '~~/server/utils/pageStudio/emailConfiguration'
+} from '~~/workers/page-studio-management/src/emailConfiguration'
 
-vi.mock('~~/server/utils/db', () => ({ transactionWithoutRetry: vi.fn() }))
 const databaseUrl = process.env.PAGE_STUDIO_EMAIL_DATABASE_TEST_URL
 const siteId = randomUUID(),
   clientId = randomUUID(),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = defineProps<{ audience: 'agency' | 'portal', siteId: string, disabled?: boolean }>()
+const props = defineProps<{ audience: 'agency' | 'portal', siteId: string, disabled?: boolean, help?: string }>()
 const emit = defineEmits<{ 'update:siteId': [value: string] }>()
 const page = ref(1)
 const pageSize = 25
@@ -14,7 +14,7 @@ const selected = computed({ get: () => props.siteId || '__choose__', set: (value
 
 <template>
   <div class="space-y-3">
-    <UFormField label="Website" help="Bookings belong to the selected website." class="max-w-md">
+    <UFormField label="Website" :help="help ?? 'Bookings belong to the selected website.'" class="max-w-md">
       <USelectMenu
         v-model="selected"
         :items="items"

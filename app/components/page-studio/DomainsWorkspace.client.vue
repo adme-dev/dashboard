@@ -11,15 +11,16 @@ interface DomainRecord {
   tlsStatus: string
 }
 
-const props = defineProps<{ siteId: string }>()
+const props = withDefaults(defineProps<{ siteId: string, audience?: 'agency' | 'portal' }>(), { audience: 'agency' })
 const toast = useToast()
 const open = ref(false)
 const hostname = ref('')
 const saving = ref(false)
 const refreshingId = ref<string | null>(null)
-const endpoint = computed(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/domains`)
-const { data, status, error, refresh } = await useFetch<{ domains: DomainRecord[] }>(endpoint)
-const domains = computed(() => data.value?.domains ?? [])
+const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/domains`)
+const { data, status, error, refresh } = await useFetch<{ domains: DomainRecord[], siteId?: string, canManage?: boolean }>(endpoint)
+const domains = computed(() => data.value?.siteId !== props.siteId ? [] : data.value?.domains ?? [])
+const canManage = computed(() => !error.value && status.value !== 'pending' && data.value?.siteId === props.siteId && data.value.canManage === true)
 
 function validationRecords(domain: DomainRecord) {
   const records: Array<{ purpose: string, name: string, value: string }> = []
@@ -36,7 +37,7 @@ function validationRecords(domain: DomainRecord) {
 }
 
 function showConnectDomain() {
-  open.value = true
+  if (canManage.value) open.value = true
 }
 
 function closeConnectDomain() {
@@ -48,24 +49,25 @@ function badgeColor(value: string) {
 }
 
 async function attach() {
-  if (!hostname.value.trim() || saving.value) return
+  if (!canManage.value || !hostname.value.trim() || saving.value) return
   saving.value = true
+  const target = endpoint.value
   try {
-    await $fetch(endpoint.value, { method: 'POST', body: { hostname: hostname.value } })
+    await $fetch(target, { method: 'POST', body: { hostname: hostname.value } })
     hostname.value = ''
     open.value = false
     await refresh()
     toast.add({ title: 'Domain attached', description: 'Complete the displayed DNS records, then verify.', color: 'success' })
   } catch (failure: unknown) {
-    const candidate = failure as { data?: { statusMessage?: string }, message?: string }
-    toast.add({ title: 'Domain could not be attached', description: candidate.data?.statusMessage || candidate.message, color: 'error' })
+    const candidate = failure as { data?: { error?: { message?: string } } }
+    toast.add({ title: 'Domain could not be attached', description: candidate.data?.error?.message || 'Retry with the same hostname to check its saved connection.', color: 'error' })
   } finally {
     saving.value = false
   }
 }
 
 async function verify(domain: DomainRecord) {
-  if (refreshingId.value) return
+  if (!canManage.value || refreshingId.value) return
   refreshingId.value = domain.id
   try {
     await $fetch(`${endpoint.value}/${domain.id}/verify`, { method: 'POST' })
@@ -88,6 +90,16 @@ async function verify(domain: DomainRecord) {
       title="Connect your website while keeping your email"
       description="Add the verification records at your existing DNS provider. Keep your current MX and email TXT records. Website activation requires verified ownership, an active HTTPS certificate and DNS pointing to XeroFlow."
     />
+    <UAlert
+      v-if="status !== 'pending' && !error && !canManage"
+      color="neutral"
+      variant="subtle"
+      title="You can view domain settings"
+      :description="audience === 'portal' ? 'A website editor with administrator or manager access can connect a domain and check verification.' : 'Website editing permission is required to connect a domain or check verification.'"
+    />
+    <p class="max-w-3xl text-sm text-muted">
+      Connecting and verifying a domain does not publish your website. Your agency manages publication and website cutover separately.
+    </p>
     <UCard class="@container">
       <template #header>
         <div class="flex flex-col items-start justify-between gap-4 @md:flex-row">
@@ -99,6 +111,7 @@ async function verify(domain: DomainRecord) {
             </p>
           </div>
           <UButton
+            v-if="canManage"
             class="shrink-0"
             label="Connect domain"
             icon="i-lucide-plus"
@@ -193,6 +206,7 @@ async function verify(domain: DomainRecord) {
               </p>
             </div>
             <UButton
+              v-if="canManage"
               label="Verify DNS and TLS"
               icon="i-lucide-refresh-cw"
               color="neutral"
@@ -209,9 +223,14 @@ async function verify(domain: DomainRecord) {
       </p>
     </UCard>
 
-    <UModal v-model:open="open" title="Connect custom domain" description="The hostname must not already be attached to another Page Studio site.">
+    <UModal
+      v-if="canManage"
+      v-model:open="open"
+      title="Connect custom domain"
+      description="The hostname must not already be attached to another Page Studio site."
+    >
       <template #content>
-        <div class="space-y-5 p-6">
+        <div class="max-h-[85dvh] space-y-5 overflow-y-auto p-6">
           <div>
             <h2 class="text-lg font-semibold text-highlighted">
               Connect custom domain

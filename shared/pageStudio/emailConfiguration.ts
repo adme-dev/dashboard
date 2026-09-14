@@ -42,3 +42,14 @@ export interface PageStudioEmailState {
     message: string
   }
 }
+
+export const PageStudioEmailStateSchema = z.object({
+  siteId: z.string().uuid(), environment: z.enum(['staging', 'production']),
+  revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  settings: PageStudioEmailSettingsSchema.nullable(), updatedAt: z.string().datetime().nullable(),
+  canEdit: z.boolean(), readiness: z.object({
+    status: z.enum(['not_configured', 'setup_required']), sendingEnabled: z.literal(false),
+    forwardingEnabled: z.literal(false), senderVerification: z.literal('unverified'),
+    message: z.string().min(1).max(500)
+  }).strict()
+}).strict()

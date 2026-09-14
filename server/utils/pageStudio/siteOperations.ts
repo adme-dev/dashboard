@@ -1,8 +1,4 @@
-import type { H3Event } from 'h3'
-
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
-import { domainAttachmentService } from './domainAttachment'
-import { Hostname, PageStudioDomainAttachmentError } from './domainAttachmentProvider'
 
 const MAX_SITE_OPERATION_ROWS = 200
 
@@ -11,17 +7,6 @@ interface SiteScope {
   customDomainLimit: number
   entitlementId: string
   tenantId: string
-}
-
-interface CloudflareCustomHostname {
-  id: string
-  hostname: string
-  status?: string
-  ownership_verification?: Record<string, unknown>
-  ssl?: {
-    status?: string
-    validation_records?: Array<Record<string, unknown>>
-  }
 }
 
 export class PageStudioSiteOperationError extends Error {
@@ -286,121 +271,6 @@ export async function getPageStudioAnalytics(tenantId: string, siteId: string) {
     },
     routes,
     recent
-  }
-}
-
-function cloudflareConfig(event: H3Event) {
-  const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env ?? {}
-  const value = (name: string) => String(env[name] ?? process.env[name] ?? '').trim()
-  const target = value('PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET').toLowerCase().replace(/\.$/, '')
-  const cnameTarget = Hostname.safeParse(target).success && !/^\d+(?:\.\d+){3}$/.test(target) ? target : ''
-  return {
-    apiToken: value('PAGE_STUDIO_CLOUDFLARE_API_TOKEN'),
-    cnameTarget,
-    zoneId: value('PAGE_STUDIO_CLOUDFLARE_ZONE_ID')
-  }
-}
-
-function domainState(hostname: CloudflareCustomHostname | null, dnsVerified = false) {
-  const hostnameStatus = hostname?.status ?? 'pending'
-  const tlsStatus = hostname?.ssl?.status ?? 'pending'
-  return {
-    certificateValidation: hostname?.ssl?.validation_records ?? [],
-    cloudflareHostnameId: hostname?.id ?? null,
-    dnsStatus: dnsVerified ? 'active' : 'pending',
-    hostnameStatus,
-    lifecycleState: dnsVerified && hostnameStatus === 'active' && tlsStatus === 'active' ? 'active' : hostname ? 'validating' : dnsVerified ? 'verified' : 'pending',
-    ownershipValidation: hostname?.ownership_verification ?? {},
-    tlsStatus
-  }
-}
-
-// Accept only a CNAME chain rooted at the requested hostname. An unrelated
-// answer containing our target is not evidence that customer traffic moved.
-async function domainDnsMatches(hostname: string, target: string): Promise<boolean> {
-  if (!target) return false
-  const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=CNAME`, {
-    headers: { accept: 'application/dns-json' },
-    redirect: 'manual',
-    signal: AbortSignal.timeout(5_000)
-  })
-  if (!response.ok) return false
-  const dns = await response.json() as { Status?: number, Answer?: Array<{ type?: number, name?: string, data?: string }> }
-  if (dns?.Status !== 0 || !Array.isArray(dns.Answer) || dns.Answer.length > 32) return false
-  const normalize = (value: string) => value.toLowerCase().replace(/\.$/, '')
-  const seen = new Set<string>()
-  let current = normalize(hostname)
-  for (let hop = 0; hop < 16 && !seen.has(current); hop++) {
-    seen.add(current)
-    const answers = dns.Answer.filter(answer => answer?.type === 5 && typeof answer.name === 'string' && normalize(answer.name) === current)
-    const answer = answers[0]
-    if (answers.length !== 1 || !answer || typeof answer.data !== 'string') return false
-    current = normalize(answer.data)
-    if (current === target) return true
-  }
-  return false
-}
-
-export async function listPageStudioDomains(tenantId: string, siteId: string) {
-  await requirePageStudioSiteScope(tenantId, siteId)
-  return queryRows(`
-    SELECT id::text, normalized_hostname AS hostname,
-           cloudflare_hostname_id AS "cloudflareHostnameId",
-           ownership_validation AS "ownershipValidation",
-           certificate_validation AS "certificateValidation",
-           hostname_status AS "hostnameStatus", tls_status AS "tlsStatus",
-           dns_status AS "dnsStatus", lifecycle_state AS status,
-           verified_at AS "verifiedAt", activated_at AS "activatedAt",
-           failure_summary AS "failureSummary", updated_at AS "updatedAt"
-      FROM page_studio_domains
-     WHERE tenant_id = $1 AND site_id = $2 AND lifecycle_state <> 'detached'
-     ORDER BY updated_at DESC
-  `, [tenantId, siteId])
-}
-
-export async function attachPageStudioDomain(input: {
-  actorId: string
-  event: H3Event
-  hostname: string
-  siteId: string
-  tenantId: string
-}) {
-  try {
-    const service = domainAttachmentService(cloudflareConfig(input.event))
-    const attachment = await service.prepare(input)
-    const state = domainState(attachment.provider)
-    state.ownershipValidation = { ...state.ownershipValidation, cnameTarget: cloudflareConfig(input.event).cnameTarget || null,
-      providerConfigured: Boolean(attachment.provider), dnsVerified: false }
-    // An exact attach retry must not erase a previously verified DNS/TLS state.
-    // Refresh explicitly re-evaluates that state; attachment itself only retains identity.
-    if (attachment.current.lifecycle_state === 'pending') await service.saveVerification(input, attachment, state)
-    return { id: attachment.current.id }
-  } catch (error) {
-    if (error instanceof PageStudioDomainAttachmentError) throw new PageStudioSiteOperationError(error.code, error.statusCode, error.message)
-    throw error
-  }
-}
-
-export async function refreshPageStudioDomain(input: {
-  actorId: string
-  domainId: string
-  event: H3Event
-  siteId: string
-  tenantId: string
-}) {
-  try {
-    const config = cloudflareConfig(input.event)
-    const service = domainAttachmentService(config)
-    const attachment = await service.prepare(input)
-    const dnsVerified = await domainDnsMatches(attachment.current.normalized_hostname, config.cnameTarget)
-    const state = domainState(attachment.provider, dnsVerified)
-    state.ownershipValidation = { ...state.ownershipValidation, cnameTarget: config.cnameTarget || null,
-      providerConfigured: Boolean(attachment.provider), dnsVerified }
-    await service.saveVerification(input, attachment, state)
-    return { id: attachment.current.id, ...state }
-  } catch (error) {
-    if (error instanceof PageStudioDomainAttachmentError) throw new PageStudioSiteOperationError(error.code, error.statusCode, error.message)
-    throw error
   }
 }
 

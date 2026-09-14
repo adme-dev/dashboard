@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { transactionWithoutRetry } from '~~/server/utils/db'
+import { requirePortalDomainAuthority } from './portalDomainAuthority'
 import { cloudflareDomainProvider, domainFailure, Hostname, requireDomainCnameTarget, verifyDomainHostname, type DomainHostname, type DomainProvider, type DomainProviderConfig } from './domainAttachmentProvider'
 
 export interface DomainDatabase {
@@ -9,11 +9,10 @@ export interface DomainDatabase {
   }>
 }
 export type DomainTransaction = <T>(callback: (db: DomainDatabase) => Promise<T>) => Promise<T>
-export interface DomainActor {
-  actorId: string
-  tenantId: string
-  siteId: string
-}
+export type DomainActor = { actorId: string, tenantId: string, siteId: string } & (
+  | { kind: 'agency' }
+  | { kind: 'portal', clientId: string }
+)
 interface Scope {
   clientId: string
   customDomainLimit: number
@@ -42,7 +41,8 @@ export interface DomainAttachment {
   operation: Operation | null
   provider: DomainHostname | null
 }
-const Actor = z.object({ actorId: z.string().uuid(), tenantId: z.string().min(1).max(200), siteId: z.string().uuid() })
+const ActorBase = z.object({ actorId: z.string().uuid(), tenantId: z.string().min(1).max(200), siteId: z.string().uuid() })
+const Actor = z.discriminatedUnion('kind', [ActorBase.extend({ kind: z.literal('agency') }), ActorBase.extend({ kind: z.literal('portal'), clientId: z.string().uuid() })])
 function requiredRow<T>(rows: T[]): T {
   const row = rows[0]
   if (rows.length !== 1 || row === undefined) throw domainFailure('DOMAIN_CHANGED', 409)
@@ -50,10 +50,10 @@ function requiredRow<T>(rows: T[]): T {
 }
 /** All transactions are single-attempt. No provider operation runs inside one. */
 export function domainAttachmentService(config: DomainProviderConfig, dependencies: {
-  transaction?: DomainTransaction
+  transaction: DomainTransaction
   provider?: DomainProvider | null
-} = {}) {
-  const transaction: DomainTransaction = dependencies.transaction ?? (callback => transactionWithoutRetry(db => callback(db as unknown as DomainDatabase)))
+}) {
+  const transaction = dependencies.transaction
   const transact: DomainTransaction = async (callback) => {
     try {
       return await transaction(async (db) => {
@@ -71,6 +71,7 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
   async function authority(db: DomainDatabase, input: DomainActor): Promise<Scope> {
     if (!Actor.safeParse(input).success)
       throw domainFailure('DOMAIN_ACCESS_DENIED', 403)
+    if (input.kind === 'portal') return requirePortalDomainAuthority(db, input, true)
     const result = await db.query<Scope>(`
       SELECT site.client_id::text AS "clientId", entitlement.custom_domain_limit AS "customDomainLimit"
       FROM page_studio_sites site
@@ -147,11 +148,11 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
       let row = matches.rows[0]
       if (!row) {
         const added = await db.query<DomainRow>(`INSERT INTO page_studio_domains (tenant_id,client_id,site_id,normalized_hostname,created_by,ownership_validation)
-          VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING *`, [input.tenantId, scope.clientId, input.siteId, hostname, input.actorId,
+          VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING *`, [input.tenantId, scope.clientId, input.siteId, hostname, input.kind === 'agency' ? input.actorId : null,
           JSON.stringify({ cnameTarget: config.cnameTarget || null, providerConfigured: false, dnsVerified: false })])
         row = requiredRow(added.rows)
         await db.query(`INSERT INTO page_studio_audit_events (tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata)
-          VALUES ($1,$2,$3,$4,'agency','domain.attached','domain',$5,$6::jsonb)`, [input.tenantId, scope.clientId, input.siteId, input.actorId, row.id, JSON.stringify({ hostname, providerConfigured: false })])
+          VALUES ($1,$2,$3,$4,$7,'domain.attached','domain',$5,$6::jsonb)`, [input.tenantId, scope.clientId, input.siteId, input.actorId, row.id, JSON.stringify({ hostname, providerConfigured: false }), input.kind === 'agency' ? 'agency' : 'client'])
       }
       if (!row.cloudflare_hostname_id && row.ownership_validation?.providerConfigured === false) {
         await db.query(`INSERT INTO page_studio_domain_operations (tenant_id,client_id,site_id,domain_id) VALUES ($1,$2,$3,$4) ON CONFLICT(domain_id) DO NOTHING`, [input.tenantId, scope.clientId, input.siteId, row.id])
@@ -277,8 +278,8 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
         JSON.stringify({ ...row.current.ownership_validation, ...state.ownershipValidation }), JSON.stringify(state.certificateValidation),
         state.hostnameStatus, state.tlsStatus, state.dnsStatus, state.lifecycleState, verified, active])
       await db.query(`INSERT INTO page_studio_audit_events (tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata)
-        VALUES ($1,$2,$3,$4,'agency','domain.refreshed','domain',$5,$6::jsonb)`, [input.tenantId, scope.clientId, input.siteId, input.actorId, row.current.id,
-        JSON.stringify({ dnsStatus: state.dnsStatus, hostnameStatus: state.hostnameStatus, lifecycleState: state.lifecycleState, tlsStatus: state.tlsStatus })])
+        VALUES ($1,$2,$3,$4,$7,'domain.refreshed','domain',$5,$6::jsonb)`, [input.tenantId, scope.clientId, input.siteId, input.actorId, row.current.id,
+        JSON.stringify({ dnsStatus: state.dnsStatus, hostnameStatus: state.hostnameStatus, lifecycleState: state.lifecycleState, tlsStatus: state.tlsStatus }), input.kind === 'agency' ? 'agency' : 'client'])
     })
   }
   return { prepare, saveVerification }
