@@ -2,7 +2,7 @@
 // Thin DB primitives for the leads engine. Wraps queryRows/queryOne/execute
 // from ~~/server/utils/db. Keeps SQL out of route handlers.
 
-import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
 import type {
   Lead, LeadDelivery, LeadFormRule, LeadRuleDestination,
   LeadFormMetadata, LeadFormMetadataField, LeadSource
@@ -64,6 +64,43 @@ export async function insertLeadWithDedup(
   db?: LeadTransactionClient,
   emailEvidenceGuard?: EmailEvidenceGuard
 ): Promise<string | null | GuardedLeadInsertResult> {
+  let studioReceipt: { tenant_id: string, client_id: string, site_id: string, occurred_at: string, metadata: { payloadDigest: string } } | undefined
+  if (input.source === 'page_studio') {
+    if (emailEvidenceGuard) throw new Error('Page Studio intake cannot use email evidence')
+    if (!db) {
+      return transaction(connection => insertLeadWithDedup(input, connection))
+    }
+    // The shared lead index excludes soft-deleted rows. Serialize this source
+    // identity through commit, then read its history in a fresh statement so a
+    // delayed retry cannot recreate a lead another request created and deleted.
+    // Advisory hash collisions only serialize unrelated requests; they do not
+    // change identity matching. Other ingestion sources keep their usual policy.
+    await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `page-studio-lead:${input.source_lead_id}`
+    ])
+    const receipts = await db.query(
+      `SELECT tenant_id, client_id, site_id, action, metadata, occurred_at::text
+         FROM page_studio_audit_events
+        WHERE resource_type = 'lead_submission' AND resource_id = $1 AND client_id = $2
+          AND action IN ('lead.submission_reserved', 'lead.submission_accepted') LIMIT 3`,
+      [input.source_lead_id, input.client_id]
+    )
+    const rows = receipts.rows as Array<NonNullable<typeof studioReceipt> & { action: string }>
+    const reserved = rows.find(row => row.action === 'lead.submission_reserved')
+    const digest = input.attribution?.page_studio_submission_digest
+    if (!reserved || !digest || rows.some(row => row.metadata?.payloadDigest !== digest
+      || row.tenant_id !== reserved.tenant_id || row.site_id !== reserved.site_id)
+    || rows.filter(row => row.action === 'lead.submission_reserved').length !== 1 || rows.length > 2) {
+      throw new Error('Page Studio submission receipt could not be verified')
+    }
+    if (rows.some(row => row.action === 'lead.submission_accepted')) return null
+    studioReceipt = reserved
+    const existing = await db.query(
+      'SELECT id FROM leads WHERE source = \'page_studio\' AND source_lead_id = $1 LIMIT 1',
+      [input.source_lead_id]
+    )
+    if (existing.rows?.length) return null
+  }
   const baseParams = [
     input.client_id, input.source, input.source_lead_id, input.form_id, input.form_name,
     input.ad_id, input.ad_name, input.campaign_id, input.campaign_name, input.page_id,
@@ -135,6 +172,18 @@ export async function insertLeadWithDedup(
   const row = db
     ? (await db.query(sql, params)).rows?.[0] as { id: string } | undefined
     : await queryOne<{ id: string }>(sql, params)
+  if (row?.id && studioReceipt) {
+    // The accepted identity commits with the lead and survives lead purges.
+    // A reservation alone never becomes proof of successful intake.
+    await db!.query(`INSERT INTO page_studio_audit_events (
+        tenant_id, client_id, site_id, actor_id, actor_role, action,
+        resource_type, resource_id, idempotency_key, metadata, occurred_at
+      ) VALUES ($1,$2,$3,'page-studio-delivery','service','lead.submission_accepted',
+        'lead_submission',$4,$5,$6::jsonb,$7)`,
+    [studioReceipt.tenant_id, studioReceipt.client_id, studioReceipt.site_id,
+      input.source_lead_id, `public-lead-identity:${input.source_lead_id}`,
+      JSON.stringify({ payloadDigest: studioReceipt.metadata.payloadDigest, leadId: row.id }), studioReceipt.occurred_at])
+  }
   return row?.id ?? null
 }
 

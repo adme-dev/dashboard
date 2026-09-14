@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import type { H3Event } from 'h3'
 import { z } from 'zod'
-import { execute, queryOne, transaction } from '~~/server/utils/db'
+import type { queryOne } from '~~/server/utils/db'
+import { execute, queryOneFresh, transaction } from '~~/server/utils/db'
 import {
   acceptLead,
   resolveLeadCaptureMode
@@ -99,6 +100,7 @@ const RELEASE_AUTHORITY_SQL = `
          release.id::text AS release_id,
          COALESCE(site.integrations->>'synthetic', 'false') = 'true' AS is_synthetic
     FROM page_studio_sites site
+    JOIN agency_clients client ON client.id = site.client_id AND client.is_active = TRUE
     JOIN page_studio_entitlements entitlement
       ON entitlement.tenant_id = site.tenant_id
      AND entitlement.client_id = site.client_id
@@ -128,11 +130,13 @@ const RELEASE_AUTHORITY_SQL = `
      AND site.current_release_id = release.id
      AND site.status = 'active'
      AND entitlement.status IN ('trial', 'active', 'past_due')
+     AND entitlement.effective_from <= NOW()
+     AND (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())
    LIMIT 1`
 
 async function requireReleaseAuthority(
   input: LeadSubmission | AnalyticsSubmission,
-  query: typeof queryOne = queryOne
+  query: typeof queryOne = queryOneFresh
 ): Promise<ReleaseAuthority> {
   const authority = await query<ReleaseAuthority>(RELEASE_AUTHORITY_SQL, [
     input.scope.tenantId,
@@ -180,18 +184,91 @@ function canonicalFields(fields: Record<string, string>): Record<string, string>
   return result
 }
 
-async function findStoredLeadId(clientId: string, sourceLeadId: string): Promise<string> {
-  const lead = await queryOne<{ id: string }>(
-    `SELECT id
-       FROM leads
-      WHERE client_id = $1
-        AND source = 'page_studio'
-        AND source_lead_id = $2
-      LIMIT 1`,
-    [clientId, sourceLeadId]
-  )
-  if (!lead) throw new Error('Page Studio lead idempotency conflict could not be resolved')
-  return lead.id
+const RECEIPT_DIGEST_KEY = 'page_studio_submission_digest'
+interface StoredPublicLead {
+  id: string
+  client_id: string
+  source: string
+  source_lead_id: string
+  attribution: Record<string, string> | null
+  submitted_at: string
+  deleted_at: string | null
+}
+function submissionConflict() {
+  return createError({ statusCode: 409, statusMessage: 'This submission request cannot be reused for these details', data: { error: { code: 'PUBLIC_LEAD_REQUEST_CONFLICT', message: 'This submission request cannot be reused for these details' } } })
+}
+function submissionUnverified() {
+  return createError({ statusCode: 503, statusMessage: 'Submission could not be verified. Retry the same request.', data: { error: { code: 'PUBLIC_LEAD_UNVERIFIED', message: 'Submission could not be verified. Retry the same request.' } } })
+}
+function payloadDigest(input: LeadSubmission, synthetic: boolean): string {
+  const entries = (values: Record<string, string>) => Object.keys(values).sort().map(key => [key, values[key]])
+  // Delivery generates occurredAt again on retries. The first reserved timestamp
+  // is retained separately; every customer-supplied value remains immutable.
+  return createHash('sha256').update(JSON.stringify([
+    input.scope.tenantId, input.scope.clientId, input.scope.siteId,
+    input.formId, input.pageId, input.pageRoute, input.releaseId, input.versionDigest,
+    entries(input.fields), entries(input.attribution),
+    input.consent ? [input.consent.accepted, input.consent.label, input.consent.policyUrl ?? null] : null,
+    synthetic
+  ])).digest('hex')
+}
+async function storedPublicLead(clientId: string, sourceLeadId: string) {
+  return await queryOneFresh<StoredPublicLead>(
+    `SELECT id::text, client_id::text, source, source_lead_id, attribution,
+            submitted_at::text, deleted_at::text
+       FROM leads WHERE client_id = $1 AND source = 'page_studio' AND source_lead_id = $2
+       ORDER BY deleted_at NULLS FIRST LIMIT 1`, [clientId, sourceLeadId])
+}
+function verifyStoredLead(lead: StoredPublicLead, clientId: string, sourceLeadId: string, digest: string) {
+  if (!lead.id || lead.client_id !== clientId || lead.source !== 'page_studio' || lead.source_lead_id !== sourceLeadId
+    || lead.deleted_at || lead.attribution?.[RECEIPT_DIGEST_KEY] !== digest) throw submissionConflict()
+  if (!Number.isFinite(Date.parse(lead.submitted_at))) throw submissionUnverified()
+}
+async function reservePublicLead(input: LeadSubmission, sourceLeadId: string, digest: string) {
+  const key = `public-lead-receipt:${sourceLeadId}`
+  // An earlier accepted lead may have been purged. Historical audit identity
+  // remains authoritative even when its lead no longer carries a fingerprint.
+  const priorAcceptance = await queryOneFresh<{ resource_id: string }>(
+    `SELECT resource_id FROM page_studio_audit_events
+      WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3
+        AND idempotency_key IN ($4, $5) AND resource_type = 'lead'
+        AND action IN ('lead.created', 'lead.duplicate') LIMIT 1`,
+    [input.scope.tenantId, input.scope.clientId, input.scope.siteId,
+      `public-lead:${sourceLeadId}`, `public-lead:${input.idempotencyKey}`])
+  if (priorAcceptance) {
+    // A matching request may have committed after our initial empty lookup.
+    // Recover its verified live row, but never recreate an audited purged lead.
+    const persisted = await storedPublicLead(input.scope.clientId, sourceLeadId)
+    if (!persisted) throw submissionConflict()
+    verifyStoredLead(persisted, input.scope.clientId, sourceLeadId, digest)
+    return new Date(persisted.submitted_at).toISOString()
+  }
+  const read = () => queryOneFresh<{ metadata: { payloadDigest?: string }, occurred_at: string }>(
+    `SELECT metadata, occurred_at::text FROM page_studio_audit_events
+      WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3 AND idempotency_key = $4
+        AND action = 'lead.submission_reserved' AND resource_type = 'lead_submission'`,
+    [input.scope.tenantId, input.scope.clientId, input.scope.siteId, key])
+  const verify = (receipt: Awaited<ReturnType<typeof read>>) => {
+    if (!receipt) throw submissionUnverified()
+    if (receipt.metadata?.payloadDigest !== digest) throw submissionConflict()
+    if (!Number.isFinite(Date.parse(receipt.occurred_at))) throw submissionUnverified()
+    return new Date(receipt.occurred_at).toISOString()
+  }
+  try {
+    await execute(`INSERT INTO page_studio_audit_events (
+        tenant_id, client_id, site_id, actor_id, actor_role, action,
+        resource_type, resource_id, idempotency_key, metadata, occurred_at
+      ) VALUES ($1, $2, $3, 'page-studio-delivery', 'service', 'lead.submission_reserved',
+        'lead_submission', $4, $5, $6::jsonb, $7) ON CONFLICT DO NOTHING`,
+    [input.scope.tenantId, input.scope.clientId, input.scope.siteId, sourceLeadId, key, JSON.stringify({ payloadDigest: digest }), input.occurredAt])
+  } catch (error) {
+    // A failed response may follow a durable insert. Only a matching receipt
+    // allows this request to proceed; the receipt alone never acknowledges a lead.
+    const saved = await read()
+    if (!saved) throw error
+    return verify(saved)
+  }
+  return verify(await read())
 }
 
 export async function acceptPageStudioPublicLead(
@@ -200,48 +277,64 @@ export async function acceptPageStudioPublicLead(
 ): Promise<{ duplicate: boolean, leadId: string }> {
   const authority = await requireReleaseAuthority(input)
   const sourceLeadId = pageStudioSourceLeadId(input)
+  const digest = payloadDigest(input, authority.is_synthetic)
   const fieldData = canonicalFields(input.fields)
-  const accepted = await acceptLead(event, {
-    lead: {
-      client_id: authority.client_id,
-      source: 'page_studio',
-      source_lead_id: sourceLeadId,
-      form_id: input.formId,
-      form_name: input.formId,
-      ad_id: null,
-      ad_name: null,
-      campaign_id: null,
-      campaign_name: input.attribution.utm_campaign ?? null,
-      page_id: input.pageId,
-      page_name: input.pageRoute,
-      submitted_at: input.occurredAt,
-      field_data: fieldData,
-      attribution: input.attribution,
-      assigned_to: authority.is_synthetic ? null : await resolveAssignedAm(authority.client_id),
-      created_by: null,
-      is_test: authority.is_synthetic,
-      test_run_id: null
-    },
-    leadCaptureMode: authority.is_synthetic
-      ? 'capture_only'
-      : await resolveLeadCaptureMode(authority.client_id),
-    consentDecision: input.consent ? 'granted' : 'unknown',
-    runRules: !authority.is_synthetic,
-    conversionEventName: 'lead_created'
-  })
-
-  if (accepted.status === 'mode_skipped') {
-    throw createError({
-      statusCode: 409,
-      statusMessage: 'Lead capture is disabled for this client',
-      data: { error: { code: 'LEAD_CAPTURE_DISABLED', message: 'Lead capture is disabled for this client' } }
-    })
+  let stored = await storedPublicLead(authority.client_id, sourceLeadId)
+  let duplicate = Boolean(stored)
+  if (stored) {
+    // Historical rows without the atomic fingerprint cannot prove original
+    // consent/provenance. Fail closed instead of inventing a receipt on replay.
+    verifyStoredLead(stored, authority.client_id, sourceLeadId, digest)
+  } else {
+    input = { ...input, occurredAt: await reservePublicLead(input, sourceLeadId, digest) }
+    const current = await requireReleaseAuthority(input)
+    if (current.is_synthetic !== authority.is_synthetic) throw submissionConflict()
+    try {
+      const accepted = await acceptLead(event, {
+        lead: {
+          client_id: authority.client_id,
+          source: 'page_studio',
+          source_lead_id: sourceLeadId,
+          form_id: input.formId,
+          form_name: input.formId,
+          ad_id: null,
+          ad_name: null,
+          campaign_id: null,
+          campaign_name: input.attribution.utm_campaign ?? null,
+          page_id: input.pageId,
+          page_name: input.pageRoute,
+          submitted_at: input.occurredAt,
+          field_data: fieldData,
+          attribution: { ...input.attribution, [RECEIPT_DIGEST_KEY]: digest },
+          assigned_to: authority.is_synthetic ? null : await resolveAssignedAm(authority.client_id),
+          created_by: null,
+          is_test: authority.is_synthetic,
+          test_run_id: null
+        },
+        leadCaptureMode: authority.is_synthetic
+          ? 'capture_only'
+          : await resolveLeadCaptureMode(authority.client_id),
+        consentDecision: input.consent ? 'granted' : 'unknown',
+        runRules: !authority.is_synthetic,
+        conversionEventName: 'lead_created'
+      })
+      if (accepted.status === 'mode_skipped') {
+        throw createError({ statusCode: 409, statusMessage: 'Lead capture is disabled for this client', data: { error: { code: 'LEAD_CAPTURE_DISABLED', message: 'Lead capture is disabled for this client' } } })
+      }
+      stored = await storedPublicLead(authority.client_id, sourceLeadId)
+      if (!stored) throw accepted.status === 'duplicate' ? submissionConflict() : submissionUnverified()
+      verifyStoredLead(stored, authority.client_id, sourceLeadId, digest)
+      duplicate = accepted.status !== 'created'
+    } catch (error) {
+      const saved = await storedPublicLead(authority.client_id, sourceLeadId)
+      if (!saved) throw error
+      verifyStoredLead(saved, authority.client_id, sourceLeadId, digest)
+      stored = saved
+      duplicate = true
+    }
   }
-
-  const duplicate = accepted.status !== 'created'
-  const leadId = accepted.status === 'created'
-    ? accepted.leadId
-    : await findStoredLeadId(authority.client_id, sourceLeadId)
+  const leadId = stored.id
+  input = { ...input, occurredAt: new Date(stored.submitted_at).toISOString() }
 
   await upsertFormMetadata('page_studio', input.formId, input.formId, fieldData)
   await execute(
@@ -257,7 +350,7 @@ export async function acceptPageStudioPublicLead(
       authority.site_id,
       duplicate ? 'lead.duplicate' : 'lead.created',
       leadId,
-      `public-lead:${input.idempotencyKey}`,
+      `public-lead:${sourceLeadId}`,
       JSON.stringify({
         duplicate,
         formId: input.formId,
