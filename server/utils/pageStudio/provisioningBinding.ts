@@ -81,10 +81,12 @@ const JobSnapshot = z.object({
 
 export { JobSnapshot as PageStudioProvisioningJobSchema, Scope as PageStudioProvisioningScopeSchema, SetupSnapshot as PageStudioProvisioningSetupSchema }
 
-function matchingJob(result: unknown, expected: z.infer<typeof JobSnapshot>) {
+function matchingJob(result: unknown, expected: z.infer<typeof JobSnapshot>, source: 'created' | 'retained') {
+  // Retained jobs keep their validated original generation, including legacy absence.
+  // A newly created acknowledgement must match the server-selected generation.
   const parsed = JobSnapshot.safeParse(result)
   if (!parsed.success || parsed.data.id !== expected.id || parsed.data.requestKey !== expected.requestKey
-    || parsed.data.generationVersion !== expected.generationVersion
+    || (source === 'created' && parsed.data.generationVersion !== expected.generationVersion)
     || parsed.data.templateId !== expected.templateId
     || JSON.stringify(parsed.data.scope) !== JSON.stringify(expected.scope)
     || JSON.stringify(parsed.data.plan) !== JSON.stringify(expected.plan)
@@ -136,6 +138,7 @@ export function createPageStudioProvisioningJob(input: PageStudioProvisioningDis
     actor: { kind: input.initiatingActorKind ?? 'client-user', userId: input.initiatingUserId },
     id,
     requestKey: input.requestKey,
+    generationVersion: 2,
     phase: 'requested',
     attempts: 0,
     error: null,
@@ -159,17 +162,17 @@ export async function dispatchPageStudioProvisioning(
   if (!binding.readProvisioning) throw new PageStudioProvisioningError('PROVISIONER_UNAVAILABLE', 'Page Studio provisioning service cannot reconcile existing requests')
   try {
     const existing = await binding.readProvisioning(input.requestKey, input.scope)
-    if (existing !== null) return matchingJob(existing, candidate)
+    if (existing !== null) return matchingJob(existing, candidate, 'retained')
     let result: unknown
     try {
       result = await binding.createProvisioning(candidate)
     } catch (error) {
       // A competing first request or lost acknowledgement may already be durable.
       const retained = await binding.readProvisioning(input.requestKey, input.scope)
-      if (retained !== null) return matchingJob(retained, candidate)
+      if (retained !== null) return matchingJob(retained, candidate, 'retained')
       throw error
     }
-    const saved = matchingJob(result, candidate)
+    const saved = matchingJob(result, candidate, 'created')
     if (saved.actor.userId !== input.initiatingUserId) throw new Error('Provisioning service returned a mismatched initiating actor')
     return saved
   } catch (error) {

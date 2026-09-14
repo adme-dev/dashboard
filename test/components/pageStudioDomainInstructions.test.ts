@@ -8,7 +8,9 @@ const domain = {
   ownershipValidation: { type: 'txt', name: '_cf-custom-hostname.www.customer.example', value: 'ownership-value', cnameTarget: 'sites.platform.example' },
   certificateValidation: [{ txt_name: '_acme-challenge.www.customer.example', txt_value: 'certificate-value' }]
 }
-const data = ref({ domains: [domain] })
+const data = ref<{ domains: typeof domain[], siteId?: string, canManage?: boolean }>({ domains: [domain], siteId: 'site', canManage: true })
+const fetchStatus = ref('success')
+const fetchError = ref<unknown>(null)
 const mutate = vi.fn()
 const toast = vi.fn()
 const refresh = vi.fn()
@@ -27,10 +29,10 @@ async function flush() {
     await nextTick()
   }
 }
-async function mount() {
+async function mount(audience: 'agency' | 'portal' = 'agency') {
   const host = document.createElement('div')
   document.body.append(host)
-  app = createApp({ render: () => h(Suspense, null, { default: () => h(DomainsWorkspace, { siteId: 'site' }) }) })
+  app = createApp({ render: () => h(Suspense, null, { default: () => h(DomainsWorkspace, { siteId: 'site', audience }) }) })
   Object.entries(stubs).forEach(([name, stub]) => app!.component(name, stub))
   app.mount(host)
   await flush()
@@ -38,11 +40,13 @@ async function mount() {
 }
 beforeEach(() => {
   vi.clearAllMocks()
-  data.value = { domains: [structuredClone(domain)] }
+  data.value = { domains: [structuredClone(domain)], siteId: 'site', canManage: true }
+  fetchStatus.value = 'success'
+  fetchError.value = null
   vi.stubGlobal('computed', computed)
   vi.stubGlobal('ref', ref)
   vi.stubGlobal('useToast', () => ({ add: toast }))
-  vi.stubGlobal('useFetch', async () => ({ data, status: ref('success'), error: ref(null), refresh }))
+  vi.stubGlobal('useFetch', async () => ({ data, status: fetchStatus, error: fetchError, refresh }))
   vi.stubGlobal('$fetch', mutate)
 })
 afterEach(() => {
@@ -52,6 +56,52 @@ afterEach(() => {
 })
 
 describe('customer domain instructions', () => {
+  it('renders portal instructions without mutation controls for a viewer', async () => {
+    data.value = { domains: [domain], siteId: 'site', canManage: false }
+    const host = await mount('portal')
+    expect(host.textContent).toContain('ownership-value')
+    expect(host.textContent).toContain('You can view domain settings')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Connect domain')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Verify DNS and TLS')
+    expect(mutate).not.toHaveBeenCalled()
+  })
+  it.each([false, undefined])('keeps agency controls unavailable without an explicit fresh editing capability: %s', async (canManage) => {
+    data.value = { domains: [domain], siteId: 'site', canManage }
+    const host = await mount('agency')
+    expect(host.textContent).toContain('ownership-value')
+    expect(host.textContent).toContain('Website editing permission is required')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Connect domain')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Verify DNS and TLS')
+    expect(mutate).not.toHaveBeenCalled()
+  })
+  it.each(['pending', 'error'])('denies agency editing while the fresh request is %s', async (status) => {
+    fetchStatus.value = status
+    if (status === 'error') fetchError.value = new Error('unavailable')
+    const host = await mount('agency')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Connect domain')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Verify DNS and TLS')
+  })
+  it('hides stale agency site instructions and permissions', async () => {
+    data.value = { domains: [domain], siteId: 'another-site', canManage: true }
+    const host = await mount('agency')
+    expect(host.textContent).not.toContain('ownership-value')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Connect domain')
+  })
+  it('routes an authorised portal verification to the selected customer site', async () => {
+    data.value = { domains: [domain], siteId: 'site', canManage: true }
+    const host = await mount('portal')
+    ;[...host.querySelectorAll('button')].find(button => button.textContent === 'Verify DNS and TLS')!.click()
+    await flush()
+    expect(mutate).toHaveBeenCalledWith('/api/portal/page-studio/sites/site/domains/domain/verify', { method: 'POST' })
+    expect(refresh).toHaveBeenCalledOnce()
+  })
+  it('hides stale site data and capabilities while switching websites', async () => {
+    data.value = { domains: [domain], siteId: 'different-site', canManage: true }
+    const host = await mount('portal')
+    expect(host.textContent).not.toContain('ownership-value')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Connect domain')
+  })
+
   it('shows ownership and certificate TXT records separately, with the exact traffic target and email preservation guidance', async () => {
     const host = await mount()
     for (const value of ['Verify ownership', 'Issue the HTTPS certificate', domain.ownershipValidation.name, 'ownership-value', domain.certificateValidation[0]!.txt_name, 'certificate-value', 'sites.platform.example', 'Keep your current MX and email TXT records']) {

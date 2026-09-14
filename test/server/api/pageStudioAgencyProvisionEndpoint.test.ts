@@ -39,6 +39,7 @@ describe('agency accepted setup dispatch', () => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')
     const e = event()
     const result = await handler(e as never)
+    expect(result.provisioning.job.generationVersion).toBe(2)
     expect(result.provisioning.job.actor).toEqual({ kind: 'agency-user', userId })
     expect(result.provisioning.job.scope).toEqual({ tenantId: 'tenant-agency', clientId, businessId: clientId, siteId, environment: 'staging' })
     expect(mocks.access).toHaveBeenCalledWith(e, 'PAGE_STUDIO_EDIT')
@@ -61,7 +62,7 @@ describe('agency accepted setup dispatch', () => {
     expect(e.binding.createProvisioning).not.toHaveBeenCalled()
     expect(e.binding.readProvisioning).not.toHaveBeenCalled()
   })
-  it.each([{ expectedRevision: 1, actor: { kind: 'agency-user', userId } }, { expectedRevision: 0 }, { expectedRevision: 1, tenantId: 'foreign' }])('rejects body identity or invalid revision before database access', async (body) => {
+  it.each([{ expectedRevision: 1, actor: { kind: 'agency-user', userId } }, { expectedRevision: 0 }, { expectedRevision: 1, generationVersion: 2 }, { expectedRevision: 1, generationVersion: 1 }, { expectedRevision: 1, tenantId: 'foreign' }])('rejects body identity or invalid revision before database access', async (body) => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')
     const e = event(body)
     await expect(handler(e as never)).rejects.toMatchObject({ statusCode: 400 })
@@ -80,6 +81,24 @@ describe('agency accepted setup dispatch', () => {
     mocks.queryOneFresh.mockResolvedValueOnce(row()).mockResolvedValueOnce(null)
     const e = event()
     await expect(handler(e as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(e.binding.createProvisioning).not.toHaveBeenCalled()
+  })
+  it('resumes a retained legacy job with its original generation and no new create', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')
+    const { createPageStudioProvisioningJob } = await import('~~/server/utils/pageStudio/provisioningBinding')
+    const e = event()
+    const candidate = createPageStudioProvisioningJob({
+      initiatingActorKind: 'agency-user', initiatingUserId: userId,
+      requestKey: `page-studio-${siteId}-1`,
+      scope: { tenantId: 'tenant-agency', clientId, businessId: clientId, siteId, environment: 'staging' },
+      source: 'template', revision: 1, brief: null, plan, now: '2026-09-15T00:00:00.000Z'
+    })
+    const { generationVersion: _version, ...legacy } = candidate
+    const retained = { ...legacy, phase: 'resources-created' }
+    e.binding.readProvisioning.mockResolvedValue(retained)
+    const result = await handler(e as never)
+    expect(result.provisioning.job).toEqual(retained)
+    expect(result.provisioning.job).not.toHaveProperty('generationVersion')
     expect(e.binding.createProvisioning).not.toHaveBeenCalled()
   })
   it('rechecks the original actor on a replay by a different staff member', async () => {

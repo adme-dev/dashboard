@@ -194,10 +194,11 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/middleware/05-portal-security.ts\t? editorFormOrigin(useRuntimeConfig(event).public.pageStudioEditorUrl)\tunrelated_configuration'
     )
-    // Two domain attachment SQL rows freshly validate staff identity and persisted roles.
-    expect(inventory.rows).toHaveLength(1576)
+    // Domain/email authority moved to the private management Worker, outside this
+    // Pages-only lexical inventory. Its fresh identity/role checks have separate RPC/PG tests.
+    expect(inventory.rows).toHaveLength(1574)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 113,
+      identity_tenant_hard_boundary: 111,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
       ordinary_user_behavior: 179,
@@ -207,7 +208,8 @@ describe('God mode gate inventory', () => {
     // cached identity read, cached role branch, cached auth assignment and cache
     // write role branch. Every staff identity now passes live validation; the
     // application-governance gates and their bypass classification are unchanged.
-    expect(inventory.digest).toBe('1268fdbce0c9feffd663390284eea5e4dfc19ea5144529e056430465557dc5dc')
+    // Website email adds fresh role-policy checks, with no bypass registration.
+    expect(inventory.digest).toBe('0b1eff143d223ef20c41c402f042fd085a15dd47f2f60bcdf5ec0f5410b32a57')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

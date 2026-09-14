@@ -69,31 +69,6 @@ export async function listAgencyPageStudioReleases(tenantId: string) {
   `, [tenantId, MAX_OPERATION_ROWS])
 }
 
-export async function listAgencyPageStudioDomains(tenantId: string) {
-  return queryRows(`
-    SELECT domain.id, site.id::text AS "siteId",
-           client.name AS "clientName", site.name AS "siteName",
-           domain.normalized_hostname AS hostname,
-           'production'::text AS environment,
-           domain.hostname_status AS "hostnameStatus",
-           domain.dns_status AS "dnsStatus", domain.tls_status AS "tlsStatus",
-           domain.lifecycle_state AS "lifecycleState",
-           domain.lifecycle_state AS status,
-           domain.failure_summary AS "failureSummary",
-           domain.verified_at AS "verifiedAt", domain.activated_at AS "activatedAt",
-           domain.updated_at AS "updatedAt"
-    FROM page_studio_domains domain
-    JOIN page_studio_sites site
-      ON site.tenant_id = domain.tenant_id
-     AND site.client_id = domain.client_id
-     AND site.id = domain.site_id
-    JOIN agency_clients client ON client.id = domain.client_id
-    WHERE domain.tenant_id = $1
-    ORDER BY domain.updated_at DESC
-    LIMIT $2
-  `, [tenantId, MAX_OPERATION_ROWS])
-}
-
 export async function listAgencyPageStudioSubscriptions(tenantId: string) {
   return queryRows(`
     SELECT entitlement.id, entitlement.client_id::text AS "clientId",
@@ -155,32 +130,6 @@ export async function listPortalPageStudioReleases(clientId: string, userId: str
      AND pointer.normalized_hostname = release.normalized_hostname
     WHERE release.client_id = $1
     ORDER BY release.published_at DESC
-    LIMIT $3
-  `, [clientId, userId, MAX_OPERATION_ROWS])
-}
-
-export async function listPortalPageStudioDomains(clientId: string, userId: string) {
-  return queryRows(`
-    SELECT domain.id, site.name AS "siteName",
-           domain.normalized_hostname AS hostname,
-           domain.hostname_status AS "hostnameStatus",
-           domain.dns_status AS "dnsStatus", domain.tls_status AS "tlsStatus",
-           domain.lifecycle_state AS "lifecycleState",
-           domain.failure_summary AS "failureSummary",
-           domain.verified_at AS "verifiedAt", domain.activated_at AS "activatedAt",
-           domain.updated_at AS "updatedAt"
-    FROM page_studio_domains domain
-    JOIN page_studio_sites site
-      ON site.tenant_id = domain.tenant_id
-     AND site.client_id = domain.client_id
-     AND site.id = domain.site_id
-    JOIN page_studio_site_memberships membership
-      ON membership.tenant_id = site.tenant_id
-     AND membership.client_id = site.client_id
-     AND membership.site_id = site.id
-     AND membership.user_id = $2
-    WHERE domain.client_id = $1
-    ORDER BY domain.updated_at DESC
     LIMIT $3
   `, [clientId, userId, MAX_OPERATION_ROWS])
 }

@@ -264,6 +264,14 @@ async function launchStudio(site: PageStudioSiteSummary) {
                 size="sm"
               />
               <UButton
+                :to="`/${audience}/page-studio/${site.id}/email`"
+                label="Email settings"
+                icon="i-lucide-mail"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
+              <UButton
                 :to="`/${audience}/page-studio/${site.id}/content`"
                 label="Business content"
                 icon="i-lucide-database"

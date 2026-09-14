@@ -1,0 +1,14 @@
+{
+  "name": "xeroflow-page-studio-management",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "types": "node generate-types.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "node deploy.mjs staging --dry-run",
+    "deploy:staging": "node deploy.mjs staging",
+    "deploy:production": "node deploy.mjs production",
+    "deploy:production:dry-run": "node deploy.mjs production --dry-run",
+    "deploy:check": "node deploy.mjs production --check-only"
+  }
+}

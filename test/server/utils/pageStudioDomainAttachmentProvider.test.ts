@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cloudflareDomainProvider, verifyDomainHostname } from '~~/server/utils/pageStudio/domainAttachmentProvider'
+import { cloudflareDomainProvider, verifyDomainHostname } from '../../../workers/page-studio-management/src/domainAttachmentProvider'
 
 const config = { apiToken: 'synthetic-only', zoneId: 'a'.repeat(32), cnameTarget: 'sites.example.com' }
 const host = 'client.example.com'

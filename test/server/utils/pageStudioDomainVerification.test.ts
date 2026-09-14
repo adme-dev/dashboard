@@ -1,21 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { H3Event } from 'h3'
-import { refreshPageStudioDomain } from '~~/server/utils/pageStudio/siteOperations'
-import { PageStudioDomainAttachmentError } from '~~/server/utils/pageStudio/domainAttachmentProvider'
+import { refreshPageStudioDomain } from '../../../workers/page-studio-management/src/domainConfiguration'
+import { PageStudioDomainAttachmentError } from '../../../workers/page-studio-management/src/domainAttachmentProvider'
 
 const service = vi.hoisted(() => ({ prepare: vi.fn(), saveVerification: vi.fn() }))
-vi.mock('~~/server/utils/pageStudio/domainAttachment', () => ({ domainAttachmentService: () => service }))
+vi.mock('../../../workers/page-studio-management/src/domainAttachment', () => ({ domainAttachmentService: () => service }))
 
 const hostname = 'www.customer.example'
 const providerId = 'a'.repeat(32)
 const target = 'sites.platform.example'
-const input = {
+const input = { kind: 'agency' as const,
   actorId: 'staff', tenantId: 'tenant', siteId: 'site', domainId: 'domain',
-  event: { context: { cloudflare: { env: {
+  env: {
     PAGE_STUDIO_CLOUDFLARE_API_TOKEN: 'test-token-only',
     PAGE_STUDIO_CLOUDFLARE_ZONE_ID: 'b'.repeat(32),
     PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET: target
-  } } } } as unknown as H3Event
+  }
 }
 const fetcher = vi.fn()
 function provider(override = {}) {
@@ -39,14 +38,14 @@ describe('Page Studio domain activation', () => {
 
   it('keeps a prevalidated hostname inactive while DNS still points to the old website', async () => {
     responses(provider(), dns([cname(hostname, 'old-host.example')]))
-    const result = await refreshPageStudioDomain(input)
+    const result = await refreshPageStudioDomain(input, vi.fn())
     expect(result.lifecycleState).toBe('validating')
     expect(result.dnsStatus).toBe('pending')
   })
 
   it('activates only with matching DNS, hostname ownership and TLS', async () => {
     responses(provider(), dns([cname(hostname.toUpperCase() + '.', target.toUpperCase() + '.')]))
-    const result = await refreshPageStudioDomain(input)
+    const result = await refreshPageStudioDomain(input, vi.fn())
     expect(result.lifecycleState).toBe('active')
     expect(result.ownershipValidation).toMatchObject({ cnameTarget: target, dnsVerified: true })
     expect(fetcher).toHaveBeenCalledTimes(1)
@@ -60,23 +59,23 @@ describe('Page Studio domain activation', () => {
     { Answer: [cname()] }
   ])('does not accept unrelated, wrong-type or unsuccessful DNS answers', async (answer) => {
     responses(provider(), answer)
-    expect((await refreshPageStudioDomain(input)).lifecycleState).not.toBe('active')
+    expect((await refreshPageStudioDomain(input, vi.fn())).lifecycleState).not.toBe('active')
   })
 
   it('follows only a connected CNAME chain', async () => {
     responses(provider(), dns([cname(hostname, 'alias.example'), cname('alias.example', target)]))
-    expect((await refreshPageStudioDomain(input)).lifecycleState).toBe('active')
+    expect((await refreshPageStudioDomain(input, vi.fn())).lifecycleState).toBe('active')
   })
 
   it('requires TLS even after ownership and DNS verification', async () => {
     responses(provider({ ssl: { status: 'pending_validation' } }), dns([cname()]))
-    expect((await refreshPageStudioDomain(input)).lifecycleState).not.toBe('active')
+    expect((await refreshPageStudioDomain(input, vi.fn())).lifecycleState).not.toBe('active')
   })
 
   it('does not reactivate a domain detached while provider verification was running', async () => {
     responses(provider(), dns([cname()]))
     service.saveVerification.mockRejectedValueOnce(new PageStudioDomainAttachmentError('DOMAIN_CHANGED', 409, 'Domain changed'))
-    await expect(refreshPageStudioDomain(input)).rejects.toMatchObject({ code: 'DOMAIN_CHANGED' })
+    await expect(refreshPageStudioDomain(input, vi.fn())).rejects.toMatchObject({ code: 'DOMAIN_CHANGED' })
     expect(service.saveVerification).toHaveBeenCalledTimes(1)
   })
 })

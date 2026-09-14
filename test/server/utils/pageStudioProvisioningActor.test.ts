@@ -43,7 +43,7 @@ describe('authenticated provisioning actor', () => {
     const s = coordinator()
     const first = await dispatchPageStudioProvisioning(s.binding, input())
     expect(first.actor).toEqual({ kind: 'client-user', userId: owner })
-    expect(first).not.toHaveProperty('generationVersion')
+    expect(first.generationVersion).toBe(2)
     s.set({ ...first, phase: 'resources-created' })
     const replay = await dispatchPageStudioProvisioning(s.binding, { ...input(), initiatingUserId: other })
     expect(replay.actor).toEqual(first.actor)
@@ -110,12 +110,60 @@ describe('authenticated provisioning actor', () => {
       if (field === 'setup') return { ...job, setup: { ...job.setup, proposalRevision: 2 } }
       if (field === 'resources') return { ...job, resources: {} }
       if (field === 'scope') return { ...job, scope: { ...job.scope, tenantId: 'foreign' } }
-      if (field === 'generationVersion') return { ...job, generationVersion: 2 }
+      if (field === 'generationVersion') {
+        const { generationVersion: _version, ...legacy } = job
+        return legacy
+      }
       return { ...job, unknown: true }
     })
     await expect(dispatchPageStudioProvisioning(s.binding, input())).rejects.toMatchObject({ code: 'PROVISIONER_FAILED', statusCode: 503 })
     // A malformed success is not treated as a lost response.
     expect(s.binding.readProvisioning).toHaveBeenCalledOnce()
+  })
+
+  it.each(['client-user', 'agency-user'] as const)('preserves an existing legacy %s job without rewriting or recreating it', async (kind) => {
+    const s = coordinator()
+    const request = { ...input(), initiatingActorKind: kind }
+    const first = await dispatchPageStudioProvisioning(s.binding, request)
+    const { generationVersion: _version, ...legacy } = first
+    const retained = { ...legacy, phase: 'resources-created' as const }
+    s.set(retained)
+    const replay = await dispatchPageStudioProvisioning(s.binding, { ...request, initiatingUserId: other })
+    expect(replay).toEqual(retained)
+    expect(replay).not.toHaveProperty('generationVersion')
+    expect(s.stored()).toEqual(retained)
+    expect(s.binding.createProvisioning).toHaveBeenCalledOnce()
+    await expect(dispatchPageStudioProvisioning(s.binding, { ...request, plan: { ...request.plan, pages: ['changed'] } })).rejects.toMatchObject({ code: 'PROVISIONER_FAILED' })
+  })
+
+  it('recovers a competing legacy writer after a lost acknowledgement without upgrading its job', async () => {
+    const s = coordinator()
+    s.binding.createProvisioning.mockImplementationOnce(async (input) => {
+      const { generationVersion: _version, ...legacy } = input as Job
+      s.set(legacy)
+      throw new Error('An older writer committed first; response lost')
+    })
+    const retained = await dispatchPageStudioProvisioning(s.binding, input())
+    expect(s.binding.createProvisioning.mock.calls[0][0]).toHaveProperty('generationVersion', 2)
+    expect(retained).not.toHaveProperty('generationVersion')
+    expect(retained).toEqual(s.stored())
+    expect(s.binding.createProvisioning).toHaveBeenCalledOnce()
+  })
+
+  it('ignores generation overrides on internal producer input and saved plan metadata', async () => {
+    const s = coordinator()
+    const request = { ...input(), generationVersion: 1, plan: { ...input().plan, generationVersion: 1 } }
+    const saved = await dispatchPageStudioProvisioning(s.binding, request)
+    expect(saved.generationVersion).toBe(2)
+    expect(saved.plan).not.toHaveProperty('generationVersion')
+  })
+
+  it('denies an unsupported retained generation instead of normalizing it', async () => {
+    const s = coordinator()
+    const first = await dispatchPageStudioProvisioning(s.binding, input())
+    s.binding.readProvisioning.mockResolvedValueOnce({ ...first, generationVersion: 3 } as never)
+    await expect(dispatchPageStudioProvisioning(s.binding, input())).rejects.toMatchObject({ code: 'PROVISIONER_FAILED' })
+    expect(s.binding.createProvisioning).toHaveBeenCalledOnce()
   })
 
   it('does not create when the preflight read fails or the read capability is missing', async () => {

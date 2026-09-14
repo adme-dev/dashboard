@@ -192,11 +192,15 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Cloudflare Delivery and Domains',
-        content: 'The delivery architecture uses Cloudflare Workers and Pages for build, sandbox, control and delivery services. The agency domain workspace displays separate ownership and HTTPS certificate verification records, plus the configured website DNS target. Activation requires matching DNS, verified hostname ownership and an active certificate. Connecting a website preserves existing email records; customer email setup and domain cutover remain separate rollout steps.'
+        content: 'The delivery architecture uses Cloudflare Workers and Pages for build, sandbox, control and delivery services. Agency staff and eligible customer administrators or managers with website editing access can connect a domain and check separate ownership and HTTPS certificate verification records, plus the configured website DNS target. Portal viewers can read the connection instructions. Activation requires matching DNS, verified hostname ownership and an active certificate. Connecting a website preserves existing email records; customer email setup and domain cutover remain separate rollout steps.'
       },
       {
         title: 'Business Content Where Connected',
         content: 'Manage website collections such as services, fleet and testimonials from the agency workspace or client portal once content storage is connected. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release.'
+      },
+      {
+        title: 'Website Email Preferences',
+        content: 'Agency editors and eligible business administrators or managers can save sender identity, a team notification inbox and optional incoming forwarding preferences for each website. Revision checks protect against overwriting another editor’s changes. These preferences show email setup as pending: saving them does not verify a sender, send messages, change DNS or enable forwarding. Provider verification and delivery setup remain agency-managed prerequisites.'
       },
       {
         title: 'Booking Operations Where Connected',
