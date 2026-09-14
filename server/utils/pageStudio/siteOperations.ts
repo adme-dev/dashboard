@@ -1,6 +1,8 @@
 import type { H3Event } from 'h3'
 
-import { execute, queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { domainAttachmentService } from './domainAttachment'
+import { Hostname, PageStudioDomainAttachmentError } from './domainAttachmentProvider'
 
 const MAX_SITE_OPERATION_ROWS = 200
 
@@ -20,12 +22,6 @@ interface CloudflareCustomHostname {
     status?: string
     validation_records?: Array<Record<string, unknown>>
   }
-}
-
-interface CloudflareEnvelope<T> {
-  errors?: Array<{ message?: string }>
-  result?: T
-  success?: boolean
 }
 
 export class PageStudioSiteOperationError extends Error {
@@ -296,32 +292,13 @@ export async function getPageStudioAnalytics(tenantId: string, siteId: string) {
 function cloudflareConfig(event: H3Event) {
   const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env ?? {}
   const value = (name: string) => String(env[name] ?? process.env[name] ?? '').trim()
+  const target = value('PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET').toLowerCase().replace(/\.$/, '')
+  const cnameTarget = Hostname.safeParse(target).success && !/^\d+(?:\.\d+){3}$/.test(target) ? target : ''
   return {
     apiToken: value('PAGE_STUDIO_CLOUDFLARE_API_TOKEN'),
-    cnameTarget: value('PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET').toLowerCase().replace(/\.$/, ''),
+    cnameTarget,
     zoneId: value('PAGE_STUDIO_CLOUDFLARE_ZONE_ID')
   }
-}
-
-async function cloudflareRequest<T>(event: H3Event, path: string, init?: RequestInit): Promise<T | null> {
-  const config = cloudflareConfig(event)
-  if (!config.apiToken || !config.zoneId) return null
-  const response = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(config.zoneId)}${path}`, {
-    ...init,
-    redirect: 'manual',
-    signal: AbortSignal.timeout(10_000),
-    headers: {
-      'authorization': `Bearer ${config.apiToken}`,
-      'content-type': 'application/json',
-      ...(init?.headers ?? {})
-    }
-  })
-  const payload = await response.json() as CloudflareEnvelope<T>
-  if (!response.ok || !payload.success || !payload.result) {
-    const message = payload.errors?.map(error => error.message).filter(Boolean).join('; ')
-    throw new PageStudioSiteOperationError('DOMAIN_PROVIDER_FAILED', 502, message || 'Cloudflare hostname request failed')
-  }
-  return payload.result
 }
 
 function domainState(hostname: CloudflareCustomHostname | null, dnsVerified = false) {
@@ -356,8 +333,9 @@ async function domainDnsMatches(hostname: string, target: string): Promise<boole
   for (let hop = 0; hop < 16 && !seen.has(current); hop++) {
     seen.add(current)
     const answers = dns.Answer.filter(answer => answer?.type === 5 && typeof answer.name === 'string' && normalize(answer.name) === current)
-    if (answers.length !== 1 || typeof answers[0].data !== 'string') return false
-    current = normalize(answers[0].data)
+    const answer = answers[0]
+    if (answers.length !== 1 || !answer || typeof answer.data !== 'string') return false
+    current = normalize(answer.data)
     if (current === target) return true
   }
   return false
@@ -387,66 +365,20 @@ export async function attachPageStudioDomain(input: {
   siteId: string
   tenantId: string
 }) {
-  const scope = await requirePageStudioSiteScope(input.tenantId, input.siteId)
-  const count = await queryOne<{ count: number }>(`
-    SELECT COUNT(*)::integer AS count
-      FROM page_studio_domains
-     WHERE tenant_id = $1 AND client_id = $2 AND lifecycle_state <> 'detached'
-  `, [input.tenantId, scope.clientId])
-  if ((count?.count ?? 0) >= scope.customDomainLimit) {
-    throw new PageStudioSiteOperationError('DOMAIN_LIMIT_REACHED', 409, 'The Page Studio custom-domain limit has been reached')
+  try {
+    const service = domainAttachmentService(cloudflareConfig(input.event))
+    const attachment = await service.prepare(input)
+    const state = domainState(attachment.provider)
+    state.ownershipValidation = { ...state.ownershipValidation, cnameTarget: cloudflareConfig(input.event).cnameTarget || null,
+      providerConfigured: Boolean(attachment.provider), dnsVerified: false }
+    // An exact attach retry must not erase a previously verified DNS/TLS state.
+    // Refresh explicitly re-evaluates that state; attachment itself only retains identity.
+    if (attachment.current.lifecycle_state === 'pending') await service.saveVerification(input, attachment, state)
+    return { id: attachment.current.id }
+  } catch (error) {
+    if (error instanceof PageStudioDomainAttachmentError) throw new PageStudioSiteOperationError(error.code, error.statusCode, error.message)
+    throw error
   }
-  const duplicate = await queryOne<{ id: string }>(`
-    SELECT id::text FROM page_studio_domains
-     WHERE normalized_hostname = $1 AND lifecycle_state <> 'detached' LIMIT 1
-  `, [input.hostname])
-  if (duplicate) throw new PageStudioSiteOperationError('DOMAIN_ALREADY_ATTACHED', 409, 'This hostname is already attached')
-
-  const provisioned = await cloudflareRequest<CloudflareCustomHostname>(input.event, '/custom_hostnames', {
-    method: 'POST',
-    body: JSON.stringify({ hostname: input.hostname, ssl: { method: 'txt', type: 'dv' } })
-  })
-  if (provisioned && (provisioned.hostname !== input.hostname || !/^[a-f0-9]{32}$/i.test(provisioned.id))) {
-    throw new PageStudioSiteOperationError('DOMAIN_PROVIDER_MISMATCH', 502, 'Cloudflare returned a different hostname identity')
-  }
-  const state = domainState(provisioned)
-  const config = cloudflareConfig(input.event)
-  const ownershipValidation = { ...state.ownershipValidation, cnameTarget: config.cnameTarget || null, providerConfigured: Boolean(provisioned), dnsVerified: false }
-  return transaction(async (db) => {
-    const result = await db.query<{ id: string }>(`
-      INSERT INTO page_studio_domains (
-        tenant_id, client_id, site_id, normalized_hostname,
-        cloudflare_hostname_id, ownership_validation, certificate_validation,
-        hostname_status, tls_status, dns_status, lifecycle_state, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12)
-      RETURNING id::text
-    `, [
-      input.tenantId,
-      scope.clientId,
-      input.siteId,
-      input.hostname,
-      state.cloudflareHostnameId,
-      JSON.stringify(ownershipValidation),
-      JSON.stringify(state.certificateValidation),
-      state.hostnameStatus,
-      state.tlsStatus,
-      state.dnsStatus,
-      state.lifecycleState,
-      input.actorId
-    ])
-    const domainId = result.rows[0]?.id
-    if (!domainId) throw new PageStudioSiteOperationError('DOMAIN_CREATE_FAILED', 500, 'Page Studio domain could not be attached')
-    await db.query(`
-      INSERT INTO page_studio_audit_events (
-        tenant_id, client_id, site_id, actor_id, actor_role, action,
-        resource_type, resource_id, metadata
-      ) VALUES ($1, $2, $3, $4, 'agency', 'domain.attached', 'domain', $5, $6::jsonb)
-    `, [input.tenantId, scope.clientId, input.siteId, input.actorId, domainId, JSON.stringify({
-      hostname: input.hostname,
-      providerConfigured: Boolean(provisioned)
-    })])
-    return { id: domainId }
-  })
 }
 
 export async function refreshPageStudioDomain(input: {
@@ -456,70 +388,20 @@ export async function refreshPageStudioDomain(input: {
   siteId: string
   tenantId: string
 }) {
-  const scope = await requirePageStudioSiteScope(input.tenantId, input.siteId)
-  const current = await queryOne<{ cloudflare_hostname_id: string | null, normalized_hostname: string }>(`
-    SELECT cloudflare_hostname_id, normalized_hostname
-      FROM page_studio_domains
-     WHERE tenant_id = $1 AND site_id = $2 AND id = $3 AND lifecycle_state <> 'detached'
-     LIMIT 1
-  `, [input.tenantId, input.siteId, input.domainId])
-  if (!current) throw new PageStudioSiteOperationError('DOMAIN_NOT_FOUND', 404, 'Page Studio domain not found')
-
-  let provider: CloudflareCustomHostname | null = null
-  if (current.cloudflare_hostname_id) {
-    provider = await cloudflareRequest<CloudflareCustomHostname>(
-      input.event,
-      `/custom_hostnames/${encodeURIComponent(current.cloudflare_hostname_id)}`
-    )
+  try {
+    const config = cloudflareConfig(input.event)
+    const service = domainAttachmentService(config)
+    const attachment = await service.prepare(input)
+    const dnsVerified = await domainDnsMatches(attachment.current.normalized_hostname, config.cnameTarget)
+    const state = domainState(attachment.provider, dnsVerified)
+    state.ownershipValidation = { ...state.ownershipValidation, cnameTarget: config.cnameTarget || null,
+      providerConfigured: Boolean(attachment.provider), dnsVerified }
+    await service.saveVerification(input, attachment, state)
+    return { id: attachment.current.id, ...state }
+  } catch (error) {
+    if (error instanceof PageStudioDomainAttachmentError) throw new PageStudioSiteOperationError(error.code, error.statusCode, error.message)
+    throw error
   }
-  if (provider && (provider.id !== current.cloudflare_hostname_id || provider.hostname !== current.normalized_hostname)) {
-    throw new PageStudioSiteOperationError('DOMAIN_PROVIDER_MISMATCH', 502, 'Cloudflare returned a different hostname identity')
-  }
-  const config = cloudflareConfig(input.event)
-  const dnsVerified = await domainDnsMatches(current.normalized_hostname, config.cnameTarget)
-  const state = domainState(provider, dnsVerified)
-  state.ownershipValidation = { ...state.ownershipValidation, cnameTarget: config.cnameTarget || null, providerConfigured: Boolean(provider), dnsVerified }
-  const activated = state.lifecycleState === 'active'
-  const verified = activated || state.lifecycleState === 'verified'
-  const updated = await execute(`
-    UPDATE page_studio_domains
-       SET ownership_validation = $4::jsonb,
-           certificate_validation = $5::jsonb,
-           hostname_status = $6, tls_status = $7, dns_status = $8,
-           lifecycle_state = $9,
-           verified_at = CASE WHEN $10 THEN COALESCE(verified_at, NOW()) ELSE verified_at END,
-           activated_at = CASE WHEN $11 THEN COALESCE(activated_at, NOW()) ELSE activated_at END,
-           failure_summary = NULL, updated_at = NOW()
-     WHERE tenant_id = $1 AND site_id = $2 AND id = $3
-       AND lifecycle_state <> 'detached'
-       AND cloudflare_hostname_id IS NOT DISTINCT FROM $12
-  `, [
-    input.tenantId,
-    input.siteId,
-    input.domainId,
-    JSON.stringify(state.ownershipValidation),
-    JSON.stringify(state.certificateValidation),
-    state.hostnameStatus,
-    state.tlsStatus,
-    state.dnsStatus,
-    state.lifecycleState,
-    verified,
-    activated,
-    current.cloudflare_hostname_id
-  ])
-  if (updated !== 1) throw new PageStudioSiteOperationError('DOMAIN_CHANGED', 409, 'Domain configuration changed during verification; refresh before retrying')
-  await execute(`
-    INSERT INTO page_studio_audit_events (
-      tenant_id, client_id, site_id, actor_id, actor_role, action,
-      resource_type, resource_id, metadata
-    ) VALUES ($1, $2, $3, $4, 'agency', 'domain.refreshed', 'domain', $5, $6::jsonb)
-  `, [input.tenantId, scope.clientId, input.siteId, input.actorId, input.domainId, JSON.stringify({
-    dnsStatus: state.dnsStatus,
-    hostnameStatus: state.hostnameStatus,
-    lifecycleState: state.lifecycleState,
-    tlsStatus: state.tlsStatus
-  })])
-  return { id: input.domainId, ...state }
 }
 
 export async function listPageStudioSessions(tenantId: string, siteId: string) {
