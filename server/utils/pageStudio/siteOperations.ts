@@ -308,6 +308,8 @@ async function cloudflareRequest<T>(event: H3Event, path: string, init?: Request
   if (!config.apiToken || !config.zoneId) return null
   const response = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(config.zoneId)}${path}`, {
     ...init,
+    redirect: 'manual',
+    signal: AbortSignal.timeout(10_000),
     headers: {
       'authorization': `Bearer ${config.apiToken}`,
       'content-type': 'application/json',
@@ -322,18 +324,43 @@ async function cloudflareRequest<T>(event: H3Event, path: string, init?: Request
   return payload.result
 }
 
-function domainState(hostname: CloudflareCustomHostname | null) {
+function domainState(hostname: CloudflareCustomHostname | null, dnsVerified = false) {
   const hostnameStatus = hostname?.status ?? 'pending'
   const tlsStatus = hostname?.ssl?.status ?? 'pending'
   return {
     certificateValidation: hostname?.ssl?.validation_records ?? [],
     cloudflareHostnameId: hostname?.id ?? null,
-    dnsStatus: hostnameStatus,
+    dnsStatus: dnsVerified ? 'active' : 'pending',
     hostnameStatus,
-    lifecycleState: hostnameStatus === 'active' && tlsStatus === 'active' ? 'active' : hostname ? 'validating' : 'pending',
+    lifecycleState: dnsVerified && hostnameStatus === 'active' && tlsStatus === 'active' ? 'active' : hostname ? 'validating' : dnsVerified ? 'verified' : 'pending',
     ownershipValidation: hostname?.ownership_verification ?? {},
     tlsStatus
   }
+}
+
+// Accept only a CNAME chain rooted at the requested hostname. An unrelated
+// answer containing our target is not evidence that customer traffic moved.
+async function domainDnsMatches(hostname: string, target: string): Promise<boolean> {
+  if (!target) return false
+  const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=CNAME`, {
+    headers: { accept: 'application/dns-json' },
+    redirect: 'manual',
+    signal: AbortSignal.timeout(5_000)
+  })
+  if (!response.ok) return false
+  const dns = await response.json() as { Status?: number, Answer?: Array<{ type?: number, name?: string, data?: string }> }
+  if (dns?.Status !== 0 || !Array.isArray(dns.Answer) || dns.Answer.length > 32) return false
+  const normalize = (value: string) => value.toLowerCase().replace(/\.$/, '')
+  const seen = new Set<string>()
+  let current = normalize(hostname)
+  for (let hop = 0; hop < 16 && !seen.has(current); hop++) {
+    seen.add(current)
+    const answers = dns.Answer.filter(answer => answer?.type === 5 && typeof answer.name === 'string' && normalize(answer.name) === current)
+    if (answers.length !== 1 || typeof answers[0].data !== 'string') return false
+    current = normalize(answers[0].data)
+    if (current === target) return true
+  }
+  return false
 }
 
 export async function listPageStudioDomains(tenantId: string, siteId: string) {
@@ -379,11 +406,12 @@ export async function attachPageStudioDomain(input: {
     method: 'POST',
     body: JSON.stringify({ hostname: input.hostname, ssl: { method: 'txt', type: 'dv' } })
   })
+  if (provisioned && (provisioned.hostname !== input.hostname || !/^[a-f0-9]{32}$/i.test(provisioned.id))) {
+    throw new PageStudioSiteOperationError('DOMAIN_PROVIDER_MISMATCH', 502, 'Cloudflare returned a different hostname identity')
+  }
   const state = domainState(provisioned)
   const config = cloudflareConfig(input.event)
-  const ownershipValidation = provisioned
-    ? state.ownershipValidation
-    : { cnameTarget: config.cnameTarget || null, providerConfigured: false }
+  const ownershipValidation = { ...state.ownershipValidation, cnameTarget: config.cnameTarget || null, providerConfigured: Boolean(provisioned), dnsVerified: false }
   return transaction(async (db) => {
     const result = await db.query<{ id: string }>(`
       INSERT INTO page_studio_domains (
@@ -444,21 +472,16 @@ export async function refreshPageStudioDomain(input: {
       `/custom_hostnames/${encodeURIComponent(current.cloudflare_hostname_id)}`
     )
   }
-  const state = domainState(provider)
-  const config = cloudflareConfig(input.event)
-  if (!provider && config.cnameTarget) {
-    const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(current.normalized_hostname)}&type=CNAME`, {
-      headers: { accept: 'application/dns-json' }
-    })
-    const dns = response.ok ? await response.json() as { Answer?: Array<{ data?: string }> } : {}
-    const verified = dns.Answer?.some(answer => answer.data?.toLowerCase().replace(/\.$/, '') === config.cnameTarget) ?? false
-    state.dnsStatus = verified ? 'active' : 'pending'
-    state.lifecycleState = verified ? 'verified' : 'validating'
-    state.ownershipValidation = { cnameTarget: config.cnameTarget, dnsVerified: verified }
+  if (provider && (provider.id !== current.cloudflare_hostname_id || provider.hostname !== current.normalized_hostname)) {
+    throw new PageStudioSiteOperationError('DOMAIN_PROVIDER_MISMATCH', 502, 'Cloudflare returned a different hostname identity')
   }
+  const config = cloudflareConfig(input.event)
+  const dnsVerified = await domainDnsMatches(current.normalized_hostname, config.cnameTarget)
+  const state = domainState(provider, dnsVerified)
+  state.ownershipValidation = { ...state.ownershipValidation, cnameTarget: config.cnameTarget || null, providerConfigured: Boolean(provider), dnsVerified }
   const activated = state.lifecycleState === 'active'
   const verified = activated || state.lifecycleState === 'verified'
-  await execute(`
+  const updated = await execute(`
     UPDATE page_studio_domains
        SET ownership_validation = $4::jsonb,
            certificate_validation = $5::jsonb,
@@ -468,6 +491,8 @@ export async function refreshPageStudioDomain(input: {
            activated_at = CASE WHEN $11 THEN COALESCE(activated_at, NOW()) ELSE activated_at END,
            failure_summary = NULL, updated_at = NOW()
      WHERE tenant_id = $1 AND site_id = $2 AND id = $3
+       AND lifecycle_state <> 'detached'
+       AND cloudflare_hostname_id IS NOT DISTINCT FROM $12
   `, [
     input.tenantId,
     input.siteId,
@@ -479,8 +504,10 @@ export async function refreshPageStudioDomain(input: {
     state.dnsStatus,
     state.lifecycleState,
     verified,
-    activated
+    activated,
+    current.cloudflare_hostname_id
   ])
+  if (updated !== 1) throw new PageStudioSiteOperationError('DOMAIN_CHANGED', 409, 'Domain configuration changed during verification; refresh before retrying')
   await execute(`
     INSERT INTO page_studio_audit_events (
       tenant_id, client_id, site_id, actor_id, actor_role, action,

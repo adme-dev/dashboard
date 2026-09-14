@@ -192,7 +192,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Cloudflare Delivery and Domains',
-        content: 'The delivery architecture uses Cloudflare Workers and Pages for private build, sandbox, control, and delivery services. Domain registration and custom-domain workflows can be layered into the governed release process as the staged rollout advances, without handing clients unrestricted infrastructure access.'
+        content: 'The delivery architecture uses Cloudflare Workers and Pages for build, sandbox, control and delivery services. The agency domain workspace displays separate ownership and HTTPS certificate verification records, plus the configured website DNS target. Activation requires matching DNS, verified hostname ownership and an active certificate. Connecting a website preserves existing email records; customer email setup and domain cutover remain separate rollout steps.'
       },
       {
         title: 'Business Content Where Connected',
