@@ -126,7 +126,7 @@ const categories = [
     iconBg: 'bg-blue-50 dark:bg-blue-500/10',
     iconColor: 'text-blue-600',
     features: [
-      { title: 'Boards', slug: 'boards', icon: 'i-lucide-kanban', description: 'Monday-style boards with 20+ column types — status, people, date, numbers, formulas, and more.' },
+      { title: 'Boards', slug: 'boards', icon: 'i-lucide-kanban', description: 'Six connected work views, 20+ column types, and a searchable board-wide file library for reference documents and task evidence.' },
       { title: 'Kanban View', slug: 'kanban-view', icon: 'i-lucide-columns-3', description: 'Drag-and-drop Kanban boards grouped by any status column with real-time updates.' },
       { title: 'Timeline View', slug: 'timeline-view', icon: 'i-lucide-gantt-chart', description: 'Gantt-style timeline with date range bars, drag-to-reschedule, and dependency tracking.' },
       { title: 'Calendar View', slug: 'calendar-view', icon: 'i-lucide-calendar', description: 'Monthly calendar with task cards, drag-to-reschedule, and date-based filtering.' },

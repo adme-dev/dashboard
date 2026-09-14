@@ -5,6 +5,7 @@
  */
 
 import type { CustomColumn, TaskColumnValue } from '~/types'
+import { isBoardViewType, type BoardViewType } from '~/utils/boardViews'
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
@@ -76,8 +77,6 @@ export interface Board {
   lastUpdated?: string
   hasBoardGroups?: boolean
 }
-
-export type BoardViewType = 'table' | 'kanban' | 'timeline' | 'calendar' | 'list' | 'gallery'
 
 export interface FilterRule {
   id: string
@@ -422,11 +421,16 @@ export function useBoardData(boardId: Ref<string>) {
 
   // --- Active View ---
   const route = useRoute()
-  const validViews: BoardViewType[] = ['table', 'kanban', 'timeline', 'calendar', 'list', 'gallery']
-  const initialView = validViews.includes(route.query.view as BoardViewType)
-    ? (route.query.view as BoardViewType)
+  const router = useRouter()
+  const initialView = isBoardViewType(route.query.view)
+    ? route.query.view
     : 'table'
   const activeView = ref<BoardViewType>(initialView)
+
+  watch(activeView, (view) => {
+    if (route.query.view === view) return
+    router.replace({ query: { ...route.query, view } })
+  })
 
   // --- Search / Filter / Sort / Group ---
   const searchQuery = ref('')

@@ -120,7 +120,34 @@ export type TaskType = 'task' | 'milestone' | 'bug' | 'feature' | 'review' | 'me
 export type StatusCategory = 'not_started' | 'in_progress' | 'review' | 'done' | 'cancelled'
 export type DepartmentRole = 'lead' | 'senior' | 'member' | 'junior'
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'skipped'
-export type BoardViewType = 'kanban' | 'table' | 'timeline' | 'calendar' | 'list' | 'gallery'
+export type BoardViewType = 'kanban' | 'table' | 'timeline' | 'calendar' | 'list' | 'gallery' | 'files'
+
+export interface BoardFileItem {
+  id: string
+  boardId: string
+  scope: 'board' | 'task'
+  fileName: string
+  fileUrl: string
+  fileType: string
+  fileSize: number
+  category: 'reference' | 'policy' | 'template' | 'other' | 'evidence'
+  description: string | null
+  source: 'xeroflow' | 'monday' | 'xero' | 'task'
+  sourceReference: string | null
+  createdAt: string
+  uploadedBy: { id: string, name: string, email: string } | null
+  canDelete: boolean
+  task: { id: string, title: string } | null
+}
+
+export interface BoardFileListResponse {
+  files: BoardFileItem[]
+  summary: {
+    total: number
+    boardDocuments: number
+    taskEvidence: number
+  }
+}
 
 // ============================================
 // Department Types
