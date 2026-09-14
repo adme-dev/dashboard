@@ -32,3 +32,11 @@ export const PageStudioBookingCommandSchema = z.object({
 }).strict()
 export const PageStudioBookingFiltersSchema = z.object({ siteId: z.string().uuid(), status: PageStudioBookingStatusSchema.optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict()
 export type PageStudioBookingAggregate = z.infer<typeof PageStudioBookingAggregateSchema>
+
+// One UUID identifies one immutable portal enquiry. The server derives its
+// booking ID, scope, timestamps and initial workflow state from this contract.
+export const PageStudioPortalBookingEnquirySchema = PageStudioBookingSchema.pick({
+  customer: true, pickup: true, dropoff: true, travelAt: true,
+  durationMinutes: true, passengers: true, occasion: true
+}).extend({ requestKey: z.string().uuid(), travelAt: z.string().datetime({ offset: true }) }).strict()
+export type PageStudioPortalBookingEnquiry = z.infer<typeof PageStudioPortalBookingEnquirySchema>
