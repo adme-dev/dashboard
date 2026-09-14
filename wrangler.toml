@@ -313,6 +313,10 @@ PAGE_STUDIO_RELEASE_ENVIRONMENT = "production"
 # and customer-routing acceptance gates are complete.
 # Private setup coordinator. This never binds production to staging resources.
 [[env.preview.services]]
+binding = "PAGE_STUDIO_CONTENT_ROUTER"
+service = "xeroflow-content-router-staging"
+
+[[env.preview.services]]
 binding = "PAGE_STUDIO_PROVISIONER"
 service = "xeroflow-provisioning-staging"
 
@@ -375,6 +379,7 @@ NUXT_PUBLIC_SEND_PUBLIC_ENABLED = "false"
 CRM_SEARCH_RELEASE_ENVIRONMENT = "preview"
 PAGE_STUDIO_RELEASE_ENVIRONMENT = "staging"
 PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "staging"
+PAGE_STUDIO_CONTENT_ENVIRONMENT = "staging"
 
 # ============================================
 # Scheduled Triggers
