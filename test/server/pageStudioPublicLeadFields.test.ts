@@ -1,3 +1,4 @@
+import type { InsertLeadInput } from '~~/server/utils/leads/db'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
@@ -5,6 +6,7 @@ import { acceptPageStudioPublicLead } from '../../server/utils/pageStudio/public
 
 const mocks = vi.hoisted(() => ({
   queryOne: vi.fn(),
+  queryOneFresh: vi.fn(),
   execute: vi.fn(),
   acceptLead: vi.fn(),
   resolveLeadCaptureMode: vi.fn(),
@@ -38,14 +40,28 @@ const input = {
 describe('Page Studio generated form lead fields', () => {
   beforeEach(() => {
     vi.resetAllMocks()
-    mocks.queryOne.mockResolvedValue({
+    const authority = {
       tenant_id: input.scope.tenantId,
       client_id: input.scope.clientId,
       site_id: input.scope.siteId,
       release_id: input.releaseId,
       is_synthetic: true
+    }
+    const leads = new Map<string, InsertLeadInput & { id: string, deleted_at: null }>()
+    const receipts = new Map<string, { metadata: { payloadDigest: string }, occurred_at: string }>()
+    mocks.queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('JOIN page_studio_entitlements')) return authority
+      if (sql.includes('FROM leads')) return leads.get(String(params[1])) ?? null
+      return receipts.get(String(params.at(-1))) ?? null
     })
-    mocks.acceptLead.mockResolvedValue({ status: 'created', leadId: 'lead_test' })
+    mocks.execute.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('\'lead.submission_reserved\'')) receipts.set(String(params[4]), { metadata: JSON.parse(String(params[5])), occurred_at: String(params[6]) })
+      return 1
+    })
+    mocks.acceptLead.mockImplementation(async (_event: unknown, { lead }: { lead: InsertLeadInput & { client_id: string } }) => {
+      leads.set(lead.source_lead_id, { ...lead, id: 'lead_test', deleted_at: null })
+      return { status: 'created', leadId: 'lead_test' }
+    })
   })
 
   it('maps the actual AI-generated contact fields without discarding submitted keys', async () => {
@@ -64,7 +80,7 @@ describe('Page Studio generated form lead fields', () => {
     await acceptPageStudioPublicLead({} as H3Event, { ...input, fields })
     expect(mocks.acceptLead.mock.calls[0][1].lead.field_data).toEqual(fields)
     await acceptPageStudioPublicLead({} as H3Event, {
-      ...input, fields: { ...input.fields, field_name: 'Legacy Name', field_goal: 'Legacy Message' }
+      ...input, idempotencyKey: 'independent-alias-request', fields: { ...input.fields, field_name: 'Legacy Name', field_goal: 'Legacy Message' }
     })
     expect(mocks.acceptLead.mock.calls[1][1].lead.field_data).toMatchObject({ full_name: 'Legacy Name', message: 'Legacy Message' })
   })
@@ -73,7 +89,7 @@ describe('Page Studio generated form lead fields', () => {
     const fields = { field_full_name: 'Synthetic Form Test', field_email_address: 'generated@example.invalid', field_message: 'Production AI verification' }
     await acceptPageStudioPublicLead({} as H3Event, { ...input, fields })
     expect(mocks.acceptLead.mock.calls[0][1].lead.field_data).toMatchObject({ ...fields, email: fields.field_email_address })
-    await acceptPageStudioPublicLead({} as H3Event, { ...input, fields: { ...fields, field_email: 'legacy@example.invalid' } })
+    await acceptPageStudioPublicLead({} as H3Event, { ...input, idempotencyKey: 'independent-email-request', fields: { ...fields, field_email: 'legacy@example.invalid' } })
     expect(mocks.acceptLead.mock.calls[1][1].lead.field_data.email).toBe('legacy@example.invalid')
   })
 
@@ -87,7 +103,7 @@ describe('Page Studio generated form lead fields', () => {
   })
 
   it('rejects an inactive release before any lead or metadata write', async () => {
-    mocks.queryOne.mockResolvedValue(null)
+    mocks.queryOneFresh.mockResolvedValue(null)
     await expect(acceptPageStudioPublicLead({} as H3Event, input)).rejects.toMatchObject({ statusCode: 403 })
     expect(mocks.acceptLead).not.toHaveBeenCalled()
     expect(mocks.upsertFormMetadata).not.toHaveBeenCalled()
