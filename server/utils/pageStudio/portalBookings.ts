@@ -72,7 +72,9 @@ async function authorise(request: PortalBookingRequest, writing: boolean, depend
   }
   const scope = PageStudioContentScopeSchema.safeParse({ tenantId: row.tenant_id, clientId: row.client_id, businessId: row.client_id, siteId, environment })
   if (!scope.success) throw fail('BOOKINGS_UNAVAILABLE', 'Website booking scope is not configured', 503)
-  return { scope: scope.data, service }
+  const canCreate = ['admin', 'manager'].includes(actor.role)
+    && ['admin', 'manager'].includes(row.user_role) && row.membership_role === 'editor'
+  return { scope: scope.data, service, canCreate }
 }
 
 function decode(value: unknown, scope: PageStudioContentScope, id?: string) {
@@ -109,13 +111,13 @@ async function call<T>(operation: () => Promise<T>): Promise<T> {
 export async function listPortalPageStudioBookings(request: PortalBookingRequest, input: unknown, dependencies: Dependencies = {}) {
   const filters = PageStudioBookingFiltersSchema.omit({ siteId: true }).safeParse(input)
   if (!filters.success) throw fail('INVALID_BOOKING_FILTERS', 'Invalid booking filters', 400)
-  const { scope, service } = await authorise(request, false, dependencies)
+  const { scope, service, canCreate } = await authorise(request, false, dependencies)
   const result = await call(() => service.listScopedBookings(scope, filters.data))
   if (!Array.isArray(result) || result.length > filters.data.limit) throw invalidResponse()
   const aggregates = result.map(value => decode(value, scope))
   if (new Set(aggregates.map(value => value.booking.id)).size !== aggregates.length
     || (filters.data.status && aggregates.some(value => value.booking.status !== filters.data.status))) throw invalidResponse()
-  return aggregates.map(project)
+  return { bookings: aggregates.map(project), canCreate }
 }
 
 export async function createPortalPageStudioBooking(request: PortalBookingRequest, input: unknown, dependencies: Dependencies = {}) {

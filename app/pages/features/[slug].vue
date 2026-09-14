@@ -196,7 +196,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Booking Operations Where Connected',
-        content: 'The website booking queue lets authorised agency operators review enquiries, save quotes with an expiry date, and record approval, rejection, cancellation and completion decisions. Each view belongs to the selected website and requires active booking access. Updates check the current booking version, and retries retain the same request so delayed responses do not create duplicate actions. Vehicle reservations and customer notifications remain separate operational steps during the staged rollout.'
+        content: 'The website booking queue lets authorised agency operators review enquiries, save quotes with an expiry date, and record approval, rejection, cancellation and completion decisions. Signed-in business administrators and managers with website editing access can record customer enquiries in their portal and resume the same request after an interrupted response. Each view belongs to the selected website and requires active booking access. Updates check the current booking version, and retries retain the same request so delayed responses do not create duplicate actions. Vehicle reservations, trip confirmation and customer notifications remain separate operational steps during the staged rollout.'
       },
       {
         title: 'Website Access, Setup and Allowances',
