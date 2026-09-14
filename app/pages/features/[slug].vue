@@ -199,6 +199,10 @@ const features: Record<string, Feature> = {
         content: 'Manage website collections such as services, fleet and testimonials from the agency workspace or client portal once content storage is connected. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release.'
       },
       {
+        title: 'Website Email Preferences',
+        content: 'Agency editors and eligible business administrators or managers can save sender identity, a team notification inbox and optional incoming forwarding preferences for each website. Revision checks protect against overwriting another editor’s changes. These preferences show email setup as pending: saving them does not verify a sender, send messages, change DNS or enable forwarding. Provider verification and delivery setup remain agency-managed prerequisites.'
+      },
+      {
         title: 'Booking Operations Where Connected',
         content: 'The website booking queue lets authorised agency operators review enquiries, save quotes with an expiry date, and record approval, rejection, cancellation and completion decisions. Signed-in business administrators and managers with website editing access can record customer enquiries in their portal and resume the same request after an interrupted response. Each view belongs to the selected website and requires active booking access. Updates check the current booking version, and retries retain the same request so delayed responses do not create duplicate actions. Vehicle reservations, trip confirmation and customer notifications remain separate operational steps during the staged rollout.'
       },
