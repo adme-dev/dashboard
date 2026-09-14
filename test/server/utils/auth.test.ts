@@ -31,10 +31,12 @@ import { PERMISSIONS } from '../../../server/utils/permissions'
 
 // Mock the DB layer auth.ts depends on (`./db`).
 const mockQueryOne = vi.fn()
+const mockQueryOneFresh = vi.fn()
 const mockQueryRows = vi.fn()
 const mockExecute = vi.fn()
 vi.mock('../../../server/utils/db', () => ({
   queryOne: (...args: any[]) => mockQueryOne(...args),
+  queryOneFresh: (...args: unknown[]) => mockQueryOneFresh(...args),
   queryRows: (...args: any[]) => mockQueryRows(...args),
   execute: (...args: any[]) => mockExecute(...args)
 }))
@@ -252,7 +254,7 @@ describe('auth utility', () => {
   describe('validateSession', () => {
     it('returns the active user for a valid token', async () => {
       const token = await createJwt({ userId: 'user-456' })
-      mockQueryOne.mockResolvedValueOnce({
+      mockQueryOneFresh.mockResolvedValueOnce({
         id: 'user-456',
         email: 'test@example.com',
         name: 'Test User',
@@ -263,24 +265,29 @@ describe('auth utility', () => {
       const user = await validateSession(token)
       expect(user?.id).toBe('user-456')
       expect(user?.role).toBe('admin')
+      expect(mockQueryOneFresh).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE id = $1 AND is_active = true'),
+        ['user-456']
+      )
+      expect(mockQueryOne).not.toHaveBeenCalled()
     })
 
     it('returns null for an invalid/garbage token without hitting the DB', async () => {
       const user = await validateSession('not-a-jwt')
       expect(user).toBeNull()
-      expect(mockQueryOne).not.toHaveBeenCalled()
+      expect(mockQueryOneFresh).not.toHaveBeenCalled()
     })
 
     it('throws TransientAuthError when the DB is unreachable (not a logout)', async () => {
       const token = await createJwt({ userId: 'user-456' })
-      mockQueryOne.mockRejectedValueOnce(new Error('fetch failed'))
+      mockQueryOneFresh.mockRejectedValueOnce(new Error('fetch failed'))
       await expect(validateSession(token)).rejects.toBeInstanceOf(TransientAuthError)
     })
 
     it('rejects a token minted before the user revocation cutoff', async () => {
       const token = await createJwt({ userId: 'user-456' }) // iat = now
       // Cutoff is 1 minute in the FUTURE relative to the token's iat → revoked.
-      mockQueryOne.mockResolvedValueOnce({
+      mockQueryOneFresh.mockResolvedValueOnce({
         id: 'user-456', email: 'e', name: 'n', role: 'admin', is_active: true,
         sessions_invalidated_at: new Date(Date.now() + 60_000).toISOString()
       })
@@ -289,7 +296,7 @@ describe('auth utility', () => {
 
     it('accepts a token minted after the revocation cutoff', async () => {
       const token = await createJwt({ userId: 'user-456' }) // iat = now
-      mockQueryOne.mockResolvedValueOnce({
+      mockQueryOneFresh.mockResolvedValueOnce({
         id: 'user-456', email: 'e', name: 'n', role: 'admin', is_active: true,
         sessions_invalidated_at: new Date(Date.now() - 60_000).toISOString() // cutoff in the past
       })
@@ -343,7 +350,7 @@ describe('auth utility', () => {
     it('extracts a Bearer token, validates it, and resolves permission groups', async () => {
       const token = await createJwt({ userId: 'u1' })
       mockGetHeader.mockImplementation((_e: any, h: string) => (h === 'authorization' ? `Bearer ${token}` : null))
-      mockQueryOne.mockResolvedValueOnce({ id: 'u1', email: 'a@b.c', name: 'A', role: 'admin', is_active: true })
+      mockQueryOneFresh.mockResolvedValueOnce({ id: 'u1', email: 'a@b.c', name: 'A', role: 'admin', is_active: true })
 
       const result = await requireAuth({ context: {} } as any)
       expect(result.id).toBe('u1')
@@ -355,7 +362,7 @@ describe('auth utility', () => {
       const token = await createJwt({ userId: 'u2' })
       mockGetHeader.mockReturnValue(null)
       mockGetCookie.mockImplementation((_e: any, name: string) => (name === 'auth_token' ? token : null))
-      mockQueryOne.mockResolvedValueOnce({ id: 'u2', email: 'c@d.e', name: 'C', role: 'member', is_active: true })
+      mockQueryOneFresh.mockResolvedValueOnce({ id: 'u2', email: 'c@d.e', name: 'C', role: 'member', is_active: true })
 
       const result = await requireAuth({ context: {} } as any)
       expect(result.id).toBe('u2')
@@ -398,7 +405,7 @@ describe('auth utility', () => {
     it('throws 503 (not 401) when validation fails transiently', async () => {
       const token = await createJwt({ userId: 'u1' })
       mockGetHeader.mockImplementation((_e: any, h: string) => (h === 'authorization' ? `Bearer ${token}` : null))
-      mockQueryOne.mockRejectedValueOnce(new Error('fetch failed'))
+      mockQueryOneFresh.mockRejectedValueOnce(new Error('fetch failed'))
       await expect(requireAuth({ context: {} } as any)).rejects.toMatchObject({ statusCode: 503 })
     })
   })

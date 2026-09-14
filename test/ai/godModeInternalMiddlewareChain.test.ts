@@ -162,7 +162,10 @@ describe('Task 5 delegated execution through the real middleware and route chain
         return { jti }
       }
       if (sql.includes('SELECT id, email, name, user_role')) {
-        return mocks.ownerActive
+        if (sql.includes('sessions_invalidated_at') && params[0] === ADMIN_ID) {
+          return { id: ADMIN_ID, email: 'admin@test', name: 'Admin', role: 'admin', is_active: true, custom_role_id: null }
+        }
+        return mocks.ownerActive && params[0] === OWNER_ID
           ? { id: OWNER_ID, email: 'owner@test', name: 'Owner', role: 'owner', is_active: true, custom_role_id: null }
           : null
       }
@@ -182,9 +185,6 @@ describe('Task 5 delegated execution through the real middleware and route chain
       return null
     })
     mocks.queryOne.mockImplementation(async (sql: string) => {
-      if (sql.includes('FROM team_members') && sql.includes('sessions_invalidated_at')) {
-        return { id: ADMIN_ID, email: 'admin@test', name: 'Admin', role: 'admin', is_active: true, custom_role_id: null }
-      }
       if (sql.includes('FROM task_statuses')) return { id: 'status-1' }
       if (sql.includes('FROM tasks t')) return {
         id: 'task-1', department_id: DEPARTMENT_ID, status_id: 'status-1', title: 'Ship', priority: 'medium',
@@ -292,6 +292,8 @@ describe('Task 5 delegated execution through the real middleware and route chain
     await taskHandler(request)
 
     expect(request.context.user).toMatchObject({ id: ADMIN_ID, role: 'admin' })
+    expect(mocks.queryOneFresh).toHaveBeenCalledWith(expect.stringContaining('sessions_invalidated_at'), [ADMIN_ID])
+    expect(mocks.queryOne.mock.calls.some(([sql]) => String(sql).includes('sessions_invalidated_at'))).toBe(false)
     expect(mocks.mutationCount).toBe(1)
   })
 })

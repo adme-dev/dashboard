@@ -194,16 +194,19 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/middleware/05-portal-security.ts\t? editorFormOrigin(useRuntimeConfig(event).public.pageStudioEditorUrl)\tunrelated_configuration'
     )
-    expect(inventory.rows).toHaveLength(1578)
+    expect(inventory.rows).toHaveLength(1574)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 115,
+      identity_tenant_hard_boundary: 111,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
       ordinary_user_behavior: 179,
       unrelated_configuration: 433
     })
-    // Add the configured portal form origin; no mutation bypass is registered.
-    expect(inventory.digest).toBe('d9bc207b5b996c90ccfaa97e857f63c2b7ad6a22becbf3b12b211290f34b6731')
+    // Removing the session KV shortcut removes four auth middleware rows:
+    // cached identity read, cached role branch, cached auth assignment and cache
+    // write role branch. Every staff identity now passes live validation; the
+    // application-governance gates and their bypass classification are unchanged.
+    expect(inventory.digest).toBe('0b1eff143d223ef20c41c402f042fd085a15dd47f2f60bcdf5ec0f5410b32a57')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
