@@ -83,9 +83,10 @@ export async function validateSession(token: string): Promise<User | null> {
   const payload = await verifyJwt(token)
   if (!payload || !payload.userId) return null
 
-  // DB lookup — let connection errors propagate as TransientAuthError
+  // Session authority must bypass query caches so deactivation and revocation
+  // take effect on the next request. Connection errors remain TransientAuthError.
   try {
-    const row = await queryOne<User & { sessions_invalidated_at?: string | null }>(
+    const row = await queryOneFresh<User & { sessions_invalidated_at?: string | null }>(
       `SELECT id, email, name, user_role as role, is_active, avatar_url, custom_role_id, sessions_invalidated_at
        FROM team_members
        WHERE id = $1 AND is_active = true`,

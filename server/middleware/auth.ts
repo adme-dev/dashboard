@@ -4,7 +4,6 @@ import {
   TransientAuthError,
   type User
 } from '../utils/auth'
-import { kvGet, kvPut } from '../utils/kv'
 import { resolveUserPermissions } from '../utils/roleResolver'
 import { isReadOnlyRole } from '../utils/permissions'
 
@@ -214,20 +213,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Check KV cache first (use first 16 chars of token as key — safe, not sensitive)
-  const cacheKey = `auth-session:${token.slice(0, 16)}`
-  const cachedUser = await kvGet<{ id: string, email: string, name: string, role: string, is_active: boolean, avatar_url?: string, custom_role_id?: string | null, permissionGroups?: string[], isCustomReadOnly?: boolean }>(event, cacheKey)
-
-  // Owner identity and authority are revalidated on every request. Legacy owner
-  // cache entries are deliberately ignored so revocation and emergency changes
-  // cannot inherit the ordinary five-minute session fast path.
-  if (cachedUser && cachedUser.role.toLowerCase() !== 'owner') {
-    event.context.user = cachedUser
-    event.context.auth = { userId: cachedUser.id, role: cachedUser.role }
-    return
-  }
-
-  // Validate session via DB
+  // Every staff request verifies the complete token and live session authority.
+  // Legacy session cache entries cannot prove signature validity or revocation.
   try {
     const sessionUser = await validateSession(token)
 
@@ -254,12 +241,6 @@ export default defineEventHandler(async (event) => {
     const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
     user.permissionGroups = resolved.groups
     ;(user as MiddlewareUser).isCustomReadOnly = resolved.isReadOnly && !isReadOnlyRole(user.role)
-
-    // Owner identities are revalidated on every request; configured permission groups themselves
-    // remain ordinary policy until a centralized God mode bypass is actually requested.
-    if (user.role.toLowerCase() !== 'owner') {
-      kvPut(event, cacheKey, user, 300)
-    }
 
     event.context.user = user
     event.context.auth = { userId: user.id, role: user.role }
