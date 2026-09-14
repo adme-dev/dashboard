@@ -49,3 +49,20 @@ The successful run followed build completion with local runtime permissions.
 Release status: local implementation; exact-head CI and production acceptance
 must be recorded before this task is marked shipped. Browser fixture data is
 synthetic and does not prove delivery or customer booking operations.
+
+
+## CI scanner scheduling repair
+
+The exact candidate's push CI passed all13,774 tests, but its duplicate PR run
+and one investigated retry exceeded the unchanged15s CRM source-scan timeout.
+The passing CI scan took13.962s; isolated local54-test execution took4.41s.
+No scanner/support source changed from main. A second retry was not attempted.
+
+The Full test suite step now runs the entire54-test CRM endpoint/guard file
+first, then all remaining files with only that already-executed file excluded.
+The source roots, assertions, negative controls, test timeout and20-minute step
+limit are unchanged. Normal shell failure handling makes either command failure
+block release. A configuration regression requires both commands in order and
+rejects error suppression or test-name/timeout overrides. Independent review
+verified pnpm forwarding and installed Vitest additional-exclusion semantics.
+This removes concurrent-file contention; exact-head CI must verify the outcome.
