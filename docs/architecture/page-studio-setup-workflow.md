@@ -33,3 +33,8 @@ Portal administrators and managers can use **Your websites → New website** to 
 The dialog preserves failed input and asks customers to refresh the portfolio after a lost acknowledgement before retrying. The unique route prevents a second draft with the same route; a friendly original-receipt retry is not yet implemented. This is website creation for existing authenticated customers with an allowance. Account signup, billing and Cloudflare allocation remain separate gates. Management-only pages, page settings, redirects and entitlement grants use client rendering; their component names and behavior remain unchanged.
 
 Verification: 36 focused checks and 19 real PostgreSQL checks pass, including atomic rollback, competing creation, current-role denial and page-limit denial. No new database migration or infrastructure binding is required.
+
+
+## Isolated preview provisioning connection
+
+Only `env.preview` binds `PAGE_STUDIO_PROVISIONER` to `xeroflow-provisioning-staging`, with explicit provisioning environment `staging`. Both preview database bindings remain the dedicated cache-disabled Hyperdrive `3865ea5568234fc7b0e9e3e595a30286` for Neon branch `staging/page-studio`. There is no root or production provisioner binding. The coordinator's scheduler remains independently disabled until its legacy probes and positive customer acceptance are reconciled. Connecting the private service permits accepted-revision request persistence and fresh executor authority checks; it does not establish automatic execution or production readiness.
