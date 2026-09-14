@@ -153,7 +153,11 @@ jobs:
       # step existed CI ran ~750 of ~8200 tests, so a regression anywhere else
       # reached production behind a green check — main deploys on merge.
       - name: Full test suite
-        run: pnpm run test:run
+        # The repository-wide caller scan competes with other test files for CPU.
+        # Run its unchanged assertions/15s limit first, then every remaining file.
+        run: |
+          pnpm exec vitest run test/server/api/crmSearchEndpoints.test.ts
+          pnpm run test:run --exclude test/server/api/crmSearchEndpoints.test.ts
         timeout-minutes: 20
 
       # Kept as separate steps despite being subsets of the run above: both are

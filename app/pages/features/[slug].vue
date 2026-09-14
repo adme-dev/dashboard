@@ -199,6 +199,10 @@ const features: Record<string, Feature> = {
         content: 'Manage website collections such as services, fleet and testimonials from the agency workspace or client portal once content storage is connected. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release.'
       },
       {
+        title: 'Website Form Submissions',
+        content: 'Agency staff can open a website enquiry to inspect every recorded field alongside its receipt, form, page and submission time. Filter the loaded inbox by live or test submissions. Long responses remain readable in a scrollable details panel. Viewing a receipt does not resend a notification or confirm a booking.'
+      },
+      {
         title: 'Website Email Preferences',
         content: 'Agency editors and eligible business administrators or managers can save sender identity, a team notification inbox and optional incoming forwarding preferences for each website. Revision checks protect against overwriting another editor’s changes. These preferences show email setup as pending: saving them does not verify a sender, send messages, change DNS or enable forwarding. Provider verification and delivery setup remain agency-managed prerequisites.'
       },
