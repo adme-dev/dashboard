@@ -118,7 +118,7 @@ const RELEASE_AUTHORITY_SQL = `
       ON pointer.tenant_id = release.tenant_id
      AND pointer.client_id = release.client_id
      AND pointer.site_id = release.site_id
-     AND pointer.environment = 'production'
+     AND pointer.environment = $6
      AND pointer.active_release_id = release.id
    WHERE site.tenant_id = $1
      AND site.client_id::text = $2
@@ -126,7 +126,7 @@ const RELEASE_AUTHORITY_SQL = `
      AND release.id::text = $4
      AND build.version_digest = $5
      AND build.state = 'succeeded'
-     AND release.environment = 'production'
+     AND release.environment = $6
      AND site.current_release_id = release.id
      AND site.status = 'active'
      AND entitlement.status IN ('trial', 'active', 'past_due')
@@ -134,8 +134,23 @@ const RELEASE_AUTHORITY_SQL = `
      AND (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())
    LIMIT 1`
 
+type PublicReleaseEnvironment = 'staging' | 'production'
+
+function publicReleaseEnvironment(event: H3Event): PublicReleaseEnvironment {
+  const environment = event.context.cloudflare?.env?.PAGE_STUDIO_RELEASE_ENVIRONMENT
+  if (environment !== 'staging' && environment !== 'production') {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Public website release environment is unavailable',
+      data: { code: 'PUBLIC_RELEASE_ENVIRONMENT_UNAVAILABLE' }
+    })
+  }
+  return environment
+}
+
 async function requireReleaseAuthority(
   input: LeadSubmission | AnalyticsSubmission,
+  environment: PublicReleaseEnvironment,
   query: typeof queryOne = queryOneFresh
 ): Promise<ReleaseAuthority> {
   const authority = await query<ReleaseAuthority>(RELEASE_AUTHORITY_SQL, [
@@ -143,7 +158,8 @@ async function requireReleaseAuthority(
     input.scope.clientId,
     input.scope.siteId,
     input.releaseId,
-    input.versionDigest
+    input.versionDigest,
+    environment
   ])
   if (!authority) {
     throw createError({
@@ -275,7 +291,8 @@ export async function acceptPageStudioPublicLead(
   event: H3Event,
   input: LeadSubmission
 ): Promise<{ duplicate: boolean, leadId: string }> {
-  const authority = await requireReleaseAuthority(input)
+  const environment = publicReleaseEnvironment(event)
+  const authority = await requireReleaseAuthority(input, environment)
   const sourceLeadId = pageStudioSourceLeadId(input)
   const digest = payloadDigest(input, authority.is_synthetic)
   const fieldData = canonicalFields(input.fields)
@@ -287,7 +304,7 @@ export async function acceptPageStudioPublicLead(
     verifyStoredLead(stored, authority.client_id, sourceLeadId, digest)
   } else {
     input = { ...input, occurredAt: await reservePublicLead(input, sourceLeadId, digest) }
-    const current = await requireReleaseAuthority(input)
+    const current = await requireReleaseAuthority(input, environment)
     if (current.is_synthetic !== authority.is_synthetic) throw submissionConflict()
     try {
       const accepted = await acceptLead(event, {
@@ -375,8 +392,14 @@ export async function acceptPageStudioPublicAnalyticsEvent(
   event: H3Event,
   input: AnalyticsSubmission
 ): Promise<{ accepted: true }> {
-  const authority = await requireReleaseAuthority(input)
+  const environment = publicReleaseEnvironment(event)
+  const authority = await requireReleaseAuthority(input, environment)
   const result = await transaction(async (db) => {
+    // Recheck on this transaction connection before accepting an analytics row.
+    await requireReleaseAuthority(input, environment, async <T>(sql: string, params?: unknown[]) => {
+      const result = await db.query(sql, params)
+      return (result.rows[0] as T | undefined) ?? null
+    })
     const inserted = await db.query<AnalyticsLedgerRow>(
       `INSERT INTO page_studio_analytics_events (
          tenant_id, client_id, site_id, release_id, version_digest,

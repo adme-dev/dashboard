@@ -15,7 +15,7 @@ const input = {
   formId: 'quote', idempotencyKey: 'request-public-1', occurredAt: '2026-09-14T00:00:00.000Z', pageId: 'quote-page', pageRoute: '/quote', releaseId: 'release-one',
   scope: { tenantId: 'tenant-one', clientId: 'client-one', siteId: 'site-one' }, versionDigest: 'a'.repeat(64)
 }
-const event = {} as H3Event
+const event = { context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event
 let authority: boolean
 let synthetic: boolean
 let receipts: Map<string, { metadata: { payloadDigest: string }, occurred_at: string }>
