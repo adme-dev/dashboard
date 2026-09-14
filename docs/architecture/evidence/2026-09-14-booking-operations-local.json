@@ -1,0 +1,57 @@
+{
+  "date": "2026-09-14",
+  "baseCommit": "e48bcd4cfb2ca257dc516f5ea62e44a4a18305e5",
+  "deployment": "not deployed",
+  "targetedTests": 66,
+  "realPostgresTests": 4,
+  "browserMode": "local application with synthetic intercepted API responses",
+  "browser": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "horizontalOverflow": false,
+      "scrollOwners": [
+        {
+          "height": 787,
+          "content": 4193
+        },
+        {
+          "height": 836,
+          "content": 2629
+        }
+      ],
+      "quoteAmountCents": 12550,
+      "identicalRetry": true,
+      "pageErrors": []
+    },
+    {
+      "viewport": {
+        "width": 393,
+        "height": 650
+      },
+      "horizontalOverflow": false,
+      "scrollOwners": [
+        {
+          "height": 586,
+          "content": 2653
+        }
+      ],
+      "quoteAmountCents": 12550,
+      "identicalRetry": true,
+      "pageErrors": []
+    }
+  ],
+  "initialBuild": {
+    "rawBytes": 25458821,
+    "rawLimit": 25468928
+  },
+  "typecheck": "Existing repository errors remain; added booking files have no reported errors.",
+  "open": [
+    "live Dashboard-to-router acceptance",
+    "vehicle holds and customer confirmations",
+    "notifications",
+    "production binding promotion"
+  ]
+}

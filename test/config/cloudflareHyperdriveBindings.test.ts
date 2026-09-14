@@ -61,6 +61,15 @@ describe('Cloudflare Hyperdrive production binding', () => {
     expect(config.env?.production?.vars?.PAGE_STUDIO_PROVISIONING_ENVIRONMENT).toBeUndefined()
   })
 
+  it('connects booking operations only to the private staging content router', () => {
+    const config = readToml('wrangler.toml')
+    expect(config.env?.preview?.services?.filter(service => service.binding === 'PAGE_STUDIO_CONTENT_ROUTER'))
+      .toEqual([{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }])
+    expect(config.env?.preview?.vars?.PAGE_STUDIO_CONTENT_ENVIRONMENT).toBe('staging')
+    expect(config.env?.production?.services?.some(service => service.binding === 'PAGE_STUDIO_CONTENT_ROUTER')).not.toBe(true)
+    expect(config.env?.production?.vars?.PAGE_STUDIO_CONTENT_ENVIRONMENT).toBeUndefined()
+  })
+
   it('keeps standalone DB-writing workers on the same Hyperdrive config', () => {
     for (const configPath of HYPERDRIVE_WORKER_CONFIGS) {
       expect(readToml(configPath).hyperdrive, configPath).toContainEqual({
