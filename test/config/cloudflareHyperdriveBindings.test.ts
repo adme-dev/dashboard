@@ -51,23 +51,30 @@ describe('Cloudflare Hyperdrive production binding', () => {
     expect(PAGE_STUDIO_STAGING_HYPERDRIVE_ID).not.toBe(HYPERDRIVE_FRESH_ID)
   })
 
-  it('connects only preview to the private staging provisioner with an explicit environment', () => {
+  it('keeps production and preview provisioning on separate private services', () => {
     const config = readToml('wrangler.toml')
     expect(config.env?.preview?.services?.filter(service => service.binding === 'PAGE_STUDIO_PROVISIONER'))
       .toEqual([{ binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-staging' }])
     expect(config.env?.preview?.vars?.PAGE_STUDIO_PROVISIONING_ENVIRONMENT).toBe('staging')
     expect(config.services?.some(service => service.binding === 'PAGE_STUDIO_PROVISIONER')).not.toBe(true)
-    expect(config.env?.production?.services?.some(service => service.binding === 'PAGE_STUDIO_PROVISIONER')).not.toBe(true)
-    expect(config.env?.production?.vars?.PAGE_STUDIO_PROVISIONING_ENVIRONMENT).toBeUndefined()
+    expect(config.env?.production?.services?.filter(service => service.binding === 'PAGE_STUDIO_PROVISIONER'))
+      .toEqual([{ binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-production' }])
+    expect(config.env?.production?.vars?.PAGE_STUDIO_PROVISIONING_ENVIRONMENT).toBe('production')
   })
 
-  it('connects booking operations only to the private staging content router', () => {
+  it('keeps production and preview content on separate private routers without management credentials', () => {
     const config = readToml('wrangler.toml')
     expect(config.env?.preview?.services?.filter(service => service.binding === 'PAGE_STUDIO_CONTENT_ROUTER'))
       .toEqual([{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }])
     expect(config.env?.preview?.vars?.PAGE_STUDIO_CONTENT_ENVIRONMENT).toBe('staging')
-    expect(config.env?.production?.services?.some(service => service.binding === 'PAGE_STUDIO_CONTENT_ROUTER')).not.toBe(true)
-    expect(config.env?.production?.vars?.PAGE_STUDIO_CONTENT_ENVIRONMENT).toBeUndefined()
+    expect(config.env?.production?.services?.filter(service => service.binding === 'PAGE_STUDIO_CONTENT_ROUTER'))
+      .toEqual([{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-production' }])
+    expect(config.env?.production?.vars?.PAGE_STUDIO_CONTENT_ENVIRONMENT).toBe('production')
+    expect(config.services?.some(service => service.binding === 'PAGE_STUDIO_CONTENT_ROUTER')).not.toBe(true)
+    for (const environment of [config.env?.production, config.env?.preview]) {
+      expect(environment?.services?.some(service => service.binding === 'PROVISIONING_EXECUTOR')).not.toBe(true)
+      expect(environment?.vars?.PROVISIONING_API_TOKEN).toBeUndefined()
+    }
   })
 
   it('keeps standalone DB-writing workers on the same Hyperdrive config', () => {
