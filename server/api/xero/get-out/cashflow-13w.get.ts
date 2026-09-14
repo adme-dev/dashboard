@@ -19,6 +19,7 @@ import { fetchBankBalances } from '~~/server/utils/xeroDataFetcher'
 import { loadGetOutConfig, summariseConfig } from '~~/server/utils/getOutConfig'
 import { xeroFetch } from '~~/server/utils/xeroClient'
 import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
+import { derivePolicyLines, type PolicyLine } from '~~/server/utils/treasuryPolicy'
 
 interface InvoiceWeekRow {
   week_start: string
@@ -192,6 +193,26 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // Treasury policies (spreadsheet retirement W3): Amex paydown tranches are
+  // real cash outflows and join the weekly outflow totals. Internal
+  // tax-account transfers are derived too but NEVER added to org-level
+  // outflow — cash moving NAB Business → NAB Tax stays inside the org. They
+  // are returned separately so per-account views can use them.
+  const policyOutflowByWeek = new Map<string, number>()
+  let policyLines: PolicyLine[] = []
+  let totalPolicyOutflow = 0
+  try {
+    policyLines = await derivePolicyLines(tenantId, weekStart, horizonEnd)
+    for (const line of policyLines) {
+      if (line.kind !== 'amex_paydown') continue
+      const wk = mondayOf(new Date(line.date + 'T00:00:00Z'))
+      policyOutflowByWeek.set(wk, (policyOutflowByWeek.get(wk) ?? 0) + line.amountCents / 100)
+      totalPolicyOutflow += line.amountCents / 100
+    }
+  } catch (err: any) {
+    console.warn('[cashflow-13w] policy derivation failed:', err?.message)
+  }
+
   // Opening cash (live Xero — balance is current as of today)
   let openingCash = 0
   try {
@@ -250,6 +271,7 @@ export default defineEventHandler(async (event) => {
     const outflow = n(matchOutflow?.amount_due_cents) / 100
       + (repeatingOutflowByWeek.get(wkStartStr) ?? 0)
       + (commitmentOutflowByWeek.get(wkStartStr) ?? 0)
+      + (policyOutflowByWeek.get(wkStartStr) ?? 0)
     const net = inflow - outflow
     running += net
     buckets.push({
@@ -325,12 +347,17 @@ export default defineEventHandler(async (event) => {
     lowestBalanceProjected: Math.round(lowestBalanceProjected * 100) / 100,
     lowestBalanceProjectedWeek,
     buckets,
+    // Policy-derived lines: paydowns are already in outflows; internal
+    // transfers are informational at org level (per-account views consume
+    // them; org cash is unchanged by an internal transfer).
+    policyLines,
     projectionInputs: {
       // Committed recurring supplier outflow already folded into weekly
       // outflows above. If getOutConfig's monthly burn also covers these
       // suppliers, trim the config to avoid double-counting.
       totalRepeatingBillOutflow: Math.round(totalRepeatingBillOutflow * 100) / 100,
       totalCommitmentOutflow: Math.round(totalCommitmentOutflow * 100) / 100,
+      totalPolicyOutflow: Math.round(totalPolicyOutflow * 100) / 100,
       monthlyProjectedInflow: Math.round(monthlyProjectedInflow * 100) / 100,
       monthlyBurn: Math.round(monthlyBurn * 100) / 100,
       weeklyBurn: Math.round(weeklyBurn * 100) / 100,
