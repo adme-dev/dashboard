@@ -102,6 +102,43 @@ describe('Page Studio generated form lead fields', () => {
     expect(mocks.resolveAssignedAm).not.toHaveBeenCalled()
   })
 
+  it.each([
+    [{ first_name: ' Avery ', last_name: ' Chen ' }, 'Avery Chen'],
+    [{ field_first_name: ' Avery ', field_last_name: ' Chen ' }, 'Avery Chen'],
+    [{ first_name: 'Avery', field_first_name: 'Ignored', last_name: 'Chen', field_last_name: 'Ignored' }, 'Avery Chen'],
+    [{ first_name: '  ', field_first_name: 'Avery', field_last_name: 'Chen' }, 'Avery Chen'],
+    [{ field_first_name: 'Avery' }, 'Avery'],
+    [{ field_last_name: 'Chen' }, 'Chen']
+  ])('projects separate name fields without changing the submitted values: %j', async (names, fullName) => {
+    const fields = { field_email: 'name-test@example.invalid', ...names }
+    const event = { context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event
+    await acceptPageStudioPublicLead(event, { ...input, fields })
+    expect(mocks.acceptLead.mock.calls[0][1].lead.field_data).toEqual({ ...fields, full_name: fullName, email: fields.field_email })
+    expect(fields).not.toHaveProperty('full_name')
+  })
+
+  it.each(['full_name', 'field_name', 'name', 'field_full_name'])('preserves the existing complete-name value in %s', async (key) => {
+    const fields = { [key]: 'Existing Complete Name', field_first_name: 'Avery', field_last_name: 'Chen' }
+    const event = { context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event
+    await acceptPageStudioPublicLead(event, { ...input, fields })
+    expect(mocks.acceptLead.mock.calls[0][1].lead.field_data).toEqual({ ...fields, full_name: 'Existing Complete Name' })
+  })
+
+  it('does not create an empty name from blank separate fields', async () => {
+    const fields = { field_first_name: '  ', field_last_name: '' }
+    const event = { context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event
+    await acceptPageStudioPublicLead(event, { ...input, fields })
+    expect(mocks.acceptLead.mock.calls[0][1].lead.field_data).toEqual(fields)
+  })
+
+  it('rejects a changed surname on an already accepted request', async () => {
+    const fields = { field_first_name: 'Avery', field_last_name: 'Chen' }
+    const event = { context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event
+    await acceptPageStudioPublicLead(event, { ...input, fields })
+    await expect(acceptPageStudioPublicLead(event, { ...input, fields: { ...fields, field_last_name: 'Different' } })).rejects.toMatchObject({ statusCode: 409 })
+    expect(mocks.acceptLead).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects an inactive release before any lead or metadata write', async () => {
     mocks.queryOneFresh.mockResolvedValue(null)
     await expect(acceptPageStudioPublicLead({ context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } } } } as H3Event, input)).rejects.toMatchObject({ statusCode: 403 })

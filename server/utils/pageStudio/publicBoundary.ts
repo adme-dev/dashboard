@@ -197,6 +197,12 @@ function canonicalFields(fields: Record<string, string>): Record<string, string>
     const source = candidates.find(candidate => result[candidate])
     if (source) result[target] = result[source]
   }
+  if (!result.full_name) {
+    const first = fields.first_name?.trim() || fields.field_first_name?.trim()
+    const last = fields.last_name?.trim() || fields.field_last_name?.trim()
+    const name = [first, last].filter(Boolean).join(' ')
+    if (name) result.full_name = name
+  }
   return result
 }
 
