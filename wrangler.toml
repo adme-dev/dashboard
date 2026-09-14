@@ -236,6 +236,15 @@ service = "google-pmax-provider"
 binding = "PAGE_STUDIO_BUILD"
 service = "xeroflow-page-studio-build"
 
+# Private production services verified from Foundation 4c2b4b7. Management
+# credentials remain solely in the executor; Pages derives fresh customer scope.
+[[env.production.services]]
+binding = "PAGE_STUDIO_CONTENT_ROUTER"
+service = "xeroflow-content-router-production"
+[[env.production.services]]
+binding = "PAGE_STUDIO_PROVISIONER"
+service = "xeroflow-provisioning-production"
+
 [[env.production.r2_buckets]]
 binding = "PAGE_STUDIO_CHECKPOINTS"
 bucket_name = "xeroflow-page-studio-checkpoints"
@@ -305,13 +314,13 @@ MCP_FINANCIAL_TOOLS_ENABLED = "false"
 MCP_REQUIRE_WRITE_SCOPE = "false"
 CRM_SEARCH_RELEASE_ENVIRONMENT = "production"
 PAGE_STUDIO_RELEASE_ENVIRONMENT = "production"
+PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "production"
+PAGE_STUDIO_CONTENT_ENVIRONMENT = "production"
 
 [env.preview]
 
-# Page Studio staging services are private WorkerEntrypoint bindings. Production
-# bindings remain deliberately absent until the standalone production workers
-# and customer-routing acceptance gates are complete.
-# Private setup coordinator. This never binds production to staging resources.
+# Page Studio staging services remain isolated from production. No top-level
+# bindings or production mutable resources are inherited by this environment.
 [[env.preview.services]]
 binding = "PAGE_STUDIO_CONTENT_ROUTER"
 service = "xeroflow-content-router-staging"
