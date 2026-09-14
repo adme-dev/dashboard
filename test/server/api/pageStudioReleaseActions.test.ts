@@ -139,4 +139,30 @@ describe('Page Studio agency release actions', () => {
       scope
     })
   })
+
+  it('does not open the activation transaction when artifact verification fails', async () => {
+    worker.verifyBuild.mockRejectedValueOnce(new Error('Artifact verification failed'))
+    const { default: handler } = await import(
+      '~~/server/api/agency/page-studio/sites/[siteId]/releases/activate.post'
+    )
+    const event: TestEvent = {
+      body: { buildId, environment: 'staging', expectedActiveReleaseId: null, hostname },
+      context: {}, headers: { 'idempotency-key': 'publish_failed_verification' }, params: { siteId }
+    }
+    await expect(handler(event as never)).rejects.toThrow()
+    expect(mocks.activatePageStudioRelease).not.toHaveBeenCalled()
+  })
+
+  it('does not open the rollback transaction when target verification fails', async () => {
+    worker.verifyRelease.mockRejectedValueOnce(new Error('Artifact verification failed'))
+    const { default: handler } = await import(
+      '~~/server/api/agency/page-studio/sites/[siteId]/releases/rollback.post'
+    )
+    const event: TestEvent = {
+      body: { environment: 'staging', expectedActiveReleaseId: activeReleaseId, hostname, targetReleaseId },
+      context: {}, headers: { 'idempotency-key': 'rollback_failed_verification' }, params: { siteId }
+    }
+    await expect(handler(event as never)).rejects.toThrow()
+    expect(mocks.rollbackPageStudioRelease).not.toHaveBeenCalled()
+  })
 })

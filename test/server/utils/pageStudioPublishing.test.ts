@@ -141,7 +141,7 @@ describe('Page Studio atomic release activation', () => {
   it('locks the scoped site and pointer, creates one release, advances state, and audits before commit', async () => {
     const db = database((sql) => {
       if (sql.includes('FROM page_studio_sites') && sql.includes('FOR UPDATE')) {
-        return [{ id: scope.siteId }]
+        return [{ id: scope.siteId, status: 'active' }]
       }
       if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) return []
       if (sql.includes('FROM page_studio_release_pointers')) return []
@@ -188,7 +188,7 @@ describe('Page Studio atomic release activation', () => {
   it('rejects a stale expected release before validating or mutating the build', async () => {
     const activeReleaseId = '66666666-6666-4666-8666-666666666666'
     const db = database((sql) => {
-      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
       if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) return []
       if (sql.includes('FROM page_studio_release_pointers')) {
         return [{ active_release_id: activeReleaseId }]
@@ -208,7 +208,7 @@ describe('Page Studio atomic release activation', () => {
   it('serializes hostname claims and rejects a pointer owned by another scope', async () => {
     const activeReleaseId = '66666666-6666-4666-8666-666666666666'
     const db = database((sql) => {
-      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
       if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) return []
       if (sql.includes('FROM page_studio_release_pointers')) {
         return [{
@@ -243,7 +243,7 @@ describe('Page Studio atomic release activation', () => {
       version_status: 'rejected'
     }]]) {
       const db = database((sql) => {
-        if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+        if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
         if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) return []
         if (sql.includes('FROM page_studio_release_pointers')) return []
         if (sql.includes('FROM page_studio_builds')) return buildRows
@@ -260,7 +260,7 @@ describe('Page Studio atomic release activation', () => {
 
   it('returns the immutable release for an exact idempotency replay without moving the pointer', async () => {
     const db = database((sql) => {
-      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
       if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) {
         return [{
           ...buildRow,
@@ -284,7 +284,7 @@ describe('Page Studio atomic release activation', () => {
 
   it('conflicts when an idempotency key is replayed with changed activation input', async () => {
     const db = database((sql) => {
-      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
       if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) {
         return [{
           ...buildRow,
@@ -306,7 +306,7 @@ describe('Page Studio atomic release activation', () => {
 describe('Page Studio atomic release rollback', () => {
   it('moves the pointer to an existing verified release and audits without building or inserting a release', async () => {
     const db = database((sql) => {
-      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
       if (sql.includes('action = \'release.rolled_back\'')) return []
       if (sql.includes('FROM page_studio_release_pointers')) {
         return [{
@@ -343,7 +343,7 @@ describe('Page Studio atomic release rollback', () => {
 
   it('rejects a stale current pointer before loading the rollback target', async () => {
     const db = database((sql) => {
-      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
       if (sql.includes('action = \'release.rolled_back\'')) return []
       if (sql.includes('FROM page_studio_release_pointers')) {
         return [{
@@ -382,7 +382,7 @@ describe('Page Studio atomic release rollback', () => {
       release_id: releaseId
     }]]) {
       const db = database((sql) => {
-        if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+        if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
         if (sql.includes('action = \'release.rolled_back\'')) return []
         if (sql.includes('FROM page_studio_release_pointers')) {
           return [{
@@ -403,7 +403,7 @@ describe('Page Studio atomic release rollback', () => {
 
   it('returns the original target for an exact rollback replay without moving the pointer again', async () => {
     const db = database((sql) => {
-      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
       if (sql.includes('action = \'release.rolled_back\'')) {
         return [{
           ...buildRow,
@@ -426,7 +426,7 @@ describe('Page Studio atomic release rollback', () => {
 
   it('conflicts when a rollback idempotency key is replayed with changed input', async () => {
     const db = database((sql) => {
-      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId, status: 'active' }]
       if (sql.includes('action = \'release.rolled_back\'')) {
         return [{
           ...buildRow,

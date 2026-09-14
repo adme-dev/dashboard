@@ -108,7 +108,8 @@ export class PageStudioPublishingError extends Error {
       | 'RELEASE_POINTER_CONFLICT'
       | 'RELEASE_RECORD_INVALID'
       | 'RELEASE_WORKER_UNAVAILABLE'
-      | 'ROLLBACK_TARGET_INVALID',
+      | 'ROLLBACK_TARGET_INVALID'
+      | 'SITE_NOT_PUBLISHABLE',
     readonly statusCode: number,
     message: string
   ) {
@@ -202,8 +203,8 @@ async function requireScopedSiteForPublishing(
   db: PageStudioPublishingQueryClient,
   scope: PageStudioPublishingScope
 ): Promise<void> {
-  const site = await db.query<{ id: string }>(
-    `SELECT id
+  const site = await db.query<{ id: string, status: string }>(
+    `SELECT id, status
      FROM page_studio_sites
      WHERE tenant_id = $1 AND client_id = $2 AND id = $3
      FOR UPDATE`,
@@ -214,6 +215,13 @@ async function requireScopedSiteForPublishing(
       'CONTROL_SCOPE_NOT_FOUND',
       404,
       'Page Studio site scope not found'
+    )
+  }
+  if (!['draft', 'active'].includes(site.rows[0].status)) {
+    throw publishingError(
+      'SITE_NOT_PUBLISHABLE',
+      409,
+      'Page Studio site is not available for publication'
     )
   }
 }
@@ -507,7 +515,7 @@ export async function activatePageStudioRelease(
     )
     await db.query(
       `UPDATE page_studio_sites
-       SET current_release_id = $4, updated_at = NOW()
+       SET current_release_id = $4, status = 'active', updated_at = NOW()
        WHERE tenant_id = $1 AND client_id = $2 AND id = $3`,
       [input.scope.tenantId, input.scope.clientId, input.scope.siteId, releaseId]
     )
