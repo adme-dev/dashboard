@@ -176,7 +176,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-rocket',
     categoryIconBg: 'bg-rose-50 dark:bg-rose-500/10',
     categoryIconColor: 'text-rose-600 dark:text-rose-400',
-    description: 'Build responsive client websites with canonical components and AI-assisted Studio workflows, then govern assets, leads, analytics, releases, domains and rollback from XeroFlow.',
+    description: 'Build responsive client websites with editable components, saved design controls and AI-assisted Studio workflows, then govern assets, leads, analytics, releases, domains and rollback from XeroFlow.',
     details: [
       {
         title: 'One Website Workspace, Two Deliberate Views',
@@ -185,6 +185,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Studio for Visual Authoring',
         content: 'The website workspace shows the pages, SEO and form counts from your saved Studio website. Open Studio to edit the same draft, then return to see the latest saved changes. Build a complete page tree with nested subpages, responsive desktop, tablet, and mobile previews, page visibility, shell inheritance, and per-page SEO. Compact preset galleries add canonical sections, page layouts, headers, navigation, mobile menus, footers, themes, and complete site starters as ordinary editable content. AI proposals use the same typed components and controlled operations as manual editing, while revision-safe checkpoints prevent one session from silently overwriting another.'
+      },
+      {
+        title: 'Saved Component Design',
+        content: 'Open Components, select a component in Page outline, and use Design to save its supported visual settings with the website draft. Refine typography with text balance, alignment and decoration; choose bento or masonry grids and column counts; apply image masks, filters and blend modes; and adjust corners and link treatments where supported. Layouts collapse in narrow containers, and masonry content reads top to bottom. AI proposals use the same bounded, validated design choices as manual editing, so proposed changes remain editable in Studio.'
       },
       {
         title: 'Governed Preview and Publishing',
