@@ -141,8 +141,7 @@ export default async function loadPrecomputedManifest() {
 }
 
 export function buildWorkerDispatcherModule() {
-  return `import nitro from './_nitro.js'
-import { handleBoardConnect, handleChatConnect, handleBannerConnect } from './_ws.js'
+  return `import { handleBoardConnect, handleChatConnect, handleBannerConnect } from './_ws.js'
 
 const BOARD_RE = /^\\/api\\/agency\\/boards\\/([^/]+)\\/connect$/
 const CHAT_RE = /^\\/api\\/chat\\/([^/]+)\\/connect$/
@@ -164,9 +163,11 @@ export default {
         return new Response('WebSocket handler error', { status: 500 })
       }
     }
+    const { default: nitro } = await import('./_nitro.js')
     return nitro.fetch(request, env, ctx)
   },
-  scheduled(event, env, ctx) {
+  async scheduled(event, env, ctx) {
+    const { default: nitro } = await import('./_nitro.js')
     if (typeof nitro.scheduled === 'function') {
       return nitro.scheduled(event, env, ctx)
     }
