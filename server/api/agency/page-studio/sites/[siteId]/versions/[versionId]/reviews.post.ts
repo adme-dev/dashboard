@@ -9,7 +9,13 @@ import {
 const Id = z.string().uuid()
 const Body = z.object({
   decision: z.enum(['approved', 'rejected', 'returned_to_draft']),
-  comment: z.string().trim().max(4000).optional()
+  comment: z.string().trim().max(4000).optional(),
+  expectedComparison: z.object({
+    digest: z.string().regex(/^[a-f0-9]{64}$/),
+    checkpointId: z.string().min(1).max(128),
+    releaseId: Id.nullable(),
+    hostname: z.string().min(1).max(253).nullable()
+  }).strict().refine(value => (value.releaseId === null) === (value.hostname === null)).optional()
 }).strict()
 
 export default eventHandler(async (event) => {
@@ -29,7 +35,8 @@ export default eventHandler(async (event) => {
       versionId: versionId.data,
       reviewerId: user.id,
       decision: body.data.decision,
-      comment: body.data.comment
+      comment: body.data.comment,
+      expectedComparison: body.data.expectedComparison ? { ...body.data.expectedComparison, releaseId: body.data.expectedComparison.releaseId ?? null, hostname: body.data.expectedComparison.hostname ?? null } : undefined
     })
     return { review }
   } catch (error) {

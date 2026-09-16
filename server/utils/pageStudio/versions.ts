@@ -12,7 +12,8 @@ export class PageStudioVersionError extends Error {
       | 'VERSION_EDIT_DENIED'
       | 'VERSION_NOT_FOUND'
       | 'VERSION_NOT_CURRENT'
-      | 'VERSION_STATE_INVALID',
+      | 'VERSION_STATE_INVALID'
+      | 'VERSION_COMPARISON_CHANGED',
     readonly statusCode: number,
     message: string
   ) {
@@ -26,6 +27,8 @@ interface LockedVersionRow {
   digest: string
   status: string
   current_version_id: string | null
+  checkpoint_id: string
+  current_checkpoint_id: string | null
 }
 
 const defaultRunTransaction: RunTransaction = callback =>
@@ -67,7 +70,7 @@ async function lockVersion(
   input: { tenantId: string, clientId: string, siteId: string, versionId: string }
 ): Promise<LockedVersionRow> {
   const result = await db.query<LockedVersionRow>(
-    `SELECT version.id, version.digest, version.status, site.current_version_id
+    `SELECT version.id, version.digest, version.status, site.current_version_id, version.checkpoint_id, site.current_checkpoint_id
      FROM page_studio_versions version
      JOIN page_studio_sites site
        ON site.tenant_id = version.tenant_id
@@ -170,6 +173,7 @@ export async function reviewPageStudioVersion(
     reviewerId: string
     decision: 'approved' | 'rejected' | 'returned_to_draft'
     comment?: string
+    expectedComparison?: { digest: string, checkpointId: string, releaseId: string | null, hostname: string | null }
   },
   dependencies: { runTransaction?: RunTransaction } = {}
 ) {
@@ -189,6 +193,20 @@ export async function reviewPageStudioVersion(
         422,
         'Only a submitted version can be reviewed'
       )
+    }
+
+    if (input.expectedComparison) {
+      const expected = input.expectedComparison
+      const changed = () => new PageStudioVersionError('VERSION_COMPARISON_CHANGED', 409, 'Website changed after comparison. Refresh and review again.')
+      if (version.digest !== expected.digest || version.checkpoint_id !== expected.checkpointId
+        || version.current_checkpoint_id !== expected.checkpointId) throw changed()
+      const pointers = await db.query<{ active_release_id: string, normalized_hostname: string }>(
+        `SELECT active_release_id, normalized_hostname FROM page_studio_release_pointers
+         WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3 AND environment = 'production'
+         ORDER BY normalized_hostname FOR UPDATE`, [input.tenantId, input.clientId, input.siteId])
+      if (expected.releaseId === null
+        ? pointers.rows.length !== 0
+        : !pointers.rows.some(pointer => pointer.active_release_id === expected.releaseId && pointer.normalized_hostname === expected.hostname)) throw changed()
     }
 
     const review = await db.query<{ id: string, decided_at: string }>(

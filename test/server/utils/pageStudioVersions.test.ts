@@ -107,3 +107,23 @@ describe('Page Studio version workflow', () => {
     expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO page_studio_reviews'))).toBe(false)
   })
 })
+
+describe('review comparison preconditions', () => {
+  const expectedComparison = { digest, checkpointId: 'cp', releaseId: 'live', hostname: 'example.test' }
+  it.each([
+    { digest: 'different' }, { checkpoint_id: 'different' }, { current_checkpoint_id: 'different' }
+  ])('rejects a changed candidate before recording any review: %j', async (change) => {
+    const db = database(sql => sql.includes('FOR UPDATE OF version, site')
+      ? [{ id: versionId, digest, status: 'in_review', current_version_id: versionId, checkpoint_id: 'cp', current_checkpoint_id: 'cp', ...change }]
+      : [{ active_release_id: 'live', normalized_hostname: 'example.test' }])
+    await expect(reviewPageStudioVersion({ ...scope, versionId, reviewerId: 'reviewer', decision: 'approved', expectedComparison }, { runTransaction: db.runTransaction })).rejects.toMatchObject({ statusCode: 409 })
+    expect(db.query.mock.calls.some(([sql]) => sql.includes('INSERT'))).toBe(false)
+  })
+  it.each([{ pointers: [] }, { pointers: [{ active_release_id: 'new', normalized_hostname: 'example.test' }] }])('rejects a changed live baseline: %j', async ({ pointers }) => {
+    const db = database(sql => sql.includes('FOR UPDATE OF version, site')
+      ? [{ id: versionId, digest, status: 'in_review', current_version_id: versionId, checkpoint_id: 'cp', current_checkpoint_id: 'cp' }]
+      : pointers)
+    await expect(reviewPageStudioVersion({ ...scope, versionId, reviewerId: 'reviewer', decision: 'approved', expectedComparison }, { runTransaction: db.runTransaction })).rejects.toMatchObject({ statusCode: 409 })
+    expect(db.query.mock.calls.some(([sql]) => sql.includes('INSERT'))).toBe(false)
+  })
+})

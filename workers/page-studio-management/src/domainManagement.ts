@@ -7,7 +7,7 @@ import { readPortalDomainConfiguration, projectPortalDomain } from './portalDoma
 import { attachPageStudioDomain, refreshPageStudioDomain } from './domainConfiguration'
 import { listAgencyPageStudioDomains, listPortalPageStudioDomains } from './domainAggregate'
 
-async function agencyAuthority(db: DomainDatabase, actorId: string, permission: 'PAGE_STUDIO_VIEW' | 'PAGE_STUDIO_DOMAINS') {
+export async function agencyAuthority(db: DomainDatabase, actorId: string, permission: 'PAGE_STUDIO_VIEW' | 'PAGE_STUDIO_DOMAINS' | 'PAGE_STUDIO_APPROVE') {
   const staff = (await db.query<{ user_role: string, custom_role_id: string | null }>('SELECT user_role,custom_role_id FROM team_members WHERE id=$1 AND is_active=TRUE FOR SHARE', [actorId])).rows[0]
   if (!staff) throw domainFailure('DOMAIN_ACCESS_DENIED', 403)
   const policy = (await db.query<{ id: string, is_read_only: boolean }>(`SELECT id,is_read_only FROM custom_roles WHERE ${staff.custom_role_id ? 'id=$1' : 'slug=$1 AND is_system=TRUE'} FOR SHARE`, [staff.custom_role_id ?? staff.user_role])).rows[0]

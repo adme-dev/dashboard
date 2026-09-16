@@ -8,6 +8,7 @@ describe('private management immutable deployment target', () => {
     expect(() => validateManagementTarget(config(environment), environment)).not.toThrow()
   })
   it.each([
+    { r2_buckets: [] }, { r2_buckets: [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: 'xeroflow-page-studio-checkpoints-staging' }] },
     { name: 'agency-dashboard' }, { account_id: 'other' }, { main: '../../other.ts' },
     { workers_dev: true }, { preview_urls: true }, { routes: [{ pattern: '*example.com/*' }] },
     { triggers: { crons: ['* * * * *'] } }, { services: [{ binding: 'OTHER', service: 'other' }] },

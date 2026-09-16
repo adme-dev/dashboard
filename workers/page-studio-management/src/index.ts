@@ -1,3 +1,4 @@
+import { handleInspection } from './inspection'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import type { ManagementStagingEnv } from '../worker-staging'
 import type { ManagementProductionEnv } from '../worker-production'
@@ -22,6 +23,10 @@ const Request = z.discriminatedUnion('operation', [
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch() { return new Response('Not found', { status: 404 }) }
+  async inspectWebsite(input: unknown) {
+    return handleInspection(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
   async domains(input: unknown) {
     return handleDomainManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }
