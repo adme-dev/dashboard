@@ -14,6 +14,10 @@ organisation. Its canary site is `a27135dc-1374-475c-a56d-7e60310425bb`. The sep
 runtime-reader fixture stays in its own organisation. This setting grants no
 additional role permissions and does not make that other fixture visible.
 
+Preview also configures `https://studio-staging.xeroflow.io` as the editor URL,
+so the authorised user can launch the existing staging editor. The production
+editor remains `https://studio.xeroflow.io`.
+
 Regression coverage includes the missing-organisation failure, existing selection,
 absent/production environment markers, invalid IDs and denied editor permission.
 Hosted acceptance must verify the site list and canary editor after deployment.
