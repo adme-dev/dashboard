@@ -35,6 +35,9 @@ describe('private checkpoint inspection', () => {
     expect(mocks.authority).toHaveBeenCalledWith(expect.anything(), actorId, 'PAGE_STUDIO_APPROVE')
     expect(mocks.reviews).toHaveBeenCalledWith('tenant', expect.anything())
   })
+  it('round-trips an explicitly undefined optional release from the HTTP parser', async () => {
+    expect(await readPageStudioVersionComparison({ ...client(), versionId, releaseId: undefined })).toMatchObject({ siteId, version: { id: versionId } })
+  })
   it('requires approve authority for the exact immutable comparison', async () => {
     expect(await readPageStudioVersionComparison({ ...client(), versionId })).toMatchObject({ siteId, version: { id: versionId } })
     expect(mocks.authority).toHaveBeenCalledWith(expect.anything(), actorId, 'PAGE_STUDIO_APPROVE')

@@ -9,7 +9,9 @@ const record = (value: unknown): value is Record<string, unknown> => value !== n
 const unavailable = () => createError({ statusCode: 503, statusMessage: 'Website inspection is unavailable. Try again.' })
 async function inspect(input: AgencyInput & { siteId?: string, operation: 'launch' | 'comparison' | 'reviews', versionId?: string, releaseId?: string }) {
   const { env, ...scope } = input
-  const request = PageStudioInspectionRequest.safeParse({ ...scope, expectedEnvironment: env?.PAGE_STUDIO_RELEASE_ENVIRONMENT })
+  const request = PageStudioInspectionRequest.safeParse(Object.fromEntries(
+    Object.entries({ ...scope, expectedEnvironment: env?.PAGE_STUDIO_RELEASE_ENVIRONMENT }).filter(([, value]) => value !== undefined)
+  ))
   const service = env?.PAGE_STUDIO_MANAGEMENT as { inspectWebsite?: (request: unknown) => Promise<unknown> } | undefined
   if (!request.success || typeof service?.inspectWebsite !== 'function') throw unavailable()
   let response: unknown
