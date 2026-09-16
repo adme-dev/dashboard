@@ -23,6 +23,6 @@ export default defineEventHandler(async (event) => {
       idempotencyKey: idempotency.data
     })
   } catch (error) {
-    throw pageStudioInternalHttpError(error)
+    return pageStudioInternalHttpError(event, error)
   }
 })
