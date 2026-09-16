@@ -25,6 +25,6 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, result.duplicate ? 200 : 201)
     return result
   } catch (error) {
-    throw pageStudioInternalHttpError(error)
+    return pageStudioInternalHttpError(event, error)
   }
 })
