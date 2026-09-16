@@ -51,7 +51,17 @@ export async function requireAgencyPageStudioAccess(
     })
   }
 
-  const tenantId = await getSelectedTenant(event)
+  let tenantId = await getSelectedTenant(event)
+  const env = event.context.cloudflare?.env
+  const stagingTenant = env?.PAGE_STUDIO_STAGING_TENANT_ID
+  // Isolated Page Studio acceptance does not require a live accounting connection.
+  if (!tenantId
+    && env?.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'staging'
+    && env?.PAGE_STUDIO_CONTENT_ENVIRONMENT === 'staging'
+    && typeof stagingTenant === 'string'
+    && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(stagingTenant)) {
+    tenantId = stagingTenant
+  }
   if (!tenantId) {
     throw createError({
       statusCode: 400,

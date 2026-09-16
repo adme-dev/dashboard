@@ -396,6 +396,7 @@ CRM_SEARCH_RELEASE_ENVIRONMENT = "preview"
 PAGE_STUDIO_RELEASE_ENVIRONMENT = "staging"
 PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "staging"
 PAGE_STUDIO_CONTENT_ENVIRONMENT = "staging"
+PAGE_STUDIO_STAGING_TENANT_ID = "page-studio-staging"
 
 # ============================================
 # Scheduled Triggers

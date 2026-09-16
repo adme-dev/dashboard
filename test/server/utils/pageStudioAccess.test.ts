@@ -109,4 +109,48 @@ describe('requireAgencyPageStudioAccess', () => {
       statusMessage: 'No organization selected'
     })
   })
+
+  const stagingEnv = {
+    PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging',
+    PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging',
+    PAGE_STUDIO_STAGING_TENANT_ID: 'page-studio-staging'
+  }
+  const stagingEvent = (env: Record<string, unknown> = stagingEnv) => ({
+    context: { cloudflare: { env } }
+  }) as never
+
+  it('uses the configured staging organisation when no Xero organisation exists', async () => {
+    mockGetSelectedTenant.mockResolvedValue(undefined)
+    await expect(requireAgencyPageStudioAccess(stagingEvent(), 'PAGE_STUDIO_EDIT'))
+      .resolves.toMatchObject({ tenantId: 'page-studio-staging', user: { id: 'user-1' } })
+  })
+
+  it('preserves an explicitly selected organisation in staging', async () => {
+    await expect(requireAgencyPageStudioAccess(stagingEvent(), 'PAGE_STUDIO_VIEW'))
+      .resolves.toMatchObject({ tenantId: 'tenant-alpha' })
+  })
+
+  it.each([
+    { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' },
+    { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' },
+    { PAGE_STUDIO_RELEASE_ENVIRONMENT: undefined },
+    { PAGE_STUDIO_CONTENT_ENVIRONMENT: undefined },
+    { PAGE_STUDIO_STAGING_TENANT_ID: undefined },
+    { PAGE_STUDIO_STAGING_TENANT_ID: '' },
+    { PAGE_STUDIO_STAGING_TENANT_ID: ' tenant ' },
+    { PAGE_STUDIO_STAGING_TENANT_ID: 123 },
+    { PAGE_STUDIO_STAGING_TENANT_ID: 'x'.repeat(129) }
+  ])('rejects an incomplete or invalid staging configuration: %j', async (overrides) => {
+    mockGetSelectedTenant.mockResolvedValue(undefined)
+    await expect(requireAgencyPageStudioAccess(stagingEvent({ ...stagingEnv, ...overrides }), 'PAGE_STUDIO_VIEW'))
+      .rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('does not grant permissions through the staging organisation setting', async () => {
+    mockGetSelectedTenant.mockResolvedValue(undefined)
+    mockRequireAuth.mockResolvedValue({ id: 'viewer', role: 'viewer', permissionGroups: ['PAGE_STUDIO_VIEW'] })
+    await expect(requireAgencyPageStudioAccess(stagingEvent(), 'PAGE_STUDIO_EDIT'))
+      .rejects.toMatchObject({ statusCode: 403 })
+    expect(mockGetSelectedTenant).not.toHaveBeenCalled()
+  })
 })
