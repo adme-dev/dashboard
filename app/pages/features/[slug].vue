@@ -192,7 +192,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Governed Preview and Publishing',
-        content: 'Drafts, editor sessions, checkpoints, reviews, approvals, server-owned builds, and immutable releases are separated so editing does not silently become production. The launch checklist brings saved content, current approval, enquiry forms, domain and HTTPS status, email setup and website access together. Publishing checks the exact saved version and current release again before proceeding. Saved form definitions and email preferences remain distinct from verified receipt and delivery tests. XeroFlow verifies the approved R2 checkpoint and synchronises navigation, footer, theme, SEO, and integrations with the activated release.'
+        content: 'Drafts, editor sessions, checkpoints, reviews, approvals, server-owned builds, and immutable releases are separated so editing does not silently become production. The launch checklist brings saved content, current approval, enquiry forms, domain and HTTPS status, email setup and website access together. Reviewers compare saved page, component, form and site changes with a named live release, then approve, reject or return the version to draft. Changed checkpoints and release pointers require a fresh comparison. Publishing checks the exact saved version and current release again before proceeding. Saved form definitions and email preferences remain distinct from verified receipt and delivery tests. XeroFlow verifies the approved R2 checkpoint and synchronises navigation, footer, theme, SEO, and integrations with the activated release.'
       },
       {
         title: 'Cloudflare Delivery and Domains',

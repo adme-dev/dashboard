@@ -26,6 +26,7 @@ const config = (environment: string) => ({
   triggers: { crons: [] },
   vars: { PAGE_STUDIO_RELEASE_ENVIRONMENT: environment },
   observability: { enabled: true, head_sampling_rate: 0.1 },
+  r2_buckets: [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` }],
   hyperdrive: [{ binding: 'HYPERDRIVE_FRESH', id: environment === 'staging' ? '3865ea5568234fc7b0e9e3e595a30286' : '90228af3e2cc461bbc09accc3b47bd9f' }]
 })
 

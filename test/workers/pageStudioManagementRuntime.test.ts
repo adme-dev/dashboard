@@ -26,7 +26,7 @@ describe('built private management Worker RPC boundary', () => {
           outboundRequests++
           return new LocalResponse('Unexpected outbound request', { status: 500 })
         } },
-        { name: 'caller', modules: true, script: `export default { async fetch(request, env) { return Response.json(await env.MANAGEMENT[new URL(request.url).pathname === '/domains' ? 'domains' : 'emailSettings'](await request.json())) } }`, compatibilityDate: config.compatibility_date, serviceBindings: { MANAGEMENT: 'management' } }
+        { name: 'caller', modules: true, script: `export default { async fetch(request, env) { return Response.json(await env.MANAGEMENT[new URL(request.url).pathname === '/inspect' ? 'inspectWebsite' : new URL(request.url).pathname === '/domains' ? 'domains' : 'emailSettings'](await request.json())) } }`, compatibilityDate: config.compatibility_date, serviceBindings: { MANAGEMENT: 'management' } }
       ]
     })
     await runtime.ready
@@ -67,6 +67,10 @@ describe('built private management Worker RPC boundary', () => {
   })
   it('denies a valid domain operation without its fresh database binding', async () => {
     expect(await rpc({ operation: 'list', actor: { kind: 'portal', actorId: request.actor.actorId, clientId: request.actor.clientId }, siteId: request.siteId, expectedEnvironment: 'staging' }, 'domains')).toMatchObject({ ok: false, error: { code: 'DOMAIN_SERVICE_UNAVAILABLE', statusCode: 503 } })
+    expect(outboundRequests).toBe(0)
+  })
+  it('denies inspection RPC without database and checkpoint bindings', async () => {
+    expect(await rpc({ operation: 'launch', actorId: request.actor.actorId, tenantId: 'tenant', siteId: request.siteId, expectedEnvironment: 'staging' }, 'inspect')).toEqual({ ok: false, statusCode: 503 })
     expect(outboundRequests).toBe(0)
   })
 })

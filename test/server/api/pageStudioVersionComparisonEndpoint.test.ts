@@ -1,25 +1,26 @@
-import { createApp, createRouter, toWebHandler, createError, eventHandler, getRouterParam, setHeader } from 'h3'
+import { createApp, createRouter, toWebHandler, createError, eventHandler, getRouterParam, setHeader, getQuery } from 'h3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ access: vi.fn(), read: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: mocks.access }))
-vi.mock('~~/server/utils/pageStudio/inspectionClient', () => ({ readPageStudioLaunchState: mocks.read }))
+vi.mock('~~/server/utils/pageStudio/inspectionClient', () => ({ readPageStudioVersionComparison: mocks.read }))
 const siteId = 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020'
+const versionId = '11111111-1111-4111-8111-111111111111'
 const bucket = { get: vi.fn() }
 
 async function request(id = siteId) {
-  const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/launch-state.get')
-  const router = createRouter().get('/sites/:siteId/launch-state', handler)
+  const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/versions/[versionId]/comparison.get')
+  const router = createRouter().get('/sites/:siteId/versions/:versionId/comparison', handler)
   const app = createApp().use((event) => {
     event.context.cloudflare = { env: { PAGE_STUDIO_CHECKPOINTS: bucket } }
   }).use(router)
-  return toWebHandler(app)(new Request(`https://example.test/sites/${id}/launch-state?tenantId=forged&siteId=forged`))
+  return toWebHandler(app)(new Request(`https://example.test/sites/${id}/versions/${versionId}/comparison?tenantId=forged&siteId=forged`))
 }
 
-describe('launch state HTTP boundary', () => {
+describe('version comparison HTTP boundary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    for (const [key, value] of Object.entries({ eventHandler, getRouterParam, createError, setHeader })) vi.stubGlobal(key, value)
+    for (const [key, value] of Object.entries({ eventHandler, getRouterParam, createError, setHeader, getQuery })) vi.stubGlobal(key, value)
     mocks.access.mockResolvedValue({ tenantId: 'authenticated_tenant', user: { id: 'actor' } })
     mocks.read.mockResolvedValue({ siteId })
   })
@@ -28,8 +29,8 @@ describe('launch state HTTP boundary', () => {
     const response = await request()
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('private, no-store')
-    expect(mocks.access).toHaveBeenCalledWith(expect.anything(), 'PAGE_STUDIO_VIEW')
-    expect(mocks.read).toHaveBeenCalledWith({ tenantId: 'authenticated_tenant', siteId, actorId: 'actor', env: { PAGE_STUDIO_CHECKPOINTS: bucket } })
+    expect(mocks.access).toHaveBeenCalledWith(expect.anything(), 'PAGE_STUDIO_APPROVE')
+    expect(mocks.read).toHaveBeenCalledWith({ tenantId: 'authenticated_tenant', siteId, versionId, actorId: 'actor', env: { PAGE_STUDIO_CHECKPOINTS: bucket } })
   })
   it.each([401, 403])('stops before content access for denied identity (%s)', async (statusCode) => {
     mocks.access.mockRejectedValue(createError({ statusCode }))

@@ -1,8 +1,7 @@
-import { createError } from 'h3'
-import type { PageStudioLaunchState } from '~~/shared/pageStudio/launchReadiness'
-import { queryOneFresh } from '~~/server/utils/db'
-import { PageStudioSavedPagesSchema } from '~~/shared/pageStudio/savedPages'
-import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '~~/server/utils/pageStudio/releaseCheckpoint'
+import { inspectionError as createError, type InspectionQuery } from './inspectionTypes'
+import type { PageStudioLaunchState } from '../../../shared/pageStudio/launchReadiness'
+import { PageStudioSavedPagesSchema } from '../../../shared/pageStudio/savedPages'
+import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '../../../shared/pageStudio/checkpointReader'
 
 interface LaunchRow {
   id: string
@@ -62,7 +61,7 @@ export async function readPageStudioLaunchState(input: {
   tenantId: string
   siteId: string
   bucket?: PageStudioCheckpointBucket
-}): Promise<PageStudioLaunchState> {
+}, queryOneFresh: InspectionQuery): Promise<PageStudioLaunchState> {
   const row = await queryOneFresh<LaunchRow>(stateSql, [input.tenantId, input.siteId])
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Website not found' })
   const content: { status: 'ready' | 'required' | 'unavailable', publicPages: number | null, publicForms: number | null } = {

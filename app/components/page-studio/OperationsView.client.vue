@@ -30,7 +30,8 @@ const columns = computed(() => {
   if (props.section === 'reviews') return [
     { accessorKey: 'client', header: 'Client' }, { accessorKey: 'site', header: 'Site' },
     { accessorKey: 'summary', header: 'Version' }, { accessorKey: 'status', header: 'Status' },
-    { accessorKey: 'decision', header: 'Latest decision' }, { accessorKey: 'activity', header: 'Activity' }
+    { accessorKey: 'decision', header: 'Latest decision' }, { accessorKey: 'activity', header: 'Activity' },
+    ...(props.audience === 'agency' ? [{ id: 'review', header: 'Review' }] : [])
   ]
   if (props.section === 'releases') return [
     { accessorKey: 'site', header: 'Site' }, { accessorKey: 'environment', header: 'Environment' },
@@ -51,6 +52,7 @@ const columns = computed(() => {
 
 const rows = computed(() => records.value.map((record) => {
   if (props.section === 'reviews') return {
+    siteId: record.siteId, versionId: record.versionId,
     client: record.clientName ?? 'Current client', site: record.siteName, summary: record.summary,
     status: titleCase(record.status), decision: titleCase(record.decision),
     activity: formatDate(record.decidedAt ?? record.submittedAt)
@@ -89,7 +91,7 @@ const rows = computed(() => records.value.map((record) => {
             color="neutral"
             variant="outline"
             :loading="pending"
-            @click="refresh"
+            @click="refresh()"
           />
         </template>
       </UDashboardNavbar>
@@ -131,7 +133,16 @@ const rows = computed(() => records.value.map((record) => {
               </div>
             </div>
           </template>
-          <UTable :columns="columns" :data="rows" class="w-full" />
+          <UTable :columns="columns" :data="rows" class="w-full">
+            <template #review-cell="{ row }">
+              <PageStudioVersionReview
+                v-if="audience === 'agency' && section === 'reviews' && row.original.siteId && row.original.versionId"
+                :site-id="String(row.original.siteId)"
+                :version-id="String(row.original.versionId)"
+                @reviewed="refresh"
+              />
+            </template>
+          </UTable>
         </UCard>
         <UCard v-else>
           <div class="flex min-h-52 flex-col items-center justify-center gap-3 text-center">

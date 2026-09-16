@@ -25,5 +25,11 @@
   ],
   "triggers": {
     "crons": []
-  }
+  },
+  "r2_buckets": [
+    {
+      "binding": "PAGE_STUDIO_CHECKPOINTS",
+      "bucket_name": "xeroflow-page-studio-checkpoints"
+    }
+  ]
 }

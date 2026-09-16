@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ query: vi.fn(), checkpoint: vi.fn() }))
-vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.query }))
-vi.mock('~~/server/utils/pageStudio/releaseCheckpoint', () => ({ loadPageStudioCheckpoint: mocks.checkpoint }))
-const { readPageStudioLaunchState } = await import('~~/server/utils/pageStudio/launchState')
+vi.mock('~~/shared/pageStudio/checkpointReader', () => ({ loadPageStudioCheckpoint: mocks.checkpoint }))
+const { readPageStudioLaunchState: read } = await import('~~/workers/page-studio-management/src/launchState')
+const readPageStudioLaunchState = (input: Parameters<typeof read>[0]) => read(input, mocks.query)
 
 const row = () => ({
   id: 'site_one', tenant_id: 'tenant_one', client_id: 'client_one', name: 'Example', status: 'active',
