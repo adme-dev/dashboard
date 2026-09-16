@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { domainReady, launchReadiness, type PageStudioLaunchState, type LaunchReadinessItem } from '~~/shared/pageStudio/launchReadiness'
+import type { PageStudioEmailState } from '~~/shared/pageStudio/emailConfiguration'
+
 interface SiteSummary {
   clientId?: string
   id: string
@@ -12,6 +15,8 @@ interface ReleaseSummary {
   id: string
   siteId?: string
   status: string
+  environment?: string
+  hostname?: string
   createdAt?: string | null
 }
 
@@ -25,6 +30,9 @@ interface ReviewSummary {
 }
 
 interface DomainSummary {
+  dnsStatus?: string
+  tlsStatus?: string
+  hostnameStatus?: string
   id: string
   siteId?: string
   hostname: string
@@ -53,6 +61,10 @@ const { editorOrigin, launchPageStudio } = usePageStudioLauncher()
 const publishModalOpen = ref(false)
 const publishing = ref(false)
 const launchingStudio = ref(false)
+const selectedTab = ref('overview')
+const publishCandidate = ref<{ versionId: string, checkpointId: string, digest: string, hostname: string, releaseId: string | null } | null>(null)
+const { data: launchData, status: launchStatus, error: launchError, refresh: refreshLaunch } = await useFetch<PageStudioLaunchState>(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/launch-state`)
+const { data: emailData, error: emailError, refresh: refreshEmail } = await useFetch<PageStudioEmailState>(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/email`)
 
 const { data: sitesData, status: sitesStatus, error: sitesError, refresh: refreshSites } = await useFetch<CollectionResponse<SiteSummary>>('/api/agency/page-studio/sites')
 const { data: releasesData, status: releasesStatus, error: releasesError, refresh: refreshReleases } = await useFetch<CollectionResponse<ReleaseSummary>>('/api/agency/page-studio/releases')
@@ -70,24 +82,30 @@ const releases = computed(() => rows<ReleaseSummary>(releasesData.value, 'releas
 const reviews = computed(() => rows<ReviewSummary>(reviewsData.value, 'reviews').filter(item => item.siteId === props.siteId))
 const domains = computed(() => rows<DomainSummary>(domainsData.value, 'domains').filter(item => item.siteId === props.siteId))
 const subscriptions = computed(() => rows<SubscriptionSummary>(subscriptionsData.value, 'subscriptions').filter(item => item.clientId === site.value?.clientId))
-const activeRelease = computed(() => releases.value.find(release => release.status === 'active') || releases.value[0])
+const activeRelease = computed(() => !launchError.value ? launchData.value?.activeReleases.find(release => !productionDomain.value || release.hostname === productionDomain.value.hostname) : undefined)
 const approvedCount = computed(() => reviews.value.filter(review => review.decision === 'approved').length)
-const approvedReview = computed(() => reviews.value.find(review => review.decision === 'approved' && review.versionId))
-const productionDomain = computed(() => domains.value.find(domain => domain.environment === 'production' && domain.status === 'active') || domains.value.find(domain => domain.environment === 'production'))
-const canPublish = computed(() => Boolean(approvedReview.value?.versionId && productionDomain.value?.hostname))
-const loading = computed(() => [sitesStatus, releasesStatus, reviewsStatus, domainsStatus, subscriptionsStatus].some(state => state.value === 'pending'))
-const failed = computed(() => Boolean(sitesError.value || releasesError.value || reviewsError.value || domainsError.value || subscriptionsError.value))
+const approvedReview = computed(() => !launchError.value && launchData.value?.approvedVersionId ? { versionId: launchData.value.approvedVersionId } : undefined)
+const productionDomain = computed(() => !domainsError.value ? domains.value.find(domainReady) : undefined)
+const canPublish = computed(() => Boolean(!loading.value && !failed.value && approvedReview.value?.versionId && productionDomain.value?.hostname && launchData.value?.plan.status === 'ready'))
+const loading = computed(() => [sitesStatus, releasesStatus, reviewsStatus, domainsStatus, subscriptionsStatus, launchStatus].some(state => state.value === 'pending'))
+const failed = computed(() => Boolean(sitesError.value || releasesError.value || reviewsError.value || domainsError.value || subscriptionsError.value || launchError.value))
+
+const readinessItems = computed(() => launchReadiness({ state: launchData.value, stateFailed: Boolean(launchError.value), domains: domains.value, domainsFailed: Boolean(domainsError.value), email: emailData.value, emailFailed: Boolean(emailError.value) }))
+function navigateReadiness(target: LaunchReadinessItem['target']) {
+  if (target === 'studio') void openStudio()
+  else selectedTab.value = target
+}
 
 const tabs = [
-  { label: 'Overview', slot: 'overview' as const },
-  { label: 'Pages', slot: 'pages' as const },
-  { label: 'Assets', slot: 'assets' as const },
-  { label: 'Forms', slot: 'forms' as const },
-  { label: 'Analytics', slot: 'analytics' as const },
-  { label: 'Builds', slot: 'builds' as const },
-  { label: 'Releases', slot: 'releases' as const },
-  { label: 'Domains', slot: 'domains' as const },
-  { label: 'Settings', slot: 'settings' as const }
+  { label: 'Overview', value: 'overview', slot: 'overview' as const },
+  { label: 'Pages', value: 'pages', slot: 'pages' as const },
+  { label: 'Assets', value: 'assets', slot: 'assets' as const },
+  { label: 'Forms', value: 'forms', slot: 'forms' as const },
+  { label: 'Analytics', value: 'analytics', slot: 'analytics' as const },
+  { label: 'Builds', value: 'builds', slot: 'builds' as const },
+  { label: 'Releases', value: 'releases', slot: 'releases' as const },
+  { label: 'Domains', value: 'domains', slot: 'domains' as const },
+  { label: 'Settings', value: 'settings', slot: 'settings' as const }
 ]
 
 function formatDate(value?: string | null) {
@@ -96,11 +114,14 @@ function formatDate(value?: string | null) {
 }
 
 async function refreshAll() {
-  await Promise.all([refreshSites(), refreshReleases(), refreshReviews(), refreshDomains(), refreshSubscriptions()])
+  await Promise.all([refreshSites(), refreshReleases(), refreshReviews(), refreshDomains(), refreshSubscriptions(), refreshLaunch(), refreshEmail()])
   toast.add({ title: 'Site refreshed', description: 'The latest control-plane state is now shown.', color: 'success' })
 }
 
 function openPublishModal() {
+  const state = launchData.value
+  if (!canPublish.value || !state?.approvedVersionId || !state.checkpointId || !state.digest || !productionDomain.value) return
+  publishCandidate.value = { versionId: state.approvedVersionId, checkpointId: state.checkpointId, digest: state.digest, hostname: productionDomain.value.hostname, releaseId: activeRelease.value?.id ?? null }
   publishModalOpen.value = true
 }
 
@@ -126,24 +147,30 @@ function closePublishModal() {
 }
 
 async function publishApprovedVersion() {
-  const review = approvedReview.value
-  const domain = productionDomain.value
-  if (!review?.versionId || !domain?.hostname || publishing.value) return
-
+  const candidate = publishCandidate.value
+  if (!candidate || publishing.value) return
   publishing.value = true
   try {
-    await $fetch(`/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/versions/${encodeURIComponent(review.versionId)}/publish`, {
+    await Promise.all([refreshLaunch(), refreshDomains(), refreshReleases()])
+    const state = launchData.value
+    if (failed.value || !state || state.approvedVersionId !== candidate.versionId || state.checkpointId !== candidate.checkpointId || state.digest !== candidate.digest
+      || state.plan.status !== 'ready' || productionDomain.value?.hostname !== candidate.hostname || (activeRelease.value?.id ?? null) !== candidate.releaseId) {
+      publishModalOpen.value = false
+      toast.add({ title: 'Website changed', description: 'Review the refreshed saved version, domain and release before publishing.', color: 'warning' })
+      return
+    }
+    await $fetch(`/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/versions/${encodeURIComponent(candidate.versionId)}/publish`, {
       method: 'POST',
       headers: { 'idempotency-key': crypto.randomUUID() },
       body: {
         environment: 'production',
-        hostname: domain.hostname,
-        expectedActiveReleaseId: activeRelease.value?.id || null
+        hostname: candidate.hostname,
+        expectedActiveReleaseId: candidate.releaseId
       }
     })
     publishModalOpen.value = false
     await refreshAll()
-    toast.add({ title: 'Published', description: `${domain.hostname} now points to the approved release.`, color: 'success' })
+    toast.add({ title: 'Published', description: `${candidate.hostname} now points to the approved release.`, color: 'success' })
   } catch (error: unknown) {
     const failure = error as { data?: { statusMessage?: string, message?: string } }
     toast.add({
@@ -233,14 +260,14 @@ async function publishApprovedVersion() {
       </div>
       <div class="p-4">
         <p class="text-sm text-muted">
-          Connected domains
+          Ready production domains
         </p><p class="mt-2 text-xl font-semibold text-highlighted">
-          {{ domains.length }}
+          {{ domains.filter(domainReady).length }}
         </p>
       </div>
     </div>
 
-    <UTabs :items="tabs" class="w-full">
+    <UTabs v-model="selectedTab" :items="tabs" class="w-full">
       <template #overview>
         <div class="grid grid-cols-1 gap-4 pt-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
           <UCard>
@@ -263,7 +290,7 @@ async function publishApprovedVersion() {
                 <dt class="text-sm text-muted">
                   Activated
                 </dt><dd class="mt-1 font-medium text-highlighted">
-                  {{ formatDate(activeRelease?.createdAt) }}
+                  {{ formatDate(activeRelease?.activatedAt) }}
                 </dd>
               </div>
               <div>
@@ -302,6 +329,12 @@ async function publishApprovedVersion() {
               />
             </template>
           </UCard>
+          <PageStudioLaunchReadiness
+            class="min-w-0 lg:col-span-2"
+            :items="readinessItems"
+            :loading="loading"
+            @navigate="navigateReadiness"
+          />
           <div class="min-w-0 lg:col-span-2">
             <PageStudioAgencySetup :key="siteId" :site-id="siteId" />
           </div>
@@ -343,7 +376,7 @@ async function publishApprovedVersion() {
           <UAlert
             v-if="!approvedReview?.versionId"
             title="Approval required"
-            description="Approve a saved Studio version before publishing."
+            description="Approve the current saved Studio version before publishing. Historical approvals do not cover later edits."
             color="warning"
             variant="subtle"
             icon="i-lucide-badge-alert"
@@ -351,7 +384,7 @@ async function publishApprovedVersion() {
           <UAlert
             v-else-if="!productionDomain?.hostname"
             title="Production domain required"
-            description="Connect a production hostname before publishing this version."
+            description="Verify the production hostname, DNS and HTTPS certificate before publishing this version."
             color="warning"
             variant="subtle"
             icon="i-lucide-globe-lock"
@@ -416,6 +449,7 @@ async function publishApprovedVersion() {
             </p>
           </UCard>
           <PageStudioSessionsWorkspace :site-id="siteId" />
+          <PageStudioEmailWorkspace :key="siteId" audience="agency" :site-id="siteId" />
         </div>
       </template>
     </UTabs>
@@ -436,21 +470,21 @@ async function publishApprovedVersion() {
               <dt class="text-muted">
                 Version
               </dt><dd class="break-all text-right font-medium text-highlighted">
-                {{ approvedReview?.versionId }}
+                {{ publishCandidate?.versionId }}
               </dd>
             </div>
             <div class="mt-3 flex items-start justify-between gap-4">
               <dt class="text-muted">
                 Hostname
               </dt><dd class="text-right font-medium text-highlighted">
-                {{ productionDomain?.hostname }}
+                {{ publishCandidate?.hostname }}
               </dd>
             </div>
             <div class="mt-3 flex items-start justify-between gap-4">
               <dt class="text-muted">
                 Current release
               </dt><dd class="break-all text-right font-medium text-highlighted">
-                {{ activeRelease?.id || 'None' }}
+                {{ publishCandidate?.releaseId || 'None' }}
               </dd>
             </div>
           </dl>
