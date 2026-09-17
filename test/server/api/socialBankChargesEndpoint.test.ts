@@ -143,4 +143,93 @@ describe('GET /api/agency/social/spend/bank-charges', () => {
     })
     expect(cache.put).not.toHaveBeenCalled()
   })
+
+  it.each([
+    {
+      name: 'Meta description behind an opaque Amex reference and blank payee',
+      fields: { reference: 'AT000000000000000000001', description: 'FACEBK *TEST123456 DUBLIN (1007)', contact: { name: '' } },
+      platform: 'meta'
+    },
+    {
+      name: 'Meta description on a later Xero line item',
+      fields: { reference: 'AT000000000000000000001', lineItems: [{ description: 'Advertising' }, { description: 'FACEBK *TEST123456 DUBLIN (1007)' }] },
+      platform: 'meta'
+    },
+    {
+      name: 'Meta reference when a generic description exists',
+      fields: { reference: 'FACEBK *TEST123456', description: 'Card payment' },
+      platform: 'meta'
+    },
+    {
+      name: 'Meta contact when the other fields are generic',
+      fields: { reference: 'AT000000000000000000001', description: 'Card payment', contact: { name: 'Meta Platforms' } },
+      platform: 'meta'
+    },
+    {
+      name: 'Google reference',
+      fields: { reference: 'GAds Test Account', description: 'Card payment' },
+      platform: 'google_ads'
+    },
+    {
+      name: 'Google description behind an opaque reference',
+      fields: { reference: 'AT000000000000000000002', description: 'GOOGLE *ADS' },
+      platform: 'google_ads'
+    },
+    {
+      name: 'an unrelated payment',
+      fields: { reference: 'AT000000000000000000003', description: 'Office supplies' },
+      platform: null
+    },
+    {
+      name: 'absent optional text fields',
+      fields: {},
+      platform: null
+    },
+    {
+      name: 'unrelated fragments that must not combine into a platform name',
+      fields: { reference: 'GOOGLE', description: 'ADS consulting' },
+      platform: null
+    }
+  ])('classifies $name without losing the reference', async ({ fields, platform }) => {
+    mocks.xeroFetch.mockImplementation(async ({ path }: { path: string }) => {
+      if (path.startsWith('Accounts?')) return { accounts: [{ accountID: 'amex-1' }] }
+      if (path.startsWith('BankTransactions?')) {
+        return { bankTransactions: [{
+          bankTransactionID: 'charge-1', date: '2026-09-04', total: 98.88, type: 'SPEND', ...fields
+        }] }
+      }
+      throw new Error(`Unexpected Xero path: ${path}`)
+    })
+
+    const handler = (await import('~~/server/api/agency/social/spend/bank-charges.get')).default
+    const result = await handler({ query: { month: 9, year: 2026 }, context: {} } as Parameters<typeof handler>[0])
+
+    expect(result).toMatchObject({ period: '2026-09', partial: false })
+    if (platform) {
+      expect(result.byPlatform[platform]).toMatchObject({
+        total: 98.88,
+        transactions: [expect.objectContaining({ bankTransactionId: 'charge-1', amount: 98.88, description: fields.reference })]
+      })
+      expect(result.total).toBe(98.88)
+      expect(result.unmatched).toEqual([])
+    } else {
+      expect(result.byPlatform).toEqual({})
+      expect(result.unmatchedTotal).toBe(98.88)
+    }
+  })
+
+  it('does not reuse cached results from the old platform matcher', async () => {
+    const legacyResult = { period: '2026-09', byPlatform: {}, total: 0, connected: true }
+    const cache = {
+      get: vi.fn(async (key: string) => key === 'spend:bankcharges:tenant-1:2026-09' ? JSON.stringify(legacyResult) : null),
+      put: vi.fn().mockResolvedValue(undefined)
+    }
+    mocks.xeroFetch.mockResolvedValue({ accounts: [] })
+
+    const handler = (await import('~~/server/api/agency/social/spend/bank-charges.get')).default
+    await handler({ query: { month: 9, year: 2026 }, context: { cloudflare: { env: { CACHE: cache } } } } as Parameters<typeof handler>[0])
+
+    expect(mocks.xeroFetch).toHaveBeenCalled()
+    expect(cache.put).toHaveBeenCalledWith('spend:bankcharges:v2:tenant-1:2026-09', expect.any(String), { expirationTtl: 10800 })
+  })
 })
