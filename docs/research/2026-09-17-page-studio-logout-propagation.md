@@ -1,6 +1,6 @@
 # Page Studio originating-login logout
 
-17 September 2026. **Implementation and local verification complete. Staging deployment blocked by the clean build size guard; no upload occurred.**
+17 September 2026. **Implemented and now [deployed and verified in staging](./2026-09-17-page-studio-logout-staging.md).** The blocked first attempt below is retained as historical evidence.
 
 ## Behavior
 
@@ -58,7 +58,7 @@ origin fail closed after rollout; users must launch Studio again.
   files, and the sandbox denied the Worker test's loopback listener. Final checks
   ran sequentially with the required local runtime access and passed as above.
 
-## Staging release attempt — blocked
+## First staging release attempt — blocked (subsequently resolved)
 
 The clean detached checkout of `39409c974e179af0636116ea39d9472b213eaaaf`
 passed `pnpm deploy:check`, then ran the approved `pnpm deploy:preview` wrapper.
@@ -67,18 +67,18 @@ Its build produced **25,470,136 raw bytes**, **1,208 over** the unchanged
 stopped before Wrangler upload. The clean build, not the smaller working-checkout
 build, determines release readiness.
 
-Staging still serves Dashboard `bd2d700c53eb7b2fb4c2b30061177eb44fc2de3e`,
+At that first attempt, staging still served Dashboard `bd2d700c53eb7b2fb4c2b30061177eb44fc2de3e`,
 Pages deployment `0f373740-b48f-4376-b976-a66278ee1a42`. Production remains
 `8798c363-6e9c-472a-a78f-47d8ce780ef4`. Control gateway, Studio Worker bindings
 and container version 15 remain unchanged. Migration 420 is additive and safe
 with the old staging application; it does not activate logout linkage by itself.
 
-The existing signed-in browser still renders the staging website list. **New
-logout behavior has not been verified live.** The prepared
+The existing signed-in browser still renders the staging website list. At that point, **new
+logout behavior had not been verified live**; the subsequent release verified it. The prepared
 `logout-staging-acceptance.mjs` script was not run because the candidate was not
 deployed. Its planned synthetic accounts were therefore never created.
 
-Next release task: regain stable clean-build headroom through reviewed bundle
+The next release task at that point was to regain clean-build headroom through reviewed bundle
 reduction or server functionality extraction, preserve the immutable size guard,
 then rerun the guarded preview deploy and the prepared live logout/browser/QR
 acceptance. Do not claim staging logout completion from local test evidence.
