@@ -740,20 +740,34 @@ export async function compactWorkerModuleFilenames(directory) {
   }
 
   await mkdir(compactDirectory, { recursive: true })
-  const moduleMap = new Map(modulePaths.map((modulePath, index) => [
-    modulePath,
-    path.join(compactDirectory, `${index.toString(36)}.mjs`)
-  ]))
   const sourcePaths = (await collectFiles(
     directory,
     filePath => filePath.endsWith('.js') || filePath.endsWith('.mjs')
   )).sort()
+  const sources = new Map()
+  const referenceCounts = new Map(modulePaths.map(modulePath => [modulePath, 0]))
+  for (const sourcePath of sourcePaths) {
+    const source = await readFile(sourcePath, 'utf8')
+    sources.set(sourcePath, source)
+    for (const entry of parse(source)[0]) {
+      if (!entry.n?.startsWith('.')) continue
+      const target = path.resolve(path.dirname(sourcePath), entry.n.split(/[?#]/, 1)[0])
+      if (referenceCounts.has(target)) referenceCounts.set(target, referenceCounts.get(target) + 1)
+    }
+  }
+  // Short names save most when assigned to modules imported by many chunks.
+  // Stable sorting retains the original path order for equal reference counts.
+  modulePaths.sort((left, right) => referenceCounts.get(right) - referenceCounts.get(left))
+  const moduleMap = new Map(modulePaths.map((modulePath, index) => [
+    modulePath,
+    path.join(compactDirectory, `${index.toString(36)}.mjs`)
+  ]))
   const rewrittenSources = new Map()
   let rewrittenFiles = 0
   let savedSpecifierBytes = 0
 
   for (const sourcePath of sourcePaths) {
-    const source = await readFile(sourcePath, 'utf8')
+    const source = sources.get(sourcePath)
     const destinationPath = moduleMap.get(sourcePath) || sourcePath
     const rewritten = rewriteMappedModuleSpecifiers(
       source,
@@ -773,7 +787,7 @@ export async function compactWorkerModuleFilenames(directory) {
   }
   for (const sourcePath of sourcePaths) {
     if (moduleMap.has(sourcePath)) continue
-    const source = await readFile(sourcePath, 'utf8')
+    const source = sources.get(sourcePath)
     const rewritten = rewrittenSources.get(sourcePath)
     if (rewritten !== source) await atomicWriteFile(sourcePath, rewritten)
   }

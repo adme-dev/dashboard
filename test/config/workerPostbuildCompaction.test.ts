@@ -472,6 +472,43 @@ describe('Pages Worker postbuild compaction', () => {
     ])).resolves.toEqual(beforeSecondRun)
   })
 
+  it('assigns shortest paths to frequent imports deterministically and preserves query suffixes', async () => {
+    const outputs: string[][] = []
+    for (const reverse of [false, true]) {
+      const directory = await mkdtemp(path.join(tmpdir(), 'worker-frequent-paths-'))
+      temporaryDirectories.push(directory)
+      const shared = path.join(directory, 'chunks', 'shared')
+      await mkdir(shared, { recursive: true })
+      const names = Array.from({ length: 40 }, (_, index) => `a-${String(index).padStart(2, '0')}.mjs`)
+      for (const name of reverse ? names.toReversed() : names) {
+        await writeFile(path.join(shared, name), 'export { value } from "./z-runtime.mjs"')
+      }
+      await writeFile(path.join(shared, 'z-runtime.mjs'), 'export const value = 42')
+      const entry = path.join(directory, 'entry.mjs')
+      await writeFile(entry, [
+        'export { value } from "./chunks/shared/z-runtime.mjs"',
+        'export const load = () => import("./chunks/shared/z-runtime.mjs?preview=1#scope")',
+        'export const text = "./chunks/shared/a-00.mjs"'
+      ].join('\n'))
+
+      await compactWorkerModuleFilenames(directory)
+      const source = await readFile(entry, 'utf8')
+      expect(source).toContain('"./chunks/m/0.mjs"')
+      expect(source).toContain('"./chunks/m/0.mjs?preview=1#scope"')
+      const imported = await import(pathToFileURL(entry).href)
+      expect(imported.value).toBe(42)
+      expect(imported.text).toBe('./chunks/shared/a-00.mjs')
+      await expect(imported.load()).resolves.toMatchObject({ value: 42 })
+      const compactDirectory = path.join(directory, 'chunks', 'm')
+      const paths = (await readdir(compactDirectory)).sort()
+      const contents = await Promise.all(paths.map(name => readFile(path.join(compactDirectory, name), 'utf8')))
+      outputs.push([source, ...contents])
+      await expect(compactWorkerModuleFilenames(directory)).resolves.toMatchObject({ renamedFiles: 0, rewrittenFiles: 0 })
+      expect(await readFile(entry, 'utf8')).toBe(source)
+    }
+    expect(outputs[0]).toEqual(outputs[1])
+  })
+
   it('name-preservingly minifies deployed modules without changing exports', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'worker-deployed-minify-'))
     temporaryDirectories.push(directory)
