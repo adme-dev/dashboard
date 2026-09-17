@@ -10,6 +10,7 @@ const mutate = vi.fn(), notify = vi.fn(), refresh = vi.fn()
 const apps: ReturnType<typeof createApp>[] = []
 const state = () => ({ siteId: 'site', siteName: 'Site', siteStatus: 'active', checkpointId: 'checkpoint', digest: 'digest', approvedVersionId: 'version', activeReleases: [{ id: 'release', hostname: 'example.test', activatedAt: '2026-09-16T00:00:00Z' }], content: { status: 'ready', publicPages: 1, publicForms: 1 }, plan: { status: 'ready', key: 'trial' }, observedAt: '2026-09-16T00:00:00Z' })
 const launchUrl = '/api/agency/page-studio/sites/site/launch-state'
+const domainUrl = '/api/agency/page-studio/sites/site/domains'
 const stubs = {
   UCard: { template: '<section><slot name="header"/><slot/><slot name="footer"/></section>' },
   UAlert: { props: ['title', 'description'], template: '<p>{{ title }} {{ description }}</p>' },
@@ -18,7 +19,7 @@ const stubs = {
   UModal: { props: ['open'], template: '<aside v-if="open"><slot name="content"/></aside>' },
   UTabs: { props: ['items', 'modelValue'], template: '<div :data-selected-tab="modelValue"><template v-for="item in items"><slot :name="item.slot"/></template></div>' },
   PageStudioLaunchReadiness: Readiness,
-  ...Object.fromEntries(['AgencySetup', 'PagesWorkspace', 'AssetsWorkspace', 'FormSubmissionsWorkspace', 'AnalyticsWorkspace', 'DomainsWorkspace', 'SessionsWorkspace', 'EmailWorkspace'].map(name => [`PageStudio${name}`, { template: '<div/>' }]))
+  ...Object.fromEntries(['AgencySetup', 'PagesWorkspace', 'DraftHistory', 'AssetsWorkspace', 'FormSubmissionsWorkspace', 'AnalyticsWorkspace', 'DomainsWorkspace', 'SessionsWorkspace', 'EmailWorkspace'].map(name => [`PageStudio${name}`, { template: '<div/>' }]))
 }
 async function flush() {
   for (let i = 0;
@@ -50,8 +51,7 @@ beforeEach(() => {
   values.set('/api/agency/page-studio/sites', ref({ sites: [{ id: 'site', clientId: 'client', name: 'Site', status: 'active' }] }))
   values.set('/api/agency/page-studio/reviews', ref({ reviews: [{ siteId: 'site', versionId: 'historical', decision: 'approved' }] }))
   values.set('/api/agency/page-studio/releases', ref({ releases: [{ id: 'release', siteId: 'site', status: 'active', environment: 'production', hostname: 'example.test' }] }))
-  values.set('/api/agency/page-studio/domains', ref({ domains: [{ id: 'domain', siteId: 'site', environment: 'production', hostname: 'example.test', status: 'active', dnsStatus: 'active', tlsStatus: 'active', hostnameStatus: 'active' }] }))
-  values.set('/api/agency/page-studio/subscriptions', ref({ subscriptions: [] }))
+  values.set(domainUrl, ref({ siteId: 'site', domains: [{ id: 'domain', hostname: 'example.test', status: 'active', dnsStatus: 'active', tlsStatus: 'active', hostnameStatus: 'active' }] }))
   refresh.mockResolvedValue(undefined)
   vi.stubGlobal('computed', computed)
   vi.stubGlobal('ref', ref)
@@ -70,6 +70,39 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('launch readiness and selected publication', () => {
+  it('uses website-scoped domains and access without global subscription permissions', async () => {
+    const host = await mount()
+    expect(errors.has(domainUrl)).toBe(true)
+    expect(errors.has('/api/agency/page-studio/domains')).toBe(false)
+    expect(errors.has('/api/agency/page-studio/subscriptions')).toBe(false)
+    expect(host.textContent).toContain('Current trial access is active.')
+    expect(button(host, 'Publish approved version').disabled).toBe(false)
+  })
+  it('keeps denied review and release history separate from valid website state', async () => {
+    const host = await mount()
+    errors.get('/api/agency/page-studio/reviews')!.value = { statusCode: 403 }
+    errors.get('/api/agency/page-studio/releases')!.value = { statusCode: 403 }
+    await flush()
+    expect(host.textContent).not.toContain('Site state could not be loaded')
+    expect(host.textContent).toContain('Release history is unavailable')
+    expect(button(host, 'Publish approved version').disabled).toBe(true)
+  })
+  it.each(['denied', 'wrong-site'])('rejects %s domain data without reporting a website failure', async (reason) => {
+    const host = await mount()
+    if (reason === 'denied') errors.get(domainUrl)!.value = { statusCode: 403 }
+    else values.get(domainUrl)!.value.siteId = 'different-site'
+    await flush()
+    expect(host.textContent).not.toContain('Site state could not be loaded')
+    expect(button(host, 'Publish approved version').disabled).toBe(true)
+    expect(host.textContent).toContain('Unavailable')
+  })
+  it('uses the scoped site name and status beyond the portfolio page', async () => {
+    values.get('/api/agency/page-studio/sites')!.value.sites = []
+    const host = await mount()
+    expect(host.querySelector('h1')?.textContent).toContain('Site')
+    expect(host.textContent).not.toContain('Website management')
+    expect(host.textContent).toContain('active')
+  })
   it('shows readiness with actionable navigation and email setup still required', async () => {
     const host = await mount()
     expect(host.textContent).toContain('Launch readiness')

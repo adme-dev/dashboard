@@ -312,14 +312,14 @@ describe('Pages Worker postbuild compaction', () => {
 
   it('compacts static SQL whitespace without changing quoted values or commented queries', () => {
     const source = [
-      "const query = `\n  SELECT id,\n         name\n    FROM accounts\n   WHERE note = 'keep   this'\n     AND label = \"Keep  Case\"\n`",
+      'const query = `\n  SELECT id,\n         name\n    FROM accounts\n   WHERE note = \'keep   this\'\n     AND label = "Keep  Case"\n`',
       'const dollarQuoted = `SELECT $$keep   this$$ AS body\n  FROM messages`',
       'const commented = `SELECT id -- the newline terminates this comment\n  FROM accounts`',
       'const ordinary = `line one   line two`'
     ].join('\n')
 
     expect(compactSqlLiterals(source)).toBe([
-      "const query = \" SELECT id, name FROM accounts WHERE note = 'keep   this' AND label = \\\"Keep  Case\\\" \"",
+      'const query = " SELECT id, name FROM accounts WHERE note = \'keep   this\' AND label = \\"Keep  Case\\" "',
       'const dollarQuoted = "SELECT $$keep   this$$ AS body FROM messages"',
       'const commented = `SELECT id -- the newline terminates this comment\n  FROM accounts`',
       'const ordinary = `line one   line two`'
@@ -336,6 +336,32 @@ describe('Pages Worker postbuild compaction', () => {
     expect(out).toContain('"SELECT p.* FROM qr_pages p WHERE c.code = $1 " + (draft')
     expect(out).toContain('"SELECT 1 FROM t WHERE tenant_id = $1 " + filter')
     expect(out).not.toMatch(/\$1"\s*\+/)
+  })
+
+  it('compacts only a plain SQL template head and preserves interpolation boundaries', () => {
+    const source = 'const sql = `SELECT  id,\n      name FROM accounts\n    WHERE tenant_id = $1 ${filter}\n    ORDER BY name  DESC`'
+    expect(compactSqlLiterals(source)).toBe('const sql = `SELECT id, name FROM accounts WHERE tenant_id = $1 ${filter}\n    ORDER BY name  DESC`')
+    expect(compactSqlLiterals(compactSqlLiterals(source))).toBe(compactSqlLiterals(source))
+  })
+
+  it('preserves dynamic expressions and all text following the first interpolation', () => {
+    const source = 'const sql = `SELECT  id FROM ${table} WHERE note = \'  ${value}  \' -- comment\n  ORDER BY id`'
+    expect(compactSqlLiterals(source)).toBe('const sql = `SELECT id FROM ${table} WHERE note = \'  ${value}  \' -- comment\n  ORDER BY id`')
+  })
+
+  it.each([
+    'const sql = `SELECT \'keep   spaces ${value}\'`',
+    'const sql = `SELECT "Keep   Case" FROM ${table}`',
+    'const sql = `SELECT -- keep newline\n  id FROM ${table}`',
+    'const sql = `SELECT /* keep comment */  id FROM ${table}`',
+    'const sql = `SELECT $$keep  spaces ${value}$$`',
+    'const sql = `SELECT $tag$keep  spaces ${value}$tag$`',
+    'const sql = `SELECT\\n  id FROM ${table}`',
+    'const sql = tag`SELECT  id FROM ${table}`',
+    'const sql = `SELECT customer\u00a0name FROM ${table}`',
+    'const copy = `ordinary   prose ${value}`'
+  ])('leaves quoted, commented, escaped, tagged or non-SQL heads untouched: %s', (source) => {
+    expect(compactSqlLiterals(source)).toBe(source)
   })
 
   it('compacts every generated module recursively and is idempotent', async () => {
@@ -563,6 +589,37 @@ export { handler as default }
       'deliberatelyVerboseCapabilityHandler'
     )
     await expect(namedExportImported.stableRuntimeHandler({ value: 4 })).resolves.toBe(5)
+  })
+
+  it('compacts SQL heads exposed by minification before reaching a fixed point', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-sql-fixed-point-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'route.mjs')
+    const source = 'export function query(table) { return `\\n    SELECT id\\n    FROM ${table}\\n    WHERE label = \'a  b\'` }'
+    await writeFile(modulePath, `/* ${'Generated module documentation. '.repeat(10)} */\n${source}`, 'utf8')
+
+    await compactDeployedWorkerModules(directory)
+    const compacted = await readFile(modulePath, 'utf8')
+    const imported = await import(pathToFileURL(modulePath).href)
+    expect(imported.query('records')).toBe(' SELECT id FROM records\n    WHERE label = \'a  b\'')
+    expect(compactSqlLiterals(compacted)).toBe(compacted)
+    await expect(compactDeployedWorkerModules(directory)).resolves.toEqual({
+      changedFiles: 0,
+      savedBytes: 0
+    })
+  })
+
+  it('preserves non-ASCII identifier whitespace through all minification passes', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-sql-identifier-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'route.mjs')
+    const source = 'export function query(table) { return `SELECT customer\u00a0name FROM ${table}` }'
+    await writeFile(modulePath, `/* ${'Generated module documentation. '.repeat(10)} */\n${source}`, 'utf8')
+    await compactDeployedWorkerModules(directory)
+    const imported = await import(pathToFileURL(modulePath).href)
+    expect(imported.query('records')).toBe('SELECT customer\u00a0name FROM records')
+    expect(compactSqlLiterals('const sql = "SELECT customer\u00a0name FROM records"'))
+      .toBe('const sql = "SELECT customer\u00a0name FROM records"')
   })
 
   it('converges keepNames compaction before writing a deployed module', async () => {
