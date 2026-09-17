@@ -18,6 +18,8 @@ const entitlementId = '40000000-0000-4000-8000-000000000301'
 const siteId = '50000000-0000-4000-8000-000000000301'
 const staffRoleId = '60000000-0000-4000-8000-000000000301'
 const customRoleId = '60000000-0000-4000-8000-000000000302'
+const loginSessionHash = 'a'.repeat(64)
+const independentLoginSessionHash = 'b'.repeat(64)
 const denied = { code: 'SESSION_AUTHORITY_DENIED', statusCode: 403 }
 
 describe.runIf(Boolean(databaseUrl))('current editor session authority on disposable PostgreSQL', () => {
@@ -30,11 +32,21 @@ describe.runIf(Boolean(databaseUrl))('current editor session authority on dispos
 
   async function saveClaims() {
     await client.query('DELETE FROM page_studio_sessions')
+    await client.query('DELETE FROM page_studio_login_sessions')
+    await client.query('DELETE FROM client_sessions')
+    await client.query(`INSERT INTO page_studio_login_sessions
+      (role, token_hash, user_id, issued_at, expires_at)
+      VALUES ($1, $2, $3, to_timestamp($4) - INTERVAL '1 hour', NOW() + INTERVAL '1 day')`,
+    [claims.role, loginSessionHash, claims.userId, claims.issuedAt])
+    if (claims.role === 'client') {
+      await client.query(`INSERT INTO client_sessions (token_hash, client_user_id, expires_at)
+        VALUES ($1, $2, NOW() + INTERVAL '1 day')`, [loginSessionHash, claims.userId])
+    }
     await client.query(`INSERT INTO page_studio_sessions
-      (nonce, tenant_id, client_id, site_id, user_id, role, capabilities, issued_at, expires_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,to_timestamp($8),to_timestamp($9))`,
+      (nonce, tenant_id, client_id, site_id, user_id, role, capabilities, issued_at, expires_at, login_session_hash)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,to_timestamp($8),to_timestamp($9),$10)`,
     [claims.nonce, claims.tenantId, claims.clientId, claims.siteId, claims.userId, claims.role,
-      JSON.stringify(claims.capabilities), claims.issuedAt, claims.expiresAt])
+      JSON.stringify(claims.capabilities), claims.issuedAt, claims.expiresAt, loginSessionHash])
   }
 
   beforeAll(async () => {
@@ -48,20 +60,24 @@ describe.runIf(Boolean(databaseUrl))('current editor session authority on dispos
     // role joins. Full migration/FK coverage belongs to migration tests.
     await client.query(`
       CREATE TYPE user_role AS ENUM ('owner', 'admin', 'sales', 'member', 'viewer', 'guest');
-      CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN, user_role user_role, custom_role_id UUID);
+      CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN, user_role user_role, custom_role_id UUID,
+        sessions_invalidated_at TIMESTAMPTZ);
       CREATE TABLE custom_roles (id UUID PRIMARY KEY, slug TEXT, is_system BOOLEAN, is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups (role_id UUID, permission_group TEXT);
       CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN);
       CREATE TABLE client_users (id UUID PRIMARY KEY, client_id UUID, status TEXT, role TEXT);
+      CREATE TABLE client_sessions (token_hash TEXT, client_user_id UUID, expires_at TIMESTAMPTZ);
+      CREATE TABLE page_studio_login_sessions (role TEXT, token_hash TEXT, user_id TEXT,
+        issued_at TIMESTAMPTZ, expires_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ, PRIMARY KEY (role, token_hash));
       CREATE TABLE page_studio_sites (id UUID PRIMARY KEY, tenant_id TEXT, client_id UUID, entitlement_id UUID, status TEXT);
       CREATE TABLE page_studio_site_memberships (tenant_id TEXT, client_id UUID, site_id UUID, user_id UUID, role TEXT);
       CREATE TABLE page_studio_entitlements (id UUID PRIMARY KEY, tenant_id TEXT, client_id UUID, status TEXT,
         effective_from TIMESTAMPTZ, effective_until TIMESTAMPTZ, monthly_ai_operation_limit INTEGER);
       CREATE TABLE page_studio_sessions (nonce TEXT PRIMARY KEY, tenant_id TEXT, client_id UUID,
         site_id UUID, user_id TEXT, role TEXT, capabilities JSONB, issued_at TIMESTAMPTZ,
-        expires_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ);
+        expires_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ, login_session_hash TEXT);
     `)
-    await client.query('INSERT INTO team_members VALUES ($1, TRUE, \'owner\', NULL)', [userId])
+    await client.query('INSERT INTO team_members VALUES ($1, TRUE, \'owner\', NULL, NULL)', [userId])
     await client.query('INSERT INTO custom_roles VALUES ($1, \'owner\', TRUE, FALSE), ($2, \'limited\', FALSE, FALSE)', [staffRoleId, customRoleId])
     await client.query('INSERT INTO role_permission_groups VALUES ($1, \'PAGE_STUDIO_EDIT\')', [staffRoleId])
     await client.query('INSERT INTO agency_clients VALUES ($1, TRUE)', [clientId])
@@ -100,6 +116,77 @@ describe.runIf(Boolean(databaseUrl))('current editor session authority on dispos
     await client.query('UPDATE page_studio_sites SET status=\'active\'')
     await client.query('UPDATE page_studio_entitlements SET status=\'active\', effective_until=NOW() + INTERVAL \'1 day\'')
     await expect(authorize('workspace:checkpoint')).resolves.toBeUndefined()
+  })
+
+  describe.each(['client', 'agency'] as const)('%s parent login authority', (role) => {
+    beforeEach(async () => {
+      claims.role = role
+      await saveClaims()
+    })
+
+    it.each([
+      'UPDATE page_studio_sessions SET login_session_hash=NULL',
+      'UPDATE page_studio_sessions SET login_session_hash=\'unknown-login\'',
+      'DELETE FROM page_studio_login_sessions',
+      'UPDATE page_studio_login_sessions SET revoked_at=NOW()',
+      'UPDATE page_studio_login_sessions SET expires_at=NOW() - INTERVAL \'1 second\'',
+      'UPDATE page_studio_login_sessions SET user_id=\'another-user\'',
+      `UPDATE page_studio_login_sessions SET role='${role === 'client' ? 'agency' : 'client'}'`
+    ])('denies the editor after %s', async (mutation) => {
+      await expect(authorize()).resolves.toBeUndefined()
+      await client.query(mutation)
+      await expect(authorize()).rejects.toMatchObject(denied)
+    })
+
+    it('revokes one login without denying an independent login for the same user', async () => {
+      const independentClaims = { ...claims, nonce: randomUUID() }
+      await client.query(`INSERT INTO page_studio_login_sessions
+        (role, token_hash, user_id, issued_at, expires_at)
+        SELECT role, $1, user_id, issued_at, expires_at FROM page_studio_login_sessions
+        WHERE role=$2 AND token_hash=$3`, [independentLoginSessionHash, role, loginSessionHash])
+      if (role === 'client') {
+        await client.query(`INSERT INTO client_sessions (token_hash, client_user_id, expires_at)
+          VALUES ($1, $2, NOW() + INTERVAL '1 day')`, [independentLoginSessionHash, userId])
+      }
+      await client.query(`INSERT INTO page_studio_sessions
+        (nonce, tenant_id, client_id, site_id, user_id, role, capabilities, issued_at, expires_at, login_session_hash)
+        SELECT $1, tenant_id, client_id, site_id, user_id, role, capabilities, issued_at, expires_at, $2
+        FROM page_studio_sessions WHERE nonce=$3`, [independentClaims.nonce, independentLoginSessionHash, claims.nonce])
+      const authorizeIndependent = () => assertPageStudioSessionAuthority(independentClaims, 'workspace:preview', { queryOneFresh })
+      await expect(authorize()).resolves.toBeUndefined()
+      await expect(authorizeIndependent()).resolves.toBeUndefined()
+      await client.query('UPDATE page_studio_login_sessions SET revoked_at=NOW() WHERE role=$1 AND token_hash=$2', [role, loginSessionHash])
+      await expect(authorizeIndependent()).resolves.toBeUndefined()
+      await expect(authorize()).rejects.toMatchObject(denied)
+    })
+  })
+
+  it.each([
+    'DELETE FROM client_sessions',
+    'UPDATE client_sessions SET expires_at=NOW() - INTERVAL \'1 second\'',
+    'UPDATE client_sessions SET client_user_id=\'30000000-0000-4000-8000-000000000302\'',
+    'UPDATE client_sessions SET token_hash=\'another-native-session\''
+  ])('denies portal editor access after native login mutation %s', async (mutation) => {
+    await expect(authorize()).resolves.toBeUndefined()
+    await client.query(mutation)
+    await expect(authorize()).rejects.toMatchObject(denied)
+  })
+
+  it('denies agency sessions whose parent login predates global session invalidation', async () => {
+    claims.role = 'agency'
+    await saveClaims()
+    await expect(authorize()).resolves.toBeUndefined()
+    // The editor token is newer than the global invalidation; its older parent
+    // login still makes the editor unauthorized.
+    await client.query('UPDATE team_members SET sessions_invalidated_at=to_timestamp($1) - INTERVAL \'30 minutes\'', [claims.issuedAt])
+    await expect(authorize()).rejects.toMatchObject(denied)
+  })
+
+  it('allows agency login issued after an earlier global session invalidation', async () => {
+    claims.role = 'agency'
+    await saveClaims()
+    await client.query('UPDATE team_members SET sessions_invalidated_at=to_timestamp($1) - INTERVAL \'2 hours\'', [claims.issuedAt])
+    await expect(authorize()).resolves.toBeUndefined()
   })
 
   it.each([

@@ -27,6 +27,7 @@ export async function assertPageStudioSessionAuthority(
   const ownerJoin = agency
     ? `JOIN team_members owner ON owner.id::text = session.user_id AND owner.is_active = TRUE
          AND owner.user_role NOT IN ('viewer', 'guest')
+         AND (owner.sessions_invalidated_at IS NULL OR login.issued_at >= owner.sessions_invalidated_at)
        JOIN custom_roles staff_role ON
          ((owner.custom_role_id IS NOT NULL AND staff_role.id = owner.custom_role_id)
           OR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))
@@ -35,12 +36,17 @@ export async function assertPageStudioSessionAuthority(
          AND permission.permission_group = 'PAGE_STUDIO_EDIT'`
     : `JOIN client_users owner ON owner.id::text = session.user_id AND owner.client_id = site.client_id
          AND owner.status = 'active'
+       JOIN client_sessions native_session ON native_session.token_hash = login.token_hash
+         AND native_session.client_user_id = owner.id AND native_session.expires_at > NOW()
        JOIN page_studio_site_memberships membership ON membership.tenant_id = site.tenant_id
          AND membership.client_id = site.client_id AND membership.site_id = site.id
          AND membership.user_id = owner.id AND membership.role = 'editor'`
   const row = await (dependencies.queryOneFresh ?? queryOneFresh)<{ nonce: string }>(`
     SELECT session.nonce
       FROM page_studio_sessions session
+      JOIN page_studio_login_sessions login ON login.role = session.role
+        AND login.token_hash = session.login_session_hash AND login.user_id = session.user_id
+        AND login.revoked_at IS NULL AND login.expires_at > NOW()
       JOIN page_studio_sites site ON site.tenant_id = session.tenant_id
         AND site.client_id = session.client_id AND site.id = session.site_id
         AND site.status IN ('draft', 'active')

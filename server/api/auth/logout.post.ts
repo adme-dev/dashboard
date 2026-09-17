@@ -1,11 +1,9 @@
-export default defineEventHandler(async (event) => {
-  // Clear all auth cookies
-  deleteCookie(event, 'auth_token')
-  deleteCookie(event, 'auth_token_client')
-  deleteCookie(event, 'auth_status')
+import { revokePageStudioLoginSession } from '~~/server/utils/pageStudio/loginSessions'
 
-  return {
-    success: true,
-    message: 'Logged out successfully'
-  }
+export default defineEventHandler(async (event) => {
+  await revokePageStudioLoginSession(event, 'agency')
+  deleteCookie(event, 'auth_token', { path: '/' })
+  deleteCookie(event, 'auth_token_client', { path: '/' })
+  deleteCookie(event, 'auth_status', { path: '/' })
+  return { success: true, message: 'Logged out successfully' }
 })

@@ -26,8 +26,10 @@ vi.mock('~~/server/utils/pageStudio/sessions', () => ({
   resolvePageStudioSessionEnvironment: () => ({ issuer: 'https://app.xeroflow.io' }),
   resolvePageStudioSessionPublicKey: () => 'public-key',
   verifyPageStudioSessionToken: (...args: unknown[]) => mocks.verifySession(...args),
-  authorizePageStudioSession: (...args: unknown[]) => mocks.authorizeSession(...args),
-  assertPageStudioSessionActive: (...args: unknown[]) => mocks.assertSessionActive(...args)
+  authorizePageStudioSession: (...args: unknown[]) => mocks.authorizeSession(...args)
+}))
+vi.mock('~~/server/utils/pageStudio/sessionAuthority', () => ({
+  assertPageStudioSessionAuthority: (...args: unknown[]) => mocks.assertSessionActive(...args)
 }))
 vi.mock('~~/server/utils/pageStudio/machineAuth', () => ({
   requirePageStudioMachineAuth: (...args: unknown[]) => mocks.requirePageStudioMachineAuth(...args)
@@ -160,13 +162,13 @@ describe('Page Studio internal control endpoints', () => {
     expect(event.responseStatus).toBe(201)
     expect(mocks.verifySession).toHaveBeenCalledWith('signed-session', 'public-key', 'https://app.xeroflow.io')
     expect(mocks.authorizeSession).toHaveBeenCalledWith({ nonce: 'test-session' }, body)
-    expect(mocks.assertSessionActive).toHaveBeenCalledWith({ nonce: 'test-session' }, expect.any(Function))
+    expect(mocks.assertSessionActive).toHaveBeenCalledWith({ nonce: 'test-session' }, 'model:invoke')
     expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
     expect(mocks.acceptPageStudioAiProposal).toHaveBeenCalledWith({ ...body, idempotencyKey: 'accept_proposal_endpoint' })
     expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
   })
 
-  it.each(['missing', 'invalid', 'foreign', 'revoked'])('rejects %s editor authority before AI acceptance writes', async (kind) => {
+  it.each(['missing', 'invalid', 'foreign', 'revoked', 'login-ended', 'authority-unavailable'])('rejects %s editor authority before AI acceptance writes', async (kind) => {
     const { default: handler } = await import('~~/server/routes/internal/page-studio/ai-proposals/accept.post')
     const body = { authorRole: 'agency', baseDigest: 'b'.repeat(64), checkpoint,
       expectedCheckpointId: 'checkpoint_original_base', summary: 'Apply the approved proposal' }
@@ -179,9 +181,10 @@ describe('Page Studio internal control endpoints', () => {
     if (kind === 'foreign') mocks.authorizeSession.mockImplementationOnce(() => {
       throw denied
     })
-    if (kind === 'revoked') mocks.assertSessionActive.mockRejectedValueOnce(denied)
+    if (['revoked', 'login-ended'].includes(kind)) mocks.assertSessionActive.mockRejectedValueOnce(denied)
+    if (kind === 'authority-unavailable') mocks.assertSessionActive.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { statusCode: 503 }))
     await handler(event as never)
-    expect(event.responseStatus).toBe(kind === 'missing' ? 401 : 403)
+    expect(event.responseStatus).toBe(kind === 'missing' ? 401 : kind === 'authority-unavailable' ? 503 : 403)
     expect(mocks.acceptPageStudioAiProposal).not.toHaveBeenCalled()
   })
 

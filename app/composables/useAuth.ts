@@ -8,6 +8,7 @@ export interface AuthState {
 }
 
 export const useAuth = () => {
+  const toast = useToast()
   const user = useState<User | null>('auth-user', () => null)
   const isLoading = useState('auth-loading', () => false)
   const router = useRouter()
@@ -93,10 +94,12 @@ export const useAuth = () => {
   const logout = async () => {
     try {
       await apiFetch('/api/auth/logout', { method: 'POST' })
-    } finally {
-      user.value = null
-      navigateTo('/')
+    } catch (error) {
+      toast.add({ title: 'Sign out failed', description: 'Please try again to finish signing out.', color: 'error' })
+      throw error
     }
+    user.value = null
+    navigateTo('/')
   }
 
   const register = async (input: { name: string; email: string; password: string; inviteToken?: string }) => {
