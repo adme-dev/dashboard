@@ -27,7 +27,7 @@ editor saves fail the existing CAS guard. Preview-only edits are not in history.
 - Actual restored canonical manifest from the PostgreSQL test loaded through
   Studio f8741e5 R2CheckpointRepository and WorkspaceCoordinator.reconnect:
   digest/schema/scope checks and all 4 rendered pages pass.
-- Final full suite: 13,920 tests across 2,060 files pass (280 tests skipped).
+- Final full suite: 13,925 tests across 2,060 files pass (280 tests skipped).
 - Full typecheck remains red on 486 unique diagnostics; clean main 4c15da690 has
   the exact same normalized diagnostics, with no added or resolved errors.
 - Independent review found no blocking history defects. Its suggested Studio
@@ -53,3 +53,17 @@ Build, full suite and deployment results are recorded in the root
 execution ledger and `.verification/draft-history-20260917/`. Authenticated production and staging browser access is verified. QR Codes loads
 its existing records. Hosted history acceptance awaits deployment; local tests
 do not substitute for it. No customer drafts were restored during tests.
+
+## Scoped Overview reads
+
+The existing staging warning came from global domain/subscription permissions.
+Overview now uses the existing site-scoped domain API and launch-state plan,
+rejects mismatched domain responses, keeps optional history errors local and
+continues blocking publication on missing approval/release access. Five added
+component cases pass; the full suite and ESLint pass after this follow-up.
+
+Hosted history acceptance passed on staging deployment
+`7c34f071-3ce6-4507-8a21-e7a2a4785634`: named baseline, restore-as-new, preserved
+older drafts, Studio reopen on desktop/mobile, and restoration of the original
+staging baseline. Production content was unchanged. A final staging deployment
+will verify the scoped Overview correction before production integration.
