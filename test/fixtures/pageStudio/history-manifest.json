@@ -1,0 +1,503 @@
+{
+  "defaultLocale": "en-AU",
+  "id": "site_northline",
+  "name": "Northline Atlas X campaign",
+  "pages": [
+    {
+      "components": [
+        {
+          "children": [],
+          "id": "component_hero",
+          "props": {
+            "body": "A capable SUV engineered for weekday commutes and long weekends.",
+            "eyebrow": "The new Atlas X",
+            "heading": "Go further without leaving comfort behind.",
+            "primaryHref": "/spring-offer",
+            "primaryLabel": "Explore the offer",
+            "secondaryHref": "/fleet-event",
+            "secondaryLabel": "Book a drive"
+          },
+          "type": "hero"
+        },
+        {
+          "children": [],
+          "id": "component_featuregrid",
+          "props": {
+            "heading": "Built around real journeys",
+            "items": [
+              {
+                "body": "Confident traction when weather changes.",
+                "title": "Intelligent AWD"
+              },
+              {
+                "body": "Clear guidance without visual clutter.",
+                "title": "Connected cockpit"
+              },
+              {
+                "body": "Flexible room for people and equipment.",
+                "title": "Seven-seat cabin"
+              }
+            ]
+          },
+          "type": "featureGrid"
+        },
+        {
+          "children": [],
+          "id": "component_statistics",
+          "props": {
+            "heading": "Ownership with confidence",
+            "items": [
+              {
+                "label": "Factory warranty",
+                "value": "7 years"
+              },
+              {
+                "label": "Roadside assist",
+                "value": "5 years"
+              },
+              {
+                "label": "Service locations",
+                "value": "120+"
+              }
+            ]
+          },
+          "type": "statistics"
+        },
+        {
+          "children": [],
+          "id": "component_testimonial",
+          "props": {
+            "name": "Mia R.",
+            "quote": "The team explained the options clearly and made the handover genuinely enjoyable.",
+            "role": "Verified Northline customer"
+          },
+          "type": "testimonial"
+        },
+        {
+          "children": [],
+          "id": "component_calltoaction",
+          "props": {
+            "body": "Choose a time that suits you and our team will have the vehicle ready.",
+            "heading": "Experience Atlas X in person",
+            "href": "/fleet-event",
+            "label": "Book a test drive"
+          },
+          "type": "callToAction"
+        }
+      ],
+      "forms": [],
+      "id": "page_home",
+      "pageType": "home",
+      "parentPageId": null,
+      "route": "/",
+      "schemaVersion": 2,
+      "seo": {
+        "description": "Northline Motors from Northline Motors.",
+        "title": "Northline Motors"
+      },
+      "shell": {
+        "footer": "inherit",
+        "header": "inherit"
+      },
+      "title": "Northline Motors",
+      "visibility": "public"
+    },
+    {
+      "components": [
+        {
+          "children": [],
+          "id": "component_hero",
+          "props": {
+            "body": "A capable SUV engineered for weekday commutes and long weekends.",
+            "eyebrow": "The new Atlas X",
+            "heading": "Go further without leaving comfort behind.",
+            "primaryHref": "/spring-offer",
+            "primaryLabel": "Explore the offer",
+            "secondaryHref": "/fleet-event",
+            "secondaryLabel": "Book a drive"
+          },
+          "type": "hero"
+        },
+        {
+          "children": [],
+          "id": "component_image",
+          "props": {
+            "alt": "Silver Atlas X parked beside a coastal road",
+            "caption": "Atlas X Touring shown with optional accessories.",
+            "src": "/assets/atlas-coast.webp"
+          },
+          "type": "image"
+        },
+        {
+          "children": [],
+          "id": "component_leadform",
+          "props": {
+            "body": "Tell us how to reach you. A Northline specialist will respond within one business day.",
+            "formId": "form_enquiry",
+            "heading": "Start your enquiry",
+            "submitLabel": "Send enquiry"
+          },
+          "type": "leadForm"
+        }
+      ],
+      "forms": [
+        {
+          "fields": [
+            {
+              "id": "field_name",
+              "name": "Name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "id": "field_email",
+              "name": "Email address",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "id": "field_message",
+              "name": "What can we help with?",
+              "required": false,
+              "type": "textarea"
+            }
+          ],
+          "id": "form_enquiry",
+          "name": "Vehicle enquiry"
+        }
+      ],
+      "id": "page_event",
+      "pageType": "landing",
+      "parentPageId": null,
+      "route": "/fleet-event",
+      "schemaVersion": 2,
+      "seo": {
+        "description": "Atlas X drive event from Northline Motors.",
+        "title": "Atlas X drive event"
+      },
+      "shell": {
+        "footer": "inherit",
+        "header": "inherit"
+      },
+      "title": "Atlas X drive event",
+      "visibility": "public"
+    },
+    {
+      "components": [
+        {
+          "children": [],
+          "id": "component_offer",
+          "props": {
+            "body": "Driveaway pricing for eligible private buyers while stocks last.",
+            "heading": "Atlas X Touring",
+            "href": "#enquire",
+            "label": "Request a quote",
+            "price": "From $48,990 driveaway"
+          },
+          "type": "offer"
+        },
+        {
+          "children": [],
+          "id": "component_comparison",
+          "props": {
+            "heading": "Choose your Atlas X",
+            "items": [
+              {
+                "body": "Essential comfort and safety technology.",
+                "title": "Core"
+              },
+              {
+                "body": "Added touring range and cabin finish.",
+                "title": "Touring"
+              },
+              {
+                "body": "Premium appointments and panoramic roof.",
+                "title": "Summit"
+              }
+            ]
+          },
+          "type": "comparison"
+        },
+        {
+          "children": [],
+          "id": "component_gallery",
+          "props": {
+            "heading": "Designed from every angle",
+            "items": [
+              {
+                "alt": "Atlas X front profile",
+                "src": "/assets/atlas-front.webp"
+              },
+              {
+                "alt": "Atlas X dashboard and front seats",
+                "src": "/assets/atlas-cabin.webp"
+              },
+              {
+                "alt": "Atlas X rear cargo space",
+                "src": "/assets/atlas-cargo.webp"
+              }
+            ]
+          },
+          "type": "gallery"
+        },
+        {
+          "children": [],
+          "id": "component_faq",
+          "props": {
+            "heading": "Common questions",
+            "items": [
+              {
+                "answer": "Yes. We can value your current vehicle before your appointment.",
+                "question": "Can I trade in my current car?"
+              },
+              {
+                "answer": "Test drives are available by appointment at Northline Motors.",
+                "question": "Can I book a test drive?"
+              }
+            ]
+          },
+          "type": "faq"
+        },
+        {
+          "children": [],
+          "id": "component_legaldisclaimer",
+          "props": {
+            "body": "Offer available on selected vehicles ordered and delivered during the campaign period. Eligibility, availability and final driveaway price vary by location.",
+            "heading": "Offer details"
+          },
+          "type": "legalDisclaimer"
+        }
+      ],
+      "forms": [],
+      "id": "page_offer",
+      "pageType": "promotional",
+      "parentPageId": null,
+      "route": "/spring-offer",
+      "schemaVersion": 2,
+      "seo": {
+        "description": "Atlas X spring offer from Northline Motors.",
+        "title": "Atlas X spring offer"
+      },
+      "shell": {
+        "footer": "inherit",
+        "header": "inherit"
+      },
+      "title": "Atlas X spring offer",
+      "visibility": "public"
+    },
+    {
+      "components": [
+        {
+          "children": [],
+          "id": "component_content",
+          "props": {
+            "body": "Northline Motors has supported local drivers for more than thirty years, with transparent advice and factory-trained service.",
+            "heading": "Local knowledge. Long-term support."
+          },
+          "type": "content"
+        },
+        {
+          "children": [],
+          "id": "component_logocloud",
+          "props": {
+            "heading": "Trusted technology partners",
+            "items": [
+              {
+                "alt": "Atlas Safety",
+                "name": "Atlas Safety",
+                "src": "/assets/atlas-safety.svg"
+              },
+              {
+                "alt": "Northline Assist",
+                "name": "Northline Assist",
+                "src": "/assets/northline-assist.svg"
+              }
+            ]
+          },
+          "type": "logoCloud"
+        },
+        {
+          "children": [],
+          "id": "component_testimonial",
+          "props": {
+            "name": "Mia R.",
+            "quote": "The team explained the options clearly and made the handover genuinely enjoyable.",
+            "role": "Verified Northline customer"
+          },
+          "type": "testimonial"
+        }
+      ],
+      "forms": [],
+      "id": "page_about",
+      "pageType": "content",
+      "parentPageId": null,
+      "route": "/about",
+      "schemaVersion": 2,
+      "seo": {
+        "description": "About Northline Motors from Northline Motors.",
+        "title": "About Northline Motors"
+      },
+      "shell": {
+        "footer": "inherit",
+        "header": "inherit"
+      },
+      "title": "About Northline Motors",
+      "visibility": "public"
+    }
+  ],
+  "redirects": [],
+  "schemaVersion": 2,
+  "seo": {
+    "canonicalOrigin": "https://northlinemotors.example",
+    "defaultDescription": "Explore the Atlas X range, current offers and drive events at Northline Motors.",
+    "siteName": "Northline Motors"
+  },
+  "shell": {
+    "footer": {
+      "columns": [
+        {
+          "id": "footer_vehicles",
+          "label": "Vehicles",
+          "links": [
+            {
+              "id": "footer_spring_offer",
+              "label": "Atlas X spring offer",
+              "target": {
+                "kind": "page",
+                "pageId": "page_offer"
+              }
+            },
+            {
+              "id": "footer_drive_event",
+              "label": "Atlas X drive event",
+              "target": {
+                "kind": "page",
+                "pageId": "page_event"
+              }
+            }
+          ]
+        },
+        {
+          "id": "footer_company",
+          "label": "Company",
+          "links": [
+            {
+              "id": "footer_about",
+              "label": "About Northline Motors",
+              "target": {
+                "kind": "page",
+                "pageId": "page_about"
+              }
+            }
+          ]
+        }
+      ],
+      "contact": {
+        "email": "hello@northlinemotors.example",
+        "phone": "+61 3 9000 0000"
+      },
+      "copyright": "© Northline Motors · LMCT 12345",
+      "enabled": true,
+      "legalText": "Vehicle availability, pricing and campaign eligibility are subject to confirmation.",
+      "socialLinks": []
+    },
+    "header": {
+      "announcement": {
+        "label": "Call our team",
+        "target": {
+          "href": "tel:+61390000000",
+          "kind": "action"
+        }
+      },
+      "brand": {
+        "name": "Northline Motors"
+      },
+      "enabled": true,
+      "layout": "logo-left",
+      "primaryAction": {
+        "label": "Book a test drive",
+        "target": {
+          "kind": "page",
+          "pageId": "page_event"
+        }
+      },
+      "sticky": true
+    },
+    "mobileNavigation": {
+      "presentation": "drawer",
+      "primaryAction": {
+        "label": "Book a test drive",
+        "target": {
+          "kind": "page",
+          "pageId": "page_event"
+        }
+      }
+    },
+    "navigation": {
+      "enabled": true,
+      "items": [
+        {
+          "children": [],
+          "id": "nav_home",
+          "label": "Home",
+          "target": {
+            "kind": "page",
+            "pageId": "page_home"
+          }
+        },
+        {
+          "children": [
+            {
+              "id": "nav_drive_event",
+              "label": "Atlas X drive event",
+              "target": {
+                "kind": "page",
+                "pageId": "page_event"
+              }
+            }
+          ],
+          "id": "nav_offers",
+          "label": "Offers",
+          "target": {
+            "kind": "page",
+            "pageId": "page_offer"
+          }
+        },
+        {
+          "children": [],
+          "id": "nav_about",
+          "label": "About",
+          "target": {
+            "kind": "page",
+            "pageId": "page_about"
+          }
+        },
+        {
+          "children": [],
+          "id": "nav_contact",
+          "label": "Contact",
+          "target": {
+            "href": "mailto:hello@northlinemotors.example",
+            "kind": "action"
+          }
+        }
+      ]
+    }
+  },
+  "theme": {
+    "id": "theme_northline",
+    "schemaVersion": 1,
+    "tokens": {
+      "color.background": "#f7f4ee",
+      "color.brand": "#b7442d",
+      "color.brandContrast": "#ffffff",
+      "color.surface": "#ffffff",
+      "color.text": "#18211d",
+      "color.textMuted": "#59635e",
+      "font.body": "Inter, ui-sans-serif, system-ui, sans-serif",
+      "font.display": "Georgia, ui-serif, serif",
+      "radius.control": "0.375rem",
+      "space.section": "5rem"
+    }
+  }
+}

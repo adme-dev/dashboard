@@ -99,6 +99,7 @@ function navigateReadiness(target: LaunchReadinessItem['target']) {
 const tabs = [
   { label: 'Overview', value: 'overview', slot: 'overview' as const },
   { label: 'Pages', value: 'pages', slot: 'pages' as const },
+  { label: 'History', value: 'history', slot: 'history' as const },
   { label: 'Assets', value: 'assets', slot: 'assets' as const },
   { label: 'Forms', value: 'forms', slot: 'forms' as const },
   { label: 'Analytics', value: 'analytics', slot: 'analytics' as const },
@@ -343,6 +344,14 @@ async function publishApprovedVersion() {
 
       <template #pages>
         <PageStudioPagesWorkspace :site-id="siteId" />
+      </template>
+      <template #history>
+        <PageStudioDraftHistory
+          :key="siteId"
+          audience="agency"
+          :site-id="siteId"
+          @changed="refreshLaunch(); refreshReviews()"
+        />
       </template>
       <template #assets>
         <PageStudioAssetsWorkspace :site-id="siteId" />
