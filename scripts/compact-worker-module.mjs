@@ -241,7 +241,7 @@ function compactSqlWhitespace(value) {
     if ((character === '-' && value[index + 1] === '-')
       || (character === '/' && value[index + 1] === '*')) return value
 
-    if (character === "'" || character === '"') {
+    if (character === '\'' || character === '"') {
       if (pendingSpace && result) result += ' '
       pendingSpace = false
       quote = character
@@ -291,8 +291,26 @@ export function compactSqlLiterals(source) {
   const replacements = []
 
   function visit(node) {
+    // Only the first untagged template segment has known SQL lexical state.
+    // Later segments may follow a dynamic quote or comment: never touch them.
+    // Reject escapes too, so cooked AST text can be emitted without changing raw bytes.
+    if (ts.isTemplateExpression(node) && !ts.isTaggedTemplateExpression(node.parent)) {
+      const head = node.head
+      const raw = head.getText(sourceFile).slice(1, -2)
+      if (SQL_LITERAL_START.test(head.text) && raw === head.text && !/[^\S \t\r\n]/.test(raw)
+        && !/[\\'"`]/.test(raw) && !/--|\/\*|\$([A-Za-z_][A-Za-z0-9_]*)?\$/.test(raw)) {
+        const compacted = compactSqlWhitespace(raw)
+        if (compacted !== raw) {
+          replacements.push({
+            start: head.getStart(sourceFile) + 1,
+            end: head.getEnd() - 2,
+            value: compacted
+          })
+        }
+      }
+    }
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-      if (SQL_LITERAL_START.test(node.text)) {
+      if (SQL_LITERAL_START.test(node.text) && !/[^\S \t\r\n]/.test(node.text)) {
         const compacted = compactSqlWhitespace(node.text)
         if (compacted !== node.text) {
           replacements.push({
@@ -338,10 +356,13 @@ async function minifyDeployedModuleToFixedPoint(source, sourcefile, keepNames) {
       keepNames,
       legalComments: 'none'
     })
-    if (Buffer.byteLength(transformed.code) >= Buffer.byteLength(compacted)) {
+    // esbuild can expose plain template heads from escaped source text. Include
+    // SQL compaction in convergence so another wrapper run cannot shrink them.
+    const next = compactSqlLiterals(transformed.code)
+    if (Buffer.byteLength(next) >= Buffer.byteLength(compacted)) {
       return compacted
     }
-    compacted = transformed.code
+    compacted = next
   }
 
   throw new Error(
