@@ -128,7 +128,7 @@ describe('Page Studio control gateway Worker', () => {
     expect(checkpointRequest.headers.get('x-xeroflow-preview-token')).toBeNull()
   })
 
-  it.each(['/internal/page-studio/ai-proposals/accept', '/internal/page-studio/sessions/authorize'])('forwards the signed editor session only for exact POST %s', async (path) => {
+  it.each(['/internal/page-studio/ai-proposals/accept', '/internal/page-studio/sessions/authorize', '/internal/page-studio/checkpoints/editor-commit'])('forwards the signed editor session only for exact POST %s', async (path) => {
     const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
     vi.stubGlobal('fetch', fetchMock)
     await worker.fetch(request(path, {

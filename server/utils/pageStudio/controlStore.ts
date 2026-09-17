@@ -148,7 +148,7 @@ function timestamp(value: string | Date): string {
 async function requireScopedSite(
   db: PageStudioControlQueryClient,
   scope: PageStudioControlScope,
-  lock: 'FOR SHARE' | 'FOR UPDATE'
+  lock: 'FOR SHARE' | 'FOR UPDATE' | 'FOR NO KEY UPDATE'
 ): Promise<{ current_checkpoint_id: string | null }> {
   const result = await db.query<{ id: string, current_checkpoint_id: string | null }>(
     `SELECT id, current_checkpoint_id
@@ -234,9 +234,27 @@ export async function commitPageStudioCheckpoint(
   }
 }
 
+/** Editor entry point: claims come only from the verified dedicated header.
+ * The generic CAS primitive above remains for trusted provisioning/admin callers. */
+export async function commitPageStudioEditorCheckpoint(
+  input: PageStudioCheckpointCommitInput,
+  session: PageStudioSessionClaims,
+  dependencies: { runTransaction?: RunTransaction } = {}
+): Promise<PageStudioCheckpointCommitReceipt> {
+  if (!session) throw new PageStudioSessionAuthorityError('SESSION_AUTHORITY_DENIED', 403)
+  authorizePageStudioSession(session, { checkpoint: input.checkpoint, authorRole: session.role,
+    requiredCapabilities: ['workspace:checkpoint'] })
+  const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, {
+    ...dependencies,
+    authorize: db => assertPageStudioSessionAuthority(session, 'workspace:checkpoint', { transaction: db })
+  }, input)
+  return { acknowledged: true, checkpointId: input.checkpoint.checkpointId, currentCheckpointId,
+    isCurrent: currentCheckpointId === input.checkpoint.checkpointId }
+}
+
 async function persistPageStudioCheckpoint(
   input: PageStudioCheckpointInput,
-  dependencies: { runTransaction?: RunTransaction },
+  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void> },
   guard?: Pick<PageStudioCheckpointCommitInput, 'expectedCheckpointId'>
 ): Promise<string | null> {
   if (input.objectKey !== expectedCheckpointObjectKey(input.scope, input.checkpointId)) {
@@ -249,7 +267,8 @@ async function persistPageStudioCheckpoint(
 
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
-    const site = await requireScopedSite(db, input.scope, 'FOR UPDATE')
+    const site = await requireScopedSite(db, input.scope, dependencies.authorize ? 'FOR NO KEY UPDATE' : 'FOR UPDATE')
+    await dependencies.authorize?.(db)
     if (!guard) {
       // Activation is permanent for this site, even if a later head changes.
       // Read under the same lock as every writer so legacy requests cannot race it.
@@ -300,6 +319,7 @@ async function persistPageStudioCheckpoint(
         }
       }
       // A retry confirms this operation committed, not that it is still the head.
+      await dependencies.authorize?.(db)
       return site.current_checkpoint_id
     }
 
@@ -353,6 +373,7 @@ async function persistPageStudioCheckpoint(
         ...(guard ? { commitProtocol: 'cas-v1', expectedCheckpointId: guard.expectedCheckpointId } : {})
       }
     })
+    await dependencies.authorize?.(db)
     return input.checkpointId
   })
 }
