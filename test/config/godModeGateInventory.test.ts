@@ -196,9 +196,9 @@ describe('God mode gate inventory', () => {
     )
     // Domain/email authority moved to the private management Worker, outside this
     // Pages-only lexical inventory. Its fresh identity/role checks have separate RPC/PG tests.
-    expect(inventory.rows).toHaveLength(1576)
+    expect(inventory.rows).toHaveLength(1578)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 113,
+      identity_tenant_hard_boundary: 115,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
       ordinary_user_behavior: 179,
@@ -212,7 +212,10 @@ describe('God mode gate inventory', () => {
     // Studio current authority adds two independent staff-role SQL boundaries;
     // neither is an application-governance bypass. Removing only those two rows
     // reproduces the previous complete inventory digest.
-    expect(inventory.digest).toBe('276b29365b20746ddc495af1d411f3bf3712b5f6cd9e72097cdb8ae6fe24dbf3')
+    // Native draft history adds two current staff-role boundaries, not bypasses.
+    expect(inventory.rows).toContain('server/utils/pageStudio/historyAuthority.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
+    expect(inventory.rows).toContain('server/utils/pageStudio/historyAuthority.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
+    expect(inventory.digest).toBe('55c80f52aa0da6a5e8bc1565b32eb3d5a9d19f11a4a5ce915b24e737e114327c')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
