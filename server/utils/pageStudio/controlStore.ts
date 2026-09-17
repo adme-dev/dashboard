@@ -223,7 +223,7 @@ export async function recordPageStudioCheckpoint(
 /** Additive guarded protocol. Legacy callers are not made safe by this endpoint. */
 export async function commitPageStudioCheckpoint(
   input: PageStudioCheckpointCommitInput,
-  dependencies: { runTransaction?: RunTransaction } = {}
+  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void> } = {}
 ): Promise<PageStudioCheckpointCommitReceipt> {
   const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, dependencies, input)
   return {
