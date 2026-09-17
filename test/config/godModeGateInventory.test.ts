@@ -196,9 +196,9 @@ describe('God mode gate inventory', () => {
     )
     // Domain/email authority moved to the private management Worker, outside this
     // Pages-only lexical inventory. Its fresh identity/role checks have separate RPC/PG tests.
-    expect(inventory.rows).toHaveLength(1578)
+    expect(inventory.rows).toHaveLength(1574)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 115,
+      identity_tenant_hard_boundary: 111,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
       ordinary_user_behavior: 179,
@@ -209,13 +209,12 @@ describe('God mode gate inventory', () => {
     // write role branch. Every staff identity now passes live validation; the
     // application-governance gates and their bypass classification are unchanged.
     // Website email adds fresh role-policy checks, with no bypass registration.
-    // Studio current authority adds two independent staff-role SQL boundaries;
-    // neither is an application-governance bypass. Removing only those two rows
-    // reproduces the previous complete inventory digest.
-    // Native draft history adds two current staff-role boundaries, not bypasses.
-    expect(inventory.rows).toContain('server/utils/pageStudio/historyAuthority.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
-    expect(inventory.rows).toContain('server/utils/pageStudio/historyAuthority.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('55c80f52aa0da6a5e8bc1565b32eb3d5a9d19f11a4a5ce915b24e737e114327c')
+    // History, editor-session and provisioning now share these two SQL role
+    // predicates. Six lexical rows become two; all three callers retain their
+    // independent authority checks and none becomes a governance bypass.
+    expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
+    expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
+    expect(inventory.digest).toBe('337577be78dc141553f678069d734a9fd0b63101bc971ee5adb89a15fcd683e5')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

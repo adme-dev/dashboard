@@ -1,3 +1,4 @@
+import { pageStudioAuthorityOwnerJoin } from './authoritySql'
 import { z } from 'zod'
 import type { H3Event } from 'h3'
 import type { PageStudioControlQueryClient } from './controlStore'
@@ -93,28 +94,7 @@ export async function verifyPageStudioProvisioningJobAuthority(input: unknown, e
         AND expires_at>clock_timestamp() FOR SHARE`,
     [agency ? 'agency' : 'client', job.actor.loginSessionHash, job.actor.userId])).rows[0]) denied()
   }
-  const ownerJoin = agency
-    ? `
-    JOIN team_members owner ON owner.id = $4::uuid AND owner.is_active = TRUE
-      AND owner.user_role NOT IN ('viewer', 'guest')
-      AND (owner.sessions_invalidated_at IS NULL OR login.issued_at >= owner.sessions_invalidated_at)
-    JOIN custom_roles staff_role ON
-      ((owner.custom_role_id IS NOT NULL AND staff_role.id = owner.custom_role_id)
-       OR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))
-      AND staff_role.is_read_only = FALSE
-    JOIN role_permission_groups staff_permission ON staff_permission.role_id = staff_role.id
-      AND staff_permission.permission_group = 'PAGE_STUDIO_EDIT'
-  `
-    : `
-    JOIN client_users owner ON owner.client_id = site.client_id AND owner.id = $4::uuid
-      AND owner.status = 'active' AND owner.role IN ('admin', 'manager')
-    JOIN client_sessions native_session ON native_session.client_user_id = owner.id
-      AND native_session.token_hash = login.token_hash AND native_session.expires_at > clock_timestamp()
-    JOIN page_studio_site_memberships membership ON membership.tenant_id = site.tenant_id
-      AND membership.client_id = site.client_id AND membership.site_id = site.id
-      AND membership.user_id = owner.id AND membership.role = 'editor'
-  `
-
+  const ownerJoin = pageStudioAuthorityOwnerJoin(agency, 'provisioning', 'clock_timestamp()')
   const read = db
     ? async (sql: string, params: unknown[]) => (await db.query<AuthorityRow>(sql, params)).rows[0] ?? null
     : queryOneFresh<AuthorityRow>
