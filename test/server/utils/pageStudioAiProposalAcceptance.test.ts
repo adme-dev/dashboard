@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { PageStudioSessionClaims } from '~~/server/utils/pageStudio/sessions'
 import { PageStudioAiProposalAcceptanceSchema } from '../../../server/utils/pageStudio/controlSchemas'
 import {
   acceptPageStudioAiProposal,
@@ -30,6 +31,10 @@ const input: PageStudioAiProposalAcceptanceInput & { expectedCheckpointId: strin
   summary: 'Add the approved campaign section'
 }
 
+const session: PageStudioSessionClaims = { ...scope, userId: input.checkpoint.userId, role: 'agency',
+  nonce: 'ai-write-session', issuedAt: Math.floor(Date.now() / 1000) - 5, expiresAt: Math.floor(Date.now() / 1000) + 600,
+  capabilities: ['workspace:checkpoint', 'model:invoke'] }
+
 const versionId = '10000000-0000-4000-8000-000000000099'
 const version = {
   author_id: input.checkpoint.userId,
@@ -57,6 +62,8 @@ function database(options: {
   const queries: string[] = []
   const query = vi.fn(async (sql: string, _params?: unknown[]) => {
     queries.push(sql)
+    if (sql.includes('SELECT session.nonce')) return { rows: [{ nonce: session.nonce }] }
+    if (sql.includes('FOR SHARE OF login')) return { rows: [{ token_hash: 'a'.repeat(64) }] }
     if (sql.includes('FROM page_studio_sites')) return { rows: [{
       current_checkpoint_id: options.head === undefined ? input.expectedCheckpointId : options.head,
       current_digest: options.currentDigest ?? input.baseDigest,
@@ -85,6 +92,7 @@ function database(options: {
     return { rows: [] }
   })
   return {
+    session,
     queries,
     query,
     runTransaction: async <T>(callback: (db: PageStudioControlQueryClient) => Promise<T>) =>
@@ -93,6 +101,14 @@ function database(options: {
 }
 
 describe('acceptPageStudioAiProposal', () => {
+  it.each([undefined, { ...session, userId: '10000000-0000-4000-8000-000000000003' },
+    { ...session, siteId: '10000000-0000-4000-8000-000000000004' },
+    { ...session, role: 'client' as const }])('rejects missing or mismatched server authority before writes', async (authority) => {
+    const db = { ...database(), session: authority }
+    await expect(acceptPageStudioAiProposal(input, db)).rejects.toMatchObject({ statusCode: 403 })
+    expect(db.queries.some(sql => /^\s*(INSERT|UPDATE)\b/.test(sql))).toBe(false)
+  })
+
   it('persists checkpoint, submitted version, pointers, and audits in one transaction', async () => {
     const db = database()
     const result = await acceptPageStudioAiProposal(input, db)

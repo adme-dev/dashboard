@@ -164,7 +164,7 @@ describe('Page Studio internal control endpoints', () => {
     expect(mocks.authorizeSession).toHaveBeenCalledWith({ nonce: 'test-session' }, body)
     expect(mocks.assertSessionActive).toHaveBeenCalledWith({ nonce: 'test-session' }, 'model:invoke')
     expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
-    expect(mocks.acceptPageStudioAiProposal).toHaveBeenCalledWith({ ...body, idempotencyKey: 'accept_proposal_endpoint' })
+    expect(mocks.acceptPageStudioAiProposal).toHaveBeenCalledWith({ ...body, idempotencyKey: 'accept_proposal_endpoint' }, { session: { nonce: 'test-session' } })
     expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
   })
 

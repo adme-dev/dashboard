@@ -47,7 +47,7 @@ export default eventHandler(async (event) => {
     return await acceptPageStudioAiProposal({
       ...parsed.data,
       idempotencyKey: idempotency.data
-    })
+    }, { session })
   } catch (error) {
     return pageStudioInternalHttpError(event, error)
   }

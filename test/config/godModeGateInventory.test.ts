@@ -196,9 +196,9 @@ describe('God mode gate inventory', () => {
     )
     // Domain/email authority moved to the private management Worker, outside this
     // Pages-only lexical inventory. Its fresh identity/role checks have separate RPC/PG tests.
-    expect(inventory.rows).toHaveLength(1574)
+    expect(inventory.rows).toHaveLength(1576)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 111,
+      identity_tenant_hard_boundary: 113,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
       ordinary_user_behavior: 179,
@@ -209,7 +209,10 @@ describe('God mode gate inventory', () => {
     // write role branch. Every staff identity now passes live validation; the
     // application-governance gates and their bypass classification are unchanged.
     // Website email adds fresh role-policy checks, with no bypass registration.
-    expect(inventory.digest).toBe('0b1eff143d223ef20c41c402f042fd085a15dd47f2f60bcdf5ec0f5410b32a57')
+    // Studio current authority adds two independent staff-role SQL boundaries;
+    // neither is an application-governance bypass. Removing only those two rows
+    // reproduces the previous complete inventory digest.
+    expect(inventory.digest).toBe('276b29365b20746ddc495af1d411f3bf3712b5f6cd9e72097cdb8ae6fe24dbf3')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

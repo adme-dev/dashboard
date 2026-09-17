@@ -1,4 +1,6 @@
 import { queryOneFresh, transaction } from '~~/server/utils/db'
+import { assertPageStudioSessionAuthority, PageStudioSessionAuthorityError } from './sessionAuthority'
+import { authorizePageStudioSession, type PageStudioSessionClaims } from './sessions'
 
 export interface PageStudioControlScope {
   tenantId: string
@@ -561,7 +563,7 @@ export async function submitPageStudioVersionForReview(
 
 export async function acceptPageStudioAiProposal(
   input: PageStudioAiProposalAcceptanceInput,
-  dependencies: { runTransaction?: RunTransaction } = {}
+  dependencies: { runTransaction?: RunTransaction, session?: PageStudioSessionClaims } = {}
 ) {
   const { checkpoint } = input
   if (typeof input.expectedCheckpointId !== 'string'
@@ -580,6 +582,9 @@ export async function acceptPageStudioAiProposal(
     )
   }
 
+  const session = dependencies.session
+  if (!session) throw new PageStudioSessionAuthorityError('SESSION_AUTHORITY_DENIED', 403)
+  authorizePageStudioSession(session, input)
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
     const siteResult = await db.query<{
@@ -596,7 +601,7 @@ export async function acceptPageStudioAiProposal(
         AND current_checkpoint.site_id = site.id
         AND current_checkpoint.id = site.current_checkpoint_id
        WHERE site.tenant_id = $1 AND site.client_id = $2 AND site.id = $3
-       FOR UPDATE OF site`,
+       FOR NO KEY UPDATE OF site`,
       [checkpoint.scope.tenantId, checkpoint.scope.clientId, checkpoint.scope.siteId]
     )
     const site = siteResult.rows[0]
@@ -608,6 +613,8 @@ export async function acceptPageStudioAiProposal(
       )
     }
 
+    const authorize = () => assertPageStudioSessionAuthority(session, 'model:invoke', { transaction: db })
+    await authorize()
     const existingVersion = await db.query<VersionRow>(
       `SELECT id, checkpoint_id, digest, author_id, author_role, summary, status, created_at
        FROM page_studio_versions
@@ -656,6 +663,7 @@ export async function acceptPageStudioAiProposal(
         throw new PageStudioControlError('CHECKPOINT_CONFLICT', 409,
           'AI proposal replay does not match its original durable request')
       }
+      await authorize()
       return {
         acknowledged: true as const,
         checkpointId: checkpoint.checkpointId,
@@ -784,6 +792,7 @@ export async function acceptPageStudioAiProposal(
       metadata: { digest: checkpoint.digest }
     })
 
+    await authorize()
     return {
       acknowledged: true as const,
       checkpointId: checkpoint.checkpointId,

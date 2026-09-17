@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
+import type { PageStudioSessionClaims } from '~~/server/utils/pageStudio/sessions'
 import { defaultPageStudioDocument, savePageStudioDocument } from '~~/server/utils/pageStudio/documents'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  acceptPageStudioAiProposal,
+  acceptPageStudioAiProposal as acceptAuthenticatedAiProposal,
   commitPageStudioCheckpoint,
   recordPageStudioCheckpoint,
   type PageStudioCheckpointInput,
@@ -69,6 +70,11 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
   let scope: PageStudioControlScope
   const userId = '40000000-0000-4000-8000-000000000001'
   let connections: pg.Client[]
+  let session: PageStudioSessionClaims
+  function acceptPageStudioAiProposal(input: Parameters<typeof acceptAuthenticatedAiProposal>[0],
+    dependencies: Parameters<typeof acceptAuthenticatedAiProposal>[1] = {}) {
+    return acceptAuthenticatedAiProposal(input, { ...dependencies, session })
+  }
 
   async function connect() {
     const client = new pg.Client({ connectionString: databaseUrl })
@@ -136,6 +142,7 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
     await observer.query(`CREATE SCHEMA "${schema}"`)
     await observer.query(bootstrapSql)
     await observer.query(migrationSql)
+    await observer.query(readFileSync(new URL('../../server/database/migrations/403_page_studio_sessions.sql', import.meta.url), 'utf8'))
     await observer.query(readFileSync(new URL('../../server/database/migrations/404_page_studio_documents.sql', import.meta.url), 'utf8'))
     const tenantId = 'tenant-cas'
     const clientId = '20000000-0000-4000-8000-000000000001'
@@ -156,6 +163,20 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
       [tenantId, clientId, entitlement.rows[0].id, ownerId]
     )
     scope = { tenantId, clientId, siteId: site.rows[0].id }
+    await observer.query(`CREATE TABLE client_sessions (token_hash TEXT PRIMARY KEY, client_user_id UUID, expires_at TIMESTAMPTZ)`)
+    await observer.query(readFileSync(new URL('../../server/database/migrations/420_page_studio_login_sessions.sql', import.meta.url), 'utf8'))
+    const now = Math.floor(Date.now() / 1000)
+    session = { ...scope, userId, role: 'client', nonce: randomUUID(), issuedAt: now - 5, expiresAt: now + 600,
+      capabilities: ['workspace:checkpoint', 'model:invoke'] }
+    const hash = 'a'.repeat(64)
+    await observer.query(`INSERT INTO client_sessions VALUES ($1,$2,NOW()+INTERVAL '1 hour')`, [hash, userId])
+    await observer.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+      VALUES ('client',$1,$2,NOW()-INTERVAL '1 hour',NOW()+INTERVAL '1 hour')`, [hash, userId])
+    await observer.query(`INSERT INTO page_studio_site_memberships(tenant_id,client_id,site_id,user_id,role)
+      VALUES ($1,$2,$3,$4,'editor')`, [tenantId, clientId, scope.siteId, userId])
+    await observer.query(`INSERT INTO page_studio_sessions(nonce,tenant_id,client_id,site_id,user_id,role,capabilities,issued_at,expires_at,login_session_hash)
+      VALUES ($1,$2,$3,$4,$5,'client',$6,to_timestamp($7),to_timestamp($8),$9)`,
+    [session.nonce, tenantId, clientId, scope.siteId, userId, JSON.stringify(session.capabilities), session.issuedAt, session.expiresAt, hash])
   })
 
   afterEach(async () => {
