@@ -1,6 +1,6 @@
 # Page Studio current session authority
 
-17 September 2026. Paired implementation in Dashboard and Page Studio; not deployed.
+17 September 2026. Paired implementation in Dashboard and Page Studio; deployed and verified in staging. See the [release record](./2026-09-17-page-studio-session-authority-staging.md). Production rollout remains open.
 
 Previously, revoking a session in Dashboard only changed PostgreSQL. Studio's
 independent Durable Object ledger could continue admitting a signed session until
@@ -36,9 +36,9 @@ No database migration, new secret or new service binding is needed.
 
 This implements request admission only. Logout-to-nonce linkage, open WebSocket
 closure, in-flight cancellation, commit-time authority fencing, untrusted preview
-origins and runtime CPU containment remain separate work. Live browser acceptance
+origins and runtime CPU containment remain separate work. Fresh staging browser launch now passes; the full browser revocation/expiry matrix
 and per-request latency/capacity measurements remain required. No customer session
-was revoked during these local tests and no release is implied by this document.
+was revoked during the local or staging tests. The release record identifies the staging deployments.
 
 ## Verification evidence
 
@@ -71,4 +71,4 @@ Both branches were refreshed against current main and had zero divergence before
 commit. Changes remain in local commits: the Dashboard repository is public, so
 the undeployed security finding and reproduction details were not published in a
 public PR. Studio is private. The root working checkout and its unrelated changes
-were preserved. Paired staging deployment and live acceptance remain open.
+were preserved. Paired staging deployment, 13 live admission checks and fresh browser launch passed. Production rollout and the remaining lifecycle checks stay open.
