@@ -51,7 +51,7 @@ describe('agency website setup state', () => {
   it('returns verified progress without exposing provider resources or raw failure details', async () => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/setup-proposal.get')
     mocks.queryOneFresh.mockResolvedValue({ ...row(), revision: 1, status: 'accepted', source: 'template', plan: { pages: ['home'] } })
-    const job = createPageStudioProvisioningJob({ initiatingUserId: '30000000-0000-4000-8000-000000000901', initiatingActorKind: 'agency-user', requestKey: `page-studio-${siteId}-1`, scope, revision: 1, source: 'template', now: '2026-09-10T00:00:00Z', plan: { businessName: 'Fixture', starterVersion: 'limousine-v1', pages: ['home'], collections: ['profile'], modules: ['business-content'] } })
+    const job = createPageStudioProvisioningJob({ initiatingLoginSessionHash: 'a'.repeat(64), initiatingUserId: '30000000-0000-4000-8000-000000000901', initiatingActorKind: 'agency-user', requestKey: `page-studio-${siteId}-1`, scope, revision: 1, source: 'template', now: '2026-09-10T00:00:00Z', plan: { businessName: 'Fixture', starterVersion: 'limousine-v1', pages: ['home'], collections: ['profile'], modules: ['business-content'] } })
     mocks.readProvisioning.mockResolvedValue({ ...job, phase: 'failed', error: 'Internal provider detail', resources: { database: 'private-resource', site: siteId, contentBinding: 'private-runtime' } })
     const result = await handler(event() as never)
     expect(result.provisioning).toEqual({ phase: 'failed', updatedAt: job.updatedAt })
