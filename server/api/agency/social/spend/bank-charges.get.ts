@@ -90,6 +90,7 @@ interface XeroBankTransaction {
   total?: number
   reference?: string
   description?: string
+  lineItems?: Array<{ description?: string }>
   contact?: { name?: string }
   type?: string
 }
@@ -100,15 +101,15 @@ interface NormalizedBankTransaction {
   total: number
   reference?: string
   description?: string
+  lineItems?: Array<{ description?: string }>
   contact?: { name?: string }
   type?: string
 }
 
-function identifyPlatform(description: string, contactName?: string): string | null {
-  const searchText = `${description} ${contactName || ''}`
+function identifyPlatform(...fields: Array<string | undefined>): string | null {
   for (const rule of PLATFORM_PATTERNS) {
     for (const pattern of rule.patterns) {
-      if (pattern.test(searchText)) return rule.platform
+      if (fields.some(field => field && pattern.test(field))) return rule.platform
     }
   }
   return null
@@ -167,7 +168,8 @@ export default eventHandler(async (event) => {
   const cache = (event.context as any).cloudflare?.env?.CACHE as
     | { get(k: string): Promise<string | null>; put(k: string, v: string, o?: { expirationTtl?: number }): Promise<void> }
     | undefined
-  const cacheKey = `spend:bankcharges:${tenantId}:${period}`
+  // v2 also matches descriptions when a reference is present; discard old classifications.
+  const cacheKey = `spend:bankcharges:v2:${tenantId}:${period}`
   const BANK_CHARGES_TTL_SECONDS = 3 * 60 * 60
   const refreshParam = String(query.refresh ?? '')
   const skipCacheRead = refreshParam === '1' || refreshParam === 'true'
@@ -266,6 +268,7 @@ export default eventHandler(async (event) => {
               total: Math.abs(amount),
               reference: tx.reference,
               description: tx.description,
+              lineItems: tx.lineItems,
               contact: tx.contact,
               type: tx.type,
             })
@@ -291,7 +294,15 @@ export default eventHandler(async (event) => {
   for (const tx of allTransactions) {
     const desc = tx.reference || tx.description || ''
     const contactName = tx.contact?.name || ''
-    const platform = identifyPlatform(desc, contactName)
+    // An opaque bank reference must not hide the merchant description. Xero
+    // also returns descriptions on line items. Match fields independently so
+    // unrelated fragments cannot combine into a platform name.
+    const platform = identifyPlatform(
+      tx.reference,
+      tx.description,
+      contactName,
+      ...(tx.lineItems || []).map(line => line.description)
+    )
 
     const item: BankChargeTransaction = {
       date: tx.date,
