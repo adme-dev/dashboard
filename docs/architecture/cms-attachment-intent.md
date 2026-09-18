@@ -132,6 +132,11 @@ acceptance evidence. This section explicitly runs all database cases.
   The first CI run exposed the inherited history suite's rejected database name;
   the workflow correction preserves its safety guard. The combined local run
   passes **90 cases**, and **32 workflow/deployment guard regressions** pass.
+- The next CI gate exposed an inherited portal-provisioning fixture without a
+  native session. It now uses an actual H3 event and disposable native/parent
+  login rows, checks the retained login hash and rejects deleted/expired native
+  sessions before provider calls. The three setup/provisioning suites pass
+  **60 cases**; the four booking/content/email suites pass **55 cases**.
 
 The PostgreSQL cases cover current native permissions, expiry and logout races,
 changed retry inputs/login/artifacts, concurrent retries, recovery after commit

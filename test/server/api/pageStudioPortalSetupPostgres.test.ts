@@ -1,5 +1,8 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { IncomingMessage, ServerResponse } from 'node:http'
+import { Socket } from 'node:net'
+import { createEvent } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -25,6 +28,8 @@ const siteId = '50000000-0000-4000-8000-000000000901'
 const clientId = '20000000-0000-4000-8000-000000000901'
 const userId = '30000000-0000-4000-8000-000000000901'
 const entitlementId = '40000000-0000-4000-8000-000000000901'
+const loginToken = randomUUID()
+const loginHash = createHash('sha256').update(loginToken).digest('hex')
 
 describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on disposable PostgreSQL', () => {
   const schema = `portal_setup_${randomUUID().replaceAll('-', '')}`
@@ -43,6 +48,9 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
     await db.query(`SET search_path TO "${schema}", pg_catalog`)
     await db.query(`
       CREATE TABLE client_users (id UUID PRIMARY KEY, client_id UUID, status TEXT, role TEXT);
+      CREATE TABLE client_sessions (token_hash TEXT PRIMARY KEY, client_user_id UUID, expires_at TIMESTAMPTZ);
+      CREATE TABLE page_studio_login_sessions (role TEXT, token_hash TEXT, user_id TEXT,
+        issued_at TIMESTAMPTZ, expires_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ, PRIMARY KEY(role, token_hash));
       CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN);
       CREATE TABLE page_studio_entitlements (id UUID PRIMARY KEY, tenant_id TEXT, client_id UUID, status TEXT,
         effective_from TIMESTAMPTZ, effective_until TIMESTAMPTZ, pages_per_site_limit INTEGER, active_site_limit INTEGER,
@@ -91,6 +99,9 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
   })
   beforeEach(async () => {
     mocks.portalAccess.mockResolvedValue({ clientId, id: userId, role: 'manager' })
+    await db.query('DELETE FROM page_studio_login_sessions')
+    await db.query('DELETE FROM client_sessions')
+    await db.query('INSERT INTO client_sessions VALUES ($1,$2,NOW() + INTERVAL \'1 hour\')', [loginHash, userId])
     await db.query('UPDATE client_users SET status=\'active\', role=\'manager\'')
     await db.query('UPDATE page_studio_site_memberships SET role=\'editor\'')
     await db.query('UPDATE page_studio_entitlements SET portal_creation_enabled=TRUE')
@@ -228,8 +239,13 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
         return job
       })
     }
-    return { siteId, body: { expectedRevision: 1 }, binding,
-      context: { cloudflare: { env: { PAGE_STUDIO_PROVISIONER: binding, PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging' } } } }
+    const req = new IncomingMessage(new Socket())
+    req.method = 'POST'
+    req.url = '/test/provision'
+    req.headers = { authorization: `Bearer ${loginToken}` }
+    const event = createEvent(req, new ServerResponse(req))
+    event.context.cloudflare = { env: { PAGE_STUDIO_PROVISIONER: binding, PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging' } }
+    return Object.assign(event, { siteId, body: { expectedRevision: 1 }, binding })
   }
   it('creates one immutable customer-owned job from the accepted SQL proposal across retries', async () => {
     await create()
@@ -241,10 +257,23 @@ describe.runIf(Boolean(databaseUrl))('portal setup isolation and transactions on
     expect(first).toEqual({ provisioning: { phase: 'requested', updatedAt: expect.any(String) } })
     expect(event.binding.createProvisioning).toHaveBeenCalledOnce()
     expect(event.binding.createProvisioning.mock.calls[0][0]).toMatchObject({
-      actor: { kind: 'client-user', userId },
+      actor: { kind: 'client-user', userId, loginSessionHash: loginHash },
       scope: { tenantId: 'agency-setup-test', clientId, businessId: clientId, siteId, environment: 'staging' },
       setup: { proposalRevision: 1 }
     })
+  })
+  it.each([
+    'DELETE FROM client_sessions',
+    'UPDATE client_sessions SET expires_at=NOW() - INTERVAL \'1 second\''
+  ])('denies provisioning when the native login is unavailable: %s', async (sql) => {
+    await create()
+    await decide(1)
+    await db.query(sql)
+    const provision = (await import('~~/server/api/portal/page-studio/sites/[siteId]/provision.post')).default
+    const event = provisioningEvent()
+    await expect(provision(event as never)).rejects.toMatchObject({ statusCode: 401 })
+    expect(event.binding.createProvisioning).not.toHaveBeenCalled()
+    expect(event.binding.readProvisioning).not.toHaveBeenCalled()
   })
   it.each([
     'UPDATE client_users SET status=\'inactive\'',
