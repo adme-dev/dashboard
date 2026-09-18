@@ -344,6 +344,20 @@ describe('Pages Worker postbuild compaction', () => {
     expect(compactSqlLiterals(compactSqlLiterals(source))).toBe(compactSqlLiterals(source))
   })
 
+  it('compacts a template head around complete quoted values without altering their bytes', () => {
+    const source = 'const sql = `SELECT  id FROM accounts\n  WHERE label = \'keep   spaces\' AND status = \'active\'\n   AND id = ${id}`'
+    expect(compactSqlLiterals(source)).toBe('const sql = `SELECT id FROM accounts WHERE label = \'keep   spaces\' AND status = \'active\' AND id = ${id}`')
+    expect(compactSqlLiterals(compactSqlLiterals(source))).toBe(compactSqlLiterals(source))
+  })
+
+  it('preserves incomplete quoted heads and PostgreSQL newline-separated string literals', () => {
+    for (const source of [
+      'const sql = `SELECT  id FROM accounts WHERE label = \'prefix  ${value}\'`',
+      'const sql = `SELECT  \'one\'\n  \'two\' FROM ${table}`',
+      'const suffix = "\'two\'"; const sql = `SELECT \'one\'\n  ${suffix}`'
+    ]) expect(compactSqlLiterals(source)).toBe(source)
+  })
+
   it('preserves dynamic expressions and all text following the first interpolation', () => {
     const source = 'const sql = `SELECT  id FROM ${table} WHERE note = \'  ${value}  \' -- comment\n  ORDER BY id`'
     expect(compactSqlLiterals(source)).toBe('const sql = `SELECT id FROM ${table} WHERE note = \'  ${value}  \' -- comment\n  ORDER BY id`')

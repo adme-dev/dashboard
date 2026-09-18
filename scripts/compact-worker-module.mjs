@@ -200,6 +200,9 @@ export function compactPlatformImports(source) {
 const SQL_LITERAL_START = /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|ALTER|CREATE|DROP)\b/i
 
 function compactSqlWhitespace(value) {
+  // PostgreSQL concatenates quoted strings separated by a newline. Keep that
+  // lexical boundary unchanged (a conservative match may skip extra queries).
+  if (/['"]\s*\n\s*['"]|'\s*\n\s*$/.test(value)) return value
   let result = ''
   let quote = null
   let dollarQuote = null
@@ -271,6 +274,10 @@ function compactSqlWhitespace(value) {
     result += character
   }
 
+  // An interpolated template head may end inside a quoted SQL value.
+  // Its unknown continuation must retain the original lexical state and bytes.
+  if (quote || dollarQuote) return value
+
   // Boundary whitespace is significant: the minifier lowers
   // `\`… = $1 ${cond}\`` to `"… = $1 " + cond`, so trimming the literal's
   // trailing space glues the placeholder to the next token ("$1AND" — Postgres
@@ -298,7 +305,7 @@ export function compactSqlLiterals(source) {
       const head = node.head
       const raw = head.getText(sourceFile).slice(1, -2)
       if (SQL_LITERAL_START.test(head.text) && raw === head.text && !/[^\S \t\r\n]/.test(raw)
-        && !/[\\'"`]/.test(raw) && !/--|\/\*|\$([A-Za-z_][A-Za-z0-9_]*)?\$/.test(raw)) {
+        && !/[\\`]/.test(raw) && !/--|\/\*|\$([A-Za-z_][A-Za-z0-9_]*)?\$/.test(raw)) {
         const compacted = compactSqlWhitespace(raw)
         if (compacted !== raw) {
           replacements.push({
