@@ -112,10 +112,20 @@ jobs:
           PAGE_STUDIO_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
       - name: Page Studio access grant and submissions database tests
-        run: pnpm exec vitest run test/server/utils/pageStudioEntitlementGrantsPostgres.test.ts test/server/utils/pageStudioSubmissionsPostgres.test.ts test/server/utils/pageStudioPublishingPostgres.test.ts test/server/utils/pageStudioVersionReviewPostgres.test.ts test/server/utils/pageStudioDraftHistoryPostgres.test.ts
+        run: pnpm exec vitest run test/server/utils/pageStudioEntitlementGrantsPostgres.test.ts test/server/utils/pageStudioSubmissionsPostgres.test.ts test/server/utils/pageStudioPublishingPostgres.test.ts test/server/utils/pageStudioVersionReviewPostgres.test.ts
         timeout-minutes: 5
         env:
           PAGE_STUDIO_GRANT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
+
+      - name: Page Studio native history and CMS attachment intent database tests
+        run: |
+          psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_history_authority_ci'
+          psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_attachment_intent_ci'
+          pnpm exec vitest run test/server/utils/pageStudioDraftHistoryPostgres.test.ts test/server/utils/pageStudioContentAttachmentIntentPostgres.test.ts
+        timeout-minutes: 5
+        env:
+          PAGE_STUDIO_GRANT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_history_authority_ci
+          PAGE_STUDIO_ATTACHMENT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_attachment_intent_ci
 
       - name: Page Studio setup and provisioning authority database tests
         run: pnpm exec vitest run test/server/api/pageStudioAgencySetupProposalPostgres.test.ts test/server/api/pageStudioPortalSetupPostgres.test.ts test/server/utils/pageStudioProvisioningAuthorityPostgres.test.ts

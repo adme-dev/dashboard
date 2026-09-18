@@ -127,6 +127,11 @@ acceptance evidence. This section explicitly runs all database cases.
   diagnostics. The repository typecheck is not green.
 - Independent service-scope review: no Critical or Important findings. The final
   changes after review strengthen tests and add an explicit transaction type.
+- CI now creates separate disposable `studio_history_authority_ci` and
+  `studio_attachment_intent_ci` databases and executes both suites explicitly.
+  The first CI run exposed the inherited history suite's rejected database name;
+  the workflow correction preserves its safety guard. The combined local run
+  passes **90 cases**, and **32 workflow/deployment guard regressions** pass.
 
 The PostgreSQL cases cover current native permissions, expiry and logout races,
 changed retry inputs/login/artifacts, concurrent retries, recovery after commit
