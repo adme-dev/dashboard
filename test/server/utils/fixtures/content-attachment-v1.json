@@ -1,0 +1,62 @@
+{
+  "request": {
+    "version": 1,
+    "mode": "attach-existing-content",
+    "operationId": "attach_fixture_1",
+    "scope": {
+      "tenantId": "tenant_demo",
+      "clientId": "client_demo",
+      "businessId": "business_demo",
+      "siteId": "site_demo",
+      "environment": "staging"
+    },
+    "actor": {
+      "kind": "agency-user",
+      "userId": "33333333-3333-4333-8333-333333333333",
+      "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "anchor": {
+      "checkpointId": "imported_head",
+      "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "schemaDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "policyVersion": "cms-policy-v1"
+  },
+  "identity": "cms_attach_cde5ec06601c515d703d10463bf522487da30857b78e63bbe369919c8554e6ba",
+  "identityBytes": "[1,\"attach-existing-content\",\"attach_fixture_1\",[\"tenant_demo\",\"client_demo\",\"business_demo\",\"site_demo\",\"staging\"],[\"agency-user\",\"33333333-3333-4333-8333-333333333333\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"imported_head\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"cms-policy-v1\"]",
+  "legacy": {
+    "attempts": 0,
+    "error": null,
+    "id": "setup_demo",
+    "phase": "requested",
+    "plan": {
+      "collections": ["profile"],
+      "enabledModules": ["business-content"],
+      "pages": ["home"],
+      "scope": {
+        "tenantId": "tenant_demo",
+        "clientId": "client_demo",
+        "businessId": "business_demo",
+        "siteId": "site_demo",
+        "environment": "staging"
+      },
+      "templateId": "limousine-v1"
+    },
+    "requestKey": "setup_once",
+    "resources": {
+      "contentBinding": null,
+      "database": null,
+      "site": null
+    },
+    "scope": {
+      "tenantId": "tenant_demo",
+      "clientId": "client_demo",
+      "businessId": "business_demo",
+      "siteId": "site_demo",
+      "environment": "staging"
+    },
+    "templateId": "limousine-v1",
+    "updatedAt": "2026-09-18T00:00:00Z"
+  }
+}
