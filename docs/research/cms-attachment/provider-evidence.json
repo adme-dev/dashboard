@@ -1,0 +1,33 @@
+{
+  "at": "2026-09-18T07:19:17.656Z",
+  "sites": [
+    "c34f6347-cc63-4ed7-9a5a-da165ebefed2",
+    "a27135dc-1374-475c-a56d-7e60310425bb"
+  ],
+  "environments": {
+    "staging": {
+      "database": "f19256aa-ddb6-47fe-b7e9-7287d0be6a19",
+      "jobs": [],
+      "routes": [],
+      "databases": [],
+      "workers": [],
+      "pagesContentEnvironment": "staging",
+      "routerBinding": {
+        "service": "xeroflow-content-router-staging",
+        "environment": ""
+      }
+    },
+    "production": {
+      "database": "8b8a10ea-8a40-4112-addb-3bd2fef248a7",
+      "jobs": [],
+      "routes": [],
+      "databases": [],
+      "workers": [],
+      "pagesContentEnvironment": "production",
+      "routerBinding": {
+        "service": "xeroflow-content-router-production",
+        "environment": ""
+      }
+    }
+  }
+}
