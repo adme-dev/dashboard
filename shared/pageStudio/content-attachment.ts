@@ -47,6 +47,23 @@ export type ContentAttachmentRequest = z.infer<
   typeof ContentAttachmentRequestSchema
 >;
 
+/** Private immutable completion selected by the native control plane. A local
+ * preparation with these fields is not completed until native persistence. */
+export const ContentAttachmentCompletionSchema = z
+  .object({
+    activationId: z.string().uuid(),
+    identity: z.string().regex(/^cms_attach_[a-f0-9]{64}$/),
+    operationId: OperationId,
+    proofDigest: Digest,
+    scope: Scope,
+    version: z.literal(1),
+  })
+  .strict();
+
+export type ContentAttachmentCompletion = z.infer<
+  typeof ContentAttachmentCompletionSchema
+>;
+
 function scopeIdentity(scope: ContentAttachmentRequest["scope"]) {
   return [
     scope.tenantId,

@@ -3,6 +3,14 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  getGodModeRouteAuditState,
+  isApplicationCapabilityEnabled,
+  prepareRegisteredGodModeMutation,
+  registerGodModeMutationFamily,
+  seedGodModeRouteAuditState
+} from '../../server/utils/godMode/featureGate'
+
 const { mockAppendGodModeAuditEvent, mockResolveGodModeAuthority } = vi.hoisted(() => ({
   mockAppendGodModeAuditEvent: vi.fn(),
   mockResolveGodModeAuthority: vi.fn()
@@ -20,14 +28,6 @@ vi.mock('../../server/utils/godMode/authority', () => ({
       && candidate.emergencyDisabled === false
   }
 }))
-
-import {
-  getGodModeRouteAuditState,
-  isApplicationCapabilityEnabled,
-  prepareRegisteredGodModeMutation,
-  registerGodModeMutationFamily,
-  seedGodModeRouteAuditState
-} from '../../server/utils/godMode/featureGate'
 
 const INVENTORY_ROOTS = ['server', 'app', 'shared'] as const
 const TASK_3_OWNED_FILES = new Set([
@@ -56,12 +56,12 @@ const TASK_3_GATE_ROUTING = [
   ['server/plugins/godModeAudit.ts', 'terminal persistence', 'ordinary_user_behavior', 'trusted request audit state']
 ] as const
 
-type GateClass =
-  | 'identity_tenant_hard_boundary'
-  | 'provider_infrastructure_availability'
-  | 'application_governance_bypass'
-  | 'ordinary_user_behavior'
-  | 'unrelated_configuration'
+type GateClass
+  = | 'identity_tenant_hard_boundary'
+    | 'provider_infrastructure_availability'
+    | 'application_governance_bypass'
+    | 'ordinary_user_behavior'
+    | 'unrelated_configuration'
 
 function listSourceFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -150,7 +150,7 @@ describe('God mode gate inventory', () => {
   it('freezes every pre-existing direct gate with an explicit classification', () => {
     const inventory = legacyInventory()
     expect(inventory.rows).toContain(
-      "server/utils/godMode/authority.ts\t&& Object.prototype.hasOwnProperty.call(cloudflareEnv, 'GOD_MODE_DISABLED')\tprovider_infrastructure_availability"
+      'server/utils/godMode/authority.ts\t&& Object.prototype.hasOwnProperty.call(cloudflareEnv, \'GOD_MODE_DISABLED\')\tprovider_infrastructure_availability'
     )
     expect(inventory.rows).toContain(
       'server/utils/godMode/authority.ts\t: runtimeEnv.GOD_MODE_DISABLED\tprovider_infrastructure_availability'
@@ -183,7 +183,7 @@ describe('God mode gate inventory', () => {
       'server/utils/leads/destinations/autogate.ts\tconst password = process.env.AUTOGATE_LEAD_API_PASSWORD\tunrelated_configuration'
     )
     expect(inventory.rows).toContain(
-      "server/utils/spendSyncJobs.ts\t`SELECT id FROM team_members WHERE is_active = TRUE AND user_role = 'owner'`\tidentity_tenant_hard_boundary"
+      'server/utils/spendSyncJobs.ts\t`SELECT id FROM team_members WHERE is_active = TRUE AND user_role = \'owner\'`\tidentity_tenant_hard_boundary'
     )
     expect(inventory.rows).toContain(
       'server/utils/mondayConnection.ts\tconst serviceToken = process.env.MONDAY_API_TOKEN\tprovider_infrastructure_availability'
@@ -196,12 +196,13 @@ describe('God mode gate inventory', () => {
     )
     // Domain/email authority moved to the private management Worker, outside this
     // Pages-only lexical inventory. Its fresh identity/role checks have separate RPC/PG tests.
-    expect(inventory.rows).toHaveLength(1574)
+    // CMS connection adds an explicit portal admin/manager role gate; no bypass.
+    expect(inventory.rows).toHaveLength(1575)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 111,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
-      ordinary_user_behavior: 179,
+      ordinary_user_behavior: 180,
       unrelated_configuration: 433
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -214,7 +215,7 @@ describe('God mode gate inventory', () => {
     // independent authority checks and none becomes a governance bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('337577be78dc141553f678069d734a9fd0b63101bc971ee5adb89a15fcd683e5')
+    expect(inventory.digest).toBe('97a5316689e348bdf70fd5edfe14adc15d3d05238c362afe556ecf84c058aba1')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

@@ -4,7 +4,9 @@ import type { PageStudioContentState } from '~~/shared/pageStudio/businessConten
 
 const props = defineProps<{ audience: 'agency' | 'portal', siteId: string }>()
 const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/content`)
-const { data, pending, error, refresh } = await useFetch<PageStudioContentState & { canEdit: boolean }>(endpoint)
+const { data, pending, error, refresh } = await useFetch<PageStudioContentState & { canEdit: boolean }>(endpoint, {
+  key: computed(() => `page-studio-content:${props.audience}:${props.siteId}`)
+})
 const { collections, conflicted, dirty, load, revision, save, saving } = usePageStudioContentDraft()
 const toast = useToast()
 const selectedCollection = ref('__none__')

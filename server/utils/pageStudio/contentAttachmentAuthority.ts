@@ -40,7 +40,7 @@ export async function recheckContentAttachmentAuthority(db: PageStudioControlQue
 
 /** Private control-plane check. Only an exact persisted native intent can select
  * the originating login. Never use a caller-provided identity as an auth grant. */
-export async function authorizePageStudioContentAttachment(input: unknown, environment: 'staging' | 'production', dependencies: { runTransaction?: RunTransaction } = {}) {
+export async function withPageStudioContentAttachmentAuthority<T>(input: unknown, environment: 'staging' | 'production', work: (db: PageStudioControlQueryClient, request: ContentAttachmentRequest) => Promise<T>, dependencies: { runTransaction?: RunTransaction } = {}) {
   const parsed = ContentAttachmentRequestSchema.safeParse(input)
   if (!parsed.success || parsed.data.scope.environment !== environment || !['staging', 'production'].includes(environment)) throw denied()
   const request = parsed.data
@@ -81,6 +81,12 @@ export async function authorizePageStudioContentAttachment(input: unknown, envir
     // Acquire all authority locks, then evaluate expiry in a fresh statement.
     await recheckContentAttachmentAuthority(db, request)
     if (await recheckContentAttachmentAuthority(db, request) < (saved.metadata.pageCount as number)) throw denied()
-    return request
+    const result = await work(db, request)
+    if (await recheckContentAttachmentAuthority(db, request) < (saved.metadata.pageCount as number)) throw denied()
+    return result
   })
+}
+
+export function authorizePageStudioContentAttachment(input: unknown, environment: 'staging' | 'production', dependencies: { runTransaction?: RunTransaction } = {}) {
+  return withPageStudioContentAttachmentAuthority(input, environment, (_db, request) => Promise.resolve(request), dependencies)
 }

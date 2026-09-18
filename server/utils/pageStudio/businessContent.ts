@@ -44,7 +44,7 @@ interface ContentService {
 }
 const unavailable = () => new PageStudioBusinessContentError('CONTENT_NOT_CONFIGURED', 503, 'Business content setup is pending')
 
-async function authorise(request: Request, writing: boolean, dependencies: Dependencies) {
+export async function authorizePageStudioBusinessContent(request: Request, writing: boolean, dependencies: Dependencies) {
   const { actor, siteId } = request
   if (!z.string().uuid().safeParse(siteId).success) {
     throw new PageStudioBusinessContentError('INVALID_SITE', 400, 'Invalid website ID')
@@ -110,10 +110,10 @@ async function callService(operation: () => Promise<unknown>, writing = false) {
 }
 
 export async function readPageStudioBusinessContent(request: Request, dependencies: Dependencies = {}): Promise<PageStudioContentState & { canEdit: boolean }> {
-  const { scope, service } = await authorise(request, false, dependencies)
+  const { scope, service } = await authorizePageStudioBusinessContent(request, false, dependencies)
   const result = await callService(() => service.readContent(scope))
   // A remote read may outlive membership, entitlement or site ownership changes.
-  const current = await authorise(request, false, dependencies)
+  const current = await authorizePageStudioBusinessContent(request, false, dependencies)
   if (!samePageStudioContentScope(scope, current.scope)) {
     throw new PageStudioBusinessContentError('CONTENT_ACCESS_DENIED', 403, 'Business content access denied')
   }
@@ -122,7 +122,7 @@ export async function readPageStudioBusinessContent(request: Request, dependenci
 }
 
 export async function writePageStudioBusinessContent(request: Request & { body: unknown }, dependencies: Dependencies = {}) {
-  const { scope, service } = await authorise(request, true, dependencies)
+  const { scope, service } = await authorizePageStudioBusinessContent(request, true, dependencies)
   const parsed = PageStudioContentEditSchema.safeParse(request.body)
   if (!parsed.success) throw new PageStudioBusinessContentError('CONTENT_INVALID', 400, 'Invalid business content')
   const proposed = PageStudioBusinessContentSchema.safeParse({ schemaVersion: 1, scope, collections: parsed.data.collections })

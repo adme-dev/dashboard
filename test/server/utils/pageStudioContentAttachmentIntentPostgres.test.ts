@@ -6,6 +6,7 @@ import { createEvent } from 'h3'
 import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { recordPageStudioCheckpoint, type PageStudioCheckpointInput, type PageStudioControlQueryClient, type PageStudioControlScope } from '~~/server/utils/pageStudio/controlStore'
+import { commitPageStudioContentAttachment, readPageStudioContentAttachmentCompletion } from '~~/server/utils/pageStudio/contentAttachmentCompletion'
 import { authorizePageStudioContentAttachment } from '~~/server/utils/pageStudio/contentAttachmentAuthority'
 import { preparePageStudioContentAttachment } from '~~/server/utils/pageStudio/contentAttachmentIntent'
 import { revokePageStudioLoginSession } from '~~/server/utils/pageStudio/loginSessions'
@@ -196,6 +197,87 @@ describe.runIf(Boolean(databaseUrl))('Native CMS attachment intent on PostgreSQL
         artifacts, body: { requestId: randomUUID(), expectedCheckpointId: 'checkpoint_base' } }
     }
     const options = async () => ({ runTransaction: transactionFor(await connect()) })
+
+    async function preparation() {
+      const saved = await preparePageStudioContentAttachment(request(), await options())
+      const completion = { version: 1, activationId: randomUUID(), identity: saved.identity,
+        operationId: saved.intent.operationId, proofDigest: 'e'.repeat(64), scope: saved.intent.scope }
+      const binding = { readContentAttachmentPreparation: vi.fn(async () => ({ request: saved.intent, completion })) }
+      const read = (input = completion) => readPageStudioContentAttachmentCompletion(input, 'staging', {
+        read: async (sql, params) => (await observer.query(sql, params)).rows[0] ?? null
+      })
+      const count = async () => Number((await observer.query('SELECT count(*) AS count FROM page_studio_audit_events WHERE action=\'content.attachment.completed\'')).rows[0].count)
+      return { ...saved, completion, binding, read, count }
+    }
+    it('commits native completion once, survives acknowledgement loss and preserves the website', async () => {
+      const c = await preparation(), before = await snapshot()
+      expect(await c.read()).toBeNull()
+      const results = await Promise.all([
+        commitPageStudioContentAttachment(c.intent, 'staging', { ...await options(), binding: c.binding }),
+        commitPageStudioContentAttachment(c.intent, 'staging', { ...await options(), binding: c.binding })
+      ])
+      expect(results).toEqual([c.completion, c.completion])
+      expect(await c.read()).toEqual(c.completion)
+      expect(await c.count()).toBe(1)
+      expect(await snapshot()).toEqual(before)
+    })
+    it('denies logout during coordinator preparation read before native completion', async () => {
+      const c = await preparation()
+      loginTransactions.run = transactionFor(await connect())
+      c.binding.readContentAttachmentPreparation.mockImplementation(async () => {
+        await revokePageStudioLoginSession(event(), role)
+        return { request: c.intent, completion: c.completion }
+      })
+      await expect(commitPageStudioContentAttachment(c.intent, 'staging', { ...await options(), binding: c.binding })).rejects.toMatchObject({ statusCode: 403 })
+      expect(await c.count()).toBe(0)
+    })
+    it('holds the native authority fence through completion commit and preserves committed completion after logout', async () => {
+      const c = await preparation(), writer = await connect(), revoker = await connect(), gate = deferred()
+      loginTransactions.run = transactionFor(revoker)
+      let ready = false, transactions = 0
+      const pending = capture(commitPageStudioContentAttachment(c.intent, 'staging', { binding: c.binding,
+        runTransaction: transactionFor(writer, async () => {
+          transactions++
+          if (transactions === 2) {
+            ready = true
+            await gate.promise
+          }
+        })
+      }))
+      let logout: Promise<Outcome<void>> | undefined
+      try {
+        await expect.poll(() => ready, { timeout: 1500 }).toBe(true)
+        logout = capture(revokePageStudioLoginSession(event(), role))
+        await waitForBlock(revoker, writer)
+        gate.resolve()
+        expect(await pending).toMatchObject({ ok: true, value: c.completion })
+        expect(await logout).toMatchObject({ ok: true })
+        expect(await c.read()).toEqual(c.completion)
+      } finally {
+        gate.resolve()
+        await pending
+        await logout
+      }
+    })
+    it('rolls back completion when its insert crosses package expiry', async () => {
+      const c = await preparation()
+      await observer.query(`CREATE FUNCTION delay_completion_insert() RETURNS trigger AS $$
+        BEGIN IF NEW.action='content.attachment.completed' THEN PERFORM pg_sleep(0.4); END IF; RETURN NEW; END;
+        $$ LANGUAGE plpgsql;
+        CREATE TRIGGER delay_completion_insert BEFORE INSERT ON page_studio_audit_events
+        FOR EACH ROW EXECUTE FUNCTION delay_completion_insert();`)
+      await observer.query('UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+INTERVAL \'0.3 seconds\'')
+      await expect(commitPageStudioContentAttachment(c.intent, 'staging', { ...await options(), binding: c.binding })).rejects.toMatchObject({ statusCode: 403 })
+      expect(await c.count()).toBe(0)
+    })
+    it('rejects a preparation from another operation or scope', async () => {
+      const c = await preparation()
+      c.binding.readContentAttachmentPreparation.mockResolvedValue({ request: c.intent, completion: { ...c.completion, operationId: randomUUID() } })
+      await expect(commitPageStudioContentAttachment(c.intent, 'staging', { ...await options(), binding: c.binding })).rejects.toThrow()
+      c.binding.readContentAttachmentPreparation.mockResolvedValue({ request: c.intent, completion: { ...c.completion, scope: { ...c.completion.scope, siteId: randomUUID() } } })
+      await expect(commitPageStudioContentAttachment(c.intent, 'staging', { ...await options(), binding: c.binding })).rejects.toThrow()
+      expect(await c.count()).toBe(0)
+    })
 
     it('serializes reauthorization with a concurrent native intent retry without a lock cycle', async () => {
       const input = request()
