@@ -6,6 +6,7 @@ import { createEvent } from 'h3'
 import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { recordPageStudioCheckpoint, type PageStudioCheckpointInput, type PageStudioControlQueryClient, type PageStudioControlScope } from '~~/server/utils/pageStudio/controlStore'
+import { authorizePageStudioContentAttachment } from '~~/server/utils/pageStudio/contentAttachmentAuthority'
 import { preparePageStudioContentAttachment } from '~~/server/utils/pageStudio/contentAttachmentIntent'
 import { revokePageStudioLoginSession } from '~~/server/utils/pageStudio/loginSessions'
 import { createJwt } from '~~/server/utils/auth'
@@ -195,6 +196,98 @@ describe.runIf(Boolean(databaseUrl))('Native CMS attachment intent on PostgreSQL
         artifacts, body: { requestId: randomUUID(), expectedCheckpointId: 'checkpoint_base' } }
     }
     const options = async () => ({ runTransaction: transactionFor(await connect()) })
+
+    it('serializes reauthorization with a concurrent native intent retry without a lock cycle', async () => {
+      const input = request()
+      const saved = await preparePageStudioContentAttachment(input, await options())
+      const authorizer = await connect(), writer = await connect(), gate = deferred()
+      let entered = false
+      const pending = capture(authorizePageStudioContentAttachment(saved.intent, 'staging', {
+        runTransaction: callback => transactionFor(authorizer)(db => callback({
+          query: async (sql, params) => {
+            if (!entered && sql.includes('SELECT entitlement.pages_per_site_limit')) {
+              entered = true
+              await gate.promise
+            }
+            return db.query(sql, params)
+          }
+        }))
+      }))
+      let retry: Promise<Outcome<unknown>> | undefined
+      try {
+        await expect.poll(() => entered, { timeout: 1500 }).toBe(true)
+        retry = capture(preparePageStudioContentAttachment(input, { runTransaction: transactionFor(writer) }))
+        await waitForBlock(writer, authorizer)
+        gate.resolve()
+        expect(await pending).toMatchObject({ ok: true })
+        expect(await retry).toMatchObject({ ok: true })
+      } finally {
+        gate.resolve()
+        await pending
+        await retry
+      }
+    })
+    it('denies a login that expires while the final permission query waits on an entitlement lock', async () => {
+      const saved = await preparePageStudioContentAttachment(request(), await options())
+      await observer.query('UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()+INTERVAL \'0.4 seconds\'')
+      const blocker = await connect(), authorizer = await connect()
+      await blocker.query('BEGIN')
+      await blocker.query('SELECT id FROM page_studio_entitlements FOR UPDATE')
+      const pending = capture(authorizePageStudioContentAttachment(saved.intent, 'staging', { runTransaction: transactionFor(authorizer) }))
+      try {
+        await waitForBlock(authorizer, blocker)
+        await observer.query('SELECT pg_sleep(0.5)')
+        await blocker.query('COMMIT')
+        expect(await pending).toMatchObject({ ok: false, error: { statusCode: 403 } })
+      } finally {
+        await blocker.query('ROLLBACK')
+        await pending
+      }
+    })
+
+    it('reauthorizes the immutable native intent without changing the website', async () => {
+      const saved = await preparePageStudioContentAttachment(request(), await options())
+      const before = await snapshot()
+      expect(await authorizePageStudioContentAttachment(saved.intent, 'staging', await options())).toEqual(saved.intent)
+      await observer.query('UPDATE page_studio_sites SET current_checkpoint_id=\'checkpoint_old\'')
+      expect(await authorizePageStudioContentAttachment(saved.intent, 'staging', await options())).toEqual(saved.intent)
+      expect(await snapshot()).toEqual({ ...before, current_checkpoint_id: 'checkpoint_old' })
+    })
+    it('denies forged operations, scopes, original logins and artifacts', async () => {
+      const saved = await preparePageStudioContentAttachment(request(), await options())
+      const variants = [
+        { ...saved.intent, operationId: randomUUID() },
+        { ...saved.intent, scope: { ...saved.intent.scope, tenantId: 'foreign' } },
+        { ...saved.intent, actor: { ...saved.intent.actor, loginSessionHash: 'f'.repeat(64) } },
+        { ...saved.intent, runtimeDigest: 'e'.repeat(64) }
+      ]
+      for (const input of variants) await expect(authorizePageStudioContentAttachment(input, 'staging', await options())).rejects.toMatchObject({ statusCode: 403 })
+      await expect(authorizePageStudioContentAttachment(saved.intent, 'production', await options())).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it('denies native logout after preparation', async () => {
+      const saved = await preparePageStudioContentAttachment(request(), await options())
+      loginTransactions.run = transactionFor(await connect())
+      await revokePageStudioLoginSession(event(), role)
+      await expect(authorizePageStudioContentAttachment(saved.intent, 'staging', await options())).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it.each([
+      'UPDATE agency_clients SET is_active=FALSE',
+      'UPDATE page_studio_entitlements SET plan_metadata=\'{"allowedModules":[]}\'',
+      'UPDATE page_studio_sites SET status=\'suspended\'',
+      'UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()'
+    ])('denies native authority after %s', async (mutation) => {
+      const saved = await preparePageStudioContentAttachment(request(), await options())
+      await observer.query(mutation)
+      await expect(authorizePageStudioContentAttachment(saved.intent, 'staging', await options())).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it('fails closed on a legacy intent missing page allowance evidence', async () => {
+      await observer.query(`CREATE FUNCTION legacy_attachment_insert() RETURNS trigger AS $$
+        BEGIN NEW.metadata=NEW.metadata-'pageCount'; RETURN NEW; END; $$ LANGUAGE plpgsql;
+        CREATE TRIGGER legacy_attachment_insert BEFORE INSERT ON page_studio_audit_events
+        FOR EACH ROW EXECUTE FUNCTION legacy_attachment_insert();`)
+      const saved = await preparePageStudioContentAttachment(request(), await options())
+      await expect(authorizePageStudioContentAttachment(saved.intent, 'staging', await options())).rejects.toMatchObject({ statusCode: 403 })
+    })
 
     it('derives and retains the exact intent; replay leaves pages/history/releases unchanged', async () => {
       const before = await snapshot(), input = request(), opts = await options()

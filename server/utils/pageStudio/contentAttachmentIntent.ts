@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { ContentAttachmentRequestSchema, contentAttachmentIdentity, requireMatchingContentAttachmentRequest } from '~~/shared/pageStudio/content-attachment'
 import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
-import { pageStudioAuthorityOwnerJoin } from './authoritySql'
+import { recheckContentAttachmentAuthority } from './contentAttachmentAuthority'
 import type { PageStudioContentActor } from './businessContent'
 import type { PageStudioControlQueryClient } from './controlStore'
 import { bindPageStudioLoginSession, resolvePageStudioLoginSession } from './loginSessions'
@@ -14,7 +14,6 @@ const Body = z.object({
   expectedCheckpointId: ContentAttachmentRequestSchema.shape.anchor.shape.checkpointId
 }).strict()
 const Artifacts = ContentAttachmentRequestSchema.pick({ schemaDigest: true, runtimeDigest: true, policyVersion: true })
-const ModulePolicy = z.object({ allowedModules: z.array(z.string().min(1)).optional() })
 type RunTransaction = <T>(work: (db: PageStudioControlQueryClient) => Promise<T>) => Promise<T>
 interface Request {
   // Derived by native agency/portal auth, never copied from a request body.
@@ -59,31 +58,7 @@ export async function preparePageStudioContentAttachment(request: Request, depen
 
     // Reuse native provisioning owner rules: current staff edit permission or
     // active portal admin/manager plus exact editor membership and native login.
-    const recheck = async () => {
-      let row: { pages_limit: number, plan_metadata: unknown } | undefined
-      try {
-        row = (await db.query<{ pages_limit: number, plan_metadata: unknown }>(`
-          SELECT entitlement.pages_per_site_limit AS pages_limit, entitlement.plan_metadata
-          FROM page_studio_sites site
-          JOIN agency_clients client ON client.id=site.client_id AND client.is_active=TRUE
-          JOIN page_studio_login_sessions login ON login.role=$5 AND login.token_hash=$6
-            AND login.user_id=$4::text AND login.revoked_at IS NULL AND login.expires_at>clock_timestamp()
-          ${pageStudioAuthorityOwnerJoin(agency, 'provisioning', 'clock_timestamp()')}
-          JOIN page_studio_entitlements entitlement ON entitlement.id=site.entitlement_id
-            AND entitlement.tenant_id=site.tenant_id AND entitlement.client_id=site.client_id
-            AND entitlement.status IN ('trial','active') AND entitlement.effective_from<=clock_timestamp()
-            AND (entitlement.effective_until IS NULL OR entitlement.effective_until>clock_timestamp())
-            AND entitlement.active_site_limit>0 ${agency ? '' : 'AND entitlement.portal_creation_enabled'}
-          WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3 AND site.status IN ('draft','active')
-            AND (SELECT count(*) FROM page_studio_sites counted WHERE counted.tenant_id=site.tenant_id
-              AND counted.client_id=site.client_id AND counted.status<>'archived')<=entitlement.active_site_limit
-          FOR SHARE`, [scope.tenantId, scope.clientId, scope.siteId, actor.actorId, actor.role, login.tokenHash])).rows[0]
-      } catch { throw unavailable() }
-      const policy = ModulePolicy.safeParse(row?.plan_metadata)
-      if (!row || !Number.isInteger(row.pages_limit) || row.pages_limit < 1 || !policy.success
-        || (policy.data.allowedModules && !policy.data.allowedModules.includes('business-content'))) throw denied()
-      return row.pages_limit
-    }
+    const recheck = () => recheckContentAttachmentAuthority(db, { scope, actor: { kind: agency ? 'agency-user' : 'client-user', userId: actor.actorId, loginSessionHash: login.tokenHash } })
     const pageLimit = await recheck()
     const args = [scope.tenantId, scope.clientId, scope.siteId]
     const idempotencyKey = `cms.attach:${actor.role}:${actor.actorId}:${body.data.requestId}`
@@ -123,7 +98,7 @@ export async function preparePageStudioContentAttachment(request: Request, depen
       await db.query(`INSERT INTO page_studio_audit_events
         (tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata)
         VALUES($1,$2,$3,$4,$5,'content.attachment.requested','content_attachment',$6,$7,$8::jsonb)`,
-      [...args, actor.actorId, actor.role, candidate.operationId, idempotencyKey, JSON.stringify({ body: body.data, intent: candidate, identity })])
+      [...args, actor.actorId, actor.role, candidate.operationId, idempotencyKey, JSON.stringify({ body: body.data, intent: candidate, identity, pageCount: pages.length })])
     }
     // Wall-clock expiry can occur during any awaited I/O, including the insert.
     await recheck()
