@@ -712,9 +712,11 @@ function rewriteMappedModuleSpecifiers(source, sourcePath, destinationPath, modu
 
 export async function compactWorkerModuleFilenames(directory) {
   const chunksDirectory = path.join(directory, 'chunks')
+  const compactDirectory = path.join(chunksDirectory, 'm')
   const modulePaths = (await collectFiles(
     chunksDirectory,
     filePath => filePath.endsWith('.mjs')
+      || (path.dirname(filePath) === compactDirectory && filePath.endsWith('.js'))
   )).sort((left, right) => {
     const leftPath = path.relative(chunksDirectory, left)
     const rightPath = path.relative(chunksDirectory, right)
@@ -724,8 +726,7 @@ export async function compactWorkerModuleFilenames(directory) {
     return { renamedFiles: 0, rewrittenFiles: 0, savedSpecifierBytes: 0 }
   }
 
-  const compactDirectory = path.join(chunksDirectory, 'm')
-  const compactNamePattern = /^[0-9a-z]+\.mjs$/
+  const compactNamePattern = /^[0-9a-z]+\.m?js$/
   const isAlreadyCompact = modulePaths.every(modulePath => (
     path.dirname(modulePath) === compactDirectory
     && compactNamePattern.test(path.basename(modulePath))
@@ -760,7 +761,9 @@ export async function compactWorkerModuleFilenames(directory) {
   modulePaths.sort((left, right) => referenceCounts.get(right) - referenceCounts.get(left))
   const moduleMap = new Map(modulePaths.map((modulePath, index) => [
     modulePath,
-    path.join(compactDirectory, `${index.toString(36)}.mjs`)
+    // Pages' Worker-directory loader classifies both .js and .mjs as ESModule.
+    // Save one byte per import without changing the module payload or format.
+    path.join(compactDirectory, `${index.toString(36)}.js`)
   ]))
   const rewrittenSources = new Map()
   let rewrittenFiles = 0

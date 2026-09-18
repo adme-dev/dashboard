@@ -448,7 +448,7 @@ describe('Pages Worker postbuild compaction', () => {
     expect(first.renamedFiles).toBe(3)
     expect(first.rewrittenFiles).toBe(3)
     expect(first.savedSpecifierBytes).toBeGreaterThan(100)
-    expect(compactNames).toEqual(['0.mjs', '1.mjs', '2.mjs'])
+    expect(compactNames).toEqual(['0.js', '1.js', '2.js'])
     expect(entrySource).not.toContain('very-long-generated')
     expect(imported.default).toBe(41)
     expect(imported.sharedValue).toBe(40)
@@ -493,8 +493,8 @@ describe('Pages Worker postbuild compaction', () => {
 
       await compactWorkerModuleFilenames(directory)
       const source = await readFile(entry, 'utf8')
-      expect(source).toContain('"./chunks/m/0.mjs"')
-      expect(source).toContain('"./chunks/m/0.mjs?preview=1#scope"')
+      expect(source).toContain('"./chunks/m/0.js"')
+      expect(source).toContain('"./chunks/m/0.js?preview=1#scope"')
       const imported = await import(pathToFileURL(entry).href)
       expect(imported.value).toBe(42)
       expect(imported.text).toBe('./chunks/shared/a-00.mjs')
@@ -507,6 +507,32 @@ describe('Pages Worker postbuild compaction', () => {
       expect(await readFile(entry, 'utf8')).toBe(source)
     }
     expect(outputs[0]).toEqual(outputs[1])
+  })
+
+  it('preserves an existing compact mjs tree', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-legacy-paths-'))
+    temporaryDirectories.push(directory)
+    const compact = path.join(directory, 'chunks', 'm')
+    await mkdir(compact, { recursive: true })
+    const original = 'export const value = 42'
+    await writeFile(path.join(compact, '0.mjs'), original)
+    await expect(compactWorkerModuleFilenames(directory)).resolves.toMatchObject({ renamedFiles: 0, rewrittenFiles: 0 })
+    expect(await readFile(path.join(compact, '0.mjs'), 'utf8')).toBe(original)
+    expect(await readdir(compact)).toEqual(['0.mjs'])
+  })
+
+  it('rejects mixed generated mjs and compact js trees before writing', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-mixed-paths-'))
+    temporaryDirectories.push(directory)
+    const compact = path.join(directory, 'chunks', 'm')
+    const generated = path.join(directory, 'chunks', 'generated')
+    await mkdir(compact, { recursive: true })
+    await mkdir(generated, { recursive: true })
+    await writeFile(path.join(compact, '0.js'), 'export const compact = 1')
+    await writeFile(path.join(generated, 'original.mjs'), 'export const original = 2')
+    await expect(compactWorkerModuleFilenames(directory)).rejects.toThrow('mixed compact and generated chunk tree')
+    expect(await readFile(path.join(compact, '0.js'), 'utf8')).toBe('export const compact = 1')
+    expect(await readFile(path.join(generated, 'original.mjs'), 'utf8')).toBe('export const original = 2')
   })
 
   it('name-preservingly minifies deployed modules without changing exports', async () => {
