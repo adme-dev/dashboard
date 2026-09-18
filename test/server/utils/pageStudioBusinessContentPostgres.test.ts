@@ -35,6 +35,8 @@ describe.runIf(Boolean(databaseUrl))('business content authority on disposable P
     await client.query('INSERT INTO page_studio_entitlements VALUES ($1, \'selected\', $2, \'trial\', NOW() - INTERVAL \'1 hour\', NOW() + INTERVAL \'1 hour\', $3)', [entitlementId, clientId, { allowedModules: ['bookings'] }])
   })
   beforeEach(async () => {
+    read.mockReset().mockResolvedValue(null)
+    write.mockReset()
     await client.query('BEGIN')
   })
   afterEach(async () => {
@@ -51,6 +53,54 @@ describe.runIf(Boolean(databaseUrl))('business content authority on disposable P
   it('allows the selected tenant and denies another tenant', async () => {
     await expect(run()).resolves.toMatchObject({ revision: 0, canEdit: false })
     await expect(run('foreign')).rejects.toMatchObject({ statusCode: 404 })
+  })
+  it.each([
+    ['membership removed', 'DELETE FROM page_studio_site_memberships', 403],
+    ['site suspended', 'UPDATE page_studio_sites SET status=\'suspended\'', 403],
+    ['client inactive', 'UPDATE agency_clients SET is_active=FALSE', 404],
+    ['entitlement expired', 'UPDATE page_studio_entitlements SET effective_until=NOW() - INTERVAL \'1 second\'', 403],
+    ['entitlement cancelled', 'UPDATE page_studio_entitlements SET status=\'cancelled\'', 403]
+  ])('withholds the RPC result after %s during a read', async (_label, mutation, statusCode) => {
+    read.mockImplementationOnce(async () => {
+      await client.query(mutation as string)
+      return null
+    })
+    await expect(readPageStudioBusinessContent(portal(), dependencies)).rejects.toMatchObject({ statusCode })
+  })
+  it('returns viewer permissions after a mid-read membership downgrade', async () => {
+    read.mockImplementationOnce(async () => {
+      await client.query('UPDATE page_studio_site_memberships SET role=\'viewer\'')
+      return null
+    })
+    await expect(readPageStudioBusinessContent(portal(), dependencies)).resolves.toMatchObject({ canEdit: false, revision: 0 })
+  })
+  it('observes membership revocation committed by a separate connection before the RPC returns', async () => {
+    const revoker = new pg.Client({ connectionString: databaseUrl })
+    await revoker.connect()
+    try {
+      await revoker.query(`SET search_path TO "${schema}", pg_catalog`)
+      read.mockImplementationOnce(async () => {
+        await revoker.query('DELETE FROM page_studio_site_memberships')
+        return null
+      })
+      await expect(readPageStudioBusinessContent(portal(), dependencies)).rejects.toMatchObject({ statusCode: 403 })
+    } finally {
+      try {
+        await revoker.query('INSERT INTO page_studio_site_memberships SELECT \'selected\', $1, $2, \'member\', \'editor\' WHERE NOT EXISTS (SELECT 1 FROM page_studio_site_memberships)', [clientId, siteId])
+      } finally {
+        await revoker.end()
+      }
+    }
+  })
+  it('withholds the old result when an agency site changes client during a read', async () => {
+    read.mockImplementationOnce(async () => {
+      const replacementClientId = randomUUID()
+      await client.query('INSERT INTO agency_clients VALUES ($1, TRUE)', [replacementClientId])
+      await client.query('UPDATE page_studio_sites SET client_id=$1', [replacementClientId])
+      await client.query('UPDATE page_studio_entitlements SET client_id=$1', [replacementClientId])
+      return null
+    })
+    await expect(run()).rejects.toMatchObject({ statusCode: 403 })
   })
   it('immediately denies a deactivated client', async () => {
     await client.query('UPDATE agency_clients SET is_active=FALSE')

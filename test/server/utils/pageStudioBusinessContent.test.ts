@@ -15,6 +15,50 @@ function setup(overrides = {}) {
 }
 
 describe('authenticated business content adapter', () => {
+  it.each([
+    { membership_role: null }, { site_status: 'suspended' },
+    { entitlement_effective: false }, { entitlement_status: 'cancelled' }
+  ])('withholds a completed read when authority changes during RPC: %j', async (change) => {
+    const { env, query, service } = setup()
+    service.readContent.mockImplementationOnce(async () => {
+      query.mockResolvedValue({ ...row, ...change })
+      return revision
+    })
+    await expect(readPageStudioBusinessContent({ actor, siteId, env }, { query })).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('withholds an empty read when the client is deactivated during RPC', async () => {
+    const { env, query, service } = setup()
+    service.readContent.mockImplementationOnce(async () => {
+      query.mockResolvedValue(null)
+      return null
+    })
+    await expect(readPageStudioBusinessContent({ actor, siteId, env }, { query })).rejects.toMatchObject({ statusCode: 404 })
+  })
+  it('returns current read-only permissions after an editor becomes a viewer during RPC', async () => {
+    const { env, query, service } = setup()
+    service.readContent.mockImplementationOnce(async () => {
+      query.mockResolvedValue({ ...row, membership_role: 'viewer' })
+      return revision
+    })
+    await expect(readPageStudioBusinessContent({ actor, siteId, env }, { query })).resolves.toMatchObject({ revision: 1, canEdit: false })
+  })
+  it('withholds old client content after a site is reassigned within the agency during RPC', async () => {
+    const { env, query, service } = setup()
+    service.readContent.mockImplementationOnce(async () => {
+      query.mockResolvedValue({ ...row, client_id: 'different_client' })
+      return revision
+    })
+    const agency = { role: 'agency' as const, actorId: 'staff', tenantId: row.tenant_id, canEdit: true }
+    await expect(readPageStudioBusinessContent({ actor: agency, siteId, env }, { query })).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('does not return content when the final authority query is unavailable', async () => {
+    const { env, query, service } = setup()
+    service.readContent.mockImplementationOnce(async () => {
+      query.mockRejectedValue(new Error('authority unavailable'))
+      return revision
+    })
+    await expect(readPageStudioBusinessContent({ actor, siteId, env }, { query })).rejects.toThrow('authority unavailable')
+  })
   it('derives scope and actor from trusted sources and submits expected revision', async () => {
     const { env, query, service } = setup()
     const result = await writePageStudioBusinessContent({ actor, siteId, env, body: { collections: [], expectedRevision: 0 } }, { query })
@@ -89,7 +133,7 @@ describe('authenticated provisioned content routing', () => {
     expect(s.router.readContent).toHaveBeenCalledWith(s.resolvedScope)
     expect(await writePageStudioBusinessContent({ actor, siteId, env: s.env, body: { collections: [], expectedRevision: 0 } }, { query: s.query })).toEqual(s.result)
     expect(s.router.writeContent).toHaveBeenCalledWith({ actorId: actor.actorId, content: s.resolvedContent, expectedRevision: 0 })
-    expect(s.query).toHaveBeenCalledTimes(2)
+    expect(s.query).toHaveBeenCalledTimes(3)
   })
 
   it('keeps editor, viewer and agency permissions ahead of all routing calls', async () => {

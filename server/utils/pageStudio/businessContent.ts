@@ -110,8 +110,14 @@ async function callService(operation: () => Promise<unknown>, writing = false) {
 }
 
 export async function readPageStudioBusinessContent(request: Request, dependencies: Dependencies = {}): Promise<PageStudioContentState & { canEdit: boolean }> {
-  const { scope, service, canEdit } = await authorise(request, false, dependencies)
+  const { scope, service } = await authorise(request, false, dependencies)
   const result = await callService(() => service.readContent(scope))
+  // A remote read may outlive membership, entitlement or site ownership changes.
+  const current = await authorise(request, false, dependencies)
+  if (!samePageStudioContentScope(scope, current.scope)) {
+    throw new PageStudioBusinessContentError('CONTENT_ACCESS_DENIED', 403, 'Business content access denied')
+  }
+  const { canEdit } = current
   return result === null ? { content: null, revision: 0, actorId: null, createdAt: null, canEdit } : { ...decode(result, scope), canEdit }
 }
 
