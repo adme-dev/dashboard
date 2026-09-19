@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import worker from '../../workers/page-studio-control/src/index'
@@ -190,4 +191,10 @@ describe('Page Studio control gateway Worker', () => {
     expect(redirected.status).toBe(502)
     expect(redirected.headers.get('location')).toBeNull()
   })
+})
+
+it('routes staging native callbacks through the public Pages front door', () => {
+  const config = JSON.parse(readFileSync('workers/page-studio-control/wrangler.jsonc', 'utf8'))
+  expect(config.env.staging.compatibility_flags).toEqual(['nodejs_compat', 'global_fetch_strictly_public'])
+  expect(config.compatibility_flags).toEqual(['nodejs_compat'])
 })
