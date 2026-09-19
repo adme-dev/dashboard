@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPageStudioSetupProposal } from '~~/server/utils/pageStudio/setupProposal'
 
-const mocks = vi.hoisted(() => ({ access: vi.fn(), queryOneFresh: vi.fn() }))
+const mocks = vi.hoisted(() => ({ access: vi.fn(), queryOneFresh: vi.fn(), resolveLogin: vi.fn(), bindLogin: vi.fn(), db: { query: vi.fn() } }))
 vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: mocks.access }))
-vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.queryOneFresh }))
+vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.queryOneFresh, transaction: (operation: (db: unknown) => Promise<unknown>) => operation(mocks.db) }))
+vi.mock('~~/server/utils/pageStudio/loginSessions', () => ({ resolvePageStudioLoginSession: mocks.resolveLogin, bindPageStudioLoginSession: mocks.bindLogin }))
 interface TestEvent { siteId?: string, body?: unknown }
 const globals = globalThis as typeof globalThis & {
   eventHandler: <T>(handler: T) => T
@@ -31,7 +32,9 @@ function event(body: unknown = { expectedRevision: 1 }) {
 
 describe('agency accepted setup dispatch', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
+    mocks.resolveLogin.mockResolvedValue({ role: 'agency', userId, tokenHash: 'a'.repeat(64) })
+    mocks.bindLogin.mockResolvedValue(undefined)
     mocks.access.mockResolvedValue({ tenantId: 'tenant-agency', user: { id: userId } })
     mocks.queryOneFresh.mockResolvedValue(row())
   })
@@ -45,6 +48,32 @@ describe('agency accepted setup dispatch', () => {
     expect(mocks.access).toHaveBeenCalledWith(e, 'PAGE_STUDIO_EDIT')
     expect(mocks.queryOneFresh.mock.calls[1][0]).toContain('JOIN team_members owner')
     expect(mocks.queryOneFresh.mock.invocationCallOrder[1]).toBeLessThan(e.binding.createProvisioning.mock.invocationCallOrder[0]!)
+  })
+  it('binds the actual native event and includes its digest only in the private job', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')
+    const e = event()
+    const result = await handler(e as never)
+    expect(mocks.resolveLogin).toHaveBeenCalledWith(mocks.db, e, 'agency', userId)
+    expect(mocks.bindLogin).toHaveBeenCalledWith(mocks.db, expect.objectContaining({ tokenHash: 'a'.repeat(64) }))
+    expect(e.binding.createProvisioning.mock.calls[0][0].actor.loginSessionHash).toBe('a'.repeat(64))
+    expect(JSON.stringify(result)).not.toContain('loginSessionHash')
+  })
+  it('denies an invalidated login before reading or creating a retained job', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')
+    mocks.resolveLogin.mockRejectedValueOnce(Object.assign(new Error('Signed out'), { statusCode: 401 }))
+    const e = event()
+    await expect(handler(e as never)).rejects.toMatchObject({ statusCode: 401 })
+    expect(e.binding.readProvisioning).not.toHaveBeenCalled()
+    expect(e.binding.createProvisioning).not.toHaveBeenCalled()
+  })
+  it('rechecks the original login on a same-user replay instead of adopting the new login', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')
+    const e = event()
+    await handler(e as never)
+    mocks.resolveLogin.mockResolvedValueOnce({ role: 'agency', userId, tokenHash: 'b'.repeat(64) })
+    mocks.queryOneFresh.mockResolvedValueOnce(row()).mockResolvedValueOnce(row()).mockResolvedValueOnce(null)
+    await expect(handler(e as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(e.binding.createProvisioning).toHaveBeenCalledOnce()
   })
   it('uses production scope when configured by the server', async () => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/provision.post')
@@ -88,7 +117,7 @@ describe('agency accepted setup dispatch', () => {
     const { createPageStudioProvisioningJob } = await import('~~/server/utils/pageStudio/provisioningBinding')
     const e = event()
     const candidate = createPageStudioProvisioningJob({
-      initiatingActorKind: 'agency-user', initiatingUserId: userId,
+      initiatingActorKind: 'agency-user', initiatingUserId: userId, initiatingLoginSessionHash: 'a'.repeat(64),
       requestKey: `page-studio-${siteId}-1`,
       scope: { tenantId: 'tenant-agency', clientId, businessId: clientId, siteId, environment: 'staging' },
       source: 'template', revision: 1, brief: null, plan, now: '2026-09-15T00:00:00.000Z'
@@ -97,7 +126,7 @@ describe('agency accepted setup dispatch', () => {
     const retained = { ...legacy, phase: 'resources-created' }
     e.binding.readProvisioning.mockResolvedValue(retained)
     const result = await handler(e as never)
-    expect(result.provisioning.job).toEqual(retained)
+    expect(result.provisioning.job).toEqual({ ...retained, actor: { kind: retained.actor!.kind, userId } })
     expect(result.provisioning.job).not.toHaveProperty('generationVersion')
     expect(e.binding.createProvisioning).not.toHaveBeenCalled()
   })

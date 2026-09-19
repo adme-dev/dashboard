@@ -13,9 +13,10 @@ const API_INVENTORY = {
   // Delegated permission gates do not register a God mode mutation bypass.
   // Draft history adds agency/portal GET and POST through scoped permission and
   // membership checks; no God mode bypass or mutation-family registration.
+  // CMS connection adds four delegated scoped routes (two POSTs), without a bypass.
   // Version comparison GET adds a scoped PAGE_STUDIO_APPROVE read; no bypass.
-  totalRouteFiles: 2122,
-  mutationRouteFiles: 1166,
+  totalRouteFiles: 2126,
+  mutationRouteFiles: 1168,
   explicitlyGuardedMutationFiles: 401,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -54,8 +55,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2122,
-      mutationRouteFiles: 1166,
+      totalRouteFiles: 2126,
+      mutationRouteFiles: 1168,
       explicitlyGuardedMutationFiles: 401,
       guardedMutationFilesWithTransactionCall: 47
     })

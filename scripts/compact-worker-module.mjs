@@ -200,6 +200,9 @@ export function compactPlatformImports(source) {
 const SQL_LITERAL_START = /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|ALTER|CREATE|DROP)\b/i
 
 function compactSqlWhitespace(value) {
+  // PostgreSQL concatenates quoted strings separated by a newline. Keep that
+  // lexical boundary unchanged (a conservative match may skip extra queries).
+  if (/['"]\s*\n\s*['"]|'\s*\n\s*$/.test(value)) return value
   let result = ''
   let quote = null
   let dollarQuote = null
@@ -271,6 +274,10 @@ function compactSqlWhitespace(value) {
     result += character
   }
 
+  // An interpolated template head may end inside a quoted SQL value.
+  // Its unknown continuation must retain the original lexical state and bytes.
+  if (quote || dollarQuote) return value
+
   // Boundary whitespace is significant: the minifier lowers
   // `\`… = $1 ${cond}\`` to `"… = $1 " + cond`, so trimming the literal's
   // trailing space glues the placeholder to the next token ("$1AND" — Postgres
@@ -298,7 +305,7 @@ export function compactSqlLiterals(source) {
       const head = node.head
       const raw = head.getText(sourceFile).slice(1, -2)
       if (SQL_LITERAL_START.test(head.text) && raw === head.text && !/[^\S \t\r\n]/.test(raw)
-        && !/[\\'"`]/.test(raw) && !/--|\/\*|\$([A-Za-z_][A-Za-z0-9_]*)?\$/.test(raw)) {
+        && !/[\\`]/.test(raw) && !/--|\/\*|\$([A-Za-z_][A-Za-z0-9_]*)?\$/.test(raw)) {
         const compacted = compactSqlWhitespace(raw)
         if (compacted !== raw) {
           replacements.push({
@@ -712,9 +719,11 @@ function rewriteMappedModuleSpecifiers(source, sourcePath, destinationPath, modu
 
 export async function compactWorkerModuleFilenames(directory) {
   const chunksDirectory = path.join(directory, 'chunks')
+  const compactDirectory = path.join(chunksDirectory, 'm')
   const modulePaths = (await collectFiles(
     chunksDirectory,
     filePath => filePath.endsWith('.mjs')
+      || (path.dirname(filePath) === compactDirectory && filePath.endsWith('.js'))
   )).sort((left, right) => {
     const leftPath = path.relative(chunksDirectory, left)
     const rightPath = path.relative(chunksDirectory, right)
@@ -724,8 +733,7 @@ export async function compactWorkerModuleFilenames(directory) {
     return { renamedFiles: 0, rewrittenFiles: 0, savedSpecifierBytes: 0 }
   }
 
-  const compactDirectory = path.join(chunksDirectory, 'm')
-  const compactNamePattern = /^[0-9a-z]+\.mjs$/
+  const compactNamePattern = /^[0-9a-z]+\.m?js$/
   const isAlreadyCompact = modulePaths.every(modulePath => (
     path.dirname(modulePath) === compactDirectory
     && compactNamePattern.test(path.basename(modulePath))
@@ -740,20 +748,36 @@ export async function compactWorkerModuleFilenames(directory) {
   }
 
   await mkdir(compactDirectory, { recursive: true })
-  const moduleMap = new Map(modulePaths.map((modulePath, index) => [
-    modulePath,
-    path.join(compactDirectory, `${index.toString(36)}.mjs`)
-  ]))
   const sourcePaths = (await collectFiles(
     directory,
     filePath => filePath.endsWith('.js') || filePath.endsWith('.mjs')
   )).sort()
+  const sources = new Map()
+  const referenceCounts = new Map(modulePaths.map(modulePath => [modulePath, 0]))
+  for (const sourcePath of sourcePaths) {
+    const source = await readFile(sourcePath, 'utf8')
+    sources.set(sourcePath, source)
+    for (const entry of parse(source)[0]) {
+      if (!entry.n?.startsWith('.')) continue
+      const target = path.resolve(path.dirname(sourcePath), entry.n.split(/[?#]/, 1)[0])
+      if (referenceCounts.has(target)) referenceCounts.set(target, referenceCounts.get(target) + 1)
+    }
+  }
+  // Short names save most when assigned to modules imported by many chunks.
+  // Stable sorting retains the original path order for equal reference counts.
+  modulePaths.sort((left, right) => referenceCounts.get(right) - referenceCounts.get(left))
+  const moduleMap = new Map(modulePaths.map((modulePath, index) => [
+    modulePath,
+    // Pages' Worker-directory loader classifies both .js and .mjs as ESModule.
+    // Save one byte per import without changing the module payload or format.
+    path.join(compactDirectory, `${index.toString(36)}.js`)
+  ]))
   const rewrittenSources = new Map()
   let rewrittenFiles = 0
   let savedSpecifierBytes = 0
 
   for (const sourcePath of sourcePaths) {
-    const source = await readFile(sourcePath, 'utf8')
+    const source = sources.get(sourcePath)
     const destinationPath = moduleMap.get(sourcePath) || sourcePath
     const rewritten = rewriteMappedModuleSpecifiers(
       source,
@@ -773,7 +797,7 @@ export async function compactWorkerModuleFilenames(directory) {
   }
   for (const sourcePath of sourcePaths) {
     if (moduleMap.has(sourcePath)) continue
-    const source = await readFile(sourcePath, 'utf8')
+    const source = sources.get(sourcePath)
     const rewritten = rewrittenSources.get(sourcePath)
     if (rewritten !== source) await atomicWriteFile(sourcePath, rewritten)
   }

@@ -6,6 +6,7 @@ const owner = '33333333-3333-4333-8333-333333333333'
 const other = '44444444-4444-4444-8444-444444444444'
 const input = () => ({
   initiatingUserId: owner,
+  initiatingLoginSessionHash: 'a'.repeat(64),
   requestKey: 'page-studio-site_one-1',
   scope: { tenantId: 't1', clientId: 'c1', businessId: 'c1', siteId: 'site_one', environment: 'staging' as const },
   now: '2026-09-09T00:00:00.000Z', revision: 1, source: 'template' as const,
@@ -39,10 +40,25 @@ function coordinator() {
 }
 
 describe('authenticated provisioning actor', () => {
+  it('retains the initiating login through retries from another login of the same user', async () => {
+    const s = coordinator()
+    const first = await dispatchPageStudioProvisioning(s.binding, { ...input(), initiatingLoginSessionHash: 'a'.repeat(64) })
+    expect(first.actor).toHaveProperty('loginSessionHash', 'a'.repeat(64))
+    const retry = await dispatchPageStudioProvisioning(s.binding, { ...input(), initiatingLoginSessionHash: 'b'.repeat(64) })
+    expect(retry.actor).toEqual(first.actor)
+    expect(s.binding.createProvisioning).toHaveBeenCalledOnce()
+  })
+
+  it('refuses new jobs without an originating login', async () => {
+    const s = coordinator()
+    await expect(dispatchPageStudioProvisioning(s.binding, { ...input(), initiatingLoginSessionHash: undefined } as never)).rejects.toMatchObject({ statusCode: 422 })
+    expect(s.binding.createProvisioning).not.toHaveBeenCalled()
+  })
+
   it('derives the new actor from the trusted caller and preserves it for another editor retry', async () => {
     const s = coordinator()
     const first = await dispatchPageStudioProvisioning(s.binding, input())
-    expect(first.actor).toEqual({ kind: 'client-user', userId: owner })
+    expect(first.actor).toEqual({ kind: 'client-user', userId: owner, loginSessionHash: 'a'.repeat(64) })
     expect(first.generationVersion).toBe(2)
     s.set({ ...first, phase: 'resources-created' })
     const replay = await dispatchPageStudioProvisioning(s.binding, { ...input(), initiatingUserId: other })
@@ -55,7 +71,7 @@ describe('authenticated provisioning actor', () => {
     const s = coordinator()
     const agency = { ...input(), initiatingActorKind: 'agency-user' as const }
     const first = await dispatchPageStudioProvisioning(s.binding, agency)
-    expect(first.actor).toEqual({ kind: 'agency-user', userId: owner })
+    expect(first.actor).toEqual({ kind: 'agency-user', userId: owner, loginSessionHash: 'a'.repeat(64) })
     const replay = await dispatchPageStudioProvisioning(s.binding, { ...agency, initiatingUserId: other })
     expect(replay.actor).toEqual(first.actor)
     await expect(dispatchPageStudioProvisioning(s.binding, input())).rejects.toMatchObject({ code: 'PROVISIONER_FAILED' })
@@ -93,6 +109,15 @@ describe('authenticated provisioning actor', () => {
     expect(s.binding.createProvisioning).toHaveBeenCalledOnce()
   })
 
+  it('reads a historical owner without adopting the retry caller login', async () => {
+    const s = coordinator()
+    const first = await dispatchPageStudioProvisioning(s.binding, input())
+    s.set({ ...first, actor: { kind: first.actor.kind, userId: first.actor.userId } })
+    await expect(dispatchPageStudioProvisioning(s.binding, input())).rejects.toMatchObject({ code: 'PROVISIONING_OWNER_REQUIRED', statusCode: 409 })
+    expect(s.stored()?.actor).not.toHaveProperty('loginSessionHash')
+    expect(s.binding.createProvisioning).toHaveBeenCalledOnce()
+  })
+
   it('rejects an invalid initiating identity before any service access', async () => {
     const s = coordinator()
     await expect(dispatchPageStudioProvisioning(s.binding, { ...input(), initiatingUserId: 'untrusted' })).rejects.toMatchObject({ statusCode: 422 })
@@ -100,12 +125,13 @@ describe('authenticated provisioning actor', () => {
     expect(s.binding.createProvisioning).not.toHaveBeenCalled()
   })
 
-  it.each(['id', 'actor', 'plan', 'setup', 'resources', 'scope', 'generationVersion', 'unknown'])('rejects a malformed or mismatched %s acknowledgement', async (field) => {
+  it.each(['id', 'actor', 'login', 'plan', 'setup', 'resources', 'scope', 'generationVersion', 'unknown'])('rejects a malformed or mismatched %s acknowledgement', async (field) => {
     const s = coordinator()
     s.binding.createProvisioning.mockImplementationOnce(async (input) => {
       const job = input as Job
       if (field === 'id') return { ...job, id: 'foreign' }
-      if (field === 'actor') return { ...job, actor: { kind: 'client-user', userId: other } }
+      if (field === 'actor') return { ...job, actor: { ...job.actor, userId: other } }
+      if (field === 'login') return { ...job, actor: { ...job.actor, loginSessionHash: 'b'.repeat(64) } }
       if (field === 'plan') return { ...job, plan: { ...job.plan, scope: { ...job.scope, tenantId: 'foreign' } } }
       if (field === 'setup') return { ...job, setup: { ...job.setup, proposalRevision: 2 } }
       if (field === 'resources') return { ...job, resources: {} }

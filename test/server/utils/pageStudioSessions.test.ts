@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   issuePageStudioSession,
   authorizePageStudioSession,
-  assertPageStudioSessionActive,
   MAX_PAGE_STUDIO_SESSION_LIFETIME_SECONDS,
   PAGE_STUDIO_SESSION_AUDIENCE,
   PAGE_STUDIO_SESSION_TOKEN_TYPE,
@@ -46,6 +45,7 @@ function claims(overrides: Partial<PageStudioSessionClaims> = {}): PageStudioSes
 
 function database(row: Record<string, unknown> | undefined) {
   const query = vi.fn(async (sql: string, _params: unknown[] = []) => {
+    if (sql.includes('INSERT INTO page_studio_login_sessions')) return { rows: [{ token_hash: 'a'.repeat(64) }] }
     if (sql.includes('FROM page_studio_sites')) return { rows: row ? [row] : [] }
     return { rows: [] }
   })
@@ -81,20 +81,6 @@ describe('Page Studio editor sessions', () => {
         userId: ACTOR_ID
       }
     })).toThrow(/not authorized/)
-  })
-
-  it('rejects a session that is missing, revoked, or changed in the session store', async () => {
-    const session = claims({ capabilities: ['workspace:checkpoint', 'model:invoke'] })
-    const queryOne = vi.fn(async () => null)
-
-    await expect(assertPageStudioSessionActive(session, queryOne)).rejects.toMatchObject({
-      code: 'SESSION_TOKEN_INVALID',
-      statusCode: 403
-    })
-    expect(queryOne).toHaveBeenCalledWith(
-      expect.stringContaining('revoked_at IS NULL'),
-      expect.arrayContaining([session.nonce, session.tenantId, session.userId])
-    )
   })
 
   it('signs the exact Page Studio ES256 token contract', async () => {
@@ -169,6 +155,7 @@ describe('Page Studio editor sessions', () => {
       siteId: SITE_ID,
       tenantId: 'tenant-alpha'
     }, {
+      loginSession: { role: 'agency', userId: ACTOR_ID, tokenHash: 'a'.repeat(64), issuedAt: new Date(0), expiresAt: new Date(2000000) },
       now: () => 1_000,
       nonce: () => '44444444-4444-4444-8444-444444444444',
       runTransaction: db.runTransaction,
@@ -214,6 +201,7 @@ describe('Page Studio editor sessions', () => {
       clientId: CLIENT_ID,
       siteId: SITE_ID
     }, {
+      loginSession: { role: 'client', userId: ACTOR_ID, tokenHash: 'b'.repeat(64), issuedAt: new Date(0), expiresAt: new Date(2000000) },
       now: () => 1_000,
       nonce: () => '55555555-5555-4555-8555-555555555555',
       runTransaction: db.runTransaction,

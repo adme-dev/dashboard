@@ -11,6 +11,7 @@ import { PageStudioPublishingError } from '~~/server/utils/pageStudio/publishing
 import { PageStudioBuildError } from '~~/server/utils/pageStudio/builds'
 import { PageStudioDocumentError } from '~~/server/utils/pageStudio/documents'
 import { PageStudioSessionError } from '~~/server/utils/pageStudio/sessions'
+import { PageStudioSessionAuthorityError } from '~~/server/utils/pageStudio/sessionAuthority'
 import { PageStudioSiteOperationError } from '~~/server/utils/pageStudio/siteOperations'
 
 interface StablePageStudioError {
@@ -44,6 +45,7 @@ export function projectPageStudioInternalError(error: unknown): {
     || error instanceof PageStudioPublishingError
     || error instanceof PageStudioDocumentError
     || error instanceof PageStudioSessionError
+    || error instanceof PageStudioSessionAuthorityError
     || error instanceof PageStudioSiteOperationError
     || error instanceof PageStudioSiteError
     || error instanceof PageStudioVersionError) {
@@ -101,6 +103,7 @@ export function pageStudioHttpError(error: unknown): never {
     || error instanceof PageStudioPublishingError
     || error instanceof PageStudioDocumentError
     || error instanceof PageStudioSessionError
+    || error instanceof PageStudioSessionAuthorityError
     || error instanceof PageStudioSiteOperationError
     || error instanceof PageStudioSiteError
     || error instanceof PageStudioVersionError) {

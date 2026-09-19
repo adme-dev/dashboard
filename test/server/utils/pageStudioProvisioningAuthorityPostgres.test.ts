@@ -32,11 +32,13 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
     // coverage lives in pageStudioControlPlaneMigrationPostgres.test.ts.
     await client.query(`
       CREATE TYPE user_role AS ENUM ('owner', 'admin', 'sales', 'member', 'viewer', 'guest');
-      CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN, user_role user_role, custom_role_id UUID);
+      CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN, user_role user_role, custom_role_id UUID, sessions_invalidated_at TIMESTAMPTZ);
       CREATE TABLE custom_roles (id UUID PRIMARY KEY, slug TEXT, is_system BOOLEAN, is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups (role_id UUID, permission_group TEXT);
       CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN);
       CREATE TABLE client_users (id UUID PRIMARY KEY, client_id UUID, status TEXT, role TEXT);
+      CREATE TABLE page_studio_login_sessions (role TEXT, token_hash TEXT, user_id TEXT, issued_at TIMESTAMPTZ, expires_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ);
+      CREATE TABLE client_sessions (token_hash TEXT, client_user_id UUID, expires_at TIMESTAMPTZ);
       CREATE TABLE page_studio_sites (id UUID PRIMARY KEY, tenant_id TEXT, client_id UUID, entitlement_id UUID, status TEXT);
       CREATE TABLE page_studio_site_memberships (tenant_id TEXT, client_id UUID, site_id UUID, user_id UUID, role TEXT);
       CREATE TABLE page_studio_entitlements (id UUID PRIMARY KEY, tenant_id TEXT, client_id UUID, status TEXT,
@@ -45,7 +47,7 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
       CREATE TABLE page_studio_setup_proposals (tenant_id TEXT, client_id UUID, site_id UUID,
         revision INTEGER, status TEXT, source TEXT, brief TEXT, plan JSONB);
     `)
-    await client.query('INSERT INTO team_members VALUES ($1, TRUE, \'owner\', NULL)', [userId])
+    await client.query('INSERT INTO team_members VALUES ($1, TRUE, \'owner\', NULL, NULL)', [userId])
     await client.query('INSERT INTO custom_roles VALUES (\'60000000-0000-4000-8000-000000000201\', \'owner\', TRUE, FALSE), (\'60000000-0000-4000-8000-000000000202\', \'limited\', FALSE, FALSE)')
     await client.query('INSERT INTO role_permission_groups VALUES (\'60000000-0000-4000-8000-000000000201\', \'PAGE_STUDIO_EDIT\')')
     await client.query('INSERT INTO agency_clients VALUES ($1, TRUE)', [scope.clientId])
@@ -54,12 +56,14 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
     await client.query('INSERT INTO page_studio_site_memberships VALUES ($1, $2, $3, $4, \'editor\')', [scope.tenantId, scope.clientId, scope.siteId, userId])
     await client.query('INSERT INTO page_studio_entitlements VALUES ($1, $2, $3, \'trial\', TRUE, NOW() - INTERVAL \'1 hour\', NULL, 10, $4, 1)', [entitlementId, scope.tenantId, scope.clientId, { allowedModules: plan.modules }])
     await client.query('INSERT INTO page_studio_setup_proposals VALUES ($1, $2, $3, 1, \'accepted\', \'template\', NULL, $4)', [scope.tenantId, scope.clientId, scope.siteId, plan])
+    await client.query('INSERT INTO page_studio_login_sessions SELECT role, $1, $2, NOW() - INTERVAL \'1 hour\', NOW() + INTERVAL \'1 hour\', NULL FROM unnest(ARRAY[\'agency\',\'client\']) role', ['a'.repeat(64), userId])
+    await client.query('INSERT INTO client_sessions VALUES ($1,$2,NOW() + INTERVAL \'1 hour\')', ['a'.repeat(64), userId])
     reads.fresh.mockImplementation(async (sql, values) => (await client.query(sql, values)).rows[0] ?? null)
-    saved = await dispatchPageStudioProvisioning({ readProvisioning: async () => null, createProvisioning: async value => value }, { ...request, initiatingUserId: userId, plan, revision: 1, source: 'template', now: '2026-09-09T00:00:00.000Z' })
+    saved = await dispatchPageStudioProvisioning({ readProvisioning: async () => null, createProvisioning: async value => value }, { ...request, initiatingUserId: userId, initiatingLoginSessionHash: 'a'.repeat(64), plan, revision: 1, source: 'template', now: '2026-09-09T00:00:00.000Z' })
   })
   beforeEach(async () => {
     await client.query('BEGIN')
-    saved = { ...saved, actor: { kind: 'client-user', userId } }
+    saved = { ...saved, actor: { kind: 'client-user', userId, loginSessionHash: 'a'.repeat(64) } }
   })
   afterEach(async () => {
     await client.query('ROLLBACK')
@@ -74,7 +78,7 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
   })
 
   it('allows agency provisioning without a portal owner and honors custom-role permission changes', async () => {
-    saved = { ...saved, actor: { kind: 'agency-user', userId } }
+    saved = { ...saved, actor: { kind: 'agency-user', userId, loginSessionHash: 'a'.repeat(64) } }
     await client.query('DELETE FROM client_users')
     await client.query('DELETE FROM page_studio_site_memberships')
     await client.query('UPDATE page_studio_entitlements SET portal_creation_enabled=FALSE')
@@ -101,7 +105,7 @@ describe.runIf(Boolean(databaseUrl))('provisioning authority on disposable Postg
     'UPDATE page_studio_entitlements SET effective_until=NOW() - INTERVAL \'1 second\'',
     'UPDATE page_studio_setup_proposals SET status=\'rejected\''
   ])('revokes an agency job immediately after %s', async (mutation) => {
-    saved = { ...saved, actor: { kind: 'agency-user', userId } }
+    saved = { ...saved, actor: { kind: 'agency-user', userId, loginSessionHash: 'a'.repeat(64) } }
     await expect(authorize()).resolves.toMatchObject({ userId })
     await client.query(mutation)
     await expect(authorize()).rejects.toMatchObject({ code: 'PROVISIONING_AUTHORITY_DENIED' })

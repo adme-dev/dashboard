@@ -199,8 +199,8 @@ const features: Record<string, Feature> = {
         content: 'The delivery architecture uses Cloudflare Workers and Pages for build, sandbox, control and delivery services. Agency staff and eligible customer administrators or managers with website editing access can connect a domain and check separate ownership and HTTPS certificate verification records, plus the configured website DNS target. Portal viewers can read the connection instructions. Activation requires matching DNS, verified hostname ownership and an active certificate. Connecting a website preserves existing email records; customer email setup and domain cutover remain separate rollout steps.'
       },
       {
-        title: 'Business Content Where Connected',
-        content: 'Manage website collections such as services, fleet and testimonials from the agency workspace or client portal once content storage is connected. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release.'
+        title: 'Website CMS and Collections',
+        content: 'Connect CMS storage to an existing website from its agency workspace or client admin, preserving saved pages and website history. Manage collections such as services, fleet and testimonials for the selected website. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release.'
       },
       {
         title: 'Website Form Submissions',

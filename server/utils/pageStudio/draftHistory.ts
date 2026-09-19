@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { createError, type H3Event } from 'h3'
+import { lockPageStudioHistoryAuthority } from './historyAuthority'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { commitPageStudioCheckpoint, registerPageStudioVersion, type PageStudioControlQueryClient, type PageStudioControlScope } from '~~/server/utils/pageStudio/controlStore'
@@ -21,6 +23,7 @@ interface Request {
   actor: PageStudioContentActor
   siteId: string
   bucket?: Bucket
+  event?: H3Event
 }
 interface SiteRow {
   tenant_id: string
@@ -58,7 +61,7 @@ async function authorise(db: PageStudioControlQueryClient, request: Request, wri
     JOIN page_studio_entitlements entitlement ON entitlement.tenant_id = site.tenant_id
       AND entitlement.client_id = site.client_id AND entitlement.id = site.entitlement_id
     WHERE site.${client ? 'client_id' : 'tenant_id'} = $1 AND site.id = $2
-    ${writing ? 'FOR UPDATE OF site' : 'FOR SHARE OF site'} FOR SHARE OF entitlement, client`, [client ? actor.clientId : actor.tenantId, siteId])
+    ${writing ? 'FOR NO KEY UPDATE OF site' : 'FOR SHARE OF site'} FOR SHARE OF entitlement, client`, [client ? actor.clientId : actor.tenantId, siteId])
   const site = result.rows[0]
   if (!site)
     throw new PageStudioHistoryError('SITE_NOT_FOUND', 404, 'Website not found')
@@ -127,9 +130,11 @@ export async function mutatePageStudioHistory(request: Request & {
   const parsed = PageStudioHistoryMutationSchema.safeParse(request.body)
   if (!parsed.success)
     throw invalid()
+  if (!request.event) throw createError({ statusCode: 401, statusMessage: 'Sign in again before changing draft history' })
   const body = parsed.data
   return (dependencies.runTransaction ?? defaultTransaction)(async (db) => {
     const { site, scope } = await authorise(db, request, true)
+    const recheckAuthority = await lockPageStudioHistoryAuthority(db, request.event!, request.actor, scope)
     const args = [scope.tenantId, scope.clientId, scope.siteId]
     const operationKey = `history:${request.actor.role}:${request.actor.actorId}:${body.requestId}`
     const existing = await db.query<{
@@ -147,6 +152,7 @@ export async function mutatePageStudioHistory(request: Request & {
       const original = PageStudioHistoryMutationSchema.safeParse(receipt.request)
       if (!original.success || JSON.stringify(original.data) !== JSON.stringify(body))
         throw conflict()
+      await recheckAuthority()
       return { checkpointId: receipt.checkpointId, ...(receipt.versionId ? { versionId: receipt.versionId } : {}),
         currentCheckpointId: site.current_checkpoint_id, isCurrent: site.current_checkpoint_id === receipt.checkpointId && (!receipt.versionId || site.current_version_id === receipt.versionId) }
     }
@@ -202,6 +208,7 @@ export async function mutatePageStudioHistory(request: Request & {
       (tenant_id, client_id, site_id, actor_id, actor_role, action, resource_type, resource_id, idempotency_key, metadata)
       VALUES ($1,$2,$3,$4,$5,'draft.history.saved',$6,$7,$8,$9::jsonb)`, [...args, request.actor.actorId, request.actor.role, versionId ? 'version' : 'checkpoint', versionId ?? checkpointId,
       operationKey, JSON.stringify({ request: body, checkpointId, ...(versionId ? { versionId } : {}) })])
+    await recheckAuthority()
     return { checkpointId, ...(versionId ? { versionId } : {}), currentCheckpointId: checkpointId, isCurrent: true }
   })
 }

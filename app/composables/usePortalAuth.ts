@@ -43,6 +43,7 @@ interface PortalAuthMeResponse {
 }
 
 export function usePortalAuth() {
+  const toast = useToast()
   const user = useState<ClientUser | null>('portal-user', () => null)
   const stats = useState<PortalStats | null>('portal-stats', () => null)
   const isAuthenticated = computed(() => !!user.value)
@@ -68,8 +69,9 @@ export function usePortalAuth() {
   async function logout() {
     try {
       await apiFetch('/api/portal/auth/logout', { method: 'POST' })
-    } catch {
-      // Clear local portal state even if the server session has already expired.
+    } catch (error) {
+      toast.add({ title: 'Sign out failed', description: 'Please try again to finish signing out.', color: 'error' })
+      throw error
     }
     user.value = null
     stats.value = null

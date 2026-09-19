@@ -7,6 +7,12 @@ const siteId = computed(() => String(route.params.siteId || ''))
 
 <template>
   <div class="h-full min-h-0 min-w-0 w-full overflow-y-auto p-4 sm:p-6">
+    <PageStudioContentConnection
+      :key="siteId"
+      audience="portal"
+      :site-id="siteId"
+      @connected="refreshNuxtData(`page-studio-content:portal:${siteId}`)"
+    />
     <PageStudioBusinessContentWorkspace :key="siteId" audience="portal" :site-id="siteId" />
   </div>
 </template>

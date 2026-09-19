@@ -36,7 +36,8 @@ describe('draft history HTTP authentication and body boundary', () => {
       ? { role: 'agency', actorId: 'staff_test', tenantId: 'tenant_test', canEdit: true }
       : { role: 'client', actorId: 'portal_test', clientId: 'client_test' }
     expect(mocks.read).toHaveBeenCalledWith(expect.objectContaining({ actor: expected, siteId }))
-    expect(mocks.write).toHaveBeenCalledWith(expect.objectContaining({ actor: expected, siteId, body }))
+    expect(mocks.write).toHaveBeenCalledWith(expect.objectContaining({ actor: expected, siteId, body,
+      event: mocks[audience].mock.calls.at(-1)![0] }))
     if (audience === 'agency') {
       expect(mocks.agency.mock.calls.map(call => call[1])).toEqual(['PAGE_STUDIO_VIEW', 'PAGE_STUDIO_EDIT', 'PAGE_STUDIO_EDIT'])
     }

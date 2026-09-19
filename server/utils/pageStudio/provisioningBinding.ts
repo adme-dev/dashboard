@@ -56,7 +56,7 @@ const SetupSnapshot = z.object({
   if (setup.source === 'chat' && !setup.brief) context.addIssue({ code: 'custom', path: ['brief'], message: 'Chat setup requires the accepted brief' })
 })
 
-const Actor = z.object({ kind: z.enum(['client-user', 'agency-user']), userId: z.string().uuid() }).strict()
+const Actor = z.object({ kind: z.enum(['client-user', 'agency-user']), userId: z.string().uuid(), loginSessionHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict()
 const ContentId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/)
 const Scope = z.object({
   businessId: ContentId, clientId: ContentId, tenantId: ContentId,
@@ -93,7 +93,7 @@ function matchingJob(result: unknown, expected: z.infer<typeof JobSnapshot>, sou
     || JSON.stringify(parsed.data.setup) !== JSON.stringify(expected.setup)) {
     throw new PageStudioProvisioningError('PROVISIONER_FAILED', 'Provisioning service returned a mismatched job, scope or setup context')
   }
-  if (!parsed.data.actor) throw new PageStudioProvisioningError('PROVISIONING_OWNER_REQUIRED', 'This setup has no initiating owner and requires reconciliation', 409)
+  if (!parsed.data.actor?.loginSessionHash) throw new PageStudioProvisioningError('PROVISIONING_OWNER_REQUIRED', 'This setup has no originating login and requires reconciliation', 409)
   if (parsed.data.actor.kind !== expected.actor?.kind) {
     throw new PageStudioProvisioningError('PROVISIONER_FAILED', 'Provisioning request belongs to a different actor kind')
   }
@@ -119,6 +119,7 @@ export function normalizePageStudioProvisioningPlan(input: unknown, scope: PageS
 
 export interface PageStudioProvisioningDispatchInput {
   initiatingUserId: string
+  initiatingLoginSessionHash: string
   initiatingActorKind?: 'client-user' | 'agency-user'
   requestKey: string
   scope: PageStudioProvisioningScope
@@ -130,12 +131,13 @@ export interface PageStudioProvisioningDispatchInput {
 }
 
 export function createPageStudioProvisioningJob(input: PageStudioProvisioningDispatchInput) {
+  if (!Actor.shape.loginSessionHash.unwrap().safeParse(input.initiatingLoginSessionHash).success) throw new PageStudioProvisioningError('INVALID_PROVISIONING_PLAN', 'An originating login is required', 422)
   const plan = normalizePageStudioProvisioningPlan(input.plan, input.scope)
   const parsedSetup = SetupSnapshot.safeParse({ businessName: input.plan.businessName, proposalRevision: input.revision, source: input.source, ...(input.brief == null ? {} : { brief: input.brief }) })
   if (!parsedSetup.success) throw new PageStudioProvisioningError('INVALID_PROVISIONING_PLAN', 'The accepted setup proposal is missing a valid business name, revision or brief', 422)
   const id = input.requestKey.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 128)
   const candidate = JobSnapshot.safeParse({
-    actor: { kind: input.initiatingActorKind ?? 'client-user', userId: input.initiatingUserId },
+    actor: { kind: input.initiatingActorKind ?? 'client-user', userId: input.initiatingUserId, loginSessionHash: input.initiatingLoginSessionHash },
     id,
     requestKey: input.requestKey,
     generationVersion: 2,
@@ -173,7 +175,7 @@ export async function dispatchPageStudioProvisioning(
       throw error
     }
     const saved = matchingJob(result, candidate, 'created')
-    if (saved.actor.userId !== input.initiatingUserId) throw new Error('Provisioning service returned a mismatched initiating actor')
+    if (saved.actor.userId !== input.initiatingUserId || saved.actor.loginSessionHash !== input.initiatingLoginSessionHash) throw new Error('Provisioning service returned a mismatched initiating actor')
     return saved
   } catch (error) {
     if (error instanceof PageStudioProvisioningError) throw error

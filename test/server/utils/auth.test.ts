@@ -147,6 +147,15 @@ beforeEach(() => {
   })
 })
 
+describe('independent login credentials', () => {
+  it('gives two logins in the same millisecond distinct credentials', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1800000000000)
+    try {
+      expect(await createJwt({ userId: 'same-user' })).not.toEqual(await createJwt({ userId: 'same-user' }))
+    } finally { clock.mockRestore() }
+  })
+})
+
 describe('auth utility', () => {
   // ── Password hashing (bcrypt) ───────────────────────────────────────────
   describe('hashPassword / verifyPassword', () => {

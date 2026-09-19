@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   recordPageStudioAuditEvent: vi.fn(),
   recordPageStudioCheckpoint: vi.fn(),
   commitPageStudioCheckpoint: vi.fn(),
+  commitPageStudioEditorCheckpoint: vi.fn(),
   registerPageStudioVersion: vi.fn(),
   submitPageStudioVersionForReview: vi.fn(),
   requirePageStudioMachineAuth: vi.fn(),
@@ -26,8 +27,10 @@ vi.mock('~~/server/utils/pageStudio/sessions', () => ({
   resolvePageStudioSessionEnvironment: () => ({ issuer: 'https://app.xeroflow.io' }),
   resolvePageStudioSessionPublicKey: () => 'public-key',
   verifyPageStudioSessionToken: (...args: unknown[]) => mocks.verifySession(...args),
-  authorizePageStudioSession: (...args: unknown[]) => mocks.authorizeSession(...args),
-  assertPageStudioSessionActive: (...args: unknown[]) => mocks.assertSessionActive(...args)
+  authorizePageStudioSession: (...args: unknown[]) => mocks.authorizeSession(...args)
+}))
+vi.mock('~~/server/utils/pageStudio/sessionAuthority', () => ({
+  assertPageStudioSessionAuthority: (...args: unknown[]) => mocks.assertSessionActive(...args)
 }))
 vi.mock('~~/server/utils/pageStudio/machineAuth', () => ({
   requirePageStudioMachineAuth: (...args: unknown[]) => mocks.requirePageStudioMachineAuth(...args)
@@ -38,6 +41,7 @@ vi.mock('~~/server/utils/pageStudio/controlStore', () => ({
   recordPageStudioAuditEvent: (...args: unknown[]) => mocks.recordPageStudioAuditEvent(...args),
   recordPageStudioCheckpoint: (...args: unknown[]) => mocks.recordPageStudioCheckpoint(...args),
   commitPageStudioCheckpoint: (...args: unknown[]) => mocks.commitPageStudioCheckpoint(...args),
+  commitPageStudioEditorCheckpoint: (...args: unknown[]) => mocks.commitPageStudioEditorCheckpoint(...args),
   registerPageStudioVersion: (...args: unknown[]) => mocks.registerPageStudioVersion(...args),
   submitPageStudioVersionForReview: (...args: unknown[]) => mocks.submitPageStudioVersionForReview(...args),
   PageStudioControlError: class PageStudioControlError extends Error {}
@@ -160,13 +164,13 @@ describe('Page Studio internal control endpoints', () => {
     expect(event.responseStatus).toBe(201)
     expect(mocks.verifySession).toHaveBeenCalledWith('signed-session', 'public-key', 'https://app.xeroflow.io')
     expect(mocks.authorizeSession).toHaveBeenCalledWith({ nonce: 'test-session' }, body)
-    expect(mocks.assertSessionActive).toHaveBeenCalledWith({ nonce: 'test-session' }, expect.any(Function))
+    expect(mocks.assertSessionActive).toHaveBeenCalledWith({ nonce: 'test-session' }, 'model:invoke')
     expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
-    expect(mocks.acceptPageStudioAiProposal).toHaveBeenCalledWith({ ...body, idempotencyKey: 'accept_proposal_endpoint' })
+    expect(mocks.acceptPageStudioAiProposal).toHaveBeenCalledWith({ ...body, idempotencyKey: 'accept_proposal_endpoint' }, { session: { nonce: 'test-session' } })
     expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
   })
 
-  it.each(['missing', 'invalid', 'foreign', 'revoked'])('rejects %s editor authority before AI acceptance writes', async (kind) => {
+  it.each(['missing', 'invalid', 'foreign', 'revoked', 'login-ended', 'authority-unavailable'])('rejects %s editor authority before AI acceptance writes', async (kind) => {
     const { default: handler } = await import('~~/server/routes/internal/page-studio/ai-proposals/accept.post')
     const body = { authorRole: 'agency', baseDigest: 'b'.repeat(64), checkpoint,
       expectedCheckpointId: 'checkpoint_original_base', summary: 'Apply the approved proposal' }
@@ -179,10 +183,41 @@ describe('Page Studio internal control endpoints', () => {
     if (kind === 'foreign') mocks.authorizeSession.mockImplementationOnce(() => {
       throw denied
     })
-    if (kind === 'revoked') mocks.assertSessionActive.mockRejectedValueOnce(denied)
+    if (['revoked', 'login-ended'].includes(kind)) mocks.assertSessionActive.mockRejectedValueOnce(denied)
+    if (kind === 'authority-unavailable') mocks.assertSessionActive.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { statusCode: 503 }))
     await handler(event as never)
-    expect(event.responseStatus).toBe(kind === 'missing' ? 401 : 403)
+    expect(event.responseStatus).toBe(kind === 'missing' ? 401 : kind === 'authority-unavailable' ? 503 : 403)
     expect(mocks.acceptPageStudioAiProposal).not.toHaveBeenCalled()
+  })
+
+  it.each(['valid', 'missing', 'invalid', 'foreign', 'revoked', 'unavailable'])('checks %s editor authority on the editor checkpoint endpoint', async (kind) => {
+    const { default: handler } = await import('~~/server/routes/internal/page-studio/checkpoints/editor-commit.post')
+    const body = { checkpoint, expectedCheckpointId: 'checkpoint_base' }
+    const session = { nonce: 'test-session', role: 'client' }
+    mocks.verifySession.mockResolvedValue(session)
+    const denied = Object.assign(new Error('denied'), { statusCode: 403 })
+    if (kind === 'invalid') mocks.verifySession.mockRejectedValueOnce(denied)
+    if (kind === 'foreign') mocks.authorizeSession.mockImplementationOnce(() => {
+      throw denied
+    })
+    if (kind === 'revoked') mocks.assertSessionActive.mockRejectedValueOnce(denied)
+    if (kind === 'unavailable') mocks.assertSessionActive.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { statusCode: 503 }))
+    mocks.commitPageStudioEditorCheckpoint.mockResolvedValue({ acknowledged: true })
+    const event: TestEvent = { body, context: {}, headers: { 'idempotency-key': checkpointId,
+      ...(kind === 'missing' ? {} : { 'x-page-studio-session': 'signed-session' }) } }
+    await handler(event as never)
+    expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
+    expect(mocks.commitPageStudioCheckpoint).not.toHaveBeenCalled()
+    expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
+    if (kind === 'valid') {
+      expect(mocks.verifySession).toHaveBeenCalledWith('signed-session', 'public-key', 'https://app.xeroflow.io')
+      expect(mocks.authorizeSession).toHaveBeenCalledWith(session, { checkpoint, authorRole: 'client', requiredCapabilities: ['workspace:checkpoint'] })
+      expect(mocks.assertSessionActive).toHaveBeenCalledWith(session, 'workspace:checkpoint')
+      expect(mocks.commitPageStudioEditorCheckpoint).toHaveBeenCalledWith(body, session)
+    } else {
+      expect(event.responseStatus).toBe(kind === 'missing' ? 401 : kind === 'unavailable' ? 503 : 403)
+      expect(mocks.commitPageStudioEditorCheckpoint).not.toHaveBeenCalled()
+    }
   })
 
   it('passes an explicit base and a matching operation key to the guarded commit endpoint', async () => {

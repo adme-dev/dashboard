@@ -344,6 +344,20 @@ describe('Pages Worker postbuild compaction', () => {
     expect(compactSqlLiterals(compactSqlLiterals(source))).toBe(compactSqlLiterals(source))
   })
 
+  it('compacts a template head around complete quoted values without altering their bytes', () => {
+    const source = 'const sql = `SELECT  id FROM accounts\n  WHERE label = \'keep   spaces\' AND status = \'active\'\n   AND id = ${id}`'
+    expect(compactSqlLiterals(source)).toBe('const sql = `SELECT id FROM accounts WHERE label = \'keep   spaces\' AND status = \'active\' AND id = ${id}`')
+    expect(compactSqlLiterals(compactSqlLiterals(source))).toBe(compactSqlLiterals(source))
+  })
+
+  it('preserves incomplete quoted heads and PostgreSQL newline-separated string literals', () => {
+    for (const source of [
+      'const sql = `SELECT  id FROM accounts WHERE label = \'prefix  ${value}\'`',
+      'const sql = `SELECT  \'one\'\n  \'two\' FROM ${table}`',
+      'const suffix = "\'two\'"; const sql = `SELECT \'one\'\n  ${suffix}`'
+    ]) expect(compactSqlLiterals(source)).toBe(source)
+  })
+
   it('preserves dynamic expressions and all text following the first interpolation', () => {
     const source = 'const sql = `SELECT  id FROM ${table} WHERE note = \'  ${value}  \' -- comment\n  ORDER BY id`'
     expect(compactSqlLiterals(source)).toBe('const sql = `SELECT id FROM ${table} WHERE note = \'  ${value}  \' -- comment\n  ORDER BY id`')
@@ -448,7 +462,7 @@ describe('Pages Worker postbuild compaction', () => {
     expect(first.renamedFiles).toBe(3)
     expect(first.rewrittenFiles).toBe(3)
     expect(first.savedSpecifierBytes).toBeGreaterThan(100)
-    expect(compactNames).toEqual(['0.mjs', '1.mjs', '2.mjs'])
+    expect(compactNames).toEqual(['0.js', '1.js', '2.js'])
     expect(entrySource).not.toContain('very-long-generated')
     expect(imported.default).toBe(41)
     expect(imported.sharedValue).toBe(40)
@@ -470,6 +484,69 @@ describe('Pages Worker postbuild compaction', () => {
       readFile(entryPath, 'utf8'),
       ...compactNames.map(name => readFile(path.join(compactDirectory, name), 'utf8'))
     ])).resolves.toEqual(beforeSecondRun)
+  })
+
+  it('assigns shortest paths to frequent imports deterministically and preserves query suffixes', async () => {
+    const outputs: string[][] = []
+    for (const reverse of [false, true]) {
+      const directory = await mkdtemp(path.join(tmpdir(), 'worker-frequent-paths-'))
+      temporaryDirectories.push(directory)
+      const shared = path.join(directory, 'chunks', 'shared')
+      await mkdir(shared, { recursive: true })
+      const names = Array.from({ length: 40 }, (_, index) => `a-${String(index).padStart(2, '0')}.mjs`)
+      for (const name of reverse ? names.toReversed() : names) {
+        await writeFile(path.join(shared, name), 'export { value } from "./z-runtime.mjs"')
+      }
+      await writeFile(path.join(shared, 'z-runtime.mjs'), 'export const value = 42')
+      const entry = path.join(directory, 'entry.mjs')
+      await writeFile(entry, [
+        'export { value } from "./chunks/shared/z-runtime.mjs"',
+        'export const load = () => import("./chunks/shared/z-runtime.mjs?preview=1#scope")',
+        'export const text = "./chunks/shared/a-00.mjs"'
+      ].join('\n'))
+
+      await compactWorkerModuleFilenames(directory)
+      const source = await readFile(entry, 'utf8')
+      expect(source).toContain('"./chunks/m/0.js"')
+      expect(source).toContain('"./chunks/m/0.js?preview=1#scope"')
+      const imported = await import(pathToFileURL(entry).href)
+      expect(imported.value).toBe(42)
+      expect(imported.text).toBe('./chunks/shared/a-00.mjs')
+      await expect(imported.load()).resolves.toMatchObject({ value: 42 })
+      const compactDirectory = path.join(directory, 'chunks', 'm')
+      const paths = (await readdir(compactDirectory)).sort()
+      const contents = await Promise.all(paths.map(name => readFile(path.join(compactDirectory, name), 'utf8')))
+      outputs.push([source, ...contents])
+      await expect(compactWorkerModuleFilenames(directory)).resolves.toMatchObject({ renamedFiles: 0, rewrittenFiles: 0 })
+      expect(await readFile(entry, 'utf8')).toBe(source)
+    }
+    expect(outputs[0]).toEqual(outputs[1])
+  })
+
+  it('preserves an existing compact mjs tree', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-legacy-paths-'))
+    temporaryDirectories.push(directory)
+    const compact = path.join(directory, 'chunks', 'm')
+    await mkdir(compact, { recursive: true })
+    const original = 'export const value = 42'
+    await writeFile(path.join(compact, '0.mjs'), original)
+    await expect(compactWorkerModuleFilenames(directory)).resolves.toMatchObject({ renamedFiles: 0, rewrittenFiles: 0 })
+    expect(await readFile(path.join(compact, '0.mjs'), 'utf8')).toBe(original)
+    expect(await readdir(compact)).toEqual(['0.mjs'])
+  })
+
+  it('rejects mixed generated mjs and compact js trees before writing', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-mixed-paths-'))
+    temporaryDirectories.push(directory)
+    const compact = path.join(directory, 'chunks', 'm')
+    const generated = path.join(directory, 'chunks', 'generated')
+    await mkdir(compact, { recursive: true })
+    await mkdir(generated, { recursive: true })
+    await writeFile(path.join(compact, '0.js'), 'export const compact = 1')
+    await writeFile(path.join(generated, 'original.mjs'), 'export const original = 2')
+    await expect(compactWorkerModuleFilenames(directory)).rejects.toThrow('mixed compact and generated chunk tree')
+    expect(await readFile(path.join(compact, '0.js'), 'utf8')).toBe('export const compact = 1')
+    expect(await readFile(path.join(generated, 'original.mjs'), 'utf8')).toBe('export const original = 2')
   })
 
   it('name-preservingly minifies deployed modules without changing exports', async () => {

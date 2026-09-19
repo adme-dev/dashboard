@@ -74,7 +74,7 @@ export async function handlePageStudioHistory(event: H3Event, audience: 'agency'
     }
     return method === 'GET'
       ? await readPageStudioHistory({ ...request, query: getQuery(event) })
-      : await mutatePageStudioHistory({ ...request, body: await readContentBody(event) })
+      : await mutatePageStudioHistory({ ...request, event, body: await readContentBody(event) })
   } catch (error) {
     if (error instanceof PageStudioHistoryError || error instanceof PageStudioReleaseCheckpointError || error instanceof PageStudioControlError) {
       throw createError({ statusCode: error.statusCode, statusMessage: error.message, data: { code: error.code } })

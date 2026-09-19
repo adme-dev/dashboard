@@ -118,6 +118,7 @@ const JWT_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 export async function createJwt(payload: object): Promise<string> {
   const fullPayload = {
     ...payload,
+    jti: crypto.randomUUID(),
     iat: Date.now(),
     exp: Date.now() + JWT_EXPIRY_MS,
   }

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import worker from '../../workers/page-studio-control/src/index'
@@ -128,10 +129,9 @@ describe('Page Studio control gateway Worker', () => {
     expect(checkpointRequest.headers.get('x-xeroflow-preview-token')).toBeNull()
   })
 
-  it('forwards the signed editor session only for exact AI acceptance POST requests', async () => {
+  it.each(['/internal/page-studio/ai-proposals/accept', '/internal/page-studio/sessions/authorize', '/internal/page-studio/checkpoints/editor-commit'])('forwards the signed editor session only for exact POST %s', async (path) => {
     const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
     vi.stubGlobal('fetch', fetchMock)
-    const path = '/internal/page-studio/ai-proposals/accept'
     await worker.fetch(request(path, {
       method: 'POST',
       headers: { 'x-page-studio-session': 'signed-editor-session', 'authorization': 'Bearer untrusted' },
@@ -191,4 +191,10 @@ describe('Page Studio control gateway Worker', () => {
     expect(redirected.status).toBe(502)
     expect(redirected.headers.get('location')).toBeNull()
   })
+})
+
+it('routes staging native callbacks through the public Pages front door', () => {
+  const config = JSON.parse(readFileSync('workers/page-studio-control/wrangler.jsonc', 'utf8'))
+  expect(config.env.staging.compatibility_flags).toEqual(['nodejs_compat', 'global_fetch_strictly_public'])
+  expect(config.compatibility_flags).toEqual(['nodejs_compat'])
 })

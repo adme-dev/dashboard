@@ -1,4 +1,6 @@
 import { queryOneFresh, transaction } from '~~/server/utils/db'
+import { assertPageStudioSessionAuthority, PageStudioSessionAuthorityError } from './sessionAuthority'
+import { authorizePageStudioSession, type PageStudioSessionClaims } from './sessions'
 
 export interface PageStudioControlScope {
   tenantId: string
@@ -146,7 +148,7 @@ function timestamp(value: string | Date): string {
 async function requireScopedSite(
   db: PageStudioControlQueryClient,
   scope: PageStudioControlScope,
-  lock: 'FOR SHARE' | 'FOR UPDATE'
+  lock: 'FOR SHARE' | 'FOR UPDATE' | 'FOR NO KEY UPDATE'
 ): Promise<{ current_checkpoint_id: string | null }> {
   const result = await db.query<{ id: string, current_checkpoint_id: string | null }>(
     `SELECT id, current_checkpoint_id
@@ -221,7 +223,7 @@ export async function recordPageStudioCheckpoint(
 /** Additive guarded protocol. Legacy callers are not made safe by this endpoint. */
 export async function commitPageStudioCheckpoint(
   input: PageStudioCheckpointCommitInput,
-  dependencies: { runTransaction?: RunTransaction } = {}
+  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void> } = {}
 ): Promise<PageStudioCheckpointCommitReceipt> {
   const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, dependencies, input)
   return {
@@ -232,9 +234,27 @@ export async function commitPageStudioCheckpoint(
   }
 }
 
+/** Editor entry point: claims come only from the verified dedicated header.
+ * The generic CAS primitive above remains for trusted provisioning/admin callers. */
+export async function commitPageStudioEditorCheckpoint(
+  input: PageStudioCheckpointCommitInput,
+  session: PageStudioSessionClaims,
+  dependencies: { runTransaction?: RunTransaction } = {}
+): Promise<PageStudioCheckpointCommitReceipt> {
+  if (!session) throw new PageStudioSessionAuthorityError('SESSION_AUTHORITY_DENIED', 403)
+  authorizePageStudioSession(session, { checkpoint: input.checkpoint, authorRole: session.role,
+    requiredCapabilities: ['workspace:checkpoint'] })
+  const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, {
+    ...dependencies,
+    authorize: db => assertPageStudioSessionAuthority(session, 'workspace:checkpoint', { transaction: db })
+  }, input)
+  return { acknowledged: true, checkpointId: input.checkpoint.checkpointId, currentCheckpointId,
+    isCurrent: currentCheckpointId === input.checkpoint.checkpointId }
+}
+
 async function persistPageStudioCheckpoint(
   input: PageStudioCheckpointInput,
-  dependencies: { runTransaction?: RunTransaction },
+  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void> },
   guard?: Pick<PageStudioCheckpointCommitInput, 'expectedCheckpointId'>
 ): Promise<string | null> {
   if (input.objectKey !== expectedCheckpointObjectKey(input.scope, input.checkpointId)) {
@@ -247,7 +267,8 @@ async function persistPageStudioCheckpoint(
 
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
-    const site = await requireScopedSite(db, input.scope, 'FOR UPDATE')
+    const site = await requireScopedSite(db, input.scope, dependencies.authorize ? 'FOR NO KEY UPDATE' : 'FOR UPDATE')
+    await dependencies.authorize?.(db)
     if (!guard) {
       // Activation is permanent for this site, even if a later head changes.
       // Read under the same lock as every writer so legacy requests cannot race it.
@@ -298,6 +319,7 @@ async function persistPageStudioCheckpoint(
         }
       }
       // A retry confirms this operation committed, not that it is still the head.
+      await dependencies.authorize?.(db)
       return site.current_checkpoint_id
     }
 
@@ -351,6 +373,7 @@ async function persistPageStudioCheckpoint(
         ...(guard ? { commitProtocol: 'cas-v1', expectedCheckpointId: guard.expectedCheckpointId } : {})
       }
     })
+    await dependencies.authorize?.(db)
     return input.checkpointId
   })
 }
@@ -561,7 +584,7 @@ export async function submitPageStudioVersionForReview(
 
 export async function acceptPageStudioAiProposal(
   input: PageStudioAiProposalAcceptanceInput,
-  dependencies: { runTransaction?: RunTransaction } = {}
+  dependencies: { runTransaction?: RunTransaction, session?: PageStudioSessionClaims } = {}
 ) {
   const { checkpoint } = input
   if (typeof input.expectedCheckpointId !== 'string'
@@ -580,6 +603,9 @@ export async function acceptPageStudioAiProposal(
     )
   }
 
+  const session = dependencies.session
+  if (!session) throw new PageStudioSessionAuthorityError('SESSION_AUTHORITY_DENIED', 403)
+  authorizePageStudioSession(session, input)
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
     const siteResult = await db.query<{
@@ -596,7 +622,7 @@ export async function acceptPageStudioAiProposal(
         AND current_checkpoint.site_id = site.id
         AND current_checkpoint.id = site.current_checkpoint_id
        WHERE site.tenant_id = $1 AND site.client_id = $2 AND site.id = $3
-       FOR UPDATE OF site`,
+       FOR NO KEY UPDATE OF site`,
       [checkpoint.scope.tenantId, checkpoint.scope.clientId, checkpoint.scope.siteId]
     )
     const site = siteResult.rows[0]
@@ -608,6 +634,8 @@ export async function acceptPageStudioAiProposal(
       )
     }
 
+    const authorize = () => assertPageStudioSessionAuthority(session, 'model:invoke', { transaction: db })
+    await authorize()
     const existingVersion = await db.query<VersionRow>(
       `SELECT id, checkpoint_id, digest, author_id, author_role, summary, status, created_at
        FROM page_studio_versions
@@ -656,6 +684,7 @@ export async function acceptPageStudioAiProposal(
         throw new PageStudioControlError('CHECKPOINT_CONFLICT', 409,
           'AI proposal replay does not match its original durable request')
       }
+      await authorize()
       return {
         acknowledged: true as const,
         checkpointId: checkpoint.checkpointId,
@@ -784,6 +813,7 @@ export async function acceptPageStudioAiProposal(
       metadata: { digest: checkpoint.digest }
     })
 
+    await authorize()
     return {
       acknowledged: true as const,
       checkpointId: checkpoint.checkpointId,

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryOneFresh } from '~~/server/utils/db'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
-import { verifyPageStudioProvisioningJobAuthority } from '~~/server/utils/pageStudio/provisioningAuthority'
+import { bindPageStudioProvisioningLogin, verifyPageStudioProvisioningJobAuthority } from '~~/server/utils/pageStudio/provisioningAuthority'
 import { createPageStudioProvisioningJob, dispatchPageStudioProvisioning, requirePageStudioProvisioningRuntime } from '~~/server/utils/pageStudio/provisioningBinding'
 
 const Body = z.object({ expectedRevision: z.number().int().min(1) }).strict()
@@ -46,6 +46,7 @@ export default eventHandler(async (event) => {
     const request = {
       initiatingActorKind: 'client-user' as const,
       initiatingUserId: user.id,
+      initiatingLoginSessionHash: await bindPageStudioProvisioningLogin(event, 'client', user.id),
       requestKey: `page-studio-${row.siteId}-${row.revision}`,
       scope: { businessId: row.clientId, tenantId: row.tenantId, clientId: row.clientId, siteId: row.siteId, environment },
       source: row.source, revision: row.revision, brief: row.brief, plan: row.plan,
@@ -54,8 +55,8 @@ export default eventHandler(async (event) => {
     await verifyPageStudioProvisioningJobAuthority(createPageStudioProvisioningJob(request), environment)
     const job = await dispatchPageStudioProvisioning(binding, request)
     // A retry preserves its original owner. Never substitute the current caller
-    // if that owner has lost permission since the job was retained.
-    if (job.actor.userId !== user.id) await verifyPageStudioProvisioningJobAuthority(job, environment)
+    // if its originating login or owner has lost authority since retention.
+    await verifyPageStudioProvisioningJobAuthority(job, environment)
     // Portal callers need progress, never provider resource identifiers or errors.
     return { provisioning: { phase: job.phase, updatedAt: job.updatedAt } }
   } catch (error) {

@@ -10,7 +10,7 @@ const userId = '30000000-0000-4000-8000-000000000201'
 const request = { requestKey: `page-studio-${scope.siteId}-1`, scope }
 const plan = createPageStudioSetupProposal({ businessName: 'Synthetic Flowers', starterVersion: 'floristry-v1', setupSource: 'template' })
 const row = () => ({ ...scope, userId, revision: 1, status: 'accepted', source: 'template', brief: null, plan, canProvision: true, pagesPerSiteLimit: 10, planMetadata: { allowedModules: plan.modules } })
-const job = () => dispatchPageStudioProvisioning({ readProvisioning: async () => null, createProvisioning: async value => value }, { ...request, initiatingUserId: userId, plan, revision: 1, source: 'template', now: '2026-09-09T00:00:00.000Z' })
+const job = () => dispatchPageStudioProvisioning({ readProvisioning: async () => null, createProvisioning: async value => value }, { ...request, initiatingUserId: userId, initiatingLoginSessionHash: 'a'.repeat(64), plan, revision: 1, source: 'template', now: '2026-09-09T00:00:00.000Z' })
 
 describe('live provisioning authority', () => {
   beforeEach(() => {
@@ -24,7 +24,7 @@ describe('live provisioning authority', () => {
     await expect(authorizePageStudioProvisioning(binding, request, 'staging')).resolves.toEqual({ job: saved, userId })
     expect(binding.readProvisioning).toHaveBeenCalledWith(request.requestKey, scope)
     expect(binding.createProvisioning).not.toHaveBeenCalled()
-    expect(mocks.queryOneFresh.mock.calls[0][1]).toEqual([scope.tenantId, scope.clientId, scope.siteId, userId])
+    expect(mocks.queryOneFresh.mock.calls[0][1]).toEqual([scope.tenantId, scope.clientId, scope.siteId, userId, 'client', 'a'.repeat(64)])
   })
 
   it('authorizes production only when the trusted runtime and retained scope agree', async () => {
@@ -44,7 +44,7 @@ describe('live provisioning authority', () => {
   })
 
   it('authorizes a retained agency job through fresh staff permissions', async () => {
-    const saved = { ...await job(), actor: { kind: 'agency-user', userId } }
+    const saved = { ...await job(), actor: { kind: 'agency-user', userId, loginSessionHash: 'a'.repeat(64) } }
     const binding = { createProvisioning: vi.fn(), readProvisioning: async () => saved }
     await expect(authorizePageStudioProvisioning(binding, request, 'staging')).resolves.toEqual({ job: saved, userId })
     const sql = mocks.queryOneFresh.mock.calls[0][0]

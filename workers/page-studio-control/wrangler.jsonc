@@ -24,6 +24,7 @@
   },
   "env": {
     "staging": {
+      "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
       "vars": {
         "DASHBOARD_ORIGIN": "https://preview.agency-dashboard-6cm.pages.dev"
       },

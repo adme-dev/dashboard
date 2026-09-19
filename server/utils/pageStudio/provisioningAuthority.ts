@@ -1,5 +1,9 @@
+import { pageStudioAuthorityOwnerJoin } from './authoritySql'
 import { z } from 'zod'
-import { queryOneFresh } from '~~/server/utils/db'
+import type { H3Event } from 'h3'
+import type { PageStudioControlQueryClient } from './controlStore'
+import { bindPageStudioLoginSession, resolvePageStudioLoginSession } from './loginSessions'
+import { queryOneFresh, transaction } from '~~/server/utils/db'
 import {
   normalizePageStudioProvisioningPlan, PageStudioProvisioningError,
   PageStudioProvisioningJobSchema, PageStudioProvisioningScopeSchema,
@@ -7,7 +11,7 @@ import {
   type PageStudioProvisionerBinding, type PageStudioProvisioningEnvironment
 } from '~~/server/utils/pageStudio/provisioningBinding'
 
-const Request = z.object({
+export const PageStudioProvisioningRequestSchema = z.object({
   requestKey: PageStudioProvisioningJobSchema.shape.requestKey,
   scope: PageStudioProvisioningScopeSchema.extend({
     businessId: z.string().uuid(), clientId: z.string().uuid(), siteId: z.string().uuid(),
@@ -34,9 +38,18 @@ function denied(): never {
   throw new PageStudioProvisioningError('PROVISIONING_AUTHORITY_DENIED', 'The original setup owner no longer has authority for this accepted plan', 403)
 }
 
+/** Bind only the authenticated native credential; retries never replace a retained job's login. */
+export async function bindPageStudioProvisioningLogin(event: H3Event, role: 'agency' | 'client', userId: string) {
+  return await transaction(async (db) => {
+    const login = await resolvePageStudioLoginSession(db, event, role, userId)
+    await bindPageStudioLoginSession(db, login)
+    return login.tokenHash
+  })
+}
+
 /** A fresh check, not a reusable grant. Executors must also compare job state and fence their lease. */
 export async function authorizePageStudioProvisioning(binding: PageStudioProvisionerBinding | undefined, input: unknown, environment: PageStudioProvisioningEnvironment) {
-  const parsed = Request.safeParse(input)
+  const parsed = PageStudioProvisioningRequestSchema.safeParse(input)
   if (!parsed.success) throw new PageStudioProvisioningError('INVALID_PROVISIONING_REQUEST', 'Invalid provisioning authority request', 400)
   if (parsed.data.scope.environment !== environment) denied()
   if (!binding?.readProvisioning) throw new PageStudioProvisioningError('PROVISIONER_UNAVAILABLE', 'Provisioning authority requires the coordinator', 503)
@@ -49,15 +62,16 @@ export async function authorizePageStudioProvisioning(binding: PageStudioProvisi
  * checks. This helper does not read a retained job: callers must derive the
  * candidate from authenticated staff plus a scoped, saved proposal.
  */
-export async function verifyPageStudioProvisioningJobAuthority(input: unknown, environment: PageStudioProvisioningEnvironment) {
+export async function verifyPageStudioProvisioningJobAuthority(input: unknown, environment: PageStudioProvisioningEnvironment,
+  dependencies: { transaction?: PageStudioControlQueryClient } = {}) {
   const decoded = PageStudioProvisioningJobSchema.safeParse(input)
   if (!decoded.success) throw new PageStudioProvisioningError('PROVISIONER_FAILED', 'Invalid retained provisioning job')
   const job = decoded.data
-  const validatedScope = Request.safeParse({ requestKey: job.requestKey, scope: job.scope })
+  const validatedScope = PageStudioProvisioningRequestSchema.safeParse({ requestKey: job.requestKey, scope: job.scope })
   if (!validatedScope.success) denied()
   const { scope } = validatedScope.data
   if (scope.environment !== environment) denied()
-  if (!job.actor) throw new PageStudioProvisioningError('PROVISIONING_OWNER_REQUIRED', 'The setup owner requires reconciliation', 409)
+  if (!job.actor?.loginSessionHash) throw new PageStudioProvisioningError('PROVISIONING_OWNER_REQUIRED', 'The setup originating login requires reconciliation', 409)
   if (!job.setup || ['failed', 'complete'].includes(job.phase)
     || job.id !== job.requestKey || job.requestKey !== `page-studio-${scope.siteId}-${job.setup.proposalRevision}`
     || job.templateId !== job.plan.templateId
@@ -67,39 +81,39 @@ export async function verifyPageStudioProvisioningJobAuthority(input: unknown, e
   // authority request. Staff permissions are read from SQL on every effect;
   // cached session groups and static role fallbacks cannot keep a revoked job alive.
   const agency = job.actor.kind === 'agency-user'
-  const ownerJoin = agency
-    ? `
-    JOIN team_members owner ON owner.id = $4 AND owner.is_active = TRUE
-      AND owner.user_role NOT IN ('viewer', 'guest')
-    JOIN custom_roles staff_role ON
-      ((owner.custom_role_id IS NOT NULL AND staff_role.id = owner.custom_role_id)
-       OR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))
-      AND staff_role.is_read_only = FALSE
-    JOIN role_permission_groups staff_permission ON staff_permission.role_id = staff_role.id
-      AND staff_permission.permission_group = 'PAGE_STUDIO_EDIT'
-  `
-    : `
-    JOIN client_users owner ON owner.client_id = site.client_id AND owner.id = $4
-      AND owner.status = 'active' AND owner.role IN ('admin', 'manager')
-    JOIN page_studio_site_memberships membership ON membership.tenant_id = site.tenant_id
-      AND membership.client_id = site.client_id AND membership.site_id = site.id
-      AND membership.user_id = owner.id AND membership.role = 'editor'
-  `
-
-  const row = await queryOneFresh<AuthorityRow>(`
+  const db = dependencies.transaction
+  if (db) {
+    // Match logout's native -> parent order before joining permission records.
+    // The checkpoint writer already holds its site FOR NO KEY UPDATE, allowing
+    // logout's audit foreign-key checks while it waits for this authority fence.
+    if (!agency && !(await db.query(`SELECT token_hash FROM client_sessions
+      WHERE token_hash=$1 AND client_user_id=$2 AND expires_at>clock_timestamp() FOR SHARE`,
+    [job.actor.loginSessionHash, job.actor.userId])).rows[0]) denied()
+    if (!(await db.query(`SELECT token_hash FROM page_studio_login_sessions
+      WHERE role=$1 AND token_hash=$2 AND user_id=$3 AND revoked_at IS NULL
+        AND expires_at>clock_timestamp() FOR SHARE`,
+    [agency ? 'agency' : 'client', job.actor.loginSessionHash, job.actor.userId])).rows[0]) denied()
+  }
+  const ownerJoin = pageStudioAuthorityOwnerJoin(agency, 'provisioning', 'clock_timestamp()')
+  const read = db
+    ? async (sql: string, params: unknown[]) => (await db.query<AuthorityRow>(sql, params)).rows[0] ?? null
+    : queryOneFresh<AuthorityRow>
+  const row = await read(`
     SELECT site.tenant_id AS "tenantId", site.client_id AS "clientId", site.id AS "siteId",
            owner.id AS "userId", proposal.revision, proposal.status, proposal.source,
            proposal.brief, proposal.plan, entitlement.pages_per_site_limit AS "pagesPerSiteLimit",
            entitlement.plan_metadata AS "planMetadata",
            (site.status IN ('draft', 'active') AND entitlement.status IN ('trial', 'active')
-            ${agency ? '' : 'AND entitlement.portal_creation_enabled'} AND entitlement.effective_from <= NOW()
+            ${agency ? '' : 'AND entitlement.portal_creation_enabled'} AND entitlement.effective_from <= clock_timestamp()
             AND entitlement.active_site_limit > 0
             AND (SELECT COUNT(*) FROM page_studio_sites counted
                  WHERE counted.tenant_id = site.tenant_id AND counted.client_id = site.client_id
                    AND counted.status <> 'archived') <= entitlement.active_site_limit
-            AND (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())) AS "canProvision"
+            AND (entitlement.effective_until IS NULL OR entitlement.effective_until > clock_timestamp())) AS "canProvision"
     FROM page_studio_sites site
     JOIN agency_clients client ON client.id = site.client_id AND client.is_active = TRUE
+    JOIN page_studio_login_sessions login ON login.role = $5 AND login.token_hash = $6
+      AND login.user_id = $4 AND login.revoked_at IS NULL AND login.expires_at > clock_timestamp()
     ${ownerJoin}
     JOIN page_studio_entitlements entitlement ON entitlement.tenant_id = site.tenant_id
       AND entitlement.client_id = site.client_id AND entitlement.id = site.entitlement_id
@@ -107,7 +121,8 @@ export async function verifyPageStudioProvisioningJobAuthority(input: unknown, e
       AND proposal.client_id = site.client_id AND proposal.site_id = site.id
     WHERE site.tenant_id = $1 AND site.client_id = $2 AND site.id = $3
     ORDER BY proposal.revision DESC LIMIT 1
-  `, [scope.tenantId, scope.clientId, scope.siteId, job.actor.userId]).catch(() => {
+    ${db ? 'FOR SHARE' : ''}
+  `, [scope.tenantId, scope.clientId, scope.siteId, job.actor.userId, agency ? 'agency' : 'client', job.actor.loginSessionHash]).catch(() => {
     throw new PageStudioProvisioningError('PROVISIONER_FAILED', 'Provisioning authority could not be verified')
   })
   if (!row || row.userId !== job.actor.userId || row.tenantId !== scope.tenantId

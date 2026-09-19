@@ -1,46 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { digestPortalSessionToken } from '../../../../server/utils/portalSession'
 
-const testGlobal = globalThis as typeof globalThis & {
-  defineEventHandler: <T>(fn: T) => T
-  getCookie: () => string | undefined
-  deleteCookie: (...args: unknown[]) => void
-}
+const revoke = vi.hoisted(() => vi.fn())
+vi.mock('~~/server/utils/pageStudio/loginSessions', () => ({ revokePageStudioLoginSession: revoke }))
+vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+const clearCookie = vi.fn()
+vi.stubGlobal('deleteCookie', clearCookie)
+const { default: portal } = await import('../../../../server/api/portal/auth/logout.post')
+const { default: agencyPortal } = await import('../../../../server/api/agency/client-portal/auth/logout.post')
+const { default: agency } = await import('../../../../server/api/auth/logout.post')
 
-testGlobal.defineEventHandler = fn => fn
-testGlobal.getCookie = vi.fn(() => 'portal-session-token')
-testGlobal.deleteCookie = vi.fn()
-
-const mockExecute = vi.fn()
-
-vi.mock('~~/server/utils/db', () => ({
-  execute: (...args: unknown[]) => mockExecute(...args)
-}))
-
-const { default: logoutHandler } = await import('../../../../server/api/portal/auth/logout.post')
-
-describe('portal logout', () => {
+describe.each([
+  ['portal', portal, 'client', 1], ['agency portal', agencyPortal, 'client', 1], ['agency', agency, 'agency', 3]
+] as const)('%s logout', (_name, handler, role, cookieCount) => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockExecute.mockResolvedValue(1)
+    revoke.mockResolvedValue(undefined)
   })
-
-  it('deletes a digest session directly without scanning bcrypt rows', async () => {
-    await logoutHandler({})
-
-    expect(mockExecute).toHaveBeenCalledWith(
-      expect.stringContaining('token_hash = $1'),
-      [await digestPortalSessionToken('portal-session-token')]
-    )
-    expect(testGlobal.deleteCookie).toHaveBeenCalled()
+  it('revokes originating login before clearing cookies', async () => {
+    const event = {} as never
+    revoke.mockImplementation(async () => {
+      expect(clearCookie).not.toHaveBeenCalled()
+    })
+    await expect(handler(event)).resolves.toMatchObject({ success: true })
+    expect(revoke).toHaveBeenCalledWith(event, role)
+    expect(clearCookie).toHaveBeenCalledTimes(cookieCount)
+    for (const args of clearCookie.mock.calls) expect(args[2]).toEqual({ path: '/' })
   })
-
-  it('does not scan legacy bcrypt sessions when the digest is unknown', async () => {
-    mockExecute.mockResolvedValueOnce(0)
-
-    await logoutHandler({})
-
-    expect(mockExecute).toHaveBeenCalledOnce()
-    expect(testGlobal.deleteCookie).toHaveBeenCalled()
+  it('preserves credentials for retry when revocation fails', async () => {
+    const unavailable = Object.assign(new Error('retry logout'), { statusCode: 503 })
+    revoke.mockRejectedValue(unavailable)
+    await expect(handler({} as never)).rejects.toBe(unavailable)
+    expect(clearCookie).not.toHaveBeenCalled()
   })
 })
