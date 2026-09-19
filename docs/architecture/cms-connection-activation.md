@@ -57,3 +57,14 @@ Dashboard deployment and authenticated synthetic/Fantasy acceptance remain pendi
 [Studio integration PR #88](https://github.com/adme-dev/xeroflow-page-studio/pull/88).
 Before release, reconcile the earlier staged session-authority commits, verify
 current main, preserve staging bindings and record exact source/deployment IDs.
+
+## Staging timing correction
+
+The staging control gateway uses `global_fetch_strictly_public` so native callbacks
+reach the public Pages endpoint. The initial 522 is resolved. Read-only authority
+now uses one uncached SQL snapshot per check; native completion retains its locking
+transaction. The executor reads the exact lease row, checks native authority once
+and evaluates expiry after the awaited check. It does not cache permission results
+or extend a lease. A real D1/R2 regression exercises full setup and route preparation
+with a simulated 500 ms cost for each native check. Live completion must still be
+measured; passing this timing envelope is not live acceptance.

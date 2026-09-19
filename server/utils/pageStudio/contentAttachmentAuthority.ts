@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 import { z } from 'zod'
-import { transactionWithoutRetry } from '~~/server/utils/db'
+import { queryRowsFresh, transactionWithoutRetry } from '~~/server/utils/db'
 import { ContentAttachmentRequestSchema, contentAttachmentIdentity, requireMatchingContentAttachmentRequest, type ContentAttachmentRequest } from '~~/shared/pageStudio/content-attachment'
 import { pageStudioAuthorityOwnerJoin } from './authoritySql'
 import type { PageStudioControlQueryClient } from './controlStore'
@@ -87,6 +87,59 @@ export async function withPageStudioContentAttachmentAuthority<T>(input: unknown
   })
 }
 
-export function authorizePageStudioContentAttachment(input: unknown, environment: 'staging' | 'production', dependencies: { runTransaction?: RunTransaction } = {}) {
-  return withPageStudioContentAttachmentAuthority(input, environment, (_db, request) => Promise.resolve(request), dependencies)
+interface PreflightRow {
+  metadata: { intent?: unknown, identity?: unknown, pageCount?: unknown }
+  actor_id: string
+  actor_role: string
+  digest: string
+  pages_limit: number
+  plan_metadata: unknown
+}
+
+/** Read-only admission at a fresh statement snapshot. A logout committed before
+ * this snapshot denies admission; no cross-store fence is claimed for a logout
+ * racing provider I/O. Completion retains the ordered-lock transaction above. */
+export async function authorizePageStudioContentAttachment(input: unknown, environment: 'staging' | 'production', dependencies: {
+  read?: (sql: string, params: unknown[]) => Promise<PreflightRow[]>
+} = {}) {
+  const parsed = ContentAttachmentRequestSchema.safeParse(input)
+  if (!parsed.success || parsed.data.scope.environment !== environment || !['staging', 'production'].includes(environment)) throw denied()
+  const request = parsed.data, { scope, actor } = request, agency = actor.kind === 'agency-user'
+  let rows: PreflightRow[]
+  try {
+    rows = await (dependencies.read ?? queryRowsFresh<PreflightRow>)(`
+      SELECT audit.metadata, audit.actor_id, audit.actor_role, checkpoint.digest,
+        entitlement.pages_per_site_limit AS pages_limit, entitlement.plan_metadata
+      FROM page_studio_sites site
+      JOIN agency_clients client ON client.id=site.client_id AND client.is_active=TRUE
+      JOIN page_studio_audit_events audit ON audit.tenant_id=site.tenant_id AND audit.client_id=site.client_id
+        AND audit.site_id=site.id AND audit.resource_id=$7 AND audit.action='content.attachment.requested'
+        AND audit.resource_type='content_attachment'
+      JOIN page_studio_checkpoints checkpoint ON checkpoint.tenant_id=site.tenant_id AND checkpoint.client_id=site.client_id
+        AND checkpoint.site_id=site.id AND checkpoint.id=$8
+      JOIN page_studio_login_sessions login ON login.role=$5 AND login.token_hash=$6
+        AND login.user_id=$4::text AND login.revoked_at IS NULL AND login.expires_at>clock_timestamp()
+      ${pageStudioAuthorityOwnerJoin(agency, 'provisioning', 'clock_timestamp()')}
+      JOIN page_studio_entitlements entitlement ON entitlement.id=site.entitlement_id
+        AND entitlement.tenant_id=site.tenant_id AND entitlement.client_id=site.client_id
+        AND entitlement.status IN ('trial','active') AND entitlement.effective_from<=clock_timestamp()
+        AND (entitlement.effective_until IS NULL OR entitlement.effective_until>clock_timestamp())
+        AND entitlement.active_site_limit>0 ${agency ? '' : 'AND entitlement.portal_creation_enabled'}
+      WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3 AND site.status IN ('draft','active')
+        AND (SELECT count(*) FROM page_studio_sites counted WHERE counted.tenant_id=site.tenant_id
+          AND counted.client_id=site.client_id AND counted.status<>'archived')<=entitlement.active_site_limit`,
+    [scope.tenantId, scope.clientId, scope.siteId, actor.userId, agency ? 'agency' : 'client', actor.loginSessionHash,
+      request.operationId, request.anchor.checkpointId])
+  } catch { throw unavailable() }
+  if (rows.length !== 1) throw denied()
+  const saved = rows[0]!, policy = ModulePolicy.safeParse(saved.plan_metadata)
+  try {
+    requireMatchingContentAttachmentRequest(saved.metadata.intent, request)
+  } catch { throw denied() }
+  if (saved.actor_id !== actor.userId || saved.actor_role !== (agency ? 'agency' : 'client')
+    || saved.metadata.identity !== await contentAttachmentIdentity(request) || saved.digest !== request.anchor.digest
+    || !Number.isSafeInteger(saved.metadata.pageCount) || (saved.metadata.pageCount as number) < 1
+    || !Number.isInteger(saved.pages_limit) || saved.pages_limit < (saved.metadata.pageCount as number)
+    || !policy.success || (policy.data.allowedModules && !policy.data.allowedModules.includes('business-content'))) throw denied()
+  return request
 }

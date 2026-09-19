@@ -7,7 +7,7 @@ import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { recordPageStudioCheckpoint, type PageStudioCheckpointInput, type PageStudioControlQueryClient, type PageStudioControlScope } from '~~/server/utils/pageStudio/controlStore'
 import { commitPageStudioContentAttachment, readPageStudioContentAttachmentCompletion } from '~~/server/utils/pageStudio/contentAttachmentCompletion'
-import { authorizePageStudioContentAttachment } from '~~/server/utils/pageStudio/contentAttachmentAuthority'
+import { authorizePageStudioContentAttachment, withPageStudioContentAttachmentAuthority } from '~~/server/utils/pageStudio/contentAttachmentAuthority'
 import { preparePageStudioContentAttachment } from '~~/server/utils/pageStudio/contentAttachmentIntent'
 import { revokePageStudioLoginSession } from '~~/server/utils/pageStudio/loginSessions'
 import { createJwt } from '~~/server/utils/auth'
@@ -196,7 +196,7 @@ describe.runIf(Boolean(databaseUrl))('Native CMS attachment intent on PostgreSQL
       return { actor, event: event(), siteId: scope.siteId, bucket, environment: 'staging' as const,
         artifacts, body: { requestId: randomUUID(), expectedCheckpointId: 'checkpoint_base' } }
     }
-    const options = async () => ({ runTransaction: transactionFor(await connect()) })
+    const options = async () => ({ runTransaction: transactionFor(await connect()), read: async (sql: string, params: unknown[]) => (await observer.query(sql, params)).rows })
 
     async function preparation() {
       const saved = await preparePageStudioContentAttachment(request(), await options())
@@ -279,12 +279,12 @@ describe.runIf(Boolean(databaseUrl))('Native CMS attachment intent on PostgreSQL
       expect(await c.count()).toBe(0)
     })
 
-    it('serializes reauthorization with a concurrent native intent retry without a lock cycle', async () => {
+    it('serializes completion authority with a concurrent native intent retry without a lock cycle', async () => {
       const input = request()
       const saved = await preparePageStudioContentAttachment(input, await options())
       const authorizer = await connect(), writer = await connect(), gate = deferred()
       let entered = false
-      const pending = capture(authorizePageStudioContentAttachment(saved.intent, 'staging', {
+      const pending = capture(withPageStudioContentAttachmentAuthority(saved.intent, 'staging', async (_db, value) => value, {
         runTransaction: callback => transactionFor(authorizer)(db => callback({
           query: async (sql, params) => {
             if (!entered && sql.includes('SELECT entitlement.pages_per_site_limit')) {
@@ -315,7 +315,7 @@ describe.runIf(Boolean(databaseUrl))('Native CMS attachment intent on PostgreSQL
       const blocker = await connect(), authorizer = await connect()
       await blocker.query('BEGIN')
       await blocker.query('SELECT id FROM page_studio_entitlements FOR UPDATE')
-      const pending = capture(authorizePageStudioContentAttachment(saved.intent, 'staging', { runTransaction: transactionFor(authorizer) }))
+      const pending = capture(withPageStudioContentAttachmentAuthority(saved.intent, 'staging', async (_db, value) => value, { runTransaction: transactionFor(authorizer) }))
       try {
         await waitForBlock(authorizer, blocker)
         await observer.query('SELECT pg_sleep(0.5)')
@@ -325,6 +325,42 @@ describe.runIf(Boolean(databaseUrl))('Native CMS attachment intent on PostgreSQL
         await blocker.query('ROLLBACK')
         await pending
       }
+    })
+
+    it('reads fresh preflight authority in one query and denies logout committed before the next snapshot', async () => {
+      const saved = await preparePageStudioContentAttachment(request(), await options())
+      const read = vi.fn(async (sql: string, params: unknown[]) => (await observer.query(sql, params)).rows)
+      const runTransaction = vi.fn(() => {
+        throw new Error('Preflight must not open a multi-query transaction')
+      })
+      const dependencies = { read, runTransaction }
+      expect(await authorizePageStudioContentAttachment(saved.intent, 'staging', dependencies)).toEqual(saved.intent)
+      expect(read).toHaveBeenCalledTimes(1)
+      expect(runTransaction).not.toHaveBeenCalled()
+      loginTransactions.run = transactionFor(await connect())
+      await revokePageStudioLoginSession(event(), role)
+      await expect(authorizePageStudioContentAttachment(saved.intent, 'staging', dependencies)).rejects.toMatchObject({ statusCode: 403 })
+      expect(read).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not wait on an uncommitted logout but rejects its next committed snapshot', async () => {
+      const saved = await preparePageStudioContentAttachment(request(), await options()), writer = await connect()
+      await writer.query('BEGIN')
+      await writer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      try {
+        expect(await authorizePageStudioContentAttachment(saved.intent, 'staging', await options())).toEqual(saved.intent)
+        await writer.query('COMMIT')
+        await expect(authorizePageStudioContentAttachment(saved.intent, 'staging', await options())).rejects.toMatchObject({ statusCode: 403 })
+      } finally { await writer.query('ROLLBACK') }
+    })
+
+    it('rejects duplicate native intents instead of authorizing the first row', async () => {
+      const saved = await preparePageStudioContentAttachment(request(), await options())
+      await observer.query(`INSERT INTO page_studio_audit_events
+        (tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata)
+        SELECT tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata
+        FROM page_studio_audit_events WHERE action='content.attachment.requested'`)
+      await expect(authorizePageStudioContentAttachment(saved.intent, 'staging', await options())).rejects.toMatchObject({ statusCode: 403 })
     })
 
     it('reauthorizes the immutable native intent without changing the website', async () => {
