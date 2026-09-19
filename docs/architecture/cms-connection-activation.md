@@ -1,6 +1,6 @@
 # CMS connection and activation
 
-19 September 2026. Implementation; live acceptance remains pending.
+19 September 2026. Synthetic staging acceptance passed; Fantasy production connection remains pending.
 
 The selected website's Business content screen has an explicit Connect CMS action.
 GET only reads status. POST derives website/customer scope, artifact digests and
@@ -38,25 +38,11 @@ records remain drafts and publication still follows the existing release workflo
 
 Local checks cover native completion/logout and expiry races, immutable resource
 proof, disabled routes, retry ownership, permission denial, scope substitution and
-read-only status. The combined Studio release (including the previously staged authority fixes) passes
-3,414 tests, 23 build tasks, 37 typecheck tasks plus security, and lint on 882 files.
-Dashboard passes 14,175 tests (544 configured skips), including 103 disposable
-PostgreSQL attachment cases. Typechecking matches the existing 913 diagnostics
-exactly, with none in this change. Changed-file lint passes except four unchanged
-`no-explicit-any` findings in the existing God-mode inventory test.
-
-The clean Dashboard build passes the unchanged size guard at 25,460,579 raw bytes
-(8,349 remaining). A reviewed SQL-template whitespace compaction correction
-preserves closed quoted values, open quotes and PostgreSQL newline concatenation,
-including the unknown interpolation boundary; 38 packaging tests pass.
-
-Studio source `248b9ee60e060dd8f06e70b2a86411df86816a84` is deployed privately to
-staging: executor version `db54362b-b4b9-44f4-8478-5f0b5a642d29`, coordinator version
-`1b7454eb-6b33-4e4c-af84-6f99e7831191`. Additive D1 migrations 0005/0006 are applied.
-Dashboard deployment and authenticated synthetic/Fantasy acceptance remain pending.
-[Studio integration PR #88](https://github.com/adme-dev/xeroflow-page-studio/pull/88).
-Before release, reconcile the earlier staged session-authority commits, verify
-current main, preserve staging bindings and record exact source/deployment IDs.
+read-only status. Full Studio build, typecheck, tests and lint pass. Dashboard
+passes 14,182 tests and retains the exact 913-diagnostic baseline. Synthetic staging
+connection, CMS save/reopen and unsaved-edit protection pass; original page and
+history fingerprints match. Fantasy is a production website and remains unconnected.
+See [acceptance and release record](../research/2026-09-19-page-studio-cms-connection.md).
 
 ## Staging timing correction
 
@@ -66,5 +52,5 @@ now uses one uncached SQL snapshot per check; native completion retains its lock
 transaction. The executor reads the exact lease row, checks native authority once
 and evaluates expiry after the awaited check. It does not cache permission results
 or extend a lease. A real D1/R2 regression exercises full setup and route preparation
-with a simulated 500 ms cost for each native check. Live completion must still be
-measured; passing this timing envelope is not live acceptance.
+with a simulated 500 ms cost for each native check. Live staging subsequently completed setup and saved/reopened revision 2. The
+simulated envelope is not a general latency guarantee.
