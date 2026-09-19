@@ -193,8 +193,10 @@ describe('Page Studio control gateway Worker', () => {
   })
 })
 
-it('routes staging native callbacks through the public Pages front door', () => {
+it('routes production and staging native callbacks through the public Pages front door', () => {
   const config = JSON.parse(readFileSync('workers/page-studio-control/wrangler.jsonc', 'utf8'))
   expect(config.env.staging.compatibility_flags).toEqual(['nodejs_compat', 'global_fetch_strictly_public'])
-  expect(config.compatibility_flags).toEqual(['nodejs_compat'])
+  expect(config.compatibility_flags).toEqual(['nodejs_compat', 'global_fetch_strictly_public'])
+  expect(config.vars.DASHBOARD_ORIGIN).toBe('https://app.xeroflow.io')
+  expect(config.env.staging.vars.DASHBOARD_ORIGIN).toBe('https://preview.agency-dashboard-6cm.pages.dev')
 })
