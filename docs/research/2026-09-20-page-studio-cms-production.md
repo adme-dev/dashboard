@@ -100,8 +100,10 @@ Cloudflare documents this routing distinction in its
 ## Remaining work and branch ownership
 
 CMS-ATTACH-3/4/5 are implemented, and CMS-ATTACH-6 now includes synthetic agency
-staging and Fantasy production connection acceptance. Portal/viewer and concurrent
-editor browser acceptance remain open. Creating Fantasy's actual business
+staging and Fantasy production connection acceptance. Portal/editor/viewer and
+concurrent-edit browser acceptance now pass in the
+[staging follow-up](./2026-09-20-page-studio-cms-client-acceptance.md).
+Creating Fantasy's actual business
 collections and wiring page components to them requires a separate content/schema
 slice using reviewed customer information. This release does not complete the
 26 builder delivery tasks, R06 isolation research, or enable generated customer

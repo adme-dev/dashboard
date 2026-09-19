@@ -1,0 +1,162 @@
+{
+  "run": "2876c6c8-9722-43f6-ab6b-a8fc8f4bcc48",
+  "siteId": "a27135dc-1374-475c-a56d-7e60310425bb",
+  "origin": "https://preview.agency-dashboard-6cm.pages.dev",
+  "startedAt": "2026-09-19T21:04:35.466Z",
+  "cases": [
+    {
+      "label": "Client editors open content; viewer controls and direct writes are restricted; membership is required",
+      "passed": true
+    },
+    {
+      "label": "Stale editor receives 409; local edits survive and the winning revision remains unchanged",
+      "passed": true
+    },
+    {
+      "label": "Cancel reload preserves edits; confirmed reload clears conflict and allows a fresh save that survives reopen",
+      "passed": true
+    },
+    {
+      "label": "Membership downgrade rejects an already-open editor save and reload adopts read-only access",
+      "passed": true
+    },
+    {
+      "label": "Page draft/version pointers and history are unchanged; synthetic CMS baseline restored",
+      "passed": true
+    }
+  ],
+  "retired": true,
+  "before": {
+    "tenant_id": "page-studio-staging",
+    "client_id": "10000000-0000-4000-8000-000000000001",
+    "current_checkpoint_id": "restore_ea416b05-62a1-4615-9f3b-ba6bfc65dfcc",
+    "current_version_id": null,
+    "checkpoints": [
+      "checkpoint_04184c7d-85ec-441a-9fae-5e4b3d99aaec",
+      "checkpoint_1953f6b4-8094-432e-b485-8bfb8e8ab189",
+      "checkpoint_acceptance_6ff5bb0090694bd298a5450730913008",
+      "checkpoint_cdabe5eb-48f4-47c7-a124-4b06e1adb14c",
+      "checkpoint_staging_recovery_d30c7e58-9ac2-4b92-9a79-0cdf599e13d4",
+      "checkpoint_staging_release_1",
+      "checkpoint_staging_release_2",
+      "checkpoint_staging_release_3",
+      "checkpoint_staging_release_4",
+      "restore_49eaec20-e9cc-4f6c-bc63-cca5003d0739",
+      "restore_89356679-0650-4ff8-9266-c82c31e4f284",
+      "restore_d05454db-2bb5-48ea-950d-e560f0f5f1b5",
+      "restore_ea416b05-62a1-4615-9f3b-ba6bfc65dfcc"
+    ],
+    "versions": [
+      "10000000-0000-4000-8000-000000000005",
+      "10000000-0000-4000-8000-000000000006",
+      "10000000-0000-4000-8000-000000000009",
+      "10000000-0000-4000-8000-000000000011",
+      "7fb49fdc-155d-4bd4-8551-95cded3b901c"
+    ]
+  },
+  "users": [
+    {
+      "name": "editorA",
+      "id": "40820aa0-28e1-4ac3-bfbf-f121fcc31c1b"
+    },
+    {
+      "name": "editorB",
+      "id": "1eff5189-7ae1-4a5e-91dc-fe8d332d0e89"
+    },
+    {
+      "name": "viewer",
+      "id": "d95f65bc-8518-4341-b07e-016b873ef04c"
+    },
+    {
+      "name": "unassigned",
+      "id": "79d12a5f-8bd7-4b98-a1dd-8610305c0f56"
+    }
+  ],
+  "initialRevision": 5,
+  "baseline": {
+    "actorId": "461d7c13-aac9-4686-a87b-2aa364c8c738",
+    "content": {
+      "collections": [
+        {
+          "id": "cms_connection_acceptance",
+          "records": [
+            {
+              "attributes": {},
+              "id": "record_6fb904d1-1fc5-448f-be46-a7917e5d82ed",
+              "status": "draft",
+              "summary": "Synthetic acceptance record: CMS connected without replacing page drafts or versions.",
+              "title": "Staging CMS saved entry"
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 1,
+      "scope": {
+        "businessId": "10000000-0000-4000-8000-000000000001",
+        "clientId": "10000000-0000-4000-8000-000000000001",
+        "environment": "staging",
+        "siteId": "a27135dc-1374-475c-a56d-7e60310425bb",
+        "tenantId": "page-studio-staging"
+      }
+    },
+    "createdAt": "2026-09-19T21:00:20.916Z",
+    "revision": 5,
+    "canEdit": true
+  },
+  "finalRevision": 8,
+  "contentRestored": true,
+  "after": {
+    "tenant_id": "page-studio-staging",
+    "client_id": "10000000-0000-4000-8000-000000000001",
+    "current_checkpoint_id": "restore_ea416b05-62a1-4615-9f3b-ba6bfc65dfcc",
+    "current_version_id": null,
+    "checkpoints": [
+      "checkpoint_04184c7d-85ec-441a-9fae-5e4b3d99aaec",
+      "checkpoint_1953f6b4-8094-432e-b485-8bfb8e8ab189",
+      "checkpoint_acceptance_6ff5bb0090694bd298a5450730913008",
+      "checkpoint_cdabe5eb-48f4-47c7-a124-4b06e1adb14c",
+      "checkpoint_staging_recovery_d30c7e58-9ac2-4b92-9a79-0cdf599e13d4",
+      "checkpoint_staging_release_1",
+      "checkpoint_staging_release_2",
+      "checkpoint_staging_release_3",
+      "checkpoint_staging_release_4",
+      "restore_49eaec20-e9cc-4f6c-bc63-cca5003d0739",
+      "restore_89356679-0650-4ff8-9266-c82c31e4f284",
+      "restore_d05454db-2bb5-48ea-950d-e560f0f5f1b5",
+      "restore_ea416b05-62a1-4615-9f3b-ba6bfc65dfcc"
+    ],
+    "versions": [
+      "10000000-0000-4000-8000-000000000005",
+      "10000000-0000-4000-8000-000000000006",
+      "10000000-0000-4000-8000-000000000009",
+      "10000000-0000-4000-8000-000000000011",
+      "7fb49fdc-155d-4bd4-8551-95cded3b901c"
+    ]
+  },
+  "remainingAuthority": {
+    "sessions": 0,
+    "links": 0,
+    "users": 0,
+    "memberships": 0
+  },
+  "finishedAt": "2026-09-19T21:05:26.323Z",
+  "deployment": {
+    "checkedAt": "2026-09-19T21:07:48.026Z",
+    "id": "f7d9a415-9f30-4eef-824a-9f27275ad168",
+    "source": {
+      "branch": "preview",
+      "commit_hash": "b916537580bf82c49c2518d7db023986d823e848",
+      "commit_message": "fix: keep CMS authority checks within the setup lease budget",
+      "commit_dirty": false
+    },
+    "status": "success"
+  },
+  "validation": {
+    "focusedPassed": 62,
+    "fullPassed": 14069,
+    "fullSkipped": 657,
+    "passingFiles": 2070,
+    "skippedFiles": 29,
+    "appSourceChanged": false
+  }
+}
