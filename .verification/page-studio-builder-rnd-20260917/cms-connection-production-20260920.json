@@ -1,0 +1,267 @@
+{
+  "date": "2026-09-20",
+  "siteId": "c34f6347-cc63-4ed7-9a5a-da165ebefed2",
+  "result": "connected",
+  "before": {
+    "at": "2026-09-19T10:34:03.359Z",
+    "sites": {
+      "c34f6347-cc63-4ed7-9a5a-da165ebefed2": {
+        "document": {
+          "status": 200,
+          "digest": "34428d4886b59e36613ad1f536779e7a10403dd456f50638e414918ae77794b8",
+          "keys": [
+            "id",
+            "document",
+            "studio",
+            "pageLimit",
+            "revision",
+            "site",
+            "updatedAt"
+          ],
+          "pages": 75,
+          "checkpointId": "checkpoint_fantasy_import_e9b38b08-bc10-4f83-9adc-dc1b9c66b81a"
+        },
+        "history?kind=drafts&limit=50": {
+          "status": 200,
+          "digest": "be857f74e5b444f829d9edd109100bcd329be9025c2206621a18ef4281688866",
+          "keys": [
+            "siteName",
+            "currentCheckpointId",
+            "currentVersionId",
+            "canEdit",
+            "items",
+            "nextCursor"
+          ],
+          "count": 6,
+          "currentCheckpointId": "checkpoint_fantasy_import_e9b38b08-bc10-4f83-9adc-dc1b9c66b81a",
+          "currentVersionId": null,
+          "nextCursor": null
+        },
+        "history?kind=versions&limit=50": {
+          "status": 200,
+          "digest": "51a48e71c1219983c93a17fd80258fc84e28000d5036cb42268db3154d281585",
+          "keys": [
+            "siteName",
+            "currentCheckpointId",
+            "currentVersionId",
+            "canEdit",
+            "items",
+            "nextCursor"
+          ],
+          "count": 0,
+          "currentCheckpointId": "checkpoint_fantasy_import_e9b38b08-bc10-4f83-9adc-dc1b9c66b81a",
+          "currentVersionId": null,
+          "nextCursor": null
+        },
+        "launch-state": {
+          "status": 200,
+          "digest": "2e18316814ec80e51740dff1e9086c60269b237dc82d7c55ee925bd2013c80b1",
+          "keys": [
+            "siteId",
+            "siteName",
+            "siteStatus",
+            "checkpointId",
+            "digest",
+            "approvedVersionId",
+            "activeReleases",
+            "content",
+            "plan",
+            "observedAt"
+          ]
+        },
+        "assets": {
+          "status": 200,
+          "digest": "dfabeb224551faa4f70bd849d49ea11c4a8ac173e15f722d6272114bedaccdbe",
+          "keys": [
+            "assets"
+          ],
+          "assetCount": 109
+        }
+      }
+    }
+  },
+  "after": {
+    "at": "2026-09-19T20:25:02.355Z",
+    "sites": {
+      "c34f6347-cc63-4ed7-9a5a-da165ebefed2": {
+        "document": {
+          "status": 200,
+          "digest": "34428d4886b59e36613ad1f536779e7a10403dd456f50638e414918ae77794b8",
+          "keys": [
+            "id",
+            "document",
+            "studio",
+            "pageLimit",
+            "revision",
+            "site",
+            "updatedAt"
+          ],
+          "pages": 75,
+          "checkpointId": "checkpoint_fantasy_import_e9b38b08-bc10-4f83-9adc-dc1b9c66b81a"
+        },
+        "history?kind=drafts&limit=50": {
+          "status": 200,
+          "digest": "be857f74e5b444f829d9edd109100bcd329be9025c2206621a18ef4281688866",
+          "keys": [
+            "siteName",
+            "currentCheckpointId",
+            "currentVersionId",
+            "canEdit",
+            "items",
+            "nextCursor"
+          ],
+          "count": 6,
+          "currentCheckpointId": "checkpoint_fantasy_import_e9b38b08-bc10-4f83-9adc-dc1b9c66b81a",
+          "currentVersionId": null,
+          "nextCursor": null
+        },
+        "history?kind=versions&limit=50": {
+          "status": 200,
+          "digest": "51a48e71c1219983c93a17fd80258fc84e28000d5036cb42268db3154d281585",
+          "keys": [
+            "siteName",
+            "currentCheckpointId",
+            "currentVersionId",
+            "canEdit",
+            "items",
+            "nextCursor"
+          ],
+          "count": 0,
+          "currentCheckpointId": "checkpoint_fantasy_import_e9b38b08-bc10-4f83-9adc-dc1b9c66b81a",
+          "currentVersionId": null,
+          "nextCursor": null
+        },
+        "launch-state": {
+          "status": 200,
+          "digest": "6ae799af5cae6f636c89241ecc72339151e266227cde71e9f6d6ed628faebcde",
+          "keys": [
+            "siteId",
+            "siteName",
+            "siteStatus",
+            "checkpointId",
+            "digest",
+            "approvedVersionId",
+            "activeReleases",
+            "content",
+            "plan",
+            "observedAt"
+          ]
+        },
+        "assets": {
+          "status": 200,
+          "digest": "dfabeb224551faa4f70bd849d49ea11c4a8ac173e15f722d6272114bedaccdbe",
+          "keys": [
+            "assets"
+          ],
+          "assetCount": 109
+        }
+      }
+    }
+  },
+  "details": {
+    "studioKeys": [
+      "checkpointId",
+      "pages"
+    ],
+    "documentKeys": [],
+    "forms": 8,
+    "activeReleases": [],
+    "approvedVersionId": null,
+    "checkpointId": "checkpoint_fantasy_import_e9b38b08-bc10-4f83-9adc-dc1b9c66b81a"
+  },
+  "resources": {
+    "provisioning_content_attachments": [
+      {
+        "operation_id": "7330af28-155d-49f0-b268-0f7ed2409490",
+        "state": "reserved",
+        "claimed_until": null
+      }
+    ],
+    "provisioning_content_attachment_verifications": [
+      {
+        "identity": "cms_attach_bb291c98bea04d609a93832be740d2ad8db3dde194c3543f7848d177eae5119f"
+      }
+    ],
+    "provisioning_content_databases": [
+      {
+        "database_id": "768ffe48-b02d-42d3-b2aa-73c4227209b9",
+        "state": "ready"
+      }
+    ],
+    "provisioning_content_workers": [
+      {
+        "script_name": "ps-content-6d4686f642d24b4a8054d5f175c2fc90",
+        "state": "ready"
+      }
+    ],
+    "provisioning_content_routes": [
+      {
+        "activation_id": "4ed988c0-2ee3-49aa-ac81-7284b38c45a7",
+        "state": "active"
+      }
+    ]
+  },
+  "production": {
+    "id": "f10d8124-02ce-4e07-a943-45d6bd2a6530",
+    "source": {
+      "branch": "main",
+      "commit_hash": "4eea0ce71703431b837ffe9f4f9e4e883ab9db60",
+      "commit_message": "Merge pull request #575 from adme-dev/feat/cms-connection\r\n\r\nfeat: connect website CMS from client admin",
+      "commit_dirty": false
+    }
+  },
+  "workerVersions": {
+    "xeroflow-provisioning-production": [
+      {
+        "version_id": "97a567f2-140d-419c-9f98-3cc03f75727f",
+        "percentage": 100
+      }
+    ],
+    "xeroflow-provisioning-executor-production": [
+      {
+        "version_id": "fef05e1b-f53e-454a-ab45-3929ee29f5f4",
+        "percentage": 100
+      }
+    ],
+    "xeroflow-content-router-production": [
+      {
+        "version_id": "b4dd85a4-29f1-4b34-aa56-423b87e40284",
+        "percentage": 100
+      }
+    ],
+    "xeroflow-page-studio-control": [
+      {
+        "version_id": "cca10693-a6f9-441b-956b-77900641545d",
+        "percentage": 100
+      }
+    ],
+    "xeroflow-page-studio-sandbox": [
+      {
+        "version_id": "7702dd58-06ac-4526-b8a3-2f240c5181fc",
+        "percentage": 100
+      }
+    ]
+  },
+  "preservedSettingsAndContainers": true,
+  "intentionalGatewayFlag": "global_fetch_strictly_public",
+  "tests": {
+    "dashboardPassed": 14182,
+    "studioPassed": 3416,
+    "gatewayPassed": 10,
+    "productionConfigPassed": 29,
+    "dashboardExistingTypeDiagnostics": 913,
+    "studioFinalRemoteCI": "not started: Actions budget exhausted"
+  },
+  "browser": {
+    "cmsReopenedRevision": 1,
+    "collections": 0,
+    "freshEditorLaunch": "passed",
+    "qrData": "passed"
+  },
+  "remaining": [
+    "portal/viewer browser matrix",
+    "concurrent-editor browser acceptance",
+    "Fantasy business collections and page bindings",
+    "wider builder delivery tasks and R06"
+  ]
+}

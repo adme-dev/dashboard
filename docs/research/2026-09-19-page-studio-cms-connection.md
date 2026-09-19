@@ -1,5 +1,9 @@
 # CMS connection — staging acceptance, 19 September 2026
 
+> **Production update, 20 September:** Fantasy CMS is now connected. See the
+> [production acceptance record](./2026-09-20-page-studio-cms-production.md).
+> The production-pending statements below describe the earlier staging release.
+
 ## Outcome
 
 The synthetic staging website now has a working CMS connection. An authenticated
