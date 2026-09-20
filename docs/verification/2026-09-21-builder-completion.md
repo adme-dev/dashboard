@@ -44,32 +44,48 @@ under the Dashboard's stricter TypeScript settings.
 - Full typecheck exposed 914 diagnostics: one in the new collection mirror was
   corrected; 913 referenced unrelated files. Full repository typechecking is not
   a passing gate. The final full rerun reports **913 diagnostics and none in any
-  changed/new file**. The isolated generated Vue/Nuxt UI typecheck passes.
+  changed/new file**. Comparing diagnostic multisets before/after the social
+  handler extraction found no additions or removals. The isolated generated
+  Vue/Nuxt UI typecheck passes.
 - Studio: 3,815 tests, 23 build tasks, 37 typecheck tasks plus security types,
   988-file lint and 15 exact-artifact runtime checks pass. Its required commit
   formatter made no changes.
 
-Final full Dashboard regression: **14,152 tests passed, 836 skipped** across
-2,112 files (2,081 passed, 31 skipped), with two workers. Explicit grant-isolation
+Final full Dashboard regression: **14,208 tests passed, 832 skipped** across
+2,113 files (2,083 passed, 30 skipped), with two workers. Explicit grant-isolation
 recheck: **4/4 passed**. Generated Vue/Nuxt UI typecheck and final changed-file
 ESLint pass. Environment-dependent PostgreSQL suites were exercised separately.
+An unrelated governance browser check hit its 30-second deadline during the
+concurrent build/test run. The final full suite ran after the build finished and
+passed without changing that test or its deadline.
 
-**Release build remains blocked by the immutable size gate.** Nuxt compilation
+**Final production build passes the unchanged size gate.** Nuxt compilation
 and 169 prerendered routes succeed. Initial raw size was 25,500,358 bytes; reviewed
-consolidation reduced it to **25,490,717 bytes**, still **21,789 bytes over** the
-25,468,928-byte budget. Gzip is 6,634,468 / 9,750,000 bytes. The guard is unchanged.
-An emitted ESM reachability audit found all **2,795 deployed files reachable**
+native upgrade consolidation reduced it to 25,490,717 bytes, still 21,789 bytes
+over budget. A separately reviewed extraction of identical social-account
+handlers then reduced the artifact to **25,466,202 / 25,468,928 bytes** (2,726
+bytes below the guard). Gzip is **6,623,109 / 9,750,000 bytes**. The guard and its
+128 KiB platform safety margin are unchanged. Future server additions have very
+little remaining budget; continue moving reusable runtime work to Workers.
+Before the handler extraction, an emitted ESM audit found all **2,795 files reachable**
 from `index.js`, with no missing relative imports, nonliteral dynamic imports,
-or orphan files to remove. Existing exact duplicate unrelated handlers total
-only 8,307 bytes; removing them cannot resolve the overage and would break routes.
-Releasing requires further server functionality extraction/consolidation, followed
-by a fresh successful full build; the current artifact must not be deployed.
+or orphan files to remove. The handler extraction preserves all routes and their
+original behavior. See `2026-09-21-social-account-handler-deduplication.md` for
+52 regression cases, 234 exact trace comparisons and independent review. No
+minification setting, authentication policy or deployment budget was weakened.
 
 ## Not activated / remaining
 
 No production migration, deployment, customer schema change or scheduled email
 sending was performed. Reviewed runtime policies and explicit environment setup
 are release prerequisites, not consequences of source implementation.
+
+Native PostgreSQL authority and tenant D1 writes have no distributed commit fence.
+A request admitted immediately before logout can finish its in-flight write;
+post-RPC admission withholds the response but cannot undo that committed write.
+Immediate cross-store revocation remains an acceptance limitation, alongside the
+authenticated admin → Studio → admin journey for newly generated collections.
+Component browser fixtures do not close those broader Phase A acceptance items.
 
 Arbitrary custom Worker execution remains blocked: the fresh bounded hosted R06
 probe failed all four CPU containment gates, including direct child CPU telemetry.
