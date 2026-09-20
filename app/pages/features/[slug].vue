@@ -200,7 +200,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Website CMS and Collections',
-        content: 'Connect CMS storage to an existing website from its agency workspace or client admin, preserving saved pages and website history. Manage collections such as services, fleet and testimonials for the selected website. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release.'
+        content: 'Connect CMS storage to an existing website from its agency workspace or client admin, preserving saved pages and website history. Manage collections such as services, fleet and testimonials for the selected website. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release. Eligible websites with custom collection setup enabled can define text, number, choice and date fields, edit entries through generated forms, archive records and restore earlier values as a new revision. Schema changes require stronger management access, and websites awaiting a reviewed runtime show setup as pending.'
       },
       {
         title: 'Website Form Submissions',

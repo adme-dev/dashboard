@@ -9,7 +9,7 @@ import { preparePageStudioContentLogin } from './contentNativeLogin'
 const MAX_CONTENT_BODY_BYTES = 512_000
 
 // Enforce observed bytes, including chunked requests; Content-Length is only a hint.
-async function readContentBody(event: H3Event): Promise<unknown> {
+export async function readContentBody(event: H3Event): Promise<unknown> {
   if (!/^application\/json(?:\s*;|$)/i.test(getHeader(event, 'content-type') ?? '')) {
     throw createError({ statusCode: 415, statusMessage: 'Business content must be JSON' })
   }

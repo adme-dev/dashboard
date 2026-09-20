@@ -1,0 +1,26 @@
+{
+  "intent": {
+    "version": 1,
+    "policyVersion": "workflow-upgrade-v1",
+    "operationId": "workflow_upgrade_a",
+    "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "databaseId": "10000000-0000-4000-8000-000000000001",
+    "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "actor": {
+      "kind": "agency-user",
+      "userId": "20000000-0000-4000-8000-000000000001",
+      "loginSessionHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "scope": {
+      "tenantId": "tenant_a",
+      "clientId": "client_a",
+      "businessId": "client_a",
+      "siteId": "site_a",
+      "environment": "staging"
+    },
+    "sourceDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee",
+    "targetDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae",
+    "collectionOperationId": "upgrade_a"
+  },
+  "identity": "47bb94b6c143634bbaf2206a4d0cfb3ca59b8317052f4777f4899c8495ec95df"
+}

@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createJwt } from '~~/server/utils/auth'
 import { authorizePageStudioCollections, executePageStudioCollection } from '~~/server/utils/pageStudio/collections'
 import { resolvePageStudioLoginSession, bindPageStudioLoginSession } from '~~/server/utils/pageStudio/loginSessions'
-import { preparePageStudioCollectionUpgrade } from '~~/server/utils/pageStudio/collectionUpgradeIntent'
-import { authorizePageStudioCollectionUpgrade } from '~~/server/utils/pageStudio/collectionUpgradeAuthority'
+import { preparePageStudioWorkflowUpgrade } from '~~/server/utils/pageStudio/workflowUpgradeIntent'
+import { authorizePageStudioWorkflowUpgrade } from '~~/server/utils/pageStudio/workflowUpgradeAuthority'
 import type { PageStudioControlQueryClient } from '~~/server/utils/pageStudio/controlStore'
 
 vi.mock('~~/server/utils/db', () => ({
@@ -85,11 +85,11 @@ describe.runIf(Boolean(databaseUrl))('native collection upgrade intent on Postgr
       }
     }
   })
-  const count = async () => Number((await db.query('SELECT count(*) FROM page_studio_audit_events WHERE action=\'content.collection-upgrade.requested\'')).rows[0].count)
+  const count = async () => Number((await db.query('SELECT count(*) FROM page_studio_audit_events WHERE action=\'content.workflow-upgrade.requested\'')).rows[0].count)
   const read = async (sql: string, params: unknown[]) => (await db.query(sql, params)).rows
-  const target = () => ({ scope: { tenantId: 'collection-fixture', clientId, businessId: clientId, siteId, environment: 'staging' },
+  const target = () => ({ collectionOperationId: 'collection_a', scope: { tenantId: 'collection-fixture', clientId, businessId: clientId, siteId, environment: 'staging' },
     accountId: 'a'.repeat(32), databaseId: '10000000-0000-4000-8000-000000000001', name: `ps-content-${'b'.repeat(32)}` })
-  const authorize = (intent: unknown) => authorizePageStudioCollectionUpgrade(intent, 'staging', { read })
+  const authorize = (intent: unknown) => authorizePageStudioWorkflowUpgrade(intent, 'staging', { read })
 
   describe.each(['agency', 'client'] as const)('%s', (role) => {
     beforeEach(async () => {
@@ -99,7 +99,7 @@ describe.runIf(Boolean(databaseUrl))('native collection upgrade intent on Postgr
     function request() {
       const incoming = new IncomingMessage(new Socket())
       incoming.method = 'POST'
-      incoming.url = '/test/collection-upgrade'
+      incoming.url = '/test/workflow-upgrade'
       incoming.headers = { authorization: `Bearer ${token}` }
       const actor = role === 'agency' ? { role, actorId: userId, tenantId: 'collection-fixture', canEdit: true } : { role, actorId: userId, clientId }
       return { actor, event: createEvent(incoming, new ServerResponse(incoming)), siteId, environment: 'staging' as const, body: { requestId: randomUUID() } }
@@ -139,23 +139,23 @@ describe.runIf(Boolean(databaseUrl))('native collection upgrade intent on Postgr
     })
     function deployedRequest() {
       const input = request()
-      const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn(), readCollectionUpgradeDatabase: vi.fn(async (_scope: unknown) => target()) }
+      const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn(), readWorkflowUpgradeDatabase: vi.fn(async (_scope: unknown) => target()) }
       input.event.context.cloudflare = { env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_PROVISIONER: binding } }
       return { input, binding }
     }
     it('discovers the exact database through the deployed binding after native admission', async () => {
       const { input, binding } = deployedRequest()
-      binding.readCollectionUpgradeDatabase.mockImplementation(async (scope) => {
+      binding.readWorkflowUpgradeDatabase.mockImplementation(async (scope) => {
         expect(scope).toEqual(target().scope)
         expect((await db.query('SELECT * FROM page_studio_login_sessions')).rows).toHaveLength(1)
         return target()
       })
       const { runTransaction } = await options()
-      const saved = await preparePageStudioCollectionUpgrade(input, { runTransaction })
+      const saved = await preparePageStudioWorkflowUpgrade(input, { runTransaction })
       expect(saved.intent.databaseId).toBe(target().databaseId)
       expect(await authorize(saved.intent)).toEqual(saved.intent)
-      expect(await preparePageStudioCollectionUpgrade(input, { runTransaction })).toEqual(saved)
-      expect(binding.readCollectionUpgradeDatabase).toHaveBeenCalledTimes(2)
+      expect(await preparePageStudioWorkflowUpgrade(input, { runTransaction })).toEqual(saved)
+      expect(binding.readWorkflowUpgradeDatabase).toHaveBeenCalledTimes(2)
       expect(binding.createProvisioning).not.toHaveBeenCalled()
       expect(await count()).toBe(1)
     })
@@ -167,78 +167,78 @@ describe.runIf(Boolean(databaseUrl))('native collection upgrade intent on Postgr
       if (failure === 'missing-binding') delete env.PAGE_STUDIO_PROVISIONER
       if (failure === 'missing-method') env.PAGE_STUDIO_PROVISIONER = { createProvisioning: binding.createProvisioning, readProvisioning: binding.readProvisioning }
       const { runTransaction } = await options()
-      await expect(preparePageStudioCollectionUpgrade(input, { runTransaction })).rejects.toMatchObject({ statusCode: 503 })
-      expect(binding.readCollectionUpgradeDatabase).not.toHaveBeenCalled()
+      await expect(preparePageStudioWorkflowUpgrade(input, { runTransaction })).rejects.toMatchObject({ statusCode: 503 })
+      expect(binding.readWorkflowUpgradeDatabase).not.toHaveBeenCalled()
       expect(await count()).toBe(0)
     })
     it.each(['missing', 'foreign', 'unavailable'])('denies %s database discovery without saving intent', async (failure) => {
       const { input, binding } = deployedRequest()
-      if (failure === 'missing') binding.readCollectionUpgradeDatabase.mockResolvedValue(null as never)
-      if (failure === 'foreign') binding.readCollectionUpgradeDatabase.mockResolvedValue({ ...target(), scope: { ...target().scope, siteId: randomUUID() } })
-      if (failure === 'unavailable') binding.readCollectionUpgradeDatabase.mockRejectedValue(new Error('Worker unavailable'))
+      if (failure === 'missing') binding.readWorkflowUpgradeDatabase.mockResolvedValue(null as never)
+      if (failure === 'foreign') binding.readWorkflowUpgradeDatabase.mockResolvedValue({ ...target(), scope: { ...target().scope, siteId: randomUUID() } })
+      if (failure === 'unavailable') binding.readWorkflowUpgradeDatabase.mockRejectedValue(new Error('Worker unavailable'))
       const { runTransaction } = await options()
-      await expect(preparePageStudioCollectionUpgrade(input, { runTransaction })).rejects.toThrow()
-      expect(binding.readCollectionUpgradeDatabase).toHaveBeenCalledOnce()
+      await expect(preparePageStudioWorkflowUpgrade(input, { runTransaction })).rejects.toThrow()
+      expect(binding.readWorkflowUpgradeDatabase).toHaveBeenCalledOnce()
       expect(await count()).toBe(0)
     })
     it('does not contact the deployed Worker without the collection package allowance', async () => {
       const { input, binding } = deployedRequest()
       await db.query('UPDATE page_studio_entitlements SET plan_metadata=\'{}\'')
       const { runTransaction } = await options()
-      await expect(preparePageStudioCollectionUpgrade(input, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
-      expect(binding.readCollectionUpgradeDatabase).not.toHaveBeenCalled()
+      await expect(preparePageStudioWorkflowUpgrade(input, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+      expect(binding.readWorkflowUpgradeDatabase).not.toHaveBeenCalled()
       expect(await count()).toBe(0)
     })
     it('rechecks logout after deployed Worker discovery before saving intent', async () => {
       const { input, binding } = deployedRequest()
-      binding.readCollectionUpgradeDatabase.mockImplementation(async () => {
+      binding.readWorkflowUpgradeDatabase.mockImplementation(async () => {
         await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
         return target()
       })
       const { runTransaction } = await options()
-      await expect(preparePageStudioCollectionUpgrade(input, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
-      expect(binding.readCollectionUpgradeDatabase).toHaveBeenCalledOnce()
+      await expect(preparePageStudioWorkflowUpgrade(input, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+      expect(binding.readWorkflowUpgradeDatabase).toHaveBeenCalledOnce()
       expect(await count()).toBe(0)
     })
     it('persists one exact request, admits its original login, and preserves site state on retry', async () => {
       const input = request(), opts = await options()
       const before = (await db.query('SELECT * FROM page_studio_sites')).rows
-      const saved = await preparePageStudioCollectionUpgrade(input, opts)
+      const saved = await preparePageStudioWorkflowUpgrade(input, opts)
       expect(saved.intent.scope).toEqual(target().scope)
       expect(saved.intent.actor.loginSessionHash).toBe(createHash('sha256').update(token).digest('hex'))
       expect(await authorize(saved.intent)).toEqual(saved.intent)
-      expect(await preparePageStudioCollectionUpgrade(input, opts)).toEqual(saved)
+      expect(await preparePageStudioWorkflowUpgrade(input, opts)).toEqual(saved)
       expect(await count()).toBe(1)
       expect((await db.query('SELECT * FROM page_studio_sites')).rows).toEqual(before)
     })
     it('serializes concurrent retry IDs into a single native intent', async () => {
       const input = request(), a = await options(), b = await options()
-      const results = await Promise.all([preparePageStudioCollectionUpgrade(input, a), preparePageStudioCollectionUpgrade(input, b)])
+      const results = await Promise.all([preparePageStudioWorkflowUpgrade(input, a), preparePageStudioWorkflowUpgrade(input, b)])
       expect(results[0]).toEqual(results[1])
       expect(await count()).toBe(1)
     })
     it('denies other requests, a replacement database and a replacement login', async () => {
       const input = request(), opts = await options()
-      await preparePageStudioCollectionUpgrade(input, opts)
-      await expect(preparePageStudioCollectionUpgrade(request(), opts)).rejects.toMatchObject({ statusCode: 409 })
+      await preparePageStudioWorkflowUpgrade(input, opts)
+      await expect(preparePageStudioWorkflowUpgrade(request(), opts)).rejects.toMatchObject({ statusCode: 409 })
       opts.resolveDatabase.mockResolvedValue({ ...target(), databaseId: randomUUID() })
-      await expect(preparePageStudioCollectionUpgrade(input, opts)).rejects.toMatchObject({ statusCode: 409 })
+      await expect(preparePageStudioWorkflowUpgrade(input, opts)).rejects.toMatchObject({ statusCode: 409 })
       opts.resolveDatabase.mockResolvedValue(target())
       token = role === 'agency' ? await createJwt({ userId, role: 'owner', loginInstance: randomUUID() }) : randomUUID()
       if (role === 'client') await db.query('INSERT INTO client_sessions VALUES($1,$2,clock_timestamp()+INTERVAL \'1 day\')', [createHash('sha256').update(token).digest('hex'), userId])
-      await expect(preparePageStudioCollectionUpgrade({ ...request(), body: input.body }, opts)).rejects.toMatchObject({ statusCode: 409 })
+      await expect(preparePageStudioWorkflowUpgrade({ ...request(), body: input.body }, opts)).rejects.toMatchObject({ statusCode: 409 })
     })
     it.each(['scope', 'actor', 'targetDigest', 'databaseId', 'approved'])('rejects browser supplied %s before database discovery', async (key) => {
       const input = request(), opts = await options()
-      await expect(preparePageStudioCollectionUpgrade({ ...input, body: { ...input.body, [key]: 'forged' } }, opts)).rejects.toMatchObject({ statusCode: 400 })
+      await expect(preparePageStudioWorkflowUpgrade({ ...input, body: { ...input.body, [key]: 'forged' } }, opts)).rejects.toMatchObject({ statusCode: 400 })
       expect(opts.resolveDatabase).not.toHaveBeenCalled()
       expect(await count()).toBe(0)
     })
     it('denies foreign scope discovery and a missing native login', async () => {
       const opts = await options()
       opts.resolveDatabase.mockResolvedValue({ ...target(), scope: { ...target().scope, siteId: randomUUID() } })
-      await expect(preparePageStudioCollectionUpgrade(request(), opts)).rejects.toMatchObject({ statusCode: 403 })
-      await expect(preparePageStudioCollectionUpgrade({ ...request(), event: undefined }, opts)).rejects.toMatchObject({ statusCode: 401 })
+      await expect(preparePageStudioWorkflowUpgrade(request(), opts)).rejects.toMatchObject({ statusCode: 403 })
+      await expect(preparePageStudioWorkflowUpgrade({ ...request(), event: undefined }, opts)).rejects.toMatchObject({ statusCode: 401 })
       expect(await count()).toBe(0)
     })
     it('denies logout committed while database discovery is in flight', async () => {
@@ -247,7 +247,7 @@ describe.runIf(Boolean(databaseUrl))('native collection upgrade intent on Postgr
         await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
         return target()
       })
-      await expect(preparePageStudioCollectionUpgrade(request(), opts)).rejects.toMatchObject({ statusCode: 403 })
+      await expect(preparePageStudioWorkflowUpgrade(request(), opts)).rejects.toMatchObject({ statusCode: 403 })
       expect(await count()).toBe(0)
     })
     it.each([
@@ -260,7 +260,7 @@ describe.runIf(Boolean(databaseUrl))('native collection upgrade intent on Postgr
       'UPDATE agency_clients SET is_active=FALSE',
       'UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()'
     ])('denies current native authority after %s', async (mutation) => {
-      const saved = await preparePageStudioCollectionUpgrade(request(), await options())
+      const saved = await preparePageStudioWorkflowUpgrade(request(), await options())
       await db.query(mutation)
       await expect(authorize(saved.intent)).rejects.toMatchObject({ statusCode: 403 })
     })
@@ -273,23 +273,23 @@ describe.runIf(Boolean(databaseUrl))('native collection upgrade intent on Postgr
           'UPDATE client_users SET role=\'viewer\'', 'UPDATE page_studio_site_memberships SET role=\'viewer\'',
           'DELETE FROM client_sessions'
         ])('denies editing downgrade after %s', async (mutation) => {
-      const saved = await preparePageStudioCollectionUpgrade(request(), await options())
+      const saved = await preparePageStudioWorkflowUpgrade(request(), await options())
       await db.query(mutation)
       await expect(authorize(saved.intent)).rejects.toMatchObject({ statusCode: 403 })
     })
     it('denies forged retained target, actor, scope and duplicate intents', async () => {
-      const saved = await preparePageStudioCollectionUpgrade(request(), await options())
+      const saved = await preparePageStudioWorkflowUpgrade(request(), await options())
       for (const input of [{ ...saved.intent, databaseId: randomUUID() }, { ...saved.intent, actor: { ...saved.intent.actor, loginSessionHash: 'f'.repeat(64) } },
         { ...saved.intent, scope: { ...saved.intent.scope, businessId: 'foreign' } }]) await expect(authorize(input)).rejects.toMatchObject({ statusCode: 403 })
-      await db.query('INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata) SELECT tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata FROM page_studio_audit_events WHERE action=\'content.collection-upgrade.requested\'')
+      await db.query('INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata) SELECT tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata FROM page_studio_audit_events WHERE action=\'content.workflow-upgrade.requested\'')
       await expect(authorize(saved.intent)).rejects.toMatchObject({ statusCode: 403 })
     })
     it('retains cancellation as an appended audit event and denies retries', async () => {
       const input = request(), opts = await options()
-      const saved = await preparePageStudioCollectionUpgrade(input, opts)
-      await db.query('INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata) SELECT tenant_id,client_id,site_id,actor_id,actor_role,\'content.collection-upgrade.disabled\',resource_type,resource_id,metadata FROM page_studio_audit_events WHERE action=\'content.collection-upgrade.requested\'')
+      const saved = await preparePageStudioWorkflowUpgrade(input, opts)
+      await db.query('INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata) SELECT tenant_id,client_id,site_id,actor_id,actor_role,\'content.workflow-upgrade.disabled\',resource_type,resource_id,metadata FROM page_studio_audit_events WHERE action=\'content.workflow-upgrade.requested\'')
       await expect(authorize(saved.intent)).rejects.toMatchObject({ statusCode: 403 })
-      await expect(preparePageStudioCollectionUpgrade(input, opts)).rejects.toMatchObject({ statusCode: 403 })
+      await expect(preparePageStudioWorkflowUpgrade(input, opts)).rejects.toMatchObject({ statusCode: 403 })
       expect(await count()).toBe(1)
     })
     it('recovers after the native intent commits but its acknowledgement is lost', async () => {
@@ -300,21 +300,21 @@ describe.runIf(Boolean(databaseUrl))('native collection upgrade intent on Postgr
         if (++calls === 2) throw new Error('lost acknowledgement')
         return result
       }
-      await expect(preparePageStudioCollectionUpgrade(input, opts)).rejects.toThrow('lost acknowledgement')
-      const saved = (await db.query('SELECT metadata FROM page_studio_audit_events WHERE action=\'content.collection-upgrade.requested\'')).rows[0].metadata
-      expect(await preparePageStudioCollectionUpgrade(input, opts)).toEqual({ intent: saved.intent, identity: saved.identity })
+      await expect(preparePageStudioWorkflowUpgrade(input, opts)).rejects.toThrow('lost acknowledgement')
+      const saved = (await db.query('SELECT metadata FROM page_studio_audit_events WHERE action=\'content.workflow-upgrade.requested\'')).rows[0].metadata
+      expect(await preparePageStudioWorkflowUpgrade(input, opts)).toEqual({ intent: saved.intent, identity: saved.identity })
       expect(await count()).toBe(1)
     })
     it('rolls back intent when package expires during its insert', async () => {
       await db.query(`CREATE FUNCTION delay_collection_intent() RETURNS trigger AS $$
-        BEGIN IF NEW.action='content.collection-upgrade.requested' THEN PERFORM pg_sleep(0.4); END IF; RETURN NEW; END; $$ LANGUAGE plpgsql;
+        BEGIN IF NEW.action='content.workflow-upgrade.requested' THEN PERFORM pg_sleep(0.4); END IF; RETURN NEW; END; $$ LANGUAGE plpgsql;
         CREATE TRIGGER delay_collection_intent BEFORE INSERT ON page_studio_audit_events FOR EACH ROW EXECUTE FUNCTION delay_collection_intent();`)
       const opts = await options()
       opts.resolveDatabase.mockImplementation(async () => {
         await db.query('UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+INTERVAL \'0.3 seconds\'')
         return target()
       })
-      await expect(preparePageStudioCollectionUpgrade(request(), opts)).rejects.toMatchObject({ statusCode: 403 })
+      await expect(preparePageStudioWorkflowUpgrade(request(), opts)).rejects.toMatchObject({ statusCode: 403 })
       expect(await count()).toBe(0)
     })
   })
