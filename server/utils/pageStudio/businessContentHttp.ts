@@ -4,6 +4,8 @@ import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access
 import { readPageStudioBusinessContent, writePageStudioBusinessContent, type PageStudioContentActor } from '~~/server/utils/pageStudio/businessContent'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 
+import { preparePageStudioContentLogin } from './contentNativeLogin'
+
 const MAX_CONTENT_BODY_BYTES = 512_000
 
 // Enforce observed bytes, including chunked requests; Content-Length is only a hint.
@@ -65,13 +67,15 @@ export async function handlePageStudioBusinessContent(event: H3Event, audience: 
       const user = await requireClientAuth(event)
       actor = { role: 'client', actorId: user.id, clientId: user.clientId }
     }
+    const body = method === 'PUT' ? await readContentBody(event) : undefined
+    const login = await preparePageStudioContentLogin(event, actor)
     const request = {
-      actor,
+      actor, login,
       siteId: getRouterParam(event, 'siteId') ?? '',
       env: (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env ?? {}
     }
     return method === 'GET'
       ? await readPageStudioBusinessContent(request)
-      : await writePageStudioBusinessContent({ ...request, body: await readContentBody(event) })
+      : await writePageStudioBusinessContent({ ...request, body })
   } catch (error) { pageStudioHttpError(error) }
 }

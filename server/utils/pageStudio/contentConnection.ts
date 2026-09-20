@@ -6,6 +6,7 @@ import { ContentAttachmentRequestSchema } from '~~/shared/pageStudio/content-att
 import { samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
 import type { PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
 import { authorizePageStudioBusinessContent, type PageStudioContentActor } from './businessContent'
+import { preparePageStudioContentLogin } from './contentNativeLogin'
 import { preparePageStudioContentAttachment } from './contentAttachmentIntent'
 import { resolvePageStudioLoginSession } from './loginSessions'
 import { requirePageStudioProvisioningRuntime } from './provisioningBinding'
@@ -22,7 +23,8 @@ const Retained = z.object({ request: ContentAttachmentRequestSchema, status: Sta
 const unavailable = () => createError({ statusCode: 503, statusMessage: 'CMS connection is unavailable' })
 const invalid = () => createError({ statusCode: 502, statusMessage: 'CMS connection could not be verified' })
 async function context(request: Request) {
-  const { scope } = await authorizePageStudioBusinessContent(request, true, {})
+  const login = await preparePageStudioContentLogin(request.event, request.actor)
+  const { scope } = await authorizePageStudioBusinessContent({ ...request, login }, true, {})
   const runtime = requirePageStudioProvisioningRuntime(request.env)
   const binding = runtime.binding as unknown as Binding
   if (scope.environment !== runtime.environment || typeof binding.resolveContentRoute !== 'function'

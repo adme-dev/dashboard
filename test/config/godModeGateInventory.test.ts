@@ -197,9 +197,11 @@ describe('God mode gate inventory', () => {
     // Domain/email authority moved to the private management Worker, outside this
     // Pages-only lexical inventory. Its fresh identity/role checks have separate RPC/PG tests.
     // CMS connection adds an explicit portal admin/manager role gate; no bypass.
-    expect(inventory.rows).toHaveLength(1575)
+    // CMS reads and writes now also check the current native staff role policy.
+    // These two SQL predicates are identity boundaries, with no owner bypass.
+    expect(inventory.rows).toHaveLength(1577)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 111,
+      identity_tenant_hard_boundary: 113,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
       ordinary_user_behavior: 180,
@@ -215,7 +217,7 @@ describe('God mode gate inventory', () => {
     // independent authority checks and none becomes a governance bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('97a5316689e348bdf70fd5edfe14adc15d3d05238c362afe556ecf84c058aba1')
+    expect(inventory.digest).toBe('52fa29bf5317a867984ece8560f4b71847e85dcd63b4426248d9080dff6616fa')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
