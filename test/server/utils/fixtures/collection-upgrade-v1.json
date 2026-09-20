@@ -1,0 +1,25 @@
+{
+  "intent": {
+    "version": 1,
+    "policyVersion": "collection-upgrade-v1",
+    "operationId": "upgrade_a",
+    "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "databaseId": "10000000-0000-4000-8000-000000000001",
+    "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "actor": {
+      "kind": "agency-user",
+      "userId": "20000000-0000-4000-8000-000000000001",
+      "loginSessionHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "scope": {
+      "tenantId": "tenant_a",
+      "clientId": "client_a",
+      "businessId": "client_a",
+      "siteId": "site_a",
+      "environment": "staging"
+    },
+    "sourceDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+    "targetDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee"
+  },
+  "identity": "bbbec8cb92c982424b53ab9feacdc82dbb922ae442bed523b9b15ec1d5b3cd04"
+}
