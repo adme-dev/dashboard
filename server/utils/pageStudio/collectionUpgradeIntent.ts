@@ -7,6 +7,7 @@ import type { PageStudioContentActor } from './businessContent'
 import type { PageStudioControlQueryClient } from './controlStore'
 import { bindPageStudioLoginSession, resolvePageStudioLoginSession } from './loginSessions'
 import { recheckPageStudioCollectionAuthority } from './collectionUpgradeAuthority'
+import { requirePageStudioProvisioningRuntime } from './provisioningBinding'
 
 const Body = z.object({ requestId: z.string().uuid() }).strict()
 const denied = () => createError({ statusCode: 403, statusMessage: 'Collection upgrade access denied' })
@@ -18,9 +19,9 @@ interface Request { actor: PageStudioContentActor, event?: H3Event, siteId: stri
  * must read the ready reservation for this scope. It runs outside native locks;
  * the upgrade coordinator rechecks the exact reservation before provider I/O. */
 export async function preparePageStudioCollectionUpgrade(input: Request, dependencies: {
-  resolveDatabase: (scope: CollectionUpgradeOperation['scope']) => Promise<unknown>
+  resolveDatabase?: (scope: CollectionUpgradeOperation['scope']) => Promise<unknown>
   runTransaction?: Run
-}) {
+} = {}) {
   const body = Body.safeParse(input.body)
   if (!body.success || !z.string().uuid().safeParse(input.siteId).success) throw createError({ statusCode: 400, statusMessage: 'Invalid collection upgrade request' })
   if (!input.event) throw createError({ statusCode: 401, statusMessage: 'Sign in again before changing collection schemas' })
@@ -28,7 +29,17 @@ export async function preparePageStudioCollectionUpgrade(input: Request, depende
   if (!['staging', 'production'].includes(environment) || !z.string().uuid().safeParse(actor.actorId).success
     || (actor.role === 'agency' && !actor.canEdit)) throw denied()
   const run: Run = dependencies.runTransaction ?? (work => transactionWithoutRetry(db => work(db as unknown as PageStudioControlQueryClient)))
-  const resolveDatabase = dependencies.resolveDatabase
+  const resolveDatabase = dependencies.resolveDatabase ?? (async (scope: CollectionUpgradeOperation['scope']) => {
+    const runtime = requirePageStudioProvisioningRuntime(event.context.cloudflare?.env)
+    const binding = runtime.binding as typeof runtime.binding & {
+      readCollectionUpgradeDatabase?: (scope: CollectionUpgradeOperation['scope']) => Promise<unknown>
+    }
+    if (scope.environment !== runtime.environment || typeof binding.readCollectionUpgradeDatabase !== 'function') {
+      throw createError({ statusCode: 503, statusMessage: 'Collection database discovery is unavailable' })
+    }
+    // Invoke on the service binding itself: .bind() is a remote RPC property.
+    return await binding.readCollectionUpgradeDatabase(scope)
+  })
   const agency = actor.role === 'agency'
   const native = await run(async (db) => {
     // Same site -> native login -> parent login lock order as CMS attachment.

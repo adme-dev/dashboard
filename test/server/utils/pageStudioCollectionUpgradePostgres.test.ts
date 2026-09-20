@@ -105,6 +105,69 @@ describe.runIf(Boolean(databaseUrl))('native collection upgrade intent on Postgr
     async function options() {
       return { runTransaction: transaction(await connect()), resolveDatabase: vi.fn(async () => target()) }
     }
+    function deployedRequest() {
+      const input = request()
+      const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn(), readCollectionUpgradeDatabase: vi.fn(async (_scope: unknown) => target()) }
+      input.event.context.cloudflare = { env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_PROVISIONER: binding } }
+      return { input, binding }
+    }
+    it('discovers the exact database through the deployed binding after native admission', async () => {
+      const { input, binding } = deployedRequest()
+      binding.readCollectionUpgradeDatabase.mockImplementation(async (scope) => {
+        expect(scope).toEqual(target().scope)
+        expect((await db.query('SELECT * FROM page_studio_login_sessions')).rows).toHaveLength(1)
+        return target()
+      })
+      const { runTransaction } = await options()
+      const saved = await preparePageStudioCollectionUpgrade(input, { runTransaction })
+      expect(saved.intent.databaseId).toBe(target().databaseId)
+      expect(await authorize(saved.intent)).toEqual(saved.intent)
+      expect(await preparePageStudioCollectionUpgrade(input, { runTransaction })).toEqual(saved)
+      expect(binding.readCollectionUpgradeDatabase).toHaveBeenCalledTimes(2)
+      expect(binding.createProvisioning).not.toHaveBeenCalled()
+      expect(await count()).toBe(1)
+    })
+    it.each(['missing-environment', 'wrong-environment', 'missing-binding', 'missing-method'])('denies %s without discovery or saving intent', async (failure) => {
+      const { input, binding } = deployedRequest()
+      const env = input.event.context.cloudflare.env
+      if (failure === 'missing-environment') delete env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT
+      if (failure === 'wrong-environment') env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'production'
+      if (failure === 'missing-binding') delete env.PAGE_STUDIO_PROVISIONER
+      if (failure === 'missing-method') env.PAGE_STUDIO_PROVISIONER = { createProvisioning: binding.createProvisioning, readProvisioning: binding.readProvisioning }
+      const { runTransaction } = await options()
+      await expect(preparePageStudioCollectionUpgrade(input, { runTransaction })).rejects.toMatchObject({ statusCode: 503 })
+      expect(binding.readCollectionUpgradeDatabase).not.toHaveBeenCalled()
+      expect(await count()).toBe(0)
+    })
+    it.each(['missing', 'foreign', 'unavailable'])('denies %s database discovery without saving intent', async (failure) => {
+      const { input, binding } = deployedRequest()
+      if (failure === 'missing') binding.readCollectionUpgradeDatabase.mockResolvedValue(null as never)
+      if (failure === 'foreign') binding.readCollectionUpgradeDatabase.mockResolvedValue({ ...target(), scope: { ...target().scope, siteId: randomUUID() } })
+      if (failure === 'unavailable') binding.readCollectionUpgradeDatabase.mockRejectedValue(new Error('Worker unavailable'))
+      const { runTransaction } = await options()
+      await expect(preparePageStudioCollectionUpgrade(input, { runTransaction })).rejects.toThrow()
+      expect(binding.readCollectionUpgradeDatabase).toHaveBeenCalledOnce()
+      expect(await count()).toBe(0)
+    })
+    it('does not contact the deployed Worker without the collection package allowance', async () => {
+      const { input, binding } = deployedRequest()
+      await db.query('UPDATE page_studio_entitlements SET plan_metadata=\'{}\'')
+      const { runTransaction } = await options()
+      await expect(preparePageStudioCollectionUpgrade(input, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+      expect(binding.readCollectionUpgradeDatabase).not.toHaveBeenCalled()
+      expect(await count()).toBe(0)
+    })
+    it('rechecks logout after deployed Worker discovery before saving intent', async () => {
+      const { input, binding } = deployedRequest()
+      binding.readCollectionUpgradeDatabase.mockImplementation(async () => {
+        await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+        return target()
+      })
+      const { runTransaction } = await options()
+      await expect(preparePageStudioCollectionUpgrade(input, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+      expect(binding.readCollectionUpgradeDatabase).toHaveBeenCalledOnce()
+      expect(await count()).toBe(0)
+    })
     it('persists one exact request, admits its original login, and preserves site state on retry', async () => {
       const input = request(), opts = await options()
       const before = (await db.query('SELECT * FROM page_studio_sites')).rows
