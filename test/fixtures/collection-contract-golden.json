@@ -1,0 +1,210 @@
+{
+  "source": "@xeroflow/protocol collection-definition + collection-api (2026-09-21)",
+  "definition": {
+    "displayFieldId": "name",
+    "fields": [
+      {
+        "id": "name",
+        "label": "name",
+        "required": true,
+        "visibility": "private",
+        "maxLength": 120,
+        "type": "text"
+      },
+      {
+        "id": "count",
+        "label": "count",
+        "required": true,
+        "visibility": "private",
+        "type": "integer"
+      },
+      {
+        "id": "enabled",
+        "label": "enabled",
+        "required": true,
+        "visibility": "private",
+        "type": "boolean"
+      },
+      {
+        "id": "available",
+        "label": "available",
+        "required": true,
+        "visibility": "private",
+        "type": "date"
+      },
+      {
+        "id": "starts",
+        "label": "starts",
+        "required": true,
+        "visibility": "private",
+        "type": "instant"
+      },
+      {
+        "id": "price",
+        "label": "price",
+        "required": true,
+        "visibility": "private",
+        "precision": 12,
+        "scale": 2,
+        "type": "decimal"
+      },
+      {
+        "id": "category",
+        "label": "category",
+        "required": true,
+        "visibility": "private",
+        "options": [
+          {
+            "id": "standard",
+            "label": "Standard"
+          }
+        ],
+        "type": "enum"
+      }
+    ],
+    "formatVersion": 1,
+    "id": "services",
+    "label": "Services",
+    "scope": {
+      "businessId": "client_test",
+      "clientId": "client_test",
+      "environment": "staging",
+      "siteId": "ad7a22f9-1c8a-44d7-92b2-d4202e4a2020",
+      "tenantId": "tenant_test"
+    },
+    "version": 1
+  },
+  "definitionDigest": "73edefc78806b2ef83a0d390495faaecded94ef95cccc4eeb2d8c4c48b30b1cc",
+  "record": {
+    "archived": false,
+    "collectionId": "services",
+    "id": "transfer",
+    "schemaVersion": 1,
+    "scope": {
+      "businessId": "client_test",
+      "clientId": "client_test",
+      "environment": "staging",
+      "siteId": "ad7a22f9-1c8a-44d7-92b2-d4202e4a2020",
+      "tenantId": "tenant_test"
+    },
+    "values": {
+      "name": "Transfer",
+      "count": 2,
+      "enabled": false,
+      "available": "2026-09-21",
+      "starts": "2026-09-21T09:30:00.000Z",
+      "price": "120.00",
+      "category": "standard"
+    },
+    "revision": 1
+  },
+  "recordDigest": "4921680cd84702d9bb2c1ca15c0bfab1b974a84a84a757d3c5655c39dbc545de",
+  "cases": [
+    {
+      "input": {
+        "name": "Transfer",
+        "count": 2,
+        "enabled": false,
+        "available": "2026-09-21",
+        "starts": "2026-09-21T09:30:00.000Z",
+        "price": "120.00",
+        "category": "standard"
+      },
+      "success": true,
+      "output": {
+        "name": "Transfer",
+        "count": 2,
+        "enabled": false,
+        "available": "2026-09-21",
+        "starts": "2026-09-21T09:30:00.000Z",
+        "price": "120.00",
+        "category": "standard"
+      }
+    },
+    {
+      "input": {
+        "name": "Transfer",
+        "count": 2,
+        "enabled": false,
+        "available": "2026-09-21",
+        "starts": "2026-09-21T09:30:00.000Z",
+        "price": 120,
+        "category": "standard"
+      },
+      "success": false
+    },
+    {
+      "input": {
+        "name": "Transfer",
+        "count": 2,
+        "enabled": false,
+        "available": "2026-09-21",
+        "starts": "2026-09-21T09:30:00.000Z",
+        "price": "120.0",
+        "category": "standard"
+      },
+      "success": false
+    },
+    {
+      "input": {
+        "name": "Transfer",
+        "count": 2,
+        "enabled": false,
+        "available": "2026-02-30",
+        "starts": "2026-09-21T09:30:00.000Z",
+        "price": "120.00",
+        "category": "standard"
+      },
+      "success": false
+    },
+    {
+      "input": {
+        "name": "Transfer",
+        "count": 2,
+        "enabled": false,
+        "available": "2026-09-21",
+        "starts": "2026-09-21T09:30:00Z",
+        "price": "120.00",
+        "category": "standard"
+      },
+      "success": false
+    },
+    {
+      "input": {
+        "name": "Transfer",
+        "count": 2,
+        "enabled": false,
+        "available": "2026-09-21",
+        "starts": "2026-09-21T09:30:00.000Z",
+        "price": "120.00",
+        "category": "unknown"
+      },
+      "success": false
+    },
+    {
+      "input": {
+        "name": "Transfer",
+        "count": 1.2,
+        "enabled": false,
+        "available": "2026-09-21",
+        "starts": "2026-09-21T09:30:00.000Z",
+        "price": "120.00",
+        "category": "standard"
+      },
+      "success": false
+    },
+    {
+      "input": {
+        "name": "Transfer",
+        "count": 2,
+        "enabled": false,
+        "available": "2026-09-21",
+        "starts": "2026-09-21T09:30:00.000Z",
+        "price": "120.00",
+        "category": "standard",
+        "extra": "unapproved"
+      },
+      "success": false
+    }
+  ]
+}

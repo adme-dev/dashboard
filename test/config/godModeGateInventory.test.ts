@@ -197,12 +197,16 @@ describe('God mode gate inventory', () => {
     // Domain/email authority moved to the private management Worker, outside this
     // Pages-only lexical inventory. Its fresh identity/role checks have separate RPC/PG tests.
     // CMS connection adds an explicit portal admin/manager role gate; no bypass.
-    expect(inventory.rows).toHaveLength(1575)
+    // CMS reads and writes now also check the current native staff role policy.
+    // These two SQL predicates are identity boundaries, with no owner bypass.
+    // Generated collections add three native-policy lexical rows; the shared
+    // CMS/workflow setup core adds one portal role check. No bypass is registered.
+    expect(inventory.rows).toHaveLength(1581)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 111,
+      identity_tenant_hard_boundary: 116,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
-      ordinary_user_behavior: 180,
+      ordinary_user_behavior: 181,
       unrelated_configuration: 433
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -215,7 +219,7 @@ describe('God mode gate inventory', () => {
     // independent authority checks and none becomes a governance bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('97a5316689e348bdf70fd5edfe14adc15d3d05238c362afe556ecf84c058aba1')
+    expect(inventory.digest).toBe('51f1d500503a7e6c99f89780ade187989ec1289f79d99cbf755ff029f167a665')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

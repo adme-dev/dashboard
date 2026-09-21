@@ -1,0 +1,41 @@
+import './style.css';
+import * as Vue from 'vue';
+import {createRouter,createWebHistory} from 'vue-router';
+import ui from '@nuxt/ui/vue-plugin';
+import App from './App.vue';
+import Workspace from '__DASHBOARD_ROOT__/app/components/page-studio/GeneratedCollectionsWorkspace.client.vue';
+import Fields from '__DASHBOARD_ROOT__/app/components/page-studio/GeneratedCollectionFields.vue';
+import SchemaEditor from '__DASHBOARD_ROOT__/app/components/page-studio/CollectionSchemaEditor.vue';
+import {usePageStudioCollectionDraft} from '__DASHBOARD_ROOT__/app/composables/usePageStudioCollectionDraft.ts';
+const scope={tenantId:'tenant_test',clientId:'client_test',businessId:'client_test',siteId:'site_test',environment:'staging'};
+const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
+const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical(value))))).map(v=>v.toString(16).padStart(2,'0')).join('');
+const definition=(id,label)=>({formatVersion:1,id,label,scope,version:1,displayFieldId:'name',fields:[{id:'name',label:'Name',type:'text',required:true,visibility:'public',maxLength:120},{id:'seats',label:'Seats',type:'integer',required:false,visibility:'public',min:1,max:100},{id:'notes',label:'Internal notes',type:'text',required:false,visibility:'private'}]});
+const initial={definitions:[definition('fleet','Fleet'),definition('venues','Venues')],records:{}};
+const state=JSON.parse(localStorage.getItem('collection-fixture')??'null')??initial;
+const save=()=>localStorage.setItem('collection-fixture',JSON.stringify(state));
+const wrap=async (key,value)=>({[key]:value,sha256:await digest(value),actorId:'operator',createdAt:new Date().toISOString()});
+const fail=(statusCode,message)=>{throw Object.assign(new Error(message),{statusCode,status:statusCode,data:{statusMessage:message}})};
+window.fixture={state,failNext:false,conflictNext:false};
+window.$fetch=async (url,options={})=>{
+ const parts=String(url).split('/collections')[1]?.split('/').filter(Boolean)??[];
+ if(!parts.length)return {...await Promise.resolve({items:await Promise.all(state.definitions.map(d=>wrap('definition',d))),nextCursor:null}),canEdit:true,canManageSchema:true};
+ const [collectionId,kind,id]=parts, def=state.definitions.find(d=>d.id===collectionId);
+ if(kind!=='records'){
+  if(options.method==='PUT'){const {expectedVersion,definition:body}=options.body;if((def?.version??0)!==expectedVersion)fail(409,'Schema changed');const next={...body,formatVersion:1,id:collectionId,scope,version:expectedVersion+1};state.definitions=state.definitions.filter(d=>d.id!==collectionId).concat(next);save();return wrap('definition',next)}
+  return def?wrap('definition',def):null;
+ }
+ if(!id){const items=await Promise.all(Object.values(state.records).filter(list=>list.at(-1).collectionId===collectionId).map(list=>list.at(-1)).filter(row=>options.query?.includeArchived==='true'||!row.archived).map(row=>wrap('record',row)));return {items,nextCursor:null}}
+ const key=`${collectionId}/${id}`,history=state.records[key]??[];
+ if(options.method==='PUT'){
+  if(window.fixture.conflictNext){window.fixture.conflictNext=false;fail(409,'Newer revision exists')}
+  if(window.fixture.failNext){window.fixture.failNext=false;fail(502,'Synthetic network failure')}
+  const {expectedRevision,...body}=options.body;
+  if(history.length!==expectedRevision)fail(409,'Newer revision exists');
+  const row={...body,collectionId,id,scope,revision:expectedRevision+1};state.records[key]=[...history,row];save();return wrap('record',row);
+ }
+ const row=options.query?.revision?history[Number(options.query.revision)-1]:history.at(-1);return row?wrap('record',row):null;
+};
+Object.assign(window,Vue,{usePageStudioCollectionDraft,useFetch:async url=>{const data=Vue.ref(null),pending=Vue.ref(false),error=Vue.ref(null);const refresh=async()=>{pending.value=true;try{data.value=await window.$fetch(Vue.toValue(url));error.value=null}catch(e){error.value=e}finally{pending.value=false}};await refresh();return {data,pending,error,refresh}}});
+const router=createRouter({history:createWebHistory(),routes:[{path:'/',component:{render:()=>Vue.h(Workspace,{audience:'portal',siteId:'site_test'})}},{path:'/away',component:{render:()=>Vue.h('h2','Left editor')}}]});
+const app=Vue.createApp(App);app.component('PageStudioGeneratedCollectionFields',Fields);app.component('PageStudioCollectionSchemaEditor',SchemaEditor);app.use(router);app.use(ui);app.mount('#app');

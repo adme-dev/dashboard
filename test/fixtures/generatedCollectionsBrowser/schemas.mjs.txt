@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const results=[];
+try {
+ const page=await browser.newPage({viewport:{width:1440,height:1000}}), errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('__FIXTURE_ORIGIN__');
+ await page.getByRole('button',{name:'New collection',exact:true}).click();
+ await page.getByLabel('Collection name',{exact:true}).fill('Testimonials');await page.getByLabel('Collection ID',{exact:true}).fill('testimonials');
+ await page.getByRole('button',{name:'Add field',exact:true}).click();
+ await page.getByLabel('Field name',{exact:true}).nth(1).fill('Review');await page.getByLabel('Field ID',{exact:true}).nth(1).fill('review');
+ await page.getByRole('button',{name:'Save collection schema',exact:true}).click();
+ await page.getByRole('heading',{name:'Testimonials',exact:true}).waitFor();
+ await page.getByRole('button',{name:'New entry',exact:true}).click();await page.getByLabel('Name',{exact:true}).fill('Jane');
+ await page.getByRole('checkbox',{name:'Include Review',exact:true}).click();await page.getByLabel('Review',{exact:true}).fill('A lovely trip');
+ await page.getByRole('button',{name:'Save entry',exact:true}).click();await page.getByText('Saved revision 1',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Edit schema',exact:true}).click();await page.getByRole('button',{name:'Add field',exact:true}).click();
+ await page.getByLabel('Field name',{exact:true}).nth(2).fill('Source');await page.getByLabel('Field ID',{exact:true}).nth(2).fill('source');
+ await page.getByRole('button',{name:'Save collection schema',exact:true}).click();await page.getByText('Schema 2',{exact:true}).waitFor();
+ await page.getByLabel('Name',{exact:true}).waitFor();assert.equal(await page.getByLabel('Name',{exact:true}).inputValue(),'Jane');
+ await page.getByRole('checkbox',{name:'Include Source',exact:true}).click();await page.getByLabel('Source',{exact:true}).fill('Wedding');
+ await page.getByRole('button',{name:'Save entry',exact:true}).click();await page.getByText('Saved revision 2',{exact:true}).waitFor();
+ assert.deepEqual(errors,[]);console.log('Schema authoring, generated record, compatible schema upgrade all pass');
+} catch(error){console.error(error);process.exitCode=1} finally {await browser.close()}

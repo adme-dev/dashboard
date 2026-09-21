@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const results=[];
+try {
+ const page=await browser.newPage({viewport:{width:1440,height:1000}}), errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('__FIXTURE_ORIGIN__');
+ await page.getByRole('button',{name:'New entry',exact:true}).click();
+ console.log('step:new entry');
+ const name=page.getByLabel('Name',{exact:true});
+ await name.fill('Silver limousine');
+ await page.getByRole('button',{name:'New entry',exact:true}).click();await name.fill('Second unsaved');
+ await page.getByRole('button',{name:'Entry',exact:true}).click();
+ await page.getByRole('option',{name:'Silver limousine (unsaved)',exact:true}).waitFor({timeout:5000});
+ await page.getByRole('option',{name:'Silver limousine (unsaved)',exact:true}).click();assert.equal(await name.inputValue(),'Silver limousine');console.log('unsaved draft recoverable');
+} catch(error){console.error(error);process.exitCode=1} finally {await browser.close()}

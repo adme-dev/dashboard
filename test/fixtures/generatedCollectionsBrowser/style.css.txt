@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+@source "__DASHBOARD_ROOT__/app/components/page-studio/GeneratedCollectionsWorkspace.client.vue";
+@source "__DASHBOARD_ROOT__/app/components/page-studio/GeneratedCollectionFields.vue";
+@source "__DASHBOARD_ROOT__/app/components/page-studio/CollectionSchemaEditor.vue";

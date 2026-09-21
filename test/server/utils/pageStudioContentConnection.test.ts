@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { connectPageStudioContent, getPageStudioContentConnection } from '~~/server/utils/pageStudio/contentConnection'
 
-const mocks = vi.hoisted(() => ({ authorize: vi.fn(), query: vi.fn(), prepare: vi.fn(), login: vi.fn() }))
+const mocks = vi.hoisted(() => ({ authorize: vi.fn(), query: vi.fn(), prepare: vi.fn(), login: vi.fn(), nativeLogin: vi.fn() }))
+vi.mock('~~/server/utils/pageStudio/contentNativeLogin', () => ({ preparePageStudioContentLogin: mocks.nativeLogin }))
 vi.mock('~~/server/utils/pageStudio/businessContent', () => ({ authorizePageStudioBusinessContent: mocks.authorize }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.query, transactionWithoutRetry: (callback: (db: unknown) => unknown) => callback({}) }))
 vi.mock('~~/server/utils/pageStudio/contentAttachmentIntent', () => ({ preparePageStudioContentAttachment: mocks.prepare }))
@@ -15,6 +16,7 @@ function context() {
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.nativeLogin.mockResolvedValue({})
   mocks.authorize.mockResolvedValue({ scope })
   mocks.query.mockResolvedValue({ current_checkpoint_id: 'checkpoint_1', metadata: null })
 })
@@ -35,6 +37,17 @@ describe('CMS connection status', () => {
     const c = context()
     c.binding.resolveContentRoute.mockResolvedValue({ scope: { ...scope, siteId: 'foreign' } } as never)
     await expect(getPageStudioContentConnection(c.input)).rejects.toThrow()
+  })
+  it('withholds connection status when the native login is revoked during the remote read', async () => {
+    const c = context()
+    c.binding.resolveContentRoute.mockImplementationOnce(async () => {
+      mocks.nativeLogin.mockRejectedValue(new Error('Login revoked'))
+      return { scope } as never
+    })
+    await expect(getPageStudioContentConnection(c.input)).rejects.toThrow('Login revoked')
+    expect(mocks.nativeLogin).toHaveBeenCalledTimes(2)
+    expect(mocks.prepare).not.toHaveBeenCalled()
+    expect(c.binding.createContentAttachment).not.toHaveBeenCalled()
   })
 })
 

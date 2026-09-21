@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import { queryOneFresh } from '~~/server/utils/db'
+import { pageStudioContentAuthoritySql } from './contentAuthoritySql'
+import type { PageStudioLoginSession } from './loginSessions'
 import {
   PageStudioBusinessContentSchema,
   PageStudioContentEditSchema,
@@ -22,18 +24,26 @@ export type PageStudioContentActor = { actorId: string } & (
   | { role: 'agency', tenantId: string, canEdit: boolean }
   | { role: 'client', clientId: string }
 )
-interface ScopeRow {
+export interface ScopeRow {
+  plan_metadata?: unknown
+  native_user_role?: string | null
+  collection_capacity?: boolean
+  portal_creation_enabled?: boolean
   tenant_id: string
   client_id: string
   site_status: string
   entitlement_status: string
   entitlement_effective: boolean
+  native_can_view: boolean
+  native_can_edit: boolean
   membership_role?: string | null
 }
-interface Dependencies {
+export interface ContentAuthorityDependencies {
   query?: (sql: string, params: unknown[]) => Promise<ScopeRow | null>
 }
-interface Request {
+export interface ContentAuthorityRequest {
+  collectionAccess?: boolean
+  login: PageStudioLoginSession
   actor: PageStudioContentActor
   siteId: string
   env: Record<string, unknown>
@@ -42,10 +52,15 @@ interface ContentService {
   readContent: (scope: PageStudioContentScope) => Promise<unknown>
   writeContent: (request: unknown) => Promise<unknown>
 }
+const NativeLogin = z.object({ role: z.enum(['agency', 'client']), userId: z.string().min(1), tokenHash: z.string().regex(/^[a-f0-9]{64}$/), issuedAt: z.date(), expiresAt: z.date() }).strict()
 const unavailable = () => new PageStudioBusinessContentError('CONTENT_NOT_CONFIGURED', 503, 'Business content setup is pending')
 
-export async function authorizePageStudioBusinessContent(request: Request, writing: boolean, dependencies: Dependencies) {
+export async function authorizePageStudioBusinessContent(request: ContentAuthorityRequest, writing: boolean, dependencies: ContentAuthorityDependencies) {
   const { actor, siteId } = request
+  const login = NativeLogin.safeParse(request.login)
+  if (!login.success || login.data.role !== actor.role || login.data.userId !== actor.actorId) {
+    throw new PageStudioBusinessContentError('CONTENT_ACCESS_DENIED', 403, 'Business content access denied')
+  }
   if (!z.string().uuid().safeParse(siteId).success) {
     throw new PageStudioBusinessContentError('INVALID_SITE', 400, 'Invalid website ID')
   }
@@ -54,26 +69,33 @@ export async function authorizePageStudioBusinessContent(request: Request, writi
   }
   const query = dependencies.query ?? ((sql, params) => queryOneFresh<ScopeRow>(sql, params))
   const portal = actor.role === 'client'
+  const native = pageStudioContentAuthoritySql(!portal)
   const row = await query(`
-    SELECT site.tenant_id, site.client_id, site.status AS site_status,
+    SELECT ${native.select}, ${request.collectionAccess
+      ? `entitlement.plan_metadata, entitlement.portal_creation_enabled,
+      (entitlement.active_site_limit > 0 AND (SELECT count(*) FROM page_studio_sites counted WHERE counted.tenant_id=site.tenant_id AND counted.client_id=site.client_id AND counted.status<>'archived') <= entitlement.active_site_limit) AS collection_capacity,
+      ${portal ? 'owner.role' : 'owner.user_role'} AS native_user_role,`
+      : ''} site.tenant_id, site.client_id, site.status AS site_status,
            entitlement.status AS entitlement_status,
-           (entitlement.effective_from <= NOW()
-            AND (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())) AS entitlement_effective
+           (entitlement.effective_from <= clock_timestamp()
+            AND (entitlement.effective_until IS NULL OR entitlement.effective_until > clock_timestamp())) AS entitlement_effective
            ${portal
               ? `, (SELECT membership.role FROM page_studio_site_memberships membership
                 WHERE membership.tenant_id = site.tenant_id AND membership.client_id = site.client_id
-                  AND membership.site_id = site.id AND membership.user_id = $3) AS membership_role`
+                  AND membership.site_id = site.id AND membership.user_id = owner.id) AS membership_role`
               : ''}
       FROM page_studio_sites site
       JOIN agency_clients client ON client.id = site.client_id AND client.is_active = TRUE
       JOIN page_studio_entitlements entitlement
         ON entitlement.tenant_id = site.tenant_id AND entitlement.client_id = site.client_id
        AND entitlement.id = site.entitlement_id
+      ${native.joins}
      WHERE site.${portal ? 'client_id' : 'tenant_id'} = $1 AND site.id = $2`,
-  portal ? [actor.clientId, siteId, actor.actorId] : [actor.tenantId, siteId])
+  [portal ? actor.clientId : actor.tenantId, siteId, actor.actorId, login.data.tokenHash, login.data.issuedAt, login.data.expiresAt])
   if (!row || (portal ? row.client_id !== actor.clientId : row.tenant_id !== actor.tenantId)) throw new PageStudioBusinessContentError('SITE_NOT_FOUND', 404, 'Website not found')
   if (!['draft', 'active'].includes(row.site_status)
     || !['trial', 'active'].includes(row.entitlement_status) || row.entitlement_effective !== true
+    || (writing ? row.native_can_edit !== true : row.native_can_view !== true)
     || (writing && actor.role === 'agency' && !actor.canEdit)
     || (portal && !(writing ? ['editor'] : ['editor', 'viewer']).includes(row.membership_role ?? ''))) {
     throw new PageStudioBusinessContentError('CONTENT_ACCESS_DENIED', 403, 'Business content access denied')
@@ -86,7 +108,7 @@ export async function authorizePageStudioBusinessContent(request: Request, writi
     tenantId: row.tenant_id, clientId: row.client_id, businessId: row.client_id, siteId, environment
   })
   if (!scope.success) throw unavailable()
-  return { scope: scope.data, service, canEdit: actor.role === 'agency' ? actor.canEdit : row.membership_role === 'editor' }
+  return { scope: scope.data, service, collectionPolicy: row, canEdit: actor.role === 'agency' ? actor.canEdit && row.native_can_edit : row.membership_role === 'editor' && row.native_can_edit }
 }
 
 function decode(result: unknown, scope: PageStudioContentScope) {
@@ -109,7 +131,7 @@ async function callService(operation: () => Promise<unknown>, writing = false) {
   }
 }
 
-export async function readPageStudioBusinessContent(request: Request, dependencies: Dependencies = {}): Promise<PageStudioContentState & { canEdit: boolean }> {
+export async function readPageStudioBusinessContent(request: ContentAuthorityRequest, dependencies: ContentAuthorityDependencies = {}): Promise<PageStudioContentState & { canEdit: boolean }> {
   const { scope, service } = await authorizePageStudioBusinessContent(request, false, dependencies)
   const result = await callService(() => service.readContent(scope))
   // A remote read may outlive membership, entitlement or site ownership changes.
@@ -121,7 +143,7 @@ export async function readPageStudioBusinessContent(request: Request, dependenci
   return result === null ? { content: null, revision: 0, actorId: null, createdAt: null, canEdit } : { ...decode(result, scope), canEdit }
 }
 
-export async function writePageStudioBusinessContent(request: Request & { body: unknown }, dependencies: Dependencies = {}) {
+export async function writePageStudioBusinessContent(request: ContentAuthorityRequest & { body: unknown }, dependencies: ContentAuthorityDependencies = {}) {
   const { scope, service } = await authorizePageStudioBusinessContent(request, true, dependencies)
   const parsed = PageStudioContentEditSchema.safeParse(request.body)
   if (!parsed.success) throw new PageStudioBusinessContentError('CONTENT_INVALID', 400, 'Invalid business content')

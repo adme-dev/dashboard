@@ -15,8 +15,10 @@ const API_INVENTORY = {
   // membership checks; no God mode bypass or mutation-family registration.
   // CMS connection adds four delegated scoped routes (two POSTs), without a bypass.
   // Version comparison GET adds a scoped PAGE_STUDIO_APPROVE read; no bypass.
-  totalRouteFiles: 2126,
-  mutationRouteFiles: 1168,
+  // Generated collection CRUD and explicit setup add 20 scoped routes (8 mutations).
+  // Native helpers enforce scope and roles; none registers a God mode bypass.
+  totalRouteFiles: 2146,
+  mutationRouteFiles: 1176,
   explicitlyGuardedMutationFiles: 401,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -55,8 +57,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2126,
-      mutationRouteFiles: 1168,
+      totalRouteFiles: 2146,
+      mutationRouteFiles: 1176,
       explicitlyGuardedMutationFiles: 401,
       guardedMutationFilesWithTransactionCall: 47
     })

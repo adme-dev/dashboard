@@ -260,6 +260,7 @@ function removeRecord() {
         </div>
       </div>
     </div>
+    <PageStudioGeneratedCollectionsWorkspace :key="`${audience}:${siteId}`" :audience="audience" :site-id="siteId" />
     <UModal v-model:open="leaveOpen" title="Leave without saving?" description="Your unsaved content changes will be discarded.">
       <template #footer>
         <UButton

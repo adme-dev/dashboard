@@ -2,8 +2,9 @@ import { createApp, createRouter, toWebHandler, createError } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { handlePageStudioBusinessContent } from '~~/server/utils/pageStudio/businessContentHttp'
 
-const mocks = vi.hoisted(() => ({ agency: vi.fn(), portal: vi.fn(), read: vi.fn(), write: vi.fn() }))
+const mocks = vi.hoisted(() => ({ agency: vi.fn(), portal: vi.fn(), read: vi.fn(), write: vi.fn(), login: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: mocks.agency }))
+vi.mock('~~/server/utils/pageStudio/contentNativeLogin', () => ({ preparePageStudioContentLogin: mocks.login }))
 vi.mock('~~/server/utils/clientAuth', () => ({ requireClientAuth: mocks.portal }))
 vi.mock('~~/server/utils/pageStudio/businessContent', async original => ({
   ...await original<typeof import('~~/server/utils/pageStudio/businessContent')>(),
@@ -25,6 +26,7 @@ describe('business content HTTP authentication and body boundary', () => {
     vi.clearAllMocks()
     mocks.agency.mockResolvedValue({ tenantId: 'tenant_test', user: { id: 'staff_test' } })
     mocks.portal.mockResolvedValue({ id: 'portal_test', clientId: 'client_test' })
+    mocks.login.mockImplementation((_event, actor) => ({ role: actor.role, userId: actor.actorId, tokenHash: 'a'.repeat(64) }))
     mocks.read.mockResolvedValue({ content: null, revision: 0 })
     mocks.write.mockResolvedValue({ revision: 1 })
   })
@@ -60,5 +62,15 @@ describe('business content HTTP authentication and body boundary', () => {
     expect((await request('portal', 'PUT', '{broken')).status).toBe(400)
     expect((await request('portal', 'PUT', '{}', 'text/plain')).status).toBe(415)
     expect(mocks.write).not.toHaveBeenCalled()
+  })
+
+  it('stops before content access when native login binding is revoked', async () => {
+    mocks.login.mockRejectedValueOnce(createError({ statusCode: 401 }))
+    expect((await request('portal', 'GET')).status).toBe(401)
+    expect(mocks.read).not.toHaveBeenCalled()
+  })
+  it('does not accept caller-supplied login identity from a write body', async () => {
+    await request('portal', 'PUT', JSON.stringify({ collections: [], expectedRevision: 0, login: { userId: 'forged' } }))
+    expect(mocks.write).toHaveBeenCalledWith(expect.objectContaining({ login: expect.objectContaining({ userId: 'portal_test' }) }))
   })
 })
