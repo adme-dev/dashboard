@@ -34,7 +34,8 @@ describe.runIf(Boolean(databaseUrl))('business content authority on disposable P
     connected = true
     await client.query(`CREATE SCHEMA "${schema}"`)
     await client.query(`SET search_path TO "${schema}", pg_catalog`)
-    await client.query(`CREATE TABLE page_studio_site_memberships (tenant_id TEXT, client_id UUID, site_id UUID, user_id UUID, role TEXT);
+    await client.query(`CREATE TABLE page_studio_cms_scopes (tenant_id TEXT, client_id UUID, business_id UUID, site_id UUID, environment TEXT, state TEXT);
+      CREATE TABLE page_studio_site_memberships (tenant_id TEXT, client_id UUID, site_id UUID, user_id UUID, role TEXT);
       CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN);
       CREATE TABLE page_studio_sites (id UUID PRIMARY KEY, tenant_id TEXT, client_id UUID, entitlement_id UUID, status TEXT);
       CREATE TABLE page_studio_entitlements (id UUID PRIMARY KEY, tenant_id TEXT, client_id UUID, status TEXT, effective_from TIMESTAMPTZ, effective_until TIMESTAMPTZ, plan_metadata JSONB);

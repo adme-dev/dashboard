@@ -310,3 +310,97 @@ export async function listAcceptedCmsHistory(db: PageStudioControlQueryClient, i
   })
   return await page(db, read.scope, read, read.limit, read.cursor, true, true)
 }
+
+/** Bounded consumer snapshot: current graph, heads, exact history and their schema
+ * references are selected together. Public cursors remain logical IDs, never pins. */
+export async function readCmsConsumerSnapshot(
+  db: PageStudioControlQueryClient,
+  scope: PageStudioContentScope,
+  input: {
+    kind?: 'content' | 'schema' | 'record'
+    collectionId?: string
+    recordId?: string
+    version?: number
+    after?: string
+    limit?: number
+    includeArchived?: boolean
+  } = {}
+) {
+  const kind = input.kind ?? 'content'
+  exactRead.parse({
+    scope,
+    kind,
+    collectionId: input.collectionId ?? '',
+    recordId: kind === 'record' ? (input.recordId ?? 'list') : '',
+    ...(input.version ? { version: input.version } : {})
+  })
+  const after = input.after === undefined ? '' : CollectionIdentitySchema.parse(input.after)
+  const limit = z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .parse(input.limit ?? 50)
+  const rows = (
+    await db.query<Record<string, unknown>>(
+      `SELECT ${cmsContextColumns},
+    site.current_checkpoint_id, cp.digest AS checkpoint_digest,
+    to_jsonb(content) AS content,
+    COALESCE((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.collection_id) FROM page_studio_cms_application_schemas x JOIN page_studio_cms_objects o ON o.scope_key=x.scope_key AND o.generation=x.generation AND o.id=x.object_id WHERE x.scope_key=s.scope_key AND x.generation=s.active_generation AND x.application_id=a.id),'[]'::jsonb) AS schemas,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('object',to_jsonb(o),'schema',to_jsonb(ref)) ORDER BY o.record_id) FROM (
+      SELECT obj.* FROM page_studio_cms_objects obj WHERE obj.scope_key=s.scope_key AND obj.generation=s.active_generation AND obj.kind=$2
+      AND obj.collection_id=$3
+      AND (($4::text<>'' AND obj.record_id=$4) OR ($4::text='' AND ($2<>'record' OR obj.record_id>$6)))
+      AND (($5::bigint IS NOT NULL AND obj.logical_version=$5) OR ($5::bigint IS NULL AND (
+       (obj.kind='schema' AND EXISTS(SELECT 1 FROM page_studio_cms_application_schemas x WHERE x.scope_key=s.scope_key AND x.generation=s.active_generation AND x.application_id=a.id AND x.object_id=obj.id)) OR
+       (obj.kind='content' AND obj.id=s.current_content_id) OR
+       (obj.kind='record' AND EXISTS(SELECT 1 FROM page_studio_cms_record_heads h WHERE h.scope_key=s.scope_key AND h.generation=s.active_generation AND h.object_id=obj.id)))))
+      AND ($4::text<>'' OR $2<>'record' OR $7::boolean OR obj.archived=FALSE)
+      ORDER BY obj.record_id LIMIT $8
+    ) o LEFT JOIN page_studio_cms_objects ref ON ref.scope_key=o.scope_key AND ref.generation=o.generation AND ref.id=o.schema_object_id),'[]'::jsonb) AS objects
+    ${cmsContextFrom}
+    JOIN page_studio_sites site ON site.tenant_id=s.tenant_id AND site.client_id=s.client_id AND site.id=s.site_id
+    LEFT JOIN page_studio_checkpoints cp ON cp.tenant_id=site.tenant_id AND cp.client_id=site.client_id AND cp.site_id=site.id AND cp.id=site.current_checkpoint_id
+    LEFT JOIN page_studio_cms_objects content ON content.scope_key=s.scope_key AND content.generation=s.active_generation AND content.id=s.current_content_id
+    WHERE s.scope_key=$1 AND s.state='managed'`,
+      [
+        contentScopeKey(scope),
+        kind,
+        input.collectionId ?? '',
+        input.recordId ?? '',
+        input.version ?? null,
+        after,
+        input.includeArchived ?? false,
+        limit + 1
+      ]
+    )
+  ).rows
+  if (rows.length !== 1) throw cmsUnavailable()
+  const row = rows[0]!,
+    context = await decodeCmsContext(row, scope)
+  if (
+    row.current_checkpoint_id !== context.application.manifest.checkpoint.id
+    || row.checkpoint_digest !== context.application.manifest.checkpoint.digest
+  )
+    throw cmsUnavailable()
+  const schemas = z
+    .array(z.unknown())
+    .max(128)
+    .parse(row.schemas)
+    .map(value => decodeCmsObject(value, context))
+  if (schemas.length !== context.selections.length) throw cmsUnavailable()
+  const objects = z
+    .array(z.object({ object: z.unknown(), schema: z.unknown().nullable() }))
+    .max(101)
+    .parse(row.objects)
+    .map(value => ({
+      object: decodeCmsObject(value.object, context),
+      schema: value.schema === null ? null : decodeCmsObject(value.schema, context)
+    }))
+  return {
+    context,
+    schemas,
+    content: row.content === null ? null : decodeCmsObject(row.content, context),
+    objects
+  }
+}

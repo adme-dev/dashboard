@@ -245,6 +245,7 @@ export async function withCmsCommitAuthority<T>(
       )
       const recheck = async () => {
         const deps = {
+          policyOnly: true,
           query: async (sql: string, params: unknown[]) =>
             (await db.query<import('./businessContent').ScopeRow>(sql, params))
               .rows[0] ?? null

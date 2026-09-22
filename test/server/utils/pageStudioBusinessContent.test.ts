@@ -35,6 +35,14 @@ describe('authenticated business content adapter', () => {
     })
     await expect(readPageStudioBusinessContent({ actor, login: contentLogin(actor), siteId, env }, { query })).rejects.toMatchObject({ statusCode: 404 })
   })
+  it('withholds a legacy response when adoption changes the read authority during RPC', async () => {
+    const { env, query, service } = setup()
+    service.readContent.mockImplementationOnce(async () => {
+      query.mockResolvedValue({ ...row, cms_state: 'managed' })
+      return revision
+    })
+    await expect(readPageStudioBusinessContent({ actor, login: contentLogin(actor), siteId, env }, { query })).rejects.toMatchObject({ statusCode: 403 })
+  })
   it('returns current read-only permissions after an editor becomes a viewer during RPC', async () => {
     const { env, query, service } = setup()
     service.readContent.mockImplementationOnce(async () => {
@@ -65,7 +73,7 @@ describe('authenticated business content adapter', () => {
     const result = await writePageStudioBusinessContent({ actor, login: contentLogin(actor), siteId, env, body: { collections: [], expectedRevision: 0 } }, { query })
     expect(service.writeContent).toHaveBeenCalledWith({ actorId: actor.actorId, content, expectedRevision: 0 })
     expect(result.revision).toBe(1)
-    expect(query.mock.calls[0][1]).toEqual([actor.clientId, siteId, actor.actorId, expect.any(String), expect.any(Date), expect.any(Date)])
+    expect(query.mock.calls[0][1]).toEqual([actor.clientId, siteId, actor.actorId, expect.any(String), expect.any(Date), expect.any(Date), 'staging'])
   })
   it.each([
     { entitlement_effective: false }, { entitlement_status: 'cancelled' },
@@ -134,7 +142,7 @@ describe('authenticated provisioned content routing', () => {
     expect(s.router.readContent).toHaveBeenCalledWith(s.resolvedScope)
     expect(await writePageStudioBusinessContent({ actor, login: contentLogin(actor), siteId, env: s.env, body: { collections: [], expectedRevision: 0 } }, { query: s.query })).toEqual(s.result)
     expect(s.router.writeContent).toHaveBeenCalledWith({ actorId: actor.actorId, content: s.resolvedContent, expectedRevision: 0 })
-    expect(s.query).toHaveBeenCalledTimes(3)
+    expect(s.query).toHaveBeenCalledTimes(4)
   })
 
   it('keeps editor, viewer and agency permissions ahead of all routing calls', async () => {
