@@ -13,6 +13,7 @@ const siteId = computed(() => String(route.params.siteId || ''))
       :site-id="siteId"
       @connected="refreshNuxtData(`page-studio-content:portal:${siteId}`)"
     />
+    <PageStudioCmsPreparation :key="`cms-preparation:${siteId}`" audience="portal" :site-id="siteId" />
     <PageStudioBusinessContentWorkspace :key="siteId" audience="portal" :site-id="siteId" />
   </div>
 </template>

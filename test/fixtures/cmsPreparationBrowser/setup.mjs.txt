@@ -1,0 +1,19 @@
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+const browser=await chromium.launch({channel:'chrome',headless:true});
+try{
+ const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.goto('__FIXTURE_ORIGIN__');await page.getByRole('button',{name:'Prepare collections',exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>window.fixture.calls.every(call=>call.method==='GET')),true);
+ await page.evaluate(()=>window.fixture.failNext=true);await page.getByRole('button',{name:'Prepare collections',exact:true}).click();await page.getByText('Setup needs attention',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Prepare collections',exact:true}).isDisabled(),true);
+ await page.getByRole('button',{name:'Refresh status',exact:true}).click();await page.getByRole('button',{name:'Prepare collections',exact:true}).click();
+ await page.getByRole('button',{name:'Prepare content tools',exact:true}).click();await page.getByRole('button',{name:'Prepare CMS storage',exact:true}).click();await page.getByRole('button',{name:'Activate CMS',exact:true}).waitFor();
+ const posts=await page.evaluate(()=>window.fixture.calls.filter(call=>call.method==='POST'));assert.equal(posts[0].body.requestId,posts[1].body.requestId);assert.equal(posts.length,4);
+ await page.getByRole('button',{name:'Activate CMS',exact:true}).click();await page.getByRole('button',{name:'Continue activation',exact:true}).waitFor();
+ await page.evaluate(()=>{window.fixture.adoption.recoveryRequired=true;window.fixture.adoption.recoveryReason='Explicitly resume using this sign-in.'});
+ await page.getByRole('button',{name:'Refresh status',exact:true}).click();await page.getByRole('button',{name:'Resume with this sign-in',exact:true}).click();await page.getByRole('button',{name:'Continue activation',exact:true}).click();await page.getByText('Ready',{exact:true}).waitFor();
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ await page.getByRole('button',{name:'Refresh status',exact:true}).focus();assert.equal(await page.evaluate(()=>document.activeElement.tagName),'BUTTON');
+ assert.deepEqual(errors,[]);console.log('CMS preparation real Chrome passed: ordered explicit phases, lost acknowledgement recovery, native recovery, completion, mobile and keyboard.');
+}finally{await browser.close()}
