@@ -1,3 +1,5 @@
+import { builderActionResultKey } from '~~/shared/pageStudio/actionInvocation'
+import { admitPublishedFormAction, acknowledgePublishedFormAction } from '~~/server/utils/pageStudio/publicActionInvocations'
 import { readPublishedFeaturePage } from '~~/server/utils/pageStudio/publishedFeatureProjection'
 import { readPublishedFeatureSnapshot } from '~~/server/utils/pageStudio/publishedFeatureAuthority'
 import { coordinateFeatureActivation } from '~~/server/utils/pageStudio/releaseFeatureActivation'
@@ -96,7 +98,8 @@ describe.runIf(Boolean(databaseUrl))(
         '422_page_studio_cms_visibility.sql',
         '425_page_studio_cms_authoring_scope.sql',
         '413_page_studio_release_metadata.sql',
-        '426_page_studio_release_feature_seals.sql'
+        '426_page_studio_release_feature_seals.sql',
+        '421_page_studio_ai_usage.sql', '427_page_studio_public_action_invocations.sql'
       ]) {
         await observer.query(
           readFileSync(
@@ -196,13 +199,17 @@ describe.runIf(Boolean(databaseUrl))(
         }
       }
     })
-    async function fixture(withInstance = false) {
+    async function fixture(withInstance = false, withForm = false) {
       const f = structuredClone(fixtureJson)
       if (withInstance) {
         const pin = f.nextCheckpoint.manifest.builderLibrary.components.find(pin => pin.id === 'fleet_view')!
         const artifact = JSON.parse(f.artifactBytes.find(raw => JSON.parse(raw).id === 'fleet_view')!)
         f.nextCheckpoint.manifest.pages[0]!.components.push({ ...artifact.root, id: 'public_instance', builderInstance: { version: 1, pin, values: {} } } as never)
         for (const visibility of ['draft', 'hidden', 'archived'] as const) f.nextCheckpoint.manifest.pages.push({ ...structuredClone(f.nextCheckpoint.manifest.pages[0]!), id: `private_${visibility}`, route: `/${visibility}-page`, title: 'Private page content', visibility, components: [], forms: [] } as never)
+        f.nextCheckpoint.digest = await collectionDigest(f.nextCheckpoint.manifest)
+      }
+      if (withForm) {
+        f.nextCheckpoint.manifest.pages[0]!.forms = [{ id: 'contact', name: 'Contact', fields: [{ id: 'title', name: 'Title', type: 'text', required: true }], submission: { mode: 'action', version: 1, trigger: 'form-submit', action: f.nextCheckpoint.manifest.builderApplication.actions[0], mappings: [{ conversion: 'string', fieldId: 'title', inputKey: 'title' }] } }] as never
         f.nextCheckpoint.digest = await collectionDigest(f.nextCheckpoint.manifest)
       }
       const actor = {
@@ -425,16 +432,16 @@ describe.runIf(Boolean(databaseUrl))(
         key
       }
     }
-    async function admitted(withInstance = false) {
-      const f = await fixture(withInstance)
+    async function admitted(withInstance = false, withForm = false) {
+      const f = await fixture(withInstance, withForm)
       await coordinateCmsGraphTransition(f.input, f.principal, f.deps)
       await observer.query(
         'INSERT INTO role_permission_groups SELECT id,\'PAGE_STUDIO_PUBLISH\' FROM custom_roles'
       )
       return f
     }
-    async function approvedBuild(withInstance = false) {
-      const f = await admitted(withInstance)
+    async function approvedBuild(withInstance = false, withForm = false) {
+      const f = await admitted(withInstance, withForm)
       request.env.PAGE_STUDIO_ACTION_RUNTIME_DIGEST
         = 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e'
       const version = (
@@ -499,6 +506,138 @@ describe.runIf(Boolean(databaseUrl))(
       }
       return { ...f, input, services }
     }
+    async function publishedAction() {
+      const f = await approvedBuild(false, true)
+      await observer.query(`UPDATE page_studio_entitlements SET monthly_ai_operation_limit=2,plan_metadata='{"builder":{"collectionSchemas":true,"actionExecution":true}}'`)
+      const build = await coordinateSealedFeatureBuild(f.input, f.principal, f.services, f.deps)
+      const release = await coordinateFeatureActivation({ actorId: request.actor.actorId, buildId: build.buildId, environment: 'production', expectedActiveReleaseId: null, hostname: 'fixture.example.com', idempotencyKey: 'public_form', scope: { tenantId: scope.tenantId, clientId: scope.clientId, siteId: scope.siteId } }, f.principal, f.services, f.deps)
+      const seal = (await observer.query('SELECT * FROM page_studio_release_feature_seals')).rows[0]
+      const input = { hostname: 'fixture.example.com', releaseId: release.releaseId, buildId: build.buildId, versionDigest: build.versionDigest, manifestDigest: build.manifestDigest, sealDigest: seal.seal_digest, pageRoute: '/' }
+      const snapshot = await readPublishedFeatureSnapshot(input, request.env, f.deps)
+      request.env.PAGE_STUDIO_PUBLIC_FORM_TURNSTILE_SECRET = 'test-only-secret'
+      const fetch = vi.fn(async () => Response.json({ success: true, hostname: input.hostname, action: 'page_studio_public_form' }))
+      const form = f.manifest.pages[0]!.forms![0]!
+      const body = { version: 1, publication: { ...input, activationId: snapshot.release.activationId, pointerVersion: snapshot.release.pointerVersion }, pageId: 'home', formId: 'contact', formDigest: await collectionDigest(form), fields: { title: 'New enquiry' }, intentId: randomUUID(), receiptSecret: 'a'.repeat(64), clientAddress: '192.0.2.10', turnstileToken: 'test-challenge' }
+      return { ...f, body, fetch }
+    }
+    it('claims a public action once with empty guest data, without borrowing the publisher login', async () => {
+      const f = await publishedAction()
+      await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      const first = await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch })
+      expect(first.admission).toMatchObject({ dispatchGranted: true, state: 'dispatch_claimed', input: { title: 'New enquiry' }, data: {} })
+      expect(first.prepared.request.context).not.toHaveProperty('expectedApplication')
+      const retry = { ...f.body, turnstileToken: undefined, clientAddress: '192.0.2.11' }
+      const second = await admitPublishedFormAction(retry, request.env, { ...f.deps, fetch: f.fetch })
+      expect(second.admission).toMatchObject({ dispatchGranted: false, state: 'dispatch_claimed', execution: first.admission.execution })
+      expect(f.fetch).toHaveBeenCalledTimes(1)
+      expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(1)
+      expect((await observer.query('SELECT * FROM page_studio_ai_usage')).rows).toHaveLength(0)
+      const saved = JSON.stringify((await observer.query('SELECT identity,execution FROM page_studio_public_action_invocations')).rows)
+      expect(saved).not.toContain('New enquiry')
+      expect(saved).not.toContain('test-challenge')
+      expect(saved).not.toContain(f.body.receiptSecret)
+    })
+    it.each(['secret', 'fields', 'epoch', 'form'] as const)('rejects public retries with changed %s without another challenge or charge', async (change) => {
+      const f = await publishedAction()
+      await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch })
+      const changed = structuredClone(f.body)
+      if (change === 'secret') changed.receiptSecret = 'b'.repeat(64)
+      if (change === 'fields') changed.fields.title = 'Changed input'
+      if (change === 'epoch') changed.publication.pointerVersion++
+      if (change === 'form') changed.formDigest = 'f'.repeat(64)
+      await expect(admitPublishedFormAction(changed, request.env, { ...f.deps, fetch: f.fetch })).rejects.toThrow()
+      expect(f.fetch).toHaveBeenCalledTimes(1)
+      expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(1)
+    })
+    it.each(['challenge', 'package', 'schema', 'allowance'] as const)('does not claim public execution after %s denial', async (mode) => {
+      const f = await publishedAction()
+      let authorityChanged = false
+      if (mode === 'challenge') f.fetch.mockImplementation(async () => Response.json({ success: false }))
+      else f.fetch.mockImplementation(async () => {
+        if (mode === 'package') await observer.query(`UPDATE page_studio_entitlements SET plan_metadata='{"builder":{"collectionSchemas":true}}'`)
+        if (mode === 'schema') await observer.query('UPDATE page_studio_cms_scopes SET current_application_id=$1', [fixtureJson.base.application.manifest.applicationId])
+        if (mode === 'allowance') await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=0')
+        authorityChanged = true
+        return Response.json({ success: true, hostname: 'fixture.example.com', action: 'page_studio_public_form' })
+      })
+      await expect(admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch })).rejects.toThrow()
+      expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(0)
+      expect(f.fetch).toHaveBeenCalledTimes(1)
+      if (mode !== 'challenge') expect(authorityChanged).toBe(true)
+    })
+    it('gives concurrent public retries one dispatch and one charged claim', async () => {
+      const f = await publishedAction()
+      const results = await Promise.all([0, 1].map(async () => admitPublishedFormAction(f.body, request.env, { runTransaction: transactionFor(await connect()), fetch: f.fetch })))
+      expect(results.filter(result => result.admission.dispatchGranted)).toHaveLength(1)
+      expect(results[0]!.admission.execution).toEqual(results[1]!.admission.execution)
+      expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(1)
+    })
+    it('keeps unknown public work charged and rejects a new intent at the limit', async () => {
+      const f = await publishedAction()
+      await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1')
+      await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch })
+      await expect(admitPublishedFormAction({ ...f.body, intentId: randomUUID() }, request.env, { ...f.deps, fetch: f.fetch })).rejects.toMatchObject({ code: 'AI_USAGE_EXHAUSTED' })
+      expect((await observer.query('SELECT quota_state,state FROM page_studio_public_action_invocations')).rows).toEqual([{ quota_state: 'reserved', state: 'dispatch_claimed' }])
+    })
+    it('rejects undeclared form fields before challenge verification or a charge', async () => {
+      const f = await publishedAction()
+      await expect(admitPublishedFormAction({ ...f.body, fields: { ...f.body.fields, actorId: 'publisher' } }, request.env, { ...f.deps, fetch: f.fetch })).rejects.toThrow()
+      expect(f.fetch).not.toHaveBeenCalled()
+      expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(0)
+    })
+    it.each(['ok', 'guest_error'] as const)('retains the exact public %s result once without a new challenge or dispatch', async (status) => {
+      const f = await publishedAction()
+      const claim = await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch })
+      const execution = claim.admission.execution
+      const result = status === 'ok' ? { status, json: '{"version":1,"commands":[],"result":null}' } : { status }
+      const key = await builderActionResultKey(execution)
+      f.texts.set(key, collectionCanonical({ formatVersion: 1, execution, result }))
+      const retry = { ...f.body, turnstileToken: undefined }
+      const ack = await acknowledgePublishedFormAction(retry, request.env, f.deps)
+      expect(ack.state).toBe(status === 'ok' ? 'result_ready' : 'execution_failed')
+      expect(await acknowledgePublishedFormAction(retry, request.env, f.deps)).toEqual(ack)
+      const row = (await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows[0]
+      expect(row.quota_state).toBe(status === 'ok' ? 'succeeded' : 'failed')
+      expect(row.result_pin.key).toBe(key)
+      expect(row.final_receipt).toBeNull()
+      expect(f.fetch).toHaveBeenCalledTimes(1)
+      expect((await admitPublishedFormAction(retry, request.env, { ...f.deps, fetch: f.fetch })).admission.dispatchGranted).toBe(false)
+    })
+    it.each(['missing', 'substituted', 'oversized', 'revoked'] as const)('keeps public work unresolved when its result is %s', async (mode) => {
+      const f = await publishedAction()
+      const claim = await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch })
+      const execution = claim.admission.execution, key = await builderActionResultKey(execution)
+      if (mode !== 'missing') f.texts.set(key, mode === 'oversized' ? ' '.repeat(150_001) : collectionCanonical({ formatVersion: 1, execution: { ...execution, ...(mode === 'substituted' ? { claimId: randomUUID() } : {}) }, result: { status: 'guest_error' } }))
+      if (mode === 'revoked') {
+        const originalGet = f.get.getMockImplementation()!
+        f.get.mockImplementation(async (objectKey) => {
+          const result = await originalGet(objectKey)
+          if (objectKey === key) await observer.query(`UPDATE page_studio_release_feature_activations SET state='revoked',revoked_at=clock_timestamp()`)
+          return result
+        })
+      }
+      await expect(acknowledgePublishedFormAction({ ...f.body, turnstileToken: undefined }, request.env, f.deps)).rejects.toThrow()
+      expect((await observer.query('SELECT state,quota_state,result_pin FROM page_studio_public_action_invocations')).rows).toEqual([{ state: 'dispatch_claimed', quota_state: 'reserved', result_pin: null }])
+      expect(f.fetch).toHaveBeenCalledTimes(1)
+    })
+    it('keeps the sealed action usable when an unrelated authoring application advances during challenge verification', async () => {
+      const f = await publishedAction()
+      f.fetch.mockImplementation(async () => {
+        const old = (await observer.query('SELECT a.* FROM page_studio_application_versions a JOIN page_studio_cms_scopes s ON s.scope_key=a.scope_key AND s.current_application_id=a.id')).rows[0]
+        const nextId = randomUUID(), manifest = { ...old.manifest, applicationId: nextId, previousApplicationId: old.id }
+        await observer.query(`INSERT INTO page_studio_application_versions(scope_key,generation,id,digest,manifest,previous_application_id,commit_id,adoption_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [old.scope_key, old.generation, nextId, await collectionDigest(manifest), manifest, old.id, old.commit_id, old.adoption_id])
+        await observer.query('INSERT INTO page_studio_cms_application_schemas SELECT scope_key,generation,$1,collection_id,object_id,kind FROM page_studio_cms_application_schemas WHERE application_id=$2', [nextId, old.id])
+        await observer.query('UPDATE page_studio_cms_scopes SET current_application_id=$1', [nextId])
+        return Response.json({ success: true, hostname: 'fixture.example.com', action: 'page_studio_public_form' })
+      })
+      expect((await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch })).admission.dispatchGranted).toBe(true)
+    })
+    it('cannot use result acknowledgement to create an unclaimed public invocation', async () => {
+      const f = await publishedAction()
+      await expect(acknowledgePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow()
+      expect(f.fetch).not.toHaveBeenCalled()
+      expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(0)
+    })
     it('atomically installs exact immutable build seal and replays without duplicating audit', async () => {
       const f = await approvedBuild()
       const first = await coordinateSealedFeatureBuild(
