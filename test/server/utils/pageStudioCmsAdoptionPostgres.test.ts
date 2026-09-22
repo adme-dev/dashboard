@@ -488,11 +488,11 @@ describe.runIf(Boolean(databaseUrl))('durable CMS adoption on disposable Postgre
     await begin(s)
     await frozen(s)
     await ingest(s)
-    await observer.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
-    await expect(activate(s)).rejects.toThrow()
-    expect((await observer.query('SELECT state FROM page_studio_cms_scopes')).rows[0].state).toBe(
-      'importing'
-    )
+    await expect(observer.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')).rejects.toMatchObject({
+      code: 'P0001', message: 'CMS_ADOPTION_IN_PROGRESS'
+    })
+    expect((await observer.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows[0].current_checkpoint_id).toBe(s.intent.expectedCheckpoint.id)
+    expect((await activate(s)).state).toBe('managed')
   })
   async function freshLogin() {
     const hash = randomUUID().replaceAll('-', '').repeat(2)

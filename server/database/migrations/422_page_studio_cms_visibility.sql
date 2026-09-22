@@ -120,3 +120,36 @@ CREATE TABLE page_studio_cms_adoption_recoveries (
 );
 ALTER TABLE page_studio_cms_scopes ADD CONSTRAINT page_studio_cms_recovery_fk FOREIGN KEY(scope_key,adoption_recovery_id) REFERENCES page_studio_cms_adoption_recoveries(scope_key,recovery_id);
 CREATE TRIGGER page_studio_cms_recoveries_immutable BEFORE UPDATE OR DELETE ON page_studio_cms_adoption_recoveries FOR EACH ROW EXECUTE FUNCTION page_studio_cms_immutable();
+
+-- Adoption and checkpoint writers serialize on the same native site row.
+-- VOLATILE (the default) gives this trigger's query a fresh READ COMMITTED
+-- snapshot after a concurrent UPDATE has waited for adoption's site-row lock.
+CREATE FUNCTION page_studio_cms_checkpoint_fence() RETURNS trigger LANGUAGE plpgsql VOLATILE AS $$
+BEGIN
+ IF NEW.current_checkpoint_id IS DISTINCT FROM OLD.current_checkpoint_id AND EXISTS (
+   SELECT 1 FROM page_studio_cms_scopes cms
+   WHERE cms.tenant_id=OLD.tenant_id AND cms.client_id=OLD.client_id AND cms.site_id=OLD.id
+     AND cms.state IN ('freezing','importing')
+ ) THEN
+   RAISE EXCEPTION USING ERRCODE='P0001', MESSAGE='CMS_ADOPTION_IN_PROGRESS';
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER page_studio_cms_checkpoint_fence BEFORE UPDATE OF current_checkpoint_id ON page_studio_sites
+ FOR EACH ROW EXECUTE FUNCTION page_studio_cms_checkpoint_fence();
+
+-- A lock alone does not advance the parent's MVCC version. Without this touch,
+-- a checkpoint writer with an older REPEATABLE READ snapshot could miss a new
+-- adoption row. Keep the logical checkpoint unchanged but force such writers to
+-- serialize (or fail with PostgreSQL 40001) against the pending adoption.
+CREATE FUNCTION page_studio_cms_checkpoint_fence_version() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.state IN ('freezing','importing') AND
+   (TG_OP='INSERT' OR OLD.state NOT IN ('freezing','importing')) THEN
+   UPDATE page_studio_sites SET current_checkpoint_id=current_checkpoint_id
+   WHERE tenant_id=NEW.tenant_id AND client_id=NEW.client_id AND id=NEW.site_id;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER page_studio_cms_checkpoint_fence_version AFTER INSERT OR UPDATE OF state ON page_studio_cms_scopes
+ FOR EACH ROW EXECUTE FUNCTION page_studio_cms_checkpoint_fence_version();
