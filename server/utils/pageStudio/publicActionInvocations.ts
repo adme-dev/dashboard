@@ -3,8 +3,9 @@ import { z } from 'zod'
 import { PageStudioContentScopeSchema } from '~~/shared/pageStudio/businessContent'
 import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { builderActionResultKey, BuilderActionExecutionIdentitySchema, BuilderActionResultEnvelopeSchema, BuilderActionResultPinSchema } from '~~/shared/pageStudio/actionInvocation'
-import { BuilderArtifactPinSchema, CmsObjectPinSchema, CmsStorageTargetSchema, contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
-import { verifyBuilderPublishedFormInput } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
+import { BuilderArtifactPinSchema, CmsObjectPinSchema, CmsStorageTargetSchema, CmsPreparationSchema, cmsPreparationActorId, contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
+import { verifyBuilderPublishedFormInput, verifyBuilderActionResult } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
+import { verifyCmsPreparation, insertVerifiedCmsObjects, CmsManagedCommitReceiptSchema } from './cmsCommits'
 import { createActionStorage } from './actionStorage'
 import { assertPageStudioAiAllowanceAvailable } from './aiAllowance'
 import { cmsEqual, readAcceptedCmsObject } from './cmsVisibility'
@@ -37,11 +38,12 @@ const requestIdentitySchema = z.object({
   intentId: z.uuid(), secretHash: digest, fieldsDigest: digest
 }).strict()
 const identitySchema = z.object({ request: requestIdentitySchema, context: contextSchema }).strict()
+const receiptSchema = z.object({ version: z.literal(1), submissionId: z.uuid(), state: z.literal('received'), duplicate: z.boolean() }).strict()
 const rowSchema = z.object({
   identity_digest: digest, identity: identitySchema, secret_hash: digest,
   execution: BuilderActionExecutionIdentitySchema,
   state: z.enum(['dispatch_claimed', 'result_ready', 'execution_failed', 'committed', 'rejected']),
-  final_receipt: z.unknown()
+  final_receipt: receiptSchema.nullable(), result_pin: BuilderActionResultPinSchema.nullable(), result_digest: digest.nullable(), effect_identity: z.unknown()
 })
 type Context = z.infer<typeof contextSchema>
 type Request = z.infer<typeof PublicActionFormRequestSchema>
@@ -68,7 +70,7 @@ async function assertCurrent(db: PageStudioControlQueryClient, snapshot: Publish
   }
 }
 async function retained(db: PageStudioControlQueryClient, snapshot: PublishedFeatureSnapshot, identity: Identity): Promise<Saved | null> {
-  const rows = (await db.query('SELECT identity_digest,identity,secret_hash,execution,state,final_receipt FROM page_studio_public_action_invocations WHERE scope_key=$1 AND release_environment=$2 AND intent_id=$3 FOR UPDATE', [contentScopeKey(snapshot.contentScope), snapshot.releaseEnvironment, identity.intentId])).rows
+  const rows = (await db.query('SELECT identity_digest,identity,secret_hash,execution,state,final_receipt,result_pin,result_digest,effect_identity FROM page_studio_public_action_invocations WHERE scope_key=$1 AND release_environment=$2 AND intent_id=$3 FOR UPDATE', [contentScopeKey(snapshot.contentScope), snapshot.releaseEnvironment, identity.intentId])).rows
   if (!rows.length) return null
   if (rows.length !== 1) throw publishedFeatureDenied()
   const saved = rowSchema.parse(rows[0])
@@ -79,6 +81,8 @@ async function retained(db: PageStudioControlQueryClient, snapshot: PublishedFea
     || !cmsEqual(saved.execution.scope, snapshot.contentScope) || !cmsEqual(saved.execution.action, saved.identity.context.action)
     || saved.execution.runtimeDigest !== saved.identity.context.runtimeDigest || saved.execution.inputDigest !== saved.identity.context.inputDigest
     || saved.execution.dataDigest !== saved.identity.context.dataDigest) throw publishedFeatureDenied()
+  if ((saved.state === 'committed') !== (saved.final_receipt !== null)
+    || (saved.final_receipt && (saved.final_receipt.submissionId !== saved.execution.invocationId || saved.final_receipt.duplicate))) throw publishedFeatureDenied()
   await assertCurrent(db, snapshot, saved.identity.context)
   return saved
 }
@@ -107,7 +111,8 @@ async function resolveForm(body: Request, snapshot: PublishedFeatureSnapshot, en
     formDigest: verified.formDigest, bindingDigest: verified.bindingDigest, action: verified.action, expectedSchemas,
     runtimeDigest: snapshot.seal.runtimeDigest, inputDigest: await collectionDigest(verified.input), dataDigest: await collectionDigest({})
   })
-  return { context, artifactBytes: artifact.bytes, input: verified.input }
+  const definitions = expectedSchemas.map(pin => ({ kind: 'collection' as const, definition: JSON.parse(schemas.find(item => cmsEqual(item.pin, pin))!.bytes) }))
+  return { context, artifactBytes: artifact.bytes, input: verified.input, definitions }
 }
 
 async function requestIdentity(body: Request) {
@@ -192,5 +197,104 @@ export async function acknowledgePublishedFormAction(raw: unknown, env: Record<s
       result_pin=$6,result_digest=$7,updated_at=clock_timestamp() WHERE scope_key=$1 AND release_environment=$2 AND intent_id=$3`,
     [...args, state, quota, pin, pin.sha256])
     return { state, pin }
+  }, dependencies)
+}
+
+async function assertNewPublicRecords(db: PageStudioControlQueryClient, context: Context, items: Array<{ body: { collectionId: string, id: string } }>) {
+  if (!items.length) return
+  const found = await db.query(`SELECT 1 FROM page_studio_cms_objects o
+    JOIN jsonb_to_recordset($3::jsonb) AS wanted("collectionId" text,"recordId" text)
+      ON o.collection_id=wanted."collectionId" AND o.record_id=wanted."recordId"
+    WHERE o.scope_key=$1 AND o.generation=$2 AND o.kind='record' LIMIT 1`,
+  [contentScopeKey(context.scope), context.generation, JSON.stringify(items.map(item => ({ collectionId: item.body.collectionId, recordId: item.body.id })))])
+  if (found.rows.length) throw publishedFeatureDenied()
+}
+/** Native completion owns normalization and preparation; the caller supplies
+ * neither effect bodies nor a permission proof. All remote work precedes the
+ * final transaction. Immutable preparation stays invisible if final authority,
+ * create-head checks, audit, object insertion or the receipt update fails. */
+export async function completePublishedFormAction(raw: unknown, env: Record<string, unknown>, dependencies: CmsGraphDependencies = {}) {
+  const body = PublicActionFormRequestSchema.parse(raw), identity = await requestIdentity(body)
+  const initial = await withPublishedActionAuthority(featureRequest(body), env, null, async (db, snapshot) => {
+    assertPublication(body, snapshot)
+    const saved = await retained(db, snapshot, identity)
+    if (!saved) throw publishedFeatureDenied()
+    return { snapshot, saved }
+  }, dependencies)
+  const saved = initial.saved, context = saved.identity.context
+  if (saved.final_receipt) return { ...saved.final_receipt, duplicate: true }
+  if (saved.state !== 'result_ready') throw publishedFeatureDenied()
+  const resolved = await resolveForm(body, initial.snapshot, env)
+  if (!cmsEqual(resolved.context, context)) throw publishedFeatureDenied()
+  const storage = createActionStorage(env, context.scope, context.target)
+  const resultKey = await builderActionResultKey(saved.execution), resultBytes = await storage.readResult(resultKey)
+  const envelope = BuilderActionResultEnvelopeSchema.parse(JSON.parse(resultBytes))
+  const resultPin = BuilderActionResultPinSchema.parse({ key: resultKey, sha256: await collectionDigest(envelope), bytes: new TextEncoder().encode(resultBytes).byteLength })
+  if (!cmsEqual(envelope.execution, saved.execution) || collectionCanonical(envelope) !== resultBytes
+    || !cmsEqual(saved.result_pin, resultPin) || saved.result_digest !== resultPin.sha256 || envelope.result.status !== 'ok' || envelope.result.json === undefined) throw publishedFeatureDenied()
+  const output = await verifyBuilderActionResult({ scope: context.scope, actionPin: context.action, artifactBytes: resolved.artifactBytes,
+    resultBytes: envelope.result.json, context: { scope: context.scope, definitions: resolved.definitions, records: [] } })
+  const items = output.commands.map((command) => {
+    const schema = context.expectedSchemas.find(pin => pin.collectionId === command.collectionId && pin.version === command.schemaVersion)
+    if (!schema || command.type !== 'create' || command.expectedRevision !== 0 || command.archived) throw publishedFeatureDenied()
+    return { kind: 'record' as const, version: 1, expectedBase: null, schema,
+      body: { scope: context.scope, collectionId: command.collectionId, id: command.recordId, revision: 1, schemaVersion: command.schemaVersion, archived: false, values: command.values } }
+  })
+  const effectIdentity = { version: 1, result: resultPin, itemsDigest: await collectionDigest(items), outputDigest: await collectionDigest(output.result) }
+  const pinnedReceipt = await withPublishedActionAuthority(featureRequest(body), env, null, async (db, snapshot) => {
+    assertPublication(body, snapshot)
+    const current = await retained(db, snapshot, identity)
+    if (!current || !cmsEqual(current.execution, saved.execution) || !cmsEqual(current.result_pin, resultPin)) throw publishedFeatureDenied()
+    if (current.final_receipt) return current.final_receipt
+    if (current.state !== 'result_ready' || (current.effect_identity !== null && !cmsEqual(current.effect_identity, effectIdentity))) throw publishedFeatureDenied()
+    await assertNewPublicRecords(db, context, items)
+    if (current.effect_identity === null) await db.query('UPDATE page_studio_public_action_invocations SET effect_identity=$4 WHERE scope_key=$1 AND release_environment=$2 AND intent_id=$3', [contentScopeKey(context.scope), context.releaseEnvironment, body.intentId, effectIdentity])
+    return null
+  }, dependencies)
+  if (pinnedReceipt) return { ...pinnedReceipt, duplicate: true }
+  const operationId = `public_${saved.execution.invocationId}`
+  const actor = { kind: 'published-form' as const, invocationId: saved.execution.invocationId, activationId: context.publication.activationId,
+    releaseId: context.publication.releaseId, pointerVersion: context.publication.pointerVersion, identityDigest: saved.identity_digest }
+  let prepared: Awaited<ReturnType<typeof verifyCmsPreparation>> | null = null
+  if (items.length) {
+    const preparation = CmsPreparationSchema.parse({ formatVersion: 2, scope: context.scope, operationId, actor,
+      freezeDigest: context.freezeDigest, candidateDigest: null, action: context.action, items })
+    const receipt = await storage.prepare(preparation)
+    prepared = await verifyCmsPreparation({ scope: context.scope, target: context.target, freezeDigest: context.freezeDigest, operationId,
+      preparedRequestDigest: receipt.requestDigest, preparedDigest: receipt.digest }, storage.readPreparation)
+    if (!cmsEqual(prepared.request, preparation) || !cmsEqual(prepared.receipt, receipt)) throw publishedFeatureDenied()
+  }
+  return await withPublishedActionAuthority(featureRequest(body), env, null, async (db, snapshot) => {
+    assertPublication(body, snapshot)
+    const current = await retained(db, snapshot, identity)
+    if (!current || !cmsEqual(current.execution, saved.execution) || !cmsEqual(current.result_pin, resultPin) || !cmsEqual(current.effect_identity, effectIdentity)) throw publishedFeatureDenied()
+    if (current.final_receipt) return { ...current.final_receipt, duplicate: true }
+    if (current.state !== 'result_ready') throw publishedFeatureDenied()
+    await assertNewPublicRecords(db, context, items)
+    const commitId = randomUUID(), auditId = randomUUID(), actorId = cmsPreparationActorId(actor)
+    const objects = prepared ? await insertVerifiedCmsObjects(db, snapshot.context, prepared, commitId) : []
+    for (const object of objects) {
+      if (object.pin.kind !== 'record') throw publishedFeatureDenied()
+      // Deliberately no upsert: an existing head is a create conflict, never an update.
+      await db.query('INSERT INTO page_studio_cms_record_heads(scope_key,generation,collection_id,record_id,object_id) VALUES($1,$2,$3,$4,$5)',
+        [contentScopeKey(context.scope), context.generation, object.pin.collectionId, object.pin.recordId, object.id])
+    }
+    await db.query(`INSERT INTO page_studio_audit_events(id,tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata)
+      VALUES($1,$2,$3,$4,$5,'published-form','public-action.commit','public-action-invocation',$6,$7,$8)`,
+    [auditId, context.scope.tenantId, context.scope.clientId, context.scope.siteId, actorId, saved.execution.invocationId,
+      `public-action:${context.releaseEnvironment}:${saved.execution.invocationId}`, { identityDigest: saved.identity_digest, resultDigest: resultPin.sha256, itemsDigest: effectIdentity.itemsDigest, objectCount: objects.length }])
+    if (prepared) {
+      const bound = { invocationId: saved.execution.invocationId, identityDigest: saved.identity_digest, effectIdentity,
+        preparation: { operationId, requestDigest: prepared.receipt.requestDigest, receiptDigest: prepared.receipt.digest } }
+      const requestDigest = await collectionDigest(bound)
+      const cmsReceipt = CmsManagedCommitReceiptSchema.parse({ formatVersion: 1, commitId, operationId, requestDigest,
+        preparedDigest: prepared.receipt.digest, generation: context.generation, application: { id: snapshot.context.application.id, digest: snapshot.context.application.digest }, objects, createdAt: new Date().toISOString() })
+      await db.query(`INSERT INTO page_studio_cms_commits(scope_key,generation,id,operation_id,request_digest,prepared_digest,request,result,actor_id,audit_id,tenant_id,client_id,site_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [contentScopeKey(context.scope), context.generation, commitId, operationId, requestDigest, prepared.receipt.digest, bound, cmsReceipt, actorId, auditId, context.scope.tenantId, context.scope.clientId, context.scope.siteId])
+    }
+    const receipt = receiptSchema.parse({ version: 1, submissionId: saved.execution.invocationId, state: 'received', duplicate: false })
+    await db.query(`UPDATE page_studio_public_action_invocations SET state='committed',final_receipt=$4,updated_at=clock_timestamp() WHERE scope_key=$1 AND release_environment=$2 AND intent_id=$3`, [contentScopeKey(context.scope), context.releaseEnvironment, body.intentId, receipt])
+    return receipt
   }, dependencies)
 }

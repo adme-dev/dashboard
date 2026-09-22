@@ -1,5 +1,7 @@
+import { createPublicCmsFixture } from '../../fixtures/pageStudioPublicCms'
+import { CmsPreparationSchema, cmsItemIdentity, cmsPreparationActorId } from '~~/shared/pageStudio/cmsManaged'
 import { builderActionResultKey } from '~~/shared/pageStudio/actionInvocation'
-import { admitPublishedFormAction, acknowledgePublishedFormAction } from '~~/server/utils/pageStudio/publicActionInvocations'
+import { admitPublishedFormAction, acknowledgePublishedFormAction, completePublishedFormAction } from '~~/server/utils/pageStudio/publicActionInvocations'
 import { readPublishedFeaturePage } from '~~/server/utils/pageStudio/publishedFeatureProjection'
 import { readPublishedFeatureSnapshot } from '~~/server/utils/pageStudio/publishedFeatureAuthority'
 import { coordinateFeatureActivation } from '~~/server/utils/pageStudio/releaseFeatureActivation'
@@ -637,6 +639,181 @@ describe.runIf(Boolean(databaseUrl))(
       await expect(acknowledgePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow()
       expect(f.fetch).not.toHaveBeenCalled()
       expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(0)
+    })
+    async function publicEffects(commands: unknown[] = [{ type: 'create', collectionId: 'fleet', recordId: 'new_enquiry', expectedRevision: 0, values: { title: 'New enquiry' } }]) {
+      const f = await publishedAction()
+      const claim = await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch })
+      const execution = claim.admission.execution
+      f.texts.set(await builderActionResultKey(execution), collectionCanonical({ formatVersion: 1, execution, result: { status: 'ok', json: collectionCanonical({ version: 1, commands, result: { privateOutput: 'must not reach visitor' } }) } }))
+      await acknowledgePublishedFormAction(f.body, request.env, f.deps)
+      const original = request.env.PAGE_STUDIO_CONTENT_ROUTER as Record<string, (...args: never[]) => Promise<unknown>>
+      const operations = new Map<string, { request: ReturnType<typeof CmsPreparationSchema.parse>, receipt: Record<string, unknown> }>()
+      const prepare = vi.fn(async (raw: unknown) => {
+        const input = CmsPreparationSchema.parse(raw), existing = operations.get(input.operationId)
+        if (existing) {
+          expect(input).toEqual(existing.request)
+          return existing.receipt
+        }
+        const pins = await Promise.all(input.items.map(async item => ({ ...cmsItemIdentity(item), origin: 'prepared', operationId: input.operationId, freezeDigest: input.freezeDigest, sha256: await collectionDigest(item.body), bytes: new TextEncoder().encode(collectionCanonical(item.body)).byteLength })))
+        const value = { state: 'prepared', scope: input.scope, operationId: input.operationId, freezeDigest: input.freezeDigest, requestDigest: await collectionDigest(input), items: pins, createdAt: new Date().toISOString() }
+        const receipt = { ...value, digest: await collectionDigest(value) }
+        operations.set(input.operationId, { request: input, receipt })
+        return receipt
+      })
+      const readObjects = vi.fn(async ({ pins }: { pins: Array<{ operationId: string }> }) => Promise.all(pins.map(async (pin) => {
+        const prepared = operations.get(pin.operationId)
+        if (!prepared) return ((await original.readManagedCmsObjects!({ pins: [pin] } as never)) as unknown[])[0]
+        const index = (prepared.receipt.items as unknown[]).findIndex(item => collectionCanonical(item) === collectionCanonical(pin))
+        const item = prepared.request.items[index]!
+        return { pin, body: item.body, schema: item.kind === 'record' ? item.schema : null, head: false, actorId: cmsPreparationActorId(prepared.request.actor), createdAt: prepared.receipt.createdAt }
+      })))
+      const router = { ...original, prepareManagedCmsOperation: prepare,
+        readManagedCmsOperation: async ({ operationId }: { operationId: string }) => operations.get(operationId), readManagedCmsObjects: readObjects }
+      request.env.PAGE_STUDIO_CONTENT_ROUTER = router
+      return { ...f, claim, operations, prepare, readObjects, router, original }
+    }
+    it('commits public CMS records, provenance audit and received receipt together without moving authoring heads', async () => {
+      const f = await publicEffects()
+      const before = (await observer.query('SELECT current_application_id,current_content_id FROM page_studio_cms_scopes')).rows
+      const checkpoints = (await observer.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows
+      const receipt = await completePublishedFormAction(f.body, request.env, f.deps)
+      expect(receipt).toEqual({ version: 1, submissionId: f.claim.admission.execution.invocationId, state: 'received', duplicate: false })
+      expect((await observer.query('SELECT state,final_receipt FROM page_studio_public_action_invocations')).rows).toMatchObject([{ state: 'committed', final_receipt: { state: 'received' } }])
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(1)
+      expect((await observer.query('SELECT actor_id,archived FROM page_studio_cms_objects WHERE kind=\'record\'')).rows).toEqual([{ actor_id: `published:${f.claim.admission.execution.invocationId}`, archived: false }])
+      expect((await observer.query('SELECT actor_role FROM page_studio_audit_events WHERE action=\'public-action.commit\'')).rows).toEqual([{ actor_role: 'published-form' }])
+      expect((await observer.query('SELECT current_application_id,current_content_id FROM page_studio_cms_scopes')).rows).toEqual(before)
+      expect((await observer.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows).toEqual(checkpoints)
+      request.env.PAGE_STUDIO_CONTENT_ROUTER = {}
+      expect(await completePublishedFormAction(f.body, request.env, f.deps)).toEqual({ ...receipt, duplicate: true })
+      expect(f.prepare).toHaveBeenCalledTimes(1)
+    })
+    it('finishes an empty public effect plan without a D1 preparation', async () => {
+      const f = await publicEffects([])
+      expect(await completePublishedFormAction(f.body, request.env, f.deps)).toMatchObject({ state: 'received', duplicate: false })
+      expect(f.prepare).not.toHaveBeenCalled()
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+    })
+    it('rolls back public records and the final receipt if the audit insert fails, then retries the same preparation', async () => {
+      const f = await publicEffects()
+      await observer.query(`CREATE FUNCTION reject_public_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='public-action.commit' THEN RAISE EXCEPTION 'injected audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_public_audit BEFORE INSERT ON page_studio_audit_events FOR EACH ROW EXECUTE FUNCTION reject_public_audit()`)
+      await expect(completePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow('injected audit failure')
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+      expect((await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'record\'')).rows).toHaveLength(0)
+      expect((await observer.query('SELECT state,final_receipt FROM page_studio_public_action_invocations')).rows).toEqual([{ state: 'result_ready', final_receipt: null }])
+      expect(f.operations.size).toBe(1)
+      await observer.query('DROP TRIGGER reject_public_audit ON page_studio_audit_events')
+      expect(await completePublishedFormAction(f.body, request.env, f.deps)).toMatchObject({ state: 'received' })
+      expect(f.operations.size).toBe(1)
+    })
+    it.each(['mutated-object', 'revoked-package', 'changed-target'] as const)('leaves public prepared records invisible after %s', async (mode) => {
+      const f = await publicEffects()
+      const read = f.readObjects.getMockImplementation()!
+      let checked = false
+      f.readObjects.mockImplementation(async (input) => {
+        const result = await read(input)
+        if (input.pins.some(pin => f.operations.has(pin.operationId))) {
+          checked = true
+          if (mode === 'mutated-object') return result.map(value => ({ ...(value as object), actorId: 'forged-publisher' }))
+          if (mode === 'revoked-package') await observer.query(`UPDATE page_studio_entitlements SET plan_metadata='{"builder":{"collectionSchemas":true}}'`)
+          if (mode === 'changed-target') Object.assign(f.router, { readManagedCmsTarget: async () => ({}) })
+        }
+        return result
+      })
+      await expect(completePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow()
+      expect(checked).toBe(true)
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+      expect((await observer.query('SELECT state,final_receipt FROM page_studio_public_action_invocations')).rows).toEqual([{ state: 'result_ready', final_receipt: null }])
+    })
+    it('rejects an unapproved public update effect before preparing records', async () => {
+      const f = await publicEffects([{ type: 'update', collectionId: 'fleet', recordId: 'existing', expectedRevision: 1, values: { title: 'Overwrite' } }])
+      await expect(completePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow()
+      expect(f.prepare).not.toHaveBeenCalled()
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+    })
+    it('recovers a lost public preparation acknowledgement without duplicating or replacing its objects', async () => {
+      const f = await publicEffects(), prepare = f.prepare.getMockImplementation()!
+      let lost = false
+      f.prepare.mockImplementation(async (input) => {
+        const value = await prepare(input)
+        if (!lost) {
+          lost = true
+          throw new Error('lost preparation acknowledgement')
+        }
+        return value
+      })
+      await expect(completePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow('lost preparation acknowledgement')
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+      expect(f.operations.size).toBe(1)
+      const originalPreparation = structuredClone([...f.operations.values()][0])
+      expect(await completePublishedFormAction(f.body, request.env, f.deps)).toMatchObject({ state: 'received', duplicate: false })
+      expect([...f.operations.values()]).toEqual([originalPreparation])
+    })
+    it('never overwrites a record created by an earlier public invocation', async () => {
+      const f = await publicEffects()
+      await completePublishedFormAction(f.body, request.env, f.deps)
+      const originalHeads = (await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows
+      const next = { ...f.body, intentId: randomUUID() }
+      const claim = await admitPublishedFormAction(next, request.env, { ...f.deps, fetch: f.fetch })
+      f.texts.set(await builderActionResultKey(claim.admission.execution), collectionCanonical({ formatVersion: 1, execution: claim.admission.execution, result: { status: 'ok', json: collectionCanonical({ version: 1, commands: [{ type: 'create', collectionId: 'fleet', recordId: 'new_enquiry', expectedRevision: 0, values: { title: 'Replacement' } }], result: null }) } }))
+      await acknowledgePublishedFormAction(next, request.env, f.deps)
+      await expect(completePublishedFormAction(next, request.env, f.deps)).rejects.toThrow()
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toEqual(originalHeads)
+      expect(f.prepare).toHaveBeenCalledTimes(1)
+    })
+    it('serializes simultaneous public completion into one native record/audit/receipt', async () => {
+      const f = await publicEffects()
+      const results = await Promise.all([0, 1].map(async () => completePublishedFormAction(f.body, request.env, { runTransaction: transactionFor(await connect()) })))
+      expect(results.filter(result => !result.duplicate)).toHaveLength(1)
+      expect(new Set(results.map(result => result.submissionId)).size).toBe(1)
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(1)
+      expect((await observer.query('SELECT * FROM page_studio_audit_events WHERE action=\'public-action.commit\'')).rows).toHaveLength(1)
+    })
+    it.runIf(Boolean(process.env.PAGE_STUDIO_ACTION_TEST_ROOT))('commits actual public D1 prepared records after restart and a lost preparation response', async () => {
+      const f = await publicEffects()
+      const physical = await createPublicCmsFixture(process.env.PAGE_STUDIO_ACTION_TEST_ROOT!, await f.original.readManagedCmsFreeze!({ scope } as never), await f.original.readManagedCmsOperation!({ scope } as never) as { request: unknown, receipt: unknown })
+      try {
+        const prepare = physical.router.prepareManagedCmsOperation
+        let lost = false
+        request.env.PAGE_STUDIO_CONTENT_ROUTER = { ...physical.router, prepareManagedCmsOperation: async (input: unknown) => {
+          const receipt = await prepare(input)
+          if (!lost) {
+            lost = true
+            throw new Error('lost D1 preparation response')
+          }
+          return receipt
+        } }
+        await expect(completePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow('lost D1 preparation response')
+        expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+        await physical.restart()
+        expect(await completePublishedFormAction(f.body, request.env, f.deps)).toMatchObject({ state: 'received', duplicate: false })
+        const object = (await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'record\'')).rows[0]
+        const stored = await physical.router.readManagedCmsObjects({ scope, pins: [object.storage_pin] })
+        expect(stored).toMatchObject([{ actorId: `published:${f.claim.admission.execution.invocationId}`, body: { values: { title: 'New enquiry' }, revision: 1, archived: false } }])
+        expect(await completePublishedFormAction(f.body, request.env, f.deps)).toMatchObject({ state: 'received', duplicate: true })
+        expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(1)
+      } finally { await physical.dispose() }
+    }, 60000)
+    it('allows only one of two public invocations creating the same record to commit', async () => {
+      const f = await publicEffects(), next = { ...f.body, intentId: randomUUID() }
+      const claim = await admitPublishedFormAction(next, request.env, { ...f.deps, fetch: f.fetch })
+      const previous = JSON.parse(f.texts.get(await builderActionResultKey(f.claim.admission.execution))!)
+      f.texts.set(await builderActionResultKey(claim.admission.execution), collectionCanonical({ ...previous, execution: claim.admission.execution }))
+      await acknowledgePublishedFormAction(next, request.env, f.deps)
+      const results = await Promise.allSettled([f.body, next].map(async body => completePublishedFormAction(body, request.env, { runTransaction: transactionFor(await connect()) })))
+      expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+      expect(results.filter(result => result.status === 'rejected')).toHaveLength(1)
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(1)
+      expect((await observer.query(`SELECT state FROM page_studio_public_action_invocations ORDER BY state`)).rows).toEqual([{ state: 'committed' }, { state: 'result_ready' }])
+    })
+    it('rolls back the public CMS commit and audit when the final receipt update fails', async () => {
+      const f = await publicEffects()
+      await observer.query(`CREATE FUNCTION reject_public_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.state='committed' THEN RAISE EXCEPTION 'injected receipt failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_public_receipt BEFORE UPDATE ON page_studio_public_action_invocations FOR EACH ROW EXECUTE FUNCTION reject_public_receipt()`)
+      await expect(completePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow('injected receipt failure')
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+      expect((await observer.query(`SELECT * FROM page_studio_cms_commits WHERE operation_id LIKE 'public_%'`)).rows).toHaveLength(0)
+      expect((await observer.query(`SELECT * FROM page_studio_audit_events WHERE action='public-action.commit'`)).rows).toHaveLength(0)
+      expect((await observer.query('SELECT state,final_receipt FROM page_studio_public_action_invocations')).rows).toEqual([{ state: 'result_ready', final_receipt: null }])
     })
     it('atomically installs exact immutable build seal and replays without duplicating audit', async () => {
       const f = await approvedBuild()

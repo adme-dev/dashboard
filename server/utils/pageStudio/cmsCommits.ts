@@ -54,7 +54,10 @@ export interface CmsPreparationReader {
     target: CmsNativeCommit['target']
   }): Promise<unknown>
 }
-export async function verifyCmsPreparation(input: CmsNativeCommit, reader: CmsPreparationReader) {
+/** Byte-verification frame only. Supplying a narrower frame cannot authorize a
+ * human commit: that path additionally requires the exact full native input. */
+export type CmsPreparationVerificationInput = Pick<CmsNativeCommit, 'scope' | 'target' | 'freezeDigest' | 'operationId' | 'preparedRequestDigest' | 'preparedDigest'>
+export async function verifyCmsPreparation(input: CmsPreparationVerificationInput, reader: CmsPreparationReader) {
   const proof = proofSchema.parse(
     await reader({
       scope: input.scope,

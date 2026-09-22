@@ -1,7 +1,7 @@
 # Public form action workflow — 22 September 2026
 
-Status: native admission and immutable result acknowledgement are implemented
-and locally verified. Public execution remains unavailable until the remaining
+Status: native admission, immutable result acknowledgement and atomic public
+CMS completion are implemented and locally verified. Public execution remains unavailable until the remaining
 integration and hosted acceptance gates below pass. No deployment occurred.
 
 ## Task checklist
@@ -14,8 +14,8 @@ integration and hosted acceptance gates below pass. No deployment occurred.
 - [x] Sealed form/action/input verification followed by fresh atomic admission.
 - [x] Same-intent retries recover one claim without another dispatch or charge.
 - [x] Read and acknowledge exact deterministic private Worker result bytes.
-- [ ] Normalize result effects and pin immutable create-only effect identity.
-- [ ] Verify private D1 preparation; atomically install native records, audit and
+- [x] Normalize result effects and pin immutable create-only effect identity.
+- [x] Verify private D1 preparation; atomically install native records, audit and
       final receipt. Do not change authoring application/page/content heads.
 - [ ] Named private Sandbox host reusing the metered action runtime/result store.
 - [ ] Machine-only native coordinator endpoint and bounded control client.
@@ -29,7 +29,8 @@ integration and hosted acceptance gates below pass. No deployment occurred.
 ## Current implementation
 
 `server/utils/pageStudio/publicActionInvocations.ts` exposes internal
-`admitPublishedFormAction` and `acknowledgePublishedFormAction` compositions.
+`admitPublishedFormAction`, `acknowledgePublishedFormAction` and
+`completePublishedFormAction` compositions.
 There is no newly exposed browser or machine route in this slice.
 
 Admission validates the strict private-host request and independently resolves
@@ -62,6 +63,27 @@ settle the row. Verified engine success enters `result_ready`; engine failure
 enters `execution_failed`. Both remain charged. Neither creates a final received
 receipt. CMS effects must commit before reporting a successful submission.
 
+Completion rereads the exact sealed action and acknowledged output, normalizes
+only approved create effects, and pins their immutable digest before private D1
+preparation. It reads back every exact prepared object, schema and freeze proof.
+The byte verifier accepts a narrow preparation frame; human commit authorization
+still requires its original full input and human preparation format.
+
+A fresh published-authority transaction then checks the schema and storage
+identity again, rejects existing record identities (including retained history),
+and inserts record metadata, heads, provenance audit, CMS commit and the final
+minimal received receipt atomically. It never updates application, content or
+page/checkpoint heads. Raw action output and record IDs do not enter the public
+receipt. Retrying a committed invocation returns that receipt without remote
+preparation reads or another write. Empty effect plans need no D1 preparation.
+
+An actual D1 restart test seeds the exact previously accepted schema preparation,
+loses the public record preparation response, restarts workerd with persistent
+D1, and retries through native PostgreSQL completion. It confirms one durable
+record with explicit published-invocation provenance. This covers public storage
+and native commit integration; the public browser/host/runtime journey remains
+unchecked above.
+
 ## Verification
 
 - Shared allowance and existing action runtime/coordinator regressions: **63
@@ -85,6 +107,28 @@ remaining charged, successful/failed retained results, absent/changed/oversized
 result bytes, late activation revocation, and acknowledgement without a claim.
 External Turnstile responses are controlled fixtures; hosted challenge keys and
 real browser verification remain an activation gate.
+
+## Atomic completion verification
+
+- **135 tests passed** across six suites, including 61 real PostgreSQL
+  publication/public-action cases, ordinary human CMS commits, creator action
+  invocations, the connected metered Worker/R2/D1 coordinator, challenge and
+  storage regressions. All enabled tests ran without skips in this final command.
+  Log: `/private/tmp/root-public-effects-final.log`.
+- New completion cases failed before implementation:
+  `/private/tmp/root-public-effects-red.log`.
+- Cases include empty plans, unapproved update effects, changed physical
+  provenance/target, late package revocation, lost preparation responses,
+  restart recovery, concurrent identical completion, competing creates for the
+  same record, and rollback on audit failure or final-receipt failure.
+- Scoped ESLint and diff whitespace checks passed. Server TypeScript has no
+  diagnostics in the two changed implementation files; baseline errors remain.
+  Logs: `/private/tmp/root-public-effects-lint-final.log` and
+  `/private/tmp/root-public-effects-types-final.log`.
+- The first restart test exposed an incorrect test persistence option; it was
+  corrected to the repository's installed Miniflare `resourcePersistencePath`.
+  The fixed test passed independently and in the final six-suite run. Each test
+  disposes workerd and removes only its own temporary directory.
 
 ## Release requirements
 
