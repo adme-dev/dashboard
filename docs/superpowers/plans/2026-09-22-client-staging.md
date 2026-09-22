@@ -202,7 +202,7 @@ not be reverted while staging is implemented.
 - Full build3 still fails the immutable final size gate: raw 25,839,587 /
   25,468,928 (**370,659 over**), gzip 6,732,450 /9,750,000. All 169 routes
   prerender. Artifact reduced 271,301 bytes; this is partial packaging progress.
-  `/private/tmp/root-client-staging-native-build3.log` is the current evidence.
+  `/private/tmp/root-client-staging-native-build3.log` records that earlier failure.
 - Measurement-only investigation of compressing static SSR literals could save
   roughly 343KB at a 1 KB minimum (before runtime acceptance). No static markup
   compactor was added; by itself this would still leave a size gap. Keep the
@@ -210,3 +210,43 @@ not be reverted while staging is implemented.
 - Browser action forms remain uncommitted and preserved. Overall AI builder,
   interactive staging CMS/action isolation, fresh-human rollback and final hosted
   acceptance are not complete. Fantasy DNS still does not resolve.
+
+### Packaging and staging controls verified (23 September)
+
+- The deployment size issue is resolved locally without changing the guard.
+  Build6 emits 25,297,372 raw bytes against 25,468,928 (171,556 headroom),
+  and 6,786,973 gzip bytes against 9,750,000. All 169 public routes prerender.
+  Evidence: `/private/tmp/root-client-staging-native-build6.log`.
+- Generated static HTML literals and Nitro public-asset metadata are stored as
+  lossless Brotli data. Only generated SSR call arguments/data properties are
+  eligible; executable code, tags, directives, dynamic templates, and malformed
+  Unicode are excluded. Static strings are decoded lazily and cached without
+  request data. No new dependency or feature removal was needed. The actual
+  generated corpus recovered all 126 strings with an identical SHA256 digest.
+- Full artifact testing uncovered an existing unenv process Proxy bug, also
+  reproduced in the pre-change artifact. Its fallback stderr getter accessed
+  private fields through the wrong receiver. A checked Rollup patch now binds
+  getters to their owning process object and fails closed on upstream drift.
+- The rebuilt, unmodified Worker passed local Miniflare HTTP checks: privacy,
+  Page Studio feature page and login returned 200; protected site API returned
+  401. Outbound requests were denied and none occurred. This is local artifact
+  evidence, not a hosted deployment or authenticated browser acceptance.
+  Receipt: `/private/tmp/root-native-static-worker-smoke-evidence.json`.
+- Combined staging section: **277 tests passed in 14 suites**, including real
+  PostgreSQL staging/action authority, Worker runtime, deployment guards,
+  packaging, HTTP boundaries and UI request recovery. Focused lint passed.
+  Log: `/private/tmp/root-client-staging-section-final3.log`.
+- The original disposable PostgreSQL process still accepted sockets but failed
+  SQL with a missing `global/pg_filenode.map`. Its files/process were left alone.
+  Tests use a separate owned cluster at `/private/tmp/root-page-studio-pg-20260923`,
+  localhost port 55444. No production database was changed in this section.
+- The staging UI now discards an old idempotency request when refresh confirms
+  its new active snapshot, so a later Update uses the latest saved digest. A
+  lost response retains its request identity while the old snapshot is active.
+  Both sequences have regression tests.
+- Native main was freshly fetched and has no divergence (0 behind, 25 ahead
+  before these save points). Full typecheck/final repository gates, real browser
+  acceptance, automatic first-use activation, current-main integration, service
+  deployment, provisioning secret and live Fantasy/second-client proof remain.
+  No push, deployment, token or hostname was created here. Fantasy DNS still
+  failed on 23 September; do not share the derived address as a working site.

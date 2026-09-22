@@ -261,6 +261,8 @@ async function publishApprovedVersion() {
       </div>
     </div>
 
+    <PageStudioStagingWorkspace :key="siteId" :site-id="siteId" audience="agency" />
+
     <UTabs v-model="selectedTab" :items="tabs" class="w-full">
       <template #overview>
         <div class="grid grid-cols-1 gap-4 pt-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
