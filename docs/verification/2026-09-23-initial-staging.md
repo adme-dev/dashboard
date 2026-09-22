@@ -49,3 +49,19 @@ This section does not prove deployment, automatic UI triggers, or hosted preview
   workspaces, preserving active snapshots and explicit retry behavior.
 - [ ] S6.5 Update UI/public documentation and complete browser/hosted acceptance,
   then batch the next CI and release cycle.
+
+## Authenticated ensure endpoints
+
+Agency and portal now have POST `/sites/:siteId/staging/ensure` endpoints. Both
+require an empty JSON object and derive actor/scope from native authentication.
+GET remains read-only; explicit Update keeps its existing request identity.
+The shared handler checks exact operation, site, environment and actor scope in
+the Worker response. Oversized/non-JSON bodies retain existing limits.
+
+- HTTP/config section: 17 tests passed, including initial agency/portal requests,
+  injected identity/content/destination rejection, authentication and service
+  permission denial.
+- Focused lint passed. Independent review read all eight source/test files
+  end-to-end and found no actionable issues.
+- UI, site-creation and checkpoint triggers are still pending. No public behavior
+  is advertised as automatically provisioned until those triggers are connected.
