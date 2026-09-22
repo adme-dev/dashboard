@@ -1,5 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { fileURLToPath } from 'node:url'
+import { compactPublicAssetsPlugin } from './scripts/compact-worker-static-data.mjs'
+import { workerProcessCompatibilityPlugin } from './scripts/worker-process-compatibility.mjs'
 import { NUXT_PAYLOAD_EXTRACTION, shouldIgnorePrerenderRoute } from './lib/prerender-ignore'
 
 // @flyhub/* email-builder packages are CLIENT-ONLY (the visual editor runs in the
@@ -450,6 +452,7 @@ export default defineNuxtConfig({
       ignore: [shouldIgnorePrerenderRoute]
     },
     rollupConfig: {
+      plugins: [compactPublicAssetsPlugin(), workerProcessCompatibilityPlugin()],
       external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native'],
       onwarn(warning, warn) {
         if (isKnownThirdPartyRollupWarning(warning)) return

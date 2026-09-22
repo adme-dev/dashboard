@@ -13,6 +13,7 @@ import { build } from 'esbuild'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { compactSsrMarkupDirectory } from './compact-worker-static-data.mjs'
 import {
   buildCompressedPrecomputedManifestModule,
   buildWorkerDispatcherModule,
@@ -101,6 +102,11 @@ await build({
 console.log('[wrap-worker] bundled worker-ws → _ws.js')
 
 if (!await exists(compactChunksDirectory)) {
+  const staticMarkup = await compactSsrMarkupDirectory(distDir)
+  console.log(
+    `[wrap-worker] compacted ${staticMarkup.literals} static SSR strings in `
+    + `${staticMarkup.changedFiles} modules, saved ${staticMarkup.savedBytes} bytes`
+  )
   // Nuxt's production SSR renderer precomputes the complete client dependency
   // graph into a JavaScript module. In this application that module is highly
   // repetitive and pushes the Pages Function over Cloudflare's 25 MB raw-size
