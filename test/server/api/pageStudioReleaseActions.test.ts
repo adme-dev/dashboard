@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   activatePageStudioRelease: vi.fn(),
+  hasSealedFeatureBuild: vi.fn(),
+  nativeFeaturePublisher: vi.fn(),
+  featureBuildServices: vi.fn(),
+  coordinateFeatureActivation: vi.fn(),
   getPageStudioBuildPointer: vi.fn(),
   getPageStudioReleasePointer: vi.fn(),
   requireAgencyPageStudioAccess: vi.fn(),
@@ -9,23 +13,44 @@ const mocks = vi.hoisted(() => ({
   resolvePageStudioDeliveryWorker: vi.fn(),
   rollbackPageStudioRelease: vi.fn()
 }))
+vi.mock('~~/server/utils/pageStudio/releaseFeatureActivation', () => ({
+  coordinateFeatureActivation: (...args: unknown[]) =>
+    mocks.coordinateFeatureActivation(...args)
+}))
+vi.mock('~~/server/utils/pageStudio/releaseFeatureHttp', () => ({
+  hasSealedFeatureBuild: (...args: unknown[]) =>
+    mocks.hasSealedFeatureBuild(...args),
+  nativeFeaturePublisher: (...args: unknown[]) =>
+    mocks.nativeFeaturePublisher(...args),
+  featureBuildServices: (...args: unknown[]) =>
+    mocks.featureBuildServices(...args)
+}))
 vi.mock('~~/server/utils/pageStudio/access', () => ({
-  requireAgencyPageStudioAccess: (...args: unknown[]) => mocks.requireAgencyPageStudioAccess(...args)
+  requireAgencyPageStudioAccess: (...args: unknown[]) =>
+    mocks.requireAgencyPageStudioAccess(...args)
 }))
 vi.mock('~~/server/utils/pageStudio/versions', () => ({
-  resolveAgencyPageStudioSiteClient: (...args: unknown[]) => mocks.resolveAgencyPageStudioSiteClient(...args),
+  resolveAgencyPageStudioSiteClient: (...args: unknown[]) =>
+    mocks.resolveAgencyPageStudioSiteClient(...args),
   PageStudioVersionError: class PageStudioVersionError extends Error {}
 }))
 vi.mock('~~/server/utils/pageStudio/publishing', () => ({
-  activatePageStudioRelease: (...args: unknown[]) => mocks.activatePageStudioRelease(...args),
-  getPageStudioBuildPointer: (...args: unknown[]) => mocks.getPageStudioBuildPointer(...args),
-  getPageStudioReleasePointer: (...args: unknown[]) => mocks.getPageStudioReleasePointer(...args),
-  resolvePageStudioDeliveryWorker: (...args: unknown[]) => mocks.resolvePageStudioDeliveryWorker(...args),
-  rollbackPageStudioRelease: (...args: unknown[]) => mocks.rollbackPageStudioRelease(...args),
+  activatePageStudioRelease: (...args: unknown[]) =>
+    mocks.activatePageStudioRelease(...args),
+  getPageStudioBuildPointer: (...args: unknown[]) =>
+    mocks.getPageStudioBuildPointer(...args),
+  getPageStudioReleasePointer: (...args: unknown[]) =>
+    mocks.getPageStudioReleasePointer(...args),
+  resolvePageStudioDeliveryWorker: (...args: unknown[]) =>
+    mocks.resolvePageStudioDeliveryWorker(...args),
+  rollbackPageStudioRelease: (...args: unknown[]) =>
+    mocks.rollbackPageStudioRelease(...args),
   PageStudioPublishingError: class PageStudioPublishingError extends Error {}
 }))
 vi.mock('~~/server/utils/pageStudio/http', () => ({
-  pageStudioHttpError: (error: unknown) => { throw error }
+  pageStudioHttpError: (error: unknown) => {
+    throw error
+  }
 }))
 
 type TestEvent = {
@@ -35,13 +60,16 @@ type TestEvent = {
   params?: Record<string, string>
 }
 const testGlobal = globalThis as typeof globalThis & {
-  createError: (input: Record<string, unknown>) => Error & Record<string, unknown>
+  createError: (
+    input: Record<string, unknown>
+  ) => Error & Record<string, unknown>
   eventHandler: <T>(handler: T) => T
   getHeader: (event: TestEvent, key: string) => string | undefined
   getRouterParam: (event: TestEvent, key: string) => string | undefined
   readBody: (event: TestEvent) => Promise<unknown>
 }
-testGlobal.createError = input => Object.assign(new Error(String(input.statusMessage)), input)
+testGlobal.createError = input =>
+  Object.assign(new Error(String(input.statusMessage)), input)
 testGlobal.eventHandler = handler => handler
 testGlobal.getHeader = (event, key) => event.headers?.[key.toLowerCase()]
 testGlobal.getRouterParam = (event, key) => event.params?.[key]
@@ -75,8 +103,10 @@ const worker = { verifyBuild: vi.fn(), verifyRelease: vi.fn() }
 describe('Page Studio agency release actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.hasSealedFeatureBuild.mockResolvedValue(false)
     mocks.requireAgencyPageStudioAccess.mockResolvedValue({
-      tenantId: 'tenant-alpha', user: { id: actorId }
+      tenantId: 'tenant-alpha',
+      user: { id: actorId }
     })
     mocks.resolveAgencyPageStudioSiteClient.mockResolvedValue(clientId)
     mocks.resolvePageStudioDeliveryWorker.mockReturnValue(worker)
@@ -88,6 +118,38 @@ describe('Page Studio agency release actions', () => {
     worker.verifyRelease.mockResolvedValue(releasePointer)
   })
 
+  it('uses the original human principal and sealed activation coordinator for feature builds', async () => {
+    const { default: handler } = await import(
+      '~~/server/api/agency/page-studio/sites/[siteId]/releases/activate.post'
+    )
+    const principal = { source: 'native-login' },
+      services = { verifyFeatureBuild: vi.fn() }
+    mocks.hasSealedFeatureBuild.mockResolvedValue(true)
+    mocks.nativeFeaturePublisher.mockResolvedValue(principal)
+    mocks.featureBuildServices.mockReturnValue(services)
+    mocks.coordinateFeatureActivation.mockResolvedValue(releasePointer)
+    const event: TestEvent = {
+      body: {
+        buildId,
+        environment: 'production',
+        expectedActiveReleaseId: null,
+        hostname: 'site.example.com'
+      },
+      context: {},
+      headers: { 'idempotency-key': 'activate_feature' },
+      params: { siteId }
+    }
+    await expect(handler(event as never)).resolves.toEqual({
+      release: releasePointer
+    })
+    expect(mocks.nativeFeaturePublisher).toHaveBeenCalledWith(event, siteId)
+    expect(mocks.coordinateFeatureActivation).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId, scope, buildId }),
+      principal,
+      services
+    )
+    expect(mocks.activatePageStudioRelease).not.toHaveBeenCalled()
+  })
   it('verifies the immutable build in Delivery before activating it locally without a control-plane callback', async () => {
     const { default: handler } = await import(
       '~~/server/api/agency/page-studio/sites/[siteId]/releases/activate.post'
@@ -99,13 +161,27 @@ describe('Page Studio agency release actions', () => {
       hostname
     }
     const event: TestEvent = {
-      body, context: {}, headers: { 'idempotency-key': 'publish_01HXYZ' }, params: { siteId }
+      body,
+      context: {},
+      headers: { 'idempotency-key': 'publish_01HXYZ' },
+      params: { siteId }
     }
 
-    await expect(handler(event as never)).resolves.toEqual({ release: releasePointer })
-    expect(mocks.requireAgencyPageStudioAccess).toHaveBeenCalledWith(event, 'PAGE_STUDIO_PUBLISH')
-    expect(mocks.resolvePageStudioDeliveryWorker).toHaveBeenCalledWith(event, 'staging')
-    expect(mocks.getPageStudioBuildPointer).toHaveBeenCalledWith(scope, buildId)
+    await expect(handler(event as never)).resolves.toEqual({
+      release: releasePointer
+    })
+    expect(mocks.requireAgencyPageStudioAccess).toHaveBeenCalledWith(
+      event,
+      'PAGE_STUDIO_PUBLISH'
+    )
+    expect(mocks.resolvePageStudioDeliveryWorker).toHaveBeenCalledWith(
+      event,
+      'staging'
+    )
+    expect(mocks.getPageStudioBuildPointer).toHaveBeenCalledWith(
+      scope,
+      buildId
+    )
     expect(worker.verifyBuild).toHaveBeenCalledWith(buildPointer)
     expect(mocks.activatePageStudioRelease).toHaveBeenCalledWith({
       actorId,
@@ -126,11 +202,19 @@ describe('Page Studio agency release actions', () => {
       targetReleaseId
     }
     const event: TestEvent = {
-      body, context: {}, headers: { 'idempotency-key': 'rollback_01HXYZ' }, params: { siteId }
+      body,
+      context: {},
+      headers: { 'idempotency-key': 'rollback_01HXYZ' },
+      params: { siteId }
     }
 
-    await expect(handler(event as never)).resolves.toEqual({ release: releasePointer })
-    expect(mocks.getPageStudioReleasePointer).toHaveBeenCalledWith(scope, targetReleaseId)
+    await expect(handler(event as never)).resolves.toEqual({
+      release: releasePointer
+    })
+    expect(mocks.getPageStudioReleasePointer).toHaveBeenCalledWith(
+      scope,
+      targetReleaseId
+    )
     expect(worker.verifyRelease).toHaveBeenCalledWith(releasePointer)
     expect(mocks.rollbackPageStudioRelease).toHaveBeenCalledWith({
       actorId,
@@ -141,26 +225,44 @@ describe('Page Studio agency release actions', () => {
   })
 
   it('does not open the activation transaction when artifact verification fails', async () => {
-    worker.verifyBuild.mockRejectedValueOnce(new Error('Artifact verification failed'))
+    worker.verifyBuild.mockRejectedValueOnce(
+      new Error('Artifact verification failed')
+    )
     const { default: handler } = await import(
       '~~/server/api/agency/page-studio/sites/[siteId]/releases/activate.post'
     )
     const event: TestEvent = {
-      body: { buildId, environment: 'staging', expectedActiveReleaseId: null, hostname },
-      context: {}, headers: { 'idempotency-key': 'publish_failed_verification' }, params: { siteId }
+      body: {
+        buildId,
+        environment: 'staging',
+        expectedActiveReleaseId: null,
+        hostname
+      },
+      context: {},
+      headers: { 'idempotency-key': 'publish_failed_verification' },
+      params: { siteId }
     }
     await expect(handler(event as never)).rejects.toThrow()
     expect(mocks.activatePageStudioRelease).not.toHaveBeenCalled()
   })
 
   it('does not open the rollback transaction when target verification fails', async () => {
-    worker.verifyRelease.mockRejectedValueOnce(new Error('Artifact verification failed'))
+    worker.verifyRelease.mockRejectedValueOnce(
+      new Error('Artifact verification failed')
+    )
     const { default: handler } = await import(
       '~~/server/api/agency/page-studio/sites/[siteId]/releases/rollback.post'
     )
     const event: TestEvent = {
-      body: { environment: 'staging', expectedActiveReleaseId: activeReleaseId, hostname, targetReleaseId },
-      context: {}, headers: { 'idempotency-key': 'rollback_failed_verification' }, params: { siteId }
+      body: {
+        environment: 'staging',
+        expectedActiveReleaseId: activeReleaseId,
+        hostname,
+        targetReleaseId
+      },
+      context: {},
+      headers: { 'idempotency-key': 'rollback_failed_verification' },
+      params: { siteId }
     }
     await expect(handler(event as never)).rejects.toThrow()
     expect(mocks.rollbackPageStudioRelease).not.toHaveBeenCalled()

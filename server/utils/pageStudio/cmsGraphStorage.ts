@@ -14,7 +14,7 @@ async function sha256(raw: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))), byte => byte.toString(16).padStart(2, '0')).join('')
 }
 /** Only server bindings and a native admitted snapshot enter this adapter. */
-export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: CmsGraphSnapshot) {
+export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pick<CmsGraphSnapshot, 'scope'> & { context: { state: Pick<CmsGraphSnapshot['context']['state'], 'target'> } }) {
   const bucket = env.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket | undefined
   const service = env.PAGE_STUDIO_CONTENT_ROUTER as Record<string, ((input: unknown) => Promise<unknown>) | undefined> | undefined
   let artifactBytes = 0

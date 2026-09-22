@@ -1,3 +1,5 @@
+import { coordinateSealedFeatureBuild } from '~~/server/utils/pageStudio/releaseFeatureBuild'
+import { nativeFeaturePublisher, featureBuildServices } from '~~/server/utils/pageStudio/releaseFeatureHttp'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import {
   buildApprovedPageStudioVersion,
@@ -31,7 +33,7 @@ export default eventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Invalid Page Studio build' })
     }
     const worker = resolvePageStudioBuildWorker(event)
-    const build = await buildApprovedPageStudioVersion({
+    const input = {
       actorId: user.id,
       assets: body.data.assets,
       idempotencyKey: idempotencyKey.data,
@@ -39,7 +41,12 @@ export default eventHandler(async (event) => {
       siteId: siteId.data,
       tenantId,
       versionId: versionId.data
-    }, { worker })
+    }
+    const manifest = body.data.manifest as Record<string, unknown>
+    const feature = Object.hasOwn(manifest, 'builderApplication') || Object.hasOwn(manifest, 'builderLibrary')
+    const build = feature
+      ? await coordinateSealedFeatureBuild(input, await nativeFeaturePublisher(event, siteId.data), featureBuildServices(event))
+      : await buildApprovedPageStudioVersion(input, { worker })
     return { build }
   } catch (error) {
     pageStudioHttpError(error)

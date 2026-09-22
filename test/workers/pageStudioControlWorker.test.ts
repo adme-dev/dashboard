@@ -147,6 +147,32 @@ describe('Page Studio control gateway Worker', () => {
     }
   })
 
+  it.each([
+    '/internal/page-studio/published/features/page',
+    '/internal/page-studio/published-action-invocations'
+  ])('uses only machine credentials for published route %s', async (path) => {
+    const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
+    vi.stubGlobal('fetch', fetchMock)
+    await worker.fetch(request(path, {
+      method: 'POST',
+      headers: {
+        'authorization': 'Bearer browser-controlled',
+        'cookie': 'publisher-session=must-not-pass',
+        'x-page-studio-session': 'must-not-pass',
+        'x-xeroflow-preview-token': 'must-not-pass',
+        'content-type': 'application/json'
+      },
+      body: '{}'
+    }), environment(), {} as never)
+    const forwarded = fetchMock.mock.calls[0]?.[0]
+    expect(forwarded.url).toBe(`https://preview.agency-dashboard-6cm.pages.dev${path}`)
+    expect(forwarded.headers.get('authorization')).toBe(`Bearer ${secret}`)
+    expect(forwarded.headers.get('x-xeroflow-service')).toBe('page-studio')
+    for (const name of ['cookie', 'x-page-studio-session', 'x-xeroflow-preview-token']) {
+      expect(forwarded.headers.get(name)).toBeNull()
+    }
+  })
+
   it('fails closed for unapproved origins and weak or oversized credentials', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)

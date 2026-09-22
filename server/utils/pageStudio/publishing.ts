@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import { assertFeatureActivationProof } from './releaseFeatureActivation'
 
 import { queryOne, transaction } from '~~/server/utils/db'
 
@@ -74,6 +75,7 @@ interface ExistingActivationRow extends ReleasePointerRow {
 }
 
 interface PublishableBuildRow extends BuildPointerRow {
+  release_metadata?: Record<string, unknown> | null
   latest_review_decision: 'approved' | 'rejected' | 'returned_to_draft' | null
   version_id: string
   version_status: 'approved' | 'published' | 'draft' | 'in_review' | 'rejected'
@@ -86,6 +88,7 @@ interface ExistingRollbackRow extends ReleasePointerRow {
 }
 
 interface RollbackTargetRow extends ReleasePointerRow {
+  release_metadata?: Record<string, unknown> | null
   normalized_hostname: string
 }
 
@@ -316,6 +319,7 @@ async function loadPublishableBuild(
             build.artifact_prefix,
             build.release_manifest_key AS manifest_key,
             build.release_manifest_digest AS manifest_digest,
+            build.release_metadata,
             version.id AS version_id,
             version.status AS version_status,
             latest_review.decision AS latest_review_decision
@@ -416,7 +420,7 @@ export async function getPageStudioReleasePointer(
 
 export async function activatePageStudioRelease(
   input: PageStudioActivateReleaseInput,
-  dependencies: { runTransaction?: RunTransaction } = {}
+  dependencies: { runTransaction?: RunTransaction, featureProof?: object } = {}
 ): Promise<PageStudioReleasePointer> {
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
@@ -431,6 +435,14 @@ export async function activatePageStudioRelease(
           'Release idempotency key already represents a different activation'
         )
       }
+      const featureMetadata = (await db.query<{ release_metadata: Record<string, unknown> | null }>(
+        'SELECT release_metadata FROM page_studio_builds WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4',
+        [input.scope.tenantId, input.scope.clientId, input.scope.siteId, input.buildId]
+      )).rows[0]?.release_metadata
+      if (featureMetadata && Object.hasOwn(featureMetadata, 'featureSeal')) {
+        assertFeatureActivationProof(input, featureMetadata.featureSeal, dependencies.featureProof)
+      }
+
       return mapReleasePointer(input.scope, existing)
     }
 
@@ -445,6 +457,7 @@ export async function activatePageStudioRelease(
     }
 
     const build = await loadPublishableBuild(db, input)
+    if (build.release_metadata && Object.hasOwn(build.release_metadata, 'featureSeal'))assertFeatureActivationProof(input, build.release_metadata.featureSeal, dependencies.featureProof)
     const actorUuid = nullableActorUuid(input.actorId)
     const created = await db.query<{ release_id: string }>(
       `INSERT INTO page_studio_releases (
@@ -606,6 +619,7 @@ async function loadRollbackTarget(
   const result = await db.query<RollbackTargetRow>(
     `SELECT target.id AS release_id,
             target.environment,
+            build.release_metadata,
             target.normalized_hostname,
             build.id AS build_id,
             build.version_digest,
@@ -680,6 +694,9 @@ export async function rollbackPageStudioRelease(
     }
 
     const target = await loadRollbackTarget(db, input)
+    if (target.release_metadata && Object.hasOwn(target.release_metadata, 'featureSeal')) {
+      throw publishingError('ROLLBACK_TARGET_INVALID', 409, 'Feature releases require fresh publication approval. Republish the approved version instead of restoring its old activation.')
+    }
     const actorUuid = nullableActorUuid(input.actorId)
     await db.query(
       `UPDATE page_studio_release_pointers

@@ -52,7 +52,7 @@ function validationMessage(error: z.infer<typeof validationFailureSchema>['error
   return `Cannot publish: ${[...new Set(guidance)].join('; ')}.`
 }
 
-interface PageStudioWorkerBuildResult {
+export interface PageStudioWorkerBuildResult {
   artifactPrefix: string
   buildId: string
   manifestDigest: string
@@ -62,7 +62,7 @@ interface PageStudioWorkerBuildResult {
   versionDigest: string
 }
 
-interface BuildAuthorityRow {
+export interface BuildAuthorityRow {
   approval_id: string
   client_id: string
   digest: string
@@ -159,6 +159,11 @@ function assertApprovedAuthority(row: BuildAuthorityRow | null): BuildAuthorityR
   return row
 }
 
+/** SQL-only approved-version read for native feature seal composition. */
+export async function readApprovedBuildAuthority(db: PageStudioBuildQueryClient, input: { tenantId: string, siteId: string, versionId: string }) {
+  return assertApprovedAuthority((await db.query<BuildAuthorityRow>(authoritySql(true), [input.tenantId, input.siteId, input.versionId])).rows[0] ?? null)
+}
+
 function expectedMetadata(scope: { tenantId: string, clientId: string, siteId: string }, digest: string) {
   const artifactPrefix
     = `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}/builds/${digest}`
@@ -207,7 +212,7 @@ function buildPointer(
   }
 }
 
-async function persistSuccessfulBuild(
+export async function persistSuccessfulBuild(
   input: PageStudioApprovedBuildInput,
   initial: BuildAuthorityRow,
   result: PageStudioWorkerBuildResult,

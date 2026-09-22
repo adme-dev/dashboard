@@ -19437,7 +19437,6 @@ var BuilderRecoveryBundleSchema = external_exports
     formatVersion: external_exports.literal(1),
     freezeDigest: ReleaseSha256Schema,
     generation: external_exports.uuid(),
-    releaseEnvironment: external_exports.literal("production"),
     runtimeDigest: ReleaseSha256Schema,
     schemas: external_exports
       .array(
