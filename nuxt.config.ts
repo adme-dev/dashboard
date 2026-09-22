@@ -426,6 +426,13 @@ export default defineNuxtConfig({
     esbuild: {
       options: { target: 'es2020' }
     },
+    // The shared generated verifier is application source. Prerender uses
+    // trace=false and otherwise externalizes valid .mjs imports outside server/.
+    // Bundle it for both alias and relative imports; deployed Workers have no
+    // checkout filesystem from which to load this module.
+    externals: {
+      inline: [/[/\\]shared[/\\]pageStudio[/\\]generated[/\\]/]
+    },
     // Keep @flyhub/* out of the server bundle (client-only editor packages).
     alias: {
       ...flyhubServerAlias,
