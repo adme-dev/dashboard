@@ -20,6 +20,7 @@ import {
 } from './releaseFeatureAuthority'
 import {
   readApprovedBuildAuthority,
+  admitPageStudioReleaseBuild,
   persistSuccessfulBuild,
   type PageStudioApprovedBuildInput,
   type PageStudioWorkerBuildResult
@@ -230,6 +231,10 @@ export async function coordinateSealedFeatureBuild(
     sha256,
     bytes: new TextEncoder().encode(collectionCanonical(bundle)).byteLength
   }
+  await withFeaturePublisher(snapshot, principal, async (db) => {
+    await readApprovedBuildAuthority(db, input)
+    await admitPageStudioReleaseBuild(db, snapshot.scope, authority.digest)
+  }, dependencies)
   // Unknown outcomes remain recoverable through deterministic immutable storage;
   // never write a failed native build after a lost service response.
   const result = await services.buildSealed({

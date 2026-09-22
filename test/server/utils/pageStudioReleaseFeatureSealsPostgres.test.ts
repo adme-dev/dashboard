@@ -101,7 +101,7 @@ describe.runIf(Boolean(databaseUrl))(
         '425_page_studio_cms_authoring_scope.sql',
         '413_page_studio_release_metadata.sql',
         '426_page_studio_release_feature_seals.sql',
-        '421_page_studio_ai_usage.sql', '427_page_studio_public_action_invocations.sql'
+        '421_page_studio_ai_usage.sql', '427_page_studio_public_action_invocations.sql', '428_page_studio_client_staging.sql'
       ]) {
         await observer.query(
           readFileSync(
@@ -895,8 +895,17 @@ describe.runIf(Boolean(databaseUrl))(
       expect((await observer.query(`SELECT * FROM page_studio_audit_events WHERE action='public-action.commit'`)).rows).toHaveLength(0)
       expect((await observer.query('SELECT state,final_receipt FROM page_studio_public_action_invocations')).rows).toEqual([{ state: 'result_ready', final_receipt: null }])
     })
+    it('rejects a generated feature build before Worker execution when its shared allowance is exhausted', async () => {
+      const f = await approvedBuild()
+      await observer.query('UPDATE page_studio_entitlements SET monthly_build_limit=0')
+      await expect(coordinateSealedFeatureBuild(f.input, f.principal, f.services, f.deps)).rejects.toMatchObject({ code: 'BUILD_LIMIT_REACHED', statusCode: 429 })
+      expect(f.services.buildSealed).not.toHaveBeenCalled()
+      expect((await observer.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(0)
+      expect((await observer.query('SELECT * FROM page_studio_builds')).rows).toHaveLength(0)
+    })
     it('atomically installs exact immutable build seal and replays without duplicating audit', async () => {
       const f = await approvedBuild()
+      await observer.query('UPDATE page_studio_entitlements SET monthly_build_limit=1')
       const first = await coordinateSealedFeatureBuild(
         f.input,
         f.principal,
@@ -911,6 +920,7 @@ describe.runIf(Boolean(databaseUrl))(
           f.deps
         )
       ).toEqual(first)
+      expect((await observer.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(1)
       expect(
         (
           await observer.query(
@@ -937,6 +947,16 @@ describe.runIf(Boolean(databaseUrl))(
           'UPDATE page_studio_release_feature_seals SET seal_digest=repeat(\'f\',64)'
         )
       ).rejects.toThrow('RELEASE_FEATURE_SEAL_IMMUTABLE')
+    })
+    it('reuses a historical immutable build without charging its existing usage again', async () => {
+      const f = await approvedBuild()
+      await observer.query('UPDATE page_studio_entitlements SET monthly_build_limit=1')
+      const first = await coordinateSealedFeatureBuild(f.input, f.principal, f.services, f.deps)
+      // Simulate a build made before the admission ledger was introduced.
+      await observer.query('DELETE FROM page_studio_build_admissions')
+      await expect(coordinateSealedFeatureBuild(f.input, f.principal, f.services, f.deps)).resolves.toEqual(first)
+      const usage = (await observer.query('SELECT admission.created_at=build.created_at AS retained FROM page_studio_build_admissions admission JOIN page_studio_builds build ON build.id=admission.resource_id')).rows
+      expect(usage).toEqual([{ retained: true }])
     })
     it('does not persist build or seal when publish authority is revoked during artifact verification', async () => {
       const f = await approvedBuild()
