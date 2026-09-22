@@ -164,3 +164,89 @@ export declare function projectBuilderActionRecord(
 export declare function parseBuilderActionRuntimeResultJson(
   raw: string
 ): BuilderGraphJson;
+/** Shared artifact transport parser; does not apply the smaller execution-output budget. */
+export declare function parseBuilderArtifactJson(raw: string): BuilderGraphJson;
+export interface BuilderFormActionDescriptor {
+  inputContract: {
+    version: 1;
+    properties: (
+      | {
+          key: string;
+          required: boolean;
+          type: "string";
+          enum?: string[];
+          maxLength?: number;
+        }
+      | {
+          key: string;
+          required: boolean;
+          type: "number";
+          min?: number;
+          max?: number;
+        }
+      | {
+          key: string;
+          required: boolean;
+          type: "boolean";
+        }
+    )[];
+  };
+  label: string;
+  pin: BuilderGraphPin;
+}
+/** Editor metadata only. Native must resolve the pin from current accepted selections. */
+export declare function verifyBuilderFormActionDescriptor(input: {
+  scope: unknown;
+  actionPin: unknown;
+  artifactBytes: string;
+}): Promise<BuilderFormActionDescriptor | null>;
+export interface BuilderActionEffectTargets {
+  result: BuilderGraphJson;
+  targets: {
+    collectionId: string;
+    recordId: string;
+    expectedRevision: number;
+    type: "create" | "update" | "archive";
+  }[];
+}
+/** Bounded target discovery before native reads. This does not approve effects;
+ * callers must still validate the complete plan against accepted record bases. */
+export declare function inspectBuilderActionEffectTargets(input: {
+  scope: unknown;
+  actionPin: unknown;
+  artifactBytes: string;
+  resultBytes: string;
+}): Promise<BuilderActionEffectTargets>;
+/** Validate exact component collection pins and public fields before loading records.
+ * Native supplies accepted definitions and separately proves current visibility. */
+export declare function verifyBuilderComponentDataBindings(input: {
+  scope: unknown;
+  componentPin: unknown;
+  artifactBytes: string;
+  definitionBytes: string[];
+}): Promise<{
+  pin: BuilderGraphPin;
+  bindings: BuilderGraphReadBinding[];
+}>;
+export interface BuilderGraphReleaseRecoveryProof {
+  bundle: BuilderGraphJson;
+  checkpoint: BuilderGraphJson;
+  digest: string;
+  forms: {
+    action: BuilderGraphPin;
+    bindingDigest: string;
+    formDigest: string;
+    formId: string;
+    pageId: string;
+    publicCreateEligible: boolean;
+  }[];
+  instances: {
+    pageId: string;
+    rootId: string;
+    pin: BuilderGraphPin;
+  }[];
+}
+/** Single-source release byte proof. Does not grant native publication authority. */
+export declare function verifyBuilderReleaseRecovery(
+  raw: unknown
+): Promise<BuilderGraphReleaseRecoveryProof>;

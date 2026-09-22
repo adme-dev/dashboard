@@ -26,7 +26,7 @@ export default eventHandler(async (event) => {
       requiredCapabilities: ['workspace:checkpoint'] })
     await assertPageStudioSessionAuthority(session, 'workspace:checkpoint')
     return await commitPageStudioEditorCheckpoint({ ...parsed.data,
-      expectedCheckpointId: parsed.data.expectedCheckpointId ?? null }, session)
+      expectedCheckpointId: parsed.data.expectedCheckpointId ?? null }, session, { env: (event.context.cloudflare?.env ?? {}) as Record<string, unknown> })
   } catch (error) {
     return pageStudioInternalHttpError(event, error)
   }

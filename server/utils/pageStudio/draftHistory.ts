@@ -24,6 +24,7 @@ interface Request {
   siteId: string
   bucket?: Bucket
   event?: H3Event
+  env?: Record<string, unknown>
 }
 interface SiteRow {
   tenant_id: string
@@ -132,8 +133,22 @@ export async function mutatePageStudioHistory(request: Request & {
     throw invalid()
   if (!request.event) throw createError({ statusCode: 401, statusMessage: 'Sign in again before changing draft history' })
   const body = parsed.data
+  if (body.action === 'restore') {
+    const managed = await (dependencies.runTransaction ?? defaultTransaction)(async (db) => {
+      const { scope } = await authorise(db, request, true)
+      return (await db.query(`SELECT scope_key FROM page_studio_cms_scopes WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND state<>'legacy' LIMIT 1`, [scope.tenantId, scope.clientId, scope.siteId])).rows.length > 0
+    })
+    if (managed) {
+      const { coordinateCmsGraphRestore } = await import('./cmsGraphCoordinator')
+      const { preparePageStudioContentLogin } = await import('./contentNativeLogin')
+      const contentRequest = { actor: request.actor, login: await preparePageStudioContentLogin(request.event, request.actor), siteId: request.siteId, env: request.env ?? {} }
+      return await coordinateCmsGraphRestore(body, { source: 'native-login', request: contentRequest }, dependencies)
+    }
+  }
   return (dependencies.runTransaction ?? defaultTransaction)(async (db) => {
     const { site, scope } = await authorise(db, request, true)
+    if (body.action === 'restore' && (await db.query(`SELECT scope_key FROM page_studio_cms_scopes WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND state<>'legacy' LIMIT 1`, [scope.tenantId, scope.clientId, scope.siteId])).rows.length)
+      throw new PageStudioHistoryError('HISTORY_MANAGED_RETRY', 409, 'Content setup changed. Retry this restore through the current authoring environment.')
     const recheckAuthority = await lockPageStudioHistoryAuthority(db, request.event!, request.actor, scope)
     const args = [scope.tenantId, scope.clientId, scope.siteId]
     const operationKey = `history:${request.actor.role}:${request.actor.actorId}:${body.requestId}`

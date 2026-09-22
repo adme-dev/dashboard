@@ -15685,6 +15685,43 @@ function validateBuilderActionInput(contractInput, input) {
   return result;
 }
 
+// packages/protocol/src/builder-instance-reference.ts
+var identity = external_exports
+  .string()
+  .min(3)
+  .max(64)
+  .regex(/^[a-z][a-z0-9_-]*$/);
+var BuilderInstanceReferenceSchema = external_exports
+  .object({
+    pin: external_exports
+      .object({
+        id: identity,
+        kind: external_exports.literal("component"),
+        sha256: external_exports.string().regex(/^[a-f0-9]{64}$/),
+        version: external_exports
+          .number()
+          .int()
+          .min(1)
+          .max(Number.MAX_SAFE_INTEGER),
+      })
+      .strict(),
+    values: external_exports
+      .record(
+        identity,
+        external_exports.union([
+          external_exports.string().max(1e4),
+          external_exports.number().finite(),
+          external_exports.boolean(),
+        ])
+      )
+      .refine(
+        (values) => Object.keys(values).length <= 30,
+        "Too many instance values"
+      ),
+    version: external_exports.literal(1),
+  })
+  .strict();
+
 // packages/protocol/src/page.ts
 var DUPLICATE_SLASHES_RE = /\/{2,}/g;
 var TRAILING_SLASH_RE = /\/$/;
@@ -15795,6 +15832,7 @@ function componentNodeSchemaAtDepth(depth) {
         );
   const schema = external_exports
     .object({
+      builderInstance: BuilderInstanceReferenceSchema.optional(),
       children: childrenSchema.default([]),
       id: StableIdSchema,
       props: ComponentPropsSchema.default({}),
@@ -16191,6 +16229,15 @@ function contentScopeKey(input) {
   ]);
 }
 
+// packages/protocol/src/builder-release-reference.ts
+var BuilderReleaseSealReferenceSchema = external_exports
+  .object({
+    checkpointDigest: external_exports.string().regex(/^[a-f0-9]{64}$/),
+    formatVersion: external_exports.literal(1),
+    sha256: external_exports.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+
 // packages/protocol/src/runtime-capabilities.ts
 var RUNTIME_CAPABILITIES = ["forms", "motion", "navigation", "tabs"];
 var RuntimeCapabilitySchema = external_exports.enum(RUNTIME_CAPABILITIES);
@@ -16295,9 +16342,17 @@ var ReleaseArtifactManifestV2Schema = external_exports
     schemaVersion: external_exports.literal(2),
   })
   .strict();
+var ReleaseArtifactManifestV3Schema = ReleaseArtifactManifestV2Schema.extend({
+  featureSeal: BuilderReleaseSealReferenceSchema,
+  schemaVersion: external_exports.literal(3),
+}).strict();
 var ReleaseArtifactManifestSchema = external_exports.discriminatedUnion(
   "schemaVersion",
-  [ReleaseArtifactManifestV1Schema, ReleaseArtifactManifestV2Schema]
+  [
+    ReleaseArtifactManifestV1Schema,
+    ReleaseArtifactManifestV2Schema,
+    ReleaseArtifactManifestV3Schema,
+  ]
 );
 function canonicalJson(input) {
   if (input === null || typeof input !== "object") {
@@ -16379,7 +16434,7 @@ var BuilderArtifactChangeSchema = BuilderArtifactPinSchema.extend({
     path: ["version"],
   });
 var pinKey = (pin2) => `${pin2.kind}:${pin2.id}:${pin2.version}`;
-var identity = (pin2) => `${pin2.kind}:${pin2.id}`;
+var identity2 = (pin2) => `${pin2.kind}:${pin2.id}`;
 function validateDependencies(artifacts, pins, issue2) {
   for (const [index, change] of artifacts.entries()) {
     const dependencies = /* @__PURE__ */ new Set();
@@ -16441,7 +16496,7 @@ var BuilderFeatureProposalSchema = external_exports
     const changes = /* @__PURE__ */ new Map();
     for (const [index, change] of proposal.changes.entries()) {
       const key2 = pinKey(change);
-      if (identities.has(identity(change))) {
+      if (identities.has(identity2(change))) {
         issue2("Duplicate changed artifact identity", ["changes", index]);
       }
       if (pins.has(key2)) {
@@ -16450,7 +16505,7 @@ var BuilderFeatureProposalSchema = external_exports
           index,
         ]);
       }
-      identities.add(identity(change));
+      identities.add(identity2(change));
       pins.set(key2, change);
       changes.set(key2, change);
     }
@@ -17488,6 +17543,9 @@ function componentNodes(root) {
     if (result.has(node.id) || result.size >= 200) {
       throw new Error("Duplicate or excessive component nodes");
     }
+    if (node.builderInstance) {
+      throw new Error("Artifact templates cannot contain a saved instance");
+    }
     if (["navigation", "footer", "leadForm", "embed"].includes(node.type)) {
       throw new Error("Component requires site-level admission");
     }
@@ -17569,7 +17627,7 @@ function parseBuilderArtifact(raw) {
 }
 async function describeBuilderArtifact(input) {
   const artifact = parseBuilderArtifact(JSON.stringify(input));
-  const identity4 =
+  const identity5 =
     artifact.kind === "collection" ? artifact.definition : artifact;
   const body = canonicalJson(artifact);
   return {
@@ -17578,13 +17636,47 @@ async function describeBuilderArtifact(input) {
     change: BuilderArtifactChangeSchema.parse({
       bytes: encoder2.encode(body).byteLength,
       dependencies: builderArtifactDependencies(artifact),
-      expectedVersion: identity4.version - 1,
-      id: identity4.id,
+      expectedVersion: identity5.version - 1,
+      id: identity5.id,
       kind: artifact.kind,
       sha256: await sha256Hex(body),
-      version: identity4.version,
+      version: identity5.version,
     }),
   };
+}
+async function instantiateBuilderComponent(input, values, instanceId) {
+  const parsed = parseBuilderArtifact(JSON.stringify(input));
+  if (parsed.kind !== "component") {
+    throw new Error("Component artifact required");
+  }
+  CollectionIdentitySchema.parse(instanceId);
+  const properties = propertyValues(parsed, {
+    ...parsed.defaults,
+    ...PropertyValuesSchema.parse(values),
+  });
+  const root = structuredClone(parsed.root);
+  const nodes = componentNodes(root);
+  for (const binding of parsed.propertyBindings) {
+    const node = nodes.get(binding.nodeId);
+    if (node && Object.hasOwn(properties, binding.propertyId)) {
+      node.props[binding.prop] = properties[binding.propertyId];
+    }
+  }
+  const rootId = root.id;
+  await Promise.all(
+    [...nodes.values()].map(async (node) => {
+      node.id = await builderComponentNodeId(instanceId, node.id, rootId);
+    })
+  );
+  if (new Set([...nodes.values()].map((node) => node.id)).size !== nodes.size) {
+    throw new Error("Component instance identity collision");
+  }
+  return ComponentNodeSchema.parse(root);
+}
+async function builderComponentNodeId(instanceId, sourceId, rootId) {
+  return sourceId === rootId
+    ? instanceId
+    : `component_${(await sha256Hex(canonicalJson([instanceId, sourceId]))).slice(0, 54)}`;
 }
 
 // packages/protocol/src/builder-form-action-validation.ts
@@ -17850,8 +17942,8 @@ var CmsPreparationSchema = external_exports
     const issue2 = (message) => ctx.addIssue({ code: "custom", message });
     const keys = /* @__PURE__ */ new Set();
     for (const item of request.items) {
-      const identity4 = cmsItemIdentity(item);
-      const key2 = cmsLogicalKey(identity4);
+      const identity5 = cmsItemIdentity(item);
+      const key2 = cmsLogicalKey(identity5);
       if (keys.has(key2)) {
         issue2("Duplicate CMS effect identity");
       }
@@ -17931,7 +18023,7 @@ var CmsInventoryReadSchema = external_exports
   .strict();
 
 // packages/protocol/src/builder-application.ts
-var identity2 = external_exports
+var identity3 = external_exports
   .string()
   .min(3)
   .max(64)
@@ -17940,7 +18032,7 @@ var scopedId = external_exports
   .string()
   .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/);
 var pin = external_exports.object({
-  id: identity2,
+  id: identity3,
   sha256: external_exports.string().regex(/^[a-f0-9]{64}$/),
   version: external_exports.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
 });
@@ -17963,7 +18055,7 @@ var BuilderApplicationSchema = external_exports
           "staging",
           "production",
         ]),
-        siteId: external_exports.union([identity2, external_exports.uuid()]),
+        siteId: external_exports.union([identity3, external_exports.uuid()]),
         tenantId: scopedId,
       })
       .strict(),
@@ -19314,6 +19406,251 @@ function validateSiteManifest(input) {
     : { data: parsed.data, issues: [], success: true };
 }
 
+// packages/protocol/src/builder-release-seal.ts
+var BUILDER_RECOVERY_MAX_BYTES = 8e6;
+var encoder3 = new TextEncoder();
+var bounded = (max) =>
+  external_exports
+    .string()
+    .max(max)
+    .refine((value) => encoder3.encode(value).byteLength <= max);
+var BuilderRecoveryBundleSchema = external_exports
+  .object({
+    application: external_exports
+      .object({ digest: ReleaseSha256Schema, id: ReleaseScopedIdSchema })
+      .strict(),
+    artifacts: external_exports
+      .array(
+        external_exports
+          .object({ bytes: bounded(262144), pin: BuilderArtifactPinSchema })
+          .strict()
+      )
+      .max(128),
+    checkpoint: external_exports
+      .object({
+        bytes: bounded(1e6),
+        id: ReleaseScopedIdSchema,
+        sha256: ReleaseSha256Schema,
+      })
+      .strict(),
+    contentScope: ContentScopeSchema,
+    formatVersion: external_exports.literal(1),
+    freezeDigest: ReleaseSha256Schema,
+    generation: external_exports.uuid(),
+    releaseEnvironment: external_exports.literal("production"),
+    runtimeDigest: ReleaseSha256Schema,
+    schemas: external_exports
+      .array(
+        external_exports
+          .object({ bytes: bounded(512e3), pin: CmsObjectPinSchema })
+          .strict()
+      )
+      .max(128),
+    target: CmsStorageTargetSchema,
+  })
+  .strict()
+  .refine(
+    (value) =>
+      encoder3.encode(canonicalJson(value)).byteLength <=
+      BUILDER_RECOVERY_MAX_BYTES,
+    "Recovery bundle exceeds byte limit"
+  );
+var equal = (a, b) => canonicalJson(a) === canonicalJson(b);
+var pinKey2 = (pin2) => `${pin2.kind}:${pin2.id}`;
+async function verifyBuilderRecoveryBundle(raw) {
+  const bundle = BuilderRecoveryBundleSchema.parse(raw);
+  const validated = validateSiteManifest(JSON.parse(bundle.checkpoint.bytes));
+  if (!validated.success || validated.data.schemaVersion !== 2) {
+    throw new Error("Invalid recovery checkpoint semantics");
+  }
+  const checkpoint2 = SiteManifestV2Schema.parse(validated.data);
+  if (
+    canonicalJson(checkpoint2) !== bundle.checkpoint.bytes ||
+    (await sha256Hex(bundle.checkpoint.bytes)) !== bundle.checkpoint.sha256 ||
+    checkpoint2.id !== bundle.contentScope.siteId
+  ) {
+    throw new Error("Recovery checkpoint mismatch");
+  }
+  for (const section of [
+    checkpoint2.builderApplication,
+    checkpoint2.builderLibrary,
+  ]) {
+    if (section && !equal(section.scope, bundle.contentScope)) {
+      throw new Error("Recovery authoring scope mismatch");
+    }
+  }
+  if (!checkpoint2.builderApplication) {
+    throw new Error("Recovery requires accepted application selections");
+  }
+  const selections = [
+    ...checkpoint2.builderApplication.actions,
+    ...checkpoint2.builderApplication.collections,
+    ...(checkpoint2.builderLibrary?.components ?? []),
+  ];
+  if (selections.length !== bundle.artifacts.length) {
+    throw new Error("Recovery artifact inventory mismatch");
+  }
+  const selected = new Map(selections.map((pin2) => [pinKey2(pin2), pin2]));
+  if (selected.size !== selections.length) {
+    throw new Error("Duplicate recovery selection");
+  }
+  const artifacts = await verifyArtifacts(bundle, selected);
+  await verifySchemas(
+    bundle,
+    artifacts,
+    checkpoint2.builderApplication.collections.length
+  );
+  const forms = await verifyForms(checkpoint2, artifacts);
+  const instances = await verifyInstances(checkpoint2, artifacts, selected);
+  return {
+    bundle,
+    checkpoint: checkpoint2,
+    digest: await sha256Hex(canonicalJson(bundle)),
+    forms,
+    instances,
+  };
+}
+async function verifyArtifacts(bundle, selected) {
+  const artifacts = /* @__PURE__ */ new Map();
+  for (const entry of bundle.artifacts) {
+    const artifact = parseBuilderArtifact(entry.bytes);
+    const described = await describeBuilderArtifact(artifact);
+    const { id, kind, version: version4, sha256 } = described.change;
+    if (
+      entry.bytes !== described.body ||
+      !equal(entry.pin, { id, kind, sha256, version: version4 }) ||
+      !equal(selected.get(pinKey2(entry.pin)), entry.pin) ||
+      artifacts.has(pinKey2(entry.pin))
+    ) {
+      throw new Error("Recovery artifact mismatch");
+    }
+    const artifactScope =
+      artifact.kind === "collection"
+        ? artifact.definition.scope
+        : artifact.scope;
+    if (
+      contentScopeKey(artifactScope) !== contentScopeKey(bundle.contentScope)
+    ) {
+      throw new Error("Recovery artifact scope mismatch");
+    }
+    artifacts.set(pinKey2(entry.pin), artifact);
+  }
+  for (const artifact of artifacts.values()) {
+    for (const dependency of builderArtifactDependencies(artifact)) {
+      if (!equal(selected.get(pinKey2(dependency)), dependency)) {
+        throw new Error("Recovery dependency absent or conflicting");
+      }
+    }
+  }
+  return artifacts;
+}
+async function verifySchemas(bundle, artifacts, expectedCount) {
+  const definitions = /* @__PURE__ */ new Map();
+  for (const entry of bundle.schemas) {
+    const definition = CollectionDefinitionSchema.parse(
+      JSON.parse(entry.bytes)
+    );
+    const { pin: pin2 } = entry;
+    const artifact = artifacts.get(`collection:${definition.id}`);
+    if (
+      canonicalJson(definition) !== entry.bytes ||
+      (await sha256Hex(entry.bytes)) !== pin2.sha256 ||
+      encoder3.encode(entry.bytes).byteLength !== pin2.bytes ||
+      pin2.kind !== "schema" ||
+      pin2.recordId !== "" ||
+      pin2.collectionId !== definition.id ||
+      pin2.version !== definition.version ||
+      pin2.freezeDigest !== bundle.freezeDigest ||
+      contentScopeKey(definition.scope) !==
+        contentScopeKey(bundle.contentScope) ||
+      artifact?.kind !== "collection" ||
+      !equal(artifact.definition, definition) ||
+      definitions.has(definition.id)
+    ) {
+      throw new Error("Recovery schema mismatch");
+    }
+    definitions.set(definition.id, definition);
+  }
+  if (definitions.size !== expectedCount) {
+    throw new Error("Recovery schema inventory mismatch");
+  }
+}
+async function verifyForms(checkpoint2, artifacts) {
+  const forms = [];
+  for (const page of checkpoint2.pages) {
+    for (const form of page.forms) {
+      if (form.submission?.mode !== "action") {
+        continue;
+      }
+      const action = artifacts.get(pinKey2(form.submission.action));
+      if (action?.kind !== "action") {
+        throw new Error("Recovery form action absent");
+      }
+      await validateBuilderFormActionBinding(form, action);
+      const createOnly =
+        action.formatVersion === 2 &&
+        action.collections.length === 0 &&
+        action.effects.permissions.every((permission) =>
+          permission.operations.every((operation) => operation === "create")
+        );
+      forms.push({
+        action: form.submission.action,
+        bindingDigest: await sha256Hex(canonicalJson(form.submission)),
+        formDigest: await sha256Hex(canonicalJson(form)),
+        formId: form.id,
+        pageId: page.id,
+        publicCreateEligible: createOnly,
+      });
+    }
+  }
+  return forms;
+}
+async function verifyInstances(checkpoint2, artifacts, selected) {
+  const instances = [];
+  for (const page of checkpoint2.pages) {
+    const pending = page.components.map((node) => ({
+      node,
+      withinInstance: false,
+    }));
+    const ids = /* @__PURE__ */ new Set();
+    while (pending.length) {
+      const entry = pending.pop();
+      if (!entry) {
+        break;
+      }
+      const { node, withinInstance } = entry;
+      if (ids.has(node.id)) {
+        throw new Error("Recovery component identity duplicated");
+      }
+      ids.add(node.id);
+      const descriptor = node.builderInstance;
+      if (descriptor) {
+        const artifact = artifacts.get(pinKey2(descriptor.pin));
+        if (
+          withinInstance ||
+          artifact?.kind !== "component" ||
+          !equal(selected.get(pinKey2(descriptor.pin)), descriptor.pin)
+        ) {
+          throw new Error("Recovery instance pin mismatch");
+        }
+        await instantiateBuilderComponent(artifact, descriptor.values, node.id);
+        instances.push({
+          pageId: page.id,
+          pin: descriptor.pin,
+          rootId: node.id,
+        });
+      }
+      pending.push(
+        ...node.children.map((child) => ({
+          node: child,
+          withinInstance: withinInstance || Boolean(descriptor),
+        }))
+      );
+    }
+  }
+  return instances;
+}
+
 // packages/protocol/src/builder-graph-verifier.ts
 var BuilderGraphVerificationError = class extends Error {
   code;
@@ -19325,14 +19662,14 @@ var BuilderGraphVerificationError = class extends Error {
 };
 var byteLength = (raw) => new TextEncoder().encode(raw).byteLength;
 var key = (pin2) => `${pin2.kind}:${pin2.id}:${pin2.version}:${pin2.sha256}`;
-var identity3 = (pin2) => `${pin2.kind}:${pin2.id}`;
-var equal = (a, b) => canonicalJson(a) === canonicalJson(b);
+var identity4 = (pin2) => `${pin2.kind}:${pin2.id}`;
+var equal2 = (a, b) => canonicalJson(a) === canonicalJson(b);
 var digest = (body) => sha256Hex(canonicalJson(body));
 function fail(code, message) {
   throw new BuilderGraphVerificationError(code, message);
 }
 function requireEqual(a, b, code) {
-  if (!equal(a, b)) {
+  if (!equal2(a, b)) {
     fail(code, "Graph identity mismatch");
   }
 }
@@ -19345,7 +19682,7 @@ function sorted(pins) {
   });
 }
 function samePins(a, b) {
-  return equal(sorted(a), sorted(b));
+  return equal2(sorted(a), sorted(b));
 }
 function pinOf(artifact) {
   const { id, kind, version: version4, sha256 } = artifact.change;
@@ -19503,7 +19840,7 @@ async function loadArtifacts(raws, scope) {
     ) {
       fail("GRAPH_SCOPE", "Feature artifact scope denied");
     }
-    const versionKey = `${identity3(pin2)}:${pin2.version}`;
+    const versionKey = `${identity4(pin2)}:${pin2.version}`;
     if (
       result.has(key(pin2)) ||
       (identities.has(versionKey) && identities.get(versionKey) !== pin2.sha256)
@@ -19640,7 +19977,7 @@ async function checkedCheckpoint(input, scope) {
   return manifest;
 }
 function uniqueSelections(pins) {
-  if (pins.length > 128 || new Set(pins.map(identity3)).size !== pins.length) {
+  if (pins.length > 128 || new Set(pins.map(identity4)).size !== pins.length) {
     fail("GRAPH_SELECTION", "Duplicate or excessive graph selections");
   }
 }
@@ -19653,13 +19990,13 @@ function requireArtifact(artifacts, pin2) {
 }
 function exactGraph(pins, artifacts) {
   uniqueSelections(pins);
-  const selected = new Map(pins.map((p) => [identity3(p), p]));
+  const selected = new Map(pins.map((p) => [identity4(p), p]));
   const visited = graphClosure(pins, artifacts);
   for (const pin2 of pins) {
     for (const dep of builderArtifactDependencies(
       requireArtifact(artifacts, pin2)
     )) {
-      if (key(selected.get(identity3(dep)) ?? pin2) !== key(dep)) {
+      if (key(selected.get(identity4(dep)) ?? pin2) !== key(dep)) {
         fail(
           "GRAPH_SELECTION",
           "Dependency must match selected artifact exactly"
@@ -19690,6 +20027,39 @@ async function checkForms(manifest, actions, artifacts) {
     }
   }
 }
+async function checkInstances(manifest, components, artifacts) {
+  const visit = async (node, inInstance) => {
+    const reference = node.builderInstance;
+    if (reference) {
+      if (
+        inInstance ||
+        !components.some((pin2) => key(pin2) === key(reference.pin))
+      ) {
+        fail(
+          "GRAPH_BINDING",
+          "Saved component instance is not selected or is nested"
+        );
+      }
+      const artifact = requireArtifact(artifacts, reference.pin);
+      if (artifact.kind !== "component") {
+        fail("GRAPH_BINDING", "Component instance artifact required");
+      }
+      try {
+        await instantiateBuilderComponent(artifact, reference.values, node.id);
+      } catch {
+        fail("GRAPH_BINDING", "Invalid saved component properties");
+      }
+    }
+    for (const child of node.children) {
+      await visit(child, inInstance || !!reference);
+    }
+  };
+  for (const page of manifest.pages) {
+    for (const root of page.components) {
+      await visit(root, false);
+    }
+  }
+}
 async function checkPageGraph(manifest, pins, artifacts, allowLegacy) {
   const components = pins.filter((p) => p.kind === "component"),
     collections = pins.filter((p) => p.kind === "collection"),
@@ -19714,6 +20084,7 @@ async function checkPageGraph(manifest, pins, artifacts, allowLegacy) {
     fail("GRAPH_SELECTION", "Checkpoint application selection required");
   }
   await checkForms(manifest, actions, artifacts);
+  await checkInstances(manifest, components, artifacts);
 }
 async function loadBase(request, input, artifacts) {
   const base = baseSchema.parse(input),
@@ -19898,7 +20269,7 @@ async function checkPreparation(entry, request, candidate) {
     prep.action !== null ||
     prep.candidateDigest !== candidate.digest ||
     prep.freezeDigest !== request.freezeDigest ||
-    !equal(prep.scope, request.scope) ||
+    !equal2(prep.scope, request.scope) ||
     canonicalJson(prep) !== entry.requestBytes ||
     canonicalJson(receipt) !== entry.receiptBytes ||
     (await digest(prep)) !== reference.requestDigest ||
@@ -19907,7 +20278,7 @@ async function checkPreparation(entry, request, candidate) {
     (await digest(receiptBody)) !== receiptDigest ||
     receipt.operationId !== prep.operationId ||
     receipt.freezeDigest !== request.freezeDigest ||
-    !equal(receipt.scope, request.scope) ||
+    !equal2(receipt.scope, request.scope) ||
     receipt.items.length !== prep.items.length
   ) {
     fail("GRAPH_PREPARATION", "Preparation identity mismatch");
@@ -19931,7 +20302,7 @@ async function checkPreparedItem(
   const artifact = artifacts.get(key(change))?.artifact;
   if (
     artifact?.kind !== "collection" ||
-    !equal(item.body, artifact.definition)
+    !equal2(item.body, artifact.definition)
   ) {
     fail("GRAPH_PREPARATION", "Prepared schema differs from artifact");
   }
@@ -20080,9 +20451,9 @@ async function verifyBuilderApplicationTransition(input) {
       request,
       artifacts
     );
-    const selections = new Map(base.pins.map((p) => [identity3(p), p]));
+    const selections = new Map(base.pins.map((p) => [identity4(p), p]));
     for (const existing of candidate.proposal.existing) {
-      const current = selections.get(identity3(existing));
+      const current = selections.get(identity4(existing));
       if (!current || key(current) !== key(existing)) {
         fail(
           "GRAPH_BASE",
@@ -20091,11 +20462,11 @@ async function verifyBuilderApplicationTransition(input) {
       }
     }
     for (const change of candidate.proposal.changes) {
-      const current = selections.get(identity3(change));
+      const current = selections.get(identity4(change));
       if (change.expectedVersion !== (current?.version ?? 0)) {
         fail("GRAPH_BASE", "Changed artifact base version mismatch");
       }
-      selections.set(identity3(change), {
+      selections.set(identity4(change), {
         id: change.id,
         kind: change.kind,
         sha256: change.sha256,
@@ -20212,13 +20583,122 @@ function parseBuilderActionRuntimeResultJson(raw) {
   }
   return JsonValueSchema.parse(parseBuilderJson(raw));
 }
+function parseBuilderArtifactJson(raw) {
+  return JsonValueSchema.parse(parseBuilderJson(raw));
+}
+async function verifyBuilderFormActionDescriptor(input) {
+  return await guarded(async () => {
+    const { action, pin: pin2 } = await checkedAction(input);
+    if (action.formatVersion !== 2 || !action.inputContract) {
+      return null;
+    }
+    return {
+      inputContract: action.inputContract,
+      label: action.label,
+      pin: pin2,
+    };
+  });
+}
+async function inspectBuilderActionEffectTargets(input) {
+  return await guarded(async () => {
+    const { action } = await checkedAction(input);
+    const parsed = parseBuilderActionRuntimeResultJson(input.resultBytes);
+    if (action.formatVersion === 1) {
+      return { result: parsed, targets: [] };
+    }
+    const plan = BuilderEffectPlanSchema.parse(parsed);
+    if (plan.commands.length > action.effects.maxCommands) {
+      fail("GRAPH_EFFECT", "Action command limit exceeded");
+    }
+    const seen = /* @__PURE__ */ new Set();
+    const targets = [];
+    for (const command of plan.commands) {
+      const target2 = canonicalJson([command.collectionId, command.recordId]);
+      const permission = action.effects.permissions.find(
+        (p) => p.collection.id === command.collectionId
+      );
+      if (
+        seen.has(target2) ||
+        !permission ||
+        !permission.operations.includes(command.type) ||
+        ("values" in command &&
+          Object.keys(command.values).some(
+            (field) => !permission.fields.includes(field)
+          ))
+      ) {
+        fail("GRAPH_EFFECT", "Undeclared or duplicate action effect");
+      }
+      seen.add(target2);
+      targets.push({
+        collectionId: command.collectionId,
+        expectedRevision: command.expectedRevision,
+        recordId: command.recordId,
+        type: command.type,
+      });
+    }
+    return { result: plan.result, targets };
+  });
+}
+async function verifyBuilderComponentDataBindings(input) {
+  return await guarded(async () => {
+    const scope = ContentScopeSchema.parse(input.scope);
+    const pin2 = BuilderArtifactPinSchema.parse(input.componentPin);
+    if (
+      pin2.kind !== "component" ||
+      !Array.isArray(input.definitionBytes) ||
+      input.definitionBytes.length > 16
+    ) {
+      fail("GRAPH_BINDING", "Component collection budget or pin denied");
+    }
+    const definitions = input.definitionBytes.map((raw) =>
+      canonicalJson({
+        definition: CollectionDefinitionSchema.parse(parseBuilderJson(raw)),
+        kind: "collection",
+      })
+    );
+    const artifacts = await loadArtifacts(
+      [input.artifactBytes, ...definitions],
+      scope
+    );
+    const component = artifacts.get(key(pin2))?.artifact;
+    if (component?.kind !== "component") {
+      fail("GRAPH_ARTIFACT", "Component bytes do not match the selected pin");
+    }
+    verifyBindings(component, artifacts);
+    const required2 = new Set(
+      component.dataBindings.map((binding) => key(binding.collection))
+    );
+    if (definitions.length !== required2.size) {
+      fail(
+        "GRAPH_BINDING",
+        "Component definitions must match its exact bindings"
+      );
+    }
+    return { bindings: component.dataBindings, pin: pin2 };
+  });
+}
+async function verifyBuilderReleaseRecovery(raw) {
+  return await guarded(async () => {
+    const verified = await verifyBuilderRecoveryBundle(raw);
+    return {
+      ...verified,
+      bundle: JsonValueSchema.parse(verified.bundle),
+      checkpoint: JsonValueSchema.parse(verified.checkpoint),
+    };
+  });
+}
 export {
   BuilderGraphVerificationError,
+  inspectBuilderActionEffectTargets,
   parseBuilderActionRuntimeResultJson,
+  parseBuilderArtifactJson,
   projectBuilderActionRecord,
   verifyBuilderActionInput,
   verifyBuilderActionResult,
   verifyBuilderApplicationCheckpoint,
   verifyBuilderApplicationTransition,
   verifyBuilderArtifactSet,
+  verifyBuilderComponentDataBindings,
+  verifyBuilderFormActionDescriptor,
+  verifyBuilderReleaseRecovery,
 };

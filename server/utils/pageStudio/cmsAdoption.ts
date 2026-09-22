@@ -31,6 +31,7 @@ import type {
 import { withCmsCommitAuthority } from './cmsCommitAuthority'
 import type { PageStudioControlQueryClient } from './controlStore'
 import { cmsEqual, cmsUnavailable } from './cmsVisibility'
+import { PageStudioBusinessContentError } from './businessContent'
 
 type Principal = Parameters<typeof withCmsCommitAuthority>[0]['principal']
 type Transaction = NonNullable<Parameters<typeof withCmsCommitAuthority>[2]>['runTransaction']
@@ -259,6 +260,12 @@ export async function beginCmsAdoption(
       ]
     )
     return status(await lock(db, intent))
+  }).catch((error: unknown) => {
+    if (error && typeof error === 'object' && 'code' in error && error.code === '23505'
+      && 'constraint' in error && error.constraint === 'page_studio_cms_one_authoring_scope')
+      throw new PageStudioBusinessContentError('CMS_AUTHORING_SCOPE_CONFLICT', 409,
+        'This website already has an authoring environment. Continue there; published delivery does not require another authoring setup.')
+    throw error
   })
 }
 /** Reader returns actual persisted freeze bytes from the verified private binding. */

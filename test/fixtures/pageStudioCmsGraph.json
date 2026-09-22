@@ -1,0 +1,306 @@
+{
+  "artifactBytes": [
+    "{\"actions\":[],\"dataBindings\":[],\"defaults\":{},\"formatVersion\":1,\"id\":\"retained\",\"kind\":\"component\",\"label\":\"Retained\",\"properties\":[],\"propertyBindings\":[],\"root\":{\"children\":[],\"id\":\"title_old\",\"props\":{\"text\":\"Old\"},\"type\":\"heading\"},\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":1}",
+    "{\"definition\":{\"displayFieldId\":\"title\",\"fields\":[{\"id\":\"title\",\"label\":\"Title\",\"required\":true,\"type\":\"text\",\"visibility\":\"public\"}],\"formatVersion\":1,\"id\":\"fleet\",\"label\":\"Fleet\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":1},\"kind\":\"collection\"}",
+    "{\"collections\":[],\"effects\":{\"maxCommands\":1,\"permissions\":[{\"collection\":{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"7bbf9dfbf935ca974fae229ed74d91cf1ba7b39525605d0e756a3b765a6eb812\",\"version\":1},\"fields\":[\"title\"],\"operations\":[\"create\"]}],\"version\":1},\"formatVersion\":2,\"id\":\"submit\",\"inputContract\":{\"properties\":[{\"key\":\"title\",\"required\":true,\"type\":\"string\"}],\"version\":1},\"kind\":\"action\",\"label\":\"Submit\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"source\":\"input => input\",\"tests\":[{\"data\":null,\"expected\":{\"commands\":[],\"result\":null,\"version\":1},\"input\":{\"title\":\"Example\"}}],\"version\":1}",
+    "{\"actions\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"cd19f05b19c06c0fbc45c8b66767f9e2ae9bc14d492ecd32f792e8f0b528ecbb\",\"version\":1}],\"dataBindings\":[{\"collection\":{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"7bbf9dfbf935ca974fae229ed74d91cf1ba7b39525605d0e756a3b765a6eb812\",\"version\":1},\"fields\":[\"title\"],\"id\":\"fleet_rows\",\"limit\":10}],\"defaults\":{},\"formatVersion\":1,\"id\":\"fleet_view\",\"kind\":\"component\",\"label\":\"Fleet\",\"properties\":[],\"propertyBindings\":[],\"root\":{\"children\":[],\"id\":\"title_new\",\"props\":{\"text\":\"New\"},\"type\":\"heading\"},\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":1}"
+  ],
+  "base": {
+    "application": {
+      "digest": "dc72685446d4106aaf6f46df84512bb8126a7ad19443706b53051870efd41ee5",
+      "manifest": {
+        "actions": [],
+        "applicationId": "22222222-2222-4222-8222-222222222222",
+        "checkpoint": {
+          "digest": "21adcad5b5b7c54c2758286ccb584b9b973bcbbe8f7a3c906b5c562e97a53294",
+          "id": "base_checkpoint"
+        },
+        "components": [
+          {
+            "id": "retained",
+            "kind": "component",
+            "sha256": "3621fc2eb7ea525aeba35e7819c041dc531b5996d53e663994c324cfc008cc93",
+            "version": 1
+          }
+        ],
+        "formatVersion": 1,
+        "generation": "11111111-1111-4111-8111-111111111111",
+        "previousApplicationId": null,
+        "schemas": [],
+        "scope": {
+          "businessId": "10000000-0000-4000-8000-000000000001",
+          "clientId": "10000000-0000-4000-8000-000000000001",
+          "environment": "staging",
+          "siteId": "20000000-0000-4000-8000-000000000001",
+          "tenantId": "tenant"
+        }
+      }
+    },
+    "checkpoint": {
+      "digest": "21adcad5b5b7c54c2758286ccb584b9b973bcbbe8f7a3c906b5c562e97a53294",
+      "id": "base_checkpoint",
+      "manifest": {
+        "defaultLocale": "en-AU",
+        "id": "20000000-0000-4000-8000-000000000001",
+        "name": "Test",
+        "pages": [
+          {
+            "components": [],
+            "forms": [],
+            "id": "home",
+            "pageType": "home",
+            "parentPageId": null,
+            "route": "/",
+            "schemaVersion": 2,
+            "seo": {
+              "title": "Home"
+            },
+            "shell": {
+              "footer": "inherit",
+              "header": "inherit"
+            },
+            "title": "Home",
+            "visibility": "public"
+          }
+        ],
+        "redirects": [],
+        "schemaVersion": 2,
+        "seo": {
+          "siteName": "Test"
+        },
+        "shell": {
+          "footer": {
+            "columns": [],
+            "enabled": true,
+            "socialLinks": []
+          },
+          "header": {
+            "brand": {
+              "name": "Test"
+            },
+            "enabled": true,
+            "layout": "logo-left",
+            "sticky": false
+          },
+          "mobileNavigation": {
+            "presentation": "drawer"
+          },
+          "navigation": {
+            "enabled": true,
+            "items": []
+          }
+        },
+        "theme": {
+          "id": "theme_test",
+          "schemaVersion": 1,
+          "tokens": {}
+        },
+        "builderLibrary": {
+          "components": [
+            {
+              "id": "retained",
+              "kind": "component",
+              "sha256": "3621fc2eb7ea525aeba35e7819c041dc531b5996d53e663994c324cfc008cc93",
+              "version": 1
+            }
+          ],
+          "scope": {
+            "businessId": "10000000-0000-4000-8000-000000000001",
+            "clientId": "10000000-0000-4000-8000-000000000001",
+            "environment": "staging",
+            "siteId": "20000000-0000-4000-8000-000000000001",
+            "tenantId": "tenant"
+          }
+        }
+      }
+    },
+    "content": {
+      "pin": null,
+      "revision": 0
+    },
+    "freezeDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "generation": "11111111-1111-4111-8111-111111111111",
+    "schemas": [],
+    "scope": {
+      "businessId": "10000000-0000-4000-8000-000000000001",
+      "clientId": "10000000-0000-4000-8000-000000000001",
+      "environment": "staging",
+      "siteId": "20000000-0000-4000-8000-000000000001",
+      "tenantId": "tenant"
+    },
+    "target": {
+      "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "collectionReceiptDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "databaseId": "33333333-3333-4333-8333-333333333333",
+      "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "routeId": "route_a",
+      "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stagingReceiptDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "workflowReceiptDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  },
+  "candidateBytes": "{\"digest\":\"46c30a2cdd2cbc7c1280bc989479532c8d9bed408ff3900fd914c0c867ea4552\",\"proposal\":{\"base\":{\"checkpointDigest\":\"21adcad5b5b7c54c2758286ccb584b9b973bcbbe8f7a3c906b5c562e97a53294\",\"checkpointId\":\"base_checkpoint\",\"contentRevision\":0},\"changes\":[{\"bytes\":418,\"dependencies\":[],\"expectedVersion\":0,\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"7bbf9dfbf935ca974fae229ed74d91cf1ba7b39525605d0e756a3b765a6eb812\",\"version\":1},{\"bytes\":760,\"dependencies\":[{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"7bbf9dfbf935ca974fae229ed74d91cf1ba7b39525605d0e756a3b765a6eb812\",\"version\":1}],\"expectedVersion\":0,\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"cd19f05b19c06c0fbc45c8b66767f9e2ae9bc14d492ecd32f792e8f0b528ecbb\",\"version\":1},{\"bytes\":755,\"dependencies\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"cd19f05b19c06c0fbc45c8b66767f9e2ae9bc14d492ecd32f792e8f0b528ecbb\",\"version\":1},{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"7bbf9dfbf935ca974fae229ed74d91cf1ba7b39525605d0e756a3b765a6eb812\",\"version\":1}],\"expectedVersion\":0,\"id\":\"fleet_view\",\"kind\":\"component\",\"sha256\":\"fb2d428a12dd0f9252e098819636cecb096dcd6629512c125440145a754816e6\",\"version\":1}],\"existing\":[],\"formatVersion\":1,\"id\":\"candidate_one\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"}},\"proposalDigest\":\"9ce15c596c9b18e2818ed7b73787395fcdb6f882ff5860b7d71209f90bf5fcfd\",\"summary\":\"Add fleet\",\"validation\":{\"actions\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"cd19f05b19c06c0fbc45c8b66767f9e2ae9bc14d492ecd32f792e8f0b528ecbb\",\"tests\":1,\"version\":1}],\"runtimeDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}}",
+  "expectedRuntimeDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "nextCheckpoint": {
+    "digest": "cc885bcd8ec522c01fbd58342e94dbbaa182c6446ead163fd2d36665933cc722",
+    "id": "next_checkpoint",
+    "manifest": {
+      "defaultLocale": "en-AU",
+      "id": "20000000-0000-4000-8000-000000000001",
+      "name": "Test",
+      "pages": [
+        {
+          "components": [],
+          "forms": [],
+          "id": "home",
+          "pageType": "home",
+          "parentPageId": null,
+          "route": "/",
+          "schemaVersion": 2,
+          "seo": {
+            "title": "Home"
+          },
+          "shell": {
+            "footer": "inherit",
+            "header": "inherit"
+          },
+          "title": "Home",
+          "visibility": "public"
+        }
+      ],
+      "redirects": [],
+      "schemaVersion": 2,
+      "seo": {
+        "siteName": "Test"
+      },
+      "shell": {
+        "footer": {
+          "columns": [],
+          "enabled": true,
+          "socialLinks": []
+        },
+        "header": {
+          "brand": {
+            "name": "Test"
+          },
+          "enabled": true,
+          "layout": "logo-left",
+          "sticky": false
+        },
+        "mobileNavigation": {
+          "presentation": "drawer"
+        },
+        "navigation": {
+          "enabled": true,
+          "items": []
+        }
+      },
+      "theme": {
+        "id": "theme_test",
+        "schemaVersion": 1,
+        "tokens": {}
+      },
+      "builderLibrary": {
+        "components": [
+          {
+            "id": "retained",
+            "kind": "component",
+            "sha256": "3621fc2eb7ea525aeba35e7819c041dc531b5996d53e663994c324cfc008cc93",
+            "version": 1
+          },
+          {
+            "id": "fleet_view",
+            "kind": "component",
+            "sha256": "fb2d428a12dd0f9252e098819636cecb096dcd6629512c125440145a754816e6",
+            "version": 1
+          }
+        ],
+        "scope": {
+          "businessId": "10000000-0000-4000-8000-000000000001",
+          "clientId": "10000000-0000-4000-8000-000000000001",
+          "environment": "staging",
+          "siteId": "20000000-0000-4000-8000-000000000001",
+          "tenantId": "tenant"
+        }
+      },
+      "builderApplication": {
+        "actions": [
+          {
+            "id": "submit",
+            "kind": "action",
+            "sha256": "cd19f05b19c06c0fbc45c8b66767f9e2ae9bc14d492ecd32f792e8f0b528ecbb",
+            "version": 1
+          }
+        ],
+        "collections": [
+          {
+            "id": "fleet",
+            "kind": "collection",
+            "sha256": "7bbf9dfbf935ca974fae229ed74d91cf1ba7b39525605d0e756a3b765a6eb812",
+            "version": 1
+          }
+        ],
+        "scope": {
+          "businessId": "10000000-0000-4000-8000-000000000001",
+          "clientId": "10000000-0000-4000-8000-000000000001",
+          "environment": "staging",
+          "siteId": "20000000-0000-4000-8000-000000000001",
+          "tenantId": "tenant"
+        },
+        "version": 1
+      }
+    }
+  },
+  "preparations": [
+    {
+      "receiptBytes": "{\"createdAt\":\"2026-09-22T00:00:00.000Z\",\"digest\":\"c6d29cee2f79bb66a2e7714555c39518467f2641b2f9b7c771494c2ddeb3bb85\",\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"items\":[{\"bytes\":383,\"collectionId\":\"fleet\",\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"kind\":\"schema\",\"operationId\":\"prepare_schema\",\"origin\":\"prepared\",\"recordId\":\"\",\"sha256\":\"47689c921042e100db4413ff155391ef2d610683ca7e05e41e840a6cfd60eb50\",\"version\":1}],\"operationId\":\"prepare_schema\",\"requestDigest\":\"7c788ee3104dfa2d9a50762eb3c2c95905e1a7e80df08b4bee7d7ccafac85d7c\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"state\":\"prepared\"}",
+      "requestBytes": "{\"action\":null,\"actor\":{\"kind\":\"agency-user\",\"loginSessionHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"userId\":\"44444444-4444-4444-8444-444444444444\"},\"candidateDigest\":\"46c30a2cdd2cbc7c1280bc989479532c8d9bed408ff3900fd914c0c867ea4552\",\"formatVersion\":1,\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"items\":[{\"body\":{\"displayFieldId\":\"title\",\"fields\":[{\"id\":\"title\",\"label\":\"Title\",\"required\":true,\"type\":\"text\",\"visibility\":\"public\"}],\"formatVersion\":1,\"id\":\"fleet\",\"label\":\"Fleet\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":1},\"expectedBase\":null,\"kind\":\"schema\",\"version\":1}],\"operationId\":\"prepare_schema\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"}}"
+    }
+  ],
+  "request": {
+    "candidateDigest": "46c30a2cdd2cbc7c1280bc989479532c8d9bed408ff3900fd914c0c867ea4552",
+    "candidateId": "candidate_one",
+    "contentRevision": 0,
+    "expectedApplication": {
+      "digest": "dc72685446d4106aaf6f46df84512bb8126a7ad19443706b53051870efd41ee5",
+      "id": "22222222-2222-4222-8222-222222222222"
+    },
+    "expectedCheckpoint": {
+      "digest": "21adcad5b5b7c54c2758286ccb584b9b973bcbbe8f7a3c906b5c562e97a53294",
+      "id": "base_checkpoint"
+    },
+    "expectedContent": null,
+    "freezeDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "generation": "11111111-1111-4111-8111-111111111111",
+    "nextCheckpoint": {
+      "digest": "cc885bcd8ec522c01fbd58342e94dbbaa182c6446ead163fd2d36665933cc722",
+      "id": "next_checkpoint"
+    },
+    "operationId": "accept_one",
+    "preparations": [
+      {
+        "operationId": "prepare_schema",
+        "receiptDigest": "c6d29cee2f79bb66a2e7714555c39518467f2641b2f9b7c771494c2ddeb3bb85",
+        "requestDigest": "7c788ee3104dfa2d9a50762eb3c2c95905e1a7e80df08b4bee7d7ccafac85d7c"
+      }
+    ],
+    "scope": {
+      "businessId": "10000000-0000-4000-8000-000000000001",
+      "clientId": "10000000-0000-4000-8000-000000000001",
+      "environment": "staging",
+      "siteId": "20000000-0000-4000-8000-000000000001",
+      "tenantId": "tenant"
+    },
+    "target": {
+      "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "collectionReceiptDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "databaseId": "33333333-3333-4333-8333-333333333333",
+      "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "routeId": "route_a",
+      "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stagingReceiptDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "workflowReceiptDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "version": 1
+  }
+}

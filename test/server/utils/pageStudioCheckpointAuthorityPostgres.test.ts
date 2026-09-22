@@ -46,10 +46,12 @@ const userId = '30000000-0000-4000-8000-000000000501'
 const clientId = '20000000-0000-4000-8000-000000000501'
 const roleId = '60000000-0000-4000-8000-000000000501'
 const denied = { code: 'SESSION_AUTHORITY_DENIED', statusCode: 403 }
-const migrationSql = [402, 404, 420].map(number => readFileSync(new URL({
+const migrationSql = [402, 404, 420, 422, 425].map(number => readFileSync(new URL({
   402: '../../../server/database/migrations/402_page_studio_control_plane.sql',
   404: '../../../server/database/migrations/404_page_studio_documents.sql',
-  420: '../../../server/database/migrations/420_page_studio_login_sessions.sql'
+  420: '../../../server/database/migrations/420_page_studio_login_sessions.sql',
+  422: '../../../server/database/migrations/422_page_studio_cms_visibility.sql',
+  425: '../../../server/database/migrations/425_page_studio_cms_authoring_scope.sql'
 }[number]!, import.meta.url), 'utf8'))
 const deferred = () => {
   let resolve!: () => void
@@ -235,6 +237,9 @@ describe.runIf(Boolean(databaseUrl))('Ordinary editor checkpoint authority at th
       const release = deferred()
       let readyToCommit = false
       const options = { runTransaction: transactionFor(writer, async () => {
+        // Gate the mutation commit, not read-only managed-scope discovery.
+        const mutation = await writer.query('SELECT id FROM page_studio_checkpoints WHERE id=$1', [input.checkpoint.checkpointId])
+        if (!mutation.rows.length) return
         readyToCommit = true
         await release.promise
       }) }

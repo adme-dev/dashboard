@@ -144,6 +144,8 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
     await observer.query(migrationSql)
     await observer.query(readFileSync(new URL('../../server/database/migrations/403_page_studio_sessions.sql', import.meta.url), 'utf8'))
     await observer.query(readFileSync(new URL('../../server/database/migrations/404_page_studio_documents.sql', import.meta.url), 'utf8'))
+    await observer.query(readFileSync(new URL('../../server/database/migrations/422_page_studio_cms_visibility.sql', import.meta.url), 'utf8'))
+    await observer.query(readFileSync(new URL('../../server/database/migrations/425_page_studio_cms_authoring_scope.sql', import.meta.url), 'utf8'))
     const tenantId = 'tenant-cas'
     const clientId = '20000000-0000-4000-8000-000000000001'
     const ownerId = '30000000-0000-4000-8000-000000000001'
@@ -480,7 +482,7 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
         return callback({
           async query<R>(sql: string, params?: unknown[]) {
             const result = await db.query<R>(sql, params)
-            if (firstQuery) {
+            if (firstQuery && sql.includes('page_studio_sites') && /FOR (?:NO KEY )?UPDATE/.test(sql)) {
               firstQuery = false
               locked.resolve()
               await release.promise
@@ -540,7 +542,7 @@ describe.runIf(Boolean(databaseUrl))('Page Studio atomic checkpoint commits on d
         return callback({
           async query<R>(sql: string, params?: unknown[]) {
             const result = await db.query<R>(sql, params)
-            if (firstQuery) {
+            if (firstQuery && sql.includes('page_studio_sites') && /FOR (?:NO KEY )?UPDATE/.test(sql)) {
               firstQuery = false
               locked.resolve()
               await release.promise

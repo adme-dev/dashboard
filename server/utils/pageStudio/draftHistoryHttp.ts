@@ -1,3 +1,4 @@
+import { PageStudioBusinessContentError } from './businessContent'
 import { resolvePageStudioHttpActor } from './httpActor'
 import { readPageStudioJson } from './boundedJson'
 import { createError, getRouterParam, getQuery, setHeader, type H3Event } from 'h3'
@@ -22,13 +23,14 @@ export async function handlePageStudioHistory(event: H3Event, audience: 'agency'
     const request = {
       actor,
       siteId: getRouterParam(event, 'siteId') ?? '',
-      bucket: event.context.cloudflare?.env?.PAGE_STUDIO_CHECKPOINTS
+      bucket: event.context.cloudflare?.env?.PAGE_STUDIO_CHECKPOINTS,
+      env: (event.context.cloudflare?.env ?? {}) as Record<string, unknown>
     }
     return method === 'GET'
       ? await readPageStudioHistory({ ...request, query: getQuery(event) })
       : await mutatePageStudioHistory({ ...request, event, body: await readContentBody(event) })
   } catch (error) {
-    if (error instanceof PageStudioHistoryError || error instanceof PageStudioReleaseCheckpointError || error instanceof PageStudioControlError) {
+    if (error instanceof PageStudioBusinessContentError || error instanceof PageStudioHistoryError || error instanceof PageStudioReleaseCheckpointError || error instanceof PageStudioControlError) {
       throw createError({ statusCode: error.statusCode, statusMessage: error.message, data: { code: error.code } })
     }
     throw error
