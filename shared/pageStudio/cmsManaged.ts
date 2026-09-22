@@ -312,3 +312,26 @@ export const CmsNativeCommitSchema = z
         ctx.addIssue({ code: 'custom', message: 'Invalid record base' })
   })
 export type CmsNativeCommit = z.infer<typeof CmsNativeCommitSchema>
+
+/** Durable native intent, recorded under authority before remote freeze work. */
+export const CmsAdoptionIntentSchema = z
+  .object({
+    formatVersion: z.literal(1),
+    scope: ContentScopeSchema,
+    actor,
+    adoptionId: ReleaseScopedIdSchema,
+    generation: z.uuid(),
+    target: CmsStorageTargetSchema,
+    expectedCheckpoint: CmsCheckpointPinSchema
+  })
+  .strict()
+export type CmsAdoptionIntent = z.infer<typeof CmsAdoptionIntentSchema>
+export const CmsAdoptionRecoverySchema = z
+  .object({
+    intent: CmsAdoptionIntentSchema,
+    expectedAdoptionDigest: ReleaseSha256Schema,
+    recoveryId: ReleaseScopedIdSchema,
+    expectedRecoveryId: ReleaseScopedIdSchema.nullable(),
+    actor
+  })
+  .strict()
