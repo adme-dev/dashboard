@@ -1,7 +1,7 @@
 import { createPublicCmsFixture } from '../../fixtures/pageStudioPublicCms'
 import { CmsPreparationSchema, cmsItemIdentity, cmsPreparationActorId } from '~~/shared/pageStudio/cmsManaged'
 import { builderActionResultKey } from '~~/shared/pageStudio/actionInvocation'
-import { admitPublishedFormAction, acknowledgePublishedFormAction, completePublishedFormAction } from '~~/server/utils/pageStudio/publicActionInvocations'
+import { admitPublishedFormAction, acknowledgePublishedFormAction, completePublishedFormAction, recoverPublishedFormAction } from '~~/server/utils/pageStudio/publicActionInvocations'
 import { readPublishedFeaturePage } from '~~/server/utils/pageStudio/publishedFeatureProjection'
 import { readPublishedFeatureSnapshot } from '~~/server/utils/pageStudio/publishedFeatureAuthority'
 import { coordinateFeatureActivation } from '~~/server/utils/pageStudio/releaseFeatureActivation'
@@ -672,6 +672,86 @@ describe.runIf(Boolean(databaseUrl))(
       request.env.PAGE_STUDIO_CONTENT_ROUTER = router
       return { ...f, claim, operations, prepare, readObjects, router, original }
     }
+    async function recoveryBody(body: Awaited<ReturnType<typeof publishedAction>>['body']) {
+      const { fields, turnstileToken: _token, ...identity } = body
+      return { ...identity, clientAddress: '192.0.2.20', fieldsDigest: await collectionDigest(fields) }
+    }
+    it('recovers acknowledged effects after reload without original answers or another challenge', async () => {
+      const f = await publicEffects(), recovery = await recoveryBody(f.body)
+      const receipt = await recoverPublishedFormAction(recovery, request.env, f.deps)
+      expect(receipt).toEqual({ version: 1, submissionId: f.claim.admission.execution.invocationId, state: 'received', duplicate: false })
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(1)
+      request.env.PAGE_STUDIO_CHECKPOINTS = {}
+      request.env.PAGE_STUDIO_CONTENT_ROUTER = {}
+      expect(await recoverPublishedFormAction(recovery, request.env, f.deps)).toEqual({ ...receipt, duplicate: true })
+      expect(f.fetch).toHaveBeenCalledTimes(1)
+      expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(1)
+      expect(recovery).not.toHaveProperty('fields')
+      expect(recovery).not.toHaveProperty('turnstileToken')
+    })
+    it.each(['ok', 'guest_error'] as const)('recovers an unacknowledged %s result without dispatching again', async (status) => {
+      const f = await publishedAction()
+      const claim = await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch }), execution = claim.admission.execution
+      f.texts.set(await builderActionResultKey(execution), collectionCanonical({ formatVersion: 1, execution, result: status === 'ok' ? { status, json: collectionCanonical({ version: 1, commands: [], result: { privateOutput: 'never disclose' } }) } : { status } }))
+      expect(await recoverPublishedFormAction(await recoveryBody(f.body), request.env, f.deps)).toEqual({ version: 1, submissionId: execution.invocationId, state: status === 'ok' ? 'received' : 'rejected', duplicate: false })
+      expect((await observer.query('SELECT quota_state FROM page_studio_public_action_invocations')).rows).toEqual([{ quota_state: status === 'ok' ? 'succeeded' : 'failed' }])
+      expect(f.fetch).toHaveBeenCalledTimes(1)
+    })
+    it('keeps missing execution results pending and charged across answer-free recovery attempts', async () => {
+      const f = await publishedAction()
+      const claim = await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch }), recovery = await recoveryBody(f.body)
+      for (let i = 0; i < 2; i++) expect(await recoverPublishedFormAction(recovery, request.env, f.deps)).toEqual({ version: 1, submissionId: claim.admission.execution.invocationId, state: 'pending', duplicate: true })
+      expect((await observer.query('SELECT quota_state,state FROM page_studio_public_action_invocations')).rows).toEqual([{ quota_state: 'reserved', state: 'dispatch_claimed' }])
+      expect(f.fetch).toHaveBeenCalledTimes(1)
+    })
+    it.each(['secret', 'fingerprint', 'epoch', 'form', 'fields'] as const)('denies recovery with changed %s before result access', async (mode) => {
+      const f = await publicEffects(), recovery = await recoveryBody(f.body)
+      if (mode === 'secret') recovery.receiptSecret = 'b'.repeat(64)
+      if (mode === 'fingerprint') recovery.fieldsDigest = 'c'.repeat(64)
+      if (mode === 'epoch') recovery.publication.pointerVersion++
+      if (mode === 'form') recovery.formId = 'another_form'
+      if (mode === 'fields') Object.assign(recovery, { fields: f.body.fields })
+      f.get.mockClear()
+      await expect(recoverPublishedFormAction(recovery, request.env, f.deps)).rejects.toThrow()
+      expect(f.get).not.toHaveBeenCalled()
+      expect(f.prepare).not.toHaveBeenCalled()
+    })
+    it('returns one durable receipt for concurrent answer-free recovery', async () => {
+      const f = await publicEffects(), recovery = await recoveryBody(f.body)
+      const receipts = await Promise.all([0, 1].map(async () => recoverPublishedFormAction(recovery, request.env, { runTransaction: transactionFor(await connect()) })))
+      expect(receipts.map(receipt => receipt.state)).toEqual(['received', 'received'])
+      expect(receipts.filter(receipt => !receipt.duplicate)).toHaveLength(1)
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(1)
+      expect((await observer.query('SELECT * FROM page_studio_audit_events WHERE action=\'public-action.commit\'')).rows).toHaveLength(1)
+    })
+    it('does not disclose a completed receipt after publication revocation', async () => {
+      const f = await publicEffects(), recovery = await recoveryBody(f.body)
+      await recoverPublishedFormAction(recovery, request.env, f.deps)
+      await observer.query(`UPDATE page_studio_release_feature_activations SET state='revoked',revoked_at=clock_timestamp()`)
+      await expect(recoverPublishedFormAction(recovery, request.env, f.deps)).rejects.toThrow()
+    })
+    it('cannot admit or charge an unknown intent through recovery', async () => {
+      const f = await publishedAction(), recovery = await recoveryBody(f.body)
+      await expect(recoverPublishedFormAction(recovery, request.env, f.deps)).rejects.toThrow()
+      await expect(admitPublishedFormAction(recovery, request.env, { ...f.deps, fetch: f.fetch })).rejects.toThrow()
+      expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(0)
+      expect(f.fetch).not.toHaveBeenCalled()
+    })
+    it.each(['corrupt', 'unavailable', 'revoked'] as const)('does not turn %s recovery into a successful or pending receipt', async (mode) => {
+      const f = await publishedAction()
+      const claim = await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch }), key = await builderActionResultKey(claim.admission.execution)
+      if (mode === 'corrupt') f.texts.set(key, '{broken')
+      if (mode === 'unavailable') request.env.PAGE_STUDIO_CHECKPOINTS = {}
+      if (mode === 'revoked') {
+        const read = f.get.getMockImplementation()!
+        f.get.mockImplementation(async (objectKey) => {
+          if (objectKey === key) await observer.query(`UPDATE page_studio_release_feature_activations SET state='revoked',revoked_at=clock_timestamp()`)
+          return read(objectKey)
+        })
+      }
+      await expect(recoverPublishedFormAction(await recoveryBody(f.body), request.env, f.deps)).rejects.toThrow()
+      expect((await observer.query('SELECT state,final_receipt FROM page_studio_public_action_invocations')).rows).toEqual([{ state: 'dispatch_claimed', final_receipt: null }])
+    })
     it('commits public CMS records, provenance audit and received receipt together without moving authoring heads', async () => {
       const f = await publicEffects()
       const before = (await observer.query('SELECT current_application_id,current_content_id FROM page_studio_cms_scopes')).rows
@@ -786,7 +866,7 @@ describe.runIf(Boolean(databaseUrl))(
         await expect(completePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow('lost D1 preparation response')
         expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
         await physical.restart()
-        expect(await completePublishedFormAction(f.body, request.env, f.deps)).toMatchObject({ state: 'received', duplicate: false })
+        expect(await recoverPublishedFormAction(await recoveryBody(f.body), request.env, f.deps)).toMatchObject({ state: 'received', duplicate: false })
         const object = (await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'record\'')).rows[0]
         const stored = await physical.router.readManagedCmsObjects({ scope, pins: [object.storage_pin] })
         expect(stored).toMatchObject([{ actorId: `published:${f.claim.admission.execution.invocationId}`, body: { values: { title: 'New enquiry' }, revision: 1, archived: false } }])

@@ -18,6 +18,12 @@ import { BuilderActionResultPinSchema } from '~~/shared/pageStudio/actionInvocat
 import type { PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
 import type { CmsPreparationReader } from './cmsCommits'
 
+// Only an absent object is recoverable as pending. Transport and corrupt-byte
+// failures must not be silently recategorized as a missing execution result.
+export class ActionBytesMissingError extends Error {
+  constructor() { super('Action bytes unavailable') }
+}
+
 const encoder = new TextEncoder()
 const stored = z
   .object({
@@ -64,7 +70,7 @@ export function createActionStorage(
   const readBytes = async (key: string, max: number) => {
     if (!bucket?.get) throw new Error('Action storage unavailable')
     const object = await bucket.get(key)
-    if (!object) throw new Error('Action bytes unavailable')
+    if (!object) throw new ActionBytesMissingError()
     if (
       object.size !== undefined
       && (!Number.isSafeInteger(object.size)

@@ -1,7 +1,7 @@
 # Public form action workflow — 22 September 2026
 
-Status: native admission, immutable result acknowledgement and atomic public
-CMS completion are implemented and locally verified. Public execution remains unavailable until the remaining
+Status: native admission, immutable result acknowledgement, atomic public
+CMS completion, answer-free recovery and machine HTTP ingress are locally verified. Public execution remains unavailable until the remaining
 integration and hosted acceptance gates below pass. No deployment occurred.
 
 ## Task checklist
@@ -18,7 +18,9 @@ integration and hosted acceptance gates below pass. No deployment occurred.
 - [x] Verify private D1 preparation; atomically install native records, audit and
       final receipt. Do not change authoring application/page/content heads.
 - [ ] Named private Sandbox host reusing the metered action runtime/result store.
-- [ ] Machine-only native coordinator endpoint and bounded control client.
+- [x] Machine-only native coordinator endpoint with bounded requests and safe errors.
+- [x] Reload-safe native recovery using a secret and field digest, without answers.
+- [ ] Bounded private control client and named host integration.
 - [ ] Delivery form routing, trusted edge address, origin/rate checks, receipt UI.
 - [ ] Browser Turnstile lifecycle and secret/intent retry state without field data.
 - [ ] Fresh-human sealed release rollback reactivation.
@@ -30,8 +32,11 @@ integration and hosted acceptance gates below pass. No deployment occurred.
 
 `server/utils/pageStudio/publicActionInvocations.ts` exposes internal
 `admitPublishedFormAction`, `acknowledgePublishedFormAction` and
-`completePublishedFormAction` compositions.
-There is no newly exposed browser or machine route in this slice.
+`completePublishedFormAction` and `recoverPublishedFormAction` compositions.
+The machine-only `/internal/page-studio/published-action-invocations` route
+accepts strict admit/acknowledge/complete/recover phase envelopes. It verifies
+machine authentication before reading the bounded 80,000-byte request stream.
+There is still no enabled browser form route in this slice.
 
 Admission validates the strict private-host request and independently resolves
 current hostname, delivery environment, release, activation epoch and sealed
@@ -141,3 +146,36 @@ paired release, alongside the earlier CMS/seal migrations.
 Do not enable the public route or advertise public action completion while the
 unchecked tasks remain. Keep production source, current-main ancestry, migration
 results, deployed bindings and deployment IDs in the final release record.
+
+## Reload recovery and private HTTP verification
+
+Recovery accepts only the original publication/form/intent identity, receipt
+secret and field digest, plus the current observed client address. It cannot
+create a claim or authorize execution. Admission still requires real fields and
+challenge verification. Completion independently rereads sealed definitions and
+matches the retained input digest; no visitor answers need to be reconstructed.
+
+Recovery acknowledges a saved deterministic result and finishes its CMS effects.
+An absent result remains pending and charged. Storage transport errors, corrupt
+bytes and revoked authority fail closed; they are not converted into pending.
+Authority is checked again after an absent object lookup. Completed receipts
+also require fresh authority, and concurrent recovery creates one record/audit.
+The actual D1 restart case now recovers without the original answers.
+
+Private HTTP responses use fixed error text. Server error logs include only the
+status code, never raw provider/SQL/validation messages that could contain
+visitor input or secrets. Human session credentials cannot authorize ingress.
+
+- **188 tests passed**, eight suites, no skips: publication/recovery PostgreSQL,
+  human CMS commits, creator invocations, connected Worker/R2/D1 coordinator,
+  storage, challenge, private HTTP and control gateway. Log:
+  `/private/tmp/root-public-recovery-final.log`.
+- Recovery tests failed before implementation (13 expected failures); the HTTP
+  suite failed on its missing handler before implementation. Logs:
+  `/private/tmp/root-public-recovery-red.log`, `/private/tmp/root-public-http-red.log`.
+- Scoped lint and whitespace checks pass. Server TypeScript retains pre-existing
+  errors with no diagnostics in the changed implementation files. Logs:
+  `/private/tmp/root-public-recovery-lint-final.log`,
+  `/private/tmp/root-public-recovery-types.log`.
+- Fresh fetch confirms the owned Dashboard branch includes current origin/main.
+  No dependency installation, deployment, push or Actions run occurred.

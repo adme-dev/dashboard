@@ -6,7 +6,7 @@ import { builderActionResultKey, BuilderActionExecutionIdentitySchema, BuilderAc
 import { BuilderArtifactPinSchema, CmsObjectPinSchema, CmsStorageTargetSchema, CmsPreparationSchema, cmsPreparationActorId, contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
 import { verifyBuilderPublishedFormInput, verifyBuilderActionResult } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
 import { verifyCmsPreparation, insertVerifiedCmsObjects, CmsManagedCommitReceiptSchema } from './cmsCommits'
-import { createActionStorage } from './actionStorage'
+import { ActionBytesMissingError, createActionStorage } from './actionStorage'
 import { assertPageStudioAiAllowanceAvailable } from './aiAllowance'
 import { cmsEqual, readAcceptedCmsObject } from './cmsVisibility'
 import { PublishedFeatureRequestSchema, publishedFeatureDenied, withPublishedActionAuthority, type PublishedFeatureSnapshot } from './publishedFeatureAuthority'
@@ -18,13 +18,17 @@ import type { PageStudioControlQueryClient } from './controlStore'
 const digest = z.string().regex(/^[a-f0-9]{64}$/)
 const id = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
 const publication = PublishedFeatureRequestSchema.extend({ activationId: z.uuid(), pointerVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict()
-export const PublicActionFormRequestSchema = z.object({
+const publicRequestIdentity = z.object({
   version: z.literal(1), publication, pageId: id, formId: id, formDigest: digest,
   intentId: z.uuid(), receiptSecret: digest,
-  clientAddress: z.union([z.ipv4(), z.ipv6()]),
+  clientAddress: z.union([z.ipv4(), z.ipv6()])
+}).strict()
+export const PublicActionFormRecoverySchema = publicRequestIdentity.extend({ fieldsDigest: digest }).strict()
+export const PublicActionFormRequestSchema = publicRequestIdentity.extend({
   fields: z.record(z.string().min(1).max(128), z.string().max(10_000)).refine(fields => Object.keys(fields).length <= 32 && new TextEncoder().encode(collectionCanonical(fields)).byteLength <= 65_536),
   turnstileToken: z.string().min(1).max(2048).optional()
 }).strict()
+const existingRequestSchema = z.union([PublicActionFormRequestSchema, PublicActionFormRecoverySchema])
 const contextSchema = z.object({
   scope: PageStudioContentScopeSchema, generation: z.uuid(), target: CmsStorageTargetSchema, freezeDigest: digest,
   publication, releaseEnvironment: z.enum(['staging', 'production']),
@@ -46,15 +50,15 @@ const rowSchema = z.object({
   final_receipt: receiptSchema.nullable(), result_pin: BuilderActionResultPinSchema.nullable(), result_digest: digest.nullable(), effect_identity: z.unknown()
 })
 type Context = z.infer<typeof contextSchema>
-type Request = z.infer<typeof PublicActionFormRequestSchema>
+type ExistingRequest = z.infer<typeof existingRequestSchema>
 type Identity = z.infer<typeof requestIdentitySchema>
 type Saved = z.infer<typeof rowSchema>
 const brokerId = 'page-studio-published-form-host'
-function featureRequest(body: Request) {
+function featureRequest(body: ExistingRequest) {
   const { activationId: _activation, pointerVersion: _pointer, ...value } = body.publication
   return value
 }
-function assertPublication(body: Request, snapshot: PublishedFeatureSnapshot) {
+function assertPublication(body: ExistingRequest, snapshot: PublishedFeatureSnapshot) {
   if (!cmsEqual(body.publication, { ...snapshot.request, activationId: snapshot.release.activationId, pointerVersion: snapshot.release.pointerVersion })) throw publishedFeatureDenied()
 }
 async function assertCurrent(db: PageStudioControlQueryClient, snapshot: PublishedFeatureSnapshot, context: Context) {
@@ -86,7 +90,7 @@ async function retained(db: PageStudioControlQueryClient, snapshot: PublishedFea
   await assertCurrent(db, snapshot, saved.identity.context)
   return saved
 }
-async function resolveForm(body: Request, snapshot: PublishedFeatureSnapshot, env: Record<string, unknown>) {
+async function resolveForm(body: ExistingRequest, snapshot: PublishedFeatureSnapshot, env: Record<string, unknown>) {
   const recovered = await readPublishedFeatureRecovery(snapshot, env)
   const eligible = recovered.forms.find(form => form.pageId === body.pageId && form.formId === body.formId)
   if (!eligible?.publicCreateEligible || eligible.formDigest !== body.formDigest) throw publishedFeatureDenied()
@@ -97,27 +101,31 @@ async function resolveForm(body: Request, snapshot: PublishedFeatureSnapshot, en
   const artifacts = z.array(z.object({ pin: BuilderArtifactPinSchema, bytes: z.string() })).parse(recovered.bundle.artifacts)
   const artifact = artifacts.find(item => cmsEqual(item.pin, eligible.action))
   if (!artifact) throw publishedFeatureDenied()
-  const verified = await verifyBuilderPublishedFormInput({ scope: snapshot.contentScope, actionPin: eligible.action, artifactBytes: artifact.bytes, form, fields: body.fields })
-  if (verified.formDigest !== body.formDigest || verified.bindingDigest !== eligible.bindingDigest || !verified.effects) throw publishedFeatureDenied()
+  // Recovery already verifies exact action bytes and public-create eligibility.
+  // Discover the same sealed write schemas without reconstructing visitor input.
+  const effects = z.object({ effects: z.object({ permissions: z.array(z.object({ collection: BuilderArtifactPinSchema })).max(16) }) }).parse(JSON.parse(artifact.bytes)).effects
   const schemas = z.array(z.object({ pin: CmsObjectPinSchema, bytes: z.string() })).parse(recovered.bundle.schemas)
-  const expectedSchemas = verified.effects.permissions.map((permission) => {
+  const expectedSchemas = effects.permissions.map((permission) => {
     const selected = schemas.find(item => item.pin.kind === 'schema' && item.pin.collectionId === permission.collection.id && item.pin.version === permission.collection.version)
     if (!selected) throw publishedFeatureDenied()
     return selected.pin
   })
+  const definitions = expectedSchemas.map(pin => ({ kind: 'collection' as const, definition: JSON.parse(schemas.find(item => cmsEqual(item.pin, pin))!.bytes) }))
+  return { eligible, form, artifactBytes: artifact.bytes, expectedSchemas, definitions }
+}
+async function formContext(body: ExistingRequest, snapshot: PublishedFeatureSnapshot, resolved: Awaited<ReturnType<typeof resolveForm>>, inputDigest: string) {
   const context = contextSchema.parse({
     scope: snapshot.contentScope, generation: snapshot.seal.generation, target: snapshot.seal.target, freezeDigest: snapshot.seal.freezeDigest,
     publication: body.publication, releaseEnvironment: snapshot.releaseEnvironment, pageId: body.pageId, formId: body.formId,
-    formDigest: verified.formDigest, bindingDigest: verified.bindingDigest, action: verified.action, expectedSchemas,
-    runtimeDigest: snapshot.seal.runtimeDigest, inputDigest: await collectionDigest(verified.input), dataDigest: await collectionDigest({})
+    formDigest: resolved.eligible.formDigest, bindingDigest: resolved.eligible.bindingDigest, action: resolved.eligible.action, expectedSchemas: resolved.expectedSchemas,
+    runtimeDigest: snapshot.seal.runtimeDigest, inputDigest, dataDigest: await collectionDigest({})
   })
-  const definitions = expectedSchemas.map(pin => ({ kind: 'collection' as const, definition: JSON.parse(schemas.find(item => cmsEqual(item.pin, pin))!.bytes) }))
-  return { context, artifactBytes: artifact.bytes, input: verified.input, definitions }
+  return context
 }
 
-async function requestIdentity(body: Request) {
+async function requestIdentity(body: ExistingRequest) {
   return requestIdentitySchema.parse({ version: body.version, publication: body.publication, pageId: body.pageId, formId: body.formId,
-    formDigest: body.formDigest, intentId: body.intentId, secretHash: await collectionDigest({ secret: body.receiptSecret }), fieldsDigest: await collectionDigest(body.fields) })
+    formDigest: body.formDigest, intentId: body.intentId, secretHash: await collectionDigest({ secret: body.receiptSecret }), fieldsDigest: 'fields' in body ? await collectionDigest(body.fields) : body.fieldsDigest })
 }
 
 /** Private host only. Admission is durable before dispatch; replays can only
@@ -132,12 +140,15 @@ export async function admitPublishedFormAction(raw: unknown, env: Record<string,
     return { snapshot, saved: await retained(db, snapshot, identity) }
   }, dependencies)
   const resolved = await resolveForm(body, initial.snapshot, env)
-  const fullIdentity = { request: identity, context: resolved.context }, identityDigest = await collectionDigest(fullIdentity)
+  const verified = await verifyBuilderPublishedFormInput({ scope: initial.snapshot.contentScope, actionPin: resolved.eligible.action, artifactBytes: resolved.artifactBytes, form: resolved.form, fields: body.fields })
+  if (verified.formDigest !== body.formDigest || verified.bindingDigest !== resolved.eligible.bindingDigest || !verified.effects) throw publishedFeatureDenied()
+  const context = await formContext(body, initial.snapshot, resolved, await collectionDigest(verified.input))
+  const fullIdentity = { request: identity, context }, identityDigest = await collectionDigest(fullIdentity)
   const challengeIdentity = { hostname: body.publication.hostname, clientAddress: body.clientAddress, identityDigest }
   const challenge = initial.saved ? null : await verifyPublicFormChallenge(challengeIdentity, body.turnstileToken, env, dependencies)
   const admission = await withPublishedActionAuthority(featureRequest(body), env, null, async (db, snapshot) => {
     assertPublication(body, snapshot)
-    await assertCurrent(db, snapshot, resolved.context)
+    await assertCurrent(db, snapshot, context)
     const saved = await retained(db, snapshot, identity)
     if (saved) {
       if (saved.identity_digest !== identityDigest || !cmsEqual(saved.identity, fullIdentity)) throw publishedFeatureDenied()
@@ -149,8 +160,8 @@ export async function admitPublishedFormAction(raw: unknown, env: Record<string,
     if (!entitlementId) throw publishedFeatureDenied()
     const budget = await assertPageStudioAiAllowanceAvailable(db, { tenantId: snapshot.contentScope.tenantId, clientId: snapshot.contentScope.clientId, entitlementId })
     const execution = BuilderActionExecutionIdentitySchema.parse({ formatVersion: 1, scope: snapshot.contentScope, intentId: body.intentId,
-      invocationId: randomUUID(), claimId: randomUUID(), brokerId, identityDigest, action: resolved.context.action,
-      runtimeDigest: resolved.context.runtimeDigest, inputDigest: resolved.context.inputDigest, dataDigest: resolved.context.dataDigest, contextDigest: await collectionDigest(resolved.context) })
+      invocationId: randomUUID(), claimId: randomUUID(), brokerId, identityDigest, action: context.action,
+      runtimeDigest: context.runtimeDigest, inputDigest: context.inputDigest, dataDigest: context.dataDigest, contextDigest: await collectionDigest(context) })
     await db.query(`INSERT INTO page_studio_public_action_invocations(scope_key,tenant_id,client_id,business_id,site_id,environment,release_environment,
       intent_id,invocation_id,claim_id,broker_id,identity_digest,identity,execution,secret_hash,challenge_digest,release_id,activation_id,pointer_version,entitlement_id,period_start)
       VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::date)`,
@@ -158,16 +169,16 @@ export async function admitPublishedFormAction(raw: unknown, env: Record<string,
       snapshot.contentScope.environment, snapshot.releaseEnvironment, body.intentId, execution.invocationId, execution.claimId, brokerId,
       identityDigest, fullIdentity, execution, identity.secretHash, challengeDigest, snapshot.release.releaseId, snapshot.release.activationId,
       snapshot.release.pointerVersion, entitlementId, budget.period])
-    return { dispatchGranted: true, state: 'dispatch_claimed' as const, execution, receipt: null, input: resolved.input, data: {} }
+    return { dispatchGranted: true, state: 'dispatch_claimed' as const, execution, receipt: null, input: verified.input, data: {} }
   }, dependencies)
-  return { admission, prepared: { request: { intentId: body.intentId, context: resolved.context }, artifactBytes: resolved.artifactBytes, input: resolved.input } }
+  return { admission, prepared: { request: { intentId: body.intentId, context }, artifactBytes: resolved.artifactBytes, input: verified.input } }
 }
 
 /** Acknowledgement reads the deterministic private result itself. The host cannot
  * submit output bytes or claim success. A verified engine response settles the
  * charge, but only the later atomic effect commit may issue a received receipt. */
 export async function acknowledgePublishedFormAction(raw: unknown, env: Record<string, unknown>, dependencies: CmsGraphDependencies = {}) {
-  const body = PublicActionFormRequestSchema.parse(raw), identity = await requestIdentity(body)
+  const body = existingRequestSchema.parse(raw), identity = await requestIdentity(body)
   const initial = await withPublishedActionAuthority(featureRequest(body), env, null, async (db, snapshot) => {
     assertPublication(body, snapshot)
     const saved = await retained(db, snapshot, identity)
@@ -214,7 +225,7 @@ async function assertNewPublicRecords(db: PageStudioControlQueryClient, context:
  * final transaction. Immutable preparation stays invisible if final authority,
  * create-head checks, audit, object insertion or the receipt update fails. */
 export async function completePublishedFormAction(raw: unknown, env: Record<string, unknown>, dependencies: CmsGraphDependencies = {}) {
-  const body = PublicActionFormRequestSchema.parse(raw), identity = await requestIdentity(body)
+  const body = existingRequestSchema.parse(raw), identity = await requestIdentity(body)
   const initial = await withPublishedActionAuthority(featureRequest(body), env, null, async (db, snapshot) => {
     assertPublication(body, snapshot)
     const saved = await retained(db, snapshot, identity)
@@ -225,7 +236,7 @@ export async function completePublishedFormAction(raw: unknown, env: Record<stri
   if (saved.final_receipt) return { ...saved.final_receipt, duplicate: true }
   if (saved.state !== 'result_ready') throw publishedFeatureDenied()
   const resolved = await resolveForm(body, initial.snapshot, env)
-  if (!cmsEqual(resolved.context, context)) throw publishedFeatureDenied()
+  if (!cmsEqual(await formContext(body, initial.snapshot, resolved, context.inputDigest), context)) throw publishedFeatureDenied()
   const storage = createActionStorage(env, context.scope, context.target)
   const resultKey = await builderActionResultKey(saved.execution), resultBytes = await storage.readResult(resultKey)
   const envelope = BuilderActionResultEnvelopeSchema.parse(JSON.parse(resultBytes))
@@ -297,4 +308,33 @@ export async function completePublishedFormAction(raw: unknown, env: Record<stri
     await db.query(`UPDATE page_studio_public_action_invocations SET state='committed',final_receipt=$4,updated_at=clock_timestamp() WHERE scope_key=$1 AND release_environment=$2 AND intent_id=$3`, [contentScopeKey(context.scope), context.releaseEnvironment, body.intentId, receipt])
     return receipt
   }, dependencies)
+}
+
+/** Recovery possesses only a fingerprint and receipt secret. It can finish an
+ * existing immutable result, never admit input, issue a dispatch or run a guest.
+ * Recheck authority after even a missing-object response before exposing status. */
+export async function recoverPublishedFormAction(raw: unknown, env: Record<string, unknown>, dependencies: CmsGraphDependencies = {}) {
+  const body = PublicActionFormRecoverySchema.parse(raw), identity = await requestIdentity(body)
+  const capture = () => withPublishedActionAuthority(featureRequest(body), env, null, async (db, snapshot) => {
+    assertPublication(body, snapshot)
+    const saved = await retained(db, snapshot, identity)
+    if (!saved) throw publishedFeatureDenied()
+    return saved
+  }, dependencies)
+  const initial = await capture()
+  if (initial.final_receipt) return { ...initial.final_receipt, duplicate: true }
+  let current = initial
+  if (initial.state === 'dispatch_claimed') {
+    try {
+      await acknowledgePublishedFormAction(body, env, dependencies)
+    } catch (error) {
+      if (!(error instanceof ActionBytesMissingError)) throw error
+    }
+    current = await capture()
+  }
+  if (current.final_receipt) return { ...current.final_receipt, duplicate: true }
+  if (current.state === 'result_ready') return await completePublishedFormAction(body, env, dependencies)
+  return { version: 1 as const, submissionId: current.execution.invocationId,
+    state: current.state === 'dispatch_claimed' ? 'pending' as const : 'rejected' as const,
+    duplicate: current.state === initial.state }
 }
