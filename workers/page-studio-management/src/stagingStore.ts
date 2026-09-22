@@ -98,6 +98,28 @@ export async function beginStagingSnapshot(db: DomainDatabase, raw: z.infer<type
   return snapshot
 }
 
+const InitialSnapshotRequest = SnapshotRequest.pick({ scope: true, actorId: true, actorRole: true })
+
+/** Elect the first preview under the same site lock as explicit updates. A
+ * retained attempt is never adopted or retried automatically, even after failure.
+ * The caller must establish fresh actor authority inside this transaction. */
+export async function beginInitialStagingSnapshot(db: DomainDatabase, raw: z.infer<typeof InitialSnapshotRequest>): Promise<Snapshot | null> {
+  const input = InitialSnapshotRequest.parse(raw)
+  const { scope } = input
+  const params = [scope.tenantId, scope.clientId, scope.siteId]
+  const reservation = await reserveStagingAddress(db, scope)
+  if (reservation.activeId) return null
+  const retained = await db.query(`SELECT id FROM page_studio_staging_deployments
+    WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 LIMIT 1`, params)
+  if (retained.rows.length) return null
+  const current = (await db.query<{ checkpointId: string, digest: string }>(`SELECT checkpoint.id AS "checkpointId",checkpoint.digest
+    FROM page_studio_sites site JOIN page_studio_checkpoints checkpoint ON checkpoint.tenant_id=site.tenant_id
+      AND checkpoint.client_id=site.client_id AND checkpoint.site_id=site.id AND checkpoint.id=site.current_checkpoint_id
+    WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3`, params)).rows[0]
+  if (!current) return null
+  return beginStagingSnapshot(db, { ...input, ...current, expectedActiveId: null, idempotencyKey: 'initial-staging-v1' })
+}
+
 export function stagingArtifactPrefix(rawScope: Scope, rawId: string): string {
   const scope = Scope.parse(rawScope)
   const id = z.string().uuid().parse(rawId)

@@ -9,6 +9,7 @@ export const PageStudioStagingUpdateSchema = z.object({
 const ManagementScope = { actor: DomainManagementActorSchema, siteId: SiteId, expectedEnvironment: z.enum(['staging', 'production']) }
 export const PageStudioStagingRequestSchema = z.discriminatedUnion('operation', [
   z.object({ ...ManagementScope, operation: z.literal('read') }).strict(),
+  z.object({ ...ManagementScope, operation: z.literal('ensure') }).strict(),
   z.object({ ...ManagementScope, operation: z.literal('update'), body: PageStudioStagingUpdateSchema }).strict()
 ])
 

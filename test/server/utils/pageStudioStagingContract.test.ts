@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   pageStudioStagingAddress,
   PageStudioStagingStateSchema,
+  PageStudioStagingRequestSchema,
   pageStudioStagingLink
 } from '~~/shared/pageStudio/staging'
 
@@ -18,6 +19,13 @@ function state(status = 'ready') {
 }
 
 describe('client staging address and readiness contract', () => {
+  it('accepts initial ensure without visitor-selected checkpoint or hostname authority', () => {
+    const request = { operation: 'ensure', siteId, expectedEnvironment: 'production', actor: { kind: 'agency', actorId: active.id, tenantId: 'agency' } }
+    expect(PageStudioStagingRequestSchema.parse(request)).toEqual(request)
+    for (const extra of [{ digest: active.digest }, { hostname: 'other.example' }, { body: { digest: active.digest } }, { idempotencyKey: active.id }]) {
+      expect(PageStudioStagingRequestSchema.safeParse({ ...request, ...extra }).success).toBe(false)
+    }
+  })
   it('assigns an immutable platform address without a domain or business name', () => {
     expect(pageStudioStagingAddress(siteId)).toEqual({
       hostname: 'preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io',

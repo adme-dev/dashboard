@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { reserveStagingAddress, beginStagingSnapshot, finishStagingSnapshot, failStagingSnapshot, stagingArtifactPrefix } from '../../../workers/page-studio-management/src/stagingStore'
+import { reserveStagingAddress, beginInitialStagingSnapshot, beginStagingSnapshot, finishStagingSnapshot, failStagingSnapshot, stagingArtifactPrefix } from '../../../workers/page-studio-management/src/stagingStore'
 import { resolveStagingHost, readStagingState } from '../../../workers/page-studio-management/src/stagingRead'
 import { requireStagingAuthority } from '../../../workers/page-studio-management/src/stagingAuthority'
 import { coordinateStaging, type StagingCoordinatorDependencies } from '../../../workers/page-studio-management/src/stagingCoordinator'
@@ -168,6 +168,129 @@ describe.runIf(Boolean(databaseUrl))('client staging reservation on PostgreSQL',
     dependencies.attach = async siteId => ({ ...await attach(siteId), domainId })
     expect(await coordinateStaging(input, dependencies)).toMatchObject({ status: 'ready', active: { digest } })
     expect((await db.query('SELECT provider_domain_id FROM page_studio_staging_sites')).rows).toEqual([{ provider_domain_id: domainId }])
+  })
+  function ensure(input: Awaited<ReturnType<typeof coordinator>>['input']) {
+    return { actor: input.actor, siteId: input.siteId, expectedEnvironment: input.expectedEnvironment, operation: 'ensure' }
+  }
+  it('initial ensure selects the saved checkpoint and charges only one build across repeated calls', async () => {
+    const { input, dependencies } = await coordinator()
+    await db.query('UPDATE page_studio_entitlements SET monthly_build_limit=1')
+    const first = await coordinateStaging(ensure(input), dependencies)
+    expect(first).toMatchObject({ status: 'ready', active: { checkpointId, digest } })
+    dependencies.attach = async () => {
+      throw new Error('Initial preview must not be rebuilt')
+    }
+    expect(await coordinateStaging(ensure(input), dependencies)).toEqual(first)
+    expect((await db.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(1)
+  })
+  it('reserves an empty site without inventing a checkpoint or consuming build allowance', async () => {
+    const { input, dependencies } = await coordinator()
+    const build = dependencies.build
+    await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+    dependencies.build = async () => {
+      throw new Error('No saved page exists')
+    }
+    expect(await coordinateStaging(ensure(input), dependencies)).toMatchObject({ status: 'not_published', active: null, currentDigest: null })
+    expect((await db.query('SELECT * FROM page_studio_staging_sites')).rows).toHaveLength(1)
+    expect((await db.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(0)
+    await db.query('UPDATE page_studio_sites SET current_checkpoint_id=$1', [checkpointId])
+    dependencies.build = build
+    expect(await coordinateStaging(ensure(input), dependencies)).toMatchObject({ status: 'ready', active: { checkpointId, digest } })
+  })
+  it('preserves an active preview when later authoring content changes', async () => {
+    const { input, dependencies } = await coordinator()
+    const first = await coordinateStaging(input, dependencies)
+    await db.query('UPDATE page_studio_checkpoints SET digest=$1', ['b'.repeat(64)])
+    const next = await coordinateStaging(ensure(input), dependencies)
+    expect(next).toMatchObject({ status: 'ready', active: first.active, currentDigest: 'b'.repeat(64) })
+    expect((await db.query('SELECT * FROM page_studio_staging_deployments')).rows).toHaveLength(1)
+  })
+  it.each(['failed', 'expired'] as const)('does not automatically retry a retained %s initial attempt', async (state) => {
+    const { input, dependencies } = await coordinator()
+    const retained = await transaction(() => beginStagingSnapshot(db, { ...request(), actorRole: 'client' }))
+    if (state === 'failed') await transaction(() => failStagingSnapshot(db, { scope, id: retained.id, failure: 'BUILD_FAILED' }))
+    else await db.query('UPDATE page_studio_staging_deployments SET state=\'building\',claim_token=$1,claim_until=clock_timestamp()-INTERVAL \'1 second\'', [randomUUID()])
+    expect(await coordinateStaging(ensure(input), dependencies)).toMatchObject({ status: 'failed', active: null })
+    expect((await db.query('SELECT * FROM page_studio_staging_deployments')).rows).toHaveLength(1)
+    expect((await db.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(1)
+  })
+  it('does not let another editor take over an in-flight initial attempt', async () => {
+    const { input, dependencies } = await coordinator()
+    const otherActor = randomUUID()
+    await db.query('INSERT INTO client_users(id,client_id,status,role) VALUES($1,$2,\'active\',\'admin\')', [otherActor, scope.clientId])
+    await db.query('INSERT INTO page_studio_site_memberships(tenant_id,client_id,site_id,user_id,role) VALUES($1,$2,$3,$4,\'editor\')', [scope.tenantId, scope.clientId, scope.siteId, otherActor])
+    const build = dependencies.build
+    let competing: unknown
+    dependencies.build = async (identity) => {
+      competing = await coordinateStaging({ ...ensure(input), actor: { ...input.actor, actorId: otherActor } }, dependencies)
+      return build(identity)
+    }
+    const first = await coordinateStaging(ensure(input), dependencies)
+    expect(competing).toMatchObject({ status: 'building', active: null })
+    expect(first).toMatchObject({ status: 'ready' })
+    expect((await db.query('SELECT actor_id FROM page_studio_staging_deployments')).rows).toEqual([{ actor_id: actorId }])
+    expect((await db.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(1)
+  })
+  it('enforces the shared allowance and current access before automatic admission', async () => {
+    const { input, dependencies } = await coordinator()
+    await db.query('UPDATE page_studio_entitlements SET monthly_build_limit=0')
+    await expect(coordinateStaging(ensure(input), dependencies)).rejects.toMatchObject({ code: 'STAGING_BUILD_LIMIT' })
+    expect((await db.query('SELECT * FROM page_studio_staging_deployments')).rows).toHaveLength(0)
+    await db.query('UPDATE page_studio_entitlements SET monthly_build_limit=1,status=\'suspended\'')
+    await expect(coordinateStaging(ensure(input), dependencies)).rejects.toMatchObject({ code: 'STAGING_ACCESS_DENIED' })
+  })
+  it('rechecks checkpoint authority before activating an automatically built preview', async () => {
+    const { input, dependencies } = await coordinator()
+    const build = dependencies.build
+    dependencies.build = async (identity) => {
+      await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+      return build(identity)
+    }
+    expect(await coordinateStaging(ensure(input), dependencies)).toMatchObject({ status: 'failed', active: null, failure: 'SNAPSHOT_CHANGED' })
+  })
+  it('retains failed initial work for explicit retry without blocking the editor recovery path', async () => {
+    const { input, dependencies } = await coordinator()
+    dependencies.probe = async () => false
+    expect(await coordinateStaging(ensure(input), dependencies)).toMatchObject({ status: 'failed', failure: 'HOST_UNAVAILABLE' })
+    dependencies.probe = async () => true
+    expect(await coordinateStaging(ensure(input), dependencies)).toMatchObject({ status: 'failed' })
+    expect(await coordinateStaging(input, dependencies)).toMatchObject({ status: 'ready', active: { checkpointId, digest } })
+    expect((await db.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(2)
+  })
+  it('rejects automatic activation after the initiating editor loses membership', async () => {
+    const { input, dependencies } = await coordinator()
+    const build = dependencies.build
+    dependencies.build = async (identity) => {
+      await db.query('DELETE FROM page_studio_site_memberships')
+      return build(identity)
+    }
+    await expect(coordinateStaging(ensure(input), dependencies)).rejects.toMatchObject({ code: 'STAGING_ACCESS_DENIED' })
+    expect((await db.query('SELECT active_deployment_id FROM page_studio_staging_sites')).rows[0].active_deployment_id).toBeNull()
+    expect((await db.query('SELECT failure_code FROM page_studio_staging_deployments')).rows[0].failure_code).toBe('ACCESS_INACTIVE')
+  })
+  it('elects one automatic attempt across simultaneous PostgreSQL sessions and editors', async () => {
+    const other = new pg.Client({ connectionString: databaseUrl })
+    await other.connect()
+    await other.query(`SET search_path TO "${schema}", pg_catalog`)
+    await other.query('BEGIN')
+    try {
+      const otherActor = randomUUID()
+      const results = await Promise.all([
+        transaction(() => beginInitialStagingSnapshot(db, { scope, actorId, actorRole: 'agency' })),
+        beginInitialStagingSnapshot(other, { scope, actorId: otherActor, actorRole: 'agency' }).then(async (result) => {
+          await other.query('COMMIT')
+          return result
+        })
+      ])
+      expect(results.filter(Boolean)).toHaveLength(1)
+      const winner = results.find(Boolean)!
+      expect([actorId, otherActor]).toContain(winner.actorId)
+      expect((await db.query('SELECT id,actor_id FROM page_studio_staging_deployments')).rows).toEqual([{ id: winner.id, actor_id: winner.actorId }])
+      expect((await db.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(1)
+    } finally {
+      await other.query('ROLLBACK')
+      await other.end()
+    }
   })
   it('never builds or activates before HTTPS hostname read-back succeeds', async () => {
     const { input, dependencies } = await coordinator()

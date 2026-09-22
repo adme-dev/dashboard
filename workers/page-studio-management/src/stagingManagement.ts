@@ -39,7 +39,7 @@ export async function handleStagingManagement(input: unknown, env: Record<string
   const environment = env.PAGE_STUDIO_RELEASE_ENVIRONMENT
   if (!['staging', 'production'].includes(String(environment)) || environment !== parsed.data.expectedEnvironment) return rejected('STAGING_SERVICE_UNAVAILABLE', 503)
   const service = env.PAGE_STUDIO_CLIENT_STAGING as { buildSnapshot?: StagingCoordinatorDependencies['build'], verifySnapshot?: StagingCoordinatorDependencies['verify'] } | undefined
-  if (parsed.data.operation === 'update' && (typeof service?.buildSnapshot !== 'function' || typeof service?.verifySnapshot !== 'function')) return rejected('STAGING_SERVICE_UNAVAILABLE', 503)
+  if (parsed.data.operation !== 'read' && (typeof service?.buildSnapshot !== 'function' || typeof service?.verifySnapshot !== 'function')) return rejected('STAGING_SERVICE_UNAVAILABLE', 503)
   try {
     const value = await coordinateStaging(parsed.data, {
       transaction,

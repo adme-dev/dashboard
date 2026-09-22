@@ -4,7 +4,7 @@ import { PageStudioStagingRequestSchema, pageStudioStagingAddress } from '../../
 import type { DomainTransaction } from './domainAttachment'
 import { requireStagingAuthority } from './stagingAuthority'
 import { readStagingState } from './stagingRead'
-import { beginStagingSnapshot, finishStagingSnapshot, failStagingSnapshot, stagingArtifactPrefix, StagingStoreError } from './stagingStore'
+import { beginInitialStagingSnapshot, beginStagingSnapshot, finishStagingSnapshot, failStagingSnapshot, stagingArtifactPrefix, StagingStoreError } from './stagingStore'
 
 type Request = z.infer<typeof PageStudioStagingRequestSchema>
 type Scope = { tenantId: string, clientId: string, siteId: string }
@@ -32,20 +32,25 @@ export async function coordinateStaging(raw: unknown, dependencies: StagingCoord
   const claimed = await transaction(async (db) => {
     const { scope } = await requireStagingAuthority(db, actor, siteId, true)
     const params = [scope.tenantId, scope.clientId, siteId]
-    const retained = (await db.query<{ checkpointId: string }>(`SELECT checkpoint_id AS "checkpointId" FROM page_studio_staging_deployments
+    let snapshot: Awaited<ReturnType<typeof beginStagingSnapshot>> | null
+    if (request.operation === 'ensure') {
+      snapshot = await beginInitialStagingSnapshot(db, { scope, actorId: actor.actorId, actorRole: actor.kind === 'agency' ? 'agency' : 'client' })
+    } else {
+      const retained = (await db.query<{ checkpointId: string }>(`SELECT checkpoint_id AS "checkpointId" FROM page_studio_staging_deployments
       WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND idempotency_key=$4`, [...params, request.body.idempotencyKey])).rows[0]
-    const current = (await db.query<{ checkpointId: string }>(`SELECT current_checkpoint_id AS "checkpointId" FROM page_studio_sites
+      const current = (await db.query<{ checkpointId: string }>(`SELECT current_checkpoint_id AS "checkpointId" FROM page_studio_sites
       WHERE tenant_id=$1 AND client_id=$2 AND id=$3`, params)).rows[0]
-    const checkpointId = retained?.checkpointId ?? current?.checkpointId
-    if (!checkpointId) throw new StagingStoreError('STAGING_CHANGED', 409)
-    // A dead request may be superseded after its lease. Its old token can no
-    // longer activate anything, even if its network response arrives late.
-    const expired = await db.query<{ id: string }>(`SELECT id FROM page_studio_staging_deployments WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3
+      const checkpointId = retained?.checkpointId ?? current?.checkpointId
+      if (!checkpointId) throw new StagingStoreError('STAGING_CHANGED', 409)
+      // A dead request may be superseded after its lease. Its old token can no
+      // longer activate anything, even if its network response arrives late.
+      const expired = await db.query<{ id: string }>(`SELECT id FROM page_studio_staging_deployments WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3
       AND state='building' AND claim_until<clock_timestamp() AND idempotency_key<>$4`, [...params, request.body.idempotencyKey])
-    for (const row of expired.rows) await failStagingSnapshot(db, { scope, id: row.id, failure: 'BUILD_FAILED' })
-    const snapshot = await beginStagingSnapshot(db, { scope, checkpointId, digest: request.body.digest, expectedActiveId: request.body.expectedActiveId,
-      idempotencyKey: request.body.idempotencyKey, actorId: actor.actorId, actorRole: actor.kind === 'agency' ? 'agency' : 'client' })
-    if (['succeeded', 'failed'].includes(snapshot.state)) return null
+      for (const row of expired.rows) await failStagingSnapshot(db, { scope, id: row.id, failure: 'BUILD_FAILED' })
+      snapshot = await beginStagingSnapshot(db, { scope, checkpointId, digest: request.body.digest, expectedActiveId: request.body.expectedActiveId,
+        idempotencyKey: request.body.idempotencyKey, actorId: actor.actorId, actorRole: actor.kind === 'agency' ? 'agency' : 'client' })
+    }
+    if (!snapshot || ['succeeded', 'failed'].includes(snapshot.state)) return null
     const token = crypto.randomUUID()
     const claim = await db.query(`UPDATE page_studio_staging_deployments SET state='building',claim_token=$5,claim_until=clock_timestamp()+INTERVAL '2 minutes'
       WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4 AND state IN ('queued','building')
