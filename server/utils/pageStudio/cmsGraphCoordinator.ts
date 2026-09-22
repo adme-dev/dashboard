@@ -161,6 +161,11 @@ const graphCheckpoint = z.object({
   createdAt: z.iso.datetime(), etag: z.string().min(1).max(256), userId: z.string().min(1).max(128),
   scope: PageStudioContentScopeSchema.pick({ tenantId: true, clientId: true, siteId: true }).strict()
 }).strict()
+// Zod's inferred union/nullable properties appear optional under Nuxt's loose
+// null checking. Project the validated required fields without widening input.
+function requiredCheckpointScope(value: z.infer<typeof graphCheckpoint>): PageStudioCheckpointInput {
+  return { ...value, scope: { ...value.scope, siteId: value.scope.siteId } }
+}
 const transitionInput = z.object({
   operationId: graphId, candidateId: graphId, candidateDigest: graphDigest,
   expectedApplication: z.object({ id: z.uuid(), digest: graphDigest }).strict(), expectedCheckpoint,
@@ -302,7 +307,9 @@ export async function coordinateCmsGraphTransition(raw: CmsGraphTransitionInput,
     || !principal.claims.capabilities.includes('workspace:checkpoint')
     || !principal.claims.capabilities.includes('model:invoke')))
     throw new PageStudioBusinessContentError('CMS_GRAPH_AUTHORITY_DENIED', 403, 'Feature acceptance requires checkpoint and model invocation authority.')
-  const input = transitionInput.parse(raw), snapshot = await readCmsGraphSnapshot(principal, deps)
+  const parsed = transitionInput.parse(raw)
+  const input: CmsGraphTransitionInput = { ...parsed, expectedContent: parsed.expectedContent, nextCheckpoint: requiredCheckpointScope(parsed.nextCheckpoint) }
+  const snapshot = await readCmsGraphSnapshot(principal, deps)
   if (input.nextCheckpoint.userId !== snapshot.actor.userId || !cmsEqual(input.nextCheckpoint.scope, { tenantId: snapshot.scope.tenantId, clientId: snapshot.scope.clientId, siteId: snapshot.scope.siteId })) throw cmsGraphConflict('Checkpoint author or scope does not match the current session.')
   const replay = await withCmsCommitAuthority({ scope: snapshot.scope, principal, mutation: input.preparations.length ? 'collection-schema' : 'business-content' }, async db => replayExact(db, await snapshotInTransaction(db, snapshot.scope, principal), input), deps)
   if (replay) return replay
@@ -333,7 +340,7 @@ export async function coordinateCmsGraphCheckpoint(
   internal: { mode?: 'checkpoint' | 'ai-page' | 'restore', summary?: string, idempotencyKey?: string, expectedBaseDigest?: string, history?: PageStudioHistoryMutation } = {}
 ): Promise<CmsGraphCommitReceipt> {
   const parsed = z.object({ checkpoint: graphCheckpoint, expectedCheckpointId: graphId.nullable() }).strict().parse(raw)
-  const caller = { ...parsed, acceptance: internal }
+  const caller = { ...parsed, checkpoint: requiredCheckpointScope(parsed.checkpoint), acceptance: internal }
   const mode = internal.mode ?? 'checkpoint'
   if (mode === 'ai-page' && principal.source === 'studio-session' && principal.capability !== 'model:invoke') throw cmsGraphConflict('AI page acceptance requires model invocation authority.')
   const snapshot = await readCmsGraphSnapshot(principal, deps)

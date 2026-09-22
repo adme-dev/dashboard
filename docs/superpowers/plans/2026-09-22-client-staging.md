@@ -250,3 +250,26 @@ not be reverted while staging is implemented.
   deployment, provisioning secret and live Fantasy/second-client proof remain.
   No push, deployment, token or hostname was created here. Fantasy DNS still
   failed on 23 September; do not share the derived address as a working site.
+
+### Final type-boundary checks (23 September)
+
+- Full dashboard typecheck was run, not skipped. It initially reported920
+  diagnostics across the repository, including required-property inference
+  failures in four new CMS files. These boundaries now explicitly project the
+  already validated site/checkpoint/content fields; input validation and scope
+  values are unchanged. No non-null assertion or unchecked cast was introduced.
+- Recheck still fails globally with913 diagnostics, but **none are in files
+  changed from current origin/main**. This proves the changed-file result only;
+  a main-branch baseline run and final release checks are still needed.
+  Logs: `/private/tmp/root-staging-native-typecheck-final2.log` and
+  `/private/tmp/root-native-cms-type-boundary-lint.log` (clean focused lint).
+- CMS graph/storage/adoption and sealed-release section:120 tests passed across
+  six suites, including real PostgreSQL/D1 paths. Log:
+  `/private/tmp/root-native-cms-type-boundary-tests.log`.
+- Disk space fell below300MiB while other work was running. After the test
+  handles completed, the owned replacement cluster on55444 was stopped and its
+  generated data removed (about292MiB); logs remain. Recreate an isolated test
+  database before another PostgreSQL suite. The prior shared cluster and all
+  dependency/source worktrees were preserved.
+- Build6/artifact smoke precede these small CMS source corrections. A new final
+  build is required before release; do not deploy the older dirty artifact.

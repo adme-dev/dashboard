@@ -233,7 +233,7 @@ export async function coordinateSealedFeatureBuild(
   }
   await withFeaturePublisher(snapshot, principal, async (db) => {
     await readApprovedBuildAuthority(db, input)
-    await admitPageStudioReleaseBuild(db, snapshot.scope, authority.digest)
+    await admitPageStudioReleaseBuild(db, { ...snapshot.scope, siteId: snapshot.scope.siteId }, authority.digest)
   }, dependencies)
   // Unknown outcomes remain recoverable through deterministic immutable storage;
   // never write a failed native build after a lost service response.

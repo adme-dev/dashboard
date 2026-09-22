@@ -77,7 +77,7 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
   }
   const readCheckpoint = async (metadata: { id: string, digest: string, object_key: string }) => {
     if (!bucket?.get) throw failed()
-    const checkpoint = await loadPageStudioCheckpoint({ scope: snapshot.scope, bucket, checkpointId: metadata.id, objectKey: metadata.object_key, digests: [metadata.digest] })
+    const checkpoint = await loadPageStudioCheckpoint({ scope: { ...snapshot.scope, siteId: snapshot.scope.siteId }, bucket, checkpointId: metadata.id, objectKey: metadata.object_key, digests: [metadata.digest] })
     return { id: checkpoint.checkpointId, digest: checkpoint.digest, manifest: checkpoint.manifest }
   }
   const readObjects = async (input: CmsObjectPin[]) => {

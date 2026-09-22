@@ -59,7 +59,7 @@ export function createCmsAdoptionStorage(
       )
         throw new Error('CMS adoption checkpoint unavailable')
       const result = await loadPageStudioCheckpoint({
-        scope: intent.scope,
+        scope: { ...intent.scope, siteId: intent.scope.siteId },
         bucket,
         checkpointId: checkpoint.id,
         objectKey: checkpoint.object_key,
