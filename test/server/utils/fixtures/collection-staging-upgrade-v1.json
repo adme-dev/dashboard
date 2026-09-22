@@ -1,0 +1,27 @@
+{
+  "intent": {
+    "version": 1,
+    "policyVersion": "collection-staging-upgrade-v1",
+    "operationId": "staging_upgrade_fixture",
+    "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "databaseId": "10000000-0000-4000-8000-000000000001",
+    "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "actor": {
+      "kind": "agency-user",
+      "userId": "20000000-0000-4000-8000-000000000001",
+      "loginSessionHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "scope": {
+      "tenantId": "tenant_a",
+      "clientId": "client_a",
+      "businessId": "client_a",
+      "siteId": "site_a",
+      "environment": "staging"
+    },
+    "sourceDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae",
+    "targetDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+    "collectionOperationId": "upgrade_a",
+    "workflowOperationId": "workflow_upgrade_a"
+  },
+  "identity": "de14943f04ab93258a97f571319e0f73970b9d7b2c0795f0f2b73f162cb5ebd9"
+}
