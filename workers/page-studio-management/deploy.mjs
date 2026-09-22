@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 export function validateManagementTarget(config, environment) {
   assert(['staging', 'production'].includes(environment), 'Explicit staging or production target required')
-  const allowed = ['$schema', 'name', 'account_id', 'main', 'compatibility_date', 'compatibility_flags', 'workers_dev', 'preview_urls', 'routes', 'observability', 'vars', 'hyperdrive', 'triggers', 'r2_buckets']
+  const allowed = ['$schema', 'name', 'account_id', 'main', 'compatibility_date', 'compatibility_flags', 'workers_dev', 'preview_urls', 'routes', 'observability', 'vars', 'hyperdrive', 'triggers', 'r2_buckets', 'services']
   assert(Object.keys(config).every(key => allowed.includes(key)), 'Unreviewed Worker capability')
   assert.equal(config.account_id, 'a5b299b3ad15c1b5b895dc66f9357b17')
   assert.equal(config.name, `xeroflow-page-studio-management-${environment}`)
@@ -17,13 +17,17 @@ export function validateManagementTarget(config, environment) {
   assert.deepEqual(config.routes, [])
   assert.deepEqual(config.triggers, { crons: [] })
   assert.equal(config.vars.PAGE_STUDIO_RELEASE_ENVIRONMENT, environment)
-  const allowedVars = ['PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_CLOUDFLARE_ZONE_ID', 'PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET']
+  const allowedVars = ['PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID', 'PAGE_STUDIO_CLOUDFLARE_ZONE_ID', 'PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET']
   assert(Object.keys(config.vars).every(key => allowedVars.includes(key)), 'Unreviewed Worker variable')
   for (const [key, value] of Object.entries(config.vars)) {
     assert.equal(typeof value, 'string', `Invalid variable ${key}`)
     assert(value === value.trim() && !/[\r\n]/.test(value), `Invalid variable ${key}`)
   }
   assert(!Object.keys(config.vars).some(key => /SECRET|TOKEN|PASSWORD|DATABASE_URL|API_KEY/.test(key)), 'Secrets must not be in configuration')
+  assert.deepEqual(config.services, environment === 'production' ? [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' }] : undefined)
+  if (environment === 'production') assert.equal(config.vars.PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID, config.account_id)
+  else assert.equal(config.vars.PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID, undefined)
+  if (environment === 'production') assert.equal(config.vars.PAGE_STUDIO_CLOUDFLARE_ZONE_ID, '8e38cbf3910d291dd218710296661073')
   assert.deepEqual(config.hyperdrive, [{ binding: 'HYPERDRIVE_FRESH', id: environment === 'staging' ? '3865ea5568234fc7b0e9e3e595a30286' : '90228af3e2cc461bbc09accc3b47bd9f' }])
   assert.deepEqual(config.r2_buckets, [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` }])
   assert.deepEqual(config.observability, { enabled: true, head_sampling_rate: 0.1 })

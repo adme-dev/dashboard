@@ -9,6 +9,8 @@ import { readPageStudioEmailConfiguration, writePageStudioEmailConfiguration } f
 import { withManagementTransaction } from './database'
 import { handleDomainManagement } from './domainManagement'
 import type { DomainDatabase } from './domainAttachment'
+import { handleStagingManagement } from './stagingManagement'
+import { resolveStagingHost } from './stagingRead'
 
 type Env = ManagementStagingEnv | ManagementProductionEnv
 const Actor = z.discriminatedUnion('role', [
@@ -23,6 +25,17 @@ const Request = z.discriminatedUnion('operation', [
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch() { return new Response('Not found', { status: 404 }) }
+  async clientStaging(input: unknown) {
+    return handleStagingManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async resolveClientStaging(hostname: string) {
+    // Customer previews belong to the real customer control plane. The shared
+    // infrastructure staging environment must never resolve production sites.
+    if (this.env.PAGE_STUDIO_RELEASE_ENVIRONMENT !== 'production') return null
+    return withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => resolveStagingHost(db as unknown as DomainDatabase, hostname))
+  }
+
   async inspectWebsite(input: unknown) {
     return handleInspection(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }
