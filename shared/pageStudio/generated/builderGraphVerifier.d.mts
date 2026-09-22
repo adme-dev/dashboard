@@ -146,6 +146,21 @@ export interface BuilderGraphActionResult {
 export declare function verifyBuilderActionInput(
   input: BuilderGraphActionInput
 ): Promise<BuilderGraphActionInputProof>;
+export interface BuilderPublishedFormInputProof
+  extends BuilderGraphActionInputProof {
+  bindingDigest: string;
+  formDigest: string;
+  formId: string;
+}
+/** Pure validation of sealed public form input. Native must independently admit
+ * the current publication, challenge, intent and quota before any execution. */
+export declare function verifyBuilderPublishedFormInput(input: {
+  scope: unknown;
+  actionPin: unknown;
+  artifactBytes: string;
+  form: unknown;
+  fields: unknown;
+}): Promise<BuilderPublishedFormInputProof>;
 /** Normalized record values remain private host data, never guest/browser output. */
 export declare function verifyBuilderActionResult(
   input: BuilderGraphActionResultInput

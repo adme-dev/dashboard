@@ -423,6 +423,24 @@ describe.runIf(Boolean(databaseUrl))('accepted CMS metadata on disposable Postgr
       }
     }
   }
+  it('rejects valid public preparations at the human commit boundary before opening a transaction', async () => {
+    const s = await seed()
+    const op = await operation(s, 'public_submit')
+    const publicOp = await rebind(op, {
+      ...op.proof.request,
+      formatVersion: 2,
+      action: { kind: 'action', id: 'submit_record', version: 1, sha256: 'a'.repeat(64) },
+      actor: { kind: 'published-form', invocationId: randomUUID(), activationId: randomUUID(), releaseId: randomUUID(), pointerVersion: 1, identityDigest: 'b'.repeat(64) }
+    })
+    // Exact receipt/body verification succeeds; provenance is not human authority.
+    await expect(verifyCmsPreparation(CmsNativeCommitSchema.parse(publicOp.input), async () => publicOp.proof)).resolves.toBeDefined()
+    const runTransaction = vi.fn()
+    await expect(commitManagedCms(publicOp.input, { source: 'native-login', request }, {
+      readPreparation: async () => publicOp.proof, runTransaction
+    })).rejects.toThrow()
+    expect(runTransaction).not.toHaveBeenCalled()
+    expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+  })
   const metadataCounts = async () =>
     (
       await observer.query(

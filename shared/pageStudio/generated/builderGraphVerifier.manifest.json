@@ -4,8 +4,8 @@
   "files": {
     "builderGraphFixtures.json": "5e55191f0940e2be57d20c8477e221e105d8ad87d511b2db93db67548cd2dcca",
     "builderGraphLicenses.txt": "8d5d58fee24c22b7ca431fdd84693b6487f0a338cdad215d6f86e2465fb0e70e",
-    "builderGraphVerifier.d.mts": "108d38b6f32d7c527dcbf70c3b672a1981196fa01265a104ff360cd6801a87e5",
-    "builderGraphVerifier.mjs": "791ea33f58941492d4269197fa175de3a5568fefb2ad988101ebf7d250aa0364"
+    "builderGraphVerifier.d.mts": "2d8ef59a0557467bbf230dd9a950e0bbb8dccbef4498a4e8856958ca57811955",
+    "builderGraphVerifier.mjs": "1a220c10146df046aa7f8a6fb682984029560c90e111ad33bd2a5cd4604e7cad"
   },
   "generator": "scripts/generate-native-builder-verifier.mjs",
   "options": {
@@ -18,7 +18,7 @@
     "target": "es2022",
     "treeShaking": true
   },
-  "sourceDigest": "4e9e3366ca849d5a6cb579c0658c7c5783f3bbe2df98bfeceef15372624c0b2d",
+  "sourceDigest": "0f7bc11fcbedeef06e115f1693369f0da9aa5d71687267be321822d8b098d1a4",
   "sources": [
     {
       "path": "LICENSE",
@@ -374,7 +374,7 @@
     },
     {
       "path": "packages/protocol/src/builder-graph-verifier.ts",
-      "sha256": "588522f1fc5d5c7d5d1d1c2604d9005055a66b553f4bcc757a0a5fd8e2bd638c"
+      "sha256": "4838e07385ba4e26ce58a08c7093488e761c2ed184447575a61231bb6d5bc543"
     },
     {
       "path": "packages/protocol/src/builder-instance-reference.ts",
@@ -402,7 +402,7 @@
     },
     {
       "path": "packages/protocol/src/cms-managed.ts",
-      "sha256": "874cd711b2ae19c3a6fe45e15471fa618c2d0406b6b23914f8345bbfa7afaf94"
+      "sha256": "f68e7d62e3b4be7221037696fb801dae08eb08ff1721422f603f7682bcd29dc9"
     },
     {
       "path": "packages/protocol/src/collection-api.ts",

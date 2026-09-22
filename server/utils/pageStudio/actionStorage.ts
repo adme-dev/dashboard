@@ -11,6 +11,7 @@ import {
   CmsPreparationSchema,
   CmsPreparationReceiptSchema,
   contentScopeKey,
+  cmsPreparationActorId,
   type CmsObjectPin
 } from '~~/shared/pageStudio/cmsManaged'
 import { BuilderActionResultPinSchema } from '~~/shared/pageStudio/actionInvocation'
@@ -166,7 +167,7 @@ export function createActionStorage(
         collectionCanonical(value.body) !== collectionCanonical(item.body)
         || collectionCanonical(value.schema)
         !== collectionCanonical(item.kind === 'record' ? item.schema : null)
-        || value.actorId !== operation.request.actor.userId
+        || value.actorId !== cmsPreparationActorId(operation.request.actor)
         || value.createdAt !== operation.receipt.createdAt
         || value.head !== false
       )

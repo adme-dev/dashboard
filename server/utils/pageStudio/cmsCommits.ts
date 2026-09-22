@@ -12,6 +12,7 @@ import {
   CmsPreparationReceiptSchema,
   CmsObjectPinSchema,
   cmsItemIdentity,
+  cmsPreparationActorId,
   contentScopeKey,
   type CmsNativeCommit,
   type CmsObjectPin
@@ -130,6 +131,7 @@ export async function verifyCmsPreparation(input: CmsNativeCommit, reader: CmsPr
   return proof
 }
 function principalIdentity(principal: Principal, actor: VerifiedPreparation['request']['actor']) {
+  if (actor.kind === 'published-form') throw cmsUnavailable()
   if (principal.source === 'native-login') {
     const login = principal.request.login
     if (
@@ -152,6 +154,7 @@ async function checkChild(
   principal: Principal,
   proof: VerifiedPreparation
 ) {
+  if (proof.request.actor.kind === 'published-form') throw cmsUnavailable()
   if (principal.source !== 'studio-session') return
   const rows = (
     await db.query(
@@ -247,7 +250,7 @@ export async function insertVerifiedCmsObjects(
         pin,
         schemaId,
         item.kind === 'record' ? item.body.archived : null,
-        proof.request.actor.userId,
+        cmsPreparationActorId(proof.request.actor),
         proof.receipt.createdAt,
         commitId
       ]
@@ -278,6 +281,7 @@ export async function commitManagedCms(
 ) {
   const input = CmsNativeCommitSchema.parse(raw)
   const proof = await verifyCmsPreparation(input, dependencies.readPreparation)
+  if (proof.request.formatVersion !== 1) throw cmsUnavailable()
   if (proof.request.items.some(item => item.kind === 'schema'))
     throw new Error('Schema effects require verified application acceptance')
   const mutation = proof.request.items.some(item => item.kind === 'record')
@@ -299,6 +303,7 @@ export async function commitVerifiedManagedCmsInTransaction(
   db: PageStudioControlQueryClient, input: CmsNativeCommit, principal: Principal, proof: VerifiedPreparation
 ) {
   if (!verifiedPreparations.has(proof) || verifiedCommitInputs.get(proof) !== collectionCanonical(input) || proof.request.items.some(item => item.kind === 'schema')) throw cmsUnavailable()
+  if (proof.request.formatVersion !== 1) throw cmsUnavailable()
   const identity = principalIdentity(principal, proof.request.actor)
   const bound = {
     input,

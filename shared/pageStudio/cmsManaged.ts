@@ -147,7 +147,7 @@ export function cmsLogicalKey(pin: { kind: string, collectionId?: string, record
 }
 /** Native supplies verified accepted bases. D1 validates exact bytes only;
  * neither this contract nor its preparation receipt makes anything visible. */
-export const CmsPreparationSchema = z
+const CmsHumanPreparationSchema = z
   .object({
     action: BuilderArtifactPinSchema.extend({ kind: z.literal('action') })
       .strict()
@@ -161,8 +161,54 @@ export const CmsPreparationSchema = z
     scope: ContentScopeSchema
   })
   .strict()
+/** Public provenance records the already-authorized invocation; it grants no authority. */
+export const CmsPublishedFormActorSchema = z
+  .object({
+    activationId: z.uuid(),
+    identityDigest: ReleaseSha256Schema,
+    invocationId: z.uuid(),
+    kind: z.literal('published-form'),
+    pointerVersion: version,
+    releaseId: z.uuid()
+  })
+  .strict()
+const CmsPublishedPreparationSchema = CmsHumanPreparationSchema.extend({
+  action: BuilderArtifactPinSchema.extend({
+    kind: z.literal('action')
+  }).strict(),
+  actor: CmsPublishedFormActorSchema,
+  candidateDigest: z.null(),
+  formatVersion: z.literal(2)
+}).strict()
+/** Stable provenance label, never a user identity or authorization capability. */
+export function cmsPreparationActorId(input: unknown): string {
+  const parsed = z.union([actor, CmsPublishedFormActorSchema]).parse(input)
+  return parsed.kind === 'published-form'
+    ? `published:${parsed.invocationId}`
+    : parsed.userId
+}
+function isNewPublicRecord(item: CmsPreparedItem): boolean {
+  return (
+    item.kind === 'record'
+    && item.expectedBase === null
+    && item.version === 1
+    && item.body.revision === 1
+    && item.body.archived === false
+  )
+}
+export const CmsPreparationSchema = z
+  .discriminatedUnion('formatVersion', [
+    CmsHumanPreparationSchema,
+    CmsPublishedPreparationSchema
+  ])
   .superRefine((request, ctx) => {
-    const issue = (message: string) => ctx.addIssue({ code: 'custom', message })
+    if (request.formatVersion === 2 && !request.items.every(isNewPublicRecord)) {
+      ctx.addIssue({ code: 'custom', message: 'Published preparations permit only new unarchived records' })
+    }
+  })
+  .superRefine((request, ctx) => {
+    const issue = (message: string) =>
+      ctx.addIssue({ code: 'custom', message })
     const keys = new Set<string>()
     for (const item of request.items) {
       const identity = cmsItemIdentity(item)
@@ -198,7 +244,10 @@ export const CmsPreparationSchema = z
         issue('Record schema pin mismatch')
       }
     }
-    if (new TextEncoder().encode(JSON.stringify(request)).byteLength > CMS_PREPARATION_MAX_BYTES) {
+    if (
+      new TextEncoder().encode(JSON.stringify(request)).byteLength
+        > CMS_PREPARATION_MAX_BYTES
+    ) {
       issue('CMS preparation byte limit exceeded')
     }
   })

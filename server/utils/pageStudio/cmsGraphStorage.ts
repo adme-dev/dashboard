@@ -106,12 +106,14 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
     z.string().regex(/^[a-f0-9]{64}$/).parse(ref.receiptDigest)
     await assertTarget()
     const operation = z.object({ request: CmsPreparationSchema, receipt: CmsPreparationReceiptSchema }).strict().parse(await call('readManagedCmsOperation', { scope: snapshot.scope, operationId: ref.operationId, requestDigest: ref.requestDigest }))
+    if (operation.request.formatVersion !== 1) throw failed()
+    const actor = operation.request.actor
     if (operation.receipt.digest !== ref.receiptDigest || operation.receipt.requestDigest !== ref.requestDigest) throw failed()
     const objects = await readObjects(operation.receipt.items)
     if (objects.length !== operation.request.items.length || objects.some((object, index) => {
       const item = operation.request.items[index]!
       return item.kind !== 'schema' || !cmsEqual(object.body, item.body)
-        || object.actorId !== operation.request.actor.userId
+        || object.actorId !== actor.userId
         || object.createdAt !== operation.receipt.createdAt
         || object.schema !== null || object.head !== false
     })) throw failed()

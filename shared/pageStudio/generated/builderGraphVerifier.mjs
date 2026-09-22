@@ -17743,6 +17743,125 @@ async function validateBuilderFormActionBinding(formInput, actionInput) {
   }
   return { action, binding, form };
 }
+var NUMBER = /^-?(?:\d+\.?\d*|\.\d+)$/;
+var EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+var PHONE = /^[+0-9() .-]{6,30}$/;
+var DATE = /^\d{4}-\d{2}-\d{2}$/;
+function checkboxValue(field, raw) {
+  if (
+    raw !== void 0 &&
+    raw !== "" &&
+    !["true", "on", "accepted", "false"].includes(raw)
+  ) {
+    throw new Error("Invalid checkbox value");
+  }
+  const checked = raw === "true" || raw === "on" || raw === "accepted";
+  if (field.required && !checked) {
+    throw new Error("Required checkbox is unchecked");
+  }
+  return checked;
+}
+function numericValue(field, raw) {
+  if (!NUMBER.test(raw)) {
+    throw new Error("Invalid numeric field");
+  }
+  const value = Number(raw);
+  if (
+    !Number.isFinite(value) ||
+    (field.min !== void 0 && value < field.min) ||
+    (field.max !== void 0 && value > field.max)
+  ) {
+    throw new Error("Numeric field outside bounds");
+  }
+  return value;
+}
+function validateText(field, raw) {
+  if (field.type === "select" && !field.options?.includes(raw)) {
+    throw new Error("Invalid form choice");
+  }
+  if (field.type === "email" && !EMAIL.test(raw)) {
+    throw new Error("Invalid email field");
+  }
+  if (field.type === "tel" && !PHONE.test(raw)) {
+    throw new Error("Invalid telephone field");
+  }
+  if (field.type === "date") {
+    if (!DATE.test(raw)) {
+      throw new Error("Invalid date field");
+    }
+    const date5 = /* @__PURE__ */ new Date(`${raw}T00:00:00.000Z`);
+    if (
+      !Number.isFinite(date5.getTime()) ||
+      date5.toISOString().slice(0, 10) !== raw
+    ) {
+      throw new Error("Invalid date field");
+    }
+  }
+}
+function fieldValue(field, raw) {
+  if (field.type === "checkbox") {
+    return checkboxValue(field, raw);
+  }
+  if (raw === void 0 || raw === "") {
+    if (field.required) {
+      throw new Error("Required form field missing");
+    }
+    return void 0;
+  }
+  if (raw.length > (field.type === "textarea" ? 1e4 : 1e3)) {
+    throw new Error("Form field length exceeded");
+  }
+  if (field.type === "number") {
+    return numericValue(field, raw);
+  }
+  validateText(field, raw);
+  return raw;
+}
+async function convertBuilderFormActionInput(
+  formInput,
+  actionInput,
+  valuesInput
+) {
+  const { form, action, binding } = await validateBuilderFormActionBinding(
+    formInput,
+    actionInput
+  );
+  if (
+    !valuesInput ||
+    typeof valuesInput !== "object" ||
+    Array.isArray(valuesInput)
+  ) {
+    throw new Error("Invalid form values");
+  }
+  const values = valuesInput;
+  const fieldIds = new Set(form.fields.map((x) => x.id));
+  if (
+    Object.getOwnPropertySymbols(values).length > 0 ||
+    Object.getOwnPropertyNames(values).some(
+      (key2) => !fieldIds.has(key2) || typeof values[key2] !== "string"
+    )
+  ) {
+    throw new Error("Unknown or invalid form value");
+  }
+  const converted = /* @__PURE__ */ new Map();
+  for (const field of form.fields) {
+    converted.set(
+      field.id,
+      fieldValue(
+        field,
+        Object.hasOwn(values, field.id) ? values[field.id] : void 0
+      )
+    );
+  }
+  const input = {};
+  for (const mapping of binding.mappings) {
+    const value = converted.get(mapping.fieldId);
+    if (value !== void 0) {
+      input[mapping.inputKey] = value;
+    }
+  }
+  return validateBuilderActionInput(action.inputContract, input);
+}
 
 // packages/protocol/src/content-attachment.ts
 var ScopedId = external_exports
@@ -17919,7 +18038,7 @@ function cmsItemIdentity(item) {
 function cmsLogicalKey(pin2) {
   return JSON.stringify([pin2.kind, pin2.collectionId, pin2.recordId]);
 }
-var CmsPreparationSchema = external_exports
+var CmsHumanPreparationSchema = external_exports
   .object({
     action: BuilderArtifactPinSchema.extend({
       kind: external_exports.literal("action"),
@@ -17937,7 +18056,50 @@ var CmsPreparationSchema = external_exports
     operationId: ReleaseScopedIdSchema,
     scope: ContentScopeSchema,
   })
-  .strict()
+  .strict();
+var CmsPublishedFormActorSchema = external_exports
+  .object({
+    activationId: external_exports.uuid(),
+    identityDigest: ReleaseSha256Schema,
+    invocationId: external_exports.uuid(),
+    kind: external_exports.literal("published-form"),
+    pointerVersion: version3,
+    releaseId: external_exports.uuid(),
+  })
+  .strict();
+var CmsPublishedPreparationSchema = CmsHumanPreparationSchema.extend({
+  action: BuilderArtifactPinSchema.extend({
+    kind: external_exports.literal("action"),
+  }).strict(),
+  actor: CmsPublishedFormActorSchema,
+  candidateDigest: external_exports.null(),
+  formatVersion: external_exports.literal(2),
+}).strict();
+function isNewPublicRecord(item) {
+  return (
+    item.kind === "record" &&
+    item.expectedBase === null &&
+    item.version === 1 &&
+    item.body.revision === 1 &&
+    item.body.archived === false
+  );
+}
+var CmsPreparationSchema = external_exports
+  .discriminatedUnion("formatVersion", [
+    CmsHumanPreparationSchema,
+    CmsPublishedPreparationSchema,
+  ])
+  .superRefine((request, ctx) => {
+    if (
+      request.formatVersion === 2 &&
+      !request.items.every(isNewPublicRecord)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Published preparations permit only new unarchived records",
+      });
+    }
+  })
   .superRefine((request, ctx) => {
     const issue2 = (message) => ctx.addIssue({ code: "custom", message });
     const keys = /* @__PURE__ */ new Set();
@@ -18622,7 +18784,7 @@ function componentDesignFields(type) {
 
 // packages/protocol/src/editor-sizing.ts
 var LENGTH = /^(-?\d+(?:\.\d+)?)(px|rem|em|ch|vw|vh|%|dvh|svh)?$/;
-var NUMBER = /^\d+(?:\.\d+)?$/;
+var NUMBER2 = /^\d+(?:\.\d+)?$/;
 var RATIO_SEPARATOR = /\s*\/\s*/;
 var SIZE_PROPERTIES = /* @__PURE__ */ new Set([
   "width",
@@ -18688,7 +18850,7 @@ function isEditorSizingValue(property2, value) {
     return ["0 0 auto", "1 1 0%", "none", "auto", "initial"].includes(value);
   }
   if (property2 === "flex-grow" || property2 === "flex-shrink") {
-    return NUMBER.test(value) && Number(value) <= 100;
+    return NUMBER2.test(value) && Number(value) <= 100;
   }
   if (property2 === "align-self") {
     return [
@@ -18708,7 +18870,8 @@ function isEditorSizingValue(property2, value) {
       value === "auto" ||
       (parts.length <= 2 &&
         parts.every(
-          (part) => NUMBER.test(part) && Number(part) > 0 && Number(part) <= 1e5
+          (part) =>
+            NUMBER2.test(part) && Number(part) > 0 && Number(part) <= 1e5
         ))
     );
   }
@@ -20547,6 +20710,48 @@ async function verifyBuilderActionInput(input) {
     };
   });
 }
+async function verifyBuilderPublishedFormInput(input) {
+  return await guarded(async () => {
+    const { action, pin: pin2 } = await checkedAction(input);
+    if (
+      action.formatVersion !== 2 ||
+      !action.inputContract ||
+      action.collections.length !== 0 ||
+      action.effects.permissions.some((permission) =>
+        permission.operations.some((operation) => operation !== "create")
+      )
+    ) {
+      fail(
+        "GRAPH_BINDING",
+        "Public forms require a finite create-only action without collection reads"
+      );
+    }
+    const form = PageFormSchema.parse(input.form);
+    const fields = external_exports
+      .record(
+        external_exports.string().min(1).max(128),
+        external_exports.string().max(1e4)
+      )
+      .parse(input.fields);
+    if (
+      Object.keys(fields).length > 32 ||
+      byteLength(canonicalJson(fields)) > 65536
+    ) {
+      fail("GRAPH_BUDGET", "Public form input byte limit exceeded");
+    }
+    const value = await convertBuilderFormActionInput(form, action, fields);
+    return {
+      action: pin2,
+      bindingDigest: await sha256Hex(canonicalJson(form.submission)),
+      collections: [],
+      effects: action.effects,
+      formatVersion: 2,
+      formDigest: await sha256Hex(canonicalJson(form)),
+      formId: form.id,
+      input: value,
+    };
+  });
+}
 async function verifyBuilderActionResult(input) {
   return await guarded(async () => {
     const { action } = await checkedAction(input);
@@ -20699,5 +20904,6 @@ export {
   verifyBuilderArtifactSet,
   verifyBuilderComponentDataBindings,
   verifyBuilderFormActionDescriptor,
+  verifyBuilderPublishedFormInput,
   verifyBuilderReleaseRecovery,
 };
