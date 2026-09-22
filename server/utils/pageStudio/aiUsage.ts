@@ -17,7 +17,10 @@ export class PageStudioAiUsageError extends Error {
 }
 const conflict = () => new PageStudioAiUsageError('AI_USAGE_CONFLICT', 409, 'AI operation identity conflicts with its durable reservation')
 
-/** Exactly one charged operation per model call or action test. Never return
+/** Exactly one current monthly allowance unit per model call, action test or
+ * accepted action execution. This reserves usage only: it is not evidence of
+ * accepted action membership, package execution capability or effect authority.
+ * The later action coordinator must check those independently before dispatch. Never return
  * admitted=true for a replay, including unknown provider outcomes. Fingerprints
  * are computed by the trusted caller from canonical immutable request contents. */
 export async function updatePageStudioAiUsage(

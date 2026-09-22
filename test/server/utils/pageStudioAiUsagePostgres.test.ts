@@ -69,7 +69,7 @@ describe.runIf(Boolean(databaseUrl))('native AI monthly usage on disposable Post
       CREATE TABLE page_studio_sessions(nonce TEXT PRIMARY KEY,tenant_id TEXT,client_id UUID,site_id UUID,user_id TEXT,
         role TEXT,capabilities JSONB,issued_at TIMESTAMPTZ,expires_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ);
     `)
-    for (const file of ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '420_page_studio_login_sessions.sql', '421_page_studio_ai_usage.sql', '421_page_studio_ai_usage.sql']) {
+    for (const file of ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '420_page_studio_login_sessions.sql', '421_page_studio_ai_usage.sql', '421_page_studio_ai_usage.sql', '423_page_studio_action_execution_usage.sql', '423_page_studio_action_execution_usage.sql']) {
       await observer.query(readFileSync(new URL(`../../../server/database/migrations/${file}`, import.meta.url), 'utf8'))
     }
     const clientId = randomUUID(), userId = randomUUID(), roleId = randomUUID()
@@ -130,6 +130,42 @@ describe.runIf(Boolean(databaseUrl))('native AI monthly usage on disposable Post
     await run({ ...request, operationId: 'action:1', kind: 'action-test' })
     await expect(run({ ...request, operationId: 'third:1' })).rejects.toMatchObject({ statusCode: 429 })
     await expect(run({ ...settlement, outcome: outcome === 'failed' ? 'succeeded' : 'failed' })).rejects.toMatchObject({ statusCode: 409 })
+  })
+  it('widens the historical kind constraint without changing retained reservations', async () => {
+    await observer.query('ALTER TABLE page_studio_ai_usage DROP CONSTRAINT page_studio_ai_usage_kind_check; ALTER TABLE page_studio_ai_usage ADD CONSTRAINT page_studio_ai_usage_kind_check CHECK(kind IN (\'model\',\'action-test\'))')
+    await run()
+    const before = await rows()
+    const migration = readFileSync(new URL('../../../server/database/migrations/423_page_studio_action_execution_usage.sql', import.meta.url), 'utf8')
+    await observer.query(migration)
+    expect(await rows()).toEqual(before)
+    expect(await run({ ...request, operationId: 'run:new', kind: 'action-execution' })).toMatchObject({ admitted: true })
+  })
+  it('charges accepted action execution once, shares the monthly allowance, and retains failed charges', async () => {
+    const execution = { ...request, operationId: 'accepted:run:1', kind: 'action-execution' }
+    expect(await run(execution)).toMatchObject({ admitted: true, charged: true, kind: 'action-execution' })
+    expect(await run({ ...execution, action: 'settle', outcome: 'failed' })).toMatchObject({ admitted: false, state: 'failed' })
+    expect(await run(execution)).toMatchObject({ admitted: false, state: 'failed' })
+    await run()
+    await expect(run({ ...execution, operationId: 'accepted:run:2' }, other, 'production')).rejects.toMatchObject({ statusCode: 429 })
+    expect(await rows()).toHaveLength(2)
+  })
+  it('serializes action execution reservations and rejects changed kinds or fingerprints', async () => {
+    const execution = { ...request, kind: 'action-execution' }
+    const receipts = await Promise.all([run(execution), run(execution)])
+    expect(receipts.filter(receipt => receipt.admitted)).toHaveLength(1)
+    await expect(run(request)).rejects.toMatchObject({ code: 'AI_USAGE_CONFLICT' })
+    await expect(run({ ...execution, fingerprint: 'c'.repeat(64) })).rejects.toMatchObject({ code: 'AI_USAGE_CONFLICT' })
+    expect(await run({ ...execution, action: 'settle', outcome: 'succeeded' })).toMatchObject({ state: 'succeeded', admitted: false })
+    await expect(run({ ...execution, action: 'settle', outcome: 'failed' })).rejects.toMatchObject({ code: 'AI_USAGE_CONFLICT' })
+    expect(await rows()).toHaveLength(1)
+  })
+  it('keeps uncertain accepted runs reserved when authority is revoked before settlement', async () => {
+    const execution = { ...request, kind: 'action-execution' }
+    await run(execution)
+    await observer.query('UPDATE page_studio_sessions SET revoked_at=NOW() WHERE nonce=$1', [claims.nonce])
+    await expect(run(execution)).rejects.toMatchObject(denied)
+    await expect(run({ ...execution, action: 'settle', outcome: 'failed' })).rejects.toMatchObject(denied)
+    expect(await rows()).toMatchObject([{ state: 'reserved', kind: 'action-execution' }])
   })
   it('retains identity across UTC month rollover and charges new work in the new month', async () => {
     await run()
