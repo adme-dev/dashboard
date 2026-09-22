@@ -18,6 +18,15 @@ interface StablePageStudioError {
   error: { code: string, message: string }
 }
 
+function cmsAdoptionConflict(error: unknown): StablePageStudioError | null {
+  if (!error || typeof error !== 'object' || !('code' in error) || !('message' in error)
+    || error.code !== 'P0001' || error.message !== 'CMS_ADOPTION_IN_PROGRESS') return null
+  return { error: {
+    code: 'CMS_ADOPTION_IN_PROGRESS',
+    message: 'CMS setup is in progress. Try saving again when setup finishes.'
+  } }
+}
+
 function stableError(value: unknown): StablePageStudioError | null {
   if (!value || typeof value !== 'object' || !('error' in value)) return null
   const error = value.error
@@ -36,6 +45,9 @@ export function projectPageStudioInternalError(error: unknown): {
   statusCode: number
   body: StablePageStudioError
 } {
+  const adoptionConflict = cmsAdoptionConflict(error)
+  if (adoptionConflict) return { statusCode: 409, body: adoptionConflict }
+
   if (error instanceof PageStudioBusinessContentError
     || error instanceof PageStudioBookingsError
     || error instanceof PageStudioProvisioningError
@@ -94,6 +106,12 @@ export function pageStudioInternalHttpError(
 }
 
 export function pageStudioHttpError(error: unknown): never {
+  const adoptionConflict = cmsAdoptionConflict(error)
+  if (adoptionConflict) throw createError({
+    statusCode: 409,
+    statusMessage: adoptionConflict.error.message,
+    data: adoptionConflict
+  })
   if (error instanceof PageStudioBusinessContentError
     || error instanceof PageStudioBookingsError
     || error instanceof PageStudioProvisioningError

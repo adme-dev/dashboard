@@ -281,6 +281,15 @@ async function launchStudio(site: PageStudioSiteSummary) {
                 size="sm"
               />
               <UButton
+                v-if="audience === 'portal'"
+                :to="`/portal/page-studio/${site.id}/staging`"
+                label="Website staging"
+                icon="i-lucide-globe"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
+              <UButton
                 :to="`/${audience}/page-studio/${site.id}/content`"
                 label="Business content"
                 icon="i-lucide-database"

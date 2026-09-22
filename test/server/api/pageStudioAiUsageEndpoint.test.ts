@@ -44,6 +44,12 @@ describe('native AI usage endpoint', () => {
     expect(mocks.update).toHaveBeenCalledWith(body, { nonce: 'native-identity' }, 'staging')
     expect(mocks.setHeader).toHaveBeenCalledWith(event, 'cache-control', 'no-store')
   })
+  it('accepts explicit action-execution usage without treating it as an action test', async () => {
+    const execution = { ...body, kind: 'action-execution' }
+    mocks.stream.mockImplementation(() => stream(JSON.stringify(execution)))
+    await expect(call()).resolves.toEqual({ admitted: true })
+    expect(mocks.update).toHaveBeenCalledWith(execution, { nonce: 'native-identity' }, 'staging')
+  })
   it('rejects a missing signed editor token before reading the body', async () => {
     mocks.header.mockReturnValue(undefined)
     await expect(call()).rejects.toMatchObject({ statusCode: 401 })

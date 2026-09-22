@@ -17,6 +17,7 @@ type RunTransaction = <T>(callback: (db: PageStudioControlQueryClient) => Promis
 export class PageStudioControlError extends Error {
   constructor(
     readonly code:
+      | 'CMS_MANAGED_CHECKPOINT_REQUIRED'
       | 'AUDIT_EVENT_CONFLICT'
       | 'BASE_DIGEST_MISMATCH'
       | 'CHECKPOINT_BASE_MISMATCH'
@@ -234,16 +235,33 @@ export async function commitPageStudioCheckpoint(
   }
 }
 
+async function managedCheckpointScope(scope: PageStudioControlScope, dependencies: { runTransaction?: RunTransaction }) {
+  return await (dependencies.runTransaction ?? defaultRunTransaction)(async db =>
+    (await db.query(`SELECT scope_key FROM page_studio_cms_scopes WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND state<>'legacy' LIMIT 1`,
+      [scope.tenantId, scope.clientId, scope.siteId])).rows.length > 0)
+}
+async function rejectManagedCheckpointBypass(db: PageStudioControlQueryClient, scope: PageStudioControlScope) {
+  const rows = (await db.query(`SELECT scope_key FROM page_studio_cms_scopes WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND state<>'legacy' LIMIT 1`,
+    [scope.tenantId, scope.clientId, scope.siteId])).rows
+  if (rows.length) throw new PageStudioControlError('CMS_MANAGED_CHECKPOINT_REQUIRED', 409,
+    'Save this website through its managed authoring environment so its pages and feature graph advance together.')
+}
+
 /** Editor entry point: claims come only from the verified dedicated header.
  * The generic CAS primitive above remains for trusted provisioning/admin callers. */
 export async function commitPageStudioEditorCheckpoint(
   input: PageStudioCheckpointCommitInput,
   session: PageStudioSessionClaims,
-  dependencies: { runTransaction?: RunTransaction } = {}
+  dependencies: { runTransaction?: RunTransaction, env?: Record<string, unknown> } = {}
 ): Promise<PageStudioCheckpointCommitReceipt> {
   if (!session) throw new PageStudioSessionAuthorityError('SESSION_AUTHORITY_DENIED', 403)
   authorizePageStudioSession(session, { checkpoint: input.checkpoint, authorRole: session.role,
     requiredCapabilities: ['workspace:checkpoint'] })
+  if (await managedCheckpointScope(input.checkpoint.scope, dependencies)) {
+    const { coordinateCmsGraphCheckpoint } = await import('./cmsGraphCoordinator')
+    return await coordinateCmsGraphCheckpoint(input, { source: 'studio-session', claims: session,
+      env: dependencies.env ?? {}, capability: 'workspace:checkpoint' }, dependencies)
+  }
   const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, {
     ...dependencies,
     authorize: db => assertPageStudioSessionAuthority(session, 'workspace:checkpoint', { transaction: db })
@@ -269,6 +287,7 @@ async function persistPageStudioCheckpoint(
   return runTransaction(async (db) => {
     const site = await requireScopedSite(db, input.scope, dependencies.authorize ? 'FOR NO KEY UPDATE' : 'FOR UPDATE')
     await dependencies.authorize?.(db)
+    await rejectManagedCheckpointBypass(db, input.scope)
     if (!guard) {
       // Activation is permanent for this site, even if a later head changes.
       // Read under the same lock as every writer so legacy requests cannot race it.
@@ -584,7 +603,7 @@ export async function submitPageStudioVersionForReview(
 
 export async function acceptPageStudioAiProposal(
   input: PageStudioAiProposalAcceptanceInput,
-  dependencies: { runTransaction?: RunTransaction, session?: PageStudioSessionClaims } = {}
+  dependencies: { runTransaction?: RunTransaction, session?: PageStudioSessionClaims, env?: Record<string, unknown> } = {}
 ) {
   const { checkpoint } = input
   if (typeof input.expectedCheckpointId !== 'string'
@@ -606,6 +625,12 @@ export async function acceptPageStudioAiProposal(
   const session = dependencies.session
   if (!session) throw new PageStudioSessionAuthorityError('SESSION_AUTHORITY_DENIED', 403)
   authorizePageStudioSession(session, input)
+  if (await managedCheckpointScope(checkpoint.scope, dependencies)) {
+    const { coordinateCmsGraphCheckpoint } = await import('./cmsGraphCoordinator')
+    return await coordinateCmsGraphCheckpoint({ checkpoint, expectedCheckpointId: input.expectedCheckpointId },
+      { source: 'studio-session', claims: session, env: dependencies.env ?? {}, capability: 'model:invoke' }, dependencies,
+      { mode: 'ai-page', summary: input.summary, idempotencyKey: input.idempotencyKey, expectedBaseDigest: input.baseDigest })
+  }
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
     const siteResult = await db.query<{
@@ -636,6 +661,7 @@ export async function acceptPageStudioAiProposal(
 
     const authorize = () => assertPageStudioSessionAuthority(session, 'model:invoke', { transaction: db })
     await authorize()
+    await rejectManagedCheckpointBypass(db, checkpoint.scope)
     const existingVersion = await db.query<VersionRow>(
       `SELECT id, checkpoint_id, digest, author_id, author_role, summary, status, created_at
        FROM page_studio_versions

@@ -47,7 +47,7 @@ export default eventHandler(async (event) => {
     return await acceptPageStudioAiProposal({
       ...parsed.data,
       idempotencyKey: idempotency.data
-    }, { session })
+    }, { session, env: (event.context.cloudflare?.env ?? {}) as Record<string, unknown> })
   } catch (error) {
     return pageStudioInternalHttpError(event, error)
   }

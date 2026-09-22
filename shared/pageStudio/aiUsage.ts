@@ -4,7 +4,7 @@ import type { PageStudioContentScope } from './businessContent'
 const Identity = {
   operationId: z.string().min(1).max(512).regex(/^[A-Za-z0-9][A-Za-z0-9_:-]*$/),
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  kind: z.enum(['model', 'action-test'])
+  kind: z.enum(['model', 'action-test', 'action-execution'])
 }
 export const PageStudioAiUsageRequestSchema = z.discriminatedUnion('action', [
   z.object({ ...Identity, action: z.literal('reserve') }).strict(),
@@ -13,7 +13,7 @@ export const PageStudioAiUsageRequestSchema = z.discriminatedUnion('action', [
 export interface PageStudioAiUsageReceipt {
   operationId: string
   fingerprint: string
-  kind: 'model' | 'action-test'
+  kind: 'model' | 'action-test' | 'action-execution'
   scope: PageStudioContentScope
   state: 'reserved' | 'succeeded' | 'failed'
   charged: true

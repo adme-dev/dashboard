@@ -87,6 +87,7 @@ describe.runIf(Boolean(url))('draft history on disposable PostgreSQL', () => {
       CREATE TABLE page_studio_checkpoints (id text PRIMARY KEY, tenant_id text, client_id uuid, site_id uuid, digest text, object_key text UNIQUE, etag text, author_id text, created_at timestamptz);
       CREATE TABLE page_studio_versions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id text, client_id uuid, site_id uuid, checkpoint_id text, digest text, author_id text, author_role text, summary text, status text DEFAULT 'draft', idempotency_key text, created_at timestamptz DEFAULT now(), UNIQUE(tenant_id, client_id, site_id, idempotency_key));
       CREATE TABLE page_studio_audit_events (id uuid DEFAULT gen_random_uuid(), tenant_id text, client_id uuid, site_id uuid, actor_id text, actor_role text, action text, resource_type text, resource_id text, idempotency_key text, metadata jsonb, UNIQUE(tenant_id, client_id, site_id, idempotency_key));
+      CREATE TABLE page_studio_cms_scopes(scope_key TEXT PRIMARY KEY,tenant_id TEXT,client_id UUID,site_id UUID,state TEXT);
       CREATE TABLE page_studio_release_pointers (active_release_id text);
     `)
   })

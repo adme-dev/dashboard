@@ -1,0 +1,4 @@
+import {defineConfig} from 'vite';
+import vue from '@vitejs/plugin-vue';
+import ui from '@nuxt/ui/vite';
+export default defineConfig({root:'__FIXTURE_ROOT__',cacheDir:'__FIXTURE_ROOT__/.vite',plugins:[vue(),ui({dts:false,autoImport:{imports:['vue']}})],resolve:{alias:{'~~':'__DASHBOARD_ROOT__','~':'__DASHBOARD_ROOT__/app'},dedupe:['vue','vue-router']},server:{host:'127.0.0.1',port:0,strictPort:true,fs:{allow:['__FIXTURE_ROOT__','__DASHBOARD_ROOT__']}}});

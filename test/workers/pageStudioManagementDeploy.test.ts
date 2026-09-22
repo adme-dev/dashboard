@@ -8,6 +8,10 @@ describe('private management immutable deployment target', () => {
     expect(() => validateManagementTarget(config(environment), environment)).not.toThrow()
   })
   it.each([
+    { vars: { ...config().vars, PAGE_STUDIO_CLOUDFLARE_ZONE_ID: 'different-zone' } },
+    { vars: { ...config().vars, PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID: 'different-account' } },
+    { services: [] },
+    { services: [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-staging' }] },
     { r2_buckets: [] }, { r2_buckets: [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: 'xeroflow-page-studio-checkpoints-staging' }] },
     { name: 'agency-dashboard' }, { account_id: 'other' }, { main: '../../other.ts' },
     { workers_dev: true }, { preview_urls: true }, { routes: [{ pattern: '*example.com/*' }] },
@@ -23,6 +27,9 @@ describe('private management immutable deployment target', () => {
     { compatibility_date: '2026-09-14' }, { compatibility_flags: [] }, { observability: { enabled: false } }
   ])('rejects target or capability drift %j', (change) => {
     expect(() => validateManagementTarget({ ...config(), ...change }, 'production')).toThrow()
+  })
+  it('never binds infrastructure staging to customer staging resources', () => {
+    expect(() => validateManagementTarget({ ...config('staging'), services: [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' }] }, 'staging')).toThrow()
   })
   it('rejects an implicit or invented environment', () => {
     expect(() => validateManagementTarget(config(), undefined)).toThrow()

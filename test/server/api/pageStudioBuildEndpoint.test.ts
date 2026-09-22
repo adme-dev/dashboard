@@ -2,20 +2,38 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   buildApprovedPageStudioVersion: vi.fn(),
+  coordinateSealedFeatureBuild: vi.fn(),
+  nativeFeaturePublisher: vi.fn(),
+  featureBuildServices: vi.fn(),
   requireAgencyPageStudioAccess: vi.fn(),
   resolvePageStudioBuildWorker: vi.fn()
 }))
 
+vi.mock('~~/server/utils/pageStudio/releaseFeatureBuild', () => ({
+  coordinateSealedFeatureBuild: (...args: unknown[]) =>
+    mocks.coordinateSealedFeatureBuild(...args)
+}))
+vi.mock('~~/server/utils/pageStudio/releaseFeatureHttp', () => ({
+  nativeFeaturePublisher: (...args: unknown[]) =>
+    mocks.nativeFeaturePublisher(...args),
+  featureBuildServices: (...args: unknown[]) =>
+    mocks.featureBuildServices(...args)
+}))
 vi.mock('~~/server/utils/pageStudio/access', () => ({
-  requireAgencyPageStudioAccess: (...args: unknown[]) => mocks.requireAgencyPageStudioAccess(...args)
+  requireAgencyPageStudioAccess: (...args: unknown[]) =>
+    mocks.requireAgencyPageStudioAccess(...args)
 }))
 vi.mock('~~/server/utils/pageStudio/builds', () => ({
-  buildApprovedPageStudioVersion: (...args: unknown[]) => mocks.buildApprovedPageStudioVersion(...args),
-  resolvePageStudioBuildWorker: (...args: unknown[]) => mocks.resolvePageStudioBuildWorker(...args),
+  buildApprovedPageStudioVersion: (...args: unknown[]) =>
+    mocks.buildApprovedPageStudioVersion(...args),
+  resolvePageStudioBuildWorker: (...args: unknown[]) =>
+    mocks.resolvePageStudioBuildWorker(...args),
   PageStudioBuildError: class PageStudioBuildError extends Error {}
 }))
 vi.mock('~~/server/utils/pageStudio/http', () => ({
-  pageStudioHttpError: (error: unknown) => { throw error }
+  pageStudioHttpError: (error: unknown) => {
+    throw error
+  }
 }))
 
 type TestEvent = {
@@ -25,13 +43,16 @@ type TestEvent = {
   params?: Record<string, string>
 }
 const testGlobal = globalThis as typeof globalThis & {
-  createError: (input: Record<string, unknown>) => Error & Record<string, unknown>
+  createError: (
+    input: Record<string, unknown>
+  ) => Error & Record<string, unknown>
   eventHandler: <T>(handler: T) => T
   getHeader: (event: TestEvent, key: string) => string | undefined
   getRouterParam: (event: TestEvent, key: string) => string | undefined
   readBody: (event: TestEvent) => Promise<unknown>
 }
-testGlobal.createError = input => Object.assign(new Error(String(input.statusMessage)), input)
+testGlobal.createError = input =>
+  Object.assign(new Error(String(input.statusMessage)), input)
 testGlobal.eventHandler = handler => handler
 testGlobal.getHeader = (event, key) => event.headers?.[key.toLowerCase()]
 testGlobal.getRouterParam = (event, key) => event.params?.[key]
@@ -50,9 +71,47 @@ describe('Page Studio agency build endpoint', () => {
       user: { id: actorId }
     })
     mocks.resolvePageStudioBuildWorker.mockReturnValue(worker)
-    mocks.buildApprovedPageStudioVersion.mockResolvedValue({ buildId: 'build_a' })
+    mocks.buildApprovedPageStudioVersion.mockResolvedValue({
+      buildId: 'build_a'
+    })
   })
 
+  it('routes accepted features through original native authority and private seal orchestration', async () => {
+    const { default: handler } = await import(
+      '~~/server/api/agency/page-studio/sites/[siteId]/versions/[versionId]/builds/index.post'
+    )
+    const principal = { source: 'native-login' },
+      services = { buildSealed: vi.fn() }
+    mocks.nativeFeaturePublisher.mockResolvedValue(principal)
+    mocks.featureBuildServices.mockReturnValue(services)
+    mocks.coordinateSealedFeatureBuild.mockResolvedValue({ buildId: 'sealed' })
+    const event: TestEvent = {
+      body: {
+        assets: [],
+        manifest: { schemaVersion: 2, builderApplication: {} }
+      },
+      context: {},
+      headers: { 'idempotency-key': 'build_feature' },
+      params: { siteId, versionId }
+    }
+    expect(await handler(event as never)).toEqual({
+      build: { buildId: 'sealed' }
+    })
+    expect(mocks.nativeFeaturePublisher).toHaveBeenCalledWith(event, siteId)
+    expect(mocks.coordinateSealedFeatureBuild).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId, siteId, versionId }),
+      principal,
+      services
+    )
+    expect(mocks.buildApprovedPageStudioVersion).not.toHaveBeenCalled()
+    mocks.nativeFeaturePublisher.mockRejectedValueOnce(
+      Object.assign(new Error('edit required'), { statusCode: 403 })
+    )
+    await expect(handler(event as never)).rejects.toMatchObject({
+      statusCode: 403
+    })
+    expect(mocks.coordinateSealedFeatureBuild).toHaveBeenCalledTimes(1)
+  })
   it('requires publish access and sends a bounded build to the private worker orchestration', async () => {
     const { default: handler } = await import(
       '~~/server/api/agency/page-studio/sites/[siteId]/versions/[versionId]/builds/index.post'
@@ -65,17 +124,24 @@ describe('Page Studio agency build endpoint', () => {
       params: { siteId, versionId }
     }
 
-    await expect(handler(event as never)).resolves.toEqual({ build: { buildId: 'build_a' } })
-    expect(mocks.requireAgencyPageStudioAccess)
-      .toHaveBeenCalledWith(event, 'PAGE_STUDIO_PUBLISH')
-    expect(mocks.buildApprovedPageStudioVersion).toHaveBeenCalledWith({
-      actorId,
-      ...body,
-      idempotencyKey: 'build_01HXYZ',
-      siteId,
-      tenantId: 'tenant-alpha',
-      versionId
-    }, { worker })
+    await expect(handler(event as never)).resolves.toEqual({
+      build: { buildId: 'build_a' }
+    })
+    expect(mocks.requireAgencyPageStudioAccess).toHaveBeenCalledWith(
+      event,
+      'PAGE_STUDIO_PUBLISH'
+    )
+    expect(mocks.buildApprovedPageStudioVersion).toHaveBeenCalledWith(
+      {
+        actorId,
+        ...body,
+        idempotencyKey: 'build_01HXYZ',
+        siteId,
+        tenantId: 'tenant-alpha',
+        versionId
+      },
+      { worker }
+    )
   })
 
   it('rejects malformed, oversized, or non-idempotent input before calling the worker', async () => {
@@ -89,7 +155,9 @@ describe('Page Studio agency build endpoint', () => {
       params: { siteId, versionId }
     }
 
-    await expect(handler(event as never)).rejects.toMatchObject({ statusCode: 400 })
+    await expect(handler(event as never)).rejects.toMatchObject({
+      statusCode: 400
+    })
     expect(mocks.resolvePageStudioBuildWorker).not.toHaveBeenCalled()
     expect(mocks.buildApprovedPageStudioVersion).not.toHaveBeenCalled()
   })

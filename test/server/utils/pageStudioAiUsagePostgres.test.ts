@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { assertPageStudioAiAllowanceAvailable } from '~~/server/utils/pageStudio/aiAllowance'
 import { updatePageStudioAiUsage } from '~~/server/utils/pageStudio/aiUsage'
 import type { PageStudioControlQueryClient } from '~~/server/utils/pageStudio/controlStore'
 import type { PageStudioSessionClaims } from '~~/server/utils/pageStudio/sessions'
@@ -69,7 +70,7 @@ describe.runIf(Boolean(databaseUrl))('native AI monthly usage on disposable Post
       CREATE TABLE page_studio_sessions(nonce TEXT PRIMARY KEY,tenant_id TEXT,client_id UUID,site_id UUID,user_id TEXT,
         role TEXT,capabilities JSONB,issued_at TIMESTAMPTZ,expires_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ);
     `)
-    for (const file of ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '420_page_studio_login_sessions.sql', '421_page_studio_ai_usage.sql', '421_page_studio_ai_usage.sql']) {
+    for (const file of ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '420_page_studio_login_sessions.sql', '421_page_studio_ai_usage.sql', '421_page_studio_ai_usage.sql', '423_page_studio_action_execution_usage.sql', '423_page_studio_action_execution_usage.sql', '427_page_studio_public_action_invocations.sql', '427_page_studio_public_action_invocations.sql']) {
       await observer.query(readFileSync(new URL(`../../../server/database/migrations/${file}`, import.meta.url), 'utf8'))
     }
     const clientId = randomUUID(), userId = randomUUID(), roleId = randomUUID()
@@ -102,6 +103,97 @@ describe.runIf(Boolean(databaseUrl))('native AI monthly usage on disposable Post
       await observer.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
     } finally { await observer.end() }
   })
+  async function publicClaim(options: { session?: PageStudioSessionClaims, state?: 'dispatch_claimed' | 'result_ready' | 'execution_failed', previousMonth?: boolean, fail?: boolean } = {}) {
+    const session = options.session ?? other, db = await connect()
+    return transactionFor(db)(async (transaction) => {
+      const site = (await transaction.query<{ entitlement_id: string }>('SELECT entitlement_id FROM page_studio_sites WHERE tenant_id=$1 AND client_id=$2 AND id=$3 FOR NO KEY UPDATE', [session.tenantId, session.clientId, session.siteId])).rows[0]!
+      await transaction.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [JSON.stringify(['page-studio-ai-usage', session.tenantId, session.clientId])])
+      const budget = await assertPageStudioAiAllowanceAvailable(transaction, { tenantId: session.tenantId, clientId: session.clientId, entitlementId: site.entitlement_id })
+      const scope = { tenantId: session.tenantId, clientId: session.clientId, businessId: session.clientId, siteId: session.siteId, environment: 'staging' }
+      const state = options.state ?? 'dispatch_claimed'
+      const invocationId = randomUUID()
+      await transaction.query(`INSERT INTO page_studio_public_action_invocations(
+        scope_key,tenant_id,client_id,business_id,site_id,environment,release_environment,intent_id,invocation_id,claim_id,broker_id,
+        identity_digest,identity,execution,secret_hash,challenge_digest,release_id,activation_id,pointer_version,entitlement_id,period_start,
+        state,quota_state,result_pin,result_digest,settled_at)
+        VALUES($1,$2,$3,$3,$4,'staging','production',$5,$6,$7,'page-studio-published-form-host',
+        $8,$9,$10,$11,$12,$13,$14,1,$15,CASE WHEN $16 THEN ($17::date - INTERVAL '1 month')::date ELSE $17::date END,
+        $18,$19,$20,$21,CASE WHEN $18='dispatch_claimed' THEN NULL ELSE clock_timestamp() END)`,
+      [JSON.stringify(scope), session.tenantId, session.clientId, session.siteId, randomUUID(), invocationId, randomUUID(),
+        'b'.repeat(64), { scope, formId: 'contact' }, { invocationId }, 'c'.repeat(64), 'd'.repeat(64), randomUUID(), randomUUID(), site.entitlement_id,
+        options.previousMonth ?? false, budget.period, state, state === 'dispatch_claimed' ? 'reserved' : state === 'execution_failed' ? 'failed' : 'succeeded',
+        state === 'dispatch_claimed' ? null : { key: 'private-result' }, state === 'dispatch_claimed' ? null : 'e'.repeat(64)])
+      if (options.fail) throw new Error('later admission failed')
+      return invocationId
+    })
+  }
+  it.each(['dispatch_claimed', 'result_ready', 'execution_failed'] as const)('counts public %s usage against creator calls across sites and delivery environments', async (state) => {
+    await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1')
+    await publicClaim({ state })
+    await expect(run()).rejects.toMatchObject({ statusCode: 429, code: 'AI_USAGE_EXHAUSTED' })
+    expect(await rows()).toHaveLength(0)
+  })
+  it('counts creator usage before public admission and gives a concurrent final unit to only one caller', async () => {
+    await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1')
+    const results = await Promise.allSettled([run(), publicClaim()])
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.find(result => result.status === 'rejected')).toMatchObject({ reason: { statusCode: 429, code: 'AI_USAGE_EXHAUSTED' } })
+    const count = await observer.query('SELECT (SELECT count(*) FROM page_studio_ai_usage)+(SELECT count(*) FROM page_studio_public_action_invocations) AS total')
+    expect(Number(count.rows[0].total)).toBe(1)
+  })
+  it('does not count a previous-month public charge but cannot refund or move that charge', async () => {
+    await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1')
+    await publicClaim({ previousMonth: true })
+    expect(await run()).toMatchObject({ admitted: true })
+    for (const sql of [
+      'DELETE FROM page_studio_public_action_invocations',
+      'UPDATE page_studio_public_action_invocations SET period_start=date_trunc(\'month\',clock_timestamp())::date',
+      'UPDATE page_studio_public_action_invocations SET secret_hash=repeat(\'f\',64)',
+      'UPDATE page_studio_public_action_invocations SET pointer_version=2',
+      `UPDATE page_studio_public_action_invocations SET execution='{"different":true}'::jsonb`
+    ]) await expect(observer.query(sql)).rejects.toThrow('PUBLIC_ACTION_INVOCATION_IMMUTABLE')
+  })
+  it('rolls back a public claim and its charge together when admission fails', async () => {
+    await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1')
+    await expect(publicClaim({ fail: true })).rejects.toThrow('later admission failed')
+    expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(0)
+    expect(await run()).toMatchObject({ admitted: true })
+  })
+  it('retains public result evidence and prevents terminal execution from being dispatched again', async () => {
+    await publicClaim({ state: 'execution_failed' })
+    await expect(observer.query('UPDATE page_studio_public_action_invocations SET state=\'dispatch_claimed\',quota_state=\'reserved\',settled_at=NULL,result_pin=NULL,result_digest=NULL')).rejects.toThrow('PUBLIC_ACTION_INVOCATION_IMMUTABLE')
+    await expect(observer.query('UPDATE page_studio_public_action_invocations SET result_pin=\'{"key":"replacement"}\'::jsonb')).rejects.toThrow('PUBLIC_ACTION_INVOCATION_IMMUTABLE')
+  })
+  it('allows result and receipt progression once while keeping charge and evidence immutable', async () => {
+    await publicClaim()
+    await observer.query(`UPDATE page_studio_public_action_invocations SET state='result_ready',quota_state='succeeded',settled_at=clock_timestamp(),result_pin='{"key":"private-result"}',result_digest=repeat('e',64)`)
+    await observer.query(`UPDATE page_studio_public_action_invocations SET effect_identity='{"digest":"exact-effects"}'`)
+    await observer.query(`UPDATE page_studio_public_action_invocations SET state='committed',final_receipt='{"state":"received"}'`)
+    for (const sql of [
+      `UPDATE page_studio_public_action_invocations SET quota_state='failed'`,
+      `UPDATE page_studio_public_action_invocations SET settled_at=clock_timestamp()+INTERVAL '1 second'`,
+      `UPDATE page_studio_public_action_invocations SET effect_identity='{"digest":"changed"}'`,
+      `UPDATE page_studio_public_action_invocations SET final_receipt='{"state":"pending"}'`,
+      `UPDATE page_studio_public_action_invocations SET state='result_ready',final_receipt=NULL`
+    ]) await expect(observer.query(sql)).rejects.toThrow('PUBLIC_ACTION_INVOCATION_IMMUTABLE')
+    const before = (await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows
+    await observer.query(readFileSync(new URL('../../../server/database/migrations/427_page_studio_public_action_invocations.sql', import.meta.url), 'utf8'))
+    expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toEqual(before)
+  })
+  it('cannot reserve another charge for the same public intent even in a later month', async () => {
+    await publicClaim()
+    await expect(observer.query(`INSERT INTO page_studio_public_action_invocations
+      SELECT (jsonb_populate_record(NULL::page_studio_public_action_invocations,to_jsonb(i)||jsonb_build_object(
+        'invocation_id',$1::text,'claim_id',$2::text,'period_start',(period_start+INTERVAL '1 month')::date))).*
+      FROM page_studio_public_action_invocations i`, [randomUUID(), randomUUID()])).rejects.toMatchObject({ code: '23505' })
+  })
+  it('isolates usage by tenant and client rather than counting unrelated customer reservations', async () => {
+    await publicClaim()
+    const clientId = randomUUID()
+    await observer.query('INSERT INTO agency_clients VALUES($1,TRUE)', [clientId])
+    const entitlementId = (await observer.query(`INSERT INTO page_studio_entitlements(tenant_id,client_id,monthly_ai_operation_limit) VALUES('other-tenant',$1,1) RETURNING id`, [clientId])).rows[0].id
+    expect(await assertPageStudioAiAllowanceAvailable(observer as unknown as PageStudioControlQueryClient, { tenantId: 'other-tenant', clientId, entitlementId })).toHaveProperty('period')
+  })
   it('admits once and returns only a charged replay thereafter', async () => {
     expect(await run()).toEqual({ operationId: request.operationId, fingerprint: request.fingerprint, kind: request.kind,
       scope: { tenantId: claims.tenantId, clientId: claims.clientId, businessId: claims.clientId, siteId: claims.siteId, environment: 'staging' },
@@ -130,6 +222,42 @@ describe.runIf(Boolean(databaseUrl))('native AI monthly usage on disposable Post
     await run({ ...request, operationId: 'action:1', kind: 'action-test' })
     await expect(run({ ...request, operationId: 'third:1' })).rejects.toMatchObject({ statusCode: 429 })
     await expect(run({ ...settlement, outcome: outcome === 'failed' ? 'succeeded' : 'failed' })).rejects.toMatchObject({ statusCode: 409 })
+  })
+  it('widens the historical kind constraint without changing retained reservations', async () => {
+    await observer.query('ALTER TABLE page_studio_ai_usage DROP CONSTRAINT page_studio_ai_usage_kind_check; ALTER TABLE page_studio_ai_usage ADD CONSTRAINT page_studio_ai_usage_kind_check CHECK(kind IN (\'model\',\'action-test\'))')
+    await run()
+    const before = await rows()
+    const migration = readFileSync(new URL('../../../server/database/migrations/423_page_studio_action_execution_usage.sql', import.meta.url), 'utf8')
+    await observer.query(migration)
+    expect(await rows()).toEqual(before)
+    expect(await run({ ...request, operationId: 'run:new', kind: 'action-execution' })).toMatchObject({ admitted: true })
+  })
+  it('charges accepted action execution once, shares the monthly allowance, and retains failed charges', async () => {
+    const execution = { ...request, operationId: 'accepted:run:1', kind: 'action-execution' }
+    expect(await run(execution)).toMatchObject({ admitted: true, charged: true, kind: 'action-execution' })
+    expect(await run({ ...execution, action: 'settle', outcome: 'failed' })).toMatchObject({ admitted: false, state: 'failed' })
+    expect(await run(execution)).toMatchObject({ admitted: false, state: 'failed' })
+    await run()
+    await expect(run({ ...execution, operationId: 'accepted:run:2' }, other, 'production')).rejects.toMatchObject({ statusCode: 429 })
+    expect(await rows()).toHaveLength(2)
+  })
+  it('serializes action execution reservations and rejects changed kinds or fingerprints', async () => {
+    const execution = { ...request, kind: 'action-execution' }
+    const receipts = await Promise.all([run(execution), run(execution)])
+    expect(receipts.filter(receipt => receipt.admitted)).toHaveLength(1)
+    await expect(run(request)).rejects.toMatchObject({ code: 'AI_USAGE_CONFLICT' })
+    await expect(run({ ...execution, fingerprint: 'c'.repeat(64) })).rejects.toMatchObject({ code: 'AI_USAGE_CONFLICT' })
+    expect(await run({ ...execution, action: 'settle', outcome: 'succeeded' })).toMatchObject({ state: 'succeeded', admitted: false })
+    await expect(run({ ...execution, action: 'settle', outcome: 'failed' })).rejects.toMatchObject({ code: 'AI_USAGE_CONFLICT' })
+    expect(await rows()).toHaveLength(1)
+  })
+  it('keeps uncertain accepted runs reserved when authority is revoked before settlement', async () => {
+    const execution = { ...request, kind: 'action-execution' }
+    await run(execution)
+    await observer.query('UPDATE page_studio_sessions SET revoked_at=NOW() WHERE nonce=$1', [claims.nonce])
+    await expect(run(execution)).rejects.toMatchObject(denied)
+    await expect(run({ ...execution, action: 'settle', outcome: 'failed' })).rejects.toMatchObject(denied)
+    expect(await rows()).toMatchObject([{ state: 'reserved', kind: 'action-execution' }])
   })
   it('retains identity across UTC month rollover and charges new work in the new month', async () => {
     await run()

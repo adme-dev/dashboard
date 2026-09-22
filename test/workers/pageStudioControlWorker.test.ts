@@ -129,7 +129,7 @@ describe('Page Studio control gateway Worker', () => {
     expect(checkpointRequest.headers.get('x-xeroflow-preview-token')).toBeNull()
   })
 
-  it.each(['/internal/page-studio/ai-usage', '/internal/page-studio/ai-proposals/accept', '/internal/page-studio/sessions/authorize', '/internal/page-studio/checkpoints/editor-commit'])('forwards the signed editor session only for exact POST %s', async (path) => {
+  it.each(['/internal/page-studio/features/context', '/internal/page-studio/features/accept', '/internal/page-studio/components/data', '/internal/page-studio/form-actions', '/internal/page-studio/action-invocations', '/internal/page-studio/cms-adoption', '/internal/page-studio/ai-usage', '/internal/page-studio/ai-proposals/accept', '/internal/page-studio/sessions/authorize', '/internal/page-studio/checkpoints/editor-commit'])('forwards the signed editor session only for exact POST %s', async (path) => {
     const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
     vi.stubGlobal('fetch', fetchMock)
     await worker.fetch(request(path, {
@@ -144,6 +144,32 @@ describe('Page Studio control gateway Worker', () => {
     for (const [method, target] of [['GET', path], ['POST', `${path}/other`], ['POST', '/internal/page-studio/checkpoints']]) {
       await worker.fetch(request(target, { method, headers: { 'x-page-studio-session': 'must-not-pass' } }), environment(), {} as never)
       expect(fetchMock.mock.calls.at(-1)?.[0].headers.get('x-page-studio-session')).toBeNull()
+    }
+  })
+
+  it.each([
+    '/internal/page-studio/published/features/page',
+    '/internal/page-studio/published-action-invocations'
+  ])('uses only machine credentials for published route %s', async (path) => {
+    const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
+    vi.stubGlobal('fetch', fetchMock)
+    await worker.fetch(request(path, {
+      method: 'POST',
+      headers: {
+        'authorization': 'Bearer browser-controlled',
+        'cookie': 'publisher-session=must-not-pass',
+        'x-page-studio-session': 'must-not-pass',
+        'x-xeroflow-preview-token': 'must-not-pass',
+        'content-type': 'application/json'
+      },
+      body: '{}'
+    }), environment(), {} as never)
+    const forwarded = fetchMock.mock.calls[0]?.[0]
+    expect(forwarded.url).toBe(`https://preview.agency-dashboard-6cm.pages.dev${path}`)
+    expect(forwarded.headers.get('authorization')).toBe(`Bearer ${secret}`)
+    expect(forwarded.headers.get('x-xeroflow-service')).toBe('page-studio')
+    for (const name of ['cookie', 'x-page-studio-session', 'x-xeroflow-preview-token']) {
+      expect(forwarded.headers.get(name)).toBeNull()
     }
   })
 

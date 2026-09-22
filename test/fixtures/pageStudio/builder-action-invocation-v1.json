@@ -1,0 +1,355 @@
+{
+  "version": 1,
+  "identity": {
+    "formatVersion": 1,
+    "scope": {
+      "tenantId": "tenant",
+      "clientId": "client",
+      "businessId": "client",
+      "siteId": "site",
+      "environment": "staging"
+    },
+    "intentId": "10000000-0000-4000-8000-000000000001",
+    "invocationId": "10000000-0000-4000-8000-000000000002",
+    "claimId": "10000000-0000-4000-8000-000000000003",
+    "brokerId": "page-studio-sandbox",
+    "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "action": {
+      "kind": "action",
+      "id": "submit_enquiry",
+      "version": 1,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  "resultKey": "builder-action-results/v1/583a50254ce2d17e663328d13909b56562b76d70ddefb97373783f2b23bc5716/10000000-0000-4000-8000-000000000002/10000000-0000-4000-8000-000000000003.json",
+  "cases": [
+    {
+      "name": "canonical-success",
+      "valid": true,
+      "envelope": {
+        "formatVersion": 1,
+        "execution": {
+          "formatVersion": 1,
+          "scope": {
+            "tenantId": "tenant",
+            "clientId": "client",
+            "businessId": "client",
+            "siteId": "site",
+            "environment": "staging"
+          },
+          "intentId": "10000000-0000-4000-8000-000000000001",
+          "invocationId": "10000000-0000-4000-8000-000000000002",
+          "claimId": "10000000-0000-4000-8000-000000000003",
+          "brokerId": "page-studio-sandbox",
+          "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": {
+            "kind": "action",
+            "id": "submit_enquiry",
+            "version": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "result": {
+          "status": "ok",
+          "json": "{\"saved\":true}",
+          "fuelUsed": 10
+        }
+      }
+    },
+    {
+      "name": "bounded-failure",
+      "valid": true,
+      "envelope": {
+        "formatVersion": 1,
+        "execution": {
+          "formatVersion": 1,
+          "scope": {
+            "tenantId": "tenant",
+            "clientId": "client",
+            "businessId": "client",
+            "siteId": "site",
+            "environment": "staging"
+          },
+          "intentId": "10000000-0000-4000-8000-000000000001",
+          "invocationId": "10000000-0000-4000-8000-000000000002",
+          "claimId": "10000000-0000-4000-8000-000000000003",
+          "brokerId": "page-studio-sandbox",
+          "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": {
+            "kind": "action",
+            "id": "submit_enquiry",
+            "version": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "result": {
+          "status": "fuel_exhausted",
+          "fuelUsed": 100000000
+        }
+      }
+    },
+    {
+      "name": "missing-json",
+      "valid": false,
+      "envelope": {
+        "formatVersion": 1,
+        "execution": {
+          "formatVersion": 1,
+          "scope": {
+            "tenantId": "tenant",
+            "clientId": "client",
+            "businessId": "client",
+            "siteId": "site",
+            "environment": "staging"
+          },
+          "intentId": "10000000-0000-4000-8000-000000000001",
+          "invocationId": "10000000-0000-4000-8000-000000000002",
+          "claimId": "10000000-0000-4000-8000-000000000003",
+          "brokerId": "page-studio-sandbox",
+          "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": {
+            "kind": "action",
+            "id": "submit_enquiry",
+            "version": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "result": {
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "name": "failure-with-json",
+      "valid": false,
+      "envelope": {
+        "formatVersion": 1,
+        "execution": {
+          "formatVersion": 1,
+          "scope": {
+            "tenantId": "tenant",
+            "clientId": "client",
+            "businessId": "client",
+            "siteId": "site",
+            "environment": "staging"
+          },
+          "intentId": "10000000-0000-4000-8000-000000000001",
+          "invocationId": "10000000-0000-4000-8000-000000000002",
+          "claimId": "10000000-0000-4000-8000-000000000003",
+          "brokerId": "page-studio-sandbox",
+          "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": {
+            "kind": "action",
+            "id": "submit_enquiry",
+            "version": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "result": {
+          "status": "guest_error",
+          "json": "null"
+        }
+      }
+    },
+    {
+      "name": "malformed-json",
+      "valid": false,
+      "envelope": {
+        "formatVersion": 1,
+        "execution": {
+          "formatVersion": 1,
+          "scope": {
+            "tenantId": "tenant",
+            "clientId": "client",
+            "businessId": "client",
+            "siteId": "site",
+            "environment": "staging"
+          },
+          "intentId": "10000000-0000-4000-8000-000000000001",
+          "invocationId": "10000000-0000-4000-8000-000000000002",
+          "claimId": "10000000-0000-4000-8000-000000000003",
+          "brokerId": "page-studio-sandbox",
+          "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": {
+            "kind": "action",
+            "id": "submit_enquiry",
+            "version": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "result": {
+          "status": "ok",
+          "json": "{"
+        }
+      }
+    },
+    {
+      "name": "reserved-json",
+      "valid": false,
+      "envelope": {
+        "formatVersion": 1,
+        "execution": {
+          "formatVersion": 1,
+          "scope": {
+            "tenantId": "tenant",
+            "clientId": "client",
+            "businessId": "client",
+            "siteId": "site",
+            "environment": "staging"
+          },
+          "intentId": "10000000-0000-4000-8000-000000000001",
+          "invocationId": "10000000-0000-4000-8000-000000000002",
+          "claimId": "10000000-0000-4000-8000-000000000003",
+          "brokerId": "page-studio-sandbox",
+          "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": {
+            "kind": "action",
+            "id": "submit_enquiry",
+            "version": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "result": {
+          "status": "ok",
+          "json": "{\"__proto__\":0}"
+        }
+      }
+    },
+    {
+      "name": "negative-fuel",
+      "valid": false,
+      "envelope": {
+        "formatVersion": 1,
+        "execution": {
+          "formatVersion": 1,
+          "scope": {
+            "tenantId": "tenant",
+            "clientId": "client",
+            "businessId": "client",
+            "siteId": "site",
+            "environment": "staging"
+          },
+          "intentId": "10000000-0000-4000-8000-000000000001",
+          "invocationId": "10000000-0000-4000-8000-000000000002",
+          "claimId": "10000000-0000-4000-8000-000000000003",
+          "brokerId": "page-studio-sandbox",
+          "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": {
+            "kind": "action",
+            "id": "submit_enquiry",
+            "version": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "result": {
+          "status": "ok",
+          "json": "null",
+          "fuelUsed": -1
+        }
+      }
+    },
+    {
+      "name": "foreign-engine-status",
+      "valid": false,
+      "envelope": {
+        "formatVersion": 1,
+        "execution": {
+          "formatVersion": 1,
+          "scope": {
+            "tenantId": "tenant",
+            "clientId": "client",
+            "businessId": "client",
+            "siteId": "site",
+            "environment": "staging"
+          },
+          "intentId": "10000000-0000-4000-8000-000000000001",
+          "invocationId": "10000000-0000-4000-8000-000000000002",
+          "claimId": "10000000-0000-4000-8000-000000000003",
+          "brokerId": "page-studio-sandbox",
+          "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": {
+            "kind": "action",
+            "id": "submit_enquiry",
+            "version": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "result": {
+          "status": "unknown"
+        }
+      }
+    },
+    {
+      "name": "uppercase-uuid",
+      "valid": true,
+      "envelope": {
+        "formatVersion": 1,
+        "execution": {
+          "formatVersion": 1,
+          "scope": {
+            "tenantId": "tenant",
+            "clientId": "client",
+            "businessId": "client",
+            "siteId": "site",
+            "environment": "staging"
+          },
+          "intentId": "10000000-0000-4000-8000-000000000001",
+          "invocationId": "ABCDEFAB-0000-4000-8000-ABCDEFABCDEF",
+          "claimId": "ABCDEFAB-0000-4000-8000-ABCDEFABCDEA",
+          "brokerId": "page-studio-sandbox",
+          "identityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": {
+            "kind": "action",
+            "id": "submit_enquiry",
+            "version": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "runtimeDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "dataDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "contextDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "result": {
+          "status": "ok",
+          "json": "null"
+        }
+      }
+    }
+  ]
+}

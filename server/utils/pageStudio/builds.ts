@@ -52,7 +52,7 @@ function validationMessage(error: z.infer<typeof validationFailureSchema>['error
   return `Cannot publish: ${[...new Set(guidance)].join('; ')}.`
 }
 
-interface PageStudioWorkerBuildResult {
+export interface PageStudioWorkerBuildResult {
   artifactPrefix: string
   buildId: string
   manifestDigest: string
@@ -62,7 +62,7 @@ interface PageStudioWorkerBuildResult {
   versionDigest: string
 }
 
-interface BuildAuthorityRow {
+export interface BuildAuthorityRow {
   approval_id: string
   client_id: string
   digest: string
@@ -84,6 +84,7 @@ interface BuildRow {
 export class PageStudioBuildError extends Error {
   constructor(
     readonly code:
+      | 'BUILD_LIMIT_REACHED'
       | 'BUILD_CONFLICT'
       | 'BUILD_NOT_APPROVED'
       | 'BUILD_RESULT_INVALID'
@@ -159,6 +160,11 @@ function assertApprovedAuthority(row: BuildAuthorityRow | null): BuildAuthorityR
   return row
 }
 
+/** SQL-only approved-version read for native feature seal composition. */
+export async function readApprovedBuildAuthority(db: PageStudioBuildQueryClient, input: { tenantId: string, siteId: string, versionId: string }) {
+  return assertApprovedAuthority((await db.query<BuildAuthorityRow>(authoritySql(true), [input.tenantId, input.siteId, input.versionId])).rows[0] ?? null)
+}
+
 function expectedMetadata(scope: { tenantId: string, clientId: string, siteId: string }, digest: string) {
   const artifactPrefix
     = `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}/builds/${digest}`
@@ -207,7 +213,7 @@ function buildPointer(
   }
 }
 
-async function persistSuccessfulBuild(
+export async function persistSuccessfulBuild(
   input: PageStudioApprovedBuildInput,
   initial: BuildAuthorityRow,
   result: PageStudioWorkerBuildResult,
@@ -373,6 +379,23 @@ export interface PageStudioApprovedBuildInput {
   versionId: string
 }
 
+/** Reserve the same immutable build identity for ordinary and generated releases
+ * before invoking the Worker. Retrying a lost response keeps its admission. */
+export async function admitPageStudioReleaseBuild(
+  db: PageStudioBuildQueryClient,
+  scope: { tenantId: string, clientId: string, siteId: string },
+  digest: string
+) {
+  try {
+    await db.query('SELECT admit_page_studio_build($1,$2,$3,\'release\',$4)',
+      [scope.tenantId, scope.clientId, scope.siteId, expectedMetadata(scope, digest).buildId])
+  } catch (error) {
+    if (error instanceof Error && error.message === 'STUDIO_BUILD_LIMIT') throw new PageStudioBuildError('BUILD_LIMIT_REACHED', 429, 'The monthly website build allowance has been reached')
+    if (error instanceof Error && error.message === 'STUDIO_BUILD_ACCESS') throw new PageStudioBuildError('BUILD_NOT_APPROVED', 403, 'Website build access is not active')
+    throw error
+  }
+}
+
 export async function buildApprovedPageStudioVersion(
   input: PageStudioApprovedBuildInput,
   dependencies: {
@@ -388,6 +411,7 @@ export async function buildApprovedPageStudioVersion(
     [input.tenantId, input.siteId, input.versionId]
   ))
   const scope = { tenantId: input.tenantId, clientId: authority.client_id, siteId: input.siteId }
+  await runTransaction(db => admitPageStudioReleaseBuild(db, scope, authority.digest))
   try {
     const result = await dependencies.worker.build({
       approval: {

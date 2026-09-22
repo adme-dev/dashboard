@@ -1,3 +1,5 @@
+import { coordinateFeatureActivation } from '~~/server/utils/pageStudio/releaseFeatureActivation'
+import { hasSealedFeatureBuild, nativeFeaturePublisher, featureBuildServices } from '~~/server/utils/pageStudio/releaseFeatureHttp'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
@@ -36,13 +38,16 @@ export default eventHandler(async (event) => {
     }
     const worker = resolvePageStudioDeliveryWorker(event, body.data.environment)
     await worker.verifyBuild(build)
-    const release = await activatePageStudioRelease({
+    const input = {
       actorId: user.id,
       ...body.data,
       expectedActiveReleaseId: body.data.expectedActiveReleaseId ?? null,
       idempotencyKey: idempotencyKey.data,
       scope
-    })
+    }
+    const release = await hasSealedFeatureBuild(scope, body.data.buildId)
+      ? await coordinateFeatureActivation(input, await nativeFeaturePublisher(event, siteId.data), featureBuildServices(event))
+      : await activatePageStudioRelease(input)
     return { release }
   } catch (error) {
     pageStudioHttpError(error)

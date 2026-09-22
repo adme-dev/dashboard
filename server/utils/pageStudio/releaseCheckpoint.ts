@@ -80,7 +80,7 @@ export async function attachPageStudioReleaseMetadataToBuild(input: {
 }) {
   const build = await queryOne<{ id: string }>(`
     UPDATE page_studio_builds
-    SET release_metadata = $7::jsonb
+    SET release_metadata = $7::jsonb || CASE WHEN release_metadata ? 'featureSeal' THEN jsonb_build_object('featureSeal',release_metadata->'featureSeal') ELSE '{}'::jsonb END
     WHERE tenant_id = $1
       AND client_id = $2
       AND site_id = $3

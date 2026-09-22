@@ -166,7 +166,7 @@ describe('Page Studio internal control endpoints', () => {
     expect(mocks.authorizeSession).toHaveBeenCalledWith({ nonce: 'test-session' }, body)
     expect(mocks.assertSessionActive).toHaveBeenCalledWith({ nonce: 'test-session' }, 'model:invoke')
     expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
-    expect(mocks.acceptPageStudioAiProposal).toHaveBeenCalledWith({ ...body, idempotencyKey: 'accept_proposal_endpoint' }, { session: { nonce: 'test-session' } })
+    expect(mocks.acceptPageStudioAiProposal).toHaveBeenCalledWith({ ...body, idempotencyKey: 'accept_proposal_endpoint' }, { session: { nonce: 'test-session' }, env: {} })
     expect(mocks.recordPageStudioCheckpoint).not.toHaveBeenCalled()
   })
 
@@ -213,7 +213,7 @@ describe('Page Studio internal control endpoints', () => {
       expect(mocks.verifySession).toHaveBeenCalledWith('signed-session', 'public-key', 'https://app.xeroflow.io')
       expect(mocks.authorizeSession).toHaveBeenCalledWith(session, { checkpoint, authorRole: 'client', requiredCapabilities: ['workspace:checkpoint'] })
       expect(mocks.assertSessionActive).toHaveBeenCalledWith(session, 'workspace:checkpoint')
-      expect(mocks.commitPageStudioEditorCheckpoint).toHaveBeenCalledWith(body, session)
+      expect(mocks.commitPageStudioEditorCheckpoint).toHaveBeenCalledWith(body, session, { env: {} })
     } else {
       expect(event.responseStatus).toBe(kind === 'missing' ? 401 : kind === 'unavailable' ? 503 : 403)
       expect(mocks.commitPageStudioEditorCheckpoint).not.toHaveBeenCalled()

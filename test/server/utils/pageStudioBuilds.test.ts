@@ -60,6 +60,15 @@ function input() {
 }
 
 describe('Page Studio approved build orchestration', () => {
+  it('denies a build before contacting the worker when the shared monthly allowance is exhausted', async () => {
+    const db = database((sql) => {
+      if (sql.includes('admit_page_studio_build')) throw Object.assign(new Error('STUDIO_BUILD_LIMIT'), { code: 'P0001' })
+      return []
+    })
+    const worker = { build: vi.fn() }
+    await expect(buildApprovedPageStudioVersion(input(), { queryOne: vi.fn().mockResolvedValue(authority()), runTransaction: db.runTransaction, worker })).rejects.toMatchObject({ code: 'BUILD_LIMIT_REACHED', statusCode: 429 })
+    expect(worker.build).not.toHaveBeenCalled()
+  })
   it('turns structured RPC validation failures into actionable errors and a failed build', async () => {
     const db = database(sql => sql.includes('latest_review') ? [authority()] : [])
     const worker = { build: vi.fn().mockResolvedValue({ success: false, error: {

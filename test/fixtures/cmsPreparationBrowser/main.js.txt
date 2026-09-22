@@ -1,0 +1,25 @@
+import './style.css';
+import * as Vue from 'vue';
+import {createRouter,createWebHistory} from 'vue-router';
+import ui from '@nuxt/ui/vue-plugin';
+import App from './App.vue';
+import Setup from '__DASHBOARD_ROOT__/app/components/page-studio/CmsPreparation.client.vue';
+const idle={phase:'idle',adoptionId:null,recoveryId:null,recoveryRequired:false,recoveryReason:null,progress:null,progressDigest:'a'.repeat(64)};
+window.fixture={calls:[],installed:[],adoption:{...idle},failNext:false};
+window.$fetch=async(path,options)=>{
+ const f=window.fixture;f.calls.push({path,method:options.method,body:options.body});
+ if(options.method==='POST'){
+  if(f.failNext){f.failNext=false;throw new Error('Lost acknowledgement')}
+  if(path.endsWith('cms-adoption')){
+   if(options.body.action==='start') f.adoption={...idle,phase:'freezing',adoptionId:'adoption'};
+   else if(options.body.action==='recover') f.adoption={...f.adoption,recoveryRequired:false,recoveryId:options.body.recoveryId};
+   else f.adoption={...idle,phase:'managed',adoptionId:'adoption'};
+  }else f.installed.push(path);
+  return {status:'installed',canConfigure:true};
+ }
+ if(path.endsWith('cms-adoption'))return f.adoption;
+ if(path.endsWith('content-connection'))return {status:'connected'};
+ return {status:f.installed.includes(path)?'installed':'pending',canConfigure:true};
+};
+const router=createRouter({history:createWebHistory(),routes:[{path:'/',component:{render:()=>Vue.h(Setup,{audience:'portal',siteId:'50000000-0000-4000-8000-000000000901'})}}]});
+const app=Vue.createApp(App);app.use(router);app.use(ui);app.mount('#app');

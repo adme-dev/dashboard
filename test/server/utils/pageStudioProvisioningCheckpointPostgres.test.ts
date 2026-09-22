@@ -38,7 +38,7 @@ if (databaseUrl) {
     throw new Error('Provisioning checkpoint tests require an explicitly disposable localhost studio_provisioning_commit database')
   }
 }
-const migrations = ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '415_page_studio_setup_proposals.sql', '420_page_studio_login_sessions.sql']
+const migrations = ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '415_page_studio_setup_proposals.sql', '420_page_studio_login_sessions.sql', '422_page_studio_cms_visibility.sql', '425_page_studio_cms_authoring_scope.sql']
   .map(name => readFileSync(new URL(`../../../server/database/migrations/${name}`, import.meta.url), 'utf8'))
 const userId = '30000000-0000-4000-8000-000000000601'
 const clientId = '20000000-0000-4000-8000-000000000601'

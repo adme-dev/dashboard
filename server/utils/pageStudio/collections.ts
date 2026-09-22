@@ -1,3 +1,4 @@
+import { CmsConsumerError } from './cmsConsumers'
 import { z } from 'zod'
 import {
   authorizePageStudioBusinessContent,
@@ -84,6 +85,8 @@ async function remote(call: () => Promise<unknown>) {
   try {
     return await call()
   } catch (error) {
+    if (error instanceof ContentError) throw error
+    if (error instanceof CmsConsumerError) throw new ContentError(error.code, error.statusCode, error.message)
     const message = error instanceof Error ? error.message : ''
     if (
       /(?:upgrade required|schema unavailable|route is inactive|not installed|no such table)/i.test(message)
@@ -127,7 +130,7 @@ export async function executePageStudioCollection(
     { scope } = admissionBefore
   if (!operation.endsWith('Definitions') && !args.collectionId) throw invalid()
   if ((operation === 'readRecord' || operation === 'writeRecord') && !args.recordId) throw invalid()
-  const service = request.env.PAGE_STUDIO_CONTENT_ROUTER as Record<
+  const service = admissionBefore.service as unknown as Record<
     string,
     (body: unknown) => Promise<unknown>
   >
@@ -191,10 +194,10 @@ export async function executePageStudioCollection(
     }
   // Hashing/schema reads cannot extend a revoked native login's authority.
   const current = await authorizePageStudioCollections(request, writing, schemaWrite, dependencies)
-  if (!samePageStudioContentScope(scope, current.scope)) throw denied()
+  if (!samePageStudioContentScope(scope, current.scope) || (admissionBefore.collectionPolicy.cms_state ?? null) !== (current.collectionPolicy.cms_state ?? null)) throw denied()
   const result = await remote(() => service[method]!(payload))
   const after = await authorizePageStudioCollections(request, writing, schemaWrite, dependencies)
-  if (!samePageStudioContentScope(scope, after.scope)) throw denied()
+  if (!samePageStudioContentScope(scope, after.scope) || (admissionBefore.collectionPolicy.cms_state ?? null) !== (after.collectionPolicy.cms_state ?? null)) throw denied()
   const kind = operation.endsWith('Definition') || operation.endsWith('Definitions') ? 'definition' : 'record'
   if (operation.startsWith('list')) {
     const page
