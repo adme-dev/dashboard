@@ -364,19 +364,19 @@ async function invocationCurrent(db: PageStudioControlQueryClient, context: Acti
 
 /** Native-only lookup for the broker: recover the ORIGINAL immutable request
  * before touching today's accepted heads or remote artifacts. No dispatch grant. */
-export async function lookupActionInvocation(input: {intentId:string,action:unknown,inputDigest:string},principal:Principal,dependencies:Dependencies & {brokerId:string}) {
-  const scope=ActionInvocationContextSchema.shape.scope.parse({tenantId:principal.claims.tenantId,clientId:principal.claims.clientId,businessId:principal.claims.clientId,siteId:principal.claims.siteId,environment:principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT})
+export async function lookupActionInvocation(input: { intentId: string, action: unknown, inputDigest: string }, principal: Principal, dependencies: Dependencies & { brokerId: string }) {
+  const scope = ActionInvocationContextSchema.shape.scope.parse({ tenantId: principal.claims.tenantId, clientId: principal.claims.clientId, businessId: principal.claims.clientId, siteId: principal.claims.siteId, environment: principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT })
   z.uuid().parse(input.intentId)
-  return withCmsCommitAuthority({scope,principal,mutation:'action-execution'},async db=>{
-    const values=(await db.query('SELECT identity_digest,identity,execution,state,result_pin,result_digest,final_receipt,effect_identity FROM page_studio_action_invocations WHERE scope_key=$1 AND intent_id=$2 FOR UPDATE',[contentScopeKey(scope),input.intentId])).rows
-    if(!values.length) return null
-    if(values.length!==1) throw cmsUnavailable()
-    const saved=Row.parse(values[0])
-    const stored=z.object({request:ActionInvocationRequestSchema,principal:z.unknown(),brokerId:z.string()}).strict().parse(saved.identity)
-    if(!cmsEqual(stored.request.context.action,input.action)||stored.request.context.inputDigest!==input.inputDigest) throw new Error('Action invocation identity conflict')
-    checkIdentity(saved,await identity(stored.request,principal,dependencies.brokerId))
-    return {request:stored.request,state:saved.state,receipt:saved.final_receipt,current:await invocationCurrent(db,stored.request.context,saved),effectIdentity:(values[0] as {effect_identity:unknown}).effect_identity}
-  },{runTransaction:dependencies.runTransaction})
+  return withCmsCommitAuthority({ scope, principal, mutation: 'action-execution' }, async (db) => {
+    const values = (await db.query('SELECT identity_digest,identity,execution,state,result_pin,result_digest,final_receipt,effect_identity FROM page_studio_action_invocations WHERE scope_key=$1 AND intent_id=$2 FOR UPDATE', [contentScopeKey(scope), input.intentId])).rows
+    if (!values.length) return null
+    if (values.length !== 1) throw cmsUnavailable()
+    const saved = Row.parse(values[0])
+    const stored = z.object({ request: ActionInvocationRequestSchema, principal: z.unknown(), brokerId: z.string() }).strict().parse(saved.identity)
+    if (!cmsEqual(stored.request.context.action, input.action) || stored.request.context.inputDigest !== input.inputDigest) throw new Error('Action invocation identity conflict')
+    checkIdentity(saved, await identity(stored.request, principal, dependencies.brokerId))
+    return { request: stored.request, state: saved.state, receipt: saved.final_receipt, current: await invocationCurrent(db, stored.request.context, saved), effectIdentity: (values[0] as { effect_identity: unknown }).effect_identity }
+  }, { runTransaction: dependencies.runTransaction })
 }
 /** Private coordinator composition only. This derives byte-verified public
  * projection from accepted native selections; it does not issue a dispatch. */
