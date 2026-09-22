@@ -105,7 +105,7 @@ describe.runIf(
         '420_page_studio_login_sessions.sql',
         '422_page_studio_cms_visibility.sql',
         '421_page_studio_ai_usage.sql',
-        '423_page_studio_action_execution_usage.sql',
+        '423_page_studio_action_execution_usage.sql', '427_page_studio_public_action_invocations.sql',
         '424_page_studio_action_invocations.sql',
         '424_page_studio_action_invocations.sql'
       ]) {

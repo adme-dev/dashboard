@@ -1,3 +1,4 @@
+import { assertPageStudioAiAllowanceAvailable, PageStudioAiUsageError } from './aiAllowance'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { PageStudioAiUsageRequestSchema, type PageStudioAiUsageReceipt } from '~~/shared/pageStudio/aiUsage'
 import { PageStudioContentScopeSchema } from '~~/shared/pageStudio/businessContent'
@@ -5,16 +6,10 @@ import type { PageStudioControlQueryClient } from './controlStore'
 import { assertPageStudioSessionAuthority } from './sessionAuthority'
 import { PageStudioSessionClaimsSchema, type PageStudioSessionClaims } from './sessions'
 
+export { PageStudioAiUsageError } from './aiAllowance'
+
 type RunTransaction = <T>(work: (db: PageStudioControlQueryClient) => Promise<T>) => Promise<T>
 type UsageRow = { site_id: string, business_id: string, actor_id: string, actor_role: string, fingerprint: string, kind: string, state: PageStudioAiUsageReceipt['state'] }
-export class PageStudioAiUsageError extends Error {
-  readonly data: { error: { code: string, message: string } }
-  constructor(readonly code: string, readonly statusCode: number, message: string) {
-    super(message)
-    this.name = 'PageStudioAiUsageError'
-    this.data = { error: { code, message } }
-  }
-}
 const conflict = () => new PageStudioAiUsageError('AI_USAGE_CONFLICT', 409, 'AI operation identity conflicts with its durable reservation')
 
 /** Exactly one current monthly allowance unit per model call, action test or
@@ -69,18 +64,7 @@ export async function updatePageStudioAiUsageInTransaction(
     }
   } else {
     if (request.action === 'settle') throw conflict()
-    const budget = (await db.query<{ monthly_ai_operation_limit: number, period: string }>(`SELECT monthly_ai_operation_limit,
-        date_trunc('month', clock_timestamp() AT TIME ZONE 'UTC')::date::text AS period
-        FROM page_studio_entitlements WHERE tenant_id=$1 AND client_id=$2 AND id=$3 FOR SHARE`,
-    [claims.tenantId, claims.clientId, site.entitlement_id])).rows[0]
-    if (!budget || !Number.isSafeInteger(budget.monthly_ai_operation_limit) || budget.monthly_ai_operation_limit <= 0) {
-      throw new PageStudioAiUsageError('AI_USAGE_DENIED', 403, 'AI usage access denied')
-    }
-    const used = (await db.query<{ used: string }>(`SELECT count(*)::text AS used FROM page_studio_ai_usage
-        WHERE tenant_id=$1 AND client_id=$2 AND period_start=$3::date`, [claims.tenantId, claims.clientId, budget.period])).rows[0]
-    if (!used || Number(used.used) >= budget.monthly_ai_operation_limit) {
-      throw new PageStudioAiUsageError('AI_USAGE_EXHAUSTED', 429, 'The monthly AI allowance has been reached')
-    }
+    const budget = await assertPageStudioAiAllowanceAvailable(db, { tenantId: claims.tenantId, clientId: claims.clientId, entitlementId: site.entitlement_id })
     await db.query(`INSERT INTO page_studio_ai_usage(tenant_id,client_id,environment,operation_id,site_id,business_id,
         fingerprint,kind,actor_id,actor_role,session_nonce,entitlement_id,period_start)
         VALUES($1,$2,$3,$4,$5,$2,$6,$7,$8,$9,$10,$11,$12::date)`,

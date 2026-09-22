@@ -114,3 +114,40 @@ head. The Studio caller still owns reserve-before-call, fingerprinting, terminal
 settlement and no-replay behavior. Feature generation UI, native feature draft
 acceptance, staged CMS schema activation and action effects remain separately
 guarded integration work. No deployment or customer execution was enabled here.
+
+## Public action shared allowance — 22 September continuation
+
+Migration `427_page_studio_public_action_invocations.sql` adds a separate public
+invocation ledger. Each row is both a one-shot execution claim and a charge;
+public forms never manufacture a human actor, login or editor session. Immutable
+columns retain the original publication epoch, secret hash, challenge hash,
+execution identity, entitlement and UTC charge month. Database guards reject
+rewriting retained result/effect/receipt evidence, refunding a charge, deleting a
+claim, or moving a terminal execution back to dispatch. Intent uniqueness spans
+billing months. Authoring and delivery environments remain separate columns.
+
+The SQL-only `assertPageStudioAiAllowanceAvailable` helper sums human ledger 421
+and public ledger 427 under the existing client advisory lock. Creator admission
+now uses this helper too. All states count, across sites and environments; other
+tenants/clients and previous UTC months do not. Public admission must perform its
+own fresh published authority check and insert its claim in the same transaction.
+The helper is not an execution grant.
+
+Install migration 427 **before deploying this updated creator admission code**:
+its allowance query requires both tables even while public execution is disabled.
+The migration has been automatically applied and reapplied in disposable local
+PostgreSQL schemas, with migration rerun preserving retained rows. Live migration
+and activation remain part of the paired release gate.
+
+Verification: 63 tests passed across the quota, native invocation and connected
+Worker/R2/D1 coordinator suites, including 26 PostgreSQL allowance cases. New
+coverage includes a simultaneous human/public race for the final unit, unknown
+and failed charges, transactional rollback, cross-customer isolation, immutable
+results and receipts, and duplicate intent rejection across month rollover.
+Scoped ESLint passed. Server TypeScript retains pre-existing errors with no
+errors in this slice. Logs: `/private/tmp/root-public-quota-regression.log`,
+`/private/tmp/root-public-quota-lint-final.log`, and
+`/private/tmp/root-public-quota-types.log`.
+
+The public coordinator, private host and browser submission are still required;
+this section does not enable public execution.
