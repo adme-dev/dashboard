@@ -203,6 +203,7 @@ async function renderPublicSurface(contract: PublicSurfaceRenderContract): Promi
 }
 
 const dynamicRouteExpectations = new Map([
+  ['features.detail.page_studio_preview_robots', '/features/page-studio'],
   ['features.detail.crm_search_title', '/features/semantic-search'],
   ['features.detail.crm_search_agency', '/features/semantic-search'],
   ['features.detail.crm_search_assist', '/features/semantic-search'],

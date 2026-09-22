@@ -41,10 +41,12 @@ if (databaseUrl) {
 const userId = '30000000-0000-4000-8000-000000000501'
 const clientId = '20000000-0000-4000-8000-000000000501'
 const roleId = '60000000-0000-4000-8000-000000000501'
-const migrationSql = [402, 404, 420].map(number => readFileSync(new URL({
+const migrationSql = [402, 404, 420, 422, 425].map(number => readFileSync(new URL({
   402: '../../../server/database/migrations/402_page_studio_control_plane.sql',
   404: '../../../server/database/migrations/404_page_studio_documents.sql',
-  420: '../../../server/database/migrations/420_page_studio_login_sessions.sql'
+  420: '../../../server/database/migrations/420_page_studio_login_sessions.sql',
+  422: '../../../server/database/migrations/422_page_studio_cms_visibility.sql',
+  425: '../../../server/database/migrations/425_page_studio_cms_authoring_scope.sql'
 }[number]!, import.meta.url), 'utf8'))
 const deferred = () => {
   let resolve!: () => void

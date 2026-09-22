@@ -273,3 +273,29 @@ not be reverted while staging is implemented.
   dependency/source worktrees were preserved.
 - Build6/artifact smoke precede these small CMS source corrections. A new final
   build is required before release; do not deploy the older dirty artifact.
+
+### Release regression checks (23 September)
+
+- Draft PRs: Dashboard #580 and Studio #90. Native `e5800c156` is pushed;
+  canonical binding generation now passes CI. The next CI failure was a legacy
+  checkpoint fixture missing the real CMS migrations. Both checkpoint and CMS
+  attachment fixtures now install migrations 422/425. Publishing fixtures also
+  carry release metadata; no production authority check was relaxed.
+- Reviewed the twelve new scoped API routes and five native-role inventory
+  rows. They add no God mode bypass. Updated the explicit inventories, private
+  staging binding expectations, editor environment forwarding expectations and
+  the rendered Page Studio noindex marketing claim.
+- Final full dashboard run: **14,556 passed, 1,197 skipped**, across 2,120 passing
+  and 44 skipped suites. Separately, **all 388 tests in the 16 CI PostgreSQL
+  suites passed** against disposable localhost databases. Logs:
+  `/private/tmp/root-native-full-suite-final-20260923.log` and
+  `/private/tmp/root-native-ci-postgres-final-20260923.log`.
+- Focused lint passed except four existing `no-explicit-any` errors in the God
+  mode inventory test. Running ESLint on that file from `origin/main` confirmed
+  the same four errors. The previous global typecheck limitation remains.
+- Studio's fresh sequential package run passed 4,642 tests, plus 20 security
+  and 48 action-runtime tests. Linux CI had timed out under concurrent package
+  execution; the CI scheduling correction retains every test and timeout.
+- Current-source CI build, paired integration, deployment credentials, hosted
+  Fantasy/second-client acceptance and the broader interactive CMS/action goal
+  remain open. No production content, token or hostname changed in this section.

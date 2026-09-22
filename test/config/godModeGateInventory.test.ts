@@ -201,9 +201,11 @@ describe('God mode gate inventory', () => {
     // These two SQL predicates are identity boundaries, with no owner bypass.
     // Generated collections add three native-policy lexical rows; the shared
     // CMS/workflow setup core adds one portal role check. No bypass is registered.
-    expect(inventory.rows).toHaveLength(1581)
+    // CMS adoption locks and feature publishing add five native role identity
+    // rows; none introduces an application-governance bypass.
+    expect(inventory.rows).toHaveLength(1586)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 116,
+      identity_tenant_hard_boundary: 121,
       provider_infrastructure_availability: 227,
       application_governance_bypass: 1623,
       ordinary_user_behavior: 181,
@@ -219,7 +221,7 @@ describe('God mode gate inventory', () => {
     // independent authority checks and none becomes a governance bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('51f1d500503a7e6c99f89780ade187989ec1289f79d99cbf755ff029f167a665')
+    expect(inventory.digest).toBe('0b6e789379aab81fb792abd1731972a924a9566290a795bc584ce730dd04a0f4')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

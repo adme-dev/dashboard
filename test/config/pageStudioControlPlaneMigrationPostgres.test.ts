@@ -70,6 +70,12 @@ describe.runIf(Boolean(databaseUrl))('Page Studio migration on disposable Postgr
       )
       expect(relations.rows).toHaveLength(12)
 
+      // Keep the migration-402 assertions above independent, then install the
+      // real CMS schema required by today's checkpoint writer and its fences.
+      for (const migration of ['422_page_studio_cms_visibility.sql', '425_page_studio_cms_authoring_scope.sql']) {
+        await client.query(readFileSync(new URL(`../../server/database/migrations/${migration}`, import.meta.url), 'utf8'))
+      }
+
       const roleGroups = await client.query(
         `SELECT cr.slug, array_agg(rpg.permission_group ORDER BY rpg.permission_group) AS groups
            FROM custom_roles cr

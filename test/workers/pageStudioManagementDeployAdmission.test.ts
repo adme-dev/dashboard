@@ -24,7 +24,14 @@ const config = (environment: string) => ({
   preview_urls: false,
   routes: [],
   triggers: { crons: [] },
-  vars: { PAGE_STUDIO_RELEASE_ENVIRONMENT: environment },
+  vars: { PAGE_STUDIO_RELEASE_ENVIRONMENT: environment,
+    ...(environment === 'production'
+      ? {
+          PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID: 'a5b299b3ad15c1b5b895dc66f9357b17',
+          PAGE_STUDIO_CLOUDFLARE_ZONE_ID: '8e38cbf3910d291dd218710296661073'
+        }
+      : {}) },
+  ...(environment === 'production' ? { services: [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' }] } : {}),
   observability: { enabled: true, head_sampling_rate: 0.1 },
   r2_buckets: [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` }],
   hyperdrive: [{ binding: 'HYPERDRIVE_FRESH', id: environment === 'staging' ? '3865ea5568234fc7b0e9e3e595a30286' : '90228af3e2cc461bbc09accc3b47bd9f' }]

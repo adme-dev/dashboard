@@ -57,6 +57,19 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
   surfaceCeilings: CRM_SEARCH_MARKETING_SURFACE_CEILINGS,
   claims: Object.freeze([
     {
+      key: 'features.detail.page_studio_preview_robots',
+      sourcePath: 'app/pages/features/[slug].vue',
+      route: '/features/page-studio',
+      location: 'rendered_text',
+      renderedText: 'Staging previews discourage search indexing with a noindex directive.',
+      sourceNeedle: 'carry a visible preview banner and discourage search indexing',
+      routeNeedle: 'carry a visible preview banner and discourage search indexing',
+      entitySet: ['website_preview'],
+      userSurface: 'separate_existing_feature',
+      maximumMode: 'off',
+      rolloutState: 'controlled'
+    },
+    {
       key: 'features.catalogue.crm_search_agency',
       sourcePath: 'app/pages/features/index.vue',
       route: '/features',
