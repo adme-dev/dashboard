@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cloudflareStagingProvider, CLIENT_STAGING_SERVICE } from '../../../workers/page-studio-management/src/stagingProvider'
 import { pageStudioStagingAddress } from '~~/shared/pageStudio/staging'
 
@@ -7,6 +7,21 @@ const config = { accountId: 'a'.repeat(32), zoneId: 'b'.repeat(32), apiToken: 'p
 const domain = { id: 'c'.repeat(32), cert_id: '11111111-1111-4111-8111-111111111111', environment: 'production', hostname: pageStudioStagingAddress(siteId).hostname, service: 'xeroflow-page-studio-client-staging', zone_id: config.zoneId, zone_name: 'xeroflow.io' }
 const response = (result: unknown) => new Response(JSON.stringify({ success: true, result }))
 describe('platform-owned client staging hostname provider', () => {
+  afterEach(() => vi.restoreAllMocks())
+  it('records only the failed provider operation and status without credentials or response contents', async () => {
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fetcher = vi.fn().mockResolvedValueOnce(response([])).mockResolvedValueOnce(new Response('private provider diagnostics', { status: 403 }))
+    await expect(cloudflareStagingProvider(config, fetcher).attach(siteId)).rejects.toMatchObject({ code: 'STAGING_HOST_UNAVAILABLE' })
+    expect(log).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: 'page_studio_staging_provider_failure', operation: 'attach', reason: 'http', status: 403 }))
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/private|token|xeroflow\.io/)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+  it('classifies a lost provider response without logging the thrown message', async () => {
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fetcher = vi.fn().mockRejectedValue(new Error('secret token and private address'))
+    await expect(cloudflareStagingProvider(config, fetcher).attach(siteId)).rejects.toMatchObject({ code: 'STAGING_HOST_UNAVAILABLE' })
+    expect(log).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: 'page_studio_staging_provider_failure', operation: 'list', reason: 'network', status: null }))
+  })
   it('creates only the immutable client address and verifies its exact read-back', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(response([])).mockResolvedValueOnce(response(domain)).mockResolvedValueOnce(response(domain))
     const provider = cloudflareStagingProvider(config, fetcher)
