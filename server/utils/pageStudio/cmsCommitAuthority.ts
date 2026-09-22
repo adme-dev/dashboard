@@ -18,7 +18,7 @@ import {
   type PageStudioContentScope
 } from '~~/shared/pageStudio/businessContent'
 
-type Mutation = 'business-content' | 'collection-record' | 'collection-schema'
+type Mutation = 'business-content' | 'collection-record' | 'collection-schema' | 'action-execution'
 type Principal
   = | { source: 'native-login', request: ContentAuthorityRequest }
     | {
@@ -216,7 +216,7 @@ export async function withCmsCommitAuthority<T>(
   if (
     scope.businessId !== scope.clientId
     || !z
-      .enum(['business-content', 'collection-record', 'collection-schema'])
+      .enum(['business-content', 'collection-record', 'collection-schema', 'action-execution'])
       .safeParse(input.mutation).success
   )
     throw denied()
@@ -251,8 +251,8 @@ export async function withCmsCommitAuthority<T>(
               .rows[0] ?? null
         }
         const admitted
-          = input.mutation === 'business-content'
-            ? await authorizePageStudioBusinessContent(request, true, deps)
+          = (input.mutation === 'business-content' || input.mutation === 'action-execution')
+            ? await authorizePageStudioBusinessContent(input.mutation === 'action-execution' ? { ...request, collectionAccess: true } : request, true, deps)
             : await authorizePageStudioCollections(
                 request,
                 true,
@@ -260,6 +260,10 @@ export async function withCmsCommitAuthority<T>(
                 deps
               )
         if (!samePageStudioContentScope(admitted.scope, scope)) throw denied()
+        if (input.mutation === 'action-execution') {
+          const policy = z.object({ builder: z.object({ actionExecution: z.literal(true) }), allowedModules: z.array(z.string()).optional() }).safeParse(admitted.collectionPolicy.plan_metadata)
+          if (!policy.success || (policy.data.allowedModules && !policy.data.allowedModules.includes('business-content')) || admitted.collectionPolicy.collection_capacity !== true || (request.actor.role === 'client' && admitted.collectionPolicy.portal_creation_enabled !== true)) throw denied()
+        }
         if (input.principal.source === 'studio-session') {
           await assertPageStudioSessionAuthority(
             input.principal.claims,

@@ -40,6 +40,7 @@ const proofSchema = z
   .strict()
 type VerifiedPreparation = z.infer<typeof proofSchema>
 const verifiedPreparations = new WeakSet<VerifiedPreparation>()
+const verifiedCommitInputs = new WeakMap<VerifiedPreparation, string>()
 /** Trusted private D1 adapter, never a client callback or an approval oracle.
  * Implementations must call exact readOperation and readObjects on its pinned
  * physical binding. Returned bytes are independently verified before any lock. */
@@ -125,6 +126,7 @@ export async function verifyCmsPreparation(input: CmsNativeCommit, reader: CmsPr
   }
   freezeValue(proof)
   verifiedPreparations.add(proof)
+  verifiedCommitInputs.set(proof, collectionCanonical(input))
   return proof
 }
 function principalIdentity(principal: Principal, actor: VerifiedPreparation['request']['actor']) {
@@ -254,7 +256,7 @@ export async function insertVerifiedCmsObjects(
   }
   return proof.receipt.items.map(pin => objects.find(object => cmsEqual(object.pin, pin))!)
 }
-const savedResult = z
+export const CmsManagedCommitReceiptSchema = z
   .object({
     formatVersion: z.literal(1),
     commitId: z.uuid(),
@@ -278,6 +280,25 @@ export async function commitManagedCms(
   const proof = await verifyCmsPreparation(input, dependencies.readPreparation)
   if (proof.request.items.some(item => item.kind === 'schema'))
     throw new Error('Schema effects require verified application acceptance')
+  const mutation = proof.request.items.some(item => item.kind === 'record')
+    ? 'collection-record'
+    : 'business-content'
+  return await withCmsCommitAuthority(
+    { scope: input.scope, principal, mutation },
+    async (db) => {
+      return commitVerifiedManagedCmsInTransaction(db, input, principal, proof)
+    },
+    { runTransaction: dependencies.runTransaction }
+  )
+}
+
+/** SQL-only composition for the native action coordinator. The caller must hold
+ * native authority locks and commit its invocation receipt in the same transaction.
+ * Proofs can only originate from verifyCmsPreparation. */
+export async function commitVerifiedManagedCmsInTransaction(
+  db: PageStudioControlQueryClient, input: CmsNativeCommit, principal: Principal, proof: VerifiedPreparation
+) {
+  if (!verifiedPreparations.has(proof) || verifiedCommitInputs.get(proof) !== collectionCanonical(input) || proof.request.items.some(item => item.kind === 'schema')) throw cmsUnavailable()
   const identity = principalIdentity(principal, proof.request.actor)
   const bound = {
     input,
@@ -287,206 +308,197 @@ export async function commitManagedCms(
     items: proof.receipt.items
   }
   const requestDigest = await collectionDigest(bound)
-  const mutation = proof.request.items.some(item => item.kind === 'record')
-    ? 'collection-record'
-    : 'business-content'
-  return await withCmsCommitAuthority(
-    { scope: input.scope, principal, mutation },
-    async (db) => {
-      await checkChild(db, principal, proof)
-      const context = await lockCmsContext(db, input.scope)
-      if (
-        context.state.active_generation !== input.generation
-        || context.state.freeze_digest !== input.freezeDigest
-        || !cmsEqual(context.state.target, input.target)
+  await checkChild(db, principal, proof)
+  const context = await lockCmsContext(db, input.scope)
+  if (
+    context.state.active_generation !== input.generation
+    || context.state.freeze_digest !== input.freezeDigest
+    || !cmsEqual(context.state.target, input.target)
+  )
+    throw cmsUnavailable()
+  const currentCheckpoint = await checkpoint(db, input)
+  const rows = (
+    await db.query<{
+      request_digest: string
+      prepared_digest: string
+      request: unknown
+      result: unknown
+      id: string
+      generation: string
+    }>(
+      `SELECT request_digest,prepared_digest,request,result,id,generation FROM page_studio_cms_commits WHERE scope_key=$1 AND operation_id=$2`,
+      [context.state.scope_key, input.operationId]
+    )
+  ).rows
+  if (rows.length) {
+    const prior = rows[0]!
+    if (
+      prior.request_digest !== requestDigest
+      || prior.prepared_digest !== input.preparedDigest
+      || !cmsEqual(prior.request, bound)
+    )
+      throw new Error('CMS exact replay conflict')
+    const receipt = CmsManagedCommitReceiptSchema.parse(prior.result)
+    if (
+      receipt.commitId !== prior.id
+      || receipt.generation !== prior.generation
+      || receipt.requestDigest !== requestDigest
+      || receipt.preparedDigest !== input.preparedDigest
+      || receipt.operationId !== input.operationId
+      || receipt.generation !== input.generation
+      || !cmsEqual(receipt.application, input.expectedApplication)
+      || !cmsEqual(
+        receipt.objects.map(item => item.pin),
+        proof.receipt.items
       )
-        throw cmsUnavailable()
-      const currentCheckpoint = await checkpoint(db, input)
-      const rows = (
-        await db.query<{
-          request_digest: string
-          prepared_digest: string
-          request: unknown
-          result: unknown
-          id: string
-          generation: string
-        }>(
-          `SELECT request_digest,prepared_digest,request,result,id,generation FROM page_studio_cms_commits WHERE scope_key=$1 AND operation_id=$2`,
-          [context.state.scope_key, input.operationId]
+    )
+      throw cmsUnavailable()
+    let current
+      = context.application.id === receipt.application.id
+        && context.application.digest === receipt.application.digest
+        && cmsEqual(currentCheckpoint, input.expectedCheckpoint)
+    for (const object of receipt.objects) {
+      if (object.pin.kind === 'schema') throw cmsUnavailable()
+      const stored = (
+        await db.query<Record<string, unknown>>(
+          'SELECT * FROM page_studio_cms_objects WHERE scope_key=$1 AND generation=$2 AND id=$3',
+          [context.state.scope_key, input.generation, object.id]
         )
       ).rows
-      if (rows.length) {
-        const prior = rows[0]!
-        if (
-          prior.request_digest !== requestDigest
-          || prior.prepared_digest !== input.preparedDigest
-          || !cmsEqual(prior.request, bound)
-        )
-          throw new Error('CMS exact replay conflict')
-        const receipt = savedResult.parse(prior.result)
-        if (
-          receipt.commitId !== prior.id
-          || receipt.generation !== prior.generation
-          || receipt.requestDigest !== requestDigest
-          || receipt.preparedDigest !== input.preparedDigest
-          || receipt.operationId !== input.operationId
-          || receipt.generation !== input.generation
-          || !cmsEqual(receipt.application, input.expectedApplication)
-          || !cmsEqual(
-            receipt.objects.map(item => item.pin),
-            proof.receipt.items
-          )
-        )
-          throw cmsUnavailable()
-        let current
-          = context.application.id === receipt.application.id
-            && context.application.digest === receipt.application.digest
-            && cmsEqual(currentCheckpoint, input.expectedCheckpoint)
-        for (const object of receipt.objects) {
-          if (object.pin.kind === 'schema') throw cmsUnavailable()
-          const stored = (
-            await db.query<Record<string, unknown>>(
-              'SELECT * FROM page_studio_cms_objects WHERE scope_key=$1 AND generation=$2 AND id=$3',
-              [context.state.scope_key, input.generation, object.id]
-            )
-          ).rows
-          if (stored.length !== 1 || !cmsEqual(decodeCmsObject(stored[0], context).pin, object.pin))
-            throw cmsUnavailable()
-          const head = await currentObject(
-            db,
-            context,
-            object.pin.kind,
-            object.pin.collectionId,
-            object.pin.recordId
-          )
-          current = current && head?.id === object.id && cmsEqual(head.pin, object.pin)
-        }
-        if (!proof.request.items.some(item => item.kind === 'content')) {
-          const content = await currentObject(db, context, 'content')
-          current = current && cmsEqual(content?.pin ?? null, input.expectedContent)
-        }
-        return { receipt, current, replayed: true }
-      }
-      if (
-        context.application.id !== input.expectedApplication.id
-        || context.application.digest !== input.expectedApplication.digest
-        || !cmsEqual(currentCheckpoint, input.expectedCheckpoint)
-      )
+      if (stored.length !== 1 || !cmsEqual(decodeCmsObject(stored[0], context).pin, object.pin))
         throw cmsUnavailable()
-      if (
-        proof.request.action
-        && !context.application.manifest.actions.some(action =>
-          cmsEqual(action, proof.request.action)
-        )
+      const head = await currentObject(
+        db,
+        context,
+        object.pin.kind,
+        object.pin.collectionId,
+        object.pin.recordId
       )
-        throw cmsUnavailable()
+      current = current && head?.id === object.id && cmsEqual(head.pin, object.pin)
+    }
+    if (!proof.request.items.some(item => item.kind === 'content')) {
       const content = await currentObject(db, context, 'content')
-      if (!cmsEqual(content?.pin ?? null, input.expectedContent)) throw cmsUnavailable()
-      const schemaPins = new Map<string, CmsObjectPin>()
-      for (const expected of input.expectedSchemas) {
-        const accepted = await readAcceptedCmsObject(db, {
-          scope: input.scope,
-          kind: 'schema',
-          collectionId: expected.collectionId
-        })
-        if (!cmsEqual(accepted.pin, expected)) throw cmsUnavailable()
-        schemaPins.set(expected.collectionId, expected)
-      }
-      const records = proof.request.items.filter(item => item.kind === 'record')
-      if (records.length !== input.expectedRecords.length) throw cmsUnavailable()
-      for (const item of proof.request.items) {
-        if (item.kind === 'record') {
-          const expected = input.expectedRecords.find(
-            record =>
-              record.collectionId === item.body.collectionId && record.recordId === item.body.id
-          )
-          if (
-            !expected
-            || !cmsEqual(expected.base, item.expectedBase)
-            || !cmsEqual(schemaPins.get(item.body.collectionId) ?? null, item.schema)
-          )
-            throw cmsUnavailable()
-          const head = await currentObject(
-            db,
-            context,
-            'record',
-            item.body.collectionId,
-            item.body.id
-          )
-          if (!cmsEqual(head?.pin ?? null, expected.base)) throw cmsUnavailable()
-        } else if (!cmsEqual(item.expectedBase, input.expectedContent)) throw cmsUnavailable()
-      }
-      const commitId = randomUUID(),
-        auditId = randomUUID()
-      const objects = await insertVerifiedCmsObjects(db, context, proof, commitId)
-      for (const object of objects) {
-        if (object.pin.kind === 'content')
-          await db.query(
-            `UPDATE page_studio_cms_scopes SET current_content_id=$2 WHERE scope_key=$1`,
-            [context.state.scope_key, object.id]
-          )
-        else
-          await db.query(
-            `INSERT INTO page_studio_cms_record_heads(scope_key,generation,collection_id,record_id,object_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(scope_key,generation,collection_id,record_id) DO UPDATE SET object_id=EXCLUDED.object_id`,
-            [
-              context.state.scope_key,
-              input.generation,
-              object.pin.collectionId,
-              object.pin.recordId,
-              object.id
-            ]
-          )
-      }
-      const receipt = savedResult.parse({
-        formatVersion: 1,
-        commitId,
-        operationId: input.operationId,
-        requestDigest,
-        preparedDigest: input.preparedDigest,
-        generation: input.generation,
-        application: input.expectedApplication,
-        objects,
-        createdAt: new Date().toISOString()
-      })
-      await db.query(
-        `INSERT INTO page_studio_audit_events(id,tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,$5,$6,'cms.commit','cms-operation',$7,$8,$9)`,
-        [
-          auditId,
-          input.scope.tenantId,
-          input.scope.clientId,
-          input.scope.siteId,
-          proof.request.actor.userId,
-          proof.request.actor.kind === 'agency-user' ? 'agency' : 'client',
-          input.operationId,
-          `cms:${input.scope.environment}:${input.operationId}`,
-          {
-            commitId,
-            requestDigest,
-            preparedDigest: input.preparedDigest,
-            generation: input.generation
-          }
-        ]
+      current = current && cmsEqual(content?.pin ?? null, input.expectedContent)
+    }
+    return { receipt, current, replayed: true }
+  }
+  if (
+    context.application.id !== input.expectedApplication.id
+    || context.application.digest !== input.expectedApplication.digest
+    || !cmsEqual(currentCheckpoint, input.expectedCheckpoint)
+  )
+    throw cmsUnavailable()
+  if (
+    proof.request.action
+    && !context.application.manifest.actions.some(action =>
+      cmsEqual(action, proof.request.action)
+    )
+  )
+    throw cmsUnavailable()
+  const content = await currentObject(db, context, 'content')
+  if (!cmsEqual(content?.pin ?? null, input.expectedContent)) throw cmsUnavailable()
+  const schemaPins = new Map<string, CmsObjectPin>()
+  for (const expected of input.expectedSchemas) {
+    const accepted = await readAcceptedCmsObject(db, {
+      scope: input.scope,
+      kind: 'schema',
+      collectionId: expected.collectionId
+    })
+    if (!cmsEqual(accepted.pin, expected)) throw cmsUnavailable()
+    schemaPins.set(expected.collectionId, expected)
+  }
+  const records = proof.request.items.filter(item => item.kind === 'record')
+  if (records.length !== input.expectedRecords.length) throw cmsUnavailable()
+  for (const item of proof.request.items) {
+    if (item.kind === 'record') {
+      const expected = input.expectedRecords.find(
+        record =>
+          record.collectionId === item.body.collectionId && record.recordId === item.body.id
       )
+      if (
+        !expected
+        || !cmsEqual(expected.base, item.expectedBase)
+        || !cmsEqual(schemaPins.get(item.body.collectionId) ?? null, item.schema)
+      )
+        throw cmsUnavailable()
+      const head = await currentObject(
+        db,
+        context,
+        'record',
+        item.body.collectionId,
+        item.body.id
+      )
+      if (!cmsEqual(head?.pin ?? null, expected.base)) throw cmsUnavailable()
+    } else if (!cmsEqual(item.expectedBase, input.expectedContent)) throw cmsUnavailable()
+  }
+  const commitId = randomUUID(),
+    auditId = randomUUID()
+  const objects = await insertVerifiedCmsObjects(db, context, proof, commitId)
+  for (const object of objects) {
+    if (object.pin.kind === 'content')
       await db.query(
-        `INSERT INTO page_studio_cms_commits(scope_key,generation,id,operation_id,request_digest,prepared_digest,request,result,actor_id,audit_id,tenant_id,client_id,site_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        `UPDATE page_studio_cms_scopes SET current_content_id=$2 WHERE scope_key=$1`,
+        [context.state.scope_key, object.id]
+      )
+    else
+      await db.query(
+        `INSERT INTO page_studio_cms_record_heads(scope_key,generation,collection_id,record_id,object_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(scope_key,generation,collection_id,record_id) DO UPDATE SET object_id=EXCLUDED.object_id`,
         [
           context.state.scope_key,
           input.generation,
-          commitId,
-          input.operationId,
-          requestDigest,
-          input.preparedDigest,
-          bound,
-          receipt,
-          proof.request.actor.userId,
-          auditId,
-          input.scope.tenantId,
-          input.scope.clientId,
-          input.scope.siteId
+          object.pin.collectionId,
+          object.pin.recordId,
+          object.id
         ]
       )
-      return { receipt, current: true, replayed: false }
-    },
-    { runTransaction: dependencies.runTransaction }
+  }
+  const receipt = CmsManagedCommitReceiptSchema.parse({
+    formatVersion: 1,
+    commitId,
+    operationId: input.operationId,
+    requestDigest,
+    preparedDigest: input.preparedDigest,
+    generation: input.generation,
+    application: input.expectedApplication,
+    objects,
+    createdAt: new Date().toISOString()
+  })
+  await db.query(
+    `INSERT INTO page_studio_audit_events(id,tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,$5,$6,'cms.commit','cms-operation',$7,$8,$9)`,
+    [
+      auditId,
+      input.scope.tenantId,
+      input.scope.clientId,
+      input.scope.siteId,
+      proof.request.actor.userId,
+      proof.request.actor.kind === 'agency-user' ? 'agency' : 'client',
+      input.operationId,
+      `cms:${input.scope.environment}:${input.operationId}`,
+      {
+        commitId,
+        requestDigest,
+        preparedDigest: input.preparedDigest,
+        generation: input.generation
+      }
+    ]
   )
+  await db.query(
+    `INSERT INTO page_studio_cms_commits(scope_key,generation,id,operation_id,request_digest,prepared_digest,request,result,actor_id,audit_id,tenant_id,client_id,site_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [
+      context.state.scope_key,
+      input.generation,
+      commitId,
+      input.operationId,
+      requestDigest,
+      input.preparedDigest,
+      bound,
+      receipt,
+      proof.request.actor.userId,
+      auditId,
+      input.scope.tenantId,
+      input.scope.clientId,
+      input.scope.siteId
+    ]
+  )
+  return { receipt, current: true, replayed: false }
 }
