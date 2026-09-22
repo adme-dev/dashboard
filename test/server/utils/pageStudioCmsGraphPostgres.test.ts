@@ -1,3 +1,4 @@
+import { readAcceptedComponentCmsData } from '~~/server/utils/pageStudio/componentCmsData'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -427,5 +428,31 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
     expect(app.checkpoint.id).toBe(accepted.checkpointId)
     f.get.mockRejectedValue(new Error('R2 unavailable'))
     expect(await acceptManagedFeatureCandidate(candidate, f.principal, f.deps)).toEqual(accepted)
+  })
+  it.each(['current', 'revoked'] as const)('projects actual accepted component records under %s PostgreSQL authority', async (mode) => {
+    const f = await fixture()
+    const accepted = await coordinateCmsGraphTransition(f.input, f.principal, f.deps)
+    const schemaObject = (await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'schema\'')).rows[0]
+    const recordBody = { scope, collectionId: 'fleet', id: 'record_a', revision: 1, schemaVersion: 1, archived: false, values: { title: 'Accepted public value' } }
+    const recordPin = { ...schemaObject.storage_pin, kind: 'record', recordId: 'record_a', operationId: 'record_projection', sha256: await collectionDigest(recordBody), bytes: new TextEncoder().encode(JSON.stringify(recordBody)).length }
+    const recordId = randomUUID()
+    const inserted = (await observer.query(`INSERT INTO page_studio_cms_objects(scope_key,generation,id,kind,collection_id,record_id,logical_version,storage_pin,schema_object_id,archived,actor_id,created_at,adoption_id) VALUES($1,$2,$3,'record','fleet','record_a',1,$4,$5,FALSE,$6,clock_timestamp(),'adoption_a') RETURNING created_at`, [schemaObject.scope_key, schemaObject.generation, recordId, recordPin, schemaObject.id, request.actor.actorId])).rows[0]
+    await observer.query(`INSERT INTO page_studio_cms_record_heads(scope_key,generation,collection_id,record_id,object_id) VALUES($1,$2,'fleet','record_a',$3)`, [schemaObject.scope_key, schemaObject.generation, recordId])
+    const router = request.env.PAGE_STUDIO_CONTENT_ROUTER as { readManagedCmsObjects: (input: { pins: Array<{ kind: string }> }) => Promise<unknown[]> }
+    const original = router.readManagedCmsObjects
+    router.readManagedCmsObjects = async (input) => {
+      if (input.pins[0]?.kind !== 'record') return await original(input)
+      if (mode === 'revoked') await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      return [{ pin: recordPin, body: recordBody, actorId: request.actor.actorId, createdAt: new Date(inserted.created_at).toISOString(), schema: schemaObject.storage_pin, head: false }]
+    }
+    const pin = (await observer.query('SELECT manifest FROM page_studio_application_versions WHERE id=$1', [accepted.application.id])).rows[0].manifest.components.find((pin: { id: string }) => pin.id === 'fleet_view')
+    const result = readAcceptedComponentCmsData({ pin }, f.principal, f.deps)
+    if (mode === 'revoked') await expect(result).rejects.toThrow()
+    else {
+      const data = await result
+      expect(Object.values(data.data)).toEqual([[{ id: 'record_a', values: { title: 'Accepted public value' } }]])
+      expect(data.application).toEqual(accepted.application)
+      expect(data.definitions.map(definition => definition.id)).toEqual(['fleet'])
+    }
   })
 })
