@@ -943,3 +943,79 @@ export async function recoverCmsAdoption(
     { runTransaction: deps.runTransaction }
   )
 }
+
+/** Internal orchestration discovery under CURRENT schema authority. This permits
+ * a fresh login to see redacted progress and request explicit recovery; it never
+ * grants that principal permission to advance the original actor's operation. */
+export async function readCmsAdoptionControl(
+  scope: PageStudioContentScope,
+  principal: Principal,
+  deps: Dependencies = {}
+) {
+  return await withCmsCommitAuthority(
+    { scope, principal, mutation: 'collection-schema' },
+    async (db) => {
+      const current = await currentPrincipal(db, principal)
+      const row = (
+        await db.query<AdoptionRow>(
+          'SELECT * FROM page_studio_cms_scopes WHERE scope_key=$1 FOR UPDATE',
+          [contentScopeKey(scope)]
+        )
+      ).rows[0]
+      const checkpoint
+        = (
+          await db.query<{ id: string, digest: string, object_key: string }>(
+            `SELECT c.id,c.digest,c.object_key FROM page_studio_sites s JOIN page_studio_checkpoints c ON c.tenant_id=s.tenant_id AND c.client_id=s.client_id AND c.site_id=s.id AND c.id=s.current_checkpoint_id WHERE s.tenant_id=$1 AND s.client_id=$2 AND s.id=$3`,
+            [scope.tenantId, scope.clientId, scope.siteId]
+          )
+        ).rows[0] ?? null
+      if (!row) return { current, checkpoint, adoption: null }
+      const intent = CmsAdoptionIntentSchema.parse(row.adoption_request)
+      if (contentScopeKey(intent.scope) !== contentScopeKey(scope)) throw cmsUnavailable()
+      await lock(db, intent)
+      let canAdvance = true
+      try {
+        await actorCheck(db, intent, principal)
+      } catch (error) {
+        if (
+          !(error instanceof Error)
+          || ![
+            'CMS adoption requires explicit recovery',
+            'CMS adoption recovery authority mismatch'
+          ].includes(error.message)
+        )
+          throw error
+        canAdvance = false
+      }
+      const receipt
+        = row.adoption_receipt === null ? null : adoptionReceiptSchema.parse(row.adoption_receipt)
+      if (receipt) {
+        const { digest, ...body } = receipt
+        if (
+          (await collectionDigest(body)) !== digest
+          || receipt.adoptionId !== intent.adoptionId
+          || receipt.generation !== intent.generation
+          || receipt.freezeDigest !== row.freeze_digest
+          || contentScopeKey(receipt.scope) !== contentScopeKey(scope)
+          || !cmsEqual(receipt.checkpoint, intent.expectedCheckpoint)
+        )
+          throw cmsUnavailable()
+      }
+      return {
+        current,
+        checkpoint,
+        adoption: {
+          intent,
+          digest: row.adoption_digest,
+          state: row.state,
+          freezeDigest: row.freeze_digest,
+          progress: row.import_progress === null ? null : progressSchema.parse(row.import_progress),
+          recoveryId: row.adoption_recovery_id,
+          receipt,
+          canAdvance
+        }
+      }
+    },
+    { runTransaction: deps.runTransaction }
+  )
+}

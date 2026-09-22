@@ -72,6 +72,7 @@ function forwardedRequest(request: Request, config: GatewayConfiguration): Reque
   // Only these handlers verify an editor token alongside the gateway credential.
   if (request.method === 'POST' && [
     '/internal/page-studio/ai-usage',
+    '/internal/page-studio/cms-adoption',
     '/internal/page-studio/ai-proposals/accept',
     '/internal/page-studio/checkpoints/editor-commit',
     '/internal/page-studio/sessions/authorize'
