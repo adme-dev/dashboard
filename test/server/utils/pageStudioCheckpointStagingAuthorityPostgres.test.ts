@@ -7,6 +7,8 @@ import { beginInitialStagingSnapshot, beginStagingSnapshot, stagingArtifactPrefi
 import * as stagingCoordinator from '../../../workers/page-studio-management/src/stagingCoordinator'
 import type { StagingCoordinatorDependencies } from '../../../workers/page-studio-management/src/stagingCoordinator'
 import * as authority from '../../../workers/page-studio-management/src/stagingAuthority'
+import { dispatchCheckpointStaging } from '../../../server/utils/pageStudio/checkpointStagingDispatcher'
+import type { CheckpointStagingDatabase } from '../../../server/utils/pageStudio/checkpointStagingOutbox'
 
 const url = process.env.PAGE_STUDIO_CMS_DATABASE_TEST_URL
 if (url) {
@@ -52,7 +54,7 @@ describe.runIf(Boolean(url))('retained checkpoint staging authority on PostgreSQ
       CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));
       CREATE TABLE page_studio_sessions(nonce TEXT PRIMARY KEY,tenant_id TEXT,client_id UUID,site_id UUID,user_id TEXT,role TEXT,capabilities JSONB,issued_at TIMESTAMPTZ,expires_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ);`)
-    for (const name of ['402_page_studio_control_plane.sql', '415_page_studio_setup_proposals.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql'])
+    for (const name of ['402_page_studio_control_plane.sql', '415_page_studio_setup_proposals.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql', '429_page_studio_checkpoint_staging_outbox.sql'])
       await db.query(readFileSync(new URL(`../../../server/database/migrations/${name}`, import.meta.url), 'utf8'))
     await db.query('INSERT INTO custom_roles VALUES($1,\'owner\',TRUE,FALSE)', [roleId])
     await db.query('INSERT INTO role_permission_groups VALUES($1,\'PAGE_STUDIO_VIEW\'),($1,\'PAGE_STUDIO_EDIT\') ON CONFLICT DO NOTHING', [roleId])
@@ -114,10 +116,10 @@ describe.runIf(Boolean(url))('retained checkpoint staging authority on PostgreSQ
         return { verified: true, manifestDigest: value.manifestDigest }
       })
     }
-    const run = () => {
+    const run = (request: unknown = input) => {
       const coordinate = Reflect.get(stagingCoordinator, 'coordinateCheckpointStaging')
       expect(coordinate, 'Checkpoint staging must retain and recheck its original authority').toBeTypeOf('function')
-      return coordinate(input, 'staging', dependencies)
+      return coordinate(request, 'staging', dependencies)
     }
     return { dependencies, run }
   }
@@ -247,6 +249,97 @@ describe.runIf(Boolean(url))('retained checkpoint staging authority on PostgreSQ
         digest: input.digest, expectedActiveId: null, idempotencyKey: 'initial-staging-v1' }
       await expect(transaction(() => beginStagingSnapshot(db, same))).rejects.toMatchObject({ code: 'STAGING_CHANGED' })
       await expect(transaction(() => beginStagingSnapshot(db, { ...same, originAuditId: randomUUID() } as Parameters<typeof beginStagingSnapshot>[1]))).rejects.toMatchObject({ code: 'STAGING_CHANGED' })
+    })
+  })
+  describe('outbox dispatch through the real authority and staging coordinator', () => {
+    function dispatcher() {
+      const { run, dependencies } = execution()
+      const checkpointStaging = vi.fn(async (request: unknown) => {
+        try {
+          return { ok: true, request, value: await run(request) }
+        } catch (error) {
+          const failure = error as { code: string, statusCode: number }
+          return { ok: false, error: { code: failure.code, statusCode: failure.statusCode } }
+        }
+      })
+      const env = { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging', PAGE_STUDIO_MANAGEMENT: { checkpointStaging } }
+      const transact = <T>(work: (db: CheckpointStagingDatabase) => Promise<T>) => transaction(() => work(db))
+      return { dependencies, checkpointStaging, env, transact, dispatch: () => dispatchCheckpointStaging(env, { transaction: transact }) }
+    }
+    const workState = async () => (await db.query('SELECT state,outcome,attempts FROM page_studio_checkpoint_staging_outbox')).rows
+    const admissions = async () => (await db.query('SELECT count(*)::int AS count FROM page_studio_build_admissions')).rows[0].count
+
+    it('recovers a lost successful RPC response with the same identity and one build admission', async () => {
+      await seed('client', 'studio-session')
+      const first = dispatcher()
+      const rpc = first.checkpointStaging.getMockImplementation()!
+      first.checkpointStaging.mockImplementationOnce(async (request) => {
+        expect(await rpc(request)).toMatchObject({ ok: true, value: { status: 'ready' } })
+        throw new Error('response lost after activation')
+      })
+      expect(await first.dispatch()).toMatchObject({ claimed: 1, rescheduled: 1, completed: 0 })
+      expect(await workState()).toEqual([{ state: 'pending', outcome: 'STAGING_SERVICE_UNAVAILABLE', attempts: 1 }])
+      await db.query('UPDATE page_studio_checkpoint_staging_outbox SET available_at=clock_timestamp()')
+      const recovered = dispatcher()
+      expect(await recovered.dispatch()).toMatchObject({ claimed: 1, completed: 1 })
+      expect(recovered.checkpointStaging).toHaveBeenCalledExactlyOnceWith(input)
+      expect(recovered.dependencies.attach).not.toHaveBeenCalled()
+      expect(recovered.dependencies.build).not.toHaveBeenCalled()
+      expect(await admissions()).toBe(1)
+      expect(await workState()).toEqual([{ state: 'completed', outcome: 'READY', attempts: 2 }])
+      expect((await db.query('SELECT id FROM page_studio_audit_events WHERE action=\'staging.activated\'')).rows).toHaveLength(1)
+    })
+    it('reschedules a live snapshot claim, then recovers its expired lease without new quota', async () => {
+      await seed('agency', 'native-login')
+      const snapshot = await transaction(() => beginInitialStagingSnapshot(db, { scope, actorId: userId, actorRole: 'agency', originAuditId: input.auditId }))
+      await db.query('UPDATE page_studio_staging_deployments SET state=\'building\',claim_token=$1,claim_until=clock_timestamp()+INTERVAL \'2 minutes\'', [randomUUID()])
+      const first = dispatcher()
+      expect(await first.dispatch()).toMatchObject({ rescheduled: 1, completed: 0 })
+      expect(await workState()).toEqual([{ state: 'pending', outcome: 'PENDING', attempts: 1 }])
+      expect(first.dependencies.attach).not.toHaveBeenCalled()
+      await db.query('UPDATE page_studio_staging_deployments SET claim_until=clock_timestamp()-INTERVAL \'1 second\'')
+      await db.query('UPDATE page_studio_checkpoint_staging_outbox SET available_at=clock_timestamp()')
+      expect(await dispatcher().dispatch()).toMatchObject({ completed: 1 })
+      expect(await admissions()).toBe(1)
+      expect((await db.query('SELECT active_deployment_id FROM page_studio_staging_sites')).rows[0].active_deployment_id).toBe(snapshot!.id)
+    })
+    it('stops delivery when the original login is revoked during a provider operation', async () => {
+      await seed('client', 'studio-session')
+      const current = dispatcher()
+      const attach = current.dependencies.attach
+      current.dependencies.attach = async (siteId) => {
+        const result = await attach(siteId)
+        await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+        return result
+      }
+      expect(await current.dispatch()).toMatchObject({ stopped: 1, completed: 0 })
+      expect(await workState()).toEqual([{ state: 'stopped', outcome: 'STAGING_ACCESS_DENIED', attempts: 1 }])
+      expect(current.dependencies.build).not.toHaveBeenCalled()
+      expect((await db.query('SELECT active_deployment_id FROM page_studio_staging_sites')).rows[0].active_deployment_id).toBeNull()
+      expect(await dispatcher().dispatch()).toMatchObject({ claimed: 0 })
+    })
+    it.each(['rollback', 'lost commit response'] as const)('reconciles settlement %s without duplicate activation', async (failure) => {
+      await seed('agency', 'native-login')
+      const current = dispatcher()
+      let transactions = 0
+      const result = await dispatchCheckpointStaging(current.env, { transaction: async (work) => {
+        if (++transactions !== 2) return current.transact(work)
+        if (failure === 'rollback') return current.transact(async (database) => {
+          await work(database)
+          throw new Error('connection lost before commit')
+        })
+        await current.transact(work)
+        throw new Error('commit response lost')
+      } })
+      expect(result).toMatchObject({ unsettled: 1, completed: 0 })
+      expect(await workState()).toEqual([{ state: failure === 'rollback' ? 'leased' : 'completed', outcome: failure === 'rollback' ? null : 'READY', attempts: 1 }])
+      if (failure === 'rollback') await db.query('UPDATE page_studio_checkpoint_staging_outbox SET claim_until=clock_timestamp()-INTERVAL \'1 second\'')
+      const recovered = dispatcher()
+      expect(await recovered.dispatch()).toMatchObject({ claimed: failure === 'rollback' ? 1 : 0, completed: failure === 'rollback' ? 1 : 0 })
+      expect(recovered.dependencies.build).not.toHaveBeenCalled()
+      expect(await admissions()).toBe(1)
+      expect((await db.query('SELECT id FROM page_studio_audit_events WHERE action=\'staging.activated\'')).rows).toHaveLength(1)
+      expect((await workState())[0].state).toBe('completed')
     })
   })
   describe.each(['agency', 'client'] as const)('%s originating login', (role) => {
