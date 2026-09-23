@@ -332,3 +332,33 @@ pass: valid verification mints an exact-intent proof, and a redirected response
 produces no proof or second request. Tests use synthetic credentials and a local
 outbound handler only. Focused lint passes. This follow-up is local and
 requires the later guarded Pages release; public-action activation remains off.
+
+## Fantasy staging live acceptance, 23 September
+
+PR586 passed full CI 35820953005 and merged as
+`13c27eab3bb79230e8b9b354450b1d4e6df13d86`. The guarded management deployment
+released version `a3961bf7-f966-42dc-b428-152fd5d19d36`, read back at 100% on
+`xeroflow-page-studio-management-production`. Full CI reported 14,563 passing
+tests plus its separate database/runtime/security gates; 1,198 tests were skipped.
+The four new runtime fetch regressions ran and passed in CI.
+
+One authenticated Update staging succeeded at 05:20:34 UTC for Fantasy Limo.
+Active snapshot: `2d28cfbf-d238-4cac-9639-0239fe14d205`; checkpoint:
+`checkpoint_a0a9ec85-4d8b-4fa8-9892-aa3d0377cd4b`; digest:
+`7d3f6a9295ba5e32e5576afd0fe03ed6bea8d2a4bf069082dbbc235bc4270570`.
+Its current production release remains NULL. The separate reference site's
+existing production release was preserved. No manual database activation occurred.
+
+URL: https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/
+Home, `/our-fleet-chrysler-limo-hire-melbourne`, hero image and runtime script
+return 200. Chrome renders the home and fleet pages. Home headers are `no-store`
+and `noindex, nofollow, noarchive`. The preview banner identifies saved draft
+content and disabled form submissions. Evidence is retained under
+`/private/tmp/root-fantasy-live-*` and `root-staging-after-fetch-fix.json`.
+This proves a shareable visual preview; interactive staging CMS/actions,
+second-client acceptance and automatic checkpoint dispatch remain open.
+
+The pending initial-staging branch was rebased onto that exact release. The
+private RPC's dependency helper retains the corrected probe. 71 focused runtime,
+management and private-client tests plus strict Worker TypeScript passed after
+conflict resolution. These pending changes are not deployed by the Worker fix.

@@ -58,7 +58,7 @@ needed. Existing completed work and unrelated sessions must be preserved.
 - [x] S2 Durable, scoped staging reservation and snapshot lifecycle (local PostgreSQL tests).
   Reuse existing transaction/audit patterns. Test real PostgreSQL concurrency,
   restart recovery, tenant rejection, and old pointer preservation on failure.
-- [x] S3 Platform hostname provisioning adapter (provider boundary tests; live attach pending).
+- [x] S3 Platform hostname provisioning adapter (provider boundary and live Fantasy hostname verification passed).
   Read before attach; verify exact zone/service/host receipt; recover uncertain
   responses. Test conflict, partial failure, wrong provider response and retry.
 - [ ] S4 Snapshot build and delivery through explicit staging bindings.
@@ -76,6 +76,16 @@ needed. Existing completed work and unrelated sessions must be preserved.
 - [ ] S8 Host Fantasy's current saved site, verify home + internal page + assets
   + no live side effects, and return the actual working URL. Verify a second
   independent client and rejected cross-client accesses before completion.
+  - [x] Fantasy saved checkpoint deployed; home, fleet page, image and runtime
+    script return200; Chrome renders home and fleet; noindex/no-store confirmed.
+  - [ ] Independent second-client and rejected cross-client hosted acceptance.
+
+Latest live evidence (23 September): management release13c27eab3, version
+`a3961bf7-f966-42dc-b428-152fd5d19d36`; Fantasy snapshot
+`2d28cfbf-d238-4cac-9639-0239fe14d205` activated05:20:34UTC. URL:
+https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/ . Production release
+remains unset; staging form submissions remain disabled. See the initial-staging
+verification document for evidence and remaining broader CMS/action gates.
 
 ## Source checked
 
