@@ -161,6 +161,14 @@ describe.runIf(Boolean(databaseUrl))('client staging reservation on PostgreSQL',
     expect(await coordinateStaging(input, dependencies)).toEqual(first)
     expect((await db.query('SELECT * FROM page_studio_audit_events WHERE action=\'staging.activated\'')).rows).toHaveLength(1)
   })
+  it('activates and retains the longer hostname identifier returned by Cloudflare', async () => {
+    const { input, dependencies } = await coordinator()
+    const attach = dependencies.attach
+    const domainId = '34d9b1c173151b06f79935e65e911ecb52e8e3ec'
+    dependencies.attach = async siteId => ({ ...await attach(siteId), domainId })
+    expect(await coordinateStaging(input, dependencies)).toMatchObject({ status: 'ready', active: { digest } })
+    expect((await db.query('SELECT provider_domain_id FROM page_studio_staging_sites')).rows).toEqual([{ provider_domain_id: domainId }])
+  })
   it('never builds or activates before HTTPS hostname read-back succeeds', async () => {
     const { input, dependencies } = await coordinator()
     dependencies.probe = async () => false

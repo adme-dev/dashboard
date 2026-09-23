@@ -6,8 +6,11 @@ import { pageStudioStagingAddress } from '../../../shared/pageStudio/staging'
 export const CLIENT_STAGING_SERVICE = 'xeroflow-page-studio-client-staging'
 const ProviderId = z.string().regex(/^[a-f0-9]{32}$/)
 const Configuration = z.object({ accountId: ProviderId, zoneId: ProviderId, apiToken: z.string().min(1) }).strict()
+// Worker hostname IDs are opaque hex identifiers; live Cloudflare responses
+// can exceed the 32 characters used by account and zone IDs.
+export const StagingProviderDomainIdSchema = z.string().regex(/^[a-f0-9]{32,64}$/)
 const ProviderDomain = z.object({
-  id: ProviderId, cert_id: z.string().uuid(), hostname: z.string().max(253), service: z.string().max(128),
+  id: StagingProviderDomainIdSchema, cert_id: z.string().uuid(), hostname: z.string().max(253), service: z.string().max(128),
   zone_id: ProviderId, zone_name: z.string().max(253), environment: z.string().optional()
 })
 export class StagingProviderError extends Error {

@@ -1,3 +1,4 @@
+import { StagingProviderDomainIdSchema } from './stagingProvider'
 import { z } from 'zod'
 import { PageStudioStagingRequestSchema, pageStudioStagingAddress } from '../../../shared/pageStudio/staging'
 import type { DomainTransaction } from './domainAttachment'
@@ -68,7 +69,7 @@ export async function coordinateStaging(raw: unknown, dependencies: StagingCoord
   try {
     const address = pageStudioStagingAddress(siteId)
     const host = await dependencies.attach(siteId)
-    if (host.hostname !== address.hostname || !/^[a-f0-9]{32}$/.test(host.domainId) || !z.string().uuid().safeParse(host.certificateId).success
+    if (host.hostname !== address.hostname || !StagingProviderDomainIdSchema.safeParse(host.domainId).success || !z.string().uuid().safeParse(host.certificateId).success
       || !await dependencies.probe(address.hostname)) throw new Error('Staging hostname not ready')
     await withClaim(async (db) => {
       const result = await db.query(`UPDATE page_studio_staging_sites SET host_state='ready',provider_domain_id=$4,provider_verified_at=clock_timestamp(),updated_at=clock_timestamp()
