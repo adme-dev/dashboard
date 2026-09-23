@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const defaultDirectory = fileURLToPath(new URL('../shared/pageStudio/generated/', import.meta.url))
-const names = ['builderGraphVerifier.mjs', 'builderGraphVerifier.d.mts', 'builderGraphFixtures.json', 'builderGraphLicenses.txt']
+const names = ['astroBuildIdentityFixtures.json', 'builderGraphVerifier.mjs', 'builderGraphVerifier.d.mts', 'builderGraphFixtures.json', 'builderGraphLicenses.txt']
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 
 /** Local integrity, not proof of correspondence to absent Studio source.

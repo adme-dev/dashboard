@@ -4,11 +4,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { transform } from 'esbuild'
-import { verifyBuilderApplicationTransition, verifyBuilderApplicationCheckpoint, verifyBuilderActionInput, verifyBuilderActionResult } from '../../shared/pageStudio/generated/builderGraphVerifier.mjs'
+import { verifyBuilderApplicationTransition, verifyBuilderApplicationCheckpoint, verifyBuilderActionInput, verifyBuilderActionResult, createAstroCompilerBuildIdentity, verifyAstroCompilerBuildIdentity } from '../../shared/pageStudio/generated/builderGraphVerifier.mjs'
 import { verifyPageStudioBuilderVerifier } from '../../scripts/verify-page-studio-builder-verifier.mjs'
 
 const directory = fileURLToPath(new URL('../../shared/pageStudio/generated/', import.meta.url))
 const fixtures = JSON.parse(await readFile(path.join(directory, 'builderGraphFixtures.json'), 'utf8'))
+const astroVectors = JSON.parse(await readFile(path.join(directory, 'astroBuildIdentityFixtures.json'), 'utf8'))
 const methods = { transition: verifyBuilderApplicationTransition, checkpoint: verifyBuilderApplicationCheckpoint, actionInput: verifyBuilderActionInput, actionResult: verifyBuilderActionResult }
 describe('single-source generated builder graph verifier', () => {
   it('keeps the self-contained verifier within its deployment byte allowance', async () => {
@@ -28,8 +29,14 @@ describe('single-source generated builder graph verifier', () => {
       else expect(await run(fixture.input)).toEqual(fixture.expected)
     })
   }
+  for (const vector of astroVectors) {
+    it(`matches shared Astro ${vector.name} identity pins`, async () => {
+      expect(await createAstroCompilerBuildIdentity(vector.input, vector.toolchain)).toEqual(vector.expected)
+      expect(await verifyAstroCompilerBuildIdentity(vector.expected, vector.toolchain)).toEqual(vector.expected)
+    })
+  }
   it('validates all local bundle/declaration/fixture/license digests', async () => {
-    expect(await verifyPageStudioBuilderVerifier()).toMatchObject({ files: 4 })
+    expect(await verifyPageStudioBuilderVerifier()).toMatchObject({ files: 5 })
   })
   it('rejects a tampered generated module', async () => {
     const temp = await mkdtemp(path.join(tmpdir(), 'studio-verifier-'))

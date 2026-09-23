@@ -1,0 +1,102 @@
+[
+  {
+    "name": "checkpoint",
+    "input": {
+      "scope": {
+        "tenantId": "tenant_alpha",
+        "clientId": "client_alpha",
+        "siteId": "site_alpha"
+      },
+      "environment": "staging",
+      "source": {
+        "kind": "checkpoint",
+        "checkpointId": "checkpoint_alpha",
+        "checkpointDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "renderInputDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "featureRecoveryDigest": null
+    },
+    "toolchain": {
+      "formatVersion": 1,
+      "kind": "astro-compiler-toolchain",
+      "image": "registry.cloudflare.com/test-account/astro-compiler@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hostPolicyDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "expected": {
+      "identity": {
+        "scope": {
+          "tenantId": "tenant_alpha",
+          "clientId": "client_alpha",
+          "siteId": "site_alpha"
+        },
+        "environment": "staging",
+        "source": {
+          "kind": "checkpoint",
+          "checkpointId": "checkpoint_alpha",
+          "checkpointDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "renderInputDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "featureRecoveryDigest": null,
+        "formatVersion": 1,
+        "renderer": "astro",
+        "toolchainDigest": "38dda6344bb488aee0b642079cab31d934145677553178ff4db18c364e0585bf"
+      },
+      "identityDigest": "50597ef0bae76162fe8af3e5d62e558a846b50d7b5b645a3dc71ca69b0da1253",
+      "buildId": "build_astro_50597ef0bae76162fe8af3e5d62e558a846b50d7b5b645a3dc71ca69b0da1253"
+    }
+  },
+  {
+    "name": "approved-version",
+    "input": {
+      "scope": {
+        "tenantId": "tenant_alpha",
+        "clientId": "client_alpha",
+        "siteId": "site_alpha"
+      },
+      "environment": "production",
+      "source": {
+        "kind": "approved-version",
+        "versionId": "version_alpha",
+        "versionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "checkpoint": {
+          "id": "checkpoint_alpha",
+          "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "renderInputDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "featureRecoveryDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "toolchain": {
+      "formatVersion": 1,
+      "kind": "astro-compiler-toolchain",
+      "image": "registry.cloudflare.com/test-account/astro-compiler@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hostPolicyDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "expected": {
+      "identity": {
+        "scope": {
+          "tenantId": "tenant_alpha",
+          "clientId": "client_alpha",
+          "siteId": "site_alpha"
+        },
+        "environment": "production",
+        "source": {
+          "kind": "approved-version",
+          "versionId": "version_alpha",
+          "versionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "checkpoint": {
+            "id": "checkpoint_alpha",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        },
+        "renderInputDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "featureRecoveryDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "formatVersion": 1,
+        "renderer": "astro",
+        "toolchainDigest": "38dda6344bb488aee0b642079cab31d934145677553178ff4db18c364e0585bf"
+      },
+      "identityDigest": "f435d56ee1a7229f1dff0a69bc611f59d98a7c71670cc9508f026b657f494f65",
+      "buildId": "build_astro_f435d56ee1a7229f1dff0a69bc611f59d98a7c71670cc9508f026b657f494f65"
+    }
+  }
+]

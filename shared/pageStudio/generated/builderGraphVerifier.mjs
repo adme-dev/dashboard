@@ -5614,6 +5614,181 @@ function preprocess(fn, schema) {
 // node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 config(en_default());
 
+// packages/protocol/src/builder-release-reference.ts
+var BuilderReleaseSealReferenceSchema = object({
+  checkpointDigest: string2().regex(/^[a-f0-9]{64}$/),
+  formatVersion: literal(1),
+  sha256: string2().regex(/^[a-f0-9]{64}$/),
+}).strict();
+
+// packages/protocol/src/runtime-capabilities.ts
+var RUNTIME_CAPABILITIES = ["forms", "motion", "navigation", "tabs"];
+var RuntimeCapabilitySchema = _enum(RUNTIME_CAPABILITIES);
+var PageRuntimeAssetSchema = object({
+  capabilities: array(RuntimeCapabilitySchema)
+    .min(1)
+    .max(RUNTIME_CAPABILITIES.length)
+    .refine(
+      (names) =>
+        names.every(
+          (name, index) => index === 0 || (names[index - 1] ?? "") < name
+        ),
+      "Capabilities must be unique and sorted"
+    ),
+  integrity: string2().regex(/^sha256-[A-Za-z0-9+/]{43}=$/),
+  key: string2().regex(/^assets\/xeroflow-runtime-[a-f0-9]{64}\.js$/),
+}).strict();
+
+// packages/protocol/src/release.ts
+var RELEASE_MANIFEST_LIMIT_BYTES = 1024 * 1024;
+var RELEASE_BUNDLE_LIMIT_BYTES = 10 * 1024 * 1024;
+var RELEASE_FILE_LIMIT = 5e3;
+var ReleaseScopedIdSchema = string2()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
+var ReleaseSha256Schema = string2().regex(/^[a-f0-9]{64}$/);
+var ReleaseEnvironmentSchema = _enum(["preview", "staging", "production"]);
+var ReleaseArtifactScopeSchema = object({
+  clientId: ReleaseScopedIdSchema,
+  siteId: ReleaseScopedIdSchema,
+  tenantId: ReleaseScopedIdSchema,
+}).strict();
+var SAFE_OBJECT_KEY_RE =
+  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
+var CANONICAL_ROUTE_RE =
+  /^\/(?:[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*)?$/;
+var ReleaseArtifactFileSchema = object({
+  bytes: number2().int().nonnegative().max(RELEASE_BUNDLE_LIMIT_BYTES),
+  contentType: string2().min(1).max(200),
+  key: string2().max(1024).regex(SAFE_OBJECT_KEY_RE),
+  sha256: ReleaseSha256Schema,
+}).strict();
+var ReleaseArtifactManifestBaseShape = {
+  artifactPrefix: string2().max(1024).regex(SAFE_OBJECT_KEY_RE),
+  buildId: ReleaseScopedIdSchema,
+  files: array(ReleaseArtifactFileSchema).min(1).max(RELEASE_FILE_LIMIT),
+  routes: record(
+    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
+    string2().max(1024).regex(SAFE_OBJECT_KEY_RE)
+  ),
+  scope: ReleaseArtifactScopeSchema,
+  versionDigest: ReleaseSha256Schema,
+  versionId: ReleaseScopedIdSchema,
+};
+var ReleaseArtifactManifestV1Schema = object({
+  ...ReleaseArtifactManifestBaseShape,
+  schemaVersion: literal(1),
+}).strict();
+var ReleaseArtifactRedirectSchema = object({
+  status: literal(308),
+  target: string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
+}).strict();
+var ReleaseArtifactManifestV2Schema = object({
+  ...ReleaseArtifactManifestBaseShape,
+  pageRuntimes: record(
+    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
+    PageRuntimeAssetSchema
+  ).optional(),
+  redirects: record(
+    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
+    ReleaseArtifactRedirectSchema
+  ),
+  schemaVersion: literal(2),
+}).strict();
+var ReleaseArtifactManifestV3Schema = ReleaseArtifactManifestV2Schema.extend({
+  featureSeal: BuilderReleaseSealReferenceSchema,
+  schemaVersion: literal(3),
+}).strict();
+var ReleaseArtifactManifestSchema = discriminatedUnion("schemaVersion", [
+  ReleaseArtifactManifestV1Schema,
+  ReleaseArtifactManifestV2Schema,
+  ReleaseArtifactManifestV3Schema,
+]);
+function canonicalJson(input) {
+  if (input === null || typeof input !== "object") {
+    const serialized = JSON.stringify(input);
+    if (serialized === void 0) {
+      throw new TypeError("Unsupported value in canonical JSON");
+    }
+    return serialized;
+  }
+  if (Array.isArray(input)) {
+    return `[${input.map((value) => canonicalJson(value)).join(",")}]`;
+  }
+  const object2 = input;
+  return `{${Object.keys(object2)
+    .sort()
+    .map((key2) => `${JSON.stringify(key2)}:${canonicalJson(object2[key2])}`)
+    .join(",")}}`;
+}
+async function sha256Hex(value) {
+  const digest2 = await crypto.subtle.digest(
+    "SHA-256",
+    typeof value === "string" ? new TextEncoder().encode(value) : value
+  );
+  return Array.from(new Uint8Array(digest2), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+// packages/protocol/src/astro-build-identity.ts
+var AstroCompilerToolchainSchema = object({
+  formatVersion: literal(1),
+  hostPolicyDigest: ReleaseSha256Schema,
+  image: string2()
+    .max(512)
+    .regex(
+      /^registry\.cloudflare\.com\/[a-z0-9][a-z0-9_-]*\/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64}$/
+    ),
+  kind: literal("astro-compiler-toolchain"),
+}).strict();
+var CheckpointSchema = object({
+  digest: ReleaseSha256Schema,
+  id: ReleaseScopedIdSchema,
+}).strict();
+var AstroBuildSourceSchema = discriminatedUnion("kind", [
+  object({
+    checkpointDigest: ReleaseSha256Schema,
+    checkpointId: ReleaseScopedIdSchema,
+    kind: literal("checkpoint"),
+  }).strict(),
+  object({
+    checkpoint: CheckpointSchema.nullable(),
+    kind: literal("approved-version"),
+    versionDigest: ReleaseSha256Schema,
+    versionId: ReleaseScopedIdSchema,
+  }).strict(),
+]);
+var AstroBuildIdentityInputSchema = object({
+  environment: _enum(["staging", "production"]),
+  featureRecoveryDigest: ReleaseSha256Schema.nullable(),
+  renderInputDigest: ReleaseSha256Schema,
+  scope: ReleaseArtifactScopeSchema,
+  source: AstroBuildSourceSchema,
+}).strict();
+var AstroBuildIdentitySchema = AstroBuildIdentityInputSchema.extend({
+  formatVersion: literal(1),
+  renderer: literal("astro"),
+  toolchainDigest: ReleaseSha256Schema,
+}).strict();
+async function createAstroBuildIdentity(input, admittedToolchain) {
+  const parsed = AstroBuildIdentityInputSchema.parse(input);
+  const toolchain = AstroCompilerToolchainSchema.parse(admittedToolchain);
+  const identity5 = {
+    ...parsed,
+    formatVersion: 1,
+    renderer: "astro",
+    toolchainDigest: await sha256Hex(canonicalJson(toolchain)),
+  };
+  const identityDigest = await sha256Hex(canonicalJson(identity5));
+  return {
+    buildId: `build_astro_${identityDigest}`,
+    identity: identity5,
+    identityDigest,
+  };
+}
+
 // packages/protocol/src/industry.ts
 var SiteTemplateIdSchema = _enum([
   "limousine-v1",
@@ -6210,124 +6385,6 @@ function contentScopeKey(input) {
     scope.siteId,
     scope.environment,
   ]);
-}
-
-// packages/protocol/src/builder-release-reference.ts
-var BuilderReleaseSealReferenceSchema = object({
-  checkpointDigest: string2().regex(/^[a-f0-9]{64}$/),
-  formatVersion: literal(1),
-  sha256: string2().regex(/^[a-f0-9]{64}$/),
-}).strict();
-
-// packages/protocol/src/runtime-capabilities.ts
-var RUNTIME_CAPABILITIES = ["forms", "motion", "navigation", "tabs"];
-var RuntimeCapabilitySchema = _enum(RUNTIME_CAPABILITIES);
-var PageRuntimeAssetSchema = object({
-  capabilities: array(RuntimeCapabilitySchema)
-    .min(1)
-    .max(RUNTIME_CAPABILITIES.length)
-    .refine(
-      (names) =>
-        names.every(
-          (name, index) => index === 0 || (names[index - 1] ?? "") < name
-        ),
-      "Capabilities must be unique and sorted"
-    ),
-  integrity: string2().regex(/^sha256-[A-Za-z0-9+/]{43}=$/),
-  key: string2().regex(/^assets\/xeroflow-runtime-[a-f0-9]{64}\.js$/),
-}).strict();
-
-// packages/protocol/src/release.ts
-var RELEASE_MANIFEST_LIMIT_BYTES = 1024 * 1024;
-var RELEASE_BUNDLE_LIMIT_BYTES = 10 * 1024 * 1024;
-var RELEASE_FILE_LIMIT = 5e3;
-var ReleaseScopedIdSchema = string2()
-  .min(1)
-  .max(128)
-  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
-var ReleaseSha256Schema = string2().regex(/^[a-f0-9]{64}$/);
-var ReleaseEnvironmentSchema = _enum(["preview", "staging", "production"]);
-var ReleaseArtifactScopeSchema = object({
-  clientId: ReleaseScopedIdSchema,
-  siteId: ReleaseScopedIdSchema,
-  tenantId: ReleaseScopedIdSchema,
-}).strict();
-var SAFE_OBJECT_KEY_RE =
-  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
-var CANONICAL_ROUTE_RE =
-  /^\/(?:[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*)?$/;
-var ReleaseArtifactFileSchema = object({
-  bytes: number2().int().nonnegative().max(RELEASE_BUNDLE_LIMIT_BYTES),
-  contentType: string2().min(1).max(200),
-  key: string2().max(1024).regex(SAFE_OBJECT_KEY_RE),
-  sha256: ReleaseSha256Schema,
-}).strict();
-var ReleaseArtifactManifestBaseShape = {
-  artifactPrefix: string2().max(1024).regex(SAFE_OBJECT_KEY_RE),
-  buildId: ReleaseScopedIdSchema,
-  files: array(ReleaseArtifactFileSchema).min(1).max(RELEASE_FILE_LIMIT),
-  routes: record(
-    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
-    string2().max(1024).regex(SAFE_OBJECT_KEY_RE)
-  ),
-  scope: ReleaseArtifactScopeSchema,
-  versionDigest: ReleaseSha256Schema,
-  versionId: ReleaseScopedIdSchema,
-};
-var ReleaseArtifactManifestV1Schema = object({
-  ...ReleaseArtifactManifestBaseShape,
-  schemaVersion: literal(1),
-}).strict();
-var ReleaseArtifactRedirectSchema = object({
-  status: literal(308),
-  target: string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
-}).strict();
-var ReleaseArtifactManifestV2Schema = object({
-  ...ReleaseArtifactManifestBaseShape,
-  pageRuntimes: record(
-    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
-    PageRuntimeAssetSchema
-  ).optional(),
-  redirects: record(
-    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
-    ReleaseArtifactRedirectSchema
-  ),
-  schemaVersion: literal(2),
-}).strict();
-var ReleaseArtifactManifestV3Schema = ReleaseArtifactManifestV2Schema.extend({
-  featureSeal: BuilderReleaseSealReferenceSchema,
-  schemaVersion: literal(3),
-}).strict();
-var ReleaseArtifactManifestSchema = discriminatedUnion("schemaVersion", [
-  ReleaseArtifactManifestV1Schema,
-  ReleaseArtifactManifestV2Schema,
-  ReleaseArtifactManifestV3Schema,
-]);
-function canonicalJson(input) {
-  if (input === null || typeof input !== "object") {
-    const serialized = JSON.stringify(input);
-    if (serialized === void 0) {
-      throw new TypeError("Unsupported value in canonical JSON");
-    }
-    return serialized;
-  }
-  if (Array.isArray(input)) {
-    return `[${input.map((value) => canonicalJson(value)).join(",")}]`;
-  }
-  const object2 = input;
-  return `{${Object.keys(object2)
-    .sort()
-    .map((key2) => `${JSON.stringify(key2)}:${canonicalJson(object2[key2])}`)
-    .join(",")}}`;
-}
-async function sha256Hex(value) {
-  const digest2 = await crypto.subtle.digest(
-    "SHA-256",
-    typeof value === "string" ? new TextEncoder().encode(value) : value
-  );
-  return Array.from(new Uint8Array(digest2), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
 }
 
 // packages/protocol/src/builder-feature.ts
@@ -9444,6 +9501,32 @@ async function verifyInstances(checkpoint2, artifacts, selected) {
 }
 
 // packages/protocol/src/builder-graph-verifier.ts
+async function createAstroCompilerBuildIdentity(input, admittedToolchain) {
+  return await createAstroBuildIdentity(input, admittedToolchain);
+}
+async function verifyAstroCompilerBuildIdentity(candidate, admittedToolchain) {
+  const pin2 = object({
+    buildId: ReleaseScopedIdSchema,
+    identity: AstroBuildIdentitySchema,
+    identityDigest: ReleaseSha256Schema,
+  })
+    .strict()
+    .parse(candidate);
+  const expected = await createAstroBuildIdentity(
+    {
+      environment: pin2.identity.environment,
+      featureRecoveryDigest: pin2.identity.featureRecoveryDigest,
+      renderInputDigest: pin2.identity.renderInputDigest,
+      scope: pin2.identity.scope,
+      source: pin2.identity.source,
+    },
+    admittedToolchain
+  );
+  if (canonicalJson(pin2) !== canonicalJson(expected)) {
+    throw new Error("Astro build identity mismatch");
+  }
+  return expected;
+}
 var BuilderGraphVerificationError = class extends Error {
   code;
   constructor(code, message) {
@@ -10479,10 +10562,12 @@ async function verifyBuilderReleaseRecovery(raw) {
 }
 export {
   BuilderGraphVerificationError,
+  createAstroCompilerBuildIdentity,
   inspectBuilderActionEffectTargets,
   parseBuilderActionRuntimeResultJson,
   parseBuilderArtifactJson,
   projectBuilderActionRecord,
+  verifyAstroCompilerBuildIdentity,
   verifyBuilderActionInput,
   verifyBuilderActionResult,
   verifyBuilderApplicationCheckpoint,

@@ -1,3 +1,47 @@
+export interface AstroCompilerBuildIdentity {
+  buildId: string;
+  identity: {
+    formatVersion: 1;
+    renderer: "astro";
+    scope: {
+      tenantId: string;
+      clientId: string;
+      siteId: string;
+    };
+    environment: "staging" | "production";
+    source:
+      | {
+          kind: "checkpoint";
+          checkpointId: string;
+          checkpointDigest: string;
+        }
+      | {
+          kind: "approved-version";
+          versionId: string;
+          versionDigest: string;
+          checkpoint: {
+            id: string;
+            digest: string;
+          } | null;
+        };
+    renderInputDigest: string;
+    featureRecoveryDigest: string | null;
+    toolchainDigest: string;
+  };
+  identityDigest: string;
+}
+/** Addressing only; native trusted configuration must select and retain the
+ * deployed toolchain. Neither this helper nor a self-consistent pin grants access. */
+export declare function createAstroCompilerBuildIdentity(
+  input: unknown,
+  admittedToolchain: unknown
+): Promise<AstroCompilerBuildIdentity>;
+/** Recompute retained pins before native reuse. Approval, current entitlement
+ * and actual compiler host provenance remain independent authority checks. */
+export declare function verifyAstroCompilerBuildIdentity(
+  candidate: unknown,
+  admittedToolchain: unknown
+): Promise<AstroCompilerBuildIdentity>;
 export interface BuilderGraphPin {
   id: string;
   kind: "collection" | "component" | "action";

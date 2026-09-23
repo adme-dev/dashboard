@@ -101,7 +101,8 @@ describe.runIf(Boolean(databaseUrl))(
         '425_page_studio_cms_authoring_scope.sql',
         '413_page_studio_release_metadata.sql',
         '426_page_studio_release_feature_seals.sql',
-        '421_page_studio_ai_usage.sql', '427_page_studio_public_action_invocations.sql', '428_page_studio_client_staging.sql'
+        '421_page_studio_ai_usage.sql', '427_page_studio_public_action_invocations.sql', '428_page_studio_client_staging.sql',
+        '430_page_studio_astro_build_identity.sql'
       ]) {
         await observer.query(
           readFileSync(

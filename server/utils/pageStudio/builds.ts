@@ -240,6 +240,7 @@ export async function persistSuccessfulBuild(
               release_manifest_digest, validation_report_key, state
        FROM page_studio_builds
        WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3
+         AND renderer = 'legacy'
          AND (id = $4 OR version_digest = $5)
        FOR UPDATE`,
       [scope.tenantId, scope.clientId, scope.siteId, expected.buildId, authority.digest]
@@ -328,6 +329,7 @@ async function persistFailedBuild(
     const existing = await db.query<{ id: string, state: string }>(
       `SELECT id, state FROM page_studio_builds
        WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3
+         AND renderer = 'legacy'
          AND (id = $4 OR version_digest = $5)
        FOR UPDATE`,
       [scope.tenantId, scope.clientId, scope.siteId, expected.buildId, authority.digest]
