@@ -255,3 +255,37 @@ remain recorded above, but do not claim a new combined database run.
 Remaining: atomic durable dispatch from all checkpoint commit paths, recovery
 when the process stops between save and dispatch, hosted acceptance and release.
 The private RPC/client alone do not automatically publish saved checkpoints.
+
+## Atomic checkpoint staging intent
+
+Migration 429 records staging intent from the append-only checkpoint audit in
+that same database transaction. All five writer paths use this event, including
+managed graph variants. Final authorization failure rolls back the checkpoint,
+audit and intent together. The outbox stores the exact audit/checkpoint/digest,
+site scope and environment, with no additional login credentials. Identity and
+terminal tombstones are immutable. Old audits without supported provenance are
+left alone, and migration reruns do not backfill historical saves.
+
+Twenty new real-PostgreSQL tests failed on the absent outbox before implementation
+and then passed. Existing editor, provisioning, AI, history and managed CMS tests
+now inspect their committed intent and include it in rollback/replay snapshots.
+The AI concurrency fixture also needed its barrier moved from the preliminary
+managed-scope read to the actual checkpoint mutation transaction.
+
+Scheduled dispatch, token-fenced claim/retry/acknowledgement, lost-response
+recovery and hosted acceptance remain outstanding. The outbox alone does not
+activate previews or run generated customer code.
+
+Final section evidence: **281 real-PostgreSQL tests passed across eight suites**
+(outbox, CMS graph, original staging authority, staging lifecycle, provisioning,
+editor, history and AI authority). Focused lint and diff checks pass. Independent
+review read the migration, every changed test and the configured-database apply
+script; no blocking findings remained.
+
+Migration 429 was applied on 2026-09-23 at 04:02:29 UTC. SHA-256:
+`268e302e3e4346d9d83fd42854cd261ebe6af9277df05d464b00d1b16790489c`.
+Both triggers were read back, pending-intent count was zero, and Fantasy Limo's
+checkpoint and production-release pointers were unchanged. Dispatcher remains
+disabled. Receipt: `/private/tmp/root-checkpoint-outbox-migration-receipt.json`.
+Test log: `/private/tmp/root-checkpoint-outbox-section-final.log`.
+The prior combined PostgreSQL rebase gap is now covered by this successful run.

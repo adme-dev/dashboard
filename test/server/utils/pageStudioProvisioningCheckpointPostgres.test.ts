@@ -38,7 +38,7 @@ if (databaseUrl) {
     throw new Error('Provisioning checkpoint tests require an explicitly disposable localhost studio_provisioning_commit database')
   }
 }
-const migrations = ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '415_page_studio_setup_proposals.sql', '420_page_studio_login_sessions.sql', '422_page_studio_cms_visibility.sql', '425_page_studio_cms_authoring_scope.sql']
+const migrations = ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '415_page_studio_setup_proposals.sql', '420_page_studio_login_sessions.sql', '422_page_studio_cms_visibility.sql', '425_page_studio_cms_authoring_scope.sql', '429_page_studio_checkpoint_staging_outbox.sql']
   .map(name => readFileSync(new URL(`../../../server/database/migrations/${name}`, import.meta.url), 'utf8'))
 const userId = '30000000-0000-4000-8000-000000000601'
 const clientId = '20000000-0000-4000-8000-000000000601'
@@ -100,7 +100,8 @@ describe.runIf(Boolean(databaseUrl))('Provisioning checkpoint commit authority o
     return (await db.query(`SELECT current_checkpoint_id,current_version_id,
       (SELECT jsonb_agg(to_jsonb(checkpoint) ORDER BY id) FROM page_studio_checkpoints checkpoint) AS checkpoints,
       (SELECT jsonb_agg(to_jsonb(version) ORDER BY id) FROM page_studio_versions version) AS versions,
-      (SELECT jsonb_agg(to_jsonb(audit) ORDER BY id) FROM page_studio_audit_events audit) AS audits
+      (SELECT jsonb_agg(to_jsonb(audit) ORDER BY id) FROM page_studio_audit_events audit) AS audits,
+      (SELECT jsonb_agg(to_jsonb(intent) ORDER BY audit_id) FROM page_studio_checkpoint_staging_outbox intent) AS staging_intents
       FROM page_studio_sites WHERE id=$1`, [scope.siteId])).rows[0]
   }
   async function waitForBlock(waiter: pg.Client, blocker: pg.Client) {
@@ -222,6 +223,7 @@ describe.runIf(Boolean(databaseUrl))('Provisioning checkpoint commit authority o
       expect(after.checkpoints).toHaveLength(1)
       expect(after.versions).toBeNull()
       expect(after.audits).toHaveLength(1)
+      expect(after.staging_intents).toEqual([expect.objectContaining({ audit_id: after.audits[0].id, checkpoint_id: input.checkpoint.checkpointId, state: 'pending' })])
       expect(after.audits[0]).toMatchObject({ action: 'workspace.checkpointed', actor_id: 'page-studio', metadata: { authorId: userId } })
       expect(after.audits[0].metadata.stagingOrigin).toEqual({ formatVersion: 1, environment: 'staging',
         source: 'provisioning', userId, role, loginSessionHash: loginHash, requestKey: saved.requestKey, proposalRevision: 1 })

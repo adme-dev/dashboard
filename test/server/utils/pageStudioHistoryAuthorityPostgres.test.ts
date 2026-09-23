@@ -41,12 +41,13 @@ const userId = '30000000-0000-4000-8000-000000000501'
 const clientId = '20000000-0000-4000-8000-000000000501'
 const roleId = '60000000-0000-4000-8000-000000000501'
 const denied = { statusCode: 403 }
-const migrationSql = [402, 404, 420, 422, 425].map(number => readFileSync(new URL({
+const migrationSql = [402, 404, 420, 422, 425, 429].map(number => readFileSync(new URL({
   402: '../../../server/database/migrations/402_page_studio_control_plane.sql',
   404: '../../../server/database/migrations/404_page_studio_documents.sql',
   420: '../../../server/database/migrations/420_page_studio_login_sessions.sql',
   422: '../../../server/database/migrations/422_page_studio_cms_visibility.sql',
-  425: '../../../server/database/migrations/425_page_studio_cms_authoring_scope.sql'
+  425: '../../../server/database/migrations/425_page_studio_cms_authoring_scope.sql',
+  429: '../../../server/database/migrations/429_page_studio_checkpoint_staging_outbox.sql'
 }[number]!, import.meta.url), 'utf8'))
 const deferred = () => {
   let resolve!: () => void
@@ -111,7 +112,8 @@ describe.runIf(Boolean(databaseUrl))('Native draft history authority at the Post
     return (await observer.query(`SELECT current_checkpoint_id, current_version_id,
       (SELECT jsonb_agg(to_jsonb(checkpoint) ORDER BY id) FROM page_studio_checkpoints checkpoint) AS checkpoints,
       (SELECT jsonb_agg(to_jsonb(version) ORDER BY id) FROM page_studio_versions version) AS versions,
-      (SELECT jsonb_agg(to_jsonb(audit) ORDER BY id) FROM page_studio_audit_events audit) AS audits
+      (SELECT jsonb_agg(to_jsonb(audit) ORDER BY id) FROM page_studio_audit_events audit) AS audits,
+      (SELECT jsonb_agg(to_jsonb(intent) ORDER BY audit_id) FROM page_studio_checkpoint_staging_outbox intent) AS staging_intents
       FROM page_studio_sites WHERE id=$1`, [scope.siteId])).rows[0]
   }
 
@@ -244,6 +246,7 @@ describe.runIf(Boolean(databaseUrl))('Native draft history authority at the Post
         expect(after.current_checkpoint_id).toMatch(/^restore_/)
         expect(after.checkpoints).toHaveLength(3)
         const checkpointAudit = after.audits.find((audit: { action: string, resource_id: string }) => audit.action === 'workspace.checkpointed' && audit.resource_id === receipt.checkpointId)
+        expect(after.staging_intents).toEqual([expect.objectContaining({ audit_id: checkpointAudit.id, checkpoint_id: receipt.checkpointId, state: 'pending' })])
         expect(checkpointAudit.metadata.stagingOrigin).toEqual({ formatVersion: 1, environment: 'staging',
           source: 'native-login', userId, role, loginSessionHash: createHash('sha256').update(loginToken).digest('hex') })
       }

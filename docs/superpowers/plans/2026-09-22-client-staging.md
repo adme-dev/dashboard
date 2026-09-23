@@ -322,7 +322,11 @@ not be reverted while staging is implemented.
 - [x] Expose the checked private Worker RPC and strict Native service client.
   100 boundary/regression tests, strict Worker/client types and lint pass.
   No public HTTP route, caller-supplied actor or implicit retry is introduced.
-- [ ] Connect durable dispatch after every checkpoint commit. Prove lost acknowledgement/process restart through the
+- [x] Persist exact checkpoint staging intent atomically via the checkpoint
+  audit, covering editor, setup, AI, history and managed graph writers. Preserve
+  rollback, replay identity and legacy writers; no historical backfill.
+- [ ] Deliver retained intents through bounded token-fenced claims and the
+  existing scheduled cron bridge. Prove lost acknowledgement/process restart through the
   actual caller lifecycle. The coordinator alone does not enable automatic saves.
 
 See `docs/verification/2026-09-23-initial-staging.md` for current evidence.
