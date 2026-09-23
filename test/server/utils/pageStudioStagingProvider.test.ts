@@ -22,6 +22,24 @@ describe('platform-owned client staging hostname provider', () => {
     await expect(cloudflareStagingProvider(config, fetcher).attach(siteId)).rejects.toMatchObject({ code: 'STAGING_HOST_UNAVAILABLE' })
     expect(log).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: 'page_studio_staging_provider_failure', operation: 'list', reason: 'network', status: null }))
   })
+  it.each([
+    [new DOMException('private timeout details', 'TimeoutError'), 'network_timeout'],
+    [new DOMException('private abort details', 'AbortError'), 'network_aborted'],
+    [new TypeError('Invalid character in header value private-test-token'), 'network_header'],
+    [new TypeError('Request was redirected to https://private.example'), 'network_redirect'],
+    [new Error('Cannot perform I/O on behalf of a different request: private data'), 'network_request_context'],
+    [new Error('TLS certificate failure private.example'), 'network_tls'],
+    [new Error('DNS resolution failed for private.example'), 'network_dns'],
+    [new Error('Connection reset: private address'), 'network_connection'],
+    [new TypeError('private internal details'), 'network_type_error']
+  ])('records a bounded transport cause without leaking exception content: %s', async (error, reason) => {
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fetcher = vi.fn().mockRejectedValue(error)
+    await expect(cloudflareStagingProvider(config, fetcher).attach(siteId)).rejects.toMatchObject({ code: 'STAGING_HOST_UNAVAILABLE' })
+    expect(log).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: 'page_studio_staging_provider_failure', operation: 'list', reason, status: null }))
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/private|token|https:/)
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
   it('creates only the immutable client address and verifies its exact read-back', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(response([])).mockResolvedValueOnce(response(domain)).mockResolvedValueOnce(response(domain))
     const provider = cloudflareStagingProvider(config, fetcher)

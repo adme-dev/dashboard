@@ -28,6 +28,23 @@ function reportFailure(operation: ProviderOperation, reason: string, status: num
   console.warn(JSON.stringify({ event: 'page_studio_staging_provider_failure', operation, reason, status }))
 }
 
+/** Inspect locally, but emit only this fixed vocabulary. Exception text can
+ * contain credentials, URLs or provider details and must never be logged. */
+function transportReason(error: unknown): string {
+  if (!(error instanceof Error)) return 'network'
+  if (error.name === 'TimeoutError') return 'network_timeout'
+  if (error.name === 'AbortError') return 'network_aborted'
+  const message = error.message.slice(0, 512).toLowerCase()
+  if (/header|bytestring|iso-8859/.test(message)) return 'network_header'
+  if (/redirect/.test(message)) return 'network_redirect'
+  if (/different request|outside.*request|i\/o.*request/.test(message)) return 'network_request_context'
+  if (/certificate|tls|ssl/.test(message)) return 'network_tls'
+  if (/dns|resolve.*host|name resolution/.test(message)) return 'network_dns'
+  if (/connection|connect failed|socket/.test(message)) return 'network_connection'
+  if (error.name === 'TypeError') return 'network_type_error'
+  return 'network'
+}
+
 /** The private coordinator reserves the deterministic hostname before calling
  * this adapter. Certificate identity is not proof of successful HTTPS delivery;
  * activation still requires the delivery service's scoped snapshot read-back. */
@@ -78,8 +95,8 @@ export function cloudflareStagingProvider(rawConfig: z.infer<typeof Configuratio
       reason = 'envelope'
       if (value?.success !== true || !Object.hasOwn(value, 'result')) throw unavailable()
       return value.result
-    } catch {
-      reportFailure(operation, reason, status)
+    } catch (error) {
+      reportFailure(operation, reason === 'network' ? transportReason(error) : reason, status)
       // No provider payloads, exception messages, redirects or implicit retries.
       throw unavailable()
     }
