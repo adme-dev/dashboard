@@ -133,6 +133,14 @@ jobs:
         env:
           PAGE_STUDIO_AUTHORITY_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
+      - name: Page Studio Astro reservations and historical release compatibility
+        run: |
+          psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_cms_activation_astro_ci'
+          pnpm exec vitest run test/server/utils/pageStudioAstroBuildsPostgres.test.ts test/server/utils/pageStudioReleaseFeatureSealsPostgres.test.ts test/shared/pageStudioBuilderGraphVerifier.test.ts
+        timeout-minutes: 5
+        env:
+          PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_activation_astro_ci
+
       - name: Page Studio booking and content authority database tests
         run: pnpm exec vitest run test/server/utils/pageStudioBookingsPostgres.test.ts test/server/utils/pageStudioPortalBookingsPostgres.test.ts test/server/utils/pageStudioBusinessContentPostgres.test.ts test/server/utils/pageStudioEmailConfigurationPostgres.test.ts
         timeout-minutes: 5
