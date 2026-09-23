@@ -33,6 +33,17 @@ describe('platform-owned client staging hostname provider', () => {
     expect(JSON.parse(options.body)).toEqual({ hostname: domain.hostname, service: CLIENT_STAGING_SERVICE, zone_id: config.zoneId })
     expect(fetcher.mock.calls[2][0]).toBe(`${url}/${domain.id}`)
   })
+  it('accepts the longer hostname identifier returned by the live Cloudflare API', async () => {
+    const liveDomain = { ...domain, id: '34d9b1c173151b06f79935e65e911ecb52e8e3ec' }
+    const fetcher = vi.fn().mockResolvedValueOnce(response([liveDomain])).mockResolvedValueOnce(response(liveDomain))
+    await expect(cloudflareStagingProvider(config, fetcher).attach(siteId)).resolves.toMatchObject({ domainId: liveDomain.id })
+    expect(fetcher.mock.calls[1][0]).toBe(`https://api.cloudflare.com/client/v4/accounts/${config.accountId}/workers/domains/${liveDomain.id}`)
+  })
+  it.each(['', '../other', 'a'.repeat(65), 'a'.repeat(31), 'id?other=1'])('rejects an unsafe or unbounded hostname identifier %s', async (id) => {
+    const fetcher = vi.fn().mockResolvedValueOnce(response([{ ...domain, id }]))
+    await expect(cloudflareStagingProvider(config, fetcher).attach(siteId)).rejects.toMatchObject({ code: 'STAGING_HOST_CONFLICT' })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
   it('recovers a previously attached hostname without another provider mutation', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(response([domain])).mockResolvedValueOnce(response(domain))
     const result = await cloudflareStagingProvider(config, fetcher).attach(siteId)
