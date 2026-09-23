@@ -47,7 +47,7 @@ describe('platform-owned client staging hostname provider', () => {
     expect(fetcher).toHaveBeenCalledTimes(3)
     const [url, options] = fetcher.mock.calls[1]
     expect(url).toBe(`https://api.cloudflare.com/client/v4/accounts/${config.accountId}/workers/domains`)
-    expect(options).toMatchObject({ method: 'PUT', redirect: 'error' })
+    expect(options).toMatchObject({ method: 'PUT', redirect: 'manual' })
     expect(JSON.parse(options.body)).toEqual({ hostname: domain.hostname, service: CLIENT_STAGING_SERVICE, zone_id: config.zoneId })
     expect(fetcher.mock.calls[2][0]).toBe(`${url}/${domain.id}`)
   })
