@@ -299,3 +299,23 @@ not be reverted while staging is implemented.
 - Current-source CI build, paired integration, deployment credentials, hosted
   Fantasy/second-client acceptance and the broader interactive CMS/action goal
   remain open. No production content, token or hostname changed in this section.
+
+### Automatic first-preview authority — 23 September, local verification
+
+- [x] Retain trusted origins in setup, ordinary editor, AI acceptance, native
+  history restore and managed graph checkpoint transactions. Preserve the
+  original audit on replay; never accept credentials or staging authority from
+  checkpoint request bodies.
+- [x] Verify retention and existing authority boundaries: eight regression
+  assertions failed before implementation; 225 section tests now pass, including
+  real PostgreSQL logout/expiry/lock races and immutable checkpoint replay.
+- [ ] Resolve the exact checkpoint's retained origin in the private management
+  service, including original-login revocation, child-session revocation and
+  accepted setup proposal identity. A completed setup must not regain write
+  authority through the existing provisioning helper.
+- [ ] Bind initial snapshot work to the immutable origin, connect durable dispatch
+  after checkpoint commit, and prove restart/lost acknowledgement, no identity
+  substitution and fresh authority after provider work. Retaining provenance
+  alone does not enable staging.
+
+See `docs/verification/2026-09-23-initial-staging.md` for current evidence.

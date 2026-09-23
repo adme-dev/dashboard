@@ -5,13 +5,14 @@ import type { PageStudioControlQueryClient, PageStudioControlScope } from './con
 import { bindPageStudioLoginSession, resolvePageStudioLoginSession, type PageStudioLoginSession } from './loginSessions'
 
 /** Caller holds its site FOR NO KEY UPDATE before taking native/login locks.
- * Return a wall-clock recheck to run before every successful transaction return. */
+ * Return the verified login reference and a wall-clock recheck to run before
+ * every successful transaction return. Neither substitutes for a later check. */
 export async function lockPageStudioHistoryAuthority(
   db: PageStudioControlQueryClient,
   event: H3Event,
   actor: PageStudioContentActor,
   scope: PageStudioControlScope
-): Promise<() => Promise<void>> {
+): Promise<{ recheck: () => Promise<void>, login: PageStudioLoginSession }> {
   let login: PageStudioLoginSession
   try {
     login = await resolvePageStudioLoginSession(db, event, actor.role, actor.actorId)
@@ -42,5 +43,5 @@ export async function lockPageStudioHistoryAuthority(
     if (!allowed) throw createError({ statusCode: 403, statusMessage: 'Draft history access denied', data: { code: 'HISTORY_ACCESS_DENIED' } })
   }
   await recheck()
-  return recheck
+  return { recheck, login }
 }

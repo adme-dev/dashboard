@@ -223,6 +223,8 @@ describe.runIf(Boolean(databaseUrl))('Provisioning checkpoint commit authority o
       expect(after.versions).toBeNull()
       expect(after.audits).toHaveLength(1)
       expect(after.audits[0]).toMatchObject({ action: 'workspace.checkpointed', actor_id: 'page-studio', metadata: { authorId: userId } })
+      expect(after.audits[0].metadata.stagingOrigin).toEqual({ formatVersion: 1, environment: 'staging',
+        source: 'provisioning', userId, role, loginSessionHash: loginHash, requestKey: saved.requestKey, proposalRevision: 1 })
       expect(await commit(input, options)).toEqual(receipt)
       expect(await snapshot()).toEqual(after)
       expect((await db.query('SELECT * FROM page_studio_sessions')).rowCount).toBe(0)

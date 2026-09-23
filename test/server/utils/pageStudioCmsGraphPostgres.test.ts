@@ -143,6 +143,7 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
       },
       env: {
         PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging',
+        PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging',
         PAGE_STUDIO_CONTENT_ROUTER: {
           readContent() {
             throw new Error('No remote I/O')
@@ -282,6 +283,9 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
     f.texts.set(cp.objectKey, JSON.stringify(prior))
     const saved = await coordinateCmsGraphCheckpoint({ checkpoint: cp, expectedCheckpointId: accepted.checkpointId }, f.principal, f.deps)
     expect(saved.checkpointId).toBe('ordinary_save')
+    const audit = (await observer.query('SELECT metadata FROM page_studio_audit_events WHERE action=\'workspace.checkpointed\' AND resource_id=$1', [saved.checkpointId])).rows[0]
+    expect(audit.metadata.stagingOrigin).toEqual({ formatVersion: 1, environment: 'staging', source: 'native-login',
+      userId: request.actor.actorId, role: 'agency', loginSessionHash: request.login.tokenHash })
     expect(saved.versionId).toBeNull()
     expect((await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'record\'')).rows).toEqual(recordBefore)
     expect((await observer.query('SELECT object_id FROM page_studio_cms_record_heads')).rows).toEqual([{ object_id: recordId }])
@@ -382,6 +386,9 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
       : await acceptPageStudioAiProposal({ checkpoint: cp, expectedCheckpointId: accepted.checkpointId, baseDigest: f.input.nextCheckpoint.digest,
           authorRole: 'agency', idempotencyKey: 'managed_ai_page', summary: 'Saved AI page' }, { ...f.deps, session: claims, env: request.env })
     expect(result.isCurrent).toBe(true)
+    const audit = (await observer.query('SELECT metadata FROM page_studio_audit_events WHERE action=\'workspace.checkpointed\' AND resource_id=$1', [cp.checkpointId])).rows[0]
+    expect(audit.metadata.stagingOrigin).toEqual({ formatVersion: 1, environment: 'staging', source: 'studio-session',
+      userId: claims.userId, role: claims.role, nonce: claims.nonce, loginSessionHash: request.login.tokenHash })
     const app = (await observer.query('SELECT manifest FROM page_studio_application_versions a JOIN page_studio_cms_scopes s ON s.current_application_id=a.id')).rows[0].manifest
     expect(app.checkpoint).toEqual({ id: cp.checkpointId, digest: cp.digest })
     expect(app.actions.map((pin: { id: string }) => pin.id)).toEqual(['submit'])

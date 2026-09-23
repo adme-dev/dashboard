@@ -1,3 +1,4 @@
+import { checkpointStagingOrigin } from './checkpointStagingOrigin'
 import { PageStudioCheckpointCommitSchema } from './controlSchemas'
 import { commitPageStudioCheckpoint } from './controlStore'
 import { authorizePageStudioProvisioning, PageStudioProvisioningRequestSchema, verifyPageStudioProvisioningJobAuthority } from './provisioningAuthority'
@@ -28,6 +29,9 @@ export async function commitPageStudioProvisioningCheckpoint(
   }
   return await commitPageStudioCheckpoint({ checkpoint, expectedCheckpointId }, {
     runTransaction: dependencies.runTransaction,
+    stagingOrigin: async () => checkpointStagingOrigin({ formatVersion: 1, environment, source: 'provisioning',
+      userId, role: job.actor!.kind === 'agency-user' ? 'agency' : 'client', loginSessionHash: job.actor!.loginSessionHash,
+      requestKey: job.requestKey, proposalRevision: job.setup!.proposalRevision }),
     authorize: async (db) => { await verifyPageStudioProvisioningJobAuthority(job, environment, { transaction: db }) }
   })
 }

@@ -196,7 +196,7 @@ describe.runIf(Boolean(databaseUrl))('Native draft history authority at the Post
       const body = action === 'restore'
         ? { action, checkpointId: 'checkpoint_old', expectedCheckpointId: 'checkpoint_base', requestId: randomUUID() }
         : { action, name: 'Native history snapshot', expectedCheckpointId: 'checkpoint_base', requestId: randomUUID() }
-      return { actor, event: event(), siteId: scope.siteId, bucket, body }
+      return { actor, event: event(), siteId: scope.siteId, bucket, body, env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' } }
     }
 
     it('denies a missing native event without writing', async () => {
@@ -243,6 +243,9 @@ describe.runIf(Boolean(databaseUrl))('Native draft history authority at the Post
       } else {
         expect(after.current_checkpoint_id).toMatch(/^restore_/)
         expect(after.checkpoints).toHaveLength(3)
+        const checkpointAudit = after.audits.find((audit: { action: string, resource_id: string }) => audit.action === 'workspace.checkpointed' && audit.resource_id === receipt.checkpointId)
+        expect(checkpointAudit.metadata.stagingOrigin).toEqual({ formatVersion: 1, environment: 'staging',
+          source: 'native-login', userId, role, loginSessionHash: createHash('sha256').update(loginToken).digest('hex') })
       }
       loginTransactions.run = transactionFor(await connect())
       await revokePageStudioLoginSession(event(), role)

@@ -121,3 +121,45 @@ This completes the creation-to-reservation connection only. Empty-site provider
 hostname preparation still belongs to S6.2; checkpoint authority/triggers remain
 in S6.3. No new provider resources or production content were changed during
 these tests. Full build, browser and hosted acceptance remain outstanding.
+
+## Checkpoint origin retention — verified locally
+
+The authorized checkpoint transaction retains a bounded `stagingOrigin` inside
+its existing `workspace.checkpointed` audit. Setup derives it from the retained
+provisioning job; ordinary editor and AI acceptance select the parent login hash
+from the exact authorized child session; CMS graph saves use the verified graph
+principal. Native history restores reuse their freshly verified login. The audit
+includes the release environment and original login hash, plus child nonce or
+setup request/revision where applicable. Raw credentials are not accepted or
+retained. Exact checkpoint replay leaves the original audit unchanged, including
+when a later editor session retries the same checkpoint. Missing release
+configuration omits provenance without inventing an environment or failing a save.
+
+This is provenance, **not staging authorization or an activated dispatcher**.
+The consumer must load it from the exact scoped checkpoint audit, check the
+original login/child/proposal and current permissions/package at admission and
+activation, bind the immutable snapshot attempt to that origin, and retain work
+across request loss. Completed setup needs its own purpose-specific check;
+provisioning write authority must continue rejecting completed jobs.
+
+Verification:
+
+- Eight regression assertions failed before their implementation: agency/client
+  setup, agency/client ordinary editor, native-login managed checkpoint, AI
+  acceptance, and agency/client native history restore.
+- 91 PostgreSQL tests pass across setup, ordinary editor and managed CMS suites.
+- 134 related tests pass across history authority, AI acceptance, origin/schema,
+  CAS, control store and HTTP endpoint suites. Total: **225 passing tests**.
+- These include real PostgreSQL logout/expiry/lock races, rollback, cross-scope
+  rejection, immutable replay and managed editor/AI origin assertions.
+- Independent review found an audit metadata type mismatch, now corrected.
+- The first broad database run failed because the host exhausted disk space.
+  The successful reruns above supersede that interrupted result. The isolated
+  database on port 55444 was stopped after verification.
+- No new migration or production data change. Full application build and hosted
+  acceptance are still required before release; the host lacks build space.
+
+Remaining S6.3 work: private origin lookup/revalidation, binding the retained
+snapshot to its exact origin, durable initial-staging dispatch, and
+logout-between-provider-and-activation tests. Existing manual staging remains
+unchanged. S6.3 is not complete.
