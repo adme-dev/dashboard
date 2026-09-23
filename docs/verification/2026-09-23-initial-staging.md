@@ -163,3 +163,32 @@ Remaining S6.3 work: private origin lookup/revalidation, binding the retained
 snapshot to its exact origin, durable initial-staging dispatch, and
 logout-between-provider-and-activation tests. Existing manual staging remains
 unchanged. S6.3 is not complete.
+
+## Private checkpoint-origin authority — verified locally
+
+`requireCheckpointStagingOrigin` in the management worker now resolves the exact
+scoped checkpoint audit, verifies its author/digest/protocol, and selects the
+original actor from stored provenance. Caller-supplied actors are rejected.
+The shared provenance schema is used by both the native writer and the worker.
+
+Admission holds the site lock, original native/parent login locks and current
+permission/package rows. Editor origins also require the exact unrevoked child
+and checkpoint capability. Setup origins require the original deterministic setup
+request, first checkpoint and latest accepted proposal revision. It does not
+change completed setup jobs back into writable provisioning jobs. All paths
+check the configured release environment and reject a newer substitute login.
+A final locked query re-evaluates expiry after any child/permission/proposal wait.
+
+Evidence: six success-path checks failed before the helper existed; the final
+section passes **118 tests** (53 new real-PostgreSQL origin cases, 51 existing
+staging lifecycle cases, 14 origin-schema cases). Tests cover agency/client
+sources, revoked/expired native and child sessions, original-login substitution,
+permission/package removal, changed proposals, malformed immutable audit records,
+foreign scope/environment and parent/child expiry during a real row-lock wait.
+Strict management-worker TypeScript, lint, diff checks and independent end-to-end
+source review pass. The isolated database was stopped afterwards.
+
+This helper is not connected to provider execution yet. Still required: bind the
+retained staging snapshot to this exact origin, connect durable dispatch, and
+call the verifier again before retaining provider results and final activation.
+No push, deployment, migration or production data change in this increment.

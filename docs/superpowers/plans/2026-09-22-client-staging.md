@@ -309,10 +309,12 @@ not be reverted while staging is implemented.
 - [x] Verify retention and existing authority boundaries: eight regression
   assertions failed before implementation; 225 section tests now pass, including
   real PostgreSQL logout/expiry/lock races and immutable checkpoint replay.
-- [ ] Resolve the exact checkpoint's retained origin in the private management
-  service, including original-login revocation, child-session revocation and
-  accepted setup proposal identity. A completed setup must not regain write
-  authority through the existing provisioning helper.
+- [x] Implement and locally verify private lookup of the exact checkpoint's
+  retained origin, including original-login and child revocation, current
+  permissions, environment, latest accepted proposal and expiry after lock waits.
+  118 section tests, strict worker types, lint and independent review pass.
+  The verifier is not yet connected to provider execution; completed setup does
+  not regain provisioning write authority.
 - [ ] Bind initial snapshot work to the immutable origin, connect durable dispatch
   after checkpoint commit, and prove restart/lost acknowledgement, no identity
   substitution and fresh authority after provider work. Retaining provenance
