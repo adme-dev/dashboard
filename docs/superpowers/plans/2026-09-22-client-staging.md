@@ -315,9 +315,12 @@ not be reverted while staging is implemented.
   118 section tests, strict worker types, lint and independent review pass.
   The verifier is not yet connected to provider execution; completed setup does
   not regain provisioning write authority.
-- [ ] Bind initial snapshot work to the immutable origin, connect durable dispatch
-  after checkpoint commit, and prove restart/lost acknowledgement, no identity
-  substitution and fresh authority after provider work. Retaining provenance
-  alone does not enable staging.
+- [x] Bind initial snapshot work to the immutable origin and integrate fresh
+  checks into admission/provider-result/activation transactions. 114 real-PG
+  tests pass, including queued/expired-claim recovery, logout/expiry rollback,
+  and late response from a superseded claim; one admission and no identity swap.
+- [ ] Expose the checked private RPC and connect durable dispatch after every
+  checkpoint commit. Prove lost acknowledgement/process restart through the
+  actual caller lifecycle. The coordinator alone does not enable automatic saves.
 
 See `docs/verification/2026-09-23-initial-staging.md` for current evidence.

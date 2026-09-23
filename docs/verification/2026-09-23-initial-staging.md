@@ -192,3 +192,34 @@ This helper is not connected to provider execution yet. Still required: bind the
 retained staging snapshot to this exact origin, connect durable dispatch, and
 call the verifier again before retaining provider results and final activation.
 No push, deployment, migration or production data change in this increment.
+
+## Snapshot origin binding and execution — verified locally
+
+`coordinateCheckpointStaging` resolves the original actor from the immutable
+checkpoint audit and copies the validated request identity. Its initial snapshot
+retains `originAuditId` in the append-only `staging.requested` audit. Retries must
+match that exact origin; an actor-only or different-origin request cannot take
+over the operation. Queued or expired building attempts can resume the same
+snapshot with a fresh claim token and no second build admission. Failed attempts
+remain terminal until an explicit user update creates new work.
+
+The coordinator revalidates the original login/child/proposal at admission,
+before retaining hostname results, and before and after final activation writes.
+It also checks the claim's expiry after those writes, so expired authority rolls
+back the whole transaction. Provider I/O stays outside SQL transactions. The
+existing manual update/ensure path and previously active previews are preserved.
+
+Verification: six regression cases failed before implementation. Final **114
+real-PostgreSQL tests pass**: 63 origin/execution cases plus 51 existing lifecycle
+cases. New execution cases prove one retained origin/admission, rejection after
+logout during attach/build/verify, queued recovery, expired-claim recovery,
+rollback when login expires inside activation, immutable caller identity, and
+an old provider response arriving after a replacement claim has activated.
+That overlap produces exactly one build/admission/activation and no stale failure.
+Strict worker TypeScript, lint and independent full-file review pass. The local
+isolated database was stopped after testing.
+
+Remaining: expose the checked private service RPC and connect durable dispatch
+after every checkpoint commit, including lost response/process recovery. The
+coordinator is not yet invoked automatically by production saves. No push,
+deployment, migration or production data change was made in this section.
