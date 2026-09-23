@@ -314,3 +314,21 @@ pass. No additional migration, push or deployment in this increment.
 Remaining: invoke these primitives from the actual dispatcher, prove lost RPC
 acknowledgement after activation and pending responses, and connect the scheduled
 cron bridge. SQL helper tests alone do not prove automatic staging execution.
+
+## Public-form runtime compatibility follow-up
+
+The staging incident exposed an unsupported fetch option in the public-form
+Turnstile verifier too. Cloudflare workerd rejects `redirect: 'error'` before
+performing a network request. The verifier now uses manual redirect handling;
+its existing response checks still reject redirects and cancel their bodies.
+No token or secret is forwarded to a redirect target.
+
+Two tests bundling the actual verifier and its dependencies in Miniflare failed
+before the fix, with zero outbound calls. After review, coverage includes all
+five redirect statuses; temporarily enabling redirect following made all five
+regressions fail. Requests are counted before body parsing, so a redirected
+bodyless GET cannot escape the assertion. All37 challenge/runtime/ingress tests
+pass: valid verification mints an exact-intent proof, and a redirected response
+produces no proof or second request. Tests use synthetic credentials and a local
+outbound handler only. Focused lint passes. This follow-up is local and
+requires the later guarded Pages release; public-action activation remains off.

@@ -10,7 +10,7 @@ it('verifies a fixed provider endpoint and binds a local proof to the exact admi
   const proof = await verifyPublicFormChallenge(identity, 'challenge', env, { fetch })
   expect(fetch.mock.calls[0]?.[0]).toBe('https://challenges.cloudflare.com/turnstile/v0/siteverify')
   const init = fetch.mock.calls[0]?.[1]
-  expect(init?.redirect).toBe('error')
+  expect(init?.redirect).toBe('manual')
   expect(init?.method).toBe('POST')
   expect(JSON.parse(String(init?.body))).toEqual({ secret: env.PAGE_STUDIO_PUBLIC_FORM_TURNSTILE_SECRET, response: 'challenge', remoteip: identity.clientAddress, idempotency_key: expect.any(String) })
   expect(assertPublicFormChallenge(proof, identity)).toMatchObject({ challengeDigest: expect.stringMatching(/^[a-f0-9]{64}$/) })
