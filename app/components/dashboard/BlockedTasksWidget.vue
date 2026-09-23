@@ -22,7 +22,7 @@ async function refreshBlockedTasks() {
   }
 }
 
-await refreshBlockedTasks()
+onMounted(refreshBlockedTasks)
 
 const CAP = 5
 const allBlocked = computed(() => {

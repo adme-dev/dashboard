@@ -57,7 +57,7 @@ async function refreshCampaignAlerts() {
 }
 
 // Fallback to old per-platform fetch
-await refreshCampaignAlerts()
+onMounted(refreshCampaignAlerts)
 
 const status = computed(() => {
   if (campaignStatus.value === 'pending') return 'pending'

@@ -22,7 +22,7 @@ async function refreshUnassignedWork() {
   }
 }
 
-await refreshUnassignedWork()
+onMounted(refreshUnassignedWork)
 
 const CAP = 5
 const allUnassigned = computed(() => {

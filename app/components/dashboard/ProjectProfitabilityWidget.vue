@@ -14,7 +14,7 @@ async function refreshProjectProfitability() {
   }
 }
 
-await refreshProjectProfitability()
+onMounted(refreshProjectProfitability)
 
 // Endpoint returns commission-based profitability grouped by client: { clients, summary }.
 const CAP = 5

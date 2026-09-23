@@ -21,7 +21,7 @@ async function refreshCompletionTrends() {
   }
 }
 
-await refreshCompletionTrends()
+onMounted(refreshCompletionTrends)
 
 const trends = computed(() => (data.value as any)?.trends || [])
 const summary = computed(() => (data.value as any)?.summary || {})

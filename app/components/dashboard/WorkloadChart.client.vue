@@ -14,7 +14,7 @@ async function refreshWorkload() {
   }
 }
 
-await refreshWorkload()
+onMounted(refreshWorkload)
 
 const departments = computed(() => (data.value as any)?.departments || [])
 

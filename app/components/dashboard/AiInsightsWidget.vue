@@ -38,7 +38,7 @@ async function refreshAiInsights() {
   }
 }
 
-await refreshAiInsights()
+onMounted(refreshAiInsights)
 
 const reports = computed<AiReport[]>(() => {
   if (!data.value) return []
