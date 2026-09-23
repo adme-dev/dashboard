@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { claimCheckpointStaging, settleCheckpointStaging } from '~~/server/utils/pageStudio/checkpointStagingOutbox'
 
 const url = process.env.PAGE_STUDIO_CMS_DATABASE_TEST_URL
 if (url) {
@@ -99,5 +100,151 @@ describe.runIf(Boolean(url))('checkpoint staging outbox on PostgreSQL', () => {
     await db.query('UPDATE page_studio_checkpoint_staging_outbox SET state=\'completed\',outcome=\'READY\',finished_at=clock_timestamp()')
     await expect(db.query('UPDATE page_studio_checkpoint_staging_outbox SET state=\'pending\',outcome=NULL,finished_at=NULL')).rejects.toThrow('CHECKPOINT_STAGING_IDENTITY_IMMUTABLE')
     await expect(db.query('DELETE FROM page_studio_checkpoint_staging_outbox')).rejects.toThrow('CHECKPOINT_STAGING_IDENTITY_IMMUTABLE')
+  })
+  describe('durable claims and acknowledgements', () => {
+    async function transaction<T>(client: pg.Client, work: () => Promise<T>) {
+      await client.query('BEGIN')
+      try {
+        const result = await work()
+        await client.query('COMMIT')
+        return result
+      } catch (error) {
+        await client.query('ROLLBACK')
+        throw error
+      }
+    }
+    const claim = () => transaction(db, () => claimCheckpointStaging(db, 'staging', 3))
+    const settle = (work: Parameters<typeof settleCheckpointStaging>[1], outcome: Parameters<typeof settleCheckpointStaging>[2]) => transaction(db, () => settleCheckpointStaging(db, work, outcome))
+    const expire = () => db.query('UPDATE page_studio_checkpoint_staging_outbox SET claim_until=clock_timestamp()-INTERVAL \'1 second\' WHERE state=\'leased\'')
+    it('claims only due work in its exact environment with retained identity', async () => {
+      const id = await audit()
+      await audit({ digest: 'c'.repeat(64), commitProtocol: 'cas-v1', stagingOrigin: { ...origin, environment: 'production' } })
+      const result = await claim()
+      expect(result.exhausted).toBe(0)
+      expect(result.claims).toEqual([{ request: { auditId: id, scope: { tenantId: 'outbox-test', clientId, siteId }, checkpointId: checkpoint, digest: 'c'.repeat(64), expectedEnvironment: 'staging' }, token: expect.any(String), attempt: 1 }])
+      expect((await claim()).claims).toHaveLength(0)
+      expect((await rows()).filter(row => row.environment === 'production')).toEqual([expect.objectContaining({ state: 'pending', attempts: 0 })])
+    })
+    it.each([0, 4, -1, 1.5, NaN])('rejects invalid batch size %s before claiming anything', async (limit) => {
+      await audit()
+      await expect(claimCheckpointStaging(db, 'staging', limit)).rejects.toThrow()
+      expect((await rows())[0]).toMatchObject({ state: 'pending', attempts: 0 })
+    })
+    it('rejects an unconfigured environment before claiming anything', async () => {
+      await audit()
+      await expect(claimCheckpointStaging(db, 'foreign', 3)).rejects.toThrow()
+      expect((await rows())[0]).toMatchObject({ state: 'pending', attempts: 0 })
+    })
+    it('limits claims and skips rows held by another transaction', async () => {
+      for (let i = 0; i < 5; i++) await audit()
+      const other = new pg.Client({ connectionString: url })
+      await other.connect()
+      try {
+        await other.query(`SET search_path TO "${schema}", pg_catalog; SET statement_timeout='1s'`)
+        await db.query('BEGIN')
+        const first = await claimCheckpointStaging(db, 'staging', 3)
+        const second = await transaction(other, () => claimCheckpointStaging(other, 'staging', 3))
+        expect(first.claims).toHaveLength(3)
+        expect(second.claims).toHaveLength(2)
+        expect(new Set([...first.claims, ...second.claims].map(row => row.request.auditId)).size).toBe(5)
+        await db.query('COMMIT')
+      } finally { await other.end() }
+    })
+    it('recovers a crash before RPC without replacing checkpoint identity', async () => {
+      await audit()
+      const first = (await claim()).claims[0]!
+      await expire()
+      const recovered = (await claim()).claims[0]!
+      expect(recovered.request).toEqual(first.request)
+      expect(recovered.token).not.toBe(first.token)
+      expect(recovered.attempt).toBe(2)
+      expect(await settle(first, 'READY')).toBe(false)
+      expect(await settle(recovered, 'READY')).toBe(true)
+      expect((await rows())[0]).toMatchObject({ state: 'completed', outcome: 'READY', attempts: 2, claim_token: null })
+    })
+    it('rejects an expired acknowledgement even before another owner claims', async () => {
+      await audit()
+      const first = (await claim()).claims[0]!
+      await expire()
+      expect(await settle(first, 'READY')).toBe(false)
+      expect((await rows())[0].state).toBe('leased')
+    })
+    it('rejects settlement when the unchanged claim expires during a row-lock wait', async () => {
+      await audit()
+      const work = (await claim()).claims[0]!
+      const blocker = new pg.Client({ connectionString: url })
+      await blocker.connect()
+      let pending: Promise<boolean> | undefined
+      try {
+        await blocker.query(`SET search_path TO "${schema}", pg_catalog`)
+        const writerPid = (await db.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
+        await db.query('UPDATE page_studio_checkpoint_staging_outbox SET claim_until=clock_timestamp()+INTERVAL \'500 milliseconds\'')
+        await blocker.query('BEGIN')
+        await blocker.query('SELECT audit_id FROM page_studio_checkpoint_staging_outbox FOR UPDATE')
+        pending = settle(work, 'READY')
+        await expect.poll(async () => (await blocker.query('SELECT pg_backend_pid()=ANY(pg_blocking_pids($1)) AS blocked', [writerPid])).rows[0].blocked, { timeout: 2000 }).toBe(true)
+        await expect.poll(async () => (await blocker.query('SELECT claim_until<clock_timestamp() AS expired FROM page_studio_checkpoint_staging_outbox')).rows[0].expired, { timeout: 2000 }).toBe(true)
+        await blocker.query('COMMIT')
+        expect(await pending).toBe(false)
+        expect((await rows())[0].state).toBe('leased')
+      } finally {
+        await blocker.query('ROLLBACK')
+        await pending
+        await blocker.end()
+      }
+    })
+    it.each(['token', 'auditId', 'siteId', 'digest', 'environment', 'attempt'])('rejects an acknowledgement with changed %s', async (key) => {
+      await audit()
+      const first = (await claim()).claims[0]!
+      const other = structuredClone(first)
+      if (key === 'token') other.token = randomUUID()
+      if (key === 'auditId') other.request.auditId = randomUUID()
+      if (key === 'siteId') other.request.scope.siteId = randomUUID()
+      if (key === 'digest') other.request.digest = 'd'.repeat(64)
+      if (key === 'environment') other.request.expectedEnvironment = 'production'
+      if (key === 'attempt') other.attempt++
+      expect(await settle(other, 'READY')).toBe(false)
+      expect((await rows())[0].state).toBe('leased')
+    })
+    it.each(['PENDING', 'STAGING_BUSY', 'STAGING_SERVICE_UNAVAILABLE'] as const)('reschedules %s with bounded delay and retained identity', async (outcome) => {
+      await audit()
+      const first = (await claim()).claims[0]!
+      expect(await settle(first, outcome)).toBe(true)
+      expect((await rows())[0]).toMatchObject({ state: 'pending', outcome, attempts: 1, claim_token: null })
+      expect((await claim()).claims).toHaveLength(0)
+      await db.query('UPDATE page_studio_checkpoint_staging_outbox SET available_at=clock_timestamp()-INTERVAL \'1 second\'')
+      expect((await claim()).claims[0]!.request).toEqual(first.request)
+    })
+    it.each(['FAILED', 'SUSPENDED', 'STAGING_INVALID', 'STAGING_ACCESS_DENIED', 'STAGING_CHANGED', 'STAGING_BUILD_LIMIT'] as const)('stops terminal outcome %s without automatic new work', async (outcome) => {
+      await audit()
+      const first = (await claim()).claims[0]!
+      expect(await settle(first, outcome)).toBe(true)
+      expect((await rows())[0]).toMatchObject({ state: 'stopped', outcome, attempts: 1 })
+      expect((await claim()).claims).toHaveLength(0)
+      expect(await settle(first, 'READY')).toBe(false)
+    })
+    it.each(['acknowledged transient', 'crashed owner'])('stops after eight attempts: %s', async (scenario) => {
+      await audit()
+      for (let attempt = 1; attempt <= 8; attempt++) {
+        const work = (await claim()).claims[0]!
+        expect(work.attempt).toBe(attempt)
+        if (scenario === 'crashed owner') await expire()
+        else {
+          await settle(work, 'STAGING_SERVICE_UNAVAILABLE')
+          if (attempt < 8) await db.query('UPDATE page_studio_checkpoint_staging_outbox SET available_at=clock_timestamp()-INTERVAL \'1 second\'')
+        }
+      }
+      const next = await claim()
+      expect(next.claims).toHaveLength(0)
+      expect(next.exhausted).toBe(scenario === 'crashed owner' ? 1 : 0)
+      expect((await rows())[0]).toMatchObject({ state: 'stopped', outcome: 'EXHAUSTED', attempts: 8 })
+    })
+    it('rolls back a claim if the process fails before committing it', async () => {
+      await audit()
+      await db.query('BEGIN')
+      await claimCheckpointStaging(db, 'staging', 3)
+      await db.query('ROLLBACK')
+      expect((await claim()).claims[0]!.attempt).toBe(1)
+    })
   })
 })

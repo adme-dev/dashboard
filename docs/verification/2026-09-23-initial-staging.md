@@ -289,3 +289,28 @@ checkpoint and production-release pointers were unchanged. Dispatcher remains
 disabled. Receipt: `/private/tmp/root-checkpoint-outbox-migration-receipt.json`.
 Test log: `/private/tmp/root-checkpoint-outbox-section-final.log`.
 The prior combined PostgreSQL rebase gap is now covered by this successful run.
+
+## Durable claim and acknowledgement primitives
+
+The outbox can now claim at most three due records in the configured environment
+with `FOR UPDATE SKIP LOCKED`, issuing a two-minute token per attempt. Recovery
+keeps the exact audit/checkpoint/digest identity. Eight attempts is the hard cap;
+pending/busy/uncertain responses back off from one to fifteen minutes. Terminal
+outcomes retain tombstones and never create replacement build identities.
+
+Acknowledgement requires the exact scope, environment, checkpoint, attempt and
+claim token. Review found a real expiry race: PostgreSQL can evaluate an UPDATE
+predicate before waiting for an unchanged locked row. The regression reproduced
+an expired claim being acknowledged. Settlement now locks the exact claim first,
+then checks the clock again in a second statement in the same caller-owned
+transaction. The expired owner cannot complete or reschedule the work.
+
+**49 PostgreSQL tests pass** (20 atomic-intent tests and 29 recovery cases),
+including concurrent bounded claims, scope/environment mismatch, crash before
+RPC, expired/superseded acknowledgements, the lock-wait race, backoff, attempt
+exhaustion and rollback. Strict focused TypeScript, lint and independent review
+pass. No additional migration, push or deployment in this increment.
+
+Remaining: invoke these primitives from the actual dispatcher, prove lost RPC
+acknowledgement after activation and pending responses, and connect the scheduled
+cron bridge. SQL helper tests alone do not prove automatic staging execution.

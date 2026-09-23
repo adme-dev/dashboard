@@ -325,7 +325,10 @@ not be reverted while staging is implemented.
 - [x] Persist exact checkpoint staging intent atomically via the checkpoint
   audit, covering editor, setup, AI, history and managed graph writers. Preserve
   rollback, replay identity and legacy writers; no historical backfill.
-- [ ] Deliver retained intents through bounded token-fenced claims and the
+- [x] Implement bounded environment-scoped claims and exact-token settlements,
+  including retry ceilings, tombstones and expiry after real row-lock waits.
+  49 PostgreSQL tests, strict focused types, lint and independent review pass.
+- [ ] Deliver retained intents through the private staging client and the
   existing scheduled cron bridge. Prove lost acknowledgement/process restart through the
   actual caller lifecycle. The coordinator alone does not enable automatic saves.
 
