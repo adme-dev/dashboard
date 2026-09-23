@@ -18,21 +18,37 @@ export class StagingProviderError extends Error {
 }
 const unavailable = () => new StagingProviderError('STAGING_HOST_UNAVAILABLE')
 const conflict = () => new StagingProviderError('STAGING_HOST_CONFLICT')
+type ProviderOperation = 'configuration' | 'list' | 'attach' | 'verify'
+function reportFailure(operation: ProviderOperation, reason: string, status: number | null = null) {
+  // Deliberately exclude URLs, identifiers, credentials, bodies and exception
+  // messages. These bounded diagnostics distinguish provider failures safely.
+  console.warn(JSON.stringify({ event: 'page_studio_staging_provider_failure', operation, reason, status }))
+}
 
 /** The private coordinator reserves the deterministic hostname before calling
  * this adapter. Certificate identity is not proof of successful HTTPS delivery;
  * activation still requires the delivery service's scoped snapshot read-back. */
 export function cloudflareStagingProvider(rawConfig: z.infer<typeof Configuration>, fetcher: typeof fetch = globalThis.fetch.bind(globalThis)) {
-  const config = Configuration.parse(rawConfig)
+  const parsed = Configuration.safeParse(rawConfig)
+  if (!parsed.success) {
+    reportFailure('configuration', 'invalid')
+    throw unavailable()
+  }
+  const config = parsed.data
   const endpoint = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/workers/domains`
-  async function request(path: string, body?: object): Promise<unknown> {
+  async function request(operation: ProviderOperation, path: string, body?: object): Promise<unknown> {
+    let status: number | null = null
+    let reason = 'network'
     try {
       const response = await fetcher(endpoint + path, {
         method: body ? 'PUT' : 'GET', redirect: 'error', signal: AbortSignal.timeout(15000),
         headers: { 'authorization': `Bearer ${config.apiToken}`, 'content-type': 'application/json' },
         ...(body ? { body: JSON.stringify(body) } : {})
       })
+      status = response.status
+      reason = 'http'
       if (!response.ok || !response.body) throw unavailable()
+      reason = 'body'
       const reader = response.body.getReader()
       let length = 0
       const chunks: Uint8Array[] = []
@@ -54,30 +70,39 @@ export function cloudflareStagingProvider(rawConfig: z.infer<typeof Configuratio
         bytes.set(chunk, offset)
         offset += chunk.byteLength
       }
+      reason = 'json'
       const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+      reason = 'envelope'
       if (value?.success !== true || !Object.hasOwn(value, 'result')) throw unavailable()
       return value.result
     } catch {
-      // No provider diagnostics, token, payload, redirects or implicit retries.
+      reportFailure(operation, reason, status)
+      // No provider payloads, exception messages, redirects or implicit retries.
       throw unavailable()
     }
   }
-  function verify(raw: unknown, hostname: string, expectedId?: string) {
+  function verify(raw: unknown, hostname: string, operation: ProviderOperation, expectedId?: string) {
     const parsed = ProviderDomain.safeParse(raw)
     if (!parsed.success || parsed.data.hostname !== hostname || parsed.data.zone_id !== config.zoneId
       || parsed.data.zone_name !== 'xeroflow.io' || parsed.data.service !== CLIENT_STAGING_SERVICE
-      || (expectedId && parsed.data.id !== expectedId)) throw conflict()
+      || (expectedId && parsed.data.id !== expectedId)) {
+      reportFailure(operation, 'identity')
+      throw conflict()
+    }
     return parsed.data
   }
   return {
     async attach(siteId: string) {
       const { hostname } = pageStudioStagingAddress(siteId)
-      const matches = await request(`?${new URLSearchParams({ hostname, zone_id: config.zoneId })}`)
-      if (!Array.isArray(matches) || matches.length > 1) throw conflict()
+      const matches = await request('list', `?${new URLSearchParams({ hostname, zone_id: config.zoneId })}`)
+      if (!Array.isArray(matches) || matches.length > 1) {
+        reportFailure('list', 'matches')
+        throw conflict()
+      }
       const domain = matches.length
-        ? verify(matches[0], hostname)
-        : verify(await request('', { hostname, service: CLIENT_STAGING_SERVICE, zone_id: config.zoneId }), hostname)
-      const confirmed = verify(await request(`/${domain.id}`), hostname, domain.id)
+        ? verify(matches[0], hostname, 'list')
+        : verify(await request('attach', '', { hostname, service: CLIENT_STAGING_SERVICE, zone_id: config.zoneId }), hostname, 'attach')
+      const confirmed = verify(await request('verify', `/${domain.id}`), hostname, 'verify', domain.id)
       return { domainId: confirmed.id, hostname: confirmed.hostname, certificateId: confirmed.cert_id }
     }
   }
