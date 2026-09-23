@@ -203,10 +203,15 @@ describe('God mode gate inventory', () => {
     // CMS/workflow setup core adds one portal role check. No bypass is registered.
     // CMS adoption locks and feature publishing add five native role identity
     // rows; none introduces an application-governance bypass.
-    expect(inventory.rows).toHaveLength(1586)
+    // Checkpoint dispatch adds one cron credential configuration row. It does
+    // not add an owner bypass or change the retained job's authority checks.
+    expect(inventory.rows).toContain(
+      'server/api/cron/page-studio-checkpoint-staging.post.ts\tconst expected = Object.prototype.hasOwnProperty.call(env, \'CRON_SECRET\') ? env.CRON_SECRET : process.env.CRON_SECRET\tprovider_infrastructure_availability'
+    )
+    expect(inventory.rows).toHaveLength(1587)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 121,
-      provider_infrastructure_availability: 227,
+      provider_infrastructure_availability: 228,
       application_governance_bypass: 1623,
       ordinary_user_behavior: 181,
       unrelated_configuration: 433
@@ -221,7 +226,7 @@ describe('God mode gate inventory', () => {
     // independent authority checks and none becomes a governance bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('0b6e789379aab81fb792abd1731972a924a9566290a795bc584ce730dd04a0f4')
+    expect(inventory.digest).toBe('53d71ab4fbb0a0721e9648d862103ed2add7e9aac836bdf7d6d76aa3227869b6')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
