@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       release_action:
-        description: Build a signed frozen artifact, or deploy a previously signed artifact
+        description: Build/deploy signed CRM artifacts, or deploy ordinary Pages from current main
         required: true
         default: build
         type: choice
-        options: [build, deploy]
+        options: [build, deploy, source-deploy]
       release_run_id:
         description: Run containing the verified frozen artifact and approval
         required: false
@@ -41,8 +41,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && 'release' || 'check' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   ci:
@@ -179,6 +179,49 @@ jobs:
 
       - name: Pages deployment target guard
         run: pnpm run test:deployment-guards
+
+  # Ordinary Pages releases keep CRM provider activation dormant. The existing
+  # source deploy command enforces this, current main, and agency-dashboard.
+  source_deploy:
+    needs: ci
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_action == 'source-deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production_deploy
+    concurrency:
+      group: agency-dashboard-production-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout exact tested release SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check immutable target and exact current main
+        run: |
+          pnpm deploy:check
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Deploy ordinary Pages through the guarded source command
+        run: pnpm deploy:production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   release_artifact:
     needs: ci
