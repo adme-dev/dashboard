@@ -9,7 +9,7 @@ import { readPageStudioEmailConfiguration, writePageStudioEmailConfiguration } f
 import { withManagementTransaction } from './database'
 import { handleDomainManagement } from './domainManagement'
 import type { DomainDatabase } from './domainAttachment'
-import { handleStagingManagement } from './stagingManagement'
+import { handleStagingManagement, handleCheckpointStaging } from './stagingManagement'
 import { resolveStagingHost } from './stagingRead'
 
 type Env = ManagementStagingEnv | ManagementProductionEnv
@@ -27,6 +27,10 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch() { return new Response('Not found', { status: 404 }) }
   async clientStaging(input: unknown) {
     return handleStagingManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async checkpointStaging(input: unknown) {
+    return handleCheckpointStaging(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }
 
   async resolveClientStaging(hostname: string) {

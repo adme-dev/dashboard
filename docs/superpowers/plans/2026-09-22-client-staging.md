@@ -313,14 +313,16 @@ not be reverted while staging is implemented.
   retained origin, including original-login and child revocation, current
   permissions, environment, latest accepted proposal and expiry after lock waits.
   118 section tests, strict worker types, lint and independent review pass.
-  The verifier is not yet connected to provider execution; completed setup does
-  not regain provisioning write authority.
+  The origin-bound coordinator below now invokes the verifier; completed setup
+  does not regain provisioning write authority.
 - [x] Bind initial snapshot work to the immutable origin and integrate fresh
   checks into admission/provider-result/activation transactions. 114 real-PG
   tests pass, including queued/expired-claim recovery, logout/expiry rollback,
   and late response from a superseded claim; one admission and no identity swap.
-- [ ] Expose the checked private RPC and connect durable dispatch after every
-  checkpoint commit. Prove lost acknowledgement/process restart through the
+- [x] Expose the checked private Worker RPC and strict Native service client.
+  100 boundary/regression tests, strict Worker/client types and lint pass.
+  No public HTTP route, caller-supplied actor or implicit retry is introduced.
+- [ ] Connect durable dispatch after every checkpoint commit. Prove lost acknowledgement/process restart through the
   actual caller lifecycle. The coordinator alone does not enable automatic saves.
 
 See `docs/verification/2026-09-23-initial-staging.md` for current evidence.

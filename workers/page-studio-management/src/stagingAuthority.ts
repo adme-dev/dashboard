@@ -1,5 +1,4 @@
-import { z } from 'zod'
-import { CheckpointStagingOriginSchema } from '../../../shared/pageStudio/checkpointStagingOrigin'
+import { CheckpointStagingOriginSchema, CheckpointStagingRequestSchema } from '../../../shared/pageStudio/checkpointStagingOrigin'
 import { pageStudioAuthorityOwnerJoin, pageStudioEditorEntitlementJoin } from '../../../server/utils/pageStudio/authoritySql'
 import { DomainManagementActorSchema, type DomainManagementActor } from '../../../shared/pageStudio/domainManagement'
 import type { DomainDatabase } from './domainAttachment'
@@ -41,17 +40,11 @@ export async function requireStagingAuthority(db: DomainDatabase, rawActor: Doma
   return { scope: { tenantId: row.tenantId, clientId: row.clientId, siteId: row.siteId }, canManage: row.canManage }
 }
 
-const CheckpointStagingRequest = z.object({
-  scope: z.object({ tenantId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/), clientId: z.string().uuid(), siteId: z.string().uuid() }).strict(),
-  auditId: z.string().uuid(), checkpointId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/),
-  digest: z.string().regex(/^[a-f0-9]{64}$/), expectedEnvironment: z.enum(['staging', 'production'])
-}).strict()
-
 /** SQL-only admission for a deferred checkpoint. Inputs name an immutable audit,
  * never an actor. The caller owns this transaction and must call again before
  * retaining provider results/activation; the returned origin is not a grant. */
 export async function requireCheckpointStagingOrigin(db: DomainDatabase, raw: unknown, environment: unknown) {
-  const decoded = CheckpointStagingRequest.safeParse(raw)
+  const decoded = CheckpointStagingRequestSchema.safeParse(raw)
   const deny = (): never => {
     throw new StagingStoreError('STAGING_ACCESS_DENIED', 403)
   }

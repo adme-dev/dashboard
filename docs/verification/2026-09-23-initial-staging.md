@@ -223,3 +223,35 @@ Remaining: expose the checked private service RPC and connect durable dispatch
 after every checkpoint commit, including lost response/process recovery. The
 coordinator is not yet invoked automatically by production saves. No push,
 deployment, migration or production data change was made in this section.
+
+
+## Private checkpoint staging service boundary
+
+The management Worker now exposes `checkpointStaging` exclusively through its
+service binding. Its strict request names the immutable audit, checkpoint digest,
+exact tenant/client/site scope and environment. It accepts no actor or login
+credential. Fresh SQL transport and build/verify service bindings are required
+before invoking the origin-bound coordinator; public HTTP remains 404.
+
+The Native `requestCheckpointStaging` client validates the echoed request and
+same-site state, rejects malformed/foreign receipts and unknown status/code
+pairs, and redacts unexpected transport errors. Neither side retries uncertain
+provider outcomes. Manual staging management shares the same provider dependency
+construction and keeps its existing behavior.
+
+Verification: all 16 Worker boundary cases failed before the method existed;
+the Native client suite initially failed because its module was missing. Final
+**100 tests pass** across both boundaries and existing management, staging HTTP
+and provider regressions. Strict Worker and focused Native-client TypeScript
+and focused lint pass. No production deployment or migration in this increment.
+
+The branch was also rebased onto current main `23665e450`, retaining the live
+hostname-ID fix and every prior automatic-staging commit. 87 relevant unit tests
+and Worker type checks passed after rebase. The additional PostgreSQL rerun
+could not start because this Mac exhausted its shared-memory allocation limit;
+no other session's IPC resources were removed. Earlier database test results
+remain recorded above, but do not claim a new combined database run.
+
+Remaining: atomic durable dispatch from all checkpoint commit paths, recovery
+when the process stops between save and dispatch, hosted acceptance and release.
+The private RPC/client alone do not automatically publish saved checkpoints.
