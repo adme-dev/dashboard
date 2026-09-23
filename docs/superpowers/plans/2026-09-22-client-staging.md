@@ -341,5 +341,9 @@ not be reverted while staging is implemented.
 - [ ] Deliver retained intents through the private staging client and the
   existing scheduled cron bridge. Prove lost acknowledgement/process restart through the
   actual caller lifecycle. The coordinator alone does not enable automatic saves.
+  The bounded dispatcher, authenticated cron POST and five-minute scheduler
+  registration are implemented and locally verified, including 174 boundary/
+  PostgreSQL recovery tests. Paired deployment and hosted acceptance remain open;
+  see `docs/verification/2026-09-23-checkpoint-staging-dispatch.md`.
 
 See `docs/verification/2026-09-23-initial-staging.md` for current evidence.

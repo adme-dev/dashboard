@@ -50,7 +50,9 @@ export const ROUTES: Record<string, string[]> = {
     '/api/cron/measurement-outbox-repair',
     '/api/cron/god-mode-reconciliation',
     '/api/cron/memory-index-outbox',
-    '/api/cron/crm-search-index-repair'
+    '/api/cron/crm-search-index-repair',
+    // Bounded retained checkpoint jobs; management rechecks original authority.
+    '/api/cron/page-studio-checkpoint-staging'
   ],
   // hourly at :45 — keep the Xero customer cache and rollups fresh. Delta
   // syncs are idempotent and use the shared cron token resolver. Was */15:

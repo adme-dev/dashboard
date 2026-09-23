@@ -25,7 +25,35 @@ Evidence on 23 September:
 Logs are under `/private/tmp/root-checkpoint-dispatcher-*`. Existing disposable
 PostgreSQL port 55444 was used; no production records or migrations changed here.
 
-This is the dispatch core. The authenticated cron route and scheduler connection,
-paired deployments and hosted automatic-staging acceptance are still required.
+## Cron connection — 24 September
+
+POST /api/cron/page-studio-checkpoint-staging authenticates x-cron-secret against
+the request's Cloudflare CRON_SECRET, with local process fallback only when the
+binding is absent. Invalid explicit bindings fail closed; secrets are byte-bounded
+and compared by constant-time SHA-256 digests. The route reads no caller body or
+scope/environment query. It passes only the deployed environment and concrete
+transactionWithoutRetry implementation into the existing dispatcher, awaits the
+full bounded batch, and returns counts or a sanitized 503.
+
+The pages-cron Worker invokes it once per existing five-minute schedule. The
+retained originating login, entitlement, checkpoint, quota and activation fences
+remain in the existing management coordinator. Cron does not create a substitute
+actor or replace an active preview when later drafts are saved.
+
+- New endpoint and scheduler tests failed before implementation.
+- Endpoint, scheduler, inventory, dispatcher/client and existing cron regressions:
+  69 passed. Combined new boundary tests plus actual PostgreSQL authority/outbox
+  recovery: 174 passed. Lost-response recovery retains one admission.
+- Changed files pass ESLint. Strict pages-cron Worker typecheck passes.
+  Focused native TypeScript reports only the three pre-existing overloaded
+  Neon Pool.connect typing errors in unchanged server/utils/db.ts:375/380/382.
+- Independent source review found no blockers. Route inventory increases only
+  the total and mutation counts by one; God mode bypass/guard counts are unchanged.
+- Native production build passes with Cloudflare wrapping and size checks:
+  raw 25,304,966 / 25,468,928 bytes; gzip 6,789,551 / 9,750,000 bytes.
+  Evidence: /private/tmp/resume-astro-checkpoint-cron-build.log. No deployment ran.
+
+Evidence: /private/tmp/resume-astro-checkpoint-cron-{red,green,pg,lint,types,worker-types}.log.
+Paired deployment and hosted automatic-staging acceptance remain required.
 It does not enable interactive staging CMS/actions or replace an existing preview
 with every subsequent checkpoint.

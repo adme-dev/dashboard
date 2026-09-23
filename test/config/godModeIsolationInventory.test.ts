@@ -22,8 +22,10 @@ const API_INVENTORY = {
   // Agency and portal initial-staging ensure POSTs add two scoped mutations.
   // Both delegate current actor/site checks to handlePageStudioStaging;
   // neither registers a God mode bypass.
-  totalRouteFiles: 2160,
-  mutationRouteFiles: 1184,
+  // Checkpoint staging cron uses a machine secret and retained job authority;
+  // it adds one POST without any God mode bypass or user-role gate.
+  totalRouteFiles: 2161,
+  mutationRouteFiles: 1185,
   explicitlyGuardedMutationFiles: 401,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -62,8 +64,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2160,
-      mutationRouteFiles: 1184,
+      totalRouteFiles: 2161,
+      mutationRouteFiles: 1185,
       explicitlyGuardedMutationFiles: 401,
       guardedMutationFilesWithTransactionCall: 47
     })
