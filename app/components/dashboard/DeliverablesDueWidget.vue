@@ -21,7 +21,7 @@ async function refreshDeliverablesDue() {
   }
 }
 
-await refreshDeliverablesDue()
+onMounted(refreshDeliverablesDue)
 
 const allTasks = computed(() => (data.value as any)?.tasks || [])
 

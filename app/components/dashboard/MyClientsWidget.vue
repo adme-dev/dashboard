@@ -14,7 +14,7 @@ async function refreshMyClients() {
   }
 }
 
-await refreshMyClients()
+onMounted(refreshMyClients)
 
 const CAP = 5
 // /api/agency/clients returns a bare array (not { clients }); tolerate both shapes.

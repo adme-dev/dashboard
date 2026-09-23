@@ -42,7 +42,7 @@ async function refreshSpendPacing() {
 }
 
 // MTD daily spend for the trend line (degrades to no chart if unavailable).
-await refreshSpendPacing()
+onMounted(refreshSpendPacing)
 
 const CAP = 5
 const rows = computed(() =>

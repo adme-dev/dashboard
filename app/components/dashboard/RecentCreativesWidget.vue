@@ -24,7 +24,7 @@ async function refreshRecentCreatives() {
   }
 }
 
-await refreshRecentCreatives()
+onMounted(refreshRecentCreatives)
 watch(activeFilter, () => { refreshRecentCreatives() })
 
 // Cap to 3 rows of the 3-col grid so the card height stays bounded.

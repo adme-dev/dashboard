@@ -16,7 +16,7 @@ async function refreshProofsPending() {
   }
 }
 
-await refreshProofsPending()
+onMounted(refreshProofsPending)
 
 const CAP = 5
 const allPending = computed(() => {

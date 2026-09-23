@@ -14,7 +14,7 @@ async function refreshJobTypes() {
   }
 }
 
-await refreshJobTypes()
+onMounted(refreshJobTypes)
 
 const categories = computed(() => {
   const raw = (data.value as any)?.categories || data.value || []

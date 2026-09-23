@@ -16,7 +16,7 @@ async function refreshBriefs() {
   }
 }
 
-await refreshBriefs()
+onMounted(refreshBriefs)
 
 const briefs = computed(() => (data.value as any)?.briefs || [])
 // True per-status totals for the whole pipeline (not just the fetched page).

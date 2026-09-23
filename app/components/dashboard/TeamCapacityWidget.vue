@@ -14,7 +14,7 @@ async function refreshTeamCapacity() {
   }
 }
 
-await refreshTeamCapacity()
+onMounted(refreshTeamCapacity)
 
 const members = computed(() => {
   const raw = (data.value as any)?.members || []

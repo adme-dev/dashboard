@@ -32,7 +32,7 @@ async function refreshTrainingStats() {
   }
 }
 
-await refreshTrainingStats()
+onMounted(refreshTrainingStats)
 
 const stats = computed(() => data.value)
 

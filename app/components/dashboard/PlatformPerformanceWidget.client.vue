@@ -55,7 +55,7 @@ async function refreshPlatformPerformance() {
 }
 
 // Fallback to the old per-platform fetch if the new endpoint isn't available
-await refreshPlatformPerformance()
+onMounted(refreshPlatformPerformance)
 
 const status = computed(() => {
   if (analyticsStatus.value === 'pending') return 'pending'
