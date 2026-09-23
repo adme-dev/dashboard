@@ -93,3 +93,16 @@ CI now has a dedicated disposable Astro database gate so reservation and release
 compatibility tests cannot silently skip in the broad suite. The step runs the
 new PostgreSQL tests, historical feature release tests and shared verifier checks.
 The workflow YAML parses; deployment conditions and targets are unchanged.
+
+Run 35926546042 at 19840a5d6 completed successfully, including the dedicated Astro
+PostgreSQL gate, full suite and production build. Deployment jobs were skipped.
+
+## Paired format 2 refresh
+
+The next Studio artifact increment adds a strict retained identity-pin schema.
+Regenerated the native export from source digest
+8ec81c14ffb65f307224a38056372e0c8ad63961189380bd03a1639f40d275ac;
+the module is 318,663 bytes. The deterministic --check passes. Shared verifier,
+Astro PostgreSQL reservation and historical feature-release suites pass with
+120 tests and one existing skip. This refresh adds no native API or activation
+behavior. Format 2 compiler/storage acceptance remains in Studio.

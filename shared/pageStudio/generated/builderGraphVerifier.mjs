@@ -5772,6 +5772,11 @@ var AstroBuildIdentitySchema = AstroBuildIdentityInputSchema.extend({
   renderer: literal("astro"),
   toolchainDigest: ReleaseSha256Schema,
 }).strict();
+var AstroBuildIdentityPinSchema = object({
+  buildId: ReleaseScopedIdSchema,
+  identity: AstroBuildIdentitySchema,
+  identityDigest: ReleaseSha256Schema,
+}).strict();
 async function createAstroBuildIdentity(input, admittedToolchain) {
   const parsed = AstroBuildIdentityInputSchema.parse(input);
   const toolchain = AstroCompilerToolchainSchema.parse(admittedToolchain);
