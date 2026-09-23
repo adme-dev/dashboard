@@ -76,3 +76,20 @@ required disposable targets. No guards were relaxed.
 No provider was called, no active release pointer changed outside disposable tests,
 and the existing Fantasy preview has not been replaced. These reservations are
 not proof of hosted compiler execution or completed Astro publication.
+
+## CI follow-up
+
+Run 35923882904 at f3b14682a passed the production build and all named database
+gates; the full suite reported 14,681 passed, one failed and 1,343 skipped. The
+sole failure was the exact God mode route inventory: the existing agency/portal
+initial-staging ensure POSTs raised routes 2,158→2,160 and mutations 1,182→1,184.
+Both routes retain the trusted actor and scoped staging service boundary and
+introduce no God mode registration. Updated the reviewed counts; guarded counts
+and all no-bypass assertions remain unchanged. Local reproduction failed before
+the correction; inventory, staging endpoint and initial-staging tests then passed
+(32 tests). Independent review found no weakening.
+
+CI now has a dedicated disposable Astro database gate so reservation and release
+compatibility tests cannot silently skip in the broad suite. The step runs the
+new PostgreSQL tests, historical feature release tests and shared verifier checks.
+The workflow YAML parses; deployment conditions and targets are unchanged.
