@@ -1,3 +1,4 @@
+import { prepareCreatedSiteStaging } from '~~/server/utils/pageStudio/initialStaging'
 import { z } from 'zod'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
@@ -35,7 +36,8 @@ export default eventHandler(async (event) => {
       tenantId,
       ...(parsed.data.setupSource ? { setup: { setupSource: parsed.data.setupSource, setupBrief: parsed.data.setupBrief } } : {})
     })
-    return { site }
+    const staging = await prepareCreatedSiteStaging(event, { kind: 'portal', actorId: user.id, clientId: user.clientId }, site.id)
+    return { site, staging }
   } catch (error) {
     pageStudioHttpError(error)
   }

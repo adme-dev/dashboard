@@ -93,3 +93,31 @@ editing permission or component unmount, including after conflict refreshes.
 This is local implementation evidence. Browser acceptance, duplicate-tab hosted
 proof, full build and public documentation synchronization remain in S6.5.
 The first checkpoint/creation triggers in S6.2/S6.3 are still unfinished.
+
+
+## Site creation connection
+
+Both creation endpoints now request initial staging after the site transaction
+returns successfully. The request uses authenticated agency/client authority and
+the newly created site ID, and reuses the existing strict management response
+validation. The response adds `staging`, containing verified staging state or
+`null` when it could not be confirmed. A staging failure never changes the saved
+site into a reported creation failure.
+
+The creation response waits at most five seconds. The same sanitized promise is
+registered through the established request-background helper, so a late result
+remains tracked without retrying or exposing provider exception details. Existing
+workspaces recover through idempotent ensure.
+
+- Both connection tests failed before implementation; thirteen existing cases
+  passed.
+- Final seven-suite UI/site/creation/HTTP/contract/access section: 99 tests passed.
+- Tests cover a held creation transaction, rejected creation, trusted actor
+  scope, missing bindings, provider rejection, mismatched service identity,
+  foreign addresses, the five-second deadline and retained late completion.
+- Focused lint/diff checks and independent six-file end-to-end review pass.
+
+This completes the creation-to-reservation connection only. Empty-site provider
+hostname preparation still belongs to S6.2; checkpoint authority/triggers remain
+in S6.3. No new provider resources or production content were changed during
+these tests. Full build, browser and hosted acceptance remain outstanding.
