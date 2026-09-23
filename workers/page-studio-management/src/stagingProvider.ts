@@ -61,13 +61,18 @@ export function cloudflareStagingProvider(rawConfig: z.infer<typeof Configuratio
     let reason = 'network'
     try {
       const response = await fetcher(endpoint + path, {
-        method: body ? 'PUT' : 'GET', redirect: 'error', signal: AbortSignal.timeout(15000),
+        // workerd rejects redirect: 'error' before making any request. Manual
+        // mode plus the status check below refuses redirects without following.
+        method: body ? 'PUT' : 'GET', redirect: 'manual', signal: AbortSignal.timeout(15000),
         headers: { 'authorization': `Bearer ${config.apiToken}`, 'content-type': 'application/json' },
         ...(body ? { body: JSON.stringify(body) } : {})
       })
       status = response.status
       reason = 'http'
-      if (!response.ok || !response.body) throw unavailable()
+      if (!response.ok || response.redirected || !response.body) {
+        await response.body?.cancel().catch(() => undefined)
+        throw unavailable()
+      }
       reason = 'body'
       const reader = response.body.getReader()
       let length = 0

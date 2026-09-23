@@ -4,10 +4,14 @@ import { coordinateStaging, type StagingCoordinatorDependencies } from './stagin
 import { cloudflareStagingProvider } from './stagingProvider'
 import { StagingStoreError } from './stagingStore'
 
-async function probe(hostname: string): Promise<boolean> {
+export async function probeClientStagingHost(hostname: string): Promise<boolean> {
   if (!/^preview-[a-f0-9]{32}\.xeroflow\.io$/.test(hostname)) return false
-  const response = await fetch(`https://${hostname}/.well-known/xeroflow-staging`, { redirect: 'error', signal: AbortSignal.timeout(10000), cache: 'no-store' })
-  if (response.status !== 200 || !response.body) return false
+  // Manual mode is supported by workerd; never follow a preview redirect.
+  const response = await fetch(`https://${hostname}/.well-known/xeroflow-staging`, { redirect: 'manual', signal: AbortSignal.timeout(10000), cache: 'no-store' })
+  if (response.status !== 200 || response.redirected || !response.body) {
+    await response.body?.cancel().catch(() => undefined)
+    return false
+  }
   const reader = response.body.getReader()
   let text = ''
   let size = 0
@@ -40,7 +44,7 @@ export async function handleStagingManagement(input: unknown, env: Record<string
     const value = await coordinateStaging(parsed.data, {
       transaction,
       attach: siteId => cloudflareStagingProvider({ accountId: String(env.PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID ?? ''), zoneId: String(env.PAGE_STUDIO_CLOUDFLARE_ZONE_ID ?? ''), apiToken: String(env.PAGE_STUDIO_CLOUDFLARE_API_TOKEN ?? '') }).attach(siteId),
-      probe,
+      probe: probeClientStagingHost,
       build: input => service!.buildSnapshot!(input),
       verify: input => service!.verifySnapshot!(input)
     })
