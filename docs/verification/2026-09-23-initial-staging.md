@@ -65,3 +65,31 @@ the Worker response. Oversized/non-JSON bodies retain existing limits.
   end-to-end and found no actionable issues.
 - UI, site-creation and checkpoint triggers are still pending. No public behavior
   is advertised as automatically provisioned until those triggers are connected.
+
+
+## Bounded first-use workspace request
+
+S6.4 implementation now requests authenticated initial ensure when an editor
+opens an undeployed site's staging workspace. Empty sites reserve their address;
+a first saved checkpoint can then trigger one initial snapshot request. Later
+draft changes and status refreshes do not automatically deploy another snapshot.
+Existing active, failed, suspended and pending states remain unchanged.
+
+If an initial response is lost, the action becomes Check initial staging. It
+checks the idempotent ensure operation before permitting a fresh explicit update.
+The UI does not supply a hostname, checkpoint, actor or new build identity.
+Responses and notifications are discarded after a site/audience change, loss of
+editing permission or component unmount, including after conflict refreshes.
+
+- Two first-use/recovery cases failed before implementation; nine existing or
+  preservation cases passed in that initial run.
+- Final UI/HTTP/contract/access section: 65 tests passed across four suites.
+- Focused lint and diff checks pass.
+- Independent end-to-end review identified a stale notification after a deferred
+  409 refresh. The additional authority/lifecycle check and regression test fix
+  it; review found no remaining actionable issues.
+- No dependency installation, production mutation, push or release occurred.
+
+This is local implementation evidence. Browser acceptance, duplicate-tab hosted
+proof, full build and public documentation synchronization remain in S6.5.
+The first checkpoint/creation triggers in S6.2/S6.3 are still unfinished.
