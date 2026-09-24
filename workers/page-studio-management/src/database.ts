@@ -1,6 +1,16 @@
 import pg from 'pg'
 import type { Database } from './emailConfiguration'
 
+// Fixed SQL only: one protocol round trip sets all transaction-local guards.
+// Keep business SQL parameterized and separate; never interpolate caller data here.
+const transactionSetup = [
+  'BEGIN',
+  'SET LOCAL search_path TO public, pg_catalog',
+  'SET LOCAL statement_timeout=\'10s\'',
+  'SET LOCAL lock_timeout=\'2s\'',
+  'SET LOCAL idle_in_transaction_session_timeout=\'15s\''
+].join('; ')
+
 export async function withManagementTransaction<T>(connectionString: string, work: (db: Database) => Promise<T>): Promise<T> {
   const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10_000, query_timeout: 15_000 })
   let connectionFailure: Error | undefined
@@ -15,12 +25,8 @@ export async function withManagementTransaction<T>(connectionString: string, wor
   }
   try {
     await client.connect()
-    await query('BEGIN')
     try {
-      await query('SET LOCAL search_path TO public, pg_catalog')
-      await query('SET LOCAL statement_timeout=\'10s\'')
-      await query('SET LOCAL lock_timeout=\'2s\'')
-      await query('SET LOCAL idle_in_transaction_session_timeout=\'15s\'')
+      await query(transactionSetup)
       const result = await work({ query })
       await query('COMMIT')
       return result

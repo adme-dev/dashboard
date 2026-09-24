@@ -6,13 +6,14 @@ const { Client } = vi.hoisted(() => ({ Client: vi.fn() }))
 vi.mock('pg', () => ({ default: { Client } }))
 
 const connectionString = 'postgresql://synthetic:private-test-value@example.invalid/database'
-const setupStatements = [
+const setupBatch = [
   'BEGIN',
   'SET LOCAL search_path TO public, pg_catalog',
   'SET LOCAL statement_timeout=\'10s\'',
   'SET LOCAL lock_timeout=\'2s\'',
   'SET LOCAL idle_in_transaction_session_timeout=\'15s\''
-]
+].join('; ')
+const setupStatements = [setupBatch]
 
 class FakeClient extends EventEmitter {
   connect = vi.fn(async () => {})
@@ -43,7 +44,7 @@ describe('private management database transaction lifecycle', () => {
     vi.restoreAllMocks()
   })
 
-  it('sets bounded session limits before work, forwards parameters and commits once on one connection', async () => {
+  it('sets bounded session limits in one round trip before work and commits once on one connection', async () => {
     const work = vi.fn(async (db) => {
       await db.query('SELECT $1::text AS id', ['synthetic-id'])
       return { revision: 1 }
@@ -75,7 +76,7 @@ describe('private management database transaction lifecycle', () => {
     const work = vi.fn()
     await expect(withManagementTransaction(connectionString, work)).rejects.toBe(error)
     expect(work).not.toHaveBeenCalled()
-    expect(statements()).toEqual(['BEGIN'])
+    expect(statements()).toEqual([setupBatch, 'ROLLBACK'])
     expect(client.connect).toHaveBeenCalledOnce()
     expect(client.end).toHaveBeenCalledOnce()
   })
@@ -83,13 +84,13 @@ describe('private management database transaction lifecycle', () => {
   it('rolls back if setting the database limits fails and never invokes business work', async () => {
     const error = new Error('SET rejected')
     client.query.mockImplementation(async (sql) => {
-      if (sql === setupStatements[2]) throw error
+      if (sql === setupBatch) throw error
       return { rows: [], rowCount: 0 }
     })
     const work = vi.fn()
     await expect(withManagementTransaction(connectionString, work)).rejects.toBe(error)
     expect(work).not.toHaveBeenCalled()
-    expect(statements()).toEqual([...setupStatements.slice(0, 3), 'ROLLBACK'])
+    expect(statements()).toEqual([setupBatch, 'ROLLBACK'])
     expect(client.end).toHaveBeenCalledOnce()
   })
 
