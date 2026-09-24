@@ -99,6 +99,12 @@ jobs:
         run: pnpm --dir workers/page-studio-management run typecheck
         timeout-minutes: 5
 
+      - name: Page Studio management transaction round trips and PostgreSQL semantics
+        run: pnpm exec vitest run test/workers/pageStudioManagementDatabase.test.ts test/workers/pageStudioManagementDatabasePostgres.test.ts
+        timeout-minutes: 5
+        env:
+          PAGE_STUDIO_MANAGEMENT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
+
       - name: Page Studio management immutable deployment targets
         run: |
           node workers/page-studio-management/deploy.mjs staging --check-only
