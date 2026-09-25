@@ -4,7 +4,7 @@ import { createError, type H3Event } from 'h3'
 import { lockPageStudioHistoryAuthority } from './historyAuthority'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
-import { commitPageStudioCheckpoint, registerPageStudioVersion, type PageStudioControlQueryClient, type PageStudioControlScope } from '~~/server/utils/pageStudio/controlStore'
+import { commitPageStudioCheckpoint, registerPageStudioVersion, submitPageStudioVersionForReview, type PageStudioControlQueryClient, type PageStudioControlScope } from '~~/server/utils/pageStudio/controlStore'
 import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
 import { PageStudioHistoryMutationSchema, PageStudioHistoryQuerySchema, type PageStudioHistoryReceipt, type PageStudioHistoryState } from '~~/shared/pageStudio/draftHistory'
 import type { PageStudioContentActor } from '~~/server/utils/pageStudio/businessContent'
@@ -134,6 +134,8 @@ export async function mutatePageStudioHistory(request: Request & {
     throw invalid()
   if (!request.event) throw createError({ statusCode: 401, statusMessage: 'Sign in again before changing draft history' })
   const body = parsed.data
+  if (body.action === 'name' && body.submitForReview && request.actor.role !== 'agency')
+    throw denied()
   if (body.action === 'restore') {
     const managed = await (dependencies.runTransaction ?? defaultTransaction)(async (db) => {
       const { scope } = await authorise(db, request, true)
@@ -189,6 +191,10 @@ export async function mutatePageStudioHistory(request: Request & {
       const version = await registerPageStudioVersion({ scope, authorRole: request.actor.role, userId: request.actor.actorId,
         checkpointId, digest: source.rows[0].digest, summary: body.name, idempotencyKey: operationKey }, { runTransaction: nested })
       versionId = version.id
+      if (body.submitForReview) {
+        await submitPageStudioVersionForReview({ scope, actorRole: request.actor.role, userId: request.actor.actorId,
+          versionId, idempotencyKey: `${operationKey}:submit` }, { runTransaction: nested })
+      }
     } else {
       if (!request.bucket || typeof request.bucket.put !== 'function')
         throw new PageStudioHistoryError('CHECKPOINT_UNAVAILABLE', 503, 'Draft storage is unavailable. Try again.')

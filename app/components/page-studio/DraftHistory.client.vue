@@ -56,13 +56,13 @@ function open(action: 'name' | 'restore', item?: PageStudioHistoryItem) {
 function date(value: string) {
   return new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value))
 }
-async function save(retry = false) {
+async function save(retry = false, submitForReview = false) {
   if (saving.value || (!retry && !canConfirm.value))
     return
   if (!retry) {
     const parsed = PageStudioHistoryMutationSchema.safeParse(dialog.value === 'restore'
       ? { action: 'restore', checkpointId: selected.value?.checkpointId, expectedCheckpointId: base.value, requestId: crypto.randomUUID() }
-      : { action: 'name', name: name.value, expectedCheckpointId: base.value, requestId: crypto.randomUUID() })
+      : { action: 'name', name: name.value, expectedCheckpointId: base.value, requestId: crypto.randomUUID(), submitForReview })
     if (!parsed.success)
       return
     operation.value = parsed.data
@@ -77,7 +77,7 @@ async function save(retry = false) {
     if (endpoint.value !== target)
       return
     message.value = result.isCurrent
-      ? command.action === 'restore' ? 'Earlier draft restored. Reopen Studio to continue editing it.' : 'Named version saved. It remains a draft until reviewed and published.'
+      ? command.action === 'restore' ? 'Earlier draft restored. Reopen Studio to continue editing it.' : command.submitForReview ? 'Named version submitted for review. Your live website stays as it is.' : 'Named version saved. It remains a draft until reviewed and published.'
       : 'Your request was saved, and a newer draft now exists. History shows the latest saved work.'
     dialog.value = null
     operation.value = null
@@ -300,6 +300,14 @@ async function launch() {
             :disabled="!canConfirm"
             :loading="saving"
             @click="save()"
+          />
+          <UButton
+            v-if="audience === 'agency' && dialog === 'name' && !problem"
+            label="Save for review"
+            variant="outline"
+            :disabled="!canConfirm"
+            :loading="saving"
+            @click="save(false, true)"
           />
         </div>
       </template>

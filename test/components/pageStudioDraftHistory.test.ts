@@ -25,10 +25,10 @@ async function flush() {
 function button(host: HTMLElement, label: string) {
   return [...host.querySelectorAll('button')].find(x => x.textContent === label)
 }
-async function mount() {
+async function mount(audience: 'agency' | 'portal' = 'portal') {
   const host = document.createElement('div')
   document.body.append(host)
-  const app = createApp({ render: () => h(Suspense, null, { default: () => h(Workspace, { siteId: 'site-a', audience: 'portal' }) }) })
+  const app = createApp({ render: () => h(Suspense, null, { default: () => h(Workspace, { siteId: 'site-a', audience }) }) })
   Object.entries(stubs).forEach(([n, c]) => app.component(n, c))
   apps.push(app)
   app.mount(host)
@@ -37,6 +37,7 @@ async function mount() {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  mutation.mockReset()
   data.value = state()
   error.value = null
   Object.entries({ computed, ref, watch }).forEach(([n, v]) => vi.stubGlobal(n, v))
@@ -93,6 +94,27 @@ describe('draft history controls', () => {
     expect(mutation.mock.calls[0][0]).toBe('/api/portal/page-studio/sites/site-a/history')
     expect(mutation.mock.calls[0][1].body).toMatchObject({ action: 'name', name: 'Before redesign', expectedCheckpointId: 'current' })
     expect(mutation).toHaveBeenCalledTimes(1)
+    expect(mutation.mock.calls[0][1].body.submitForReview).not.toBe(true)
+    expect(button(host, 'Save for review')).toBeUndefined()
+  })
+  it('submits an agency named version explicitly and retains that intent on retry', async () => {
+    mutation.mockRejectedValueOnce(new Error('lost acknowledgement')).mockResolvedValueOnce({ checkpointId: 'current', versionId: 'v1', currentCheckpointId: 'current', isCurrent: true })
+    const host = await mount('agency')
+    button(host, 'Save named version')!.click()
+    await flush()
+    const field = host.querySelector('input')!
+    field.value = 'Ready for review'
+    field.dispatchEvent(new Event('input'))
+    await flush()
+    expect(button(host, 'Save for review')).toBeDefined()
+    button(host, 'Save for review')!.click()
+    await flush()
+    const original = mutation.mock.calls[0]
+    expect(original[1].body).toMatchObject({ action: 'name', submitForReview: true })
+    button(host, 'Retry same request')!.click()
+    await flush()
+    expect(mutation.mock.calls[1]).toEqual(original)
+    expect(host.textContent).toContain('submitted for review')
   })
   it('hides mutations for viewers and hides stale data on revoked access', async () => {
     data.value.canEdit = false
