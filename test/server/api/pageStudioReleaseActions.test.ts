@@ -11,7 +11,14 @@ const mocks = vi.hoisted(() => ({
   requireAgencyPageStudioAccess: vi.fn(),
   resolveAgencyPageStudioSiteClient: vi.fn(),
   resolvePageStudioDeliveryWorker: vi.fn(),
-  rollbackPageStudioRelease: vi.fn()
+  rollbackPageStudioRelease: vi.fn(),
+  preparePageStudioPublishPrincipal: vi.fn(), withPageStudioPublishAuthority: vi.fn()
+}))
+vi.mock('~~/server/utils/pageStudio/publishHttp', () => ({
+  preparePageStudioPublishPrincipal: (...args: unknown[]) => mocks.preparePageStudioPublishPrincipal(...args)
+}))
+vi.mock('~~/server/utils/pageStudio/publishAuthority', () => ({
+  withPageStudioPublishAuthority: (...args: unknown[]) => mocks.withPageStudioPublishAuthority(...args)
 }))
 vi.mock('~~/server/utils/pageStudio/releaseFeatureActivation', () => ({
   coordinateFeatureActivation: (...args: unknown[]) =>
@@ -99,6 +106,8 @@ const releasePointer = {
   releaseId: targetReleaseId
 }
 const worker = { verifyBuild: vi.fn(), verifyRelease: vi.fn() }
+const nativePrincipal = { actorId, tenantId: scope.tenantId, login: { role: 'agency', userId: actorId, tokenHash: 'c'.repeat(64) } }
+const authorityDb = { query: vi.fn() }
 
 describe('Page Studio agency release actions', () => {
   beforeEach(() => {
@@ -112,8 +121,16 @@ describe('Page Studio agency release actions', () => {
     mocks.resolvePageStudioDeliveryWorker.mockReturnValue(worker)
     mocks.getPageStudioBuildPointer.mockResolvedValue(buildPointer)
     mocks.getPageStudioReleasePointer.mockResolvedValue(releasePointer)
-    mocks.activatePageStudioRelease.mockResolvedValue(releasePointer)
-    mocks.rollbackPageStudioRelease.mockResolvedValue(releasePointer)
+    mocks.preparePageStudioPublishPrincipal.mockResolvedValue(nativePrincipal)
+    mocks.withPageStudioPublishAuthority.mockImplementation(async (_scope, _principal, work) => work(authorityDb))
+    const mutate = async (_input: unknown, dependencies?: { runTransaction: (work: (db: unknown) => Promise<unknown>) => Promise<unknown> }) => {
+      if (dependencies) await dependencies.runTransaction(async (db) => {
+        expect(db).toBe(authorityDb)
+      })
+      return releasePointer
+    }
+    mocks.activatePageStudioRelease.mockImplementation(mutate)
+    mocks.rollbackPageStudioRelease.mockImplementation(mutate)
     worker.verifyBuild.mockResolvedValue(buildPointer)
     worker.verifyRelease.mockResolvedValue(releasePointer)
   })
@@ -149,6 +166,7 @@ describe('Page Studio agency release actions', () => {
       services
     )
     expect(mocks.activatePageStudioRelease).not.toHaveBeenCalled()
+    expect(mocks.nativeFeaturePublisher.mock.invocationCallOrder[0]).toBeLessThan(worker.verifyBuild.mock.invocationCallOrder[0]!)
   })
   it('verifies the immutable build in Delivery before activating it locally without a control-plane callback', async () => {
     const { default: handler } = await import(
@@ -188,7 +206,10 @@ describe('Page Studio agency release actions', () => {
       ...body,
       idempotencyKey: 'publish_01HXYZ',
       scope
-    })
+    }, { runTransaction: expect.any(Function) })
+    expect(mocks.withPageStudioPublishAuthority).toHaveBeenCalledWith(scope, nativePrincipal, expect.any(Function))
+    expect(mocks.preparePageStudioPublishPrincipal.mock.invocationCallOrder[0]).toBeLessThan(worker.verifyBuild.mock.invocationCallOrder[0]!)
+    expect(worker.verifyBuild.mock.invocationCallOrder[0]).toBeLessThan(mocks.withPageStudioPublishAuthority.mock.invocationCallOrder[0]!)
   })
 
   it('verifies the immutable target release in Delivery before rolling back locally', async () => {
@@ -221,7 +242,10 @@ describe('Page Studio agency release actions', () => {
       ...body,
       idempotencyKey: 'rollback_01HXYZ',
       scope
-    })
+    }, { runTransaction: expect.any(Function) })
+    expect(mocks.withPageStudioPublishAuthority).toHaveBeenCalledWith(scope, nativePrincipal, expect.any(Function))
+    expect(mocks.preparePageStudioPublishPrincipal.mock.invocationCallOrder[0]).toBeLessThan(worker.verifyRelease.mock.invocationCallOrder[0]!)
+    expect(worker.verifyRelease.mock.invocationCallOrder[0]).toBeLessThan(mocks.withPageStudioPublishAuthority.mock.invocationCallOrder[0]!)
   })
 
   it('does not open the activation transaction when artifact verification fails', async () => {
@@ -244,6 +268,7 @@ describe('Page Studio agency release actions', () => {
     }
     await expect(handler(event as never)).rejects.toThrow()
     expect(mocks.activatePageStudioRelease).not.toHaveBeenCalled()
+    expect(mocks.withPageStudioPublishAuthority).not.toHaveBeenCalled()
   })
 
   it('does not open the rollback transaction when target verification fails', async () => {
@@ -266,5 +291,18 @@ describe('Page Studio agency release actions', () => {
     }
     await expect(handler(event as never)).rejects.toThrow()
     expect(mocks.rollbackPageStudioRelease).not.toHaveBeenCalled()
+    expect(mocks.withPageStudioPublishAuthority).not.toHaveBeenCalled()
+  })
+  it.each(['activate', 'rollback'] as const)('rejects %s if publishing authority was revoked during verification', async (operation) => {
+    const handler = operation === 'activate'
+      ? (await import('~~/server/api/agency/page-studio/sites/[siteId]/releases/activate.post')).default
+      : (await import('~~/server/api/agency/page-studio/sites/[siteId]/releases/rollback.post')).default
+    mocks.withPageStudioPublishAuthority.mockRejectedValueOnce(new Error('Publishing access revoked'))
+    const event: TestEvent = { context: {}, params: { siteId }, headers: { 'idempotency-key': 'revoked-operation' },
+      body: operation === 'activate'
+        ? { buildId, environment: 'staging', expectedActiveReleaseId: null, hostname }
+        : { targetReleaseId, environment: 'staging', expectedActiveReleaseId: activeReleaseId, hostname } }
+    await expect(handler(event as never)).rejects.toThrow('Publishing access revoked')
+    expect(mocks.withPageStudioPublishAuthority).toHaveBeenCalledWith(scope, nativePrincipal, expect.any(Function))
   })
 })

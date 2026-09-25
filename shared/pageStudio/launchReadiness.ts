@@ -1,4 +1,5 @@
 export interface PageStudioLaunchState {
+  candidateReview?: boolean
   siteId: string
   siteName: string
   siteStatus: string
@@ -6,7 +7,7 @@ export interface PageStudioLaunchState {
   digest: string | null
   approvedVersionId: string | null
   activeReleases: { id: string, hostname: string, activatedAt: string }[]
-  content: { status: 'ready' | 'required' | 'unavailable', publicPages: number | null, publicForms: number | null }
+  content: { status: 'ready' | 'required' | 'unavailable', publicPages: number | null, publicForms: number | null, requiresSealedFeatures?: boolean | null }
   plan: { status: 'ready' | 'required', key: string | null }
   observedAt: string
 }

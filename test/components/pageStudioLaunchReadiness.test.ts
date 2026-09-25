@@ -4,6 +4,9 @@ import { computed, createApp, h, nextTick, ref, Suspense } from 'vue'
 import Workspace from '~~/app/components/page-studio/PublishingWorkspace.client.vue'
 import Readiness from '~~/app/components/page-studio/LaunchReadiness.vue'
 
+const openPreview = vi.hoisted(() => vi.fn())
+vi.mock('~~/app/utils/pageStudioCandidatePreview', () => ({ openPageStudioCandidatePreview: openPreview }))
+
 const values = new Map<string, ReturnType<typeof ref>>()
 const errors = new Map<string, ReturnType<typeof ref>>()
 const mutate = vi.fn(), notify = vi.fn(), refresh = vi.fn()
@@ -12,11 +15,13 @@ const state = () => ({ siteId: 'site', siteName: 'Site', siteStatus: 'active', c
 const launchUrl = '/api/agency/page-studio/sites/site/launch-state'
 const domainUrl = '/api/agency/page-studio/sites/site/domains'
 const stubs = {
+  UFormField: { props: ['label'], template: '<div>{{ label }}<slot/></div>' },
   UCard: { template: '<section><slot name="header"/><slot/><slot name="footer"/></section>' },
   UAlert: { props: ['title', 'description'], template: '<p>{{ title }} {{ description }}</p>' },
   UBadge: { props: ['label'], template: '<span>{{ label }}</span>' },
   UButton: { props: ['label', 'disabled', 'loading'], emits: ['click'], template: '<button :disabled="disabled || loading" @click="$emit(\'click\')">{{ label }}</button>' },
   UModal: { props: ['open'], template: '<aside v-if="open"><slot name="content"/></aside>' },
+  UCheckbox: { props: ['modelValue', 'label', 'disabled'], emits: ['update:modelValue'], template: '<label><input type="checkbox" :disabled="disabled" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)"/>{{ label }}</label>' },
   UTabs: { props: ['items', 'modelValue'], template: '<div :data-selected-tab="modelValue"><template v-for="item in items"><slot :name="item.slot"/></template></div>' },
   PageStudioLaunchReadiness: Readiness,
   ...Object.fromEntries(['AgencySetup', 'PagesWorkspace', 'DraftHistory', 'AssetsWorkspace', 'FormSubmissionsWorkspace', 'AnalyticsWorkspace', 'DomainsWorkspace', 'SessionsWorkspace', 'EmailWorkspace'].map(name => [`PageStudio${name}`, { template: '<div/>' }]))
@@ -70,6 +75,52 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('launch readiness and selected publication', () => {
+  const candidateResponse = () => ({ build: { buildId: 'astro_build', versionDigest: 'digest', manifestDigest: 'manifest', scope: { siteId: 'site' },
+    astro: { context: { identity: { environment: 'production', source: { kind: 'approved-version', versionId: 'version', checkpoint: { id: 'checkpoint', digest: 'digest' } } } } } },
+  preview: { hostname: 'build.review.example.test', release: { buildId: 'astro_build', manifestDigest: 'manifest', versionDigest: 'digest', scope: { siteId: 'site' } } },
+  session: { token: 'review-token', expiresAt: Math.floor(Date.now() / 1000) + 300 } })
+
+  it('requires preparing and reviewing the exact Astro candidate before promotion', async () => {
+    values.get(launchUrl)!.value.candidateReview = true
+    mutate.mockResolvedValue(candidateResponse())
+    const host = await mount()
+    button(host, 'Publish approved version').click()
+    await flush()
+    expect(button(host, 'Publish reviewed build').disabled).toBe(true)
+    button(host, 'Prepare preview').click()
+    await flush()
+    expect(mutate).toHaveBeenCalledWith('/api/agency/page-studio/sites/site/versions/version/candidate', expect.objectContaining({ body: { environment: 'production' } }))
+    expect(button(host, 'Publish reviewed build').disabled).toBe(true)
+    button(host, 'Open preview').click()
+    await flush()
+    expect(openPreview).toHaveBeenCalledWith('build.review.example.test', expect.objectContaining({ token: 'review-token' }))
+    const checkbox = host.querySelector('input[type="checkbox"]') as HTMLInputElement
+    checkbox.checked = true
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }))
+    await flush()
+    button(host, 'Publish reviewed build').click()
+    await flush()
+    expect(mutate).toHaveBeenLastCalledWith('/api/agency/page-studio/sites/site/versions/version/publish', expect.objectContaining({ body: {
+      environment: 'production', hostname: 'example.test', expectedActiveReleaseId: 'release', buildId: 'astro_build'
+    } }))
+  })
+  it('reuses candidate request identity on preparation retry and rejects a mismatched response', async () => {
+    values.get(launchUrl)!.value.candidateReview = true
+    mutate.mockRejectedValueOnce(new Error('Disconnected'))
+    const response = candidateResponse()
+    response.preview.release.buildId = 'other_build'
+    mutate.mockResolvedValueOnce(response)
+    const host = await mount()
+    button(host, 'Publish approved version').click()
+    await flush()
+    button(host, 'Prepare preview').click()
+    await flush()
+    button(host, 'Prepare preview').click()
+    await flush()
+    expect(mutate.mock.calls[0]![1].headers).toEqual(mutate.mock.calls[1]![1].headers)
+    expect(button(host, 'Publish reviewed build').disabled).toBe(true)
+    expect(openPreview).not.toHaveBeenCalled()
+  })
   it('uses website-scoped domains and access without global subscription permissions', async () => {
     const host = await mount()
     expect(errors.has(domainUrl)).toBe(true)

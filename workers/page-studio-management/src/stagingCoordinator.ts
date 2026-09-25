@@ -2,11 +2,12 @@ import { StagingProviderDomainIdSchema } from './stagingProvider'
 import { z } from 'zod'
 import { PageStudioStagingRequestSchema, pageStudioStagingAddress } from '../../../shared/pageStudio/staging'
 import type { DomainTransaction } from './domainAttachment'
-import { requireStagingAuthority } from './stagingAuthority'
+import { requireStagingAuthority, requireCheckpointStagingOrigin } from './stagingAuthority'
 import { readStagingState } from './stagingRead'
-import { beginStagingSnapshot, finishStagingSnapshot, failStagingSnapshot, stagingArtifactPrefix, StagingStoreError } from './stagingStore'
+import { beginInitialStagingSnapshot, beginStagingSnapshot, finishStagingSnapshot, failStagingSnapshot, stagingArtifactPrefix, StagingStoreError } from './stagingStore'
 
 type Request = z.infer<typeof PageStudioStagingRequestSchema>
+type CheckpointAuthority = { request: unknown, environment: unknown }
 type Scope = { tenantId: string, clientId: string, siteId: string }
 type BuildInput = { scope: Scope, snapshotId: string, checkpointId: string, digest: string }
 export interface StagingCoordinatorDependencies {
@@ -20,36 +21,52 @@ const BuildReceipt = z.object({ artifactPrefix: z.string().max(1024), manifestKe
 
 /** Network calls happen outside SQL transactions. Each final write is fenced by
  * its expiring claim and fresh actor/entitlement/checkpoint authority. */
-export async function coordinateStaging(raw: unknown, dependencies: StagingCoordinatorDependencies) {
+export async function coordinateStaging(raw: unknown, dependencies: StagingCoordinatorDependencies, checkpoint?: CheckpointAuthority) {
   const request: Request = PageStudioStagingRequestSchema.parse(raw)
   const { actor, siteId } = request
   const { transaction } = dependencies
+  const authorize = async (db: Parameters<Parameters<DomainTransaction>[0]>[0], writing: boolean) => {
+    if (!checkpoint) return requireStagingAuthority(db, actor, siteId, writing)
+    const retained = await requireCheckpointStagingOrigin(db, checkpoint.request, checkpoint.environment)
+    if (retained.scope.siteId !== siteId || retained.actor.kind !== actor.kind || retained.actor.actorId !== actor.actorId
+      || (actor.kind === 'agency' ? retained.scope.tenantId !== actor.tenantId : retained.scope.clientId !== actor.clientId))
+      throw new StagingStoreError('STAGING_ACCESS_DENIED', 403)
+    return { scope: retained.scope, canManage: true, originAuditId: retained.auditId }
+  }
   const read = () => transaction(async (db) => {
-    const authority = await requireStagingAuthority(db, actor, siteId, false)
+    const authority = await authorize(db, false)
     return readStagingState(db, authority.scope, authority.canManage)
   })
   if (request.operation === 'read') return read()
   const claimed = await transaction(async (db) => {
-    const { scope } = await requireStagingAuthority(db, actor, siteId, true)
+    const authority = await authorize(db, true)
+    const { scope } = authority
     const params = [scope.tenantId, scope.clientId, siteId]
-    const retained = (await db.query<{ checkpointId: string }>(`SELECT checkpoint_id AS "checkpointId" FROM page_studio_staging_deployments
+    let snapshot: Awaited<ReturnType<typeof beginStagingSnapshot>> | null
+    if (request.operation === 'ensure') {
+      snapshot = await beginInitialStagingSnapshot(db, { scope, actorId: actor.actorId, actorRole: actor.kind === 'agency' ? 'agency' : 'client',
+        ...('originAuditId' in authority ? { originAuditId: authority.originAuditId } : {}) })
+    } else {
+      const retained = (await db.query<{ checkpointId: string }>(`SELECT checkpoint_id AS "checkpointId" FROM page_studio_staging_deployments
       WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND idempotency_key=$4`, [...params, request.body.idempotencyKey])).rows[0]
-    const current = (await db.query<{ checkpointId: string }>(`SELECT current_checkpoint_id AS "checkpointId" FROM page_studio_sites
+      const current = (await db.query<{ checkpointId: string }>(`SELECT current_checkpoint_id AS "checkpointId" FROM page_studio_sites
       WHERE tenant_id=$1 AND client_id=$2 AND id=$3`, params)).rows[0]
-    const checkpointId = retained?.checkpointId ?? current?.checkpointId
-    if (!checkpointId) throw new StagingStoreError('STAGING_CHANGED', 409)
-    // A dead request may be superseded after its lease. Its old token can no
-    // longer activate anything, even if its network response arrives late.
-    const expired = await db.query<{ id: string }>(`SELECT id FROM page_studio_staging_deployments WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3
+      const checkpointId = retained?.checkpointId ?? current?.checkpointId
+      if (!checkpointId) throw new StagingStoreError('STAGING_CHANGED', 409)
+      // A dead request may be superseded after its lease. Its old token can no
+      // longer activate anything, even if its network response arrives late.
+      const expired = await db.query<{ id: string }>(`SELECT id FROM page_studio_staging_deployments WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3
       AND state='building' AND claim_until<clock_timestamp() AND idempotency_key<>$4`, [...params, request.body.idempotencyKey])
-    for (const row of expired.rows) await failStagingSnapshot(db, { scope, id: row.id, failure: 'BUILD_FAILED' })
-    const snapshot = await beginStagingSnapshot(db, { scope, checkpointId, digest: request.body.digest, expectedActiveId: request.body.expectedActiveId,
-      idempotencyKey: request.body.idempotencyKey, actorId: actor.actorId, actorRole: actor.kind === 'agency' ? 'agency' : 'client' })
-    if (['succeeded', 'failed'].includes(snapshot.state)) return null
+      for (const row of expired.rows) await failStagingSnapshot(db, { scope, id: row.id, failure: 'BUILD_FAILED' })
+      snapshot = await beginStagingSnapshot(db, { scope, checkpointId, digest: request.body.digest, expectedActiveId: request.body.expectedActiveId,
+        idempotencyKey: request.body.idempotencyKey, actorId: actor.actorId, actorRole: actor.kind === 'agency' ? 'agency' : 'client' })
+    }
+    if (!snapshot || ['succeeded', 'failed'].includes(snapshot.state)) return null
     const token = crypto.randomUUID()
     const claim = await db.query(`UPDATE page_studio_staging_deployments SET state='building',claim_token=$5,claim_until=clock_timestamp()+INTERVAL '2 minutes'
       WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4 AND state IN ('queued','building')
       AND (claim_until IS NULL OR claim_until<clock_timestamp()) RETURNING id`, [...params, snapshot.id, token])
+    if (checkpoint) await authorize(db, true)
     return claim.rows.length ? { scope, snapshot, token } : null
   })
   if (!claimed) return read()
@@ -59,11 +76,18 @@ export async function coordinateStaging(raw: unknown, dependencies: StagingCoord
   let failure: 'HOST_UNAVAILABLE' | 'BUILD_FAILED' | 'SNAPSHOT_CHANGED' | 'ACCESS_INACTIVE' = 'HOST_UNAVAILABLE'
   async function withClaim<T>(work: (db: Parameters<Parameters<DomainTransaction>[0]>[0]) => Promise<T>) {
     return transaction(async (db) => {
-      await requireStagingAuthority(db, actor, siteId, true)
+      await authorize(db, true)
       const row = await db.query(`SELECT id FROM page_studio_staging_deployments WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4
         AND claim_token=$5 AND state='building' AND claim_until>clock_timestamp() FOR UPDATE`, params)
       if (row.rows.length !== 1) throw new StagingStoreError('STAGING_CHANGED', 409)
-      return work(db)
+      const result = await work(db)
+      if (checkpoint) {
+        await authorize(db, true)
+        const freshClaim = await db.query(`SELECT id FROM page_studio_staging_deployments WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4
+          AND claim_token=$5 AND claim_until>clock_timestamp() FOR UPDATE`, params)
+        if (freshClaim.rows.length !== 1) throw new StagingStoreError('STAGING_CHANGED', 409)
+      }
+      return result
     })
   }
   try {
@@ -94,4 +118,13 @@ export async function coordinateStaging(raw: unknown, dependencies: StagingCoord
     })
   }
   return read()
+}
+
+/** Private checkpoint entry point. The immutable audit selects the actor; the
+ * same origin is revalidated at admission and every provider/activation commit. */
+export async function coordinateCheckpointStaging(raw: unknown, environment: unknown, dependencies: StagingCoordinatorDependencies) {
+  const retained = await dependencies.transaction(db => requireCheckpointStagingOrigin(db, raw, environment))
+  return coordinateStaging({ operation: 'ensure', actor: retained.actor, siteId: retained.scope.siteId,
+    expectedEnvironment: retained.expectedEnvironment }, dependencies, { request: { scope: retained.scope, auditId: retained.auditId,
+    checkpointId: retained.checkpointId, digest: retained.digest, expectedEnvironment: retained.expectedEnvironment }, environment })
 }

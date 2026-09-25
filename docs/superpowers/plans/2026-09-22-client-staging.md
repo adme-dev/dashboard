@@ -58,7 +58,7 @@ needed. Existing completed work and unrelated sessions must be preserved.
 - [x] S2 Durable, scoped staging reservation and snapshot lifecycle (local PostgreSQL tests).
   Reuse existing transaction/audit patterns. Test real PostgreSQL concurrency,
   restart recovery, tenant rejection, and old pointer preservation on failure.
-- [x] S3 Platform hostname provisioning adapter (provider boundary tests; live attach pending).
+- [x] S3 Platform hostname provisioning adapter (provider boundary and live Fantasy hostname verification passed).
   Read before attach; verify exact zone/service/host receipt; recover uncertain
   responses. Test conflict, partial failure, wrong provider response and retry.
 - [ ] S4 Snapshot build and delivery through explicit staging bindings.
@@ -76,6 +76,16 @@ needed. Existing completed work and unrelated sessions must be preserved.
 - [ ] S8 Host Fantasy's current saved site, verify home + internal page + assets
   + no live side effects, and return the actual working URL. Verify a second
   independent client and rejected cross-client accesses before completion.
+  - [x] Fantasy saved checkpoint deployed; home, fleet page, image and runtime
+    script return200; Chrome renders home and fleet; noindex/no-store confirmed.
+  - [ ] Independent second-client and rejected cross-client hosted acceptance.
+
+Latest live evidence (23 September): management release13c27eab3, version
+`a3961bf7-f966-42dc-b428-152fd5d19d36`; Fantasy snapshot
+`2d28cfbf-d238-4cac-9639-0239fe14d205` activated05:20:34UTC. URL:
+https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/ . Production release
+remains unset; staging form submissions remain disabled. See the initial-staging
+verification document for evidence and remaining broader CMS/action gates.
 
 ## Source checked
 
@@ -299,3 +309,41 @@ not be reverted while staging is implemented.
 - Current-source CI build, paired integration, deployment credentials, hosted
   Fantasy/second-client acceptance and the broader interactive CMS/action goal
   remain open. No production content, token or hostname changed in this section.
+
+### Automatic first-preview authority — 23 September, local verification
+
+- [x] Retain trusted origins in setup, ordinary editor, AI acceptance, native
+  history restore and managed graph checkpoint transactions. Preserve the
+  original audit on replay; never accept credentials or staging authority from
+  checkpoint request bodies.
+- [x] Verify retention and existing authority boundaries: eight regression
+  assertions failed before implementation; 225 section tests now pass, including
+  real PostgreSQL logout/expiry/lock races and immutable checkpoint replay.
+- [x] Implement and locally verify private lookup of the exact checkpoint's
+  retained origin, including original-login and child revocation, current
+  permissions, environment, latest accepted proposal and expiry after lock waits.
+  118 section tests, strict worker types, lint and independent review pass.
+  The origin-bound coordinator below now invokes the verifier; completed setup
+  does not regain provisioning write authority.
+- [x] Bind initial snapshot work to the immutable origin and integrate fresh
+  checks into admission/provider-result/activation transactions. 114 real-PG
+  tests pass, including queued/expired-claim recovery, logout/expiry rollback,
+  and late response from a superseded claim; one admission and no identity swap.
+- [x] Expose the checked private Worker RPC and strict Native service client.
+  100 boundary/regression tests, strict Worker/client types and lint pass.
+  No public HTTP route, caller-supplied actor or implicit retry is introduced.
+- [x] Persist exact checkpoint staging intent atomically via the checkpoint
+  audit, covering editor, setup, AI, history and managed graph writers. Preserve
+  rollback, replay identity and legacy writers; no historical backfill.
+- [x] Implement bounded environment-scoped claims and exact-token settlements,
+  including retry ceilings, tombstones and expiry after real row-lock waits.
+  49 PostgreSQL tests, strict focused types, lint and independent review pass.
+- [ ] Deliver retained intents through the private staging client and the
+  existing scheduled cron bridge. Prove lost acknowledgement/process restart through the
+  actual caller lifecycle. The coordinator alone does not enable automatic saves.
+  The bounded dispatcher, authenticated cron POST and five-minute scheduler
+  registration are implemented and locally verified, including 174 boundary/
+  PostgreSQL recovery tests. Paired deployment and hosted acceptance remain open;
+  see `docs/verification/2026-09-23-checkpoint-staging-dispatch.md`.
+
+See `docs/verification/2026-09-23-initial-staging.md` for current evidence.

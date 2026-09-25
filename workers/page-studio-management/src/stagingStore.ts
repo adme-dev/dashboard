@@ -7,7 +7,7 @@ type Scope = z.infer<typeof Scope>
 const SnapshotRequest = z.object({
   scope: Scope, actorId: z.string().uuid(), actorRole: z.enum(['agency', 'client']),
   checkpointId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/), digest: z.string().regex(/^[a-f0-9]{64}$/),
-  expectedActiveId: z.string().uuid().nullable(), idempotencyKey: z.string().min(1).max(200)
+  expectedActiveId: z.string().uuid().nullable(), idempotencyKey: z.string().min(1).max(200), originAuditId: z.string().uuid().optional()
 }).strict()
 export class StagingStoreError extends Error {
   constructor(readonly code: 'STAGING_ACCESS_DENIED' | 'STAGING_CHANGED' | 'STAGING_BUSY' | 'STAGING_BUILD_LIMIT', readonly statusCode: number) {
@@ -65,6 +65,10 @@ export async function beginStagingSnapshot(db: DomainDatabase, raw: z.infer<type
     const retained = existing.rows[0]
     if (retained.actorId !== input.actorId || retained.actorRole !== input.actorRole || retained.checkpointId !== input.checkpointId
       || retained.digest !== input.digest || retained.expectedActiveId !== input.expectedActiveId) throw changed()
+    const origin = (await db.query<{ originAuditId: string | null }>(`SELECT metadata->>'originAuditId' AS "originAuditId"
+      FROM page_studio_audit_events WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3
+        AND action='staging.requested' AND resource_type='staging_deployment' AND resource_id=$4`, [...params, retained.id])).rows
+    if (origin.length !== 1 || origin[0]!.originAuditId !== (input.originAuditId ?? null)) throw changed()
     return retained
   }
   if (reservation.activeId !== input.expectedActiveId) throw changed()
@@ -94,8 +98,32 @@ export async function beginStagingSnapshot(db: DomainDatabase, raw: z.infer<type
   if (!snapshot) throw changed()
   await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata)
     VALUES($1,$2,$3,$4,$5,'staging.requested','staging_deployment',$6,$7::jsonb)`,
-  [...params, input.actorId, input.actorRole, snapshot.id, JSON.stringify({ checkpointId: input.checkpointId, digest: input.digest, hostname: reservation.hostname })])
+  [...params, input.actorId, input.actorRole, snapshot.id, JSON.stringify({ checkpointId: input.checkpointId, digest: input.digest, hostname: reservation.hostname, ...(input.originAuditId ? { originAuditId: input.originAuditId } : {}) })])
   return snapshot
+}
+
+const InitialSnapshotRequest = SnapshotRequest.pick({ scope: true, actorId: true, actorRole: true, originAuditId: true })
+
+/** Elect the first preview under the same site lock as explicit updates. A
+ * retained failed attempt is never retried automatically. A checkpoint dispatcher
+ * may resume only its exact queued/building origin, without another admission.
+ * The caller must establish fresh actor/origin authority in this transaction. */
+export async function beginInitialStagingSnapshot(db: DomainDatabase, raw: z.infer<typeof InitialSnapshotRequest>): Promise<Snapshot | null> {
+  const input = InitialSnapshotRequest.parse(raw)
+  const { scope } = input
+  const params = [scope.tenantId, scope.clientId, scope.siteId]
+  const reservation = await reserveStagingAddress(db, scope)
+  if (reservation.activeId) return null
+  const retained = await db.query<{ state: string, idempotencyKey: string }>(`SELECT state,idempotency_key AS "idempotencyKey" FROM page_studio_staging_deployments
+    WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 LIMIT 1`, params)
+  if (retained.rows.length && (!input.originAuditId || retained.rows[0]!.idempotencyKey !== 'initial-staging-v1'
+    || !['queued', 'building'].includes(retained.rows[0]!.state))) return null
+  const current = (await db.query<{ checkpointId: string, digest: string }>(`SELECT checkpoint.id AS "checkpointId",checkpoint.digest
+    FROM page_studio_sites site JOIN page_studio_checkpoints checkpoint ON checkpoint.tenant_id=site.tenant_id
+      AND checkpoint.client_id=site.client_id AND checkpoint.site_id=site.id AND checkpoint.id=site.current_checkpoint_id
+    WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3`, params)).rows[0]
+  if (!current) return null
+  return beginStagingSnapshot(db, { ...input, ...current, expectedActiveId: null, idempotencyKey: 'initial-staging-v1' })
 }
 
 export function stagingArtifactPrefix(rawScope: Scope, rawId: string): string {

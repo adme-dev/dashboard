@@ -6,8 +6,13 @@ const mocks = vi.hoisted(() => ({
   nativeFeaturePublisher: vi.fn(),
   featureBuildServices: vi.fn(),
   requireAgencyPageStudioAccess: vi.fn(),
-  resolvePageStudioBuildWorker: vi.fn()
+  resolvePageStudioBuildWorker: vi.fn(),
+  astroConfigured: vi.fn(), astroServices: vi.fn(), astroCoordinate: vi.fn(), publishPrincipal: vi.fn(), siteClient: vi.fn()
 }))
+vi.mock('~~/server/utils/pageStudio/astroBuildHttp', () => ({ hasAstroReleaseConfiguration: mocks.astroConfigured, resolveAstroBuildServices: mocks.astroServices }))
+vi.mock('~~/server/utils/pageStudio/astroBuildCoordinator', () => ({ coordinateApprovedAstroBuild: mocks.astroCoordinate }))
+vi.mock('~~/server/utils/pageStudio/publishHttp', () => ({ preparePageStudioPublishPrincipal: mocks.publishPrincipal }))
+vi.mock('~~/server/utils/pageStudio/versions', () => ({ resolveAgencyPageStudioSiteClient: mocks.siteClient }))
 
 vi.mock('~~/server/utils/pageStudio/releaseFeatureBuild', () => ({
   coordinateSealedFeatureBuild: (...args: unknown[]) =>
@@ -66,6 +71,7 @@ const worker = { build: vi.fn() }
 describe('Page Studio agency build endpoint', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.astroConfigured.mockReturnValue(false)
     mocks.requireAgencyPageStudioAccess.mockResolvedValue({
       tenantId: 'tenant-alpha',
       user: { id: actorId }
@@ -74,6 +80,26 @@ describe('Page Studio agency build endpoint', () => {
     mocks.buildApprovedPageStudioVersion.mockResolvedValue({
       buildId: 'build_a'
     })
+  })
+
+  it('uses native approved-checkpoint orchestration for configured Astro builds and never falls back after failure', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/versions/[versionId]/builds/index.post')
+    mocks.astroConfigured.mockReturnValue(true)
+    const services = { buildAstroApproved: vi.fn() }, principal = { actorId, tenantId: 'tenant-alpha' }
+    mocks.astroServices.mockReturnValue({ environment: 'production', services })
+    mocks.publishPrincipal.mockResolvedValue(principal)
+    mocks.siteClient.mockResolvedValue('client-a')
+    mocks.astroCoordinate.mockResolvedValue({ buildId: 'build_astro_a' })
+    const event: TestEvent = { body: { assets: [], manifest: { schemaVersion: 2 } }, context: {},
+      headers: { 'idempotency-key': 'astro-request' }, params: { siteId, versionId } }
+    expect(await handler(event as never)).toEqual({ build: { buildId: 'build_astro_a' } })
+    expect(mocks.astroCoordinate).toHaveBeenCalledWith({ scope: { tenantId: 'tenant-alpha', clientId: 'client-a', siteId },
+      versionId, environment: 'production', idempotencyKey: 'astro-request' }, principal, services)
+    expect(mocks.resolvePageStudioBuildWorker).not.toHaveBeenCalled()
+    expect(mocks.buildApprovedPageStudioVersion).not.toHaveBeenCalled()
+    mocks.astroCoordinate.mockRejectedValueOnce(new Error('Retained compiler unavailable'))
+    await expect(handler(event as never)).rejects.toThrow('Retained compiler unavailable')
+    expect(mocks.buildApprovedPageStudioVersion).not.toHaveBeenCalled()
   })
 
   it('routes accepted features through original native authority and private seal orchestration', async () => {

@@ -8,7 +8,7 @@ export const PageStudioHistoryQuerySchema = z.object({
 }).strict()
 export const PageStudioHistoryMutationSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('restore'), checkpointId, expectedCheckpointId: checkpointId, requestId: z.string().uuid() }).strict(),
-  z.object({ action: z.literal('name'), name: z.string().trim().min(1).max(120), expectedCheckpointId: checkpointId, requestId: z.string().uuid() }).strict()
+  z.object({ action: z.literal('name'), name: z.string().trim().min(1).max(120), expectedCheckpointId: checkpointId, requestId: z.string().uuid(), submitForReview: z.boolean().default(false) }).strict()
 ])
 export type PageStudioHistoryMutation = z.infer<typeof PageStudioHistoryMutationSchema>
 export interface PageStudioHistoryItem {

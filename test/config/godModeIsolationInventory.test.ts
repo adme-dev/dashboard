@@ -19,8 +19,15 @@ const API_INVENTORY = {
   // Native helpers enforce scope and roles; none registers a God mode bypass.
   // CMS adoption, isolated CMS setup, and website staging add twelve routes
   // (six mutations), through native scoped helpers without a God mode bypass.
-  totalRouteFiles: 2158,
-  mutationRouteFiles: 1182,
+  // Agency and portal initial-staging ensure POSTs add two scoped mutations.
+  // Both delegate current actor/site checks to handlePageStudioStaging;
+  // neither registers a God mode bypass.
+  // Checkpoint staging cron uses a machine secret and retained job authority;
+  // it adds one POST without any God mode bypass or user-role gate.
+  // Astro candidate POST delegates native publish permission, scoped site and
+  // fresh login authority; it adds one mutation without a God mode bypass.
+  totalRouteFiles: 2162,
+  mutationRouteFiles: 1186,
   explicitlyGuardedMutationFiles: 401,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -59,8 +66,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2158,
-      mutationRouteFiles: 1182,
+      totalRouteFiles: 2162,
+      mutationRouteFiles: 1186,
       explicitlyGuardedMutationFiles: 401,
       guardedMutationFilesWithTransactionCall: 47
     })

@@ -11,9 +11,9 @@ const actorId = '30000000-0000-4000-8000-000000000001'
 const clientId = '40000000-0000-4000-8000-000000000001'
 const update = { digest: 'a'.repeat(64), expectedActiveId: null, idempotencyKey: '50000000-0000-4000-8000-000000000001' }
 const value = () => ({ siteId, ...pageStudioStagingAddress(siteId), status: 'not_published', canManage: true, active: null, currentDigest: update.digest, failure: null })
-function request(audience: 'agency' | 'portal', method: 'GET' | 'POST', body?: string, contentType = 'application/json') {
+function request(audience: 'agency' | 'portal', method: 'GET' | 'POST', body?: string, contentType = 'application/json', ensure = false) {
   const router = createRouter()
-  router.add('/sites/:siteId/staging', event => handlePageStudioStaging(event, audience, method === 'POST'), [method.toLowerCase() as 'get' | 'post'])
+  router.add('/sites/:siteId/staging', event => handlePageStudioStaging(event, audience, ensure ? 'ensure' : method === 'POST' ? 'update' : 'read'), [method.toLowerCase() as 'get' | 'post'])
   const app = createApp().use(eventHandler((event) => {
     event.context.cloudflare = { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_MANAGEMENT: { clientStaging: mocks.service } } } as never
   })).use(router)
@@ -34,6 +34,25 @@ describe('client staging HTTP boundary', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store')
     expect(mocks.service.mock.calls[1][0]).toEqual({ operation: 'update', expectedEnvironment: 'production', siteId, body: update,
       actor: audience === 'agency' ? { kind: 'agency', tenantId: 'tenant_test', actorId } : { kind: 'portal', clientId, actorId } })
+  })
+  it.each(['agency', 'portal'] as const)('admits initial %s staging using only authenticated scope and an empty body', async (audience) => {
+    const response = await request(audience, 'POST', '{}', 'application/json', true)
+    expect(response.status).toBe(200)
+    expect(mocks.service).toHaveBeenCalledWith({ operation: 'ensure', expectedEnvironment: 'production', siteId,
+      actor: audience === 'agency' ? { kind: 'agency', tenantId: 'tenant_test', actorId } : { kind: 'portal', clientId, actorId } })
+  })
+  it('rejects caller-selected initial content, identity or destination before invoking the service', async () => {
+    for (const body of [update, { siteId }, { clientId }, { actorId }, { hostname: 'other.example' }, { operation: 'update' }, { digest: update.digest }]) {
+      expect((await request('portal', 'POST', JSON.stringify(body), 'application/json', true)).status).toBe(400)
+    }
+    expect(mocks.service).not.toHaveBeenCalled()
+  })
+  it('keeps initial staging behind native authentication and fresh service permission checks', async () => {
+    mocks.portal.mockRejectedValueOnce(createError({ statusCode: 401 }))
+    expect((await request('portal', 'POST', '{}', 'application/json', true)).status).toBe(401)
+    expect(mocks.service).not.toHaveBeenCalled()
+    mocks.service.mockResolvedValue({ ok: false, error: { code: 'STAGING_ACCESS_DENIED', statusCode: 403 } })
+    expect((await request('portal', 'POST', '{}', 'application/json', true)).status).toBe(403)
   })
   it.each(['agency', 'portal'] as const)('denies %s requests before invoking the Worker when native authentication fails', async (audience) => {
     mocks[audience].mockRejectedValue(createError({ statusCode: 401 }))

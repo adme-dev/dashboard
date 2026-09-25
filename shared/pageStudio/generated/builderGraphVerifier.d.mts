@@ -1,3 +1,87 @@
+export interface AstroCompilerBuildIdentity {
+  buildId: string;
+  identity: {
+    formatVersion: 1;
+    renderer: "astro";
+    scope: {
+      tenantId: string;
+      clientId: string;
+      siteId: string;
+    };
+    environment: "staging" | "production";
+    source:
+      | {
+          kind: "checkpoint";
+          checkpointId: string;
+          checkpointDigest: string;
+        }
+      | {
+          kind: "approved-version";
+          versionId: string;
+          versionDigest: string;
+          checkpoint: {
+            id: string;
+            digest: string;
+          } | null;
+        };
+    renderInputDigest: string;
+    featureRecoveryDigest: string | null;
+    toolchainDigest: string;
+  };
+  identityDigest: string;
+}
+/** Addressing only; native trusted configuration must select and retain the
+ * deployed toolchain. Neither this helper nor a self-consistent pin grants access. */
+export declare function createAstroCompilerBuildIdentity(
+  input: unknown,
+  admittedToolchain: unknown
+): Promise<AstroCompilerBuildIdentity>;
+/** Recompute retained pins before native reuse. Approval, current entitlement
+ * and actual compiler host provenance remain independent authority checks. */
+export declare function verifyAstroCompilerBuildIdentity(
+  candidate: unknown,
+  admittedToolchain: unknown
+): Promise<AstroCompilerBuildIdentity>;
+export interface AstroCompilerReleaseReceipt {
+  artifactPrefix: string;
+  astro: {
+    context: AstroCompilerBuildIdentity;
+    manifestDigest: string;
+    policyDigest: string;
+  };
+  buildId: string;
+  manifestDigest: string;
+  manifestKey: string;
+  renderer: "astro";
+  success: true;
+  validationKey: string;
+  versionDigest: string;
+}
+export interface NativeAstroCompilerGeneration {
+  environment: "staging" | "production";
+  policyDigest: string;
+  toolchain: {
+    formatVersion: 1;
+    kind: "astro-compiler-toolchain";
+    image: string;
+    hostPolicyDigest: string;
+  };
+  toolchainDigest: string;
+}
+/** Trusted native deployment configuration, never request JSON. Current digest
+ * selects a new admission; retained identity selects every retry. */
+export declare function selectNativeAstroCompilerGeneration(
+  registry: unknown,
+  environment: unknown,
+  toolchainDigest: unknown
+): Promise<NativeAstroCompilerGeneration>;
+/** Validate a private build receipt against retained native admission and trusted
+ * generation policy. This does not verify artifact bytes or grant publication;
+ * independent delivery verification and fresh native authority remain required. */
+export declare function verifyAstroCompilerReleaseReceipt(
+  candidate: unknown,
+  retained: unknown
+): Promise<AstroCompilerReleaseReceipt>;
 export interface BuilderGraphPin {
   id: string;
   kind: "collection" | "component" | "action";

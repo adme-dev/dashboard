@@ -1,3 +1,4 @@
+import { editorCheckpointStagingOrigin, type CheckpointStagingOrigin } from './checkpointStagingOrigin'
 import { queryOneFresh, transaction } from '~~/server/utils/db'
 import { assertPageStudioSessionAuthority, PageStudioSessionAuthorityError } from './sessionAuthority'
 import { authorizePageStudioSession, type PageStudioSessionClaims } from './sessions'
@@ -178,7 +179,7 @@ async function appendMutationAudit(
     resourceType: PageStudioAuditResourceType
     resourceId: string
     idempotencyKey: string
-    metadata: Record<string, string | null>
+    metadata: Record<string, string | null | CheckpointStagingOrigin>
   }
 ): Promise<void> {
   await db.query(
@@ -224,7 +225,7 @@ export async function recordPageStudioCheckpoint(
 /** Additive guarded protocol. Legacy callers are not made safe by this endpoint. */
 export async function commitPageStudioCheckpoint(
   input: PageStudioCheckpointCommitInput,
-  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void> } = {}
+  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void>, stagingOrigin?: (db: PageStudioControlQueryClient) => Promise<CheckpointStagingOrigin | null> } = {}
 ): Promise<PageStudioCheckpointCommitReceipt> {
   const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, dependencies, input)
   return {
@@ -264,7 +265,8 @@ export async function commitPageStudioEditorCheckpoint(
   }
   const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, {
     ...dependencies,
-    authorize: db => assertPageStudioSessionAuthority(session, 'workspace:checkpoint', { transaction: db })
+    authorize: db => assertPageStudioSessionAuthority(session, 'workspace:checkpoint', { transaction: db }),
+    stagingOrigin: db => editorCheckpointStagingOrigin(db, session, dependencies.env?.PAGE_STUDIO_RELEASE_ENVIRONMENT)
   }, input)
   return { acknowledged: true, checkpointId: input.checkpoint.checkpointId, currentCheckpointId,
     isCurrent: currentCheckpointId === input.checkpoint.checkpointId }
@@ -272,7 +274,7 @@ export async function commitPageStudioEditorCheckpoint(
 
 async function persistPageStudioCheckpoint(
   input: PageStudioCheckpointInput,
-  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void> },
+  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void>, stagingOrigin?: (db: PageStudioControlQueryClient) => Promise<CheckpointStagingOrigin | null> },
   guard?: Pick<PageStudioCheckpointCommitInput, 'expectedCheckpointId'>
 ): Promise<string | null> {
   if (input.objectKey !== expectedCheckpointObjectKey(input.scope, input.checkpointId)) {
@@ -378,6 +380,7 @@ async function persistPageStudioCheckpoint(
        WHERE tenant_id = $1 AND client_id = $2 AND id = $3`,
       [input.scope.tenantId, input.scope.clientId, input.scope.siteId, input.checkpointId]
     )
+    const stagingOrigin = await dependencies.stagingOrigin?.(db)
     await appendMutationAudit(db, {
       scope: input.scope,
       actorId: 'page-studio',
@@ -389,6 +392,7 @@ async function persistPageStudioCheckpoint(
       metadata: {
         authorId: input.userId,
         digest: input.digest,
+        ...(stagingOrigin ? { stagingOrigin } : {}),
         ...(guard ? { commitProtocol: 'cas-v1', expectedCheckpointId: guard.expectedCheckpointId } : {})
       }
     })
@@ -804,6 +808,7 @@ export async function acceptPageStudioAiProposal(
         version.id
       ]
     )
+    const stagingOrigin = await editorCheckpointStagingOrigin(db, session, dependencies.env?.PAGE_STUDIO_RELEASE_ENVIRONMENT)
     await appendMutationAudit(db, {
       scope: checkpoint.scope,
       actorId: checkpoint.userId,
@@ -815,7 +820,8 @@ export async function acceptPageStudioAiProposal(
       metadata: {
         digest: checkpoint.digest, objectKey: checkpoint.objectKey,
         commitProtocol: 'cas-v1', expectedCheckpointId: input.expectedCheckpointId,
-        baseDigest: input.baseDigest
+        baseDigest: input.baseDigest,
+        ...(stagingOrigin ? { stagingOrigin } : {})
       }
     })
     await appendMutationAudit(db, {

@@ -1,3 +1,3 @@
 import { handlePageStudioStaging } from '~~/server/utils/pageStudio/stagingHttp'
 
-export default eventHandler(event => handlePageStudioStaging(event, 'portal', false))
+export default eventHandler(event => handlePageStudioStaging(event, 'portal', 'read'))

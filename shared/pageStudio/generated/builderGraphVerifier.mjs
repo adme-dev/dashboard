@@ -5614,6 +5614,490 @@ function preprocess(fn, schema) {
 // node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 config(en_default());
 
+// packages/protocol/src/builder-release-reference.ts
+var BuilderReleaseSealReferenceSchema = object({
+  checkpointDigest: string2().regex(/^[a-f0-9]{64}$/),
+  formatVersion: literal(1),
+  sha256: string2().regex(/^[a-f0-9]{64}$/),
+}).strict();
+
+// packages/protocol/src/runtime-capabilities.ts
+var RUNTIME_CAPABILITIES = ["forms", "motion", "navigation", "tabs"];
+var RuntimeCapabilitySchema = _enum(RUNTIME_CAPABILITIES);
+var PageRuntimeAssetSchema = object({
+  capabilities: array(RuntimeCapabilitySchema)
+    .min(1)
+    .max(RUNTIME_CAPABILITIES.length)
+    .refine(
+      (names) =>
+        names.every(
+          (name, index) => index === 0 || (names[index - 1] ?? "") < name
+        ),
+      "Capabilities must be unique and sorted"
+    ),
+  integrity: string2().regex(/^sha256-[A-Za-z0-9+/]{43}=$/),
+  key: string2().regex(/^assets\/xeroflow-runtime-[a-f0-9]{64}\.js$/),
+}).strict();
+
+// packages/protocol/src/release.ts
+var RELEASE_MANIFEST_LIMIT_BYTES = 1024 * 1024;
+var RELEASE_BUNDLE_LIMIT_BYTES = 10 * 1024 * 1024;
+var RELEASE_FILE_LIMIT = 5e3;
+var ReleaseScopedIdSchema = string2()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
+var ReleaseSha256Schema = string2().regex(/^[a-f0-9]{64}$/);
+var ReleaseEnvironmentSchema = _enum(["preview", "staging", "production"]);
+var ReleaseArtifactScopeSchema = object({
+  clientId: ReleaseScopedIdSchema,
+  siteId: ReleaseScopedIdSchema,
+  tenantId: ReleaseScopedIdSchema,
+}).strict();
+var SAFE_OBJECT_KEY_RE =
+  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
+var CANONICAL_ROUTE_RE =
+  /^\/(?:[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*)?$/;
+var ReleaseArtifactFileSchema = object({
+  bytes: number2().int().nonnegative().max(RELEASE_BUNDLE_LIMIT_BYTES),
+  contentType: string2().min(1).max(200),
+  key: string2().max(1024).regex(SAFE_OBJECT_KEY_RE),
+  sha256: ReleaseSha256Schema,
+}).strict();
+var ReleaseArtifactManifestBaseShape = {
+  artifactPrefix: string2().max(1024).regex(SAFE_OBJECT_KEY_RE),
+  buildId: ReleaseScopedIdSchema,
+  files: array(ReleaseArtifactFileSchema).min(1).max(RELEASE_FILE_LIMIT),
+  routes: record(
+    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
+    string2().max(1024).regex(SAFE_OBJECT_KEY_RE)
+  ),
+  scope: ReleaseArtifactScopeSchema,
+  versionDigest: ReleaseSha256Schema,
+  versionId: ReleaseScopedIdSchema,
+};
+var ReleaseArtifactManifestV1Schema = object({
+  ...ReleaseArtifactManifestBaseShape,
+  schemaVersion: literal(1),
+}).strict();
+var ReleaseArtifactRedirectSchema = object({
+  status: literal(308),
+  target: string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
+}).strict();
+var ReleaseArtifactManifestV2Schema = object({
+  ...ReleaseArtifactManifestBaseShape,
+  pageRuntimes: record(
+    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
+    PageRuntimeAssetSchema
+  ).optional(),
+  redirects: record(
+    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
+    ReleaseArtifactRedirectSchema
+  ),
+  schemaVersion: literal(2),
+}).strict();
+var ReleaseArtifactManifestV3Schema = ReleaseArtifactManifestV2Schema.extend({
+  featureSeal: BuilderReleaseSealReferenceSchema,
+  schemaVersion: literal(3),
+}).strict();
+var ReleaseArtifactManifestSchema = discriminatedUnion("schemaVersion", [
+  ReleaseArtifactManifestV1Schema,
+  ReleaseArtifactManifestV2Schema,
+  ReleaseArtifactManifestV3Schema,
+]);
+function canonicalJson(input) {
+  if (input === null || typeof input !== "object") {
+    const serialized = JSON.stringify(input);
+    if (serialized === void 0) {
+      throw new TypeError("Unsupported value in canonical JSON");
+    }
+    return serialized;
+  }
+  if (Array.isArray(input)) {
+    return `[${input.map((value) => canonicalJson(value)).join(",")}]`;
+  }
+  const object2 = input;
+  return `{${Object.keys(object2)
+    .sort()
+    .map((key2) => `${JSON.stringify(key2)}:${canonicalJson(object2[key2])}`)
+    .join(",")}}`;
+}
+async function sha256Hex(value) {
+  const digest2 = await crypto.subtle.digest(
+    "SHA-256",
+    typeof value === "string" ? new TextEncoder().encode(value) : value
+  );
+  return Array.from(new Uint8Array(digest2), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+// packages/protocol/src/astro-build-identity.ts
+var AstroCompilerToolchainSchema = object({
+  formatVersion: literal(1),
+  hostPolicyDigest: ReleaseSha256Schema,
+  image: string2()
+    .max(512)
+    .regex(
+      /^registry\.cloudflare\.com\/[a-z0-9][a-z0-9_-]*\/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64}$/
+    ),
+  kind: literal("astro-compiler-toolchain"),
+}).strict();
+var CheckpointSchema = object({
+  digest: ReleaseSha256Schema,
+  id: ReleaseScopedIdSchema,
+}).strict();
+var AstroBuildSourceSchema = discriminatedUnion("kind", [
+  object({
+    checkpointDigest: ReleaseSha256Schema,
+    checkpointId: ReleaseScopedIdSchema,
+    kind: literal("checkpoint"),
+  }).strict(),
+  object({
+    checkpoint: CheckpointSchema.nullable(),
+    kind: literal("approved-version"),
+    versionDigest: ReleaseSha256Schema,
+    versionId: ReleaseScopedIdSchema,
+  }).strict(),
+]);
+var AstroBuildIdentityInputSchema = object({
+  environment: _enum(["staging", "production"]),
+  featureRecoveryDigest: ReleaseSha256Schema.nullable(),
+  renderInputDigest: ReleaseSha256Schema,
+  scope: ReleaseArtifactScopeSchema,
+  source: AstroBuildSourceSchema,
+}).strict();
+var AstroBuildIdentitySchema = AstroBuildIdentityInputSchema.extend({
+  formatVersion: literal(1),
+  renderer: literal("astro"),
+  toolchainDigest: ReleaseSha256Schema,
+}).strict();
+var AstroBuildIdentityPinSchema = object({
+  buildId: ReleaseScopedIdSchema,
+  identity: AstroBuildIdentitySchema,
+  identityDigest: ReleaseSha256Schema,
+}).strict();
+async function verifyAstroBuildIdentityAddress(candidate) {
+  const pin2 = AstroBuildIdentityPinSchema.parse(candidate);
+  const digest2 = await sha256Hex(canonicalJson(pin2.identity));
+  if (
+    pin2.identityDigest !== digest2 ||
+    pin2.buildId !== `build_astro_${digest2}`
+  ) {
+    throw new Error("Astro build identity mismatch");
+  }
+  return pin2;
+}
+async function createAstroBuildIdentity(input, admittedToolchain) {
+  const parsed = AstroBuildIdentityInputSchema.parse(input);
+  const toolchain = AstroCompilerToolchainSchema.parse(admittedToolchain);
+  const identity5 = {
+    ...parsed,
+    formatVersion: 1,
+    renderer: "astro",
+    toolchainDigest: await sha256Hex(canonicalJson(toolchain)),
+  };
+  const identityDigest = await sha256Hex(canonicalJson(identity5));
+  return {
+    buildId: `build_astro_${identityDigest}`,
+    identity: identity5,
+    identityDigest,
+  };
+}
+
+// packages/protocol/src/astro-compiler-registry.ts
+var Environment = _enum(["staging", "production"]);
+var Capability = _enum(["build", "verify"]);
+var Generation = object({
+  binding: string2().regex(/^ASTRO_RELEASE_[A-Z0-9_]{1,100}$/),
+  environment: Environment,
+  policyDigest: ReleaseSha256Schema,
+  toolchain: AstroCompilerToolchainSchema,
+  toolchainDigest: ReleaseSha256Schema,
+}).strict();
+var AstroCompilerRegistrySchema = object({
+  capability: Capability,
+  formatVersion: literal(1),
+  generations: array(Generation).max(32),
+})
+  .strict()
+  .superRefine((registry2, ctx) => {
+    const identities = /* @__PURE__ */ new Set();
+    const bindings = /* @__PURE__ */ new Set();
+    for (const generation of registry2.generations) {
+      const identity5 = `${generation.environment}:${generation.toolchainDigest}`;
+      if (identities.has(identity5) || bindings.has(generation.binding)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Duplicate compiler registration",
+        });
+      }
+      identities.add(identity5);
+      bindings.add(generation.binding);
+    }
+  });
+async function selectAstroReleaseGeneration(
+  rawRegistry,
+  deploymentEnvironment,
+  rawToolchainDigest,
+  capability
+) {
+  if (
+    typeof rawRegistry !== "string" ||
+    new TextEncoder().encode(rawRegistry).byteLength > 65536
+  ) {
+    throw new Error("Astro compiler registry unavailable");
+  }
+  const registry2 = AstroCompilerRegistrySchema.parse(JSON.parse(rawRegistry));
+  const environment = Environment.parse(deploymentEnvironment);
+  const toolchainDigest = ReleaseSha256Schema.parse(rawToolchainDigest);
+  if (registry2.capability !== capability) {
+    throw new Error("Astro compiler authority mismatch");
+  }
+  await Promise.all(
+    registry2.generations.map(async (generation) => {
+      if (
+        (await sha256Hex(canonicalJson(generation.toolchain))) !==
+        generation.toolchainDigest
+      ) {
+        throw new Error("Astro compiler registration digest mismatch");
+      }
+    })
+  );
+  const registration = registry2.generations.find(
+    (generation) =>
+      generation.environment === environment &&
+      generation.toolchainDigest === toolchainDigest
+  );
+  if (!registration) {
+    throw new Error("Retained Astro compiler generation unavailable");
+  }
+  return registration;
+}
+
+// packages/protocol/src/astro-artifact.ts
+var ASTRO_ARTIFACT_BYTE_LIMIT = 32 * 1024 * 1024;
+var ASTRO_ARTIFACT_MANIFEST_LIMIT = 1024 * 1024;
+var ASTRO_ARTIFACT_FILE_LIMIT = 1e3;
+var KEY =
+  /^(?:_astro\/)?[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
+var ROUTE = /^\/(?:[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*)?$/;
+var types = {
+  avif: "image/avif",
+  css: "text/css; charset=utf-8",
+  gif: "image/gif",
+  html: "text/html; charset=utf-8",
+  ico: "image/x-icon",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  js: "text/javascript; charset=utf-8",
+  mjs: "text/javascript; charset=utf-8",
+  png: "image/png",
+  svg: "image/svg+xml",
+  txt: "text/plain; charset=utf-8",
+  webp: "image/webp",
+  woff: "font/woff",
+  woff2: "font/woff2",
+};
+function astroArtifactContentType(key2) {
+  if (key2 === "site-runtime.json") {
+    return "application/json; charset=utf-8";
+  }
+  const extension = key2.split(".").pop() ?? "";
+  const type = Object.hasOwn(types, extension) ? types[extension] : void 0;
+  if (!(KEY.test(key2) && type)) {
+    throw new Error("Unsupported Astro artifact key");
+  }
+  return type;
+}
+var AstroBuildContextSchema = object({
+  buildId: ReleaseScopedIdSchema,
+  checkpointDigest: ReleaseSha256Schema,
+  checkpointId: ReleaseScopedIdSchema,
+  environment: _enum(["staging", "production"]),
+  featureRecoveryDigest: ReleaseSha256Schema.nullable(),
+  renderInputDigest: ReleaseSha256Schema,
+  scope: ReleaseArtifactScopeSchema,
+}).strict();
+var AstroFileSchema = object({
+  bytes: number2().int().nonnegative().max(ASTRO_ARTIFACT_BYTE_LIMIT),
+  contentType: string2().max(100),
+  key: string2().max(1024).regex(KEY),
+  sha256: ReleaseSha256Schema,
+})
+  .strict()
+  .refine((file) => {
+    try {
+      return astroArtifactContentType(file.key) === file.contentType;
+    } catch {
+      return false;
+    }
+  }, "Unsupported Astro file type");
+var AstroArtifactInventorySchema = object({
+  compiler: object({
+    name: literal("astro"),
+    version: literal("7.3.4"),
+  }).strict(),
+  files: array(AstroFileSchema).min(1).max(ASTRO_ARTIFACT_FILE_LIMIT),
+  kind: literal("astro-static-artifact"),
+  routes: record(
+    string2().max(240).regex(ROUTE),
+    string2().max(1024).regex(KEY)
+  ),
+})
+  .strict()
+  .superRefine((manifest, ctx) => {
+    const keys = new Set(manifest.files.map((file) => file.key.toLowerCase()));
+    if (
+      keys.size !== manifest.files.length ||
+      manifest.files.reduce((sum, file) => sum + file.bytes, 0) >
+        ASTRO_ARTIFACT_BYTE_LIMIT
+    ) {
+      ctx.addIssue({ code: "custom", message: "Invalid Astro file inventory" });
+    }
+    const routes = Object.entries(manifest.routes);
+    const html = new Set(
+      manifest.files
+        .filter((file) => file.contentType === types.html)
+        .map((file) => file.key)
+    );
+    for (const [route, key2] of routes) {
+      if (
+        key2 !==
+          (route === "/" ? "index.html" : `${route.slice(1)}/index.html`) ||
+        !html.delete(key2)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Invalid Astro route artifact",
+        });
+      }
+    }
+    if (routes.length === 0 || html.size > 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Incomplete Astro route inventory",
+      });
+    }
+  });
+var AstroArtifactManifestSchema = AstroArtifactInventorySchema.safeExtend({
+  context: AstroBuildContextSchema,
+  formatVersion: literal(1),
+});
+var ExpectedSchema = object({
+  context: AstroBuildContextSchema,
+  manifestDigest: ReleaseSha256Schema,
+}).strict();
+
+// packages/protocol/src/astro-artifact-v2.ts
+var AstroArtifactManifestV2Schema = AstroArtifactInventorySchema.safeExtend({
+  context: AstroBuildIdentityPinSchema,
+  formatVersion: literal(2),
+});
+var ExpectedSchema2 = object({
+  context: AstroBuildIdentityPinSchema,
+  manifestDigest: ReleaseSha256Schema,
+}).strict();
+
+// packages/protocol/src/astro-release.ts
+var HEADER_CONTROL = /[\x00-\x1f\x7f]/;
+var AstroReleaseManifestSchema = ReleaseArtifactManifestV2Schema.omit({
+  files: true,
+  pageRuntimes: true,
+})
+  .extend({
+    astro: object({
+      context: AstroBuildIdentityPinSchema,
+      manifestDigest: ReleaseSha256Schema,
+      pages: record(
+        string2().max(240),
+        object({
+          csp: string2()
+            .min(1)
+            .max(32768)
+            .refine((value) => !HEADER_CONTROL.test(value)),
+        }).strict()
+      ),
+      policyDigest: ReleaseSha256Schema,
+    }).strict(),
+    files: AstroArtifactManifestV2Schema.shape.files,
+    images: array(ReleaseArtifactFileSchema).max(512),
+    renderer: literal("astro"),
+    schemaVersion: literal(4),
+    validationReport: ReleaseArtifactFileSchema.refine(
+      (file) =>
+        file.key === "validation-report.json" &&
+        file.contentType === "application/json; charset=utf-8"
+    ),
+  })
+  .strict();
+var ExpectedSchema3 = object({
+  context: AstroBuildIdentityPinSchema,
+  manifestDigest: ReleaseSha256Schema,
+  policyDigest: ReleaseSha256Schema,
+}).strict();
+var AstroReleaseReferenceSchema = AstroReleaseManifestSchema.shape.astro.omit({
+  pages: true,
+});
+var AstroReleasePointerSchema = AstroReleaseManifestSchema.pick({
+  artifactPrefix: true,
+  buildId: true,
+  scope: true,
+  versionDigest: true,
+})
+  .extend({
+    astro: AstroReleaseReferenceSchema,
+    environment: ReleaseEnvironmentSchema.optional(),
+    manifestDigest: ReleaseSha256Schema,
+    manifestKey: string2().max(1100),
+    releaseId: ReleaseScopedIdSchema.optional(),
+  })
+  .strict();
+var AstroReleaseBuildResultSchema = AstroReleasePointerSchema.omit({
+  environment: true,
+  releaseId: true,
+  scope: true,
+})
+  .extend({
+    renderer: literal("astro"),
+    success: literal(true),
+    validationKey: string2().max(1100),
+  })
+  .strict();
+var AstroReleaseVerificationSchema = AstroReleaseManifestSchema.pick({
+  artifactPrefix: true,
+  files: true,
+  images: true,
+  routes: true,
+})
+  .extend({
+    ...AstroReleaseManifestSchema.shape.astro.shape,
+    manifestKey: string2().max(1100),
+    renderer: literal("astro"),
+    verified: literal(true),
+  })
+  .strict();
+async function verifyAstroReleasePointer(candidate) {
+  const pointer2 = AstroReleasePointerSchema.parse(candidate);
+  const context = await verifyAstroBuildIdentityAddress(pointer2.astro.context);
+  const { scope, source, environment } = context.identity;
+  const prefix = `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}/astro/${environment}/${context.buildId}/${pointer2.astro.manifestDigest}`;
+  if (
+    source.kind !== "approved-version" ||
+    pointer2.buildId !== context.buildId ||
+    canonicalJson(pointer2.scope) !== canonicalJson(scope) ||
+    pointer2.versionDigest !== source.versionDigest ||
+    pointer2.artifactPrefix !== prefix ||
+    pointer2.manifestKey !== `${prefix}/release-manifest.json` ||
+    (pointer2.environment &&
+      pointer2.environment !== "preview" &&
+      pointer2.environment !== environment)
+  ) {
+    throw new Error("Astro release pointer identity mismatch");
+  }
+  return pointer2;
+}
+
 // packages/protocol/src/industry.ts
 var SiteTemplateIdSchema = _enum([
   "limousine-v1",
@@ -6210,124 +6694,6 @@ function contentScopeKey(input) {
     scope.siteId,
     scope.environment,
   ]);
-}
-
-// packages/protocol/src/builder-release-reference.ts
-var BuilderReleaseSealReferenceSchema = object({
-  checkpointDigest: string2().regex(/^[a-f0-9]{64}$/),
-  formatVersion: literal(1),
-  sha256: string2().regex(/^[a-f0-9]{64}$/),
-}).strict();
-
-// packages/protocol/src/runtime-capabilities.ts
-var RUNTIME_CAPABILITIES = ["forms", "motion", "navigation", "tabs"];
-var RuntimeCapabilitySchema = _enum(RUNTIME_CAPABILITIES);
-var PageRuntimeAssetSchema = object({
-  capabilities: array(RuntimeCapabilitySchema)
-    .min(1)
-    .max(RUNTIME_CAPABILITIES.length)
-    .refine(
-      (names) =>
-        names.every(
-          (name, index) => index === 0 || (names[index - 1] ?? "") < name
-        ),
-      "Capabilities must be unique and sorted"
-    ),
-  integrity: string2().regex(/^sha256-[A-Za-z0-9+/]{43}=$/),
-  key: string2().regex(/^assets\/xeroflow-runtime-[a-f0-9]{64}\.js$/),
-}).strict();
-
-// packages/protocol/src/release.ts
-var RELEASE_MANIFEST_LIMIT_BYTES = 1024 * 1024;
-var RELEASE_BUNDLE_LIMIT_BYTES = 10 * 1024 * 1024;
-var RELEASE_FILE_LIMIT = 5e3;
-var ReleaseScopedIdSchema = string2()
-  .min(1)
-  .max(128)
-  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
-var ReleaseSha256Schema = string2().regex(/^[a-f0-9]{64}$/);
-var ReleaseEnvironmentSchema = _enum(["preview", "staging", "production"]);
-var ReleaseArtifactScopeSchema = object({
-  clientId: ReleaseScopedIdSchema,
-  siteId: ReleaseScopedIdSchema,
-  tenantId: ReleaseScopedIdSchema,
-}).strict();
-var SAFE_OBJECT_KEY_RE =
-  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
-var CANONICAL_ROUTE_RE =
-  /^\/(?:[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*)?$/;
-var ReleaseArtifactFileSchema = object({
-  bytes: number2().int().nonnegative().max(RELEASE_BUNDLE_LIMIT_BYTES),
-  contentType: string2().min(1).max(200),
-  key: string2().max(1024).regex(SAFE_OBJECT_KEY_RE),
-  sha256: ReleaseSha256Schema,
-}).strict();
-var ReleaseArtifactManifestBaseShape = {
-  artifactPrefix: string2().max(1024).regex(SAFE_OBJECT_KEY_RE),
-  buildId: ReleaseScopedIdSchema,
-  files: array(ReleaseArtifactFileSchema).min(1).max(RELEASE_FILE_LIMIT),
-  routes: record(
-    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
-    string2().max(1024).regex(SAFE_OBJECT_KEY_RE)
-  ),
-  scope: ReleaseArtifactScopeSchema,
-  versionDigest: ReleaseSha256Schema,
-  versionId: ReleaseScopedIdSchema,
-};
-var ReleaseArtifactManifestV1Schema = object({
-  ...ReleaseArtifactManifestBaseShape,
-  schemaVersion: literal(1),
-}).strict();
-var ReleaseArtifactRedirectSchema = object({
-  status: literal(308),
-  target: string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
-}).strict();
-var ReleaseArtifactManifestV2Schema = object({
-  ...ReleaseArtifactManifestBaseShape,
-  pageRuntimes: record(
-    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
-    PageRuntimeAssetSchema
-  ).optional(),
-  redirects: record(
-    string2().min(1).max(240).regex(CANONICAL_ROUTE_RE),
-    ReleaseArtifactRedirectSchema
-  ),
-  schemaVersion: literal(2),
-}).strict();
-var ReleaseArtifactManifestV3Schema = ReleaseArtifactManifestV2Schema.extend({
-  featureSeal: BuilderReleaseSealReferenceSchema,
-  schemaVersion: literal(3),
-}).strict();
-var ReleaseArtifactManifestSchema = discriminatedUnion("schemaVersion", [
-  ReleaseArtifactManifestV1Schema,
-  ReleaseArtifactManifestV2Schema,
-  ReleaseArtifactManifestV3Schema,
-]);
-function canonicalJson(input) {
-  if (input === null || typeof input !== "object") {
-    const serialized = JSON.stringify(input);
-    if (serialized === void 0) {
-      throw new TypeError("Unsupported value in canonical JSON");
-    }
-    return serialized;
-  }
-  if (Array.isArray(input)) {
-    return `[${input.map((value) => canonicalJson(value)).join(",")}]`;
-  }
-  const object2 = input;
-  return `{${Object.keys(object2)
-    .sort()
-    .map((key2) => `${JSON.stringify(key2)}:${canonicalJson(object2[key2])}`)
-    .join(",")}}`;
-}
-async function sha256Hex(value) {
-  const digest2 = await crypto.subtle.digest(
-    "SHA-256",
-    typeof value === "string" ? new TextEncoder().encode(value) : value
-  );
-  return Array.from(new Uint8Array(digest2), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
 }
 
 // packages/protocol/src/builder-feature.ts
@@ -9444,6 +9810,81 @@ async function verifyInstances(checkpoint2, artifacts, selected) {
 }
 
 // packages/protocol/src/builder-graph-verifier.ts
+async function createAstroCompilerBuildIdentity(input, admittedToolchain) {
+  return await createAstroBuildIdentity(input, admittedToolchain);
+}
+async function verifyAstroCompilerBuildIdentity(candidate, admittedToolchain) {
+  const pin2 = object({
+    buildId: ReleaseScopedIdSchema,
+    identity: AstroBuildIdentitySchema,
+    identityDigest: ReleaseSha256Schema,
+  })
+    .strict()
+    .parse(candidate);
+  const expected = await createAstroBuildIdentity(
+    {
+      environment: pin2.identity.environment,
+      featureRecoveryDigest: pin2.identity.featureRecoveryDigest,
+      renderInputDigest: pin2.identity.renderInputDigest,
+      scope: pin2.identity.scope,
+      source: pin2.identity.source,
+    },
+    admittedToolchain
+  );
+  if (canonicalJson(pin2) !== canonicalJson(expected)) {
+    throw new Error("Astro build identity mismatch");
+  }
+  return expected;
+}
+async function selectNativeAstroCompilerGeneration(
+  registry2,
+  environment,
+  toolchainDigest
+) {
+  const generation = await selectAstroReleaseGeneration(
+    registry2,
+    environment,
+    toolchainDigest,
+    "build"
+  );
+  return {
+    environment: generation.environment,
+    policyDigest: generation.policyDigest,
+    toolchain: generation.toolchain,
+    toolchainDigest: generation.toolchainDigest,
+  };
+}
+async function verifyAstroCompilerReleaseReceipt(candidate, retained) {
+  const result = AstroReleaseBuildResultSchema.parse(candidate);
+  const authority = object({
+    context: AstroBuildIdentityPinSchema,
+    policyDigest: ReleaseSha256Schema,
+    toolchain: AstroCompilerToolchainSchema,
+  })
+    .strict()
+    .parse(retained);
+  const context = await verifyAstroCompilerBuildIdentity(
+    authority.context,
+    authority.toolchain
+  );
+  if (
+    canonicalJson(result.astro.context) !== canonicalJson(context) ||
+    result.astro.policyDigest !== authority.policyDigest ||
+    result.validationKey !== `${result.artifactPrefix}/validation-report.json`
+  ) {
+    throw new Error("Astro release receipt authority mismatch");
+  }
+  await verifyAstroReleasePointer({
+    artifactPrefix: result.artifactPrefix,
+    astro: result.astro,
+    buildId: result.buildId,
+    manifestDigest: result.manifestDigest,
+    manifestKey: result.manifestKey,
+    scope: context.identity.scope,
+    versionDigest: result.versionDigest,
+  });
+  return result;
+}
 var BuilderGraphVerificationError = class extends Error {
   code;
   constructor(code, message) {
@@ -10479,10 +10920,14 @@ async function verifyBuilderReleaseRecovery(raw) {
 }
 export {
   BuilderGraphVerificationError,
+  createAstroCompilerBuildIdentity,
   inspectBuilderActionEffectTargets,
   parseBuilderActionRuntimeResultJson,
   parseBuilderArtifactJson,
   projectBuilderActionRecord,
+  selectNativeAstroCompilerGeneration,
+  verifyAstroCompilerBuildIdentity,
+  verifyAstroCompilerReleaseReceipt,
   verifyBuilderActionInput,
   verifyBuilderActionResult,
   verifyBuilderApplicationCheckpoint,

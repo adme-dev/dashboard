@@ -1,9 +1,10 @@
+import { checkpointStagingOrigin } from './checkpointStagingOrigin'
 import { randomUUID } from 'node:crypto'
 import { createError, type H3Event } from 'h3'
 import { lockPageStudioHistoryAuthority } from './historyAuthority'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
-import { commitPageStudioCheckpoint, registerPageStudioVersion, type PageStudioControlQueryClient, type PageStudioControlScope } from '~~/server/utils/pageStudio/controlStore'
+import { commitPageStudioCheckpoint, registerPageStudioVersion, submitPageStudioVersionForReview, type PageStudioControlQueryClient, type PageStudioControlScope } from '~~/server/utils/pageStudio/controlStore'
 import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
 import { PageStudioHistoryMutationSchema, PageStudioHistoryQuerySchema, type PageStudioHistoryReceipt, type PageStudioHistoryState } from '~~/shared/pageStudio/draftHistory'
 import type { PageStudioContentActor } from '~~/server/utils/pageStudio/businessContent'
@@ -133,6 +134,8 @@ export async function mutatePageStudioHistory(request: Request & {
     throw invalid()
   if (!request.event) throw createError({ statusCode: 401, statusMessage: 'Sign in again before changing draft history' })
   const body = parsed.data
+  if (body.action === 'name' && body.submitForReview && request.actor.role !== 'agency')
+    throw denied()
   if (body.action === 'restore') {
     const managed = await (dependencies.runTransaction ?? defaultTransaction)(async (db) => {
       const { scope } = await authorise(db, request, true)
@@ -149,7 +152,7 @@ export async function mutatePageStudioHistory(request: Request & {
     const { site, scope } = await authorise(db, request, true)
     if (body.action === 'restore' && (await db.query(`SELECT scope_key FROM page_studio_cms_scopes WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND state<>'legacy' LIMIT 1`, [scope.tenantId, scope.clientId, scope.siteId])).rows.length)
       throw new PageStudioHistoryError('HISTORY_MANAGED_RETRY', 409, 'Content setup changed. Retry this restore through the current authoring environment.')
-    const recheckAuthority = await lockPageStudioHistoryAuthority(db, request.event!, request.actor, scope)
+    const { recheck: recheckAuthority, login } = await lockPageStudioHistoryAuthority(db, request.event!, request.actor, scope)
     const args = [scope.tenantId, scope.clientId, scope.siteId]
     const operationKey = `history:${request.actor.role}:${request.actor.actorId}:${body.requestId}`
     const existing = await db.query<{
@@ -188,6 +191,10 @@ export async function mutatePageStudioHistory(request: Request & {
       const version = await registerPageStudioVersion({ scope, authorRole: request.actor.role, userId: request.actor.actorId,
         checkpointId, digest: source.rows[0].digest, summary: body.name, idempotencyKey: operationKey }, { runTransaction: nested })
       versionId = version.id
+      if (body.submitForReview) {
+        await submitPageStudioVersionForReview({ scope, actorRole: request.actor.role, userId: request.actor.actorId,
+          versionId, idempotencyKey: `${operationKey}:submit` }, { runTransaction: nested })
+      }
     } else {
       if (!request.bucket || typeof request.bucket.put !== 'function')
         throw new PageStudioHistoryError('CHECKPOINT_UNAVAILABLE', 503, 'Draft storage is unavailable. Try again.')
@@ -216,7 +223,9 @@ export async function mutatePageStudioHistory(request: Request & {
         throw new PageStudioHistoryError('CHECKPOINT_UNAVAILABLE', 503, 'The restored draft could not be saved. Try again.')
       }
       await commitPageStudioCheckpoint({ expectedCheckpointId: body.expectedCheckpointId,
-        checkpoint: { scope, checkpointId, createdAt, digest: saved.digest, etag, objectKey, userId: request.actor.actorId } }, { runTransaction: nested })
+        checkpoint: { scope, checkpointId, createdAt, digest: saved.digest, etag, objectKey, userId: request.actor.actorId } }, { runTransaction: nested,
+        stagingOrigin: async () => checkpointStagingOrigin({ formatVersion: 1, environment: request.env?.PAGE_STUDIO_RELEASE_ENVIRONMENT,
+          source: 'native-login', userId: login.userId, role: login.role, loginSessionHash: login.tokenHash }) })
       await db.query('UPDATE page_studio_sites SET current_version_id=NULL WHERE tenant_id=$1 AND client_id=$2 AND id=$3', args)
     }
     await db.query(`INSERT INTO page_studio_audit_events

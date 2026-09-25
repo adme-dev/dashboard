@@ -3,7 +3,7 @@
 type AuthorityClock = 'NOW()' | 'clock_timestamp()'
 type AuthoritySource = 'history' | 'session' | 'provisioning'
 
-export function pageStudioAuthorityOwnerJoin(agency: boolean, source: AuthoritySource, time: AuthorityClock) {
+export function pageStudioAuthorityOwnerJoin(agency: boolean, source: AuthoritySource, time: AuthorityClock, requiredPermission: 'PAGE_STUDIO_EDIT' | 'PAGE_STUDIO_PUBLISH' = 'PAGE_STUDIO_EDIT') {
   const ownerId = source === 'provisioning'
     ? 'owner.id = $4::uuid'
     : `owner.id::text = ${source === 'session' ? 'session' : 'login'}.user_id`
@@ -17,7 +17,7 @@ export function pageStudioAuthorityOwnerJoin(agency: boolean, source: AuthorityS
        OR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))
       AND staff_role.is_read_only = FALSE
     JOIN role_permission_groups ${permission} ON ${permission}.role_id = staff_role.id
-      AND ${permission}.permission_group = 'PAGE_STUDIO_EDIT'`
+      AND ${permission}.permission_group = '${requiredPermission === 'PAGE_STUDIO_PUBLISH' ? 'PAGE_STUDIO_PUBLISH' : 'PAGE_STUDIO_EDIT'}'`
   }
   return `JOIN client_users owner ON ${ownerId} AND owner.client_id = site.client_id
       AND owner.status = 'active' ${source === 'provisioning' ? 'AND owner.role IN (\'admin\', \'manager\')' : ''}

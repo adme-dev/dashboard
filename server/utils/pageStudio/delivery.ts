@@ -1,7 +1,10 @@
 import type { H3Event } from 'h3'
 import { z } from 'zod'
+import type { AstroCompilerReleaseReceipt } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
+import { mapPageStudioReleasePointer, type PageStudioBuildPointerRow } from './releasePointers'
 
 import { queryOne } from '~~/server/utils/db'
+import { pageStudioAuthorityOwnerJoin, pageStudioEditorEntitlementJoin } from './authoritySql'
 import {
   PageStudioSessionError,
   verifyPageStudioSessionToken
@@ -27,13 +30,8 @@ interface PreviewVerificationEnvironment {
   publicKey: string
 }
 
-interface ReleaseRowBase {
-  artifact_prefix: string
-  build_id: string
-  manifest_digest: string
-  manifest_key: string
+interface ReleaseRowBase extends PageStudioBuildPointerRow {
   release_id: string
-  version_digest: string
 }
 
 interface PreviewReleaseRow extends ReleaseRowBase {
@@ -118,6 +116,7 @@ export function resolvePageStudioPreviewVerificationEnvironment(
 export interface AuthorizedPageStudioPreview {
   hostname: string
   release: {
+    astro?: AstroCompilerReleaseReceipt['astro']
     artifactPrefix: string
     buildId: string
     environment: 'preview'
@@ -132,6 +131,7 @@ export interface AuthorizedPageStudioPreview {
 export interface ResolvedPageStudioRelease {
   hostname: string
   release: {
+    astro?: AstroCompilerReleaseReceipt['astro']
     artifactPrefix: string
     buildId: string
     environment: 'staging' | 'production'
@@ -163,6 +163,9 @@ export async function resolvePageStudioReleaseHost(
   const findOne = dependencies.queryOne ?? queryOne as PageStudioDeliveryQueryOne
   const row = await findOne<PublicReleaseRow>(
     `SELECT build.artifact_prefix,
+            build.renderer, build.version_id AS build_version_id,
+            build.build_identity, build.build_identity_digest, build.compiler_toolchain,
+            build.astro_release_receipt, build.validation_report_key,
             build.id AS build_id,
             pointer.client_id,
             pointer.environment,
@@ -210,18 +213,8 @@ export async function resolvePageStudioReleaseHost(
   return {
     hostname: hostname.data,
     release: {
-      artifactPrefix: row.artifact_prefix,
-      buildId: row.build_id,
-      environment: row.environment,
-      manifestDigest: row.manifest_digest,
-      manifestKey: row.manifest_key,
-      releaseId: row.release_id,
-      scope: {
-        clientId: row.client_id,
-        siteId: row.site_id,
-        tenantId: row.tenant_id
-      },
-      versionDigest: row.version_digest
+      ...await mapPageStudioReleasePointer({ clientId: row.client_id, siteId: row.site_id, tenantId: row.tenant_id }, row),
+      environment: row.environment
     }
   }
 }
@@ -276,9 +269,19 @@ export async function authorizePageStudioPreview(
     )
   }
 
+  // Publisher review grants have only preview capability. Editor sessions keep
+  // their existing edit authority; neither grant survives its native login or
+  // role/permission/client/entitlement being revoked.
+  const permission = claims.role === 'agency' && claims.capabilities.length === 1
+    ? 'PAGE_STUDIO_PUBLISH'
+    : 'PAGE_STUDIO_EDIT'
+
   const findOne = dependencies.queryOne ?? queryOne as PageStudioDeliveryQueryOne
   const row = await findOne<PreviewReleaseRow>(
     `SELECT build.artifact_prefix,
+            build.renderer, build.version_id AS build_version_id,
+            build.build_identity, build.build_identity_digest, build.compiler_toolchain,
+            build.astro_release_receipt, build.validation_report_key,
             build.id AS build_id,
             release.environment,
             build.release_manifest_digest AS manifest_digest,
@@ -290,10 +293,11 @@ export async function authorizePageStudioPreview(
        ON site.tenant_id = session.tenant_id
       AND site.client_id = session.client_id
       AND site.id = session.site_id
-     JOIN page_studio_entitlements entitlement
-       ON entitlement.tenant_id = site.tenant_id
-      AND entitlement.client_id = site.client_id
-      AND entitlement.id = site.entitlement_id
+     JOIN page_studio_login_sessions login ON login.role=session.role
+       AND login.token_hash=session.login_session_hash AND login.user_id=session.user_id
+       AND login.revoked_at IS NULL AND login.issued_at<=NOW() AND login.expires_at>NOW()
+     ${pageStudioAuthorityOwnerJoin(claims.role === 'agency', 'session', 'NOW()', permission)}
+     ${pageStudioEditorEntitlementJoin('NOW()')}
      JOIN page_studio_release_pointers pointer
        ON pointer.tenant_id = session.tenant_id
       AND pointer.client_id = session.client_id
@@ -346,18 +350,8 @@ export async function authorizePageStudioPreview(
   return {
     hostname: parsed.data.hostname,
     release: {
-      artifactPrefix: row.artifact_prefix,
-      buildId: row.build_id,
-      environment: 'preview',
-      manifestDigest: row.manifest_digest,
-      manifestKey: row.manifest_key,
-      releaseId: row.release_id,
-      scope: {
-        clientId: claims.clientId,
-        siteId: claims.siteId,
-        tenantId: claims.tenantId
-      },
-      versionDigest: row.version_digest
+      ...await mapPageStudioReleasePointer({ clientId: claims.clientId, siteId: claims.siteId, tenantId: claims.tenantId }, row),
+      environment: 'preview'
     }
   }
 }

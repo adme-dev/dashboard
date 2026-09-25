@@ -1,6 +1,10 @@
 import { coordinateSealedFeatureBuild } from '~~/server/utils/pageStudio/releaseFeatureBuild'
 import { nativeFeaturePublisher, featureBuildServices } from '~~/server/utils/pageStudio/releaseFeatureHttp'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
+import { hasAstroReleaseConfiguration, resolveAstroBuildServices } from '~~/server/utils/pageStudio/astroBuildHttp'
+import { coordinateApprovedAstroBuild } from '~~/server/utils/pageStudio/astroBuildCoordinator'
+import { preparePageStudioPublishPrincipal } from '~~/server/utils/pageStudio/publishHttp'
+import { resolveAgencyPageStudioSiteClient } from '~~/server/utils/pageStudio/versions'
 import {
   buildApprovedPageStudioVersion,
   resolvePageStudioBuildWorker
@@ -32,7 +36,6 @@ export default eventHandler(async (event) => {
     ) {
       throw createError({ statusCode: 400, statusMessage: 'Invalid Page Studio build' })
     }
-    const worker = resolvePageStudioBuildWorker(event)
     const input = {
       actorId: user.id,
       assets: body.data.assets,
@@ -44,9 +47,17 @@ export default eventHandler(async (event) => {
     }
     const manifest = body.data.manifest as Record<string, unknown>
     const feature = Object.hasOwn(manifest, 'builderApplication') || Object.hasOwn(manifest, 'builderLibrary')
+    if (!feature && hasAstroReleaseConfiguration(event)) {
+      const clientId = await resolveAgencyPageStudioSiteClient(tenantId, siteId.data)
+      const principal = await preparePageStudioPublishPrincipal(event, { tenantId, user })
+      const { environment, services } = resolveAstroBuildServices(event)
+      const build = await coordinateApprovedAstroBuild({ scope: { tenantId, clientId, siteId: siteId.data },
+        versionId: versionId.data, environment, idempotencyKey: idempotencyKey.data }, principal, services)
+      return { build }
+    }
     const build = feature
       ? await coordinateSealedFeatureBuild(input, await nativeFeaturePublisher(event, siteId.data), featureBuildServices(event))
-      : await buildApprovedPageStudioVersion(input, { worker })
+      : await buildApprovedPageStudioVersion(input, { worker: resolvePageStudioBuildWorker(event) })
     return { build }
   } catch (error) {
     pageStudioHttpError(error)

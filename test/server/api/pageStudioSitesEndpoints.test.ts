@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   createPageStudioSite: vi.fn(),
+  prepareStaging: vi.fn(),
   listAgencyPageStudioSites: vi.fn(),
   listPortalPageStudioSites: vi.fn(),
   requireAgencyPageStudioAccess: vi.fn(),
   requireClientAuth: vi.fn(),
   resolvePortalPageStudioTenant: vi.fn()
 }))
+
+vi.mock('~~/server/utils/pageStudio/initialStaging', () => ({ prepareCreatedSiteStaging: mocks.prepareStaging }))
 
 vi.mock('~~/server/utils/pageStudio/access', () => ({
   requireAgencyPageStudioAccess: (...args: unknown[]) => mocks.requireAgencyPageStudioAccess(...args)
@@ -74,6 +77,7 @@ describe('Page Studio site endpoints', () => {
     mocks.requireClientAuth.mockResolvedValue(portalUser)
     mocks.resolvePortalPageStudioTenant.mockResolvedValue('tenant-alpha')
     mocks.createPageStudioSite.mockResolvedValue(site)
+    mocks.prepareStaging.mockResolvedValue(null)
     mocks.listAgencyPageStudioSites.mockResolvedValue({ items: [site], total: 1 })
     mocks.listPortalPageStudioSites.mockResolvedValue({ items: [site], total: 1 })
   })
@@ -103,7 +107,7 @@ describe('Page Studio site endpoints', () => {
       }
     }
 
-    await expect(handler(event as never)).resolves.toEqual({ site })
+    await expect(handler(event as never)).resolves.toEqual({ site, staging: null })
     expect(mocks.requireAgencyPageStudioAccess).toHaveBeenCalledWith(event, 'PAGE_STUDIO_EDIT')
     expect(mocks.createPageStudioSite).toHaveBeenCalledWith({
       actorId: 'agency-user',
@@ -149,7 +153,7 @@ describe('Page Studio site endpoints', () => {
       body: { name: site.name, route: site.route, starterVersion: site.starterVersion }
     }
 
-    await expect(handler(event as never)).resolves.toEqual({ site })
+    await expect(handler(event as never)).resolves.toEqual({ site, staging: null })
     expect(mocks.resolvePortalPageStudioTenant).toHaveBeenCalledWith(site.clientId)
     expect(mocks.createPageStudioSite).toHaveBeenCalledWith(expect.objectContaining({
       actorId: portalUser.id,
@@ -200,5 +204,35 @@ describe('Page Studio site endpoints', () => {
       }
     } as never)).rejects.toMatchObject({ statusCode: 400 })
     expect(mocks.createPageStudioSite).not.toHaveBeenCalled()
+  })
+  it.each(['agency', 'portal'] as const)('requests initial staging for the committed %s site using authenticated scope', async (audience) => {
+    const { default: handler } = audience === 'agency'
+      ? await import('~~/server/api/agency/page-studio/sites/index.post')
+      : await import('~~/server/api/portal/page-studio/sites/index.post')
+    const event = { context: {}, body: { name: site.name, route: site.route, starterVersion: site.starterVersion, ...(audience === 'agency' ? { clientId: site.clientId } : {}) } }
+    await handler(event as never)
+    expect(mocks.prepareStaging).toHaveBeenCalledWith(event, audience === 'agency'
+      ? { kind: 'agency', actorId: 'agency-user', tenantId: 'tenant-alpha' }
+      : { kind: 'portal', actorId: portalUser.id, clientId: portalUser.clientId }, site.id)
+    expect(mocks.createPageStudioSite.mock.invocationCallOrder[0]).toBeLessThan(mocks.prepareStaging.mock.invocationCallOrder[0]!)
+  })
+  it('does not request staging before the site transaction resolves', async () => {
+    let commit!: (value: typeof site) => void
+    mocks.createPageStudioSite.mockReturnValueOnce(new Promise((resolve) => {
+      commit = resolve
+    }))
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/index.post')
+    const result = handler({ context: {}, body: { name: site.name, route: site.route, starterVersion: site.starterVersion } } as never)
+    await vi.waitFor(() => expect(mocks.createPageStudioSite).toHaveBeenCalledTimes(1))
+    expect(mocks.prepareStaging).not.toHaveBeenCalled()
+    commit(site)
+    await expect(result).resolves.toEqual({ site, staging: null })
+    expect(mocks.prepareStaging).toHaveBeenCalledTimes(1)
+  })
+  it('does not request staging when site creation fails', async () => {
+    mocks.createPageStudioSite.mockRejectedValueOnce(Object.assign(new Error('denied'), { statusCode: 403 }))
+    const { default: handler } = await import('~~/server/api/portal/page-studio/sites/index.post')
+    await expect(handler({ context: {}, body: { name: site.name, route: site.route, starterVersion: site.starterVersion } } as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.prepareStaging).not.toHaveBeenCalled()
   })
 })

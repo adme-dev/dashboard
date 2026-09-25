@@ -62,6 +62,7 @@ function database(options: {
   const queries: string[] = []
   const query = vi.fn(async (sql: string, _params?: unknown[]) => {
     queries.push(sql)
+    if (sql.includes('SELECT login_session_hash FROM page_studio_sessions')) return { rows: [{ login_session_hash: 'c'.repeat(64) }] }
     if (sql.includes('SELECT session.nonce')) return { rows: [{ nonce: session.nonce }] }
     if (sql.includes('FOR SHARE OF login')) return { rows: [{ token_hash: 'a'.repeat(64) }] }
     if (sql.includes('FROM page_studio_sites')) return { rows: [{
@@ -101,6 +102,18 @@ function database(options: {
 }
 
 describe('acceptPageStudioAiProposal', () => {
+  it('retains its authorized editor origin only on the checkpoint audit', async () => {
+    const db = database()
+    await acceptPageStudioAiProposal(input, { ...db, env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' } })
+    const audits = db.query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO page_studio_audit_events'))
+    const checkpointAudit = audits.find(([, args]) => args?.includes('workspace.checkpointed'))!
+    expect(JSON.parse(checkpointAudit[1]![9] as string).stagingOrigin).toEqual({ formatVersion: 1,
+      environment: 'production', source: 'studio-session', userId: session.userId, role: session.role,
+      nonce: session.nonce, loginSessionHash: 'c'.repeat(64) })
+    for (const [, args] of audits.filter(([, args]) => !args?.includes('workspace.checkpointed')))
+      expect(JSON.parse(args![9] as string).stagingOrigin).toBeUndefined()
+  })
+
   it.each([undefined, { ...session, userId: '10000000-0000-4000-8000-000000000003' },
     { ...session, siteId: '10000000-0000-4000-8000-000000000004' },
     { ...session, role: 'client' as const }])('rejects missing or mismatched server authority before writes', async (authority) => {

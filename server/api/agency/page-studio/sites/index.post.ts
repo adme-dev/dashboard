@@ -1,3 +1,4 @@
+import { prepareCreatedSiteStaging } from '~~/server/utils/pageStudio/initialStaging'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import { PageStudioSiteBody } from '~~/server/utils/pageStudio/schemas'
@@ -19,7 +20,8 @@ export default eventHandler(async (event) => {
       starterVersion: parsed.data.starterVersion,
       tenantId
     })
-    return { site }
+    const staging = await prepareCreatedSiteStaging(event, { kind: 'agency', actorId: user.id, tenantId }, site.id)
+    return { site, staging }
   } catch (error) {
     pageStudioHttpError(error)
   }

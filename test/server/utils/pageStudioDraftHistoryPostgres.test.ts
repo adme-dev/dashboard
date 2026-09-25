@@ -85,7 +85,7 @@ describe.runIf(Boolean(url))('draft history on disposable PostgreSQL', () => {
       CREATE TABLE page_studio_sites (id uuid PRIMARY KEY, tenant_id text, client_id uuid, entitlement_id uuid, name text, status text, current_checkpoint_id text, current_version_id uuid, updated_at timestamptz);
       CREATE TABLE page_studio_site_memberships (tenant_id text, client_id uuid, site_id uuid, user_id uuid, role text);
       CREATE TABLE page_studio_checkpoints (id text PRIMARY KEY, tenant_id text, client_id uuid, site_id uuid, digest text, object_key text UNIQUE, etag text, author_id text, created_at timestamptz);
-      CREATE TABLE page_studio_versions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id text, client_id uuid, site_id uuid, checkpoint_id text, digest text, author_id text, author_role text, summary text, status text DEFAULT 'draft', idempotency_key text, created_at timestamptz DEFAULT now(), UNIQUE(tenant_id, client_id, site_id, idempotency_key));
+      CREATE TABLE page_studio_versions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id text, client_id uuid, site_id uuid, checkpoint_id text, digest text, author_id text, author_role text, summary text, status text DEFAULT 'draft', submitted_at timestamptz, updated_at timestamptz, idempotency_key text, created_at timestamptz DEFAULT now(), UNIQUE(tenant_id, client_id, site_id, idempotency_key));
       CREATE TABLE page_studio_audit_events (id uuid DEFAULT gen_random_uuid(), tenant_id text, client_id uuid, site_id uuid, actor_id text, actor_role text, action text, resource_type text, resource_id text, idempotency_key text, metadata jsonb, UNIQUE(tenant_id, client_id, site_id, idempotency_key));
       CREATE TABLE page_studio_cms_scopes(scope_key TEXT PRIMARY KEY,tenant_id TEXT,client_id UUID,site_id UUID,state TEXT);
       CREATE TABLE page_studio_release_pointers (active_release_id text);
@@ -158,6 +158,57 @@ describe.runIf(Boolean(url))('draft history on disposable PostgreSQL', () => {
     await db.query('UPDATE page_studio_sites SET current_checkpoint_id=\'newer\'')
     expect(await mutatePageStudioHistory({ ...request(portal), actor: portal, body }, { runTransaction })).toMatchObject({ versionId: result.versionId, isCurrent: false })
     expect((await db.query('SELECT * FROM page_studio_versions')).rowCount).toBe(1)
+  })
+  it('atomically names and submits the current agency draft with replay protection', async () => {
+    const body = { action: 'name', name: 'Ready for review', expectedCheckpointId: 'current', requestId: randomUUID(), submitForReview: true }
+    const first = await mutatePageStudioHistory({ ...request(), body }, { runTransaction })
+    expect((await db.query('SELECT status, checkpoint_id FROM page_studio_versions')).rows).toEqual([{ status: 'in_review', checkpoint_id: 'current' }])
+    expect((await db.query('SELECT action FROM page_studio_audit_events ORDER BY action')).rows.map(row => row.action)).toEqual(['draft.history.saved', 'version.registered', 'version.submitted'])
+    expect((await db.query('SELECT * FROM page_studio_release_pointers')).rows).toEqual([{ active_release_id: 'live-release' }])
+    expect(await mutatePageStudioHistory({ ...request(), body }, { runTransaction })).toEqual(first)
+    expect((await db.query('SELECT * FROM page_studio_audit_events')).rowCount).toBe(3)
+    await expect(mutatePageStudioHistory({ ...request(), body: { ...body, submitForReview: false } }, { runTransaction })).rejects.toMatchObject({ statusCode: 409 })
+    await db.query('UPDATE page_studio_sites SET current_checkpoint_id=\'newer\'')
+    expect(await mutatePageStudioHistory({ ...request(), body }, { runTransaction })).toMatchObject({ versionId: first.versionId, isCurrent: false })
+    expect((await db.query('SELECT * FROM page_studio_versions')).rowCount).toBe(1)
+  })
+  it('rejects portal review submission and stale agency checkpoints without writes', async () => {
+    const body = { action: 'name', name: 'Ready', expectedCheckpointId: 'current', requestId: randomUUID(), submitForReview: true }
+    await expect(mutatePageStudioHistory({ ...request(portal), body }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    await db.query('UPDATE page_studio_sites SET current_checkpoint_id=\'newer\'')
+    await expect(mutatePageStudioHistory({ ...request(), body }, { runTransaction })).rejects.toMatchObject({ statusCode: 409 })
+    expect((await db.query('SELECT * FROM page_studio_versions')).rowCount).toBe(0)
+    expect((await db.query('SELECT * FROM page_studio_audit_events')).rowCount).toBe(0)
+  })
+  it.each(['submission-failure', 'authority-expiry'])('rolls back the whole handoff on %s', async (failure) => {
+    const original = (await db.query('SELECT current_checkpoint_id, current_version_id FROM page_studio_sites')).rows
+    const guarded: typeof runTransaction = work => runTransaction(client => work({
+      query: async <T = Record<string, unknown>>(sql: string, params?: unknown[]) => {
+        if (sql.includes('UPDATE page_studio_versions') && failure === 'submission-failure') throw new Error('Injected submission failure')
+        const result = await client.query<T>(sql, params)
+        if (sql.includes('UPDATE page_studio_versions') && failure === 'authority-expiry')
+          await client.query('UPDATE page_studio_entitlements SET effective_until=clock_timestamp()-INTERVAL \'1 second\'')
+        return result
+      }
+    }))
+    const body = { action: 'name', name: 'Ready', expectedCheckpointId: 'current', requestId: randomUUID(), submitForReview: true }
+    await expect(mutatePageStudioHistory({ ...request(), body }, { runTransaction: guarded })).rejects.toThrow()
+    expect((await db.query('SELECT current_checkpoint_id, current_version_id FROM page_studio_sites')).rows).toEqual(original)
+    expect((await db.query('SELECT * FROM page_studio_versions')).rowCount).toBe(0)
+    expect((await db.query('SELECT * FROM page_studio_audit_events')).rowCount).toBe(0)
+  })
+  it('normalizes old omitted review intent and explicit false for replay', async () => {
+    const body = { action: 'name', name: 'Saved draft', expectedCheckpointId: 'current', requestId: randomUUID() }
+    const first = await mutatePageStudioHistory({ ...request(), body }, { runTransaction })
+    await db.query('UPDATE page_studio_audit_events SET metadata=jsonb_set(metadata, \'{request}\', (metadata->\'request\')-\'submitForReview\') WHERE action=\'draft.history.saved\'')
+    expect(await mutatePageStudioHistory({ ...request(), body: { ...body, submitForReview: false } }, { runTransaction })).toEqual(first)
+    await expect(mutatePageStudioHistory({ ...request(), body: { ...body, submitForReview: true } }, { runTransaction })).rejects.toMatchObject({ statusCode: 409 })
+    expect((await db.query('SELECT status FROM page_studio_versions')).rows).toEqual([{ status: 'draft' }])
+  })
+  it('rejects invalid review intent and review flags on restore', async () => {
+    const body = { action: 'name', name: 'Ready', expectedCheckpointId: 'current', requestId: randomUUID(), submitForReview: 'true' }
+    await expect(mutatePageStudioHistory({ ...request(), body }, { runTransaction })).rejects.toMatchObject({ statusCode: 400 })
+    await expect(mutatePageStudioHistory({ ...request(), body: { ...restore(), submitForReview: true } }, { runTransaction })).rejects.toMatchObject({ statusCode: 400 })
   })
   it.each(['restore', 'name'])('rejects a stale %s before writing', async (action) => {
     const body = action === 'restore' ? restore() : { action, name: 'Snapshot', expectedCheckpointId: 'current', requestId: randomUUID() }

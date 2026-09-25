@@ -46,12 +46,13 @@ const userId = '30000000-0000-4000-8000-000000000501'
 const clientId = '20000000-0000-4000-8000-000000000501'
 const roleId = '60000000-0000-4000-8000-000000000501'
 const denied = { code: 'SESSION_AUTHORITY_DENIED', statusCode: 403 }
-const migrationSql = [402, 404, 420, 422, 425].map(number => readFileSync(new URL({
+const migrationSql = [402, 404, 420, 422, 425, 429].map(number => readFileSync(new URL({
   402: '../../../server/database/migrations/402_page_studio_control_plane.sql',
   404: '../../../server/database/migrations/404_page_studio_documents.sql',
   420: '../../../server/database/migrations/420_page_studio_login_sessions.sql',
   422: '../../../server/database/migrations/422_page_studio_cms_visibility.sql',
-  425: '../../../server/database/migrations/425_page_studio_cms_authoring_scope.sql'
+  425: '../../../server/database/migrations/425_page_studio_cms_authoring_scope.sql',
+  429: '../../../server/database/migrations/429_page_studio_checkpoint_staging_outbox.sql'
 }[number]!, import.meta.url), 'utf8'))
 const deferred = () => {
   let resolve!: () => void
@@ -68,7 +69,7 @@ const capture = <T>(promise: Promise<T>): Promise<Outcome<T>> => promise.then(
 type EditorCheckpointWriter = (
   input: PageStudioCheckpointCommitInput,
   session: PageStudioSessionClaims,
-  dependencies: { runTransaction: <T>(callback: (db: PageStudioControlQueryClient) => Promise<T>) => Promise<T> }
+  dependencies: { runTransaction: <T>(callback: (db: PageStudioControlQueryClient) => Promise<T>) => Promise<T>, env?: Record<string, unknown> }
 ) => Promise<PageStudioCheckpointCommitReceipt>
 const commitEditor = Reflect.get(controlStore, 'commitPageStudioEditorCheckpoint') as EditorCheckpointWriter | undefined
 
@@ -119,7 +120,8 @@ describe.runIf(Boolean(databaseUrl))('Ordinary editor checkpoint authority at th
     return (await observer.query(`SELECT current_checkpoint_id, current_version_id,
       (SELECT jsonb_agg(to_jsonb(checkpoint) ORDER BY id) FROM page_studio_checkpoints checkpoint) AS checkpoints,
       (SELECT jsonb_agg(to_jsonb(version) ORDER BY id) FROM page_studio_versions version) AS versions,
-      (SELECT jsonb_agg(to_jsonb(audit) ORDER BY id) FROM page_studio_audit_events audit) AS audits
+      (SELECT jsonb_agg(to_jsonb(audit) ORDER BY id) FROM page_studio_audit_events audit) AS audits,
+      (SELECT jsonb_agg(to_jsonb(intent) ORDER BY audit_id) FROM page_studio_checkpoint_staging_outbox intent) AS staging_intents
       FROM page_studio_sites WHERE id=$1`, [scope.siteId])).rows[0]
   }
 
@@ -315,7 +317,7 @@ describe.runIf(Boolean(databaseUrl))('Ordinary editor checkpoint authority at th
       await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=0')
       const before = await snapshot()
       const writer = await connect()
-      const options = { runTransaction: transactionFor(writer) }
+      const options = { runTransaction: transactionFor(writer), env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' } }
       const receipt = await commitEditor!(input, claims, options)
       expect(receipt).toMatchObject({ acknowledged: true, checkpointId: input.checkpoint.checkpointId, isCurrent: true })
       const after = await snapshot()
@@ -324,6 +326,16 @@ describe.runIf(Boolean(databaseUrl))('Ordinary editor checkpoint authority at th
       expect(after.current_version_id).toBeNull()
       const newAudit = after.audits.filter((row: { id: string }) => !before.audits.some((old: { id: string }) => old.id === row.id))
       expect(newAudit).toHaveLength(1)
+      expect(after.staging_intents).toEqual([expect.objectContaining({ audit_id: newAudit[0].id, checkpoint_id: input.checkpoint.checkpointId, state: 'pending' })])
+      expect(newAudit[0].metadata.stagingOrigin).toEqual({ formatVersion: 1, environment: 'staging',
+        source: 'studio-session', userId, role: claims.role, nonce: claims.nonce,
+        loginSessionHash: createHash('sha256').update(loginToken).digest('hex') })
+      await commitEditor!(input, claims, options)
+      expect(await snapshot()).toEqual(after)
+      const nextNonce = randomUUID()
+      await observer.query('UPDATE page_studio_sessions SET nonce=$1 WHERE nonce=$2', [nextNonce, claims.nonce])
+      await commitEditor!(input, { ...claims, nonce: nextNonce }, options)
+      expect(await snapshot()).toEqual(after)
       expect(newAudit[0]).toMatchObject({ action: 'workspace.checkpointed', resource_type: 'checkpoint', resource_id: input.checkpoint.checkpointId })
     })
 

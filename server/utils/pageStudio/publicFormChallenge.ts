@@ -40,7 +40,9 @@ export async function verifyPublicFormChallenge(
   try {
     return await Promise.race([deadline, (async () => {
       const response = await (dependencies.fetch ?? globalThis.fetch)(endpoint, {
-        method: 'POST', redirect: 'error', signal: controller.signal,
+        // workerd rejects 'error' before sending. Manual mode and the response
+        // checks below prevent forwarding the token or secret to redirects.
+        method: 'POST', redirect: 'manual', signal: controller.signal,
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ secret: secret.data, response: token, remoteip: identity.clientAddress, idempotency_key: crypto.randomUUID() })
       })

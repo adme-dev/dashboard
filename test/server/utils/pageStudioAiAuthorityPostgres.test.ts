@@ -45,10 +45,13 @@ const userId = '30000000-0000-4000-8000-000000000501'
 const clientId = '20000000-0000-4000-8000-000000000501'
 const roleId = '60000000-0000-4000-8000-000000000501'
 const denied = { code: 'SESSION_AUTHORITY_DENIED', statusCode: 403 }
-const migrationSql = [402, 404, 420].map(number => readFileSync(new URL({
+const migrationSql = [402, 404, 420, 422, 425, 429].map(number => readFileSync(new URL({
   402: '../../../server/database/migrations/402_page_studio_control_plane.sql',
   404: '../../../server/database/migrations/404_page_studio_documents.sql',
-  420: '../../../server/database/migrations/420_page_studio_login_sessions.sql'
+  420: '../../../server/database/migrations/420_page_studio_login_sessions.sql',
+  422: '../../../server/database/migrations/422_page_studio_cms_visibility.sql',
+  425: '../../../server/database/migrations/425_page_studio_cms_authoring_scope.sql',
+  429: '../../../server/database/migrations/429_page_studio_checkpoint_staging_outbox.sql'
 }[number]!, import.meta.url), 'utf8'))
 const deferred = () => {
   let resolve!: () => void
@@ -86,7 +89,9 @@ describe.runIf(Boolean(databaseUrl))('AI acceptance authority at the PostgreSQL 
       await db.query('BEGIN')
       try {
         const result = await callback(db as unknown as PageStudioControlQueryClient)
-        await beforeCommit?.()
+        // Managed-scope discovery also uses a read transaction. Only pause
+        // the actual checkpoint commit, after its authority locks are held.
+        if (beforeCommit && (await db.query('SELECT id FROM page_studio_audit_events WHERE action=\'workspace.checkpointed\' AND resource_id=$1', [input.checkpoint.checkpointId])).rows.length) await beforeCommit()
         await db.query('COMMIT')
         return result
       } catch (error) {
@@ -106,7 +111,8 @@ describe.runIf(Boolean(databaseUrl))('AI acceptance authority at the PostgreSQL 
     return (await observer.query(`SELECT current_checkpoint_id, current_version_id,
       (SELECT jsonb_agg(to_jsonb(checkpoint) ORDER BY id) FROM page_studio_checkpoints checkpoint) AS checkpoints,
       (SELECT jsonb_agg(to_jsonb(version) ORDER BY id) FROM page_studio_versions version) AS versions,
-      (SELECT jsonb_agg(to_jsonb(audit) ORDER BY id) FROM page_studio_audit_events audit) AS audits
+      (SELECT jsonb_agg(to_jsonb(audit) ORDER BY id) FROM page_studio_audit_events audit) AS audits,
+      (SELECT jsonb_agg(to_jsonb(intent) ORDER BY audit_id) FROM page_studio_checkpoint_staging_outbox intent) AS staging_intents
       FROM page_studio_sites WHERE id=$1`, [scope.siteId])).rows[0]
   }
 
@@ -198,7 +204,7 @@ describe.runIf(Boolean(databaseUrl))('AI acceptance authority at the PostgreSQL 
       await blocker.query('BEGIN')
       // A non-key site mutation allows logout to append its FK-backed audit.
       await blocker.query('SELECT id FROM page_studio_sites WHERE id=$1 FOR NO KEY UPDATE', [scope.siteId])
-      const options = { session: claims, runTransaction: transactionFor(writer) }
+      const options = { session: claims, runTransaction: transactionFor(writer), env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' } }
       const save = capture(acceptPageStudioAiProposal(input, options))
       try {
         await waitForBlock(writer, blocker)
@@ -255,7 +261,7 @@ describe.runIf(Boolean(databaseUrl))('AI acceptance authority at the PostgreSQL 
       const writer = await connect()
       await blocker.query('BEGIN')
       await blocker.query('SELECT id FROM page_studio_sites WHERE id=$1 FOR UPDATE', [scope.siteId])
-      const options = { session: claims, runTransaction: transactionFor(writer) }
+      const options = { session: claims, runTransaction: transactionFor(writer), env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' } }
       const pending = capture(acceptPageStudioAiProposal(input, options))
       try {
         await waitForBlock(writer, blocker)
@@ -279,7 +285,7 @@ describe.runIf(Boolean(databaseUrl))('AI acceptance authority at the PostgreSQL 
       const writer = await connect()
       await blocker.query('BEGIN')
       await blocker.query('SELECT id FROM page_studio_sites WHERE id=$1 FOR UPDATE', [scope.siteId])
-      const options = { session: claims, runTransaction: transactionFor(writer) }
+      const options = { session: claims, runTransaction: transactionFor(writer), env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' } }
       const pending = capture(acceptPageStudioAiProposal(input, options))
       try {
         await waitForBlock(writer, blocker)
@@ -342,9 +348,10 @@ describe.runIf(Boolean(databaseUrl))('AI acceptance authority at the PostgreSQL 
 
     it('preserves authorized replay idempotency but rejects replay after revocation without new audit or mutation', async () => {
       const writer = await connect()
-      const options = { session: claims, runTransaction: transactionFor(writer) }
+      const options = { session: claims, runTransaction: transactionFor(writer), env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' } }
       const receipt = await acceptPageStudioAiProposal(input, options)
       const before = await snapshot()
+      expect(before.staging_intents).toEqual([expect.objectContaining({ checkpoint_id: input.checkpoint.checkpointId, state: 'pending' })])
       await expect(acceptPageStudioAiProposal(input, options)).resolves.toEqual(receipt)
       expect(await snapshot()).toEqual(before)
       await observer.query('UPDATE page_studio_sessions SET revoked_at=clock_timestamp() WHERE nonce=$1', [claims.nonce])
