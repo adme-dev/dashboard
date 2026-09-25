@@ -1,5 +1,7 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
+import { hasAstroReleaseConfiguration } from '~~/server/utils/pageStudio/astroBuildHttp'
+import { getPageStudioBuildPointer } from '~~/server/utils/pageStudio/publishing'
 import {
   attachPageStudioReleaseMetadataToBuild,
   loadApprovedPageStudioReleaseCheckpoint,
@@ -17,6 +19,7 @@ interface PublishBody {
   environment?: unknown
   hostname?: unknown
   expectedActiveReleaseId?: unknown
+  buildId?: unknown
 }
 
 function forwardedAuthHeaders(event: Parameters<typeof getHeader>[0]) {
@@ -61,6 +64,31 @@ export default defineEventHandler(async (event) => {
   if (!site) {
     throw createError({ statusCode: 404, statusMessage: 'Page Studio site not found' })
   }
+  const localFetch = event.$fetch as unknown as (
+    request: string,
+    options: Record<string, unknown>
+  ) => Promise<Record<string, unknown>>
+
+  // Promotion consumes the reviewed artifact. It must remain independent of
+  // source checkpoint/image retention and must never invoke a build endpoint.
+  if (body.buildId !== undefined) {
+    if (typeof body.buildId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(body.buildId)) {
+      throw createError({ statusCode: 409, statusMessage: 'Review an approved website build before publishing' })
+    }
+    const scope = { tenantId: site.tenant_id, clientId: site.client_id, siteId: site.site_id }
+    const build = await getPageStudioBuildPointer(scope, body.buildId)
+    const identity = build?.astro?.context.identity
+    if (!build || !identity || identity.environment !== environment || identity.source.kind !== 'approved-version'
+      || identity.source.versionId !== versionId || !identity.source.checkpoint) {
+      throw createError({ statusCode: 409, statusMessage: 'The reviewed build does not match this website version and environment' })
+    }
+    const response = await localFetch(`/api/agency/page-studio/sites/${encodeURIComponent(siteId)}/releases/activate`, {
+      method: 'POST', headers: { ...forwardedAuthHeaders(event), 'idempotency-key': `${idempotencyKey}:release` },
+      body: { buildId: build.buildId, environment, hostname, expectedActiveReleaseId }
+    })
+    return { build, release: response.release ?? response,
+      checkpoint: { id: identity.source.checkpoint.id, digest: identity.source.checkpoint.digest } }
+  }
 
   const bucket = (event.context.cloudflare?.env as Record<string, unknown> | undefined)?.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket | undefined
   if (!bucket?.get) {
@@ -70,11 +98,12 @@ export default defineEventHandler(async (event) => {
   try {
     const scope = { tenantId: site.tenant_id, clientId: site.client_id, siteId: site.site_id }
     const checkpoint = await loadApprovedPageStudioReleaseCheckpoint({ scope, versionId, bucket })
+    const manifest = checkpoint.manifest as Record<string, unknown>
+    const feature = Object.hasOwn(manifest, 'builderApplication') || Object.hasOwn(manifest, 'builderLibrary')
+    if (hasAstroReleaseConfiguration(event) && !feature) {
+      throw createError({ statusCode: 409, statusMessage: 'Review an approved website build before publishing' })
+    }
     const authHeaders = forwardedAuthHeaders(event)
-    const localFetch = event.$fetch as unknown as (
-      request: string,
-      options: Record<string, unknown>
-    ) => Promise<Record<string, unknown>>
 
     const buildResponse = await localFetch(
       `/api/agency/page-studio/sites/${encodeURIComponent(siteId)}/versions/${encodeURIComponent(versionId)}/builds`,

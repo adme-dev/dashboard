@@ -1,7 +1,13 @@
 import type { H3Event } from 'h3'
+import { isCurrentAstroSource } from './astroBuilds'
+import type { AstroCompilerReleaseReceipt } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
+import { PageStudioPublishingError } from './publishingError'
+import { mapPageStudioBuildPointer as mapBuildPointer, mapPageStudioReleasePointer as mapReleasePointer, type PageStudioBuildPointerRow as BuildPointerRow } from './releasePointers'
 import { assertFeatureActivationProof } from './releaseFeatureActivation'
 
 import { queryOne, transaction } from '~~/server/utils/db'
+
+export { PageStudioPublishingError } from './publishingError'
 
 export interface PageStudioPublishingScope {
   tenantId: string
@@ -10,6 +16,7 @@ export interface PageStudioPublishingScope {
 }
 
 export interface PageStudioBuildPointer {
+  astro?: AstroCompilerReleaseReceipt['astro']
   artifactPrefix: string
   buildId: string
   manifestDigest: string
@@ -56,14 +63,6 @@ export interface PageStudioDeliveryWorker {
   verifyRelease(pointer: PageStudioReleasePointer): Promise<PageStudioReleasePointer>
 }
 
-interface BuildPointerRow {
-  artifact_prefix: string
-  build_id: string
-  manifest_digest: string
-  manifest_key: string
-  version_digest: string
-}
-
 interface ReleasePointerRow extends BuildPointerRow {
   environment: PageStudioReleasePointer['environment']
   release_id: string
@@ -102,25 +101,6 @@ interface LockedPointerRow {
 const defaultRunTransaction: RunTransaction = callback =>
   transaction(async db => callback(db as unknown as PageStudioPublishingQueryClient))
 
-export class PageStudioPublishingError extends Error {
-  constructor(
-    readonly code:
-      | 'BUILD_NOT_PUBLISHABLE'
-      | 'CONTROL_SCOPE_NOT_FOUND'
-      | 'RELEASE_IDEMPOTENCY_CONFLICT'
-      | 'RELEASE_POINTER_CONFLICT'
-      | 'RELEASE_RECORD_INVALID'
-      | 'RELEASE_WORKER_UNAVAILABLE'
-      | 'ROLLBACK_TARGET_INVALID'
-      | 'SITE_NOT_PUBLISHABLE',
-    readonly statusCode: number,
-    message: string
-  ) {
-    super(message)
-    this.name = 'PageStudioPublishingError'
-  }
-}
-
 export function resolvePageStudioDeliveryWorker(
   event: H3Event,
   environment: 'staging' | 'production'
@@ -152,47 +132,6 @@ function publishingError(
   message: string
 ): PageStudioPublishingError {
   return new PageStudioPublishingError(code, statusCode, message)
-}
-
-function expectedArtifactPrefix(scope: PageStudioPublishingScope, versionDigest: string): string {
-  return `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}/builds/${versionDigest}`
-}
-
-function mapBuildPointer(
-  scope: PageStudioPublishingScope,
-  row: BuildPointerRow
-): PageStudioBuildPointer {
-  const artifactPrefix = expectedArtifactPrefix(scope, row.version_digest)
-  if (
-    row.build_id !== `build_${row.version_digest.slice(0, 32)}`
-    || row.artifact_prefix !== artifactPrefix
-    || row.manifest_key !== `${artifactPrefix}/release-manifest.json`
-  ) {
-    throw new PageStudioPublishingError(
-      'RELEASE_RECORD_INVALID',
-      500,
-      'Persisted Page Studio release metadata is invalid'
-    )
-  }
-  return {
-    artifactPrefix: row.artifact_prefix,
-    buildId: row.build_id,
-    manifestDigest: row.manifest_digest,
-    manifestKey: row.manifest_key,
-    scope,
-    versionDigest: row.version_digest
-  }
-}
-
-function mapReleasePointer(
-  scope: PageStudioPublishingScope,
-  row: ReleasePointerRow
-): PageStudioReleasePointer {
-  return {
-    ...mapBuildPointer(scope, row),
-    environment: row.environment,
-    releaseId: row.release_id
-  }
 }
 
 function activationMatches(row: ExistingActivationRow, input: PageStudioActivateReleaseInput) {
@@ -280,6 +219,9 @@ async function findExistingActivation(
             release.environment,
             release.normalized_hostname,
             audit.actor_id,
+            build.renderer, build.version_id AS build_version_id,
+            build.build_identity, build.build_identity_digest, build.compiler_toolchain,
+            build.astro_release_receipt, build.validation_report_key,
             build.id AS build_id,
             build.version_digest,
             build.artifact_prefix,
@@ -314,7 +256,10 @@ async function loadPublishableBuild(
   input: PageStudioActivateReleaseInput
 ): Promise<PublishableBuildRow> {
   const result = await db.query<PublishableBuildRow>(
-    `SELECT build.id AS build_id,
+    `SELECT build.renderer, build.version_id AS build_version_id,
+            build.build_identity, build.build_identity_digest, build.compiler_toolchain,
+            build.astro_release_receipt, build.validation_report_key,
+            build.id AS build_id,
             build.version_digest,
             build.artifact_prefix,
             build.release_manifest_key AS manifest_key,
@@ -361,7 +306,16 @@ async function loadPublishableBuild(
       'Page Studio build is not approved and publishable'
     )
   }
-  mapBuildPointer(input.scope, build)
+  const pointer = await mapBuildPointer(input.scope, build)
+  if (pointer.astro && pointer.astro.context.identity.environment !== input.environment) {
+    throw publishingError('BUILD_NOT_PUBLISHABLE', 422, 'Astro build belongs to another release environment')
+  }
+  if (pointer.astro) {
+    const source = pointer.astro.context.identity.source
+    if (source.kind !== 'approved-version' || !source.checkpoint || !await isCurrentAstroSource(db, {
+      scope: input.scope, versionId: source.versionId, checkpointId: source.checkpoint.id, digest: source.versionDigest
+    })) throw publishingError('BUILD_NOT_PUBLISHABLE', 422, 'The saved Page Studio source changed before activation')
+  }
   return build
 }
 
@@ -372,7 +326,10 @@ export async function getPageStudioBuildPointer(
 ): Promise<PageStudioBuildPointer | null> {
   const readOne = dependencies.queryOne ?? queryOne
   const row = await readOne<BuildPointerRow>(
-    `SELECT build.id AS build_id,
+    `SELECT build.renderer, build.version_id AS build_version_id,
+            build.build_identity, build.build_identity_digest, build.compiler_toolchain,
+            build.astro_release_receipt, build.validation_report_key,
+            build.id AS build_id,
             build.version_digest,
             build.artifact_prefix,
             build.release_manifest_key AS manifest_key,
@@ -397,6 +354,9 @@ export async function getPageStudioReleasePointer(
   const row = await readOne<ReleasePointerRow>(
     `SELECT release.id AS release_id,
             release.environment,
+            build.renderer, build.version_id AS build_version_id,
+            build.build_identity, build.build_identity_digest, build.compiler_toolchain,
+            build.astro_release_receipt, build.validation_report_key,
             build.id AS build_id,
             build.version_digest,
             build.artifact_prefix,
@@ -580,6 +540,9 @@ async function findExistingRollback(
             target.normalized_hostname,
             audit.actor_id,
             audit.metadata->>'previousReleaseId' AS previous_release_id,
+            build.renderer, build.version_id AS build_version_id,
+            build.build_identity, build.build_identity_digest, build.compiler_toolchain,
+            build.astro_release_receipt, build.validation_report_key,
             build.id AS build_id,
             build.version_digest,
             build.artifact_prefix,
@@ -621,6 +584,9 @@ async function loadRollbackTarget(
             target.environment,
             build.release_metadata,
             target.normalized_hostname,
+            build.renderer, build.version_id AS build_version_id,
+            build.build_identity, build.build_identity_digest, build.compiler_toolchain,
+            build.astro_release_receipt, build.validation_report_key,
             build.id AS build_id,
             build.version_digest,
             build.artifact_prefix,
@@ -652,7 +618,7 @@ async function loadRollbackTarget(
       'The Page Studio rollback target is not valid for this release pointer'
     )
   }
-  mapReleasePointer(input.scope, target)
+  await mapReleasePointer(input.scope, target)
   return target
 }
 

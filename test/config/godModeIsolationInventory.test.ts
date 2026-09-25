@@ -24,8 +24,10 @@ const API_INVENTORY = {
   // neither registers a God mode bypass.
   // Checkpoint staging cron uses a machine secret and retained job authority;
   // it adds one POST without any God mode bypass or user-role gate.
-  totalRouteFiles: 2161,
-  mutationRouteFiles: 1185,
+  // Astro candidate POST delegates native publish permission, scoped site and
+  // fresh login authority; it adds one mutation without a God mode bypass.
+  totalRouteFiles: 2162,
+  mutationRouteFiles: 1186,
   explicitlyGuardedMutationFiles: 401,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -64,8 +66,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2161,
-      mutationRouteFiles: 1185,
+      totalRouteFiles: 2162,
+      mutationRouteFiles: 1186,
       explicitlyGuardedMutationFiles: 401,
       guardedMutationFilesWithTransactionCall: 47
     })

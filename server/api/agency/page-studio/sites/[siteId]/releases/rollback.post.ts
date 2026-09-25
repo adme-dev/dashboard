@@ -1,4 +1,6 @@
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
+import { preparePageStudioPublishPrincipal } from '~~/server/utils/pageStudio/publishHttp'
+import { withPageStudioPublishAuthority } from '~~/server/utils/pageStudio/publishAuthority'
 import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import {
@@ -34,6 +36,7 @@ export default eventHandler(async (event) => {
         'The Page Studio rollback target is not valid for this release pointer'
       )
     }
+    const principal = await preparePageStudioPublishPrincipal(event, { tenantId, user })
     const worker = resolvePageStudioDeliveryWorker(event, body.data.environment)
     await worker.verifyRelease(target)
     const release = await rollbackPageStudioRelease({
@@ -41,7 +44,7 @@ export default eventHandler(async (event) => {
       ...body.data,
       idempotencyKey: idempotencyKey.data,
       scope
-    })
+    }, { runTransaction: work => withPageStudioPublishAuthority(scope, principal, work) })
     return { release }
   } catch (error) {
     pageStudioHttpError(error)

@@ -5777,6 +5777,17 @@ var AstroBuildIdentityPinSchema = object({
   identity: AstroBuildIdentitySchema,
   identityDigest: ReleaseSha256Schema,
 }).strict();
+async function verifyAstroBuildIdentityAddress(candidate) {
+  const pin2 = AstroBuildIdentityPinSchema.parse(candidate);
+  const digest2 = await sha256Hex(canonicalJson(pin2.identity));
+  if (
+    pin2.identityDigest !== digest2 ||
+    pin2.buildId !== `build_astro_${digest2}`
+  ) {
+    throw new Error("Astro build identity mismatch");
+  }
+  return pin2;
+}
 async function createAstroBuildIdentity(input, admittedToolchain) {
   const parsed = AstroBuildIdentityInputSchema.parse(input);
   const toolchain = AstroCompilerToolchainSchema.parse(admittedToolchain);
@@ -5792,6 +5803,299 @@ async function createAstroBuildIdentity(input, admittedToolchain) {
     identity: identity5,
     identityDigest,
   };
+}
+
+// packages/protocol/src/astro-compiler-registry.ts
+var Environment = _enum(["staging", "production"]);
+var Capability = _enum(["build", "verify"]);
+var Generation = object({
+  binding: string2().regex(/^ASTRO_RELEASE_[A-Z0-9_]{1,100}$/),
+  environment: Environment,
+  policyDigest: ReleaseSha256Schema,
+  toolchain: AstroCompilerToolchainSchema,
+  toolchainDigest: ReleaseSha256Schema,
+}).strict();
+var AstroCompilerRegistrySchema = object({
+  capability: Capability,
+  formatVersion: literal(1),
+  generations: array(Generation).max(32),
+})
+  .strict()
+  .superRefine((registry2, ctx) => {
+    const identities = /* @__PURE__ */ new Set();
+    const bindings = /* @__PURE__ */ new Set();
+    for (const generation of registry2.generations) {
+      const identity5 = `${generation.environment}:${generation.toolchainDigest}`;
+      if (identities.has(identity5) || bindings.has(generation.binding)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Duplicate compiler registration",
+        });
+      }
+      identities.add(identity5);
+      bindings.add(generation.binding);
+    }
+  });
+async function selectAstroReleaseGeneration(
+  rawRegistry,
+  deploymentEnvironment,
+  rawToolchainDigest,
+  capability
+) {
+  if (
+    typeof rawRegistry !== "string" ||
+    new TextEncoder().encode(rawRegistry).byteLength > 65536
+  ) {
+    throw new Error("Astro compiler registry unavailable");
+  }
+  const registry2 = AstroCompilerRegistrySchema.parse(JSON.parse(rawRegistry));
+  const environment = Environment.parse(deploymentEnvironment);
+  const toolchainDigest = ReleaseSha256Schema.parse(rawToolchainDigest);
+  if (registry2.capability !== capability) {
+    throw new Error("Astro compiler authority mismatch");
+  }
+  await Promise.all(
+    registry2.generations.map(async (generation) => {
+      if (
+        (await sha256Hex(canonicalJson(generation.toolchain))) !==
+        generation.toolchainDigest
+      ) {
+        throw new Error("Astro compiler registration digest mismatch");
+      }
+    })
+  );
+  const registration = registry2.generations.find(
+    (generation) =>
+      generation.environment === environment &&
+      generation.toolchainDigest === toolchainDigest
+  );
+  if (!registration) {
+    throw new Error("Retained Astro compiler generation unavailable");
+  }
+  return registration;
+}
+
+// packages/protocol/src/astro-artifact.ts
+var ASTRO_ARTIFACT_BYTE_LIMIT = 32 * 1024 * 1024;
+var ASTRO_ARTIFACT_MANIFEST_LIMIT = 1024 * 1024;
+var ASTRO_ARTIFACT_FILE_LIMIT = 1e3;
+var KEY =
+  /^(?:_astro\/)?[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
+var ROUTE = /^\/(?:[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*)?$/;
+var types = {
+  avif: "image/avif",
+  css: "text/css; charset=utf-8",
+  gif: "image/gif",
+  html: "text/html; charset=utf-8",
+  ico: "image/x-icon",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  js: "text/javascript; charset=utf-8",
+  mjs: "text/javascript; charset=utf-8",
+  png: "image/png",
+  svg: "image/svg+xml",
+  txt: "text/plain; charset=utf-8",
+  webp: "image/webp",
+  woff: "font/woff",
+  woff2: "font/woff2",
+};
+function astroArtifactContentType(key2) {
+  if (key2 === "site-runtime.json") {
+    return "application/json; charset=utf-8";
+  }
+  const extension = key2.split(".").pop() ?? "";
+  const type = Object.hasOwn(types, extension) ? types[extension] : void 0;
+  if (!(KEY.test(key2) && type)) {
+    throw new Error("Unsupported Astro artifact key");
+  }
+  return type;
+}
+var AstroBuildContextSchema = object({
+  buildId: ReleaseScopedIdSchema,
+  checkpointDigest: ReleaseSha256Schema,
+  checkpointId: ReleaseScopedIdSchema,
+  environment: _enum(["staging", "production"]),
+  featureRecoveryDigest: ReleaseSha256Schema.nullable(),
+  renderInputDigest: ReleaseSha256Schema,
+  scope: ReleaseArtifactScopeSchema,
+}).strict();
+var AstroFileSchema = object({
+  bytes: number2().int().nonnegative().max(ASTRO_ARTIFACT_BYTE_LIMIT),
+  contentType: string2().max(100),
+  key: string2().max(1024).regex(KEY),
+  sha256: ReleaseSha256Schema,
+})
+  .strict()
+  .refine((file) => {
+    try {
+      return astroArtifactContentType(file.key) === file.contentType;
+    } catch {
+      return false;
+    }
+  }, "Unsupported Astro file type");
+var AstroArtifactInventorySchema = object({
+  compiler: object({
+    name: literal("astro"),
+    version: literal("7.3.4"),
+  }).strict(),
+  files: array(AstroFileSchema).min(1).max(ASTRO_ARTIFACT_FILE_LIMIT),
+  kind: literal("astro-static-artifact"),
+  routes: record(
+    string2().max(240).regex(ROUTE),
+    string2().max(1024).regex(KEY)
+  ),
+})
+  .strict()
+  .superRefine((manifest, ctx) => {
+    const keys = new Set(manifest.files.map((file) => file.key.toLowerCase()));
+    if (
+      keys.size !== manifest.files.length ||
+      manifest.files.reduce((sum, file) => sum + file.bytes, 0) >
+        ASTRO_ARTIFACT_BYTE_LIMIT
+    ) {
+      ctx.addIssue({ code: "custom", message: "Invalid Astro file inventory" });
+    }
+    const routes = Object.entries(manifest.routes);
+    const html = new Set(
+      manifest.files
+        .filter((file) => file.contentType === types.html)
+        .map((file) => file.key)
+    );
+    for (const [route, key2] of routes) {
+      if (
+        key2 !==
+          (route === "/" ? "index.html" : `${route.slice(1)}/index.html`) ||
+        !html.delete(key2)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Invalid Astro route artifact",
+        });
+      }
+    }
+    if (routes.length === 0 || html.size > 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Incomplete Astro route inventory",
+      });
+    }
+  });
+var AstroArtifactManifestSchema = AstroArtifactInventorySchema.safeExtend({
+  context: AstroBuildContextSchema,
+  formatVersion: literal(1),
+});
+var ExpectedSchema = object({
+  context: AstroBuildContextSchema,
+  manifestDigest: ReleaseSha256Schema,
+}).strict();
+
+// packages/protocol/src/astro-artifact-v2.ts
+var AstroArtifactManifestV2Schema = AstroArtifactInventorySchema.safeExtend({
+  context: AstroBuildIdentityPinSchema,
+  formatVersion: literal(2),
+});
+var ExpectedSchema2 = object({
+  context: AstroBuildIdentityPinSchema,
+  manifestDigest: ReleaseSha256Schema,
+}).strict();
+
+// packages/protocol/src/astro-release.ts
+var HEADER_CONTROL = /[\x00-\x1f\x7f]/;
+var AstroReleaseManifestSchema = ReleaseArtifactManifestV2Schema.omit({
+  files: true,
+  pageRuntimes: true,
+})
+  .extend({
+    astro: object({
+      context: AstroBuildIdentityPinSchema,
+      manifestDigest: ReleaseSha256Schema,
+      pages: record(
+        string2().max(240),
+        object({
+          csp: string2()
+            .min(1)
+            .max(32768)
+            .refine((value) => !HEADER_CONTROL.test(value)),
+        }).strict()
+      ),
+      policyDigest: ReleaseSha256Schema,
+    }).strict(),
+    files: AstroArtifactManifestV2Schema.shape.files,
+    images: array(ReleaseArtifactFileSchema).max(512),
+    renderer: literal("astro"),
+    schemaVersion: literal(4),
+    validationReport: ReleaseArtifactFileSchema.refine(
+      (file) =>
+        file.key === "validation-report.json" &&
+        file.contentType === "application/json; charset=utf-8"
+    ),
+  })
+  .strict();
+var ExpectedSchema3 = object({
+  context: AstroBuildIdentityPinSchema,
+  manifestDigest: ReleaseSha256Schema,
+  policyDigest: ReleaseSha256Schema,
+}).strict();
+var AstroReleaseReferenceSchema = AstroReleaseManifestSchema.shape.astro.omit({
+  pages: true,
+});
+var AstroReleasePointerSchema = AstroReleaseManifestSchema.pick({
+  artifactPrefix: true,
+  buildId: true,
+  scope: true,
+  versionDigest: true,
+})
+  .extend({
+    astro: AstroReleaseReferenceSchema,
+    environment: ReleaseEnvironmentSchema.optional(),
+    manifestDigest: ReleaseSha256Schema,
+    manifestKey: string2().max(1100),
+    releaseId: ReleaseScopedIdSchema.optional(),
+  })
+  .strict();
+var AstroReleaseBuildResultSchema = AstroReleasePointerSchema.omit({
+  environment: true,
+  releaseId: true,
+  scope: true,
+})
+  .extend({
+    renderer: literal("astro"),
+    success: literal(true),
+    validationKey: string2().max(1100),
+  })
+  .strict();
+var AstroReleaseVerificationSchema = AstroReleaseManifestSchema.pick({
+  artifactPrefix: true,
+  files: true,
+  images: true,
+  routes: true,
+})
+  .extend({
+    ...AstroReleaseManifestSchema.shape.astro.shape,
+    manifestKey: string2().max(1100),
+    renderer: literal("astro"),
+    verified: literal(true),
+  })
+  .strict();
+async function verifyAstroReleasePointer(candidate) {
+  const pointer2 = AstroReleasePointerSchema.parse(candidate);
+  const context = await verifyAstroBuildIdentityAddress(pointer2.astro.context);
+  const { scope, source, environment } = context.identity;
+  const prefix = `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}/astro/${environment}/${context.buildId}/${pointer2.astro.manifestDigest}`;
+  if (
+    source.kind !== "approved-version" ||
+    pointer2.buildId !== context.buildId ||
+    canonicalJson(pointer2.scope) !== canonicalJson(scope) ||
+    pointer2.versionDigest !== source.versionDigest ||
+    pointer2.artifactPrefix !== prefix ||
+    pointer2.manifestKey !== `${prefix}/release-manifest.json` ||
+    (pointer2.environment &&
+      pointer2.environment !== "preview" &&
+      pointer2.environment !== environment)
+  ) {
+    throw new Error("Astro release pointer identity mismatch");
+  }
+  return pointer2;
 }
 
 // packages/protocol/src/industry.ts
@@ -9532,6 +9836,55 @@ async function verifyAstroCompilerBuildIdentity(candidate, admittedToolchain) {
   }
   return expected;
 }
+async function selectNativeAstroCompilerGeneration(
+  registry2,
+  environment,
+  toolchainDigest
+) {
+  const generation = await selectAstroReleaseGeneration(
+    registry2,
+    environment,
+    toolchainDigest,
+    "build"
+  );
+  return {
+    environment: generation.environment,
+    policyDigest: generation.policyDigest,
+    toolchain: generation.toolchain,
+    toolchainDigest: generation.toolchainDigest,
+  };
+}
+async function verifyAstroCompilerReleaseReceipt(candidate, retained) {
+  const result = AstroReleaseBuildResultSchema.parse(candidate);
+  const authority = object({
+    context: AstroBuildIdentityPinSchema,
+    policyDigest: ReleaseSha256Schema,
+    toolchain: AstroCompilerToolchainSchema,
+  })
+    .strict()
+    .parse(retained);
+  const context = await verifyAstroCompilerBuildIdentity(
+    authority.context,
+    authority.toolchain
+  );
+  if (
+    canonicalJson(result.astro.context) !== canonicalJson(context) ||
+    result.astro.policyDigest !== authority.policyDigest ||
+    result.validationKey !== `${result.artifactPrefix}/validation-report.json`
+  ) {
+    throw new Error("Astro release receipt authority mismatch");
+  }
+  await verifyAstroReleasePointer({
+    artifactPrefix: result.artifactPrefix,
+    astro: result.astro,
+    buildId: result.buildId,
+    manifestDigest: result.manifestDigest,
+    manifestKey: result.manifestKey,
+    scope: context.identity.scope,
+    versionDigest: result.versionDigest,
+  });
+  return result;
+}
 var BuilderGraphVerificationError = class extends Error {
   code;
   constructor(code, message) {
@@ -10572,7 +10925,9 @@ export {
   parseBuilderActionRuntimeResultJson,
   parseBuilderArtifactJson,
   projectBuilderActionRecord,
+  selectNativeAstroCompilerGeneration,
   verifyAstroCompilerBuildIdentity,
+  verifyAstroCompilerReleaseReceipt,
   verifyBuilderActionInput,
   verifyBuilderActionResult,
   verifyBuilderApplicationCheckpoint,

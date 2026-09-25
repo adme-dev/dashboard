@@ -7,11 +7,11 @@ vi.mock('~~/server/utils/pageStudio/inspectionClient', () => ({ readPageStudioLa
 const siteId = 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020'
 const bucket = { get: vi.fn() }
 
-async function request(id = siteId) {
+async function request(id = siteId, astro = false) {
   const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/launch-state.get')
   const router = createRouter().get('/sites/:siteId/launch-state', handler)
   const app = createApp().use((event) => {
-    event.context.cloudflare = { env: { PAGE_STUDIO_CHECKPOINTS: bucket } }
+    event.context.cloudflare = { env: { PAGE_STUDIO_CHECKPOINTS: bucket, ...(astro ? { PAGE_STUDIO_ASTRO_RELEASE_REGISTRY: 'configured' } : {}) } }
   }).use(router)
   return toWebHandler(app)(new Request(`https://example.test/sites/${id}/launch-state?tenantId=forged&siteId=forged`))
 }
@@ -30,6 +30,10 @@ describe('launch state HTTP boundary', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store')
     expect(mocks.access).toHaveBeenCalledWith(expect.anything(), 'PAGE_STUDIO_VIEW')
     expect(mocks.read).toHaveBeenCalledWith({ tenantId: 'authenticated_tenant', siteId, actorId: 'actor', env: { PAGE_STUDIO_CHECKPOINTS: bucket } })
+  })
+  it.each([true, false, undefined])('selects Astro candidate review only for explicitly compatible saved content (%s)', async (requiresSealedFeatures) => {
+    mocks.read.mockResolvedValue({ siteId, content: { requiresSealedFeatures } })
+    expect(await (await request(siteId, true)).json()).toMatchObject({ candidateReview: requiresSealedFeatures === false })
   })
   it.each([401, 403])('stops before content access for denied identity (%s)', async (statusCode) => {
     mocks.access.mockRejectedValue(createError({ statusCode }))

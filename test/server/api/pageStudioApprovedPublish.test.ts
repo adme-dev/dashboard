@@ -6,8 +6,10 @@ const mocks = vi.hoisted(() => ({
   queryOne: vi.fn(),
   loadCheckpoint: vi.fn(),
   attachMetadata: vi.fn(),
-  localFetch: vi.fn()
+  localFetch: vi.fn(), astroConfigured: vi.fn(), buildPointer: vi.fn()
 }))
+vi.mock('~~/server/utils/pageStudio/astroBuildHttp', () => ({ hasAstroReleaseConfiguration: mocks.astroConfigured }))
+vi.mock('~~/server/utils/pageStudio/publishing', () => ({ getPageStudioBuildPointer: mocks.buildPointer }))
 
 vi.mock('~~/server/utils/db', () => ({ queryOne: mocks.queryOne }))
 vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: mocks.access }))
@@ -55,6 +57,50 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('approved Page Studio publication', () => {
+  it('promotes the exact reviewed Astro candidate without reading checkpoints, rebuilding or changing metadata', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/versions/[versionId]/publish.post')
+    const input = event()
+    Object.assign(input.body, { buildId: 'build_astro_retained' })
+    Object.assign(input.context.cloudflare.env, { PAGE_STUDIO_CHECKPOINTS: undefined })
+    const candidate = { ...build, buildId: 'build_astro_retained', astro: { context: { identity: { environment: 'production',
+      source: { kind: 'approved-version', versionId, versionDigest: checkpoint.digest, checkpoint: { id: checkpoint.checkpointId, digest: checkpoint.digest } } } } } }
+    mocks.astroConfigured.mockReturnValue(true)
+    mocks.buildPointer.mockResolvedValue(candidate)
+    mocks.localFetch.mockReset().mockResolvedValue({ release: { id: 'release_next' } })
+    expect(await handler(input as never)).toMatchObject({ build: candidate, release: { id: 'release_next' } })
+    expect(mocks.buildPointer).toHaveBeenCalledWith(scope, candidate.buildId)
+    expect(mocks.loadCheckpoint).not.toHaveBeenCalled()
+    expect(mocks.attachMetadata).not.toHaveBeenCalled()
+    expect(mocks.localFetch).toHaveBeenCalledTimes(1)
+    expect(mocks.localFetch).toHaveBeenCalledWith(expect.stringContaining('/releases/activate'), expect.objectContaining({ body: {
+      buildId: candidate.buildId, environment: 'production', hostname: 'demo.xeroflow.io', expectedActiveReleaseId: 'release_previous'
+    } }))
+  })
+  it.each(['missing', 'legacy', 'wrong version', 'wrong environment'])('rejects %s Astro promotion instead of rebuilding', async (scenario) => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/versions/[versionId]/publish.post')
+    const input = event()
+    mocks.astroConfigured.mockReturnValue(true)
+    if (scenario !== 'missing') Object.assign(input.body, { buildId: build.buildId })
+    mocks.buildPointer.mockResolvedValue(scenario === 'legacy'
+      ? build
+      : { ...build, astro: { context: { identity: {
+          environment: scenario === 'wrong environment' ? 'staging' : 'production', source: { kind: 'approved-version',
+            versionId: scenario === 'wrong version' ? 'another' : versionId, checkpoint: { id: checkpoint.checkpointId, digest: checkpoint.digest } }
+        } } } })
+    await expect(handler(input as never)).rejects.toMatchObject({ statusCode: 409 })
+    if (scenario === 'missing') expect(mocks.loadCheckpoint).toHaveBeenCalledTimes(1)
+    else expect(mocks.loadCheckpoint).not.toHaveBeenCalled()
+    expect(mocks.attachMetadata).not.toHaveBeenCalled()
+    expect(mocks.localFetch).not.toHaveBeenCalled()
+  })
+  it('preserves approved sealed feature publishing while static Astro promotion is enabled', async () => {
+    const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/versions/[versionId]/publish.post')
+    mocks.astroConfigured.mockReturnValue(true)
+    mocks.loadCheckpoint.mockResolvedValue({ ...checkpoint, manifest: { ...checkpoint.manifest, builderApplication: {} } })
+    await expect(handler(event() as never)).resolves.toMatchObject({ build })
+    expect(mocks.localFetch).toHaveBeenNthCalledWith(1, expect.stringContaining('/builds'), expect.any(Object))
+    expect(mocks.localFetch).toHaveBeenNthCalledWith(2, expect.stringContaining('/releases/activate'), expect.any(Object))
+  })
   it('uses the authenticated selected organization when the owner has no tenant property', async () => {
     const { default: handler } = await import('~~/server/api/agency/page-studio/sites/[siteId]/versions/[versionId]/publish.post')
     const input = event()

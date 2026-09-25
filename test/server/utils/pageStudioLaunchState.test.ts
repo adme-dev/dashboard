@@ -29,12 +29,17 @@ describe('site launch state', () => {
   it('reports the exact saved and approved version with scoped public form counts', async () => {
     const result = await readPageStudioLaunchState(scope)
     expect(result).toMatchObject({ siteId: 'site_one', checkpointId: 'checkpoint_current', digest: 'digest_current',
-      approvedVersionId: 'version_current', content: { status: 'ready', publicPages: 1, publicForms: 1 },
+      approvedVersionId: 'version_current', content: { status: 'ready', publicPages: 1, publicForms: 1, requiresSealedFeatures: false },
       plan: { status: 'ready', key: 'trial' }, activeReleases: row().active_releases })
     expect(mocks.checkpoint).toHaveBeenCalledWith(expect.objectContaining({
       scope: { tenantId: 'tenant_one', clientId: 'client_one', siteId: 'site_one' },
       checkpointId: 'checkpoint_current', digests: ['digest_current']
     }))
+  })
+  it.each(['builderApplication', 'builderLibrary'])('identifies %s from the trusted saved source', async (key) => {
+    const saved = await mocks.checkpoint()
+    saved.manifest[key] = {}
+    expect((await readPageStudioLaunchState(scope)).content.requiresSealedFeatures).toBe(true)
   })
   it.each([
     { version_checkpoint_id: 'checkpoint_old' }, { version_digest: 'digest_old' },

@@ -64,8 +64,8 @@ export async function readPageStudioLaunchState(input: {
 }, queryOneFresh: InspectionQuery): Promise<PageStudioLaunchState> {
   const row = await queryOneFresh<LaunchRow>(stateSql, [input.tenantId, input.siteId])
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Website not found' })
-  const content: { status: 'ready' | 'required' | 'unavailable', publicPages: number | null, publicForms: number | null } = {
-    status: row.checkpoint_id ? 'unavailable' : 'required', publicPages: null, publicForms: null
+  const content: PageStudioLaunchState['content'] = {
+    status: row.checkpoint_id ? 'unavailable' : 'required', publicPages: null, publicForms: null, requiresSealedFeatures: null
   }
   if (row.checkpoint_id && row.checkpoint_digest && row.object_key && input.bucket) {
     try {
@@ -74,6 +74,8 @@ export async function readPageStudioLaunchState(input: {
         bucket: input.bucket, checkpointId: row.checkpoint_id, objectKey: row.object_key, digests: [row.checkpoint_digest]
       })
       const parsed = PageStudioSavedPagesSchema.parse(checkpoint.manifest)
+      content.requiresSealedFeatures = typeof checkpoint.manifest === 'object' && checkpoint.manifest !== null
+        && (Object.hasOwn(checkpoint.manifest, 'builderApplication') || Object.hasOwn(checkpoint.manifest, 'builderLibrary'))
       const publicPages = parsed.pages.filter(page => ['public', 'hidden'].includes(page.visibility))
       content.status = publicPages.length ? 'ready' : 'required'
       content.publicPages = publicPages.length

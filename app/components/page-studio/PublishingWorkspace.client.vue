@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { watch } from 'vue'
+import { openPageStudioCandidatePreview } from '~~/app/utils/pageStudioCandidatePreview'
 import { domainReady, launchReadiness, type PageStudioLaunchState, type LaunchReadinessItem } from '~~/shared/pageStudio/launchReadiness'
 import type { PageStudioEmailState } from '~~/shared/pageStudio/emailConfiguration'
 
@@ -53,9 +55,35 @@ const toast = useToast()
 const { editorOrigin, launchPageStudio } = usePageStudioLauncher()
 const publishModalOpen = ref(false)
 const publishing = ref(false)
+const preparing = ref(false)
+const previewOpened = ref(false)
+const reviewed = ref(false)
 const launchingStudio = ref(false)
 const selectedTab = ref('overview')
-const publishCandidate = ref<{ versionId: string, checkpointId: string, digest: string, hostname: string, releaseId: string | null } | null>(null)
+interface CandidateResponse {
+  build: {
+    buildId: string
+    versionDigest: string
+    manifestDigest: string
+    scope: { siteId: string }
+    astro: { context: { identity: { environment: string, source: { kind: string, versionId: string, checkpoint: { id: string, digest: string } } } } }
+  }
+  preview: { hostname: string, release: { buildId: string, versionDigest: string, manifestDigest: string, scope: { siteId: string } } }
+  session: { token: string, expiresAt: number }
+}
+interface PublishCandidate {
+  siteId: string
+  versionId: string
+  checkpointId: string
+  digest: string
+  hostname: string
+  releaseId: string | null
+  astro: boolean
+  requestKey: string
+  publishKey: string
+  prepared: CandidateResponse | null
+}
+const publishCandidate = ref<PublishCandidate | null>(null)
 const { data: launchData, status: launchStatus, error: launchError, refresh: refreshLaunch } = await useFetch<PageStudioLaunchState>(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/launch-state`)
 const { data: emailData, error: emailError, refresh: refreshEmail } = await useFetch<PageStudioEmailState>(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/email`)
 
@@ -115,8 +143,66 @@ async function refreshAll() {
 function openPublishModal() {
   const state = launchData.value
   if (!canPublish.value || !state?.approvedVersionId || !state.checkpointId || !state.digest || !productionDomain.value) return
-  publishCandidate.value = { versionId: state.approvedVersionId, checkpointId: state.checkpointId, digest: state.digest, hostname: productionDomain.value.hostname, releaseId: activeRelease.value?.id ?? null }
+  publishCandidate.value = { siteId: props.siteId, versionId: state.approvedVersionId, checkpointId: state.checkpointId, digest: state.digest, hostname: productionDomain.value.hostname, releaseId: activeRelease.value?.id ?? null,
+    astro: state.candidateReview === true, requestKey: crypto.randomUUID(), publishKey: crypto.randomUUID(), prepared: null }
+  previewOpened.value = false
+  reviewed.value = false
   publishModalOpen.value = true
+}
+
+watch(() => props.siteId, () => {
+  publishCandidate.value = null
+  publishModalOpen.value = false
+  reviewed.value = false
+  previewOpened.value = false
+})
+
+async function candidateStillCurrent(candidate: NonNullable<typeof publishCandidate.value>) {
+  await Promise.all([refreshLaunch(), refreshDomains(), refreshReleases()])
+  const state = launchData.value
+  return publishCandidate.value === candidate && props.siteId === candidate.siteId && !failed.value && !releasesError.value && !reviewsError.value
+    && state?.approvedVersionId === candidate.versionId && state.checkpointId === candidate.checkpointId && state.digest === candidate.digest
+    && (state.candidateReview === true) === candidate.astro && state.plan.status === 'ready'
+    && productionDomain.value?.hostname === candidate.hostname && (activeRelease.value?.id ?? null) === candidate.releaseId
+}
+
+async function preparePreview() {
+  const candidate = publishCandidate.value
+  if (!candidate?.astro || preparing.value || publishing.value) return
+  preparing.value = true
+  reviewed.value = false
+  previewOpened.value = false
+  candidate.prepared = null
+  try {
+    if (!await candidateStillCurrent(candidate)) throw new Error('The website changed. Close this dialog and review the current version.')
+    const response = await $fetch<CandidateResponse>(`/api/agency/page-studio/sites/${encodeURIComponent(candidate.siteId)}/versions/${encodeURIComponent(candidate.versionId)}/candidate`, {
+      method: 'POST', headers: { 'idempotency-key': candidate.requestKey }, body: { environment: 'production' }
+    })
+    if (publishCandidate.value !== candidate || !publishModalOpen.value) return
+    const build = response?.build, release = response?.preview?.release, source = build?.astro?.context?.identity?.source
+    if (!build?.buildId || build.scope?.siteId !== candidate.siteId || build.versionDigest !== candidate.digest
+      || build.astro?.context?.identity?.environment !== 'production' || source?.kind !== 'approved-version'
+      || source.versionId !== candidate.versionId || source.checkpoint?.id !== candidate.checkpointId || source.checkpoint.digest !== candidate.digest
+      || release?.buildId !== build.buildId || release.manifestDigest !== build.manifestDigest || release.versionDigest !== candidate.digest
+      || release.scope?.siteId !== candidate.siteId || !response.preview.hostname || !response.session?.token) throw new Error('The preview does not match the approved version. Refresh and try again.')
+    if (!await candidateStillCurrent(candidate)) throw new Error('The website changed while preparing the preview. Review the current version.')
+    candidate.prepared = response
+  } catch (error) {
+    toast.add({ title: 'Preview did not open', description: error instanceof Error ? error.message : 'Prepare the preview again.', color: 'error' })
+  } finally {
+    preparing.value = false
+  }
+}
+
+function openPreview() {
+  const candidate = publishCandidate.value?.prepared
+  if (!candidate) return
+  try {
+    openPageStudioCandidatePreview(candidate.preview.hostname, candidate.session)
+    previewOpened.value = true
+  } catch (error) {
+    toast.add({ title: 'Preview did not open', description: error instanceof Error ? error.message : 'Prepare the preview again.', color: 'error' })
+  }
 }
 
 async function openStudio() {
@@ -137,27 +223,25 @@ async function openStudio() {
 }
 
 function closePublishModal() {
-  if (!publishing.value) publishModalOpen.value = false
+  if (!publishing.value && !preparing.value) publishModalOpen.value = false
 }
 
 async function publishApprovedVersion() {
   const candidate = publishCandidate.value
-  if (!candidate || publishing.value) return
+  if (!candidate || publishing.value || preparing.value || (candidate.astro && (!candidate.prepared || !previewOpened.value || !reviewed.value))) return
   publishing.value = true
   try {
-    await Promise.all([refreshLaunch(), refreshDomains(), refreshReleases()])
-    const state = launchData.value
-    if (failed.value || releasesError.value || reviewsError.value || !state || state.approvedVersionId !== candidate.versionId || state.checkpointId !== candidate.checkpointId || state.digest !== candidate.digest
-      || state.plan.status !== 'ready' || productionDomain.value?.hostname !== candidate.hostname || (activeRelease.value?.id ?? null) !== candidate.releaseId) {
+    if (!await candidateStillCurrent(candidate)) {
       publishModalOpen.value = false
       toast.add({ title: 'Website changed', description: 'Review the refreshed saved version, domain and release before publishing.', color: 'warning' })
       return
     }
     await $fetch(`/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/versions/${encodeURIComponent(candidate.versionId)}/publish`, {
       method: 'POST',
-      headers: { 'idempotency-key': crypto.randomUUID() },
+      headers: { 'idempotency-key': candidate.publishKey },
       body: {
         environment: 'production',
+        ...(candidate.astro ? { buildId: candidate.prepared!.build.buildId } : {}),
         hostname: candidate.hostname,
         expectedActiveReleaseId: candidate.releaseId
       }
@@ -461,7 +545,7 @@ async function publishApprovedVersion() {
       </template>
     </UTabs>
 
-    <UModal v-model:open="publishModalOpen" title="Publish approved version" description="This creates an immutable build and moves the production release pointer after verification.">
+    <UModal v-model:open="publishModalOpen" title="Publish approved version" description="Review the approved website before making it live.">
       <template #content>
         <div class="space-y-5 p-6">
           <div>
@@ -469,7 +553,7 @@ async function publishApprovedVersion() {
               Publish approved version
             </h2>
             <p class="mt-1 text-sm leading-6 text-muted">
-              XeroFlow will build the approved checkpoint and synchronise its navigation, footer, theme and SEO state with the release.
+              {{ publishCandidate?.astro ? 'Prepare the website, open its preview and review it. Publishing uses that exact build on your domain.' : 'XeroFlow will build the approved checkpoint and synchronise its navigation, footer, theme and SEO state with the release.' }}
             </p>
           </div>
           <dl class="rounded-lg border border-default bg-elevated p-4 text-sm">
@@ -495,19 +579,50 @@ async function publishApprovedVersion() {
               </dd>
             </div>
           </dl>
+          <div v-if="publishCandidate?.astro" class="space-y-4">
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                :label="publishCandidate.prepared ? 'Refresh preview access' : 'Prepare preview'"
+                icon="i-lucide-package"
+                color="neutral"
+                variant="outline"
+                :loading="preparing"
+                :disabled="publishing"
+                @click="preparePreview"
+              />
+              <UButton
+                v-if="publishCandidate.prepared"
+                label="Open preview"
+                icon="i-lucide-external-link"
+                color="neutral"
+                :disabled="preparing || publishing"
+                @click="openPreview"
+              />
+            </div>
+            <p v-if="publishCandidate.prepared" class="text-sm text-muted" role="status">
+              Preview ready. Open it to check the pages and interactions before publishing.
+            </p>
+            <UFormField v-if="publishCandidate.prepared" label="Review confirmation">
+              <UCheckbox
+                v-model="reviewed"
+                label="I have reviewed this website and it is ready to publish"
+                :disabled="!previewOpened || preparing || publishing"
+              />
+            </UFormField>
+          </div>
           <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <UButton
               label="Cancel"
               color="neutral"
               variant="outline"
-              :disabled="publishing"
+              :disabled="publishing || preparing"
               @click="closePublishModal"
             />
             <UButton
-              label="Build and publish"
+              :label="publishCandidate?.astro ? 'Publish reviewed build' : 'Build and publish'"
               icon="i-lucide-rocket"
               :loading="publishing"
-              :disabled="!canPublish"
+              :disabled="!canPublish || preparing || (publishCandidate?.astro && (!publishCandidate.prepared || !previewOpened || !reviewed))"
               @click="publishApprovedVersion"
             />
           </div>

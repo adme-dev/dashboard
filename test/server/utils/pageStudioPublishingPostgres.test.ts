@@ -54,7 +54,9 @@ describe.runIf(Boolean(databaseUrl))('Page Studio publication lifecycle on dispo
         id uuid PRIMARY KEY, digest text, status text, updated_at timestamptz);
       CREATE TEMP TABLE page_studio_builds (tenant_id text, client_id uuid, site_id uuid,
         id text PRIMARY KEY, version_id uuid, version_digest text, state text, artifact_prefix text,
-        release_manifest_key text, release_manifest_digest text, release_metadata jsonb);
+        release_manifest_key text, release_manifest_digest text, release_metadata jsonb,
+        renderer text DEFAULT 'legacy', build_identity jsonb, build_identity_digest text,
+        compiler_toolchain jsonb, astro_release_receipt jsonb, validation_report_key text);
       CREATE TEMP TABLE page_studio_reviews (tenant_id text, client_id uuid, site_id uuid,
         id uuid DEFAULT gen_random_uuid(), version_id uuid, version_digest text, decision text,
         decided_at timestamptz DEFAULT NOW());
@@ -79,7 +81,7 @@ describe.runIf(Boolean(databaseUrl))('Page Studio publication lifecycle on dispo
     await client.query('INSERT INTO page_studio_sites (tenant_id,client_id,id) VALUES ($1,$2,$3)', Object.values(scope))
     await client.query(`INSERT INTO page_studio_versions (tenant_id,client_id,site_id,id,digest,status)
       VALUES ($1,$2,$3,$4,$5,'approved')`, [...Object.values(scope), versionId, digest])
-    await client.query(`INSERT INTO page_studio_builds VALUES ($1,$2,$3,$4,$5,$6,'succeeded',$7,$8,$9,NULL)`,
+    await client.query(`INSERT INTO page_studio_builds (tenant_id,client_id,site_id,id,version_id,version_digest,state,artifact_prefix,release_manifest_key,release_manifest_digest,release_metadata) VALUES ($1,$2,$3,$4,$5,$6,'succeeded',$7,$8,$9,NULL)`,
       [...Object.values(scope), buildId, versionId, digest, prefix, `${prefix}/release-manifest.json`, 'b'.repeat(64)])
     await client.query(`INSERT INTO page_studio_reviews (tenant_id,client_id,site_id,version_id,version_digest,decision)
       VALUES ($1,$2,$3,$4,$5,'approved')`, [...Object.values(scope), versionId, digest])

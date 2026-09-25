@@ -42,6 +42,46 @@ export declare function verifyAstroCompilerBuildIdentity(
   candidate: unknown,
   admittedToolchain: unknown
 ): Promise<AstroCompilerBuildIdentity>;
+export interface AstroCompilerReleaseReceipt {
+  artifactPrefix: string;
+  astro: {
+    context: AstroCompilerBuildIdentity;
+    manifestDigest: string;
+    policyDigest: string;
+  };
+  buildId: string;
+  manifestDigest: string;
+  manifestKey: string;
+  renderer: "astro";
+  success: true;
+  validationKey: string;
+  versionDigest: string;
+}
+export interface NativeAstroCompilerGeneration {
+  environment: "staging" | "production";
+  policyDigest: string;
+  toolchain: {
+    formatVersion: 1;
+    kind: "astro-compiler-toolchain";
+    image: string;
+    hostPolicyDigest: string;
+  };
+  toolchainDigest: string;
+}
+/** Trusted native deployment configuration, never request JSON. Current digest
+ * selects a new admission; retained identity selects every retry. */
+export declare function selectNativeAstroCompilerGeneration(
+  registry: unknown,
+  environment: unknown,
+  toolchainDigest: unknown
+): Promise<NativeAstroCompilerGeneration>;
+/** Validate a private build receipt against retained native admission and trusted
+ * generation policy. This does not verify artifact bytes or grant publication;
+ * independent delivery verification and fresh native authority remain required. */
+export declare function verifyAstroCompilerReleaseReceipt(
+  candidate: unknown,
+  retained: unknown
+): Promise<AstroCompilerReleaseReceipt>;
 export interface BuilderGraphPin {
   id: string;
   kind: "collection" | "component" | "action";

@@ -5,8 +5,8 @@
     "astroBuildIdentityFixtures.json": "aab6df58afb3eab789e92ab582ceb9cd9c731a30bea96bfb47f4356f20b8751f",
     "builderGraphFixtures.json": "5e55191f0940e2be57d20c8477e221e105d8ad87d511b2db93db67548cd2dcca",
     "builderGraphLicenses.txt": "8d5d58fee24c22b7ca431fdd84693b6487f0a338cdad215d6f86e2465fb0e70e",
-    "builderGraphVerifier.d.mts": "92698d308dd0f8f0fb786c7280b376872fdea2b5b9f36c332c88460d708a22b0",
-    "builderGraphVerifier.mjs": "5c330f4cf48f16f6e4a17292eae148808d7db59313542bde0142e6c570431ee5"
+    "builderGraphVerifier.d.mts": "1612ac9821b65fba80baee8e450e199c39fee2b15133bc389ba8623a2dc102ef",
+    "builderGraphVerifier.mjs": "95c089554e6fae5932e26f9556710d2130a1bdfbb9e932f383abf16f12c62b35"
   },
   "generator": "scripts/generate-native-builder-verifier.mjs",
   "options": {
@@ -19,7 +19,7 @@
     "target": "es2022",
     "treeShaking": true
   },
-  "sourceDigest": "8ec81c14ffb65f307224a38056372e0c8ad63961189380bd03a1639f40d275ac",
+  "sourceDigest": "6f742154e9120318daa56bfff55a3e9ab080bdcc872ae19ae3b1ef37dbd928da",
   "sources": [
     {
       "path": "LICENSE",
@@ -350,8 +350,24 @@
       "sha256": "acaa1575280af9b77529543c3326b69357779cf0bb87afb3aaf8e5eab45f27f9"
     },
     {
+      "path": "packages/protocol/src/astro-artifact-v2.ts",
+      "sha256": "0cdd91642b5a5b3d106613416960bad908788b77ebf34515b2fb0636b0d55a91"
+    },
+    {
+      "path": "packages/protocol/src/astro-artifact.ts",
+      "sha256": "f38f8a0fca294e089836841a2938f42fc683d1807373f42ea9dd7ef4224f823e"
+    },
+    {
       "path": "packages/protocol/src/astro-build-identity.ts",
       "sha256": "c594d287bdbb9430b0365b1ea6620d5fae7a82fd1fb04f33ba742b86564b30e8"
+    },
+    {
+      "path": "packages/protocol/src/astro-compiler-registry.ts",
+      "sha256": "72a3748a1ec898cf85bcdacb0324d4b20e78a792f9e96ea36ccce3266ce68a18"
+    },
+    {
+      "path": "packages/protocol/src/astro-release.ts",
+      "sha256": "9f95212d19b43d3ab8300569d2042dfd4f3c04ea6190557771ffa8376958d32e"
     },
     {
       "path": "packages/protocol/src/builder-action-effects.ts",
@@ -379,7 +395,7 @@
     },
     {
       "path": "packages/protocol/src/builder-graph-verifier.ts",
-      "sha256": "2b17b355ddf20e32be2a9323fa602964fed7e7d5de7a4993b775307f5d3b33e4"
+      "sha256": "6d7e6282260380e4cb47107561c982cd8d9c754c370f82d0a371164ce08c568e"
     },
     {
       "path": "packages/protocol/src/builder-instance-reference.ts",
@@ -435,7 +451,7 @@
     },
     {
       "path": "packages/protocol/src/integrations.ts",
-      "sha256": "8af9a2732f828e47f47ee4007835d697e5ea4fe6de0110024caa6a253e1bdbcf"
+      "sha256": "862abbac3ec6c61c6c36fdbadf4a4e043bb698cb91f5a5296e31f17298ec993d"
     },
     {
       "path": "packages/protocol/src/page.ts",
@@ -491,7 +507,7 @@
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "932cc7be8b533dad3bbba7200653d4e608554c4eb0b26e038b7caf7eff85c4b1"
+      "sha256": "215399643d053e15f11fb9de315dd80c72b7496850e73e7403a3428acdfac736"
     },
     {
       "path": "scripts/generate-native-builder-verifier.mjs",

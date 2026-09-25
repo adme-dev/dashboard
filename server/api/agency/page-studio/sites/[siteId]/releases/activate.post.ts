@@ -1,6 +1,8 @@
 import { coordinateFeatureActivation } from '~~/server/utils/pageStudio/releaseFeatureActivation'
 import { hasSealedFeatureBuild, nativeFeaturePublisher, featureBuildServices } from '~~/server/utils/pageStudio/releaseFeatureHttp'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
+import { preparePageStudioPublishPrincipal } from '~~/server/utils/pageStudio/publishHttp'
+import { withPageStudioPublishAuthority } from '~~/server/utils/pageStudio/publishAuthority'
 import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import {
@@ -36,6 +38,9 @@ export default eventHandler(async (event) => {
         'Page Studio build is not approved and publishable'
       )
     }
+    const feature = await hasSealedFeatureBuild(scope, body.data.buildId)
+    const featurePrincipal = feature ? await nativeFeaturePublisher(event, siteId.data) : null
+    const principal = feature ? null : await preparePageStudioPublishPrincipal(event, { tenantId, user })
     const worker = resolvePageStudioDeliveryWorker(event, body.data.environment)
     await worker.verifyBuild(build)
     const input = {
@@ -45,9 +50,11 @@ export default eventHandler(async (event) => {
       idempotencyKey: idempotencyKey.data,
       scope
     }
-    const release = await hasSealedFeatureBuild(scope, body.data.buildId)
-      ? await coordinateFeatureActivation(input, await nativeFeaturePublisher(event, siteId.data), featureBuildServices(event))
-      : await activatePageStudioRelease(input)
+    const release = featurePrincipal
+      ? await coordinateFeatureActivation(input, featurePrincipal, featureBuildServices(event))
+      : await activatePageStudioRelease(input, {
+          runTransaction: work => withPageStudioPublishAuthority(scope, principal!, work)
+        })
     return { release }
   } catch (error) {
     pageStudioHttpError(error)
