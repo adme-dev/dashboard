@@ -12,6 +12,8 @@ describe('runtime publishing panel', () => {
     expect(panel).toContain('/runtime-releases/rollback')
     expect(panel.match(/'idempotency-key'/g)).toHaveLength(2)
     expect(panel).toContain('expectedActiveReleaseId: live.value?.releaseId ?? null')
+    expect(panel).toContain('environment: props.state.environment')
+    expect(panel).not.toContain('environment: \'production\'')
     expect(panel).toContain('label="I have previewed this version"')
     expect(panel).toContain(':disabled="!publishConfirmed"')
     expect(panel).toContain('the live site was not changed')
@@ -23,7 +25,7 @@ describe('runtime publishing panel', () => {
   })
 
   it('explains why publishing is unavailable', () => {
-    for (const reason of ['not configured', 'ready production domain', 'Approve a saved version', 'already live']) {
+    for (const reason of ['not configured', 'ready production domain', 'no staging hostname', 'Approve a saved version', 'already live']) {
       expect(panel).toContain(reason)
     }
   })
