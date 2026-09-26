@@ -223,7 +223,9 @@ export async function resolvePageStudioReleaseHost(
   if (!row) return null
   if (row.runtime_release) {
     const verified = await verifyNativeAstroRuntimeRelease(row.runtime_release).catch(() => null)
-    if (!verified || verified.digest !== row.runtime_release_digest || verified.release.environment !== row.environment) {
+    if (!verified || verified.digest !== row.runtime_release_digest || verified.release.environment !== row.environment
+      || verified.release.scope.tenantId !== row.tenant_id || verified.release.scope.clientId !== row.client_id
+      || verified.release.scope.siteId !== row.site_id) {
       throw new Error('Stored Page Studio runtime release failed verification')
     }
     return {
@@ -396,8 +398,10 @@ export interface AuthorizedPageStudioRuntimeDraft {
 }
 
 /** Private runtime drafts are served on `draft-<site id hex>.<preview suffix>`. */
-export function pageStudioRuntimeDraftHostname(siteId: string, previewSuffix: string): string {
-  return `draft-${siteId.replaceAll('-', '').toLowerCase()}.${previewSuffix}`
+export function pageStudioRuntimeDraftHostname(siteId: string, previewSuffix: string, environment: 'production' | 'staging' = 'production'): string {
+  // Keep both environments within one wildcard certificate, with distinct
+  // host-only session cookies and an exact hostname check at authorization.
+  return `draft-${siteId.replaceAll('-', '').toLowerCase()}${environment === 'staging' ? '-staging' : ''}.${previewSuffix}`
 }
 
 interface RuntimeDraftRow {
@@ -431,7 +435,8 @@ export async function authorizePageStudioRuntimeDraftPreview(
     throw new PageStudioDeliveryError('PREVIEW_VERIFIER_UNAVAILABLE', 503, 'Page Studio runtime preview is not configured')
   }
   const { claims, permission } = await verifyPreviewClaims(parsed.data.token, dependencies)
-  if (parsed.data.hostname !== pageStudioRuntimeDraftHostname(claims.siteId, suffix)) return null
+  const environment = env?.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'staging' ? 'staging' : 'production'
+  if (parsed.data.hostname !== pageStudioRuntimeDraftHostname(claims.siteId, suffix, environment)) return null
 
   const findOne = dependencies.queryOne ?? queryOne as PageStudioDeliveryQueryOne
   const row = await findOne<RuntimeDraftRow>(

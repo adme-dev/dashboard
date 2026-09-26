@@ -1,5 +1,6 @@
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
+import { runtimeTargetPolicy } from '~~/server/utils/pageStudio/runtimeTarget'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import { withPageStudioPublishAuthority } from '~~/server/utils/pageStudio/publishAuthority'
 import { preparePageStudioPublishPrincipal } from '~~/server/utils/pageStudio/publishHttp'
@@ -20,6 +21,10 @@ export default eventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Invalid Page Studio runtime rollback' })
     }
     const env = (event.context.cloudflare?.env ?? undefined) as Record<string, unknown> | undefined
+    const policy = runtimeTargetPolicy(env)
+    if (policy.deploymentEnvironment === 'staging' && body.data.environment !== 'staging') {
+      throw createError({ statusCode: 403, statusMessage: 'Staging cannot publish to production' })
+    }
     const current = resolveRuntimeRenderer(env)
     const retained = typeof env?.PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS === 'string'
       ? env.PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS.split(',').map(value => value.trim()).filter(Boolean)
@@ -33,7 +38,7 @@ export default eventHandler(async (event) => {
       idempotencyKey: idempotencyKey.data,
       retainedGenerations: [current.generation, ...retained],
       scope
-    }, { runTransaction: work => withPageStudioPublishAuthority(scope, principal, work) })
+    }, { policy, runTransaction: work => withPageStudioPublishAuthority(scope, principal, work) })
     return { release }
   } catch (error) {
     pageStudioHttpError(error)

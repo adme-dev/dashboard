@@ -31,7 +31,7 @@ const releaseId = '33333333-3333-4333-8333-333333333333'
 const hostname = 'site.staging.pages.xeroflow.com'
 
 function database(respond: (sql: string, params: unknown[]) => unknown[]) {
-  const query = vi.fn(async (sql: string, params: unknown[] = []) => ({ rows: respond(sql, params) }))
+  const query = vi.fn(async (sql: string, params: unknown[] = []) => ({ rows: sql.includes('environment<>$2') ? [] : respond(sql, params) }))
   const client = { query } as PageStudioPublishingQueryClient
   const runTransaction = vi.fn(async <T>(
     callback: (db: PageStudioPublishingQueryClient) => Promise<T>
@@ -229,7 +229,7 @@ describe('Page Studio atomic release activation', () => {
     })
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('pg_advisory_xact_lock'),
-      [`page-studio-release:staging:${hostname}`]
+      [`page-studio-release:${hostname}`]
     )
     expect(db.query.mock.calls.some(([sql]) => String(sql).includes('FROM page_studio_builds')))
       .toBe(false)

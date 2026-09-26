@@ -47,10 +47,16 @@ describe('runtime public host resolution', () => {
     const row = await runtimeRow()
     await expect(resolvePageStudioReleaseHost('www.site.example', { queryOne: (async () => ({ ...row, runtime_release_digest: 'f'.repeat(64) })) as PageStudioDeliveryQueryOne })).rejects.toThrow()
     await expect(resolvePageStudioReleaseHost('www.site.example', { queryOne: (async () => ({ ...row, environment: 'staging' })) as PageStudioDeliveryQueryOne })).rejects.toThrow()
+    await expect(resolvePageStudioReleaseHost('www.site.example', { queryOne: (async () => ({ ...row, client_id: 'other-client' })) as PageStudioDeliveryQueryOne })).rejects.toThrow()
   })
 })
 
 describe('runtime draft preview authorization', () => {
+  it('isolates staging and production within the wildcard certificate depth', () => {
+    const host = `draft-${SCOPE.siteId.replaceAll('-', '')}`
+    expect(pageStudioRuntimeDraftHostname(SCOPE.siteId, 'xeroflowpages.com', 'production')).toBe(`${host}.xeroflowpages.com`)
+    expect(pageStudioRuntimeDraftHostname(SCOPE.siteId, 'xeroflowpages.com', 'staging')).toBe(`${host}-staging.xeroflowpages.com`)
+  })
   const { privateKey, publicKey } = (() => {
     const pair = generateKeyPairSync('ec', { namedCurve: 'P-256' })
     return {

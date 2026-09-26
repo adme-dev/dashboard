@@ -7,7 +7,9 @@ export default eventHandler(async (event) => {
   const { tenantId } = await requireAgencyPageStudioAccess(event, 'PAGE_STUDIO_VIEW')
   const siteId = PageStudioSiteId.safeParse(getRouterParam(event, 'siteId'))
   if (!siteId.success) throw createError({ statusCode: 400, statusMessage: 'Invalid website ID' })
+  const environment = getQuery(event).environment
+  if (environment !== undefined && environment !== 'production' && environment !== 'staging') throw createError({ statusCode: 400, statusMessage: 'Invalid publication environment' })
   setHeader(event, 'cache-control', 'private, no-store')
   const clientId = await resolveAgencyPageStudioSiteClient(tenantId, siteId.data)
-  return await readPageStudioRuntimeState({ tenantId, clientId, siteId: siteId.data }, event.context.cloudflare?.env as Record<string, unknown> | undefined)
+  return await readPageStudioRuntimeState({ tenantId, clientId, siteId: siteId.data }, event.context.cloudflare?.env as Record<string, unknown> | undefined, { environment: environment === 'staging' ? 'staging' : environment === 'production' ? 'production' : undefined })
 })

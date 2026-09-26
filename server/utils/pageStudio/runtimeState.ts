@@ -8,7 +8,7 @@ export type { PageStudioRuntimeState }
 export async function readPageStudioRuntimeState(
   scope: PageStudioPublishingScope,
   env: Record<string, unknown> | undefined,
-  dependencies: { queryOne?: typeof queryOne, queryRows?: typeof queryRows } = {}
+  dependencies: { queryOne?: typeof queryOne, queryRows?: typeof queryRows, environment?: 'staging' | 'production' } = {}
 ): Promise<PageStudioRuntimeState> {
   const one = dependencies.queryOne ?? queryOne
   const rows = dependencies.queryRows ?? queryRows
@@ -39,11 +39,14 @@ export async function readPageStudioRuntimeState(
     [scope.tenantId, scope.clientId, scope.siteId]
   )
 
-  const environment = env?.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'staging' ? 'staging' : 'production'
+  const deploymentEnvironment = env?.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'staging' ? 'staging' : 'production'
+  const environment = dependencies.environment ?? deploymentEnvironment
+  if (deploymentEnvironment === 'staging' && environment !== 'staging') throw createError({ statusCode: 403, statusMessage: 'Staging cannot publish to production' })
   const pointer = await one<{ normalized_hostname: string }>(
     'SELECT normalized_hostname FROM page_studio_release_pointers WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND environment=$4 ORDER BY updated_at DESC LIMIT 1',
     [scope.tenantId, scope.clientId, scope.siteId, environment]
   )
+  const staging = environment === 'staging' ? await one<{ hostname: string }>(`SELECT hostname FROM page_studio_staging_sites WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND host_state='ready' AND provider_domain_id IS NOT NULL AND provider_verified_at IS NOT NULL`, [scope.tenantId, scope.clientId, scope.siteId]) : null
   const releases = await rows<{
     release_id: string
     hostname: string
@@ -85,12 +88,12 @@ export async function readPageStudioRuntimeState(
       : null,
     deliveryMode: site.delivery_mode,
     environment,
-    hostname: pointer?.normalized_hostname ?? null,
+    hostname: staging?.hostname ?? pointer?.normalized_hostname ?? null,
     draft: site.checkpoint_id && site.digest && site.saved_at
       ? {
           checkpointId: site.checkpoint_id,
           digest: site.digest,
-          previewHostname: suffix ? pageStudioRuntimeDraftHostname(scope.siteId, suffix) : null,
+          previewHostname: suffix ? pageStudioRuntimeDraftHostname(scope.siteId, suffix, deploymentEnvironment) : null,
           savedAt: new Date(site.saved_at).toISOString()
         }
       : null,
