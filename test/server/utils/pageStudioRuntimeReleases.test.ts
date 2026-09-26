@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { preparePageStudioRuntimeRelease, resolveRuntimeRenderer, type RuntimeContentBucket } from '~~/server/utils/pageStudio/runtimeReleases'
+import { preparePageStudioRuntimeRelease, resolveRuntimeDraft, resolveRuntimeRenderer, type RuntimeContentBucket } from '~~/server/utils/pageStudio/runtimeReleases'
 
 const scope = { tenantId: 'tenant_a', clientId: '10000000-0000-4000-8000-000000000001', siteId: '20000000-0000-4000-8000-000000000002' }
 const siteRoot = `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}`
@@ -121,5 +121,34 @@ describe('runtime renderer configuration', () => {
     for (const value of [undefined, '{', JSON.stringify({ ...renderer, codeDigest: 'x' }), JSON.stringify({ ...renderer, generation: '../x' })]) {
       expect(() => resolveRuntimeRenderer({ PAGE_STUDIO_RUNTIME_RENDERER: value })).toThrow(expect.objectContaining({ code: 'RUNTIME_RENDERER_UNAVAILABLE' }))
     }
+  })
+})
+
+describe('runtime draft preview content', () => {
+  it('materialises a saved draft once and then serves its index', async () => {
+    const f = fixture()
+    let loads = 0
+    const loadCheckpoint = async () => {
+      loads += 1
+      return { checkpointId: 'checkpoint_a', digest: f.digest, manifest: f.manifest }
+    }
+    const input = { bucket: f.store.bucket, checkpointId: 'checkpoint_a', digest: f.digest, objectKey: `${siteRoot}/checkpoints/checkpoint_a.json`, scope }
+    const first = await resolveRuntimeDraft(input, { loadCheckpoint })
+    expect(first.snapshot.key).toBe(`${siteRoot}/runtime/versions/${f.digest}/site.json`)
+    expect(first.images).toHaveLength(1)
+    const second = await resolveRuntimeDraft(input, { loadCheckpoint })
+    expect(second).toEqual(first)
+    expect(loads).toBe(1)
+  })
+
+  it('rebuilds an index that points outside the site store', async () => {
+    const f = fixture()
+    f.store.objects.set(`${siteRoot}/runtime/drafts/${f.digest}.json`, new TextEncoder().encode(JSON.stringify({
+      images: [{ key: 'tenants/other/x.webp' }], redirects: {}, snapshot: { key: `${siteRoot}/runtime/versions/${f.digest}/site.json`, sha256: f.digest }
+    })))
+    const draft = await resolveRuntimeDraft({ bucket: f.store.bucket, checkpointId: 'checkpoint_a', digest: f.digest, objectKey: 'x', scope }, {
+      loadCheckpoint: async () => ({ checkpointId: 'checkpoint_a', digest: f.digest, manifest: f.manifest })
+    })
+    expect(draft.images[0].key).toBe(`${siteRoot}/runtime/assets/${f.imageDigest}.webp`)
   })
 })

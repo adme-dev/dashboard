@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { resolvePageStudioReleaseHost } from '~~/server/utils/pageStudio/delivery'
 import { activatePageStudioRuntimeRelease, rollbackPageStudioRuntimeRelease } from '~~/server/utils/pageStudio/runtimePublishing'
 import type { PreparedRuntimeRelease } from '~~/server/utils/pageStudio/runtimeReleases'
 import { verifyNativeAstroRuntimeRelease } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
@@ -12,7 +13,7 @@ if (url) {
   if (target.protocol !== 'postgresql:' || target.hostname !== '127.0.0.1' || !/^\/studio_cms_[a-z0-9_]+$/.test(target.pathname) || target.search) throw new Error('Disposable localhost studio_cms database required')
 }
 const directory = new URL('../../../server/database/migrations/', import.meta.url)
-const migrations = ['402_page_studio_control_plane', '413_page_studio_release_metadata', '414_page_studio_atomic_release_metadata', '428_page_studio_client_staging', '429_page_studio_checkpoint_staging_outbox', '433_page_studio_runtime_delivery']
+const migrations = ['402_page_studio_control_plane', '413_page_studio_release_metadata', '414_page_studio_atomic_release_metadata', '428_page_studio_client_staging', '429_page_studio_checkpoint_staging_outbox', '430_page_studio_astro_build_identity', '431_page_studio_astro_release_receipt', '432_page_studio_astro_approval', '433_page_studio_runtime_delivery']
 const metadata = { defaultLocale: 'en-AU', footer: {}, integrations: {}, navigation: { items: [] }, seoDefaults: {}, theme: { tokens: {} } }
 const renderer = { assetsDigest: 'a'.repeat(64), codeDigest: 'b'.repeat(64), generation: 'renderer_one', name: 'astro-runtime' as const }
 
@@ -147,5 +148,16 @@ describe.runIf(Boolean(url))('runtime publication transactions on PostgreSQL', (
     // A retried request with the same key replays the recorded rollback.
     expect(await rollback(['renderer_one'], 'rollback-key')).toEqual(restored)
     await expect(rollback(['renderer_one'])).rejects.toMatchObject({ code: 'RELEASE_POINTER_CONFLICT' })
+  })
+
+  it('resolves the published runtime release for its hostname through the real delivery query', async () => {
+    const queryOne = (async (sql: string, params?: unknown[]) => (await db.query(sql, params)).rows[0] ?? null) as never
+    await db.query('UPDATE page_studio_entitlements SET status=\'active\', effective_from=NOW() - interval \'1 day\'')
+    const v1 = await version('one')
+    const published = await activate(v1, null)
+    const resolved = await resolvePageStudioReleaseHost(hostname, { queryOne })
+    expect(resolved).toEqual({ hostname, release: published })
+    await db.query('UPDATE page_studio_sites SET delivery_mode=\'static\'')
+    expect(await resolvePageStudioReleaseHost(hostname, { queryOne })).toBeNull()
   })
 })

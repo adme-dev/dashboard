@@ -4,7 +4,7 @@ import {
   type NativeAstroRuntimeRelease
 } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
 import { PageStudioPublishingError } from './publishingError'
-import { loadApprovedPageStudioReleaseCheckpoint } from './releaseCheckpoint'
+import { loadApprovedPageStudioReleaseCheckpoint, loadPageStudioCheckpoint } from './releaseCheckpoint'
 import type { PageStudioReleaseMetadata } from './releaseMetadata'
 import type { PageStudioPublishingScope } from './publishing'
 
@@ -112,6 +112,54 @@ function redirectsOf(manifest: Record<string, unknown>): NativeAstroRuntimeRelea
   return redirects
 }
 
+export interface RuntimeContent {
+  images: NativeAstroRuntimeRelease['images']
+  redirects: NativeAstroRuntimeRelease['redirects']
+  snapshot: NativeAstroRuntimeRelease['snapshot']
+}
+
+/**
+ * Copies one saved version into retained runtime storage: the canonical manifest
+ * at its digest and every referenced draft image at its content address.
+ * Idempotent; shared by draft preview and publication.
+ */
+export async function materializeRuntimeContent(
+  bucket: RuntimeContentBucket,
+  scope: PageStudioPublishingScope,
+  digest: string,
+  manifest: Record<string, unknown>
+): Promise<RuntimeContent> {
+  const body = new TextEncoder().encode(canonicalJson(manifest))
+  if (await sha256Hex(body) !== digest) throw unavailable('Saved version digest mismatch')
+  const prefix = nativeAstroRuntimeContentPrefix(scope)
+  const siteRoot = prefix.slice(0, -'/runtime'.length)
+  const snapshotKey = `${prefix}/versions/${digest}/site.json`
+  await retain(bucket, snapshotKey, body, digest, SNAPSHOT_TYPE)
+
+  const references = new Map<string, string>()
+  for (const match of new TextDecoder().decode(body).matchAll(MEDIA_REFERENCE)) references.set(match[1], match[2])
+  const images: NativeAstroRuntimeRelease['images'] = []
+  let total = 0
+  for (const [imageDigest, extension] of [...references].sort()) {
+    const key = `${prefix}/assets/${imageDigest}.${extension}`
+    // Prefer an already retained copy so a deleted draft upload cannot block republish.
+    const source = await bucket.get(key) ?? await bucket.get(`${siteRoot}/preview-assets/${imageDigest}.${extension}`)
+    if (!source || source.size > MEDIA_LIMIT_BYTES) throw unavailable('A saved image is missing or too large')
+    const bytes = new Uint8Array(await source.arrayBuffer())
+    const contentType = imageType(bytes, extension)
+    if (!contentType || await sha256Hex(bytes) !== imageDigest) throw unavailable('A saved image does not match its content address')
+    total += bytes.byteLength
+    if (total > MEDIA_TOTAL_LIMIT_BYTES) throw unavailable('Saved images exceed the publication limit')
+    await retain(bucket, key, bytes, imageDigest, contentType)
+    images.push({ bytes: bytes.byteLength, contentType, key, sha256: imageDigest })
+  }
+  return {
+    images,
+    redirects: redirectsOf(manifest),
+    snapshot: { bytes: body.byteLength, contentType: SNAPSHOT_TYPE, key: snapshotKey, sha256: digest }
+  }
+}
+
 export async function preparePageStudioRuntimeRelease(input: {
   bucket: RuntimeContentBucket
   environment: 'staging' | 'production'
@@ -123,45 +171,71 @@ export async function preparePageStudioRuntimeRelease(input: {
   // Verifies approval, the checkpoint object key/scope and the canonical digest.
   const checkpoint = await load({ bucket: input.bucket, scope: input.scope, versionId: input.versionId })
   const manifest = checkpoint.manifest as Record<string, unknown>
-  const body = new TextEncoder().encode(canonicalJson(manifest))
-  if (await sha256Hex(body) !== checkpoint.digest) throw unavailable('Saved version digest mismatch')
-
-  const prefix = nativeAstroRuntimeContentPrefix(input.scope)
-  const siteRoot = prefix.slice(0, -'/runtime'.length)
-  const snapshotKey = `${prefix}/versions/${checkpoint.digest}/site.json`
-  await retain(input.bucket, snapshotKey, body, checkpoint.digest, SNAPSHOT_TYPE)
-
-  const references = new Map<string, string>()
-  for (const match of new TextDecoder().decode(body).matchAll(MEDIA_REFERENCE)) references.set(match[1], match[2])
-  const images: NativeAstroRuntimeRelease['images'] = []
-  let total = 0
-  for (const [digest, extension] of [...references].sort()) {
-    const key = `${prefix}/assets/${digest}.${extension}`
-    // Prefer an already retained copy so a deleted draft upload cannot block republish.
-    const source = await input.bucket.get(key) ?? await input.bucket.get(`${siteRoot}/preview-assets/${digest}.${extension}`)
-    if (!source || source.size > MEDIA_LIMIT_BYTES) throw unavailable('A saved image is missing or too large')
-    const bytes = new Uint8Array(await source.arrayBuffer())
-    const contentType = imageType(bytes, extension)
-    if (!contentType || await sha256Hex(bytes) !== digest) throw unavailable('A saved image does not match its content address')
-    total += bytes.byteLength
-    if (total > MEDIA_TOTAL_LIMIT_BYTES) throw unavailable('Saved images exceed the publication limit')
-    await retain(input.bucket, key, bytes, digest, contentType)
-    images.push({ bytes: bytes.byteLength, contentType, key, sha256: digest })
-  }
+  const content = await materializeRuntimeContent(input.bucket, input.scope, checkpoint.digest, manifest)
 
   const { digest, release } = await verifyNativeAstroRuntimeRelease({
     delivery: 'runtime',
     environment: input.environment,
-    images,
-    redirects: redirectsOf(manifest),
+    images: content.images,
+    redirects: content.redirects,
     renderer: input.renderer,
     schemaVersion: 1,
     scope: input.scope,
-    snapshot: { bytes: body.byteLength, contentType: SNAPSHOT_TYPE, key: snapshotKey, sha256: checkpoint.digest },
+    snapshot: content.snapshot,
     versionDigest: checkpoint.digest,
     versionId: input.versionId
   }).catch((error: unknown) => {
     throw error instanceof PageStudioPublishingError ? error : unavailable('Runtime release failed verification')
   })
   return { digest, release, releaseMetadata: checkpoint.releaseMetadata }
+}
+
+export interface RuntimeDraft extends RuntimeContent {
+  checkpointId: string
+  scope: PageStudioPublishingScope
+  versionDigest: string
+}
+
+const DRAFT_INDEX_LIMIT_BYTES = 256 * 1024
+
+/**
+ * Resolves the runtime content of one saved (unapproved) checkpoint for private
+ * preview. The first preview materialises it and records a small index keyed by
+ * digest; later requests read only the index. The renderer still verifies the
+ * snapshot bytes against the digest on every read, so a stale or edited index
+ * cannot substitute content.
+ */
+export async function resolveRuntimeDraft(input: {
+  bucket: RuntimeContentBucket
+  checkpointId: string
+  digest: string
+  objectKey: string
+  scope: PageStudioPublishingScope
+}, dependencies: { loadCheckpoint?: typeof loadPageStudioCheckpoint } = {}): Promise<RuntimeDraft> {
+  const prefix = nativeAstroRuntimeContentPrefix(input.scope)
+  const indexKey = `${prefix}/drafts/${input.digest}.json`
+  const expectedSnapshot = `${prefix}/versions/${input.digest}/site.json`
+  const indexed = await input.bucket.get(indexKey)
+  if (indexed && indexed.size <= DRAFT_INDEX_LIMIT_BYTES) {
+    try {
+      const content = JSON.parse(new TextDecoder().decode(await indexed.arrayBuffer())) as RuntimeContent
+      if (content.snapshot?.key === expectedSnapshot && content.snapshot.sha256 === input.digest
+        && Array.isArray(content.images) && content.images.every(image => image.key.startsWith(`${prefix}/assets/`))) {
+        return { ...content, checkpointId: input.checkpointId, scope: input.scope, versionDigest: input.digest }
+      }
+    } catch {
+      // Rebuild a malformed index below.
+    }
+  }
+  const load = dependencies.loadCheckpoint ?? loadPageStudioCheckpoint
+  const checkpoint = await load({
+    bucket: input.bucket,
+    checkpointId: input.checkpointId,
+    digests: [input.digest],
+    objectKey: input.objectKey,
+    scope: input.scope
+  })
+  const content = await materializeRuntimeContent(input.bucket, input.scope, input.digest, checkpoint.manifest as Record<string, unknown>)
+  await input.bucket.put(indexKey, new TextEncoder().encode(JSON.stringify(content)), { httpMetadata: { contentType: SNAPSHOT_TYPE } })
+  return { ...content, checkpointId: input.checkpointId, scope: input.scope, versionDigest: input.digest }
 }
