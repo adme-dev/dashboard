@@ -349,3 +349,51 @@ export interface BuilderGraphReleaseRecoveryProof {
 export declare function verifyBuilderReleaseRecovery(
   raw: unknown
 ): Promise<BuilderGraphReleaseRecoveryProof>;
+export interface NativeAstroRuntimeFile {
+  bytes: number;
+  contentType: string;
+  key: string;
+  sha256: string;
+}
+export interface NativeAstroRuntimeRelease {
+  delivery: "runtime";
+  environment: "staging" | "production";
+  images: NativeAstroRuntimeFile[];
+  redirects: Record<
+    string,
+    {
+      status: 308;
+      target: string;
+    }
+  >;
+  renderer: {
+    assetsDigest: string;
+    codeDigest: string;
+    generation: string;
+    name: "astro-runtime";
+  };
+  schemaVersion: 1;
+  scope: {
+    clientId: string;
+    siteId: string;
+    tenantId: string;
+  };
+  snapshot: NativeAstroRuntimeFile & {
+    contentType: "application/json; charset=utf-8";
+  };
+  versionDigest: string;
+  versionId: string;
+}
+/** Native runtime publication (ADR-005): the Dashboard verifies a runtime release
+ * with the same contract the renderer enforces and records its identity digest. */
+export declare function verifyNativeAstroRuntimeRelease(
+  candidate: unknown
+): Promise<{
+  digest: string;
+  release: NativeAstroRuntimeRelease;
+}>;
+export declare function nativeAstroRuntimeContentPrefix(scope: {
+  clientId: string;
+  siteId: string;
+  tenantId: string;
+}): string;

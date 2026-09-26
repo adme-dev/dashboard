@@ -3,6 +3,7 @@ import { watch } from 'vue'
 import { openPageStudioCandidatePreview } from '~~/app/utils/pageStudioCandidatePreview'
 import { domainReady, launchReadiness, type PageStudioLaunchState, type LaunchReadinessItem } from '~~/shared/pageStudio/launchReadiness'
 import type { PageStudioEmailState } from '~~/shared/pageStudio/emailConfiguration'
+import type { PageStudioRuntimeState as RuntimeState } from '~~/shared/pageStudio/runtimeState'
 
 interface SiteSummary {
   clientId?: string
@@ -84,6 +85,8 @@ interface PublishCandidate {
   prepared: CandidateResponse | null
 }
 const publishCandidate = ref<PublishCandidate | null>(null)
+const { data: runtimeState, refresh: refreshRuntime } = await useFetch<RuntimeState>(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/runtime-state`)
+const runtimeMode = computed(() => runtimeState.value?.deliveryMode === 'runtime')
 const { data: launchData, status: launchStatus, error: launchError, refresh: refreshLaunch } = await useFetch<PageStudioLaunchState>(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/launch-state`)
 const { data: emailData, error: emailError, refresh: refreshEmail } = await useFetch<PageStudioEmailState>(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/email`)
 
@@ -350,6 +353,14 @@ async function publishApprovedVersion() {
     <UTabs v-model="selectedTab" :items="tabs" class="w-full">
       <template #overview>
         <div class="grid grid-cols-1 gap-4 pt-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
+          <PageStudioRuntimePublishingPanel
+            v-if="runtimeMode && runtimeState"
+            class="min-w-0 lg:col-span-2"
+            :site-id="siteId"
+            :state="runtimeState"
+            :production-hostname="productionDomain?.hostname ?? null"
+            @changed="refreshRuntime(); refreshLaunch()"
+          />
           <UCard>
             <template #header>
               <h2 class="font-semibold text-highlighted">
@@ -456,11 +467,20 @@ async function publishApprovedVersion() {
               <UButton
                 label="Publish approved version"
                 icon="i-lucide-rocket"
-                :disabled="!canPublish"
+                :disabled="!canPublish || runtimeMode"
                 @click="openPublishModal"
               />
             </div>
           </template>
+          <UAlert
+            v-if="runtimeMode"
+            class="mb-4"
+            title="This website uses instant publishing"
+            description="Publish and restore versions from Overview. Builds here are not used for this website."
+            color="info"
+            variant="subtle"
+            icon="i-lucide-zap"
+          />
           <UAlert
             v-if="!approvedReview?.versionId"
             title="Approval required"

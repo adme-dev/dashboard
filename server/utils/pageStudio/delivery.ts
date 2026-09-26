@@ -1,6 +1,8 @@
 import type { H3Event } from 'h3'
 import { z } from 'zod'
-import type { AstroCompilerReleaseReceipt } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
+import { verifyNativeAstroRuntimeRelease, type AstroCompilerReleaseReceipt } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
+import type { PageStudioRuntimeReleasePointer } from './runtimePublishing'
+import { resolveRuntimeDraft, type RuntimeContentBucket, type RuntimeDraft } from './runtimeReleases'
 import { mapPageStudioReleasePointer, type PageStudioBuildPointerRow } from './releasePointers'
 
 import { queryOne } from '~~/server/utils/db'
@@ -41,6 +43,8 @@ interface PreviewReleaseRow extends ReleaseRowBase {
 interface PublicReleaseRow extends ReleaseRowBase {
   client_id: string
   environment: 'staging' | 'production'
+  runtime_release?: unknown
+  runtime_release_digest?: string | null
   site_id: string
   tenant_id: string
 }
@@ -147,10 +151,15 @@ interface ResolvePageStudioReleaseHostDependencies {
   queryOne?: PageStudioDeliveryQueryOne
 }
 
+export interface ResolvedPageStudioRuntimeRelease {
+  hostname: string
+  release: PageStudioRuntimeReleasePointer
+}
+
 export async function resolvePageStudioReleaseHost(
   hostnameInput: string,
   dependencies: ResolvePageStudioReleaseHostDependencies = {}
-): Promise<ResolvedPageStudioRelease | null> {
+): Promise<ResolvedPageStudioRelease | ResolvedPageStudioRuntimeRelease | null> {
   const hostname = PageStudioHostnameSchema.safeParse(hostnameInput)
   if (!hostname.success) {
     throw new PageStudioDeliveryError(
@@ -174,7 +183,9 @@ export async function resolvePageStudioReleaseHost(
             release.id AS release_id,
             pointer.site_id,
             pointer.tenant_id,
-            build.version_digest
+            build.version_digest,
+            release.runtime_release,
+            release.runtime_release_digest
      FROM page_studio_release_pointers pointer
      JOIN page_studio_sites site
        ON site.tenant_id = pointer.tenant_id
@@ -191,13 +202,14 @@ export async function resolvePageStudioReleaseHost(
       AND release.id = pointer.active_release_id
       AND release.environment = pointer.environment
       AND release.normalized_hostname = pointer.normalized_hostname
-     JOIN page_studio_builds build
+     LEFT JOIN page_studio_builds build
        ON build.tenant_id = release.tenant_id
       AND build.client_id = release.client_id
       AND build.site_id = release.site_id
       AND build.id = release.build_id
       AND build.state = 'succeeded'
      WHERE pointer.normalized_hostname = $1
+       AND (build.id IS NOT NULL OR (release.runtime_release IS NOT NULL AND site.delivery_mode = 'runtime'))
        AND pointer.environment IN ('staging', 'production')
        AND (
          (pointer.environment = 'staging' AND site.status IN ('draft', 'active'))
@@ -209,6 +221,22 @@ export async function resolvePageStudioReleaseHost(
     [hostname.data]
   )
   if (!row) return null
+  if (row.runtime_release) {
+    const verified = await verifyNativeAstroRuntimeRelease(row.runtime_release).catch(() => null)
+    if (!verified || verified.digest !== row.runtime_release_digest || verified.release.environment !== row.environment) {
+      throw new Error('Stored Page Studio runtime release failed verification')
+    }
+    return {
+      hostname: hostname.data,
+      release: {
+        delivery: 'runtime',
+        environment: row.environment,
+        release: verified.release,
+        releaseDigest: verified.digest,
+        releaseId: row.release_id
+      }
+    }
+  }
 
   return {
     hostname: hostname.data,
@@ -227,25 +255,14 @@ interface AuthorizePageStudioPreviewDependencies {
   queryOne?: PageStudioDeliveryQueryOne
 }
 
-export async function authorizePageStudioPreview(
-  input: { hostname: string, token: string },
-  dependencies: AuthorizePageStudioPreviewDependencies = {}
-): Promise<AuthorizedPageStudioPreview | null> {
-  const parsed = PageStudioPreviewAuthorizationSchema.safeParse(input)
-  if (!parsed.success) {
-    throw new PageStudioDeliveryError(
-      'PREVIEW_TOKEN_INVALID',
-      401,
-      'Page Studio preview credential is invalid'
-    )
-  }
+async function verifyPreviewClaims(token: string, dependencies: AuthorizePageStudioPreviewDependencies) {
   const environment = dependencies.publicKey && dependencies.issuer
     ? { issuer: dependencies.issuer, publicKey: dependencies.publicKey }
     : resolvePageStudioPreviewVerificationEnvironment(dependencies.event)
   let claims
   try {
     claims = await verifyPageStudioSessionToken(
-      parsed.data.token,
+      token,
       environment.publicKey,
       environment.issuer,
       dependencies.currentDate
@@ -275,6 +292,23 @@ export async function authorizePageStudioPreview(
   const permission = claims.role === 'agency' && claims.capabilities.length === 1
     ? 'PAGE_STUDIO_PUBLISH'
     : 'PAGE_STUDIO_EDIT'
+
+  return { claims, permission }
+}
+
+export async function authorizePageStudioPreview(
+  input: { hostname: string, token: string },
+  dependencies: AuthorizePageStudioPreviewDependencies = {}
+): Promise<AuthorizedPageStudioPreview | null> {
+  const parsed = PageStudioPreviewAuthorizationSchema.safeParse(input)
+  if (!parsed.success) {
+    throw new PageStudioDeliveryError(
+      'PREVIEW_TOKEN_INVALID',
+      401,
+      'Page Studio preview credential is invalid'
+    )
+  }
+  const { claims, permission } = await verifyPreviewClaims(parsed.data.token, dependencies)
 
   const findOne = dependencies.queryOne ?? queryOne as PageStudioDeliveryQueryOne
   const row = await findOne<PreviewReleaseRow>(
@@ -354,4 +388,104 @@ export async function authorizePageStudioPreview(
       environment: 'preview'
     }
   }
+}
+
+export interface AuthorizedPageStudioRuntimeDraft {
+  draft: RuntimeDraft
+  hostname: string
+}
+
+/** Private runtime drafts are served on `draft-<site id hex>.<preview suffix>`. */
+export function pageStudioRuntimeDraftHostname(siteId: string, previewSuffix: string): string {
+  return `draft-${siteId.replaceAll('-', '').toLowerCase()}.${previewSuffix}`
+}
+
+interface RuntimeDraftRow {
+  checkpoint_digest: string
+  checkpoint_id: string
+  object_key: string
+}
+
+/**
+ * Authorizes a private preview of the site's current saved checkpoint for a
+ * runtime-delivery site. Same credential, login, role, permission and
+ * entitlement checks as build previews, re-evaluated on every request; the
+ * hostname must be this site's draft host. Never selects a published release.
+ */
+export async function authorizePageStudioRuntimeDraftPreview(
+  input: { hostname: string, token: string },
+  dependencies: AuthorizePageStudioPreviewDependencies & {
+    bucket?: RuntimeContentBucket
+    previewSuffix?: string
+    resolveDraft?: typeof resolveRuntimeDraft
+  } = {}
+): Promise<AuthorizedPageStudioRuntimeDraft | null> {
+  const parsed = PageStudioPreviewAuthorizationSchema.safeParse(input)
+  if (!parsed.success) {
+    throw new PageStudioDeliveryError('PREVIEW_TOKEN_INVALID', 401, 'Page Studio preview credential is invalid')
+  }
+  const env = (dependencies.event?.context as CloudflareContext | undefined)?.cloudflare?.env
+  const suffix = dependencies.previewSuffix ?? env?.PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME
+  const bucket = dependencies.bucket ?? env?.PAGE_STUDIO_CHECKPOINTS as RuntimeContentBucket | undefined
+  if (typeof suffix !== 'string' || !suffix || !bucket) {
+    throw new PageStudioDeliveryError('PREVIEW_VERIFIER_UNAVAILABLE', 503, 'Page Studio runtime preview is not configured')
+  }
+  const { claims, permission } = await verifyPreviewClaims(parsed.data.token, dependencies)
+  if (parsed.data.hostname !== pageStudioRuntimeDraftHostname(claims.siteId, suffix)) return null
+
+  const findOne = dependencies.queryOne ?? queryOne as PageStudioDeliveryQueryOne
+  const row = await findOne<RuntimeDraftRow>(
+    `SELECT checkpoint.id AS checkpoint_id, checkpoint.digest AS checkpoint_digest, checkpoint.object_key
+     FROM page_studio_sessions session
+     JOIN page_studio_sites site
+       ON site.tenant_id = session.tenant_id
+      AND site.client_id = session.client_id
+      AND site.id = session.site_id
+     JOIN page_studio_login_sessions login ON login.role=session.role
+       AND login.token_hash=session.login_session_hash AND login.user_id=session.user_id
+       AND login.revoked_at IS NULL AND login.issued_at<=NOW() AND login.expires_at>NOW()
+     ${pageStudioAuthorityOwnerJoin(claims.role === 'agency', 'session', 'NOW()', permission)}
+     ${pageStudioEditorEntitlementJoin('NOW()')}
+     JOIN page_studio_checkpoints checkpoint
+       ON checkpoint.tenant_id = site.tenant_id
+      AND checkpoint.client_id = site.client_id
+      AND checkpoint.site_id = site.id
+      AND checkpoint.id = site.current_checkpoint_id
+     WHERE session.nonce = $1
+       AND session.tenant_id = $2
+       AND session.client_id = $3::uuid
+       AND session.site_id = $4::uuid
+       AND session.user_id = $5
+       AND session.role = $6
+       AND session.capabilities = $7::jsonb
+       AND session.issued_at = to_timestamp($8)
+       AND session.expires_at = to_timestamp($9)
+       AND session.revoked_at IS NULL
+       AND session.expires_at > NOW()
+       AND site.status IN ('draft', 'active')
+       AND site.delivery_mode = 'runtime'
+       AND entitlement.status IN ('trial', 'active')
+       AND entitlement.effective_from <= NOW()
+       AND (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())`,
+    [
+      claims.nonce,
+      claims.tenantId,
+      claims.clientId,
+      claims.siteId,
+      claims.userId,
+      claims.role,
+      JSON.stringify(claims.capabilities),
+      claims.issuedAt,
+      claims.expiresAt
+    ]
+  )
+  if (!row) return null
+  const draft = await (dependencies.resolveDraft ?? resolveRuntimeDraft)({
+    bucket,
+    checkpointId: row.checkpoint_id,
+    digest: row.checkpoint_digest,
+    objectKey: row.object_key,
+    scope: { clientId: claims.clientId, siteId: claims.siteId, tenantId: claims.tenantId }
+  })
+  return { draft, hostname: parsed.data.hostname }
 }

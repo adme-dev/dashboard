@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import {
   authorizePageStudioPreview,
+  authorizePageStudioRuntimeDraftPreview,
   PageStudioHostnameSchema
 } from '~~/server/utils/pageStudio/delivery'
 import { pageStudioInternalHttpError } from '~~/server/utils/pageStudio/http'
@@ -28,10 +29,10 @@ export default eventHandler(async (event) => {
         }
       })
     }
-    const authorized = await authorizePageStudioPreview({
-      hostname: body.data.hostname,
-      token
-    }, { event })
+    // Runtime draft hosts are `draft-<site>` names; everything else is a build preview.
+    const authorized = body.data.hostname.startsWith('draft-')
+      ? await authorizePageStudioRuntimeDraftPreview({ hostname: body.data.hostname, token }, { event })
+      : await authorizePageStudioPreview({ hostname: body.data.hostname, token }, { event })
     if (!authorized) {
       throw createError({
         statusCode: 404,

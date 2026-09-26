@@ -26,8 +26,8 @@ const API_INVENTORY = {
   // it adds one POST without any God mode bypass or user-role gate.
   // Astro candidate POST delegates native publish permission, scoped site and
   // fresh login authority; it adds one mutation without a God mode bypass.
-  totalRouteFiles: 2162,
-  mutationRouteFiles: 1186,
+  totalRouteFiles: 2166,
+  mutationRouteFiles: 1189,
   explicitlyGuardedMutationFiles: 401,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -66,8 +66,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2162,
-      mutationRouteFiles: 1186,
+      totalRouteFiles: 2166,
+      mutationRouteFiles: 1189,
       explicitlyGuardedMutationFiles: 401,
       guardedMutationFilesWithTransactionCall: 47
     })
