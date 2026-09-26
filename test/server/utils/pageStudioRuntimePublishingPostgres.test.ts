@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { resolvePageStudioReleaseHost } from '~~/server/utils/pageStudio/delivery'
+import { readPageStudioRuntimeState } from '~~/server/utils/pageStudio/runtimeState'
 import { activatePageStudioRuntimeRelease, rollbackPageStudioRuntimeRelease } from '~~/server/utils/pageStudio/runtimePublishing'
 import type { PreparedRuntimeRelease } from '~~/server/utils/pageStudio/runtimeReleases'
 import { verifyNativeAstroRuntimeRelease } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
@@ -159,5 +160,20 @@ describe.runIf(Boolean(url))('runtime publication transactions on PostgreSQL', (
     expect(resolved).toEqual({ hostname, release: published })
     await db.query('UPDATE page_studio_sites SET delivery_mode=\'static\'')
     expect(await resolvePageStudioReleaseHost(hostname, { queryOne })).toBeNull()
+  })
+
+  it('reports draft, approved and live runtime versions for the publishing UI', async () => {
+    const one = (async (sql: string, params?: unknown[]) => (await db.query(sql, params)).rows[0] ?? null) as never
+    const many = (async (sql: string, params?: unknown[]) => (await db.query(sql, params)).rows) as never
+    const v1 = await version('one')
+    await db.query('UPDATE page_studio_sites SET current_checkpoint_id=(SELECT checkpoint_id FROM page_studio_versions WHERE id=$1)', [v1.release.versionId])
+    const env = { PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME: 'preview.example', PAGE_STUDIO_RUNTIME_RENDERER: '{}' }
+    const before = await readPageStudioRuntimeState(scope, env, { queryOne: one, queryRows: many })
+    expect(before).toMatchObject({ approved: { live: false, versionId: v1.release.versionId }, deliveryMode: 'runtime', releases: [], rendererConfigured: true })
+    expect(before.draft?.previewHostname).toBe(`draft-${scope.siteId.replaceAll('-', '')}.preview.example`)
+    const published = await activate(v1, null)
+    const after = await readPageStudioRuntimeState(scope, env, { queryOne: one, queryRows: many })
+    expect(after.approved?.live).toBe(true)
+    expect(after.releases).toEqual([expect.objectContaining({ active: true, releaseId: published.releaseId, renderer: 'renderer_one', versionId: v1.release.versionId })])
   })
 })
