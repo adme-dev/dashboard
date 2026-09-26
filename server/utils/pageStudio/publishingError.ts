@@ -10,6 +10,9 @@ export class PageStudioPublishingError extends Error {
       | 'RELEASE_RECORD_INVALID'
       | 'RELEASE_WORKER_UNAVAILABLE'
       | 'ROLLBACK_TARGET_INVALID'
+      | 'RUNTIME_CONTENT_UNAVAILABLE'
+      | 'RUNTIME_DELIVERY_DISABLED'
+      | 'RUNTIME_RENDERER_UNAVAILABLE'
       | 'SITE_NOT_PUBLISHABLE',
     readonly statusCode: number,
     message: string

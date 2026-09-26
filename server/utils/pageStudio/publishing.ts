@@ -141,7 +141,7 @@ function activationMatches(row: ExistingActivationRow, input: PageStudioActivate
     && row.normalized_hostname === input.hostname
 }
 
-async function requireScopedSiteForPublishing(
+export async function requireScopedSiteForPublishing(
   db: PageStudioPublishingQueryClient,
   scope: PageStudioPublishingScope
 ): Promise<void> {
@@ -168,7 +168,7 @@ async function requireScopedSiteForPublishing(
   }
 }
 
-async function lockReleasePointer(
+export async function lockReleasePointer(
   db: PageStudioPublishingQueryClient,
   input: {
     environment: 'staging' | 'production'
@@ -203,7 +203,7 @@ async function lockReleasePointer(
   return pointer
 }
 
-function nullableActorUuid(actorId: string): string | null {
+export function nullableActorUuid(actorId: string): string | null {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(actorId)
     ? actorId

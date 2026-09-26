@@ -6098,6 +6098,83 @@ async function verifyAstroReleasePointer(candidate) {
   return pointer2;
 }
 
+// packages/protocol/src/astro-runtime-release.ts
+var RUNTIME_SNAPSHOT_LIMIT_BYTES = 8 * 1024 * 1024;
+var RUNTIME_MEDIA_LIMIT_BYTES = 128 * 1024 * 1024;
+var IMAGE = /^assets\/([a-f0-9]{64})\.(?:png|jpe?g|gif|webp)$/;
+var AstroRuntimeRendererSchema = object({
+  assetsDigest: ReleaseSha256Schema,
+  codeDigest: ReleaseSha256Schema,
+  generation: ReleaseScopedIdSchema,
+  name: literal("astro-runtime"),
+}).strict();
+var AstroRuntimeSnapshotReferenceSchema = object({
+  scope: ReleaseArtifactScopeSchema,
+  snapshot: ReleaseArtifactFileSchema.extend({
+    bytes: number2().int().positive().max(RUNTIME_SNAPSHOT_LIMIT_BYTES),
+    contentType: literal("application/json; charset=utf-8"),
+  }).strict(),
+  versionDigest: ReleaseSha256Schema,
+  versionId: ReleaseScopedIdSchema,
+}).strict();
+var AstroRuntimeReleaseSchema = AstroRuntimeSnapshotReferenceSchema.extend({
+  delivery: literal("runtime"),
+  // Private preview reads authorized drafts directly; only review and live
+  // publications become release references.
+  environment: _enum(["staging", "production"]),
+  images: array(ReleaseArtifactFileSchema).max(512),
+  redirects: ReleaseArtifactManifestV2Schema.shape.redirects,
+  renderer: AstroRuntimeRendererSchema,
+  schemaVersion: literal(1),
+}).strict();
+function runtimeContentPrefix(scope) {
+  return `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}/runtime`;
+}
+function assertSnapshotIdentity(reference) {
+  if (
+    reference.snapshot.sha256 !== reference.versionDigest ||
+    reference.snapshot.key !==
+      `${runtimeContentPrefix(reference.scope)}/versions/${reference.versionDigest}/site.json`
+  ) {
+    throw new Error("Astro runtime release version identity mismatch");
+  }
+}
+async function verifyAstroRuntimeRelease(candidate) {
+  const release = AstroRuntimeReleaseSchema.parse(candidate);
+  assertSnapshotIdentity(release);
+  const prefix = runtimeContentPrefix(release.scope);
+  const keys = /* @__PURE__ */ new Set();
+  let bytes = 0;
+  for (const image of release.images) {
+    const relative = image.key.startsWith(`${prefix}/`)
+      ? image.key.slice(prefix.length + 1)
+      : "";
+    const match = IMAGE.exec(relative);
+    if (!match || match[1] !== image.sha256 || keys.has(image.key)) {
+      throw new Error("Astro runtime release media inventory mismatch");
+    }
+    keys.add(image.key);
+    bytes += image.bytes;
+  }
+  if (bytes > RUNTIME_MEDIA_LIMIT_BYTES) {
+    throw new Error("Astro runtime release media exceeds limit");
+  }
+  for (const [from, redirect] of Object.entries(release.redirects)) {
+    if (
+      redirect.target === from ||
+      Object.hasOwn(release.redirects, redirect.target)
+    ) {
+      throw new Error("Astro runtime release redirect mismatch");
+    }
+  }
+  return release;
+}
+async function runtimeReleaseDigest(candidate) {
+  return await sha256Hex(
+    canonicalJson(await verifyAstroRuntimeRelease(candidate))
+  );
+}
+
 // packages/protocol/src/industry.ts
 var SiteTemplateIdSchema = _enum([
   "limousine-v1",
@@ -10918,10 +10995,18 @@ async function verifyBuilderReleaseRecovery(raw) {
     };
   });
 }
+async function verifyNativeAstroRuntimeRelease(candidate) {
+  const release = await verifyAstroRuntimeRelease(candidate);
+  return { digest: await runtimeReleaseDigest(release), release };
+}
+function nativeAstroRuntimeContentPrefix(scope) {
+  return runtimeContentPrefix(scope);
+}
 export {
   BuilderGraphVerificationError,
   createAstroCompilerBuildIdentity,
   inspectBuilderActionEffectTargets,
+  nativeAstroRuntimeContentPrefix,
   parseBuilderActionRuntimeResultJson,
   parseBuilderArtifactJson,
   projectBuilderActionRecord,
@@ -10937,4 +11022,5 @@ export {
   verifyBuilderFormActionDescriptor,
   verifyBuilderPublishedFormInput,
   verifyBuilderReleaseRecovery,
+  verifyNativeAstroRuntimeRelease,
 };
