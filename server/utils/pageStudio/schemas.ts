@@ -44,6 +44,13 @@ export const PageStudioReleaseActivationBody = z.object({
   hostname: PageStudioReleaseHostname
 }).strict()
 
+export const PageStudioRuntimeReleaseActivationBody = z.object({
+  environment: PageStudioReleaseEnvironment,
+  expectedActiveReleaseId: PageStudioScopedId.nullable(),
+  hostname: PageStudioReleaseHostname,
+  versionId: z.string().uuid()
+}).strict()
+
 export const PageStudioReleaseRollbackBody = z.object({
   environment: PageStudioReleaseEnvironment,
   expectedActiveReleaseId: PageStudioScopedId,
