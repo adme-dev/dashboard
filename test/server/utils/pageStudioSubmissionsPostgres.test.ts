@@ -90,9 +90,9 @@ describe.runIf(Boolean(databaseUrl))('public intake receipts and fresh authority
     pool = new pg.Pool({ connectionString: databaseUrl, max: 4, options: `-c search_path=${schema},public` })
     await client.query(`
       CREATE TABLE agency_clients (id text PRIMARY KEY, is_active boolean);
-      CREATE TABLE page_studio_sites (tenant_id text, client_id text, id text, entitlement_id text, current_release_id text, status text, integrations jsonb);
+      CREATE TABLE page_studio_sites (tenant_id text, client_id text, id text, entitlement_id text, current_release_id text, status text, integrations jsonb, delivery_mode text NOT NULL DEFAULT 'static');
       CREATE TABLE page_studio_entitlements (tenant_id text, client_id text, id text, status text, effective_from timestamptz, effective_until timestamptz);
-      CREATE TABLE page_studio_releases (tenant_id text, client_id text, site_id text, id text, build_id text, environment text);
+      CREATE TABLE page_studio_releases (tenant_id text, client_id text, site_id text, id text, build_id text, environment text, runtime_release jsonb, runtime_release_digest text, runtime_version_digest text);
       CREATE TABLE page_studio_builds (tenant_id text, client_id text, site_id text, id text, version_digest text, state text);
       CREATE TABLE page_studio_release_pointers (tenant_id text, client_id text, site_id text, environment text, active_release_id text);
       CREATE TABLE page_studio_analytics_events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id text, client_id text, site_id text, release_id text, version_digest text, event_id text, kind text, page_id text, page_route text, occurred_at timestamptz, idempotency_key text UNIQUE, delivery_status text, canonical_event_id text, updated_at timestamptz);
