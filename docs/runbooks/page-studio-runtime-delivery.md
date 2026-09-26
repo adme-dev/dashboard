@@ -40,4 +40,12 @@ Dashboard repository-wide typechecking has existing errors outside this change; 
 
 ## Hosted evidence
 
-Pending rollout in this work session. No customer-domain launch is included: Fantasy Limo has no ready production domain.
+Migration434 applied and read back in production and isolated preview. Private renderers uploaded from Studio71193c2:
+
+- retained staging: `xf-astro-runtime-stg-21b84e1cde3f8be3`, Worker version `1fd83e0d-f091-495b-aba8-fbe12ae2b354`.
+- current staging: `xf-asr-stg-a71fb2968a783bc114ee9a340ff7ff60a6c74ab442d49fa3`, Worker version `87525cb5-10ed-495b-bce8-8a6b421febf3`.
+- production: `xf-asr-prod-a6a72b897cb1ddde19c975a711a37da398e7e00fbc72847a`, Worker version `1c42967c-deca-4e4f-a900-62ada79f2021`.
+
+Always pin the identity printed by the actual upload, not an earlier dry-run: Astro generates a new server-island encryption key by default on builds ([Astro documentation](https://docs.astro.build/en/guides/server-islands/)). Existing generations are retained rather than rebuilt in place.
+
+Public routing and customer canary remain pending. No customer-domain launch is included: Fantasy Limo has no ready production domain.

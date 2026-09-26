@@ -282,7 +282,7 @@ script_name = "rate-limiter-worker"
 
 [env.production.vars]
 PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
-PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"9fefa70cea4390c587e95413f1752d3642b57a7b925f999b06e700d16d2a8bee\",\"codeDigest\":\"d88e2998b168c26593b1e7b24ba592f16a1899145154755f6dd21e968b3056e3\",\"generation\":\"astro_runtime_ca23a1f9ecde4a0fa949105e0e1b09b6fffb2675f864f564f08e238767eb0c43\"}"
+PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"9fefa70cea4390c587e95413f1752d3642b57a7b925f999b06e700d16d2a8bee\",\"codeDigest\":\"69f56afe348d9adb8d6c99c517b23f2d3af8ee1f9aab3ee1d5379e3abe147bac\",\"generation\":\"astro_runtime_a6a72b897cb1ddde19c975a711a37da398e7e00fbc72847a2b92ea30e8d43ac6\"}"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = "https://studio.xeroflow.io"
@@ -406,7 +406,7 @@ PAGE_STUDIO_CONTENT_ENVIRONMENT = "staging"
 PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST = "6f21c0f378844618bde29d8eebb81bed0c1966ac086d2028dc4427730c5b9bce"
 PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST = "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a"
 # Astro runtime renderer identity from the verified 2026-09-27 Studio dry run.
-PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"9fefa70cea4390c587e95413f1752d3642b57a7b925f999b06e700d16d2a8bee\",\"codeDigest\":\"1530ac1a043aad96c8f0643e9313a764427456c68fb27291d28ab70597f55167\",\"generation\":\"astro_runtime_311117120091d29d3bd580643c3e717369576de48923ba4754390b9dea3d5767\"}"
+PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"9fefa70cea4390c587e95413f1752d3642b57a7b925f999b06e700d16d2a8bee\",\"codeDigest\":\"5ffef55d9ee89fa9ede4d0cd1db2667e2cdd3af8844ab519737076f9bfbf3dc3\",\"generation\":\"astro_runtime_a71fb2968a783bc114ee9a340ff7ff60a6c74ab442d49fa360464b5f4fac2f27\"}"
 PAGE_STUDIO_STAGING_TENANT_ID = "page-studio-staging"
 
 # ============================================
