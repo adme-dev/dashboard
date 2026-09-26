@@ -177,6 +177,17 @@ describe.runIf(Boolean(url))('runtime publication transactions on PostgreSQL', (
     expect(await state()).toEqual(before)
   })
 
+  it('directs repeated publication to the retained release without a database error', async () => {
+    const v1 = await version('retained-one')
+    const v2 = await version('retained-two')
+    const first = await activate(v1, null)
+    const second = await activate(v2, first.releaseId)
+    const before = await state()
+    await expect(activate(v1, second.releaseId)).rejects.toMatchObject({ code: 'RELEASE_ALREADY_EXISTS', statusCode: 409 })
+    expect(await state()).toEqual(before)
+    await expect(activate(v2, second.releaseId)).rejects.toMatchObject({ code: 'RELEASE_ALREADY_EXISTS', statusCode: 409 })
+  })
+
   it('refuses unapproved versions, static sites and mismatched scope', async () => {
     const rejected = await version('rejected', 'rejected')
     await expect(activate(rejected, null)).rejects.toMatchObject({ code: 'BUILD_NOT_PUBLISHABLE' })
