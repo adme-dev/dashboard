@@ -348,7 +348,13 @@ async function publishApprovedVersion() {
       </div>
     </div>
 
-    <PageStudioStagingWorkspace :key="siteId" :site-id="siteId" audience="agency" />
+    <PageStudioRuntimeStagingWorkspace v-if="runtimeMode" :key="`runtime-${siteId}`" :site-id="siteId" />
+    <PageStudioStagingWorkspace
+      v-else
+      :key="siteId"
+      :site-id="siteId"
+      audience="agency"
+    />
 
     <UTabs v-model="selectedTab" :items="tabs" class="w-full">
       <template #overview>

@@ -19,7 +19,7 @@ export async function requireStagingAuthority(db: DomainDatabase, rawActor: Doma
     if (writing && !canManage) throw denied()
   }
   const result = await db.query<{ tenantId: string, clientId: string, siteId: string, canManage: boolean }>(`SELECT site.tenant_id AS "tenantId",site.client_id::text AS "clientId",site.id::text AS "siteId",
-    ${actor.kind === 'portal' ? `(portal_user.role IN ('admin','manager') AND membership.role='editor')` : '$4::boolean'} AS "canManage"
+    (site.delivery_mode='static' AND ${actor.kind === 'portal' ? `(portal_user.role IN ('admin','manager') AND membership.role='editor')` : '$4::boolean'}) AS "canManage"
     FROM page_studio_sites site
     JOIN agency_clients client ON client.id=site.client_id AND client.is_active=TRUE
     JOIN page_studio_entitlements entitlement ON entitlement.id=site.entitlement_id AND entitlement.tenant_id=site.tenant_id

@@ -281,6 +281,8 @@ class_name = "RateLimiter"
 script_name = "rate-limiter-worker"
 
 [env.production.vars]
+PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
+PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"9fefa70cea4390c587e95413f1752d3642b57a7b925f999b06e700d16d2a8bee\",\"codeDigest\":\"d88e2998b168c26593b1e7b24ba592f16a1899145154755f6dd21e968b3056e3\",\"generation\":\"astro_runtime_ca23a1f9ecde4a0fa949105e0e1b09b6fffb2675f864f564f08e238767eb0c43\"}"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = "https://studio.xeroflow.io"
@@ -371,6 +373,9 @@ binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
+PAGE_STUDIO_RUNTIME_STAGING_CANARY = "{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\",\"hostname\":\"page-studio-staging.xeroflow.io\"}"
+PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
+PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS = "astro_runtime_21b84e1cde3f8be3"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = "https://studio-staging.xeroflow.io"
@@ -400,8 +405,8 @@ PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "staging"
 PAGE_STUDIO_CONTENT_ENVIRONMENT = "staging"
 PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST = "6f21c0f378844618bde29d8eebb81bed0c1966ac086d2028dc4427730c5b9bce"
 PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST = "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a"
-# Astro runtime renderer deployed to staging on 2026-09-26 (Studio deploy:staging output).
-PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"9fefa70cea4390c587e95413f1752d3642b57a7b925f999b06e700d16d2a8bee\",\"codeDigest\":\"21b84e1cde3f8be381b590d4d46057bd865e7f97c4c5f8cdb1168a6bd4ec8fc1\",\"generation\":\"astro_runtime_21b84e1cde3f8be3\"}"
+# Astro runtime renderer identity from the verified 2026-09-27 Studio dry run.
+PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"9fefa70cea4390c587e95413f1752d3642b57a7b925f999b06e700d16d2a8bee\",\"codeDigest\":\"1530ac1a043aad96c8f0643e9313a764427456c68fb27291d28ab70597f55167\",\"generation\":\"astro_runtime_311117120091d29d3bd580643c3e717369576de48923ba4754390b9dea3d5767\"}"
 PAGE_STUDIO_STAGING_TENANT_ID = "page-studio-staging"
 
 # ============================================

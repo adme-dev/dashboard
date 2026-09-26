@@ -1,56 +1,43 @@
-# Page Studio runtime delivery — rollout runbook
+# Page Studio Astro runtime delivery
 
-Status 2026-09-26: proven on staging, not in production. Design: Studio ADR-005.
+Status 27 September 2026: customer completion implemented and locally verified; hosted rollout evidence is recorded below as each deployment passes.
 
-## What exists
+## Save, preview, staging and production
 
-- Migration 433 (`delivery_mode` per site, runtime releases) is applied to production and to the
-  preview branch `staging/page-studio`. Every site is `static` until flipped.
-- Routes: `POST sites/{id}/runtime-releases/activate`, `POST .../runtime-releases/rollback`,
-  `GET .../runtime-state`, `POST .../runtime-preview`. Permission `PAGE_STUDIO_PUBLISH`.
-- Preview Dashboard pins the staging renderer in `[env.preview.vars] PAGE_STUDIO_RUNTIME_RENDERER`
-  (double-quoted TOML string; the bindings test parser rejects single quotes).
-- Staging Workers (Studio repo): runtime `xeroflow-page-studio-runtime-staging` (no routes, secret
-  `RUNTIME_SHARED_SECRET`), delivery `xeroflow-page-studio-delivery-staging` with `ASTRO_RUNTIME`.
+Save retains the private checkpoint. It does not build or publish a runtime site. An authenticated draft preview renders that checkpoint through the same Astro components used for published pages. Publication requires the exact saved version and latest approval, then atomically changes an immutable release pointer. Rollback changes that pointer and preserves newer private edits. Migration 434 fixes the previous site-metadata trigger which could overwrite those edits.
 
-## Staging canary record
+Production infrastructure can publish a shared staging release backed by its own database and R2 bucket. Its hostname must match the site's ready `page_studio_staging_sites` allocation. A production release requires an owned domain with active DNS, hostname and certificate verification. Staging infrastructure cannot publish production releases. The synthetic staging canary is an explicit configured scope/hostname and requires the site's synthetic flag. All publishers serialize hostname claims across environments.
 
-Site a27135dc (tenant `page-studio-staging`, synthetic) on `page-studio-staging.xeroflow.io`:
-runtime release 25f19d1b published, d9a3e8a1 published, rollback to 25f19d1b verified live.
+Runtime staging and draft previews omit analytics and canonical production URLs and reject form POSTs. Production forms load a bounded public projection from the exact retained release through a private renderer binding, then reuse consent, origin, field validation, throttling and idempotency checks. Native intake verifies the active production pointer independently of later staging updates. Generated custom action code remains separately gated.
 
-## Production rollout (each step needs an explicit go-ahead)
+## Deployment identities and routes
 
-1. Studio: `pnpm --dir services/astro-runtime deploy:production --secrets-file <file>` with a fresh
-   64-hex `RUNTIME_SHARED_SECRET`; record the printed `PAGE_STUDIO_RUNTIME_RENDERER`.
-2. Studio: add `ASTRO_RUNTIME` → `xeroflow-page-studio-runtime` to the delivery worker's production
-   `services`, update `test/security/staging-configuration.test.ts` if it pins production bindings,
-   `wrangler secret put RUNTIME_SHARED_SECRET` (same value), `pnpm deploy:production:delivery-worker`.
-3. Dashboard: set `PAGE_STUDIO_RUNTIME_RENDERER` in `[env.production.vars]`, merge, `pnpm deploy:production`.
-4. Flip one site: `UPDATE page_studio_sites SET delivery_mode='runtime' WHERE id=…` (Save stops queuing
-   static staging builds for that site from this moment). Publish through the panel or the route.
-5. Rollback options: `runtime-releases/rollback` to an earlier runtime release; the static
-   `releases/rollback` to the last static release; or `delivery_mode='static'`.
+Renderer Worker names derive from server code, browser assets and runtime configuration. Delivery selects an exact retained renderer identity for older releases. Keep referenced generations, assets and content until their rollback retention expires. Runtime Workers have no public route and require the shared delivery secret.
 
-## Known gaps
+- Production private draft: `draft-<site UUID without hyphens>.xeroflowpages.com`.
+- Staging private draft: `draft-<site UUID without hyphens>-staging.xeroflowpages.com`.
+- Shared customer staging retains `preview-<site UUID without hyphens>.xeroflow.io`.
+- Wildcard DNS and TLS cover one subdomain level on `xeroflowpages.com`; production's wildcard route is overridden by the more specific `*-staging` route. Existing `publish.xeroflowpages.com` keeps its more specific route.
 
-- Publishing panel and `runtime-state` are production-environment-only.
-- Draft-preview hostnames `*.preview(.staging).pages.xeroflow.com` have no DNS or Worker route.
-- Runtime sites have no public form submission endpoint yet.
-- Pages Worker bundle is ~830 KiB under the 25 MiB ceiling.
-- `wrangler r2 object` defaults to local storage here; use `--remote`.
+See [Cloudflare route precedence](https://developers.cloudflare.com/workers/configuration/routing/routes/) and [Astro Cloudflare integration](https://docs.astro.build/en/guides/integrations-guide/cloudflare/). Astro renders on demand; component or renderer code changes deploy platform code, while ordinary content publication changes data only.
 
-## Follow-ups recorded 2026-09-26 (evening)
+## Release sequence
 
-1. Production rollout (steps above) — not started; do it in a fresh session, one deploy at a time.
-2. Draft-preview DNS/route for `draft-*.preview(.staging).pages.xeroflow.com` — this is the cheapest
-   way to give editors a faithful "what it will look like" view (published template rendering of the
-   saved draft), instead of relying on the canvas.
-3. Editor canvas vs published template (Fantasy Limo report, 26 Sep): both the editor and client
-   staging were on the same checkpoint `checkpoint_32559c00…` (digest 4a87de62…). Staging renders via
-   Astro (shadcn shell); the canvas uses the site-kit React renderer without the shell, so styling
-   differs by construction. If content differs, the running editor sandbox is stale — relaunch Studio
-   from the Dashboard before treating it as a bug.
-4. Fantasy Limo has a checkpoint-staging outbox row `pending` since 25 Sep 11:59 while a later explicit
-   deployment succeeded — check the production outbox cron (`/api/cron/page-studio-checkpoint-staging`).
-5. Runtime public forms: no submission endpoint yet; required before a site with a lead form goes live.
-6. Delete Neon test branch `br-bold-band-a4x7jcpe` (project square-tooth-23821574) once confirmed.
+1. Verify fresh main ancestry and local build, runtime tests, database regressions and review in both repositories. Batch code pushes.
+2. Apply migration 434 to production and preview branch `br-long-mountain-a4f73v10` in Neon project `square-tooth-23821574`.
+3. Deploy the retained staging artifact and both new immutable renderers with a scoped secret; deploy delivery bindings and private preview routes. Check private Workers are not publicly reachable.
+4. Deploy Page Studio management (static staging denial) and Dashboard through its guarded `pnpm deploy:*` scripts. Record exact source, Worker versions and Pages deployment IDs.
+5. Verify synthetic staging save/private preview/publication/rollback, unauthenticated denial and preserved draft.
+6. Enrol Fantasy Limo, approve the reviewed saved version and publish its staging pointer. Move only its existing preview hostname to production Delivery after the pointer is ready; preserve the previous static deployment for recovery. Verify routes, navigation, inputs and version headers.
+
+Recovery: restore a retained runtime release through the panel. Before first runtime publication, leave the existing static hostname mapping in place. If the first customer canary fails, restore its recorded static hostname mapping and delivery mode; do not replace its saved checkpoint.
+
+## Local verification
+
+Dashboard production build passes (25,367,121 raw bytes, 101,807 below guarded ceiling). 188 publication/staging tests plus 85 public form/legacy/Worker tests pass. Studio build, 43 typecheck tasks, full test suite and 186 focused runtime/delivery tests pass. Windows HTTP acceptance now uses the real loopback workerd listener while preserving RPC build/verification and R2 restart checks; no retry masks failures.
+
+Dashboard repository-wide typechecking has existing errors outside this change; the newly introduced runtime-state query narrowing was corrected. Do not describe its global typecheck as passing. Full Studio lint found only a formatting issue in the changed Vitest config, corrected before release.
+
+## Hosted evidence
+
+Pending rollout in this work session. No customer-domain launch is included: Fantasy Limo has no ready production domain.

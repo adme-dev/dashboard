@@ -15,6 +15,7 @@ import {
 } from '~~/server/utils/measurement/contracts'
 import { appendCanonicalConversionEvent } from '~~/server/utils/measurement/outbox'
 import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
+import { verifyNativeAstroRuntimeRelease } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
 
 const ScopedIdSchema = z.string()
   .min(1)
@@ -91,6 +92,8 @@ interface ReleaseAuthority {
   release_id: string
   site_id: string
   tenant_id: string
+  runtime_release?: unknown
+  runtime_release_digest?: string | null
 }
 
 const RELEASE_AUTHORITY_SQL = `
@@ -98,6 +101,8 @@ const RELEASE_AUTHORITY_SQL = `
          site.client_id::text AS client_id,
          site.id::text AS site_id,
          release.id::text AS release_id,
+         release.runtime_release,
+         release.runtime_release_digest,
          COALESCE(site.integrations->>'synthetic', 'false') = 'true' AS is_synthetic
     FROM page_studio_sites site
     JOIN agency_clients client ON client.id = site.client_id AND client.is_active = TRUE
@@ -109,7 +114,7 @@ const RELEASE_AUTHORITY_SQL = `
       ON release.tenant_id = site.tenant_id
      AND release.client_id = site.client_id
      AND release.site_id = site.id
-    JOIN page_studio_builds build
+    LEFT JOIN page_studio_builds build
       ON build.tenant_id = release.tenant_id
      AND build.client_id = release.client_id
      AND build.site_id = release.site_id
@@ -124,10 +129,14 @@ const RELEASE_AUTHORITY_SQL = `
      AND site.client_id::text = $2
      AND site.id::text = $3
      AND release.id::text = $4
-     AND build.version_digest = $5
-     AND build.state = 'succeeded'
+     AND (
+       (site.delivery_mode = 'static' AND site.current_release_id = release.id AND release.build_id IS NOT NULL
+         AND release.runtime_release IS NULL AND build.version_digest = $5 AND build.state = 'succeeded')
+       OR (site.delivery_mode = 'runtime' AND release.build_id IS NULL
+         AND release.runtime_release IS NOT NULL AND release.runtime_release_digest IS NOT NULL
+         AND release.runtime_version_digest = $5)
+     )
      AND release.environment = $6
-     AND site.current_release_id = release.id
      AND site.status = 'active'
      AND entitlement.status IN ('trial', 'active', 'past_due')
      AND entitlement.effective_from <= NOW()
@@ -148,7 +157,7 @@ function publicReleaseEnvironment(event: H3Event): PublicReleaseEnvironment {
   return environment
 }
 
-async function requireReleaseAuthority(
+export async function requireReleaseAuthority(
   input: LeadSubmission | AnalyticsSubmission,
   environment: PublicReleaseEnvironment,
   query: typeof queryOne = queryOneFresh
@@ -167,6 +176,20 @@ async function requireReleaseAuthority(
       statusMessage: 'Page Studio release scope is not active',
       data: { error: { code: 'SCOPE_MISMATCH', message: 'Page Studio release scope is not active' } }
     })
+  }
+  if (authority.runtime_release) {
+    // Re-verify the retained runtime identity as well as the active SQL pointer.
+    // A nullable build must never make an incomplete runtime record authoritative.
+    try {
+      const { release, digest } = await verifyNativeAstroRuntimeRelease(authority.runtime_release)
+      if (digest !== authority.runtime_release_digest || release.environment !== environment
+        || release.versionDigest !== input.versionDigest
+        || release.scope.tenantId !== input.scope.tenantId
+        || release.scope.clientId !== input.scope.clientId
+        || release.scope.siteId !== input.scope.siteId) throw new Error('Runtime identity mismatch')
+    } catch {
+      throw createError({ statusCode: 403, statusMessage: 'Page Studio release scope is not active' })
+    }
   }
   return authority
 }

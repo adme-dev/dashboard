@@ -12,6 +12,7 @@ import {
 } from './publishing'
 import { PageStudioPublishingError } from './publishingError'
 import type { PreparedRuntimeRelease } from './runtimeReleases'
+import { requireRuntimeTarget, type RuntimeTargetPolicy } from './runtimeTarget'
 
 /**
  * Activation and rollback for Astro runtime releases. Mirrors the static path:
@@ -97,7 +98,7 @@ const RELEASE_COLUMNS = `release.id AS release_id, release.environment, release.
 
 export async function activatePageStudioRuntimeRelease(
   input: PageStudioRuntimeActivationInput,
-  dependencies: { runTransaction?: RunTransaction } = {}
+  dependencies: { runTransaction?: RunTransaction, policy: RuntimeTargetPolicy }
 ): Promise<PageStudioRuntimeReleasePointer> {
   const { prepared, scope } = input
   if (prepared.release.environment !== input.environment
@@ -109,6 +110,7 @@ export async function activatePageStudioRuntimeRelease(
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
     await requireRuntimeSite(db, scope)
+    await requireRuntimeTarget(db, input, dependencies.policy)
 
     const existing = (await db.query<RuntimeReleaseRow & { actor_id: string }>(
       `SELECT ${RELEASE_COLUMNS}, audit.actor_id
@@ -224,7 +226,7 @@ export async function activatePageStudioRuntimeRelease(
 
 export async function rollbackPageStudioRuntimeRelease(
   input: PageStudioRuntimeRollbackInput,
-  dependencies: { runTransaction?: RunTransaction } = {}
+  dependencies: { runTransaction?: RunTransaction, policy: RuntimeTargetPolicy }
 ): Promise<PageStudioRuntimeReleasePointer> {
   if (input.targetReleaseId === input.expectedActiveReleaseId) {
     throw error('ROLLBACK_TARGET_INVALID', 422, 'The rollback target must differ from the active release')
@@ -233,6 +235,7 @@ export async function rollbackPageStudioRuntimeRelease(
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
     await requireRuntimeSite(db, scope)
+    await requireRuntimeTarget(db, input, dependencies.policy)
 
     const existing = (await db.query<RuntimeReleaseRow & { actor_id: string, previous_release_id: string }>(
       `SELECT ${RELEASE_COLUMNS}, audit.actor_id, audit.metadata->>'previousReleaseId' AS previous_release_id

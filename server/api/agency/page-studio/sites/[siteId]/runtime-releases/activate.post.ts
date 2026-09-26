@@ -1,5 +1,6 @@
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
+import { runtimeTargetPolicy } from '~~/server/utils/pageStudio/runtimeTarget'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import { withPageStudioPublishAuthority } from '~~/server/utils/pageStudio/publishAuthority'
 import { preparePageStudioPublishPrincipal } from '~~/server/utils/pageStudio/publishHttp'
@@ -28,6 +29,10 @@ export default eventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Invalid Page Studio runtime publication' })
     }
     const env = (event.context.cloudflare?.env ?? undefined) as Record<string, unknown> | undefined
+    const policy = runtimeTargetPolicy(env)
+    if (policy.deploymentEnvironment === 'staging' && body.data.environment !== 'staging') {
+      throw createError({ statusCode: 403, statusMessage: 'Staging cannot publish to production' })
+    }
     const renderer = resolveRuntimeRenderer(env)
     const bucket = env?.PAGE_STUDIO_CHECKPOINTS as RuntimeContentBucket | undefined
     if (!bucket?.get || !bucket.put) {
@@ -47,7 +52,7 @@ export default eventHandler(async (event) => {
       idempotencyKey: idempotencyKey.data,
       prepared,
       scope
-    }, { runTransaction: work => withPageStudioPublishAuthority(scope, principal, work) })
+    }, { policy, runTransaction: work => withPageStudioPublishAuthority(scope, principal, work) })
     return { release }
   } catch (error) {
     if (error instanceof PageStudioReleaseCheckpointError) {

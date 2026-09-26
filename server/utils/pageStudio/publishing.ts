@@ -178,8 +178,13 @@ export async function lockReleasePointer(
 ): Promise<LockedPointerRow | undefined> {
   await db.query(
     'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-    [`page-studio-release:${input.environment}:${input.hostname}`]
+    [`page-studio-release:${input.hostname}`]
   )
+  const conflictingEnvironment = await db.query(`SELECT 1 FROM page_studio_release_pointers
+    WHERE normalized_hostname=$1 AND environment<>$2`, [input.hostname, input.environment])
+  if (conflictingEnvironment.rows.length) {
+    throw publishingError('RELEASE_POINTER_CONFLICT', 409, 'The hostname already belongs to another release environment')
+  }
   const current = await db.query<LockedPointerRow>(
     `SELECT tenant_id, client_id::text, site_id::text, active_release_id
      FROM page_studio_release_pointers

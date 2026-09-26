@@ -141,10 +141,10 @@ function errorMessage(error: unknown) {
       <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 class="font-semibold text-highlighted">
-            Instant publishing
+            {{ state.environment === 'staging' ? 'Website staging' : 'Instant publishing' }}
           </h2>
           <p class="mt-1 max-w-2xl text-sm text-muted">
-            Saving keeps a private draft. The live website changes only when you publish an approved version.
+            {{ state.environment === 'staging' ? 'Saving keeps a private draft. Update staging to share an approved version at the preview address.' : 'Saving keeps a private draft. The live website changes only when you publish an approved version.' }}
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -157,9 +157,19 @@ function errorMessage(error: unknown) {
             :disabled="!state.draft?.previewHostname"
             @click="previewDraft"
           />
+          <UButton
+            v-if="live && hostname"
+            :label="state.environment === 'staging' ? 'Open staging' : 'Open website'"
+            :to="`https://${hostname}/`"
+            target="_blank"
+            rel="noopener noreferrer"
+            icon="i-lucide-external-link"
+            color="neutral"
+            variant="outline"
+          />
           <UTooltip :text="publishBlocker" :disabled="!publishBlocker">
             <UButton
-              label="Publish approved version"
+              :label="state.environment === 'staging' ? 'Update staging' : 'Publish approved version'"
               icon="i-lucide-rocket"
               :disabled="Boolean(publishBlocker)"
               @click="openPublish"
@@ -266,7 +276,7 @@ function errorMessage(error: unknown) {
             label="Cancel"
             color="neutral"
             variant="ghost"
-            @click="publishOpen = false"
+            @click="() => { publishOpen = false }"
           />
           <UButton
             label="Publish"

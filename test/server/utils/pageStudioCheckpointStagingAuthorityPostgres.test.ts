@@ -56,6 +56,7 @@ describe.runIf(Boolean(url))('retained checkpoint staging authority on PostgreSQ
       CREATE TABLE page_studio_sessions(nonce TEXT PRIMARY KEY,tenant_id TEXT,client_id UUID,site_id UUID,user_id TEXT,role TEXT,capabilities JSONB,issued_at TIMESTAMPTZ,expires_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ);`)
     for (const name of ['402_page_studio_control_plane.sql', '415_page_studio_setup_proposals.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql', '429_page_studio_checkpoint_staging_outbox.sql'])
       await db.query(readFileSync(new URL(`../../../server/database/migrations/${name}`, import.meta.url), 'utf8'))
+    await db.query("ALTER TABLE page_studio_sites ADD COLUMN delivery_mode TEXT NOT NULL DEFAULT 'static'")
     await db.query('INSERT INTO custom_roles VALUES($1,\'owner\',TRUE,FALSE)', [roleId])
     await db.query('INSERT INTO role_permission_groups VALUES($1,\'PAGE_STUDIO_VIEW\'),($1,\'PAGE_STUDIO_EDIT\') ON CONFLICT DO NOTHING', [roleId])
     await db.query('INSERT INTO team_members VALUES($1,TRUE,\'owner\',NULL,NULL)', [userId])
@@ -89,6 +90,11 @@ describe.runIf(Boolean(url))('retained checkpoint staging authority on PostgreSQ
       [input.auditId, scope.tenantId, scope.clientId, scope.siteId, source === 'provisioning' ? 'page-studio' : userId, source === 'provisioning' ? 'service' : role, input.checkpointId, corrupt ? corrupt(metadata) : metadata])
     return origin
   }
+  it('rejects a queued static build after the website switches to runtime', async () => {
+    await seed('agency', 'native-login')
+    await db.query("UPDATE page_studio_sites SET delivery_mode='runtime'")
+    await expect(transaction(() => requireOrigin(db, input))).rejects.toMatchObject(denied)
+  })
   function execution() {
     let inTransaction = false
     const dependencies: StagingCoordinatorDependencies = {

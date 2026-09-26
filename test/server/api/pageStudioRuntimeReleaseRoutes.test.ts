@@ -40,7 +40,7 @@ const renderer = { assetsDigest: 'a'.repeat(64), codeDigest: 'b'.repeat(64), gen
 const bucket = { get: vi.fn(), put: vi.fn() }
 const event = (body: unknown, env: Record<string, unknown> = {}): TestEvent => ({
   body,
-  context: { cloudflare: { env: { PAGE_STUDIO_CHECKPOINTS: bucket, PAGE_STUDIO_RUNTIME_RENDERER: JSON.stringify(renderer), ...env } } },
+  context: { cloudflare: { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_CHECKPOINTS: bucket, PAGE_STUDIO_RUNTIME_RENDERER: JSON.stringify(renderer), ...env } } },
   headers: { 'idempotency-key': 'publish-1' },
   params: { siteId }
 })
@@ -64,7 +64,7 @@ describe('runtime release routes', () => {
     expect(mocks.requireAccess).toHaveBeenCalledWith(expect.anything(), 'PAGE_STUDIO_PUBLISH')
     expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({ bucket, environment: 'production', renderer: { ...renderer, name: 'astro-runtime' }, versionId: body.versionId }))
     expect(mocks.activate).toHaveBeenCalledWith(expect.objectContaining({ actorId: 'user-1', idempotencyKey: 'publish-1', prepared: { prepared: true } }), expect.anything())
-    expect(mocks.activate.mock.calls[0][1]).toEqual({ runTransaction: expect.any(Function) })
+    expect(mocks.activate.mock.calls[0][1]).toEqual({ policy: { deploymentEnvironment: 'production' }, runTransaction: expect.any(Function) })
   })
 
   it('rejects malformed input and an unconfigured renderer before touching content', async () => {
@@ -73,6 +73,14 @@ describe('runtime release routes', () => {
     const body = { environment: 'production', expectedActiveReleaseId: null, hostname: 'www.site.example', versionId: '22222222-2222-4222-8222-222222222222' }
     await expect(handler(event(body, { PAGE_STUDIO_RUNTIME_RENDERER: undefined }))).rejects.toMatchObject({ code: 'RUNTIME_RENDERER_UNAVAILABLE' })
     expect(mocks.prepare).not.toHaveBeenCalled()
+  })
+
+  it('rejects a production target on staging before preparing content', async () => {
+    const handler = (await import('~~/server/api/agency/page-studio/sites/[siteId]/runtime-releases/activate.post')).default as (e: TestEvent) => Promise<unknown>
+    const body = { environment: 'production', expectedActiveReleaseId: null, hostname: 'www.site.example', versionId: '22222222-2222-4222-8222-222222222222' }
+    await expect(handler(event(body, { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' }))).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.prepare).not.toHaveBeenCalled()
+    expect(mocks.activate).not.toHaveBeenCalled()
   })
 
   it('rolls back with the current and retained renderer generations', async () => {
