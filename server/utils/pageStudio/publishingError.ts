@@ -5,6 +5,7 @@ export class PageStudioPublishingError extends Error {
       | 'CONTROL_SCOPE_NOT_FOUND'
       | 'PUBLISH_AUTHORITY_DENIED'
       | 'PUBLISH_AUTHORITY_BUSY'
+      | 'RELEASE_ALREADY_EXISTS'
       | 'RELEASE_IDEMPOTENCY_CONFLICT'
       | 'RELEASE_POINTER_CONFLICT'
       | 'RELEASE_RECORD_INVALID'

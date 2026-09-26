@@ -159,6 +159,21 @@ export async function activatePageStudioRuntimeRelease(
       throw error('BUILD_NOT_PUBLISHABLE', 422, 'The saved Page Studio version is not approved for publication')
     }
 
+    // A release identity is immutable and unique. A new request key does not
+    // create another copy; restoring the retained release has its own audited
+    // compare-and-swap operation. The site lock serializes this check and insert.
+    const retained = (await db.query<{ id: string }>(
+      `SELECT id FROM page_studio_releases
+       WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND environment=$4
+         AND normalized_hostname=$5 AND runtime_release_digest=$6`,
+      [scope.tenantId, scope.clientId, scope.siteId, input.environment, input.hostname, prepared.digest]
+    )).rows[0]
+    if (retained) {
+      throw error('RELEASE_ALREADY_EXISTS', 409, retained.id === activeReleaseId
+        ? 'This version is already published.'
+        : 'This version already has a retained release. Restore it from release history.')
+    }
+
     const actorUuid = nullableActorUuid(input.actorId)
     const releaseId = (await db.query<{ release_id: string }>(
       `INSERT INTO page_studio_releases (
