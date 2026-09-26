@@ -400,6 +400,8 @@ PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "staging"
 PAGE_STUDIO_CONTENT_ENVIRONMENT = "staging"
 PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST = "6f21c0f378844618bde29d8eebb81bed0c1966ac086d2028dc4427730c5b9bce"
 PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST = "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a"
+# Astro runtime renderer deployed to staging on 2026-09-26 (Studio deploy:staging output).
+PAGE_STUDIO_RUNTIME_RENDERER = '{"assetsDigest":"9fefa70cea4390c587e95413f1752d3642b57a7b925f999b06e700d16d2a8bee","codeDigest":"21b84e1cde3f8be381b590d4d46057bd865e7f97c4c5f8cdb1168a6bd4ec8fc1","generation":"astro_runtime_21b84e1cde3f8be3"}'
 PAGE_STUDIO_STAGING_TENANT_ID = "page-studio-staging"
 
 # ============================================
