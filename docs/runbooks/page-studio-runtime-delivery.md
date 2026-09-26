@@ -38,3 +38,19 @@ runtime release 25f19d1b published, d9a3e8a1 published, rollback to 25f19d1b ver
 - Runtime sites have no public form submission endpoint yet.
 - Pages Worker bundle is ~830 KiB under the 25 MiB ceiling.
 - `wrangler r2 object` defaults to local storage here; use `--remote`.
+
+## Follow-ups recorded 2026-09-26 (evening)
+
+1. Production rollout (steps above) — not started; do it in a fresh session, one deploy at a time.
+2. Draft-preview DNS/route for `draft-*.preview(.staging).pages.xeroflow.com` — this is the cheapest
+   way to give editors a faithful "what it will look like" view (published template rendering of the
+   saved draft), instead of relying on the canvas.
+3. Editor canvas vs published template (Fantasy Limo report, 26 Sep): both the editor and client
+   staging were on the same checkpoint `checkpoint_32559c00…` (digest 4a87de62…). Staging renders via
+   Astro (shadcn shell); the canvas uses the site-kit React renderer without the shell, so styling
+   differs by construction. If content differs, the running editor sandbox is stale — relaunch Studio
+   from the Dashboard before treating it as a bug.
+4. Fantasy Limo has a checkpoint-staging outbox row `pending` since 25 Sep 11:59 while a later explicit
+   deployment succeeded — check the production outbox cron (`/api/cron/page-studio-checkpoint-staging`).
+5. Runtime public forms: no submission endpoint yet; required before a site with a lead form goes live.
+6. Delete Neon test branch `br-bold-band-a4x7jcpe` (project square-tooth-23821574) once confirmed.
