@@ -39,6 +39,11 @@ export async function readPageStudioRuntimeState(
     [scope.tenantId, scope.clientId, scope.siteId]
   )
 
+  const environment = env?.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'staging' ? 'staging' : 'production'
+  const pointer = await one<{ normalized_hostname: string }>(
+    'SELECT normalized_hostname FROM page_studio_release_pointers WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND environment=$4 ORDER BY updated_at DESC LIMIT 1',
+    [scope.tenantId, scope.clientId, scope.siteId, environment]
+  )
   const releases = await rows<{
     release_id: string
     hostname: string
@@ -58,9 +63,9 @@ export async function readPageStudioRuntimeState(
       AND pointer.site_id = release.site_id AND pointer.environment = release.environment
       AND pointer.normalized_hostname = release.normalized_hostname
      WHERE release.tenant_id = $1 AND release.client_id = $2 AND release.site_id = $3
-       AND release.environment = 'production' AND release.runtime_release IS NOT NULL
+       AND release.environment = $4 AND release.runtime_release IS NOT NULL
      ORDER BY release.published_at DESC LIMIT 20`,
-    [scope.tenantId, scope.clientId, scope.siteId]
+    [scope.tenantId, scope.clientId, scope.siteId, environment]
   )
 
   const suffix = typeof env?.PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME === 'string' ? env.PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME : ''
@@ -79,6 +84,8 @@ export async function readPageStudioRuntimeState(
       ? { checkpointId: approved.checkpoint_id, digest: approved.digest, versionId: approved.version_id, live: live?.versionId === approved.version_id }
       : null,
     deliveryMode: site.delivery_mode,
+    environment,
+    hostname: pointer?.normalized_hostname ?? null,
     draft: site.checkpoint_id && site.digest && site.saved_at
       ? {
           checkpointId: site.checkpoint_id,

@@ -17,13 +17,15 @@ const when = (value?: string | null) => value
   ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   : ''
 
-const live = computed(() => props.state.releases.find(release => release.active && release.hostname === props.productionHostname) ?? null)
-const history = computed(() => props.state.releases.filter(release => release.hostname === props.productionHostname && !release.active))
+// Staging publishes to the site's existing staging hostname; production to its ready domain.
+const hostname = computed(() => props.state.environment === 'production' ? (props.productionHostname ?? props.state.hostname) : props.state.hostname)
+const live = computed(() => props.state.releases.find(release => release.active && release.hostname === hostname.value) ?? null)
+const history = computed(() => props.state.releases.filter(release => release.hostname === hostname.value && !release.active))
 const draftMatchesApproved = computed(() => Boolean(props.state.draft && props.state.approved && props.state.draft.digest === props.state.approved.digest))
 
 const publishBlocker = computed(() => {
   if (!props.state.rendererConfigured) return 'Instant publishing is not configured for this environment yet.'
-  if (!props.productionHostname) return 'Connect a ready production domain first.'
+  if (!hostname.value) return props.state.environment === 'production' ? 'Connect a ready production domain first.' : 'This website has no staging hostname yet.'
   if (!props.state.approved) return 'Approve a saved version before publishing.'
   if (live.value?.versionId === props.state.approved.versionId) return 'The approved version is already live.'
   return ''
@@ -78,16 +80,16 @@ function openPublish() {
 }
 async function publish() {
   const approved = props.state.approved
-  if (!approved || !props.productionHostname) return
+  if (!approved || !hostname.value) return
   publishing.value = true
   try {
     await $fetch(`/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/runtime-releases/activate`, {
       method: 'POST',
       headers: { 'idempotency-key': publishKey.value },
-      body: { environment: 'production', expectedActiveReleaseId: live.value?.releaseId ?? null, hostname: props.productionHostname, versionId: approved.versionId }
+      body: { environment: props.state.environment, expectedActiveReleaseId: live.value?.releaseId ?? null, hostname: hostname.value, versionId: approved.versionId }
     })
     publishOpen.value = false
-    toast.add({ title: 'Published', description: `Version ${short(approved.digest)} is live on ${props.productionHostname}.`, color: 'success' })
+    toast.add({ title: 'Published', description: `Version ${short(approved.digest)} is live on ${hostname.value}.`, color: 'success' })
     emit('changed')
   } catch (error) {
     toast.add({ title: 'Publish failed — the live site was not changed', description: errorMessage(error), color: 'error' })
@@ -109,13 +111,13 @@ function openRestore(release: RuntimeState['releases'][number]) {
 }
 async function restore() {
   const target = restoreTarget.value
-  if (!target || !live.value || !props.productionHostname) return
+  if (!target || !live.value || !hostname.value) return
   restoring.value = true
   try {
     await $fetch(`/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/runtime-releases/rollback`, {
       method: 'POST',
       headers: { 'idempotency-key': restoreKey.value },
-      body: { environment: 'production', expectedActiveReleaseId: live.value.releaseId, hostname: props.productionHostname, targetReleaseId: target.releaseId }
+      body: { environment: props.state.environment, expectedActiveReleaseId: live.value.releaseId, hostname: hostname.value, targetReleaseId: target.releaseId }
     })
     restoreTarget.value = null
     toast.add({ title: 'Restored', description: `Version ${short(target.versionDigest)} is live again.`, color: 'success' })
@@ -206,7 +208,7 @@ function errorMessage(error: unknown) {
 
     <div v-if="history.length" class="mt-5">
       <h3 class="text-sm font-medium text-highlighted">
-        Earlier versions on {{ productionHostname }}
+        Earlier versions on {{ hostname }}
       </h3>
       <ul class="mt-2 divide-y divide-default rounded-md border border-default">
         <li v-for="release in history" :key="release.releaseId" class="flex items-center justify-between gap-3 px-3 py-2">
@@ -248,7 +250,7 @@ function errorMessage(error: unknown) {
                 Website
               </dt>
               <dd class="mt-1 break-all font-medium text-highlighted">
-                {{ productionHostname }}
+                {{ hostname }}
               </dd>
             </div>
           </dl>
@@ -281,7 +283,7 @@ function errorMessage(error: unknown) {
       <template #body>
         <p class="text-sm text-muted">
           Restore version <span class="font-mono font-semibold text-highlighted">{{ short(restoreTarget?.versionDigest) }}</span>
-          on {{ productionHostname }}? The current version stays available to restore.
+          on {{ hostname }}? The current version stays available to restore.
         </p>
       </template>
       <template #footer>

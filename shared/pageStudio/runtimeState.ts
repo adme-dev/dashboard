@@ -2,6 +2,9 @@
 export interface PageStudioRuntimeState {
   approved: { checkpointId: string, digest: string, versionId: string, live: boolean } | null
   deliveryMode: 'static' | 'runtime'
+  /** Release environment this Dashboard publishes to, and the site's existing hostname there. */
+  environment: 'staging' | 'production'
+  hostname: string | null
   draft: { checkpointId: string, digest: string, savedAt: string, previewHostname: string | null } | null
   releases: Array<{
     active: boolean
