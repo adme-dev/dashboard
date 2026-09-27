@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -115,5 +116,20 @@ describe('runtime release routes', () => {
     const body = { environment: 'production', expectedActiveReleaseId: '33333333-3333-4333-8333-333333333333', hostname: 'www.site.example', targetReleaseId: '44444444-4444-4444-8444-444444444444' }
     await expect(handler(event(body, { PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS: 'renderer_one, renderer_zero' }))).resolves.toEqual({ release: { releaseId: 'r1' } })
     expect(mocks.rollback).toHaveBeenCalledWith(expect.objectContaining({ retainedGenerations: ['renderer_two', 'renderer_one', 'renderer_zero'], targetReleaseId: body.targetReleaseId }), expect.anything())
+  })
+
+  it.each([
+    ['production', 'astro_runtime_a6a72b897cb1ddde19c975a711a37da398e7e00fbc72847a2b92ea30e8d43ac6'],
+    ['preview', 'astro_runtime_a71fb2968a783bc114ee9a340ff7ff60a6c74ab442d49fa360464b5f4fac2f27']
+  ])('keeps the existing %s publication restorable after a renderer upgrade', async (environment, previousGeneration) => {
+    const config = readFileSync(new URL('../../../wrangler.toml', import.meta.url), 'utf8')
+    const section = config.split(`[env.${environment}.vars]`)[1]!.split('\n[')[0]!
+    const variables = Object.fromEntries([...section.matchAll(/^(PAGE_STUDIO_RUNTIME_[A-Z_]+) = (".*")$/gm)]
+      .map(match => [match[1], JSON.parse(match[2]!)]))
+    const handler = (await import('~~/server/api/agency/page-studio/sites/[siteId]/runtime-releases/rollback.post')).default as (e: TestEvent) => Promise<unknown>
+    const body = { environment: 'staging', expectedActiveReleaseId: '33333333-3333-4333-8333-333333333333', hostname: 'www.site.example', targetReleaseId: '44444444-4444-4444-8444-444444444444' }
+    await handler(event(body, variables))
+    expect(mocks.rollback.mock.calls[0][0].retainedGenerations).toContain(previousGeneration)
+    if (environment === 'preview') expect(mocks.rollback.mock.calls[0][0].retainedGenerations).toContain('astro_runtime_21b84e1cde3f8be3')
   })
 })
