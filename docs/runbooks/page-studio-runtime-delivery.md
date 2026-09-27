@@ -48,4 +48,31 @@ Migration434 applied and read back in production and isolated preview. Private r
 
 Always pin the identity printed by the actual upload, not an earlier dry-run: Astro generates a new server-island encryption key by default on builds ([Astro documentation](https://docs.astro.build/en/guides/server-islands/)). Existing generations are retained rather than rebuilt in place.
 
-Public routing and customer canary remain pending. No customer-domain launch is included: Fantasy Limo has no ready production domain.
+The initial pending routing/canary work above was subsequently completed by
+Dashboard main `a0908aaa8dad86a5c233b97f0a7f78bf1bdb3d55` and the ordinary Astro
+rollout. Studio main before the CMS increment is
+`8ede9b215e443b9acc64fa21ad09b79393546872`. No customer-domain launch is included.
+
+## Generated CMS components: separate publication admission
+
+Runtime v1 supports ordinary saved pages. It does not implement the build-bound
+native feature seal/current-CMS projection contract used by static feature
+delivery. A cached editor component tree is not public CMS authority.
+
+The CMS increment rejects nonempty builder libraries, selected collection/action
+pins, any nested saved builder instance and generated action-form mappings during
+runtime release preparation, before writing retained content. The saved draft is
+preserved. Authenticated private previews remain separate. Matching Studio guards
+reject unsupported public HTML/form projections and exclude older unverified cache
+entries. This prevents silently publishing stale CMS field visibility.
+
+Local verification: 39 focused native preparation/route/projection cases and owned
+ESLint pass. No migration is required. This entry records local implementation;
+deploying the guard does not activate generated components. Existing deployed
+renderer generations remain unchanged until their own reviewed rollout.
+
+Before activation, implement runtime-release-bound recovery/seals and native
+hostname/environment/pointer-epoch admission, project current scoped records, and
+rematerialize pinned components inside Astro. Rollback retains newer CMS records
+and current visibility. Verify two scopes and revoked/private/archived data. Do not
+enable generated action forms or hosted feature AI to bypass these requirements.
