@@ -42,7 +42,8 @@ async function one(db: PageStudioControlQueryClient, sql: string, params: unknow
 function scoped(row: Record<string, unknown>, scope: { tenantId: string, clientId: string, siteId: string }) {
   return row.tenant_id === scope.tenantId && row.client_id === scope.clientId && row.site_id === scope.siteId
 }
-async function locked(db: PageStudioControlQueryClient, request: PublishedFeatureRequest, env: Record<string, unknown>, purpose: 'projection' | 'action'): Promise<PublishedFeatureSnapshot> {
+/** Common host, site and package fence for static and Astro CMS projection. */
+export async function lockPublishedFeatureSite(db: PageStudioControlQueryClient, request: { hostname: string, releaseId: string }, env: Record<string, unknown>, purpose: 'projection' | 'action' = 'projection') {
   const configured = z.enum(['staging', 'production']).safeParse(env.PAGE_STUDIO_RELEASE_ENVIRONMENT)
   if (!configured.success) throw new PageStudioBusinessContentError('PUBLISHED_RELEASE_ENVIRONMENT_UNAVAILABLE', 503, 'Published feature environment is unavailable')
   const releaseEnvironment = configured.data
@@ -70,6 +71,10 @@ async function locked(db: PageStudioControlQueryClient, request: PublishedFeatur
   const pointer = await one(db, 'SELECT * FROM page_studio_release_pointers WHERE environment=$2 AND normalized_hostname=$1 FOR SHARE NOWAIT', [request.hostname, releaseEnvironment])
   const epoch = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(pointer.pointer_version)
   if (!scoped(pointer, scope) || pointer.environment !== releaseEnvironment || pointer.active_release_id !== request.releaseId) throw publishedFeatureDenied()
+  return { scope, releaseEnvironment, epoch }
+}
+async function locked(db: PageStudioControlQueryClient, request: PublishedFeatureRequest, env: Record<string, unknown>, purpose: 'projection' | 'action'): Promise<PublishedFeatureSnapshot> {
+  const { scope, releaseEnvironment, epoch } = await lockPublishedFeatureSite(db, request, env, purpose)
   const release = await one(db, 'SELECT * FROM page_studio_releases WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4 FOR SHARE NOWAIT', [scope.tenantId, scope.clientId, scope.siteId, request.releaseId])
   const build = await one(db, 'SELECT * FROM page_studio_builds WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4 FOR SHARE NOWAIT', [scope.tenantId, scope.clientId, scope.siteId, request.buildId])
   if (

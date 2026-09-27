@@ -1,3 +1,4 @@
+import { runtimeFeatureDeadline } from './runtimeFeatureDeadline'
 import { verifyNativeAstroRuntimeRelease } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
 import { readApprovedBuildAuthority } from './builds'
 import { readAcceptedFeatureRecovery } from './releaseFeatureBuild'
@@ -30,25 +31,35 @@ export async function prepareApprovedRuntimeFeature(input: {
   const authority = await readAuthority()
   if (authority.digest !== snapshot.checkpoint.digest || authority.client_id !== scope.clientId) throw featureConflict()
 
-  const { bundle, manifest } = await readAcceptedFeatureRecovery(snapshot, principal)
-  const content = await materializeRuntimeContent(bucket, scope, authority.digest, manifest as Record<string, unknown>)
-  const { release, digest } = await verifyNativeAstroRuntimeRelease({
-    ...content, delivery: 'runtime', schemaVersion: 1, scope, environment,
-    renderer, versionId, versionDigest: authority.digest
-  })
-  const reference = await retainRuntimeFeatureRecovery(release, bundle, bucket)
-  // Storage work stays outside SQL locks. Revocation or a different approval
-  // during any read/write invalidates the prepared result without publishing it.
-  if (!cmsEqual(authority, await readAuthority())) throw featureConflict()
-  const prepared: PreparedRuntimeRelease = { release, digest, releaseMetadata: derivePageStudioReleaseMetadata(manifest) }
-  return {
-    prepared,
-    feature: {
-      approvalId: authority.approval_id, reference,
-      application: bundle.application, checkpoint: bundle.checkpoint.id,
-      generation: bundle.generation, target: bundle.target,
-      freezeDigest: bundle.freezeDigest, runtimeDigest: bundle.runtimeDigest,
-      contentScope: snapshot.scope
+  const deadline = runtimeFeatureDeadline()
+  try {
+    const { bundle, manifest } = await deadline.run(() => readAcceptedFeatureRecovery(snapshot, principal))
+    const boundedBucket: RuntimeContentBucket = {
+      get: key => deadline.run(async () => {
+        const object = await bucket.get(key)
+        return object ? { size: object.size, body: object.body, arrayBuffer: () => deadline.run(() => object.arrayBuffer()) } : null
+      }),
+      put: (key, bytes, options) => deadline.run(() => bucket.put(key, bytes, options))
     }
-  }
+    const content = await deadline.run(() => materializeRuntimeContent(boundedBucket, scope, authority.digest, manifest as Record<string, unknown>))
+    const { release, digest } = await verifyNativeAstroRuntimeRelease({
+      ...content, delivery: 'runtime', schemaVersion: 1, scope, environment,
+      renderer, versionId, versionDigest: authority.digest
+    })
+    const reference = await deadline.run(() => retainRuntimeFeatureRecovery(release, bundle, boundedBucket, deadline.signal))
+    deadline.assert()
+    if (!cmsEqual(authority, await readAuthority())) throw featureConflict()
+    deadline.assert()
+    const prepared: PreparedRuntimeRelease = { release, digest, releaseMetadata: derivePageStudioReleaseMetadata(manifest) }
+    return {
+      prepared,
+      feature: {
+        approvalId: authority.approval_id, reference,
+        application: bundle.application, checkpoint: bundle.checkpoint.id,
+        generation: bundle.generation, target: bundle.target,
+        freezeDigest: bundle.freezeDigest, runtimeDigest: bundle.runtimeDigest,
+        contentScope: snapshot.scope
+      }
+    }
+  } finally { deadline.dispose() }
 }

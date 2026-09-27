@@ -53,7 +53,7 @@ interface RuntimeFeatureManifest {
 /** Checkpoint loader validates the complete manifest. These features additionally
  * need current native published CMS/action authority, absent from runtime v1.
  * Mirrors Studio's approved Astro build and runtime delivery admission. */
-function requiresPublishedRuntimeIntegration(manifest: RuntimeFeatureManifest): boolean {
+export function requiresPublishedRuntimeIntegration(manifest: RuntimeFeatureManifest): boolean {
   if (manifest.schemaVersion === 2 && (manifest.builderLibrary?.components?.length
     || manifest.builderApplication?.collections?.length || manifest.builderApplication?.actions?.length)) return true
   const pending: RuntimeFeatureNode[] = []

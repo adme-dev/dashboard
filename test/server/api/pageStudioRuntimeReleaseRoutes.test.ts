@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   activate: vi.fn(),
+  activateFeature: vi.fn(), rollbackFeature: vi.fn(), nativePrincipal: vi.fn(), sealed: vi.fn(), checkpoint: vi.fn(),
   prepare: vi.fn(),
   principal: vi.fn(),
   requireAccess: vi.fn(),
@@ -9,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   rollback: vi.fn(),
   withAuthority: vi.fn()
 }))
+vi.mock('~~/server/utils/pageStudio/runtimeFeatureActivation', () => ({ activateRuntimeFeature: mocks.activateFeature }))
+vi.mock('~~/server/utils/pageStudio/runtimeFeatureRollback', () => ({ rollbackRuntimeFeature: mocks.rollbackFeature }))
+vi.mock('~~/server/utils/pageStudio/releaseFeatureHttp', () => ({ nativeFeaturePublisher: mocks.nativePrincipal, hasRuntimeFeatureSeal: mocks.sealed }))
+vi.mock('~~/server/utils/pageStudio/releaseCheckpoint', async original => ({ ...await original<object>(), loadApprovedPageStudioReleaseCheckpoint: mocks.checkpoint }))
 vi.mock('~~/server/utils/pageStudio/access', () => ({ requireAgencyPageStudioAccess: (...a: unknown[]) => mocks.requireAccess(...a) }))
 vi.mock('~~/server/utils/pageStudio/versions', () => ({ resolveAgencyPageStudioSiteClient: (...a: unknown[]) => mocks.resolveClient(...a) }))
 vi.mock('~~/server/utils/pageStudio/publishHttp', () => ({ preparePageStudioPublishPrincipal: (...a: unknown[]) => mocks.principal(...a) }))
@@ -52,6 +57,11 @@ describe('runtime release routes', () => {
     mocks.resolveClient.mockResolvedValue('client-1')
     mocks.principal.mockResolvedValue({ principal: true })
     mocks.withAuthority.mockImplementation(async (_scope: unknown, _principal: unknown, work: () => unknown) => work())
+    mocks.checkpoint.mockResolvedValue({ manifest: { schemaVersion: 2, pages: [] } })
+    mocks.sealed.mockResolvedValue(false)
+    mocks.nativePrincipal.mockResolvedValue({ native: true })
+    mocks.activateFeature.mockResolvedValue({ releaseId: 'cms-r2' })
+    mocks.rollbackFeature.mockResolvedValue({ releaseId: 'cms-r1' })
     mocks.prepare.mockResolvedValue({ prepared: true })
     mocks.activate.mockResolvedValue({ releaseId: 'r2' })
     mocks.rollback.mockResolvedValue({ releaseId: 'r1' })
@@ -62,11 +72,28 @@ describe('runtime release routes', () => {
     const body = { environment: 'production', expectedActiveReleaseId: null, hostname: 'www.site.example', versionId: '22222222-2222-4222-8222-222222222222' }
     await expect(handler(event(body))).resolves.toEqual({ release: { releaseId: 'r2' } })
     expect(mocks.requireAccess).toHaveBeenCalledWith(expect.anything(), 'PAGE_STUDIO_PUBLISH')
-    expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({ bucket, environment: 'production', renderer: { ...renderer, name: 'astro-runtime' }, versionId: body.versionId }))
+    expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({ bucket, environment: 'production', renderer: { ...renderer, name: 'astro-runtime' }, versionId: body.versionId }), { loadCheckpoint: expect.any(Function) })
     expect(mocks.activate).toHaveBeenCalledWith(expect.objectContaining({ actorId: 'user-1', idempotencyKey: 'publish-1', prepared: { prepared: true } }), expect.anything())
     expect(mocks.activate.mock.calls[0][1]).toEqual({ policy: { deploymentEnvironment: 'production' }, runTransaction: expect.any(Function) })
   })
 
+  it('routes CMS publication through the atomic feature coordinator', async () => {
+    mocks.checkpoint.mockResolvedValue({ manifest: { schemaVersion: 2, builderLibrary: { components: [{}] } } })
+    const handler = (await import('~~/server/api/agency/page-studio/sites/[siteId]/runtime-releases/activate.post')).default as (e: TestEvent) => Promise<unknown>
+    const body = { environment: 'production', expectedActiveReleaseId: null, hostname: 'www.site.example', versionId: '22222222-2222-4222-8222-222222222222' }
+    expect(await handler(event(body))).toEqual({ release: { releaseId: 'cms-r2' } })
+    expect(mocks.activateFeature).toHaveBeenCalledWith(expect.objectContaining({ preparation: expect.objectContaining({ versionId: body.versionId }), actorId: 'user-1' }), { native: true }, { policy: { deploymentEnvironment: 'production' } })
+    expect(mocks.prepare).not.toHaveBeenCalled()
+    expect(mocks.activate).not.toHaveBeenCalled()
+  })
+  it('routes retained CMS rollback through a fresh feature activation', async () => {
+    mocks.sealed.mockResolvedValue(true)
+    const handler = (await import('~~/server/api/agency/page-studio/sites/[siteId]/runtime-releases/rollback.post')).default as (e: TestEvent) => Promise<unknown>
+    const body = { environment: 'production', expectedActiveReleaseId: '33333333-3333-4333-8333-333333333333', hostname: 'www.site.example', targetReleaseId: '44444444-4444-4444-8444-444444444444' }
+    expect(await handler(event(body))).toEqual({ release: { releaseId: 'cms-r1' } })
+    expect(mocks.rollbackFeature).toHaveBeenCalledWith(expect.objectContaining({ targetReleaseId: body.targetReleaseId }), { native: true }, { policy: { deploymentEnvironment: 'production' } })
+    expect(mocks.rollback).not.toHaveBeenCalled()
+  })
   it('rejects malformed input and an unconfigured renderer before touching content', async () => {
     const handler = (await import('~~/server/api/agency/page-studio/sites/[siteId]/runtime-releases/activate.post')).default as (e: TestEvent) => Promise<unknown>
     await expect(handler(event({ environment: 'preview', hostname: 'x', versionId: 'nope' }))).rejects.toMatchObject({ statusCode: 400 })

@@ -1,5 +1,10 @@
+import { readPublishedRuntimeFeatureForms } from '~~/server/utils/pageStudio/publishedRuntimeFeatureForms'
+import { rollbackRuntimeFeature } from '~~/server/utils/pageStudio/runtimeFeatureRollback'
+import { readPublishedRuntimeFeatureSnapshot } from '~~/server/utils/pageStudio/publishedRuntimeFeatureAuthority'
+import { readPublishedRuntimeFeaturePage } from '~~/server/utils/pageStudio/publishedRuntimeFeatureProjection'
 import { createPublicCmsFixture } from '../../fixtures/pageStudioPublicCms'
 import { prepareApprovedRuntimeFeature } from '~~/server/utils/pageStudio/runtimeFeaturePreparation'
+import { activateRuntimeFeature } from '~~/server/utils/pageStudio/runtimeFeatureActivation'
 import { CmsPreparationSchema, cmsItemIdentity, cmsPreparationActorId } from '~~/shared/pageStudio/cmsManaged'
 import { builderActionResultKey } from '~~/shared/pageStudio/actionInvocation'
 import { admitPublishedFormAction, acknowledgePublishedFormAction, completePublishedFormAction, recoverPublishedFormAction } from '~~/server/utils/pageStudio/publicActionInvocations'
@@ -103,7 +108,9 @@ describe.runIf(Boolean(databaseUrl))(
         '413_page_studio_release_metadata.sql',
         '426_page_studio_release_feature_seals.sql',
         '421_page_studio_ai_usage.sql', '427_page_studio_public_action_invocations.sql', '428_page_studio_client_staging.sql',
-        '430_page_studio_astro_build_identity.sql', '431_page_studio_astro_release_receipt.sql'
+        '430_page_studio_astro_build_identity.sql', '431_page_studio_astro_release_receipt.sql',
+        '433_page_studio_runtime_delivery.sql', '434_page_studio_runtime_draft_isolation.sql',
+        '435_page_studio_runtime_features.sql'
       ]) {
         await observer.query(
           readFileSync(
@@ -203,7 +210,7 @@ describe.runIf(Boolean(databaseUrl))(
         }
       }
     })
-    async function fixture(withInstance = false, withForm = false) {
+    async function fixture(withInstance = false, withForm: boolean | 'ordinary' = false) {
       const f = structuredClone(fixtureJson)
       if (withInstance) {
         const pin = f.nextCheckpoint.manifest.builderLibrary.components.find(pin => pin.id === 'fleet_view')!
@@ -214,6 +221,7 @@ describe.runIf(Boolean(databaseUrl))(
       }
       if (withForm) {
         f.nextCheckpoint.manifest.pages[0]!.forms = [{ id: 'contact', name: 'Contact', fields: [{ id: 'title', name: 'Title', type: 'text', required: true }], submission: { mode: 'action', version: 1, trigger: 'form-submit', action: f.nextCheckpoint.manifest.builderApplication.actions[0], mappings: [{ conversion: 'string', fieldId: 'title', inputKey: 'title' }] } }] as never
+        if (withForm === 'ordinary') delete (f.nextCheckpoint.manifest.pages[0]!.forms![0] as unknown as { submission?: unknown }).submission
         f.nextCheckpoint.digest = await collectionDigest(f.nextCheckpoint.manifest)
       }
       const actor = {
@@ -436,7 +444,7 @@ describe.runIf(Boolean(databaseUrl))(
         key
       }
     }
-    async function admitted(withInstance = false, withForm = false) {
+    async function admitted(withInstance = false, withForm: boolean | 'ordinary' = false) {
       const f = await fixture(withInstance, withForm)
       await coordinateCmsGraphTransition(f.input, f.principal, f.deps)
       await observer.query(
@@ -444,7 +452,7 @@ describe.runIf(Boolean(databaseUrl))(
       )
       return f
     }
-    async function approvedBuild(withInstance = false, withForm = false) {
+    async function approvedBuild(withInstance = false, withForm: boolean | 'ordinary' = false) {
       const f = await admitted(withInstance, withForm)
       request.env.PAGE_STUDIO_ACTION_RUNTIME_DIGEST
         = 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e'
@@ -525,7 +533,7 @@ describe.runIf(Boolean(databaseUrl))(
       return { ...f, body, fetch }
     }
     async function runtimePreparation(onWrite: (key: string) => Promise<void> = async () => {}) {
-      const f = await approvedBuild(true)
+      const f = await approvedBuild(true, 'ordinary')
       const bucket = {
         get: async (key: string) => {
           const object = await f.get(key)
@@ -538,11 +546,12 @@ describe.runIf(Boolean(databaseUrl))(
           await onWrite(key)
         }
       }
-      return { ...f, prepare: () => prepareApprovedRuntimeFeature({
+      const preparation = {
         bucket, environment: 'production', versionId: f.input.versionId,
         scope: { tenantId: scope.tenantId, clientId: scope.clientId, siteId: scope.siteId },
         renderer: { name: 'astro-runtime', generation: 'renderer_a', codeDigest: 'a'.repeat(64), assetsDigest: 'b'.repeat(64) }
-      }, f.principal, f.deps) }
+      } as const
+      return { ...f, preparation, prepare: () => prepareApprovedRuntimeFeature(preparation, f.principal, f.deps) }
     }
     async function rejectLatestRuntimeApproval() {
       await observer.query(`INSERT INTO page_studio_reviews(tenant_id,client_id,site_id,version_id,version_digest,reviewer_id,decision)
@@ -576,6 +585,150 @@ describe.runIf(Boolean(databaseUrl))(
       const before = [...f.texts.keys()]
       await expect(f.prepare()).rejects.toMatchObject({ code: 'BUILD_NOT_APPROVED', statusCode: 422 })
       expect([...f.texts.keys()]).toEqual(before)
+    })
+    async function runtimeActivation() {
+      const f = await runtimePreparation()
+      await observer.query('UPDATE page_studio_sites SET delivery_mode=\'runtime\'')
+      await observer.query(`INSERT INTO page_studio_domains(tenant_id,client_id,site_id,normalized_hostname,cloudflare_hostname_id,hostname_status,tls_status,dns_status,lifecycle_state,verified_at)
+        VALUES($1,$2,$3,'fixture.example.com','cf-test','active','active','active','active',NOW())`, [scope.tenantId, scope.clientId, scope.siteId])
+      const activation = {
+        actorId: request.actor.actorId, environment: 'production' as const,
+        hostname: 'fixture.example.com', expectedActiveReleaseId: null,
+        idempotencyKey: 'runtime-feature', preparation: f.preparation
+      }
+      const policy = { deploymentEnvironment: 'production' as const }
+      return { ...f, activation, activate: () => activateRuntimeFeature(activation, f.principal, { ...f.deps, policy }) }
+    }
+    async function publishedRuntime() {
+      const f = await runtimeActivation()
+      const release = await f.activate()
+      const seal = (await observer.query('SELECT * FROM page_studio_runtime_feature_seals')).rows[0]
+      const input = { hostname: 'fixture.example.com', releaseId: release.releaseId, releaseDigest: release.releaseDigest,
+        versionDigest: release.release.versionDigest, sealDigest: seal.identity.reference.recovery.sha256,
+        activationId: release.featureActivation.id, pointerVersion: release.featureActivation.pointerVersion, pageRoute: '/' }
+      return { ...f, release, seal, publishedInput: input }
+    }
+    it.each(['current', 'publisher-logout', 'client-disabled', 'site-disabled', 'expired', 'activation-revoked', 'pointer-aba', 'wrong-env', 'wrong-digest', 'wrong-activation'] as const)('applies real runtime published authority: %s', async (mode) => {
+      const f = await publishedRuntime()
+      if (mode === 'publisher-logout') await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      if (mode === 'client-disabled') await observer.query('UPDATE agency_clients SET is_active=FALSE')
+      if (mode === 'site-disabled') await observer.query('UPDATE page_studio_sites SET status=\'archived\'')
+      if (mode === 'expired') await observer.query('UPDATE page_studio_entitlements SET effective_until=clock_timestamp()-INTERVAL \'1second\'')
+      if (mode === 'activation-revoked') await observer.query('UPDATE page_studio_runtime_feature_activations SET state=\'revoked\',revoked_at=clock_timestamp()')
+      if (mode === 'pointer-aba') await observer.query('UPDATE page_studio_release_pointers SET pointer_version=pointer_version+2')
+      if (mode === 'wrong-env') request.env.PAGE_STUDIO_RELEASE_ENVIRONMENT = 'staging'
+      if (mode === 'wrong-digest') f.publishedInput.releaseDigest = 'f'.repeat(64)
+      if (mode === 'wrong-activation') f.publishedInput.activationId = randomUUID()
+      const result = readPublishedRuntimeFeatureSnapshot(f.publishedInput, request.env, f.deps)
+      if (mode === 'current' || mode === 'publisher-logout') {
+        expect((await result).release).toEqual({ ...f.publishedInput, pageRoute: undefined })
+      } else await expect(result).rejects.toThrow()
+    })
+    async function addLiveRuntimeRecord(title: string) {
+      const schemaObject = (await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'schema\'')).rows[0]
+      const body = { scope, collectionId: 'fleet', id: 'runtime_record', revision: 1, schemaVersion: 1, archived: false, values: { title } }
+      const pin = { ...schemaObject.storage_pin, kind: 'record', recordId: body.id, operationId: 'runtime_record', sha256: await collectionDigest(body), bytes: new TextEncoder().encode(collectionCanonical(body)).length }
+      const id = randomUUID()
+      const inserted = (await observer.query(`INSERT INTO page_studio_cms_objects(scope_key,generation,id,kind,collection_id,record_id,logical_version,storage_pin,schema_object_id,archived,actor_id,created_at,adoption_id)
+        VALUES($1,$2,$3,'record','fleet',$4,1,$5,$6,FALSE,$7,clock_timestamp(),'adoption_a') RETURNING created_at`, [schemaObject.scope_key, schemaObject.generation, id, body.id, pin, schemaObject.id, request.actor.actorId])).rows[0]
+      await observer.query('INSERT INTO page_studio_cms_record_heads(scope_key,generation,collection_id,record_id,object_id) VALUES($1,$2,\'fleet\',$3,$4)', [schemaObject.scope_key, schemaObject.generation, body.id, id])
+      const router = request.env.PAGE_STUDIO_CONTENT_ROUTER as { readManagedCmsObjects: (input: { pins: Array<{ kind: string }> }) => Promise<unknown[]> }
+      const original = router.readManagedCmsObjects
+      router.readManagedCmsObjects = async input => await Promise.all(input.pins.map(async item => item.kind === 'record'
+        ? { pin, body, actorId: request.actor.actorId, createdAt: new Date(inserted.created_at).toISOString(), schema: schemaObject.storage_pin, head: false }
+        : (await original({ pins: [item] }))[0]))
+      return id
+    }
+    it('restores a retained runtime template with a new activation epoch and current CMS authority', async () => {
+      const f = await publishedRuntime()
+      const second = await activateRuntimeFeature({ ...f.activation, idempotencyKey: 'second-runtime', expectedActiveReleaseId: f.release.releaseId,
+        preparation: { ...f.preparation, renderer: { ...f.preparation.renderer, generation: 'renderer_b' } } }, f.principal, { ...f.deps, policy: { deploymentEnvironment: 'production' } })
+      const input = { actorId: request.actor.actorId, environment: 'production' as const, hostname: f.activation.hostname,
+        expectedActiveReleaseId: second.releaseId, targetReleaseId: f.release.releaseId, idempotencyKey: 'rollback-runtime',
+        retainedGenerations: ['renderer_a', 'renderer_b'], scope: f.preparation.scope }
+      const currentRecordId = await addLiveRuntimeRecord('Saved after the older publication')
+      const rollback = () => rollbackRuntimeFeature(input, f.principal, { ...f.deps, policy: { deploymentEnvironment: 'production' } })
+      const restored = await rollback()
+      expect(restored.releaseId).toBe(f.release.releaseId)
+      expect(restored.featureActivation.pointerVersion).toBe(3)
+      expect(restored.featureActivation.id).not.toBe(f.release.featureActivation.id)
+      expect(await rollback()).toEqual(restored)
+      await expect(readPublishedRuntimeFeatureSnapshot(f.publishedInput, request.env, f.deps)).rejects.toThrow()
+      const projection = await readPublishedRuntimeFeaturePage({ ...f.publishedInput, activationId: restored.featureActivation.id, pointerVersion: 3 }, request.env, f.deps)
+      expect(projection.release.releaseId).toBe(f.release.releaseId)
+      expect(JSON.stringify(projection.components)).toContain('Saved after the older publication')
+      expect((await observer.query('SELECT object_id FROM page_studio_cms_record_heads')).rows[0].object_id).toBe(currentRecordId)
+      await observer.query('UPDATE page_studio_runtime_feature_activations SET state=\'revoked\',revoked_at=clock_timestamp() WHERE id=$1', [restored.featureActivation.id])
+      await expect(rollback()).rejects.toThrow()
+    })
+    it('projects ordinary public runtime forms without borrowing the publisher login', async () => {
+      const f = await publishedRuntime()
+      await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      const result = await readPublishedRuntimeFeatureForms(f.publishedInput, request.env, f.deps)
+      expect(result.release.releaseId).toBe(f.release.releaseId)
+      expect(result.runtime.siteId).toBe(scope.siteId)
+      expect(result.runtime.forms).toHaveLength(1)
+      expect(result.runtime.forms[0]!.form.id).toBe('contact')
+      expect(result.runtime.forms.every(item => !item.form.submission)).toBe(true)
+      await observer.query('UPDATE page_studio_runtime_feature_activations SET state=\'revoked\',revoked_at=clock_timestamp()')
+      await expect(readPublishedRuntimeFeatureForms(f.publishedInput, request.env, f.deps)).rejects.toThrow()
+    })
+    it('prevents direct changes to retained runtime identity or activation epochs', async () => {
+      const f = await publishedRuntime()
+      await expect(observer.query('UPDATE page_studio_runtime_feature_seals SET release_digest=$1', ['f'.repeat(64)])).rejects.toThrow('RUNTIME_FEATURE_SEAL_IMMUTABLE')
+      await expect(observer.query('DELETE FROM page_studio_runtime_feature_seals')).rejects.toThrow('RUNTIME_FEATURE_SEAL_IMMUTABLE')
+      await expect(observer.query('UPDATE page_studio_runtime_feature_activations SET pointer_version=pointer_version+1')).rejects.toThrow('RUNTIME_FEATURE_ACTIVATION_IMMUTABLE')
+      await expect(observer.query('DELETE FROM page_studio_runtime_feature_activations')).rejects.toThrow('RUNTIME_FEATURE_ACTIVATION_IMMUTABLE')
+      expect((await readPublishedRuntimeFeatureSnapshot(f.publishedInput, request.env, f.deps)).release.activationId).toBe(f.publishedInput.activationId)
+    })
+    it('atomically activates runtime CMS recovery at one pointer epoch and retries idempotently', async () => {
+      const f = await runtimeActivation()
+      const first = await f.activate()
+      const again = await f.activate()
+      expect(again).toEqual(first)
+      const seal = (await observer.query('SELECT * FROM page_studio_runtime_feature_seals')).rows[0]
+      const activation = (await observer.query('SELECT * FROM page_studio_runtime_feature_activations')).rows[0]
+      const pointer = (await observer.query('SELECT * FROM page_studio_release_pointers')).rows[0]
+      expect(seal.release_id).toBe(first.releaseId)
+      expect(seal.release_digest).toBe(first.releaseDigest)
+      expect(activation.release_id).toBe(first.releaseId)
+      expect(activation.pointer_version).toBe(pointer.pointer_version)
+      expect(pointer.active_release_id).toBe(first.releaseId)
+      expect((await observer.query('SELECT * FROM page_studio_builds')).rows).toHaveLength(0)
+    })
+    it('does not revive a revoked runtime activation on an idempotent retry', async () => {
+      const f = await runtimeActivation()
+      await f.activate()
+      await observer.query('UPDATE page_studio_runtime_feature_activations SET state=\'revoked\',revoked_at=clock_timestamp()')
+      await expect(f.activate()).rejects.toThrow()
+      await expect(observer.query('UPDATE page_studio_runtime_feature_activations SET state=\'enabled\',revoked_at=NULL')).rejects.toThrow('RUNTIME_FEATURE_ACTIVATION_IMMUTABLE')
+    })
+    it('rolls back the runtime pointer and seal if activation storage fails', async () => {
+      const f = await runtimeActivation()
+      await observer.query(`CREATE FUNCTION reject_runtime_activation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic activation failure'; END $$;
+        CREATE TRIGGER reject_runtime_activation BEFORE INSERT ON page_studio_runtime_feature_activations FOR EACH ROW EXECUTE FUNCTION reject_runtime_activation()`)
+      await expect(f.activate()).rejects.toThrow('synthetic activation failure')
+      for (const table of ['page_studio_releases', 'page_studio_release_pointers', 'page_studio_runtime_feature_seals']) {
+        expect((await observer.query(`SELECT * FROM ${table}`)).rows).toHaveLength(0)
+      }
+    })
+    it('rejects a runtime activation retry after an intervening pointer epoch', async () => {
+      const f = await runtimeActivation()
+      await f.activate()
+      await observer.query('UPDATE page_studio_release_pointers SET pointer_version=pointer_version+2')
+      await expect(f.activate()).rejects.toThrow()
+      expect((await observer.query('SELECT * FROM page_studio_runtime_feature_activations')).rows).toHaveLength(1)
+    })
+    it('allows only one concurrent runtime activation to claim the expected pointer', async () => {
+      const f = await runtimeActivation()
+      const outcomes = await Promise.allSettled(['race_a', 'race_b'].map(async (idempotencyKey) => {
+        return await activateRuntimeFeature({ ...f.activation, idempotencyKey }, f.principal, {
+          runTransaction: transactionFor(await connect()), policy: { deploymentEnvironment: 'production' }
+        })
+      }))
+      expect(outcomes.filter(item => item.status === 'fulfilled')).toHaveLength(1)
+      expect((await observer.query('SELECT * FROM page_studio_releases')).rows).toHaveLength(1)
+      expect((await observer.query('SELECT * FROM page_studio_runtime_feature_activations')).rows).toHaveLength(1)
     })
     it('claims a public action once with empty guest data, without borrowing the publisher login', async () => {
       const f = await publishedAction()
@@ -1260,11 +1413,12 @@ describe.runIf(Boolean(databaseUrl))(
       } else await expect(result).rejects.toThrow()
     })
 
-    it.each(['current', 'revoked-during-read', 'record-head-removed', 'wrong-page', 'draft', 'hidden', 'archived', 'corrupt-bundle', 'oversize-stream'] as const)('projects sealed public page and current native record heads: %s', async (mode) => {
-      const f = await approvedBuild(true)
-      const build = await coordinateSealedFeatureBuild(f.input, f.principal, f.services, f.deps)
-      const release = await coordinateFeatureActivation({ actorId: request.actor.actorId, buildId: build.buildId, environment: 'production', expectedActiveReleaseId: null, hostname: 'fixture.example.com', idempotencyKey: 'public_page', scope: { tenantId: scope.tenantId, clientId: scope.clientId, siteId: scope.siteId } }, f.principal, f.services, f.deps)
-      const seal = (await observer.query('SELECT * FROM page_studio_release_feature_seals')).rows[0]
+    for (const delivery of ['static', 'runtime'] as const) it.each(['current', 'revoked-during-read', 'record-head-removed', 'wrong-page', 'draft', 'hidden', 'archived', 'corrupt-bundle', 'oversize-stream'] as const)(`${delivery} projects sealed public page and current native record heads: %s`, async (mode) => {
+      const runtime = delivery === 'runtime' ? await publishedRuntime() : null
+      const f = runtime ?? await approvedBuild(true)
+      const build = runtime ? null : await coordinateSealedFeatureBuild(f.input, f.principal, f.services, f.deps)
+      const release = runtime?.release ?? await coordinateFeatureActivation({ actorId: request.actor.actorId, buildId: build!.buildId, environment: 'production', expectedActiveReleaseId: null, hostname: 'fixture.example.com', idempotencyKey: 'public_page', scope: { tenantId: scope.tenantId, clientId: scope.clientId, siteId: scope.siteId } }, f.principal, f.services, f.deps)
+      const seal = runtime ? { recovery_key: runtime.seal.identity.reference.recovery.key, recovery_bytes: runtime.seal.identity.reference.recovery.bytes } : (await observer.query('SELECT * FROM page_studio_release_feature_seals')).rows[0]
       const schemaObject = (await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'schema\'')).rows[0]
       const recordBody = { scope, collectionId: 'fleet', id: 'published_record', revision: 1, schemaVersion: 1, archived: false, values: { title: 'Live public value' } }
       const recordPin = { ...schemaObject.storage_pin, kind: 'record', recordId: recordBody.id, operationId: 'public_record', sha256: await collectionDigest(recordBody), bytes: new TextEncoder().encode(collectionCanonical(recordBody)).length }
@@ -1277,12 +1431,12 @@ describe.runIf(Boolean(databaseUrl))(
         return await Promise.all(input.pins.map(async (pin) => {
           if (pin.kind !== 'record') return (await original({ pins: [pin] }))[0]
           if (mode === 'record-head-removed') await observer.query('DELETE FROM page_studio_cms_record_heads')
-          if (mode === 'revoked-during-read') await observer.query('UPDATE page_studio_release_feature_activations SET state=\'revoked\',revoked_at=clock_timestamp()')
+          if (mode === 'revoked-during-read') await observer.query(`UPDATE ${delivery === 'runtime' ? 'page_studio_runtime_feature_activations' : 'page_studio_release_feature_activations'} SET state='revoked',revoked_at=clock_timestamp()`)
           return { pin: recordPin, body: recordBody, actorId: request.actor.actorId, createdAt: new Date(inserted.created_at).toISOString(), schema: schemaObject.storage_pin, head: false }
         }))
       }
       await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
-      const input = { hostname: 'fixture.example.com', releaseId: release.releaseId, buildId: build.buildId, versionDigest: build.versionDigest, manifestDigest: build.manifestDigest, sealDigest: seal.seal_digest, pageRoute: mode === 'wrong-page' ? '/private' : ['draft', 'hidden', 'archived'].includes(mode) ? `/${mode}-page` : f.manifest.pages[0]!.route }
+      const input = { ...(runtime?.publishedInput ?? { hostname: 'fixture.example.com', releaseId: release.releaseId, buildId: build!.buildId, versionDigest: build!.versionDigest, manifestDigest: build!.manifestDigest, sealDigest: seal.seal_digest }), pageRoute: mode === 'wrong-page' ? '/private' : ['draft', 'hidden', 'archived'].includes(mode) ? `/${mode}-page` : f.manifest.pages[0]!.route }
       if (mode === 'corrupt-bundle') f.texts.set(seal.recovery_key, f.texts.get(seal.recovery_key)!.replace('public_instance', 'forged_instance'))
       if (mode === 'oversize-stream') {
         const originalGet = f.get.getMockImplementation()!
@@ -1293,7 +1447,7 @@ describe.runIf(Boolean(databaseUrl))(
             } }) }
           : await originalGet(key))
       }
-      const result = readPublishedFeaturePage(input, request.env, f.deps)
+      const result = (delivery === 'runtime' ? readPublishedRuntimeFeaturePage : readPublishedFeaturePage)(input, request.env, f.deps)
       if (mode !== 'current') await expect(result).rejects.toThrow()
       else {
         const page = await result

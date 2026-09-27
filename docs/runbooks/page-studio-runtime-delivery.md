@@ -105,3 +105,31 @@ recovery loading and snapshot/media materialization stages. HTTP integration
 must supply an overall request deadline. The CMS publication admission guard
 remains in place. This is not evidence that generated CMS components or actions
 are enabled in a deployed site.
+
+## Runtime CMS publication (migration435)
+
+The runtime CMS coordinator prepares exact approved recovery, then stores the
+release, immutable seal, hostname pointer and epoch activation atomically. Public
+projection uses current accepted record heads and field visibility under current
+site/client/package authority. Explicit restore creates a fresh activation and
+preserves current records; historical retries cannot revive revoked grants.
+
+Apply `435_page_studio_runtime_features.sql` before deploying this code: public
+host resolution references both new tables, including ordinary/static hosts.
+The private machine routes are `published/runtime/page` and
+`published/runtime/forms` under `/internal/page-studio/`. Ordinary lead forms
+remain supported; generated action forms are not enabled by this work.
+
+Coordinate the reviewed Dashboard source with the Studio Delivery worker and
+immutable Astro renderer generation. Complete synthetic scoped-account and
+compiled runtime acceptance before enabling customer CMS publication. The paired
+Studio research record is `docs/research/2026-09-28-runtime-cms-publication.md`.
+
+28 September local verification: full Dashboard build passes (25,387,341 raw
+Worker bytes); native feature PostgreSQL suite passes 109 tests with one existing
+skip, including restore preserving records created after publication. Native
+route/deadline cases pass. Global typecheck retains unrelated baseline errors.
+Migration435 SHA `5640066fa7c07e1a7b7efdd2a2d1817f2718e9ade94e71e4bd46a5d875ea81f6`
+was applied and read back on production and isolated staging; scoped site
+checkpoint/version/release pointers were unchanged. No CMS publication or customer
+draft write was performed. Hosted deployment and scoped acceptance remain open.
