@@ -42,6 +42,33 @@ const MEDIA_LIMIT_BYTES = 10 * 1024 * 1024
 const MEDIA_TOTAL_LIMIT_BYTES = 128 * 1024 * 1024
 const SNAPSHOT_TYPE = 'application/json; charset=utf-8'
 
+interface RuntimeFeatureNode { builderInstance?: unknown, children?: RuntimeFeatureNode[] }
+interface RuntimeFeatureManifest {
+  schemaVersion?: number
+  builderLibrary?: { components?: unknown[] }
+  builderApplication?: { collections?: unknown[], actions?: unknown[] }
+  pages?: { forms?: { submission?: unknown }[], components?: RuntimeFeatureNode[] }[]
+}
+
+/** Checkpoint loader validates the complete manifest. These features additionally
+ * need current native published CMS/action authority, absent from runtime v1.
+ * Mirrors Studio's approved Astro build and runtime delivery admission. */
+export function requiresPublishedRuntimeIntegration(manifest: RuntimeFeatureManifest): boolean {
+  if (manifest.schemaVersion === 2 && (manifest.builderLibrary?.components?.length
+    || manifest.builderApplication?.collections?.length || manifest.builderApplication?.actions?.length)) return true
+  const pending: RuntimeFeatureNode[] = []
+  for (const page of manifest.pages ?? []) {
+    if (page.forms?.some(form => form.submission)) return true
+    pending.push(...page.components ?? [])
+  }
+  while (pending.length) {
+    const node = pending.pop()!
+    if (node.builderInstance) return true
+    pending.push(...node.children ?? [])
+  }
+  return false
+}
+
 function unavailable(message: string) {
   return new PageStudioPublishingError('RUNTIME_CONTENT_UNAVAILABLE', 422, message)
 }
@@ -171,6 +198,9 @@ export async function preparePageStudioRuntimeRelease(input: {
   // Verifies approval, the checkpoint object key/scope and the canonical digest.
   const checkpoint = await load({ bucket: input.bucket, scope: input.scope, versionId: input.versionId })
   const manifest = checkpoint.manifest as Record<string, unknown>
+  if (requiresPublishedRuntimeIntegration(manifest)) {
+    throw unavailable('CMS-backed components and generated actions require the published runtime integration. Your saved draft is preserved.')
+  }
   const content = await materializeRuntimeContent(input.bucket, input.scope, checkpoint.digest, manifest)
 
   const { digest, release } = await verifyNativeAstroRuntimeRelease({

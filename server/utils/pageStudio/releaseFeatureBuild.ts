@@ -123,7 +123,7 @@ export async function readFeatureRecoveryExact(
     throw featureConflict()
 }
 
-async function recoveryBundle(
+export async function readAcceptedFeatureRecovery(
   snapshot: CmsGraphSnapshot,
   principal: FeaturePublisher
 ) {
@@ -218,7 +218,7 @@ export async function coordinateSealedFeatureBuild(
     dependencies
   )
   if (authority.digest !== snapshot.checkpoint.digest) throw featureConflict()
-  const { bundle, manifest } = await recoveryBundle(snapshot, principal)
+  const { bundle, manifest } = await readAcceptedFeatureRecovery(snapshot, principal)
   if (!cmsEqual(input.manifest, manifest)) throw featureConflict()
   const sha256 = await collectionDigest(bundle)
   const reference: FeatureSealMarker = {

@@ -43,6 +43,8 @@ interface PreviewReleaseRow extends ReleaseRowBase {
 interface PublicReleaseRow extends ReleaseRowBase {
   client_id: string
   environment: 'staging' | 'production'
+  runtime_feature_seal?: string | null
+  runtime_feature_activation?: unknown
   runtime_release?: unknown
   runtime_release_digest?: string | null
   site_id: string
@@ -185,7 +187,11 @@ export async function resolvePageStudioReleaseHost(
             pointer.tenant_id,
             build.version_digest,
             release.runtime_release,
-            release.runtime_release_digest
+            release.runtime_release_digest,
+            runtime_seal.release_id AS runtime_feature_seal,
+            CASE WHEN runtime_activation.id IS NOT NULL THEN jsonb_build_object(
+              'activationId',runtime_activation.id,'pointerVersion',pointer.pointer_version,
+              'sealDigest',runtime_seal.identity->'reference'->'recovery'->>'sha256') END AS runtime_feature_activation
      FROM page_studio_release_pointers pointer
      JOIN page_studio_sites site
        ON site.tenant_id = pointer.tenant_id
@@ -208,6 +214,10 @@ export async function resolvePageStudioReleaseHost(
       AND build.site_id = release.site_id
       AND build.id = release.build_id
       AND build.state = 'succeeded'
+     LEFT JOIN page_studio_runtime_feature_seals runtime_seal ON runtime_seal.release_id=release.id
+     LEFT JOIN page_studio_runtime_feature_activations runtime_activation ON runtime_activation.release_id=release.id
+       AND runtime_activation.environment=pointer.environment AND runtime_activation.hostname=pointer.normalized_hostname
+       AND runtime_activation.pointer_version=pointer.pointer_version AND runtime_activation.state='enabled' AND runtime_activation.revoked_at IS NULL
      WHERE pointer.normalized_hostname = $1
        AND (build.id IS NOT NULL OR (release.runtime_release IS NOT NULL AND site.delivery_mode = 'runtime'))
        AND pointer.environment IN ('staging', 'production')
@@ -228,9 +238,15 @@ export async function resolvePageStudioReleaseHost(
       || verified.release.scope.siteId !== row.site_id) {
       throw new Error('Stored Page Studio runtime release failed verification')
     }
+    const featureActivation = row.runtime_feature_seal
+      ? z.object({ activationId: z.uuid(),
+          pointerVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), sealDigest: z.string().regex(/^[a-f0-9]{64}$/)
+        }).strict().parse(row.runtime_feature_activation)
+      : undefined
     return {
       hostname: hostname.data,
       release: {
+        ...(featureActivation ? { featureActivation } : {}),
         delivery: 'runtime',
         environment: row.environment,
         release: verified.release,

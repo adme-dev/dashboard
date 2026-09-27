@@ -5,8 +5,8 @@
     "astroBuildIdentityFixtures.json": "aab6df58afb3eab789e92ab582ceb9cd9c731a30bea96bfb47f4356f20b8751f",
     "builderGraphFixtures.json": "5e55191f0940e2be57d20c8477e221e105d8ad87d511b2db93db67548cd2dcca",
     "builderGraphLicenses.txt": "8d5d58fee24c22b7ca431fdd84693b6487f0a338cdad215d6f86e2465fb0e70e",
-    "builderGraphVerifier.d.mts": "7fd2f2bf399c5dff5aa043e0908f648ac45d38d4f67757fcee9649e893ed8767",
-    "builderGraphVerifier.mjs": "de6272e9f9fa34bab7ddc5eb63c84a5acff14468bbbc75040c285b78aa3a6fa0"
+    "builderGraphVerifier.d.mts": "02baf37829472045b9f5a7c8a74192c8919d9ffda8d88e9e70f08e89854d0d1a",
+    "builderGraphVerifier.mjs": "44b62f482e95c1bac5d9aa815623606214f130176c050e1e5c29f12172a30409"
   },
   "generator": "scripts/generate-native-builder-verifier.mjs",
   "options": {
@@ -19,7 +19,7 @@
     "target": "es2022",
     "treeShaking": true
   },
-  "sourceDigest": "bf83aafaa45c610a01794d5913c2fb1cd41623e6fd0ad4ec4e5ba22383cdf939",
+  "sourceDigest": "19259266276f8cf2cb7c46c4d712d293e0a2e0b17a2d5b37bf77276bc66b9b22",
   "sources": [
     {
       "path": "LICENSE",
@@ -370,6 +370,10 @@
       "sha256": "9f95212d19b43d3ab8300569d2042dfd4f3c04ea6190557771ffa8376958d32e"
     },
     {
+      "path": "packages/protocol/src/astro-runtime-feature.ts",
+      "sha256": "4ecab380d9a7565cfb5a409494058eee32c2419448aa0f952602184cbe8bc19d"
+    },
+    {
       "path": "packages/protocol/src/astro-runtime-release.ts",
       "sha256": "3df320a3f34d0882c6a1b50983d1cb2e48cd24ab9f77dafc9ae241df2445ccd0"
     },
@@ -399,7 +403,7 @@
     },
     {
       "path": "packages/protocol/src/builder-graph-verifier.ts",
-      "sha256": "75b9a9b8946c956de5635a355728132683c3c6b54c02b2a046b105de6394e5c9"
+      "sha256": "46e3c8dd00f40afc896dfe6a16f915e941222f5ab6f4ba98da08f8831242d876"
     },
     {
       "path": "packages/protocol/src/builder-instance-reference.ts",
@@ -511,7 +515,7 @@
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "5f6b5b3eb5162ac58a17a55d28f9587b42611a9bedd142fdca07c6e840ec9fc8"
+      "sha256": "d655c6d2af2fa2deb8e4bf8e37eb39e4958ddb8c112eaf29d465bf067b23454d"
     },
     {
       "path": "scripts/generate-native-builder-verifier.mjs",

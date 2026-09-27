@@ -1,9 +1,10 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { handlePublishedFeaturePage } from '~~/server/utils/pageStudio/publishedFeatureHttp'
 
-const mocks = vi.hoisted(() => ({ machine: vi.fn(), read: vi.fn(), header: vi.fn(), stream: vi.fn(), setHeader: vi.fn() }))
+const mocks = vi.hoisted(() => ({ machine: vi.fn(), read: vi.fn(), readRuntime: vi.fn(), header: vi.fn(), stream: vi.fn(), setHeader: vi.fn() }))
 vi.mock('h3', async original => ({ ...await original<object>(), getHeader: mocks.header, getRequestWebStream: mocks.stream, setHeader: mocks.setHeader }))
 vi.mock('~~/server/utils/pageStudio/machineAuth', () => ({ requirePageStudioMachineAuth: mocks.machine }))
+vi.mock('~~/server/utils/pageStudio/publishedRuntimeFeatureProjection', () => ({ readPublishedRuntimeFeaturePage: mocks.readRuntime }))
 vi.mock('~~/server/utils/pageStudio/publishedFeatureProjection', () => ({ readPublishedFeaturePage: mocks.read }))
 vi.mock('~~/server/utils/pageStudio/http', () => ({ pageStudioInternalHttpError: (_event: unknown, error: unknown) => {
   throw error
@@ -43,4 +44,14 @@ it('requires authenticated machine ingress before private recovery', async () =>
 it('bounds the actual request stream', async () => {
   body(' '.repeat(4097))
   await expect(handlePublishedFeaturePage(event as never)).rejects.toMatchObject({ statusCode: 413 })
+})
+
+it('uses the dedicated runtime identity and machine-only projection route', async () => {
+  const { buildId: _build, manifestDigest: _manifest, ...base } = request
+  const runtime = { ...base, releaseDigest: 'd'.repeat(64), pointerVersion: 2, activationId: '11111111-1111-4111-8111-111111111111' }
+  body(JSON.stringify(runtime))
+  mocks.readRuntime.mockResolvedValue({ version: 1 })
+  expect(await handlePublishedFeaturePage(event as never, 'runtime')).toEqual({ version: 1 })
+  expect(mocks.readRuntime).toHaveBeenCalledWith(runtime, event.context.cloudflare.env)
+  expect(mocks.read).not.toHaveBeenCalled()
 })

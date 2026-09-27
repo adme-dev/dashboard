@@ -1,3 +1,5 @@
+import { rollbackRuntimeFeature } from '~~/server/utils/pageStudio/runtimeFeatureRollback'
+import { hasRuntimeFeatureSeal, nativeFeaturePublisher } from '~~/server/utils/pageStudio/releaseFeatureHttp'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
 import { runtimeTargetPolicy } from '~~/server/utils/pageStudio/runtimeTarget'
@@ -31,6 +33,12 @@ export default eventHandler(async (event) => {
       : []
     const clientId = await resolveAgencyPageStudioSiteClient(tenantId, siteId.data)
     const scope = { tenantId, clientId, siteId: siteId.data }
+    if (await hasRuntimeFeatureSeal(scope, body.data.targetReleaseId)) {
+      const release = await rollbackRuntimeFeature({ actorId: user.id, ...body.data,
+        idempotencyKey: idempotencyKey.data, retainedGenerations: [current.generation, ...retained], scope },
+      await nativeFeaturePublisher(event, siteId.data), { policy })
+      return { release }
+    }
     const principal = await preparePageStudioPublishPrincipal(event, { tenantId, user })
     const release = await rollbackPageStudioRuntimeRelease({
       actorId: user.id,
