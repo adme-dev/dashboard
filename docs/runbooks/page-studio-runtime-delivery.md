@@ -84,8 +84,24 @@ the complete runtime release digest, including renderer and environment. Existin
 objects are verified, never repaired by overwriting; new writes require verified
 readback. No live record heads are retained.
 
-This utility is not called by the public publish route yet. Before integration,
-the native coordinator must fence publisher/approval authority around storage
-I/O and atomically bind activation to the current host/environment/pointer epoch.
-The CMS publication admission guard remains in place. This is not evidence that
-generated CMS components or actions are enabled in a deployed site.
+This utility is not called by the public publish route yet. The internal
+`prepareApprovedRuntimeFeature` coordinator now checks the original native login,
+publish permission, accepted CMS graph and exact approved version before storage
+work, then rechecks the same authority afterward. It reuses the static path's
+recovery construction without compiling a static build. A successful return is
+preparation evidence only. Activation still needs atomic binding to the current
+host/environment/pointer epoch and fresh CMS projection for public responses.
+
+Local verification on 28 September: five new preparation tests passed against a
+disposable localhost PostgreSQL database, covering successful/idempotent
+preparation, absence of build/release writes, rejection before storage for an
+unapproved version, and approval/permission/login revocation during retention.
+The complete feature-publication PostgreSQL suite passed 82 tests with one
+existing skipped test. No production database or client content was touched.
+Log: `/private/tmp/dashboard-runtime-feature-postgres.log`.
+
+The ten-second deadline applies to recovery retention/readback, not the earlier
+recovery loading and snapshot/media materialization stages. HTTP integration
+must supply an overall request deadline. The CMS publication admission guard
+remains in place. This is not evidence that generated CMS components or actions
+are enabled in a deployed site.

@@ -1,4 +1,5 @@
 import { createPublicCmsFixture } from '../../fixtures/pageStudioPublicCms'
+import { prepareApprovedRuntimeFeature } from '~~/server/utils/pageStudio/runtimeFeaturePreparation'
 import { CmsPreparationSchema, cmsItemIdentity, cmsPreparationActorId } from '~~/shared/pageStudio/cmsManaged'
 import { builderActionResultKey } from '~~/shared/pageStudio/actionInvocation'
 import { admitPublishedFormAction, acknowledgePublishedFormAction, completePublishedFormAction, recoverPublishedFormAction } from '~~/server/utils/pageStudio/publicActionInvocations'
@@ -523,6 +524,59 @@ describe.runIf(Boolean(databaseUrl))(
       const body = { version: 1, publication: { ...input, activationId: snapshot.release.activationId, pointerVersion: snapshot.release.pointerVersion }, pageId: 'home', formId: 'contact', formDigest: await collectionDigest(form), fields: { title: 'New enquiry' }, intentId: randomUUID(), receiptSecret: 'a'.repeat(64), clientAddress: '192.0.2.10', turnstileToken: 'test-challenge' }
       return { ...f, body, fetch }
     }
+    async function runtimePreparation(onWrite: (key: string) => Promise<void> = async () => {}) {
+      const f = await approvedBuild(true)
+      const bucket = {
+        get: async (key: string) => {
+          const object = await f.get(key)
+          if (!object) return null
+          const body = f.texts.get(key)!
+          return { ...object, arrayBuffer: async () => new TextEncoder().encode(body).buffer }
+        },
+        put: async (key: string, bytes: Uint8Array) => {
+          f.texts.set(key, new TextDecoder().decode(bytes))
+          await onWrite(key)
+        }
+      }
+      return { ...f, prepare: () => prepareApprovedRuntimeFeature({
+        bucket, environment: 'production', versionId: f.input.versionId,
+        scope: { tenantId: scope.tenantId, clientId: scope.clientId, siteId: scope.siteId },
+        renderer: { name: 'astro-runtime', generation: 'renderer_a', codeDigest: 'a'.repeat(64), assetsDigest: 'b'.repeat(64) }
+      }, f.principal, f.deps) }
+    }
+    async function rejectLatestRuntimeApproval() {
+      await observer.query(`INSERT INTO page_studio_reviews(tenant_id,client_id,site_id,version_id,version_digest,reviewer_id,decision)
+        SELECT tenant_id,client_id,site_id,version_id,version_digest,reviewer_id,'rejected'
+        FROM page_studio_reviews ORDER BY decided_at DESC,id DESC LIMIT 1`)
+    }
+    it('prepares approved runtime CMS recovery without compiling or activating a release', async () => {
+      const f = await runtimePreparation()
+      const prepared = await f.prepare()
+      expect(prepared.feature.reference.releaseDigest).toBe(prepared.prepared.digest)
+      expect(prepared.feature.contentScope).toEqual(scope)
+      expect(prepared.prepared.release.versionId).toBe(f.input.versionId)
+      expect(f.services.buildSealed).not.toHaveBeenCalled()
+      expect((await observer.query('SELECT * FROM page_studio_releases')).rows).toHaveLength(0)
+      expect((await observer.query('SELECT * FROM page_studio_builds')).rows).toHaveLength(0)
+      expect(await f.prepare()).toEqual(prepared)
+    })
+    it.each(['approval', 'permission', 'login'])('rejects runtime preparation after %s is revoked during retention', async (kind) => {
+      const f = await runtimePreparation(async (key) => {
+        if (!key.startsWith('builder-recovery/')) return
+        if (kind === 'approval') await rejectLatestRuntimeApproval()
+        if (kind === 'permission') await observer.query('DELETE FROM role_permission_groups WHERE permission_group=\'PAGE_STUDIO_PUBLISH\'')
+        if (kind === 'login') await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      })
+      await expect(f.prepare()).rejects.toMatchObject({ statusCode: kind === 'approval' ? 422 : 403 })
+      expect((await observer.query('SELECT * FROM page_studio_releases')).rows).toHaveLength(0)
+    })
+    it('rejects an unapproved runtime CMS version before retaining runtime content', async () => {
+      const f = await runtimePreparation()
+      await rejectLatestRuntimeApproval()
+      const before = [...f.texts.keys()]
+      await expect(f.prepare()).rejects.toMatchObject({ code: 'BUILD_NOT_APPROVED', statusCode: 422 })
+      expect([...f.texts.keys()]).toEqual(before)
+    })
     it('claims a public action once with empty guest data, without borrowing the publisher login', async () => {
       const f = await publishedAction()
       await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
