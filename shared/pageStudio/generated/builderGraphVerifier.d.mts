@@ -397,3 +397,27 @@ export declare function nativeAstroRuntimeContentPrefix(scope: {
   siteId: string;
   tenantId: string;
 }): string;
+export interface NativeAstroRuntimeFeatureReference {
+  formatVersion: 1;
+  recovery: {
+    key: string;
+    bytes: number;
+    sha256: string;
+  };
+  releaseDigest: string;
+}
+/** Byte identity only: native approval, activation and current CMS projection
+ * must be proved separately. No static build ID or human grant is fabricated. */
+export declare function createNativeAstroRuntimeFeatureReference(
+  release: unknown,
+  bundle: unknown
+): Promise<NativeAstroRuntimeFeatureReference>;
+export declare function verifyNativeAstroRuntimeFeatureRecovery(
+  reference: unknown,
+  release: unknown,
+  bytes: string
+): Promise<
+  BuilderGraphReleaseRecoveryProof & {
+    reference: NativeAstroRuntimeFeatureReference;
+  }
+>;

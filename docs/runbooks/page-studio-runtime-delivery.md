@@ -76,3 +76,16 @@ hostname/environment/pointer-epoch admission, project current scoped records, an
 rematerialize pinned components inside Astro. Rollback retains newer CMS records
 and current visibility. Verify two scopes and revoked/private/archived data. Do not
 enable generated action forms or hosted feature AI to bypass these requirements.
+## CMS recovery identity preparation (local increment)
+
+`runtimeFeatureRecovery.ts` retains canonical generated component/collection
+recovery bytes through the Studio-generated native verifier. The reference binds
+the complete runtime release digest, including renderer and environment. Existing
+objects are verified, never repaired by overwriting; new writes require verified
+readback. No live record heads are retained.
+
+This utility is not called by the public publish route yet. Before integration,
+the native coordinator must fence publisher/approval authority around storage
+I/O and atomically bind activation to the current host/environment/pointer epoch.
+The CMS publication admission guard remains in place. This is not evidence that
+generated CMS components or actions are enabled in a deployed site.
