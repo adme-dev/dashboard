@@ -28,3 +28,5 @@ If access regresses, revert this change on current main and redeploy using the g
 ## CI inventory correction
 
 The first full CI run passed 14,779 tests and failed only two mechanical God mode inventory snapshots. Reviewing the exact pre-change/current inventories accounted for four removed inline media-role rows, one added protected-team admin/owner row and nine QR/auth-menu rows. The new client picker adds one GET; logo upload delegates its gate, reducing the lexical inline mutation count by one. The snapshot counts and digest are updated without changing the inventory algorithm, exclusion set, registered bypasses or runtime authority. Both failures were reproduced locally before the correction.
+
+The next PR run completed the production build but the separate CRM source scan took 16.6 seconds and exceeded its 15-second test timeout. Its scoped timeout is now 60 seconds; all five source roots, parser logic, assertions and negative fixtures are unchanged. All 54 CRM endpoint/transport tests pass locally. This is test-runner tolerance, not a runtime timeout or authorization change.
