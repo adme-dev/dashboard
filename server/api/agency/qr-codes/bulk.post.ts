@@ -1,6 +1,6 @@
 /** Create N variant codes under one campaign. POST /api/agency/qr-codes/bulk */
 import { queryOne } from '~~/server/utils/db'
-import { requireClientTrackingAccess } from '~~/server/utils/client-access'
+import { requireQrClientAccess } from '~~/server/utils/qr/permissions'
 import { executeQrMutation } from '~~/server/utils/qr/godModeMutations'
 import { shortUrl } from '~~/server/utils/qr/access'
 import { BulkQrSchema, expandName } from '~~/shared/qr/bulk'
@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const parsed = BulkQrSchema.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.issues[0]?.message || 'Invalid body' })
   const body = parsed.data
-  const user = await requireClientTrackingAccess(event, body.clientId)
+  const user = await requireQrClientAccess(event, body.clientId)
   const dest = validateDestinationUrl(body.destinationUrl)
   if (isDestinationInvalid(dest)) throw createError({ statusCode: 400, statusMessage: dest.reason })
   if (!(QR_UTM_MEDIUMS as readonly string[]).includes(body.utmMedium)) throw createError({ statusCode: 400, statusMessage: 'Unknown placement' })

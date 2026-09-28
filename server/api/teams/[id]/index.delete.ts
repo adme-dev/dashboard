@@ -1,3 +1,4 @@
+import { requireQrTeamManager } from '~~/server/utils/qr/teamManagement'
 /**
  * Delete a team (soft delete)
  * DELETE /api/teams/:id
@@ -14,6 +15,8 @@ export default eventHandler(async (event) => {
   if (!teamId) {
     throw createError({ statusCode: 400, statusMessage: 'Team ID required' })
   }
+
+  await requireQrTeamManager(event, teamId)
 
   // Check if system team
   const team = await queryOne('SELECT is_system FROM teams WHERE id = $1', [teamId])

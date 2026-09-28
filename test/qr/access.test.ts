@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 const { q, gate } = vi.hoisted(() => ({ q: { queryOne: vi.fn() }, gate: vi.fn() }))
 vi.mock('~~/server/utils/db', () => ({ queryOne: q.queryOne, queryRows: vi.fn(), execute: vi.fn() }))
-vi.mock('~~/server/utils/client-access', () => ({ requireClientTrackingAccess: gate, isUuid: (s: string) => /^[0-9a-f-]{36}$/i.test(s) }))
+vi.mock('~~/server/utils/client-access', () => ({ isUuid: (s: string) => /^[0-9a-f-]{36}$/i.test(s) }))
+vi.mock('~~/server/utils/qr/permissions', () => ({ requireQrClientAccess: gate }))
 import { requireQrCodeAccess } from '../../server/utils/qr/access'
 
 beforeEach(() => vi.clearAllMocks())

@@ -1,11 +1,11 @@
-import { requireClientTrackingAccess } from '~~/server/utils/client-access'
+import { requireQrClientAccess } from '~~/server/utils/qr/permissions'
 import { FolderSchema } from '~~/server/utils/qr/schemas'
 import { executeQrMutation } from '~~/server/utils/qr/godModeMutations'
 
 export default defineEventHandler(async (event) => {
   const parsed = FolderSchema.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.issues[0]?.message || 'Invalid body' })
-  await requireClientTrackingAccess(event, parsed.data.clientId)
+  await requireQrClientAccess(event, parsed.data.clientId)
   try {
     const folder = await executeQrMutation(event, 'folder-create', async (db) => {
       const r = await db.query(`INSERT INTO qr_folders (client_id, name) VALUES ($1,$2) RETURNING *`, [parsed.data.clientId, parsed.data.name])

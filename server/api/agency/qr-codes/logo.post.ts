@@ -1,12 +1,11 @@
 /** Upload a centre logo; returns a data URI to embed in style.logo. POST multipart field "file". */
-import { requireAuth, requireRole } from '~~/server/utils/auth'
-import { ANALYTICS_ROLES } from '~~/server/utils/client-access'
+import { requireQrAccess } from '~~/server/utils/qr/permissions'
 import { executeQrMutation } from '~~/server/utils/qr/godModeMutations'
 import { sha256Hex } from '~~/server/utils/exportTokens'
 
 const MAX = 256 * 1024
 export default defineEventHandler(async (event) => {
-  await requireAuth(event); await requireRole(event, ANALYTICS_ROLES)
+  await requireQrAccess(event)
   const parts = await readMultipartFormData(event)
   const file = parts?.find(p => p.name === 'file' && p.data?.length)
   if (!file) throw createError({ statusCode: 400, statusMessage: 'file is required' })

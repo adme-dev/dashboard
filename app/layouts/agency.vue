@@ -21,6 +21,7 @@ const {
   isReadOnly,
   canAccessClients,
   canAccessMediaBuying,
+  canAccessQrCodes,
   canAccessFinance,
   canAccessInvoices,
   canAccessSales,
@@ -371,9 +372,8 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close },
     { label: 'Connect AI Assistants', icon: 'i-lucide-plug', to: '/agency/ai/connectors', onSelect: close }
   )
-  // QR Codes lives under Tools (it's a utility, not budget tracking) but keeps
-  // the media-buying gate its page enforces.
-  if (canAccessMediaBuying.value) {
+  // QR tools can be granted independently of advertising and financial access.
+  if (canAccessQrCodes.value) {
     items.push({ label: 'QR Codes', icon: 'i-lucide-qr-code', to: '/agency/qr-codes', onSelect: close })
   }
   if (canAccessAdmin.value) {

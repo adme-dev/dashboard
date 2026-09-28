@@ -330,6 +330,12 @@ describe('auth utility', () => {
   describe('hasRole', () => {
     const baseUser = { id: 'u1', email: 'e', name: 'n', role: 'admin', is_active: true }
 
+    it('does not widen QR-only grants to advertising, finance or admin roles', () => {
+      const qrUser = { ...baseUser, role: 'member', permissionGroups: ['QR_CODES'] }
+      for (const roles of [PERMISSIONS.MEDIA_BUYING, PERMISSIONS.FINANCE, PERMISSIONS.ADMIN]) {
+        expect(hasRole(qrUser as any, roles)).toBe(false)
+      }
+    })
     it('matches on the legacy role name', () => {
       expect(hasRole({ ...baseUser, role: 'admin' } as any, ['admin', 'owner'])).toBe(true)
     })

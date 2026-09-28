@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { queryOne } from '~~/server/utils/db'
-import { requireClientTrackingAccess, isUuid } from '~~/server/utils/client-access'
+import { isUuid } from '~~/server/utils/client-access'
+import { requireQrClientAccess } from '~~/server/utils/qr/permissions'
 
 export interface QrCodeRow {
   id: string, client_id: string, folder_id: string | null, code: string, domain: string | null
@@ -16,7 +17,7 @@ export async function requireQrCodeAccess(event: H3Event, id: string | undefined
   if (!isUuid(id)) throw createError({ statusCode: 400, statusMessage: 'Invalid id' })
   const row = await queryOne<QrCodeRow>(`SELECT * FROM qr_codes WHERE id = $1`, [id])
   if (!row) throw createError({ statusCode: 404, statusMessage: 'QR code not found' })
-  const user = await requireClientTrackingAccess(event, row.client_id)
+  const user = await requireQrClientAccess(event, row.client_id)
   return { user, row }
 }
 
@@ -24,6 +25,6 @@ export async function requireFolderAccess(event: H3Event, id: string | undefined
   if (!isUuid(id)) throw createError({ statusCode: 400, statusMessage: 'Invalid id' })
   const row = await queryOne<{ id: string, client_id: string, name: string }>(`SELECT * FROM qr_folders WHERE id = $1`, [id])
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Folder not found' })
-  const user = await requireClientTrackingAccess(event, row.client_id)
+  const user = await requireQrClientAccess(event, row.client_id)
   return { user, row }
 }

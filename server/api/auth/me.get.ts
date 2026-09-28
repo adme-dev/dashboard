@@ -2,6 +2,8 @@ import { validateSession, TransientAuthError } from '../../utils/auth'
 import { resolveUserPermissions } from '../../utils/roleResolver'
 import { resolveGodModeAuthority } from '../../utils/godMode/authority'
 import { getHeader } from 'h3'
+import { withQrTeamPermission } from '~~/server/utils/qr/permissions'
+import { canAccessQrCodes } from '~~/shared/qr/permissions'
 
 export default defineEventHandler(async (event) => {
   // Get token from Authorization header or cookie (httpOnly primary, client-visible fallback)
@@ -35,6 +37,7 @@ export default defineEventHandler(async (event) => {
     // Resolve permission groups
     const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
     const godModeAuthority = await resolveGodModeAuthority(event, user.id)
+    const qrUser = await withQrTeamPermission({ ...user, permissionGroups: resolved.groups, isCustomReadOnly: resolved.isReadOnly })
 
     return {
       success: true,
@@ -47,6 +50,7 @@ export default defineEventHandler(async (event) => {
         is_active: user.is_active,
         custom_role_id: user.custom_role_id || null,
         permissionGroups: resolved.groups,
+        qrCodeAccess: canAccessQrCodes(qrUser),
         isCustomReadOnly: resolved.isReadOnly && !['viewer', 'guest'].includes(user.role),
         godMode: {
           active: godModeAuthority.active,

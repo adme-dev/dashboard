@@ -62,6 +62,7 @@ const GROUPS = [
   { key: 'CLIENTS', label: 'Clients', description: 'Client management, portal, intake', icon: 'i-lucide-handshake' },
   { key: 'CREATIVE', label: 'Creative', description: 'Banner studio, proofs, ad preview', icon: 'i-lucide-palette' },
   { key: 'MEDIA_BUYING', label: 'Media Buying', description: 'Ad spend, social hub, budget tracking', icon: 'i-lucide-megaphone' },
+  { key: 'QR_CODES', label: 'QR Codes', description: 'Create and manage agency-wide QR codes and campaigns', icon: 'i-lucide-qr-code' },
   { key: 'TIME_APPROVALS', label: 'Time Approvals', description: 'Timesheet approval workflow', icon: 'i-lucide-clock' },
   { key: 'AUTOMATION', label: 'Automation', description: 'Board automations, AI automation', icon: 'i-lucide-zap' },
 ]

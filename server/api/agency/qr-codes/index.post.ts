@@ -1,6 +1,6 @@
 /** Create a QR code. POST /api/agency/qr-codes */
 import { queryOne } from '~~/server/utils/db'
-import { requireClientTrackingAccess } from '~~/server/utils/client-access'
+import { requireQrClientAccess } from '~~/server/utils/qr/permissions'
 import { CreateQrSchema } from '~~/server/utils/qr/schemas'
 import { shortUrl } from '~~/server/utils/qr/access'
 import { executeQrMutation } from '~~/server/utils/qr/godModeMutations'
@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   const parsed = CreateQrSchema.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.issues[0]?.message || 'Invalid body' })
   const body = parsed.data
-  const user = await requireClientTrackingAccess(event, body.clientId)
+  const user = await requireQrClientAccess(event, body.clientId)
   const dest = validateDestinationUrl(body.destinationUrl)
   if (isDestinationInvalid(dest)) throw createError({ statusCode: 400, statusMessage: dest.reason })
   if (body.folderId) {

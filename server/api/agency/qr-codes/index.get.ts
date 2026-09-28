@@ -1,16 +1,15 @@
 /** List QR codes. GET /api/agency/qr-codes?clientId&folderId&campaignId&search */
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { requireQrAccess, accessibleQrClientIds } from '~~/server/utils/qr/permissions'
 import { queryRows } from '~~/server/utils/db'
-import { ANALYTICS_ROLES, accessibleClientIds, isUuid } from '~~/server/utils/client-access'
+import { isUuid } from '~~/server/utils/client-access'
 import { shortUrl } from '~~/server/utils/qr/access'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
-  await requireRole(event, ANALYTICS_ROLES)
+  const user = await requireQrAccess(event)
   const q = getQuery(event)
   const params: unknown[] = []
   const where: string[] = []
-  const scope = await accessibleClientIds(user)
+  const scope = await accessibleQrClientIds(user)
   if (scope) { params.push(scope); where.push(`c.client_id = ANY($${params.length}::uuid[])`) }
   if (isUuid(q.clientId as string)) { params.push(q.clientId); where.push(`c.client_id = $${params.length}`) }
   if (isUuid(q.folderId as string)) { params.push(q.folderId); where.push(`c.folder_id = $${params.length}`) }

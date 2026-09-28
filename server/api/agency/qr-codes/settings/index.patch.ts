@@ -1,6 +1,6 @@
 /** Update per-client QR settings. PATCH /api/agency/qr-codes/settings */
 import { z } from 'zod'
-import { requireClientTrackingAccess } from '~~/server/utils/client-access'
+import { requireQrClientAccess } from '~~/server/utils/qr/permissions'
 import { executeQrMutation } from '~~/server/utils/qr/godModeMutations'
 import { resetQr360Cache } from '~~/server/utils/qr/export360'
 
@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.issues[0]?.message || 'Invalid body' })
   const b = parsed.data
-  const user = await requireClientTrackingAccess(event, b.clientId)
+  const user = await requireQrClientAccess(event, b.clientId)
   const row = await executeQrMutation(event, 'settings-update', async (db) => {
     const r = await db.query(
       `INSERT INTO qr_client_settings (client_id, export_360, updated_by) VALUES ($1,$2,$3)

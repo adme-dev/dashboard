@@ -49,7 +49,7 @@ export function canViewPortalCrmAudit(
 // Permission groups for dynamic role resolution
 export const PERMISSION_GROUPS = [
   'ADMIN', 'HR_ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
-  'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'
+  'CREATIVE', 'MEDIA_BUYING', 'QR_CODES', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'
 ] as const
 
 export type PermissionGroup = typeof PERMISSION_GROUPS[number]

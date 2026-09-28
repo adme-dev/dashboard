@@ -12,7 +12,7 @@ const emit = defineEmits<{ (e: 'saved', code: QrCode): void }>()
 
 const api = useQrCodes()
 const toast = useToast()
-const { data: clientsData } = await useFetch<any[]>('/api/agency/clients') // bare array (see memory)
+const { data: clientsData } = await useFetch<{ id: string, name: string }[]>('/api/agency/qr-codes/clients') // bare array (see memory)
 const clients = computed(() => (clientsData.value ?? []).map(c => ({ label: c.name, value: c.id })))
 
 const form = reactive({
