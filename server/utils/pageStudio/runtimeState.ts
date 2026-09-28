@@ -1,5 +1,6 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { pageStudioRuntimeDraftHostname } from './delivery'
+import { runtimeTargetPolicy, selectRuntimeStagingCanary } from './runtimeTarget'
 import type { PageStudioPublishingScope } from './publishing'
 import type { PageStudioRuntimeState } from '~~/shared/pageStudio/runtimeState'
 
@@ -12,8 +13,9 @@ export async function readPageStudioRuntimeState(
 ): Promise<PageStudioRuntimeState> {
   const one = dependencies.queryOne ?? queryOne
   const rows = dependencies.queryRows ?? queryRows
-  const site = await one<{ delivery_mode: 'static' | 'runtime', checkpoint_id: string | null, digest: string | null, saved_at: string | null }>(
-    `SELECT site.delivery_mode, checkpoint.id AS checkpoint_id, checkpoint.digest, checkpoint.created_at AS saved_at
+  const site = await one<{ delivery_mode: 'static' | 'runtime', synthetic: boolean | null, checkpoint_id: string | null, digest: string | null, saved_at: string | null }>(
+    `SELECT site.delivery_mode, (site.integrations->>'synthetic'='true') AS synthetic,
+       checkpoint.id AS checkpoint_id, checkpoint.digest, checkpoint.created_at AS saved_at
      FROM page_studio_sites site
      LEFT JOIN page_studio_checkpoints checkpoint
        ON checkpoint.tenant_id = site.tenant_id AND checkpoint.client_id = site.client_id
@@ -82,13 +84,17 @@ export async function readPageStudioRuntimeState(
     versionId: release.version_id
   }))
   const live = mapped.find(release => release.active)
+  const canaryHostname = !staging && !pointer && environment === 'staging' && deploymentEnvironment === 'staging'
+    && site.delivery_mode === 'runtime' && site.synthetic === true
+    ? selectRuntimeStagingCanary(runtimeTargetPolicy(env), scope)?.hostname
+    : undefined
   return {
     approved: approved
       ? { checkpointId: approved.checkpoint_id, digest: approved.digest, versionId: approved.version_id, live: live?.versionId === approved.version_id }
       : null,
     deliveryMode: site.delivery_mode,
     environment,
-    hostname: staging?.hostname ?? pointer?.normalized_hostname ?? null,
+    hostname: staging?.hostname ?? pointer?.normalized_hostname ?? canaryHostname ?? null,
     draft: site.checkpoint_id && site.digest && site.saved_at
       ? {
           checkpointId: site.checkpoint_id,

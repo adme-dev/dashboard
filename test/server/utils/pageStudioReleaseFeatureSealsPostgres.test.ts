@@ -30,6 +30,8 @@ import {
   withFeaturePublisher
 } from '~~/server/utils/pageStudio/releaseFeatureAuthority'
 import fixtureJson from '../../fixtures/pageStudioCmsGraph.json'
+import secondCanaryFixture from '../../fixtures/pageStudioCmsGraphSecondCanary.json'
+import { runtimeTargetPolicy } from '~~/server/utils/pageStudio/runtimeTarget'
 import type { ContentAuthorityRequest } from '~~/server/utils/pageStudio/businessContent'
 import type { PageStudioControlQueryClient } from '~~/server/utils/pageStudio/controlStore'
 import type { PageStudioContentScope } from '~~/shared/pageStudio/businessContent'
@@ -61,6 +63,7 @@ describe.runIf(Boolean(databaseUrl))(
       schema: string,
       scope: PageStudioContentScope,
       request: ContentAuthorityRequest
+    let fixtureSource = fixtureJson
     async function connect() {
       const db = new pg.Client({ connectionString: databaseUrl })
       await db.connect()
@@ -88,6 +91,7 @@ describe.runIf(Boolean(databaseUrl))(
     }
     beforeEach(async () => {
       connections = []
+      fixtureSource = fixtureJson
       schema = `cms_${randomUUID().replaceAll('-', '')}`
       observer = await connect()
       await observer.query(`CREATE SCHEMA "${schema}"`)
@@ -211,7 +215,7 @@ describe.runIf(Boolean(databaseUrl))(
       }
     })
     async function fixture(withInstance = false, withForm: boolean | 'ordinary' = false) {
-      const f = structuredClone(fixtureJson)
+      const f = structuredClone(fixtureSource)
       if (withInstance) {
         const pin = f.nextCheckpoint.manifest.builderLibrary.components.find(pin => pin.id === 'fleet_view')!
         const artifact = JSON.parse(f.artifactBytes.find(raw => JSON.parse(raw).id === 'fleet_view')!)
@@ -448,7 +452,7 @@ describe.runIf(Boolean(databaseUrl))(
       const f = await fixture(withInstance, withForm)
       await coordinateCmsGraphTransition(f.input, f.principal, f.deps)
       await observer.query(
-        'INSERT INTO role_permission_groups SELECT id,\'PAGE_STUDIO_PUBLISH\' FROM custom_roles'
+        'INSERT INTO role_permission_groups SELECT id,\'PAGE_STUDIO_PUBLISH\' FROM custom_roles ON CONFLICT DO NOTHING'
       )
       return f
     }
@@ -457,9 +461,9 @@ describe.runIf(Boolean(databaseUrl))(
       request.env.PAGE_STUDIO_ACTION_RUNTIME_DIGEST
         = 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e'
       const version = (
-        await observer.query('SELECT * FROM page_studio_versions')
+        await observer.query('SELECT * FROM page_studio_versions WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3', [scope.tenantId, scope.clientId, scope.siteId])
       ).rows[0]
-      await observer.query('UPDATE page_studio_versions SET status=\'approved\'')
+      await observer.query('UPDATE page_studio_versions SET status=\'approved\' WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3', [scope.tenantId, scope.clientId, scope.siteId])
       await observer.query(
         'INSERT INTO page_studio_reviews(tenant_id,client_id,site_id,version_id,version_digest,reviewer_id,decision) VALUES($1,$2,$3,$4,$5,$6,\'approved\')',
         [
@@ -731,18 +735,104 @@ describe.runIf(Boolean(databaseUrl))(
       else await expect(result).rejects.toThrow()
     })
 
+    it('keeps two tenant canaries independent through activation, projection, rollback and revocation', async () => {
+      const first = await runtimePreparation(undefined, 'staging')
+      const firstScope = scope, firstRequest = request
+      fixtureSource = secondCanaryFixture
+      scope = secondCanaryFixture.base.scope as PageStudioContentScope
+      const actorId = randomUUID(), tokenHash = randomUUID().replaceAll('-', '').repeat(2)
+      await observer.query('INSERT INTO team_members VALUES($1,TRUE,\'owner\',NULL,NULL)', [actorId])
+      await observer.query('INSERT INTO agency_clients VALUES($1,TRUE)', [scope.clientId])
+      const entitlement = (await observer.query(`INSERT INTO page_studio_entitlements(tenant_id,client_id,monthly_ai_operation_limit,active_site_limit,portal_creation_enabled,plan_metadata)
+        VALUES($1,$2,0,2,TRUE,'{"builder":{"collectionSchemas":true}}') RETURNING id`, [scope.tenantId, scope.clientId])).rows[0].id
+      await observer.query(`INSERT INTO page_studio_sites(id,tenant_id,client_id,entitlement_id,name,route,starter_version)
+        VALUES($1,$2,$3,$4,'Second canary','second-canary','fixture')`, [scope.siteId, scope.tenantId, scope.clientId, entitlement])
+      const login = (await observer.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+        VALUES('agency',$1,$2,date_trunc('milliseconds',clock_timestamp())-INTERVAL '1hour',date_trunc('milliseconds',clock_timestamp())+INTERVAL '1day') RETURNING *`, [tokenHash, actorId])).rows[0]
+      request = { ...firstRequest, siteId: scope.siteId, actor: { role: 'agency', actorId, tenantId: scope.tenantId, canEdit: true },
+        login: { role: 'agency', userId: actorId, tokenHash, issuedAt: login.issued_at, expiresAt: login.expires_at }, env: { ...firstRequest.env } }
+      const second = await runtimePreparation(undefined, 'staging')
+      const secondRequest = request
+      const canaries = [
+        { ...first.preparation.scope, hostname: 'page-studio-staging.xeroflow.io' },
+        { ...second.preparation.scope, hostname: 'cms-second-staging.xeroflow.io' }
+      ]
+      const admissions = [firstRequest, secondRequest].flatMap(item => JSON.parse(String(item.env.PAGE_STUDIO_RUNTIME_CMS_ADMISSIONS)))
+      for (const item of [firstRequest, secondRequest]) {
+        item.env.PAGE_STUDIO_RELEASE_ENVIRONMENT = 'staging'
+        item.env.PAGE_STUDIO_RUNTIME_STAGING_CANARIES = JSON.stringify(canaries)
+        item.env.PAGE_STUDIO_RUNTIME_CMS_ADMISSIONS = JSON.stringify(admissions)
+      }
+      await observer.query(`UPDATE page_studio_sites SET delivery_mode='runtime',integrations='{"synthetic":true}' WHERE id=ANY($1::uuid[])`, [[firstScope.siteId, scope.siteId]])
+      const policy = runtimeTargetPolicy(firstRequest.env)
+      const firstInput = { actorId: firstRequest.actor.actorId, environment: 'staging' as const, hostname: canaries[0]!.hostname,
+        expectedActiveReleaseId: null, idempotencyKey: 'canary-first', preparation: first.preparation }
+      const secondInput = { ...firstInput, actorId, hostname: canaries[1]!.hostname, idempotencyKey: 'canary-second', preparation: second.preparation }
+      const firstRelease = await activateRuntimeFeature(firstInput, first.principal, { ...first.deps, policy })
+      const secondRelease = await activateRuntimeFeature(secondInput, second.principal, { ...second.deps, policy })
+      async function projectionInput(hostname: string, release: typeof firstRelease) {
+        const seal = (await observer.query('SELECT * FROM page_studio_runtime_feature_seals WHERE release_id=$1', [release.releaseId])).rows[0]
+        return { hostname, releaseId: release.releaseId, releaseDigest: release.releaseDigest, versionDigest: release.release.versionDigest,
+          sealDigest: seal.identity.reference.recovery.sha256, activationId: release.featureActivation.id, pointerVersion: release.featureActivation.pointerVersion, pageRoute: '/' }
+      }
+      const firstPublic = await projectionInput(firstInput.hostname, firstRelease)
+      const secondPublic = await projectionInput(secondInput.hostname, secondRelease)
+      expect((await readPublishedRuntimeFeaturePage(firstPublic, firstRequest.env, first.deps)).release.releaseId).toBe(firstRelease.releaseId)
+      expect((await readPublishedRuntimeFeaturePage(secondPublic, secondRequest.env, second.deps)).release.releaseId).toBe(secondRelease.releaseId)
+      await expect(readPublishedRuntimeFeaturePage({ ...firstPublic, hostname: secondPublic.hostname }, secondRequest.env, second.deps)).rejects.toThrow()
+      await expect(activateRuntimeFeature({ ...firstInput, hostname: secondInput.hostname, idempotencyKey: 'wrong-canary-host' }, first.principal, { ...first.deps, policy })).rejects.toThrow()
+      const replacement = await activateRuntimeFeature({ ...firstInput, idempotencyKey: 'canary-replacement', expectedActiveReleaseId: firstRelease.releaseId,
+        preparation: { ...first.preparation, renderer: { ...first.preparation.renderer, generation: 'renderer_b' } } }, first.principal, { ...first.deps, policy })
+      scope = firstScope
+      request = firstRequest
+      const recordId = await addLiveRuntimeRecord('Current first-tenant records survive rollback')
+      const restored = await rollbackRuntimeFeature({ actorId: firstRequest.actor.actorId, environment: 'staging', hostname: firstInput.hostname,
+        expectedActiveReleaseId: replacement.releaseId, targetReleaseId: firstRelease.releaseId, idempotencyKey: 'canary-rollback',
+        retainedGenerations: ['renderer_a', 'renderer_b'], scope: first.preparation.scope }, first.principal, { ...first.deps, policy })
+      const currentFirst = { ...firstPublic, activationId: restored.featureActivation.id, pointerVersion: restored.featureActivation.pointerVersion }
+      const projected = await readPublishedRuntimeFeaturePage(currentFirst, firstRequest.env, first.deps)
+      expect(JSON.stringify(projected.components)).toContain('Current first-tenant records survive rollback')
+      expect(restored.featureActivation.pointerVersion).toBe(3)
+      expect((await observer.query('SELECT object_id FROM page_studio_cms_record_heads')).rows[0].object_id).toBe(recordId)
+      const secondProjected = await readPublishedRuntimeFeaturePage(secondPublic, secondRequest.env, second.deps)
+      expect(secondProjected.release.releaseId).toBe(secondRelease.releaseId)
+      expect(JSON.stringify(secondProjected.components)).not.toContain('Current first-tenant records survive rollback')
+      const secondReplacement = await activateRuntimeFeature({ ...secondInput, idempotencyKey: 'second-replacement', expectedActiveReleaseId: secondRelease.releaseId,
+        preparation: { ...second.preparation, renderer: { ...second.preparation.renderer, generation: 'renderer_b' } } }, second.principal, { ...second.deps, policy })
+      scope = secondCanaryFixture.base.scope as PageStudioContentScope
+      request = secondRequest
+      await addLiveRuntimeRecord('Current second-tenant records survive rollback')
+      const secondRestored = await rollbackRuntimeFeature({ actorId, environment: 'staging', hostname: secondInput.hostname,
+        expectedActiveReleaseId: secondReplacement.releaseId, targetReleaseId: secondRelease.releaseId, idempotencyKey: 'second-rollback',
+        retainedGenerations: ['renderer_a', 'renderer_b'], scope: second.preparation.scope }, second.principal, { ...second.deps, policy })
+      const currentSecond = { ...secondPublic, activationId: secondRestored.featureActivation.id, pointerVersion: secondRestored.featureActivation.pointerVersion }
+      const currentSecondProjection = await readPublishedRuntimeFeaturePage(currentSecond, secondRequest.env, second.deps)
+      expect(JSON.stringify(currentSecondProjection.components)).toContain('Current second-tenant records survive rollback')
+      expect(JSON.stringify(currentSecondProjection.components)).not.toContain('Current first-tenant records survive rollback')
+      expect(secondRestored.featureActivation.pointerVersion).toBe(3)
+      expect(JSON.stringify((await readPublishedRuntimeFeaturePage(currentFirst, firstRequest.env, first.deps)).components)).toContain('Current first-tenant records survive rollback')
+      await expect(readPublishedRuntimeFeaturePage(secondPublic, secondRequest.env, second.deps)).rejects.toThrow()
+      await expect(readPublishedRuntimeFeaturePage(currentSecond, { ...secondRequest.env, PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production' }, second.deps)).rejects.toThrow()
+      await expect(readPublishedRuntimeFeaturePage(firstPublic, firstRequest.env, first.deps)).rejects.toThrow()
+      firstRequest.env.PAGE_STUDIO_RUNTIME_STAGING_CANARIES = JSON.stringify([canaries[1]])
+      await expect(readPublishedRuntimeFeaturePage(currentFirst, firstRequest.env, first.deps)).rejects.toMatchObject({ code: 'SITE_NOT_PUBLISHABLE' })
+      expect((await readPublishedRuntimeFeaturePage(currentSecond, { ...secondRequest.env, PAGE_STUDIO_RUNTIME_STAGING_CANARIES: firstRequest.env.PAGE_STUDIO_RUNTIME_STAGING_CANARIES }, second.deps)).release.releaseId).toBe(secondRelease.releaseId)
+      expect((await observer.query('SELECT count(*)::int AS count FROM page_studio_staging_sites')).rows[0].count).toBe(0)
+    })
+
     async function addLiveRuntimeRecord(title: string) {
-      const schemaObject = (await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'schema\'')).rows[0]
+      const actorId = request.actor.actorId
+      const schemaObject = (await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'schema\' AND scope_key=$1', [JSON.stringify([scope.tenantId, scope.clientId, scope.businessId, scope.siteId, scope.environment])])).rows[0]
       const body = { scope, collectionId: 'fleet', id: 'runtime_record', revision: 1, schemaVersion: 1, archived: false, values: { title } }
       const pin = { ...schemaObject.storage_pin, kind: 'record', recordId: body.id, operationId: 'runtime_record', sha256: await collectionDigest(body), bytes: new TextEncoder().encode(collectionCanonical(body)).length }
       const id = randomUUID()
       const inserted = (await observer.query(`INSERT INTO page_studio_cms_objects(scope_key,generation,id,kind,collection_id,record_id,logical_version,storage_pin,schema_object_id,archived,actor_id,created_at,adoption_id)
-        VALUES($1,$2,$3,'record','fleet',$4,1,$5,$6,FALSE,$7,clock_timestamp(),'adoption_a') RETURNING created_at`, [schemaObject.scope_key, schemaObject.generation, id, body.id, pin, schemaObject.id, request.actor.actorId])).rows[0]
+        VALUES($1,$2,$3,'record','fleet',$4,1,$5,$6,FALSE,$7,clock_timestamp(),'adoption_a') RETURNING created_at`, [schemaObject.scope_key, schemaObject.generation, id, body.id, pin, schemaObject.id, actorId])).rows[0]
       await observer.query('INSERT INTO page_studio_cms_record_heads(scope_key,generation,collection_id,record_id,object_id) VALUES($1,$2,\'fleet\',$3,$4)', [schemaObject.scope_key, schemaObject.generation, body.id, id])
       const router = request.env.PAGE_STUDIO_CONTENT_ROUTER as { readManagedCmsObjects: (input: { pins: Array<{ kind: string }> }) => Promise<unknown[]> }
       const original = router.readManagedCmsObjects
       router.readManagedCmsObjects = async input => await Promise.all(input.pins.map(async item => item.kind === 'record'
-        ? { pin, body, actorId: request.actor.actorId, createdAt: new Date(inserted.created_at).toISOString(), schema: schemaObject.storage_pin, head: false }
+        ? { pin, body, actorId, createdAt: new Date(inserted.created_at).toISOString(), schema: schemaObject.storage_pin, head: false }
         : (await original({ pins: [item] }))[0]))
       return id
     }

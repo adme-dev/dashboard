@@ -374,9 +374,9 @@ binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
-PAGE_STUDIO_RUNTIME_STAGING_CANARY = "{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\",\"hostname\":\"page-studio-staging.xeroflow.io\"}"
+PAGE_STUDIO_RUNTIME_STAGING_CANARIES = "[{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\",\"hostname\":\"page-studio-staging.xeroflow.io\"},{\"tenantId\":\"tenant_page_studio_staging\",\"clientId\":\"20000000-0000-4000-8000-000000000301\",\"siteId\":\"5ddc69f4-bd4f-4179-ba6f-e23412133cb0\",\"hostname\":\"cms-second-staging.xeroflow.io\"}]"
 PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
-PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS = "astro_runtime_21b84e1cde3f8be3,astro_runtime_a71fb2968a783bc114ee9a340ff7ff60a6c74ab442d49fa360464b5f4fac2f27"
+PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS = "astro_runtime_0939af784c64cb0ac97cdaa33dc3a84f5f304b97df52210b111a8b95a889a0e4,astro_runtime_21b84e1cde3f8be3,astro_runtime_a71fb2968a783bc114ee9a340ff7ff60a6c74ab442d49fa360464b5f4fac2f27"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = "https://studio-staging.xeroflow.io"
@@ -406,8 +406,10 @@ PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "staging"
 PAGE_STUDIO_CONTENT_ENVIRONMENT = "staging"
 PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST = "6f21c0f378844618bde29d8eebb81bed0c1966ac086d2028dc4427730c5b9bce"
 PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST = "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a"
-# Staging CMS renderer from the verified private 2026-09-28 upload; production remains unchanged.
-PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"98268408f76954e7e24f0849b9ef5a120302fc53df6e5f0adb876b39b35e5f96\",\"codeDigest\":\"6845a0cdbf0e482e052d9204325e4dd5304fd07802c61a62bf43d77f52e78c6a\",\"generation\":\"astro_runtime_0939af784c64cb0ac97cdaa33dc3a84f5f304b97df52210b111a8b95a889a0e4\"}"
+# Staging CMS renderer from the verified private 2026-09-29 upload; production remains unchanged.
+PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"fff207a68a9edd1206f3898a0c4058cf2749709e7824f8b5ff8659c3a349befe\",\"generation\":\"astro_runtime_91baeb98a143ef30fb3bc0f2d891c3a147583702238f3e6ac11f9fb8d857c4e4\"}"
+# Exact synthetic acceptance scopes only; customer/production admission remains disabled.
+PAGE_STUDIO_RUNTIME_CMS_ADMISSIONS = "[{\"scope\":{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\"},\"environment\":\"staging\",\"renderer\":{\"name\":\"astro-runtime\",\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"fff207a68a9edd1206f3898a0c4058cf2749709e7824f8b5ff8659c3a349befe\",\"generation\":\"astro_runtime_91baeb98a143ef30fb3bc0f2d891c3a147583702238f3e6ac11f9fb8d857c4e4\"}},{\"scope\":{\"tenantId\":\"tenant_page_studio_staging\",\"clientId\":\"20000000-0000-4000-8000-000000000301\",\"siteId\":\"5ddc69f4-bd4f-4179-ba6f-e23412133cb0\"},\"environment\":\"staging\",\"renderer\":{\"name\":\"astro-runtime\",\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"fff207a68a9edd1206f3898a0c4058cf2749709e7824f8b5ff8659c3a349befe\",\"generation\":\"astro_runtime_91baeb98a143ef30fb3bc0f2d891c3a147583702238f3e6ac11f9fb8d857c4e4\"}}]"
 PAGE_STUDIO_STAGING_TENANT_ID = "page-studio-staging"
 
 # ============================================
