@@ -7,7 +7,7 @@ import { bindPageStudioLoginSession, resolvePageStudioLoginSession, type PageStu
 
 export const PAGE_STUDIO_SESSION_TOKEN_TYPE = 'XEROFLOW-PAGE-STUDIO-SESSION'
 export const PAGE_STUDIO_SESSION_AUDIENCE = 'xeroflow-page-studio'
-export const MAX_PAGE_STUDIO_SESSION_LIFETIME_SECONDS = 15 * 60
+export const MAX_PAGE_STUDIO_SESSION_LIFETIME_SECONDS = 4 * 60 * 60
 
 export const PageStudioSessionCapabilitySchema = z.enum([
   'workspace:create',
@@ -435,10 +435,17 @@ export async function issuePageStudioSession(
     }
     await bindPageStudioLoginSession(db, login)
     const issuedAt = now()
+    const expiresAt = Math.min(
+      issuedAt + MAX_PAGE_STUDIO_SESSION_LIFETIME_SECONDS,
+      Math.floor(login.expiresAt.getTime() / 1000)
+    )
+    if (!Number.isFinite(expiresAt) || expiresAt <= issuedAt) {
+      throw new PageStudioSessionError('SESSION_TOKEN_INVALID', 401, 'Studio login has expired')
+    }
     const claims = validatedClaims({
       capabilities: capabilitiesFor(input.actorRole, scope.monthly_ai_operation_limit),
       clientId: scope.client_id,
-      expiresAt: issuedAt + MAX_PAGE_STUDIO_SESSION_LIFETIME_SECONDS,
+      expiresAt,
       issuedAt,
       nonce: nonce(),
       role: input.actorRole,
