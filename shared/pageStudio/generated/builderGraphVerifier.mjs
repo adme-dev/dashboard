@@ -8663,6 +8663,22 @@ var MobileNavigationManifestSchema = object({
   tone: _enum(["default", "brand", "dark"]).optional(),
   width: _enum(["compact", "standard", "wide", "full"]).optional(),
 }).strict();
+var FooterFontWeightSchema = union([
+  literal(400),
+  literal(500),
+  literal(600),
+  literal(700),
+  literal(800),
+  literal(900),
+]);
+var FooterTypographySchema = object({
+  headingMobileSize: number2().int().min(12).max(40),
+  headingSize: number2().int().min(12).max(40),
+  headingWeight: FooterFontWeightSchema,
+  linkMobileSize: number2().int().min(12).max(40),
+  linkSize: number2().int().min(12).max(40),
+  linkWeight: FooterFontWeightSchema,
+}).strict();
 var FooterManifestSchema = object({
   brandCopy: string2().trim().max(1e3).optional(),
   columns: array(
@@ -8703,6 +8719,7 @@ var FooterManifestSchema = object({
     .optional(),
   primaryAction: ShellActionSchema.optional(),
   socialLinks: array(NavigationChildItemSchema).max(12).default([]),
+  typography: FooterTypographySchema.optional(),
 }).strict();
 var SiteShellManifestSchema = object({
   footer: FooterManifestSchema,

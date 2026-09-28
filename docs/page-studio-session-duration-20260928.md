@@ -34,3 +34,16 @@ approval and preview publication. No client checkpoint was edited by the
 configuration change. Existing full local build/test evidence above covers
 the unchanged application source; focused runtime release, deployment guard
 and QR navigation/access regressions accompany the configuration pin.
+
+The final compatibility audit found a second validation boundary: Dashboard's
+generated CMS graph verifier embeds the full Studio manifest schema. Its old
+copy rejected an otherwise valid footer edit. A failing checkpoint regression
+reproduced that error before the deterministic export was refreshed. The
+generated-code diff adds only the bounded footer typography schema (17 lines);
+the provenance manifest records the new source and file hashes. Studio's
+generator `--check` confirms byte-for-byte correspondence. All 35 focused
+verifier/recovery/typography tests pass, including malformed font rejection.
+The final production rebuild passes at 25,370,513 raw Worker bytes (98,415 bytes
+below the guard). The full final suite passes 14,844 tests in 2,143 files, with
+the disposable session-duration migration enabled; the same 50 files/1,432
+environment-gated tests remain skipped. Targeted test-file lint passes.
