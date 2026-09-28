@@ -6,7 +6,7 @@
     "builderGraphFixtures.json": "5e55191f0940e2be57d20c8477e221e105d8ad87d511b2db93db67548cd2dcca",
     "builderGraphLicenses.txt": "8d5d58fee24c22b7ca431fdd84693b6487f0a338cdad215d6f86e2465fb0e70e",
     "builderGraphVerifier.d.mts": "7fd2f2bf399c5dff5aa043e0908f648ac45d38d4f67757fcee9649e893ed8767",
-    "builderGraphVerifier.mjs": "de6272e9f9fa34bab7ddc5eb63c84a5acff14468bbbc75040c285b78aa3a6fa0"
+    "builderGraphVerifier.mjs": "d458bc20da920bb3102e5d42c3adf49cc2f4281b30bc34106dc8873602d17ff1"
   },
   "generator": "scripts/generate-native-builder-verifier.mjs",
   "options": {
@@ -19,7 +19,7 @@
     "target": "es2022",
     "treeShaking": true
   },
-  "sourceDigest": "bf83aafaa45c610a01794d5913c2fb1cd41623e6fd0ad4ec4e5ba22383cdf939",
+  "sourceDigest": "8c15b17c8bb989abe53bd3c2d3d21cc2f01b434476d52f2622a2e4ba4fc4dfb4",
   "sources": [
     {
       "path": "LICENSE",
@@ -479,7 +479,7 @@
     },
     {
       "path": "packages/protocol/src/shell.ts",
-      "sha256": "0c469992982872384a1d676abf2dd1cfda8909dd66b02691cd20d92d28423a94"
+      "sha256": "e10165cb69f8e063b0614634aa2ae9af07c30e857a8b0fca8a1887b6919e6e0a"
     },
     {
       "path": "packages/protocol/src/site.ts",
@@ -511,7 +511,7 @@
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "5f6b5b3eb5162ac58a17a55d28f9587b42611a9bedd142fdca07c6e840ec9fc8"
+      "sha256": "d655c6d2af2fa2deb8e4bf8e37eb39e4958ddb8c112eaf29d465bf067b23454d"
     },
     {
       "path": "scripts/generate-native-builder-verifier.mjs",

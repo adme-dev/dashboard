@@ -282,7 +282,8 @@ script_name = "rate-limiter-worker"
 
 [env.production.vars]
 PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
-PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"9fefa70cea4390c587e95413f1752d3642b57a7b925f999b06e700d16d2a8bee\",\"codeDigest\":\"69f56afe348d9adb8d6c99c517b23f2d3af8ee1f9aab3ee1d5379e3abe147bac\",\"generation\":\"astro_runtime_a6a72b897cb1ddde19c975a711a37da398e7e00fbc72847a2b92ea30e8d43ac6\"}"
+PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"102d79c9f6e62c96365e31f9ae4a798cb58df4cafd451bdebf6e4f2a8fcb6322\",\"generation\":\"astro_runtime_5986dc6fe5cac2da5d354b0bfa611394e463f93ab42f86776caeb9853251f781\"}"
+PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS = "astro_runtime_a6a72b897cb1ddde19c975a711a37da398e7e00fbc72847a2b92ea30e8d43ac6"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = "https://studio.xeroflow.io"

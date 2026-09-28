@@ -55,6 +55,40 @@ function database(row: Record<string, unknown> | undefined) {
 }
 
 describe('Page Studio editor sessions', () => {
+  it.each([
+    { loginExpiry: 30_000, expectedExpiry: 15_400 },
+    { loginExpiry: 1_600, expectedExpiry: 1_600 }
+  ])('bounds editing by four hours and native login expiry ($loginExpiry)', async ({ loginExpiry, expectedExpiry }) => {
+    const db = database({ client_id: CLIENT_ID, entitlement_effective: true,
+      entitlement_status: 'active', monthly_ai_operation_limit: 100,
+      site_status: 'active', tenant_id: 'tenant-alpha' })
+    const signToken = vi.fn(async () => 'signed-token')
+    const result = await issuePageStudioSession({ actorId: ACTOR_ID, actorRole: 'agency',
+      siteId: SITE_ID, tenantId: 'tenant-alpha' }, {
+      loginSession: { role: 'agency', userId: ACTOR_ID, tokenHash: 'a'.repeat(64),
+        issuedAt: new Date(0), expiresAt: new Date(loginExpiry * 1000) },
+      now: () => 1_000, nonce: () => '44444444-4444-4444-8444-444444444444',
+      runTransaction: db.runTransaction, signToken
+    })
+    expect(result.expiresAt).toBe(expectedExpiry)
+    expect(signToken).toHaveBeenCalledWith(expect.objectContaining({ expiresAt: expectedExpiry }))
+  })
+
+  it('does not sign or persist a session after the native login expires', async () => {
+    const db = database({ client_id: CLIENT_ID, entitlement_effective: true,
+      entitlement_status: 'active', monthly_ai_operation_limit: 100,
+      site_status: 'active', tenant_id: 'tenant-alpha' })
+    const signToken = vi.fn(async () => 'must-not-sign')
+    await expect(issuePageStudioSession({ actorId: ACTOR_ID, actorRole: 'agency',
+      siteId: SITE_ID, tenantId: 'tenant-alpha' }, {
+      loginSession: { role: 'agency', userId: ACTOR_ID, tokenHash: 'a'.repeat(64),
+        issuedAt: new Date(0), expiresAt: new Date(1_000_000) },
+      now: () => 1_000, runTransaction: db.runTransaction, signToken
+    })).rejects.toMatchObject({ statusCode: 401 })
+    expect(signToken).not.toHaveBeenCalled()
+    expect(db.query.mock.calls.some(([sql]) => sql.includes('INSERT INTO page_studio_sessions'))).toBe(false)
+  })
+
   it('authorizes AI proposals only for the exact scoped session and capabilities', () => {
     const session = claims({
       capabilities: ['workspace:checkpoint', 'model:invoke']
@@ -106,7 +140,7 @@ describe('Page Studio editor sessions', () => {
     })
   })
 
-  it('rejects lifetimes beyond fifteen minutes before signing', async () => {
+  it('rejects lifetimes beyond four hours before signing', async () => {
     const keys = signingKeys()
 
     await expect(signPageStudioSessionToken(claims({
@@ -119,7 +153,7 @@ describe('Page Studio editor sessions', () => {
 
   it('projects a correctly signed token with invalid scoped claims as a 401', async () => {
     const keys = signingKeys()
-    const invalidClaims = claims({ expiresAt: 1_901 })
+    const invalidClaims = claims({ expiresAt: 1_000 + 4 * 60 * 60 + 1 })
     const token = await new SignJWT(invalidClaims)
       .setProtectedHeader({ alg: 'ES256', typ: PAGE_STUDIO_SESSION_TOKEN_TYPE })
       .setIssuer(ISSUER)
@@ -171,7 +205,7 @@ describe('Page Studio editor sessions', () => {
         'source:edit',
         'model:invoke'
       ],
-      expiresAt: 1_900,
+      expiresAt: 2_000,
       sessionId: '44444444-4444-4444-8444-444444444444',
       token: 'signed-token'
     })
