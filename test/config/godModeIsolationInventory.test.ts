@@ -26,9 +26,12 @@ const API_INVENTORY = {
   // it adds one POST without any God mode bypass or user-role gate.
   // Astro candidate POST delegates native publish permission, scoped site and
   // fresh login authority; it adds one mutation without a God mode bypass.
-  totalRouteFiles: 2166,
+  // QR client picker adds one GET. Logo upload delegates to requireQrAccess,
+  // which is outside this lexical inline-role pattern, so the inline count
+  // falls by one. It retains authentication and the QR mutation audit wrapper.
+  totalRouteFiles: 2167,
   mutationRouteFiles: 1189,
-  explicitlyGuardedMutationFiles: 401,
+  explicitlyGuardedMutationFiles: 400,
   guardedMutationFilesWithTransactionCall: 47
 } as const
 
@@ -66,9 +69,9 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2166,
+      totalRouteFiles: 2167,
       mutationRouteFiles: 1189,
-      explicitlyGuardedMutationFiles: 401,
+      explicitlyGuardedMutationFiles: 400,
       guardedMutationFilesWithTransactionCall: 47
     })
   })

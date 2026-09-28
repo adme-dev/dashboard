@@ -24,3 +24,7 @@ No production database or user-role update is needed. Read-only inspection confi
 Merge from freshly fetched main, run `pnpm deploy:check`, then use only `pnpm deploy:production` for `agency-dashboard`. Record source SHA, main SHA and deployment ID in the release ledger after Cloudflare readback. Verify the live QR creator and the requested user's qualifying membership.
 
 If access regresses, revert this change on current main and redeploy using the guarded command. There is no schema migration or irreversible customer-data change to roll back.
+
+## CI inventory correction
+
+The first full CI run passed 14,779 tests and failed only two mechanical God mode inventory snapshots. Reviewing the exact pre-change/current inventories accounted for four removed inline media-role rows, one added protected-team admin/owner row and nine QR/auth-menu rows. The new client picker adds one GET; logo upload delegates its gate, reducing the lexical inline mutation count by one. The snapshot counts and digest are updated without changing the inventory algorithm, exclusion set, registered bypasses or runtime authority. Both failures were reproduced locally before the correction.

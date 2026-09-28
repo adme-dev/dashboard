@@ -208,12 +208,20 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/api/cron/page-studio-checkpoint-staging.post.ts\tconst expected = Object.prototype.hasOwnProperty.call(env, \'CRON_SECRET\') ? env.CRON_SECRET : process.env.CRON_SECRET\tprovider_infrastructure_availability'
     )
-    expect(inventory.rows).toHaveLength(1587)
+    // QR access replaces four inline media-role rows with a scoped QR helper.
+    // The protected-team manager adds one admin/owner row; nine shared QR and
+    // auth-menu rows are classified lexically as ordinary user behavior.
+    // Native fresh membership, read-only denial and client isolation remain
+    // independently tested in test/qr; no God mode bypass is registered.
+    expect(inventory.rows).toContain(
+      'server/utils/qr/teamManagement.ts\tif (isQrAccessTeam(teamId)) await requireRole(event, [\'admin\', \'owner\'])\tapplication_governance_bypass'
+    )
+    expect(inventory.rows).toHaveLength(1593)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 121,
       provider_infrastructure_availability: 228,
-      application_governance_bypass: 1623,
-      ordinary_user_behavior: 181,
+      application_governance_bypass: 1620,
+      ordinary_user_behavior: 190,
       unrelated_configuration: 433
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -226,7 +234,7 @@ describe('God mode gate inventory', () => {
     // independent authority checks and none becomes a governance bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('53d71ab4fbb0a0721e9648d862103ed2add7e9aac836bdf7d6d76aa3227869b6')
+    expect(inventory.digest).toBe('ab7b33d1403ea77fabfdc5db929b4e07d6a570bb9b1bdb3ce3902c69277901fc')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
