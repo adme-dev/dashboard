@@ -25,6 +25,8 @@ const Setup = z
     requestId: z.uuid().optional()
   })
   .strict()
+const Count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+const Consumed = z.object({ content: Count, record: Count, schema: Count }).strict()
 // Read only the redacted view fields; none authorizes the next native request.
 const Adoption = z.object({
   phase: z.enum(['idle', 'freezing', 'importing', 'ready', 'managed']),
@@ -33,7 +35,7 @@ const Adoption = z.object({
   recoveryRequired: z.boolean(),
   recoveryReason: z.string().max(500).nullable(),
   progressDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  progress: z.object({ consumed: z.number().int().nonnegative(), done: z.boolean() }).nullable()
+  progress: z.object({ consumed: Consumed, done: z.boolean() }).nullable()
 })
 const stage = ref(0),
   busy = ref(false),
@@ -79,7 +81,8 @@ const detail = computed(() => {
       ? 'Checking preparation…'
       : 'Connect CMS using the control above, then refresh this status.'
   if (stage.value === 4) {
-    const count = adoption.value?.progress?.consumed
+    const consumed = adoption.value?.progress?.consumed
+    const count = consumed ? consumed.content + consumed.record + consumed.schema : undefined
     return count === undefined
       ? 'Activation temporarily pauses website saves. Your unsaved edits stay in this browser. Each click completes one step.'
       : `${count} saved items checked. Continue activation one step at a time; your unsaved edits stay in this browser.`
