@@ -1,4 +1,5 @@
 import type { User } from '~/types'
+import { canAccessQrCodes as hasQrAccess } from '~~/shared/qr/permissions'
 import { useAuthenticatedFetch } from './useAuthenticatedFetch'
 
 export interface AuthState {
@@ -44,6 +45,7 @@ export const useAuth = () => {
   const canAccessSales = computed(() => hasRole(PERMISSIONS.SALES))
   const canAccessClients = computed(() => hasRole(PERMISSIONS.CLIENTS))
   const canAccessCreative = computed(() => hasRole(PERMISSIONS.CREATIVE))
+  const canAccessQrCodes = computed(() => hasQrAccess(user.value))
   const canAccessMediaBuying = computed(() => hasRole(PERMISSIONS.MEDIA_BUYING))
   const canAccessAdmin = computed(() => hasRole(PERMISSIONS.ADMIN))
   const canAccessHr = computed(() => hasRole(PERMISSIONS.HR_ADMIN))
@@ -174,6 +176,7 @@ export const useAuth = () => {
     canAccessClients,
     canAccessCreative,
     canAccessMediaBuying,
+    canAccessQrCodes,
     canAccessAdmin,
     canAccessHr,
     canAccessAiTraining,

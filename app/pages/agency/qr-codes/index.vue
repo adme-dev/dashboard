@@ -4,8 +4,9 @@ import type { QrCode } from '~/composables/useQrCodes'
 definePageMeta({ layout: 'agency' })
 useHead({ title: 'QR Codes' })
 
+const { canAccessMediaBuying } = useAuth()
 const ALL = 'all' // USelectMenu sentinel — never an empty string
-const { data: clientsData } = await useFetch<any[]>('/api/agency/clients')
+const { data: clientsData } = await useFetch<{ id: string, name: string }[]>('/api/agency/qr-codes/clients')
 const clientItems = computed(() => [
   { label: 'All clients', value: ALL, icon: 'i-lucide-layers' },
   ...(clientsData.value ?? []).map(c => ({ label: c.name, value: c.id }))
@@ -94,14 +95,7 @@ function onLoaded(codes: QrCode[]) {
           Campaigns
         </UButton>
         <UButton
-          to="/agency/qr-codes/campaigns"
-          icon="i-lucide-layers"
-          variant="soft"
-          color="neutral"
-        >
-          Campaigns
-        </UButton>
-        <UButton
+          v-if="canAccessMediaBuying"
           to="/agency/qr-codes/competitions"
           icon="i-lucide-trophy"
           variant="soft"

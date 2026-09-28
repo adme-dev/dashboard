@@ -1,20 +1,19 @@
 import type { H3Event } from 'h3'
 import { createError } from 'h3'
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
-import { ANALYTICS_ROLES, accessibleClientIds, isUuid } from '~~/server/utils/client-access'
+import { requireQrAccess, accessibleQrClientIds } from '~~/server/utils/qr/permissions'
+import { isUuid } from '~~/server/utils/client-access'
 import { shortUrl } from '~~/server/utils/qr/access'
 
 export interface QrCampaignRow { id: string, client_id: string, name: string, created_by: string | null, created_at: string, updated_at: string }
 
 /** Loads a campaign the caller may see (same client scoping as the QR list). */
 export async function requireCampaignAccess(event: H3Event, id: string | undefined) {
-  const user = await requireAuth(event)
-  await requireRole(event, ANALYTICS_ROLES)
+  const user = await requireQrAccess(event)
   if (!isUuid(id)) throw createError({ statusCode: 404, statusMessage: 'Campaign not found' })
   const row = await queryOne<QrCampaignRow>(`SELECT * FROM qr_campaigns WHERE id = $1`, [id])
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Campaign not found' })
-  const scope = await accessibleClientIds(user)
+  const scope = await accessibleQrClientIds(user)
   if (scope && !scope.includes(row.client_id)) throw createError({ statusCode: 404, statusMessage: 'Campaign not found' })
   return { user, row }
 }

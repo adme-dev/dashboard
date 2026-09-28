@@ -1,3 +1,4 @@
+import { requireQrTeamManager } from '~~/server/utils/qr/teamManagement'
 /**
  * Remove member from team
  * DELETE /api/admin/team-members
@@ -15,6 +16,8 @@ export default eventHandler(async (event) => {
   if (!teamId || !userId) {
     throw createError({ statusCode: 400, statusMessage: 'Team ID and user ID required' })
   }
+
+  await requireQrTeamManager(event, teamId)
 
   try {
     await queryOne(`

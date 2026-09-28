@@ -1,3 +1,4 @@
+import { requireQrTeamManager } from '~~/server/utils/qr/teamManagement'
 /**
  * Add members to team
  * POST /api/admin/team-members
@@ -15,6 +16,8 @@ export default eventHandler(async (event) => {
   if (!teamId || !userIds || !Array.isArray(userIds) || userIds.length === 0) {
     throw createError({ statusCode: 400, statusMessage: 'Team ID and user IDs required' })
   }
+
+  await requireQrTeamManager(event, teamId)
 
   try {
     const results = []

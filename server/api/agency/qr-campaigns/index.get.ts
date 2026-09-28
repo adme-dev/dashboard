@@ -1,15 +1,14 @@
 /** List QR campaigns with code/scan/lead counts. GET /api/agency/qr-campaigns?clientId */
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { requireQrAccess, accessibleQrClientIds } from '~~/server/utils/qr/permissions'
 import { queryRows } from '~~/server/utils/db'
-import { ANALYTICS_ROLES, accessibleClientIds, isUuid } from '~~/server/utils/client-access'
+import { isUuid } from '~~/server/utils/client-access'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
-  await requireRole(event, ANALYTICS_ROLES)
+  const user = await requireQrAccess(event)
   const q = getQuery(event)
   const params: unknown[] = []
   const where: string[] = []
-  const scope = await accessibleClientIds(user)
+  const scope = await accessibleQrClientIds(user)
   if (scope) {
     params.push(scope)
     where.push(`k.client_id = ANY($${params.length}::uuid[])`)

@@ -134,9 +134,11 @@ describe('retired CRM search transport', () => {
       : []).toEqual([])
   })
 
+  // This parses every production source file; shared CI runners can exceed 15s.
+  // Keep the complete scan and its assertions, with a bounded scan-only budget.
   it('accepts only POST body callers across every production source root', () => {
     expect(collectCrmSearchCallerViolations(['app', 'server', 'shared', 'scripts', 'workers'])).toEqual([])
-  }, 15_000)
+  }, 60_000)
 
   it.each([
     [

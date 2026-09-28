@@ -39,6 +39,7 @@ export interface User {
   avatarUrl?: string | null
   custom_role_id?: string | null
   permissionGroups?: string[]
+  qrCodeAccess?: boolean
   isCustomReadOnly?: boolean
   godMode?: {
     active: boolean
