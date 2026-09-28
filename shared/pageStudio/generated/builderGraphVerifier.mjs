@@ -9903,6 +9903,65 @@ async function verifyInstances(checkpoint2, artifacts, selected) {
   return instances;
 }
 
+// packages/protocol/src/astro-runtime-feature.ts
+var AstroRuntimeFeatureReferenceSchema = object({
+  formatVersion: literal(1),
+  recovery: object({
+    bytes: number2().int().positive().max(BUILDER_RECOVERY_MAX_BYTES),
+    key: string2().regex(
+      /^builder-recovery\/v1\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/
+    ),
+    sha256: ReleaseSha256Schema,
+  }).strict(),
+  releaseDigest: ReleaseSha256Schema,
+}).strict();
+var encoder4 = new TextEncoder();
+async function bindRecovery(candidate, rawBundle) {
+  const release = await verifyAstroRuntimeRelease(candidate);
+  const proof = await verifyBuilderRecoveryBundle(rawBundle);
+  const { contentScope, checkpoint: checkpoint2 } = proof.bundle;
+  if (
+    contentScope.tenantId !== release.scope.tenantId ||
+    contentScope.clientId !== release.scope.clientId ||
+    contentScope.businessId !== release.scope.clientId ||
+    contentScope.siteId !== release.scope.siteId ||
+    checkpoint2.sha256 !== release.versionDigest ||
+    encoder4.encode(checkpoint2.bytes).byteLength !== release.snapshot.bytes
+  ) {
+    throw new Error("Runtime feature recovery identity mismatch");
+  }
+  const reference = AstroRuntimeFeatureReferenceSchema.parse({
+    formatVersion: 1,
+    recovery: {
+      bytes: encoder4.encode(canonicalJson(proof.bundle)).byteLength,
+      key: `builder-recovery/v1/${await sha256Hex(canonicalJson(contentScope))}/${release.versionDigest}/${proof.digest}.json`,
+      sha256: proof.digest,
+    },
+    releaseDigest: await runtimeReleaseDigest(release),
+  });
+  return { ...proof, reference };
+}
+async function createAstroRuntimeFeatureReference(release, bundle) {
+  return (await bindRecovery(release, bundle)).reference;
+}
+async function verifyAstroRuntimeFeatureRecovery(candidate, release, bytes) {
+  const reference = AstroRuntimeFeatureReferenceSchema.parse(candidate);
+  if (
+    bytes.length > BUILDER_RECOVERY_MAX_BYTES ||
+    encoder4.encode(bytes).byteLength !== reference.recovery.bytes
+  ) {
+    throw new Error("Runtime feature recovery byte length mismatch");
+  }
+  const proof = await bindRecovery(release, JSON.parse(bytes));
+  if (
+    canonicalJson(proof.bundle) !== bytes ||
+    canonicalJson(proof.reference) !== canonicalJson(reference)
+  ) {
+    throw new Error("Runtime feature recovery reference mismatch");
+  }
+  return proof;
+}
+
 // packages/protocol/src/builder-graph-verifier.ts
 async function createAstroCompilerBuildIdentity(input, admittedToolchain) {
   return await createAstroBuildIdentity(input, admittedToolchain);
@@ -11019,9 +11078,33 @@ async function verifyNativeAstroRuntimeRelease(candidate) {
 function nativeAstroRuntimeContentPrefix(scope) {
   return runtimeContentPrefix(scope);
 }
+async function createNativeAstroRuntimeFeatureReference(release, bundle) {
+  return await guarded(() =>
+    createAstroRuntimeFeatureReference(release, bundle)
+  );
+}
+async function verifyNativeAstroRuntimeFeatureRecovery(
+  reference,
+  release,
+  bytes
+) {
+  return await guarded(async () => {
+    const proof = await verifyAstroRuntimeFeatureRecovery(
+      reference,
+      release,
+      bytes
+    );
+    return {
+      ...proof,
+      bundle: JsonValueSchema.parse(proof.bundle),
+      checkpoint: JsonValueSchema.parse(proof.checkpoint),
+    };
+  });
+}
 export {
   BuilderGraphVerificationError,
   createAstroCompilerBuildIdentity,
+  createNativeAstroRuntimeFeatureReference,
   inspectBuilderActionEffectTargets,
   nativeAstroRuntimeContentPrefix,
   parseBuilderActionRuntimeResultJson,
@@ -11039,5 +11122,6 @@ export {
   verifyBuilderFormActionDescriptor,
   verifyBuilderPublishedFormInput,
   verifyBuilderReleaseRecovery,
+  verifyNativeAstroRuntimeFeatureRecovery,
   verifyNativeAstroRuntimeRelease,
 };

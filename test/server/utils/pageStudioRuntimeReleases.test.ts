@@ -62,6 +62,22 @@ function fixture() {
 }
 
 describe('runtime release preparation', () => {
+  it.each(['library', 'collections', 'actions', 'instance', 'nested', 'form'])('rejects %s features before retaining a runtime publication', async (kind) => {
+    const f = fixture()
+    const pages = structuredClone(f.manifest.pages)
+    const manifest: Record<string, unknown> = { ...f.manifest, pages }
+    if (kind === 'library') manifest.builderLibrary = { components: [{}] }
+    else if (kind === 'collections' || kind === 'actions') manifest.builderApplication = { [kind]: [{}] }
+    else if (kind === 'form') Object.assign(pages[1], { forms: [{ submission: { mode: 'action' } }] })
+    else if (kind === 'nested') Object.assign(pages[1], { components: [{ children: [{ builderInstance: {} }] }] })
+    else Object.assign(pages[1], { components: [{ builderInstance: {} }] })
+    for (const environment of ['production', 'staging'] as const) {
+      await expect(preparePageStudioRuntimeRelease({ bucket: f.store.bucket, environment, renderer, scope, versionId: '30000000-0000-4000-8000-000000000003' }, {
+        loadCheckpoint: async () => ({ checkpointId: 'checkpoint_a', digest: sha(canonical(manifest)), manifest, releaseMetadata: {} as never })
+      })).rejects.toThrow('CMS-backed components and generated actions require the published runtime integration')
+    }
+    expect(f.store.puts).toEqual([])
+  })
   it('retains the canonical snapshot and referenced media under content addresses', async () => {
     const f = fixture()
     const prepared = await f.prepare()

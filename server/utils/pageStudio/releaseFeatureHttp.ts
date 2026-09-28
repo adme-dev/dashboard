@@ -22,3 +22,7 @@ export async function hasSealedFeatureBuild(scope: { tenantId: string, clientId:
   const row = await queryOne<{ release_metadata: Record<string, unknown> | null }>('SELECT release_metadata FROM page_studio_builds WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4', [scope.tenantId, scope.clientId, scope.siteId, buildId])
   return Boolean(row?.release_metadata && Object.hasOwn(row.release_metadata, 'featureSeal'))
 }
+
+export async function hasRuntimeFeatureSeal(scope: { tenantId: string, clientId: string, siteId: string }, releaseId: string) {
+  return Boolean(await queryOne('SELECT release_id FROM page_studio_runtime_feature_seals WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND release_id=$4', [scope.tenantId, scope.clientId, scope.siteId, releaseId]))
+}

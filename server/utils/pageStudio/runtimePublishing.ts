@@ -22,6 +22,7 @@ import { requireRuntimeTarget, type RuntimeTargetPolicy } from './runtimeTarget'
  */
 
 export interface PageStudioRuntimeReleasePointer {
+  featureActivation?: { activationId: string, pointerVersion: number, sealDigest: string }
   delivery: 'runtime'
   environment: 'staging' | 'production'
   release: NativeAstroRuntimeRelease
