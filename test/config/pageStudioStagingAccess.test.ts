@@ -7,9 +7,12 @@ const preview = config.split('[env.preview.vars]')[1]!.split(/^\[/m)[0]!
 const production = config.split('[env.production.vars]')[1]!.split(/^\[/m)[0]!
 
 describe('Page Studio staging access configuration', () => {
-  it('places only preview near its isolated database', () => {
-    const parsed = parse(config) as any
-    expect(parsed.env.preview.placement).toEqual({ region: 'aws:us-east-1' })
+  it('enables the Pages-supported placement mode only for preview', () => {
+    const parsed = parse(config) as {
+      placement?: unknown
+      env: Record<'preview' | 'production', { placement?: unknown }>
+    }
+    expect(parsed.env.preview.placement).toEqual({ mode: 'smart' })
     expect(parsed.placement).toBeUndefined()
     expect(parsed.env.production.placement).toBeUndefined()
   })

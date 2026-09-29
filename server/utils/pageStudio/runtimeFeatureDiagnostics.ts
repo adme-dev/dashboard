@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 type Stage = 'publisher' | 'recovery' | 'content' | 'seal' | 'approval' | 'activation'
+  | 'published-authority' | 'published-recovery' | 'published-projection'
 
 /** Fixed-stage timing only. Never serialize request, storage or error payloads. */
 export function runtimeFeatureDiagnostics() {

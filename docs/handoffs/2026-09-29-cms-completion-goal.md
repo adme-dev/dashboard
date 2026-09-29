@@ -15,14 +15,16 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 - Dashboard source `f2c655848e3ab0473657b0538374a00f5fc3b4c9` deployed to preview `67f50adf-ccdf-41c7-804f-02bf8c4e1db0`. It includes the enum fix, standalone entry, redacted publication stage timing and a regression fix separating the remote-storage deadline from final SQL authority revalidation. The relevant suites pass 135 tests with one existing skip.
 - The second site's approved version is now active: release `0c9b80ad-c168-4ba7-8d84-650ae748a239`, activation `969cb820-22a8-4b9a-ae22-a2082e42b963`, pointer version 1. Native publication and state readback succeeded. Public GET still returns 503: its authority request reaches the 10-second deadline. Publication success alone is not end-to-end acceptance.
 - Standalone entry verified in Chrome on desktop and at 390px: existing invited customer login, assigned sites, CMS, draft history, return navigation, denied cross-site access, sign-out and native magic-link deep return. Open Studio launches the correct second-site editor. No email delivery was tested; the fixed synthetic account used a one-time native verification fixture.
-- Additional Studio property/outline polish is packaged and pinned, but its progressive container rollout has one failed warm instance and has not replaced the healthy previous image. A second packaging attempt also failed; OCI index packaging is not an established cause. The latest image starts locally at staging's CPU/memory limits. Do not claim the latest polish is hosted yet.
+- Additional Studio property/outline polish now serves from both synthetic editors: overlay SHA256 `3378c1a55395bf617a8457305a7a74948eb041f635b48715ad98e18570322031`, 2,508,967 bytes. The same pinned image completed startup after staging capacity changed from lite to basic in Studio `4d638d0`. Both asset probes match, and the second site's saved draft/current content reopened in Chrome. This supports retaining the increased staging capacity; no production sizing changed.
+- Hosted native role negatives now also verify VIEW-only record writes and EDIT-only publication return 403 with record and publication rows unchanged.
+- Preview `df6a995c-4f09-407a-b3a2-35ce6d9b86ad` (source `a0ee81b21a23ee18e72436ee05bf5e7a3fab7b21`) tested a targeted region hint. Pages retained only placement mode, and the public timeout persisted. A private service-binding diagnostic with a longer diagnostic-only deadline returned native200 in 29,257ms, with current public fields and no private/cross-scope markers. This does not satisfy the public10s deadline. Switch to Pages-supported Smart Placement and trace the native projection stages.
 
 ## In progress / remaining
 
 1. Resolve public projection latency. Preview-only placement near the isolated database is being tested; preserve current-state authority, isolation and the public 10-second deadline. Verify public GET/HEAD, no-store, public fields and private/cross-scope exclusion.
 2. Edit records without republishing. Publish a second template and restore the earlier release while retaining newer records.
 3. Complete the equivalent first-scope browser/publication journey and remaining hosted negative matrix (roles, schema, quota, archive, pointer epochs and revocation).
-4. Resolve the Studio staging container rollout and verify the hosted asset digest and latest property-field/outline UI.
+4. Finish narrow-viewport hosted property/outline verification and record the final Studio rollout/version.
 5. Improve closed-tab request recovery without duplicate generation charges or weaker native authority.
 6. Refresh paired current-main/CI/QR verification, PR descriptions and release records.
 
