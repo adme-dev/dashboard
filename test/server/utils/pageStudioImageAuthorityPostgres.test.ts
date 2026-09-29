@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { executeNativeImageOperation } from '~~/server/utils/pageStudio/imageGenerationService'
+import { executeNativeImageOperation, executeStudioImageOperation } from '~~/server/utils/pageStudio/imageGenerationService'
+import { executeImageWorkerOperation } from '~~/server/utils/pageStudio/imageWorkerService'
 import { withImageGenerationAuthority } from '~~/server/utils/pageStudio/imageGenerationAuthority'
 import { buildImageQuote } from '~~/server/utils/pageStudio/imageQuotes'
 import { persistImageQuote } from '~~/server/utils/pageStudio/imageQuoteStore'
@@ -57,7 +58,7 @@ describe.runIf(Boolean(url))('native image authority on PostgreSQL', () => {
       CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));
       CREATE TABLE page_studio_sessions(nonce TEXT PRIMARY KEY,tenant_id TEXT,client_id UUID,site_id UUID,user_id TEXT,role TEXT,capabilities JSONB,issued_at TIMESTAMPTZ,expires_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ);`)
-    for (const name of ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '420_page_studio_login_sessions.sql', '438_page_studio_image_credits.sql', '439_page_studio_image_quotes.sql']) {
+    for (const name of ['402_page_studio_control_plane.sql', '404_page_studio_documents.sql', '420_page_studio_login_sessions.sql', '438_page_studio_image_credits.sql', '439_page_studio_image_quotes.sql', '440_page_studio_image_jobs.sql']) {
       await pool.query(readFileSync(new URL(`../../../server/database/migrations/${name}`, import.meta.url), 'utf8'))
     }
     const clientId = randomUUID(), userId = randomUUID(), hash = randomUUID().replaceAll('-', '').repeat(2)
@@ -151,6 +152,113 @@ describe.runIf(Boolean(url))('native image authority on PostgreSQL', () => {
     expect(first.quote).not.toHaveProperty('gatewayId')
     expect(await executeNativeImageOperation(request, 'quote', body, deps)).toEqual(first)
     expect(await executeNativeImageOperation(request, 'account', { limit: 10 }, deps)).toMatchObject({ history: { items: [] } })
+  })
+  it('creates recoverable native jobs, lists them and denies viewer generation', async () => {
+    const deps = { runTransaction: transaction }
+    const q = await quote()
+    await pool.query('INSERT INTO page_studio_image_wallets(tenant_id,client_id,environment,balance) VALUES($1,$2,$3,100)', [q.scope.tenantId, q.scope.clientId, q.scope.environment])
+    const result = await executeNativeImageOperation(request, 'generate', { quoteId: q.quoteId }, deps)
+    expect(result).toMatchObject({ job: { jobId: q.quoteId, state: 'queued' } })
+    expect(await executeNativeImageOperation(request, 'generate', { quoteId: q.quoteId }, deps)).toEqual(result)
+    expect(await executeNativeImageOperation(request, 'read', { jobId: q.quoteId }, deps)).toEqual(result)
+    expect(await executeNativeImageOperation(request, 'jobs', {}, deps)).toMatchObject({ items: [{ jobId: q.quoteId }] })
+    expect(await executeNativeImageOperation(request, 'library', {}, deps)).toMatchObject({ items: [] })
+    await pool.query('UPDATE page_studio_site_memberships SET role=\'viewer\'')
+    expect(await executeNativeImageOperation(request, 'read', { jobId: q.quoteId }, deps)).toEqual(result)
+    await expect(executeNativeImageOperation(request, 'generate', { quoteId: q.quoteId }, deps)).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('rolls back reservation and job when authority expires during a verified wallet wait', async () => {
+    const q = await quote()
+    await pool.query('INSERT INTO page_studio_image_wallets(tenant_id,client_id,environment,balance) VALUES($1,$2,$3,100)', [q.scope.tenantId, q.scope.clientId, q.scope.environment])
+    await pool.query('UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+INTERVAL \'1 second\'')
+    const blocker = await pool.connect()
+    await blocker.query('BEGIN')
+    await blocker.query('SELECT * FROM page_studio_image_wallets FOR UPDATE')
+    try {
+      const pending = executeNativeImageOperation(request, 'generate', { quoteId: q.quoteId }, { runTransaction: transaction })
+      const rejected = expect(pending).rejects.toMatchObject({ statusCode: 403 })
+      await vi.waitFor(async () => {
+        const waiting = await pool.query('SELECT count(*)::int AS count FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type=\'Lock\' AND query LIKE \'%page_studio_image_wallets%\'', [schema])
+        expect(waiting.rows[0].count).toBeGreaterThan(0)
+      }, { timeout: 800 })
+      await pool.query('SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM effective_until-clock_timestamp()))+0.05) FROM page_studio_entitlements')
+      await blocker.query('COMMIT')
+      await rejected
+      expect((await pool.query('SELECT reserved FROM page_studio_image_wallets')).rows[0].reserved).toBe('0')
+      expect((await pool.query('SELECT count(*)::int AS count FROM page_studio_image_jobs')).rows[0].count).toBe(0)
+    } finally {
+      await blocker.query('ROLLBACK')
+      blocker.release()
+    }
+  })
+  it('rechecks the original native login before worker dispatch and refunds unstarted revoked work', async () => {
+    const deps = { runTransaction: transaction }
+    const q = await quote()
+    await pool.query('INSERT INTO page_studio_image_wallets(tenant_id,client_id,environment,balance) VALUES($1,$2,$3,100)', [q.scope.tenantId, q.scope.clientId, q.scope.environment])
+    await executeNativeImageOperation(request, 'generate', { quoteId: q.quoteId }, deps)
+    await pool.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+    expect(await executeImageWorkerOperation(request.env, 'claim', { scope: q.scope, jobId: q.quoteId }, deps)).toEqual({ admitted: false })
+    expect((await pool.query('SELECT balance,reserved FROM page_studio_image_wallets')).rows[0]).toEqual({ balance: '100', reserved: '0' })
+    expect((await pool.query('SELECT state,failure_code FROM page_studio_image_jobs')).rows[0]).toEqual({ state: 'failed', failure_code: 'authority-revoked' })
+  })
+  it('allows private durable output settlement after the initiating user logs out', async () => {
+    const deps = { runTransaction: transaction }
+    const q = await quote()
+    await pool.query('INSERT INTO page_studio_image_wallets(tenant_id,client_id,environment,balance) VALUES($1,$2,$3,100)', [q.scope.tenantId, q.scope.clientId, q.scope.environment])
+    await executeNativeImageOperation(request, 'generate', { quoteId: q.quoteId }, deps)
+    const input = { scope: q.scope, jobId: q.quoteId }
+    const claimed = await executeImageWorkerOperation(request.env, 'claim', input, deps)
+    expect(claimed).toMatchObject({ admitted: true })
+    if (!('dispatchToken' in claimed)) throw new Error('Claim missing')
+    await pool.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+    const asset = { sha256: 'b'.repeat(64), path: `/assets/${'b'.repeat(64)}.png`, contentType: 'image/png', bytes: 1234, width: 1024, height: 1024 }
+    expect(await executeImageWorkerOperation(request.env, 'complete', { ...input, dispatchToken: claimed.dispatchToken, asset }, deps)).toMatchObject({ state: 'succeeded', asset })
+    expect(await executeImageWorkerOperation(request.env, 'claim', input, deps)).toEqual({ admitted: false })
+    expect((await pool.query('SELECT balance,reserved FROM page_studio_image_wallets')).rows[0]).toEqual({ balance: '90', reserved: '0' })
+  })
+  it('does not dispatch an old quote through a changed or disabled model Gateway', async () => {
+    const deps = { runTransaction: transaction }
+    const q = await quote()
+    await pool.query('INSERT INTO page_studio_image_wallets(tenant_id,client_id,environment,balance) VALUES($1,$2,$3,100)', [q.scope.tenantId, q.scope.clientId, q.scope.environment])
+    await executeNativeImageOperation(request, 'generate', { quoteId: q.quoteId }, deps)
+    const config = JSON.parse(String(request.env.PAGE_STUDIO_IMAGE_CONFIG))
+    request.env.PAGE_STUDIO_IMAGE_CONFIG = JSON.stringify({ ...config, gatewayId: 'different-gateway' })
+    await expect(executeImageWorkerOperation(request.env, 'claim', { scope: q.scope, jobId: q.quoteId }, deps)).rejects.toMatchObject({ statusCode: 503 })
+    expect((await pool.query('SELECT state FROM page_studio_image_jobs')).rows[0].state).toBe('queued')
+    expect((await pool.query('SELECT reserved FROM page_studio_image_wallets')).rows[0].reserved).toBe('10')
+  })
+  it('binds signed editor operations and later dispatch to the exact native child session', async () => {
+    const deps = { runTransaction: transaction }
+    const clientId = request.actor.role === 'client' ? request.actor.clientId : ''
+    const now = Math.floor(Date.now() / 1000)
+    const claims = { tenantId: 'image_test', clientId, siteId: request.siteId, userId: request.actor.actorId, role: 'client' as const,
+      nonce: randomUUID().replaceAll('-', ''), capabilities: ['workspace:preview' as const, 'model:invoke' as const], issuedAt: now - 30, expiresAt: now + 3600 }
+    await pool.query(`INSERT INTO page_studio_sessions(nonce,tenant_id,client_id,site_id,user_id,role,capabilities,issued_at,expires_at,login_session_hash)
+      VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,to_timestamp($8),to_timestamp($9),$10)`,
+    [claims.nonce, claims.tenantId, claims.clientId, claims.siteId, claims.userId, claims.role, JSON.stringify(claims.capabilities), claims.issuedAt, claims.expiresAt, request.login.tokenHash])
+    const body = { intentId: randomUUID(), prompt: 'Soft abstract light', modelId: '@cf/black-forest-labs/flux-1-schnell', aspect: 'native' }
+    const quoted = await executeStudioImageOperation(claims, request.env, 'quote', body, deps)
+    if (!('quote' in quoted)) throw new Error('Quote missing')
+    const quoteId = quoted.quote.quoteId
+    await pool.query('INSERT INTO page_studio_image_wallets(tenant_id,client_id,environment,balance) VALUES(\'image_test\',$1,\'staging\',100)', [clientId])
+    expect(await executeStudioImageOperation(claims, request.env, 'generate', { quoteId }, deps)).toMatchObject({ job: { jobId: quoteId, state: 'queued' } })
+    expect((await pool.query('SELECT principal FROM page_studio_image_jobs')).rows[0].principal).toEqual({ source: 'studio-session', claims })
+    await expect(executeStudioImageOperation({ ...claims, capabilities: ['workspace:preview'] }, request.env, 'quote', { ...body, intentId: randomUUID() }, deps)).rejects.toMatchObject({ statusCode: 403 })
+    await pool.query('UPDATE page_studio_sessions SET revoked_at=clock_timestamp()')
+    await expect(executeStudioImageOperation(claims, request.env, 'jobs', {}, deps)).rejects.toMatchObject({ statusCode: 403 })
+    expect(await executeImageWorkerOperation(request.env, 'claim', { scope: { tenantId: 'image_test', clientId, businessId: clientId, siteId: request.siteId, environment: 'staging' }, jobId: quoteId }, deps)).toEqual({ admitted: false })
+    expect((await pool.query('SELECT reserved FROM page_studio_image_wallets')).rows[0].reserved).toBe('0')
+  })
+  it('releases expired queued work through private recovery even after generation configuration is removed', async () => {
+    const deps = { runTransaction: transaction }
+    const q = await quote()
+    await pool.query('INSERT INTO page_studio_image_wallets(tenant_id,client_id,environment,balance) VALUES($1,$2,$3,100)', [q.scope.tenantId, q.scope.clientId, q.scope.environment])
+    await executeNativeImageOperation(request, 'generate', { quoteId: q.quoteId }, deps)
+    await pool.query('UPDATE page_studio_image_jobs SET created_at=clock_timestamp()-INTERVAL \'11 minutes\'')
+    delete request.env.PAGE_STUDIO_IMAGE_CONFIG
+    expect(await executeImageWorkerOperation(request.env, 'poll', { scope: q.scope }, deps)).toEqual({ deliveries: [] })
+    expect((await pool.query('SELECT state,failure_code FROM page_studio_image_jobs')).rows[0]).toEqual({ state: 'failed', failure_code: 'dispatch-expired' })
+    expect((await pool.query('SELECT reserved FROM page_studio_image_wallets')).rows[0].reserved).toBe('0')
   })
   it('keeps account receipts readable when generation is disabled', async () => {
     await pool.query('INSERT INTO page_studio_image_wallets(tenant_id,client_id,environment,balance) VALUES(\'image_test\',$1,\'staging\',100)', [request.actor.role === 'client' ? request.actor.clientId : ''])

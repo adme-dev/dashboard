@@ -49,6 +49,10 @@ async function lockWallet(db: PageStudioControlQueryClient, args: string[]) {
   if (!row) throw new Error('Missing locked image wallet')
   return balance(row)
 }
+/** Shared wallet-first lock for the trusted job/payment state machines. */
+export async function lockImageCreditWallet(db: PageStudioControlQueryClient, scope: CreditScope) {
+  return lockWallet(db, key(scope))
+}
 export async function readImageCredits(db: PageStudioControlQueryClient, scope: CreditScope): Promise<ImageCreditBalance> {
   const row = (await db.query<WalletRow>(`SELECT balance,reserved,frozen FROM page_studio_image_wallets
     WHERE tenant_id=$1 AND client_id=$2 AND environment=$3`, key(scope))).rows[0]

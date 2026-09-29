@@ -153,3 +153,24 @@ rollback, invalid amounts and frozen spending. The focused regression run passes
 23 tests; ESLint passes for both new TypeScript files. The migration was applied
 automatically to isolated CMS staging, with all three tables empty. This is not
 evidence of payment fulfillment or hosted model integration.
+
+## Implementation evidence — native quotes and generation jobs
+
+Native agency/portal catalog, quotes and account history are implemented. Saved
+quotes reject forged prices, changed intent, expired inputs and other scopes.
+Billing ownership is independent of site editing. Migration439 has been applied
+to isolated staging with no customer data or balances created.
+
+The Task3 native foundation adds atomic reserve/job creation, a SQL outbox,
+at-most-once dispatch claims, immutable lifecycle events, scoped job/library
+reads and authenticated private completion. Revoked logins and child sessions
+cannot dispatch queued work; validated durable completion can settle after user
+logout. Known failure releases credits, ambiguous outcomes remain reserved for
+reconciliation. Each wallet permits three active jobs; unstarted jobs expire
+after ten minutes. The private worker's recovery scope inventory remains usable
+when generation configuration is disabled. Migration440 has been applied to
+isolated staging with zero jobs.
+
+This does not yet provide a running image worker, R2 image validation, customer
+image controls or payments. Those remaining plan tasks and hosted verification
+are required before claiming image generation complete or enabling customers.

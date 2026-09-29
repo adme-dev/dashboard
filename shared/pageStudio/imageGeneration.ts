@@ -34,3 +34,25 @@ export type ImageQuoteRequest = z.infer<typeof ImageQuoteRequestSchema>
 
 export const ImageQuoteReceiptSchema = ImageQuoteSchema.omit({ scope: true, actor: true, gatewayId: true, fingerprint: true, policyVersion: true })
 export type ImageQuoteReceipt = z.infer<typeof ImageQuoteReceiptSchema>
+
+export const ImageAssetSchema = z.object({
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  path: z.string().regex(/^\/assets\/[a-f0-9]{64}\.(png|jpg|webp)$/),
+  contentType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+  bytes: z.number().int().min(1).max(10 * 1024 * 1024),
+  width: z.number().int().min(256).max(2048),
+  height: z.number().int().min(256).max(2048)
+}).strict().refine(value => value.path === `/assets/${value.sha256}.${{ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[value.contentType]}`)
+export type ImageAsset = z.infer<typeof ImageAssetSchema>
+export const ImageJobStateSchema = z.enum(['queued', 'dispatched', 'reconciliation', 'succeeded', 'failed'])
+export const ImageJobReceiptSchema = z.object({
+  jobId: z.string().uuid(), quoteId: z.string().uuid(), state: ImageJobStateSchema,
+  modelId: ImageModelIdSchema, credits: z.number().int().min(1).max(1_000_000_000),
+  createdAt: z.string().datetime(), asset: ImageAssetSchema.nullable(),
+  failureCode: z.enum(['provider-rejected', 'invalid-output', 'authority-revoked', 'dispatch-expired']).nullable()
+}).strict()
+export type ImageJobReceipt = z.infer<typeof ImageJobReceiptSchema>
+export const ImageLibraryRequestSchema = z.object({
+  limit: z.number().int().min(1).max(50).default(20),
+  before: z.object({ createdAt: z.string().datetime(), jobId: z.string().uuid() }).strict().optional()
+}).strict()

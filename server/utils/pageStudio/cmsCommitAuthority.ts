@@ -60,7 +60,8 @@ async function one<T>(
   return rows[0]!
 }
 
-async function principalRequest(
+/** Resolve only a previously verified principal; this is discovery, not admission. */
+export async function resolveCmsPrincipalRequest(
   db: PageStudioControlQueryClient,
   principal: Principal,
   scope: PageStudioContentScope
@@ -235,7 +236,7 @@ export async function withCmsCommitAuthority<T>(
         WHERE tenant_id=$1 AND client_id=$2 AND id=$3 FOR NO KEY UPDATE`,
         [scope.tenantId, scope.clientId, scope.siteId]
       )
-      const request = await principalRequest(db, input.principal, scope)
+      const request = await resolveCmsPrincipalRequest(db, input.principal, scope)
       await lockDependencies(
         db,
         request,

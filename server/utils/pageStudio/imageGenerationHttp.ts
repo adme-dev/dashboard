@@ -9,7 +9,7 @@ import { ImageCreditError } from './imageCredits'
 export async function handlePageStudioImages(event: H3Event, audience: 'agency' | 'portal', operation: ImageNativeOperation) {
   setHeader(event, 'cache-control', 'private, no-store')
   try {
-    const writing = operation === 'quote'
+    const writing = operation === 'quote' || operation === 'generate'
     if (writing && getHeader(event, 'origin') !== getRequestURL(event).origin) {
       throw createError({ statusCode: 403, statusMessage: 'Image requests must come from this application' })
     }

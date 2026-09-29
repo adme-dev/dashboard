@@ -105,6 +105,19 @@ describe('Page Studio control gateway Worker', () => {
     await expect(forwarded.json()).resolves.toEqual({ checkpointId: 'checkpoint_01' })
   })
 
+  it.each(['poll', 'claim', 'complete', 'fail', 'uncertain'])('forwards image worker credentials only to exact POST %s', async (operation) => {
+    const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
+    vi.stubGlobal('fetch', fetchMock)
+    const path = `/internal/page-studio/images/${operation}`
+    await worker.fetch(request(path, { method: 'POST', headers: { 'x-page-studio-image-worker': 'private-worker-key', 'x-page-studio-session': 'must-not-pass' }, body: '{}' }), environment(), {} as never)
+    expect(fetchMock.mock.calls[0]?.[0].headers.get('x-page-studio-image-worker')).toBe('private-worker-key')
+    expect(fetchMock.mock.calls[0]?.[0].headers.get('x-page-studio-session')).toBeNull()
+    for (const [method, target] of [['GET', path], ['POST', `${path}/other`], ['POST', '/internal/page-studio/images/generate']]) {
+      await worker.fetch(request(target, { method, headers: { 'x-page-studio-image-worker': 'must-not-pass' } }), environment(), {} as never)
+      expect(fetchMock.mock.calls.at(-1)?.[0].headers.get('x-page-studio-image-worker')).toBeNull()
+    }
+  })
+
   it('forwards a preview credential only to the exact preview authorization route', async () => {
     const fetchMock = vi.fn(async () => Response.json({ acknowledged: true }))
     vi.stubGlobal('fetch', fetchMock)
@@ -129,7 +142,7 @@ describe('Page Studio control gateway Worker', () => {
     expect(checkpointRequest.headers.get('x-xeroflow-preview-token')).toBeNull()
   })
 
-  it.each(['/internal/page-studio/features/requests', '/internal/page-studio/features/context', '/internal/page-studio/features/accept', '/internal/page-studio/components/data', '/internal/page-studio/form-actions', '/internal/page-studio/action-invocations', '/internal/page-studio/cms-adoption', '/internal/page-studio/ai-usage', '/internal/page-studio/ai-proposals/accept', '/internal/page-studio/sessions/authorize', '/internal/page-studio/checkpoints/editor-commit'])('forwards the signed editor session only for exact POST %s', async (path) => {
+  it.each(['catalog', 'quote', 'generate', 'read', 'jobs', 'library'].map(operation => `/internal/page-studio/images/${operation}`).concat(['/internal/page-studio/features/requests', '/internal/page-studio/features/context', '/internal/page-studio/features/accept', '/internal/page-studio/components/data', '/internal/page-studio/form-actions', '/internal/page-studio/action-invocations', '/internal/page-studio/cms-adoption', '/internal/page-studio/ai-usage', '/internal/page-studio/ai-proposals/accept', '/internal/page-studio/sessions/authorize', '/internal/page-studio/checkpoints/editor-commit']))('forwards the signed editor session only for exact POST %s', async (path) => {
     const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
     vi.stubGlobal('fetch', fetchMock)
     await worker.fetch(request(path, {

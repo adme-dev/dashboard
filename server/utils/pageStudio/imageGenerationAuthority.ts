@@ -1,7 +1,9 @@
 import { transactionWithoutRetry } from '~~/server/utils/db'
-import { samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
+import { samePageStudioContentScope, PageStudioContentScopeSchema } from '~~/shared/pageStudio/businessContent'
 import { authorizePageStudioBusinessContent, type ContentAuthorityRequest, type ScopeRow } from './businessContent'
-import { withCmsCommitAuthority } from './cmsCommitAuthority'
+import { resolveCmsPrincipalRequest, withCmsCommitAuthority } from './cmsCommitAuthority'
+import { assertPageStudioSessionAuthority } from './sessionAuthority'
+import type { PageStudioSessionClaims } from './sessions'
 import type { PageStudioControlQueryClient } from './controlStore'
 import { ImageCreditError } from './imageCredits'
 import { readImageGenerationConfig } from './imageQuotes'
@@ -64,5 +66,25 @@ export async function withImageGenerationAuthority<T>(
     if (!writing) return perform()
     return withCmsCommitAuthority({ scope: initial.scope, principal: { source: 'native-login', request }, mutation: 'business-content' },
       perform, { runTransaction: callback => callback(db) })
+  })
+}
+
+/** Called only after signature verification. The original native login is
+ * resolved from the child ledger; no editor payload supplies its hash. */
+export async function withStudioImageAuthority<T>(claims: PageStudioSessionClaims, env: Record<string, unknown>, writing: boolean,
+  work: (db: PageStudioControlQueryClient, context: ImageGenerationContext) => Promise<T>, dependencies: { runTransaction?: RunTransaction } = {}) {
+  const scope = PageStudioContentScopeSchema.parse({ tenantId: claims.tenantId, clientId: claims.clientId, businessId: claims.clientId,
+    siteId: claims.siteId, environment: env.PAGE_STUDIO_CONTENT_ENVIRONMENT })
+  const principal = { source: 'studio-session' as const, claims, env, capability: 'model:invoke' as const }
+  const run = dependencies.runTransaction ?? (callback => transactionWithoutRetry(db => callback(db as unknown as PageStudioControlQueryClient)))
+  return run(async (db) => {
+    const request = await resolveCmsPrincipalRequest(db, principal, scope)
+    const perform = async () => {
+      await assertPageStudioSessionAuthority(claims, writing ? 'model:invoke' : 'workspace:preview', { transaction: db })
+      const result = await withImageGenerationAuthority(request, writing, work, { runTransaction: callback => callback(db) })
+      await assertPageStudioSessionAuthority(claims, writing ? 'model:invoke' : 'workspace:preview', { transaction: db })
+      return result
+    }
+    return writing ? withCmsCommitAuthority({ scope, principal, mutation: 'business-content' }, perform, { runTransaction: callback => callback(db) }) : perform()
   })
 }
