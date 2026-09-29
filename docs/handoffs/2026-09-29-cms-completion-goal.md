@@ -31,8 +31,8 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 
 1. Resolve intermittent public projection timeouts. Both scopes have successful GET/HEAD proofs with the unchanged 10-second deadline; earlier isolated requests returned 503. Staging route diagnostics now distinguish authority, provenance and snapshot latency.
 2. Complete the newly-private-field schema evolution check through the accepted CMS graph. The existing wrong-version check proves conflict handling only.
-3. Verify the implemented durable closed-tab recovery in both hosted editors. Native preview and gateway are deployed; the new editor image is rolling out. Local concurrency, authority and no-extra-charge checks pass.
-4. Deploy the pending Studio Escape-key fix in the editor image and finish hosted property/outline and keyboard verification.
+3. Durable closed-tab recovery is verified in both hosted editors, including exact native usage preservation and explicit dismissal. See the hosted recovery record below.
+4. Finish hosted keyboard verification. Escape is deployed and passes from a text field; a real Chromium regression exposed Tab escaping the dialog. Its local fix passes and awaits the next staging image.
 5. Finish paired current-main/CI verification, PR descriptions and release records. Latest CI is pending; no production release is authorised.
 
 The equivalent browser/publication journeys, current-record edits, rollback,
@@ -165,3 +165,41 @@ worker version `4a636efa-f14b-43cc-bf24-bb458e03065e` is at 100%. Container
 rollout `6046cb91-d285-4055-8a1b-460176848093` is still progressing from
 version28 to29. A worker deployment alone is not editor-image acceptance.
 Hosted closed-tab, Escape/keyboard and final asset verification remain open.
+
+## Hosted recovery acceptance, 29 September 11:15 UTC
+
+The version29 rollout completed with all seven instances healthy and no errors.
+Both normally launched editors serve the expected overlay SHA-256
+`42128afc4a1daf3188aba5a0385ec08630700da21a37ab19757ecc7a8880cd03`
+and hook bytes. Escape from the primary dialog's description field closes it
+and returns focus to its trigger.
+
+Each scope generated one disposable request, then its original browser tab was
+closed. A separately opened tab discovered the request from native storage;
+Generate remained disabled even with a nonempty description. The primary
+request failed bounded component validation, and Check previous request reported
+the unavailable result without generating again. The second request recovered
+its exact two-component proposal and rendered both previews. Neither proposal
+was accepted, inserted or published.
+
+Explicit Discard previous request acknowledged each exact native ID, removed
+the recovery/review UI, and retained a dismissed tombstone. Full native usage
+rows were byte-identical before checking, after checking and after dismissal:
+33 primary and 12 second-scope reservations. These counts include the original
+generation attempts; recovery and dismissal added zero. Existing website
+checkpoints, records and publication pointers were not mutated by these tests.
+
+Evidence: `/private/tmp/cms-recovery-image-20260929/`, including the three
+`*-closed-tab-*.json` snapshots and recovered/dismissed screenshots. During final
+keyboard review, Tab escaped to the document body; a real Chromium regression
+independently reproduced focus reaching a control behind the dialog. The local
+focus-wrap fix is undergoing full checks. Hosted keyboard completion remains
+open until that updated editor image is verified.
+
+Dashboard CI found two stale expectations after 14,887 other passing tests:
+the marketing navigation now correctly opens `/studio`, and the publication
+role predicate now casts its PostgreSQL enum to text. The navigation assertion
+and frozen inventory digest were updated after reviewing the exact source diff;
+inventory counts and classifications are unchanged, with an explicit assertion
+for the cast predicate. Both suites pass all 14 checks, and touched-file ESLint
+passes. The full CI rerun remains required.

@@ -67,6 +67,6 @@ describe('Page Studio workspace navigation', () => {
     expect(featureIndex).toContain('slug: \'page-studio\'')
     expect(featureDetail).toContain('\'page-studio\': {')
     expect(featureDetail).toContain('title: \'Page Studio\'')
-    expect(marketingNav).toContain('to: \'/features/page-studio\'')
+    expect(marketingNav).toMatch(/title: 'Page Studio'[^\n]+to: '\/studio'/)
   })
 })

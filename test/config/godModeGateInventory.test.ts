@@ -234,7 +234,10 @@ describe('God mode gate inventory', () => {
     // independent authority checks and none becomes a governance bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('ab7b33d1403ea77fabfdc5db929b4e07d6a570bb9b1bdb3ce3902c69277901fc')
+    // Publication casts the PostgreSQL user_role enum to text before comparing
+    // the role slug. The predicate, scope and classification remain unchanged.
+    expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
+    expect(inventory.digest).toBe('f8aa7171d2e3e14ad02c094be27b03959028085194f678779f079d0c38044a61')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
