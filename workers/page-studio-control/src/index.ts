@@ -77,6 +77,7 @@ function forwardedRequest(request: Request, config: GatewayConfiguration): Reque
     '/internal/page-studio/form-actions',
     '/internal/page-studio/features/accept',
     '/internal/page-studio/features/context',
+    '/internal/page-studio/features/requests',
     '/internal/page-studio/components/data',
     '/internal/page-studio/ai-proposals/accept',
     '/internal/page-studio/checkpoints/editor-commit',

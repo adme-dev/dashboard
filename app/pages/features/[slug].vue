@@ -188,7 +188,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Saved Component Design',
-        content: 'Open Components, select a component in Page outline, and use Design to save its supported visual settings with the website draft. Refine typography with text balance, alignment and decoration; choose bento or masonry grids and column counts; apply image masks, filters and blend modes; and adjust corners and link treatments where supported. Layouts collapse in narrow containers, and masonry content reads top to bottom. AI proposals use the same bounded, validated design choices as manual editing, so proposed changes remain editable in Studio.'
+        content: 'Open Components, select a component in Page outline, and use Design to save its supported visual settings with the website draft. Refine typography with text balance, alignment and decoration; choose bento or masonry grids and column counts; apply image masks, filters and blend modes; and adjust corners and link treatments where supported. Layouts collapse in narrow containers, and masonry content reads top to bottom. AI proposals use the same bounded, validated design choices as manual editing, so proposed changes remain editable in Studio. Where custom component generation is enabled, your pending request remains available after closing the editor. Reopen the component library to check its result without starting another generation; discard it explicitly before using more AI allowance.'
       },
       {
         title: 'Governed Preview and Publishing',

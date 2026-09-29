@@ -128,3 +128,23 @@ preview build. No production deployment or activation was performed.
 - The second synthetic fixture expiry was extended with an exact conditional
   update of `effective_until` only, to `2026-09-29T14:05:01.397Z`. The plan,
   permissions and usage were unchanged. All evidence remains private.
+
+
+## Durable component request recovery implementation, 29 September
+
+Migration 437 adds a metadata-only native request ledger scoped to tenant,
+client, site, environment and signed actor. Its transactional claim serializes
+concurrent tabs before any generation charge, retains dismissed IDs against
+replay, and checks live model/checkpoint authority before and after writes.
+Reopening the library discovers the pending ID and its saved-draft digest; reads
+never trigger inference. Dismissal must acknowledge that exact request, and late
+acceptance cannot clear a newer request. No prompt, token or generated content is
+stored in the ledger.
+
+All 37 disposable PostgreSQL cases pass, including real lock races and final
+authority rollback. Migration 437 was applied only to the isolated synthetic
+staging database; the initial ledger was empty. Gateway and internal error
+tests pass (23 cases). Studio recovery client, worker and editor checks pass;
+full Studio checks and hosted closed-tab acceptance remain in progress. Deploy
+the native preview and private staging gateway before the new Studio worker and
+editor image. This is not yet a hosted-completion claim.
