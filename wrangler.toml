@@ -327,6 +327,11 @@ PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST = "012054889e832d8753033811f9a6306d
 
 [env.preview]
 
+# The isolated preview Neon database is in AWS us-east-1. Keep transactional
+# CMS authority reads close to it; public projection retains its 10s deadline.
+[env.preview.placement]
+region = "aws:us-east-1"
+
 # Page Studio staging services remain isolated from production. No top-level
 # bindings or production mutable resources are inherited by this environment.
 [[env.preview.services]]
