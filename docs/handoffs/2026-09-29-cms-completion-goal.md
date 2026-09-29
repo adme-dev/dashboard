@@ -29,12 +29,18 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 
 ## In progress / remaining
 
-1. Resolve intermittent public projection timeouts. Both scopes have successful GET/HEAD proofs with the unchanged 10-second deadline, but a later primary request returned 503 when private route discovery exceeded its transport deadline.
-2. Record edits without republishing and template rollback retaining newer records pass on both scopes. Complete archive/schema/quota/revocation checks and restore the test fixtures.
-3. Complete the equivalent first-scope browser/publication journey and remaining hosted negative matrix (roles, schema, quota, archive, pointer epochs and revocation).
-4. Finish narrow-viewport hosted property/outline verification and record the final Studio rollout/version.
-5. Improve closed-tab request recovery without duplicate generation charges or weaker native authority.
-6. Refresh paired current-main/CI/QR verification, PR descriptions and release records.
+1. Resolve intermittent public projection timeouts. Both scopes have successful GET/HEAD proofs with the unchanged 10-second deadline; earlier isolated requests returned 503. Staging route diagnostics now distinguish authority, provenance and snapshot latency.
+2. Complete the newly-private-field schema evolution check through the accepted CMS graph. The existing wrong-version check proves conflict handling only.
+3. Improve closed-tab request recovery without duplicate generation charges or weaker native authority.
+4. Deploy the pending Studio Escape-key fix in the editor image and finish hosted property/outline and keyboard verification.
+5. Finish paired current-main/CI verification, PR descriptions and release records. Latest CI is pending; no production release is authorised.
+
+The equivalent browser/publication journeys, current-record edits, rollback,
+archive, schema-version conflict, quota exhaustion and permanent activation
+revocation checks now pass in both scopes. Cross-site requests were denied with
+404 in both scopes. Edit-only approval/publication and read-only record mutation
+were denied in the second-scope role fixtures. The duplicate management staging
+panel is repaired and verified in Chrome.
 
 Private request/response receipts and the fixed-scope acceptance harness are under `/private/tmp/cms-typed-acceptance-20260929`. Credentials and raw storage objects are excluded from repository documents. A failed request is never repeated with a new intent simply to make it succeed.
 
@@ -83,3 +89,42 @@ was staging. Overview now mounts its additional publishing panel only for a
 production runtime state; the dedicated staging panel remains the staging entry.
 Lint and Vue template compilation pass. Hosted verification follows the next
 preview build. No production deployment or activation was performed.
+
+
+## Hosted negatives and recovery, 29 September 10:22 UTC
+
+- Preview `00afb4c1-5f8d-4c44-b8b8-bcdbe328f038` serves source
+  `607fe1fd11000759602859bdd8a0982a8b3cc946`; provider readback confirms the
+  preview alias and expected runtime digest. Chrome shows exactly one Website
+  staging panel, and the QR Codes navigation/page still loads.
+- Both archived records were restored via normal writes with the same values:
+  primary revision 5 (`CMS_DESCRIPTION_A_3`), second revision 6
+  (`CMS_DESCRIPTION_B_4`). Both public GET/HEAD/privacy checks passed.
+- Quota tests temporarily lowered each synthetic entitlement to actual usage
+  (primary 30, second 9). Hosted generation returned 429 `AI_USAGE_EXHAUSTED`
+  with no additional AI reservation and unchanged usage. Exact conditional
+  updates restored the original limits (100 and 20). This verifies native
+  pre-provider admission; it does not claim independent provider telemetry.
+- Each current rollback activation first passed a private native projection.
+  Exact scoped revocation then left pointer, release, seal and record heads
+  unchanged. The same projection returned 409 `PUBLISHED_FEATURE_UNAVAILABLE`;
+  public GET/HEAD returned 503/no-store with no record markers.
+- Recovery used the normal retained-release restoration API. Primary template-two
+  release `a5b11872-a1ec-4288-8e76-f010bf4c6cd3` is now active with fresh activation
+  `32256e88-2686-4749-afe3-051f75543918`, pointer 14. Second release
+  `043db28c-8e8e-4bcd-b8fd-50d92fe7be0d` has activation
+  `dde717de-9b30-44fb-bc57-9d33677d86f8`, pointer 4. Records were byte-identical
+  before/after recovery, both public GET/HEAD/privacy checks pass, and replaying
+  either revoked identity still returns 409.
+- Attempts to activate an already retained version correctly returned 409
+  `RELEASE_ALREADY_EXISTS`; no retry changed those results. The private fixture
+  validator now accepts exact native restoration receipts as well as activation
+  receipts, retaining its scope/current-pointer/seal/record/identity checks.
+- Studio coordinator source `a212813`, staging version
+  `4fa95823-02ee-40c8-94c3-ab80576ec0ec`, emits only fixed stage/outcome/timing
+  fields. First observations show authority reads taking 0.3–2.5 seconds while
+  local provenance/snapshot reads take tens of milliseconds. This narrows the
+  investigation; intermittent reliability remains open.
+- The second synthetic fixture expiry was extended with an exact conditional
+  update of `effective_until` only, to `2026-09-29T14:05:01.397Z`. The plan,
+  permissions and usage were unchanged. All evidence remains private.
