@@ -95,7 +95,8 @@ describe.runIf(Boolean(databaseUrl))(
       schema = `cms_${randomUUID().replaceAll('-', '')}`
       observer = await connect()
       await observer.query(`CREATE SCHEMA "${schema}"`)
-      await observer.query(`CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN,user_role TEXT,custom_role_id UUID,sessions_invalidated_at TIMESTAMPTZ);
+      await observer.query(`CREATE TYPE user_role AS ENUM ('owner','admin','member','viewer','guest');
+      CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN,user_role user_role,custom_role_id UUID,sessions_invalidated_at TIMESTAMPTZ);
       CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN);
       CREATE TABLE client_users(id UUID PRIMARY KEY,client_id UUID,status TEXT,role TEXT);
       CREATE TABLE client_sessions(token_hash TEXT PRIMARY KEY,client_user_id UUID,expires_at TIMESTAMPTZ);

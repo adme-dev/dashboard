@@ -11,7 +11,7 @@ async function assertPublishPermission(db: PageStudioControlQueryClient, princip
   if (principal.source !== 'native-login' || principal.request.actor.role !== 'agency') throw featureDenied()
   const rows = (await db.query(`SELECT permission.role_id FROM team_members owner
     JOIN custom_roles role ON ((owner.custom_role_id IS NOT NULL AND role.id=owner.custom_role_id)
-      OR (owner.custom_role_id IS NULL AND role.slug=owner.user_role AND role.is_system=TRUE))
+      OR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))
     JOIN role_permission_groups permission ON permission.role_id=role.id AND permission.permission_group='PAGE_STUDIO_PUBLISH'
     WHERE owner.id::text=$1 AND owner.is_active=TRUE AND owner.user_role NOT IN ('viewer','guest') AND role.is_read_only=FALSE
     FOR SHARE OF permission NOWAIT`, [principal.request.actor.actorId])).rows
