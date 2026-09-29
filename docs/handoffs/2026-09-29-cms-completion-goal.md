@@ -31,7 +31,7 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 
 1. Resolve intermittent public projection timeouts. Both scopes have successful GET/HEAD proofs with the unchanged 10-second deadline; earlier isolated requests returned 503. Staging route diagnostics now distinguish authority, provenance and snapshot latency.
 2. Complete the newly-private-field schema evolution check through the accepted CMS graph. The existing wrong-version check proves conflict handling only.
-3. Improve closed-tab request recovery without duplicate generation charges or weaker native authority.
+3. Verify the implemented durable closed-tab recovery in both hosted editors. Native preview and gateway are deployed; the new editor image is rolling out. Local concurrency, authority and no-extra-charge checks pass.
 4. Deploy the pending Studio Escape-key fix in the editor image and finish hosted property/outline and keyboard verification.
 5. Finish paired current-main/CI verification, PR descriptions and release records. Latest CI is pending; no production release is authorised.
 
@@ -148,3 +148,20 @@ tests pass (23 cases). Studio recovery client, worker and editor checks pass;
 full Studio checks and hosted closed-tab acceptance remain in progress. Deploy
 the native preview and private staging gateway before the new Studio worker and
 editor image. This is not yet a hosted-completion claim.
+
+
+## Recovery rollout in progress, 29 September 10:54 UTC
+
+Native source `dab193db53d14d34c1525e54b87a7c0b9030bf55` is deployed to preview
+`17a1e217-0ea0-4c79-89d4-13d60a378f97`; provider metadata confirms source and
+preview alias. Staging gateway version `79733f06-05bd-4ba3-898c-dcaa0005a856`
+is at 100%. Both synthetic native runtime-state reads return 200.
+
+Studio source `b27ece5db9cc13f316eeae367fa8708e1f13e550` passes full build,
+typecheck, tests and lint (1,437 files), plus four actual Chromium dialog tests.
+All 29 editor image files match that build. Staging-only pin `c93189f` selects
+image `ab2147ece0e5aacb11dc782cefe0672ccdfd9d2d02863657ca88c09aaa7baa08`;
+worker version `4a636efa-f14b-43cc-bf24-bb458e03065e` is at 100%. Container
+rollout `6046cb91-d285-4055-8a1b-460176848093` is still progressing from
+version28 to29. A worker deployment alone is not editor-image acceptance.
+Hosted closed-tab, Escape/keyboard and final asset verification remain open.
