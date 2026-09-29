@@ -391,6 +391,25 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
       : await acceptPageStudioAiProposal({ checkpoint: cp, expectedCheckpointId: accepted.checkpointId, baseDigest: f.input.nextCheckpoint.digest,
           authorRole: 'agency', idempotencyKey: 'managed_ai_page', summary: 'Saved AI page' }, { ...f.deps, session: claims, env: request.env })
     expect(result.isCurrent).toBe(true)
+    if (mode === 'editor') {
+      const receipt = { acknowledged: true, checkpointId: cp.checkpointId,
+        currentCheckpointId: cp.checkpointId, isCurrent: true }
+      // The Studio client rejects extra graph fields in its strict transport schema.
+      expect(result).toEqual(receipt)
+      expect(await commitPageStudioEditorCheckpoint(
+        { checkpoint: cp, expectedCheckpointId: accepted.checkpointId }, claims,
+        { ...f.deps, env: request.env }
+      )).toEqual(receipt)
+    } else {
+      const version = (await observer.query('SELECT id FROM page_studio_versions WHERE checkpoint_id=$1', [cp.checkpointId])).rows[0]
+      const receipt = { acknowledged: true, checkpointId: cp.checkpointId,
+        currentCheckpointId: cp.checkpointId, isCurrent: true, versionId: version.id }
+      expect(result).toEqual(receipt)
+      expect(await acceptPageStudioAiProposal({ checkpoint: cp,
+        expectedCheckpointId: accepted.checkpointId, baseDigest: f.input.nextCheckpoint.digest,
+        authorRole: 'agency', idempotencyKey: 'managed_ai_page', summary: 'Saved AI page'
+      }, { ...f.deps, session: claims, env: request.env })).toEqual(receipt)
+    }
     const audit = (await observer.query('SELECT metadata FROM page_studio_audit_events WHERE action=\'workspace.checkpointed\' AND resource_id=$1', [cp.checkpointId])).rows[0]
     expect((await observer.query('SELECT checkpoint_id,state FROM page_studio_checkpoint_staging_outbox WHERE checkpoint_id=$1', [cp.checkpointId])).rows).toEqual([{ checkpoint_id: cp.checkpointId, state: 'pending' }])
     expect(audit.metadata.stagingOrigin).toEqual({ formatVersion: 1, environment: 'staging', source: 'studio-session',
@@ -398,6 +417,23 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
     const app = (await observer.query('SELECT manifest FROM page_studio_application_versions a JOIN page_studio_cms_scopes s ON s.current_application_id=a.id')).rows[0].manifest
     expect(app.checkpoint).toEqual({ id: cp.checkpointId, digest: cp.digest })
     expect(app.actions.map((pin: { id: string }) => pin.id)).toEqual(['submit'])
+    if (mode === 'editor') {
+      const nextEnvelope = { ...envelope, checkpointId: 'saved_editor_next' }
+      const next = { ...cp, checkpointId: nextEnvelope.checkpointId,
+        objectKey: `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}/checkpoints/${nextEnvelope.checkpointId}.json` }
+      f.texts.set(next.objectKey, JSON.stringify(nextEnvelope))
+      await commitPageStudioEditorCheckpoint(
+        { checkpoint: next, expectedCheckpointId: cp.checkpointId }, claims,
+        { ...f.deps, env: request.env }
+      )
+      // A delayed retry must acknowledge its original save without claiming it is still current.
+      expect(await commitPageStudioEditorCheckpoint(
+        { checkpoint: cp, expectedCheckpointId: accepted.checkpointId }, claims,
+        { ...f.deps, env: request.env }
+      )).toEqual({ acknowledged: true, checkpointId: cp.checkpointId,
+        currentCheckpointId: next.checkpointId, isCurrent: false })
+      expect((await observer.query('SELECT count(*)::int AS count FROM page_studio_cms_commits')).rows[0].count).toBe(3)
+    }
   })
 
   it('maps a second environment adoption to the actionable site reservation conflict', async () => {
