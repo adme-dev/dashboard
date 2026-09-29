@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type { H3Event } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -19,7 +20,7 @@ vi.mock('../../server/utils/godMode/audit', () => ({
   appendGodModeAuditEvent: mockAppendGodModeAuditEvent
 }))
 vi.mock('../../server/utils/godMode/authority', () => ({
-  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args),
+  resolveGodModeAuthority: (...args: unknown[]) => mockResolveGodModeAuthority(...args),
   isActiveGodModeAuthority: (authority: unknown, actorUserId: string) => {
     const candidate = authority as Record<string, unknown> | null
     return candidate?.active === true
@@ -134,7 +135,7 @@ describe('God mode gate inventory', () => {
       },
       res: { statusCode: 200, statusMessage: 'OK' }
     }
-  }) as any
+  }) as unknown as H3Event
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -252,13 +253,13 @@ describe('God mode gate inventory', () => {
   })
 
   it('preserves the normal application gate for non-owners', async () => {
-    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as any
+    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as unknown as H3Event
     await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
   })
 
   it('evaluates asynchronous normal gates before applying active-owner authority', async () => {
     const normalGate = vi.fn().mockResolvedValue(true)
-    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as any
+    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as unknown as H3Event
     await expect(isApplicationCapabilityEnabled(event, normalGate)).resolves.toBe(true)
     expect(normalGate).toHaveBeenCalledTimes(1)
   })
