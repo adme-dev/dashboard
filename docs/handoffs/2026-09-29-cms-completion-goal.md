@@ -29,11 +29,21 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 
 ## In progress / remaining
 
-1. Resolve public projection latency. Preview-only placement near the isolated database is being tested; preserve current-state authority, isolation and the public 10-second deadline. Verify public GET/HEAD, no-store, public fields and private/cross-scope exclusion.
-2. Edit records without republishing. Publish a second template and restore the earlier release while retaining newer records.
+1. Public projection now passes on both scopes with the unchanged 10-second deadline. Keep monitoring latency margin during rollback/negative checks.
+2. Record edits without republishing pass on both scopes. Publish a second template and restore the earlier release while retaining newer records.
 3. Complete the equivalent first-scope browser/publication journey and remaining hosted negative matrix (roles, schema, quota, archive, pointer epochs and revocation).
 4. Finish narrow-viewport hosted property/outline verification and record the final Studio rollout/version.
 5. Improve closed-tab request recovery without duplicate generation charges or weaker native authority.
 6. Refresh paired current-main/CI/QR verification, PR descriptions and release records.
 
 Private request/response receipts and the fixed-scope acceptance harness are under `/private/tmp/cms-typed-acceptance-20260929`. Credentials and raw storage objects are excluded from repository documents. A failed request is never repeated with a new intent simply to make it succeed.
+
+
+## Hosted public proof, 29 September 09:40 UTC
+
+- Studio router source `8d094ef`, deployed staging version `a3711001-d5c9-46a7-b914-5dc014d7c939`; native source `e4d70cc8bed41e74d624d959b160ccb29eb2067a`, preview deployment `b295c2ec-441b-4c2d-a9c5-22599da62751`. Provider readback confirms source and preview alias. Both sources include freshly fetched main.
+- Both synthetic hosts passed public GET + HEAD (200), `no-store`, correct section headings/current public records, and private/cross-tenant marker exclusion. The first measured second-site request took 9.026s; the 10-second deadline has not changed.
+- Primary approved version is now active in staging: release `e19a9974-8069-42b8-8148-17abcfb12fbe`, activation `c5b8f316-f895-4e46-ae73-f76a5361a0ab`, pointer version 11. Publication returned 200 and native readback succeeded. Chrome independently shows the public component and current public fields.
+- Second record revision 3 (`CMS_DESCRIPTION_B_3`) appears publicly while release `0c9b80ad-c168-4ba7-8d84-650ae748a239` and version `ece160c8-2ce5-4e4e-b843-15cb4290cf70` remain unchanged. Primary revision 2 (`CMS_DESCRIPTION_A_2`) also passes public GET/HEAD without template publication. Private markers remain excluded.
+- One successful second record write was followed by an evidence-filename collision in the private harness. The write was not repeated; a separate native read confirmed revision 3. The harness now uses a distinct follow-up-read label and preserves the original receipts.
+- Narrow hosted dialog check: scroll shell stays within 390×844, no horizontal overflow, labelled heading field works. Escape from a text field needs a follow-up Studio image: source fix `94c13ab`, 1,393 overlay tests/typecheck/build/lint pass, not yet deployed in the editor image.
