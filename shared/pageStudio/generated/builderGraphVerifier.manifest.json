@@ -5,8 +5,8 @@
     "astroBuildIdentityFixtures.json": "aab6df58afb3eab789e92ab582ceb9cd9c731a30bea96bfb47f4356f20b8751f",
     "builderGraphFixtures.json": "5e55191f0940e2be57d20c8477e221e105d8ad87d511b2db93db67548cd2dcca",
     "builderGraphLicenses.txt": "8d5d58fee24c22b7ca431fdd84693b6487f0a338cdad215d6f86e2465fb0e70e",
-    "builderGraphVerifier.d.mts": "02baf37829472045b9f5a7c8a74192c8919d9ffda8d88e9e70f08e89854d0d1a",
-    "builderGraphVerifier.mjs": "2e072dfde4b964605f49399b86dddbbe0bdd64bf9f5082213e6e48cec56a48fd"
+    "builderGraphVerifier.d.mts": "fae6e748e7dbe41cdf596b8c7407fbf8c171dceb76914873ee8f4f531876725b",
+    "builderGraphVerifier.mjs": "ef78ea269eee13d2409743470e0bcd427483cb25bf6fb7e3be83ec14874c3784"
   },
   "generator": "scripts/generate-native-builder-verifier.mjs",
   "options": {
@@ -19,7 +19,7 @@
     "target": "es2022",
     "treeShaking": true
   },
-  "sourceDigest": "f80cb716d8a2f056d9c82ac6a2743675e2c7a2d9246708fc07f0724cc2bcb7ee",
+  "sourceDigest": "356aa3bdc204beb277b68af6e0e1466401d3742112bc3b659ca0dc3b2907254f",
   "sources": [
     {
       "path": "LICENSE",
@@ -403,7 +403,7 @@
     },
     {
       "path": "packages/protocol/src/builder-graph-verifier.ts",
-      "sha256": "46e3c8dd00f40afc896dfe6a16f915e941222f5ab6f4ba98da08f8831242d876"
+      "sha256": "d258008dcb6cd0e9360efd4ed7b11fd3411ba0e364ee18dc172339795c59f592"
     },
     {
       "path": "packages/protocol/src/builder-instance-reference.ts",

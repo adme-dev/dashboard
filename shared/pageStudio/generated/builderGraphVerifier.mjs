@@ -10163,6 +10163,7 @@ var transitionRequest = checkpointRequest
     candidateDigest: ReleaseSha256Schema,
     candidateId: ReleaseScopedIdSchema,
     preparations: array(preparationRef).max(32),
+    privacyReviewDigest: ReleaseSha256Schema.optional(),
   })
   .strict();
 async function loadArtifacts(raws, scope) {
@@ -10663,9 +10664,26 @@ async function checkPreparedItem(
     if (before.kind !== "collection") {
       fail("GRAPH_BASE", "Missing accepted definition");
     }
-    if (
-      classifyCollectionChange(before.definition, item.body) !== "compatible"
-    ) {
+    const classification = classifyCollectionChange(
+      before.definition,
+      item.body
+    );
+    const visibilityChanges = before.definition.fields.filter((field) =>
+      item.body.fields.some(
+        (next) => next.id === field.id && next.visibility !== field.visibility
+      )
+    );
+    const reviewedReduction =
+      classification === "review-required" &&
+      request.privacyReviewDigest === candidate.digest &&
+      visibilityChanges.length > 0 &&
+      visibilityChanges.every(
+        (field) =>
+          field.visibility === "public" &&
+          item.body.fields.find((next) => next.id === field.id)?.visibility ===
+            "private"
+      );
+    if (classification !== "compatible" && !reviewedReduction) {
       fail(
         "GRAPH_SCHEMA_CHANGE",
         "Schema migration or visibility review required"
@@ -10787,6 +10805,65 @@ async function checkCandidate(input, request, artifacts) {
     }
   }
   return { candidate, candidateDigest, checked };
+}
+async function upgradeBuilderComponentInstances(input) {
+  const scope = ContentScopeSchema.parse(input.scope);
+  const manifest = SiteManifestSchema.parse(structuredClone(input.manifest));
+  if (manifest.id !== scope.siteId) {
+    fail("GRAPH_SCOPE", "Website scope mismatch");
+  }
+  if (manifest.schemaVersion === 2) {
+    for (const binding of [
+      manifest.builderLibrary,
+      manifest.builderApplication,
+      manifest.contentBinding,
+    ]) {
+      if (binding) {
+        requireEqual(binding.scope, scope, "GRAPH_SCOPE");
+      }
+    }
+  }
+  const changes = array(BuilderArtifactPinSchema).max(32).parse(input.changes);
+  const artifacts = await loadArtifacts(input.artifactBytes, scope);
+  const components = /* @__PURE__ */ new Map();
+  for (const pin2 of changes) {
+    if (pin2.kind !== "component") {
+      continue;
+    }
+    const artifact = requireArtifact(artifacts, pin2);
+    if (artifact.kind !== "component" || components.has(pin2.id)) {
+      fail("GRAPH_ARTIFACT", "Invalid component upgrade");
+    }
+    components.set(pin2.id, artifact);
+  }
+  const visit = async (node) => {
+    const reference = node.builderInstance;
+    const artifact = reference && components.get(reference.pin.id);
+    if (reference && artifact && reference.pin.version !== artifact.version) {
+      const { change } = await describeBuilderArtifact(artifact);
+      return {
+        ...(await instantiateBuilderComponent(
+          artifact,
+          reference.values,
+          node.id
+        )),
+        builderInstance: {
+          ...reference,
+          pin: {
+            id: change.id,
+            kind: "component",
+            sha256: change.sha256,
+            version: change.version,
+          },
+        },
+      };
+    }
+    return { ...node, children: await Promise.all(node.children.map(visit)) };
+  };
+  for (const page of manifest.pages) {
+    page.components = await Promise.all(page.components.map(visit));
+  }
+  return manifest;
 }
 async function verifyBuilderApplicationTransition(input) {
   return await guarded(async () => {
@@ -11111,6 +11188,7 @@ export {
   parseBuilderArtifactJson,
   projectBuilderActionRecord,
   selectNativeAstroCompilerGeneration,
+  upgradeBuilderComponentInstances,
   verifyAstroCompilerBuildIdentity,
   verifyAstroCompilerReleaseReceipt,
   verifyBuilderActionInput,

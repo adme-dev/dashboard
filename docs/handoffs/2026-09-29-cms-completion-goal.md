@@ -289,3 +289,58 @@ fence and physical proof runs unchanged. Responses are streamed with a2MB cap,
 validated by the existing object parser/hash checks, and failures never fall
 back to RPC. Production retains its prior transport. Deploy the Studio router
 endpoint first, then preview; do not claim this latency item complete yet.
+
+
+## Placed object transport deployed, 29 September 12:17 UTC
+
+Dashboard preview source `a8a8d9865865dac801929558b92ffdf8d9c269b6`
+is deployment `69673c42-86a3-4902-b803-6fbe5eb253cb`, at the existing
+preview alias. Studio router source `a49c2ab85047a84f9e6ada74fc0e414c0053c62e`
+is version `448bf25a-150c-478e-be72-ef750d257dfe`, deployment
+`3846f0cd-9bfa-41a0-b151-7a33f6f166c4` at 100%. Provider readback
+confirms both. Current main ancestry was verified before deployment.
+
+Eight sequential public GETs across the two synthetic sites returned 200,
+current expected public fields and no private markers. Primary times were
+7038, 4548, 7631 and 4887ms; second-site times were 4317, 8769, 4065
+and 4859ms. The 10-second public deadline is unchanged. These finite samples
+show improvement; they do not establish a latency percentile or eliminate all
+cold-start risk. The new native projection trace completed in 2690ms.
+QR Codes and standalone My sites load in authenticated Chrome on this preview.
+No tenant runtime image or customer production was changed.
+Private evidence: `/private/tmp/cms-completion-rpc-20260929/`.
+
+Reviewed public-to-private schema acceptance is now being implemented. It
+requires explicit acknowledgement bound to the exact candidate digest and
+retains rejection of private-to-public changes and data migrations. Hosted
+privacy-transition verification remains outstanding.
+
+
+## Reviewed field privacy — local verification
+
+The candidate review now requires an explicit privacy acknowledgement for
+updates to existing collections containing private fields. Native acceptance
+binds that acknowledgement to the candidate digest, permits only compatible
+public-to-private changes, and retains rejection of widening and migrations.
+Saved component instances move to reviewed new artifact pins while retaining
+instance IDs and customer property values. Incompatible properties and form
+action mappings still fail closed.
+
+Studio full build, typecheck, test and lint pass (1,441 files in the full lint;
+39 test task groups plus 36 security and 48 runtime tests). Six Chromium dialog
+tests pass. The new protocol tests cover privacy and instance scope/binding
+negatives. All 25 native graph PostgreSQL tests pass on a disposable local DB,
+including unchanged record heads, missing/mismatched review and revoked current
+authority. Dashboard's generated verifier is exported from this Studio source.
+The hosted public-to-private transition remains pending staging deployment.
+
+The whole Dashboard typecheck initially exhausted Node's default heap. With
+16GiB it reported the 919 known baseline diagnostics plus one standalone
+sign-in click-handler return-type error. The handler now explicitly returns
+void; the final baseline comparison is recorded after the rerun completes.
+No migration, production deployment or customer content change is involved.
+
+Final whole-Dashboard typecheck comparison: exactly the same 919 baseline
+diagnostics, with no added or removed diagnostics after normalizing line numbers.
+The standalone click-handler regression is resolved. This is not a globally
+green typecheck; the pre-existing backlog remains.

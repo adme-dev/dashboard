@@ -88,7 +88,7 @@ async function signIn() {
               block
               color="neutral"
               variant="outline"
-              @click="sentTo = ''"
+              @click="() => { sentTo = '' }"
             />
           </div>
           <form v-else class="space-y-4" @submit.prevent="signIn">

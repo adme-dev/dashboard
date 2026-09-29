@@ -75,6 +75,17 @@ describe('feature candidate to managed native acceptance', () => {
     expect(f.bucket.put).not.toHaveBeenCalled()
     expect(mocks.coordinate).not.toHaveBeenCalled()
   })
+  it('binds explicit privacy review to the exact candidate through native coordination', async () => {
+    const f = await fixture()
+    await acceptManagedFeatureCandidate({ ...f.input, privacyReviewDigest: f.input.digest }, f.principal as never)
+    expect(mocks.coordinate).toHaveBeenCalledWith(expect.objectContaining({ privacyReviewDigest: f.input.digest }), f.principal, {})
+  })
+  it('rejects acknowledgement for another candidate before any storage preparation', async () => {
+    const f = await fixture()
+    await expect(acceptManagedFeatureCandidate({ ...f.input, privacyReviewDigest: 'f'.repeat(64) }, f.principal as never)).rejects.toThrow()
+    expect(f.router.prepareManagedCmsOperation).not.toHaveBeenCalled()
+    expect(f.bucket.put).not.toHaveBeenCalled()
+  })
   it('rejects foreign scope, altered candidate digest and stale base before preparation', async () => {
     const f = await fixture()
     for (const change of [{ digest: 'a'.repeat(64) }, { proposal: { ...f.candidate.proposal, scope: { ...f.snapshot.scope, siteId: 'other' } } }, { proposal: { ...f.candidate.proposal, base: { ...f.candidate.proposal.base, checkpointId: 'stale' } } }]) {

@@ -4,7 +4,7 @@ import { PageStudioContentScopeSchema } from '~~/shared/pageStudio/businessConte
 import { BuilderArtifactPinSchema, CmsPreparationSchema, CmsPreparationReceiptSchema, CmsStorageTargetSchema, contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
 import { CollectionDefinitionSchema } from '~~/shared/pageStudio/collectionDefinition'
 import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
-import { verifyBuilderArtifactSet } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
+import { verifyBuilderArtifactSet, upgradeBuilderComponentInstances } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
 import { readCmsGraphSnapshot, assertCmsGraphSnapshotCurrent, coordinateCmsGraphTransition, lookupCmsGraphOperation, cmsGraphEnvironment, cmsGraphConflict, type CmsGraphPrincipal, type CmsGraphDependencies } from './cmsGraphCoordinator'
 import { createCmsGraphStorage } from './cmsGraphStorage'
 import { persistCandidateCheckpoint, type CandidateCheckpointBucket } from './candidateCheckpoint'
@@ -12,7 +12,8 @@ import { withCmsCommitAuthority } from './cmsCommitAuthority'
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/)
 const id = z.string().min(1).max(80).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
-export const ManagedFeatureAcceptanceRequestSchema = z.object({ id, digest }).strict()
+export const ManagedFeatureAcceptanceRequestSchema = z.object({ id, digest, privacyReviewDigest: digest.optional() }).strict()
+  .refine(input => input.privacyReviewDigest === undefined || input.privacyReviewDigest === input.digest, 'Privacy review must match this exact candidate.')
 // Read only the construction fields here. The single-source graph verifier
 // independently validates all candidate evidence and final bytes before acceptance.
 const candidateProjection = z.object({
@@ -79,7 +80,7 @@ export async function acceptManagedFeatureCandidate(raw: unknown, principal: Cms
       schemaItems.push({ kind: 'schema' as const, version: change.version, expectedBase: snapshot.schemas.find(item => item.pin.collectionId === change.id)?.pin ?? null, body: artifact.definition })
     }
   }
-  const manifest = z.object({ id: z.string(), schemaVersion: z.literal(2) }).passthrough().parse(structuredClone(checkpoint.manifest))
+  const manifest = z.object({ id: z.string(), schemaVersion: z.literal(2) }).passthrough().parse(await upgradeBuilderComponentInstances({ manifest: checkpoint.manifest, scope: snapshot.scope, artifactBytes: [...artifacts.values()], changes: candidate.proposal.changes.map(barePin) }))
   const pins = [...selected.values()].sort((a, b) => a.id.localeCompare(b.id, 'en'))
   manifest.builderLibrary = { scope: snapshot.scope, components: pins.filter(pin => pin.kind === 'component') }
   manifest.builderApplication = { version: 1, scope: snapshot.scope, actions: pins.filter(pin => pin.kind === 'action'), collections: pins.filter(pin => pin.kind === 'collection') }
@@ -105,5 +106,5 @@ export async function acceptManagedFeatureCandidate(raw: unknown, principal: Cms
   await assertCmsGraphSnapshotCurrent(snapshot, principal, deps)
   const workspace = { tenantId: snapshot.scope.tenantId, clientId: snapshot.scope.clientId, siteId: snapshot.scope.siteId }
   const nextCheckpoint = await persistCandidateCheckpoint({ checkpointId: `checkpoint_feature_${operationId.slice('accept_feature_'.length)}`, scope: workspace, manifest, digest: await collectionDigest(manifest), userId: snapshot.actor.userId }, env.PAGE_STUDIO_CHECKPOINTS as CandidateCheckpointBucket)
-  return await coordinateCmsGraphTransition({ operationId, candidateId: input.id, candidateDigest, expectedApplication: { id: snapshot.context.application.id, digest: snapshot.context.application.digest }, expectedCheckpoint: { id: snapshot.checkpoint.id, digest: snapshot.checkpoint.digest }, expectedContent: snapshot.content?.pin ?? null, contentRevision: candidate.proposal.base.contentRevision, nextCheckpoint, preparations, summary: candidate.summary }, principal, deps)
+  return await coordinateCmsGraphTransition({ ...(input.privacyReviewDigest ? { privacyReviewDigest: input.privacyReviewDigest } : {}), operationId, candidateId: input.id, candidateDigest, expectedApplication: { id: snapshot.context.application.id, digest: snapshot.context.application.digest }, expectedCheckpoint: { id: snapshot.checkpoint.id, digest: snapshot.checkpoint.digest }, expectedContent: snapshot.content?.pin ?? null, contentRevision: candidate.proposal.base.contentRevision, nextCheckpoint, preparations, summary: candidate.summary }, principal, deps)
 }

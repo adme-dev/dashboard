@@ -1,0 +1,375 @@
+{
+  "artifactBytes": [
+    "{\"actions\":[],\"dataBindings\":[],\"defaults\":{},\"formatVersion\":1,\"id\":\"retained\",\"kind\":\"component\",\"label\":\"Retained\",\"properties\":[],\"propertyBindings\":[],\"root\":{\"children\":[],\"id\":\"title_old\",\"props\":{\"text\":\"Old\"},\"type\":\"heading\"},\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":1}",
+    "{\"definition\":{\"displayFieldId\":\"title\",\"fields\":[{\"id\":\"title\",\"label\":\"Title\",\"required\":true,\"type\":\"text\",\"visibility\":\"public\"},{\"id\":\"notes\",\"label\":\"Notes\",\"required\":false,\"type\":\"text\",\"visibility\":\"public\"}],\"formatVersion\":1,\"id\":\"fleet\",\"label\":\"Fleet\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":1},\"kind\":\"collection\"}",
+    "{\"collections\":[],\"effects\":{\"maxCommands\":1,\"permissions\":[{\"collection\":{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"f2266aa66591253f1db36b137a361f19b94efcbac96195b01d9c6d3b0e102ed5\",\"version\":1},\"fields\":[\"title\"],\"operations\":[\"create\"]}],\"version\":1},\"formatVersion\":2,\"id\":\"submit\",\"inputContract\":{\"properties\":[{\"key\":\"title\",\"required\":true,\"type\":\"string\"}],\"version\":1},\"kind\":\"action\",\"label\":\"Submit\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"source\":\"input => input\",\"tests\":[{\"data\":null,\"expected\":{\"commands\":[],\"result\":null,\"version\":1},\"input\":{\"title\":\"Example\"}}],\"version\":1}",
+    "{\"actions\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"53e07e6d788729b28135d44a47e96fccb432ddad62f1ad63009ccea4973c9c1f\",\"version\":1}],\"dataBindings\":[{\"collection\":{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"f2266aa66591253f1db36b137a361f19b94efcbac96195b01d9c6d3b0e102ed5\",\"version\":1},\"fields\":[\"title\"],\"id\":\"fleet_rows\",\"limit\":10}],\"defaults\":{},\"formatVersion\":1,\"id\":\"fleet_view\",\"kind\":\"component\",\"label\":\"Fleet\",\"properties\":[],\"propertyBindings\":[],\"root\":{\"children\":[],\"id\":\"title_new\",\"props\":{\"text\":\"New\"},\"type\":\"heading\"},\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":1}",
+    "{\"definition\":{\"displayFieldId\":\"title\",\"fields\":[{\"id\":\"title\",\"label\":\"Title\",\"required\":true,\"type\":\"text\",\"visibility\":\"public\"},{\"id\":\"notes\",\"label\":\"Notes\",\"required\":false,\"type\":\"text\",\"visibility\":\"private\"}],\"formatVersion\":1,\"id\":\"fleet\",\"label\":\"Fleet\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":2},\"kind\":\"collection\"}",
+    "{\"collections\":[],\"effects\":{\"maxCommands\":1,\"permissions\":[{\"collection\":{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"3aaeb15ce15802aa019c60d7dc3b35c635bb9cfbe81cb99ba92f04567816967f\",\"version\":2},\"fields\":[\"title\"],\"operations\":[\"create\"]}],\"version\":1},\"formatVersion\":2,\"id\":\"submit\",\"inputContract\":{\"properties\":[{\"key\":\"title\",\"required\":true,\"type\":\"string\"}],\"version\":1},\"kind\":\"action\",\"label\":\"Submit\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"source\":\"input => input\",\"tests\":[{\"data\":null,\"expected\":{\"commands\":[],\"result\":null,\"version\":1},\"input\":{\"title\":\"Example\"}}],\"version\":2}",
+    "{\"actions\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"264dffdd588a64e85dc7a5f1e7a4980460170486515b9a425516ed1dc2657167\",\"version\":2}],\"dataBindings\":[{\"collection\":{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"3aaeb15ce15802aa019c60d7dc3b35c635bb9cfbe81cb99ba92f04567816967f\",\"version\":2},\"fields\":[\"title\"],\"id\":\"fleet_rows\",\"limit\":10}],\"defaults\":{},\"formatVersion\":1,\"id\":\"fleet_view\",\"kind\":\"component\",\"label\":\"Fleet\",\"properties\":[],\"propertyBindings\":[],\"root\":{\"children\":[],\"id\":\"title_new\",\"props\":{\"text\":\"New\"},\"type\":\"heading\"},\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":2}"
+  ],
+  "base": {
+    "application": {
+      "digest": "b0c9bf6d0730ed4ccebe8d6e1d825c3ee6cfefe76330d353a6c304f56be930ce",
+      "manifest": {
+        "actions": [
+          {
+            "id": "submit",
+            "kind": "action",
+            "sha256": "53e07e6d788729b28135d44a47e96fccb432ddad62f1ad63009ccea4973c9c1f",
+            "version": 1
+          }
+        ],
+        "applicationId": "77777777-7777-4777-8777-777777777777",
+        "checkpoint": {
+          "digest": "3c42d9012f0fc10f68a30dbaeaaf4c0ef83ad6facb85438fdf436d38f2784d1f",
+          "id": "next_checkpoint"
+        },
+        "components": [
+          {
+            "id": "retained",
+            "kind": "component",
+            "sha256": "3621fc2eb7ea525aeba35e7819c041dc531b5996d53e663994c324cfc008cc93",
+            "version": 1
+          },
+          {
+            "id": "fleet_view",
+            "kind": "component",
+            "sha256": "b7a677d7bbe8c8673870a6646c9287c6b512f7f4ea3a9a52cfe7bf78a73643a2",
+            "version": 1
+          }
+        ],
+        "formatVersion": 1,
+        "generation": "11111111-1111-4111-8111-111111111111",
+        "previousApplicationId": "22222222-2222-4222-8222-222222222222",
+        "schemas": [
+          {
+            "collectionId": "fleet",
+            "objectId": "66666666-6666-4666-8666-666666666666"
+          }
+        ],
+        "scope": {
+          "businessId": "10000000-0000-4000-8000-000000000001",
+          "clientId": "10000000-0000-4000-8000-000000000001",
+          "environment": "staging",
+          "siteId": "20000000-0000-4000-8000-000000000001",
+          "tenantId": "tenant"
+        }
+      }
+    },
+    "checkpoint": {
+      "digest": "3c42d9012f0fc10f68a30dbaeaaf4c0ef83ad6facb85438fdf436d38f2784d1f",
+      "id": "next_checkpoint",
+      "manifest": {
+        "defaultLocale": "en-AU",
+        "id": "20000000-0000-4000-8000-000000000001",
+        "name": "Test",
+        "pages": [
+          {
+            "components": [],
+            "forms": [],
+            "id": "home",
+            "pageType": "home",
+            "parentPageId": null,
+            "route": "/",
+            "schemaVersion": 2,
+            "seo": {
+              "title": "Home"
+            },
+            "shell": {
+              "footer": "inherit",
+              "header": "inherit"
+            },
+            "title": "Home",
+            "visibility": "public"
+          }
+        ],
+        "redirects": [],
+        "schemaVersion": 2,
+        "seo": {
+          "siteName": "Test"
+        },
+        "shell": {
+          "footer": {
+            "columns": [],
+            "enabled": true,
+            "socialLinks": []
+          },
+          "header": {
+            "brand": {
+              "name": "Test"
+            },
+            "enabled": true,
+            "layout": "logo-left",
+            "sticky": false
+          },
+          "mobileNavigation": {
+            "presentation": "drawer"
+          },
+          "navigation": {
+            "enabled": true,
+            "items": []
+          }
+        },
+        "theme": {
+          "id": "theme_test",
+          "schemaVersion": 1,
+          "tokens": {}
+        },
+        "builderLibrary": {
+          "components": [
+            {
+              "id": "retained",
+              "kind": "component",
+              "sha256": "3621fc2eb7ea525aeba35e7819c041dc531b5996d53e663994c324cfc008cc93",
+              "version": 1
+            },
+            {
+              "id": "fleet_view",
+              "kind": "component",
+              "sha256": "b7a677d7bbe8c8673870a6646c9287c6b512f7f4ea3a9a52cfe7bf78a73643a2",
+              "version": 1
+            }
+          ],
+          "scope": {
+            "businessId": "10000000-0000-4000-8000-000000000001",
+            "clientId": "10000000-0000-4000-8000-000000000001",
+            "environment": "staging",
+            "siteId": "20000000-0000-4000-8000-000000000001",
+            "tenantId": "tenant"
+          }
+        },
+        "builderApplication": {
+          "actions": [
+            {
+              "id": "submit",
+              "kind": "action",
+              "sha256": "53e07e6d788729b28135d44a47e96fccb432ddad62f1ad63009ccea4973c9c1f",
+              "version": 1
+            }
+          ],
+          "collections": [
+            {
+              "id": "fleet",
+              "kind": "collection",
+              "sha256": "f2266aa66591253f1db36b137a361f19b94efcbac96195b01d9c6d3b0e102ed5",
+              "version": 1
+            }
+          ],
+          "scope": {
+            "businessId": "10000000-0000-4000-8000-000000000001",
+            "clientId": "10000000-0000-4000-8000-000000000001",
+            "environment": "staging",
+            "siteId": "20000000-0000-4000-8000-000000000001",
+            "tenantId": "tenant"
+          },
+          "version": 1
+        }
+      }
+    },
+    "content": {
+      "pin": null,
+      "revision": 0
+    },
+    "freezeDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "generation": "11111111-1111-4111-8111-111111111111",
+    "schemas": [
+      {
+        "bodyBytes": "{\"displayFieldId\":\"title\",\"fields\":[{\"id\":\"title\",\"label\":\"Title\",\"required\":true,\"type\":\"text\",\"visibility\":\"public\"},{\"id\":\"notes\",\"label\":\"Notes\",\"required\":false,\"type\":\"text\",\"visibility\":\"public\"}],\"formatVersion\":1,\"id\":\"fleet\",\"label\":\"Fleet\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":1}",
+        "objectId": "66666666-6666-4666-8666-666666666666",
+        "pin": {
+          "bytes": 467,
+          "collectionId": "fleet",
+          "freezeDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "kind": "schema",
+          "operationId": "prepare_schema",
+          "origin": "prepared",
+          "recordId": "",
+          "sha256": "c984bd2f6690e1aebdb7b8e4e4f9f232910cec46bc18c93ddea35a09fcfdc935",
+          "version": 1
+        }
+      }
+    ],
+    "scope": {
+      "businessId": "10000000-0000-4000-8000-000000000001",
+      "clientId": "10000000-0000-4000-8000-000000000001",
+      "environment": "staging",
+      "siteId": "20000000-0000-4000-8000-000000000001",
+      "tenantId": "tenant"
+    },
+    "target": {
+      "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "collectionReceiptDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "databaseId": "33333333-3333-4333-8333-333333333333",
+      "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "routeId": "route_a",
+      "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stagingReceiptDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "workflowReceiptDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  },
+  "candidateBytes": "{\"digest\":\"a5a5dc42dbe9ed4b1ccb538616a49d58da315e1ec0bb72a29d54d58ee87f4d03\",\"proposal\":{\"base\":{\"checkpointDigest\":\"3c42d9012f0fc10f68a30dbaeaaf4c0ef83ad6facb85438fdf436d38f2784d1f\",\"checkpointId\":\"next_checkpoint\",\"contentRevision\":0},\"changes\":[{\"bytes\":503,\"dependencies\":[],\"expectedVersion\":1,\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"3aaeb15ce15802aa019c60d7dc3b35c635bb9cfbe81cb99ba92f04567816967f\",\"version\":2},{\"bytes\":760,\"dependencies\":[{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"3aaeb15ce15802aa019c60d7dc3b35c635bb9cfbe81cb99ba92f04567816967f\",\"version\":2}],\"expectedVersion\":1,\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"264dffdd588a64e85dc7a5f1e7a4980460170486515b9a425516ed1dc2657167\",\"version\":2},{\"bytes\":755,\"dependencies\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"264dffdd588a64e85dc7a5f1e7a4980460170486515b9a425516ed1dc2657167\",\"version\":2},{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"3aaeb15ce15802aa019c60d7dc3b35c635bb9cfbe81cb99ba92f04567816967f\",\"version\":2}],\"expectedVersion\":1,\"id\":\"fleet_view\",\"kind\":\"component\",\"sha256\":\"5bb9a21bda0554b951af0c63dca74bd4ea94c7dde9b45c3b41c24579451df0c1\",\"version\":2}],\"existing\":[],\"formatVersion\":1,\"id\":\"candidate_two\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"}},\"proposalDigest\":\"db98397d30af5275906a14c7a5477d230bfa9c6282a80b9dee3b932533399e83\",\"summary\":\"Evolve fleet\",\"validation\":{\"actions\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"264dffdd588a64e85dc7a5f1e7a4980460170486515b9a425516ed1dc2657167\",\"tests\":1,\"version\":2}],\"runtimeDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}}",
+  "expectedRuntimeDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "nextCheckpoint": {
+    "digest": "fc2e47267a9809ca107d210c4405cfb9c8021e2e6ea05bbaddaf224b5381e60f",
+    "id": "checkpoint_two",
+    "manifest": {
+      "defaultLocale": "en-AU",
+      "id": "20000000-0000-4000-8000-000000000001",
+      "name": "Test",
+      "pages": [
+        {
+          "components": [],
+          "forms": [],
+          "id": "home",
+          "pageType": "home",
+          "parentPageId": null,
+          "route": "/",
+          "schemaVersion": 2,
+          "seo": {
+            "title": "Home"
+          },
+          "shell": {
+            "footer": "inherit",
+            "header": "inherit"
+          },
+          "title": "Home",
+          "visibility": "public"
+        }
+      ],
+      "redirects": [],
+      "schemaVersion": 2,
+      "seo": {
+        "siteName": "Test"
+      },
+      "shell": {
+        "footer": {
+          "columns": [],
+          "enabled": true,
+          "socialLinks": []
+        },
+        "header": {
+          "brand": {
+            "name": "Test"
+          },
+          "enabled": true,
+          "layout": "logo-left",
+          "sticky": false
+        },
+        "mobileNavigation": {
+          "presentation": "drawer"
+        },
+        "navigation": {
+          "enabled": true,
+          "items": []
+        }
+      },
+      "theme": {
+        "id": "theme_test",
+        "schemaVersion": 1,
+        "tokens": {}
+      },
+      "builderLibrary": {
+        "components": [
+          {
+            "id": "retained",
+            "kind": "component",
+            "sha256": "3621fc2eb7ea525aeba35e7819c041dc531b5996d53e663994c324cfc008cc93",
+            "version": 1
+          },
+          {
+            "id": "fleet_view",
+            "kind": "component",
+            "sha256": "5bb9a21bda0554b951af0c63dca74bd4ea94c7dde9b45c3b41c24579451df0c1",
+            "version": 2
+          }
+        ],
+        "scope": {
+          "businessId": "10000000-0000-4000-8000-000000000001",
+          "clientId": "10000000-0000-4000-8000-000000000001",
+          "environment": "staging",
+          "siteId": "20000000-0000-4000-8000-000000000001",
+          "tenantId": "tenant"
+        }
+      },
+      "builderApplication": {
+        "actions": [
+          {
+            "id": "submit",
+            "kind": "action",
+            "sha256": "264dffdd588a64e85dc7a5f1e7a4980460170486515b9a425516ed1dc2657167",
+            "version": 2
+          }
+        ],
+        "collections": [
+          {
+            "id": "fleet",
+            "kind": "collection",
+            "sha256": "3aaeb15ce15802aa019c60d7dc3b35c635bb9cfbe81cb99ba92f04567816967f",
+            "version": 2
+          }
+        ],
+        "scope": {
+          "businessId": "10000000-0000-4000-8000-000000000001",
+          "clientId": "10000000-0000-4000-8000-000000000001",
+          "environment": "staging",
+          "siteId": "20000000-0000-4000-8000-000000000001",
+          "tenantId": "tenant"
+        },
+        "version": 1
+      }
+    }
+  },
+  "preparations": [
+    {
+      "receiptBytes": "{\"createdAt\":\"2026-09-22T00:00:00.000Z\",\"digest\":\"b77399a97bc9c68733d2c053107dc9b7968a1cdfb9e2b3ed891271e3aaccfa92\",\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"items\":[{\"bytes\":468,\"collectionId\":\"fleet\",\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"kind\":\"schema\",\"operationId\":\"prepare_two\",\"origin\":\"prepared\",\"recordId\":\"\",\"sha256\":\"44ed45baaa08f1747b7ec6619c1bbe02bdbb68a7a7751ba60a5873a8d659afc4\",\"version\":2}],\"operationId\":\"prepare_two\",\"requestDigest\":\"48e8259852398955f13c8982315df01418a046d387ea726c38d83773a23dee0a\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"state\":\"prepared\"}",
+      "requestBytes": "{\"action\":null,\"actor\":{\"kind\":\"agency-user\",\"loginSessionHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"userId\":\"44444444-4444-4444-8444-444444444444\"},\"candidateDigest\":\"a5a5dc42dbe9ed4b1ccb538616a49d58da315e1ec0bb72a29d54d58ee87f4d03\",\"formatVersion\":1,\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"items\":[{\"body\":{\"displayFieldId\":\"title\",\"fields\":[{\"id\":\"title\",\"label\":\"Title\",\"required\":true,\"type\":\"text\",\"visibility\":\"public\"},{\"id\":\"notes\",\"label\":\"Notes\",\"required\":false,\"type\":\"text\",\"visibility\":\"private\"}],\"formatVersion\":1,\"id\":\"fleet\",\"label\":\"Fleet\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"},\"version\":2},\"expectedBase\":{\"bytes\":467,\"collectionId\":\"fleet\",\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"kind\":\"schema\",\"operationId\":\"prepare_schema\",\"origin\":\"prepared\",\"recordId\":\"\",\"sha256\":\"c984bd2f6690e1aebdb7b8e4e4f9f232910cec46bc18c93ddea35a09fcfdc935\",\"version\":1},\"kind\":\"schema\",\"version\":2}],\"operationId\":\"prepare_two\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000001\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000001\",\"tenantId\":\"tenant\"}}"
+    }
+  ],
+  "request": {
+    "candidateDigest": "a5a5dc42dbe9ed4b1ccb538616a49d58da315e1ec0bb72a29d54d58ee87f4d03",
+    "candidateId": "candidate_two",
+    "contentRevision": 0,
+    "expectedApplication": {
+      "digest": "b0c9bf6d0730ed4ccebe8d6e1d825c3ee6cfefe76330d353a6c304f56be930ce",
+      "id": "77777777-7777-4777-8777-777777777777"
+    },
+    "expectedCheckpoint": {
+      "digest": "3c42d9012f0fc10f68a30dbaeaaf4c0ef83ad6facb85438fdf436d38f2784d1f",
+      "id": "next_checkpoint"
+    },
+    "expectedContent": null,
+    "freezeDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "generation": "11111111-1111-4111-8111-111111111111",
+    "nextCheckpoint": {
+      "digest": "fc2e47267a9809ca107d210c4405cfb9c8021e2e6ea05bbaddaf224b5381e60f",
+      "id": "checkpoint_two"
+    },
+    "operationId": "accept_two",
+    "preparations": [
+      {
+        "operationId": "prepare_two",
+        "receiptDigest": "b77399a97bc9c68733d2c053107dc9b7968a1cdfb9e2b3ed891271e3aaccfa92",
+        "requestDigest": "48e8259852398955f13c8982315df01418a046d387ea726c38d83773a23dee0a"
+      }
+    ],
+    "scope": {
+      "businessId": "10000000-0000-4000-8000-000000000001",
+      "clientId": "10000000-0000-4000-8000-000000000001",
+      "environment": "staging",
+      "siteId": "20000000-0000-4000-8000-000000000001",
+      "tenantId": "tenant"
+    },
+    "target": {
+      "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "collectionReceiptDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "databaseId": "33333333-3333-4333-8333-333333333333",
+      "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "routeId": "route_a",
+      "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stagingReceiptDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "workflowReceiptDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "version": 1
+  }
+}

@@ -164,6 +164,16 @@ export declare function verifyBuilderArtifactSet(
 export declare function verifyBuilderApplicationCheckpoint(
   input: BuilderGraphCheckpointInput
 ): Promise<BuilderGraphProof>;
+/** Rebuild changed saved instances from pinned templates, keeping customer
+ * property values and stable IDs. This grants no authority: the resulting
+ * checkpoint still requires the complete native graph transaction. Forms and
+ * action mappings are deliberately left for independent binding validation. */
+export declare function upgradeBuilderComponentInstances(input: {
+  manifest: unknown;
+  scope: unknown;
+  artifactBytes: string[];
+  changes: unknown;
+}): Promise<unknown>;
 /** No I/O or grants. HOST configuration supplies expectedRuntimeDigest separately
  * from the candidate; native acceptance remains an independent transaction. */
 export declare function verifyBuilderApplicationTransition(
