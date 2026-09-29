@@ -19,7 +19,7 @@
     "target": "es2022",
     "treeShaking": true
   },
-  "sourceDigest": "f9a1ae99e4f13e298977c76ec3bf46fcaca71a45f3f6498c3282ed93f1831ea6",
+  "sourceDigest": "f80cb716d8a2f056d9c82ac6a2743675e2c7a2d9246708fc07f0724cc2bcb7ee",
   "sources": [
     {
       "path": "LICENSE",
@@ -387,7 +387,7 @@
     },
     {
       "path": "packages/protocol/src/builder-artifact.ts",
-      "sha256": "c8df8a3709e3097588f87b0010a14196b2f3fa4ddda89e56e59bd9e0d74aaf08"
+      "sha256": "0e4ab181eb1fdc709ebad794ea866110858e839992f4f52e6f5e516379fe363a"
     },
     {
       "path": "packages/protocol/src/builder-feature.ts",
@@ -515,7 +515,7 @@
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "d655c6d2af2fa2deb8e4bf8e37eb39e4958ddb8c112eaf29d465bf067b23454d"
+      "sha256": "8ab4aec2417c6f5a7dd0390a73e8deecaa05aa520a5a1f8922e2810b98c0da08"
     },
     {
       "path": "scripts/generate-native-builder-verifier.mjs",
