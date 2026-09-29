@@ -2,7 +2,44 @@
 
 The user requested autonomous completion on 29 September. Only the isolated synthetic staging sites and Dashboard preview are authorised deployment targets for this goal. Customer production activation remains separate.
 
+## Current status — 29 September 22:04 UTC
+
+Both synthetic CMS journeys and final privacy publication/rollback/restoration
+are verified. The current releases show public titles and exclude newly private
+fields; records remain at revisions 5/6 and AI usage at 36/15. Only final-head CI
+and paired PR integration records remain. Earlier sections preserve investigation
+history and do not supersede this current status. No merge or customer production
+deployment has occurred.
+
+New user request: selectable-model image generation for heroes/backgrounds and
+customer credit top-ups. The [proposed design and ordered tasks](../superpowers/specs/2026-09-30-studio-image-generation-credits.md)
+use Cloudflare AI Gateway with application-owned customer balances and payment
+checkout. This is documented follow-on work, not an implemented billing feature.
+
 ## Verified
+
+Final deployment: Dashboard source `555e0b34c4919f059779a119ccd371cb83811df0`
+on preview `4c0a9e7c-953e-41cb-978b-a215f36ffa51`, with provider source/alias
+readback. Current immutable renderer generation is
+`astro_runtime_e2a0dabf7c067db91c8e9f1a15779f1d600323381580735847a0625f3347b617`.
+The [paired final receipt](https://github.com/adme-dev/xeroflow-page-studio/blob/fix/cms-current-main-20260928/docs/release/2026-09-30-cms-final-staging-receipt.md)
+records Studio sources, deployment IDs, packaged/served hashes and limitations.
+
+Primary active release `32f8a373-3996-46d1-b6fd-b6a5569c58c6` has fresh restored
+activation `684fe31d-da05-4bac-89ef-e4698e7b9a76`, pointer 17. Second release
+`51b8ad59-0260-4939-a299-88a2335aff2a` has fresh restored activation
+`40b90be1-3356-445f-af8f-27e820de2c6c`, pointer 7. Legacy rollback responses timed
+out, but read-only native reconciliation confirmed both committed; no blind retry
+was sent. Restoration returned 200 and retained deeply equal records. Final
+public GET/HEAD passed on both hosts with `private, no-store`, public title and
+no private/cross-scope values. Legacy renderers still safely omit the entire
+partially projected row. Final native record revisions are 5/6, usage 36/15.
+
+Chrome also confirms the current library, saved headings, standalone My sites
+launch and existing QR Codes navigation. Final evidence is private under
+`/private/tmp/cms-partial-row-release-20260930`; no credentials are committed.
+
+The following entries retain the earlier chronological verification record.
 
 - Customer component generation and acceptance exist for both synthetic scopes.
 - Second site: component insertion, saved property edit, reopened draft and current CMS refresh work in the actual browser. Strict checkpoint acknowledgement was repaired in `c54f93033` and verified on preview deployment `c5d0a65b-6e75-4dd5-ad40-8cd3def53b79`.
@@ -29,8 +66,13 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 
 ## In progress / remaining
 
-1. Finish the corrected immutable renderer rollout, then publish current approved synthetic drafts and verify private fields remain hidden after rollback. Hosted privacy acceptance, missing/wrong confirmation denials, instance/customer-heading preservation and unchanged stored records are now verified in both scopes. The legacy renderer safely omits the whole partially projected row; the new renderer must preserve its remaining public fields.
-2. Finish current-head CI and final paired PR/release records. Production remains outside this goal.
+1. Complete: corrected immutable renderer rollout, current approved synthetic
+   publication, legacy rollback and restoration. Public title preservation and
+   private-field exclusion pass on both restored releases. Old immutable
+   renderers still omit the entire partial row safely.
+2. Finish current-head CI and final paired PR records. The deployed Dashboard
+   application source passes both CI runs; Studio's stale image-pin test is
+   corrected and the full local suite passes. Production remains outside this goal.
 
 The latency implementation now uses private completion RPC near Postgres and
 placed private object fetch near the physical storage. Ten subsequent public
