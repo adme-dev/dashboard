@@ -1,7 +1,10 @@
 # Studio image generation and customer credits
 
-Status: proposed follow-on, requested 30 September 2026. Not implemented or
-enabled for customers. No payment account, checkout product or charge created.
+Status: implementation approved 30 September 2026, after completion of the CMS
+staging goal. Internal credit accounting is implemented and tested; generation,
+customer UI and payments remain in progress and are not enabled for customers.
+No payment account, checkout product or charge created. See the
+[implementation plan](../plans/2026-09-30-studio-images-credits.md).
 
 ## Product outcome
 
@@ -38,8 +41,8 @@ default BYOK credentials may take precedence over Unified Billing, so verify the
 chosen credential/billing route for each admitted model. [Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/)
 
 Recommended initial wallet scope: one customer account within a tenant, shared
-across its websites, with site/actor attribution on every debit. This is a design
-default awaiting product confirmation, not a changed permission boundary.
+across its websites, with site/actor attribution on every debit. This is the implementation
+default under the approved design; it does not change native permissions.
 Use integer credit units and versioned prices; do not use floating-point money.
 
 Recommended checkout: Stripe Checkout for one-time credit packs, with a native
@@ -138,3 +141,15 @@ point), pack amounts, model prices/margin, expiry/refund treatment and which rol
 can purchase. Include Gateway/provider fees, payment fees, storage and failed-job
 costs when setting prices. Automatic customer top-ups are a later explicit opt-in.
 Neither live payments nor a customer production rollout is implied by this plan.
+
+## Implementation evidence — accounting foundation
+
+Migration 438 adds environment-separated customer wallets, reservation identities
+and an immutable credit journal. Internal transaction-only functions reserve,
+settle, release and deduplicate grants; no browser route exposes a grant or
+settlement operation. Eleven real PostgreSQL tests cover cross-site concurrent
+overspend, replay identity, terminal state conflicts, scope/environment isolation,
+rollback, invalid amounts and frozen spending. The focused regression run passes
+23 tests; ESLint passes for both new TypeScript files. The migration was applied
+automatically to isolated CMS staging, with all three tables empty. This is not
+evidence of payment fulfillment or hosted model integration.
