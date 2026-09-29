@@ -125,6 +125,21 @@ immutable Astro renderer generation. Complete synthetic scoped-account and
 compiled runtime acceptance before enabling customer CMS publication. The paired
 Studio research record is `docs/research/2026-09-28-runtime-cms-publication.md`.
 
+Before deploying Dashboard for CMS acceptance, verify that its target environment
+sets `PAGE_STUDIO_ACTION_RUNTIME_DIGEST` to the verified deployed Studio action
+runtime identity. Compare it with Studio's
+`services/sandbox-worker/src/feature-action-runtime.ts` pinned digest and
+`services/action-runtime/tooling/runtime-identity.mjs` verification. Read back the
+deployed Dashboard setting; the local PostgreSQL fixtures supply it explicitly.
+The native CMS graph coordinator requires this prerequisite even for candidates
+containing only collections and components. Missing or malformed configuration
+returns `503 CMS_GRAPH_RUNTIME_UNAVAILABLE` before graph acceptance, surfaced by
+the editor as a control-plane `502`. Private preparation objects may already
+exist; they do not acknowledge acceptance or change the current library. This
+setting does not enable generated action forms or CMS publication. Configure only
+the reviewed target environment; do not supply a fallback or activate production
+as part of synthetic staging acceptance.
+
 CMS runtime publication defaults to disabled. Configure the operator-owned
 `PAGE_STUDIO_RUNTIME_CMS_ADMISSIONS` for an explicitly authorized synthetic
 acceptance site only after verifying the deployed renderer's identity. Customer
