@@ -30,10 +30,11 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 ## In progress / remaining
 
 1. Resolve intermittent public projection timeouts. Both scopes have successful GET/HEAD proofs with the unchanged 10-second deadline; earlier isolated requests returned 503. Staging route diagnostics now distinguish authority, provenance and snapshot latency.
-2. Complete the newly-private-field schema evolution check through the accepted CMS graph. The existing wrong-version check proves conflict handling only.
-3. Durable closed-tab recovery is verified in both hosted editors, including exact native usage preservation and explicit dismissal. See the hosted recovery record below.
-4. Finish hosted keyboard verification. Escape is deployed and passes from a text field; a real Chromium regression exposed Tab escaping the dialog. Its local fix passes and awaits the next staging image.
-5. Finish paired current-main/CI verification, PR descriptions and release records. Latest CI is pending; no production release is authorised.
+2. Implement and verify the reviewed newly-private-field transition through the accepted CMS graph. `checkPreparedItem` currently rejects visibility changes with `GRAPH_SCHEMA_CHANGE`; ordinary managed schema writes also require graph acceptance. The existing wrong-version check proves conflict handling only.
+3. Finish paired current-main/CI verification and final release records. Current PR descriptions are being updated; no production release is authorised.
+
+Durable closed-tab recovery and final hosted keyboard/property/outline checks
+are complete in both editors. See the records below.
 
 The equivalent browser/publication journeys, current-record edits, rollback,
 archive, schema-version conflict, quota exhaustion and permanent activation
@@ -203,3 +204,28 @@ and frozen inventory digest were updated after reviewing the exact source diff;
 inventory counts and classifications are unchanged, with an explicit assertion
 for the cast predicate. Both suites pass all 14 checks, and touched-file ESLint
 passes. The full CI rerun remains required.
+
+## Hosted editor polish complete, 29 September 11:35 UTC
+
+Studio application `16e2c9cfe38ec550cc0ecf2692bf606fe9bdd7e9`, configuration
+`e165568ae2fade9bdb2c938b0f25e236d54ad3aa`, is deployed only to staging.
+Worker version `36870245-2349-4504-a44e-180941359197`, deployment
+`09053411-9562-4a5f-b8b1-7a1e9bfda06c`, serves image
+`05b165550096d8663f439e7f5ddb10fbdfa34cd8dc7369eb46936252c2df58e6`.
+Container rollout `9a72f8fe-ca48-4eef-b3df-19e1b986cc78` completed all seven
+instances at version30 without health errors. Both editor overlay/hook hashes
+match the packaged build.
+
+Chrome verifies Tab and Shift+Tab wrapping, Escape dismissal and trigger focus
+restoration in both editors. The 390×844 dialog has no horizontal overflow;
+its saved Heading field has one linked label and is 34px high. Both outlines
+show Custom component. Six real Chromium checks, full Studio build/typecheck/
+tests/lint and 39 staging security/configuration tests pass. Evidence:
+`/private/tmp/cms-focus-image-20260929/`.
+
+Public reliability remains open: the 11:23 UTC sample returned primary503 in
+12,662ms and second200/current content in 7,065ms. Coordinator authority reads
+spiked to 2,429ms and 3,344ms. An isolated read-only EXPLAIN ANALYZE of the exact
+native completion query took 0.083ms (planning0.187ms); this points further
+investigation toward service transport/request startup, not proof of a slow SQL
+plan. No timeout or fresh-authority check was changed.
