@@ -29,8 +29,8 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 
 ## In progress / remaining
 
-1. Public projection now passes on both scopes with the unchanged 10-second deadline. Keep monitoring latency margin during rollback/negative checks.
-2. Record edits without republishing pass on both scopes. Publish a second template and restore the earlier release while retaining newer records.
+1. Resolve intermittent public projection timeouts. Both scopes have successful GET/HEAD proofs with the unchanged 10-second deadline, but a later primary request returned 503 when private route discovery exceeded its transport deadline.
+2. Record edits without republishing and template rollback retaining newer records pass on both scopes. Complete archive/schema/quota/revocation checks and restore the test fixtures.
 3. Complete the equivalent first-scope browser/publication journey and remaining hosted negative matrix (roles, schema, quota, archive, pointer epochs and revocation).
 4. Finish narrow-viewport hosted property/outline verification and record the final Studio rollout/version.
 5. Improve closed-tab request recovery without duplicate generation charges or weaker native authority.
@@ -47,3 +47,23 @@ Private request/response receipts and the fixed-scope acceptance harness are und
 - Second record revision 3 (`CMS_DESCRIPTION_B_3`) appears publicly while release `0c9b80ad-c168-4ba7-8d84-650ae748a239` and version `ece160c8-2ce5-4e4e-b843-15cb4290cf70` remain unchanged. Primary revision 2 (`CMS_DESCRIPTION_A_2`) also passes public GET/HEAD without template publication. Private markers remain excluded.
 - One successful second record write was followed by an evidence-filename collision in the private harness. The write was not repeated; a separate native read confirmed revision 3. The harness now uses a distinct follow-up-read label and preserves the original receipts.
 - Narrow hosted dialog check: scroll shell stays within 390×844, no horizontal overflow, labelled heading field works. Escape from a text field needs a follow-up Studio image: source fix `94c13ab`, 1,393 overlay tests/typecheck/build/lint pass, not yet deployed in the editor image.
+
+
+## Rollback and stale identity proof, 29 September 09:55 UTC
+
+- Second templates were saved in Chrome, compared, approved and published: primary version `07ab4b7f-0796-4db1-b836-3718a8bf36f3`, release `a5b11872-a1ec-4288-8e76-f010bf4c6cd3`, pointer 12; second version `abc2def4-3640-47e9-9d73-07f5b7fffc71`, release `043db28c-8e8e-4bcd-b8fd-50d92fe7be0d`, pointer 2. Both public templates passed GET/HEAD/privacy checks. One second-site publication attempt returned 500 before pointer change; exact native state was inspected, and the same idempotency key succeeded on retry.
+- New records were saved after those publications: primary revision 3 (`CMS_DESCRIPTION_A_3`), second revision 4 (`CMS_DESCRIPTION_B_4`). Native rollback restored each first CMS release with record readback byte-identical before/after. Both public pages show the first heading with these newer records, return GET/HEAD 200 and no-store, and exclude private/cross-scope markers.
+- Primary restored release `e19a9974-8069-42b8-8148-17abcfb12fbe` has a fresh activation `778e38ab-1820-43fa-be06-a45a46bfd232`, pointer 13. Second restored release `0c9b80ad-c168-4ba7-8d84-650ae748a239` has activation `c4b138f3-be1a-4d10-9534-f14c00e3d751`, pointer 3.
+- Each exact second-template private projection first returned native 200. Replaying the unchanged body after rollback returns native 409 `PUBLISHED_FEATURE_UNAVAILABLE` for both scopes. The older second first-publication identity also returned 409 after template-two publication. A concurrent record-edit probe failed closed during projection; stable post-edit probes passed.
+- Reliability remains open: one primary public request returned 503. Fixed-stage logs isolate the failure to projection (12,374ms); router logs show an 8-second route-transport timeout, while individual coordinator fetches sometimes take 9.5–9.9 seconds. Other projections take roughly 5.9–7.9 seconds. Successful later reads do not close this intermittent issue.
+- Archive and schema-version mismatch checks are now in progress on the run-owned records. Do not freeze quota/revocation fixtures until archive restoration completes.
+
+
+Archive checks passed on both public hosts (GET/HEAD 200, no-store, original
+heading retained, archived/public/private/cross-scope record markers absent).
+Wrong-schema writes were safely rejected before storage, but returned 502
+`COLLECTION_RESPONSE_INVALID` because an absent requested version (`null`) was
+treated as a malformed response. The native boundary now returns 409
+`COLLECTION_CONFLICT` for that case; malformed non-null responses retain 502.
+The regression failed before the fix. Hosted re-verification and archive
+restoration remain pending this preview build.
