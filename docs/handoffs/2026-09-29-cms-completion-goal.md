@@ -12,15 +12,18 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 - Staging activation with idempotency key `b_publish_goal_1` returned 500 before activation. A scoped read-only diagnostic reproduced PostgreSQL `42883`: `character varying = user_role`. Commit `caf0c9951` casts the native enum to text. The corrected publisher snapshot succeeds against isolated staging. The real PostgreSQL publication suite passes 131 checks, one existing skip, with its fixture corrected to use an enum. The same test failed before the fix.
 - Standalone customer entry implemented at `/studio`, using invited/provisioned accounts and existing scoped APIs. My sites, CMS and draft history use a product shell. No new billing or publication authority. See the independent-entry architecture document.
 
+- Dashboard source `f2c655848e3ab0473657b0538374a00f5fc3b4c9` deployed to preview `67f50adf-ccdf-41c7-804f-02bf8c4e1db0`. It includes the enum fix, standalone entry, redacted publication stage timing and a regression fix separating the remote-storage deadline from final SQL authority revalidation. The relevant suites pass 135 tests with one existing skip.
+- The second site's approved version is now active: release `0c9b80ad-c168-4ba7-8d84-650ae748a239`, activation `969cb820-22a8-4b9a-ae22-a2082e42b963`, pointer version 1. Native publication and state readback succeeded. Public GET still returns 503: its authority request reaches the 10-second deadline. Publication success alone is not end-to-end acceptance.
+- Standalone entry verified in Chrome on desktop and at 390px: existing invited customer login, assigned sites, CMS, draft history, return navigation, denied cross-site access, sign-out and native magic-link deep return. Open Studio launches the correct second-site editor. No email delivery was tested; the fixed synthetic account used a one-time native verification fixture.
+- Additional Studio property/outline polish is packaged and pinned, but its progressive container rollout has one failed warm instance and has not replaced the healthy previous image. A second packaging attempt also failed; OCI index packaging is not an established cause. The latest image starts locally at staging's CPU/memory limits. Do not claim the latest polish is hosted yet.
+
 ## In progress / remaining
 
-1. Build and deploy the enum fix and independent entry to Dashboard preview; verify exact source and runtime configuration.
-2. Reconcile the failed activation's native state, then retry the same intent. Verify public GET/HEAD, no-store, current public fields and private/cross-scope exclusion.
-3. Edit records without republishing. Publish a second template and restore the earlier release while retaining newer records.
-4. Complete the equivalent first-scope browser/publication journey and remaining hosted negative matrix (roles, schema, quota, archive, pointer epochs and revocation).
-5. Commit/package/deploy the additional Studio property-field and outline polish; local full build, typecheck, tests and lint passed. Browser suite verified field sizing and label focus at narrow width.
-6. Improve closed-tab request recovery and investigate CMS read latency without weakening native authority.
-7. Verify the new product entry in the browser, including direct login, assigned sites, builder launch, CMS, return to My sites, denied access and narrow viewports.
-8. Refresh paired current-main/CI/QR verification, PR descriptions and release records.
+1. Resolve public projection latency. Preview-only placement near the isolated database is being tested; preserve current-state authority, isolation and the public 10-second deadline. Verify public GET/HEAD, no-store, public fields and private/cross-scope exclusion.
+2. Edit records without republishing. Publish a second template and restore the earlier release while retaining newer records.
+3. Complete the equivalent first-scope browser/publication journey and remaining hosted negative matrix (roles, schema, quota, archive, pointer epochs and revocation).
+4. Resolve the Studio staging container rollout and verify the hosted asset digest and latest property-field/outline UI.
+5. Improve closed-tab request recovery without duplicate generation charges or weaker native authority.
+6. Refresh paired current-main/CI/QR verification, PR descriptions and release records.
 
 Private request/response receipts and the fixed-scope acceptance harness are under `/private/tmp/cms-typed-acceptance-20260929`. Credentials and raw storage objects are excluded from repository documents. A failed request is never repeated with a new intent simply to make it succeed.
