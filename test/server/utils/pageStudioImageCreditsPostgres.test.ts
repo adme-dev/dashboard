@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { finishImageCredits, grantImageCredits, readImageCredits, reserveImageCredits } from '~~/server/utils/pageStudio/imageCredits'
+import { finishImageCredits, grantImageCredits, readImageCredits, readImageCreditHistory, reserveImageCredits } from '~~/server/utils/pageStudio/imageCredits'
 
 const url = process.env.PAGE_STUDIO_IMAGE_DATABASE_TEST_URL
 if (url) {
@@ -146,5 +146,24 @@ describe.runIf(Boolean(url))('image credit accounting on real PostgreSQL', () =>
     await expect(reserve('second', 10)).rejects.toMatchObject({ code: 'IMAGE_CREDITS_FROZEN' })
     await finish('settled')
     expect(await balance()).toEqual({ balance: 30, reserved: 0, available: 0, frozen: true })
+  })
+  it('restricts editor history to their site and paginates without exposing prompts', async () => {
+    await grant()
+    await reserve('site_one', 20)
+    await finish('settled', 'site_one')
+    await reserve('site_two', 30, scope, { siteId: secondSite })
+    await finish('settled', 'site_two')
+    const first = await tx(db => readImageCreditHistory(db, scope, { siteId, limit: 1 }))
+    expect(first.items).toHaveLength(1)
+    expect(first.items[0]).toMatchObject({ kind: 'settle', credits: -20 })
+    expect(first.nextCursor).not.toBeNull()
+    const secondPage = await tx(db => readImageCreditHistory(db, scope, { siteId, limit: 1, before: first.nextCursor! }))
+    expect(secondPage.items).toHaveLength(1)
+    expect(secondPage.items[0]).toMatchObject({ kind: 'reserve', reserved: 20 })
+    expect(secondPage.nextCursor).toBeNull()
+    expect(JSON.stringify(first)).not.toContain('site_two')
+    expect(first.items[0]).not.toHaveProperty('fingerprint')
+    expect((await tx(db => readImageCreditHistory(db, scope, { limit: 20 }))).items).toHaveLength(5)
+    expect((await tx(db => readImageCreditHistory(db, second, { limit: 20 }))).items).toEqual([])
   })
 })

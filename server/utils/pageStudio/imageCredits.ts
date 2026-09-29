@@ -119,3 +119,26 @@ export async function finishImageCredits(db: PageStudioControlQueryClient, scope
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [...args, `${kind}:${reservationId}`, kind, debit, -credits, row.fingerprint, reservationId])
   return { state: outcome }
 }
+
+export const ImageCreditHistoryCursorSchema = z.object({ createdAt: z.string().datetime(), entryId: z.string().min(1).max(180) }).strict()
+const HistorySchema = z.object({ siteId: z.string().uuid().optional(), limit: z.number().int().min(1).max(50).default(20), before: ImageCreditHistoryCursorSchema.optional() }).strict()
+type HistoryRow = { entry_id: string, kind: string, credit_delta: string, reserved_delta: string, created_at: string }
+
+/** Billing owners may read the wallet journal; editors get only their site's
+ * generation entries. The native caller selects siteId, never a browser filter. */
+export async function readImageCreditHistory(db: PageStudioControlQueryClient, scope: CreditScope, input: z.input<typeof HistorySchema>) {
+  const options = parse(HistorySchema, input)
+  const rows = (await db.query<HistoryRow>(`SELECT entry.entry_id,entry.kind,entry.credit_delta,entry.reserved_delta,
+      to_char(entry.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
+    FROM page_studio_image_credit_entries entry
+    LEFT JOIN page_studio_image_credit_reservations reservation ON reservation.tenant_id=entry.tenant_id
+      AND reservation.client_id=entry.client_id AND reservation.environment=entry.environment AND reservation.reservation_id=entry.reservation_id
+    WHERE entry.tenant_id=$1 AND entry.client_id=$2 AND entry.environment=$3
+      AND ($4::uuid IS NULL OR reservation.site_id=$4::uuid)
+      AND ($5::timestamptz IS NULL OR (entry.created_at,entry.entry_id)<($5::timestamptz,$6::text))
+    ORDER BY entry.created_at DESC,entry.entry_id DESC LIMIT $7`,
+  [...key(scope), options.siteId ?? null, options.before?.createdAt ?? null, options.before?.entryId ?? null, options.limit + 1])).rows
+  const items = rows.slice(0, options.limit).map(row => ({ id: row.entry_id, kind: row.kind, credits: Number(row.credit_delta), reserved: Number(row.reserved_delta), createdAt: row.created_at }))
+  const last = items.at(-1)
+  return { items, nextCursor: rows.length > options.limit && last ? { createdAt: last.createdAt, entryId: last.id } : null }
+}
