@@ -29,11 +29,19 @@
       },
       "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
       "vars": {
-        "DASHBOARD_ORIGIN": "https://preview.agency-dashboard-6cm.pages.dev"
+        "DASHBOARD_ORIGIN": "https://preview.agency-dashboard-6cm.pages.dev",
+        "CONTENT_COMPLETION_TRANSPORT": "management-rpc"
       },
       "secrets": {
         "required": ["PAGE_STUDIO_CONTROL_SECRET"]
-      }
+      },
+      "services": [
+        {
+          "binding": "PAGE_STUDIO_MANAGEMENT_COMPLETION",
+          "service": "xeroflow-page-studio-management-staging",
+          "entrypoint": "ContentAttachmentAuthority"
+        }
+      ]
     }
   }
 }

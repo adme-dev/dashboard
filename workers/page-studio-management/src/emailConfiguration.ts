@@ -6,6 +6,7 @@ import { PageStudioEmailConfigurationError, type PageStudioEmailActor } from '..
 
 interface Request { actor: PageStudioEmailActor, siteId: string, env: Record<string, unknown> }
 interface DatabaseRow {
+  metadata?: unknown
   tenant_id?: string
   client_id?: string
   site_status?: string

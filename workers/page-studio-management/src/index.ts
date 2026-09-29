@@ -10,6 +10,7 @@ import { withManagementTransaction } from './database'
 import { handleDomainManagement } from './domainManagement'
 import type { DomainDatabase } from './domainAttachment'
 import { handleStagingManagement, handleCheckpointStaging } from './stagingManagement'
+import { handleContentAttachmentCompletion } from './contentAttachmentCompletion'
 import { resolveStagingHost } from './stagingRead'
 
 type Env = ManagementStagingEnv | ManagementProductionEnv
@@ -65,5 +66,22 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
       console.error(JSON.stringify({ event: 'page_studio_management_failure', operation: parsed.data.operation, environment }))
       return rejected('EMAIL_SERVICE_UNAVAILABLE', 503, 'Website email settings service is unavailable')
     }
+  }
+}
+
+/** Dedicated capability: callers of this entrypoint cannot invoke management writes. */
+export class ContentAttachmentAuthority extends WorkerEntrypoint<Env> {
+  fetch() { return new Response('Not found', { status: 404 }) }
+
+  async readCompletion(input: unknown) {
+    return handleContentAttachmentCompletion(input, this.env.PAGE_STUDIO_RELEASE_ENVIRONMENT, async (sql, params) => {
+      if (!this.env.HYPERDRIVE_FRESH?.connectionString) throw new Error('Fresh database unavailable')
+      return withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, async (db) => {
+        const result = await db.query(sql, params)
+        if (result.rows.length > 1) throw new Error('Ambiguous completion')
+        const row = result.rows[0]
+        return row ? { metadata: row.metadata } : null
+      })
+    })
   }
 }

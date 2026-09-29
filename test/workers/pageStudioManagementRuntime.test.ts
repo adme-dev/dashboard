@@ -20,12 +20,20 @@ describe('built private management Worker RPC boundary', () => {
     await build({ entryPoints: [path.join(root, 'workers/page-studio-management/src/index.ts')], outfile, bundle: true, format: 'esm', platform: 'neutral', target: 'esnext', conditions: ['workerd', 'worker', 'browser'], mainFields: ['module', 'main'], external: ['node:*', 'cloudflare:*'], banner: { js: 'import { createRequire } from \'node:module\'; const require = createRequire(\'/worker.js\');' }, plugins: [{ name: 'node-compat-builtins', setup(plugin) {
       plugin.onResolve({ filter: /^[a-z][a-z_]*(?:\/[a-z_]+)?$/ }, args => builtinModules.includes(args.path) ? { path: `node:${args.path}`, external: true } : undefined)
     } }], logLevel: 'silent' })
+    const gatewayFile = path.join(directory, 'gateway.mjs')
+    await build({ entryPoints: [path.join(root, 'workers/page-studio-control/src/index.ts')], outfile: gatewayFile, bundle: true, format: 'esm', platform: 'neutral', target: 'esnext', logLevel: 'silent' })
     runtime = new Miniflare({
       workers: [
+        { name: 'receipt-fixture', modules: true, script: `import { WorkerEntrypoint } from 'cloudflare:workers'; export class ReceiptFixture extends WorkerEntrypoint { async readCompletion(input) { return { ok: true, value: input.completion } } }; export default { fetch() { return new Response('Not found', {status:404}) } }`, compatibilityDate: config.compatibility_date },
+        { name: 'gateway', modules: true, scriptPath: gatewayFile, compatibilityDate: config.compatibility_date, bindings: { DASHBOARD_ORIGIN: 'https://preview.agency-dashboard-6cm.pages.dev', PAGE_STUDIO_CONTROL_SECRET: 's'.repeat(48), CONTENT_COMPLETION_TRANSPORT: 'management-rpc' }, serviceBindings: { PAGE_STUDIO_MANAGEMENT_COMPLETION: { name: 'receipt-fixture', entrypoint: 'ReceiptFixture' } }, outboundService: () => {
+          outboundRequests++
+          return new LocalResponse('Unexpected outbound request', { status: 500 })
+        } },
         { name: 'management', modules: true, scriptPath: outfile, compatibilityDate: config.compatibility_date, compatibilityFlags: config.compatibility_flags, bindings: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' }, outboundService: () => {
           outboundRequests++
           return new LocalResponse('Unexpected outbound request', { status: 500 })
         } },
+        { name: 'completion-caller', modules: true, script: `export default { async fetch(request, env) { const path = new URL(request.url).pathname; if(path === '/http') return env.COMPLETION.fetch(request); if(path === '/forbidden') { try { await env.COMPLETION.emailSettings(await request.json()); return Response.json({denied:false}) } catch { return Response.json({denied:true}) } } return Response.json(await env.COMPLETION.readCompletion(await request.json())) } }`, compatibilityDate: config.compatibility_date, serviceBindings: { COMPLETION: { name: 'management', entrypoint: 'ContentAttachmentAuthority' } } },
         { name: 'caller', modules: true, script: `export default { async fetch(request, env) { return Response.json(await env.MANAGEMENT[new URL(request.url).pathname === '/inspect' ? 'inspectWebsite' : new URL(request.url).pathname === '/domains' ? 'domains' : 'emailSettings'](await request.json())) } }`, compatibilityDate: config.compatibility_date, serviceBindings: { MANAGEMENT: 'management' } }
       ]
     })
@@ -44,6 +52,30 @@ describe('built private management Worker RPC boundary', () => {
     expect(response.status).toBe(200)
     return response.json()
   }
+  it('round-trips a completion through the real gateway service-binding proxy', async () => {
+    const gateway = await runtime!.getWorker('gateway')
+    const receipt = { version: 1, activationId: '10000000-0000-4000-8000-000000000001', identity: `cms_attach_${'a'.repeat(64)}`, operationId: 'attach_one', proofDigest: 'b'.repeat(64), scope: { businessId: 'business_one', clientId: 'client_one', environment: 'staging', siteId: 'site_one', tenantId: 'tenant_one' } }
+    const response = await gateway.fetch('https://synthetic.invalid/internal/page-studio/content-attachments/completion', { method: 'POST', body: JSON.stringify(receipt) })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(receipt)
+    expect(outboundRequests).toBe(0)
+  })
+  it('uses the named read-only completion authority and fails closed before database access', async () => {
+    const caller = await runtime!.getWorker('completion-caller')
+    const response = await caller.fetch('https://synthetic.invalid/', { method: 'POST', body: JSON.stringify({ unexpected: true }) })
+    expect(await response.json()).toMatchObject({ ok: false, error: { statusCode: 400 } })
+    expect(outboundRequests).toBe(0)
+  })
+  it('denies valid completion without fresh Hyperdrive and exposes no management write methods', async () => {
+    const caller = await runtime!.getWorker('completion-caller')
+    const completion = { version: 1, activationId: '10000000-0000-4000-8000-000000000001', identity: `cms_attach_${'a'.repeat(64)}`, operationId: 'attach_one', proofDigest: 'b'.repeat(64), scope: { businessId: 'business_one', clientId: 'client_one', environment: 'staging', siteId: 'site_one', tenantId: 'tenant_one' } }
+    const response = await caller.fetch('https://synthetic.invalid/', { method: 'POST', body: JSON.stringify({ expectedEnvironment: 'staging', completion }) })
+    expect(await response.json()).toMatchObject({ ok: false, error: { statusCode: 503 } })
+    const forbidden = await caller.fetch('https://synthetic.invalid/forbidden', { method: 'POST', body: JSON.stringify(request) })
+    expect(await forbidden.json()).toEqual({ denied: true })
+    expect((await caller.fetch('https://synthetic.invalid/http')).status).toBe(404)
+    expect(outboundRequests).toBe(0)
+  })
   it('returns 404 over HTTP even for a valid management payload', async () => {
     const worker = await runtime!.getWorker('management')
     for (const method of ['GET', 'POST']) {

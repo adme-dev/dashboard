@@ -229,3 +229,36 @@ spiked to 2,429ms and 3,344ms. An isolated read-only EXPLAIN ANALYZE of the exac
 native completion query took 0.083ms (planning0.187ms); this points further
 investigation toward service transport/request startup, not proof of a slow SQL
 plan. No timeout or fresh-authority check was changed.
+
+### Private completion authority staging experiment — 29 September, 11:56 UTC
+
+Public GETs reproduced the remaining latency failure: primary200 in11.009s;
+second503 in10.477s. Native second projection finished after10.256s. Of its
+four fresh completion checks, three took15–26ms and one took2290ms; the exact
+SQL plan executed in0.083ms. This isolates an expensive native HTTP/request
+path; cold start versus connection acquisition is not yet proven.
+
+The staging control gateway now selects a private service binding for only
+`POST /internal/page-studio/content-attachments/completion`. The existing
+management Worker exposes a separate `ContentAttachmentAuthority` entrypoint
+with only `readCompletion` and HTTP404. The shared reader preserves exact
+scope/operation SQL and strict equality of the whole committed receipt. Every
+coordinator before/after authority fence remains. Fresh Hyperdrive caching is
+verified disabled against the isolated staging Neon database. No caching,
+retries, fallback to HTTP, deadline changes or activation mutations are added.
+Production transport configuration remains unchanged.
+
+Requests are capped at4096bytes, parsed strictly, and checked against the
+configured environment. The gateway revalidates the full returned receipt and
+uses fixed safe errors. Unit tests initially failed on the missing transport;
+real workerd tests verify the named entrypoint and actual service-binding proxy.
+Verification:202 focused Worker/endpoint tests and111 real PostgreSQL tests pass;
+both Worker typechecks, touched-file lint and staging dry-runs pass. Hosted
+performance remains unverified until the two Workers are deployed and measured.
+Rollback targets before this experiment: control79733f06-05bd-4ba3-898c-dcaa0005a856;
+management76c518c4-ffd6-4c16-a848-337764381368. No Pages or customer production
+release is part of this experiment.
+
+The previous Dashboard head004db21a3 completed both current Linux CI jobs
+successfully (runs36562875546 and36562869606). New source changes require their
+own CI; Studio57c5b16 Linux/Windows jobs remain in progress at this checkpoint.
