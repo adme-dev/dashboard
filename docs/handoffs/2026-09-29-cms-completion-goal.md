@@ -29,9 +29,15 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 
 ## In progress / remaining
 
-1. Resolve intermittent public projection timeouts. Both scopes have successful GET/HEAD proofs with the unchanged 10-second deadline; earlier isolated requests returned 503. Staging route diagnostics now distinguish authority, provenance and snapshot latency.
-2. Implement and verify the reviewed newly-private-field transition through the accepted CMS graph. `checkPreparedItem` currently rejects visibility changes with `GRAPH_SCHEMA_CHANGE`; ordinary managed schema writes also require graph acceptance. The existing wrong-version check proves conflict handling only.
-3. Finish paired current-main/CI verification and final release records. Current PR descriptions are being updated; no production release is authorised.
+1. Finish the corrected immutable renderer rollout, then publish current approved synthetic drafts and verify private fields remain hidden after rollback. Hosted privacy acceptance, missing/wrong confirmation denials, instance/customer-heading preservation and unchanged stored records are now verified in both scopes. The legacy renderer safely omits the whole partially projected row; the new renderer must preserve its remaining public fields.
+2. Finish current-head CI and final paired PR/release records. Production remains outside this goal.
+
+The latency implementation now uses private completion RPC near Postgres and
+placed private object fetch near the physical storage. Ten subsequent public
+GET samples across both scopes returned 200 in 4.1–8.8 seconds, and both privacy
+baseline GET/HEAD pairs passed. These are finite synthetic acceptance samples,
+not a latency SLA or proof that intermittent failures can never recur. Earlier
+failures below remain part of the diagnostic history.
 
 Durable closed-tab recovery and final hosted keyboard/property/outline checks
 are complete in both editors. See the records below.
@@ -344,3 +350,35 @@ Final whole-Dashboard typecheck comparison: exactly the same 919 baseline
 diagnostics, with no added or removed diagnostics after normalizing line numbers.
 The standalone click-handler regression is resolved. This is not a globally
 green typecheck; the pre-existing backlog remains.
+
+## Hosted privacy acceptance — 29 September 21:12 UTC
+
+Both retained proposals were recovered in Chrome and accepted through the
+explicit privacy checkbox. The libraries reopened at component version 2.
+Primary candidate `feature_549e59aa_cc2e_4afa_9dff_b59663eb9e06` committed checkpoint
+`checkpoint_feature_98a9a1dec1e416ac8f94189b3f87b2d6cf780327939769348b3915bc123a03b2`;
+second candidate `feature_153bb919_3ad2_492b_8c67_2e34f2dc925f` committed
+`checkpoint_feature_c05b90c24458f712f8c3ebc71c2b95a1e8e141e9e31e998c678128a3617f22db`.
+Customer headings and original instance IDs remain unchanged. Both stored
+record responses are byte-equivalent as JSON to their pre-acceptance responses
+(primary revision 5, second revision 6); record heads still reference schema 1.
+The new accepted definitions are version 2, with Description private/optional.
+Actual proposal changes also rename the second collection/component to Services
+and its default heading to Services; the saved customer heading is preserved.
+
+Sandbox source `cbca216c03cb9ccb095bd4e411c08c17aa1dd797` is deployed as version
+`97680292-d500-4cad-8cbb-66f4ebb3aa63`, deployment
+`cf2b2d3e-bb10-460e-88b3-545ff2109eb3`, at 100%. It returns missing privacy review
+as safe HTTP 422 and rejects mismatched review locally with HTTP 400. Both
+negatives left the accepted library unchanged. The container image/version 31
+was not changed by this worker-only deployment.
+
+Native component-data responses contain the current public title and exclude
+Description and Internal Notes. Both editor previews show that title after
+Refresh component content. Public GET/HEAD return 200/no-store and exclude all
+private values, but the immutable legacy renderer omits the entire row when
+a mapped field is absent. This is not a record-loss or projection-authority
+failure. A renderer correction has regression coverage for preserving public
+fields and suppressing absent-field placeholders; its new immutable generation,
+publication and rollback proof remain pending. Existing generations will not
+be edited in place. Private evidence: `/private/tmp/cms-privacy-20260929/`.
