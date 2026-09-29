@@ -657,6 +657,10 @@ describe.runIf(
           expect(activeTransactions).toBe(0)
           return target
         },
+        async readManagedCmsObjectsAtTarget({ target: expectedTarget, ...input }: { target: unknown, pins: unknown[], scope: unknown }) {
+          expect(expectedTarget).toEqual(target)
+          return await this.readManagedCmsObjects(input)
+        },
         readManagedCmsObjects: async (input: unknown) => {
           const objects = await cms.readObjects(input)
           if (

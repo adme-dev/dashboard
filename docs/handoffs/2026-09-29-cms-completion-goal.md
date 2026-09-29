@@ -19,6 +19,14 @@ The user requested autonomous completion on 29 September. Only the isolated synt
 - Hosted native role negatives now also verify VIEW-only record writes and EDIT-only publication return 403 with record and publication rows unchanged.
 - Preview `df6a995c-4f09-407a-b3a2-35ce6d9b86ad` (source `a0ee81b21a23ee18e72436ee05bf5e7a3fab7b21`) tested a targeted region hint. Pages retained only placement mode, and the public timeout persisted. A private service-binding diagnostic with a longer diagnostic-only deadline returned native200 in 29,257ms, with current public fields and no private/cross-scope markers. This does not satisfy the public10s deadline. Switch to Pages-supported Smart Placement and trace the native projection stages.
 
+## 29 September routing and first-site progress
+
+- Primary customer editor: inserted the accepted component once, edited its heading to “Services at Northline Motors”, saved and reopened the draft. Both preview frames retained current public records and excluded private fields. The exact checkpoint `checkpoint_2c1be2a7-2519-4266-a5d2-2ab51673c509` was submitted as version `e49c866a-1420-47cc-881b-3a4652b5a137`, compared and approved. It is not published yet.
+- Preview source `41a26adc1` is deployment `8c73b856-b630-49d6-8618-27196d6ffdc1`, with Pages-supported Smart Placement. The private staging control gateway at source `6c7309ef1` now runs near the isolated US East Postgres database. Authority reads improved to roughly 100–150ms.
+- Provisioning D1 reported its primary in Sydney. Studio staging now resolves routes through bounded private Service-binding fetch near that primary. Coordinator version `94646d01-4cfb-4d0e-97d9-0f3b9e1a6aee`; router version `1977632b-d274-4fb6-aefd-3c2c2f885caa`. A real Workers-runtime test caught and fixed unsupported redirect handling. Public rendering still exceeded 10 seconds because the native adapter repeated target/object/target RPCs.
+- The next adapter uses `readManagedCmsObjectsAtTarget`: one bounded read with the admitted target, fresh route checks before and after, and unchanged physical ownership/hash/scope checks. Deploy the matching Studio router before this Dashboard revision. No fallback is allowed when that method is missing. Production release must also follow this order; no production deployment is authorised by this goal.
+- Verification for this increment: business-content suite 890 tests passed; native graph/release/action PostgreSQL integration 171 tests passed. Hosted timing verification remains pending deployment.
+
 ## In progress / remaining
 
 1. Resolve public projection latency. Preview-only placement near the isolated database is being tested; preserve current-state authority, isolation and the public 10-second deadline. Verify public GET/HEAD, no-store, public fields and private/cross-scope exclusion.

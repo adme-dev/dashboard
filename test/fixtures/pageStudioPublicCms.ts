@@ -62,6 +62,10 @@ export async function createPublicCmsFixture(root: string, rawFreeze: unknown, r
         prepareManagedCmsOperation: (input: unknown) => store.prepare(input),
         readManagedCmsOperation: (input: unknown) => store.readOperation(input),
         readManagedCmsObjects: (input: unknown) => store.readObjects(input),
+        readManagedCmsObjectsAtTarget: ({ target, ...input }: { target: unknown, pins: unknown[], scope: unknown }) => {
+          if (collectionCanonical(target) !== collectionCanonical(freeze.request.target)) throw new Error('Fixture target changed')
+          return store.readObjects(input)
+        },
         readManagedCmsFreeze: (input: unknown) => store.readFreeze(input)
       },
       restart: async () => {

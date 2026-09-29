@@ -82,12 +82,16 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
   }
   const readObjects = async (input: CmsObjectPin[]) => {
     const pins = z.array(CmsObjectPinSchema).max(128).parse(input)
-    await assertTarget()
+    if (pins.length === 0) {
+      await assertTarget()
+      return []
+    }
+    const target = CmsStorageTargetSchema.parse(snapshot.context.state.target)
     const result: Array<z.infer<typeof storedObject>> = []
     let total = 0
     for (let offset = 0; offset < pins.length; offset += 32) {
       const batch = pins.slice(offset, offset + 32)
-      const objects = z.array(storedObject).max(32).parse(await call('readManagedCmsObjects', { scope: snapshot.scope, pins: batch }))
+      const objects = z.array(storedObject).max(32).parse(await call('readManagedCmsObjectsAtTarget', { scope: snapshot.scope, target, pins: batch }))
       if (objects.length !== batch.length) throw failed()
       for (let index = 0; index < objects.length; index++) {
         const object = objects[index]!, raw = collectionCanonical(object.body)
@@ -97,7 +101,6 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
         result.push(object)
       }
     }
-    await assertTarget()
     return result
   }
   const readOperation = async (ref: { operationId: string, requestDigest: string, receiptDigest: string }) => {

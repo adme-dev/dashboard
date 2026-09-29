@@ -230,6 +230,10 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
       },
       readManagedCmsOperation: async () => ({ request: prep, receipt }),
       readManagedCmsFreeze: async () => freeze,
+      async readManagedCmsObjectsAtTarget({ target: expectedTarget, ...input }: { target: unknown, pins: unknown[], scope: unknown }) {
+        expect(expectedTarget).toEqual(f.base.target)
+        return await this.readManagedCmsObjects(input)
+      },
       readManagedCmsObjects: async ({ pins }: { pins: unknown[] }) => pins.map(pin => ({ pin, body: prep.items[0].body, schema: null, head: false, actorId: actor.userId, createdAt: receipt.createdAt }))
     }
     const input = { operationId: 'accept_feature_a', candidateId: f.request.candidateId, candidateDigest: f.request.candidateDigest,
