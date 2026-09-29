@@ -44,3 +44,14 @@ describe.each([['agency', useAuth, 'auth-user', '/'], ['portal', usePortalAuth, 
     })
   }
 )
+
+it('returns a Studio customer to the product entry only after confirmed sign out', async () => {
+  vi.clearAllMocks()
+  states.clear()
+  const auth = usePortalAuth()
+  states.get('portal-user')!.value = { id: 'studio-customer' }
+  fetcher.mockResolvedValueOnce({ success: true })
+  await auth.logout('/studio')
+  expect(auth.user.value).toBeNull()
+  expect(navigate).toHaveBeenCalledWith('/studio')
+})

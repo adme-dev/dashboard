@@ -364,6 +364,8 @@ export default defineNuxtConfig({
     '/agency/**': { ssr: false },
     '/portal': { ssr: false },
     '/portal/**': { ssr: false },
+    '/studio': { ssr: false },
+    '/studio/**': { ssr: false },
     '/admin': { ssr: false },
     '/admin/**': { ssr: false },
     '/settings': { ssr: false },

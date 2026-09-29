@@ -141,7 +141,7 @@ export default defineEventHandler(async (event) => {
 
       issued.push({
         ...user,
-        magicLinkUrl: `${appUrl}/portal/magic-link?redirect=${encodeURIComponent(redirect)}#token=${token}`
+        magicLinkUrl: `${appUrl}${redirect.startsWith('/studio/sites') ? '/studio/verify' : '/portal/magic-link'}?redirect=${encodeURIComponent(redirect)}#token=${token}`
       })
     }
 

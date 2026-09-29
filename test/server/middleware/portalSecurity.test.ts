@@ -99,7 +99,7 @@ describe('portal response security middleware', () => {
     expect(testGlobal.setHeader).not.toHaveBeenCalled()
   })
 
-  it.each(['/portal/page-studio', '/portal', '/portal/login', '/portal/projects'])(
+  it.each(['/portal/page-studio', '/portal', '/portal/login', '/portal/projects', '/studio', '/studio/sites', '/studio/verify'])(
     'permits editor launch after client-side navigation from %s', (path) => {
       editorUrl = 'https://studio-staging.xeroflow.io/editor?view=canvas'
       const event = { path }

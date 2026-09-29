@@ -179,8 +179,8 @@ const features: Record<string, Feature> = {
     description: 'Build responsive client websites with editable components, saved design controls and AI-assisted Studio workflows, then govern assets, leads, analytics, releases, domains and rollback from XeroFlow.',
     details: [
       {
-        title: 'One Website Workspace, Two Deliberate Views',
-        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
+        title: 'Your Website Workspace',
+        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Invited customers can sign in directly at the Page Studio product entry, choose an assigned website from My sites and open its builder, CMS or draft history without navigating agency operations. Existing client portal access remains available, and every request stays scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
       },
       {
         title: 'Studio for Visual Authoring',

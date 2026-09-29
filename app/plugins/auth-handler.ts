@@ -16,6 +16,7 @@ export default defineNuxtPlugin((nuxtApp) => {
   let isVerifyingSession = false
 
   async function verifyAndRedirect() {
+    if (/^\/(?:portal|studio)(?:\/|$)/.test(window.location.pathname)) return
     if (isRedirecting || isVerifyingSession) return
     isVerifyingSession = true
 
@@ -48,7 +49,7 @@ export default defineNuxtPlugin((nuxtApp) => {
     const currentPath = window.location.pathname
 
     // Don't intercept 401s on auth pages — they handle their own errors
-    if (currentPath.startsWith('/auth/') || currentPath.startsWith('/portal/')) return
+    if (currentPath.startsWith('/auth/') || /^\/(?:portal|studio)(?:\/|$)/.test(currentPath)) return
 
     isRedirecting = true
     const isAgency = currentPath.startsWith('/agency') || currentPath.startsWith('/admin')
