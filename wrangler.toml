@@ -374,6 +374,9 @@ binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
+# Required by native CMS graph verification, including collection-only candidates.
+# Match the verified Studio runtime identity; this does not enable action forms.
+PAGE_STUDIO_ACTION_RUNTIME_DIGEST = "c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e"
 PAGE_STUDIO_RUNTIME_STAGING_CANARIES = "[{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\",\"hostname\":\"page-studio-staging.xeroflow.io\"},{\"tenantId\":\"tenant_page_studio_staging\",\"clientId\":\"20000000-0000-4000-8000-000000000301\",\"siteId\":\"5ddc69f4-bd4f-4179-ba6f-e23412133cb0\",\"hostname\":\"cms-second-staging.xeroflow.io\"}]"
 PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
 PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS = "astro_runtime_0939af784c64cb0ac97cdaa33dc3a84f5f304b97df52210b111a8b95a889a0e4,astro_runtime_21b84e1cde3f8be3,astro_runtime_a71fb2968a783bc114ee9a340ff7ff60a6c74ab442d49fa360464b5f4fac2f27"

@@ -129,7 +129,10 @@ Before deploying Dashboard for CMS acceptance, verify that its target environmen
 sets `PAGE_STUDIO_ACTION_RUNTIME_DIGEST` to the verified deployed Studio action
 runtime identity. Compare it with Studio's
 `services/sandbox-worker/src/feature-action-runtime.ts` pinned digest and
-`services/action-runtime/tooling/runtime-identity.mjs` verification. Read back the
+`services/action-runtime/tooling/runtime-identity.mjs` verification. Declare the
+non-secret digest in the matching `wrangler.toml` environment's `vars` section:
+Direct Upload replaces dashboard-managed plaintext variables with this file's
+configuration. A dashboard-only setting will be lost during deployment. Read back the
 deployed Dashboard setting; the local PostgreSQL fixtures supply it explicitly.
 The native CMS graph coordinator requires this prerequisite even for candidates
 containing only collections and components. Missing or malformed configuration
