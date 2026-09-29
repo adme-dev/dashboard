@@ -593,6 +593,32 @@ describe.runIf(Boolean(databaseUrl))(
       expect((await observer.query('SELECT * FROM page_studio_builds')).rows).toHaveLength(0)
       expect(await f.prepare()).toEqual(prepared)
     })
+    it('rechecks SQL authority after storage without charging SQL latency to the storage deadline', async () => {
+      let retained = false
+      const f = await runtimePreparation(async (key) => {
+        if (key.startsWith('builder-recovery/')) retained = true
+      })
+      let now = Date.now()
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)
+      let rechecked = false
+      try {
+        const result = await prepareApprovedRuntimeFeature(f.preparation, f.principal, {
+          ...f.deps,
+          runTransaction: async work => f.deps.runTransaction(async (db) => {
+            if (retained) {
+              now += 11_000
+              rechecked = true
+            }
+            return await work(db)
+          })
+        })
+        expect(rechecked).toBe(true)
+        expect(result.prepared.release.versionId).toBe(f.input.versionId)
+        expect((await observer.query('SELECT * FROM page_studio_releases')).rows).toHaveLength(0)
+      } finally {
+        clock.mockRestore()
+      }
+    })
     it.each(['approval', 'permission', 'login'])('rejects runtime preparation after %s is revoked during retention', async (kind) => {
       const f = await runtimePreparation(async (key) => {
         if (!key.startsWith('builder-recovery/')) return

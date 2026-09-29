@@ -36,38 +36,42 @@ export async function prepareApprovedRuntimeFeature(input: {
   if (authority.digest !== snapshot.checkpoint.digest || authority.client_id !== scope.clientId) throw featureConflict()
 
   const deadline = runtimeFeatureDeadline()
-  try {
-    const { bundle, manifest } = await stage('recovery', () => deadline.run(() => readAcceptedFeatureRecovery(snapshot, principal)))
-    assertRuntimeFeatureForms(manifest as Record<string, unknown>)
-    const boundedBucket: RuntimeContentBucket = {
-      get: key => deadline.run(async () => {
-        const object = await bucket.get(key)
-        return object ? { size: object.size, body: object.body, arrayBuffer: () => deadline.run(() => object.arrayBuffer()) } : null
-      }),
-      put: (key, bytes, options) => deadline.run(() => bucket.put(key, bytes, options))
-    }
-    const content = await stage('content', () => deadline.run(() => materializeRuntimeContent(boundedBucket, scope, authority.digest, manifest as Record<string, unknown>)))
-    const { release, digest } = await verifyNativeAstroRuntimeRelease({
-      ...content, delivery: 'runtime', schemaVersion: 1, scope, environment,
-      renderer, versionId, versionDigest: authority.digest
-    })
-    const reference = await stage('seal', () => deadline.run(() => retainRuntimeFeatureRecovery(release, bundle, boundedBucket, deadline.signal)))
-    deadline.assert()
-    await stage('approval', async () => {
-      if (!cmsEqual(authority, await readAuthority())) throw featureConflict()
-      deadline.assert()
-    })
-    assertRuntimeFeatureAdmission({ scope, renderer, environment }, principal.request.env)
-    const prepared: PreparedRuntimeRelease = { release, digest, releaseMetadata: derivePageStudioReleaseMetadata(manifest) }
-    return {
-      prepared,
-      feature: {
-        approvalId: authority.approval_id, reference,
-        application: bundle.application, checkpoint: bundle.checkpoint.id,
-        generation: bundle.generation, target: bundle.target,
-        freezeDigest: bundle.freezeDigest, runtimeDigest: bundle.runtimeDigest,
-        contentScope: snapshot.scope
+  const retained = await (async () => {
+    try {
+      const { bundle, manifest } = await stage('recovery', () => deadline.run(() => readAcceptedFeatureRecovery(snapshot, principal)))
+      assertRuntimeFeatureForms(manifest as Record<string, unknown>)
+      const boundedBucket: RuntimeContentBucket = {
+        get: key => deadline.run(async () => {
+          const object = await bucket.get(key)
+          return object ? { size: object.size, body: object.body, arrayBuffer: () => deadline.run(() => object.arrayBuffer()) } : null
+        }),
+        put: (key, bytes, options) => deadline.run(() => bucket.put(key, bytes, options))
       }
-    }
-  } finally { deadline.dispose() }
+      const content = await stage('content', () => deadline.run(() => materializeRuntimeContent(boundedBucket, scope, authority.digest, manifest as Record<string, unknown>)))
+      const { release, digest } = await verifyNativeAstroRuntimeRelease({
+        ...content, delivery: 'runtime', schemaVersion: 1, scope, environment,
+        renderer, versionId, versionDigest: authority.digest
+      })
+      const reference = await stage('seal', () => deadline.run(() => retainRuntimeFeatureRecovery(release, bundle, boundedBucket, deadline.signal)))
+      deadline.assert()
+      const prepared: PreparedRuntimeRelease = { release, digest, releaseMetadata: derivePageStudioReleaseMetadata(manifest) }
+      return {
+        prepared,
+        feature: {
+          approvalId: authority.approval_id, reference,
+          application: bundle.application, checkpoint: bundle.checkpoint.id,
+          generation: bundle.generation, target: bundle.target,
+          freezeDigest: bundle.freezeDigest, runtimeDigest: bundle.runtimeDigest,
+          contentScope: snapshot.scope
+        }
+      }
+    } finally { deadline.dispose() }
+  })()
+  // Remote storage is complete. Revalidate SQL authority under its native
+  // transaction before returning preparation; it has a separate latency budget.
+  await stage('approval', async () => {
+    if (!cmsEqual(authority, await readAuthority())) throw featureConflict()
+  })
+  assertRuntimeFeatureAdmission({ scope, renderer, environment }, principal.request.env)
+  return retained
 }
