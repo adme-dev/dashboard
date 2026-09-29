@@ -67,3 +67,19 @@ treated as a malformed response. The native boundary now returns 409
 `COLLECTION_CONFLICT` for that case; malformed non-null responses retain 502.
 The regression failed before the fix. Hosted re-verification and archive
 restoration remain pending this preview build.
+
+
+## Schema rejection verified, 29 September 10:09 UTC
+
+Preview `737e5b11-bf83-4b62-acd4-72400206ff14` serves source
+`e54a477a227076357876b17f8209d2c6f6fd1020`; provider readback verifies the
+preview alias, staging runtime digest and successful deployment. Both scopes
+now reject nonexistent schema versions with 409 `COLLECTION_CONFLICT` and
+byte-identical record readback. This proves version conflict handling, not the
+separate newly-private-field migration case. Archive restoration is in progress.
+
+The management page also mounted staging twice when its default runtime state
+was staging. Overview now mounts its additional publishing panel only for a
+production runtime state; the dedicated staging panel remains the staging entry.
+Lint and Vue template compilation pass. Hosted verification follows the next
+preview build. No production deployment or activation was performed.

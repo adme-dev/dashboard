@@ -360,7 +360,7 @@ async function publishApprovedVersion() {
       <template #overview>
         <div class="grid grid-cols-1 gap-4 pt-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
           <PageStudioRuntimePublishingPanel
-            v-if="runtimeMode && runtimeState"
+            v-if="runtimeMode && runtimeState?.environment === 'production'"
             class="min-w-0 lg:col-span-2"
             :site-id="siteId"
             :state="runtimeState"
