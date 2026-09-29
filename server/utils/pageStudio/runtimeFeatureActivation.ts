@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { runtimeFeatureDiagnostics } from './runtimeFeatureDiagnostics'
 import { readApprovedBuildAuthority } from './builds'
 import { cmsEqual } from './cmsVisibility'
 import { featureConflict, readFeaturePublisherSnapshot, withFeaturePublisher, type FeaturePublisher } from './releaseFeatureAuthority'
@@ -25,16 +26,17 @@ export async function activateRuntimeFeature(
   dependencies: CmsGraphDependencies & { policy: RuntimeTargetPolicy }
 ) {
   const { preparation: source, ...request } = raw
+  const stage = runtimeFeatureDiagnostics()
   const preparation = { ...structuredClone({ ...source, bucket: undefined }), bucket: source.bucket }
   const { scope, versionId } = preparation
   if (request.actorId !== principal.request.actor.actorId || request.environment !== preparation.environment) throw featureConflict()
-  const snapshot = await readFeaturePublisherSnapshot(principal, dependencies)
+  const snapshot = await stage('publisher', () => readFeaturePublisherSnapshot(principal, dependencies))
   const result = await prepareApprovedRuntimeFeature(preparation, principal, dependencies)
   if (!cmsEqual(result.feature.contentScope, snapshot.scope)
     || result.feature.checkpoint !== snapshot.checkpoint.id
     || result.prepared.release.versionDigest !== snapshot.checkpoint.digest) throw featureConflict()
   const authorityInput = { tenantId: scope.tenantId, siteId: scope.siteId, versionId }
-  return await withFeaturePublisher(snapshot, principal, async (db) => {
+  return await stage('activation', () => withFeaturePublisher(snapshot, principal, async (db) => {
     const assertApproval = async () => {
       const authority = await readApprovedBuildAuthority(db, authorityInput)
       if (authority.approval_id !== result.feature.approvalId || authority.digest !== result.prepared.release.versionDigest) throw featureConflict()
@@ -82,5 +84,5 @@ export async function activateRuntimeFeature(
       `runtime-feature:${activationId}`, { pointerVersion: epoch, releaseDigest: release.releaseDigest }])
     await assertApproval()
     return { ...release, featureActivation: { id: activationId, pointerVersion: epoch } }
-  }, dependencies)
+  }, dependencies))
 }
