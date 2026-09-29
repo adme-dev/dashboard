@@ -379,6 +379,7 @@ binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
+PAGE_STUDIO_CMS_OBJECT_TRANSPORT = "placed-fetch"
 # Required by native CMS graph verification, including collection-only candidates.
 # Match the verified Studio runtime identity; this does not enable action forms.
 PAGE_STUDIO_ACTION_RUNTIME_DIGEST = "c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e"

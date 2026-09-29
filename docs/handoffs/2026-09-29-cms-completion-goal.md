@@ -262,3 +262,30 @@ release is part of this experiment.
 The previous Dashboard head004db21a3 completed both current Linux CI jobs
 successfully (runs36562875546 and36562869606). New source changes require their
 own CI; Studio57c5b16 Linux/Windows jobs remain in progress at this checkpoint.
+
+### Completion RPC deployed; storage-region follow-up prepared — 12:10 UTC
+
+Dashboarda3028f20e deployed managementf4a1ce9e-b39e-4df0-8094-119f730d4324
+(deployment03ec4e3d-fb3b-4e36-b4ce-581ee95c03d6) then
+control9d351913-6eb3-48b3-8a78-f3cce5bacc59
+(deployment84c8df83-bad2-4ebd-8fe1-0930a41d2617), both100%.
+Eight hosted receipt checks pass: each exact scope200, changed digest/business403,
+wrong environment503. The named capability additionally passes real workerd
+valid-input/missing-Hyperdrive503, unrelated management RPC denied, HTTP404.
+Private probe is stopped. Evidence: `/private/tmp/cms-completion-rpc-20260929/`.
+
+Public latency remains open. First pair:primary503/15.116s, second200/7.797s;
+second pair:primary200/8.468s, second200/7.432s. Current fields rendered and
+private fields stayed absent. Fresh completion calls measured29–218ms, but
+other native requests still had startup/authority spikes. The physical object
+read occupies several seconds between the route checks.
+
+Read-only provider `SELECT 1` confirmed the two synthetic storage D1 primaries
+in MEL and SYD (zero rows written). The next change calls the existing content
+router using private fetch, enabling its Sydney placement for physical reads.
+Only preview sets `PAGE_STUDIO_CMS_OBJECT_TRANSPORT=placed-fetch`. Exact native
+scope, admitted target and pin batches are retained; every existing router
+fence and physical proof runs unchanged. Responses are streamed with a2MB cap,
+validated by the existing object parser/hash checks, and failures never fall
+back to RPC. Production retains its prior transport. Deploy the Studio router
+endpoint first, then preview; do not claim this latency item complete yet.

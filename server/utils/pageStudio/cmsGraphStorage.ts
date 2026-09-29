@@ -3,6 +3,7 @@ import { BuilderArtifactPinSchema, CmsObjectPinSchema, CmsPreparationSchema, Cms
 import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
 import { parseBuilderArtifactJson } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
+import { readPlacedCmsObjects } from './cmsObjectTransport'
 import { cmsEqual } from './cmsVisibility'
 import type { CmsGraphSnapshot } from './cmsGraphCoordinator'
 import type { CmsPreparationReader } from './cmsCommits'
@@ -91,7 +92,14 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
     let total = 0
     for (let offset = 0; offset < pins.length; offset += 32) {
       const batch = pins.slice(offset, offset + 32)
-      const objects = z.array(storedObject).max(32).parse(await call('readManagedCmsObjectsAtTarget', { scope: snapshot.scope, target, pins: batch }))
+      const input = { scope: snapshot.scope, target, pins: batch }
+      const raw = env.PAGE_STUDIO_CMS_OBJECT_TRANSPORT === 'placed-fetch'
+        ? await readPlacedCmsObjects((request) => {
+            if (typeof service?.fetch !== 'function') throw failed()
+            return service.fetch(request)
+          }, input)
+        : await call('readManagedCmsObjectsAtTarget', input)
+      const objects = z.array(storedObject).max(32).parse(raw)
       if (objects.length !== batch.length) throw failed()
       for (let index = 0; index < objects.length; index++) {
         const object = objects[index]!, raw = collectionCanonical(object.body)

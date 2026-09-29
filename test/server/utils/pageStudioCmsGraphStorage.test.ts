@@ -71,6 +71,32 @@ describe('target-pinned CMS graph reads', () => {
     s.readManagedCmsObjectsAtTarget.mockRejectedValueOnce(new Error('route revoked'))
     await expect(s.storage.readObjects([s.pin])).rejects.toThrow('route revoked')
   })
+  it('uses private placed fetch for staging objects without weakening pin verification', async () => {
+    const s = await fixture()
+    const fetch = vi.fn(async (_request: Request) => Response.json([s.stored]))
+    const storage = createCmsGraphStorage({ PAGE_STUDIO_CMS_OBJECT_TRANSPORT: 'placed-fetch', PAGE_STUDIO_CONTENT_ROUTER: { fetch, readManagedCmsObjectsAtTarget: s.readManagedCmsObjectsAtTarget } }, admitted)
+    expect(await storage.readObjects([s.pin])).toEqual([s.stored])
+    const request = fetch.mock.calls[0]![0]
+    expect(request.url).toBe('https://cms-objects.internal/read')
+    expect(request.method).toBe('POST')
+    expect(request.redirect).toBe('manual')
+    expect(await request.json()).toEqual({ scope, target, pins: [s.pin] })
+    expect(s.readManagedCmsObjectsAtTarget).not.toHaveBeenCalled()
+    fetch.mockResolvedValueOnce(Response.json([{ ...s.stored, body: {} }]))
+    await expect(storage.readObjects([s.pin])).rejects.toThrow()
+  })
+  it('does not downgrade configured placed reads after unavailable or unbounded transport', async () => {
+    const s = await fixture()
+    const fetch = vi.fn()
+    const storage = createCmsGraphStorage({ PAGE_STUDIO_CMS_OBJECT_TRANSPORT: 'placed-fetch', PAGE_STUDIO_CONTENT_ROUTER: { fetch, readManagedCmsObjectsAtTarget: s.readManagedCmsObjectsAtTarget } }, admitted)
+    for (const response of [new Response('null', { status: 503 }), new Response('null', { status: 302 }), new Response('x'.repeat(2_000_001)), new Response('{')]) {
+      fetch.mockResolvedValueOnce(response)
+      await expect(storage.readObjects([s.pin])).rejects.toThrow()
+    }
+    const missing = createCmsGraphStorage({ PAGE_STUDIO_CMS_OBJECT_TRANSPORT: 'placed-fetch', PAGE_STUDIO_CONTENT_ROUTER: { readManagedCmsObjectsAtTarget: s.readManagedCmsObjectsAtTarget } }, admitted)
+    await expect(missing.readObjects([s.pin])).rejects.toThrow()
+    expect(s.readManagedCmsObjectsAtTarget).not.toHaveBeenCalled()
+  })
   it('still verifies authority for an empty read', async () => {
     const s = await fixture()
     expect(await s.storage.readObjects([])).toEqual([])
