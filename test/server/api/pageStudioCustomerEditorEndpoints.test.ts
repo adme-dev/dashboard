@@ -87,9 +87,19 @@ describe('private native customer session endpoints', () => {
   it('dispatches checkpoint metadata and preserves write conflicts', async () => {
     const input = { checkpoint: { checkpointId: 'draft_example' }, expectedCheckpointId: null }
     expect((await call('checkpoint', input)).status).toBe(200)
-    expect(mocks.commit).toHaveBeenCalledWith(input, claims)
+    expect(mocks.commit).toHaveBeenCalledWith(input, claims, { env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: undefined,
+      PAGE_STUDIO_CHECKPOINTS: undefined, PAGE_STUDIO_CONTENT_ROUTER: undefined, PAGE_STUDIO_CMS_OBJECT_TRANSPORT: undefined } })
     mocks.commit.mockRejectedValueOnce({ statusCode: 409 })
     expect((await call('checkpoint', input)).status).toBe(409)
+  })
+  it('uses only server-owned CMS bindings, never bindings supplied in the body', async () => {
+    config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'staging'
+    config.PAGE_STUDIO_CHECKPOINTS = { get: vi.fn() }
+    config.PAGE_STUDIO_CONTENT_ROUTER = { readManagedCmsTarget: vi.fn() }
+    await call('checkpoint', { env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' } })
+    expect(mocks.commit.mock.calls[0]![2]).toEqual({ env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging',
+      PAGE_STUDIO_CHECKPOINTS: config.PAGE_STUDIO_CHECKPOINTS, PAGE_STUDIO_CONTENT_ROUTER: config.PAGE_STUDIO_CONTENT_ROUTER,
+      PAGE_STUDIO_CMS_OBJECT_TRANSPORT: undefined } })
   })
   it('preserves denial/conflict and hides unexpected provider or signing failures', async () => {
     mocks.authorize.mockRejectedValueOnce({ statusCode: 403, message: 'private native detail' })

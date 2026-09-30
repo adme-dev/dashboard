@@ -83,6 +83,8 @@ export async function coordinateCmsAdoption(
   principal: Principal,
   deps: Dependencies = {}
 ) {
+  if (principal.source === 'customer-session')
+    throw new PageStudioBusinessContentError('CMS_ADOPTION_AUTHORITY_DENIED', 403, 'Customer content setup is not available.')
   const parsed = CmsAdoptionControlRequestSchema.safeParse(raw)
   if (!parsed.success)
     throw new PageStudioBusinessContentError(

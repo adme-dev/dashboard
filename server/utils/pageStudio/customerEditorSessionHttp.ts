@@ -49,7 +49,10 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
       await body(event, Empty)
       return { checkpoint: await readCustomerEditorCheckpoint(claims) }
     }
-    if (operation === 'checkpoint') return await commitCustomerEditorCheckpoint(await readBody(event), claims)
+    if (operation === 'checkpoint') return await commitCustomerEditorCheckpoint(await readBody(event), claims, { env: Object.fromEntries(
+      ['PAGE_STUDIO_CONTENT_ENVIRONMENT', 'PAGE_STUDIO_CHECKPOINTS', 'PAGE_STUDIO_CONTENT_ROUTER', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT']
+        .map(name => [name, setting(event, name)])
+    ) })
     throw createError({ statusCode: 404 })
   } catch (error) {
     const candidate = typeof error === 'object' && error !== null && 'statusCode' in error ? Number(error.statusCode) : 503
