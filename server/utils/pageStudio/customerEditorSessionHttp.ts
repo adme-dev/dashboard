@@ -49,6 +49,11 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
       await body(event, Empty)
       return { checkpoint: await readCustomerEditorCheckpoint(claims) }
     }
+    if (operation === 'cms-prerequisites') {
+      const { coordinateCustomerSchemaUpgrade } = await import('./customerSchemaUpgrade')
+      const env = Object.fromEntries(['PAGE_STUDIO_PROVISIONING_ENVIRONMENT', 'PAGE_STUDIO_PROVISIONER'].map(name => [name, setting(event, name)]))
+      return await coordinateCustomerSchemaUpgrade(await readBody(event), claims, { env })
+    }
     if (operation === 'checkpoint' || operation === 'cms-adoption') {
       const env = Object.fromEntries(
         ['PAGE_STUDIO_CONTENT_ENVIRONMENT', 'PAGE_STUDIO_CHECKPOINTS', 'PAGE_STUDIO_CONTENT_ROUTER', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT']
