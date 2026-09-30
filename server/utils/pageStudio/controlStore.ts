@@ -3,6 +3,22 @@ import { queryOneFresh, transaction } from '~~/server/utils/db'
 import { assertPageStudioSessionAuthority, PageStudioSessionAuthorityError } from './sessionAuthority'
 import { authorizePageStudioSession, type PageStudioSessionClaims } from './sessions'
 
+/** Audit provenance only. It does not confer native-client staging authority. */
+export interface CustomerProvisioningCheckpointOrigin {
+  environment: 'staging'
+  workspaceId: string
+  userId: string
+  loginSessionHash: string
+  requestKey: string
+}
+
+interface CheckpointDependencies {
+  runTransaction?: RunTransaction
+  authorize?: (db: PageStudioControlQueryClient) => Promise<void>
+  stagingOrigin?: (db: PageStudioControlQueryClient) => Promise<CheckpointStagingOrigin | null>
+  customerProvisioning?: CustomerProvisioningCheckpointOrigin
+}
+
 export interface PageStudioControlScope {
   tenantId: string
   clientId: string
@@ -179,7 +195,7 @@ async function appendMutationAudit(
     resourceType: PageStudioAuditResourceType
     resourceId: string
     idempotencyKey: string
-    metadata: Record<string, string | null | CheckpointStagingOrigin>
+    metadata: Record<string, string | null | CheckpointStagingOrigin | CustomerProvisioningCheckpointOrigin>
   }
 ): Promise<void> {
   await db.query(
@@ -225,7 +241,7 @@ export async function recordPageStudioCheckpoint(
 /** Additive guarded protocol. Legacy callers are not made safe by this endpoint. */
 export async function commitPageStudioCheckpoint(
   input: PageStudioCheckpointCommitInput,
-  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void>, stagingOrigin?: (db: PageStudioControlQueryClient) => Promise<CheckpointStagingOrigin | null> } = {}
+  dependencies: CheckpointDependencies = {}
 ): Promise<PageStudioCheckpointCommitReceipt> {
   const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, dependencies, input)
   return {
@@ -277,7 +293,7 @@ export async function commitPageStudioEditorCheckpoint(
 
 async function persistPageStudioCheckpoint(
   input: PageStudioCheckpointInput,
-  dependencies: { runTransaction?: RunTransaction, authorize?: (db: PageStudioControlQueryClient) => Promise<void>, stagingOrigin?: (db: PageStudioControlQueryClient) => Promise<CheckpointStagingOrigin | null> },
+  dependencies: CheckpointDependencies,
   guard?: Pick<PageStudioCheckpointCommitInput, 'expectedCheckpointId'>
 ): Promise<string | null> {
   if (input.objectKey !== expectedCheckpointObjectKey(input.scope, input.checkpointId)) {
@@ -396,6 +412,7 @@ async function persistPageStudioCheckpoint(
         authorId: input.userId,
         digest: input.digest,
         ...(stagingOrigin ? { stagingOrigin } : {}),
+        ...(dependencies.customerProvisioning ? { customerProvisioning: dependencies.customerProvisioning } : {}),
         ...(guard ? { commitProtocol: 'cas-v1', expectedCheckpointId: guard.expectedCheckpointId } : {})
       }
     })

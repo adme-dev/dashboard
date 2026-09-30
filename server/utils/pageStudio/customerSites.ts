@@ -13,12 +13,12 @@ const Request = z.object({
 const Limit = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 // Trusted server-side approval only. Never deserialize this from a customer body.
 // One unpublished preview, no AI credits, custom domains or charge authorization.
-const PreviewPolicy = z.object({
+export const CustomerPreviewPolicySchema = z.object({
   approvalId: Id, approvedBy: Id, expiresAt: z.string().datetime(),
   pagesPerSiteLimit: z.number().int().min(1).max(1000), storageBytesLimit: Limit,
   monthlyBuildLimit: z.number().int().nonnegative().max(2147483647), monthlyTrafficBytesLimit: Limit
 }).strict()
-export type CustomerPreviewPolicy = z.infer<typeof PreviewPolicy>
+export type CustomerPreviewPolicy = z.infer<typeof CustomerPreviewPolicySchema>
 
 export class CustomerSiteError extends Error {
   constructor(readonly code: 'CUSTOMER_SITE_INVALID_INPUT' | 'CUSTOMER_SITE_POLICY_REQUIRED' | 'CUSTOMER_SITE_ACCESS_DENIED'
@@ -30,7 +30,7 @@ export class CustomerSiteError extends Error {
 const denied = () => new CustomerSiteError('CUSTOMER_SITE_ACCESS_DENIED', 403)
 interface Site { id: string, name: string, route: string, starterVersion: string, status: 'draft' }
 
-async function readApprovedSite(db: PageStudioQueryClient, scope: { businessId: string, tenantId: string, siteId: string }, policy: CustomerPreviewPolicy) {
+export async function readApprovedCustomerPreviewSite(db: PageStudioQueryClient, scope: { businessId: string, tenantId: string, siteId: string }, policy: CustomerPreviewPolicy) {
   // Recheck retained authority, not just the existence of a past creation receipt.
   const result = await db.query<Site>(`SELECT site.id, site.name, site.route, site.starter_version AS "starterVersion", site.status
     FROM page_studio_sites site JOIN page_studio_entitlements entitlement
@@ -58,7 +58,7 @@ export async function createCustomerPreviewSite(input: z.infer<typeof Request>, 
 } = {}) {
   const parsed = Request.safeParse(input)
   if (!parsed.success) throw new CustomerSiteError('CUSTOMER_SITE_INVALID_INPUT', 400)
-  const approved = PreviewPolicy.safeParse(dependencies.previewPolicy)
+  const approved = CustomerPreviewPolicySchema.safeParse(dependencies.previewPolicy)
   if (!approved.success) throw new CustomerSiteError('CUSTOMER_SITE_POLICY_REQUIRED', 403)
   const request = parsed.data, policy = approved.data
   const runTransaction = dependencies.runTransaction ?? transaction
@@ -81,7 +81,7 @@ export async function createCustomerPreviewSite(input: z.infer<typeof Request>, 
       if (receipt.request_id !== request.requestId) throw new CustomerSiteError('CUSTOMER_SITE_LIMIT_REACHED', 409)
       if (!receipt.matches) throw new CustomerSiteError('CUSTOMER_SITE_REQUEST_CONFLICT', 409)
       const scope = { businessId: receipt.business_id, tenantId: receipt.tenant_id, siteId: receipt.site_id }
-      const site = await readApprovedSite(db, scope, policy)
+      const site = await readApprovedCustomerPreviewSite(db, scope, policy)
       return { workspaceId: request.workspaceId, businessId: scope.businessId, tenantId: scope.tenantId, site, replayed: true }
     }
 
@@ -106,7 +106,7 @@ export async function createCustomerPreviewSite(input: z.infer<typeof Request>, 
       (workspace_id, request_id, actor_identity_id, business_id, tenant_id, site_id, request_payload, preview_policy)
       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)`, [request.workspaceId, request.requestId,
       request.identityId, businessId, tenantId, created!.id, JSON.stringify(request), JSON.stringify(policy)])
-    const site = await readApprovedSite(db, { businessId, tenantId, siteId: created!.id }, policy)
+    const site = await readApprovedCustomerPreviewSite(db, { businessId, tenantId, siteId: created!.id }, policy)
     return { workspaceId: request.workspaceId, businessId, tenantId, site, replayed: false }
   })
 }

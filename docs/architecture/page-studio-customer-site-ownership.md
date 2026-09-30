@@ -40,6 +40,8 @@ Rollback should first stop every caller of the new service. Leaving the unused r
 
 ## Next integration
 
+The internal actor/session, retained-intent and checkpoint adapter is now implemented in the follow-on [customer provisioning slice](page-studio-customer-provisioning.md). The sequence below remains the rollout/acceptance order; hosted proof and the customer-facing handoff are still outstanding.
+
 1. Extend Dashboard and Studio's private provisioning actor protocol with a distinct customer identity and retained login session; never fabricate a portal user.
 2. Recheck workspace owner/grant, session, immutable business scope and approved entitlement at every provider effect and completion callback.
 3. Adapt checkpoint/content receipt authority, then reuse existing D1 allocation and worker provisioning with retained resource receipts and lost-response reconciliation.
