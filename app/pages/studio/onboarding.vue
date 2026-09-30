@@ -41,6 +41,7 @@ async function load() {
     workspaceId.value = result.workspaceId
     conflict.value = false
     ready.value = true
+    if (workspaceId.value) await navigateTo('/studio/dashboard', { replace: true })
   } catch (e: unknown) {
     if ((e as { statusCode?: number })?.statusCode === 401) await navigateTo('/studio/signup', { replace: true })
     else error.value = 'We could not load your saved setup. Please try again.'
@@ -72,7 +73,10 @@ async function advance() {
   try {
     await save()
     if (step.value === 1) step.value = 2
-    else workspaceId.value = (await $fetch<{ workspaceId: string }>(`${api}/complete`, { method: 'POST', body: { expectedRevision: revision.value } })).workspaceId
+    else {
+      workspaceId.value = (await $fetch<{ workspaceId: string }>(`${api}/complete`, { method: 'POST', body: { expectedRevision: revision.value } })).workspaceId
+      await navigateTo('/studio/dashboard', { replace: true })
+    }
   } catch (e) {
     showError(e)
   } finally {
@@ -154,8 +158,9 @@ async function signOut() {
         </div>
       </div>
       <p class="mt-5 text-sm leading-6 text-muted">
-        You’re ready for the next stage. Creating and publishing your website will become available here when customer setup opens.
+        You’re ready for the next stage. Open your website overview to continue your setup.
       </p>
+      <UButton class="mt-4" to="/studio/dashboard" label="Go to website overview" />
     </UCard>
     <form v-else-if="ready" class="space-y-6" @submit.prevent="advance">
       <fieldset class="space-y-5" :disabled="busy || conflict">

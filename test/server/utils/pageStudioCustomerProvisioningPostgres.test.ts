@@ -150,6 +150,115 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
     await expect(verify(job)).resolves.toMatchObject({ userId: ids.owner })
   })
 
+  const dashboardSetup = async (fresh = false) => {
+    if (fresh) fixture.workspaceId = await workspace()
+    await db.query(`INSERT INTO page_studio_customer_setup_drafts (identity_id, workspace_id, draft)
+      VALUES ($1, $2, $3::jsonb)`, [ids.owner, fixture.workspaceId,
+      JSON.stringify({ businessName: 'Customer Flowers', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] })])
+    const policy = (await db.query('SELECT preview_policy FROM page_studio_customer_site_requests WHERE site_id = $1', [fixture.siteId])).rows[0].preview_policy
+    let retained: unknown = null
+    const binding = { readProvisioning: vi.fn(async () => retained), createProvisioning: vi.fn(async (job: unknown) => {
+      retained = job
+      return job
+    }) }
+    return { runTransaction, enabled: true, binding, approval: { workspaceId: fixture.workspaceId, starterVersion: 'floristry-v1', policy } }
+  }
+
+  it.each(['entitlement', 'approver'])('does not offer resume for a pre-intent preview with revoked %s', async (reason) => {
+    const options = await dashboardSetup()
+    if (reason === 'entitlement') await db.query('UPDATE page_studio_entitlements SET effective_until = NOW() - INTERVAL \'1 second\'')
+    else await db.query('UPDATE team_members SET is_active = FALSE')
+    const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
+    expect(await readCustomerDashboard(token, options)).toMatchObject({ state: 'needs-attention', canCreate: false, canRetry: false })
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_customer_provisioning_intents')).rows[0].count).toBe('0')
+  })
+
+  it.each([1, 2])('never offers a three-page starter against a %i-page approval', async (limit) => {
+    const options = await dashboardSetup(true)
+    options.approval.policy.pagesPerSiteLimit = limit
+    const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
+    expect(await readCustomerDashboard(token, options)).toMatchObject({ state: 'approval-pending', canCreate: false })
+  })
+
+  it('shows an approved preview action without allocating on a dashboard read', async () => {
+    const options = await dashboardSetup(true)
+    const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
+    const before = (await db.query('SELECT COUNT(*) FROM page_studio_sites')).rows[0].count
+    const result = await readCustomerDashboard(token, options)
+    expect(result).toMatchObject({ businessName: 'Customer Flowers', state: 'available', canCreate: true })
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_sites')).rows[0].count).toBe(before)
+    expect(options.binding.createProvisioning).not.toHaveBeenCalled()
+    expect(JSON.stringify(result)).not.toContain(fixture.workspaceId)
+  })
+
+  it('keeps disabled or unapproved customer previews closed', async () => {
+    const options = await dashboardSetup(true)
+    const { readCustomerDashboard, createCustomerDashboardPreview } = await import('~~/server/utils/pageStudio/customerDashboard')
+    for (const unavailable of [{ ...options, enabled: false }, { ...options, approval: null }, { ...options, approval: { ...options.approval, workspaceId: randomUUID() } }]) {
+      expect((await readCustomerDashboard(token, unavailable)).canCreate).toBe(false)
+      await expect(createCustomerDashboardPreview(token, unavailable)).rejects.toMatchObject({ statusCode: 403 })
+    }
+    expect(options.binding.createProvisioning).not.toHaveBeenCalled()
+  })
+
+  it('creates and retries one customer site/intent from saved setup without caller scope', async () => {
+    const options = await dashboardSetup(true)
+    const { createCustomerDashboardPreview } = await import('~~/server/utils/pageStudio/customerDashboard')
+    const first = await createCustomerDashboardPreview(token, options)
+    await createCustomerDashboardPreview(token, options)
+    expect(first).toMatchObject({ state: 'preparing', canCreate: false })
+    expect(options.binding.createProvisioning).toHaveBeenCalledTimes(1)
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_customer_provisioning_intents')).rows[0].count).toBe('1')
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_customer_site_requests WHERE workspace_id = $1', [fixture.workspaceId])).rows[0].count).toBe('1')
+  })
+
+  it('returns only verification pending for completed jobs and no provider secrets', async () => {
+    const options = await dashboardSetup()
+    const job = await prepare()
+    options.binding.readProvisioning.mockResolvedValue({ ...job, phase: 'complete', resources: { database: 'secret-db', site: 'private-site', contentBinding: 'private-binding' } })
+    const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
+    const result = await readCustomerDashboard(token, options)
+    expect(result).toMatchObject({ state: 'verification-pending', canCreate: false, canRetry: false })
+    for (const secret of ['secret-db', 'private-site', 'private-binding', hash(token), ids.owner, fixture.siteId, 'launchUrl']) expect(JSON.stringify(result)).not.toContain(secret)
+  })
+
+  it('denies a revoked session and suppresses access lost during the provider read', async () => {
+    const options = await dashboardSetup()
+    const job = await prepare()
+    const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
+    options.binding.readProvisioning.mockImplementationOnce(async () => {
+      await db.query('UPDATE page_studio_workspace_memberships SET revoked_at = NOW()')
+      return job
+    })
+    await expect(readCustomerDashboard(token, options)).rejects.toMatchObject({ statusCode: 403 })
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW()')
+    await expect(readCustomerDashboard(token, options)).rejects.toMatchObject({ statusCode: 401 })
+  })
+
+  it('sanitizes forged coordinator plans and does not treat provider failure as empty setup', async () => {
+    const options = await dashboardSetup()
+    const job = await prepare()
+    const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
+    options.binding.readProvisioning.mockResolvedValueOnce({ ...job, setup: { ...job.setup, businessName: 'Foreign' } })
+    expect(await readCustomerDashboard(token, options)).toMatchObject({ state: 'needs-attention', canCreate: false, canRetry: false })
+    options.binding.readProvisioning.mockRejectedValueOnce(new Error('private provider failure'))
+    const result = await readCustomerDashboard(token, options)
+    expect(result).toMatchObject({ state: 'unavailable', canCreate: false, canRetry: false })
+    expect(JSON.stringify(result)).not.toContain('private provider failure')
+  })
+
+  it('requires support instead of replacing a logged-out initiating session', async () => {
+    const options = await dashboardSetup()
+    await prepare()
+    const next = 'b'.repeat(64)
+    await db.query(`INSERT INTO page_studio_customer_sessions (token_hash, account_id, expires_at)
+      SELECT $1, account_id, expires_at FROM page_studio_customer_sessions WHERE token_hash = $2`, [hash(next), hash(token)])
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW() WHERE token_hash = $1', [hash(token)])
+    const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
+    expect(await readCustomerDashboard(next, options)).toMatchObject({ state: 'needs-attention', canRetry: false })
+    expect(options.binding.readProvisioning).not.toHaveBeenCalled()
+  })
+
   it('retains one native customer login and content-only plan across concurrent retries', async () => {
     const jobs = await Promise.all([prepare(), prepare(), prepare()])
     expect(jobs[1]).toEqual(jobs[0])

@@ -119,3 +119,6 @@ export async function customerCompleteHandler(event: H3Event) {
   const input = await body(event, z.object({ expectedRevision: z.number().int().min(0) }).strict())
   return completeCustomerSetup(token, input.expectedRevision)
 }
+
+// Shared native customer boundary for the standalone website journey.
+export { guard as guardCustomerRequest, sessionToken as customerSessionToken, limit as limitCustomerRequest }
