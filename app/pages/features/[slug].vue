@@ -176,7 +176,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-rocket',
     categoryIconBg: 'bg-rose-50 dark:bg-rose-500/10',
     categoryIconColor: 'text-rose-600 dark:text-rose-400',
-    description: 'Generate and reuse website imagery with clear credit costs. Available in a limited staging preview; customer production rollout and live credit payments are not enabled.',
+    description: 'Upload, generate and reuse website imagery from the image Source picker, with clear generation costs. Available in a limited staging preview; customer production rollout and live credit payments are not enabled.',
     details: [
       {
         title: 'Choose an Image Model and Review the Cost',
@@ -184,7 +184,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Preview Before Updating Your Website',
-        content: 'Review a generated image before choosing Use image. Apply it to supported hero, image and card fields or decorative section backgrounds, with a bounded focal-position control. Add alternative text for meaningful images. Applying an image changes the website draft; saving, review and publication remain separate steps. Existing undo and saved-version controls continue to apply.'
+        content: 'Open Choose image from the Source control on a supported image. Upload your own PNG, JPEG or WebP up to 10 MB, generate artwork, or select a saved image in the same dialog. Review the preview and choose Use image to apply it directly to that hero, image, card or decorative section background. Uploads and reuse spend no AI credits. A focal-position control lets you adjust the crop. Add alternative text for meaningful images. Applying an image changes the website draft; saving, review and publication remain separate steps. Existing undo and saved-version controls continue to apply.'
       },
       {
         title: 'A Saved Library with Recoverable Requests',
