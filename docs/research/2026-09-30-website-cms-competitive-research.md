@@ -1,4 +1,4 @@
-# Website CMS research: Squarespace, Wix, Framer and Gravity Forms
+# Website CMS research: Squarespace, Wix, Framer, Gravity Forms and Base44
 
 Researched 30 September 2026. Official documentation review, not a hands-on usability test or a claim of feature parity. Features can depend on plan, editor version, installed apps and rollout. The recommendations below are XeroFlow design conclusions, separate from the documented competitor behaviour.
 
@@ -6,9 +6,9 @@ Related: [product brief and backlog](2026-09-30-component-management-and-guided-
 
 ## Recommendation
 
-Build one customer website dashboard outside the visual builder. Use Squarespace as a reference for approachable editorial workflows, Wix for managing a site's operational tools, Framer for structured content and reusable page bindings, and Gravity Forms for a complete form lifecycle. These are complementary references, not rankings of the products.
+Build one customer website dashboard outside the visual builder. Use Squarespace as a reference for approachable editorial workflows, Wix for managing a site's operational tools, Framer for structured content and reusable page bindings, Gravity Forms for a complete form lifecycle, and Base44 for AI generation that connects presentation, data and workflows. These are complementary references, not rankings of the products.
 
-The user's database ownership requirement is independent of these comparisons. A hosted CMS, an external-data connector or an export option does not prove a dedicated customer database. This research makes no assertion about the internal database tenancy of Squarespace, Wix or Framer.
+The user's database ownership requirement is independent of these comparisons. A hosted CMS, an external-data connector or an export option does not prove a dedicated customer database. This research makes no assertion about the internal database tenancy of Squarespace, Wix, Framer or Base44.
 
 ## What the official documentation establishes
 
@@ -36,6 +36,34 @@ The user's database ownership requirement is independent of these comparisons. A
 | Gravity Forms: entry operations | Entry detail includes answers, notes, print and notification resend actions. [Entry detail](https://docs.gravityforms.com/entry-detail/) | Treat the entry as the centre of follow-up. Our design preserves original answers and audits corrections instead of silently overwriting them. |
 | Gravity Forms: integration feeds | Add-ons use configured feeds to connect forms to services. Webhook feeds support field mapping, request configuration and conditions. [Feed concepts](https://docs.gravityforms.com/what-is-a-feed/), [Webhooks Add-On](https://docs.gravityforms.com/triggering-webhooks-form-submissions/) | Implement a trusted connection/action model; expose “Integrations” rather than requiring customers to understand feeds or Workers. Webhooks are documented as an add-on, not an assumed core feature. |
 | Gravity Forms: data lifecycle | Per-form personal-data settings include IP storage choice, retention and integration with export/erasure tools. [Personal data settings](https://docs.gravityforms.com/personal-data-settings/) | Make retention and export/deletion part of the component contract and operation screens, with delivery/attachment cleanup rules. |
+
+## Base44: generated applications, data and management
+
+Added after the user requested Base44 explicitly. Its documentation describes AI creating design, data and functionality on a managed backend with authentication, integrations and hosting. This makes it a useful architectural reference for our managed components. [Base44 overview](https://docs.base44.com/)
+
+| Area | Documented Base44 behaviour | Implication for XeroFlow |
+| --- | --- | --- |
+| Data and management | AI sets up typed tables/entities. Builders use Dashboard → Data to search, filter, edit, import/export and inspect records; fields can reference files and other tables. [Data management](https://docs.base44.com/Building-your-app/Managing-your-app-data) | Generate the data contract with the feature, then provide an appropriate customer operating view over those records. |
+| Builder versus live-app access | Owners/collaborators access the editor and its dashboard. Live-app Admin/User roles govern the published application and do not independently grant builder access. [Access and roles](https://docs.base44.com/Setting-up-your-app/Managing-access) | A customer's enquiry operator needs operational access without becoming a builder collaborator. Keep those permissions distinct. |
+| Authentication | Base44 supplies authentication and supports generated custom login/registration pages; its guide covers password recovery and protecting selected pages. [Login and registration](https://docs.base44.com/Setting-up-your-app/Managing-login-and-registration) | Reuse established authentication while allowing a coherent branded customer entry. Route protection still needs data authorization. |
+| Data permissions | Tables have create/read/update/delete rules. Its contact-form example allows public creation but restricts reading and management to administrators. AI can propose permissions and the dashboard exposes them for review. [Data permissions](https://docs.base44.com/Setting-up-your-app/Managing-security-settings) | Every generated form needs separately validated public submission and private inbox policies; a generated admin screen alone does not protect records. |
+| Workflows | AI creates workflows with triggers, ordered function steps, waits and conditions. A dashboard shows diagrams and run history. Editing steps creates a version; in-flight runs retain their original version. [Workflows](https://docs.base44.com/Building-your-app/Creating-workflows) | Generate reviewable follow-up rules alongside components and preserve the version used for each accepted event. |
+| Email | Built-in transactional email and external providers such as Resend are separate options. Recipient eligibility depends on plan/domain setup; built-in email does not support external mailing lists or attachments. [Sending email](https://docs.base44.com/documentation/building-your-app/sending-emails) | Make delivery readiness and provider choice explicit. Newsletter management is more than an email action. |
+| Paid subscriptions | The Stripe guide supplies suggested prompts for subscription purchase, cancellation and access changes. These describe generated flows using a connected payment provider. [Stripe setup](https://docs.base44.com/documentation/setting-up-your-app/setting-up-payments) | Model payment and entitlement lifecycles as a tested capability; a prompt example does not prove renewal, cancellation or retry correctness. |
+
+### What its approach means for our product
+
+Conceptually, our requested “quote form with an admin section” should produce a visible form, an enquiry data model, authorized submit/read operations, an inbox, configuration and follow-up rules as one reviewed feature. This is our interpretation of the useful pattern, not a claim that Base44 always generates that exact bundle or a standardized Gravity Forms-style settings screen.
+
+Base44's generic Data dashboard belongs to the builder environment. Customer-facing operational admin pages inside a generated app are a different surface. Our product should provide a consistent customer CMS automatically for supported capabilities, including nontechnical names such as Enquiries, Posts and Gallery, rather than making every customer prompt for and maintain their own management UI.
+
+Three implementation lessons join the existing backlog:
+
+- RND-02/RND-09: generation must bind UI, data, permissions and admin presentation together. Show a reviewable change summary and preserve owner edits; AI-generated permission proposals remain subject to trusted validation.
+- RND-06/RND-07: show workflow conditions and delivery history in customer terms. Base44 documents that its **Run now** can perform real actions even when the run is labelled a test. Our test interface must explicitly distinguish simulation, isolated test destinations and real delivery/replay. [Workflow testing behaviour](https://docs.base44.com/Building-your-app/Creating-workflows)
+- RND-03/RND-14/RND-15: test visitor, member, enquiry operator and publisher access independently. Base44's distinction between builder collaboration and live-app roles reinforces this boundary. [Role distinction](https://docs.base44.com/Setting-up-your-app/Managing-access)
+
+Base44's managed data layer and exports are not evidence of a dedicated database controlled by each customer. Our customer-database requirement remains unchanged. This addition verifies documentation only: no generated app, checkout, permission test or workflow was executed on Base44.
 
 ## Proposed customer experience
 

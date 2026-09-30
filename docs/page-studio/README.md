@@ -4,7 +4,7 @@
 
 - [R&D brief and implementation backlog — 30 September 2026](../research/2026-09-30-component-management-and-guided-websites.md): confirmed customer requirements, industry/prompt templates, standalone customer login and enquiries, component settings/metrics, email responses, outbound webhooks, storage/admin contracts and acceptance gates. Proposed work is explicitly separated from existing implementation.
 - [ADR-010: Managed website component contracts](../decisions/ADR-010-managed-website-component-contracts.md): proposed architecture and alternatives; requires validation before acceptance.
-- [Squarespace, Wix, Framer and Gravity Forms research](../research/2026-09-30-website-cms-competitive-research.md): official-source comparison of content, forms, follow-up, permissions and audience workflows; documented behaviour is separated from our recommendations.
+- [Squarespace, Wix, Framer, Gravity Forms and Base44 research](../research/2026-09-30-website-cms-competitive-research.md): official-source comparison of content, forms, AI-generated applications, follow-up, permissions and audience workflows; documented behaviour is separated from our recommendations.
 - [Customer CMS standards and delivery sequence](customer-cms-standards.md): customer database ownership, source audit, pages/blogs/galleries/media, forms, memberships/newsletters, roles, SEO/analytics and phased acceptance gates.
 
 ## Existing foundations

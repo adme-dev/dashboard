@@ -59,6 +59,8 @@ Use business type + visitor goal + capabilities. Templates declare required fact
 
 Preserve owner-edited values during regeneration. Show a proposed diff for changes to fields, rules and destinations. Reject unsupported capabilities and foreign references. A blog, gallery and enquiry form are initial contract examples; booking and commerce adapters need additional concurrency/payment invariants.
 
+The [Base44 research](../research/2026-09-30-website-cms-competitive-research.md#base44-generated-applications-data-and-management) reinforces generating UI, data, permissions and management together, while keeping builder collaboration separate from live operational access. RND-02/RND-09 must expose that bundle for review. For RND-06/RND-07, distinguish simulation, isolated test delivery and real delivery/replay explicitly: a test label must never imply that no external effects occur. RND-03/RND-14/RND-15 must verify each actor's access, not just a successful administrator preview.
+
 ## Delivery sequence and backlog mapping
 
 All delivery gates below remain open. Existing foundations may be reused after their source and access boundaries are verified.
