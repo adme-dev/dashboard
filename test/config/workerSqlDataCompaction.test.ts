@@ -30,3 +30,23 @@ it('does not rewrite executable code, templates with interpolation, tags, keys o
   ]
   for (const source of cases) expect(compactSqlSource(source)).toEqual({ code: source, literals: 0 })
 })
+it('losslessly compacts multiple medium SQL statements with parameters and Unicode', async () => {
+  const queries = Array.from({ length: 4 }, (_, index) => `SELECT ${index}, 'Text 🚘\\n' AS note\r\nFROM owned_site WHERE id=$1\n${'AND active = TRUE\n'.repeat(35)}FOR UPDATE`)
+  for (const query of queries) {
+    expect(query.length).toBeGreaterThanOrEqual(512)
+    expect(query.length).toBeLessThan(1024)
+  }
+  const source = `export function run(db, args) { return [${queries.map(query => `db.query(${JSON.stringify(query)}, args)`).join(',')}]; }`
+  const result = compactSqlSource(source)
+  expect(result.literals).toBe(4)
+  expect(Buffer.byteLength(source) - Buffer.byteLength(result.code)).toBeGreaterThan(557)
+  const module = await import(`data:text/javascript;base64,${Buffer.from(result.code).toString('base64')}`)
+  const args = ['customer-a']
+  const seen: string[] = []
+  module.run({ query(text: string, values: unknown[]) {
+    expect(values).toBe(args)
+    seen.push(text)
+  } }, args)
+  expect(seen).toEqual(queries)
+  expect(compactSqlSource(result.code).code).toBe(result.code)
+})
