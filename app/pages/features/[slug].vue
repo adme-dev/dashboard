@@ -180,7 +180,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Choose an Image Model and Review the Cost',
-        content: 'Describe the image you need, choose from the models enabled for your website and review the quoted credit cost before generating. The limited staging catalogue includes FLUX.1 Schnell and Stable Diffusion XL Lightning. Available image shapes depend on the selected model. Requests use the configured Cloudflare AI Gateway, and model availability remains subject to website access and configuration.'
+        content: 'Describe the image you need, choose from the models enabled for your website and review the quoted credit cost before generating. The limited staging catalogue includes FLUX.1 Schnell and Stable Diffusion XL. Available image shapes depend on the selected model. Requests use the configured Cloudflare AI Gateway, and model availability remains subject to website access and configuration.'
       },
       {
         title: 'Preview Before Updating Your Website',

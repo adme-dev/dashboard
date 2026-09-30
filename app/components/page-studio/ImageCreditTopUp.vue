@@ -74,8 +74,22 @@ async function checkout() {
         ? 'This checkout can no longer be resumed. Check its payment status before starting another purchase.'
         : 'Check payment status to see whether these credits have arrived.'
     }
-  } catch {
-    notice.value = 'Checkout could not be confirmed. Retry this same purchase or check its payment status.'
+  } catch (error) {
+    if (!mounted) return
+    const failure = error as { statusCode?: number, data?: { data?: { error?: { code?: string } } } }
+    // This exact rejection happens before a native purchase is persisted. A
+    // timeout or any other response must keep its identity for safe recovery.
+    if (failure.statusCode === 409 && failure.data?.data?.error?.code === 'IMAGE_PAYMENT_PRICE_CHANGED') {
+      saved.value = null
+      selected.value = undefined
+      receipt.value = null
+      returned.value = null
+      try {
+        sessionStorage.removeItem(key.value)
+      } catch { /* Optional local recovery. */ }
+      notice.value = 'The credit pack price has changed. Review the current price and choose a pack again.'
+      await refresh()
+    } else notice.value = 'Checkout could not be confirmed. Retry this same purchase or check its payment status.'
   } finally { busy.value = false }
 }
 function startAnother() {

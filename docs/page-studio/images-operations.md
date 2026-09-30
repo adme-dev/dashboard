@@ -9,7 +9,7 @@ payments. See [test payment boundaries](image-payments-test-mode.md).
 
 The worker requires an explicitly named Cloudflare AI Gateway. Staging uses
 `studio-images-staging`, Workers AI and owned R2 assets. The two admitted models
-are FLUX.1 Schnell and Stable Diffusion XL Lightning. Synthetic pricing is
+are FLUX.1 Schnell and Stable Diffusion XL. Synthetic pricing is
 10 credits per image, version `synthetic-20260930-v1`; this is an acceptance
 fixture, not commercial pricing. A customer buys application credits, not an
 individual Cloudflare account balance.

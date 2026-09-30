@@ -32,6 +32,7 @@ async function mount() {
 const button = (root: HTMLElement, label: string) => [...root.querySelectorAll('button')].find(item => item.textContent === label)!
 beforeEach(() => {
   vi.clearAllMocks()
+  refresh.mockReset()
   sessionStorage.clear()
   route.query = {}
   data.value = { available: true, canPurchase: true, mode: 'test', packs: [pack], purchases: [] }
@@ -131,4 +132,34 @@ it('does not refresh its parent repeatedly when remounting a confirmed return re
   button(root, 'Check payment status').click()
   await flush()
   expect(settled).toHaveBeenCalledOnce()
+})
+
+it('recovers a definitively rejected stale price by requiring selection of the refreshed pack', async () => {
+  fetcher.mockRejectedValueOnce({ statusCode: 409, data: { data: { error: { code: 'IMAGE_PAYMENT_PRICE_CHANGED' } } } })
+  refresh.mockImplementation(async () => {
+    data.value = { ...data.value, packs: [{ ...pack, version: 'v2', amountMinor: 1200 }] }
+  })
+  const root = await mount()
+  const choose = async () => {
+    const select = root.querySelector('select')!
+    select.value = pack.id
+    select.dispatchEvent(new Event('change'))
+    await flush()
+  }
+  await choose()
+  button(root, 'Continue to test checkout').click()
+  await flush()
+  const first = { ...fetcher.mock.calls[0][1].body }
+  expect(sessionStorage.getItem('studio-image-purchase:site-a')).toBeNull()
+  expect(root.textContent).toContain('price has changed')
+  expect(root.querySelector('select')).not.toBeNull()
+  expect(button(root, 'Continue to test checkout').disabled).toBe(true)
+  expect(refresh).toHaveBeenCalledOnce()
+  fetcher.mockResolvedValue({ status: 'checkout', checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_example' })
+  await choose()
+  button(root, 'Continue to test checkout').click()
+  await flush()
+  expect(fetcher.mock.calls[1][1].body).toMatchObject({ packId: pack.id, packVersion: 'v2' })
+  expect(fetcher.mock.calls[1][1].body.intentId).not.toBe(first.intentId)
+  expect(navigate).toHaveBeenCalledOnce()
 })

@@ -1,3 +1,4 @@
+import { ImageCreditError } from '~~/server/utils/pageStudio/imageCredits'
 import { createApp, createRouter, toWebHandler } from 'h3'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { handleImageBilling } from '~~/server/utils/pageStudio/imageBillingHttp'
@@ -48,4 +49,11 @@ it('receipt GET cannot trigger settlement and rejects customer filters', async (
   expect((await request('receipt', undefined, undefined, `?intentId=${intentId}`)).status).toBe(200)
   expect(mocks.checkout).not.toHaveBeenCalled()
   expect((await request('receipt', undefined, undefined, `?intentId=${intentId}&clientId=foreign`)).status).toBe(400)
+})
+
+it('exposes the definite pre-purchase price rejection separately from unknown checkout failures', async () => {
+  mocks.checkout.mockRejectedValue(new ImageCreditError('IMAGE_PAYMENT_PRICE_CHANGED', 409, 'Review the current credit pack price before continuing'))
+  const response = await request('checkout', input)
+  expect(response.status).toBe(409)
+  expect(await response.json()).toMatchObject({ data: { error: { code: 'IMAGE_PAYMENT_PRICE_CHANGED' } } })
 })
