@@ -1,3 +1,5 @@
+import { transaction } from '~~/server/utils/db'
+import { verifyCustomerProvisioningAuthority } from './customerProvisioning'
 import { checkpointStagingOrigin } from './checkpointStagingOrigin'
 import { PageStudioCheckpointCommitSchema } from './controlSchemas'
 import { commitPageStudioCheckpoint } from './controlStore'
@@ -26,6 +28,19 @@ export async function commitPageStudioProvisioningCheckpoint(
     || checkpoint.scope.tenantId !== job.scope.tenantId || checkpoint.scope.clientId !== job.scope.clientId
     || checkpoint.scope.siteId !== job.scope.siteId) {
     throw new PageStudioProvisioningError('PROVISIONING_AUTHORITY_DENIED', 'Setup checkpoint does not match its retained job', 403)
+  }
+  if (job.actor!.kind === 'customer-user') {
+    // Match customer prepare/logout ordering: native session and owner locks must
+    // precede the checkpoint's site write lock. Recheck in the commit transaction.
+    return await (dependencies.runTransaction ?? transaction)(async (db) => {
+      const authority = await verifyCustomerProvisioningAuthority(job, db)
+      return await commitPageStudioCheckpoint({ checkpoint, expectedCheckpointId }, {
+        runTransaction: callback => callback(db),
+        authorize: async (client) => { await verifyCustomerProvisioningAuthority(job, client) },
+        customerProvisioning: { environment: 'staging', workspaceId: authority.workspaceId, userId,
+          loginSessionHash: job.actor!.loginSessionHash!, requestKey: job.requestKey }
+      })
+    })
   }
   return await commitPageStudioCheckpoint({ checkpoint, expectedCheckpointId }, {
     runTransaction: dependencies.runTransaction,

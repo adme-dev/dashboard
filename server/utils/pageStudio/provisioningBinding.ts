@@ -48,7 +48,7 @@ const SavedPlan = z.object({
 })
 
 const SetupSnapshot = z.object({
-  businessName: z.string().trim().min(2).max(120),
+  businessName: z.string().trim().min(1).max(160),
   proposalRevision: z.number().int().min(1),
   source: z.enum(['template', 'chat']),
   brief: z.string().trim().max(4000).optional()
@@ -56,7 +56,7 @@ const SetupSnapshot = z.object({
   if (setup.source === 'chat' && !setup.brief) context.addIssue({ code: 'custom', path: ['brief'], message: 'Chat setup requires the accepted brief' })
 })
 
-const Actor = z.object({ kind: z.enum(['client-user', 'agency-user']), userId: z.string().uuid(), loginSessionHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict()
+const Actor = z.object({ kind: z.enum(['client-user', 'agency-user', 'customer-user']), userId: z.string().uuid(), loginSessionHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict()
 const ContentId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/)
 const Scope = z.object({
   businessId: ContentId, clientId: ContentId, tenantId: ContentId,
@@ -120,7 +120,7 @@ export function normalizePageStudioProvisioningPlan(input: unknown, scope: PageS
 export interface PageStudioProvisioningDispatchInput {
   initiatingUserId: string
   initiatingLoginSessionHash: string
-  initiatingActorKind?: 'client-user' | 'agency-user'
+  initiatingActorKind?: 'client-user' | 'agency-user' | 'customer-user'
   requestKey: string
   scope: PageStudioProvisioningScope
   now: string
