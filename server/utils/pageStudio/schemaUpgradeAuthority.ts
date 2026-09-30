@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { queryRowsFresh } from '~~/server/utils/db'
 import type { CollectionUpgradeOperation } from '~~/shared/pageStudio/collection-upgrade'
 import type { SchemaUpgradeContract } from './schemaUpgradeContract'
+import type { RunPageStudioTransaction } from './sites'
 import { pageStudioAuthorityOwnerJoin } from './authoritySql'
 import type { PageStudioControlQueryClient } from './controlStore'
 
@@ -60,17 +61,21 @@ export function createSchemaUpgradeAuthority(contract: SchemaUpgradeContract) {
   async function recheck(db: PageStudioControlQueryClient, request: NativeRequest, lock = false) {
   // Business scope is currently the native client. Never let a persisted body
   // introduce an unrelated business identity under an otherwise valid site.
-    if (request.scope.businessId !== request.scope.clientId) throw denied()
+    if (request.actor.kind === 'customer-user' || request.scope.businessId !== request.scope.clientId) throw denied()
     checkPolicy((await db.query<Row>(query(request, false, lock), params(request))).rows)
   }
 
   /** Fresh native admission for the retained original request. No provider I/O or
  * cross-store commit fence; the coordinator separately checks its current lease. */
-  async function authorize(input: unknown, environment: 'staging' | 'production', dependencies: { read?: Read } = {}) {
+  async function authorize(input: unknown, environment: 'staging' | 'production', dependencies: { read?: Read, runTransaction?: RunPageStudioTransaction } = {}) {
     const parsed = contract.schema.safeParse(input)
     if (!parsed.success || !['staging', 'production'].includes(environment) || parsed.data.scope.environment !== environment
       || parsed.data.scope.businessId !== parsed.data.scope.clientId) throw denied()
     const request = parsed.data
+    if (request.actor.kind === 'customer-user') {
+      const { authorizeCustomerSchemaUpgrade } = await import('./customerSchemaUpgrade')
+      return authorizeCustomerSchemaUpgrade(contract, request, environment, dependencies)
+    }
     // Hash before the final native snapshot, not after an arbitrarily slow await.
     const identity = await contract.identity(request)
     let rows: Row[]

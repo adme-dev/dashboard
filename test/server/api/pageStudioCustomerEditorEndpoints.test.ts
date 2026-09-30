@@ -5,9 +5,10 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vites
 import { signCustomerEditorToken } from '~~/server/utils/pageStudio/customerEditorToken'
 import { signPageStudioSessionToken } from '~~/server/utils/pageStudio/sessions'
 
-const mocks = vi.hoisted(() => ({ exchange: vi.fn(), authorize: vi.fn(), commit: vi.fn(), read: vi.fn(), adopt: vi.fn() }))
+const mocks = vi.hoisted(() => ({ exchange: vi.fn(), authorize: vi.fn(), commit: vi.fn(), read: vi.fn(), adopt: vi.fn(), upgrade: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/customerEditorSessions', () => ({ exchangeCustomerEditorSession: mocks.exchange,
   assertCustomerEditorSessionAuthority: mocks.authorize, commitCustomerEditorCheckpoint: mocks.commit, readCustomerEditorCheckpoint: mocks.read }))
+vi.mock('~~/server/utils/pageStudio/customerSchemaUpgrade', () => ({ coordinateCustomerSchemaUpgrade: mocks.upgrade }))
 vi.mock('~~/server/utils/pageStudio/cmsAdoptionCoordinator', () => ({ coordinateCmsAdoption: mocks.adopt }))
 vi.mock('~~/server/utils/db', () => ({ transaction: async (callback: (db: unknown) => unknown) => callback({}) }))
 const issuer = 'https://customers.example.test', editorOrigin = 'https://studio.example.test'
@@ -123,5 +124,17 @@ describe('private native customer session endpoints', () => {
     const failed = await call('exchange', { ticket: 'a'.repeat(64) })
     expect(failed.status).toBe(503)
     expect(await failed.text()).not.toContain('private signing key')
+  })
+  it('dispatches private prerequisites with server-owned coordinator and dedicated claims', async () => {
+    config.PAGE_STUDIO_PROVISIONER = { executeCollectionUpgrade: vi.fn() }
+    mocks.upgrade.mockResolvedValue({ kind: 'collection', status: 'pending', recoveryId: null, canConfigure: true })
+    const input = { action: 'status', kind: 'collection' }
+    expect((await call('cms-prerequisites', input)).status).toBe(200)
+    expect(mocks.upgrade).toHaveBeenCalledWith(input, claims, { env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_PROVISIONER: config.PAGE_STUDIO_PROVISIONER } })
+    expect((await call('cms-prerequisites', input, { 'x-page-studio-customer-session': legacy })).status).toBe(401)
+    mocks.upgrade.mockRejectedValueOnce(new Error('private database and login details'))
+    const response = await call('cms-prerequisites', input)
+    expect(response.status).toBe(503)
+    expect(await response.text()).not.toContain('private database')
   })
 })

@@ -142,7 +142,7 @@ describe('Page Studio control gateway Worker', () => {
     expect(checkpointRequest.headers.get('x-xeroflow-preview-token')).toBeNull()
   })
 
-  it.each(['authorize', 'checkpoint', 'latest-checkpoint', 'cms-adoption'])('forwards the customer token only for its private POST %s', async (operation) => {
+  it.each(['authorize', 'checkpoint', 'latest-checkpoint', 'cms-adoption', 'cms-prerequisites'])('forwards the customer token only for its private POST %s', async (operation) => {
     const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
     vi.stubGlobal('fetch', fetchMock)
     const path = `/internal/page-studio/customer-sessions/${operation}`
