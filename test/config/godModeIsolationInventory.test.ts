@@ -32,8 +32,11 @@ const API_INVENTORY = {
   // Image generation and credits add 18 routes (six POSTs). Native helpers
   // enforce current scoped actor/billing authority; the payment webhook uses
   // verified Stripe signatures. None registers a God mode bypass.
-  totalRouteFiles: 2185,
-  mutationRouteFiles: 1195,
+  // Customer signup adds eight routes (five mutations), guarded by its own
+  // feature flag, exact origin, verified customer session and workspace authority.
+  // None accepts agency God mode or registers a mutation bypass.
+  totalRouteFiles: 2193,
+  mutationRouteFiles: 1200,
   explicitlyGuardedMutationFiles: 400,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -72,8 +75,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2185,
-      mutationRouteFiles: 1195,
+      totalRouteFiles: 2193,
+      mutationRouteFiles: 1200,
       explicitlyGuardedMutationFiles: 400,
       guardedMutationFilesWithTransactionCall: 47
     })
