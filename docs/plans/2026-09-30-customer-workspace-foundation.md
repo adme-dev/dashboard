@@ -29,7 +29,7 @@ Agency grants are per staff actor and tenant, limited to read/design for this sl
 - [x] Implement `server/utils/pageStudio/customerWorkspaces.ts`: `createCustomerWorkspace`, `resolveCustomerWorkspaceAccess`, `bindLegacyCustomerWorkspace`, `resolveAgencyWorkspaceAccess`. Parameterized queries and transactions; unavailable/denied access fails closed.
 - [x] Run integration tests, existing client/site/setup/entitlement tests and focused lint. Read every changed file and obtain a fresh review before commit.
 - [x] Document identity/storage mapping, cutover/rollback and exact verification.
-- [ ] Push a reviewable PR and update canonical RND-17 evidence without calling the broader identity/storage audit complete.
+- [x] Push a reviewable PR and update canonical RND-17 evidence without calling the broader identity/storage audit complete.
 
 ## Completion boundary
 
@@ -38,3 +38,5 @@ This is the persistent ownership/access foundation. No signup page, public creat
 ## Execution evidence
 
 23 new PostgreSQL cases pass; the six-file regression run passed 79 tests. Migration applied twice to the isolated local database. Independent review replay-isolation finding was reproduced then fixed. The competing-binding test now uses different portal identities so identity locking cannot hide a uniqueness race. Focused lint passes; server typecheck diagnostics match the unchanged baseline. CI includes the dedicated database suite.
+
+Delivery: [draft PR #602](https://github.com/adme-dev/dashboard/pull/602). Canonical PRD evidence updated on its owning documentation branch/PR #601. No merge or deployment.
