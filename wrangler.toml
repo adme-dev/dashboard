@@ -465,3 +465,8 @@ PAGE_STUDIO_STAGING_TENANT_ID = "page-studio-staging"
 #   Schedule: 0 6 * * *  (daily; each schedule self-gates on its weekly/monthly cadence)
 #   Target:   POST /api/cron/scheduled-reports
 #   Header:   x-cron-secret: <CRON_SECRET>  (auth — must match env var)
+
+# Private test-only payment provider. Native Pages retains customer admission and ledger authority.
+[[env.preview.services]]
+binding = "PAGE_STUDIO_IMAGE_PAYMENTS_SERVICE"
+service = "xeroflow-page-studio-payments-staging"

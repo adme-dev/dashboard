@@ -1,3 +1,4 @@
+import paymentWorker from '../../../workers/page-studio-payments/src/index'
 import Stripe from 'stripe'
 import { createApp, createRouter, toWebHandler } from 'h3'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -8,7 +9,7 @@ vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.query, transactionWi
 vi.mock('~~/server/utils/pageStudio/imagePaymentSnapshot', () => ({ retrieveImagePaymentSnapshot: mocks.snapshot }))
 vi.mock('~~/server/utils/pageStudio/imagePayments', () => ({ observeImagePayment: mocks.observe }))
 const scope = { tenantId: 'test', clientId: '10000000-0000-4000-8000-000000000001', environment: 'staging' }
-const env = { PAGE_STUDIO_IMAGE_PAYMENTS: JSON.stringify({ mode: 'test', accountId: 'acct_test', origin: 'https://preview.example.test', scopes: [scope], packs: [{ id: 'test100', version: 'v1', currency: 'aud', amountMinor: 1000, credits: 100 }] }), PAGE_STUDIO_IMAGE_STRIPE_SECRET: 'sk_test_fixture', PAGE_STUDIO_IMAGE_STRIPE_WEBHOOK_SECRET: 'whsec_fixture' }
+const env = { PAGE_STUDIO_IMAGE_PAYMENTS: JSON.stringify({ mode: 'test', accountId: 'acct_test', origin: 'https://preview.example.test', scopes: [scope], packs: [{ id: 'test100', version: 'v1', currency: 'aud', amountMinor: 1000, credits: 100 }] }), PAGE_STUDIO_IMAGE_PAYMENTS_SERVICE: paymentWorker, PAGE_STUDIO_IMAGE_STRIPE_SECRET: 'sk_test_fixture', PAGE_STUDIO_IMAGE_STRIPE_WEBHOOK_SECRET: 'whsec_fixture' }
 const raw = '{ "id":"evt_test", "object":"event", "type":"checkout.session.completed", "livemode":false, "data":{"object":{"id":"cs_test_first"}} }'
 const sign = () => Stripe.webhooks.generateTestHeaderStringAsync({ payload: raw, secret: env.PAGE_STUDIO_IMAGE_STRIPE_WEBHOOK_SECRET, cryptoProvider: Stripe.createSubtleCryptoProvider() })
 function request(body: string, signature: string, contentType = 'application/json') {

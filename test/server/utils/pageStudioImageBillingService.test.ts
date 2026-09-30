@@ -12,7 +12,7 @@ const pack = { id: 'test100', version: 'v1', currency: 'aud', amountMinor: 1000,
 const context = { scope, actor: { actorId: 'owner' }, canPurchase: true }
 const input = { intentId: '30000000-0000-4000-8000-000000000003', packId: pack.id, packVersion: pack.version }
 const row = { intent_id: input.intentId, site_id: scope.siteId, actor_id: 'owner', account_id: 'acct_test', fingerprint: 'a'.repeat(64), pack, created_at: new Date(), refunded_minor: '0', compensated_credits: '0', funded: false, customer_id: 'cus_private' }
-const env = { PAGE_STUDIO_IMAGE_PAYMENTS: JSON.stringify({ mode: 'test', accountId: 'acct_test', origin: 'https://preview.example.test', scopes: [{ tenantId: scope.tenantId, clientId: scope.clientId, environment: scope.environment }], packs: [{ ...pack, version: 'v2', amountMinor: 1200 }] }), PAGE_STUDIO_IMAGE_STRIPE_SECRET: 'sk_test_fixture', PAGE_STUDIO_IMAGE_STRIPE_WEBHOOK_SECRET: 'whsec_fixture' }
+const env = { PAGE_STUDIO_IMAGE_PAYMENTS_SERVICE: { fetch: vi.fn() }, PAGE_STUDIO_IMAGE_PAYMENTS: JSON.stringify({ mode: 'test', accountId: 'acct_test', origin: 'https://preview.example.test', scopes: [{ tenantId: scope.tenantId, clientId: scope.clientId, environment: scope.environment }], packs: [{ ...pack, version: 'v2', amountMinor: 1200 }] }), PAGE_STUDIO_IMAGE_STRIPE_SECRET: 'sk_test_fixture', PAGE_STUDIO_IMAGE_STRIPE_WEBHOOK_SECRET: 'whsec_fixture' }
 const request = { siteId: scope.siteId, actor: { role: 'client' as const, actorId: 'owner', clientId: scope.clientId }, env }
 beforeEach(() => {
   vi.resetAllMocks()
@@ -47,4 +47,11 @@ it('does not read customer purchase history for non-billing users', async () => 
   mocks.generation.mockImplementation((_request, _writing, work) => work({ query: mocks.query }, { ...context, canPurchase: false }))
   expect(await imageBillingCatalog(request)).toMatchObject({ available: false, canPurchase: false, packs: [] })
   expect(mocks.query).not.toHaveBeenCalled()
+})
+it('disables checkout before persisting an intent when the private provider is absent', async () => {
+  const unavailable = { ...request, env: { ...env, PAGE_STUDIO_IMAGE_PAYMENTS_SERVICE: undefined } }
+  expect(await imageBillingCatalog(unavailable)).toMatchObject({ available: false, purchases: [{ intentId: input.intentId }] })
+  await expect(createImageCheckout(unavailable, input)).rejects.toMatchObject({ statusCode: 503 })
+  expect(mocks.create).not.toHaveBeenCalled()
+  expect(mocks.run).not.toHaveBeenCalled()
 })

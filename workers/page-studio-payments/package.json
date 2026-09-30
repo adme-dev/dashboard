@@ -1,0 +1,9 @@
+{
+  "name": "@xeroflow/page-studio-payments",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy:staging:dry-run": "wrangler deploy --config wrangler.jsonc --dry-run --outdir ../../.output/page-studio-payments-staging",
+    "deploy:staging": "wrangler deploy --config wrangler.jsonc"
+  }
+}

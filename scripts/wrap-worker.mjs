@@ -13,7 +13,7 @@ import { build } from 'esbuild'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { compactSsrMarkupDirectory } from './compact-worker-static-data.mjs'
+import { compactSsrMarkupDirectory, compactNitroSqlModule } from './compact-worker-static-data.mjs'
 import {
   buildCompressedPrecomputedManifestModule,
   buildWorkerDispatcherModule,
@@ -150,6 +150,9 @@ if (!await exists(compactChunksDirectory)) {
       `[wrap-worker] compacted Nuxt client manifest ${precomputedSource.length} → ${bundledSource.length} bytes`
     )
   }
+
+  const sql = await compactNitroSqlModule(distDir)
+  console.log(`[wrap-worker] compacted ${sql.literals} static SQL strings, saved ${sql.savedBytes} bytes`)
 
   // These stable generated runtime boundaries are emitted readable. Compact
   // them while preserving function names for framework introspection, and mark

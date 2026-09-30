@@ -27,7 +27,7 @@ export async function imageBillingCatalog(request: ContentAuthorityRequest) {
     [context.scope.tenantId, context.scope.clientId, context.scope.environment])).rows.map(imagePurchaseReceipt)
     try {
       const config = readImagePaymentConfig(request.env, paymentScope(context.scope))
-      return { available: true, canPurchase: true, mode: config.mode, packs: config.packs, purchases }
+      return { available: Boolean(config.provider), canPurchase: true, mode: config.mode, packs: config.packs, purchases }
     } catch { return { available: false, canPurchase: true, mode: 'test', packs: [], purchases } }
   })
 }
@@ -40,6 +40,7 @@ export async function createImageCheckout(request: ContentAuthorityRequest, inpu
   const parsed = ImageCheckoutInput.parse(input)
   const initial = await withImageBillingAuthority(request, async (db, context) => {
     const config = readImagePaymentConfig(request.env, paymentScope(context.scope))
+    if (!config.provider) throw new ImageCreditError('IMAGE_PAYMENTS_UNAVAILABLE', 503, 'Image credit top-ups are not configured')
     let row: ImagePurchase
     try {
       row = await readImagePurchase(db, paymentScope(context.scope), parsed.intentId)

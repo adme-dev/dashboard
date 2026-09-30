@@ -1,6 +1,6 @@
 import Stripe from 'stripe'
 import { expect, it } from 'vitest'
-import { verifyImagePaymentEvent, createImageStripeClient } from '~~/server/utils/pageStudio/imagePaymentProvider'
+import { verifyImagePaymentEvent, createImageStripeClient } from '../../../workers/page-studio-payments/src/provider'
 import { readImagePaymentConfig } from '~~/server/utils/pageStudio/imagePaymentConfig'
 
 const config = readImagePaymentConfig({

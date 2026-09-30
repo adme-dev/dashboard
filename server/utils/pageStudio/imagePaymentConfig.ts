@@ -24,7 +24,7 @@ const Config = z.object({
   scopes: z.array(Scope).max(20),
   packs: z.array(ImageCreditPackSchema).min(1).max(10)
 }).strict().refine(value => new Set(value.packs.map(pack => pack.id)).size === value.packs.length)
-export type ImagePaymentConfig = z.infer<typeof Config> & { secretKey: string, webhookSecret: string }
+export type ImagePaymentConfig = z.infer<typeof Config> & { secretKey: string, webhookSecret: string, provider?: { fetch(request: Request): Promise<Response> } }
 const unavailable = () => new ImageCreditError('IMAGE_PAYMENTS_UNAVAILABLE', 503, 'Image credit top-ups are not configured')
 
 /** Configuration is server-owned, test-only and explicitly scoped. Never log it. */
@@ -35,7 +35,9 @@ export function readImagePaymentConfig(env: Record<string, unknown>, scope?: Cre
     const secretKey = z.string().regex(/^sk_test_[A-Za-z0-9]+$/).max(256).parse(env.PAGE_STUDIO_IMAGE_STRIPE_SECRET)
     const webhookSecret = z.string().regex(/^whsec_[A-Za-z0-9]+$/).max(256).parse(env.PAGE_STUDIO_IMAGE_STRIPE_WEBHOOK_SECRET)
     if (scope && !config.scopes.some(value => value.tenantId === scope.tenantId && value.clientId === scope.clientId && value.environment === scope.environment)) throw unavailable()
-    return { ...config, secretKey, webhookSecret }
+    const binding = env.PAGE_STUDIO_IMAGE_PAYMENTS_SERVICE as ImagePaymentConfig['provider']
+    const provider = binding && typeof binding.fetch === 'function' ? binding : undefined
+    return { ...config, secretKey, webhookSecret, provider }
   } catch { throw unavailable() }
 }
 
