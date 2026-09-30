@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CustomerEditorOriginSchema as Origin } from './customerEditorToken'
 import { createError } from 'h3'
 import { transaction } from '~~/server/utils/db'
 import { digestPortalSessionToken, generatePortalMagicLinkToken } from '~~/server/utils/portalSession'
@@ -6,12 +7,6 @@ import { readCustomerSession, readCustomerSetup } from './customerSignup'
 import { readCustomerProvisioningPreviewAuthority, readCustomerSessionIdentityFromHash } from './customerProvisioning'
 import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
 
-const Origin = z.string().max(2048).refine((value) => {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'https:' && url.origin === value && !url.username && !url.password
-  } catch { return false }
-})
 const Configuration = z.object({ enabled: z.literal(true), dashboardOrigin: Origin, editorOrigin: Origin }).strict()
   .refine(value => value.dashboardOrigin !== value.editorOrigin)
 const Token = z.string().regex(/^[A-Za-z0-9_-]{64}$/)

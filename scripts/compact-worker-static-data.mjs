@@ -15,12 +15,14 @@ export function compactSsrMarkupSource(source) {
 }
 
 /** SQL text is immutable data, not executed by the build. Preserve all whitespace,
- * parameters and escape sequences. Dynamic/tagged templates are never encoded. */
+ * parameters and escape sequences. Dynamic/tagged templates are never encoded.
+ * Medium static statements also benefit when their combined savings exceed the
+ * decoder overhead; the existing whole-module size check remains authoritative. */
 export function compactSqlSource(source) {
-  return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value))
+  return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value), 512)
 }
 
-function compactStaticSource(source, marker, accepts) {
+function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LITERAL_CHARACTERS) {
   const unchanged = { code: source, literals: 0 }
   if (source.includes(marker)) return unchanged
   const file = ts.createSourceFile('ssr.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
@@ -35,7 +37,7 @@ function compactStaticSource(source, marker, accepts) {
         && node.parent.expression.kind !== ts.SyntaxKind.ImportKeyword
         && node.parent.arguments.includes(node))
       || (ts.isPropertyAssignment(node.parent) && node.parent.initializer === node))
-    && node.text.length >= MIN_LITERAL_CHARACTERS
+    && node.text.length >= minimumCharacters
     && accepts(node.text)
     // UTF-8 replaces lone surrogates, so do not encode those JS strings.
     && node.text.isWellFormed()) {

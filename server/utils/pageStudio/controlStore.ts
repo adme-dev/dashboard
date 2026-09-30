@@ -12,11 +12,20 @@ export interface CustomerProvisioningCheckpointOrigin {
   requestKey: string
 }
 
+/** Audit provenance only; caller must retain native authority through commit. */
+export interface CustomerEditorCheckpointOrigin {
+  sessionId: string
+  handoffId: string
+  workspaceId: string
+  userId: string
+}
+
 interface CheckpointDependencies {
   runTransaction?: RunTransaction
   authorize?: (db: PageStudioControlQueryClient) => Promise<void>
   stagingOrigin?: (db: PageStudioControlQueryClient) => Promise<CheckpointStagingOrigin | null>
   customerProvisioning?: CustomerProvisioningCheckpointOrigin
+  customerEditor?: CustomerEditorCheckpointOrigin
 }
 
 export interface PageStudioControlScope {
@@ -195,7 +204,7 @@ async function appendMutationAudit(
     resourceType: PageStudioAuditResourceType
     resourceId: string
     idempotencyKey: string
-    metadata: Record<string, string | null | CheckpointStagingOrigin | CustomerProvisioningCheckpointOrigin>
+    metadata: Record<string, string | null | CheckpointStagingOrigin | CustomerProvisioningCheckpointOrigin | CustomerEditorCheckpointOrigin>
   }
 ): Promise<void> {
   await db.query(
@@ -413,6 +422,7 @@ async function persistPageStudioCheckpoint(
         digest: input.digest,
         ...(stagingOrigin ? { stagingOrigin } : {}),
         ...(dependencies.customerProvisioning ? { customerProvisioning: dependencies.customerProvisioning } : {}),
+        ...(dependencies.customerEditor ? { customerEditor: dependencies.customerEditor } : {}),
         ...(guard ? { commitProtocol: 'cas-v1', expectedCheckpointId: guard.expectedCheckpointId } : {})
       }
     })
