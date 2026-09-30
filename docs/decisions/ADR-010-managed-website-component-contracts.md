@@ -20,6 +20,10 @@ Extend the reviewed artifact model with a versioned managed-component contract. 
 
 Reuse the existing customer identity and server-derived scope. Resolve storage through existing authorized adapters. The contract never grants permissions, carries database credentials or names a raw customer-supplied backend endpoint as authority. Custom executable behaviour remains on the reviewed action/Worker path.
 
+The subsequent product discussion fixes customer-owned database storage as a requirement. Customer content, form definitions/entries, audience records and operational settings use that database as their authority. Scoped object storage may hold media/published artifacts referenced by customer-owned metadata. Platform identity, deployment authorization and platform billing remain explicitly separate control-plane services. Existing native agency data needs an adapter/cutover plan; it is not automatically the source for the new customer CMS.
+
+Apply the contract to editorial capabilities as well as operational forms: blog posts, galleries and other collections need typed fields, media/relationship bindings, editorial permissions and publication history. Distinguish team roles, visitor membership, marketing consent and paid entitlements. See [CMS standards](../page-studio/customer-cms-standards.md) and [competitor research](../research/2026-09-30-website-cms-competitive-research.md) for scope and evidence. This clarification does not adopt an unvalidated runtime schema.
+
 Distinguish reusable definitions, installed component instances and page placements. Bind every accepted enquiry to stable instance identity and immutable schema/publication/configuration versions. Preserve records across page edits, component removal and compatible upgrades.
 
 Treat submission acceptance and external delivery as separate operations. Persist durable submission/event evidence, then dispatch notifications and outbound webhooks asynchronously with idempotency and visible status. Reuse Leads delivery ideas only after a scope and security review; do not assume that an existing adapter provides the new product boundary.
@@ -46,7 +50,7 @@ Treat submission acceptance and external delivery as separate operations. Persis
 
 ## Validation before acceptance
 
-1. Map existing form submission storage, scope and delivery paths; identify the canonical record and durable outbox boundary.
+1. Map existing form submission storage, scope and delivery paths; identify the customer-database canonical record and durable outbox boundary, including legacy migration/reconciliation and rollback.
 2. Prototype a form contract and one non-form contract using the current scoped collections and trusted admin renderer.
 3. Demonstrate owner login, isolated inbox, durable submission, webhook delivery status and version-compatible record reads.
 4. Prove foreign bindings/capabilities are rejected and partial provisioning cannot claim readiness.

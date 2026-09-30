@@ -6,6 +6,8 @@ This document records the discussion about a Squarespace/Wix/Base44-style websit
 
 Related design: [ADR-010: Managed component contracts](../decisions/ADR-010-managed-website-component-contracts.md). Entry point: [Page Studio documentation](../page-studio/README.md).
 
+Follow-up: [Squarespace, Wix, Framer and Gravity Forms research](2026-09-30-website-cms-competitive-research.md) and [customer CMS standards and delivery sequence](../page-studio/customer-cms-standards.md) incorporate the subsequent requests for a full website CMS, customer-owned databases, blogs/galleries, roles, memberships and newsletters. Where the initial brief left product scope open, these confirmed requirements take precedence; technical adapters remain to be validated.
+
 ## 1. Confirmed product requirements
 
 - Customers can build and operate a website without understanding prompts, Workers, database schemas or the agency dashboard.
@@ -16,6 +18,9 @@ Related design: [ADR-010: Managed component contracts](../decisions/ADR-010-mana
 - Enquiries can be pushed to configured external systems through outbound webhooks.
 - AI-created components must connect reliably to approved persistent storage and the customer management workspace. A generated visual form alone is not a complete functional component.
 - Content, AI-generated/uploaded media, components and operational management should feel like one website product. Existing image generation/model selection/credits remain a separate implemented capability; this brief does not reopen their billing design.
+- The CMS is the central website administration product: pages/navigation, media, forms/enquiries, blog and gallery posts, SEO, analytics and installed business capabilities. Page Studio is its visual editing tool.
+- Customer website content and operational records must come from that customer's own database. Scoped media files may use object storage with ownership/metadata in the customer database. Shared platform identity/deployment/billing authority is a separate control-plane boundary, not an alternative enquiry store.
+- Include owner/team invitations and roles, website visitor/member access, paid subscriptions and newsletter audiences with explicit consent. These are separate identities/permissions/lifecycles, even when one person participates in several.
 
 ## 2. Verified foundation and current gaps
 
@@ -76,19 +81,25 @@ Proposed first three complete journeys: **enquiries and quotes**, **bookings**, 
 
 ## 4. Customer login and management workspace
 
-Reuse the existing `/studio` sign-in and portal account model. An invited owner/team member signs in, sees assigned websites and opens the website's operational workspace. Public signup, custom product hostname/branding and accounts for a website's shoppers/visitors are separate scope decisions; they are not implied by an owner enquiry inbox.
+Reuse the existing `/studio` sign-in and portal account model. An invited owner/team member signs in, sees assigned websites and opens the website's operational workspace. Visitor/member accounts are now part of the confirmed broader scope, but remain distinct from owner/team login and the initial enquiry slice. Public owner self-signup and custom product hostname/branding still need design decisions.
 
 Proposed navigation:
 
 ```text
 My sites → Website
   Overview
-  Enquiries                  aggregated across permitted form instances
+  Pages and navigation
+  Content → Blog / Galleries / Other collections
+  Media
+  Enquiries and forms        aggregated across permitted form instances
   Components → Contact form
     Overview / Entries / Settings / Notifications / Integrations / Metrics / Activity
-  Content
-  Media
+  Contacts and newsletter audiences
+  Website members
+  Bookings / Orders / Paid subscriptions   when installed
+  SEO and analytics
   Team and access
+  Website settings / Integrations / Plan and AI credits
   Open page builder
 ```
 
@@ -138,7 +149,9 @@ Visual/page changes follow the existing draft/review/publication path. The desig
 
 ## 6. Storage, submission and provisioning behaviour
 
-Keep the existing native management authority and scoped content router/collection/runtime boundaries. The precise owner of new enquiry records and delivery outbox tables requires an implementation spike: inspect existing form storage and D1/collection semantics before selecting a store. This brief does not mandate one database or Worker per generated component, and sandbox filesystem state cannot be the source of truth.
+Keep the existing native management authority and scoped content router/collection/runtime boundaries. Customer-owned database storage is a confirmed requirement; the open question is the authorized adapter and transaction/outbox boundary, not whether to keep customer enquiries in shared agency tables. Inspect existing form storage and D1/collection semantics, legacy migration and active routing before implementation. This brief does not mandate one database or Worker per generated component, and sandbox filesystem state cannot be the source of truth.
+
+The follow-up source audit found legacy native assets, audit-derived submissions and analytics in `server/utils/pageStudio/siteOperations.ts`. These cannot become the new CMS's authoritative customer-data endpoints merely by changing the UI route. The [standards document](../page-studio/customer-cms-standards.md) records the existing D1/runtime foundation and remaining cutover work.
 
 Recommended submission path:
 
@@ -195,7 +208,7 @@ The component should expose health and actionable next steps: disconnected stora
 
 ## 10. Implementation backlog and acceptance gates
 
-All tasks below are **open**. Documentation completion does not complete an implementation task. The form/enquiry journey is the proposed first vertical slice.
+All tasks below are **open**. RND-01 has preliminary source findings in the standards document but is not complete. Documentation completion does not complete an implementation task. The form/enquiry journey is the proposed first vertical slice; IDs are stable identifiers, while the standards document specifies delivery order.
 
 | ID | Deliverable / dependencies | Required acceptance |
 | --- | --- | --- |
@@ -210,6 +223,11 @@ All tasks below are **open**. Documentation completion does not complete an impl
 | RND-09 | Guided enquiries/quotes template and end-to-end AI generation | Business brief produces working visual component + settings + inbox + approved actions; missing setup is explicit |
 | RND-10 | Bookings and online-sales journeys, then industry variations | Booking concurrency, payment/order authority and domain-specific readiness verified independently; no visual-only claim of completion |
 | RND-11 | Hosted acceptance, docs/marketing and release | Two isolated customers; mobile/keyboard paths; real login/submission/webhook/email tests in authorized test environments; production enablement recorded separately |
+| RND-12 | Customer-database pages/navigation/media integration and legacy reconciliation | Authoritative metadata, published artifact references and asset ownership agree; usage-aware deletion; existing pages and generated images remain accessible |
+| RND-13 | Rich content, blog/gallery publishing and SEO; depends on RND-02/RND-12 | Typed rich text/references, editorial roles, history, scheduling, public index/detail templates, ordered media and rendered SEO verified |
+| RND-14 | Team invitations and capability-based roles; basic read/write isolation required already by RND-03 | Invite expiry/revocation, role changes and owner continuity; content/design/publish/enquiry/integration/billing rights enforced server-side |
+| RND-15 | Contacts, newsletter consent and visitor/member access | Contact deduplication, purpose-specific consent, unsubscribe/suppression, member recovery and own-record access; visitor access never grants CMS access |
+| RND-16 | Customer paid memberships/subscriptions and self-service | Provider-verified events, entitlement changes, duplicate/out-of-order reconciliation, cancellation and expiry; distinct from marketing consent and platform AI credits |
 
 Cross-cutting tests: exact site/environment scoping; reader versus editor/integration-admin permissions; immutable submission data; bounded inputs; retries/concurrent edits; configuration upgrades; storage failure; queue failure; provider ambiguity; deletion/retention; preserved existing CMS, media, publication and QR/navigation behaviour.
 
@@ -222,7 +240,7 @@ Before any feature is described as live, record tested source, current main, dep
 - Definition/instance/placement reuse semantics and migration of existing forms without losing history.
 - Operational settings that apply immediately versus requiring a website publication; treatment of queued events after reconfiguration.
 - Supported redirect destination policy, webhook connector/egress strategy, retry limits and retention windows.
-- Invitation provisioning, optional future self-signup and future visitor/customer accounts.
+- Invitation provisioning and optional owner self-signup; visitor/member accounts are confirmed scope with identity-provider and access details still to be designed.
 - Email provider verification flow, sender ownership, consent handling and support escalation.
 - Initial template catalogue, languages/countries, metrics definitions and industry-specific acceptance.
 
