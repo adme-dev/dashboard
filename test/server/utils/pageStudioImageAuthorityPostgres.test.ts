@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { executeNativeImageOperation, executeStudioImageOperation } from '~~/server/utils/pageStudio/imageGenerationService'
 import { executeImageWorkerOperation } from '~~/server/utils/pageStudio/imageWorkerService'
 import { withImageGenerationAuthority } from '~~/server/utils/pageStudio/imageGenerationAuthority'
+import { withImageBillingAuthority } from '~~/server/utils/pageStudio/imageBillingAuthority'
 import { buildImageQuote } from '~~/server/utils/pageStudio/imageQuotes'
 import { persistImageQuote } from '~~/server/utils/pageStudio/imageQuoteStore'
 import type { ContentAuthorityRequest } from '~~/server/utils/pageStudio/businessContent'
@@ -89,6 +90,26 @@ describe.runIf(Boolean(url))('native image authority on PostgreSQL', () => {
     const rights = await withImageGenerationAuthority(request, false, async (_db, context) => ({ edit: context.canGenerate, purchase: context.canPurchase }), { runTransaction: transaction })
     expect(rights).toEqual({ edit: true, purchase: false })
     expect(await count()).toBe(1)
+  })
+  it('denies image purchases to an editor who is not a native billing owner', async () => {
+    const work = vi.fn()
+    await expect(withImageBillingAuthority(request, work, { runTransaction: transaction })).rejects.toMatchObject({ statusCode: 403 })
+    expect(work).not.toHaveBeenCalled()
+  })
+  it('admits a native billing owner with viewer membership independently of generation allowance', async () => {
+    await pool.query('UPDATE client_users SET role=\'admin\'')
+    await pool.query('UPDATE page_studio_site_memberships SET role=\'viewer\'')
+    await pool.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=0')
+    delete request.env.PAGE_STUDIO_IMAGE_CONFIG
+    const result = await withImageBillingAuthority(request, async (_db, context) => context.canPurchase, { runTransaction: transaction })
+    expect(result).toBe(true)
+  })
+  it('rolls back billing work if the native role is revoked before the final check', async () => {
+    await pool.query('UPDATE client_users SET role=\'admin\'')
+    await expect(withImageBillingAuthority(request, async (db) => {
+      await db.query('UPDATE client_users SET role=\'manager\'')
+    }, { runTransaction: transaction })).rejects.toMatchObject({ statusCode: 403 })
+    expect((await pool.query('SELECT role FROM client_users')).rows[0].role).toBe('admin')
   })
   it('allows a viewer to inspect costs but not create a quote', async () => {
     await pool.query('UPDATE page_studio_site_memberships SET role=\'viewer\'')

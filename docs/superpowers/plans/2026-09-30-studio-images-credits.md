@@ -91,11 +91,11 @@ expect(await balance()).toMatchObject({ balance: 100, reserved: 70, available: 3
 
 **Interfaces:** Server pack config `{id,version,currency,amountMinor,credits}`. A durable purchase intent binds customer/environment/pack/amount/currency before Stripe checkout. Stripe SDK verifies raw-body signature with configured webhook secret; paid event identity and exact intent values admit one journal grant. Refund/dispute events create immutable compensations and wallet restrictions.
 
-- [ ] Write tests for no credit on redirect, forged signature, unpaid/async delayed settlement, wrong amount/currency/customer, duplicate events, different events for same payment, reversal before fulfillment, partial/repeated refunds, dispute after credits spent, and cross-environment events. Expected balance for duplicate100-credit settlement is100, not200.
-- [ ] Use official Stripe SDK fetch/subtle crypto integration and provider idempotency keyed to persisted intent. Enforce `livemode:false`; live configuration fails closed for this release. Allowed success/cancel destinations come from configured application origin, never a request URL.
-- [ ] Fulfill only verified paid state; deduplicate both event and payment identity. Aggregate cumulative refunds monotonically to prevent double compensation. Freeze spending on disputed/reversed insufficient balances without deleting history. Explicitly reconcile out-of-order events.
-- [ ] Add owner/billing-only checkout, receipt/history, cancellation and pending settlement UI. Leave missing configuration visibly unavailable. Use Stripe test configuration if supplied through secret management; never request or print secrets in chat.
-- [ ] Run signature, PostgreSQL replay/order/concurrency and UI tests; commit `feat(studio): add verified test-mode credit top-ups`.
+- [x] Write tests for no credit on redirect, forged signature, unpaid/async delayed settlement, wrong amount/currency/customer, duplicate events, different events for same payment, reversal before fulfillment, partial/repeated refunds, dispute after credits spent, and cross-environment events. Expected balance for duplicate100-credit settlement is100, not200.
+- [x] Use official Stripe SDK fetch/subtle crypto integration and provider idempotency keyed to persisted intent. Enforce `livemode:false`; live configuration fails closed for this release. Allowed success/cancel destinations come from configured application origin, never a request URL.
+- [x] Fulfill only verified paid state; deduplicate both event and payment identity. Aggregate cumulative refunds monotonically to prevent double compensation. Freeze spending on disputed/reversed insufficient balances without deleting history. Explicitly reconcile out-of-order events.
+- [x] Add owner/billing-only checkout, receipt/history, cancellation and pending settlement UI. Leave missing configuration visibly unavailable. Use Stripe test configuration if supplied through secret management; never request or print secrets in chat.
+- [x] Run signature, PostgreSQL replay/order/concurrency and UI tests; commit `feat(studio): add verified test-mode credit top-ups`.
 
 ### Task 6: Integration, public documentation and release evidence
 

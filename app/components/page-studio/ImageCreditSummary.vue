@@ -65,13 +65,9 @@ function older() {
         title="Some credits are reserved"
         description="These belong to requests in progress or being checked. They stay reserved until a saved image or a confirmed failure is recorded."
       />
-      <p class="text-sm text-muted">
-        <template v-if="data.canPurchase">
-          Credit top-ups will appear here when billing is configured.
-        </template>
-        <template v-else>
-          Only your billing owner can add credits. You can view image activity for this website.
-        </template>
+      <PageStudioImageCreditTopUp v-if="data.canPurchase" :site-id="siteId" @settled="refresh()" />
+      <p v-else class="text-sm text-muted">
+        Only your billing owner can add credits. You can view image activity for this website.
       </p>
       <div class="space-y-4">
         <h2 class="text-lg font-semibold text-highlighted">

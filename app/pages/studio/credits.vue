@@ -5,7 +5,8 @@ definePageMeta({ layout: 'studio', middleware: 'studio-auth' })
 useHead({ title: 'Image credits | Page Studio' })
 const page = ref(1)
 const pageSize = 100
-const selected = ref('__choose__')
+const route = useRoute()
+const selected = ref(typeof route.query.site === 'string' ? route.query.site : '__choose__')
 const { data, pending, error, refresh } = await useFetch<{ sites: PageStudioSiteSummary[], total: number }>('/api/portal/page-studio/sites', {
   query: computed(() => ({ page: page.value, pageSize })),
   default: () => ({ sites: [], total: 0 })
