@@ -1,13 +1,17 @@
+import { assertRuntimeFeatureAdmission, assertRuntimeFeatureForms } from '~~/server/utils/pageStudio/runtimeFeatureAdmission'
+import { activateRuntimeFeature } from '~~/server/utils/pageStudio/runtimeFeatureActivation'
+import { nativeFeaturePublisher } from '~~/server/utils/pageStudio/releaseFeatureHttp'
+import { loadApprovedPageStudioReleaseCheckpoint, PageStudioReleaseCheckpointError } from '~~/server/utils/pageStudio/releaseCheckpoint'
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
 import { runtimeTargetPolicy } from '~~/server/utils/pageStudio/runtimeTarget'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
 import { withPageStudioPublishAuthority } from '~~/server/utils/pageStudio/publishAuthority'
 import { preparePageStudioPublishPrincipal } from '~~/server/utils/pageStudio/publishHttp'
-import { PageStudioReleaseCheckpointError } from '~~/server/utils/pageStudio/releaseCheckpoint'
 import { activatePageStudioRuntimeRelease } from '~~/server/utils/pageStudio/runtimePublishing'
 import {
   preparePageStudioRuntimeRelease,
+  requiresPublishedRuntimeIntegration,
   resolveRuntimeRenderer,
   type RuntimeContentBucket
 } from '~~/server/utils/pageStudio/runtimeReleases'
@@ -40,10 +44,21 @@ export default eventHandler(async (event) => {
     }
     const clientId = await resolveAgencyPageStudioSiteClient(tenantId, siteId.data)
     const scope = { tenantId, clientId, siteId: siteId.data }
+    const preparation = { bucket, environment: body.data.environment, renderer, scope, versionId: body.data.versionId }
+    const checkpoint = await loadApprovedPageStudioReleaseCheckpoint({ bucket, scope, versionId: body.data.versionId })
+    if (requiresPublishedRuntimeIntegration(checkpoint.manifest as Record<string, unknown>)) {
+      assertRuntimeFeatureAdmission(preparation, env)
+      assertRuntimeFeatureForms(checkpoint.manifest as Record<string, unknown>)
+      const principal = await nativeFeaturePublisher(event, siteId.data)
+      const release = await activateRuntimeFeature({ actorId: user.id, environment: body.data.environment,
+        hostname: body.data.hostname, expectedActiveReleaseId: body.data.expectedActiveReleaseId,
+        idempotencyKey: idempotencyKey.data, preparation }, principal, { policy })
+      return { release }
+    }
     const principal = await preparePageStudioPublishPrincipal(event, { tenantId, user })
     const prepared = await preparePageStudioRuntimeRelease({
-      bucket, environment: body.data.environment, renderer, scope, versionId: body.data.versionId
-    })
+      ...preparation
+    }, { loadCheckpoint: async () => checkpoint })
     const release = await activatePageStudioRuntimeRelease({
       actorId: user.id,
       environment: body.data.environment,

@@ -9903,6 +9903,65 @@ async function verifyInstances(checkpoint2, artifacts, selected) {
   return instances;
 }
 
+// packages/protocol/src/astro-runtime-feature.ts
+var AstroRuntimeFeatureReferenceSchema = object({
+  formatVersion: literal(1),
+  recovery: object({
+    bytes: number2().int().positive().max(BUILDER_RECOVERY_MAX_BYTES),
+    key: string2().regex(
+      /^builder-recovery\/v1\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/
+    ),
+    sha256: ReleaseSha256Schema,
+  }).strict(),
+  releaseDigest: ReleaseSha256Schema,
+}).strict();
+var encoder4 = new TextEncoder();
+async function bindRecovery(candidate, rawBundle) {
+  const release = await verifyAstroRuntimeRelease(candidate);
+  const proof = await verifyBuilderRecoveryBundle(rawBundle);
+  const { contentScope, checkpoint: checkpoint2 } = proof.bundle;
+  if (
+    contentScope.tenantId !== release.scope.tenantId ||
+    contentScope.clientId !== release.scope.clientId ||
+    contentScope.businessId !== release.scope.clientId ||
+    contentScope.siteId !== release.scope.siteId ||
+    checkpoint2.sha256 !== release.versionDigest ||
+    encoder4.encode(checkpoint2.bytes).byteLength !== release.snapshot.bytes
+  ) {
+    throw new Error("Runtime feature recovery identity mismatch");
+  }
+  const reference = AstroRuntimeFeatureReferenceSchema.parse({
+    formatVersion: 1,
+    recovery: {
+      bytes: encoder4.encode(canonicalJson(proof.bundle)).byteLength,
+      key: `builder-recovery/v1/${await sha256Hex(canonicalJson(contentScope))}/${release.versionDigest}/${proof.digest}.json`,
+      sha256: proof.digest,
+    },
+    releaseDigest: await runtimeReleaseDigest(release),
+  });
+  return { ...proof, reference };
+}
+async function createAstroRuntimeFeatureReference(release, bundle) {
+  return (await bindRecovery(release, bundle)).reference;
+}
+async function verifyAstroRuntimeFeatureRecovery(candidate, release, bytes) {
+  const reference = AstroRuntimeFeatureReferenceSchema.parse(candidate);
+  if (
+    bytes.length > BUILDER_RECOVERY_MAX_BYTES ||
+    encoder4.encode(bytes).byteLength !== reference.recovery.bytes
+  ) {
+    throw new Error("Runtime feature recovery byte length mismatch");
+  }
+  const proof = await bindRecovery(release, JSON.parse(bytes));
+  if (
+    canonicalJson(proof.bundle) !== bytes ||
+    canonicalJson(proof.reference) !== canonicalJson(reference)
+  ) {
+    throw new Error("Runtime feature recovery reference mismatch");
+  }
+  return proof;
+}
+
 // packages/protocol/src/builder-graph-verifier.ts
 async function createAstroCompilerBuildIdentity(input, admittedToolchain) {
   return await createAstroBuildIdentity(input, admittedToolchain);
@@ -10104,6 +10163,7 @@ var transitionRequest = checkpointRequest
     candidateDigest: ReleaseSha256Schema,
     candidateId: ReleaseScopedIdSchema,
     preparations: array(preparationRef).max(32),
+    privacyReviewDigest: ReleaseSha256Schema.optional(),
   })
   .strict();
 async function loadArtifacts(raws, scope) {
@@ -10604,9 +10664,26 @@ async function checkPreparedItem(
     if (before.kind !== "collection") {
       fail("GRAPH_BASE", "Missing accepted definition");
     }
-    if (
-      classifyCollectionChange(before.definition, item.body) !== "compatible"
-    ) {
+    const classification = classifyCollectionChange(
+      before.definition,
+      item.body
+    );
+    const visibilityChanges = before.definition.fields.filter((field) =>
+      item.body.fields.some(
+        (next) => next.id === field.id && next.visibility !== field.visibility
+      )
+    );
+    const reviewedReduction =
+      classification === "review-required" &&
+      request.privacyReviewDigest === candidate.digest &&
+      visibilityChanges.length > 0 &&
+      visibilityChanges.every(
+        (field) =>
+          field.visibility === "public" &&
+          item.body.fields.find((next) => next.id === field.id)?.visibility ===
+            "private"
+      );
+    if (classification !== "compatible" && !reviewedReduction) {
       fail(
         "GRAPH_SCHEMA_CHANGE",
         "Schema migration or visibility review required"
@@ -10728,6 +10805,65 @@ async function checkCandidate(input, request, artifacts) {
     }
   }
   return { candidate, candidateDigest, checked };
+}
+async function upgradeBuilderComponentInstances(input) {
+  const scope = ContentScopeSchema.parse(input.scope);
+  const manifest = SiteManifestSchema.parse(structuredClone(input.manifest));
+  if (manifest.id !== scope.siteId) {
+    fail("GRAPH_SCOPE", "Website scope mismatch");
+  }
+  if (manifest.schemaVersion === 2) {
+    for (const binding of [
+      manifest.builderLibrary,
+      manifest.builderApplication,
+      manifest.contentBinding,
+    ]) {
+      if (binding) {
+        requireEqual(binding.scope, scope, "GRAPH_SCOPE");
+      }
+    }
+  }
+  const changes = array(BuilderArtifactPinSchema).max(32).parse(input.changes);
+  const artifacts = await loadArtifacts(input.artifactBytes, scope);
+  const components = /* @__PURE__ */ new Map();
+  for (const pin2 of changes) {
+    if (pin2.kind !== "component") {
+      continue;
+    }
+    const artifact = requireArtifact(artifacts, pin2);
+    if (artifact.kind !== "component" || components.has(pin2.id)) {
+      fail("GRAPH_ARTIFACT", "Invalid component upgrade");
+    }
+    components.set(pin2.id, artifact);
+  }
+  const visit = async (node) => {
+    const reference = node.builderInstance;
+    const artifact = reference && components.get(reference.pin.id);
+    if (reference && artifact && reference.pin.version !== artifact.version) {
+      const { change } = await describeBuilderArtifact(artifact);
+      return {
+        ...(await instantiateBuilderComponent(
+          artifact,
+          reference.values,
+          node.id
+        )),
+        builderInstance: {
+          ...reference,
+          pin: {
+            id: change.id,
+            kind: "component",
+            sha256: change.sha256,
+            version: change.version,
+          },
+        },
+      };
+    }
+    return { ...node, children: await Promise.all(node.children.map(visit)) };
+  };
+  for (const page of manifest.pages) {
+    page.components = await Promise.all(page.components.map(visit));
+  }
+  return manifest;
 }
 async function verifyBuilderApplicationTransition(input) {
   return await guarded(async () => {
@@ -11019,15 +11155,40 @@ async function verifyNativeAstroRuntimeRelease(candidate) {
 function nativeAstroRuntimeContentPrefix(scope) {
   return runtimeContentPrefix(scope);
 }
+async function createNativeAstroRuntimeFeatureReference(release, bundle) {
+  return await guarded(() =>
+    createAstroRuntimeFeatureReference(release, bundle)
+  );
+}
+async function verifyNativeAstroRuntimeFeatureRecovery(
+  reference,
+  release,
+  bytes
+) {
+  return await guarded(async () => {
+    const proof = await verifyAstroRuntimeFeatureRecovery(
+      reference,
+      release,
+      bytes
+    );
+    return {
+      ...proof,
+      bundle: JsonValueSchema.parse(proof.bundle),
+      checkpoint: JsonValueSchema.parse(proof.checkpoint),
+    };
+  });
+}
 export {
   BuilderGraphVerificationError,
   createAstroCompilerBuildIdentity,
+  createNativeAstroRuntimeFeatureReference,
   inspectBuilderActionEffectTargets,
   nativeAstroRuntimeContentPrefix,
   parseBuilderActionRuntimeResultJson,
   parseBuilderArtifactJson,
   projectBuilderActionRecord,
   selectNativeAstroCompilerGeneration,
+  upgradeBuilderComponentInstances,
   verifyAstroCompilerBuildIdentity,
   verifyAstroCompilerReleaseReceipt,
   verifyBuilderActionInput,
@@ -11039,5 +11200,6 @@ export {
   verifyBuilderFormActionDescriptor,
   verifyBuilderPublishedFormInput,
   verifyBuilderReleaseRecovery,
+  verifyNativeAstroRuntimeFeatureRecovery,
   verifyNativeAstroRuntimeRelease,
 };

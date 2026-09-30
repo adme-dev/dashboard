@@ -1,7 +1,9 @@
 <script setup lang="ts">
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, alias: ['/studio/verify'] })
 
 const route = useRoute()
+const studioEntry = computed(() => route.path === '/studio/verify')
+const signInPath = computed(() => studioEntry.value ? '/studio' : '/portal/login')
 const { verifyMagicLink, fetchUser } = usePortalAuth()
 const token = ref('')
 const ready = ref(false)
@@ -55,7 +57,7 @@ async function handleVerify() {
         Email verified
       </p>
       <h1 class="text-[28px] font-[450] tracking-[-0.02em] text-[#121317] dark:text-white">
-        Continue to your portal
+        {{ studioEntry ? 'Continue to Page Studio' : 'Continue to your portal' }}
       </h1>
       <p class="mx-auto mt-3 max-w-sm text-[15px] leading-6 text-[#45474D] dark:text-white/60">
         Confirm this browser to finish signing in. This protects your link from automated email scanners.
@@ -76,7 +78,7 @@ async function handleVerify() {
         <UAlert
           v-else-if="error || !token"
           :title="error || 'Sign-in link unavailable'"
-          description="Request a new secure link from the client portal login page."
+          :description="`Request a new secure link from the ${studioEntry ? 'Page Studio' : 'client portal'} sign-in page.`"
           color="error"
           icon="i-lucide-link-2-off"
         />
@@ -92,12 +94,12 @@ async function handleVerify() {
           :disabled="loading"
           @click="handleVerify"
         >
-          Continue to portal
+          {{ studioEntry ? 'Continue to My sites' : 'Continue to portal' }}
         </UButton>
 
         <UButton
           v-if="!completing"
-          to="/portal/login"
+          :to="signInPath"
           block
           variant="ghost"
           color="neutral"

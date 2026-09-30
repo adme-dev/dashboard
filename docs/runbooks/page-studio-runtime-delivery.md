@@ -48,4 +48,133 @@ Migration434 applied and read back in production and isolated preview. Private r
 
 Always pin the identity printed by the actual upload, not an earlier dry-run: Astro generates a new server-island encryption key by default on builds ([Astro documentation](https://docs.astro.build/en/guides/server-islands/)). Existing generations are retained rather than rebuilt in place.
 
-Public routing and customer canary remain pending. No customer-domain launch is included: Fantasy Limo has no ready production domain.
+The initial pending routing/canary work above was subsequently completed by
+Dashboard main `a0908aaa8dad86a5c233b97f0a7f78bf1bdb3d55` and the ordinary Astro
+rollout. Studio main before the CMS increment is
+`8ede9b215e443b9acc64fa21ad09b79393546872`. No customer-domain launch is included.
+
+## Generated CMS components: separate publication admission
+
+Runtime v1 supports ordinary saved pages. It does not implement the build-bound
+native feature seal/current-CMS projection contract used by static feature
+delivery. A cached editor component tree is not public CMS authority.
+
+The CMS increment rejects nonempty builder libraries, selected collection/action
+pins, any nested saved builder instance and generated action-form mappings during
+runtime release preparation, before writing retained content. The saved draft is
+preserved. Authenticated private previews remain separate. Matching Studio guards
+reject unsupported public HTML/form projections and exclude older unverified cache
+entries. This prevents silently publishing stale CMS field visibility.
+
+Local verification: 39 focused native preparation/route/projection cases and owned
+ESLint pass. No migration is required. This entry records local implementation;
+deploying the guard does not activate generated components. Existing deployed
+renderer generations remain unchanged until their own reviewed rollout.
+
+Before activation, implement runtime-release-bound recovery/seals and native
+hostname/environment/pointer-epoch admission, project current scoped records, and
+rematerialize pinned components inside Astro. Rollback retains newer CMS records
+and current visibility. Verify two scopes and revoked/private/archived data. Do not
+enable generated action forms or hosted feature AI to bypass these requirements.
+## CMS recovery identity preparation (local increment)
+
+`runtimeFeatureRecovery.ts` retains canonical generated component/collection
+recovery bytes through the Studio-generated native verifier. The reference binds
+the complete runtime release digest, including renderer and environment. Existing
+objects are verified, never repaired by overwriting; new writes require verified
+readback. No live record heads are retained.
+
+This utility is not called by the public publish route yet. The internal
+`prepareApprovedRuntimeFeature` coordinator now checks the original native login,
+publish permission, accepted CMS graph and exact approved version before storage
+work, then rechecks the same authority afterward. It reuses the static path's
+recovery construction without compiling a static build. A successful return is
+preparation evidence only. Activation still needs atomic binding to the current
+host/environment/pointer epoch and fresh CMS projection for public responses.
+
+Local verification on 28 September: five new preparation tests passed against a
+disposable localhost PostgreSQL database, covering successful/idempotent
+preparation, absence of build/release writes, rejection before storage for an
+unapproved version, and approval/permission/login revocation during retention.
+The complete feature-publication PostgreSQL suite passed 82 tests with one
+existing skipped test. No production database or client content was touched.
+Log: `/private/tmp/dashboard-runtime-feature-postgres.log`.
+
+The ten-second deadline applies to recovery retention/readback, not the earlier
+recovery loading and snapshot/media materialization stages. HTTP integration
+must supply an overall request deadline. The CMS publication admission guard
+remains in place. This is not evidence that generated CMS components or actions
+are enabled in a deployed site.
+
+## Runtime CMS publication (migration435)
+
+The runtime CMS coordinator prepares exact approved recovery, then stores the
+release, immutable seal, hostname pointer and epoch activation atomically. Public
+projection uses current accepted record heads and field visibility under current
+site/client/package authority. Explicit restore creates a fresh activation and
+preserves current records; historical retries cannot revive revoked grants.
+
+Apply `435_page_studio_runtime_features.sql` before deploying this code: public
+host resolution references both new tables, including ordinary/static hosts.
+The private machine routes are `published/runtime/page` and
+`published/runtime/forms` under `/internal/page-studio/`. Ordinary lead forms
+remain supported; generated action forms are not enabled by this work.
+
+Coordinate the reviewed Dashboard source with the Studio Delivery worker and
+immutable Astro renderer generation. Complete synthetic scoped-account and
+compiled runtime acceptance before enabling customer CMS publication. The paired
+Studio research record is `docs/research/2026-09-28-runtime-cms-publication.md`.
+
+Before deploying Dashboard for CMS acceptance, verify that its target environment
+sets `PAGE_STUDIO_ACTION_RUNTIME_DIGEST` to the verified deployed Studio action
+runtime identity. Compare it with Studio's
+`services/sandbox-worker/src/feature-action-runtime.ts` pinned digest and
+`services/action-runtime/tooling/runtime-identity.mjs` verification. Declare the
+non-secret digest in the matching `wrangler.toml` environment's `vars` section:
+Direct Upload replaces dashboard-managed plaintext variables with this file's
+configuration. A dashboard-only setting will be lost during deployment. Read back the
+deployed Dashboard setting; the local PostgreSQL fixtures supply it explicitly.
+The native CMS graph coordinator requires this prerequisite even for candidates
+containing only collections and components. Missing or malformed configuration
+returns `503 CMS_GRAPH_RUNTIME_UNAVAILABLE` before graph acceptance, surfaced by
+the editor as a control-plane `502`. Private preparation objects may already
+exist; they do not acknowledge acceptance or change the current library. This
+setting does not enable generated action forms or CMS publication. Configure only
+the reviewed target environment; do not supply a fallback or activate production
+as part of synthetic staging acceptance.
+
+CMS runtime publication defaults to disabled. Configure the operator-owned
+`PAGE_STUDIO_RUNTIME_CMS_ADMISSIONS` for an explicitly authorized synthetic
+acceptance site only after verifying the deployed renderer's identity. Customer
+admission additionally requires completed scoped hosted acceptance. It is a JSON
+array of exact site, publication environment and renderer identities:
+
+```json
+[{"scope":{"tenantId":"page-studio-staging","clientId":"10000000-0000-4000-8000-000000000001","siteId":"a27135dc-1374-475c-a56d-7e60310425bb"},"environment":"staging","renderer":{"name":"astro-runtime","generation":"<verified-generation>","codeDigest":"<verified-64-character-sha256>","assetsDigest":"<verified-64-character-sha256>"}}]
+```
+
+Replace every renderer placeholder with verified deployed values. Missing,
+malformed or mismatched entries reject CMS publication before content retention
+or pointer changes. Keep production unset until the integrated production
+renderer and customer rollout are approved. Ordinary website publication remains
+available. CMS rollback requires an exact admission entry for the retained
+renderer as well as its existing retained-generation configuration; keep both
+while rollback is supported. Changing the current renderer does not admit older
+generations automatically. Generated action forms are rejected before retention
+and publication even for admitted renderers; ordinary native lead forms remain
+supported.
+
+Production Dashboard can project a staging pointer only through its owned,
+provider-verified ready staging host. The isolated staging deployment retains its
+explicit synthetic canary exception (`PAGE_STUDIO_RUNTIME_STAGING_CANARY` and
+`integrations.synthetic=true`); it cannot project production pointers. The
+exception never widens production Dashboard hostname authority.
+
+28 September local verification: full Dashboard build passes (25,387,341 raw
+Worker bytes); native feature PostgreSQL suite passes 109 tests with one existing
+skip, including restore preserving records created after publication. Native
+route/deadline cases pass. Global typecheck retains unrelated baseline errors.
+Migration435 SHA `5640066fa7c07e1a7b7efdd2a2d1817f2718e9ade94e71e4bd46a5d875ea81f6`
+was applied and read back on production and isolated staging; scoped site
+checkpoint/version/release pointers were unchanged. No CMS publication or customer
+draft write was performed. Hosted deployment and scoped acceptance remain open.

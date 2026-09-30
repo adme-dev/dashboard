@@ -5,8 +5,8 @@
     "astroBuildIdentityFixtures.json": "aab6df58afb3eab789e92ab582ceb9cd9c731a30bea96bfb47f4356f20b8751f",
     "builderGraphFixtures.json": "5e55191f0940e2be57d20c8477e221e105d8ad87d511b2db93db67548cd2dcca",
     "builderGraphLicenses.txt": "8d5d58fee24c22b7ca431fdd84693b6487f0a338cdad215d6f86e2465fb0e70e",
-    "builderGraphVerifier.d.mts": "7fd2f2bf399c5dff5aa043e0908f648ac45d38d4f67757fcee9649e893ed8767",
-    "builderGraphVerifier.mjs": "d458bc20da920bb3102e5d42c3adf49cc2f4281b30bc34106dc8873602d17ff1"
+    "builderGraphVerifier.d.mts": "fae6e748e7dbe41cdf596b8c7407fbf8c171dceb76914873ee8f4f531876725b",
+    "builderGraphVerifier.mjs": "ef78ea269eee13d2409743470e0bcd427483cb25bf6fb7e3be83ec14874c3784"
   },
   "generator": "scripts/generate-native-builder-verifier.mjs",
   "options": {
@@ -19,7 +19,7 @@
     "target": "es2022",
     "treeShaking": true
   },
-  "sourceDigest": "8c15b17c8bb989abe53bd3c2d3d21cc2f01b434476d52f2622a2e4ba4fc4dfb4",
+  "sourceDigest": "356aa3bdc204beb277b68af6e0e1466401d3742112bc3b659ca0dc3b2907254f",
   "sources": [
     {
       "path": "LICENSE",
@@ -370,6 +370,10 @@
       "sha256": "9f95212d19b43d3ab8300569d2042dfd4f3c04ea6190557771ffa8376958d32e"
     },
     {
+      "path": "packages/protocol/src/astro-runtime-feature.ts",
+      "sha256": "4ecab380d9a7565cfb5a409494058eee32c2419448aa0f952602184cbe8bc19d"
+    },
+    {
       "path": "packages/protocol/src/astro-runtime-release.ts",
       "sha256": "3df320a3f34d0882c6a1b50983d1cb2e48cd24ab9f77dafc9ae241df2445ccd0"
     },
@@ -383,7 +387,7 @@
     },
     {
       "path": "packages/protocol/src/builder-artifact.ts",
-      "sha256": "c8df8a3709e3097588f87b0010a14196b2f3fa4ddda89e56e59bd9e0d74aaf08"
+      "sha256": "0e4ab181eb1fdc709ebad794ea866110858e839992f4f52e6f5e516379fe363a"
     },
     {
       "path": "packages/protocol/src/builder-feature.ts",
@@ -399,7 +403,7 @@
     },
     {
       "path": "packages/protocol/src/builder-graph-verifier.ts",
-      "sha256": "75b9a9b8946c956de5635a355728132683c3c6b54c02b2a046b105de6394e5c9"
+      "sha256": "d258008dcb6cd0e9360efd4ed7b11fd3411ba0e364ee18dc172339795c59f592"
     },
     {
       "path": "packages/protocol/src/builder-instance-reference.ts",
@@ -511,7 +515,7 @@
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "d655c6d2af2fa2deb8e4bf8e37eb39e4958ddb8c112eaf29d465bf067b23454d"
+      "sha256": "8ab4aec2417c6f5a7dd0390a73e8deecaa05aa520a5a1f8922e2810b98c0da08"
     },
     {
       "path": "scripts/generate-native-builder-verifier.mjs",

@@ -11,6 +11,7 @@ import { authorizePageStudioContentAttachment, withPageStudioContentAttachmentAu
 import { preparePageStudioContentAttachment } from '~~/server/utils/pageStudio/contentAttachmentIntent'
 import { revokePageStudioLoginSession } from '~~/server/utils/pageStudio/loginSessions'
 import { createJwt } from '~~/server/utils/auth'
+import { handleContentAttachmentCompletion } from '../../../workers/page-studio-management/src/contentAttachmentCompletion'
 import fixture from '../../fixtures/pageStudio/history-manifest.json'
 
 // Every production query runs against the disposable database. An accidental
@@ -222,6 +223,22 @@ describe.runIf(Boolean(databaseUrl))('Native CMS attachment intent on PostgreSQL
       expect(await c.read()).toEqual(c.completion)
       expect(await c.count()).toBe(1)
       expect(await snapshot()).toEqual(before)
+    })
+    it('reads only the exact committed receipt through the private authority in its own scope', async () => {
+      const c = await preparation()
+      const rpc = (completion = c.completion) => handleContentAttachmentCompletion(
+        { expectedEnvironment: 'staging', completion }, 'staging',
+        async (sql, params) => (await observer.query(sql, params)).rows[0] ?? null
+      )
+      expect(await rpc()).toEqual({ ok: true, value: null })
+      await commitPageStudioContentAttachment(c.intent, 'staging', { ...await options(), binding: c.binding })
+      expect(await rpc()).toEqual({ ok: true, value: c.completion })
+      for (const key of ['tenantId', 'clientId', 'siteId'] as const) {
+        expect(await rpc({ ...c.completion, scope: { ...c.completion.scope, [key]: randomUUID() } })).toEqual({ ok: true, value: null })
+      }
+      expect(await rpc({ ...c.completion, proofDigest: 'f'.repeat(64) })).toMatchObject({ ok: false, error: { statusCode: 403 } })
+      expect(await c.count()).toBe(1)
+      expect(await rpc()).toEqual({ ok: true, value: c.completion })
     })
     it('denies logout during coordinator preparation read before native completion', async () => {
       const c = await preparation()

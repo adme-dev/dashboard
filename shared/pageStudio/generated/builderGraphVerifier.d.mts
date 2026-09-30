@@ -164,6 +164,16 @@ export declare function verifyBuilderArtifactSet(
 export declare function verifyBuilderApplicationCheckpoint(
   input: BuilderGraphCheckpointInput
 ): Promise<BuilderGraphProof>;
+/** Rebuild changed saved instances from pinned templates, keeping customer
+ * property values and stable IDs. This grants no authority: the resulting
+ * checkpoint still requires the complete native graph transaction. Forms and
+ * action mappings are deliberately left for independent binding validation. */
+export declare function upgradeBuilderComponentInstances(input: {
+  manifest: unknown;
+  scope: unknown;
+  artifactBytes: string[];
+  changes: unknown;
+}): Promise<unknown>;
 /** No I/O or grants. HOST configuration supplies expectedRuntimeDigest separately
  * from the candidate; native acceptance remains an independent transaction. */
 export declare function verifyBuilderApplicationTransition(
@@ -397,3 +407,27 @@ export declare function nativeAstroRuntimeContentPrefix(scope: {
   siteId: string;
   tenantId: string;
 }): string;
+export interface NativeAstroRuntimeFeatureReference {
+  formatVersion: 1;
+  recovery: {
+    key: string;
+    bytes: number;
+    sha256: string;
+  };
+  releaseDigest: string;
+}
+/** Byte identity only: native approval, activation and current CMS projection
+ * must be proved separately. No static build ID or human grant is fabricated. */
+export declare function createNativeAstroRuntimeFeatureReference(
+  release: unknown,
+  bundle: unknown
+): Promise<NativeAstroRuntimeFeatureReference>;
+export declare function verifyNativeAstroRuntimeFeatureRecovery(
+  reference: unknown,
+  release: unknown,
+  bytes: string
+): Promise<
+  BuilderGraphReleaseRecoveryProof & {
+    reference: NativeAstroRuntimeFeatureReference;
+  }
+>;

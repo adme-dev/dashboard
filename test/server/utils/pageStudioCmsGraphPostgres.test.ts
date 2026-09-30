@@ -10,6 +10,7 @@ import { beginCmsAdoption } from '~~/server/utils/pageStudio/cmsAdoption'
 import { acceptManagedFeatureCandidate } from '~~/server/utils/pageStudio/featureCandidateApplication'
 import { CmsPreparationSchema } from '~~/shared/pageStudio/cmsManaged'
 import fixtureJson from '../../fixtures/pageStudioCmsGraph.json'
+import privacyFixtureJson from '../../fixtures/pageStudioCmsPrivacyGraph.json'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import type { ContentAuthorityRequest } from '~~/server/utils/pageStudio/businessContent'
 import type { PageStudioControlQueryClient } from '~~/server/utils/pageStudio/controlStore'
@@ -166,14 +167,23 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
       }
     }
   })
-  async function fixture() {
-    const f = structuredClone(fixtureJson)
+  async function fixture(source: typeof fixtureJson | typeof privacyFixtureJson = fixtureJson) {
+    const f = structuredClone(source)
+    // Seed this accepted graph as the disposable adoption baseline, without
+    // inventing a predecessor row outside the fixture's retained history.
+    f.base.application.manifest.previousApplicationId = null
+    f.base.application.digest = await collectionDigest(f.base.application.manifest)
+    f.request.expectedApplication.digest = f.base.application.digest
     const actor = { kind: 'agency-user', userId: request.actor.actorId, loginSessionHash: request.login.tokenHash }
     const freezeBody = { createdAt: '2026-09-22T00:00:00.000Z', request: { formatVersion: 1, scope, actor, target: f.base.target, adoptionId: 'adoption_a' }, state: 'frozen' }
     const freeze = { ...freezeBody, digest: await collectionDigest(freezeBody) }
     const prep = JSON.parse(f.preparations[0]!.requestBytes)
     prep.actor = actor
     prep.freezeDigest = freeze.digest
+    for (const entry of f.base.schemas) entry.pin.freezeDigest = freeze.digest
+    for (const item of prep.items) {
+      if (item.expectedBase) item.expectedBase.freezeDigest = freeze.digest
+    }
     const receipt = JSON.parse(f.preparations[0]!.receiptBytes)
     receipt.freezeDigest = freeze.digest
     for (const pin of receipt.items) pin.freezeDigest = freeze.digest
@@ -186,6 +196,13 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
     await observer.query('UPDATE page_studio_sites SET current_checkpoint_id=$1 WHERE id=$2', [f.base.checkpoint.id, scope.siteId])
     await observer.query(`INSERT INTO page_studio_cms_scopes(scope_key,tenant_id,client_id,business_id,site_id,environment,state,adoption_id,active_generation,target,freeze_digest) VALUES($1,$2,$3,$4,$5,$6,'legacy','adoption_a',$7,$8,$9)`, [key, scope.tenantId, scope.clientId, scope.businessId, scope.siteId, scope.environment, f.base.generation, f.base.target, freeze.digest])
     await observer.query(`INSERT INTO page_studio_application_versions(scope_key,generation,id,digest,manifest,adoption_id) VALUES($1,$2,$3,$4,$5,'adoption_a')`, [key, f.base.generation, f.base.application.manifest.applicationId, f.base.application.digest, f.base.application.manifest])
+    const baseObjects = f.base.schemas.map(entry => ({ pin: entry.pin, body: JSON.parse(entry.bodyBytes), schema: null, head: false, actorId: actor.userId, createdAt: receipt.createdAt }))
+    for (const entry of f.base.schemas) {
+      await observer.query(`INSERT INTO page_studio_cms_objects(scope_key,generation,id,kind,collection_id,record_id,logical_version,storage_pin,actor_id,created_at,adoption_id)
+        VALUES($1,$2,$3,'schema',$4,'',$5,$6,$7,$8,'adoption_a')`, [key, f.base.generation, entry.objectId, entry.pin.collectionId, entry.pin.version, entry.pin, actor.userId, receipt.createdAt])
+      await observer.query(`INSERT INTO page_studio_cms_application_schemas(scope_key,generation,application_id,collection_id,object_id)
+        VALUES($1,$2,$3,$4,$5)`, [key, f.base.generation, f.base.application.manifest.applicationId, entry.pin.collectionId, entry.objectId])
+    }
     await observer.query(`UPDATE page_studio_cms_scopes SET state='managed',current_application_id=$2 WHERE scope_key=$1`, [key, f.base.application.manifest.applicationId])
     const texts = new Map<string, string>()
     const hash = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), x => x.toString(16).padStart(2, '0')).join('')
@@ -230,7 +247,14 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
       },
       readManagedCmsOperation: async () => ({ request: prep, receipt }),
       readManagedCmsFreeze: async () => freeze,
-      readManagedCmsObjects: async ({ pins }: { pins: unknown[] }) => pins.map(pin => ({ pin, body: prep.items[0].body, schema: null, head: false, actorId: actor.userId, createdAt: receipt.createdAt }))
+      async readManagedCmsObjectsAtTarget({ target: expectedTarget, ...input }: { target: unknown, pins: unknown[], scope: unknown }) {
+        expect(expectedTarget).toEqual(f.base.target)
+        return await this.readManagedCmsObjects(input)
+      },
+      readManagedCmsObjects: async ({ pins }: { pins: unknown[] }) => pins.map((pin) => {
+        const retained = baseObjects.find(object => object.pin.sha256 === (pin as { sha256: string }).sha256)
+        return retained ? { ...retained, pin } : { pin, body: prep.items[0].body, schema: null, head: false, actorId: actor.userId, createdAt: receipt.createdAt }
+      })
     }
     const input = { operationId: 'accept_feature_a', candidateId: f.request.candidateId, candidateDigest: f.request.candidateDigest,
       expectedApplication: f.request.expectedApplication, expectedCheckpoint: f.request.expectedCheckpoint, expectedContent: null, contentRevision: 0,
@@ -256,6 +280,60 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
     expect(app.schemas.map((pin: { collectionId: string }) => pin.collectionId)).toEqual(['fleet'])
     expect((await observer.query('SELECT current_checkpoint_id,current_version_id FROM page_studio_sites WHERE id=$1', [scope.siteId])).rows[0]).toEqual({ current_checkpoint_id: result.checkpointId, current_version_id: result.versionId })
     expect((await observer.query('SELECT count(*)::int AS count FROM page_studio_cms_commits')).rows[0].count).toBe(1)
+  })
+  it('commits the exact reviewed privacy reduction while preserving stored records and their heads', async () => {
+    const f = await fixture(privacyFixtureJson)
+    const priorSchema = (await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'schema\'')).rows[0]
+    const recordBody = { scope, collectionId: 'fleet', id: 'privacy_record', revision: 1, schemaVersion: 1, archived: false, values: { title: 'Retained title', notes: 'Retain these now-private bytes' } }
+    const recordPin = { ...priorSchema.storage_pin, kind: 'record', recordId: 'privacy_record', operationId: 'retained_record', sha256: await collectionDigest(recordBody), bytes: new TextEncoder().encode(JSON.stringify(recordBody)).byteLength }
+    const recordId = randomUUID()
+    await observer.query(`INSERT INTO page_studio_cms_objects(scope_key,generation,id,kind,collection_id,record_id,logical_version,storage_pin,schema_object_id,archived,actor_id,created_at,adoption_id)
+      VALUES($1,$2,$3,'record','fleet','privacy_record',1,$4,$5,FALSE,$6,clock_timestamp(),'adoption_a')`, [f.key, priorSchema.generation, recordId, recordPin, priorSchema.id, request.actor.actorId])
+    await observer.query(`INSERT INTO page_studio_cms_record_heads(scope_key,generation,collection_id,record_id,object_id)
+      VALUES($1,$2,'fleet','privacy_record',$3)`, [f.key, priorSchema.generation, recordId])
+    const recordRows = (await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'record\'')).rows
+    const heads = (await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows
+    const content = (await observer.query('SELECT current_content_id FROM page_studio_cms_scopes')).rows
+    const accepted = await acceptManagedFeatureCandidate({ id: f.input.candidateId, digest: f.input.candidateDigest, privacyReviewDigest: f.input.candidateDigest }, f.principal, f.deps)
+    expect(accepted.acknowledged).toBe(true)
+    expect((await observer.query('SELECT * FROM page_studio_cms_objects WHERE kind=\'record\'')).rows).toEqual(recordRows)
+    expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toEqual(heads)
+    expect((await observer.query('SELECT current_content_id FROM page_studio_cms_scopes')).rows).toEqual(content)
+    const selected = (await observer.query(`SELECT object.logical_version,object.storage_pin FROM page_studio_cms_application_schemas selected
+      JOIN page_studio_cms_objects object ON object.scope_key=selected.scope_key AND object.generation=selected.generation AND object.id=selected.object_id
+      WHERE selected.application_id=$1`, [accepted.application.id])).rows
+    expect(selected).toHaveLength(1)
+    expect(Number(selected[0].logical_version)).toBe(2)
+    const prepared = JSON.parse(privacyFixtureJson.preparations[0].requestBytes)
+    expect(prepared.items[0].body.fields.find((field: { id: string }) => field.id === 'notes').visibility).toBe('private')
+    expect(selected[0].storage_pin.sha256).toBe(await collectionDigest(prepared.items[0].body))
+    expect((await observer.query('SELECT count(*)::int AS count FROM page_studio_cms_commits')).rows[0].count).toBe(1)
+  })
+  it.each(['missing', 'wrong'] as const)('rejects %s privacy acknowledgement without advancing native graph state', async (mode) => {
+    const f = await fixture(privacyFixtureJson)
+    const scopes = (await observer.query('SELECT * FROM page_studio_cms_scopes')).rows
+    const schemas = (await observer.query('SELECT * FROM page_studio_cms_objects')).rows
+    const input = { ...f.input, ...(mode === 'wrong' ? { privacyReviewDigest: '0'.repeat(64) } : {}) }
+    await expect(coordinateCmsGraphTransition(input, f.principal, f.deps)).rejects.toMatchObject({ code: 'GRAPH_SCHEMA_CHANGE', statusCode: 422 })
+    expect((await observer.query('SELECT * FROM page_studio_cms_scopes')).rows).toEqual(scopes)
+    expect((await observer.query('SELECT * FROM page_studio_cms_objects')).rows).toEqual(schemas)
+    expect((await observer.query('SELECT count(*)::int AS count FROM page_studio_cms_commits')).rows[0].count).toBe(0)
+    expect((await observer.query('SELECT count(*)::int AS count FROM page_studio_versions')).rows[0].count).toBe(0)
+  })
+  it.each(['permission', 'in-flight-logout'] as const)('requires current native authority for reviewed privacy acceptance: %s', async (mode) => {
+    const f = await fixture(privacyFixtureJson)
+    if (mode === 'permission') await observer.query('UPDATE team_members SET user_role=\'viewer\'')
+    else {
+      const original = f.get.getMockImplementation()!
+      f.get.mockImplementationOnce(async (key) => {
+        await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+        return await original(key)
+      })
+    }
+    await expect(acceptManagedFeatureCandidate({ id: f.input.candidateId, digest: f.input.candidateDigest, privacyReviewDigest: f.input.candidateDigest }, f.principal, f.deps)).rejects.toThrow()
+    if (mode === 'permission') expect(f.get).not.toHaveBeenCalled()
+    expect((await observer.query('SELECT current_application_id FROM page_studio_cms_scopes')).rows[0].current_application_id).toBe(f.input.expectedApplication.id)
+    expect((await observer.query('SELECT count(*)::int AS count FROM page_studio_cms_commits')).rows[0].count).toBe(0)
   })
   it('replays under fresh authority without loading remote storage', async () => {
     const f = await fixture()
@@ -391,6 +469,25 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
       : await acceptPageStudioAiProposal({ checkpoint: cp, expectedCheckpointId: accepted.checkpointId, baseDigest: f.input.nextCheckpoint.digest,
           authorRole: 'agency', idempotencyKey: 'managed_ai_page', summary: 'Saved AI page' }, { ...f.deps, session: claims, env: request.env })
     expect(result.isCurrent).toBe(true)
+    if (mode === 'editor') {
+      const receipt = { acknowledged: true, checkpointId: cp.checkpointId,
+        currentCheckpointId: cp.checkpointId, isCurrent: true }
+      // The Studio client rejects extra graph fields in its strict transport schema.
+      expect(result).toEqual(receipt)
+      expect(await commitPageStudioEditorCheckpoint(
+        { checkpoint: cp, expectedCheckpointId: accepted.checkpointId }, claims,
+        { ...f.deps, env: request.env }
+      )).toEqual(receipt)
+    } else {
+      const version = (await observer.query('SELECT id FROM page_studio_versions WHERE checkpoint_id=$1', [cp.checkpointId])).rows[0]
+      const receipt = { acknowledged: true, checkpointId: cp.checkpointId,
+        currentCheckpointId: cp.checkpointId, isCurrent: true, versionId: version.id }
+      expect(result).toEqual(receipt)
+      expect(await acceptPageStudioAiProposal({ checkpoint: cp,
+        expectedCheckpointId: accepted.checkpointId, baseDigest: f.input.nextCheckpoint.digest,
+        authorRole: 'agency', idempotencyKey: 'managed_ai_page', summary: 'Saved AI page'
+      }, { ...f.deps, session: claims, env: request.env })).toEqual(receipt)
+    }
     const audit = (await observer.query('SELECT metadata FROM page_studio_audit_events WHERE action=\'workspace.checkpointed\' AND resource_id=$1', [cp.checkpointId])).rows[0]
     expect((await observer.query('SELECT checkpoint_id,state FROM page_studio_checkpoint_staging_outbox WHERE checkpoint_id=$1', [cp.checkpointId])).rows).toEqual([{ checkpoint_id: cp.checkpointId, state: 'pending' }])
     expect(audit.metadata.stagingOrigin).toEqual({ formatVersion: 1, environment: 'staging', source: 'studio-session',
@@ -398,6 +495,23 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
     const app = (await observer.query('SELECT manifest FROM page_studio_application_versions a JOIN page_studio_cms_scopes s ON s.current_application_id=a.id')).rows[0].manifest
     expect(app.checkpoint).toEqual({ id: cp.checkpointId, digest: cp.digest })
     expect(app.actions.map((pin: { id: string }) => pin.id)).toEqual(['submit'])
+    if (mode === 'editor') {
+      const nextEnvelope = { ...envelope, checkpointId: 'saved_editor_next' }
+      const next = { ...cp, checkpointId: nextEnvelope.checkpointId,
+        objectKey: `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}/checkpoints/${nextEnvelope.checkpointId}.json` }
+      f.texts.set(next.objectKey, JSON.stringify(nextEnvelope))
+      await commitPageStudioEditorCheckpoint(
+        { checkpoint: next, expectedCheckpointId: cp.checkpointId }, claims,
+        { ...f.deps, env: request.env }
+      )
+      // A delayed retry must acknowledge its original save without claiming it is still current.
+      expect(await commitPageStudioEditorCheckpoint(
+        { checkpoint: cp, expectedCheckpointId: accepted.checkpointId }, claims,
+        { ...f.deps, env: request.env }
+      )).toEqual({ acknowledged: true, checkpointId: cp.checkpointId,
+        currentCheckpointId: next.checkpointId, isCurrent: false })
+      expect((await observer.query('SELECT count(*)::int AS count FROM page_studio_cms_commits')).rows[0].count).toBe(3)
+    }
   })
 
   it('maps a second environment adoption to the actionable site reservation conflict', async () => {

@@ -1,0 +1,306 @@
+{
+  "artifactBytes": [
+    "{\"actions\":[],\"dataBindings\":[],\"defaults\":{},\"formatVersion\":1,\"id\":\"retained\",\"kind\":\"component\",\"label\":\"Retained\",\"properties\":[],\"propertyBindings\":[],\"root\":{\"children\":[],\"id\":\"title_old\",\"props\":{\"text\":\"Old\"},\"type\":\"heading\"},\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000002\",\"clientId\":\"10000000-0000-4000-8000-000000000002\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000002\",\"tenantId\":\"tenant-second\"},\"version\":1}",
+    "{\"definition\":{\"displayFieldId\":\"title\",\"fields\":[{\"id\":\"title\",\"label\":\"Title\",\"required\":true,\"type\":\"text\",\"visibility\":\"public\"}],\"formatVersion\":1,\"id\":\"fleet\",\"label\":\"Fleet\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000002\",\"clientId\":\"10000000-0000-4000-8000-000000000002\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000002\",\"tenantId\":\"tenant-second\"},\"version\":1},\"kind\":\"collection\"}",
+    "{\"collections\":[],\"effects\":{\"maxCommands\":1,\"permissions\":[{\"collection\":{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"a3c0acb9a48d9f1b6402a0a4f23b9f33d855b34d5ebe0e568e155f97f196deff\",\"version\":1},\"fields\":[\"title\"],\"operations\":[\"create\"]}],\"version\":1},\"formatVersion\":2,\"id\":\"submit\",\"inputContract\":{\"properties\":[{\"key\":\"title\",\"required\":true,\"type\":\"string\"}],\"version\":1},\"kind\":\"action\",\"label\":\"Submit\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000002\",\"clientId\":\"10000000-0000-4000-8000-000000000002\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000002\",\"tenantId\":\"tenant-second\"},\"source\":\"input => input\",\"tests\":[{\"data\":null,\"expected\":{\"commands\":[],\"result\":null,\"version\":1},\"input\":{\"title\":\"Example\"}}],\"version\":1}",
+    "{\"actions\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"dca5158630c8f4ad37afe691186b4bf2d40438a9e016c21d5fe3e3dad27ade90\",\"version\":1}],\"dataBindings\":[{\"collection\":{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"a3c0acb9a48d9f1b6402a0a4f23b9f33d855b34d5ebe0e568e155f97f196deff\",\"version\":1},\"fields\":[\"title\"],\"id\":\"fleet_rows\",\"limit\":10}],\"defaults\":{},\"formatVersion\":1,\"id\":\"fleet_view\",\"kind\":\"component\",\"label\":\"Fleet\",\"properties\":[],\"propertyBindings\":[],\"root\":{\"children\":[],\"id\":\"title_new\",\"props\":{\"text\":\"New\"},\"type\":\"heading\"},\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000002\",\"clientId\":\"10000000-0000-4000-8000-000000000002\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000002\",\"tenantId\":\"tenant-second\"},\"version\":1}"
+  ],
+  "base": {
+    "application": {
+      "digest": "64cbaf4d5b68bfa521668d36c4692a55771d327625483b79d21649d5d458f954",
+      "manifest": {
+        "actions": [],
+        "applicationId": "22222222-2222-4222-8222-222222222222",
+        "checkpoint": {
+          "digest": "0ee45b66c2c6d922d3f620039b6ad1c0e5836d2ae639341b898316eb0dcfddcd",
+          "id": "base_checkpoint_second"
+        },
+        "components": [
+          {
+            "id": "retained",
+            "kind": "component",
+            "sha256": "adfc857d579cb85bf51801dedb759470c81b98d96357767a288964c4bce11852",
+            "version": 1
+          }
+        ],
+        "formatVersion": 1,
+        "generation": "11111111-1111-4111-8111-111111111111",
+        "previousApplicationId": null,
+        "schemas": [],
+        "scope": {
+          "businessId": "10000000-0000-4000-8000-000000000002",
+          "clientId": "10000000-0000-4000-8000-000000000002",
+          "environment": "staging",
+          "siteId": "20000000-0000-4000-8000-000000000002",
+          "tenantId": "tenant-second"
+        }
+      }
+    },
+    "checkpoint": {
+      "digest": "0ee45b66c2c6d922d3f620039b6ad1c0e5836d2ae639341b898316eb0dcfddcd",
+      "id": "base_checkpoint_second",
+      "manifest": {
+        "defaultLocale": "en-AU",
+        "id": "20000000-0000-4000-8000-000000000002",
+        "name": "Test",
+        "pages": [
+          {
+            "components": [],
+            "forms": [],
+            "id": "home",
+            "pageType": "home",
+            "parentPageId": null,
+            "route": "/",
+            "schemaVersion": 2,
+            "seo": {
+              "title": "Home"
+            },
+            "shell": {
+              "footer": "inherit",
+              "header": "inherit"
+            },
+            "title": "Home",
+            "visibility": "public"
+          }
+        ],
+        "redirects": [],
+        "schemaVersion": 2,
+        "seo": {
+          "siteName": "Test"
+        },
+        "shell": {
+          "footer": {
+            "columns": [],
+            "enabled": true,
+            "socialLinks": []
+          },
+          "header": {
+            "brand": {
+              "name": "Test"
+            },
+            "enabled": true,
+            "layout": "logo-left",
+            "sticky": false
+          },
+          "mobileNavigation": {
+            "presentation": "drawer"
+          },
+          "navigation": {
+            "enabled": true,
+            "items": []
+          }
+        },
+        "theme": {
+          "id": "theme_test",
+          "schemaVersion": 1,
+          "tokens": {}
+        },
+        "builderLibrary": {
+          "components": [
+            {
+              "id": "retained",
+              "kind": "component",
+              "sha256": "adfc857d579cb85bf51801dedb759470c81b98d96357767a288964c4bce11852",
+              "version": 1
+            }
+          ],
+          "scope": {
+            "businessId": "10000000-0000-4000-8000-000000000002",
+            "clientId": "10000000-0000-4000-8000-000000000002",
+            "environment": "staging",
+            "siteId": "20000000-0000-4000-8000-000000000002",
+            "tenantId": "tenant-second"
+          }
+        }
+      }
+    },
+    "content": {
+      "pin": null,
+      "revision": 0
+    },
+    "freezeDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "generation": "11111111-1111-4111-8111-111111111111",
+    "schemas": [],
+    "scope": {
+      "businessId": "10000000-0000-4000-8000-000000000002",
+      "clientId": "10000000-0000-4000-8000-000000000002",
+      "environment": "staging",
+      "siteId": "20000000-0000-4000-8000-000000000002",
+      "tenantId": "tenant-second"
+    },
+    "target": {
+      "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "collectionReceiptDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "databaseId": "33333333-3333-4333-8333-333333333333",
+      "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "routeId": "route_a",
+      "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stagingReceiptDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "workflowReceiptDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  },
+  "candidateBytes": "{\"digest\":\"e7aafe88e3ab716825619a7515a4772724a8ec884ad9d4ecab62185a70d14183\",\"proposal\":{\"base\":{\"checkpointDigest\":\"0ee45b66c2c6d922d3f620039b6ad1c0e5836d2ae639341b898316eb0dcfddcd\",\"checkpointId\":\"base_checkpoint_second\",\"contentRevision\":0},\"changes\":[{\"bytes\":425,\"dependencies\":[],\"expectedVersion\":0,\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"a3c0acb9a48d9f1b6402a0a4f23b9f33d855b34d5ebe0e568e155f97f196deff\",\"version\":1},{\"bytes\":767,\"dependencies\":[{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"a3c0acb9a48d9f1b6402a0a4f23b9f33d855b34d5ebe0e568e155f97f196deff\",\"version\":1}],\"expectedVersion\":0,\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"dca5158630c8f4ad37afe691186b4bf2d40438a9e016c21d5fe3e3dad27ade90\",\"version\":1},{\"bytes\":762,\"dependencies\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"dca5158630c8f4ad37afe691186b4bf2d40438a9e016c21d5fe3e3dad27ade90\",\"version\":1},{\"id\":\"fleet\",\"kind\":\"collection\",\"sha256\":\"a3c0acb9a48d9f1b6402a0a4f23b9f33d855b34d5ebe0e568e155f97f196deff\",\"version\":1}],\"expectedVersion\":0,\"id\":\"fleet_view\",\"kind\":\"component\",\"sha256\":\"f355c685a198461bb4a6dfb147835809a65468940aef5f346eec2c8b115bb5ab\",\"version\":1}],\"existing\":[],\"formatVersion\":1,\"id\":\"candidate_one\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000002\",\"clientId\":\"10000000-0000-4000-8000-000000000002\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000002\",\"tenantId\":\"tenant-second\"}},\"proposalDigest\":\"d445d72f9add137d7e7c2a42231c10a89f8bd130323401383e89bde798c81384\",\"summary\":\"Add fleet\",\"validation\":{\"actions\":[{\"id\":\"submit\",\"kind\":\"action\",\"sha256\":\"dca5158630c8f4ad37afe691186b4bf2d40438a9e016c21d5fe3e3dad27ade90\",\"tests\":1,\"version\":1}],\"runtimeDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}}",
+  "expectedRuntimeDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "nextCheckpoint": {
+    "digest": "6b2294f0b14c3fc093588839f7d03fa5b6571fc95701cd8f89fca3d3746c25b7",
+    "id": "next_checkpoint_second",
+    "manifest": {
+      "defaultLocale": "en-AU",
+      "id": "20000000-0000-4000-8000-000000000002",
+      "name": "Test",
+      "pages": [
+        {
+          "components": [],
+          "forms": [],
+          "id": "home",
+          "pageType": "home",
+          "parentPageId": null,
+          "route": "/",
+          "schemaVersion": 2,
+          "seo": {
+            "title": "Home"
+          },
+          "shell": {
+            "footer": "inherit",
+            "header": "inherit"
+          },
+          "title": "Home",
+          "visibility": "public"
+        }
+      ],
+      "redirects": [],
+      "schemaVersion": 2,
+      "seo": {
+        "siteName": "Test"
+      },
+      "shell": {
+        "footer": {
+          "columns": [],
+          "enabled": true,
+          "socialLinks": []
+        },
+        "header": {
+          "brand": {
+            "name": "Test"
+          },
+          "enabled": true,
+          "layout": "logo-left",
+          "sticky": false
+        },
+        "mobileNavigation": {
+          "presentation": "drawer"
+        },
+        "navigation": {
+          "enabled": true,
+          "items": []
+        }
+      },
+      "theme": {
+        "id": "theme_test",
+        "schemaVersion": 1,
+        "tokens": {}
+      },
+      "builderLibrary": {
+        "components": [
+          {
+            "id": "retained",
+            "kind": "component",
+            "sha256": "adfc857d579cb85bf51801dedb759470c81b98d96357767a288964c4bce11852",
+            "version": 1
+          },
+          {
+            "id": "fleet_view",
+            "kind": "component",
+            "sha256": "f355c685a198461bb4a6dfb147835809a65468940aef5f346eec2c8b115bb5ab",
+            "version": 1
+          }
+        ],
+        "scope": {
+          "businessId": "10000000-0000-4000-8000-000000000002",
+          "clientId": "10000000-0000-4000-8000-000000000002",
+          "environment": "staging",
+          "siteId": "20000000-0000-4000-8000-000000000002",
+          "tenantId": "tenant-second"
+        }
+      },
+      "builderApplication": {
+        "actions": [
+          {
+            "id": "submit",
+            "kind": "action",
+            "sha256": "dca5158630c8f4ad37afe691186b4bf2d40438a9e016c21d5fe3e3dad27ade90",
+            "version": 1
+          }
+        ],
+        "collections": [
+          {
+            "id": "fleet",
+            "kind": "collection",
+            "sha256": "a3c0acb9a48d9f1b6402a0a4f23b9f33d855b34d5ebe0e568e155f97f196deff",
+            "version": 1
+          }
+        ],
+        "scope": {
+          "businessId": "10000000-0000-4000-8000-000000000002",
+          "clientId": "10000000-0000-4000-8000-000000000002",
+          "environment": "staging",
+          "siteId": "20000000-0000-4000-8000-000000000002",
+          "tenantId": "tenant-second"
+        },
+        "version": 1
+      }
+    }
+  },
+  "preparations": [
+    {
+      "receiptBytes": "{\"createdAt\":\"2026-09-22T00:00:00.000Z\",\"digest\":\"00b0fbfa401a261b12dd9f31050bfbf4a371daec55e6528e805647bac98180b4\",\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"items\":[{\"bytes\":390,\"collectionId\":\"fleet\",\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"kind\":\"schema\",\"operationId\":\"prepare_schema\",\"origin\":\"prepared\",\"recordId\":\"\",\"sha256\":\"c5d557ab4ad1da547409188241a81886a377657a16d2932c641be7e870a05f87\",\"version\":1}],\"operationId\":\"prepare_schema\",\"requestDigest\":\"88942ee5c1a2503461f336f9e81e609133273c5f27812ddb54f603c7610b21aa\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000002\",\"clientId\":\"10000000-0000-4000-8000-000000000002\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000002\",\"tenantId\":\"tenant-second\"},\"state\":\"prepared\"}",
+      "requestBytes": "{\"action\":null,\"actor\":{\"kind\":\"agency-user\",\"loginSessionHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"userId\":\"44444444-4444-4444-8444-444444444444\"},\"candidateDigest\":\"e7aafe88e3ab716825619a7515a4772724a8ec884ad9d4ecab62185a70d14183\",\"formatVersion\":1,\"freezeDigest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"items\":[{\"body\":{\"displayFieldId\":\"title\",\"fields\":[{\"id\":\"title\",\"label\":\"Title\",\"required\":true,\"type\":\"text\",\"visibility\":\"public\"}],\"formatVersion\":1,\"id\":\"fleet\",\"label\":\"Fleet\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000002\",\"clientId\":\"10000000-0000-4000-8000-000000000002\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000002\",\"tenantId\":\"tenant-second\"},\"version\":1},\"expectedBase\":null,\"kind\":\"schema\",\"version\":1}],\"operationId\":\"prepare_schema\",\"scope\":{\"businessId\":\"10000000-0000-4000-8000-000000000002\",\"clientId\":\"10000000-0000-4000-8000-000000000002\",\"environment\":\"staging\",\"siteId\":\"20000000-0000-4000-8000-000000000002\",\"tenantId\":\"tenant-second\"}}"
+    }
+  ],
+  "request": {
+    "candidateDigest": "e7aafe88e3ab716825619a7515a4772724a8ec884ad9d4ecab62185a70d14183",
+    "candidateId": "candidate_one",
+    "contentRevision": 0,
+    "expectedApplication": {
+      "digest": "64cbaf4d5b68bfa521668d36c4692a55771d327625483b79d21649d5d458f954",
+      "id": "22222222-2222-4222-8222-222222222222"
+    },
+    "expectedCheckpoint": {
+      "digest": "0ee45b66c2c6d922d3f620039b6ad1c0e5836d2ae639341b898316eb0dcfddcd",
+      "id": "base_checkpoint_second"
+    },
+    "expectedContent": null,
+    "freezeDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "generation": "11111111-1111-4111-8111-111111111111",
+    "nextCheckpoint": {
+      "digest": "6b2294f0b14c3fc093588839f7d03fa5b6571fc95701cd8f89fca3d3746c25b7",
+      "id": "next_checkpoint_second"
+    },
+    "operationId": "accept_one",
+    "preparations": [
+      {
+        "operationId": "prepare_schema",
+        "receiptDigest": "00b0fbfa401a261b12dd9f31050bfbf4a371daec55e6528e805647bac98180b4",
+        "requestDigest": "88942ee5c1a2503461f336f9e81e609133273c5f27812ddb54f603c7610b21aa"
+      }
+    ],
+    "scope": {
+      "businessId": "10000000-0000-4000-8000-000000000002",
+      "clientId": "10000000-0000-4000-8000-000000000002",
+      "environment": "staging",
+      "siteId": "20000000-0000-4000-8000-000000000002",
+      "tenantId": "tenant-second"
+    },
+    "target": {
+      "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "collectionReceiptDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "databaseId": "33333333-3333-4333-8333-333333333333",
+      "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "routeId": "route_a",
+      "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stagingReceiptDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "workflowReceiptDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "version": 1
+  }
+}

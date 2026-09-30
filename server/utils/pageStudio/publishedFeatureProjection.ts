@@ -1,3 +1,4 @@
+import { runtimeFeatureDeadline } from './runtimeFeatureDeadline'
 import { z } from 'zod'
 import { BuilderArtifactPinSchema } from '~~/shared/pageStudio/cmsManaged'
 import { CollectionDefinitionSchema } from '~~/shared/pageStudio/collectionDefinition'
@@ -6,6 +7,7 @@ import { projectBuilderActionRecord, verifyBuilderComponentDataBindings, verifyB
 import { createCmsGraphStorage } from './cmsGraphStorage'
 import { cmsEqual, readCmsConsumerSnapshot, type AcceptedCmsObject } from './cmsVisibility'
 import { readPublishedFeatureSnapshot, withPublishedFeatureAuthority, publishedFeatureDenied, type PublishedFeatureSnapshot } from './publishedFeatureAuthority'
+import type { PageStudioControlQueryClient } from './controlStore'
 import type { CmsGraphDependencies } from './cmsGraphCoordinator'
 
 const jsonObject = (value: BuilderGraphJson) => {
@@ -18,53 +20,73 @@ const jsonArray = (value: BuilderGraphJson) => {
 }
 const size = (value: unknown) => new TextEncoder().encode(collectionCanonical(value)).length
 /** Actual bounded immutable recovery bytes. Never accepts a caller-selected R2 key. */
-export async function readPublishedFeatureRecovery(snapshot: PublishedFeatureSnapshot, env: Record<string, unknown>) {
+export type FeatureRecoverySnapshot = Pick<PublishedFeatureSnapshot, 'contentScope'> & {
+  request: { versionDigest: string, sealDigest: string }
+  seal: Pick<PublishedFeatureSnapshot['seal'], 'recovery' | 'application' | 'checkpoint' | 'generation' | 'target' | 'freezeDigest' | 'runtimeDigest'>
+}
+export async function readPublishedFeatureRecovery(snapshot: FeatureRecoverySnapshot, env: Record<string, unknown>) {
   const expectedKey = `builder-recovery/v1/${await collectionDigest(snapshot.contentScope)}/${snapshot.request.versionDigest}/${snapshot.request.sealDigest}.json`
   if (expectedKey !== snapshot.seal.recovery.key) throw publishedFeatureDenied()
   const bucket = env.PAGE_STUDIO_CHECKPOINTS as { get(key: string): Promise<{ size?: number, body: ReadableStream<Uint8Array> } | null> } | undefined
-  const object = await bucket?.get(expectedKey)
-  if (!object) throw publishedFeatureDenied()
-  const max = snapshot.seal.recovery.bytes
-  if (object.size !== undefined && object.size !== max) {
-    await object.body.cancel().catch(() => {})
-    throw publishedFeatureDenied()
-  }
-  const reader = object.body.getReader(), decoder = new TextDecoder('utf-8', { fatal: true })
-  let raw = '', bytes = 0
+  const deadline = runtimeFeatureDeadline()
   try {
-    for (;;) {
-      const part = await reader.read()
-      if (part.done) break
-      bytes += part.value.byteLength
-      if (bytes > max) throw publishedFeatureDenied()
-      raw += decoder.decode(part.value, { stream: true })
+    const object = await deadline.run(async () => await bucket?.get(expectedKey))
+    if (!object) throw publishedFeatureDenied()
+    const max = snapshot.seal.recovery.bytes
+    if (object.size !== undefined && object.size !== max) {
+      void object.body.cancel().catch(() => {})
+      throw publishedFeatureDenied()
     }
-    raw += decoder.decode()
-  } catch (error) {
-    await reader.cancel().catch(() => {})
-    throw error
-  } finally { reader.releaseLock() }
-  if (bytes !== max) throw publishedFeatureDenied()
-  const verified = await verifyBuilderReleaseRecovery(JSON.parse(raw))
-  if (verified.digest !== snapshot.request.sealDigest || collectionCanonical(verified.bundle) !== raw) throw publishedFeatureDenied()
-  const bundle = jsonObject(verified.bundle), checkpoint = jsonObject(bundle.checkpoint!)
-  if (
-    !cmsEqual(bundle.contentScope, snapshot.contentScope)
-    || !cmsEqual(bundle.application, snapshot.seal.application)
-    || checkpoint.id !== snapshot.seal.checkpoint
-    || checkpoint.sha256 !== snapshot.request.versionDigest
-    || bundle.generation !== snapshot.seal.generation
-    || !cmsEqual(bundle.target, snapshot.seal.target)
-    || bundle.freezeDigest !== snapshot.seal.freezeDigest
-    || bundle.runtimeDigest !== snapshot.seal.runtimeDigest
-  ) throw publishedFeatureDenied()
-  return { ...verified, bundle, checkpoint: jsonObject(verified.checkpoint) }
+    const reader = object.body.getReader(), decoder = new TextDecoder('utf-8', { fatal: true })
+    let raw = '', bytes = 0, reads = 0
+    try {
+      for (;;) {
+        if (++reads > 16_384) throw publishedFeatureDenied()
+        const part = await deadline.run(() => reader.read())
+        if (part.done) break
+        bytes += part.value.byteLength
+        if (bytes > max) throw publishedFeatureDenied()
+        raw += decoder.decode(part.value, { stream: true })
+      }
+      raw += decoder.decode()
+    } catch (error) {
+      void reader.cancel().catch(() => {})
+      throw error
+    } finally { reader.releaseLock() }
+    if (bytes !== max) throw publishedFeatureDenied()
+    const verified = await verifyBuilderReleaseRecovery(JSON.parse(raw))
+    if (verified.digest !== snapshot.request.sealDigest || collectionCanonical(verified.bundle) !== raw) throw publishedFeatureDenied()
+    const bundle = jsonObject(verified.bundle), checkpoint = jsonObject(bundle.checkpoint!)
+    if (
+      !cmsEqual(bundle.contentScope, snapshot.contentScope)
+      || !cmsEqual(bundle.application, snapshot.seal.application)
+      || checkpoint.id !== snapshot.seal.checkpoint
+      || checkpoint.sha256 !== snapshot.request.versionDigest
+      || bundle.generation !== snapshot.seal.generation
+      || !cmsEqual(bundle.target, snapshot.seal.target)
+      || bundle.freezeDigest !== snapshot.seal.freezeDigest
+      || bundle.runtimeDigest !== snapshot.seal.runtimeDigest
+    ) throw publishedFeatureDenied()
+    deadline.assert()
+    return { ...verified, bundle, checkpoint: jsonObject(verified.checkpoint) }
+  } finally { deadline.dispose() }
 }
 /** The host-configured published release is the principal. Current record heads never come from
  * the sealed bundle and publication never impersonates the original publisher. */
 export async function readPublishedFeaturePage(raw: unknown, env: Record<string, unknown>, dependencies: CmsGraphDependencies = {}) {
   const snapshot = await readPublishedFeatureSnapshot(raw, env, dependencies)
   const recovered = await readPublishedFeatureRecovery(snapshot, env)
+  return await projectPublishedFeaturePage(snapshot, recovered, env,
+    work => withPublishedFeatureAuthority(snapshot.request, env, snapshot, work, dependencies))
+}
+
+/** Both delivery modes use the same current-record and field-visibility rules. */
+export async function projectPublishedFeaturePage<Release>(
+  snapshot: FeatureRecoverySnapshot & { request: { pageRoute: string }, context: PublishedFeatureSnapshot['context'], release: Release },
+  recovered: Awaited<ReturnType<typeof readPublishedFeatureRecovery>>,
+  env: Record<string, unknown>,
+  withAuthority: <T>(work: (db: PageStudioControlQueryClient) => Promise<T>) => Promise<T>
+) {
   const pages = jsonArray(recovered.checkpoint.pages!).map(jsonObject)
   const page = pages.find(item => item.route === snapshot.request.pageRoute && item.visibility === 'public')
   if (!page) throw publishedFeatureDenied()
@@ -89,7 +111,7 @@ export async function readPublishedFeaturePage(raw: unknown, env: Record<string,
   }
   const limits = new Map<string, number>()
   for (const component of components) for (const binding of component.bindings) limits.set(binding.collection.id, Math.max(limits.get(binding.collection.id) ?? 0, binding.limit))
-  const capture = () => withPublishedFeatureAuthority(snapshot.request, env, snapshot, async (db) => {
+  const capture = () => withAuthority(async (db) => {
     const current = await readCmsConsumerSnapshot(db, snapshot.contentScope)
     if (!cmsEqual(current.context, snapshot.context)) throw publishedFeatureDenied()
     const schemas = current.schemas.filter(schema => limits.has(schema.pin.collectionId))
@@ -101,7 +123,7 @@ export async function readPublishedFeaturePage(raw: unknown, env: Record<string,
       groups.push({ collectionId, objects: records.objects.slice(0, limit) })
     }
     return { schemas, groups }
-  }, dependencies)
+  })
   const current = await capture()
   const rows = components.reduce((sum, component) => sum + component.bindings.reduce((count, binding) => count + Math.min(binding.limit, current.groups.find(group => group.collectionId === binding.collection.id)?.objects.length ?? 0), 0), 0)
   if (rows > 100) throw publishedFeatureDenied()

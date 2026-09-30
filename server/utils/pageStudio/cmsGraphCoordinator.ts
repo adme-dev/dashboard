@@ -30,6 +30,7 @@ export interface CmsGraphTransitionInput {
   operationId: string
   candidateId: string
   candidateDigest: string
+  privacyReviewDigest?: string
   expectedApplication: { id: string, digest: string }
   expectedCheckpoint: { id: string, digest: string }
   expectedContent: CmsObjectPin | null
@@ -168,7 +169,7 @@ function requiredCheckpointScope(value: z.infer<typeof graphCheckpoint>): PageSt
   return { ...value, scope: { ...value.scope, siteId: value.scope.siteId } }
 }
 const transitionInput = z.object({
-  operationId: graphId, candidateId: graphId, candidateDigest: graphDigest,
+  operationId: graphId, candidateId: graphId, candidateDigest: graphDigest, privacyReviewDigest: graphDigest.optional(),
   expectedApplication: z.object({ id: z.uuid(), digest: graphDigest }).strict(), expectedCheckpoint,
   expectedContent: CmsObjectPinSchema.nullable(), contentRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   nextCheckpoint: graphCheckpoint,
@@ -191,7 +192,8 @@ function requestFor(snapshot: CmsGraphSnapshot, input: CmsGraphTransitionInput) 
     expectedApplication: input.expectedApplication, expectedCheckpoint: input.expectedCheckpoint,
     expectedContent: input.expectedContent, contentRevision: input.contentRevision,
     nextCheckpoint: { id: input.nextCheckpoint.checkpointId, digest: input.nextCheckpoint.digest },
-    candidateId: input.candidateId, candidateDigest: input.candidateDigest, preparations: input.preparations
+    candidateId: input.candidateId, candidateDigest: input.candidateDigest, preparations: input.preparations,
+    ...(input.privacyReviewDigest ? { privacyReviewDigest: input.privacyReviewDigest } : {})
   }
 }
 async function readBase(snapshot: CmsGraphSnapshot, storage: ReturnType<typeof createCmsGraphStorage>) {

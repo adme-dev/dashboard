@@ -66,7 +66,7 @@ export function usePortalAuth() {
     })
   }
 
-  async function logout() {
+  async function logout(destination: '/portal/login' | '/studio' = '/portal/login') {
     try {
       await apiFetch('/api/portal/auth/logout', { method: 'POST' })
     } catch (error) {
@@ -75,7 +75,7 @@ export function usePortalAuth() {
     }
     user.value = null
     stats.value = null
-    await navigateTo('/portal/login')
+    await navigateTo(destination)
   }
 
   async function fetchUser() {

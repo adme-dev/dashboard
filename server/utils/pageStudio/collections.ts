@@ -38,6 +38,7 @@ const invalid = () => new ContentError('COLLECTION_INVALID', 400, 'Check the col
 const unverified = () =>
   new ContentError('COLLECTION_RESPONSE_INVALID', 502, 'Collection response could not be verified')
 const pending = () => new ContentError('COLLECTION_SETUP_PENDING', 503, 'Custom collection setup is pending')
+const conflict = () => new ContentError('COLLECTION_CONFLICT', 409, 'A newer version or schema change needs review. Your edits are preserved.')
 const Policy = z.object({
   builder: z.object({ collectionSchemas: z.literal(true) }),
   allowedModules: z.array(z.string()).optional()
@@ -92,12 +93,7 @@ async function remote(call: () => Promise<unknown>) {
       /(?:upgrade required|schema unavailable|route is inactive|not installed|no such table)/i.test(message)
     )
       throw pending()
-    if (/conflict|change (?:migration|required|review)/i.test(message))
-      throw new ContentError(
-        'COLLECTION_CONFLICT',
-        409,
-        'A newer version or schema change needs review. Your edits are preserved.'
-      )
+    if (/conflict|change (?:migration|required|review)/i.test(message)) throw conflict()
     throw new ContentError('COLLECTION_UNAVAILABLE', 502, 'Custom collections are temporarily unavailable')
   }
 }
@@ -156,6 +152,7 @@ export async function executePageStudioCollection(
     const schema = await remote(() =>
       service.readCollectionDefinition!({ scope, id: args.collectionId, version: body.data.schemaVersion })
     )
+    if (schema === null) throw conflict()
     const definition = CollectionDefinitionRevisionSchema.parse(
       await decode(schema, 'definition', scope)
     ).definition

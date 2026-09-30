@@ -34,7 +34,7 @@ export default defineEventHandler((event) => {
   const { pathname } = getRequestURL(event)
   const isPortalApi = hasPrefix(pathname, '/api/portal')
     || hasPrefix(pathname, '/api/client-portal')
-  const isPortalPage = hasPrefix(pathname, '/portal')
+  const isPortalPage = hasPrefix(pathname, '/portal') || hasPrefix(pathname, '/studio')
 
   if (!isPortalApi && !isPortalPage) return
 

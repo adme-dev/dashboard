@@ -260,8 +260,11 @@ export async function commitPageStudioEditorCheckpoint(
     requiredCapabilities: ['workspace:checkpoint'] })
   if (await managedCheckpointScope(input.checkpoint.scope, dependencies)) {
     const { coordinateCmsGraphCheckpoint } = await import('./cmsGraphCoordinator')
-    return await coordinateCmsGraphCheckpoint(input, { source: 'studio-session', claims: session,
+    const receipt = await coordinateCmsGraphCheckpoint(input, { source: 'studio-session', claims: session,
       env: dependencies.env ?? {}, capability: 'workspace:checkpoint' }, dependencies)
+    // Keep graph metadata internal: Studio validates an exact checkpoint receipt.
+    return { acknowledged: receipt.acknowledged, checkpointId: receipt.checkpointId,
+      currentCheckpointId: receipt.currentCheckpointId, isCurrent: receipt.isCurrent }
   }
   const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, {
     ...dependencies,
@@ -631,9 +634,12 @@ export async function acceptPageStudioAiProposal(
   authorizePageStudioSession(session, input)
   if (await managedCheckpointScope(checkpoint.scope, dependencies)) {
     const { coordinateCmsGraphCheckpoint } = await import('./cmsGraphCoordinator')
-    return await coordinateCmsGraphCheckpoint({ checkpoint, expectedCheckpointId: input.expectedCheckpointId },
+    const receipt = await coordinateCmsGraphCheckpoint({ checkpoint, expectedCheckpointId: input.expectedCheckpointId },
       { source: 'studio-session', claims: session, env: dependencies.env ?? {}, capability: 'model:invoke' }, dependencies,
       { mode: 'ai-page', summary: input.summary, idempotencyKey: input.idempotencyKey, expectedBaseDigest: input.baseDigest })
+    return { acknowledged: receipt.acknowledged, checkpointId: receipt.checkpointId,
+      currentCheckpointId: receipt.currentCheckpointId, isCurrent: receipt.isCurrent,
+      versionId: receipt.versionId }
   }
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {

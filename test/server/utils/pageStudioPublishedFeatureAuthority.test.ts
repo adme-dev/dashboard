@@ -12,7 +12,7 @@ let rows: Record<string, Record<string, unknown>>, sql: string[]
 const env = { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_ACTION_RUNTIME_DIGEST: 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e' }
 const deps = { runTransaction: async <T>(work: (db: { query: (sql: string) => Promise<{ rows: Record<string, unknown>[] }> }) => Promise<T>) => work({ query: async (statement) => {
   sql.push(statement)
-  for (const [table, row] of Object.entries(rows).sort((a, b) => b[0].length - a[0].length)) if (statement.includes(`FROM ${table} `)) return { rows: [structuredClone(row)] }
+  for (const [table, row] of Object.entries(rows).sort((a, b) => b[0].length - a[0].length)) if (new RegExp(`\\bFROM\\s+${table}\\b`).test(statement)) return { rows: [structuredClone(row)] }
   return { rows: [] }
 } }) }
 beforeEach(() => {

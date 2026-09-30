@@ -179,8 +179,8 @@ const features: Record<string, Feature> = {
     description: 'Build responsive client websites with editable components, saved design controls and AI-assisted Studio workflows, then govern assets, leads, analytics, releases, domains and rollback from XeroFlow.',
     details: [
       {
-        title: 'One Website Workspace, Two Deliberate Views',
-        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
+        title: 'Your Website Workspace',
+        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Invited customers can sign in directly at the Page Studio product entry, choose an assigned website from My sites and open its builder, CMS or draft history without navigating agency operations. Existing client portal access remains available, and every request stays scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
       },
       {
         title: 'Studio for Visual Authoring',
@@ -188,7 +188,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Saved Component Design',
-        content: 'Open Components, select a component in Page outline, and use Design to save its supported visual settings with the website draft. Refine typography with text balance, alignment and decoration; choose bento or masonry grids and column counts; apply image masks, filters and blend modes; and adjust corners and link treatments where supported. Layouts collapse in narrow containers, and masonry content reads top to bottom. AI proposals use the same bounded, validated design choices as manual editing, so proposed changes remain editable in Studio.'
+        content: 'Open Components, select a component in Page outline, and use Design to save its supported visual settings with the website draft. Refine typography with text balance, alignment and decoration; choose bento or masonry grids and column counts; apply image masks, filters and blend modes; and adjust corners and link treatments where supported. Layouts collapse in narrow containers, and masonry content reads top to bottom. AI proposals use the same bounded, validated design choices as manual editing, so proposed changes remain editable in Studio. Where custom component generation is enabled, your pending request remains available after closing the editor. Reopen the component library to check its result without starting another generation; discard it explicitly before using more AI allowance. When updating an existing collection, review its private fields before saving. Newly private fields are hidden from current and restored page versions immediately, while stored records are preserved.'
       },
       {
         title: 'Governed Preview and Publishing',
@@ -204,7 +204,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Website CMS and Collections',
-        content: 'Connect CMS storage to an existing website from its agency workspace or client admin, preserving saved pages and website history. Manage collections such as services, fleet and testimonials for the selected website. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release. Eligible websites with custom collection setup enabled can define text, number, choice and date fields, edit entries through generated forms, archive records and restore earlier values as a new revision. Schema changes require stronger management access, and websites awaiting a reviewed runtime show setup as pending.'
+        content: 'Connect CMS storage to an existing website from its agency workspace or client admin, preserving saved pages and website history. Manage collections such as services, fleet and testimonials for the selected website. Editors can maintain descriptions and typed detail fields, while viewers have read-only access. Revision checks protect changes made in another session, and unsaved drafts remain available after a conflict. Saving content prepares a draft; publication still requires a governed release. Eligible websites with custom collection setup enabled can define text, number, choice and date fields, edit entries through generated forms, archive records and restore earlier values as a new revision. Schema changes require stronger management access, and websites awaiting a reviewed runtime show setup as pending. Where runtime CMS publication is enabled, publish an approved component template once and show its current public collection records without rebuilding the website. Archived records and fields made private stop appearing. Restoring an earlier website release retains the latest collection records.'
       },
       {
         title: 'Website Form Submissions',

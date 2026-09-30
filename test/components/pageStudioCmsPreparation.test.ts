@@ -2,6 +2,7 @@
 import { createApp, h, nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import CmsPreparation from '~~/app/components/page-studio/CmsPreparation.client.vue'
+import type { coordinateCmsAdoption } from '~~/server/utils/pageStudio/cmsAdoptionCoordinator'
 
 const siteId = '50000000-0000-4000-8000-000000000901'
 const fetch = vi.fn()
@@ -15,6 +16,15 @@ const idle = {
   progress: null,
   progressDigest: 'a'.repeat(64)
 }
+// Match the native coordinator's redacted status, including its structured counters.
+const managed = {
+  ...idle,
+  phase: 'managed',
+  adoptionId: 'adoption',
+  application: null,
+  receiptDigest: 'b'.repeat(64),
+  progress: { consumed: { content: 3, record: 15, schema: 2 }, done: true }
+} satisfies Awaited<ReturnType<typeof coordinateCmsAdoption>>
 const physical = new Set<string>()
 const stubs = {
   UCard: { template: '<section><slot name="header"/><slot/><slot name="footer"/></section>' },
@@ -156,7 +166,7 @@ it('resumes frozen adoption without hitting the ordinary content read fence', as
         ...idle,
         phase: 'importing',
         adoptionId: 'adoption',
-        progress: { consumed: 20, done: false }
+        progress: { consumed: { content: 3, record: 15, schema: 2 }, done: false }
       }
     throw Object.assign(new Error('Frozen content'), { statusCode: 409 })
   })
@@ -171,6 +181,36 @@ it('resumes frozen adoption without hitting the ordinary content read fence', as
     expectedProgressDigest: idle.progressDigest
   })
   expect(fetch.mock.calls.every(([path]) => path.endsWith('cms-adoption'))).toBe(true)
+})
+it.each(['agency', 'portal'])('recognizes managed coordinator status before earlier %s setup fences', async (audience) => {
+  fetch.mockImplementation(async (path: string) => {
+    if (path.endsWith('cms-adoption')) return managed
+    throw Object.assign(new Error('Prior preparation requires reconciliation'), { statusCode: 409 })
+  })
+  const { host } = await mount(audience)
+  expect(host.textContent).toContain('Ready')
+  expect(host.textContent).toContain('CMS is ready for custom components and actions')
+  expect(host.textContent).not.toContain('Setup needs attention')
+  expect(fetch).toHaveBeenCalledOnce()
+  expect(fetch.mock.calls[0]?.[0]).toBe(`/api/${audience}/page-studio/sites/${siteId}/cms-adoption`)
+  expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true)
+  expect([...host.querySelectorAll('button')].map(item => item.textContent)).toEqual(['Refresh status'])
+})
+it.each([
+  20,
+  { content: '3', record: 15, schema: 2 },
+  { content: -1, record: 15, schema: 2 },
+  { content: 1.5, record: 15, schema: 2 },
+  { content: Number.MAX_SAFE_INTEGER + 1, record: 15, schema: 2 },
+  { content: 3, record: 15 },
+  { content: 3, record: 15, schema: 2, total: 20 }
+])('rejects malformed adoption counters without treating setup as ready: %j', async (consumed) => {
+  fetch.mockResolvedValue({ ...managed, progress: { consumed, done: true } })
+  const { host } = await mount()
+  expect(host.textContent).toContain('Setup needs attention')
+  expect(host.textContent).not.toContain('CMS is ready for')
+  expect(fetch).toHaveBeenCalledOnce()
+  expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true)
 })
 it('ignores in-flight results after switching sites and never submits the old target', async () => {
   let done: ((value: unknown) => void) | undefined

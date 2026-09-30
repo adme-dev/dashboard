@@ -149,6 +149,22 @@ describe('generated collection native admission', () => {
     await expect(executePageStudioCollection(f.request, 'writeRecord', { collectionId: 'fleet', recordId: 'car', body }, { query: f.query })).resolves.toMatchObject({ record })
     expect(f.service.writeCollectionRecord).toHaveBeenCalledWith({ ...body, scope, actorId: actor.actorId, collectionId: 'fleet', id: 'car' })
   })
+  it('reports a missing requested schema as a conflict before any record write', async () => {
+    const f = await setup()
+    f.service.readCollectionDefinition.mockResolvedValueOnce(null)
+    await expect(executePageStudioCollection(f.request, 'writeRecord', {
+      collectionId: 'fleet', recordId: 'car', body: { expectedRevision: 2, schemaVersion: 2, archived: false, values: { name: 'Car' } }
+    }, { query: f.query })).rejects.toMatchObject({ statusCode: 409, code: 'COLLECTION_CONFLICT' })
+    expect(f.service.writeCollectionRecord).not.toHaveBeenCalled()
+  })
+  it('keeps malformed schema responses distinct from an absent version', async () => {
+    const f = await setup()
+    f.service.readCollectionDefinition.mockResolvedValueOnce(undefined)
+    await expect(executePageStudioCollection(f.request, 'writeRecord', {
+      collectionId: 'fleet', recordId: 'car', body: { expectedRevision: 2, schemaVersion: 2, archived: false, values: { name: 'Car' } }
+    }, { query: f.query })).rejects.toMatchObject({ statusCode: 502, code: 'COLLECTION_RESPONSE_INVALID' })
+    expect(f.service.writeCollectionRecord).not.toHaveBeenCalled()
+  })
   it('rechecks membership after schema loading and before a record write', async () => {
     const f = await setup()
     f.service.readCollectionDefinition.mockImplementationOnce(async () => {

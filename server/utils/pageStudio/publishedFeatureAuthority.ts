@@ -3,6 +3,7 @@ import { transactionWithoutRetry } from '~~/server/utils/db'
 import { PageStudioContentScopeSchema } from '~~/shared/pageStudio/businessContent'
 import { CmsStorageTargetSchema, contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
 import { PageStudioHostnameSchema } from './delivery'
+import { requireRuntimeTarget, runtimeTargetPolicy } from './runtimeTarget'
 import { PageStudioBusinessContentError } from './businessContent'
 import { cmsEqual, lockCmsContext } from './cmsVisibility'
 import { assertSoleCmsAuthoringScope, type CmsGraphDependencies } from './cmsGraphCoordinator'
@@ -42,15 +43,20 @@ async function one(db: PageStudioControlQueryClient, sql: string, params: unknow
 function scoped(row: Record<string, unknown>, scope: { tenantId: string, clientId: string, siteId: string }) {
   return row.tenant_id === scope.tenantId && row.client_id === scope.clientId && row.site_id === scope.siteId
 }
-async function locked(db: PageStudioControlQueryClient, request: PublishedFeatureRequest, env: Record<string, unknown>, purpose: 'projection' | 'action'): Promise<PublishedFeatureSnapshot> {
+/** Common host, site and package fence for static and Astro CMS projection. */
+export async function lockPublishedFeatureSite(db: PageStudioControlQueryClient, request: { hostname: string, releaseId: string }, env: Record<string, unknown>, purpose: 'projection' | 'action' = 'projection') {
   const configured = z.enum(['staging', 'production']).safeParse(env.PAGE_STUDIO_RELEASE_ENVIRONMENT)
   if (!configured.success) throw new PageStudioBusinessContentError('PUBLISHED_RELEASE_ENVIRONMENT_UNAVAILABLE', 503, 'Published feature environment is unavailable')
-  const releaseEnvironment = configured.data
   // Discovery does not authorize. Scope is rechecked after locking the site and pointer.
-  const discovered = await one(db, 'SELECT tenant_id,client_id,site_id FROM page_studio_release_pointers WHERE environment=$2 AND normalized_hostname=$1', [request.hostname, releaseEnvironment])
+  const discovered = await one(db, `SELECT tenant_id,client_id,site_id,environment FROM page_studio_release_pointers
+    WHERE normalized_hostname=$1 AND (environment=$2 OR ($2='production' AND environment='staging'))`, [request.hostname, configured.data])
+  const releaseEnvironment = z.enum(['staging', 'production']).parse(discovered.environment)
+  if (configured.data === 'staging' && releaseEnvironment !== 'staging') throw publishedFeatureDenied()
   const scope = { tenantId: String(discovered.tenant_id), clientId: String(discovered.client_id), siteId: String(discovered.site_id) }
   const site = await one(db, 'SELECT id,tenant_id,client_id,entitlement_id,status,current_release_id FROM page_studio_sites WHERE tenant_id=$1 AND client_id=$2 AND id=$3 FOR NO KEY UPDATE', [scope.tenantId, scope.clientId, scope.siteId])
   if (!(releaseEnvironment === 'production' ? ['active'] : ['draft', 'active']).includes(String(site.status))) throw publishedFeatureDenied()
+  if (releaseEnvironment === 'staging') await requireRuntimeTarget(db,
+    { environment: releaseEnvironment, hostname: request.hostname, scope }, runtimeTargetPolicy(env))
   if (purpose === 'action') await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [JSON.stringify(['page-studio-ai-usage', scope.tenantId, scope.clientId])])
   const entitlement = await one(db, `SELECT id,tenant_id,client_id,status,plan_metadata,
     (effective_from <= clock_timestamp() AND (effective_until IS NULL OR effective_until > clock_timestamp())) AS effective,
@@ -70,6 +76,10 @@ async function locked(db: PageStudioControlQueryClient, request: PublishedFeatur
   const pointer = await one(db, 'SELECT * FROM page_studio_release_pointers WHERE environment=$2 AND normalized_hostname=$1 FOR SHARE NOWAIT', [request.hostname, releaseEnvironment])
   const epoch = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(pointer.pointer_version)
   if (!scoped(pointer, scope) || pointer.environment !== releaseEnvironment || pointer.active_release_id !== request.releaseId) throw publishedFeatureDenied()
+  return { scope, releaseEnvironment, epoch }
+}
+async function locked(db: PageStudioControlQueryClient, request: PublishedFeatureRequest, env: Record<string, unknown>, purpose: 'projection' | 'action'): Promise<PublishedFeatureSnapshot> {
+  const { scope, releaseEnvironment, epoch } = await lockPublishedFeatureSite(db, request, env, purpose)
   const release = await one(db, 'SELECT * FROM page_studio_releases WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4 FOR SHARE NOWAIT', [scope.tenantId, scope.clientId, scope.siteId, request.releaseId])
   const build = await one(db, 'SELECT * FROM page_studio_builds WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4 FOR SHARE NOWAIT', [scope.tenantId, scope.clientId, scope.siteId, request.buildId])
   if (

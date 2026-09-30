@@ -16,7 +16,7 @@ if (url) {
   if (target.protocol !== 'postgresql:' || target.hostname !== '127.0.0.1' || !/^\/studio_cms_[a-z0-9_]+$/.test(target.pathname) || target.search) throw new Error('Disposable localhost studio_cms database required')
 }
 const directory = new URL('../../../server/database/migrations/', import.meta.url)
-const migrations = ['402_page_studio_control_plane', '413_page_studio_release_metadata', '414_page_studio_atomic_release_metadata', '428_page_studio_client_staging', '429_page_studio_checkpoint_staging_outbox', '430_page_studio_astro_build_identity', '431_page_studio_astro_release_receipt', '432_page_studio_astro_approval', '433_page_studio_runtime_delivery', '434_page_studio_runtime_draft_isolation']
+const migrations = ['402_page_studio_control_plane', '413_page_studio_release_metadata', '414_page_studio_atomic_release_metadata', '428_page_studio_client_staging', '429_page_studio_checkpoint_staging_outbox', '430_page_studio_astro_build_identity', '431_page_studio_astro_release_receipt', '432_page_studio_astro_approval', '433_page_studio_runtime_delivery', '434_page_studio_runtime_draft_isolation', '435_page_studio_runtime_features']
 const metadata = { defaultLocale: 'en-AU', footer: {}, integrations: {}, navigation: { items: [] }, seoDefaults: {}, theme: { tokens: {} } }
 const renderer = { assetsDigest: 'a'.repeat(64), codeDigest: 'b'.repeat(64), generation: 'renderer_one', name: 'astro-runtime' as const }
 
@@ -53,7 +53,7 @@ describe.runIf(Boolean(url))('runtime publication transactions on PostgreSQL', (
     const entitlement = (await db.query('INSERT INTO page_studio_entitlements(tenant_id,client_id) VALUES($1,$2) RETURNING id', [tenant, clientId])).rows[0]
     const siteId = (await db.query('INSERT INTO page_studio_sites(tenant_id,client_id,entitlement_id,name,route,starter_version,delivery_mode) VALUES($1,$2,$3,\'Runtime\',\'runtime\',\'limousine-v1\',\'runtime\') RETURNING id', [tenant, clientId, entitlement.id])).rows[0].id
     scope = { tenantId: tenant, clientId, siteId }
-    await db.query(`INSERT INTO page_studio_domains(tenant_id,client_id,site_id,normalized_hostname,cloudflare_hostname_id,hostname_status,tls_status,dns_status,lifecycle_state,verified_at) VALUES($1,$2,$3,$4,'cf-test','active','active','active','active',NOW())`, [tenant,clientId,siteId,hostname])
+    await db.query(`INSERT INTO page_studio_domains(tenant_id,client_id,site_id,normalized_hostname,cloudflare_hostname_id,hostname_status,tls_status,dns_status,lifecycle_state,verified_at) VALUES($1,$2,$3,$4,'cf-test','active','active','active','active',NOW())`, [tenant, clientId, siteId, hostname])
   })
   afterEach(async () => {
     if (!db) return
@@ -88,26 +88,25 @@ describe.runIf(Boolean(url))('runtime publication transactions on PostgreSQL', (
     releases: (await db.query('SELECT count(*)::int AS n FROM page_studio_releases')).rows[0].n
   })
 
-
   it('refuses unowned or unready hostnames and production publication from a staging deployment', async () => {
     const prepared = await version('target-authority')
     const input = { actorId: actor, environment: 'production' as const, expectedActiveReleaseId: null, hostname, idempotencyKey: 'target', prepared, scope }
     await expect(activatePageStudioRuntimeRelease({ ...input, hostname: 'someone-else.example' }, { runTransaction, policy: { deploymentEnvironment: 'production' } })).rejects.toMatchObject({ code: 'SITE_NOT_PUBLISHABLE' })
     await expect(activatePageStudioRuntimeRelease(input, { runTransaction, policy: { deploymentEnvironment: 'staging' } })).rejects.toMatchObject({ code: 'SITE_NOT_PUBLISHABLE' })
-    await db.query("UPDATE page_studio_domains SET tls_status='pending'")
+    await db.query('UPDATE page_studio_domains SET tls_status=\'pending\'')
     await expect(activate(prepared, null)).rejects.toMatchObject({ code: 'SITE_NOT_PUBLISHABLE' })
     expect((await state()).releases).toBe(0)
   })
 
   it('publishes shared staging from production without invalidating the separate live form authority', async () => {
     const query = (async (sql: string, params?: unknown[]) => (await db.query(sql, params)).rows[0] ?? null) as never
-    await db.query("UPDATE page_studio_entitlements SET status='active',effective_from=NOW() - interval '1 day'")
+    await db.query('UPDATE page_studio_entitlements SET status=\'active\',effective_from=NOW() - interval \'1 day\'')
     const production = await version('live-forms')
     const live = await activate(production, null)
     const staging = await version('shared-preview', 'approved', 'staging')
     await db.query('UPDATE page_studio_sites SET current_checkpoint_id=(SELECT checkpoint_id FROM page_studio_versions WHERE id=$1)', [staging.release.versionId])
     const stagingHost = `preview-${scope.siteId.replaceAll('-', '')}.xeroflow.io`
-    await db.query(`INSERT INTO page_studio_staging_sites(tenant_id,client_id,site_id,hostname,host_state,provider_domain_id,provider_verified_at) VALUES($1,$2,$3,$4,'ready','cf-staging',NOW())`, [tenant,scope.clientId,scope.siteId,stagingHost])
+    await db.query(`INSERT INTO page_studio_staging_sites(tenant_id,client_id,site_id,hostname,host_state,provider_domain_id,provider_verified_at) VALUES($1,$2,$3,$4,'ready','cf-staging',NOW())`, [tenant, scope.clientId, scope.siteId, stagingHost])
     const input = { actorId: actor, environment: 'staging' as const, expectedActiveReleaseId: null, hostname: stagingHost, idempotencyKey: 'shared-staging', prepared: staging, scope }
     await activatePageStudioRuntimeRelease(input, { runTransaction, policy: { deploymentEnvironment: 'production' } })
     await expect(requireReleaseAuthority({ scope, releaseId: live.releaseId, versionDigest: production.release.versionDigest } as never, 'production', query)).resolves.toMatchObject({ release_id: live.releaseId })

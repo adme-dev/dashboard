@@ -1,3 +1,6 @@
+import { readPublishedRuntimeFeatureForms } from './publishedRuntimeFeatureForms'
+import { PublishedRuntimeFeatureRequestSchema } from './publishedRuntimeFeatureAuthority'
+import { readPublishedRuntimeFeaturePage } from './publishedRuntimeFeatureProjection'
 import { createError, setHeader, type H3Event } from 'h3'
 import { readPageStudioJson } from './boundedJson'
 import { pageStudioInternalHttpError } from './http'
@@ -5,7 +8,7 @@ import { requirePageStudioMachineAuth } from './machineAuth'
 import { PublishedFeatureRequestSchema } from './publishedFeatureAuthority'
 import { readPublishedFeaturePage } from './publishedFeatureProjection'
 
-export async function handlePublishedFeaturePage(event: H3Event) {
+export async function handlePublishedFeaturePage(event: H3Event, mode: 'static' | 'runtime' | 'runtime-forms' = 'static') {
   setHeader(event, 'cache-control', 'private, no-store')
   try {
     requirePageStudioMachineAuth(event)
@@ -13,7 +16,8 @@ export async function handlePublishedFeaturePage(event: H3Event) {
       'Published page request requires JSON', 'Published page request exceeds byte limit',
       'Published page request required', 'Invalid published page body', 'Invalid published page JSON'
     ])
-    if (!PublishedFeatureRequestSchema.safeParse(body).success) throw createError({ statusCode: 400, statusMessage: 'Invalid published page request' })
-    return await readPublishedFeaturePage(body, (event.context.cloudflare?.env ?? {}) as Record<string, unknown>)
+    if (!(mode !== 'static' ? PublishedRuntimeFeatureRequestSchema : PublishedFeatureRequestSchema).safeParse(body).success) throw createError({ statusCode: 400, statusMessage: 'Invalid published page request' })
+    if (mode === 'runtime-forms') return await readPublishedRuntimeFeatureForms(body, (event.context.cloudflare?.env ?? {}) as Record<string, unknown>)
+    return await (mode === 'runtime' ? readPublishedRuntimeFeaturePage : readPublishedFeaturePage)(body, (event.context.cloudflare?.env ?? {}) as Record<string, unknown>)
   } catch (error) { return pageStudioInternalHttpError(event, error) }
 }

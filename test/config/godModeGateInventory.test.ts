@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type { H3Event } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -19,7 +20,7 @@ vi.mock('../../server/utils/godMode/audit', () => ({
   appendGodModeAuditEvent: mockAppendGodModeAuditEvent
 }))
 vi.mock('../../server/utils/godMode/authority', () => ({
-  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args),
+  resolveGodModeAuthority: (...args: unknown[]) => mockResolveGodModeAuthority(...args),
   isActiveGodModeAuthority: (authority: unknown, actorUserId: string) => {
     const candidate = authority as Record<string, unknown> | null
     return candidate?.active === true
@@ -134,7 +135,7 @@ describe('God mode gate inventory', () => {
       },
       res: { statusCode: 200, statusMessage: 'OK' }
     }
-  }) as any
+  }) as unknown as H3Event
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -234,7 +235,10 @@ describe('God mode gate inventory', () => {
     // independent authority checks and none becomes a governance bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tAND owner.user_role NOT IN (\'viewer\', \'guest\')\tidentity_tenant_hard_boundary')
     expect(inventory.rows).toContain('server/utils/pageStudio/authoritySql.ts\tOR (owner.custom_role_id IS NULL AND staff_role.slug = owner.user_role::text AND staff_role.is_system = TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('ab7b33d1403ea77fabfdc5db929b4e07d6a570bb9b1bdb3ce3902c69277901fc')
+    // Publication casts the PostgreSQL user_role enum to text before comparing
+    // the role slug. The predicate, scope and classification remain unchanged.
+    expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
+    expect(inventory.digest).toBe('f8aa7171d2e3e14ad02c094be27b03959028085194f678779f079d0c38044a61')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
@@ -249,13 +253,13 @@ describe('God mode gate inventory', () => {
   })
 
   it('preserves the normal application gate for non-owners', async () => {
-    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as any
+    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as unknown as H3Event
     await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
   })
 
   it('evaluates asynchronous normal gates before applying active-owner authority', async () => {
     const normalGate = vi.fn().mockResolvedValue(true)
-    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as any
+    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as unknown as H3Event
     await expect(isApplicationCapabilityEnabled(event, normalGate)).resolves.toBe(true)
     expect(normalGate).toHaveBeenCalledTimes(1)
   })

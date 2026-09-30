@@ -36,7 +36,7 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
     '/lobby-room'
   ]
 
-  if (to.path === '/' || to.path === '/voice-ai' || publicPrefixes.some(p => to.path.startsWith(p))) {
+  if (to.path === '/studio' || to.path.startsWith('/studio/') || to.path === '/' || to.path === '/voice-ai' || publicPrefixes.some(p => to.path.startsWith(p))) {
     return
   }
 
