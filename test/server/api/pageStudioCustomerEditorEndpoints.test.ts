@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http'
-import { createApp, defineEventHandler, toNodeListener } from 'h3'
+import { createApp, createRouter, defineEventHandler, toNodeListener } from 'h3'
 import { exportPKCS8, exportSPKI, generateKeyPair } from 'jose'
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { signCustomerEditorToken } from '~~/server/utils/pageStudio/customerEditorToken'
@@ -23,11 +23,10 @@ beforeAll(async () => {
   publicPem = await exportSPKI(keys.publicKey)
   signed = await signCustomerEditorToken(claims, privatePem, issuer)
   legacy = await signPageStudioSessionToken({ ...claims, role: 'client' }, privatePem, issuer)
-  const { customerEditorSessionHandler } = await import('~~/server/utils/pageStudio/customerEditorSessionHttp')
+  const { default: handler } = await import('~~/server/routes/internal/page-studio/customer-sessions/[operation].post')
   const app = createApp().use(defineEventHandler((event) => {
     event.context.cloudflare = { env: config }
-    return customerEditorSessionHandler(event, event.path.slice(1) as 'exchange' | 'authorize' | 'checkpoint' | 'latest-checkpoint')
-  }))
+  })).use(createRouter().post('/:operation', handler).handler)
   server = createServer(toNodeListener(app))
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
@@ -80,6 +79,17 @@ describe('private native customer session endpoints', () => {
     expect(mocks.read).toHaveBeenCalledWith(claims)
     expect((await call('latest-checkpoint', { siteId: 'foreign' })).status).toBe(400)
     expect((await call('authorize', { capability: 'source:edit' })).status).toBe(400)
+  })
+  it('rejects unknown dispatcher operations without invoking a service', async () => {
+    expect((await call('publish', {})).status).toBe(404)
+    for (const service of Object.values(mocks)) expect(service).not.toHaveBeenCalled()
+  })
+  it('dispatches checkpoint metadata and preserves write conflicts', async () => {
+    const input = { checkpoint: { checkpointId: 'draft_example' }, expectedCheckpointId: null }
+    expect((await call('checkpoint', input)).status).toBe(200)
+    expect(mocks.commit).toHaveBeenCalledWith(input, claims)
+    mocks.commit.mockRejectedValueOnce({ statusCode: 409 })
+    expect((await call('checkpoint', input)).status).toBe(409)
   })
   it('preserves denial/conflict and hides unexpected provider or signing failures', async () => {
     mocks.authorize.mockRejectedValueOnce({ statusCode: 403, message: 'private native detail' })

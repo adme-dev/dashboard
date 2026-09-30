@@ -9,7 +9,6 @@ import { assertCustomerEditorSessionAuthority, commitCustomerEditorCheckpoint, e
 const Exchange = z.object({ ticket: z.string().regex(/^[A-Za-z0-9_-]{64}$/) }).strict()
 const Authorize = z.object({ capability: CustomerEditorCapabilitySchema }).strict()
 const Empty = z.object({}).strict()
-type Operation = 'exchange' | 'authorize' | 'checkpoint' | 'latest-checkpoint'
 function setting(event: H3Event, name: string): unknown {
   const env = event.context.cloudflare?.env
   return env && Object.prototype.hasOwnProperty.call(env, name) ? env[name] : process.env[name]
@@ -28,7 +27,7 @@ async function body<T>(event: H3Event, schema: z.ZodType<T>) {
   return parsed.data
 }
 /** Private service-binding adapter. No browser cookies, public exchange or cached authority. */
-export async function customerEditorSessionHandler(event: H3Event, operation: Operation) {
+export async function customerEditorSessionHandler(event: H3Event, operation: string) {
   setHeader(event, 'cache-control', 'private, no-store')
   try {
     assertMethod(event, 'POST')
