@@ -88,3 +88,7 @@ hosted customer database/bucket/runtime isolation, and live save/reload/QR
 navigation acceptance remain required. Storage in these tests is a scoped fake;
 real PostgreSQL transactions do not prove hosted Cloudflare resources. No Ready
 state, marketing claim, production deployment or public enablement is introduced.
+
+The follow-on [customer CMS adoption adapter](page-studio-customer-cms-adoption.md)
+adds a separate `workspace:create` setup path against verified managed storage.
+Checkpoint-only authority still cannot run adoption or unrelated CMS mutations.

@@ -42,6 +42,8 @@ export const CMS_INVENTORY_MAX_ROWS = 20
 export const CMS_INVENTORY_MAX_BYTES = 1_048_576
 const version = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER)
 const { actor } = ContentAttachmentRequestSchema.shape
+// Setup provenance only: customer actors cannot prepare schema/record mutations.
+const adoptionActor = actor.extend({ kind: z.enum(['agency-user', 'client-user', 'customer-user']) })
 /** Storage incarnation supplied by the trusted native binding, never authority. */
 export const CmsStorageTargetSchema = z
   .object({
@@ -57,7 +59,7 @@ export const CmsStorageTargetSchema = z
   .strict()
 export const CmsFreezeRequestSchema = z
   .object({
-    actor,
+    actor: adoptionActor,
     adoptionId: ReleaseScopedIdSchema,
     formatVersion: z.literal(1),
     scope: ContentScopeSchema,
@@ -367,7 +369,7 @@ export const CmsAdoptionIntentSchema = z
   .object({
     formatVersion: z.literal(1),
     scope: ContentScopeSchema,
-    actor,
+    actor: adoptionActor,
     adoptionId: ReleaseScopedIdSchema,
     generation: z.uuid(),
     target: CmsStorageTargetSchema,
@@ -381,6 +383,6 @@ export const CmsAdoptionRecoverySchema = z
     expectedAdoptionDigest: ReleaseSha256Schema,
     recoveryId: ReleaseScopedIdSchema,
     expectedRecoveryId: ReleaseScopedIdSchema.nullable(),
-    actor
+    actor: adoptionActor
   })
   .strict()

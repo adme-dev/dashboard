@@ -18,9 +18,9 @@ import {
   type PageStudioContentScope
 } from '~~/shared/pageStudio/businessContent'
 
-type Mutation = 'customer-checkpoint' | 'business-content' | 'collection-record' | 'collection-schema' | 'action-execution' | 'image-billing'
+type Mutation = 'customer-adoption' | 'customer-checkpoint' | 'business-content' | 'collection-record' | 'collection-schema' | 'action-execution' | 'image-billing'
 type Principal
-  = | { source: 'customer-session', claims: import('./customerEditorToken').CustomerEditorClaims, env: Record<string, unknown>, capability: 'workspace:checkpoint' }
+  = | { source: 'customer-session', claims: import('./customerEditorToken').CustomerEditorClaims, env: Record<string, unknown>, capability: 'workspace:checkpoint' | 'workspace:create' }
     | { source: 'native-login', request: ContentAuthorityRequest }
     | {
       source: 'studio-session'
@@ -219,7 +219,7 @@ export async function withCmsCommitAuthority<T>(
   if (
     scope.businessId !== scope.clientId
     || !z
-      .enum(['customer-checkpoint', 'business-content', 'collection-record', 'collection-schema', 'action-execution', 'image-billing'])
+      .enum(['customer-adoption', 'customer-checkpoint', 'business-content', 'collection-record', 'collection-schema', 'action-execution', 'image-billing'])
       .safeParse(input.mutation).success
   )
     throw denied()
@@ -233,13 +233,14 @@ export async function withCmsCommitAuthority<T>(
   try {
     if (input.principal.source === 'customer-session') {
       const principal = input.principal
-      if (input.mutation !== 'customer-checkpoint' || principal.capability !== 'workspace:checkpoint'
+      const capability = input.mutation === 'customer-adoption' ? 'workspace:create' : 'workspace:checkpoint'
+      if (!['customer-checkpoint', 'customer-adoption'].includes(input.mutation) || principal.capability !== capability
         || principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== 'staging' || scope.environment !== 'staging') throw denied()
       const { assertCustomerEditorSessionAuthority } = await import('./customerEditorSessions')
       return await run(async (db) => {
         await db.query('SET LOCAL lock_timeout=\'3s\'')
         const recheck = async () => {
-          const authority = await assertCustomerEditorSessionAuthority(principal.claims, 'workspace:checkpoint', db)
+          const authority = await assertCustomerEditorSessionAuthority(principal.claims, capability, db)
           if (!samePageStudioContentScope(authority.owned.scope, scope)) throw denied()
         }
         // Preserve native account → workspace → site/entitlement → child ordering.
@@ -249,7 +250,7 @@ export async function withCmsCommitAuthority<T>(
         return result
       })
     }
-    if (input.mutation === 'customer-checkpoint') throw denied()
+    if (input.mutation === 'customer-checkpoint' || input.mutation === 'customer-adoption') throw denied()
     return await run(async (db) => {
       await db.query('SET LOCAL lock_timeout=\'3s\'')
       const site = await one<{ entitlement_id: string }>(

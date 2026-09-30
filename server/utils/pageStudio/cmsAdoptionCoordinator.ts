@@ -43,7 +43,7 @@ export const CmsAdoptionControlRequestSchema = z.discriminatedUnion('action', [
 type Principal = Parameters<typeof beginCmsAdoption>[1]
 type Dependencies = NonNullable<Parameters<typeof beginCmsAdoption>[2]>
 type Control = Awaited<ReturnType<typeof readCmsAdoptionControl>>
-async function project(value: Control) {
+async function project(value: Control, source: Principal['source']) {
   const adoption = value.adoption
   const phase = !adoption
     ? 'idle'
@@ -54,7 +54,7 @@ async function project(value: Control) {
     phase,
     adoptionId: adoption?.intent.adoptionId ?? null,
     progress: adoption?.progress
-      ? { consumed: adoption.progress.consumed, done: adoption.progress.done }
+      ? { consumed: source === 'native-login' ? adoption.progress.consumed : Object.values(adoption.progress.consumed).reduce((sum, count) => sum + count, 0), done: adoption.progress.done }
       : null,
     recoveryId: adoption?.recoveryId ?? null,
     recoveryRequired: Boolean(adoption && !adoption.canAdvance && adoption.state !== 'managed'),
@@ -83,7 +83,7 @@ export async function coordinateCmsAdoption(
   principal: Principal,
   deps: Dependencies = {}
 ) {
-  if (principal.source === 'customer-session')
+  if (principal.source === 'customer-session' && principal.capability !== 'workspace:create')
     throw new PageStudioBusinessContentError('CMS_ADOPTION_AUTHORITY_DENIED', 403, 'Customer content setup is not available.')
   const parsed = CmsAdoptionControlRequestSchema.safeParse(raw)
   if (!parsed.success)
@@ -97,7 +97,7 @@ export async function coordinateCmsAdoption(
   const runTransaction
     = deps.runTransaction ?? (work => transactionWithoutRetry(db => work(db)))
   const scope
-    = principal.source === 'studio-session'
+    = principal.source !== 'native-login'
       ? PageStudioContentScopeSchema.parse({
           tenantId: principal.claims.tenantId,
           clientId: principal.claims.clientId,
@@ -115,7 +115,7 @@ export async function coordinateCmsAdoption(
           )
         ).scope
   const control = await readCmsAdoptionControl(scope, principal, deps)
-  const current = await project(control)
+  const current = await project(control, principal.source)
   if (input.action === 'status') return current
   if (input.action === 'start') {
     if (control.adoption) return current
@@ -141,7 +141,7 @@ export async function coordinateCmsAdoption(
         throw error
       // A competing start won definitively; discover its original intent.
     }
-    return await project(await readCmsAdoptionControl(scope, principal, deps))
+    return await project(await readCmsAdoptionControl(scope, principal, deps), principal.source)
   }
   const adoption = control.adoption
   if (!adoption || input.adoptionId !== adoption.intent.adoptionId)
@@ -158,7 +158,7 @@ export async function coordinateCmsAdoption(
       principal,
       deps
     )
-    return await project(await readCmsAdoptionControl(scope, principal, deps))
+    return await project(await readCmsAdoptionControl(scope, principal, deps), principal.source)
   }
   if (input.expectedProgressDigest !== current.progressDigest || adoption.state === 'managed')
     return current
@@ -184,5 +184,5 @@ export async function coordinateCmsAdoption(
   } else if (adoption.state === 'importing' && adoption.progress?.done) {
     await activateCmsAdoption(adoption.intent, principal, { ...deps, ...storage.graph })
   } else throw denied('Content setup is unavailable in its current state')
-  return await project(await readCmsAdoptionControl(scope, principal, deps))
+  return await project(await readCmsAdoptionControl(scope, principal, deps), principal.source)
 }

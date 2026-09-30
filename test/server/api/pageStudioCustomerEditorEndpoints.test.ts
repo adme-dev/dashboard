@@ -5,15 +5,16 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vites
 import { signCustomerEditorToken } from '~~/server/utils/pageStudio/customerEditorToken'
 import { signPageStudioSessionToken } from '~~/server/utils/pageStudio/sessions'
 
-const mocks = vi.hoisted(() => ({ exchange: vi.fn(), authorize: vi.fn(), commit: vi.fn(), read: vi.fn() }))
+const mocks = vi.hoisted(() => ({ exchange: vi.fn(), authorize: vi.fn(), commit: vi.fn(), read: vi.fn(), adopt: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/customerEditorSessions', () => ({ exchangeCustomerEditorSession: mocks.exchange,
   assertCustomerEditorSessionAuthority: mocks.authorize, commitCustomerEditorCheckpoint: mocks.commit, readCustomerEditorCheckpoint: mocks.read }))
+vi.mock('~~/server/utils/pageStudio/cmsAdoptionCoordinator', () => ({ coordinateCmsAdoption: mocks.adopt }))
 vi.mock('~~/server/utils/db', () => ({ transaction: async (callback: (db: unknown) => unknown) => callback({}) }))
 const issuer = 'https://customers.example.test', editorOrigin = 'https://studio.example.test'
 const now = Math.floor(Date.now() / 1000)
 const claims = { nonce: crypto.randomUUID(), userId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), siteId: crypto.randomUUID(),
   clientId: crypto.randomUUID(), tenantId: 'studio-customer-test', role: 'customer' as const, environment: 'staging' as const,
-  issuedAt: now, expiresAt: now + 600, capabilities: ['workspace:checkpoint' as const, 'workspace:reconnect' as const],
+  issuedAt: now, expiresAt: now + 600, capabilities: ['workspace:create' as const, 'workspace:checkpoint' as const, 'workspace:reconnect' as const],
   editorOrigin, returnUrl: `${issuer}/studio/dashboard` }
 let server: Server, base: string, signed: string, legacy: string, config: Record<string, unknown>
 let privatePem: string, publicPem: string
@@ -100,6 +101,18 @@ describe('private native customer session endpoints', () => {
     expect(mocks.commit.mock.calls[0]![2]).toEqual({ env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging',
       PAGE_STUDIO_CHECKPOINTS: config.PAGE_STUDIO_CHECKPOINTS, PAGE_STUDIO_CONTENT_ROUTER: config.PAGE_STUDIO_CONTENT_ROUTER,
       PAGE_STUDIO_CMS_OBJECT_TRANSPORT: undefined } })
+  })
+  it('dispatches private customer setup using native creation authority and server bindings', async () => {
+    config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'staging'
+    mocks.adopt.mockResolvedValue({ phase: 'idle' })
+    expect((await call('cms-adoption', { action: 'status' })).status).toBe(200)
+    expect(mocks.adopt).toHaveBeenCalledWith({ action: 'status' }, {
+      source: 'customer-session', claims, capability: 'workspace:create',
+      env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CHECKPOINTS: undefined,
+        PAGE_STUDIO_CONTENT_ROUTER: undefined, PAGE_STUDIO_CMS_OBJECT_TRANSPORT: undefined }
+    })
+    mocks.adopt.mockRejectedValueOnce({ statusCode: 403 })
+    expect((await call('cms-adoption', { action: 'start' })).status).toBe(403)
   })
   it('preserves denial/conflict and hides unexpected provider or signing failures', async () => {
     mocks.authorize.mockRejectedValueOnce({ statusCode: 403, message: 'private native detail' })

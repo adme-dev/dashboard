@@ -36,6 +36,7 @@ import { PageStudioBusinessContentError } from './businessContent'
 type Principal = Parameters<typeof withCmsCommitAuthority>[0]['principal']
 type Transaction = NonNullable<Parameters<typeof withCmsCommitAuthority>[2]>['runTransaction']
 type Dependencies = { runTransaction?: Transaction }
+const adoptionMutation = (principal: Principal) => principal.source === 'customer-session' ? 'customer-adoption' as const : 'collection-schema' as const
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
 const countsSchema = z.object({ content: count, record: count, schema: count }).strict()
 const objectSchema = z
@@ -127,7 +128,9 @@ async function currentPrincipal(db: PageStudioControlQueryClient, principal: Pri
   }
   const row = (
     await db.query<{ login_session_hash: string }>(
-      'SELECT login_session_hash FROM page_studio_sessions WHERE nonce=$1',
+      principal.source === 'customer-session'
+        ? 'SELECT handoff.login_session_hash FROM page_studio_customer_editor_sessions child JOIN page_studio_customer_editor_handoffs handoff ON handoff.id=child.handoff_id WHERE child.nonce=$1'
+        : 'SELECT login_session_hash FROM page_studio_sessions WHERE nonce=$1',
       [principal.claims.nonce]
     )
   ).rows[0]
@@ -136,7 +139,7 @@ async function currentPrincipal(db: PageStudioControlQueryClient, principal: Pri
     source: principal.source,
     nonce: principal.claims.nonce,
     actor: {
-      kind: principal.claims.role === 'agency' ? 'agency-user' : 'client-user',
+      kind: principal.claims.role === 'agency' ? 'agency-user' : principal.claims.role === 'customer' ? 'customer-user' : 'client-user',
       userId: principal.claims.userId,
       loginSessionHash: row.login_session_hash
     }
@@ -179,7 +182,7 @@ async function authorized<T>(
   work: (db: PageStudioControlQueryClient) => Promise<T>
 ) {
   return await withCmsCommitAuthority(
-    { scope: intent.scope, principal, mutation: 'collection-schema' },
+    { scope: intent.scope, principal, mutation: adoptionMutation(principal) },
     async (db) => {
       await actorCheck(db, intent, principal)
       return await work(db)
@@ -670,7 +673,7 @@ async function verifyLegacyGraph(intent: CmsAdoptionIntent, readers: CmsAdoption
 }
 const principalSchema = z
   .object({
-    source: z.enum(['native-login', 'studio-session']),
+    source: z.enum(['native-login', 'studio-session', 'customer-session']),
     nonce: z.string().nullable(),
     actor: CmsAdoptionIntentSchema.shape.actor
   })
@@ -816,7 +819,7 @@ export async function activateCmsAdoption(
         intent.scope.clientId,
         intent.scope.siteId,
         activatedBy.actor.userId,
-        activatedBy.actor.kind === 'agency-user' ? 'agency' : 'client',
+        activatedBy.actor.kind === 'agency-user' ? 'agency' : activatedBy.actor.kind === 'customer-user' ? 'customer' : 'client',
         intent.adoptionId,
         `cms-adopt:${intent.scope.environment}:${intent.adoptionId}`,
         receipt
@@ -862,7 +865,7 @@ export async function recoverCmsAdoption(
   if (input.expectedAdoptionDigest !== (await collectionDigest(intent)))
     throw new Error('CMS recovery adoption digest mismatch')
   return await withCmsCommitAuthority(
-    { scope: intent.scope, principal, mutation: 'collection-schema' },
+    { scope: intent.scope, principal, mutation: adoptionMutation(principal) },
     async (db) => {
       const current = await currentPrincipal(db, principal)
       if (!cmsEqual(input.actor, current.actor)) throw new Error('CMS recovery actor mismatch')
@@ -918,7 +921,7 @@ export async function recoverCmsAdoption(
           intent.scope.clientId,
           intent.scope.siteId,
           current.actor.userId,
-          current.actor.kind === 'agency-user' ? 'agency' : 'client',
+          current.actor.kind === 'agency-user' ? 'agency' : current.actor.kind === 'customer-user' ? 'customer' : 'client',
           intent.adoptionId,
           `cms-recover:${intent.scope.environment}:${input.recoveryId}`,
           receipt
@@ -960,7 +963,7 @@ export async function readCmsAdoptionControl(
   deps: Dependencies = {}
 ) {
   return await withCmsCommitAuthority(
-    { scope, principal, mutation: 'collection-schema' },
+    { scope, principal, mutation: adoptionMutation(principal) },
     async (db) => {
       const current = await currentPrincipal(db, principal)
       const row = (
