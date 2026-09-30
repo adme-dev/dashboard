@@ -667,10 +667,11 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
       expect((await db.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(1)
     } finally { await other.end() }
   })
-  it('preserves the original accounting month and does not double-count the retained build', async () => {
+  it.each(['UTC', 'Australia/Melbourne'])('preserves the UTC accounting month without double-counting a retained build in %s', async (timezone) => {
+    await db.query('SELECT set_config(\'TimeZone\',$1,false)', [timezone])
     await db.query('UPDATE page_studio_entitlements SET monthly_build_limit=2')
     const first = await reserve()
-    await db.query('UPDATE page_studio_build_admissions SET created_at=date_trunc(\'month\',NOW())-INTERVAL \'1 day\'')
+    await db.query(`UPDATE page_studio_build_admissions SET created_at=(date_trunc('month',NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')-INTERVAL '1 day'`)
     expect((await reserve()).buildId).toBe(first.buildId)
     await runTransaction(client => client.query('SELECT admit_page_studio_build($1,$2,$3,\'release\',\'build_second\')', Object.values(scope)))
     expect((await db.query('SELECT COUNT(*)::int AS count FROM page_studio_build_admissions')).rows[0].count).toBe(2)
