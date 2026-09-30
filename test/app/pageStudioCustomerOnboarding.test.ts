@@ -36,6 +36,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('customer onboarding escape paths', () => {
+  it('returns a completed customer to the website overview', async () => {
+    fetchMock.mockResolvedValueOnce({ revision: 2, workspaceId: 'owned-workspace', draft: { businessName: 'Flowers', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] } })
+    await mount()
+    expect(navigate).toHaveBeenCalledWith('/studio/dashboard', { replace: true })
+  })
   it.each([403, 500])('allows logout when setup cannot load (%s)', async (statusCode) => {
     fetchMock.mockRejectedValueOnce({ statusCode }).mockResolvedValueOnce({ success: true })
     await mount()

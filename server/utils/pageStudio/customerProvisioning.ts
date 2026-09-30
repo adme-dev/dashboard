@@ -24,7 +24,7 @@ async function sessionIdentity(db: PageStudioQueryClient, tokenHash: string) {
   return rows[0].identity_id
 }
 
-async function ownedPreview(db: PageStudioQueryClient, siteId: string, identityId: string) {
+export async function readCustomerProvisioningPreviewAuthority(db: PageStudioQueryClient, siteId: string, identityId: string) {
   const rows = (await db.query<{ workspace_id: string, business_id: string, tenant_id: string, preview_policy: unknown }>(`
     SELECT receipt.workspace_id, receipt.business_id, receipt.tenant_id, receipt.preview_policy
     FROM page_studio_customer_site_requests receipt
@@ -58,7 +58,7 @@ export async function verifyCustomerProvisioningAuthority(job: Job, db: PageStud
   if (job.actor?.kind !== 'customer-user' || !job.actor.loginSessionHash || job.scope.environment !== 'staging') throw denied()
   const identityId = await sessionIdentity(db, job.actor.loginSessionHash)
   if (identityId !== job.actor.userId) throw denied()
-  const owned = await ownedPreview(db, job.scope.siteId, identityId)
+  const owned = await readCustomerProvisioningPreviewAuthority(db, job.scope.siteId, identityId)
   const saved = (await db.query<{ job: unknown }>(`SELECT job FROM page_studio_customer_provisioning_intents
     WHERE site_id = $1 AND workspace_id = $2 AND business_id = $3 AND tenant_id = $4
       AND actor_identity_id = $5 AND login_session_hash = $6 AND environment = 'staging' AND request_key = $7`,
@@ -78,8 +78,8 @@ export async function prepareCustomerProvisioning(input: z.infer<typeof Input>, 
   const tokenHash = await digestPortalSessionToken(parsed.data.sessionToken)
   return (dependencies.runTransaction ?? transaction)(async (db) => {
     const identityId = await sessionIdentity(db, tokenHash)
-    const owned = await ownedPreview(db, parsed.data.siteId, identityId)
-    // ownedPreview locks the site, serializing initial intent retention as well as retries.
+    const owned = await readCustomerProvisioningPreviewAuthority(db, parsed.data.siteId, identityId)
+    // The preview-authority reader locks the site, serializing initial intent retention as well as retries.
     const prior = (await db.query<{ job: unknown }>('SELECT job FROM page_studio_customer_provisioning_intents WHERE site_id = $1', [owned.site.id])).rows[0]
     if (prior) {
       const retained = PageStudioProvisioningJobSchema.safeParse(prior.job)
