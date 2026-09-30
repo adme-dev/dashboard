@@ -27,6 +27,12 @@ async function signOut() {
             color="neutral"
             variant="ghost"
           />
+          <UButton
+            to="/studio/credits"
+            label="Image credits"
+            color="neutral"
+            variant="ghost"
+          />
           <span v-if="user?.clientName" class="hidden max-w-48 truncate px-2 text-sm text-muted sm:block">{{ user.clientName }}</span>
           <UButton
             label="Sign out"

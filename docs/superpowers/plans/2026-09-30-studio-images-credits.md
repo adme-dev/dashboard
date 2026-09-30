@@ -80,10 +80,10 @@ expect(await balance()).toMatchObject({ balance: 100, reserved: 70, available: 3
 
 **Interfaces:** The UI consumes Task 2/3 catalog/quote/job/asset receipts. `Use image` accepts a scoped owned asset plus captured page/component/field target and applies one validated `updateComponentProps` operation. Reopening recovers durable jobs and saved images; applying again costs no credits.
 
-- [ ] Write browser tests showing prompt/model/aspect, quoted cost, balance, insufficient-credit path, recoverable progress, preview, explicit new-variant charge and saved-library reuse. Assert meaningful-image alt text, decorative empty-alt behavior, keyboard focus trap/return and mobile no overflow.
-- [ ] Add existing-style controls and semantic product copy: `Generate for N credits`, explanation that credits are spent when an image is saved, `Use image`, and available balance. Preserve request identity on close/reopen. Changing prompt/model invalidates the displayed quote. Guard double-clicks and stale response ordering.
-- [ ] Add background/focal position support only through typed schema/renderers; tests prove preview and immutable output agree. Preserve undo/checkpoints and approval invalidation; no publication call occurs.
-- [ ] Run overlay and Dashboard component/browser tests, inspect actual desktop/mobile screenshots, review all files, then commit `feat(studio): add customer image generation and library controls`.
+- [x] Write browser tests showing prompt/model/aspect, quoted cost, balance, insufficient-credit path, recoverable progress, preview, explicit new-variant charge and saved-library reuse. Assert meaningful-image alt text, decorative empty-alt behavior, keyboard focus trap/return and mobile no overflow.
+- [x] Add existing-style controls and semantic product copy: `Generate for N credits`, explanation that credits are spent when an image is saved, `Use image`, and available balance. Preserve request identity on close/reopen. Changing prompt/model invalidates the displayed quote. Guard double-clicks and stale response ordering.
+- [x] Add background/focal position support only through typed schema/renderers; tests prove preview and immutable output agree. Preserve undo/checkpoints and approval invalidation; no publication call occurs.
+- [x] Run overlay and Dashboard component/browser tests, inspect actual desktop/mobile screenshots, review all files, then commit `feat(studio): add customer image generation and library controls`.
 
 ### Task 5: Test-mode credit checkout and verified payment lifecycle
 

@@ -96,7 +96,32 @@ native image/private-control regression passed 109 tests across nine files.
 Worker tests include single dispatch, uncertain outcomes, storage recovery and
 lost callbacks.
 
-Complete the plan's image picker, typed hero/section background application,
-standalone credit history, Stripe test-mode lifecycle and final release review
-before describing the entire feature as complete. Production activation also
+The image picker, typed hero/section backgrounds and standalone credit history
+are now implemented and locally verified in Task4. They have not been deployed.
+Complete the Stripe test-mode lifecycle and final hosted integration/release
+review before describing the entire feature as complete. Production activation also
 requires an operational process for unknown provider outcomes and retention.
+
+## Customer UI verification (Task4)
+
+The editor now separates reviewing a price, paid generation and using a saved
+image in the draft. Saved library reuse does not invoke generation. Featured
+images require alt text; decorative hero/section backgrounds use empty alt text
+and the same focal-position renderer for preview and publication. Stale target
+selection is rejected and the draft change is one undoable operation.
+
+The standalone `/studio/credits` page shows available/reserved balances and
+paginated activity. No payment button is enabled without the separate billing
+implementation. The Nuxt UI browser harness runs with synthetic transport:
+`node scripts/verify-image-credits-browser.mjs`. Light/dark desktop/mobile
+screenshots were inspected; exact history cursors, customer switching and access
+failures passed with zero browser errors. Six component tests passed. Global
+Dashboard typecheck remains at919 pre-existing diagnostics, zero new.
+
+Studio full build28/typecheck44/test40 tasks plus security36/action-runtime48
+passed. Full lint passed; the final browser-only test addition also passed scoped
+Biome and overlay typecheck. Six real Chrome image-dialog cases plus nine
+existing design cases passed. Twenty image unit cases and298 site-kit cases
+passed, including a regression for section background class separation.
+
+These are local UI checks, not hosted draft/publication or payment acceptance.
