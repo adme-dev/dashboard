@@ -213,6 +213,8 @@ The audit found legacy agency assets, audit-derived submissions and analytics in
 
 Generated collection fields currently support primitive types. Rich text, media references, relationships and galleries need protocol, validation, migration and renderer work. Existing agency Leads delivery is a reuse candidate requiring scope, egress, signing and retry review. Preserve unrelated agency workflows and the separate Studio visual builder.
 
+The customer workspace foundation is now implemented on a separate review branch ([PR #602](https://github.com/adme-dev/dashboard/pull/602), initial source `e5f4ad3faa58d11e159b2e21c542058b2ef4efe5`). The [ownership mapping and cutover record](https://github.com/adme-dev/dashboard/blob/feature/customer-workspace-foundation/docs/architecture/page-studio-customer-workspaces.md) documents verified identity references, explicit workspace memberships and legacy client/agency grants. It is an internal service with no public signup or route cutover. Local validation passed 79 targeted tests, including 23 new PostgreSQL cases; migration 442 was applied twice only to a disposable local database. Server typecheck diagnostics match the unchanged baseline. No hosted or production activation is claimed.
+
 ### 6.1 Onboarding audit checkpoint
 
 - [`app/pages/auth/register.vue`](../../app/pages/auth/register.vue) and [`server/api/auth/register.post.ts`](../../server/api/auth/register.post.ts) create agency `team_members`; they are not the standalone customer signup flow.
@@ -240,7 +242,7 @@ Track task completion through linked source/tests and hosted evidence, not gener
 
 ## 8. Delivery order and canonical backlog
 
-All 24 tasks remain open. RND-01 has preliminary research but incomplete routing/migration validation. IDs remain stable across the supporting documents. This is the only maintained task-status ledger for this PRD.
+All 24 tasks remain open. RND-01 has preliminary research but incomplete routing/migration validation. RND-17 now has a persistence/access foundation in review in [PR #602](https://github.com/adme-dev/dashboard/pull/602): atomic workspace ownership, explicit legacy client binding, scoped agency grants and 23 PostgreSQL cases. Its verified identity adapters, migration validation and hosted acceptance remain open. IDs remain stable across the supporting documents. This is the only maintained task-status ledger for this PRD.
 
 1. **Identity and ownership foundation:** RND-01 and RND-17 — map current stores/identities and define customer workspace, agency grants and payer relationships. Validate on two isolated fixtures before adding signup.
 2. **Standalone onboarding:** RND-18–RND-21 — verified owner signup, resumable step form, idempotent customer/site creation and provisioning into the CMS. Existing invited customers converge on the same dashboard.
