@@ -96,13 +96,29 @@ export async function exchangeCustomerEditorSession(ticket: unknown, configurati
 }
 
 /** Metadata boundary for a trusted typed editor; never a raw browser write route. */
-export async function commitCustomerEditorCheckpoint(input: unknown, tokenClaims: unknown, dependencies: Dependencies = {}) {
+export async function commitCustomerEditorCheckpoint(input: unknown, tokenClaims: unknown, dependencies: Dependencies & { env?: Record<string, unknown> } = {}) {
   const parsed = PageStudioCheckpointCommitSchema.safeParse(input)
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid customer draft checkpoint.' })
   const claims = parseClaims(tokenClaims)
   const { checkpoint } = parsed.data
   if (checkpoint.userId !== claims.userId || checkpoint.scope.siteId !== claims.siteId
     || checkpoint.scope.clientId !== claims.clientId || checkpoint.scope.tenantId !== claims.tenantId) throw denied()
+  // Discover management under native authority, then release locks before storage I/O.
+  const managed = await (dependencies.runTransaction ?? transaction)(async (db) => {
+    await assertCustomerEditorSessionAuthority(claims, 'workspace:checkpoint', db)
+    return (await db.query(`SELECT scope_key FROM page_studio_cms_scopes
+      WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND state<>'legacy' LIMIT 1`,
+    [claims.tenantId, claims.clientId, claims.siteId])).rows.length > 0
+  })
+  if (managed) {
+    if (dependencies.env?.PAGE_STUDIO_CONTENT_ENVIRONMENT !== 'staging')
+      throw createError({ statusCode: 409, statusMessage: 'Customer CMS authoring is not configured.' })
+    const { coordinateCmsGraphCheckpoint } = await import('./cmsGraphCoordinator')
+    const receipt = await coordinateCmsGraphCheckpoint(parsed.data, { source: 'customer-session', claims,
+      env: dependencies.env, capability: 'workspace:checkpoint' }, dependencies)
+    return { acknowledged: receipt.acknowledged, checkpointId: receipt.checkpointId,
+      currentCheckpointId: receipt.currentCheckpointId, isCurrent: receipt.isCurrent }
+  }
   return (dependencies.runTransaction ?? transaction)(async (db) => {
     const authority = await assertCustomerEditorSessionAuthority(claims, 'workspace:checkpoint', db)
     return commitPageStudioCheckpoint(parsed.data, { runTransaction: callback => callback(db),

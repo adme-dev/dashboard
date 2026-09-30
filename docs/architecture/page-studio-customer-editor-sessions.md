@@ -38,3 +38,8 @@ Dashboard full suite: 15,269 passed plus 54 separately scheduled route-scan case
 The first remote build exceeded the immutable raw Worker budget by 1,432 bytes. The four route wrappers are now one dispatch route (same public paths, closed operation selection), and handoff/token validation share the exact same canonical-origin schema. Real H3 dispatcher tests cover unknown operations and write conflicts. The route regression passed RED→GREEN; full suite remains green. The unchanged artifact-size guard must pass on the revised source before integration.
 
 Route consolidation saved 875 raw bytes but remained 557 bytes above budget. The existing lossless static SQL compactor now considers immutable statements from 512 characters (HTML retains 1,024). It still rewrites only eligible static literals and only when the complete generated module becomes smaller, lazily decodes immutable text, preserves parameters/Unicode/whitespace, and excludes dynamic/tagged SQL. A failing medium-SQL regression was fixed and actual Worker runtime tests preserve exact bytes after the full compaction chain. No deployment byte limit is raised.
+
+The subsequent [customer managed CMS save adapter](./page-studio-customer-cms-saves.md)
+connects ordinary page saves to the accepted application graph for already managed
+staging sites, retaining native customer authority. The generic metadata bypass
+remains denied. Customer adoption and browser/runtime rollout remain separate gates.
