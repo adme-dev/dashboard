@@ -89,6 +89,11 @@ function forwardedRequest(request: Request, config: GatewayConfiguration): Reque
     const sessionToken = request.headers.get('x-page-studio-session')
     if (sessionToken !== null) headers.set('x-page-studio-session', sessionToken)
   }
+  if (request.method === 'POST' && ['authorize', 'checkpoint', 'latest-checkpoint']
+    .some(operation => incomingUrl.pathname === `/internal/page-studio/customer-sessions/${operation}`)) {
+    const token = request.headers.get('x-page-studio-customer-session')
+    if (token !== null) headers.set('x-page-studio-customer-session', token)
+  }
   // Only the private image worker knows this additional credential. Never
   // attach it from gateway configuration or forward it to editor operations.
   if (request.method === 'POST' && ['poll', 'claim', 'complete', 'fail', 'uncertain'].some(operation => incomingUrl.pathname === `/internal/page-studio/images/${operation}`)) {
