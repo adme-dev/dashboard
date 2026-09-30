@@ -190,8 +190,9 @@ billing-owner admission are implemented and tested, including concurrent replay.
 The SDK runs in a private staging Worker; the native Dashboard retains credit
 and customer authority. See [payment boundaries](../../page-studio/image-payments-test-mode.md).
 
-Hosted UI-to-publication acceptance, final review and paired PR evidence remain
-Task 6. Hosted Stripe payment acceptance requires operator-supplied test keys and
+Hosted two-customer UI-to-publication acceptance and the final whole-branch
+review are complete; release identities and review fixes are recorded in the
+staging acceptance report. Hosted Stripe payment acceptance requires operator-supplied test keys and
 versioned pack configuration; none is fabricated or claimed here. The checked
 implementation tasks do not represent customer production or live billing
 activation. Commercial prices, margins and terms remain release decisions.

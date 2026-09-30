@@ -1,23 +1,30 @@
-# Studio images: staging generation acceptance
+# Studio images and credits: staging acceptance
 
-This verifies the generation backend and editor transport. The customer image
-picker, draft application controls and payment checkout remain separate work.
+This records real image generation, customer UI, credit accounting and scoped
+staging integration. Stripe test-mode checkout is implemented and locally
+verified; hosted payment acceptance requires external test configuration.
 Customer production and live payments are disabled. Nothing was merged.
 
 ## Sources and targets
 
 | Surface | Source | Deployment |
 | --- | --- | --- |
-| Dashboard preview | `002094ba0c249c2757f83a63159928428b298c28` | `99916cf4.agency-dashboard-6cm.pages.dev` |
+| Dashboard preview | `8b154acbe` | `9a461e23.agency-dashboard-6cm.pages.dev` |
 | Private control gateway | `002094ba0` | `638f0c12-516e-4a5c-b329-2440d39b4f25` |
-| Studio Sandbox routes | `4aec34d` | `1eaac508-22c5-4e7c-88af-430ca6ef27d6` |
+| Studio Sandbox and editor | `44f03ea` (editor source `411a42d`) | `adeaa136-614e-48bc-b842-0303041fb70c` |
+| Delivery worker | `44f03ea` | `7a929187-dca4-4e7b-abc1-886fb4812c5c` |
+| Private test-payment worker | `56a9993fe` | `04727aed-d511-40c6-a417-a3c7b930a1af` |
 | Private image worker | `25e888a` | `2ee09292-0f49-4f00-b511-1ee012497360` |
 
 The branches include current main as fetched before these deployments:
 Dashboard `642980e448e9cfb9d898f1282274bd3cd9c246d6`, Studio
 `4d4f3ff10da45cf621a1e568c5a20f5f603f58e6`. They also depend on the verified,
-unmerged CMS work. The Sandbox deployment retained its verified CMS container;
-this stage changed its worker routes only.
+unmerged CMS work (Dashboard #599 / Studio #108). The new private editor image
+is pinned by SHA-256 `ba2b368adfa4354b2bab29b246a6d3ba82867210c93e7eeb083d1a19612f2dff`.
+The served overlay returned 2,538,559 bytes with SHA-256
+`d6b22c776b438cac3d9c730aa8cd03ee23e7541989fc979c0dfbcc36b7cc71e3`, matching the verified build.
+The new immutable renderer is `astro_runtime_a8ea2d0477dc5309093dfbe24b5c754bb1444455ad54b2cc99ff3e61adc3185e`
+(Worker version `4a955279-d6a9-4f4c-8648-59c136524912`). Prior CMS renderers remain retained.
 
 The named Gateway is `studio-images-staging`, in account
 `a5b299b3ad15c1b5b895dc66f9357b17`. The worker exposes no public HTTP generation
@@ -96,11 +103,12 @@ native image/private-control regression passed 109 tests across nine files.
 Worker tests include single dispatch, uncertain outcomes, storage recovery and
 lost callbacks.
 
-The image picker, typed hero/section backgrounds and standalone credit history
-are now implemented and locally verified in Task4. They have not been deployed.
-Complete the Stripe test-mode lifecycle and final hosted integration/release
-review before describing the entire feature as complete. Production activation also
-requires an operational process for unknown provider outcomes and retention.
+The image picker, hero/section backgrounds, standalone credits page and private
+test-payment worker are deployed to isolated staging. Top-ups correctly show
+unavailable without Stripe test credentials and versioned packs. Customer
+activation still requires commercial model prices, payment configuration, a
+retention/cleanup policy and an operational process for unknown provider outcomes.
+No live payment or production admission is enabled.
 
 ## Customer UI verification (Task4)
 
@@ -111,8 +119,8 @@ and the same focal-position renderer for preview and publication. Stale target
 selection is rejected and the draft change is one undoable operation.
 
 The standalone `/studio/credits` page shows available/reserved balances and
-paginated activity. No payment button is enabled without the separate billing
-implementation. The Nuxt UI browser harness runs with synthetic transport:
+paginated activity. The separate billing implementation enables test checkout
+only for billing owners when explicit test configuration is available. The Nuxt UI browser harness runs with synthetic transport:
 `node scripts/verify-image-credits-browser.mjs`. Light/dark desktop/mobile
 screenshots were inspected; exact history cursors, customer switching and access
 failures passed with zero browser errors. Six component tests passed. Global
@@ -124,4 +132,66 @@ Biome and overlay typecheck. Six real Chrome image-dialog cases plus nine
 existing design cases passed. Twenty image unit cases and298 site-kit cases
 passed, including a regression for section background class separation.
 
-These are local UI checks, not hosted draft/publication or payment acceptance.
+These local checks are complemented by the hosted acceptance below. Hosted
+Stripe payment acceptance remains unverified.
+
+## Final hosted customer workflow
+
+Actual Chrome checks used 1440px desktop and 390px mobile viewports. Both scopes
+showed the two configured models and their own saved library. The primary hero
+received the SDXL asset, meaningful alt text and top focal alignment. The second
+hero received its own FLUX image as a decorative, centred background. Both
+reported **Saved**. Native comparisons against the prior published staging
+versions contained exactly these image properties; CMS pins, schemas, forms and
+page text were unchanged. Reopening restored the hero and the same saved library,
+including the original uncertain request and its reserved balance.
+
+Standalone `/studio/credits` showed 70 available / 10 reserved for the primary
+customer and 90 / 0 for the second, with separate activity. Mobile had no
+horizontal overflow. My sites and the existing agency QR Codes page loaded.
+Customer top-ups displayed the explicit unavailable state. No generation or
+payment was submitted during saved-library reuse.
+
+Native review and approval preceded both runtime publications:
+
+| Scope | Version | Final release | Pointer epoch |
+| --- | --- | --- | --- |
+| Primary synthetic customer | `251a0c36-967a-460c-873c-cd7e8bed292f` | `1ce589ed-ab52-42f3-8d7c-c6d5f265b67a` | 19 |
+| Second synthetic customer | `c7637841-c563-4c62-a14d-5e4b34465c27` | `bab2d3aa-c81e-474e-82f4-b2efcc8a27a7` | 8 |
+
+Both pin the new `a8ea2d…` renderer. Dashboard source `8b154acbe` deployed as
+`9a461e23-5c0a-484c-b96b-08ba69ffd007`; later documentation commits do not change
+its executable source. The generated Wrangler configuration was checked for the
+new renderer and exactly two additional synthetic admissions. Production
+configuration was compared unchanged. The prior E2 renderer remains available.
+
+Cold publication initially exhausted the old ten-second shared retention budget
+(recovery 4.0s, image content 4.0s, seal interrupted after 1.9s). No failed request
+activated a partial release. A real-Postgres regression reproduced this and now
+allows a 15s preparation while rejecting 30.001s; authority is rechecked after
+storage, and public projection keeps its ten-second deadline. The final pair of
+publications succeeded without retry on the corrected deployment. The original
+primary retry used the same immutable request identity and activated only once.
+
+Final image/payment/worker/UI regression: 204 passed across 25 files. Additional
+publication/CMS regression: 170 passed, one skipped. Scoped lint passed. Dashboard
+full typecheck matched the existing baseline exactly (919 diagnostic lines, 894
+unique; zero new). Full build and unchanged raw/gzip release budgets passed.
+The fresh final reviewer found one important stale-pack checkout issue; the fix
+clears only a definitive pre-intent price-change rejection and requires fresh
+selection. Unknown outcomes keep their original intent. Its regression was
+observed failing before the fix and passing afterward. Model naming was corrected
+to Stable Diffusion XL; no other important review finding remains.
+
+Raw command logs, screenshots and private fixture receipts remain in the local
+evidence directory. Do not attach its credentials to PRs. Before customer
+activation, supply Stripe test configuration and complete hosted payment tests,
+then separately approve commercial pricing, retention/cleanup and live rollout.
+
+Final public GET and HEAD were HTTP200 with private/no-store on both sites;
+retained image bytes matched SHA-256 and length (965,448 / 761,592). Current CMS
+titles remained visible, private descriptions and cross-customer markers absent.
+Existing JS/CSS assets returned200. Native record heads remained primary version5
+and second version6, with the same stored schema references and usage counts36/15.
+These results are retained in `published-image-evidence.json`,
+`after-images-verified-renderer.json` and the public asset receipts.

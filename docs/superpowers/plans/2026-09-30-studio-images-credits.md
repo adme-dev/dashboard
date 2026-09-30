@@ -101,7 +101,7 @@ expect(await balance()).toMatchObject({ balance: 100, reserved: 70, available: 3
 
 **Files:** Both repositories' release/runbooks, Dashboard feature pages and navigation where relevant, this task checklist, paired new PR descriptions.
 
-- [ ] Run two-customer acceptance across quote→reserve→Gateway→R2→preview→draft→review publication, wrong-scope/role denials, concurrent insufficient funds and closed-tab recovery. Verify existing CMS and QR navigation remain intact.
-- [ ] Run required full Studio build/typecheck/tests/lint and Dashboard scoped tests/build, compare global typecheck against documented baseline, run deployment guards and staging dry-runs. Resolve new failures.
-- [ ] Update marketing feature entry with 3–4 accurate sections and availability qualification; do not advertise live payments as enabled. Document wallet reconciliation, refunds, operator recovery, configured price version and model evidence.
+- [x] Run two-customer acceptance across quote→reserve→Gateway→R2→preview→draft→review publication, wrong-scope/role denials, concurrent insufficient funds and closed-tab recovery. Verify existing CMS and QR navigation remain intact.
+- [x] Run required full Studio build/typecheck/tests/lint and Dashboard scoped tests/build, compare global typecheck against documented baseline, run deployment guards and staging dry-runs. Resolve new failures.
+- [x] Update marketing feature entry with 3–4 accurate sections and availability qualification; do not advertise live payments as enabled. Document wallet reconciliation, refunds, operator recovery, configured price version and model evidence.
 - [ ] Perform the executing-plans skill's fresh whole-branch review, fix important findings with regression tests, then push separate reviewable PRs with explicit CMS dependency. Record exact source/main/deployment IDs and any unverified external Stripe setup. No merge or customer production deployment.
