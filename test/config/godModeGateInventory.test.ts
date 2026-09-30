@@ -217,9 +217,17 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/qr/teamManagement.ts\tif (isQrAccessTeam(teamId)) await requireRole(event, [\'admin\', \'owner\'])\tapplication_governance_bypass'
     )
-    expect(inventory.rows).toHaveLength(1593)
+    // Image billing adds two native client-admin identity predicates. They
+    // retain site/login/entitlement locks and do not register an owner bypass.
+    expect(inventory.rows).toContain(
+      'server/utils/pageStudio/imageGenerationAuthority.ts\tcanPurchase: request.actor.role === \'client\' && admitted.collectionPolicy.native_user_role === \'admin\'\tidentity_tenant_hard_boundary'
+    )
+    expect(inventory.rows).toContain(
+      'server/utils/pageStudio/cmsCommitAuthority.ts\tif (input.mutation === \'image-billing\' && admitted.collectionPolicy.native_user_role !== \'admin\') throw denied()\tidentity_tenant_hard_boundary'
+    )
+    expect(inventory.rows).toHaveLength(1595)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 121,
+      identity_tenant_hard_boundary: 123,
       provider_infrastructure_availability: 228,
       application_governance_bypass: 1620,
       ordinary_user_behavior: 190,
@@ -238,7 +246,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('f8aa7171d2e3e14ad02c094be27b03959028085194f678779f079d0c38044a61')
+    expect(inventory.digest).toBe('f83ceb1804c27807f604b59734f141c05ebbec77d7c44217ba0a129f2ff317f4')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
