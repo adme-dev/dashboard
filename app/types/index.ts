@@ -2935,3 +2935,12 @@ export interface PageStudioDocumentResponse {
   site: PageStudioDocumentSite
   updatedAt: string | null
 }
+
+export interface PageStudioImageCreditAccount {
+  balance: { available: number, balance: number, reserved: number, frozen: boolean }
+  canPurchase: boolean
+  history: {
+    items: Array<{ id: string, kind: 'grant' | 'reserve' | 'settle' | 'release' | 'refund' | 'dispute' | 'reinstatement', credits: number, reserved: number, createdAt: string }>
+    nextCursor: { createdAt: string, entryId: string } | null
+  }
+}

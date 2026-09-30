@@ -1,7 +1,12 @@
 # Studio image generation and customer credits
 
-Status: proposed follow-on, requested 30 September 2026. Not implemented or
-enabled for customers. No payment account, checkout product or charge created.
+Status: implementation approved 30 September 2026, after completion of the CMS
+staging goal. Accounting, image generation, editor controls and test-mode payment
+implementation are complete on the feature branches. Both image models have
+isolated hosted acceptance; final UI/publication acceptance and release review
+remain in progress. Customer production and live payments stay disabled.
+No payment account, checkout product or charge has been created. See the
+[implementation plan](../plans/2026-09-30-studio-images-credits.md).
 
 ## Product outcome
 
@@ -38,8 +43,8 @@ default BYOK credentials may take precedence over Unified Billing, so verify the
 chosen credential/billing route for each admitted model. [Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/)
 
 Recommended initial wallet scope: one customer account within a tenant, shared
-across its websites, with site/actor attribution on every debit. This is a design
-default awaiting product confirmation, not a changed permission boundary.
+across its websites, with site/actor attribution on every debit. This is the implementation
+default under the approved design; it does not change native permissions.
 Use integer credit units and versioned prices; do not use floating-point money.
 
 Recommended checkout: Stripe Checkout for one-time credit packs, with a native
@@ -115,16 +120,16 @@ concurrent requests. [Spend limits](https://developers.cloudflare.com/ai-gateway
 
 - [ ] Confirm wallet ownership, initial curated models and commercial choices
   below; define API contracts and migrations with ledger/job invariants.
-- [ ] Implement scoped ledger, quote, reserve/settle/release and reconciliation;
+- [x] Implement scoped ledger, quote, reserve/settle/release and reconciliation;
   prove concurrent overspend prevention and recovery with synthetic credits.
-- [ ] Add model adapters through a named Gateway, asynchronous execution where
+- [x] Add model adapters through a named Gateway, asynchronous execution where
   needed, validated R2 storage and usage/cost attribution. Verify against a
   staging account with bounded model spend.
-- [ ] Add customer generation controls, model/cost selection, progress, media
+- [x] Add customer generation controls, model/cost selection, progress, media
   library and hero/background draft integration. Use Nuxt UI for Dashboard
   surfaces and the Studio editor's existing component system for its overlay.
   Verify desktop/mobile, keyboard, recovery and independent Studio entry.
-- [ ] Add Stripe test-mode packs/checkout and verified fulfillment, balance and
+- [x] Add Stripe test-mode packs/checkout and verified fulfillment, balance and
   history. Test duplicate webhooks, delayed/failed settlement, wrong scope,
   replay, refunds/disputes and no credit on success redirect alone.
 - [ ] Run two-customer isolation and permission acceptance, concurrent generation,
@@ -138,3 +143,56 @@ point), pack amounts, model prices/margin, expiry/refund treatment and which rol
 can purchase. Include Gateway/provider fees, payment fees, storage and failed-job
 costs when setting prices. Automatic customer top-ups are a later explicit opt-in.
 Neither live payments nor a customer production rollout is implied by this plan.
+
+## Implementation evidence — accounting foundation
+
+Migration 438 adds environment-separated customer wallets, reservation identities
+and an immutable credit journal. Internal transaction-only functions reserve,
+settle, release and deduplicate grants; no browser route exposes a grant or
+settlement operation. Eleven real PostgreSQL tests cover cross-site concurrent
+overspend, replay identity, terminal state conflicts, scope/environment isolation,
+rollback, invalid amounts and frozen spending. The focused regression run passes
+23 tests; ESLint passes for both new TypeScript files. The migration was applied
+automatically to isolated CMS staging, with all three tables empty. This is not
+evidence of payment fulfillment or hosted model integration.
+
+## Implementation evidence — native quotes and generation jobs
+
+Native agency/portal catalog, quotes and account history are implemented. Saved
+quotes reject forged prices, changed intent, expired inputs and other scopes.
+Billing ownership is independent of site editing. Migration439 has been applied
+to isolated staging with no customer data or balances created.
+
+The Task3 native foundation adds atomic reserve/job creation, a SQL outbox,
+at-most-once dispatch claims, immutable lifecycle events, scoped job/library
+reads and authenticated private completion. Revoked logins and child sessions
+cannot dispatch queued work; validated durable completion can settle after user
+logout. Known failure releases credits, ambiguous outcomes remain reserved for
+reconciliation. Each wallet permits three active jobs; unstarted jobs expire
+after ten minutes. The private worker's recovery scope inventory remains usable
+when generation configuration is disabled. Migration440 has been applied to
+isolated staging with zero jobs.
+
+## Implementation evidence — worker, editor and test billing
+
+The private image worker and named Gateway now have real successful FLUX and
+SDXL results for the two synthetic staging customers, with validated owned R2
+assets and scope-isolation receipts. The original timed-out SDXL job still holds
+10 credits for reconciliation; it has not been reissued or silently refunded.
+See [hosted generation evidence](../../page-studio/images-staging-acceptance-2026-09-30.md).
+
+The editor image picker, saved library, recoverable requests, bounded focal
+positions and typed hero/background draft application are implemented and pass
+unit and real browser tests. Standalone `/studio/credits` shows permitted balance
+and activity. Stripe test checkout, official SDK raw-signature verification,
+current provider-state checks, immutable payment/refund accounting and native
+billing-owner admission are implemented and tested, including concurrent replay.
+The SDK runs in a private staging Worker; the native Dashboard retains credit
+and customer authority. See [payment boundaries](../../page-studio/image-payments-test-mode.md).
+
+Hosted two-customer UI-to-publication acceptance and the final whole-branch
+review are complete; release identities and review fixes are recorded in the
+staging acceptance report. Hosted Stripe payment acceptance requires operator-supplied test keys and
+versioned pack configuration; none is fabricated or claimed here. The checked
+implementation tasks do not represent customer production or live billing
+activation. Commercial prices, margins and terms remain release decisions.

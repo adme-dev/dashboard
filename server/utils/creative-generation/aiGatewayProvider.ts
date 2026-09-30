@@ -1,3 +1,4 @@
+import { assertNonVehicleImagePrompt } from './promptPolicy'
 import { getCreativeGenerationModel } from './modelRegistry'
 import type {
   CreativeGenerationResult,
@@ -30,8 +31,6 @@ const RECRAFT_SIZE: Record<NonNullable<GenerateCreativeImageInput['aspectRatio']
   '3:4': '1024x1365',
 }
 
-const VEHICLE_PROMPT_RE = /\b(vehicle|automobile|automotive|car|sedan|hatchback|wagon|coupe|convertible|ute|pickup|suv|4wd|truck|van|dealer|dealership|oem|badge|grille|wheel|tyre|toyota|lexus|mazda|ford|mitsubishi|haval|gwm|kia|hyundai|genesis|nissan|infiniti|isuzu|honda|subaru|suzuki|volkswagen|audi|bmw|mini|mercedes|volvo|polestar|tesla|byd|chery|jeep|ram|chevrolet|porsche|land\s*rover|range\s*rover)\b/i
-
 function clampInteger(value: number | undefined, min: number, max: number, fallback: number): number {
   return Math.min(max, Math.max(min, Math.round(value ?? fallback)))
 }
@@ -46,9 +45,7 @@ export function buildCreativeGenerationInputs(input: GenerateCreativeImageInput)
   if (model.cfModel === 'recraft/recraftv4-1') {
     const prompt = String(input.prompt || '').trim()
     if (!prompt) throw new Error('A prompt is required for Recraft generation')
-    if (VEHICLE_PROMPT_RE.test(prompt)) {
-      throw new Error('Vehicle generation is blocked; use an approved-source transform or image-to-video model')
-    }
+    assertNonVehicleImagePrompt(prompt)
     return {
       prompt: prompt.slice(0, 2000),
       size: RECRAFT_SIZE[input.aspectRatio ?? '1:1'],

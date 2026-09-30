@@ -83,10 +83,17 @@ function forwardedRequest(request: Request, config: GatewayConfiguration): Reque
     '/internal/page-studio/components/data',
     '/internal/page-studio/ai-proposals/accept',
     '/internal/page-studio/checkpoints/editor-commit',
-    '/internal/page-studio/sessions/authorize'
+    '/internal/page-studio/sessions/authorize',
+    ...['catalog', 'quote', 'generate', 'read', 'jobs', 'library'].map(operation => `/internal/page-studio/images/${operation}`)
   ].includes(incomingUrl.pathname)) {
     const sessionToken = request.headers.get('x-page-studio-session')
     if (sessionToken !== null) headers.set('x-page-studio-session', sessionToken)
+  }
+  // Only the private image worker knows this additional credential. Never
+  // attach it from gateway configuration or forward it to editor operations.
+  if (request.method === 'POST' && ['poll', 'claim', 'complete', 'fail', 'uncertain'].some(operation => incomingUrl.pathname === `/internal/page-studio/images/${operation}`)) {
+    const credential = request.headers.get('x-page-studio-image-worker')
+    if (credential !== null) headers.set('x-page-studio-image-worker', credential)
   }
   headers.set('authorization', `Bearer ${config.secret}`)
   headers.set('x-xeroflow-service', 'page-studio')

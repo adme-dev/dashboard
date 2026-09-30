@@ -29,8 +29,11 @@ const API_INVENTORY = {
   // QR client picker adds one GET. Logo upload delegates to requireQrAccess,
   // which is outside this lexical inline-role pattern, so the inline count
   // falls by one. It retains authentication and the QR mutation audit wrapper.
-  totalRouteFiles: 2167,
-  mutationRouteFiles: 1189,
+  // Image generation and credits add 18 routes (six POSTs). Native helpers
+  // enforce current scoped actor/billing authority; the payment webhook uses
+  // verified Stripe signatures. None registers a God mode bypass.
+  totalRouteFiles: 2185,
+  mutationRouteFiles: 1195,
   explicitlyGuardedMutationFiles: 400,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -69,8 +72,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2167,
-      mutationRouteFiles: 1189,
+      totalRouteFiles: 2185,
+      mutationRouteFiles: 1195,
       explicitlyGuardedMutationFiles: 400,
       guardedMutationFilesWithTransactionCall: 47
     })

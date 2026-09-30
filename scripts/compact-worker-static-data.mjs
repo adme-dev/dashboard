@@ -3,7 +3,6 @@ import path from 'node:path'
 import { brotliCompressSync, constants } from 'node:zlib'
 import ts from 'typescript'
 
-const MARKER = 'XEROFLOW_STATIC_SSR_DATA'
 const MIN_LITERAL_CHARACTERS = 1024
 const compress = value => brotliCompressSync(Buffer.from(value, 'utf8'), {
   params: { [constants.BROTLI_PARAM_QUALITY]: 11 }
@@ -12,8 +11,18 @@ const compress = value => brotliCompressSync(Buffer.from(value, 'utf8'), {
 /** Only build-generated call arguments and data-property values are replaced. No executable source,
  * tagged template, property key, directive or interpolated template is encoded. */
 export function compactSsrMarkupSource(source) {
+  return compactStaticSource(source, 'XEROFLOW_STATIC_SSR_DATA', value => value.includes('<') && value.includes('>'))
+}
+
+/** SQL text is immutable data, not executed by the build. Preserve all whitespace,
+ * parameters and escape sequences. Dynamic/tagged templates are never encoded. */
+export function compactSqlSource(source) {
+  return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value))
+}
+
+function compactStaticSource(source, marker, accepts) {
   const unchanged = { code: source, literals: 0 }
-  if (source.includes(MARKER)) return unchanged
+  if (source.includes(marker)) return unchanged
   const file = ts.createSourceFile('ssr.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
   if (file.parseDiagnostics.length) throw new Error('[worker-static-data] Invalid generated SSR module')
   let suffix = 0
@@ -27,7 +36,7 @@ export function compactSsrMarkupSource(source) {
         && node.parent.arguments.includes(node))
       || (ts.isPropertyAssignment(node.parent) && node.parent.initializer === node))
     && node.text.length >= MIN_LITERAL_CHARACTERS
-    && node.text.includes('<') && node.text.includes('>')
+    && accepts(node.text)
     // UTF-8 replaces lone surrogates, so do not encode those JS strings.
     && node.text.isWellFormed()) {
       const start = node.getStart(file), end = node.getEnd()
@@ -52,7 +61,7 @@ export function compactSsrMarkupSource(source) {
   }
   // Cache only immutable, compile-time strings. No request data enters this cache.
   // Decode lazily once per string so cold routes need no up-front decompression.
-  const code = `// ${MARKER}
+  const code = `// ${marker}
 import { brotliDecompressSync as ${prefix}Inflate } from 'node:zlib';
 import { Buffer as ${prefix}Buffer } from 'node:buffer';
 const ${prefix}Data = ${JSON.stringify(values)};
@@ -119,4 +128,14 @@ export default JSON.parse(brotliDecompressSync(Buffer.from(XEROFLOW_COMPACT_PUBL
       return Buffer.byteLength(code) < Buffer.byteLength(source) ? { code, map: null } : null
     }
   }
+}
+
+/** The final Nitro chunk owns server queries. Do not scan client chunks or
+ * source maps, and fail closed if Nitro changes this generated boundary. */
+export async function compactNitroSqlModule(workerDirectory) {
+  const file = path.join(workerDirectory, 'chunks', 'nitro', 'nitro.mjs')
+  const source = await readFile(file, 'utf8')
+  const result = compactSqlSource(source)
+  if (result.code !== source) await writeFile(file, result.code)
+  return { literals: result.literals, savedBytes: Buffer.byteLength(source) - Buffer.byteLength(result.code) }
 }

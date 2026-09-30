@@ -168,6 +168,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'page-studio-images': {
+    title: 'Page Studio Images',
+    slug: 'page-studio-images',
+    icon: 'i-lucide-image-plus',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50 dark:bg-rose-500/10',
+    categoryIconColor: 'text-rose-600 dark:text-rose-400',
+    description: 'Upload, generate and reuse website imagery from the image Source picker, with clear generation costs. Available in a limited staging preview; customer production rollout and live credit payments are not enabled.',
+    details: [
+      {
+        title: 'Choose an Image Model and Review the Cost',
+        content: 'Describe the image you need, choose from the models enabled for your website and review the quoted credit cost before generating. The limited staging catalogue includes FLUX.1 Schnell and Stable Diffusion XL. Available image shapes depend on the selected model. Requests use the configured Cloudflare AI Gateway, and model availability remains subject to website access and configuration.'
+      },
+      {
+        title: 'Preview Before Updating Your Website',
+        content: 'Open Choose image from the Source control on a supported image. Upload your own PNG, JPEG or WebP up to 10 MB, generate artwork, or select a saved image in the same dialog. Review the preview and choose Use image to apply it directly to that hero, image, card or decorative section background. Uploads and reuse spend no AI credits. A focal-position control lets you adjust the crop. Add alternative text for meaningful images. Applying an image changes the website draft; saving, review and publication remain separate steps. Existing undo and saved-version controls continue to apply.'
+      },
+      {
+        title: 'A Saved Library with Recoverable Requests',
+        content: 'Saved images belong to the website that generated them and can be reused without another generation charge. Credits are reserved when a request is accepted and spent when its image is saved. A confirmed failure returns the reservation. Requests with an uncertain result remain under review, preserving the reservation and avoiding an automatic second generation. Reopen the image library to check saved results and recent requests.'
+      },
+      {
+        title: 'Customer Credit Balances and Test Top-ups',
+        content: 'Open Image credits from the standalone Page Studio workspace to inspect available credits, reservations and activity. Credits are shared across the customer account, while ordinary website users see activity for their assigned website. Current customer billing owners can use versioned credit packs in Stripe test checkout when test billing is configured. Credit is added only after verified payment confirmation. Top-ups remain unavailable without that configuration, and live payments are not enabled in this release.'
+      }
+    ]
+  },
   'page-studio': {
     title: 'Page Studio',
     slug: 'page-studio',
