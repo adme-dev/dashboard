@@ -10,6 +10,8 @@ export interface PageStudioProvisioningScope {
 
 export interface PageStudioProvisionerBinding {
   createProvisioning: (job: unknown) => Promise<unknown>
+  readCustomerRecoverySupport?: () => Promise<unknown>
+  resumeCustomerProvisioning?: (job: unknown) => Promise<unknown>
   readProvisioning?: (requestKey: string, scope: PageStudioProvisioningScope) => Promise<unknown>
 }
 
@@ -34,7 +36,7 @@ export function requirePageStudioProvisioningRuntime(env: Record<string, unknown
 }
 
 export class PageStudioProvisioningError extends Error {
-  constructor(readonly code: 'PROVISIONER_UNAVAILABLE' | 'PROVISIONER_FAILED' | 'INVALID_PROVISIONING_PLAN' | 'PROVISIONING_OWNER_REQUIRED' | 'PROVISIONING_AUTHORITY_DENIED' | 'PROVISIONING_NOT_FOUND' | 'INVALID_PROVISIONING_REQUEST', message: string, readonly statusCode = 503) {
+  constructor(readonly code: 'PROVISIONER_UNAVAILABLE' | 'PROVISIONER_FAILED' | 'INVALID_PROVISIONING_PLAN' | 'PROVISIONING_OWNER_REQUIRED' | 'PROVISIONING_RECOVERY_REQUIRED' | 'PROVISIONING_AUTHORITY_DENIED' | 'PROVISIONING_NOT_FOUND' | 'INVALID_PROVISIONING_REQUEST', message: string, readonly statusCode = 503) {
     super(message)
     this.name = 'PageStudioProvisioningError'
   }

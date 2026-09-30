@@ -8,6 +8,7 @@ const { data, error: loadError, refresh } = useFetch<CustomerDashboard>(`${api}/
 const busy = ref(false)
 const actionError = ref('')
 const views: Record<CustomerDashboard['state'], { title: string, description: string, icon: string }> = {
+  'recovery-required': { title: 'Continue your website setup', description: 'You’re signed in again. Resume to continue your saved setup with this login. We’ll keep the same website and its progress.', icon: 'i-lucide-play' },
   'setup-required': { title: 'Finish your business setup', description: 'Save your business details before creating your website.', icon: 'i-lucide-notebook-pen' },
   'approval-pending': { title: 'Your workspace is saved', description: 'Preview creation is not available for this workspace yet. Your business details are saved; contact support to arrange access.', icon: 'i-lucide-calendar-clock' },
   'available': { title: 'Create your first website preview', description: 'We’ll prepare your website using your saved business details. You can return to this overview to check progress.', icon: 'i-lucide-panels-top-left' },
@@ -39,6 +40,20 @@ async function createPreview() {
   actionError.value = ''
   try {
     await $fetch(`${api}/preview`, { method: 'POST', body: {} })
+  } catch (error) {
+    if ((error as { statusCode?: number })?.statusCode === 401) await navigateTo('/studio/signup', { replace: true })
+    actionError.value = 'We could not confirm the last request. Your saved setup has been kept. Check the refreshed status before trying again.'
+  } finally {
+    busy.value = false
+    await load()
+  }
+}
+async function recoverPreview() {
+  if (busy.value || loadError.value || data.value?.state !== 'recovery-required' || !data.value.recovery) return
+  busy.value = true
+  actionError.value = ''
+  try {
+    await $fetch(`${api}/recover`, { method: 'POST', body: { ...data.value.recovery, recoveryId: crypto.randomUUID() } })
   } catch (error) {
     if ((error as { statusCode?: number })?.statusCode === 401) await navigateTo('/studio/signup', { replace: true })
     actionError.value = 'We could not confirm the last request. Your saved setup has been kept. Check the refreshed status before trying again.'
@@ -141,6 +156,16 @@ async function signOut() {
             :loading="busy"
             :disabled="Boolean(loadError)"
             @click="createPreview"
+          />
+          <UButton
+            v-else-if="data.state === 'recovery-required' && data.recovery"
+            class="mt-6"
+            label="Resume setup"
+            icon="i-lucide-play"
+            size="lg"
+            :loading="busy"
+            :disabled="Boolean(loadError)"
+            @click="recoverPreview"
           />
           <UButton
             v-else-if="data.canRetry"

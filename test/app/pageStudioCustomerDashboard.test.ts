@@ -54,6 +54,22 @@ describe('customer website overview', () => {
     expect(host.textContent).toContain('Creating your preview')
     expect(button('Create preview')).toBeUndefined()
   })
+  it('requires an explicit click to resume under a new login and refreshes after uncertainty', async () => {
+    const recovery = { expectedRecoveryId: null, expectedJobDigest: 'a'.repeat(64) }
+    read.mockResolvedValue({ ...value, state: 'recovery-required', canCreate: false, recovery })
+    await mount()
+    expect(mutate).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('Continue your website setup')
+    mutate.mockRejectedValueOnce({ statusCode: 503 })
+    read.mockResolvedValueOnce({ ...value, state: 'preparing', canCreate: false })
+    button('Resume setup')!.click()
+    button('Resume setup')!.click()
+    await flush()
+    expect(mutate).toHaveBeenCalledTimes(1)
+    expect(mutate).toHaveBeenCalledWith('/api/portal/page-studio/customer/recover', { method: 'POST', body: { ...recovery, recoveryId: expect.any(String) } })
+    expect(host.textContent).toContain('could not confirm')
+    expect(host.textContent).toContain('Creating your preview')
+  })
   it('shows stale-read failure and disables old actions until a successful refresh', async () => {
     await mount()
     read.mockRejectedValueOnce({ statusCode: 503 })

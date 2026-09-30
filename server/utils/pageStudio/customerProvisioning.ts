@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CustomerProvisioningRecoverySchema as RecoveryRequest } from '~~/shared/pageStudio/customerDashboard'
 import { transaction } from '~~/server/utils/db'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { CustomerPreviewPolicySchema, readApprovedCustomerPreviewSite } from './customerSites'
@@ -53,22 +54,102 @@ function identity(job: Job) {
     scope: job.scope, templateId: job.templateId, plan: job.plan, setup: job.setup })
 }
 
-/** Called only after the generic job/scope validation. Not a cached permission. */
-export async function verifyCustomerProvisioningAuthority(job: Job, db: PageStudioQueryClient) {
+const RecoveryReceipt = RecoveryRequest.extend({ version: z.literal(1), revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  loginSessionHash: z.string().regex(/^[a-f0-9]{64}$/), resumeAttempt: z.number().int().min(0).max(20).nullable() }).strict()
+const conflict = () => new PageStudioProvisioningError('PROVISIONING_RECOVERY_REQUIRED', 'Refresh setup before resuming with this login', 409)
+async function jobDigest(job: Job) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity(job)))
+  return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+async function latestRecovery(job: Job, db: PageStudioQueryClient) {
+  const row = (await db.query<{ metadata: unknown, actor_id: string, actor_role: string }>(`SELECT metadata,actor_id,actor_role FROM page_studio_audit_events
+    WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND resource_id=$4
+      AND action='customer.provisioning.recovered' AND resource_type='customer_provisioning'
+    ORDER BY (metadata->>'revision')::bigint DESC LIMIT 1`, [job.scope.tenantId, job.scope.clientId, job.scope.siteId, job.requestKey])).rows[0]
+  if (!row) return null
+  const receipt = RecoveryReceipt.safeParse(row.metadata)
+  if (!receipt.success || row.actor_id !== job.actor?.userId || row.actor_role !== 'customer'
+    || receipt.data.expectedJobDigest !== await jobDigest(job)) throw denied()
+  return receipt.data
+}
+async function retainedJob(db: PageStudioQueryClient, owned: Awaited<ReturnType<typeof readCustomerProvisioningPreviewAuthority>>, identityId: string) {
+  const saved = (await db.query<{ job: unknown }>(`SELECT job FROM page_studio_customer_provisioning_intents
+    WHERE site_id=$1 AND workspace_id=$2 AND business_id=$3 AND tenant_id=$4 AND actor_identity_id=$5 AND environment='staging'`,
+  [owned.scope.siteId, owned.workspaceId, owned.scope.businessId, owned.scope.tenantId, identityId])).rows[0]
+  const retained = PageStudioProvisioningJobSchema.safeParse(saved?.job)
+  if (!retained.success || retained.data.actor?.kind !== 'customer-user' || retained.data.actor.userId !== identityId
+    || !retained.data.actor.loginSessionHash || Object.entries(owned.scope).some(([key, value]) => retained.data.scope[key as keyof typeof owned.scope] !== value)
+    || retained.data.plan.templateId !== owned.site.starterVersion || retained.data.setup?.businessName !== owned.site.name
+    || retained.data.plan.pages.length > owned.policy.pagesPerSiteLimit) throw denied()
+  return retained.data
+}
+
+/** Native worker callbacks use the retained job plus the explicitly recovered
+ * login. The original job/actor stays immutable. Never grant an old browser session. */
+export async function verifyCustomerProvisioningAuthority(job: Job, db: PageStudioQueryClient, requireRecovery = false) {
   if (job.actor?.kind !== 'customer-user' || !job.actor.loginSessionHash || job.scope.environment !== 'staging') throw denied()
-  const identityId = await readCustomerSessionIdentityFromHash(db, job.actor.loginSessionHash)
+  const recovery = await latestRecovery(job, db)
+  if (requireRecovery && !recovery) throw denied()
+  const loginHash = recovery?.loginSessionHash ?? job.actor.loginSessionHash
+  const identityId = await readCustomerSessionIdentityFromHash(db, loginHash)
   if (identityId !== job.actor.userId) throw denied()
   const owned = await readCustomerProvisioningPreviewAuthority(db, job.scope.siteId, identityId)
-  const saved = (await db.query<{ job: unknown }>(`SELECT job FROM page_studio_customer_provisioning_intents
-    WHERE site_id = $1 AND workspace_id = $2 AND business_id = $3 AND tenant_id = $4
-      AND actor_identity_id = $5 AND login_session_hash = $6 AND environment = 'staging' AND request_key = $7`,
-  [job.scope.siteId, owned.workspaceId, job.scope.businessId, job.scope.tenantId, identityId, job.actor.loginSessionHash, job.requestKey])).rows[0]
-  const retained = PageStudioProvisioningJobSchema.safeParse(saved?.job)
-  if (!retained.success || identity(retained.data) !== identity(job)
-    || job.scope.businessId !== owned.scope.businessId || job.scope.clientId !== owned.scope.clientId
-    || job.plan.templateId !== owned.site.starterVersion || job.setup?.businessName !== owned.site.name
-    || job.plan.pages.length > owned.policy.pagesPerSiteLimit) throw denied()
+  const retained = await retainedJob(db, owned, identityId)
+  if (identity(retained) !== identity(job)) throw denied()
+  // A concurrent recovery may have won while the authority waited for the site.
+  if (JSON.stringify(await latestRecovery(job, db)) !== JSON.stringify(recovery)) throw conflict()
+  await readCustomerSessionIdentityFromHash(db, loginHash)
+  await readCustomerProvisioningPreviewAuthority(db, job.scope.siteId, identityId)
   return { job, userId: identityId, workspaceId: owned.workspaceId }
+}
+
+async function recoveryContext(input: z.infer<typeof Input>, db: PageStudioQueryClient) {
+  const loginHash = await digestPortalSessionToken(input.sessionToken)
+  const identityId = await readCustomerSessionIdentityFromHash(db, loginHash)
+  const owned = await readCustomerProvisioningPreviewAuthority(db, input.siteId, identityId)
+  const job = await retainedJob(db, owned, identityId)
+  const recovery = await latestRecovery(job, db)
+  await readCustomerSessionIdentityFromHash(db, loginHash)
+  await readCustomerProvisioningPreviewAuthority(db, job.scope.siteId, identityId)
+  return { job, recovery, loginHash, identityId }
+}
+
+/** Read-only, redacted recovery challenge for the current owner; no provider I/O. */
+export async function readCustomerProvisioningRecovery(input: z.infer<typeof Input>, dependencies: { runTransaction?: RunPageStudioTransaction } = {}) {
+  const parsed = Input.safeParse(input)
+  if (!parsed.success) throw denied()
+  return (dependencies.runTransaction ?? transaction)(async (db) => {
+    const { job, recovery, loginHash } = await recoveryContext(parsed.data, db)
+    return { recoveryRequired: loginHash !== (recovery?.loginSessionHash ?? job.actor!.loginSessionHash),
+      expectedRecoveryId: recovery?.recoveryId ?? null, expectedJobDigest: await jobDigest(job) }
+  })
+}
+
+/** Compare-and-swap authority recovery only. Resource identity, plan, provider
+ * phase/leases and accepted checkpoints are untouched. Old cookies stay revoked. */
+export async function recoverCustomerProvisioning(input: z.infer<typeof Input> & z.infer<typeof RecoveryRequest>, dependencies: { runTransaction?: RunPageStudioTransaction, providerJob?: unknown } = {}) {
+  const parsed = Input.extend(RecoveryRequest.shape).safeParse(input)
+  if (!parsed.success) throw denied()
+  const request = RecoveryRequest.parse({ recoveryId: parsed.data.recoveryId, expectedRecoveryId: parsed.data.expectedRecoveryId, expectedJobDigest: parsed.data.expectedJobDigest })
+  return (dependencies.runTransaction ?? transaction)(async (db) => {
+    const { job, recovery, loginHash, identityId } = await recoveryContext(parsed.data, db)
+    if (request.expectedJobDigest !== await jobDigest(job)) throw conflict()
+    const providerJob = dependencies.providerJob == null ? null : PageStudioProvisioningJobSchema.parse(dependencies.providerJob)
+    if (providerJob && identity(providerJob) !== identity(job)) throw denied()
+    if (recovery?.recoveryId === request.recoveryId) {
+      if (recovery.loginSessionHash !== loginHash || recovery.expectedRecoveryId !== request.expectedRecoveryId) throw conflict()
+      return { recovered: true as const, resumeAttempt: recovery.resumeAttempt }
+    }
+    if ((recovery?.recoveryId ?? null) !== request.expectedRecoveryId || request.recoveryId === request.expectedRecoveryId) throw conflict()
+    const receipt = RecoveryReceipt.parse({ ...request, version: 1, revision: (recovery?.revision ?? 0) + 1, loginSessionHash: loginHash, resumeAttempt: providerJob?.phase === 'failed' ? providerJob.attempts : null })
+    await db.query(`INSERT INTO page_studio_audit_events
+      (tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata)
+      VALUES($1,$2,$3,$4,'customer','customer.provisioning.recovered','customer_provisioning',$5,$6,$7::jsonb)`,
+    [job.scope.tenantId, job.scope.clientId, job.scope.siteId, identityId, job.requestKey,
+      `customer-provisioning-recovery:${request.recoveryId}`, JSON.stringify(receipt)])
+    await verifyCustomerProvisioningAuthority(job, db)
+    return { recovered: true as const, resumeAttempt: receipt.resumeAttempt }
+  })
 }
 
 /** Internal adapter. Caller supplies a verified customer cookie, never actor/scope/plan fields. */
@@ -86,6 +167,8 @@ export async function prepareCustomerProvisioning(input: z.infer<typeof Input>, 
       // A different owner needs explicit reconciliation, never implicit takeover.
       // Keep all identity locks before workspace/site locks on this retry path.
       if (!retained.success || retained.data.actor?.userId !== identityId) throw denied()
+      const recovery = await latestRecovery(retained.data, db)
+      if ((recovery?.loginSessionHash ?? retained.data.actor.loginSessionHash) !== tokenHash) throw conflict()
       await verifyCustomerProvisioningAuthority(retained.data, db)
       return retained.data
     }
@@ -107,14 +190,25 @@ export async function prepareCustomerProvisioning(input: z.infer<typeof Input>, 
 /** Private coordinator only; a returned phase is not customer-visible readiness. */
 export async function dispatchCustomerProvisioning(input: z.infer<typeof Input>, dependencies: {
   binding: PageStudioProvisionerBinding
+  resumeAttempt?: number | null
   runTransaction?: RunPageStudioTransaction
 }) {
   const job = await prepareCustomerProvisioning(input, dependencies)
-  const saved = await dispatchPageStudioProvisioning(dependencies.binding, {
+  let saved = await dispatchPageStudioProvisioning(dependencies.binding, {
     initiatingActorKind: 'customer-user', initiatingUserId: job.actor!.userId, initiatingLoginSessionHash: job.actor!.loginSessionHash!,
     requestKey: job.requestKey, scope: job.scope, now: job.updatedAt, revision: job.setup!.proposalRevision, source: 'template',
     plan: { businessName: job.setup!.businessName, starterVersion: job.templateId, modules: job.plan.enabledModules, pages: job.plan.pages, collections: job.plan.collections }
   })
   await (dependencies.runTransaction ?? transaction)(db => verifyCustomerProvisioningAuthority(saved, db))
+  if (saved.phase === 'failed' && saved.attempts === dependencies.resumeAttempt) {
+    if (!dependencies.binding.resumeCustomerProvisioning) throw new PageStudioProvisioningError('PROVISIONER_UNAVAILABLE', 'Provisioning recovery is not configured')
+    await (dependencies.runTransaction ?? transaction)(db => verifyCustomerProvisioningAuthority(saved, db, true))
+    const decoded = PageStudioProvisioningJobSchema.parse(await dependencies.binding.resumeCustomerProvisioning(saved))
+    if (!decoded.actor) throw denied()
+    const resumed = { ...decoded, actor: decoded.actor }
+    if (identity(resumed) !== identity(saved) || Object.entries(saved.resources).some(([key, value]) => value !== null && resumed.resources[key as keyof typeof saved.resources] !== value)) throw denied()
+    saved = resumed
+    await (dependencies.runTransaction ?? transaction)(db => verifyCustomerProvisioningAuthority(saved, db))
+  }
   return saved
 }

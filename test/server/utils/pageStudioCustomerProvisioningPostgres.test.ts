@@ -157,7 +157,10 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
       JSON.stringify({ businessName: 'Customer Flowers', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] })])
     const policy = (await db.query('SELECT preview_policy FROM page_studio_customer_site_requests WHERE site_id = $1', [fixture.siteId])).rows[0].preview_policy
     let retained: unknown = null
-    const binding = { readProvisioning: vi.fn(async () => retained), createProvisioning: vi.fn(async (job: unknown) => {
+    const binding = { readCustomerRecoverySupport: vi.fn(async () => ({ version: 1 })), resumeCustomerProvisioning: vi.fn(async (job: { attempts: number }) => {
+      retained = { ...job, phase: 'requested', error: null, attempts: job.attempts + 1 }
+      return retained
+    }), readProvisioning: vi.fn(async () => retained), createProvisioning: vi.fn(async (job: unknown) => {
       retained = job
       return job
     }) }
@@ -247,7 +250,7 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
     expect(JSON.stringify(result)).not.toContain('private provider failure')
   })
 
-  it('requires support instead of replacing a logged-out initiating session', async () => {
+  it('offers explicit recovery instead of silently replacing a logged-out initiating session', async () => {
     const options = await dashboardSetup()
     await prepare()
     const next = 'b'.repeat(64)
@@ -255,8 +258,197 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
       SELECT $1, account_id, expires_at FROM page_studio_customer_sessions WHERE token_hash = $2`, [hash(next), hash(token)])
     await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW() WHERE token_hash = $1', [hash(token)])
     const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
-    expect(await readCustomerDashboard(next, options)).toMatchObject({ state: 'needs-attention', canRetry: false })
+    expect(await readCustomerDashboard(next, options)).toMatchObject({ state: 'recovery-required', canRetry: false, recovery: { expectedRecoveryId: null, expectedJobDigest: expect.any(String) } })
     expect(options.binding.readProvisioning).not.toHaveBeenCalled()
+  })
+
+  const newLogin = async (value = 'b'.repeat(64)) => {
+    await db.query(`INSERT INTO page_studio_customer_sessions (token_hash, account_id, expires_at)
+      SELECT $1, account_id, clock_timestamp() + INTERVAL '1 day' FROM page_studio_customer_sessions WHERE token_hash = $2`, [hash(value), hash(token)])
+    return value
+  }
+  const recoveryApi = () => import('~~/server/utils/pageStudio/customerProvisioning')
+  const recovery = async (sessionToken: string) => (await recoveryApi()).readCustomerProvisioningRecovery({ sessionToken, siteId: fixture.siteId }, { runTransaction })
+  const recover = async (sessionToken: string, status: { expectedRecoveryId: string | null, expectedJobDigest: string }, recoveryId = randomUUID()) =>
+    (await recoveryApi()).recoverCustomerProvisioning({ sessionToken, siteId: fixture.siteId, expectedRecoveryId: status.expectedRecoveryId, expectedJobDigest: status.expectedJobDigest, recoveryId }, { runTransaction })
+
+  it('explicitly recovers the immutable original job after logout without creating a new intent', async () => {
+    const job = await prepare(), next = await newLogin()
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW() WHERE token_hash = $1', [hash(token)])
+    await expect(prepare(next)).rejects.toMatchObject({ statusCode: 409 })
+    const state = await recovery(next)
+    expect(state).toMatchObject({ recoveryRequired: true, expectedRecoveryId: null })
+    await recover(next, state)
+    expect(await prepare(next)).toEqual(job)
+    await expect(verify(job)).resolves.toMatchObject({ userId: ids.owner })
+    await expect(prepare(token)).rejects.toMatchObject({ statusCode: 403 })
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_customer_provisioning_intents')).rows[0].count).toBe('1')
+    expect((await db.query('SELECT job FROM page_studio_customer_provisioning_intents')).rows[0].job.actor.loginSessionHash).toBe(hash(token))
+  })
+
+  it('recovers through the customer dashboard and dispatches only the retained request', async () => {
+    const options = await dashboardSetup(), job = await prepare(), next = await newLogin()
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW() WHERE token_hash = $1', [hash(token)])
+    const { readCustomerDashboard, recoverCustomerDashboardPreview } = await import('~~/server/utils/pageStudio/customerDashboard')
+    const before = await readCustomerDashboard(next, options)
+    expect(before.state).toBe('recovery-required')
+    for (const secret of [hash(token), hash(next), fixture.siteId, job.requestKey]) expect(JSON.stringify(before)).not.toContain(secret)
+    const body = { ...before.recovery!, recoveryId: randomUUID() }
+    expect(await recoverCustomerDashboardPreview(next, body, options)).toMatchObject({ state: 'preparing' })
+    await recoverCustomerDashboardPreview(next, body, options)
+    expect(options.binding.createProvisioning).toHaveBeenCalledTimes(1)
+    expect(options.binding.createProvisioning.mock.calls[0][0]).toEqual(job)
+  })
+
+  it('reauthorizes a failed job only after explicit recovery and resumes its retained resources', async () => {
+    const options = await dashboardSetup(), original = await prepare(), next = await newLogin()
+    const failed = { ...original, phase: 'failed' as const, error: 'Authority revoked', resources: { database: 'existing-database', site: 'existing-site', contentBinding: null } }
+    await expect(verify(failed)).rejects.toMatchObject({ statusCode: 403 })
+    options.binding.readProvisioning.mockResolvedValueOnce(failed).mockResolvedValueOnce(failed)
+    const { recoverCustomerDashboardPreview } = await import('~~/server/utils/pageStudio/customerDashboard')
+    const state = await recovery(next)
+    const request = { expectedRecoveryId: state.expectedRecoveryId, expectedJobDigest: state.expectedJobDigest, recoveryId: randomUUID() }
+    expect(await recoverCustomerDashboardPreview(next, request, options)).toMatchObject({ state: 'preparing' })
+    expect(options.binding.resumeCustomerProvisioning).toHaveBeenCalledWith(failed)
+    expect(options.binding.createProvisioning).not.toHaveBeenCalled()
+    await expect(verify(failed)).resolves.toMatchObject({ userId: ids.owner })
+    options.binding.readProvisioning.mockResolvedValue({ ...failed, attempts: 1 })
+    expect(await recoverCustomerDashboardPreview(next, request, options)).toMatchObject({ state: 'recovery-required' })
+    expect(options.binding.resumeCustomerProvisioning).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not offer or record recovery when the matching worker is missing', async () => {
+    const options = await dashboardSetup(), next = await newLogin()
+    await prepare()
+    const { readCustomerDashboard, recoverCustomerDashboardPreview } = await import('~~/server/utils/pageStudio/customerDashboard')
+    const unavailable = { ...options, binding: { readProvisioning: options.binding.readProvisioning, createProvisioning: options.binding.createProvisioning } }
+    expect(await readCustomerDashboard(next, unavailable)).toMatchObject({ state: 'unavailable' })
+    const state = await recovery(next)
+    await expect(recoverCustomerDashboardPreview(next, { expectedRecoveryId: state.expectedRecoveryId, expectedJobDigest: state.expectedJobDigest, recoveryId: randomUUID() }, unavailable)).rejects.toMatchObject({ statusCode: 403 })
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=\'customer.provisioning.recovered\'')).rows[0].count).toBe('0')
+  })
+
+  it('rechecks native authority after the worker capability handshake', async () => {
+    const options = await dashboardSetup(), next = await newLogin()
+    await prepare()
+    options.binding.readCustomerRecoverySupport.mockImplementationOnce(async () => {
+      await db.query('UPDATE page_studio_customer_sessions SET revoked_at=NOW() WHERE token_hash=$1', [hash(next)])
+      return { version: 1 }
+    })
+    const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
+    await expect(readCustomerDashboard(next, options)).rejects.toMatchObject({ statusCode: 401 })
+    expect(options.binding.resumeCustomerProvisioning).not.toHaveBeenCalled()
+  })
+
+  it('uses compare-and-swap recovery and exact idempotent retries', async () => {
+    await prepare()
+    const next = await newLogin(), state = await recovery(next), id = randomUUID()
+    await recover(next, state, id)
+    await recover(next, state, id)
+    await expect(recover(next, state)).rejects.toMatchObject({ statusCode: 409 })
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=\'customer.provisioning.recovered\'')).rows[0].count).toBe('1')
+  })
+
+  it('serializes competing recoveries without rewriting the winning login', async () => {
+    const job = await prepare(), next = await newLogin(), third = await newLogin('c'.repeat(64))
+    const state = await recovery(next)
+    const results = await Promise.allSettled([recover(next, state), recover(third, state)])
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter(result => result.status === 'rejected')).toHaveLength(1)
+    await expect(verify(job)).resolves.toMatchObject({ userId: ids.owner })
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=\'customer.provisioning.recovered\'')).rows[0].count).toBe('1')
+    await expect(db.query('UPDATE page_studio_audit_events SET metadata=\'{}\' WHERE action=\'customer.provisioning.recovered\'')).rejects.toThrow()
+  })
+
+  it.each(['session', 'account', 'identity', 'membership', 'role', 'workspace', 'entitlement', 'approver'])('denies recovery after %s is revoked without an audit or replacement intent', async (reason) => {
+    await prepare()
+    const next = await newLogin(), state = await recovery(next)
+    const mutations: Record<string, string> = {
+      session: 'UPDATE page_studio_customer_sessions SET revoked_at = NOW()',
+      account: 'UPDATE page_studio_customer_accounts SET status = \'suspended\'',
+      identity: 'UPDATE page_studio_customer_identities SET status = \'suspended\'',
+      membership: 'UPDATE page_studio_workspace_memberships SET revoked_at = NOW()',
+      role: 'UPDATE page_studio_workspace_memberships SET role = \'editor\'',
+      workspace: 'UPDATE page_studio_customer_workspaces SET status = \'suspended\'',
+      entitlement: 'UPDATE page_studio_entitlements SET status = \'suspended\'',
+      approver: 'UPDATE team_members SET is_active = FALSE'
+    }
+    await db.query(mutations[reason]!)
+    await expect(recover(next, state)).rejects.toMatchObject({ statusCode: 403 })
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=\'customer.provisioning.recovered\'')).rows[0].count).toBe('0')
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_customer_provisioning_intents')).rows[0].count).toBe('1')
+  })
+
+  it('rejects membership expiry crossed while recovery waits for the site lock', async () => {
+    await prepare()
+    const next = await newLogin(), state = await recovery(next)
+    await db.query('UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()+INTERVAL \'2 seconds\'')
+    await db.query('BEGIN')
+    await db.query('SELECT id FROM page_studio_sites WHERE id=$1 FOR UPDATE', [fixture.siteId])
+    // Prime the transaction's activity snapshot before the recovery connection exists.
+    await db.query('SELECT pid FROM pg_stat_activity')
+    const pending = Promise.allSettled([recover(next, state)])
+    try {
+      await vi.waitFor(async () => {
+        // Activity snapshots are cached for this open transaction; refresh discovery.
+        await db.query('SELECT pg_stat_clear_snapshot()')
+        const blocked = (await db.query('SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND pg_backend_pid()=ANY(pg_blocking_pids(pid))) AS blocked')).rows[0].blocked
+        expect(blocked).toBe(true)
+      }, { timeout: 3000, interval: 10 })
+      await vi.waitFor(async () => {
+        const expired = (await db.query('SELECT expires_at < clock_timestamp() AS expired FROM page_studio_workspace_memberships')).rows[0].expired
+        expect(expired).toBe(true)
+      }, { timeout: 4000, interval: 20 })
+    } finally { await db.query('COMMIT') }
+    expect(await pending).toMatchObject([{ status: 'rejected', reason: { statusCode: 403 } }])
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=\'customer.provisioning.recovered\'')).rows[0].count).toBe('0')
+  }, 10000)
+
+  it('rolls back recovery when the audit cannot be persisted', async () => {
+    const job = await prepare(), next = await newLogin(), state = await recovery(next)
+    await db.query(`CREATE FUNCTION reject_recovery() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit unavailable'; END $$;
+      CREATE TRIGGER reject_recovery BEFORE INSERT ON page_studio_audit_events FOR EACH ROW WHEN (NEW.action='customer.provisioning.recovered') EXECUTE FUNCTION reject_recovery()`)
+    try {
+      await expect(recover(next, state)).rejects.toThrow('audit unavailable')
+      expect(await recovery(next)).toMatchObject({ expectedRecoveryId: null, recoveryRequired: true })
+      expect(await prepare()).toEqual(job)
+    } finally { await db.query('DROP TRIGGER reject_recovery ON page_studio_audit_events; DROP FUNCTION reject_recovery()') }
+  })
+
+  it('commits a first checkpoint after recovery while preserving original setup provenance', async () => {
+    const job = { ...await prepare(), phase: 'content-seeded' as const }, next = await newLogin()
+    await recover(next, await recovery(next))
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW() WHERE token_hash=$1', [hash(token)])
+    const checkpointId = `setup_${'e'.repeat(64)}`
+    const input = { provisioning: { requestKey: job.requestKey, scope: job.scope }, expectedCheckpointId: null,
+      checkpoint: { checkpointId, scope: { tenantId: job.scope.tenantId, clientId: job.scope.clientId, siteId: job.scope.siteId },
+        userId: ids.owner, createdAt: new Date().toISOString(), digest: 'f'.repeat(64), etag: 'etag',
+        objectKey: `tenants/${job.scope.tenantId}/clients/${job.scope.clientId}/sites/${job.scope.siteId}/checkpoints/${checkpointId}.json` } }
+    const { commitPageStudioProvisioningCheckpoint } = await import('~~/server/utils/pageStudio/provisioningCheckpoint')
+    await commitPageStudioProvisioningCheckpoint(input, { readProvisioning: async () => job, createProvisioning: async () => job }, 'staging', { runTransaction })
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_checkpoints')).rows[0].count).toBe('1')
+    const audit = (await db.query('SELECT metadata FROM page_studio_audit_events WHERE metadata ? \'customerProvisioning\'')).rows[0]
+    expect(audit.metadata.customerProvisioning.loginSessionHash).toBe(hash(token))
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW() WHERE token_hash=$1', [hash(next)])
+    await expect(commitPageStudioProvisioningCheckpoint(input, { readProvisioning: async () => job, createProvisioning: async () => job }, 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('requires new recovery after the replacement session is revoked', async () => {
+    const job = await prepare(), next = await newLogin()
+    await recover(next, await recovery(next))
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW() WHERE token_hash = $1', [hash(next)])
+    await expect(verify(job)).rejects.toMatchObject({ statusCode: 403 })
+    const third = await newLogin('c'.repeat(64))
+    await recover(third, await recovery(third))
+    await expect(verify(job)).resolves.toMatchObject({ userId: ids.owner })
+  })
+
+  it('rejects changed recovery digests and cannot silently replace another active login', async () => {
+    await prepare()
+    const next = await newLogin(), state = await recovery(next)
+    await expect(prepare(next)).rejects.toMatchObject({ statusCode: 409 })
+    await expect(recover(next, { ...state, expectedJobDigest: 'f'.repeat(64) })).rejects.toMatchObject({ statusCode: 409 })
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=\'customer.provisioning.recovered\'')).rows[0].count).toBe('0')
   })
 
   it('retains one native customer login and content-only plan across concurrent retries', async () => {
@@ -314,9 +506,10 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
     const next = 'b'.repeat(64)
     await db.query(`INSERT INTO page_studio_customer_sessions (token_hash, account_id, expires_at)
       SELECT $1, account_id, expires_at FROM page_studio_customer_sessions WHERE token_hash = $2`, [hash(next), hash(token)])
-    expect(await prepare(next)).toEqual(job)
+    await expect(prepare(next)).rejects.toMatchObject({ statusCode: 409 })
     await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW() WHERE token_hash = $1', [hash(token)])
-    await expect(prepare(next)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(prepare(next)).rejects.toMatchObject({ statusCode: 409 })
+    await expect(verify(job)).rejects.toMatchObject({ statusCode: 403 })
   })
 
   it('reconciles a lost coordinator acknowledgement without creating another request', async () => {

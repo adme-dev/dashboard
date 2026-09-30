@@ -1,11 +1,11 @@
 import { z } from 'zod'
 import { createError } from 'h3'
 import { transaction } from '~~/server/utils/db'
-import type { CustomerDashboard } from '~~/shared/pageStudio/customerDashboard'
+import { CustomerProvisioningRecoverySchema, type CustomerDashboard } from '~~/shared/pageStudio/customerDashboard'
 import { readCustomerSession, readCustomerSetup } from './customerSignup'
 import { resolveCustomerWorkspaceAccess } from './customerWorkspaces'
 import { createCustomerPreviewSite, CustomerPreviewPolicySchema } from './customerSites'
-import { dispatchCustomerProvisioning, prepareCustomerProvisioning, readCustomerProvisioningPreviewAuthority, verifyCustomerProvisioningAuthority } from './customerProvisioning'
+import { readCustomerProvisioningRecovery, recoverCustomerProvisioning, dispatchCustomerProvisioning, prepareCustomerProvisioning, readCustomerProvisioningPreviewAuthority, verifyCustomerProvisioningAuthority } from './customerProvisioning'
 import { PageStudioProvisioningJobSchema, readPageStudioProvisioning, type PageStudioProvisionerBinding } from './provisioningBinding'
 import type { RunPageStudioTransaction } from './sites'
 
@@ -57,6 +57,14 @@ async function context(token: string, options: CustomerDashboardDependencies) {
   })
 }
 
+async function recoverySupported(binding: PageStudioProvisionerBinding | undefined) {
+  try {
+    // RPC proxies may expose a callable property for a missing remote method.
+    // Only a successful version handshake with both workers establishes support.
+    return z.object({ version: z.literal(1) }).strict().safeParse(await binding?.readCustomerRecoverySupport?.()).success
+  } catch { return false }
+}
+
 /** Customer-facing read model; never expose coordinator jobs or provider errors. */
 export async function readCustomerDashboard(token: string, options: CustomerDashboardDependencies): Promise<CustomerDashboard> {
   const current = await context(token, options)
@@ -70,6 +78,15 @@ export async function readCustomerDashboard(token: string, options: CustomerDash
   if (!parsed.success || parsed.data.actor?.userId !== current.user.identityId) return { ...base, state: 'needs-attention' }
   const native = (job: z.infer<typeof PageStudioProvisioningJobSchema>) => (options.runTransaction ?? transaction)(db => verifyCustomerProvisioningAuthority(job, db))
   try {
+    let recovery = await readCustomerProvisioningRecovery({ sessionToken: token, siteId: current.receipt.site_id }, { runTransaction: options.runTransaction })
+    if (recovery.recoveryRequired) {
+      const supported = await recoverySupported(options.binding)
+      recovery = await readCustomerProvisioningRecovery({ sessionToken: token, siteId: current.receipt.site_id }, { runTransaction: options.runTransaction })
+      if (!supported) return { ...base, state: 'unavailable' }
+    }
+    if (recovery.recoveryRequired) return { ...base, state: 'recovery-required', recovery: {
+      expectedRecoveryId: recovery.expectedRecoveryId, expectedJobDigest: recovery.expectedJobDigest
+    } }
     await native(parsed.data)
   } catch {
     // Current-user access is checked independently, including on blocked jobs.
@@ -94,7 +111,11 @@ export async function readCustomerDashboard(token: string, options: CustomerDash
   }
   if (retained === null) return { ...base, state: 'preparing', canRetry: true }
   const phase = saved.data.phase
-  if (phase === 'failed') return { ...base, state: 'needs-attention' }
+  if (phase === 'failed') {
+    if (!(await recoverySupported(options.binding))) return { ...base, state: 'needs-attention' }
+    const recovery = await readCustomerProvisioningRecovery({ sessionToken: token, siteId: current.receipt.site_id }, { runTransaction: options.runTransaction })
+    return { ...base, state: 'recovery-required', recovery: { expectedRecoveryId: recovery.expectedRecoveryId, expectedJobDigest: recovery.expectedJobDigest } }
+  }
   const stage = ['requested', 'validated', 'resources-created', 'site-seeded', 'content-seeded', 'complete'].indexOf(phase)
   return { ...base, stage, state: phase === 'complete' ? 'verification-pending' : 'preparing' }
 }
@@ -119,5 +140,19 @@ export async function createCustomerDashboardPreview(token: string, options: Cus
     return site
   })
   await dispatchCustomerProvisioning({ sessionToken: token, siteId }, { binding: options.binding, runTransaction: options.runTransaction })
+  return readCustomerDashboard(token, options)
+}
+
+/** An explicit, scoped recovery action; the immutable original intent is reused. */
+export async function recoverCustomerDashboardPreview(token: string, body: unknown, options: CustomerDashboardDependencies) {
+  const request = CustomerProvisioningRecoverySchema.safeParse(body)
+  if (!request.success || !options.enabled || !options.binding?.readProvisioning || !options.binding?.createProvisioning || !(await recoverySupported(options.binding))) throw denied()
+  const current = await context(token, options)
+  if (!current.receipt || !current.intent) throw denied()
+  await readCustomerProvisioningRecovery({ sessionToken: token, siteId: current.receipt.site_id }, { runTransaction: options.runTransaction })
+  const original = PageStudioProvisioningJobSchema.parse(current.intent.job)
+  const providerJob = await readPageStudioProvisioning(options.binding, { scope: original.scope, requestKey: original.requestKey })
+  const recovered = await recoverCustomerProvisioning({ sessionToken: token, siteId: current.receipt.site_id, ...request.data }, { runTransaction: options.runTransaction, providerJob })
+  await dispatchCustomerProvisioning({ sessionToken: token, siteId: current.receipt.site_id }, { binding: options.binding, runTransaction: options.runTransaction, resumeAttempt: recovered.resumeAttempt })
   return readCustomerDashboard(token, options)
 }
