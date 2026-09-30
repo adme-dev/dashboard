@@ -8,7 +8,7 @@ payment. No live payments are admitted.
 
 ## Boundaries
 
-- Stripe SDK 22.6.2 uses its Fetch client and asynchronous SubtleCrypto signature
+- A private Cloudflare Worker runs Stripe SDK 22.6.2 using its Fetch client and asynchronous SubtleCrypto signature
   verification, API version `2026-08-26.dahlia`, with automatic retries disabled.
 - `POST /api/webhooks/studio-image-payments` accepts at most 262,144 observed bytes
   and verifies the exact raw body before database or provider access. It rejects
@@ -22,6 +22,15 @@ payment. No live payments are admitted.
   reuse native login, entitlement, membership and role locks and final checks.
 
 ## Configuration (not populated)
+
+`PAGE_STUDIO_IMAGE_PAYMENTS_SERVICE` is a preview-only service binding to
+`xeroflow-page-studio-payments-staging`. That Worker has no public route,
+workers.dev or preview URL, database binding, ledger access or request logging.
+Its closed RPC operations validate bounded request bodies and accept test keys
+only. Pages sends server-held test configuration over this private binding; no
+browser supplies credentials. Keeping the SDK outside Pages preserves the fixed
+Pages bundle budget. The native application retains every customer/role check,
+persisted purchase, provider-identity comparison and transactional credit grant.
 
 `PAGE_STUDIO_IMAGE_PAYMENTS` is server-only JSON containing `mode:"test"`, an
 `accountId`, a canonical HTTPS application `origin`, explicit staging customer

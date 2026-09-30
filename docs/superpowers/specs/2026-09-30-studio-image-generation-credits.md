@@ -1,9 +1,11 @@
 # Studio image generation and customer credits
 
 Status: implementation approved 30 September 2026, after completion of the CMS
-staging goal. Internal credit accounting is implemented and tested; generation,
-customer UI and payments remain in progress and are not enabled for customers.
-No payment account, checkout product or charge created. See the
+staging goal. Accounting, image generation, editor controls and test-mode payment
+implementation are complete on the feature branches. Both image models have
+isolated hosted acceptance; final UI/publication acceptance and release review
+remain in progress. Customer production and live payments stay disabled.
+No payment account, checkout product or charge has been created. See the
 [implementation plan](../plans/2026-09-30-studio-images-credits.md).
 
 ## Product outcome
@@ -118,16 +120,16 @@ concurrent requests. [Spend limits](https://developers.cloudflare.com/ai-gateway
 
 - [ ] Confirm wallet ownership, initial curated models and commercial choices
   below; define API contracts and migrations with ledger/job invariants.
-- [ ] Implement scoped ledger, quote, reserve/settle/release and reconciliation;
+- [x] Implement scoped ledger, quote, reserve/settle/release and reconciliation;
   prove concurrent overspend prevention and recovery with synthetic credits.
-- [ ] Add model adapters through a named Gateway, asynchronous execution where
+- [x] Add model adapters through a named Gateway, asynchronous execution where
   needed, validated R2 storage and usage/cost attribution. Verify against a
   staging account with bounded model spend.
-- [ ] Add customer generation controls, model/cost selection, progress, media
+- [x] Add customer generation controls, model/cost selection, progress, media
   library and hero/background draft integration. Use Nuxt UI for Dashboard
   surfaces and the Studio editor's existing component system for its overlay.
   Verify desktop/mobile, keyboard, recovery and independent Studio entry.
-- [ ] Add Stripe test-mode packs/checkout and verified fulfillment, balance and
+- [x] Add Stripe test-mode packs/checkout and verified fulfillment, balance and
   history. Test duplicate webhooks, delayed/failed settlement, wrong scope,
   replay, refunds/disputes and no credit on success redirect alone.
 - [ ] Run two-customer isolation and permission acceptance, concurrent generation,
@@ -171,6 +173,25 @@ after ten minutes. The private worker's recovery scope inventory remains usable
 when generation configuration is disabled. Migration440 has been applied to
 isolated staging with zero jobs.
 
-This does not yet provide a running image worker, R2 image validation, customer
-image controls or payments. Those remaining plan tasks and hosted verification
-are required before claiming image generation complete or enabling customers.
+## Implementation evidence — worker, editor and test billing
+
+The private image worker and named Gateway now have real successful FLUX and
+SDXL results for the two synthetic staging customers, with validated owned R2
+assets and scope-isolation receipts. The original timed-out SDXL job still holds
+10 credits for reconciliation; it has not been reissued or silently refunded.
+See [hosted generation evidence](../../page-studio/images-staging-acceptance-2026-09-30.md).
+
+The editor image picker, saved library, recoverable requests, bounded focal
+positions and typed hero/background draft application are implemented and pass
+unit and real browser tests. Standalone `/studio/credits` shows permitted balance
+and activity. Stripe test checkout, official SDK raw-signature verification,
+current provider-state checks, immutable payment/refund accounting and native
+billing-owner admission are implemented and tested, including concurrent replay.
+The SDK runs in a private staging Worker; the native Dashboard retains credit
+and customer authority. See [payment boundaries](../../page-studio/image-payments-test-mode.md).
+
+Hosted UI-to-publication acceptance, final review and paired PR evidence remain
+Task 6. Hosted Stripe payment acceptance requires operator-supplied test keys and
+versioned pack configuration; none is fabricated or claimed here. The checked
+implementation tasks do not represent customer production or live billing
+activation. Commercial prices, margins and terms remain release decisions.
