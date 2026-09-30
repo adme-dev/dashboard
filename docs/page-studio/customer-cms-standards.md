@@ -63,4 +63,4 @@ The [Base44 research](../research/2026-09-30-website-cms-competitive-research.md
 
 ## Delivery sequence and backlog mapping
 
-The maintained sequence and RND-01–RND-16 task ledger are in [PRD section 8](../prd/page-studio-customer-cms-prd.md#8-delivery-order-and-canonical-backlog). This document retains supporting audit findings and acceptance examples only. Update the PRD when scope, order or task completion changes.
+The maintained sequence and RND-01–RND-24 task ledger are in [PRD section 8](../prd/page-studio-customer-cms-prd.md#8-delivery-order-and-canonical-backlog). This document retains supporting audit findings and acceptance examples only. Update the PRD when scope, order or task completion changes.

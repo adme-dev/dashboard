@@ -81,7 +81,7 @@ Proposed first three complete journeys: **enquiries and quotes**, **bookings**, 
 
 ## 4. Customer login and management workspace
 
-Reuse the existing `/studio` sign-in and portal account model. An invited owner/team member signs in, sees assigned websites and opens the website's operational workspace. Visitor/member accounts are now part of the confirmed broader scope, but remain distinct from owner/team login and the initial enquiry slice. Public owner self-signup and custom product hostname/branding still need design decisions.
+Reuse the existing `/studio` sign-in and portal account model. An invited owner/team member signs in, sees assigned websites and opens the website's operational workspace. Visitor/member accounts are now part of the confirmed broader scope, but remain distinct from owner/team login and the initial enquiry slice. Subsequent direction confirms standalone owner self-signup alongside agency-managed entry; see PRD sections 2.1 and 3.1 for the customer workspace and registration journey. Exact product hostname/branding remain open.
 
 Proposed navigation:
 
@@ -208,7 +208,7 @@ The component should expose health and actionable next steps: disconnected stora
 
 ## 10. Implementation backlog and acceptance gates
 
-The task ledger, completion status and delivery order have moved to the [canonical PRD](../prd/page-studio-customer-cms-prd.md#8-delivery-order-and-canonical-backlog). RND-01 through RND-16 retain their IDs. This research brief supplies design rationale, not a second status tracker.
+The task ledger, completion status and delivery order have moved to the [canonical PRD](../prd/page-studio-customer-cms-prd.md#8-delivery-order-and-canonical-backlog). RND-01 through RND-16 retain their IDs; RND-17 through RND-24 add the later dual-entry onboarding and domain journey. This research brief supplies design rationale, not a second status tracker.
 
 Cross-cutting tests: exact site/environment scoping; reader versus editor/integration-admin permissions; immutable submission data; bounded inputs; retries/concurrent edits; configuration upgrades; storage failure; queue failure; provider ambiguity; deletion/retention; preserved existing CMS, media, publication and QR/navigation behaviour.
 
@@ -221,8 +221,8 @@ Before any feature is described as live, record tested source, current main, dep
 - Definition/instance/placement reuse semantics and migration of existing forms without losing history.
 - Operational settings that apply immediately versus requiring a website publication; treatment of queued events after reconfiguration.
 - Supported redirect destination policy, webhook connector/egress strategy, retry limits and retention windows.
-- Invitation provisioning and optional owner self-signup; visitor/member accounts are confirmed scope with identity-provider and access details still to be designed.
+- Invitation provisioning and confirmed owner self-signup; visitor/member accounts remain distinct, with identity-provider and access details still to be designed.
 - Email provider verification flow, sender ownership, consent handling and support escalation.
 - Initial template catalogue, languages/countries, metrics definitions and industry-specific acceptance.
 
-Proceed with RND-01 and RND-02 before implementation. Then deliver one complete journey: **owner login → create/configure a form → visitor submits → owner sees the enquiry → webhook delivers with visible status**. Add customer/team email activation when provider readiness is demonstrably complete. This proves the shared architecture before expanding the industry catalogue.
+The original component research proposed RND-01/RND-02 followed by the journey below. The later signup request adds workspace ownership and onboarding first; follow PRD section 8 for the current order. The operational acceptance remains: **owner login → create/configure a form → visitor submits → owner sees the enquiry → webhook delivers with visible status**. Add customer/team email activation when provider readiness is demonstrably complete. This proves the shared architecture before expanding the industry catalogue.

@@ -30,9 +30,32 @@ One person can occupy several relationships. The website owner's platform subscr
 
 Server-side capabilities must distinguish read/manage enquiries, export, edit content/schema/design, publish, configure integrations, invite/change roles and manage billing. Hiding controls is not authorization. Expired/revoked membership must affect active access and relevant queued actions. Map these capabilities to existing roles during the access audit rather than adopting an unreviewed replacement role enum.
 
+### 2.1 One website platform, two product entry points
+
+Confirmed scope: support both a standalone website product and websites managed through XeroFlow Agency. Share the website/CMS services, component contracts and Page Studio; vary navigation, branding, onboarding and authorized commercial arrangements. A customer must not need an agency staff account to own or operate a standalone site.
+
+| Concern | Standalone customer | Agency-managed customer |
+| --- | --- | --- |
+| Entry | Product-branded signup/login domain | XeroFlow website portfolio or invited customer CMS link |
+| Onboarding | Verify identity, create customer workspace, become its owner, create first site | Agency selects an authorized client, creates/assigns a site and invites the client |
+| Daily work | Customer CMS; open Page Studio for visual editing | Same customer CMS and editor services, with agency portfolio/support tools where authorized |
+| Publishing | Owner or delegated publisher can review and release when checks pass | Existing agency review policy applies until explicitly changed by an authorized party |
+| Commercial relationship | Customer pays for its platform plan and AI usage | Agency-managed or client-paid according to an explicit billing agreement |
+| Data | Customer-owned website database | Customer-owned website database; agency access is a separate authorized relationship |
+
+Model these concerns separately: **identity → customer workspace → membership/capabilities → site → environment/storage binding**. An agency support/management grant and a billing account/payer are separate relationships. Entry hostname, signup source, email domain and a browser-selected mode must never grant access or determine data ownership.
+
+A workspace can have multiple sites and an identity can join multiple workspaces. Resolve an explicit active workspace on every request. Existing agency client IDs need a reviewed mapping to this model; do not silently put all standalone customers under a shared default agency/client. Shared platform identity and workspace authorization metadata belong to the control plane; website content, enquiries and operational records remain in the customer's database.
+
+A standalone owner can later invite an agency, and an agency-managed customer can become self-managed through an authorized handover. Retain site IDs, data bindings, domains, history and asset ownership; audit the grant/revocation or ownership transfer. Billing changes require their own explicit transition, including outstanding obligations and credit ownership. Removing agency assistance must not accidentally delete the customer's site or expose other agency clients. Revoked grants invalidate future launches and management actions.
+
 ## 3. Customer journey and information architecture
 
-**Create:** describe the business → choose visitor goals → review suggested pages/capabilities → supply missing facts → preview → complete setup → test → publish.
+**Standalone create:** sign up → verify email → complete business setup → create customer workspace and first site → CMS dashboard → Page Studio → preview/test → connect domain → publish.
+
+**Agency create:** select authorized client → assign site/entitlement → invite customer → customer CMS dashboard → Page Studio → agency review → publish.
+
+**Guided website creation:** describe the business → choose visitor goals → review suggested pages/capabilities → supply missing facts → preview → complete setup → test → publish.
 
 **Operate:** sign in at the independent Studio entry → choose an authorized website → see its CMS overview → manage content, enquiries and settings → open the visual builder when design work is needed.
 
@@ -48,6 +71,67 @@ Server-side capabilities must distinguish read/manage enquiries, export, edit co
 Use familiar names such as Enquiries, Posts and Appointments. Components remain a library/advanced view. Show installed capabilities progressively; do not present placeholder pages or unconnected services as working features. A decorative component does not need an inbox or database table.
 
 All management screens need usable mobile and keyboard paths plus honest empty, loading, error, denied, expired-session, stale-edit conflict and unavailable states. Use the project's Nuxt UI v4 design conventions. Data records and metadata may be managed in the CMS; visual canvas, layout editing and component rendering remain in the separate Studio application.
+
+### 3.1 Registration, step form and customer creation
+
+The route names below are proposed additions to the existing `/studio` namespace, not claims of implemented screens. A branded product origin may expose clean public aliases while preserving a single route/service contract. Keep the existing agency registration separate.
+
+```mermaid
+flowchart TD
+  A[Standalone product signup] --> B[Verified customer identity]
+  B --> C[Resumable business setup]
+  C --> D[Create customer workspace and owner membership]
+  D --> E[Authorize plan or trial and create first site]
+  X[XeroFlow agency: select client] --> Y[Assign site and invite customer]
+  E --> P[Provision customer storage and starter content]
+  Y --> P
+  P --> F[Customer CMS dashboard]
+  F --> G[Open Page Studio]
+  G --> H[Save draft and preview]
+  H --> I[Test content and business tools]
+  I --> J[Verify custom domain and TLS]
+  J --> K[Authorized review and publish]
+  K --> F
+```
+
+Invited users accepting an already prepared website go directly to its dashboard after authentication. They do not re-provision its storage or repeat owner signup.
+
+| Screen / proposed route | Customer action | Persistent outcome and recovery |
+| --- | --- | --- |
+| Signup `/studio/signup` | Enter name/email, accept applicable product terms; existing users sign in | Pending identity verification with expiry/resend/rate limits; no agency staff membership or paid entitlement |
+| Verification `/studio/verify` | Redeem the short-lived sign-in/verification link | Verified identity and scoped session; expired/used links get a recoverable state; original invitation/return target remains allowlisted |
+| Setup `/studio/onboarding`: About your business | Business/site name, industry, locale/timezone; conditional location/service-area fields | Revisioned onboarding draft bound to the verified identity; back/refresh/resume preserve answers |
+| Setup: Website goals | Choose enquiries, bookings, sales, blog, gallery or other supported capabilities | Proposed pages/capabilities with prerequisites and missing facts; unsupported options are visibly unavailable |
+| Setup: Starting point | Choose starter or describe the website; optionally add existing brand assets | Validated brief and starter reference; skip optional assets and domain connection |
+| Setup: Review and create | Review facts, selected capabilities and applicable trial/plan terms | Idempotently create workspace + owner membership, then authorize entitlement and site; retry resumes the same operation |
+| Website setup `/studio/sites/:siteId/setup` | Follow preparation; retry recoverable failures | Durable provisioning job and resource receipts; no false Ready state while database/content/runtime checks remain incomplete |
+| CMS `/studio/sites/:siteId` | View setup checklist, manage content/enquiries/media/team | Scoped customer dashboard independent of the builder; only installed, available capabilities are active |
+| Page Studio launch | Open visual editor, save draft, return to dashboard | Short-lived scoped launch to approved editor origin; customer/site/environment binding and draft history survive return |
+| Domains `/studio/sites/:siteId/settings/domains` | Add hostname, follow DNS instructions, check verification | Persisted ownership/DNS/TLS state; connecting a domain does not itself publish |
+| Review and publish | Preview and test, review changes, publish with the required capability | Release tied to exact source/artifacts, deployment and domain; failures retain prior verified live release |
+
+Request only the facts needed at each step. Do not force a new user to choose “standalone versus agency” when the trusted entry or invitation already establishes the journey. In the CMS, make the active business/site and any agency management relationship visible. A “Back to XeroFlow” action appears only for users authorized to enter it.
+
+“Create customer” means a workspace with a verified owner and explicit control-plane bindings. It is distinct from a visitor/member account, newsletter subscription, agency staff record and payment-provider customer. Identity creation must not automatically grant any of those other relationships. An existing email match never claims a workspace without verified authentication and an authorized membership/invitation.
+
+Workspace/owner creation must be atomic; entitlement, payment-provider and infrastructure steps use retained operation IDs with reconciliation. Repeated clicks, network loss, multiple tabs and resumed sessions cannot create duplicate owners, sites, subscriptions or databases. Do not charge for a retried provisioning request. Define pending-account expiry and abandoned-draft retention before release; surface recoverable progress and support references without exposing credentials.
+
+### 3.2 Product domain, editor domain and customer website domains
+
+Use a branded product origin for signup/login/CMS. Keep XeroFlow's agency entry available. Give every site a scoped preview address, then allow the owner to connect their published website's custom domain. Webflow documents the same user-facing distinction between its staging subdomain and a customer-owned production domain ([official domain guide](https://help.webflow.com/hc/en-us/articles/33961334343827-How-do-I-connect-my-domain-to-Webflow)); our access and storage design remains our own requirement.
+
+| Host purpose | Requirement |
+| --- | --- |
+| Product application | Trusted, configured origin for signup, CMS, help and branded authentication callbacks; exact brand/hostname remains to be chosen |
+| XeroFlow agency application | Existing staff portfolio and client operations; shared service contracts do not confer staff rights on product customers |
+| Visual editor | Approved editor origin with short-lived scoped handoff; no transferable agency session in URLs |
+| Preview/published user content | Isolated origin boundary from privileged applications; customer/generated scripts cannot read application cookies or credentials |
+| Customer custom website domain | Verified ownership, unique site/environment binding, DNS and TLS checks, primary-domain/canonical redirect behaviour, safe removal/reassignment |
+| Customer-branded CMS hostname | Later optional capability; not required to launch the standalone product |
+
+Do not share a parent-domain authentication cookie with untrusted previews. Explicitly allowlist authentication return URLs, editor launches and server-side trusted hosts; do not derive email-link origins from arbitrary request headers. Cross-origin authentication must use an audited one-time exchange or identity-provider redirect with state/replay protection. Preserve tenant/site scope after every handoff. A custom published domain never becomes an authentication or management origin merely because it is attached to a site.
+
+Domain readiness and release readiness are separate. Support pending DNS/certificate issuance, conflicting ownership, provider outage and lost acknowledgements without claiming Live. Default preview indexing must be controlled; private previews need authorization, not just noindex. Exact Cloudflare domain routing/certificate configuration is an implementation decision validated against current provider documentation before changes.
 
 ## 4. Functional requirements
 
@@ -129,9 +213,19 @@ The audit found legacy agency assets, audit-derived submissions and analytics in
 
 Generated collection fields currently support primitive types. Rich text, media references, relationships and galleries need protocol, validation, migration and renderer work. Existing agency Leads delivery is a reuse candidate requiring scope, egress, signing and retry review. Preserve unrelated agency workflows and the separate Studio visual builder.
 
+### 6.1 Onboarding audit checkpoint
+
+- [`app/pages/auth/register.vue`](../../app/pages/auth/register.vue) and [`server/api/auth/register.post.ts`](../../server/api/auth/register.post.ts) create agency `team_members`; they are not the standalone customer signup flow.
+- [`app/pages/studio/index.vue`](../../app/pages/studio/index.vue) and the [magic-link request endpoint](../../server/api/portal/auth/magic-link/request.post.ts) support existing invited customers. The site list currently has assigned-site navigation, not self-service account/site onboarding.
+- The [portal site creation endpoint](../../server/api/portal/page-studio/sites/index.post.ts) and [site service](../../server/utils/pageStudio/sites.ts) already enforce customer scope and active entitlements. Extend/adapt these contracts after workspace mapping; do not bypass their limits to make signup work.
+- [`PortalSetup.client.vue`](../../app/components/page-studio/PortalSetup.client.vue) supports proposals and provisioning but assumes agency review and portal return routes. Standalone owners need explicit approval/publishing capabilities and appropriate copy/navigation.
+- [`DomainsWorkspace.client.vue`](../../app/components/page-studio/DomainsWorkspace.client.vue) and the [domain management contract](../../shared/pageStudio/domainManagement.ts) already expose domain verification state. Reuse these services after verifying standalone authorization and route/branding support.
+
+The local entry-page check and reproducible startup instructions are recorded in [local onboarding review](../page-studio/local-onboarding-review-2026-09-30.md). Local rendering does not establish completed signup, database provisioning or hosted domain activation.
+
 ## 7. Acceptance and completion evidence
 
-The first complete journey is **owner login → configure a form → visitor submits → owner sees the durable enquiry → follow-up delivers with visible status**. Email activation additionally requires verified provider readiness.
+The first onboarding acceptance journey is **new verified owner → resumable business setup → one customer workspace/site → customer dashboard → scoped Page Studio launch → saved preview**. Repeat the shared dashboard/editor path for an agency-invited customer. The first complete operational journey is **owner login → configure a form → visitor submits → owner sees the durable enquiry → follow-up delivers with visible status**. Email activation additionally requires verified provider readiness.
 
 Each relevant slice must demonstrate:
 
@@ -146,14 +240,18 @@ Track task completion through linked source/tests and hosted evidence, not gener
 
 ## 8. Delivery order and canonical backlog
 
-All 16 tasks remain open. RND-01 has preliminary research but incomplete routing/migration validation. IDs remain stable across the supporting documents. This is the only maintained task-status ledger for this PRD.
+All 24 tasks remain open. RND-01 has preliminary research but incomplete routing/migration validation. IDs remain stable across the supporting documents. This is the only maintained task-status ledger for this PRD.
 
-1. **Foundation:** RND-01 and RND-02 — source/ownership map, access matrix, contract and migration design.
-2. **Customer CMS and forms:** RND-03–RND-05 — independent shell, private inbox, durable submission and safe settings; basic team permissions are required here.
-3. **Follow-up and guided creation:** RND-06–RND-09 — webhook/email delivery, insights and a complete enquiries/quotes template.
-4. **Editorial CMS:** RND-12 and RND-13 — pages/media integration, blog/gallery publishing and SEO.
-5. **People:** RND-14 and RND-15 — full invitation/role lifecycle, contacts/consent and visitor/member features.
-6. **Business transactions:** RND-10 and RND-16 — bookings/sales, paid memberships and further industry templates.
+1. **Identity and ownership foundation:** RND-01 and RND-17 — map current stores/identities and define customer workspace, agency grants and payer relationships. Validate on two isolated fixtures before adding signup.
+2. **Standalone onboarding:** RND-18–RND-21 — verified owner signup, resumable step form, idempotent customer/site creation and provisioning into the CMS. Existing invited customers converge on the same dashboard.
+3. **First website release:** RND-22–RND-23 — brand-aware navigation/authentication, scoped editor handoff, save/preview and custom-domain publication. RND-24 validates delegated agency access and later handover.
+4. **Customer CMS and forms:** RND-02–RND-05 — managed-component contract, private inbox, durable submission and safe settings; basic team permissions are required here.
+5. **Follow-up and guided creation:** RND-06–RND-09 — webhook/email delivery, insights and a complete enquiries/quotes template.
+6. **Editorial CMS:** RND-12 and RND-13 — pages/media integration, blog/gallery publishing and SEO.
+7. **People:** RND-14 and RND-15 — full invitation/role lifecycle, contacts/consent and visitor/member features.
+8. **Business transactions:** RND-10 and RND-16 — bookings/sales, paid memberships and further industry templates.
+
+The first release can publish supported starter content. Selecting an operational feature does not claim its later CMS/delivery work is complete. Initial delegated access must be secure from the first agency path; RND-24 adds full handover rather than deferring authorization.
 
 RND-11 applies to every release slice. Delivery order does not defer security, permissions or retention required by an earlier capability.
 
@@ -175,10 +273,31 @@ RND-11 applies to every release slice. Delivery order does not defer security, p
 | RND-14 | Team invitations and capability-based roles; basic read/write isolation required already by RND-03 | Invite expiry/revocation, role changes and owner continuity; content/design/publish/enquiry/integration/billing rights enforced server-side |
 | RND-15 | Contacts, newsletter consent and visitor/member access | Contact deduplication, purpose-specific consent, unsubscribe/suppression, member recovery and own-record access; visitor access never grants CMS access |
 | RND-16 | Customer paid memberships/subscriptions and self-service | Provider-verified events, entitlement changes, duplicate/out-of-order reconciliation, cancellation and expiry; distinct from marketing consent and platform AI credits |
+| RND-17 | Customer workspace, agency grant and payer mapping; depends on RND-01 | Fixture tests prove standalone ownership and agency-assisted access without a shared default tenant; existing client mappings and rollback reviewed |
+| RND-18 | Customer signup/verification; depends on RND-17 | New owner verifies and resumes; expired/replayed links and duplicate signup are safe; no agency staff account created; unit/API tests and browser check |
+| RND-19 | Resumable business step form; depends on RND-18 | Mobile/keyboard completion, back/refresh/resume and concurrent draft conflict verified; conditional questions and unavailable capabilities clear |
+| RND-20 | Idempotent workspace/owner/site creation; depends on RND-17/RND-19 | Atomic workspace/owner creation; approved trial/plan checks; duplicate/lost-response/reconciliation tests produce exactly one intended site and billing relationship |
+| RND-21 | Provisioning-to-dashboard journey; depends on RND-20 | Storage/runtime receipts verified before Ready; interrupted job resumes; two customer databases isolated; existing invite skips repeat provisioning |
+| RND-22 | Dual-entry navigation, authentication and editor return; depends on RND-21 | Standalone and agency users open the same authorized site, save/reload a draft and return correctly; wrong-origin, cross-site and revoked handoffs rejected |
+| RND-23 | Standalone domain and first-publish journey; depends on RND-22 | Ownership/DNS/TLS and primary-host output checked in authorized staging; pending/failure/retry states honest; owner release and agency review policy both enforced |
+| RND-24 | Agency assistance and managed-to-self-service handover; depends on RND-17/RND-22 | Authorized grant/revoke/transfer preserves IDs, customer database and history; billing remains explicit; revoked agency cannot reopen sessions or queued management actions |
+
+### 8.1 Implementation checkpoints and likely change areas
+
+RND IDs describe deliverables; split larger deliverables into focused implementation plans before coding. Each plan should change one working journey, carry tests for its failure cases and reference this ledger rather than introducing another status list.
+
+| Checkpoint | Likely code areas | Required evidence before proceeding |
+| --- | --- | --- |
+| Ownership mapped (RND-01/17) | Customer/portal auth utilities, entitlement/site services, control-plane schema/migrations | Existing agency fixture still works; standalone fixture has separate ownership; writer/reader and identity migration maps reviewed |
+| Signup and step form (RND-18/19) | New Studio signup/onboarding pages, existing portal auth adapters, onboarding API/storage | Browser walkthrough with isolated email capture and test database; no production invitations or mail sent; resume and expired-link checks |
+| First dashboard (RND-20/21) | Site creation service, setup/provisioning orchestration, Studio site overview | Repeated create/request and interrupted provisioning retain one workspace/site; actual scoped customer storage reads/writes |
+| Editor and first release (RND-22/23) | Studio layout/launcher, standalone auth return handling, domain workspace/publishing services and separate Studio repository | Both entry journeys; draft saved/reloaded; exact editor origin; staging domain verification and publication receipt; unchanged agency/QR navigation |
+| Agency handover (RND-24) | Membership/grant lifecycle, audit and billing relationship services | Revoked access fails server-side; authorized ownership/payer changes preserve live website continuity |
+| Each later CMS slice | Areas specified by RND-02–RND-16 and supporting component contracts | Feature-specific API/unit tests, real browser operational flow, customer storage isolation and RND-11 release evidence |
 
 ## 9. Open technical decisions and scope boundaries
 
-Before the corresponding capability ships, resolve storage adapters/outbox transactions and legacy cutover; role mapping; instance duplication; operational versus publication activation; safe redirect/egress strategy; provider onboarding; retry/retention limits; visitor identity provider; country/language support; and exact metric definitions. Public owner self-signup and custom product hostname/branding remain undecided.
+Before the corresponding capability ships, resolve storage adapters/outbox transactions and legacy cutover; role mapping; instance duplication; operational versus publication activation; safe redirect/egress strategy; provider onboarding; retry/retention limits; visitor identity provider; country/language support; and exact metric definitions. Public owner self-signup and dual standalone/agency entry are now in scope. Resolve the exact product name/hostname, identity-provider integration, workspace-to-existing-client schema mapping, starter trial/plan policy, supported payer transitions and standalone publication authority before their respective implementation slices. Customer-branded admin domains remain a later option.
 
 This phase does not promise complete feature parity with any competitor, arbitrary app/backend generation, a replacement agency CRM, a general financial decision engine or an immediately available commerce/payment provider. Existing image billing design is not reopened. Broad product scope is recorded above; each capability ships through its acceptance gate.
 
