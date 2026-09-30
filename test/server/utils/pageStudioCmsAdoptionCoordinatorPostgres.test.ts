@@ -523,11 +523,11 @@ describe.runIf(Boolean(databaseUrl))('durable CMS adoption on disposable Postgre
       frozen = await advance(run, start)
     const page1 = await advance(run, frozen)
     expect(page1.phase).toBe('importing')
-    expect(page1.progress?.consumed.content).toBe(20)
+    expect(page1.progress?.consumed).toEqual({ content: 20, record: 0, schema: 0 })
     expect(transport.readFrozenCmsPage).toHaveBeenCalledTimes(1)
     const page2 = await advance(run, page1)
     expect(page2.phase).toBe('ready')
-    expect(page2.progress?.consumed.content).toBe(21)
+    expect(page2.progress?.consumed).toEqual({ content: 21, record: 0, schema: 0 })
     expect((await advance(run, page2)).phase).toBe('managed')
     expect(
       (await observer.query('SELECT count(*)::int AS n FROM page_studio_cms_objects')).rows[0].n

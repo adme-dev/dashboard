@@ -49,10 +49,15 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
       await body(event, Empty)
       return { checkpoint: await readCustomerEditorCheckpoint(claims) }
     }
-    if (operation === 'checkpoint') return await commitCustomerEditorCheckpoint(await readBody(event), claims, { env: Object.fromEntries(
-      ['PAGE_STUDIO_CONTENT_ENVIRONMENT', 'PAGE_STUDIO_CHECKPOINTS', 'PAGE_STUDIO_CONTENT_ROUTER', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT']
-        .map(name => [name, setting(event, name)])
-    ) })
+    if (operation === 'checkpoint' || operation === 'cms-adoption') {
+      const env = Object.fromEntries(
+        ['PAGE_STUDIO_CONTENT_ENVIRONMENT', 'PAGE_STUDIO_CHECKPOINTS', 'PAGE_STUDIO_CONTENT_ROUTER', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT']
+          .map(name => [name, setting(event, name)])
+      )
+      if (operation === 'checkpoint') return await commitCustomerEditorCheckpoint(await readBody(event), claims, { env })
+      const { coordinateCmsAdoption } = await import('./cmsAdoptionCoordinator')
+      return await coordinateCmsAdoption(await readBody(event), { source: 'customer-session', claims, env, capability: 'workspace:create' })
+    }
     throw createError({ statusCode: 404 })
   } catch (error) {
     const candidate = typeof error === 'object' && error !== null && 'statusCode' in error ? Number(error.statusCode) : 503
