@@ -16,7 +16,7 @@ Successful business setup and returning completed setup navigate to `/studio/das
 | Needs attention | Contact support; keep the existing setup |
 | Unavailable | Refresh later; do not allocate a replacement |
 
-A coordinator `complete` phase means **Awaiting verification**, not Ready. No editor launch, publishing, payment or placeholder CMS modules are exposed. Revoking the original initiating login intentionally blocks its retained job; a subsequent login cannot silently substitute itself. An audited reconciliation flow remains future work.
+A coordinator `complete` phase means **Awaiting verification**, not Ready. No editor launch, publishing, payment or placeholder CMS modules are exposed. Revoking the original initiating login intentionally blocks its retained job; a subsequent login cannot silently substitute itself. The subsequent [provisioning recovery adapter](page-studio-customer-provisioning-recovery.md) adds explicit audited recovery with matching private workers.
 
 ## Native authorization and retention
 

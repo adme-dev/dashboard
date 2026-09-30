@@ -1,9 +1,10 @@
 import { createError, readBody, type H3Event } from 'h3'
 import { z } from 'zod'
+import { CustomerProvisioningRecoverySchema } from '~~/shared/pageStudio/customerDashboard'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { guardCustomerRequest, customerSessionToken, limitCustomerRequest } from './customerSignupHttp'
 import { getPageStudioProvisioningRuntime } from './provisioningBinding'
-import { CustomerPreviewApprovalSchema, readCustomerDashboard, createCustomerDashboardPreview, type CustomerDashboardDependencies } from './customerDashboard'
+import { CustomerPreviewApprovalSchema, readCustomerDashboard, createCustomerDashboardPreview, recoverCustomerDashboardPreview, type CustomerDashboardDependencies } from './customerDashboard'
 
 function options(event: H3Event): CustomerDashboardDependencies {
   const env = event.context.cloudflare?.env ?? {}
@@ -41,5 +42,18 @@ export async function customerPreviewHandler(event: H3Event) {
   await limitCustomerRequest(event, `preview:${await digestPortalSessionToken(token)}`, 10)
   try {
     return await createCustomerDashboardPreview(token, dependencies)
+  } catch (error) { safeError(error) }
+}
+
+export async function customerRecoveryHandler(event: H3Event) {
+  guardCustomerRequest(event, 'POST')
+  const token = customerSessionToken(event)
+  const body = CustomerProvisioningRecoverySchema.safeParse(await readBody(event))
+  if (!body.success) throw createError({ statusCode: 400, statusMessage: 'Invalid recovery request.' })
+  const dependencies = options(event)
+  if (!dependencies.enabled) throw createError({ statusCode: 403, statusMessage: 'Preview recovery is not available yet.' })
+  await limitCustomerRequest(event, `preview:${await digestPortalSessionToken(token)}`, 10)
+  try {
+    return await recoverCustomerDashboardPreview(token, body.data, dependencies)
   } catch (error) { safeError(error) }
 }

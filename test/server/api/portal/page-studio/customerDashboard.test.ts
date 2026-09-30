@@ -2,8 +2,8 @@ import { createServer, type Server } from 'node:http'
 import { createApp, toNodeListener, defineEventHandler } from 'h3'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ read: vi.fn(), create: vi.fn(), limit: vi.fn() }))
-vi.mock('~~/server/utils/pageStudio/customerDashboard', async original => ({ ...await original<object>(), readCustomerDashboard: mocks.read, createCustomerDashboardPreview: mocks.create }))
+const mocks = vi.hoisted(() => ({ read: vi.fn(), create: vi.fn(), recover: vi.fn(), limit: vi.fn() }))
+vi.mock('~~/server/utils/pageStudio/customerDashboard', async original => ({ ...await original<object>(), readCustomerDashboard: mocks.read, createCustomerDashboardPreview: mocks.create, recoverCustomerDashboardPreview: mocks.recover }))
 vi.mock('~~/server/utils/rateLimit', () => ({ checkAndConsume: mocks.limit }))
 
 describe('customer dashboard HTTP boundary', () => {
@@ -13,6 +13,7 @@ describe('customer dashboard HTTP boundary', () => {
     const api = await import('~~/server/utils/pageStudio/customerDashboardHttp')
     const app = createApp().use(defineEventHandler((event) => {
       event.context.cloudflare = { env: config }
+      if (event.path === '/recover') return api.customerRecoveryHandler(event)
       return event.path === '/preview' ? api.customerPreviewHandler(event) : api.customerDashboardHandler(event)
     }))
     server = createServer(toNodeListener(app))
@@ -35,6 +36,23 @@ describe('customer dashboard HTTP boundary', () => {
   const call = (body?: unknown, headers: Record<string, string> = {}) => fetch(`${base}/${body === undefined ? 'dashboard' : 'preview'}`, {
     method: body === undefined ? 'GET' : 'POST', headers: { 'origin': 'https://studio.example.test', 'cookie': `studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  })
+  const recover = (body: unknown, headers: Record<string, string> = {}) => fetch(`${base}/recover`, {
+    method: 'POST', headers: { 'origin': 'https://studio.example.test', 'cookie': `studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers }, body: JSON.stringify(body)
+  })
+  it('requires the current cookie, exact origin and strict recovery challenge before dispatch', async () => {
+    const body = { recoveryId: '11111111-1111-4111-8111-111111111111', expectedRecoveryId: null, expectedJobDigest: 'a'.repeat(64) }
+    mocks.recover.mockResolvedValue({ state: 'preparing' })
+    expect((await recover(body)).status).toBe(200)
+    expect(mocks.recover).toHaveBeenCalledWith('a'.repeat(64), body, expect.objectContaining({ enabled: true }))
+    expect((await recover({ ...body, siteId: 'foreign' })).status).toBe(400)
+    expect((await recover(body, { origin: 'https://foreign.test' })).status).toBe(403)
+    expect((await recover(body, { cookie: 'client_session_token=portal' })).status).toBe(401)
+    mocks.limit.mockResolvedValueOnce({ allowed: false, resetAt: new Date(Date.now() + 10000) })
+    expect((await recover(body)).status).toBe(429)
+    delete config.PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED
+    expect((await recover(body)).status).toBe(403)
+    expect(mocks.recover).toHaveBeenCalledTimes(1)
   })
   it('reads with the native cookie and private no-store headers', async () => {
     const response = await call()

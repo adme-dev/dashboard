@@ -73,15 +73,15 @@ export async function verifyPageStudioProvisioningJobAuthority(input: unknown, e
   const { scope } = validatedScope.data
   if (scope.environment !== environment) denied()
   if (!job.actor?.loginSessionHash) throw new PageStudioProvisioningError('PROVISIONING_OWNER_REQUIRED', 'The setup originating login requires reconciliation', 409)
-  if (!job.setup || ['failed', 'complete'].includes(job.phase)
+  if (!job.setup || job.phase === 'complete' || (job.phase === 'failed' && job.actor.kind !== 'customer-user')
     || job.id !== job.requestKey || job.requestKey !== `page-studio-${scope.siteId}-${job.setup.proposalRevision}`
     || job.templateId !== job.plan.templateId
     || JSON.stringify(job.scope) !== JSON.stringify(job.plan.scope)) denied()
 
   if (job.actor.kind === 'customer-user') {
     return dependencies.transaction
-      ? await verifyCustomerProvisioningAuthority(job, dependencies.transaction)
-      : await transaction(db => verifyCustomerProvisioningAuthority(job, db))
+      ? await verifyCustomerProvisioningAuthority(job, dependencies.transaction, job.phase === 'failed')
+      : await transaction(db => verifyCustomerProvisioningAuthority(job, db, job.phase === 'failed'))
   }
 
   // Only the retained job selects this branch. Never accept an actor kind in the

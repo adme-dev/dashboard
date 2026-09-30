@@ -35,3 +35,7 @@ For rollback, stop the customer producer/executor before reverting consumer supp
 - Full CI/build and final lint status are recorded on the paired draft PRs and canonical customer CMS PRD. No production deployment or hosted Ready claim is made here.
 
 See [site ownership](page-studio-customer-site-ownership.md), [customer signup](page-studio-customer-signup.md), and the canonical PRD in documentation PR601 for the remaining journey.
+
+## Explicit customer recovery
+
+The subsequent [recovery adapter](page-studio-customer-provisioning-recovery.md) retains the original job and resource identity while binding fresh native authority to an explicit owner recovery receipt.
