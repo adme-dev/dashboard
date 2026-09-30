@@ -1,0 +1,107 @@
+{
+  "request": {
+    "intentId": "40000000-0000-4000-8000-000000000004",
+    "modelId": "@cf/black-forest-labs/flux-1-schnell",
+    "prompt": "Soft abstract linen",
+    "aspect": "native"
+  },
+  "quote": {
+    "intentId": "40000000-0000-4000-8000-000000000004",
+    "modelId": "@cf/black-forest-labs/flux-1-schnell",
+    "prompt": "Soft abstract linen",
+    "aspect": "native",
+    "quoteId": "50000000-0000-4000-8000-000000000005",
+    "scope": {
+      "tenantId": "image_test",
+      "clientId": "10000000-0000-4000-8000-000000000001",
+      "businessId": "10000000-0000-4000-8000-000000000001",
+      "siteId": "30000000-0000-4000-8000-000000000003",
+      "environment": "staging"
+    },
+    "actor": {
+      "actorId": "editor_1",
+      "actorRole": "client"
+    },
+    "credits": 10,
+    "priceVersion": "synthetic-v1",
+    "gatewayId": "studio-images-staging",
+    "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "dimensions": null,
+    "expiresAt": "2026-09-30T00:10:00.000Z",
+    "policyVersion": "non-vehicle-v1"
+  },
+  "asset": {
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "path": "/assets/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png",
+    "contentType": "image/png",
+    "bytes": 1234,
+    "width": 1024,
+    "height": 1024
+  },
+  "claim": {
+    "admitted": true,
+    "quote": {
+      "intentId": "40000000-0000-4000-8000-000000000004",
+      "modelId": "@cf/black-forest-labs/flux-1-schnell",
+      "prompt": "Soft abstract linen",
+      "aspect": "native",
+      "quoteId": "50000000-0000-4000-8000-000000000005",
+      "scope": {
+        "tenantId": "image_test",
+        "clientId": "10000000-0000-4000-8000-000000000001",
+        "businessId": "10000000-0000-4000-8000-000000000001",
+        "siteId": "30000000-0000-4000-8000-000000000003",
+        "environment": "staging"
+      },
+      "actor": {
+        "actorId": "editor_1",
+        "actorRole": "client"
+      },
+      "credits": 10,
+      "priceVersion": "synthetic-v1",
+      "gatewayId": "studio-images-staging",
+      "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "dimensions": null,
+      "expiresAt": "2026-09-30T00:10:00.000Z",
+      "policyVersion": "non-vehicle-v1"
+    },
+    "dispatchToken": "60000000-0000-4000-8000-000000000006"
+  },
+  "read": {
+    "scope": {
+      "tenantId": "image_test",
+      "clientId": "10000000-0000-4000-8000-000000000001",
+      "businessId": "10000000-0000-4000-8000-000000000001",
+      "siteId": "30000000-0000-4000-8000-000000000003",
+      "environment": "staging"
+    },
+    "job": {
+      "jobId": "50000000-0000-4000-8000-000000000005",
+      "quoteId": "50000000-0000-4000-8000-000000000005",
+      "state": "succeeded",
+      "modelId": "@cf/black-forest-labs/flux-1-schnell",
+      "credits": 10,
+      "createdAt": "2026-09-30T00:00:00.000000Z",
+      "asset": {
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "path": "/assets/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.png",
+        "contentType": "image/png",
+        "bytes": 1234,
+        "width": 1024,
+        "height": 1024
+      },
+      "failureCode": null
+    }
+  },
+  "delivery": {
+    "kind": "generate",
+    "jobId": "50000000-0000-4000-8000-000000000005",
+    "scope": {
+      "tenantId": "image_test",
+      "clientId": "10000000-0000-4000-8000-000000000001",
+      "businessId": "10000000-0000-4000-8000-000000000001",
+      "siteId": "30000000-0000-4000-8000-000000000003",
+      "environment": "staging"
+    }
+  }
+}

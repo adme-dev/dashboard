@@ -238,6 +238,7 @@ describe.runIf(Boolean(url))('native image authority on PostgreSQL', () => {
     [claims.nonce, claims.tenantId, claims.clientId, claims.siteId, claims.userId, claims.role, JSON.stringify(claims.capabilities), claims.issuedAt, claims.expiresAt, request.login.tokenHash])
     const body = { intentId: randomUUID(), prompt: 'Soft abstract light', modelId: '@cf/black-forest-labs/flux-1-schnell', aspect: 'native' }
     const quoted = await executeStudioImageOperation(claims, request.env, 'quote', body, deps)
+    expect(quoted.scope).toEqual({ tenantId: claims.tenantId, clientId, businessId: clientId, siteId: claims.siteId, environment: 'staging' })
     if (!('quote' in quoted)) throw new Error('Quote missing')
     const quoteId = quoted.quote.quoteId
     await pool.query('INSERT INTO page_studio_image_wallets(tenant_id,client_id,environment,balance) VALUES(\'image_test\',$1,\'staging\',100)', [clientId])

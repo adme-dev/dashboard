@@ -43,10 +43,10 @@ export function executeNativeImageOperation(request: ContentAuthorityRequest, op
   return withImageGenerationAuthority(request, operation === 'quote' || operation === 'generate',
     (db, context) => executeAuthorizedImageOperation(db, context, principal, operation, parsed), dependencies)
 }
-export function executeStudioImageOperation(claims: PageStudioSessionClaims, env: Record<string, unknown>, operation: Exclude<ImageNativeOperation, 'account'>, input: unknown, dependencies: Dependencies = {}): Promise<Result> {
+export function executeStudioImageOperation(claims: PageStudioSessionClaims, env: Record<string, unknown>, operation: Exclude<ImageNativeOperation, 'account'>, input: unknown, dependencies: Dependencies = {}) {
   const parsed = parseImageOperationInput(operation, input)
   return withStudioImageAuthority(claims, env, operation === 'quote' || operation === 'generate',
-    (db, context) => executeAuthorizedImageOperation(db, context, { source: 'studio-session', claims }, operation, parsed), dependencies)
+    async (db, context) => ({ ...await executeAuthorizedImageOperation(db, context, { source: 'studio-session', claims }, operation, parsed), scope: context.scope }), dependencies)
 }
 async function executeAuthorizedImageOperation(db: PageStudioControlQueryClient, context: ImageGenerationContext, principal: ImageJobPrincipal, operation: ImageNativeOperation, parsed: unknown): Promise<Result> {
   const { scope } = context

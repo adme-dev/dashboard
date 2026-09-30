@@ -56,3 +56,36 @@ export const ImageLibraryRequestSchema = z.object({
   limit: z.number().int().min(1).max(50).default(20),
   before: z.object({ createdAt: z.string().datetime(), jobId: z.string().uuid() }).strict().optional()
 }).strict()
+
+export const ImageCreditBalanceSchema = z.object({
+  balance: z.number().int().min(-9_000_000_000_000).max(9_000_000_000_000),
+  reserved: z.number().int().min(0).max(9_000_000_000_000),
+  available: z.number().int().min(0).max(9_000_000_000_000), frozen: z.boolean()
+}).strict()
+export const ImageEditorOperationSchema = z.enum(['catalog', 'quote', 'generate', 'read', 'jobs', 'library'])
+export type ImageEditorOperation = z.infer<typeof ImageEditorOperationSchema>
+export const ImageEditorRequestSchemas = {
+  catalog: z.object({}).strict(), quote: ImageQuoteRequestSchema,
+  generate: z.object({ quoteId: z.string().uuid() }).strict(),
+  read: z.object({ jobId: z.string().uuid() }).strict(),
+  jobs: ImageLibraryRequestSchema, library: ImageLibraryRequestSchema
+}
+const ImageListReceiptSchema = z.object({ scope: PageStudioContentScopeSchema, items: z.array(ImageJobReceiptSchema).max(50), nextCursor: ImageLibraryRequestSchema.shape.before.unwrap().nullable() }).strict()
+const ImageScopedJobSchema = z.object({ scope: PageStudioContentScopeSchema, job: ImageJobReceiptSchema }).strict()
+export const ImageEditorResponseSchemas = {
+  catalog: z.object({ scope: PageStudioContentScopeSchema, models: z.array(z.object({
+    id: ImageModelIdSchema, name: z.string().min(1).max(80), description: z.string().max(300), aspects: z.array(ImageAspectSchema).min(1).max(4),
+    credits: z.number().int().min(1).max(1_000_000_000), priceVersion: z.string().min(1).max(80)
+  }).strict()).max(2), balance: ImageCreditBalanceSchema, canGenerate: z.boolean(), canPurchase: z.boolean() }).strict(),
+  quote: z.object({ scope: PageStudioContentScopeSchema, quote: ImageQuoteReceiptSchema }).strict(),
+  generate: ImageScopedJobSchema, read: ImageScopedJobSchema, jobs: ImageListReceiptSchema, library: ImageListReceiptSchema
+}
+export const ImageClaimSchema = z.discriminatedUnion('admitted', [
+  z.object({ admitted: z.literal(false) }).strict(),
+  z.object({ admitted: z.literal(true), quote: ImageQuoteSchema, dispatchToken: z.string().uuid() }).strict()
+])
+export const ImageWorkerDeliverySchema = z.object({
+  kind: z.enum(['generate', 'reconcile']), jobId: z.string().uuid(), scope: PageStudioContentScopeSchema
+}).strict()
+export type ImageWorkerDelivery = z.infer<typeof ImageWorkerDeliverySchema>
+export const ImageWorkerPollSchema = z.object({ deliveries: z.array(ImageWorkerDeliverySchema).max(40) }).strict()
