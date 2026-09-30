@@ -3,7 +3,8 @@
 This records real image generation, customer UI, credit accounting and scoped
 staging integration. Stripe test-mode checkout is implemented and locally
 verified; hosted payment acceptance requires external test configuration.
-Customer production and live payments are disabled. Nothing was merged.
+Customer production and live payments are disabled. The CMS prerequisites have
+since merged; image integration is tracked in the follow-up below.
 
 ## Sources and targets
 
@@ -18,8 +19,8 @@ Customer production and live payments are disabled. Nothing was merged.
 
 The branches include current main as fetched before these deployments:
 Dashboard `642980e448e9cfb9d898f1282274bd3cd9c246d6`, Studio
-`4d4f3ff10da45cf621a1e568c5a20f5f603f58e6`. They also depend on the verified,
-unmerged CMS work (Dashboard #599 / Studio #108). The new private editor image
+`4d4f3ff10da45cf621a1e568c5a20f5f603f58e6`. Those deployment sources also included the verified
+CMS work (Dashboard #599 / Studio #108), subsequently merged. The new private editor image
 is pinned by SHA-256 `00fa1685c94adc23a9f46cd3d72693de416d2f58d0dfe36bda1013446a3c7365`.
 The served overlay returned 2,538,625 bytes with SHA-256
 `b4072365eba95d58c3a5ad1e16c18bb804a5b01b1e97e6763531dfe7fa5469f0`, matching the verified build.
@@ -212,8 +213,30 @@ editor container rollout completed at application version 35 with the new digest
 the served overlay matches the locally verified 29-file image. Previous `a8ea2d`
 and E2 generations remain retained, with their matching private credentials.
 
-Reviewable stacked PRs: [Dashboard #600](https://github.com/adme-dev/dashboard/pull/600)
-and [Studio #109](https://github.com/adme-dev/xeroflow-page-studio/pull/109). They
-depend on the original CMS PRs #599/#108. Retarget after those dependencies merge.
+Reviewable image PRs: [Dashboard #600](https://github.com/adme-dev/dashboard/pull/600)
+and [Studio #109](https://github.com/adme-dev/xeroflow-page-studio/pull/109). Both now include their merged CMS prerequisites #599/#108 and target main directly.
 Owned feature worktrees remain while review is open; no obsolete branch was
 merged or released and unrelated root-worktree changes were left untouched.
+
+## Integration and Source picker follow-up
+
+CMS PR #599 merged at `ce547935137848e9cf543503adacc5be17bba2bb`; Studio #108
+merged at `73ffc18ee8694099805fb833358d9a96cef0a959`. Both image branches have
+reconciled those mains. Dashboard's inventory records 18 additional image/credit
+routes and two native billing-owner gates. All 13 inventory tests and 28 focused
+authority/payment regressions pass without changing authorization behavior.
+
+The Studio Source control now opens Website images for the captured image. A
+customer can upload PNG/JPEG/WebP, generate, or reuse an image, then choose
+**Use image**. Hosted upload, application, draft save/reload, asset isolation and
+unchanged credit balance passed. The original demo background was restored; the
+published site remained unchanged. The updated staging Sandbox version is
+`04b7e18f-14b5-4f0c-b5dc-2f4d1419f172`, container application version 36, image
+`sha256:7ffc9d01d0661d4e39238fac2c8d3c85ad901b21733924f57f48d2ce8a976e38`.
+See Studio `docs/release/2026-09-30-media-source-picker.md` for exact source,
+served-overlay verification and current limitations.
+
+Studio integration CI additionally required patched fast-uri/ip-address pins.
+Those dependency updates are not included in the recorded staging artifact.
+Final-head CI verification remains required before merging the image PRs.
+No production deployment or live billing activation accompanies these merges.

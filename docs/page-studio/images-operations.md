@@ -2,8 +2,8 @@
 
 This release is limited to the two synthetic staging customers recorded in
 [acceptance evidence](images-staging-acceptance-2026-09-30.md). It does not enable
-customer production generation, merge either feature branch, or activate live
-payments. See [test payment boundaries](image-payments-test-mode.md).
+customer production generation or activate live payments. CMS prerequisites are
+merged; image PR integration is tracked separately in the acceptance evidence. See [test payment boundaries](image-payments-test-mode.md).
 
 ## Generation and attribution
 
