@@ -382,23 +382,27 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
   it('rejects membership expiry crossed while recovery waits for the site lock', async () => {
     await prepare()
     const next = await newLogin(), state = await recovery(next)
-    await db.query('UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()+INTERVAL \'500 milliseconds\'')
+    await db.query('UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()+INTERVAL \'2 seconds\'')
     await db.query('BEGIN')
     await db.query('SELECT id FROM page_studio_sites WHERE id=$1 FOR UPDATE', [fixture.siteId])
+    // Prime the transaction's activity snapshot before the recovery connection exists.
+    await db.query('SELECT pid FROM pg_stat_activity')
     const pending = Promise.allSettled([recover(next, state)])
     try {
       await vi.waitFor(async () => {
+        // Activity snapshots are cached for this open transaction; refresh discovery.
+        await db.query('SELECT pg_stat_clear_snapshot()')
         const blocked = (await db.query('SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND pg_backend_pid()=ANY(pg_blocking_pids(pid))) AS blocked')).rows[0].blocked
         expect(blocked).toBe(true)
       }, { timeout: 3000, interval: 10 })
       await vi.waitFor(async () => {
         const expired = (await db.query('SELECT expires_at < clock_timestamp() AS expired FROM page_studio_workspace_memberships')).rows[0].expired
         expect(expired).toBe(true)
-      }, { timeout: 2000, interval: 20 })
+      }, { timeout: 4000, interval: 20 })
     } finally { await db.query('COMMIT') }
     expect(await pending).toMatchObject([{ status: 'rejected', reason: { statusCode: 403 } }])
     expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=\'customer.provisioning.recovered\'')).rows[0].count).toBe('0')
-  })
+  }, 10000)
 
   it('rolls back recovery when the audit cannot be persisted', async () => {
     const job = await prepare(), next = await newLogin(), state = await recovery(next)
