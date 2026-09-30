@@ -35,7 +35,9 @@ export async function prepareApprovedRuntimeFeature(input: {
   const authority = await stage('approval', readAuthority)
   if (authority.digest !== snapshot.checkpoint.digest || authority.client_id !== scope.clientId) throw featureConflict()
 
-  const deadline = runtimeFeatureDeadline()
+  // Cold CMS recovery plus owned-image retention can exceed ten seconds. Keep
+  // one absolute publication budget; public request projection retains its 10s limit.
+  const deadline = runtimeFeatureDeadline(30_000)
   const retained = await (async () => {
     try {
       const { bundle, manifest } = await stage('recovery', () => deadline.run(() => readAcceptedFeatureRecovery(snapshot, principal)))

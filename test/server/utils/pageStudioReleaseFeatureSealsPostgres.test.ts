@@ -597,6 +597,24 @@ describe.runIf(Boolean(databaseUrl))(
       expect((await observer.query('SELECT * FROM page_studio_builds')).rows).toHaveLength(0)
       expect(await f.prepare()).toEqual(prepared)
     })
+    it.each([15_000, 30_001])('bounds cold publication retention across all stages: %dms', async (elapsed) => {
+      let now = Date.now()
+      const f = await runtimePreparation(async (key) => {
+        if (key.includes('/runtime/versions/')) now += elapsed
+      })
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)
+      try {
+        if (elapsed < 30_000) {
+          const result = await f.prepare()
+          expect(result.prepared.release.versionId).toBe(f.input.versionId)
+        } else {
+          await expect(f.prepare()).rejects.toThrow('timed out')
+        }
+        expect((await observer.query('SELECT * FROM page_studio_releases')).rows).toHaveLength(0)
+      } finally {
+        clock.mockRestore()
+      }
+    })
     it('rechecks SQL authority after storage without charging SQL latency to the storage deadline', async () => {
       let retained = false
       const f = await runtimePreparation(async (key) => {
