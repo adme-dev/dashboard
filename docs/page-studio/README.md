@@ -2,10 +2,12 @@
 
 ## Next product phase: guided websites and component management
 
-- [R&D brief and implementation backlog — 30 September 2026](../research/2026-09-30-component-management-and-guided-websites.md): confirmed customer requirements, industry/prompt templates, standalone customer login and enquiries, component settings/metrics, email responses, outbound webhooks, storage/admin contracts and acceptance gates. Proposed work is explicitly separated from existing implementation.
+Start with the [canonical Customer CMS and AI Website Platform PRD](../prd/page-studio-customer-cms-prd.md). It contains the consolidated requirements, scope, acceptance gates, delivery order and sole maintained RND-01–RND-16 task ledger. The documents below are supporting evidence and design records.
+
+- [Original R&D brief — 30 September 2026](../research/2026-09-30-component-management-and-guided-websites.md): discussion history, industry/prompt examples, component management and detailed submission/delivery rationale.
 - [ADR-010: Managed website component contracts](../decisions/ADR-010-managed-website-component-contracts.md): proposed architecture and alternatives; requires validation before acceptance.
 - [Squarespace, Wix, Framer, Gravity Forms and Base44 research](../research/2026-09-30-website-cms-competitive-research.md): official-source comparison of content, forms, AI-generated applications, follow-up, permissions and audience workflows; documented behaviour is separated from our recommendations.
-- [Customer CMS standards and delivery sequence](customer-cms-standards.md): customer database ownership, source audit, pages/blogs/galleries/media, forms, memberships/newsletters, roles, SEO/analytics and phased acceptance gates.
+- [Customer CMS standards](customer-cms-standards.md): source audit and detailed acceptance examples for pages/blogs/galleries/media, forms, memberships/newsletters, roles and SEO/analytics; current priorities and task status live in the PRD.
 
 ## Existing foundations
 

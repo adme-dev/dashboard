@@ -1,12 +1,12 @@
 # Guided website creation and component management — R&D brief
 
-Date: 30 September 2026. Status: product requirements captured; technical design proposed; implementation backlog open.
+Date: 30 September 2026. Status: supporting discussion and design record. The [canonical PRD](../prd/page-studio-customer-cms-prd.md) governs current requirements, delivery order and task status.
 
 This document records the discussion about a Squarespace/Wix/Base44-style website product, guided industry templates, and a customer management workspace outside the visual builder and agency operations dashboard. It is the handoff for the next phase, not a claim that the proposed capabilities have shipped. The user requested that the R&D, login, enquiry access, outbound webhooks and AI component/data/admin relationship all be documented.
 
 Related design: [ADR-010: Managed component contracts](../decisions/ADR-010-managed-website-component-contracts.md). Entry point: [Page Studio documentation](../page-studio/README.md).
 
-Follow-up: [Squarespace, Wix, Framer and Gravity Forms research](2026-09-30-website-cms-competitive-research.md) and [customer CMS standards and delivery sequence](../page-studio/customer-cms-standards.md) incorporate the subsequent requests for a full website CMS, customer-owned databases, blogs/galleries, roles, memberships and newsletters. Where the initial brief left product scope open, these confirmed requirements take precedence; technical adapters remain to be validated.
+Follow-up: [Squarespace, Wix, Framer, Gravity Forms and Base44 research](2026-09-30-website-cms-competitive-research.md) and [customer CMS standards](../page-studio/customer-cms-standards.md) record the subsequent requests for a full website CMS, customer-owned databases, blogs/galleries, roles, memberships and newsletters. These are inputs to the canonical PRD; the PRD governs current scope and technical adapters remain to be validated.
 
 ## 1. Confirmed product requirements
 
@@ -208,26 +208,7 @@ The component should expose health and actionable next steps: disconnected stora
 
 ## 10. Implementation backlog and acceptance gates
 
-All tasks below are **open**. RND-01 has preliminary source findings in the standards document but is not complete. Documentation completion does not complete an implementation task. The form/enquiry journey is the proposed first vertical slice; IDs are stable identifiers, while the standards document specifies delivery order.
-
-| ID | Deliverable / dependencies | Required acceptance |
-| --- | --- | --- |
-| RND-01 | Audit existing login, submissions, collections, actions and Leads delivery; produce a storage/identity adapter map | Existing form variants identified; no accidental second inbox/store or account model; deployment boundaries recorded |
-| RND-02 | Define and validate the managed-component contract; depends on RND-01 | A form and a non-form example register management controls; unsupported capabilities and foreign storage references are rejected |
-| RND-03 | Extend customer shell and scoped enquiry read/detail APIs; reuse existing login | Invited customer signs in and sees only authorized websites/entries; expired/revoked access and cross-customer IDs fail; no builder required |
-| RND-04 | Durable submission/admin binding and instance lifecycle; depends on RND-02 | Public test submission appears once, survives restart, remains readable after field rename, and cannot be listed anonymously |
-| RND-05 | Form configuration and safe conditional success behaviour | Field/rule validation, deterministic fallback, stale-edit conflict, test preview and unsafe redirect rejection |
-| RND-06 | Durable outbox and customer-managed outbound webhooks; depends on RND-04 | Synthetic delivery, signed payload verification, timeout/replay/dedup, SSRF/redirect tests, disable/revocation and failed-delivery visibility |
-| RND-07 | Team/customer email templates and provider activation | Verified sender, approved recipients, escaping, preview/test send, bounce/suppression, retries and no duplicate response on replay |
-| RND-08 | Component metrics/activity and operating controls | Defined counters match known test events; test/bot exclusions, permissions, redaction and timezone behaviour verified |
-| RND-09 | Guided enquiries/quotes template and end-to-end AI generation | Business brief produces working visual component + settings + inbox + approved actions; missing setup is explicit |
-| RND-10 | Bookings and online-sales journeys, then industry variations | Booking concurrency, payment/order authority and domain-specific readiness verified independently; no visual-only claim of completion |
-| RND-11 | Hosted acceptance, docs/marketing and release | Two isolated customers; mobile/keyboard paths; real login/submission/webhook/email tests in authorized test environments; production enablement recorded separately |
-| RND-12 | Customer-database pages/navigation/media integration and legacy reconciliation | Authoritative metadata, published artifact references and asset ownership agree; usage-aware deletion; existing pages and generated images remain accessible |
-| RND-13 | Rich content, blog/gallery publishing and SEO; depends on RND-02/RND-12 | Typed rich text/references, editorial roles, history, scheduling, public index/detail templates, ordered media and rendered SEO verified |
-| RND-14 | Team invitations and capability-based roles; basic read/write isolation required already by RND-03 | Invite expiry/revocation, role changes and owner continuity; content/design/publish/enquiry/integration/billing rights enforced server-side |
-| RND-15 | Contacts, newsletter consent and visitor/member access | Contact deduplication, purpose-specific consent, unsubscribe/suppression, member recovery and own-record access; visitor access never grants CMS access |
-| RND-16 | Customer paid memberships/subscriptions and self-service | Provider-verified events, entitlement changes, duplicate/out-of-order reconciliation, cancellation and expiry; distinct from marketing consent and platform AI credits |
+The task ledger, completion status and delivery order have moved to the [canonical PRD](../prd/page-studio-customer-cms-prd.md#8-delivery-order-and-canonical-backlog). RND-01 through RND-16 retain their IDs. This research brief supplies design rationale, not a second status tracker.
 
 Cross-cutting tests: exact site/environment scoping; reader versus editor/integration-admin permissions; immutable submission data; bounded inputs; retries/concurrent edits; configuration upgrades; storage failure; queue failure; provider ambiguity; deletion/retention; preserved existing CMS, media, publication and QR/navigation behaviour.
 

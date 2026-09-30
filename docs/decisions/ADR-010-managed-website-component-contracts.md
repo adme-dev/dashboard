@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed. The product requirement for components with settings, data and metrics is confirmed; this technical design still requires the RND-01/RND-02 validation described in the [R&D brief](../research/2026-09-30-component-management-and-guided-websites.md). No new runtime protocol or database layout is adopted by this documentation commit.
+Proposed. The product requirement for components with settings, data and metrics is confirmed; this technical design still requires the RND-01/RND-02 validation tracked in the [canonical PRD](../prd/page-studio-customer-cms-prd.md#8-delivery-order-and-canonical-backlog). No new runtime protocol or database layout is adopted by this documentation commit.
 
 ## Date
 

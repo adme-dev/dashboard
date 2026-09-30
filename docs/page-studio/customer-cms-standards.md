@@ -1,6 +1,6 @@
 # Customer CMS standards and delivery sequence
 
-Date: 30 September 2026. Status: confirmed product scope with proposed implementation standards. This document does not indicate shipped functionality.
+Date: 30 September 2026. Status: supporting source audit and acceptance examples. The [canonical PRD](../prd/page-studio-customer-cms-prd.md) governs requirements, delivery order and task status. This document does not indicate shipped functionality.
 
 Inputs: [user requirements and backlog](../research/2026-09-30-component-management-and-guided-websites.md), [official competitor research](../research/2026-09-30-website-cms-competitive-research.md), [ADR-010](../decisions/ADR-010-managed-website-component-contracts.md).
 
@@ -63,16 +63,4 @@ The [Base44 research](../research/2026-09-30-website-cms-competitive-research.md
 
 ## Delivery sequence and backlog mapping
 
-All delivery gates below remain open. Existing foundations may be reused after their source and access boundaries are verified.
-
-| Order | Work | Existing / new backlog IDs | Completion gate |
-| --- | --- | --- | --- |
-| 1 | Database/source map, access matrix, versioned managed-component contract and legacy cutover design | RND-01, RND-02 | Customer database is authoritative; form and non-form contracts validate; rejected foreign references and migration/recovery paths are demonstrated. |
-| 2 | Independent CMS shell, customer-scoped forms/inbox, real durable submission and safe form configuration | RND-03, RND-04, RND-05 | Owner login → test submission → same durable entry in CMS; reload, revocation and two-customer isolation pass. |
-| 3 | Outbound webhooks, team/customer emails, operational insights and guided quote/enquiry template | RND-06–RND-09 | Destination test and failures are visible; retry/signature/abuse tests pass; email activation has verified provider evidence. |
-| 4 | Pages/media integration, rich content, blog/gallery publishing and SEO | RND-12, RND-13 | Publish a post and gallery from CMS, bind to public templates, verify SEO/asset ownership and scheduling without opening the builder. |
-| 5 | Team invitations/permissions and customer audience/member foundations | RND-14, RND-15 | Team versus visitor access enforced; invite lifecycle, contact deduplication, consent and unsubscribe tested end to end. Minimum inbox permissions are required already in order 2. |
-| 6 | Bookings/orders and paid member subscriptions; more industry templates | RND-10, RND-16 | Verified transactional lifecycle and self-service; capacity/payment/access reconciliation proven. |
-| Each slice | Hosted acceptance, documentation, truthful marketing and release receipts | RND-11 | Current-main source and exact deployment verified; existing CMS/media/publication/QR navigation regressions checked. |
-
-Next implementation: finish the order-1 adapter map, then deliver order 2 as the first customer-visible slice. Do not scaffold all navigation as apparently working features backed by placeholder data or shared agency operational tables.
+The maintained sequence and RND-01–RND-16 task ledger are in [PRD section 8](../prd/page-studio-customer-cms-prd.md#8-delivery-order-and-canonical-backlog). This document retains supporting audit findings and acceptance examples only. Update the PRD when scope, order or task completion changes.

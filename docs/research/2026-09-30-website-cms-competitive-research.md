@@ -4,6 +4,8 @@ Researched 30 September 2026. Official documentation review, not a hands-on usab
 
 Related: [product brief and backlog](2026-09-30-component-management-and-guided-websites.md), [customer CMS standards](../page-studio/customer-cms-standards.md), [managed-component ADR](../decisions/ADR-010-managed-website-component-contracts.md).
 
+The [canonical PRD](../prd/page-studio-customer-cms-prd.md) incorporates these conclusions and owns product scope, delivery order and task status. This document remains the source evidence and comparison.
+
 ## Recommendation
 
 Build one customer website dashboard outside the visual builder. Use Squarespace as a reference for approachable editorial workflows, Wix for managing a site's operational tools, Framer for structured content and reusable page bindings, Gravity Forms for a complete form lifecycle, and Base44 for AI generation that connects presentation, data and workflows. These are complementary references, not rankings of the products.
@@ -118,4 +120,4 @@ One person may occupy multiple categories; none automatically confers another. N
 
 ## Implementation consequence
 
-Start with the customer-database adapter and a complete form/inbox journey, then extend the same management contract to editorial content and audience features. The [standards and delivery sequence](../page-studio/customer-cms-standards.md) map this research to the existing backlog. The research is complete as a documentation review; the broader CMS implementation remains open.
+Start with the customer-database adapter and a complete form/inbox journey, then extend the same management contract to editorial content and audience features. The [canonical PRD](../prd/page-studio-customer-cms-prd.md#8-delivery-order-and-canonical-backlog) maps this research to the maintained backlog. The research is complete as a documentation review; the broader CMS implementation remains open.
