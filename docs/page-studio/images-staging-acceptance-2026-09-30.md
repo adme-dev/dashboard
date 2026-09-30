@@ -9,10 +9,10 @@ Customer production and live payments are disabled. Nothing was merged.
 
 | Surface | Source | Deployment |
 | --- | --- | --- |
-| Dashboard preview | `8b154acbe` | `9a461e23.agency-dashboard-6cm.pages.dev` |
+| Dashboard preview | `f5aead325` | `87cb9bae.agency-dashboard-6cm.pages.dev` |
 | Private control gateway | `002094ba0` | `638f0c12-516e-4a5c-b329-2440d39b4f25` |
-| Studio Sandbox and editor | `44f03ea` (editor source `411a42d`) | `adeaa136-614e-48bc-b842-0303041fb70c` |
-| Delivery worker | `44f03ea` | `7a929187-dca4-4e7b-abc1-886fb4812c5c` |
+| Studio Sandbox and editor | `f97ee8c` (editor source `d2a3707`) | `45d8f500-871d-4a14-ab70-f1835182fcfe` |
+| Delivery worker | `f97ee8c` | `c34f5ea6-f78f-441d-ac04-64e47df35fbe` |
 | Private test-payment worker | `56a9993fe` | `04727aed-d511-40c6-a417-a3c7b930a1af` |
 | Private image worker | `25e888a` | `2ee09292-0f49-4f00-b511-1ee012497360` |
 
@@ -20,11 +20,11 @@ The branches include current main as fetched before these deployments:
 Dashboard `642980e448e9cfb9d898f1282274bd3cd9c246d6`, Studio
 `4d4f3ff10da45cf621a1e568c5a20f5f603f58e6`. They also depend on the verified,
 unmerged CMS work (Dashboard #599 / Studio #108). The new private editor image
-is pinned by SHA-256 `ba2b368adfa4354b2bab29b246a6d3ba82867210c93e7eeb083d1a19612f2dff`.
-The served overlay returned 2,538,559 bytes with SHA-256
-`d6b22c776b438cac3d9c730aa8cd03ee23e7541989fc979c0dfbcc36b7cc71e3`, matching the verified build.
-The new immutable renderer is `astro_runtime_a8ea2d0477dc5309093dfbe24b5c754bb1444455ad54b2cc99ff3e61adc3185e`
-(Worker version `4a955279-d6a9-4f4c-8648-59c136524912`). Prior CMS renderers remain retained.
+is pinned by SHA-256 `00fa1685c94adc23a9f46cd3d72693de416d2f58d0dfe36bda1013446a3c7365`.
+The served overlay returned 2,538,625 bytes with SHA-256
+`b4072365eba95d58c3a5ad1e16c18bb804a5b01b1e97e6763531dfe7fa5469f0`, matching the verified build.
+The new immutable renderer is `astro_runtime_55f4c2813577ad0dedcfce08ac60edb4843e5d3604b9bdf9349b708210955a06`
+(Worker version `0c67408d-5e1e-43ac-961c-5b8085f23a0e`). Prior CMS renderers remain retained.
 
 The named Gateway is `studio-images-staging`, in account
 `a5b299b3ad15c1b5b895dc66f9357b17`. The worker exposes no public HTTP generation
@@ -124,12 +124,12 @@ only for billing owners when explicit test configuration is available. The Nuxt 
 `node scripts/verify-image-credits-browser.mjs`. Light/dark desktop/mobile
 screenshots were inspected; exact history cursors, customer switching and access
 failures passed with zero browser errors. Six component tests passed. Global
-Dashboard typecheck remains at919 pre-existing diagnostics, zero new.
+Dashboard typecheck remains at 919 pre-existing diagnostics, zero new.
 
-Studio full build28/typecheck44/test40 tasks plus security36/action-runtime48
+Studio full build (28 tasks), typecheck (44 tasks), test (40 tasks) tasks plus security (36) and action-runtime (48)
 passed. Full lint passed; the final browser-only test addition also passed scoped
 Biome and overlay typecheck. Six real Chrome image-dialog cases plus nine
-existing design cases passed. Twenty image unit cases and298 site-kit cases
+existing design cases passed. Twenty image unit cases and 298 site-kit cases
 passed, including a regression for section background class separation.
 
 These local checks are complemented by the hosted acceptance below. Hosted
@@ -156,11 +156,11 @@ Native review and approval preceded both runtime publications:
 
 | Scope | Version | Final release | Pointer epoch |
 | --- | --- | --- | --- |
-| Primary synthetic customer | `251a0c36-967a-460c-873c-cd7e8bed292f` | `1ce589ed-ab52-42f3-8d7c-c6d5f265b67a` | 19 |
-| Second synthetic customer | `c7637841-c563-4c62-a14d-5e4b34465c27` | `bab2d3aa-c81e-474e-82f4-b2efcc8a27a7` | 8 |
+| Primary synthetic customer | `251a0c36-967a-460c-873c-cd7e8bed292f` | `7b27d729-38cd-4e76-94ca-3e618c83ecab` | 20 |
+| Second synthetic customer | `c7637841-c563-4c62-a14d-5e4b34465c27` | `fef92462-d657-4eb5-95fe-7c8e52f7bc9c` | 9 |
 
-Both pin the new `a8ea2d…` renderer. Dashboard source `8b154acbe` deployed as
-`9a461e23-5c0a-484c-b96b-08ba69ffd007`; later documentation commits do not change
+Both pin the new `55f4c2…` renderer. Dashboard source `f5aead325` deployed as
+`87cb9bae-3f85-4322-8c2e-b11e3b027fdc`; later documentation commits do not change
 its executable source. The generated Wrangler configuration was checked for the
 new renderer and exactly two additional synthetic admissions. Production
 configuration was compared unchanged. The prior E2 renderer remains available.
@@ -188,10 +188,32 @@ evidence directory. Do not attach its credentials to PRs. Before customer
 activation, supply Stripe test configuration and complete hosted payment tests,
 then separately approve commercial pricing, retention/cleanup and live rollout.
 
-Final public GET and HEAD were HTTP200 with private/no-store on both sites;
+Final public GET and HEAD were HTTP 200 with private/no-store on both sites;
 retained image bytes matched SHA-256 and length (965,448 / 761,592). Current CMS
 titles remained visible, private descriptions and cross-customer markers absent.
-Existing JS/CSS assets returned200. Native record heads remained primary version5
-and second version6, with the same stored schema references and usage counts36/15.
-These results are retained in `published-image-evidence.json`,
-`after-images-verified-renderer.json` and the public asset receipts.
+Existing JS/CSS assets returned 200. Native record heads remained primary version 5
+and second version 6, with the same stored schema references and usage counts 36/15.
+These results are retained in `published-background-evidence.json`,
+`after-background-corrected.json` and the public asset receipts.
+
+## Visual regression and review handoff
+
+The final published mobile screenshot exposed a missing stylesheet for plain
+hero/section backgrounds. The shared document renderer had emitted the decorative
+image but included its positioning CSS only for showcase content. Commit
+`d2a3707` adds background properties to that condition. Rendered-head/body tests
+for both plain layouts failed before the fix and pass with absolute positioning,
+cover sizing and a relative container. Site-kit: 300, Astro runtime: 65 and deployment
+configuration: 7 tests pass; typecheck and Biome pass.
+
+The final published background was inspected visually and in computed styles:
+absolute positioning, cover sizing, centre focal point and empty alt text. The
+editor container rollout completed at application version 35 with the new digest;
+the served overlay matches the locally verified 29-file image. Previous `a8ea2d`
+and E2 generations remain retained, with their matching private credentials.
+
+Reviewable stacked PRs: [Dashboard #600](https://github.com/adme-dev/dashboard/pull/600)
+and [Studio #109](https://github.com/adme-dev/xeroflow-page-studio/pull/109). They
+depend on the original CMS PRs #599/#108. Retarget after those dependencies merge.
+Owned feature worktrees remain while review is open; no obsolete branch was
+merged or released and unrelated root-worktree changes were left untouched.
