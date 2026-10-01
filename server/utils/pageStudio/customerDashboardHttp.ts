@@ -6,6 +6,9 @@ import { guardCustomerRequest, customerSessionToken, limitCustomerRequest } from
 import { getPageStudioProvisioningRuntime } from './provisioningBinding'
 import { CustomerPreviewApprovalSchema, readCustomerDashboard, createCustomerDashboardPreview, recoverCustomerDashboardPreview, type CustomerDashboardDependencies } from './customerDashboard'
 
+import { customerEditorLaunchOptions } from './customerEditorLaunchHttp'
+import { readCustomerEditorAvailability } from './customerEditorLaunch'
+
 function options(event: H3Event): CustomerDashboardDependencies {
   const env = event.context.cloudflare?.env ?? {}
   const setting = (key: string) => env[key] ?? process.env[key]
@@ -30,7 +33,9 @@ export async function customerDashboardHandler(event: H3Event) {
   guardCustomerRequest(event, 'GET')
   const token = customerSessionToken(event)
   try {
-    return await readCustomerDashboard(token, options(event))
+    const dashboard = await readCustomerDashboard(token, options(event))
+    const editor = customerEditorLaunchOptions(event)
+    return { ...dashboard, canOpenStudio: editor ? await readCustomerEditorAvailability(token, editor) : false }
   } catch (error) { safeError(error) }
 }
 export async function customerPreviewHandler(event: H3Event) {

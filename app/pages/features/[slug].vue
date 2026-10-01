@@ -208,7 +208,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Your Website Workspace',
-        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Invited customers can sign in directly at the Page Studio product entry, choose an assigned website from My sites and open its builder, CMS or draft history without navigating agency operations. Existing client portal access remains available, and every request stays scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
+        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Invited customers can sign in directly at the Page Studio product entry, choose an assigned website from My sites and open its builder, CMS or draft history without navigating agency operations. Existing client portal access remains available, and every request stays scoped to that client and membership. Internal provisioning and release controls never leak into the client experience. In the limited standalone customer preview, eligible owners can open their saved draft from the website overview when editor access is enabled and managed storage passes verification. Opening Studio does not publish the website; broader customer rollout remains subject to staging acceptance.'
       },
       {
         title: 'Studio for Visual Authoring',

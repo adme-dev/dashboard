@@ -1,3 +1,5 @@
+import { customerEditorBrowserConfiguration } from '~~/server/utils/pageStudio/customerEditorLaunchHttp'
+
 const PORTAL_CSP = [
   `default-src 'self'`,
   `base-uri 'self'`,
@@ -48,14 +50,18 @@ export default defineEventHandler((event) => {
   const editorOrigin = isPortalPage
     ? editorFormOrigin(useRuntimeConfig(event).public.pageStudioEditorUrl)
     : ''
-  const csp = editorOrigin
-    ? PORTAL_CSP.replace('form-action \'self\'', `form-action 'self' ${editorOrigin}`)
+  const customerOrigin = isPortalPage ? customerEditorBrowserConfiguration(event)?.editorOrigin : null
+  const formOrigins = [...new Set([editorOrigin, customerOrigin].filter(Boolean))].join(' ')
+  const csp = formOrigins
+    ? PORTAL_CSP.replace('form-action \'self\'', `form-action 'self' ${formOrigins}`)
     : PORTAL_CSP
   setHeader(event, 'Content-Security-Policy', csp)
   setHeader(event, 'Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   setHeader(event, 'X-Frame-Options', 'DENY')
   setHeader(event, 'X-Content-Type-Options', 'nosniff')
-  setHeader(event, 'Referrer-Policy', 'no-referrer')
+  // Cross-origin credential POSTs need Origin; no-referrer makes Chrome send
+  // Origin: null. Origin-only discloses no path/query and matches Studio admission.
+  setHeader(event, 'Referrer-Policy', customerOrigin ? 'origin' : 'no-referrer')
   setHeader(
     event,
     'Permissions-Policy',

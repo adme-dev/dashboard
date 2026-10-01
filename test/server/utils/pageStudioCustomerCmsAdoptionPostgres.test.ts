@@ -201,6 +201,67 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS adoption on PostgreSQL
       adoptionId: current.adoptionId, expectedProgressDigest: current.progressDigest })
     return { ...f, router, principal, call, advance }
   }
+  const launchFixture = async () => {
+    const f = await setupAdoption()
+    await f.advance(await f.advance(await f.advance(await f.call({ action: 'start' }))))
+    const api = await import('~~/server/utils/pageStudio/customerEditorLaunch')
+    const options = { configuration: config, env: f.principal.env, runTransaction }
+    return { ...f, ready: () => api.readCustomerEditorAvailability(token, options), launch: () => api.launchCustomerEditor(token, options) }
+  }
+  it('offers the managed draft without issuing tickets and launches after a legitimate later save', async () => {
+    const f = await launchFixture()
+    const before = (await db.query('SELECT count(*) FROM page_studio_customer_editor_handoffs')).rows[0].count
+    expect(await f.ready()).toBe(true)
+    expect((await db.query('SELECT count(*) FROM page_studio_customer_editor_handoffs')).rows[0].count).toBe(before)
+    await f.commit(await f.draft())
+    await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp()')
+    expect(await f.ready()).toBe(true)
+    expect(await f.launch()).toMatchObject({ editorOrigin: config.editorOrigin, token: expect.stringMatching(/^[A-Za-z0-9_-]{64}$/) })
+  })
+  it.each(['missing-receipt', 'corrupt-receipt', 'initial-application', 'current-checkpoint', 'target', 'missing-bytes'])('withholds launch for %s', async (reason) => {
+    const f = await launchFixture()
+    // Simulate damaged retained data only in this test's isolated schema.
+    if (['missing-receipt', 'corrupt-receipt'].includes(reason)) await db.query('ALTER TABLE page_studio_cms_scopes DISABLE TRIGGER USER')
+    if (reason === 'missing-receipt') await db.query('UPDATE page_studio_cms_scopes SET adoption_receipt=NULL')
+    if (reason === 'corrupt-receipt') await db.query(`UPDATE page_studio_cms_scopes SET adoption_receipt=jsonb_set(adoption_receipt,'{digest}','"bad"')`)
+    if (reason === 'initial-application') {
+      await f.commit(await f.draft())
+      await db.query('ALTER TABLE page_studio_application_versions DISABLE TRIGGER USER')
+      await db.query('UPDATE page_studio_application_versions SET digest=$1 WHERE previous_application_id IS NULL', ['f'.repeat(64)])
+    }
+    await db.query('ALTER TABLE page_studio_cms_scopes ENABLE TRIGGER USER')
+    await db.query('ALTER TABLE page_studio_application_versions ENABLE TRIGGER USER')
+    if (reason === 'current-checkpoint') await db.query('UPDATE page_studio_checkpoints SET digest=$1', ['f'.repeat(64)])
+    if (reason === 'target') f.router.readManagedCmsTarget.mockResolvedValue({ ...graphFixture.base.target, databaseId: randomUUID() })
+    if (reason === 'missing-bytes') f.texts.clear()
+    const before = (await db.query('SELECT count(*) FROM page_studio_customer_editor_handoffs')).rows[0].count
+    expect(await f.ready()).toBe(false)
+    await expect(f.launch()).rejects.toThrow()
+    expect((await db.query('SELECT count(*) FROM page_studio_customer_editor_handoffs')).rows[0].count).toBe(before)
+  })
+  it.each(['logout', 'membership'])('propagates %s during a failed readiness storage read', async (reason) => {
+    const f = await launchFixture()
+    f.get.mockImplementationOnce(async () => {
+      if (reason === 'logout') await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+      else await db.query('UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()')
+      throw new Error('unavailable storage')
+    })
+    await expect(f.ready()).rejects.toMatchObject({ statusCode: reason === 'logout' ? 401 : 403 })
+  })
+  it.each(['logout', 'expiry', 'membership', 'head'])('issues no ticket when %s changes during storage reads', async (reason) => {
+    const f = await launchFixture()
+    const before = (await db.query('SELECT count(*) FROM page_studio_customer_editor_handoffs')).rows[0].count
+    const original = f.get.getMockImplementation()!
+    f.get.mockImplementationOnce(async (key) => {
+      if (reason === 'logout') await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+      if (reason === 'expiry') await db.query('UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp()-INTERVAL \'1 second\'')
+      if (reason === 'membership') await db.query('UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()')
+      if (reason === 'head') await f.commit(await f.draft())
+      return original(key)
+    })
+    await expect(f.launch()).rejects.toThrow()
+    expect((await db.query('SELECT count(*) FROM page_studio_customer_editor_handoffs')).rows[0].count).toBe(before)
+  })
   it('adopts an owned customer CMS, retains its component and permits a subsequent page save', async () => {
     const f = await setupAdoption()
     expect((await f.call({ action: 'status' })).phase).toBe('idle')
