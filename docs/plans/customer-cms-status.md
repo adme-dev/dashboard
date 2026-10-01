@@ -85,7 +85,7 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
-  Branch `feat/standalone-site-workspace`; last implementation `5b55bbdf5`.
+  Branch `feat/standalone-site-workspace`; last implementation `1a2cd4d4b`.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
   Branch `feat/customer-form-settings-drafts`; last implementation `972845d`.
