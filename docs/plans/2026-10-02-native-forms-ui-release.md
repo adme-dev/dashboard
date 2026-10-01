@@ -77,6 +77,33 @@ Previous verified Pages deployment: `9fef28bd-b866-4d8a-be04-1dcefbf686de`, sour
 
 ## Remaining acceptance
 
+### Read-only readiness recheck — 2 October 2026
+
+- Cloudflare project API confirms the latest `agency-dashboard` deployment is
+  still preview `1d44f4ee-c171-4fc3-b47b-23bbcb17f531`, source
+  `a0e36959101e4a7b3759f875b207e23de675cf70`.
+- Preview configuration has the exact preview origin, a nonempty terms version,
+  a syntactically valid sender address and a configured Resend credential. There
+  is no `TRANSACTIONAL_EMAIL` service binding. Credential presence does not prove
+  credential validity, sender verification or successful delivery; those checks
+  remain open. No credential values or sender addresses were copied into evidence.
+- Signup, editor and preview flags remain `false`; the Forms flag is absent.
+  Content environment remains `staging`. This is project configuration readback,
+  not a new browser acceptance run or permission to enable access.
+- Rehashed `services/business-content-worker/dist/tenant-runtime.mjs`: exactly
+  904,968 bytes and SHA-256
+  `2e88e4447eacd5cec74ead599214dd1e8584d1ed6702b1a8c6f511d4ceb9790e`.
+  Its adjacent review manifest matches and retains `releaseApproved:false`.
+  Worker `src` and runtime build script have no diff from deployed source
+  `e26199556` through operator source `c219655`. No upload or activation occurred.
+- Both active source branches still include their freshly fetched main commits
+  recorded above. No application code changed or new build was required.
+
+Pending input: two distinct user-supplied test email addresses for the sign-in and
+cross-account isolation checks. Do not fabricate aliases or bypass verification.
+Supported onboarding, scoped approvals, private transport and the full hosted
+acceptance matrix below remain outstanding after those addresses are supplied.
+
 Two real native test mailboxes remain pending. Use supported sign-up/approval and
 exact retained staging scopes; do not renew expired approval by editing dates.
 Verify private remote transport, install runtime/storage, activate explicitly and complete the full matrix in the
