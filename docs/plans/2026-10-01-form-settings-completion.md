@@ -210,3 +210,24 @@ require customers to configure the same form repeatedly. Create a separate form
 only through an intentional “Duplicate as new form” action; placing an existing
 form on another page must retain the shared definition. Reconciliation preserves
 legacy IDs and entries while binding placements to the shared definition.
+
+### Enforced for AI and manual creation
+
+Reuse is mandatory for both manual and AI-created placements. AI operations must
+resolve a shared form definition, and a separate explicit operation creates an
+independent form. Approval/publication validation rejects unknown or cross-site
+references and silent independent copies without create-new intent. Prompts may
+explain the rule but are not its enforcement boundary.
+
+Implementation evidence: Studio `packages/protocol/src/page.ts` currently defines
+forms inside each page; `packages/protocol/src/validation.ts` validates leadForm
+references only against that page's forms. Shared-definition identity and legacy
+adoption therefore precede the email-builder storage rollout. Do not merely group
+labels or copy settings between separate IDs and call reuse complete.
+
+Required tests: AI/manual placement of an existing form produces another reference
+and no new definition; explicit independent duplication produces a new identity;
+shared template/recipient changes affect all placements; website defaults and
+per-form overrides resolve consistently; other-site references fail; existing
+submission IDs and originating page attribution survive adoption. Enforcement is
+pending implementation and is now recorded in the repository's AGENTS.md.
