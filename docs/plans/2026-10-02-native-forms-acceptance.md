@@ -1,25 +1,29 @@
 # Native customer forms: integration and hosted acceptance
 
-Status: implementation in progress on 2 October 2026. Current native authority is
-reviewed and committed (`6c9e722a2`); HTTP adapters and native Forms UI have passed independent review. This is a
-runbook and implementation plan, not evidence that the customer journey passes.
-See [deployed backend receipt](2026-10-02-native-forms-staging-receipt.md).
+Status: native authority, APIs, Forms UI and private staging operator are implemented
+and independently reviewed on 2 October 2026. Dashboard `a0e369591` and Studio
+`c219655` are pushed. The final integration review approves a closed-gate preview;
+this is not hosted acceptance or production enablement.
+See [backend receipt](2026-10-02-native-forms-staging-receipt.md) and the
+[native connection release checkpoint](2026-10-02-native-forms-ui-release.md).
 
 ## Gap identified at the previous checkpoint
 
 Two test mailboxes are necessary but are not the only remaining prerequisite.
-The private native setup/capability backend is deployed. At that checkpoint, the visible Forms dashboard
-belonged to the invited-client session path. Native self-service customer
-sign-up has its own account/session and website overview; it did not expose
-that operational Forms dashboard. Tasks 1–3 below now implement that connection;
-hosted acceptance and release remain separate gates. A worker RPC test cannot prove this UI connection.
+At the previous checkpoint, the private native setup/capability backend was deployed,
+but the visible Forms dashboard used the invited-client session. Native signup had
+its own account/session and overview without that operational Forms connection.
+Tasks 1–4 now implement the connection and private operator, and the connection is
+deployed with gates closed. Hosted acceptance remains separate: a worker RPC test
+cannot establish the complete customer journey.
 
 Verified source boundaries:
 
 | Boundary | Current source and behavior |
 | --- | --- |
 | Native sign-in | `server/utils/pageStudio/customerSignupHttp.ts` reads `studio_customer_session`; exact-origin mutation guard and signup gate. |
-| Native overview | `app/pages/studio/dashboard.vue` calls `/api/portal/page-studio/customer/dashboard` and opens Studio; now offers Forms only after native availability admission. |
+| Native overview | `app/components/studio/CustomerDashboard.client.vue` calls `/api/portal/page-studio/customer/dashboard` and opens Studio; now offers Forms only after native availability admission. |
+| Native Forms | `CustomerWebsite.client.vue` and `customerFormsHttp.ts` use native authority and explicit customer API audience; staging/gated. |
 | Existing CMS screen | `app/pages/studio/sites/[siteId]/index.vue` uses `studio-auth` and the portal workspace endpoint. |
 | Existing form handlers | `formSettingsHttp.ts`, `formRecipientsHttp.ts`, `emailTemplatesHttp.ts` resolve the `portal` audience. |
 | Portal identity | `httpActor.ts` calls `requireClientAuth`; `businessContent.ts` accepts agency/client actors and joins `agency_clients`. |
@@ -28,18 +32,23 @@ Verified source boundaries:
 
 Do not make a native account appear to be a portal client, mint a portal cookie,
 create a dummy agency client, or accept either cookie interchangeably to work around
-this gap. Keep Fantasy Limo's invited-client demo working through its existing path.
+this separation. Keep Fantasy Limo's invited-client demo working through its existing path.
 
-## Next implementation: native CMS connection
+## Implementation checkpoints: native CMS connection
 
 Task 1 is complete with 44 real local PostgreSQL tests and independent review.
 Task 2 is reviewed with 98 focused tests and 69 local PostgreSQL cases passing.
 Task 3 is reviewed with 47 UI tests passing after the permission-default fix.
 Actual Chrome confirms the invited-client editor, dirty/discard behavior and native
 unavailable/overview routes; the native unavailable screen fits 390px without
-horizontal overflow. No stored demo values changed. Tasks 4 and 6 remain pending;
-Task 5 automated coverage is included in Tasks 1–3, with hosted acceptance outstanding.
-The final build size and baseline typecheck comparison remain release gates.
+horizontal overflow. No stored demo values changed. Task 5 automated coverage is
+included in Tasks 1–4; hosted acceptance remains outstanding.
+Final build passes: raw 25,454,785 / 25,468,928 bytes. Full typecheck remains at
+933 existing diagnostics (934 baseline), with no new normalized errors.
+Task 4 passed independent review after provider-process containment was added.
+Its original 26 core/regression tests, final eight Node tests and one amended
+retained-proof IPC test pass, as do affected types/lint. Hosted RPC is unverified.
+Task 6 closed-gate preview deployment/readback is verified; hosted acceptance remains pending.
 
 1. Add a dedicated current-native-customer authority adapter. Derive identity and
    workspace from the native session and completed setup; derive site/environment
@@ -75,6 +84,13 @@ The final build size and baseline typecheck comparison remain release gates.
    checkpoints. Do not label the standalone customer journey complete after only
    the worker checkpoint.
 
+## Operator file-read review resolved
+
+- [x] Manifest ingestion reads one snapshot of at most 32,769 bytes and rejects
+      overflow before parsing/connecting. Exact boundary, oversized/growing files,
+      partial reads and read/close failures pass. Scoped final review found no
+      remaining issues. The normal final commit hook passed and the fix is pushed.
+
 ## Hosted fixture preparation
 
 - [ ] Operator supplies two distinct test email addresses and authorizes the sign-in
@@ -99,7 +115,9 @@ The final build size and baseline typecheck comparison remain release gates.
 ## Acceptance matrix
 
 Record source, deployment, scope A/B, action, observed result and evidence location
-for each case. A local test result is not a hosted result. All cases below are pending.
+for each case. Account-specific hosted cases remain pending. Established navigation
+was verified for the closed preview and must be repeated with enabled test scopes;
+local tests do not establish the hosted customer journey.
 
 | Case | Action | Required result |
 | --- | --- | --- |

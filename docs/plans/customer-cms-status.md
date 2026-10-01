@@ -37,18 +37,17 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Current checkpoint / next action
 
-**2 October release:** matching Dashboard preview and private executor/coordinator/router
-are deployed; coordinator migrations 0011–0013 are applied and verified. Customer
-form activation remains closed. All local Studio gates and focused Dashboard tests
-pass for that release. Native authority, APIs and Forms UI are now implemented
-and independently reviewed locally. Next: finish the private activation caller,
-verify the final build and deploy matching preview code, then run two-customer
-hosted acceptance.
-The [source-verified integration and acceptance plan](2026-10-02-native-forms-acceptance.md)
-records the integration and remaining acceptance gates; test email addresses
-are also pending.
-Full source/version/rollback evidence is in the
-[native forms staging receipt](2026-10-02-native-forms-staging-receipt.md).
+**2 October preview:** native customer authority, APIs and Forms UI are implemented,
+reviewed and deployed (`1d44f4ee`, source `a0e369591`). Signed-in CMS/QR navigation
+and the native unavailable state pass in Chrome. Customer activation stays closed.
+The private operator and its final bounded-file-read fix are reviewed, committed
+and pushed. The final build passes, with no new type diagnostics.
+
+Next: two real customer test mailboxes, supported signup/approval, exact staging
+setup/activation and the hosted acceptance matrix. No hosted native acceptance or
+production enablement is claimed. See the [connection receipt](2026-10-02-native-forms-ui-release.md),
+[integration plan](2026-10-02-native-forms-acceptance.md), and earlier
+[backend receipt](2026-10-02-native-forms-staging-receipt.md).
 
 Website template drafts are implemented, locally verified and committed. Both
 implementation branches are pushed. Dashboard preview and the private staging
@@ -80,8 +79,8 @@ Separate scoped RPC capability activation and all six actual-bound draft methods
 are implemented and independently reviewed. Final native status fixes pass 78
 Dashboard tests, including 46 real PostgreSQL cases. Full Studio build, typecheck,
 lint and tests pass (40 package tasks, 36 security and 48 action-runtime tests).
-Hosted acceptance remains pending the matching native UI/API release, private
-activation caller and two fresh approved native test identities.
+Hosted acceptance remains pending two fresh approved native test identities,
+exact installed scopes, remote private transport and the acceptance matrix.
 Coordinator migrations 0011–0013 are now applied before the new private workers.
 
 ## Remaining form and email work
@@ -97,9 +96,15 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
 - [x] Connect native overview/Forms to native APIs, preserving invited-client UI.
       Independent review and 47 UI tests pass. Real Chrome verifies restored portal
       editing, dirty/discard behavior and native closed-gate routes at 390px.
-- [ ] Release the connection and verify the native hosted browser journey.
-- [ ] Implement and review the private staging activation caller, then execute the
-      two-customer hosted acceptance matrix.
+- [x] Deploy matching native connection with gates closed; CMS/QR navigation and
+      native unavailable state verified in Chrome.
+- [ ] Verify the enabled native hosted browser journey.
+- [x] Private staging activation caller implemented/reviewed, with offline default,
+      exact scoped proof, one uncertain readback, no replay and owned child cleanup.
+      Studio `c219655`; focused tests/types/lint and normal 1,553-file hook pass.
+- [x] Bound operator manifest ingestion; eight Node tests and scoped final review
+      pass, including file growth, partial reads and descriptor cleanup.
+- [ ] Execute the two-customer hosted acceptance matrix; real mailboxes pending.
 
 - [x] Website team/customer template defaults (draft only).
 - [x] Vehicle Marketplace-inspired compact block palette and debounced safe preview.
@@ -140,14 +145,16 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
-  Branch `feat/standalone-site-workspace`; deployed implementation `5b9b978e0`.
-  Native API checkpoint `db89c9533` is pushed; reviewed native UI is the next commit.
+  Branch `feat/standalone-site-workspace`; deployed implementation `a0e369591`.
+  Native authority/API/UI source `a0e369591` is pushed and deployed to preview.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
   Branch `feat/customer-form-settings-drafts`; deployed private executor, coordinator
-  and router source `e26199556`. Exact service versions are in the staging receipt.
-- Previous checkpoints are pushed; native UI is reviewed and the private activation
-  CLI is in progress.
+  and router source `e26199556`; private operator source `c219655` is pushed.
+  Operator tooling requires no worker redeployment. Exact service versions are in
+  the staging receipt.
+- Implementation checkpoints are pushed; final integration review approves closed-gate
+  preview, with hosted acceptance remaining.
   The Dashboard integration plan and its
   `.superpowers/sdd/2026-10-02-native-forms-acceptance/` ledger track current task
   ownership and review status; the earlier Studio integration ledger records the

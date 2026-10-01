@@ -73,6 +73,10 @@ current caller and does not require the original setup user to stay logged in.
 
 ## Remaining acceptance
 
+Update: the native authority/API/UI connection is now deployed in the
+[follow-on connection release](2026-10-02-native-forms-ui-release.md). The gap
+below describes this earlier backend checkpoint, not the current source.
+
 Source audit after deployment found an additional prerequisite: the existing Forms
 UI and HTTP handlers use the invited-client session, while native self-service
 sign-up has a separate account/session. The native CMS authority/UI adapter and a
