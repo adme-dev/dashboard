@@ -302,3 +302,21 @@ Next: website email defaults and separate team/customer template drafts, followe
 by AI proposals and the approved delivery/outbox path. Published outcomes, hosted
 managed schema/runtime installation, reuse/new-form controls and explicit detach
 remain separate acceptance work. No public redirects or email delivery enabled.
+
+
+## Recovery after temporary files disappeared — 1 October 2026
+
+On continuation, the previous `/private/tmp` worktrees, demo layer, database copies,
+logs and screenshots were absent. The reported earlier acceptance remains a record
+of that run; the localhost demo is **not currently available**. Dashboard commits
+were already pushed. Studio's complete staged index survived in the repository
+metadata and was recovered without reconstructing source code from conversation.
+Both worktrees now live in the Dashboard project's `.worktrees` directory:
+`customer-cms` and `studio-customer-forms`. A staged patch/index backup is retained
+in `tmp/cms-recovery-20261001` under the Dashboard root. Keep these active workspaces.
+
+Rebuild the isolated Fantasy Limo fixture from an authorized read of the saved
+checkpoint and media, then reapply reviewed explicit adoption before claiming the
+local demo is available again. Do not redirect the local UI at production storage
+or silently invent replacement customer records. The lost local adoption backup
+and screenshot paths above are historical evidence references, not available files.

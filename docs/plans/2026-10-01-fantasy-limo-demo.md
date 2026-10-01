@@ -108,3 +108,21 @@ a confirmation dialog. These settings are not active on the live site.
 See `2026-10-01-form-settings-completion.md` for the remaining published-outcome,
 notification, reply, webhook and inbox work, the Toyota reference, and the hosted
 schema/runtime installation blocker. No production storage or delivery was changed.
+
+
+## Recovery after temporary files disappeared — 1 October 2026
+
+On continuation, the previous `/private/tmp` worktrees, demo layer, database copies,
+logs and screenshots were absent. The reported earlier acceptance remains a record
+of that run; the localhost demo is **not currently available**. Dashboard commits
+were already pushed. Studio's complete staged index survived in the repository
+metadata and was recovered without reconstructing source code from conversation.
+Both worktrees now live in the Dashboard project's `.worktrees` directory:
+`customer-cms` and `studio-customer-forms`. A staged patch/index backup is retained
+in `tmp/cms-recovery-20261001` under the Dashboard root. Keep these active workspaces.
+
+Rebuild the isolated Fantasy Limo fixture from an authorized read of the saved
+checkpoint and media, then reapply reviewed explicit adoption before claiming the
+local demo is available again. Do not redirect the local UI at production storage
+or silently invent replacement customer records. The lost local adoption backup
+and screenshot paths above are historical evidence references, not available files.
