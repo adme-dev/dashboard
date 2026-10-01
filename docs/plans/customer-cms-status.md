@@ -83,6 +83,10 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
 
 ## Remaining form and email work
 
+- [x] Current native customer form authority: fresh session, workspace role and
+      exact retained site/entitlement checks; 44 local PostgreSQL cases pass and
+      independent review approved. HTTP/UI connection remains below.
+
 - [ ] Connect self-service native customer login and roles to the Forms dashboard
       and draft APIs; preserve the invited-client path.
 - [ ] Implement and review the private staging activation caller, then execute the
