@@ -1,5 +1,8 @@
 # Form settings completion
 
+For the current tick-off list and interruption recovery, start with
+[Customer CMS status](customer-cms-status.md).
+
 Current local status: restored and verified in durable project storage. See
 **Durable local demo restored** at the end for current paths and acceptance.
 Earlier `/private/tmp` references record a previous run and no longer exist.
