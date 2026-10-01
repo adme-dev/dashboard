@@ -241,6 +241,7 @@ async function openStudio() {
               :pages="pages"
               :checkpoint-id="data.document.studio?.checkpointId"
               :form-library="data.document.studio?.formLibrary"
+              :reload-workspace="refresh"
               @enquiries="openEnquiries"
               @dirty="formDirty = $event"
               @reload="refresh()"

@@ -358,3 +358,62 @@ Keep private credentials, copied data and dumps out of Git.
 No production deployment or email delivery occurred. Website email defaults and
 team/customer template drafts remain the next implementation slice. Published
 outcomes and hosted schema/runtime installation are still pending.
+
+
+## Team recipient inheritance — local slice, 1 October 2026
+
+Implemented Forms → Website email defaults and shared form → Email recipients.
+One site-scoped recipient draft contains the website list and explicit overrides
+keyed by shared definition ID. No override means inherit; an explicit empty list
+means no team recipients. Changing defaults preserves overrides. The UI shows the
+inheriting form names, effective recipients, and unchanged custom forms. Removed
+form overrides require explicit review/removal before saving; nothing is silently
+discarded. Legacy placements inherit website defaults but do not offer overrides
+until shared identity adoption.
+
+Customer-owned private storage uses append-only `form_recipients_drafts` in the
+separate `form-settings-migrations/0003_form_recipients_drafts.sql` catalogue.
+Scope-bound Worker/router RPCs check record acknowledgements; Dashboard checks
+current authority before and after storage, validates the saved checkpoint and
+form definitions, and never replays uncertain writes. A site-wide expected
+revision protects simultaneous edits to defaults and overrides. This intentionally
+serialises these small configuration changes to avoid a mixed defaults snapshot.
+No recipients are copied from the agency-managed email setup preferences.
+
+Recipient lists are bounded, reject duplicate addresses and header controls, and
+cannot contain sending switches. UI edits survive rejected saves; uncertain saves
+require reload. In-app navigation/sign-out are locked while dirty or saving; the
+explicit discard reload waits for both workspace and recipient reads. Browser
+refresh/close still discards unsaved edits, disclosed beside the save controls;
+no recipient data is persisted in browser storage and no native dialog is added.
+
+Local schema installed after backup; no hosted migration, publish or email send.
+Studio now lives at `/Users/paulgiurin/Documents/Projects/customer-cms-studio`;
+`dashboard/.worktrees/studio-customer-forms` is a compatibility symlink. This keeps
+Studio tools from inheriting the Dashboard root's unrelated Nuxt tsconfig.
+
+The existing sender/forwarding preferences remain separate. Verified sender,
+customer replies, template drafts, AI proposals and approved outbox delivery are
+still pending. This slice completes team recipient draft inheritance only.
+
+Recipient acceptance: 11 focused Dashboard tests and 39 focused Studio tests pass;
+Studio build (28 tasks), typecheck (44 plus security types), package tests (40 tasks)
+and action runtime (48 tests) pass. Aggregate Studio tests still fail the recorded
+staging route-count assertion (35 security pass, one fail). Dashboard-wide typecheck
+still reports 934 existing diagnostics, none in the modified sources; the
+whole-repository check remains failing. Independent review verified the obsolete-override cleanup,
+frozen expected revision and coordinated reload fixes without remaining blockers.
+
+Chrome verified default save, inherited Contact display, explicit Contact override,
+default changes preserving the override, duplicate-address rejection, dirty
+navigation locks, stale-save edit retention and reload recovery. Saved drafts
+survive a full browser reload. At 390px the document has no horizontal overflow;
+viewport restored. Local HTTP checks additionally reject foreign definitions,
+unknown delivery controls, missing login and foreign-site access. The example
+addresses use `example.test`, and no emails were sent.
+
+Evidence files are in the durable demo directory: `fantasy-limo-email-defaults.png`,
+`check-recipients.mjs` and private test logs. Post-acceptance local backup:
+`private/backups/2026-10-01T05-20-43.918Z/`. Example recipient revision 4 has website
+`office@example.test` and Contact override `contact@example.test`; these are demo
+values and must not be treated as customer-approved delivery addresses.
