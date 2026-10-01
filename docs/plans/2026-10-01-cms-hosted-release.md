@@ -6,7 +6,7 @@ installation and hosted acceptance before production activation.
 
 ## Source and rollback
 
-- Dashboard candidate is based on `e2b2ff7ab`, includes freshly fetched main
+- Dashboard deployed source `fb1e1b61069ba95c0848b2d787ba8872d4166eab` includes freshly fetched main
   `a98b83a53c65fbb80da48e8a2348610d2c9d24bb` (zero behind).
 - Studio `01010462722bfe9b90580412239af4135bfc4a8a` includes current main
   `50d372e1cb0bc92a661379866062dbe75a4539d0` (zero behind).
@@ -21,9 +21,12 @@ installation and hosted acceptance before production activation.
 - [x] 83 focused Dashboard deployment/media/forms/workspace tests pass.
 - [x] Close temporary native signup/editor/browser/preview flags and clear the
   synthetic provisioning approvals before shipping the current preview.
-- [ ] Deploy and read back private staging router.
-- [ ] Deploy Dashboard through `pnpm deploy:preview`, verify exact artifact.
-- [ ] Browser smoke for invited-customer workspace and agency QR navigation.
+- [x] Deploy and read back private staging router.
+- [x] Deploy Dashboard through `pnpm deploy:preview`, verify exact artifact.
+- [x] Signed-in standalone site list and agency QR navigation smoke.
+- [ ] Invited-customer workspace smoke: synthetic staging entitlement expired;
+      access correctly fails closed. Restore the test entitlement through the
+      normal authorized administration process before accepting the workspace.
 - [ ] Managed form-settings catalogue/runtime capability upgrade and scope tests.
 - [ ] Hosted form/settings/template save, reload, isolation and conflict acceptance.
 - [ ] Production release after hosted acceptance; do not call preview production.
@@ -33,3 +36,86 @@ collection-staging. Local form-settings migrations 0001–0004 cannot be applied
 ad hoc to customer production databases. Until managed installation is complete,
 new settings RPCs must remain unavailable; deployment alone is not activation.
 The local Fantasy Limo fixture and saved template revision 14 remain intact.
+
+## Router receipt and Pages build repair
+
+Private staging router deployed from Studio `0101046`: version
+`cb5ea5be-39d0-4f20-820e-e3773b4f1d12`, read back at 100% on 1 October 2026.
+No Sandbox/container or customer runtime was deployed and no customer database
+was modified. Existing runtime pins and capability state are unchanged.
+
+The first Pages attempt stopped at the active Nuxt demo lock. This release used
+`customer-cms-release`, an isolated clean worktree, preserving port 3044.
+The next build stopped at the unchanged raw Worker size guard: 25,489,492 bytes,
+20,564 over the 25,468,928-byte safety budget. No Pages upload occurred.
+Dashboard `fb1e1b610` extends the existing lossless static SQL compaction threshold
+from 512 to 256 characters. Seventeen exact-roundtrip, exclusion and actual-workerd
+checks pass, as does lint. The budget and transformation restrictions are unchanged.
+The corrected clean build passed the unchanged budget and deployed successfully.
+
+## Pages receipt and hosted verification
+
+- Source: `fb1e1b61069ba95c0848b2d787ba8872d4166eab`.
+- Target: `agency-dashboard`, branch `preview` (not production).
+- Deployment: `2632007c-c8b9-4a4a-9b7e-840da2e830b9`.
+- Artifact: https://2632007c.agency-dashboard-6cm.pages.dev
+- Alias: https://preview.agency-dashboard-6cm.pages.dev
+- Wrangler deployment-list readback matches the source and deployment ID.
+- Raw Worker: 25,455,897 / 25,468,928 bytes (13,031 headroom).
+- Gzip Worker: 7,026,571 / 9,750,000 bytes.
+- Public signup configuration reads `enabled: false`; temporary native gates
+  remain closed. Signed-in site list, agency navigation and QR Codes render.
+- Site workspace displays “Website unavailable”. Read-only, explicitly scoped
+  staging Neon metadata confirmed the synthetic site's entitlement ended at
+  `2026-09-30T10:42:44.371Z`; database time was `2026-10-01T08:03:54.567Z`.
+  Client and site remain active. No permissions or entitlement dates were changed.
+- Hosted workspace/form acceptance is therefore incomplete. Production was not
+  deployed, and no hosted form storage or sending capability was activated.
+
+Evidence and build logs are preserved in `customer-cms-demo/private/`, including
+`cms-hosted-preview-deploy.log`, `pages-post-release-list.log` and
+`router-post-release-list.log`. Local Fantasy Limo remains running on port 3044.
+The owned release worktree and its merged temporary branch were retired after
+verification; only generated build output was removed. The development dependency
+directory remains intact and the local demo returned HTTP 200 after cleanup.
+Browser evidence: `customer-cms-demo/cms-deployed-preview-sites.png`.
+
+Independent review confirmed the physical upgrade must recognize exact successor
+schema in predecessor validators and retain a separate runtime successor. Directly
+adding forms tables would break current exact-schema CMS checks. The private
+installation/readback primitive now has nine SQL tests; it is deliberately unwired.
+The Studio plan is `docs/architecture/form-drafts-hosted-upgrade.md`. Coordinator,
+compatible runtime transition, scoped capability and hosted acceptance remain open.
+
+Private primitive checks: nine SQLite tests, business-worker typecheck, full Studio
+build (28 tasks), typecheck (44 tasks plus security types), package tests (40 tasks)
+and lint (1,522 files) pass. Full tests retain the previously recorded staging-route
+count assertion (35 pass / 1 fail). No hosted installer call has been made.
+Studio checkpoint: `75e8a31`; the final pre-commit check passed all 1,522 files
+with no fixes. This private installer is not part of the deployed router version.
+
+## Next implementation boundaries
+
+1. Studio protocol: add a versioned form-drafts upgrade operation beside
+   `packages/protocol/src/collection-staging-upgrade.ts`, then extend the native
+   customer upgrade union. Bind all three predecessor operation IDs, the exact
+   runtime successor and fixed source/target catalogue digests.
+2. Coordinator: use the existing staging operation store/executor as the pattern,
+   with a new retained table. Every lease/retention mutation must conditionally
+   check the ready database and unchanged collection/workflow/staging receipts.
+   Cover two-scope isolation, duplicate requests, conflicting identity, expired
+   leases, cancellation during provider awaits and lost-ack readback recovery.
+3. Runtime: preserve `content-runtime-generation.ts` first-generation evidence;
+   add an independently retained successor instead of overwriting migration
+   `0010_content_runtime_generations.sql` records. Test provider etag changes and
+   incomplete/disabled successors, then teach predecessor validators to accept
+   only the exact installed form extension with verified evidence.
+4. Dashboard: extend `server/utils/pageStudio/customerSchemaUpgrade.ts` only once
+   the matching protocol/executor exists. Require the original current customer
+   session, role, site and entitlement at each operation fence.
+5. Activation: gate all six form draft RPCs on the installed receipt and selected
+   runtime's actual bindings. A deployment/config flag alone is insufficient.
+   Restore the synthetic staging entitlement through normal administration and
+   run hosted save/reload, stale-write, isolation and legacy CMS regressions.
+
+These are unchecked implementation tasks, not claims that those paths are wired.

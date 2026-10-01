@@ -38,13 +38,22 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 ## Current checkpoint / next action
 
 Website template drafts are implemented, locally verified and committed. Both
-implementation branches are pushed; no hosted rollout has happened.
+implementation branches are pushed. Dashboard preview and the private staging
+router are deployed; hosted form storage activation and production remain pending.
 
-Next concrete slice: **AI template proposals** through the existing gateway and
-credit conventions, with schema validation, explicit Apply and preservation of
-manual edits. Logo/image blocks, scoped library selection, safe previews and
-per-form overrides are implemented and verified locally. Preserve shared form
-identity so a form used on several pages is configured only once.
+Current priority: **hosted deployment and managed form-drafts activation**, authorized
+1 October. The staging router and Dashboard preview release are deployed.
+The managed storage/runtime upgrade must finish before hosted saves can be enabled.
+AI template proposals follow that prerequisite, using the existing text allowance,
+schema validation, explicit Apply and preservation of manual edits. Local logo/image
+blocks and shared-form overrides remain verified. See [release record](2026-10-01-cms-hosted-release.md).
+
+Hosted smoke found an expired synthetic staging entitlement (30 September), so
+the site workspace correctly denies access. Site list and agency QR navigation
+pass. Normal authorized test-entitlement renewal is needed before hosted acceptance;
+no access checks or entitlement dates were changed. The private physical schema
+installer/readback now passes nine SQLite tests, but is unwired. Retained upgrade
+coordination, runtime successor and scoped RPC capability remain the next work.
 
 ## Remaining form and email work
 
@@ -87,10 +96,11 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
-  Branch `feat/standalone-site-workspace`; last implementation `7a8deed16`.
+  Branch `feat/standalone-site-workspace`; deployed implementation `fb1e1b610`.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
-  Branch `feat/customer-form-settings-drafts`; last implementation `0101046`.
+  Branch `feat/customer-form-settings-drafts`; private installer `75e8a31`;
+  deployed router remains `0101046`.
 - Both feature branches are pushed. Fetch and check divergence before continuing;
   do not implement in the unrelated dirty Dashboard root or deploy a stale branch.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
