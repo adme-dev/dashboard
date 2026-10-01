@@ -118,4 +118,42 @@ with no fixes. This private installer is not part of the deployed router version
    Restore the synthetic staging entitlement through normal administration and
    run hosted save/reload, stale-write, isolation and legacy CMS regressions.
 
-These are unchecked implementation tasks, not claims that those paths are wired.
+The list above defines integration work. The checkpoint below records the
+completed private subset; it does not claim those hosted paths are wired.
+
+## Continued implementation — private coordinator
+
+The private form-drafts coordinator is implemented with immutable retained
+operation identity, a five-minute lease, cancellation and recovery. Each state
+mutation compares the exact snapshot of all three installed predecessors and
+the ready database reservation. Installed replay verifies physical evidence;
+missing schema is rejected rather than recreated. Runtime successor identity,
+digest and provider etag are bound into the private request, but are not proof
+of authorization until the native/runtime admission adapter is implemented.
+
+Seventeen real D1 coordinator tests pass, including persisted restart recovery,
+lost provider/coordinator responses, all predecessor revocations and changed
+database state at completion, expired leases, duplicate callers, two-site isolation,
+forged receipts and immutable history. The earlier installer suite still has nine
+passing SQLite tests; the existing staging coordinator regression suite also passes.
+Independent review found no blockers and both suggested test improvements were
+added. Full build and typecheck pass; package tests pass and the broader security
+suite retains the known staging-route assertion (35 pass / 1 fail).
+Full lint passed all 1,525 files with no fixes. Package verification completed
+40 tasks, including 978 business-content-worker tests. Build completed 28 tasks;
+typecheck completed 44 tasks plus security types. Logs are retained under
+`customer-cms-demo/private/forms-coordinator-{build,types,tests,lint}.log`.
+Studio checkpoint: `508981e`. Its full pre-commit check also passed all 1,525
+files with no fixes; the deployed router source remains `0101046`.
+
+Provisioning migration `0011_form_drafts_upgrades.sql` has been exercised against
+disposable real D1 only. No hosted database, deployment or capability changed in
+this slice. The coordinator has no worker-entrypoint, RPC or native caller.
+Next: independently retained runtime successor and actual-provider verifier,
+then matching native customer admission/protocol and six-RPC activation.
+
+Compatibility implementation detail: extract the pure form extension catalogue
+and marker definitions before importing them into predecessor validators. The
+current physical installer already imports collection/staging helpers, so making
+those helpers import the installer would create an initialization cycle. Keep
+catalogue identity separate from coordinator/native authorization and verify both.

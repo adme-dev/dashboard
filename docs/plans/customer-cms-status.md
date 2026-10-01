@@ -52,8 +52,10 @@ Hosted smoke found an expired synthetic staging entitlement (30 September), so
 the site workspace correctly denies access. Site list and agency QR navigation
 pass. Normal authorized test-entitlement renewal is needed before hosted acceptance;
 no access checks or entitlement dates were changed. The private physical schema
-installer/readback now passes nine SQLite tests, but is unwired. Retained upgrade
-coordination, runtime successor and scoped RPC capability remain the next work.
+installer/readback passes nine SQLite tests. The private retained coordinator now
+passes 17 real D1 tests for recovery, leases, cancellation, identity and database
+fencing. Both remain unwired. Native customer admission, verified runtime successor
+and scoped RPC capability remain the next work.
 
 ## Remaining form and email work
 
@@ -99,7 +101,8 @@ end-to-end in this standalone demo, not necessarily zero code exists.
   Branch `feat/standalone-site-workspace`; deployed implementation `fb1e1b610`.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
-  Branch `feat/customer-form-settings-drafts`; private installer `75e8a31`;
+  Branch `feat/customer-form-settings-drafts`; private coordinator `508981e`
+  (installer `75e8a31`);
   deployed router remains `0101046`.
 - Both feature branches are pushed. Fetch and check divergence before continuing;
   do not implement in the unrelated dirty Dashboard root or deploy a stale branch.
