@@ -41,7 +41,7 @@ completion of the separate native signup/provisioning acceptance.
 ### Explicit demo boundaries
 
 The local editor connection is absent and the launch control is disabled. The
-media view currently lists metadata, not thumbnails, uploads or image generation.
+media view now includes authenticated image previews and metadata. Uploads and image generation remain in the Studio media picker.
 The copied site does not have a local collection-runtime connection. Content
 collections/history links reuse the existing scoped screens; their connected
 editing/recovery operations have not been accepted in this demo. Forms settings,
@@ -77,3 +77,22 @@ horizontal overflow. All temporary viewport overrides were cleared. New screensh
 `/private/tmp/fantasy-limo-framer-cms-20261001.png`. Independent review found no
 blocking issues in the updated customer UI or style guide and completed the full
 modified-file review, including both marketing catalogues.
+
+## Authenticated media previews
+
+The standalone library now shows a searchable, paginated image grid and a detail
+panel. Preview requests recheck the active session and exact site membership
+before and after storage reads. Only clean raster images under the owned site
+prefix are served; responses are private/no-store and never fall back to a public
+URL. SVG, pending, archived and oversized files are denied. Transient failures can
+be retried from the details panel.
+
+The local demo uses 109 read-only copies of Fantasy Limo image objects, verified
+against their recorded SHA-256 digests (31,549,909 bytes). No customer production
+configuration or objects were changed.
+
+Chrome confirmed all 18 first-page thumbnails loaded, image details, search,
+empty-result recovery and pagination. No document overflow at 320/768/1024/1440px.
+Screenshot: `/private/tmp/fantasy-limo-media-library-20261001.png`.
+Independent review found no blocking issues; its transient-preview retry
+suggestion was implemented. Focused storage/authority tests: 16 passed.

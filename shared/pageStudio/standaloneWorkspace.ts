@@ -12,7 +12,7 @@ export interface StandaloneSiteWorkspace {
     revision: number
     updatedAt: string | null
   }
-  assets: Array<{ id: string, altText: string | null, mediaType: string, publicationStatus: string, fileName: string | null, size: number | null }>
+  assets: Array<{ id: string, altText: string | null, mediaType: string, publicationStatus: string, previewAvailable: boolean, fileName: string | null, size: number | null }>
 }
 
 /** Read-only page summary for both saved formats; never creates a checkpoint. */

@@ -217,33 +217,7 @@ async function openStudio() {
             />
           </template>
           <template v-else-if="section === 'media'">
-            <div>
-              <h2 class="text-xl font-semibold text-highlighted">
-                Media library
-              </h2><p class="mt-2 text-sm leading-6 text-muted">
-                {{ data.assets.length }} saved assets. Add or replace images from the media picker in Page Studio.
-              </p>
-            </div>
-            <div v-if="data.assets.length" class="grid gap-3 sm:grid-cols-2">
-              <UCard v-for="asset in data.assets" :key="asset.id" :ui="{ body: 'flex items-start gap-3 p-4' }">
-                <UIcon name="i-lucide-image" class="mt-1 size-5 shrink-0 text-muted" />
-                <div class="min-w-0">
-                  <h3 class="break-words text-sm font-medium text-highlighted">
-                    {{ asset.altText || asset.fileName || 'Untitled image' }}
-                  </h3><p class="mt-2 text-xs text-muted">
-                    {{ asset.mediaType }}<template v-if="asset.size">
-                      · {{ Math.ceil(asset.size / 1024) }} KB
-                    </template>
-                  </p>
-                </div>
-              </UCard>
-            </div>
-            <UAlert
-              v-else
-              color="neutral"
-              title="No media saved yet"
-              description="Images added in Page Studio will appear here."
-            />
+            <PageStudioCustomerMediaBrowser :site-id="siteId" :assets="data.assets" />
           </template>
           <template v-else-if="section === 'forms'">
             <div>

@@ -13,7 +13,7 @@ describe('standalone customer site workspace', () => {
     const result = await readStandaloneSiteWorkspace(input, deps)
     expect(result.canEdit).toBe(false)
     expect(result.document).toEqual(document)
-    expect(result.assets).toEqual([{ id: 'asset', altText: 'Limousine', mediaType: 'image/jpeg', publicationStatus: 'ready', fileName: 'car.jpg', size: 12 }])
+    expect(result.assets).toEqual([{ id: 'asset', altText: 'Limousine', mediaType: 'image/jpeg', publicationStatus: 'ready', previewAvailable: false, fileName: 'car.jpg', size: 12 }])
     expect(deps.query).toHaveBeenCalledTimes(2)
     expect(deps.query.mock.calls[0][1]).toEqual([input.siteId, input.clientId, input.userId, input.tokenHash])
   })

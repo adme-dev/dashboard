@@ -56,6 +56,7 @@ export async function readStandaloneSiteWorkspace(input: StandaloneSiteInput, de
     const original = renditions.find(value => value.kind === 'original') ?? renditions[0]
     return { id: String(asset.id), altText: typeof asset.altText === 'string' ? asset.altText : null,
       mediaType: String(asset.mediaType), publicationStatus: String(asset.publicationStatus),
+      previewAvailable: asset.scanStatus === 'clean' && asset.publicationStatus !== 'archived' && ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(String(asset.mediaType)),
       fileName: typeof original?.fileName === 'string' ? original.fileName : null,
       size: typeof original?.size === 'number' ? original.size : null }
   }) }
