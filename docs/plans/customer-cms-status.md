@@ -37,13 +37,13 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Current checkpoint / next action
 
-**2 October local follow-up:** explicit cleanup of custom email templates whose
+**2 October preview follow-up:** explicit cleanup of custom email templates whose
 shared form was removed is implemented and independently reviewed. Website
 defaults list only server-confirmed removed definitions; stage Remove, Undo or
 save with revision protection. Existing unused forms retain their templates.
 The local browser/API checks pass, including exact default preservation and
 390px layout. See [cleanup receipt](2026-10-02-email-template-cleanup.md).
-This follow-up has not been deployed; the preview source below is unchanged.
+Deployed to preview `4f9a92f4`, source `de1a2eb67`, with native access still closed.
 
 **2 October preview:** native customer authority, APIs and Forms UI are implemented,
 reviewed and deployed (`1d44f4ee`, source `a0e369591`). Signed-in CMS/QR navigation
@@ -119,7 +119,7 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
 - [x] Explicit per-form template overrides and reset to website default.
 - [x] Explicit cleanup for overrides whose shared form was removed; preserve them
       until the customer reviews and saves the cleanup. Local browser/API acceptance
-      and independent review pass; hosted release remains pending.
+      and independent review pass; closed preview deployed, hosted acceptance pending.
 - [x] Structured template editing, subject/preheader, brand styling and
       desktop/mobile preview.
 - [ ] Stored template revision-history/restore UI (session undo/redo is complete).
@@ -154,8 +154,8 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
-  Branch `feat/standalone-site-workspace`; deployed implementation `a0e369591`.
-  Native authority/API/UI source `a0e369591` is pushed and deployed to preview.
+  Branch `feat/standalone-site-workspace`; deployed implementation `de1a2eb67`.
+  Includes native authority/API/UI `a0e369591` and the reviewed template cleanup.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
   Branch `feat/customer-form-settings-drafts`; deployed private executor, coordinator

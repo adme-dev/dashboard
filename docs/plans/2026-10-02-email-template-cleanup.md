@@ -1,8 +1,8 @@
 # Removed-form email template cleanup — 2 October 2026
 
-Status: implemented and verified in the local Fantasy Limo demo. Independent
-review approved the final change with no remaining findings. No hosted deployment,
-customer activation, migration, publication or email delivery occurred.
+Status: implemented, locally verified and deployed to the closed preview.
+Independent review approved the final change with no remaining findings. Customer
+activation, migration, publication and email delivery remain unchanged.
 
 ## Customer behavior
 
@@ -61,8 +61,29 @@ Private/local evidence: `customer-cms-demo/check-template-cleanup.mjs`,
 
 ## Remaining work
 
-Preview remains deployment `1d44f4ee`, source `a0e369591`. This local follow-up needs
-the normal build/size/release checks before deployment. Hosted native sign-in and
-cross-account acceptance still need the two user-provided mailboxes and supported
+Hosted native sign-in and cross-account acceptance still need the two
+user-provided mailboxes and supported
 scoped setup. Stored revision history/restore, AI proposals, sender/reply routing,
 outbox, published outcomes and webhooks remain separate checklist items.
+
+## Preview release
+
+- Source: `de1a2eb6710949c5dfc93262684765dd02efa2c6`, pushed; includes freshly
+  fetched main `a98b83a53c65fbb80da48e8a2348610d2c9d24bb` before and after build.
+- Clean isolated checkout; only `pnpm deploy:check` and `pnpm deploy:preview` used.
+  Target: `agency-dashboard`, branch `preview`. Twenty deployment/source guard tests pass.
+- Full build and immutable size guard pass: raw 25,457,916 / 25,468,928 bytes
+  (11,012 spare), gzip 7,029,333 / 9,750,000. Existing warnings remain baseline.
+- Deployment `4f9a92f4-0cb7-4910-bf42-b1d6981c3fcb`:
+  https://4f9a92f4.agency-dashboard-6cm.pages.dev
+  Alias: https://preview.agency-dashboard-6cm.pages.dev
+- Cloudflare project readback confirms exact source, preview branch and success.
+  Signup remains false and Forms gate absent. No worker deployment is needed.
+- Signed-in Chrome confirms the retained CMS site list, QR Codes entry/navigation
+  and native Forms unavailable state; no client errors. This is closed-preview
+  smoke verification, not the pending enabled two-customer acceptance matrix.
+- The clean owned release checkout had no open file handles after deployment and
+  was removed with `git worktree remove`. Source workspaces and demo remain.
+- Previous verified preview: `1d44f4ee-c171-4fc3-b47b-23bbcb17f531`, source
+  `a0e36959101e4a7b3759f875b207e23de675cf70`.
+- Build/deploy log: `customer-cms-demo/private/template-cleanup-preview-deploy.log`.
