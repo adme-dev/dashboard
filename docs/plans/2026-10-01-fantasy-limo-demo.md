@@ -1,5 +1,9 @@
 # Fantasy Limo CMS demo — 1 October 2026
 
+Current local status: restored and verified in durable project storage. See
+**Durable local demo restored** at the end for current paths and acceptance.
+Earlier `/private/tmp` references record a previous run and no longer exist.
+
 The user selected the existing Fantasy Limo website as the demonstration target.
 Use site `c34f6347-cc63-4ed7-9a5a-da165ebefed2`; do not replace it with a synthetic site.
 
@@ -114,15 +118,49 @@ schema/runtime installation blocker. No production storage or delivery was chang
 
 On continuation, the previous `/private/tmp` worktrees, demo layer, database copies,
 logs and screenshots were absent. The reported earlier acceptance remains a record
-of that run; the localhost demo is **not currently available**. Dashboard commits
+of that run; localhost was unavailable until the rebuild documented below. Dashboard commits
 were already pushed. Studio's complete staged index survived in the repository
 metadata and was recovered without reconstructing source code from conversation.
-Both worktrees now live in the Dashboard project's `.worktrees` directory:
-`customer-cms` and `studio-customer-forms`. A staged patch/index backup is retained
+Dashboard now lives at `/Users/paulgiurin/Documents/Projects/customer-cms-development`
+(with `.worktrees/customer-cms` as a symlink). Studio remains at
+`dashboard/.worktrees/studio-customer-forms`. A staged patch/index backup is retained
 in `tmp/cms-recovery-20261001` under the Dashboard root. Keep these active workspaces.
 
-Rebuild the isolated Fantasy Limo fixture from an authorized read of the saved
-checkpoint and media, then reapply reviewed explicit adoption before claiming the
-local demo is available again. Do not redirect the local UI at production storage
+The required recovery was to rebuild the isolated Fantasy Limo fixture from an
+authorized read of the saved checkpoint/media and reapply reviewed explicit
+adoption; this is now completed in the restoration checkpoint below. Do not redirect the local UI at production storage
 or silently invent replacement customer records. The lost local adoption backup
 and screenshot paths above are historical evidence references, not available files.
+
+
+## Durable local demo restored — 1 October 2026
+
+The local demo is running again at
+`http://127.0.0.1:3044/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
+Its layer, database, media, scripts and private backups now live outside temporary
+storage at `/Users/paulgiurin/Documents/Projects/customer-cms-demo`.
+`README.md` there records restart, checks, backup and sign-in recovery.
+Run its `start.sh` to restart the owned local PostgreSQL instance and Nuxt.
+Keep database/media files outside the watched `layer/` directory.
+
+An authorized read-only copy restored 75 saved pages and 109 hash-verified images.
+No production enquiries, customer users or sessions were copied. The local
+Postgres schema is a selected demo projection, not hosted migration acceptance.
+The reviewed adoption planner created four definitions over eight placements;
+Booking enquiry shares one definition across five pages. The rebuilt checkpoint
+is `checkpoint_local_shared_forms_rebuilt_20261001`. Lost local draft history was
+not recovered: Contact's wedding sample was explicitly recreated at revision 2.
+Booking defaults are at revision 3 after a save/conflict/restore check.
+
+HTTP acceptance passed for authenticated workspace/media reads, all five shared
+placements, cross-placement writes, stale-write 409, missing-login 401 and foreign
+site 404. Chrome verified four form entries, the five-page placement list, separate
+filtered Enquiries, reload persistence, 18 loaded media thumbnails and Contact's
+`wedding transport` redirect preview. Current `contains` matching is case-sensitive.
+Screenshot: `customer-cms-demo/fantasy-limo-restored.png`.
+Local backup: `customer-cms-demo/private/backups/2026-10-01T04-44-53.503Z/`.
+Keep private credentials, copied data and dumps out of Git.
+
+No production deployment or email delivery occurred. Website email defaults and
+team/customer template drafts remain the next implementation slice. Published
+outcomes and hosted schema/runtime installation are still pending.
