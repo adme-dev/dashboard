@@ -19,7 +19,7 @@ export function compactSsrMarkupSource(source) {
  * Medium static statements also benefit when their combined savings exceed the
  * decoder overhead; the existing whole-module size check remains authoritative. */
 export function compactSqlSource(source) {
-  return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value), 512)
+  return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value), 256)
 }
 
 function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LITERAL_CHARACTERS) {

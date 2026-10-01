@@ -50,3 +50,23 @@ it('losslessly compacts multiple medium SQL statements with parameters and Unico
   expect(seen).toEqual(queries)
   expect(compactSqlSource(result.code).code).toBe(result.code)
 })
+
+it('compacts repeated short static SQL without changing executable behavior', async () => {
+  const queries = Array.from({ length: 8 }, (_, index) => `SELECT ${index}, 'Owned site' AS label FROM owned_site WHERE id=$1\n${'AND active = TRUE\n'.repeat(15)}FOR UPDATE`)
+  for (const query of queries) {
+    expect(query.length).toBeGreaterThanOrEqual(256)
+    expect(query.length).toBeLessThan(512)
+  }
+  const source = `export function run(db, args) { return [${queries.map(query => `db.query(${JSON.stringify(query)}, args)`).join(',')}]; }`
+  const result = compactSqlSource(source)
+  expect(result.literals).toBe(8)
+  expect(Buffer.byteLength(result.code)).toBeLessThan(Buffer.byteLength(source))
+  const module = await import(`data:text/javascript;base64,${Buffer.from(result.code).toString('base64')}`)
+  const seen: string[] = []
+  const args = ['site-a']
+  module.run({ query(text: string, values: unknown[]) {
+    expect(values).toBe(args)
+    seen.push(text)
+  } }, args)
+  expect(seen).toEqual(queries)
+})
