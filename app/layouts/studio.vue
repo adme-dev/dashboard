@@ -15,9 +15,9 @@ async function signOut() {
 <template>
   <div class="min-h-screen bg-default text-default">
     <header class="border-b border-default">
-      <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+      <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
         <NuxtLink to="/studio/sites" class="flex items-center gap-2 font-semibold text-highlighted">
-          <UIcon name="i-lucide-panels-top-left" class="size-5 text-primary" />
+          <UIcon name="i-lucide-panels-top-left" class="size-5 text-highlighted" />
           Page Studio
         </NuxtLink>
         <nav aria-label="Page Studio" class="flex items-center gap-2">
@@ -44,7 +44,7 @@ async function signOut() {
         </nav>
       </div>
     </header>
-    <main class="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+    <main class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
       <slot />
     </main>
   </div>

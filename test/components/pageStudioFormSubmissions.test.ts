@@ -12,7 +12,7 @@ const receipts = () => [
 const data = ref({ submissions: receipts() })
 const status = ref('success')
 const error = ref<unknown>(null)
-const props = reactive({ siteId: 'site-a' })
+const props = reactive<{ siteId: string, audience: 'agency' | 'portal' }>({ siteId: 'site-a', audience: 'agency' })
 const refresh = vi.fn()
 const clear = vi.fn(() => {
   data.value = { submissions: [] }
@@ -62,6 +62,7 @@ beforeEach(() => {
   status.value = 'success'
   error.value = null
   props.siteId = 'site-a'
+  props.audience = 'agency'
   for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value)
   vi.stubGlobal('useFetch', fetchSubmissions)
 })
@@ -71,6 +72,16 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('website submission inspection', () => {
+  it('uses customer-scoped routes and clears agency data when audience changes', async () => {
+    await mount()
+    expect(fetchSubmissions).toHaveBeenCalledWith(expect.objectContaining({ value: '/api/agency/page-studio/sites/site-a/forms/submissions' }), { watch: false })
+    props.audience = 'portal'
+    await flush()
+    expect(fetchSubmissions).toHaveBeenCalledWith(expect.objectContaining({ value: '/api/portal/page-studio/sites/site-a/forms/submissions' }), { watch: false })
+    expect(clear).toHaveBeenCalledOnce()
+    expect(refresh).toHaveBeenCalledOnce()
+  })
+
   it('shows every recorded field as escaped text with receipt context and empty values', async () => {
     const host = await mount()
     details(host).click()

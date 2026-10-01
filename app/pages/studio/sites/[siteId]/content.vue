@@ -8,8 +8,8 @@ const siteId = computed(() => String(route.params.siteId || ''))
 <template>
   <div class="min-w-0 space-y-6">
     <UButton
-      to="/studio/sites"
-      label="Back to My sites"
+      :to="`/studio/sites/${siteId}`"
+      label="Back to website"
       icon="i-lucide-arrow-left"
       color="neutral"
       variant="ghost"

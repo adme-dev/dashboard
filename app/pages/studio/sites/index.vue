@@ -88,8 +88,8 @@ async function openStudio(siteId: string) {
             variant="ghost"
           />
           <UButton
-            :to="`/studio/sites/${site.id}/content`"
-            label="Manage content"
+            :to="`/studio/sites/${site.id}`"
+            label="Manage website"
             color="neutral"
             variant="outline"
           />

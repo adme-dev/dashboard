@@ -9,8 +9,8 @@ interface Submission {
   submittedAt: string
 }
 
-const props = defineProps<{ siteId: string }>()
-const endpoint = computed(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
+const props = withDefaults(defineProps<{ siteId: string, audience?: 'agency' | 'portal' }>(), { audience: 'agency' })
+const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
 const { data, status, error, refresh, clear } = await useFetch<{ submissions: Submission[] }>(endpoint, { watch: false })
 const submissions = computed(() => data.value?.submissions ?? [])
 const mode = ref('all')
@@ -33,7 +33,7 @@ const detailsOpen = computed({
   }
 })
 // Own the site transition so clearing old data cannot cancel an automatic fetch.
-watch(() => props.siteId, async () => {
+watch(() => [props.siteId, props.audience], async () => {
   selectedId.value = null
   mode.value = 'all'
   clear()
