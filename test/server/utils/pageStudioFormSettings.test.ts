@@ -64,3 +64,19 @@ describe('standalone form settings', () => {
     await expect(operateFormSettings(s.request, identity, edit, s.deps)).rejects.toMatchObject({ statusCode: 409 })
   })
 })
+
+it('resolves two placements to one shared settings identity and validates canonical fields', async () => {
+  const s = setup()
+  const doc = await s.document()
+  doc.studio.pages[0].forms.push({ id: 'second_form', fields: [{ id: 'legacy_name', type: 'text' }] })
+  doc.studio.formLibrary = { schemaVersion: 1, definitions: [{ id: 'shared_contact', revision: 1, form: { id: 'form_contact', name: 'Contact', fields: [{ id: 'name', name: 'Name', type: 'text' }] }, placements: [
+    { ...identity, fieldIds: { name: 'name' } }, { pageId: identity.pageId, formId: 'second_form', fieldIds: { name: 'legacy_name' } }
+  ] }] }
+  const result = await operateFormSettings(s.request, { pageId: identity.pageId, formId: 'second_form' }, body, s.deps)
+  expect(result.record).toMatchObject({ definitionId: 'shared_contact' })
+  expect(s.service.writeFormSettingsDraft).toHaveBeenCalledWith({ ...body, scope, definitionId: 'shared_contact', actorId: 'user_one' })
+  await operateFormSettings(s.request, identity, undefined, s.deps)
+  expect(s.service.readFormSettingsDraft).toHaveBeenCalledWith({ scope, definitionId: 'shared_contact' })
+  s.service.readFormSettingsDraft.mockResolvedValue({ ...body, ...identity, revision: 1, scope, actorId: 'user_one', updatedAt: '2026-10-01T00:00:00.000Z' })
+  await expect(operateFormSettings(s.request, identity, undefined, s.deps)).rejects.toThrow()
+})

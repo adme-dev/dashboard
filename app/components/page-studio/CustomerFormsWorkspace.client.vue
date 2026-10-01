@@ -1,14 +1,16 @@
 <script setup lang="ts">
+import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
 import type { PageStudioSavedPages } from '~~/shared/pageStudio/savedPages'
 
-const props = defineProps<{ siteId: string, pages: PageStudioSavedPages['pages'], checkpointId?: string }>()
-const emit = defineEmits<{ dirty: [value: boolean], reload: [], enquiries: [value: { formId: string, pageRoute: string, name: string }] }>()
+const props = defineProps<{ siteId: string, pages: PageStudioSavedPages['pages'], checkpointId?: string, formLibrary?: PageStudioSavedPages['formLibrary'] }>()
+const emit = defineEmits<{ dirty: [value: boolean], reload: [], enquiries: [value: { placements: Array<{ formId: string, pageRoute?: string }>, name: string }] }>()
 const selectedKey = ref('__none__')
 const dirty = ref(false)
 const tab = ref('settings')
-const forms = computed(() => props.pages.flatMap(page => page.forms.map(form => ({ ...form, key: `${page.id}:${form.id}`, pageId: page.id, pageTitle: page.title, route: page.route }))))
+const forms = computed(() => formCatalogue(props.pages, props.formLibrary))
 const selected = computed(() => forms.value.find(form => form.key === selectedKey.value))
-const choices = computed(() => forms.value.map(form => ({ label: `${form.name || 'Website form'} — ${form.route}`, value: form.key })))
+const firstPlacement = computed(() => selected.value?.placements[0])
+const choices = computed(() => forms.value.map(entry => ({ label: entry.definitionId ? `${entry.form.name || 'Website form'} (${entry.placements.length} ${entry.placements.length === 1 ? 'page' : 'pages'})` : `${entry.form.name || 'Website form'} — ${entry.placements[0]?.route}`, value: entry.key })))
 watch(forms, (value) => {
   if (!value.some(form => form.key === selectedKey.value)) selectedKey.value = value[0]?.key ?? '__none__'
 }, { immediate: true })
@@ -28,7 +30,7 @@ watch(selectedKey, () => {
         Manage fields and what happens after someone submits a form.
       </p>
     </div>
-    <UFormField v-if="forms.length" label="Form placement" :description="dirty ? 'Save or discard your changes before switching forms.' : undefined">
+    <UFormField v-if="forms.length" :label="formLibrary ? 'Form' : 'Form placement'" :description="dirty ? 'Save or discard your changes before switching forms.' : undefined">
       <USelect
         v-model="selectedKey"
         :items="choices"
@@ -46,9 +48,9 @@ watch(selectedKey, () => {
       <div class="flex flex-wrap items-start justify-between gap-3 border-b border-default pb-4">
         <div>
           <h3 class="font-semibold text-highlighted">
-            {{ selected.name || 'Website form' }}
+            {{ selected.form.name || 'Website form' }}
           </h3><p class="mt-1 text-sm text-muted">
-            {{ selected.pageTitle }} · {{ selected.route }}
+            {{ selected.definitionId ? `Used on ${selected.placements.length} ${selected.placements.length === 1 ? 'page' : 'pages'}` : firstPlacement?.route }}
           </p>
         </div>
         <UButton
@@ -56,10 +58,22 @@ watch(selectedKey, () => {
           icon="i-lucide-inbox"
           color="neutral"
           variant="outline"
-          :disabled="dirty"
-          @click="emit('enquiries', { formId: selected.id, pageRoute: selected.route, name: selected.name || 'Website form' })"
+          :disabled="dirty || !selected.placements.length"
+          @click="emit('enquiries', { placements: selected.placements.map(item => ({ formId: item.formId, pageRoute: selected.definitionId ? undefined : item.route })), name: selected.form.name || 'Website form' })"
         />
       </div>
+      <UAccordion v-if="selected.definitionId && selected.placements.length" :items="[{ label: 'Pages using this form', slot: 'placements' }]">
+        <template #placements>
+          <ul class="space-y-2 pb-3 text-sm text-muted">
+            <li v-for="placement in selected.placements" :key="`${placement.pageId}:${placement.formId}`">
+              {{ placement.title }} <span class="ml-2">{{ placement.route }}</span>
+            </li>
+          </ul>
+        </template>
+      </UAccordion>
+      <p v-if="selected.placements.length > 1" class="text-sm text-muted">
+        Changes to these settings apply wherever this form appears.
+      </p>
       <div class="flex flex-wrap gap-2" role="group" aria-label="Form views">
         <UButton
           v-for="item in [{ value: 'settings', label: 'After submission' }, { value: 'fields', label: 'Fields' }]"
@@ -72,19 +86,19 @@ watch(selectedKey, () => {
         />
       </div>
       <PageStudioFormSettingsEditor
-        v-if="tab === 'settings' && checkpointId && selected.fields"
+        v-if="tab === 'settings' && checkpointId && selected.form.fields && firstPlacement"
         :key="`${selected.key}:${checkpointId}`"
         :site-id="siteId"
-        :page-id="selected.pageId"
-        :form-id="selected.id"
+        :page-id="firstPlacement.pageId"
+        :form-id="firstPlacement.formId"
         :checkpoint-id="checkpointId"
-        :fields="selected.fields"
+        :fields="selected.form.fields"
         :pages="destinations"
         @dirty="dirty = $event"
         @reload="emit('reload')"
       />
       <div v-else-if="tab === 'fields'" class="divide-y divide-default border-y border-default">
-        <div v-for="field in selected.fields || []" :key="field.id" class="flex flex-wrap items-start justify-between gap-3 py-4">
+        <div v-for="field in selected.form.fields || []" :key="field.id" class="flex flex-wrap items-start justify-between gap-3 py-4">
           <div>
             <p class="text-sm font-medium text-highlighted">
               {{ field.name }}

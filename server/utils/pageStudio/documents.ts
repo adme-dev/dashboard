@@ -137,7 +137,7 @@ export async function getPageStudioDocument(
   return {
     id: siteId,
     document: null,
-    studio: { checkpointId: checkpoint.checkpointId, pages: parsed.data.pages },
+    studio: { checkpointId: checkpoint.checkpointId, pages: parsed.data.pages, formLibrary: parsed.data.formLibrary },
     pageLimit: row.pages_per_site_limit,
     revision: Number(row.revision ?? 0),
     site: { clientId: row.client_id, id: siteId, name: row.name, route: row.route },

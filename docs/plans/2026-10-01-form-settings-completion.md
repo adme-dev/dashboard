@@ -182,22 +182,22 @@ Changes to website defaults must show which inheriting forms will be affected;
 existing overrides stay intact. Resolve and snapshot effective approved settings
 when creating each delivery job, so retries do not send to newly changed recipients.
 
-The current saved Fantasy Limo manifest has eight independent form IDs:
+Before adoption, the saved Fantasy Limo manifest had eight independent form IDs:
 - `/contact` and `/enquiries`: same four-field structure, separate IDs.
 - `/bookings`: one 21-field quote form.
 - `/book-1hour`, `/book-one-hour-limo-hire`, `/book`, `/free-limo-quote`,
   `/general-hire-quote`: same nine-field booking structure, five separate IDs.
 
 This proves three structural groups, not three authoritative shared definitions.
-The current dropdown lists placements, and now labels that explicitly. Identical
+The pre-adoption dropdown listed placements explicitly. Identical
 fields or names do not establish shared operational identity; do not auto-merge or
 delete forms. Introduce reusable form definitions with explicit placements and
 shared defaults. Adoption must preserve old IDs/submission attribution, review
 configuration differences, and permit intentional independent copies. Future
 catalogue shows one definition with “Used on N pages” and a placement list.
 
-Email default inheritance, reusable-form linking and adoption are pending work;
-the current outcome editor still saves per page/form identity. Templates, shared
+Email default inheritance remains pending. Shared definition storage and local
+adoption are now implemented as described in the checkpoint below. Templates, shared
 recipients and delivery configuration are not active in this local slice.
 
 ### Confirmed product decision
@@ -229,8 +229,8 @@ Required tests: AI/manual placement of an existing form produces another referen
 and no new definition; explicit independent duplication produces a new identity;
 shared template/recipient changes affect all placements; website defaults and
 per-form overrides resolve consistently; other-site references fail; existing
-submission IDs and originating page attribution survive adoption. Enforcement is
-pending implementation and is now recorded in the repository's AGENTS.md.
+submission IDs and originating page attribution survive adoption. The shared-form protocol and AI/manual reuse enforcement are implemented in the
+Studio foundation; email inheritance and delivery tests remain pending.
 
 
 ## Clean navigation: Forms and Enquiries (1 October 2026)
@@ -246,10 +246,58 @@ Browser verified with the Fantasy Limo demo at localhost:3044. Screenshot:
 This is a local UI change, not evidence of hosted activation.
 
 Shared-form protocol, typed operations, projection validation and AI reuse guards
-are implemented as a reviewed foundation in the Studio branch. They do not yet migrate Fantasy Limo's
-eight placement IDs or share its private settings. Customer-storage adoption,
-settings-conflict review, shared email defaults/templates and delivery activation
-remain required before the catalogue can show one form with “Used on N pages”.
+are implemented as a reviewed foundation in the Studio branch. Local adoption and shared outcome storage are now verified below. Shared email
+defaults/templates, managed hosted adoption and delivery activation remain pending.
 
 For this navigation slice, changed-source ESLint and 27 focused Dashboard tests
 passed. Independent review found no blocking navigation/filter issues.
+
+
+## Shared catalogue and local adoption — 1 October 2026
+
+The local Fantasy Limo demo now has **four definitions across eight placements**:
+Contact enquiry, Limousine quote request, Enquiries, and Booking enquiry used on
+five pages. Contact and Enquiries remain independent because their configured
+outcomes differ; no names or matching field structures are used to infer identity.
+
+Forms shows one selector entry per definition, “Used on N pages”, an expandable
+placement list and shared draft settings. View enquiries filters all of that
+form's stable placement IDs, including historical page URLs. Receipt details keep
+the original page route. Legacy manifests retain their explicit placement list.
+The server derives the definition from the saved checkpoint rather than trusting
+a client-provided definition ID. Shared writes keep expected-revision conflicts.
+
+The adoption planner requires complete explicit grouping, maps legacy rule field
+IDs to canonical IDs, and rejects conflicting outcomes, invalid fields/redirects,
+foreign scope and unused source records. A missing draft means default settings,
+not permission to discard a differing saved draft. Historical IDs and legacy
+settings revisions are preserved.
+
+Local cutover was performed with the dev server offline, source checkpoint and
+settings revisions rechecked, a SQLite write lock and a scoped Postgres row lock.
+Backup: `/private/tmp/customer-cms-local-layer/shared-adoption-backup-1790826902001/`.
+Checkpoint: `checkpoint_local_shared_forms_20261001`.
+The local executor and its journal are in `/private/tmp/customer-cms-local-layer`.
+This two-database cutover is not a distributed transaction: on failure the server
+must stay offline until actual database state and the journal are reconciled.
+This local executor is not a hosted migration API.
+
+Verification: 29 focused Dashboard tests and changed-source lint passed. Local
+HTTP checks confirmed five placements read one shared revision, a save through one
+placement is visible through another, stale writes return 409, missing login 401,
+and a foreign site 404. Contact rules and legacy revision 3 were preserved; the
+booking test restored its original settings at shared revision 3. Browser checks
+confirmed four selector entries, the five-page list and the separate Enquiries
+filter. Screenshot: `/private/tmp/fantasy-limo-shared-forms-20261001.png`.
+
+Studio build (28 tasks), typecheck (44 tasks plus security types), lint and package
+tests (40 tasks, retried at concurrency 2 after an autosave timing failure under
+load) passed. Action runtime: 48 passed. Security: 35 passed, the unchanged staging
+route-count assertion still fails. Dashboard repository-wide typecheck fails with
+934 diagnostics; none reference this slice's changed sources. These results are
+local acceptance, not hosted release acceptance.
+
+Next: website email defaults and separate team/customer template drafts, followed
+by AI proposals and the approved delivery/outbox path. Published outcomes, hosted
+managed schema/runtime installation, reuse/new-form controls and explicit detach
+remain separate acceptance work. No public redirects or email delivery enabled.

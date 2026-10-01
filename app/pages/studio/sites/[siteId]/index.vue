@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
 import { standaloneWorkspacePages, type StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 
 definePageMeta({ layout: 'studio', middleware: 'studio-auth' })
@@ -6,8 +7,8 @@ const route = useRoute()
 const siteId = computed(() => String(route.params.siteId))
 const section = ref('overview')
 const formDirty = ref(false)
-const enquiryFilter = ref<{ formId: string, pageRoute: string, name: string } | null>(null)
-function openEnquiries(value: { formId: string, pageRoute: string, name: string }) {
+const enquiryFilter = ref<{ placements: Array<{ formId: string, pageRoute?: string }>, name: string } | null>(null)
+function openEnquiries(value: { placements: Array<{ formId: string, pageRoute?: string }>, name: string }) {
   enquiryFilter.value = value
   section.value = 'enquiries'
 }
@@ -21,7 +22,7 @@ const { data, pending, error, refresh } = await useFetch<StandaloneSiteWorkspace
 )
 useHead({ title: () => `${data.value?.document.site.name ?? 'Website'} | CMS` })
 const pages = computed(() => data.value ? standaloneWorkspacePages(data.value.document) : [])
-const forms = computed(() => pages.value.flatMap(page => page.forms.map(form => ({ ...form, page: page.title, route: page.route }))))
+const forms = computed(() => formCatalogue(pages.value, data.value?.document.studio?.formLibrary))
 const { editorOrigin, launchPageStudio } = usePageStudioLauncher()
 const launching = ref(false)
 const toast = useToast()
@@ -36,7 +37,7 @@ const sections = [
 const stats = computed(() => [
   { label: 'Saved pages', value: pages.value.length, section: 'pages', icon: 'i-lucide-files' },
   { label: 'Media assets', value: data.value?.assets.length ?? 0, section: 'media', icon: 'i-lucide-images' },
-  { label: 'Forms on pages', value: forms.value.length, section: 'forms', icon: 'i-lucide-inbox' }
+  { label: data.value?.document.studio?.formLibrary ? 'Forms' : 'Forms on pages', value: forms.value.length, section: 'forms', icon: 'i-lucide-inbox' }
 ])
 async function openStudio() {
   if (!canLaunch.value || launching.value) return
@@ -239,6 +240,7 @@ async function openStudio() {
               :site-id="siteId"
               :pages="pages"
               :checkpoint-id="data.document.studio?.checkpointId"
+              :form-library="data.document.studio?.formLibrary"
               @enquiries="openEnquiries"
               @dirty="formDirty = $event"
               @reload="refresh()"
@@ -247,7 +249,7 @@ async function openStudio() {
           <template v-else-if="section === 'enquiries'">
             <div v-if="enquiryFilter" class="flex flex-wrap items-center justify-between gap-3">
               <p class="text-sm text-muted">
-                {{ enquiryFilter.name }} · {{ enquiryFilter.pageRoute }}
+                {{ enquiryFilter.name }} · {{ enquiryFilter.placements.length === 1 ? (enquiryFilter.placements[0]?.pageRoute ?? 'All submissions') : `${enquiryFilter.placements.length} pages` }}
               </p>
               <UButton
                 label="Show all enquiries"
@@ -260,8 +262,7 @@ async function openStudio() {
               heading="Enquiries"
               :site-id="siteId"
               audience="portal"
-              :form-id="enquiryFilter?.formId"
-              :page-route="enquiryFilter?.pageRoute"
+              :placements="enquiryFilter?.placements"
             />
           </template>
         </div>

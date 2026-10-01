@@ -1,7 +1,8 @@
 import { authorizePageStudioBusinessContent, PageStudioBusinessContentError as SettingsError, type ContentAuthorityRequest } from './businessContent'
 import { getPageStudioDocument } from './documents'
 import { samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
-import { FormSettingsEditSchema, FormSettingsReadSchema, FormSettingsRecordSchema, type FormSettingsState } from '~~/shared/pageStudio/formSettings'
+import { FormSettingsEditSchema, FormSettingsReadSchema, FormSettingsRecordSchema, sameFormSettingsIdentity, type FormSettingsState } from '~~/shared/pageStudio/formSettings'
+import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
 import { validateFormOutcomeFields } from '~~/shared/pageStudio/formOutcomes'
 
 interface Dependencies {
@@ -17,11 +18,12 @@ export async function operateFormSettings(request: ContentAuthorityRequest, iden
   const authorize = deps.authorize ?? authorizePageStudioBusinessContent
   // This is operational draft configuration, not a legacy CMS-content write.
   const before = await authorize(request, writing, { policyOnly: true })
-  const key = FormSettingsReadSchema.safeParse({ scope: before.scope, ...identity })
-  if (!key.success) throw invalid('Invalid form selection')
   const document = await (deps.document ?? getPageStudioDocument)(before.scope.tenantId, request.siteId, request.env.PAGE_STUDIO_CHECKPOINTS as Parameters<typeof getPageStudioDocument>[2])
-  const form = document.studio?.pages.find(page => page.id === identity.pageId)?.forms.find(item => item.id === identity.formId)
+  const entry = document.studio && formCatalogue(document.studio.pages, document.studio.formLibrary).find(item => item.placements.some(placement => placement.pageId === identity.pageId && placement.formId === identity.formId))
+  const form = entry?.form
   if (!form || !document.studio || !form.fields) throw new SettingsError('FORM_NOT_FOUND', 404, 'The saved form is not available')
+  const key = FormSettingsReadSchema.safeParse({ scope: before.scope, ...(entry?.definitionId ? { definitionId: entry.definitionId } : identity) })
+  if (!key.success) throw invalid('Invalid form selection')
   const current = await authorize(request, writing, { policyOnly: true })
   if (!samePageStudioContentScope(before.scope, current.scope)) throw new SettingsError('FORM_SETTINGS_DENIED', 403, 'Form settings access denied')
   const service = request.env.PAGE_STUDIO_CONTENT_ROUTER as { readFormSettingsDraft?: (input: unknown) => Promise<unknown>, writeFormSettingsDraft?: (input: unknown) => Promise<unknown> } | undefined
@@ -57,7 +59,7 @@ export async function operateFormSettings(request: ContentAuthorityRequest, iden
   if (!samePageStudioContentScope(before.scope, after.scope)) throw new SettingsError('FORM_SETTINGS_DENIED', 403, 'Form settings access denied')
   if (value === null && !writing) return { record: null, canEdit: after.canEdit, activation: 'draft_only' }
   const record = FormSettingsRecordSchema.safeParse(value)
-  if (!record.success || !samePageStudioContentScope(record.data.scope, before.scope) || record.data.formId !== identity.formId || record.data.pageId !== identity.pageId
+  if (!record.success || !samePageStudioContentScope(record.data.scope, before.scope) || !sameFormSettingsIdentity(record.data, key.data)
     || (proposed && (record.data.revision !== proposed.expectedRevision + 1 || record.data.actorId !== request.actor.actorId || record.data.checkpointId !== proposed.checkpointId || JSON.stringify(record.data.settings) !== JSON.stringify(proposed.settings)))) throw unavailable()
   return { record: record.data, canEdit: after.canEdit, activation: 'draft_only' }
 }
