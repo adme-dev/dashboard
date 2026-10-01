@@ -60,8 +60,9 @@ store enquiry configuration in browser storage or an unscoped agency table.
 
 ## Implemented local slice — 1 October 2026
 
-Slice 1 now exposes the eight real Fantasy Limo forms, their saved fields and
-placement, draft messages, fixed same-site redirects and ordered conditions.
+Slice 1 initially exposed the eight real Fantasy Limo form placements, their saved
+fields, draft messages, fixed same-site redirects and ordered conditions. The later
+shared adoption checkpoint below consolidates them into four definitions.
 Preview evaluates example answers locally without submitting an enquiry. Draft
 writes use scoped customer storage, optimistic revision checks and checkpoint
 validation. Unsaved changes are protected on navigation; conflicts preserve edits
@@ -219,11 +220,11 @@ independent form. Approval/publication validation rejects unknown or cross-site
 references and silent independent copies without create-new intent. Prompts may
 explain the rule but are not its enforcement boundary.
 
-Implementation evidence: Studio `packages/protocol/src/page.ts` currently defines
-forms inside each page; `packages/protocol/src/validation.ts` validates leadForm
-references only against that page's forms. Shared-definition identity and legacy
-adoption therefore precede the email-builder storage rollout. Do not merely group
-labels or copy settings between separate IDs and call reuse complete.
+Implementation evidence: Studio `packages/protocol/src/page.ts` now supports the
+optional shared form library, and protocol validation enforces each adopted inline
+form as a projection of its definition. The typed operations and AI acceptance
+guards enforce reuse. The shared adoption below precedes email-builder storage;
+this is shared identity and persistence, not label grouping or copying settings.
 
 Required tests: AI/manual placement of an existing form produces another reference
 and no new definition; explicit independent duplication produces a new identity;
