@@ -187,3 +187,54 @@ The native receipt comparison needs an explicit projection: retain runtime pins
 in operation identity, but omit them from the physical storage receipt without
 weakening strict receipt validation. Database/predecessor/runtime discovery must
 remain server-owned. See Studio `docs/architecture/form-drafts-hosted-upgrade.md`.
+
+## Continued implementation — independent form runtime
+
+The form-compatible runtime now has its own immutable coordinator record, generated
+script identity, policy, predecessor snapshot and provider etag. Original resource
+and first-CMS generation records remain unchanged. The selected runtime and
+effective-worker SQL view agree; an incomplete or disabled form successor withholds
+routing instead of silently falling back. Provider verification checks both the
+original CMS runtime and successor. Upload recovery inspects the retained artifact;
+an uncertain absent upload is not retried. No form RPC capability is granted here.
+
+Twenty-three runtime tests cover selection, immutable history, duplicate requests,
+lost/uncertain uploads, provider drift, changed scope/actor, lease expiry, SQL-boundary
+database-clock expiry, predecessor/database changes, final hashing races and native
+authorization revocation. Independent review's database-clock fence and database
+race fixture findings were fixed; the final review found no remaining blockers.
+
+**Release prerequisite:** apply coordinator migration `0012_form_drafts_runtimes.sql`
+after earlier migrations before deploying this router/provisioning source. All
+runtime selection now queries the new table, including sites without a successor.
+The migration has run in disposable SQLite and real D1 regression fixtures only;
+no hosted migration, runtime upload, customer database change or deployment occurred.
+The deployed router remains `0101046`; Dashboard preview remains `fb1e1b610`.
+
+Next: retain and authorize the initiating runtime request under the original or
+explicitly recovered native customer session, before creating a schema intent with
+the verified successor identity/digest/etag. Native discovery must remain server-owned;
+do not invent runtime pins before the successor exists or accept them from a browser.
+Then attach current form receipts to hosted route discovery and enable all six draft
+RPCs only with installed storage and selected-runtime evidence. The synthetic staging
+entitlement and hosted save/reload/conflict/isolation acceptance remain outstanding.
+
+Verification: build (28 tasks), typecheck (44 plus security types) and all 40 package
+test tasks pass, including 1,023 business-worker and 895 sandbox tests. Security
+retains the known staging-route-count assertion (35 pass/1 fail). Logs use
+`customer-cms-demo/private/forms-runtime-{build,types,tests,lint}.log`.
+Full lint passed all 1,530 files with no fixes.
+All 48 action-runtime tests also pass when run separately (the known security
+assertion stops the root test command before this final stage).
+
+Native integration pointers: Dashboard `customerEditorSessionHttp.ts` delegates
+setup to `customerSchemaUpgrade.ts`; `schemaUpgradeAuthority.ts` routes native
+callbacks. Studio `provisioning-worker.ts` performs server-owned discovery and
+delegates execution to sandbox `provisioning-executor-worker.ts`, which loads
+bounded runtime bytes from R2. Extend paired strict contracts and recovery tests.
+Keep the form transition separate from `customer-runtime-policy.ts`'s existing
+first-generation policy, whose three older upgrades intentionally share one digest.
+
+Studio checkpoint `cc22110` is pushed. Its normal pre-commit check passed all
+1,530 files with no fixes. Both implementations remain on their documented feature
+branches; no merge or hosted deployment occurred in this slice.

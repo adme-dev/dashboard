@@ -56,9 +56,11 @@ installer/readback passes nine SQLite tests. The private retained coordinator no
 passes 17 real D1 tests for recovery, leases, cancellation, identity and database
 fencing. Exact form-extension compatibility is now implemented in collection,
 workflow, staging and actual CMS binding checks; 86 focused tests pass, including
-a real Worker read of existing CMS content after form installation. Hosted setup
-remains unwired. Verified runtime successor selection, native customer admission
-and scoped RPC capability remain the next work.
+a real Worker read of existing CMS content after form installation. A separately
+retained runtime successor, provider inspection and matching routing selection are
+now implemented with 23 new runtime tests. Hosted setup remains unwired. Native
+customer admission and scoped RPC capability remain the next work. Coordinator
+migration 0012 must precede any deployment of the new routing code.
 
 ## Remaining form and email work
 
@@ -104,8 +106,8 @@ end-to-end in this standalone demo, not necessarily zero code exists.
   Branch `feat/standalone-site-workspace`; deployed implementation `fb1e1b610`.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
-  Branch `feat/customer-form-settings-drafts`; storage compatibility `dd93e85`
-  (private coordinator `508981e`, installer `75e8a31`);
+  Branch `feat/customer-form-settings-drafts`; runtime successor `cc22110`
+  (storage compatibility `dd93e85`, private coordinator `508981e`, installer `75e8a31`);
   deployed router remains `0101046`.
 - Both feature branches are pushed. Fetch and check divergence before continuing;
   do not implement in the unrelated dirty Dashboard root or deploy a stale branch.
