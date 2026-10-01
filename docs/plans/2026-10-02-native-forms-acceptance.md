@@ -1,7 +1,8 @@
 # Native customer forms: integration and hosted acceptance
 
-Status: prepared from source on 2 October 2026; execution pending. This is a runbook
-and implementation plan, not evidence that the customer journey passes.
+Status: implementation in progress on 2 October 2026. Current native authority is
+reviewed and committed (`6c9e722a2`); HTTP adapters have passed independent review. This is a
+runbook and implementation plan, not evidence that the customer journey passes.
 See [deployed backend receipt](2026-10-02-native-forms-staging-receipt.md).
 
 ## Correction to the previous checkpoint
@@ -30,7 +31,9 @@ this gap. Keep Fantasy Limo's invited-client demo working through its existing p
 
 ## Next implementation: native CMS connection
 
-These are planned tasks, not completed work. No new schema or route is claimed here.
+Task 1 is complete with 44 real local PostgreSQL tests and independent review.
+Task 2 is reviewed with 98 focused tests and 69 local PostgreSQL cases passing.
+Tasks 3–6 remain pending; no hosted native Forms acceptance is claimed.
 
 1. Add a dedicated current-native-customer authority adapter. Derive identity and
    workspace from the native session and completed setup; derive site/environment

@@ -87,8 +87,12 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
       exact retained site/entitlement checks; 44 local PostgreSQL cases pass and
       independent review approved. HTTP/UI connection remains below.
 
-- [ ] Connect self-service native customer login and roles to the Forms dashboard
-      and draft APIs; preserve the invited-client path.
+- [x] Native customer workspace/draft APIs and safe template/media previews;
+      shared validation preserves invited-client routes. Independent review approved;
+      98 focused tests and 69 local PostgreSQL cases pass (including 44 authority
+      and 19 portal regressions). Dedicated staging Forms gate remains closed.
+- [ ] Connect the native overview and Forms screen to those native APIs; preserve
+      the invited-client UI and verify end-to-end browser behavior.
 - [ ] Implement and review the private staging activation caller, then execute the
       two-customer hosted acceptance matrix.
 
@@ -131,15 +135,17 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
-  Branch `feat/standalone-site-workspace`; deployed implementation `fb1e1b610`.
+  Branch `feat/standalone-site-workspace`; deployed implementation `5b9b978e0`.
+  Current native authority checkpoint `6c9e722a2` is pushed; HTTP/UI work follows.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
-  Branch `feat/customer-form-settings-drafts`; runtime successor `cc22110`
-  (storage compatibility `dd93e85`, private coordinator `508981e`, installer `75e8a31`);
-  deployed router remains `0101046`.
+  Branch `feat/customer-form-settings-drafts`; deployed private executor, coordinator
+  and router source `e26199556`. Exact service versions are in the staging receipt.
 - Previous checkpoints are pushed; native integration has current uncommitted work.
-  The Studio integration plan and its `.superpowers/sdd/2026-10-02-form-native-integration/`
-  ledger track task ownership and review status. Fetch/check divergence before continuing;
+  The Dashboard integration plan and its
+  `.superpowers/sdd/2026-10-02-native-forms-acceptance/` ledger track current task
+  ownership and review status; the earlier Studio integration ledger records the
+  completed private backend work. Fetch/check divergence before continuing;
   do not implement in the unrelated dirty Dashboard root or deploy a stale branch.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
   Restart with that directory's `start.sh`; do not start a second server on port 3044.

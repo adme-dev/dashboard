@@ -16,7 +16,7 @@ describe('standalone media content', () => {
     await expect(readStandaloneMedia(input, assetId, deps)).resolves.toMatchObject({ body: deps.body, size: 4, mediaType: 'image/jpeg' })
     expect(deps.bucket.get).toHaveBeenCalledWith(row.object_key)
     expect(deps.query.mock.calls[0]?.[1]).toEqual(['tenant', input.clientId, input.siteId, assetId])
-    expect(deps.authorize).toHaveBeenCalledTimes(2)
+    expect(deps.authorize).toHaveBeenCalledTimes(4)
     expect(deps.query).toHaveBeenCalledTimes(2)
   })
   it('does not read storage when the customer has no access', async () => {
@@ -33,7 +33,7 @@ describe('standalone media content', () => {
   })
   it('cancels the stream if membership is revoked during storage read', async () => {
     const deps = dependencies()
-    deps.authorize.mockResolvedValueOnce(scope).mockRejectedValueOnce({ statusCode: 404 })
+    deps.authorize.mockResolvedValueOnce(scope).mockResolvedValueOnce(scope).mockRejectedValueOnce({ statusCode: 404 })
     await expect(readStandaloneMedia(input, assetId, deps)).rejects.toMatchObject({ statusCode: 404 })
     expect(deps.cancel).toHaveBeenCalledOnce()
   })

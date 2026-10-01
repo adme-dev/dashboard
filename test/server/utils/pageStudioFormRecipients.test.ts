@@ -8,7 +8,7 @@ const settings = { recipients: ['team@example.test'], overrides: [{ definitionId
 const edit = { checkpointId: 'checkpoint_one', expectedRevision: 0, settings }
 function setup() {
   const authorize = vi.fn().mockResolvedValue({ scope, canEdit: true })
-  const document = vi.fn().mockResolvedValue({ studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
+  const document = vi.fn().mockResolvedValue({ id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId }, studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
   const service = { readFormRecipientsDraft: vi.fn().mockResolvedValue(null), writeFormRecipientsDraft: vi.fn().mockImplementation(async ({ expectedRevision, ...input }) => ({ ...input, revision: expectedRevision + 1, updatedAt: '2026-10-01T00:00:00.000Z' })) }
   const request = { actor: { role: 'client', actorId: 'user_one', clientId: scope.clientId }, login: {}, siteId: scope.siteId, env: { PAGE_STUDIO_CONTENT_ROUTER: service } } as unknown as ContentAuthorityRequest
   return { authorize, document, service, request, deps: { authorize, document } }

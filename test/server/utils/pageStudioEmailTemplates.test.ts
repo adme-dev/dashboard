@@ -10,7 +10,7 @@ const template = starterEmailTemplate('team')
 const edit = { checkpointId: 'checkpoint_one', expectedRevision: 0, template }
 function setup() {
   const authorize = vi.fn().mockResolvedValue({ scope, canEdit: true })
-  const document = vi.fn().mockResolvedValue({ site: { name: 'Demo website' }, studio: { checkpointId: edit.checkpointId, pages: [] } })
+  const document = vi.fn().mockResolvedValue({ id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId, name: 'Demo website' }, studio: { checkpointId: edit.checkpointId, pages: [] } })
   const service = { readEmailTemplateDraft: vi.fn().mockResolvedValue(null), writeEmailTemplateDraft: vi.fn().mockImplementation(async ({ expectedRevision, ...input }) => ({ ...input, revision: expectedRevision + 1, updatedAt: '2026-10-01T00:00:00.000Z' })) }
   const request = { actor: { role: 'client', actorId: 'user_one', clientId: scope.clientId }, login: {}, siteId: scope.siteId, env: { PAGE_STUDIO_CONTENT_ROUTER: service } } as unknown as ContentAuthorityRequest
   return { authorize, document, service, request, deps: { authorize, document } }
@@ -41,7 +41,7 @@ describe('customer email template drafts', () => {
   it('saves separate scoped audiences with fresh authority and rejects a stale checkpoint', async () => {
     const s = setup()
     expect(await operateEmailTemplate(s.request, 'customer', edit, s.deps)).toMatchObject({ activation: 'draft_only', record: { audience: 'customer', revision: 1 } })
-    expect(s.authorize).toHaveBeenCalledTimes(3)
+    expect(s.authorize).toHaveBeenCalledTimes(6)
     await expect(operateEmailTemplate(s.request, 'team', { ...edit, checkpointId: 'stale' }, s.deps)).rejects.toMatchObject({ statusCode: 409 })
     expect(s.service.writeEmailTemplateDraft).toHaveBeenCalledTimes(1)
   })
@@ -117,7 +117,7 @@ it('preserves the rendered appearance of a saved legacy template when opening th
 describe('shared-form template overrides', () => {
   function existing() {
     const s = setup()
-    s.document.mockResolvedValue({ site: { name: 'Demo' }, studio: { checkpointId: edit.checkpointId, pages: [], formLibrary: { definitions: [{ id: 'booking', placements: [{ pageId: 'one', formId: 'a' }, { pageId: 'two', formId: 'b' }] }, { id: 'contact', placements: [] }] } } })
+    s.document.mockResolvedValue({ id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId, name: 'Demo' }, studio: { checkpointId: edit.checkpointId, pages: [], formLibrary: { definitions: [{ id: 'booking', placements: [{ pageId: 'one', formId: 'a' }, { pageId: 'two', formId: 'b' }] }, { id: 'contact', placements: [] }] } } })
     const record = { scope, audience: 'team' as const, actorId: 'user_one', checkpointId: edit.checkpointId, revision: 2, updatedAt: '2026-10-01T00:00:00.000Z', template, overrides: [{ definitionId: 'contact', template: { ...template, subject: 'Contact only' } }] }
     s.service.readEmailTemplateDraft.mockResolvedValue(record)
     return { ...s, record }
@@ -165,7 +165,7 @@ describe('shared-form template overrides', () => {
 
 it('shows and persists the same initial website design when the first save is a form override', async () => {
   const s = setup()
-  s.document.mockResolvedValue({ studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
+  s.document.mockResolvedValue({ id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId }, studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
   const initial = prepareEmailTemplate(null, 'team')
   const inherited = effectiveEmailTemplate(null, 'team', 'booking')
   expect(inherited).toEqual(initial)
@@ -180,7 +180,7 @@ it('bounds aggregate UTF-8 records before dispatching a customer-storage write',
   const large = { ...template, blocks: Array.from({ length: 30 }, (_, index) => ({ id: `text_${index}`, type: 'text' as const, text: 'a'.repeat(8000) })) }
   const overrides = Array.from({ length: 5 }, (_, index) => ({ definitionId: `form_${index}`, template: large }))
   const s = setup()
-  s.document.mockResolvedValue({ studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
+  s.document.mockResolvedValue({ id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId }, studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
   s.service.readEmailTemplateDraft.mockResolvedValue({ scope, audience: 'team', actorId: 'user_one', checkpointId: edit.checkpointId, revision: 1, updatedAt: '2026-10-01T00:00:00.000Z', template: large, overrides })
   expect(EmailTemplateWriteSchema.safeParse({ ...edit, actorId: 'user_one', scope, audience: 'team', template: large, overrides: [...overrides, { definitionId: 'booking', template: large }] }).success).toBe(false)
   await expect(operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 1, template: large }, s.deps, 'booking')).rejects.toMatchObject({ statusCode: 400 })
@@ -203,7 +203,7 @@ it('rejects unavailable image references before writing and rechecks permission 
 
 it('allows reset without reading stale images in the inherited template', async () => {
   const s = setup()
-  s.document.mockResolvedValue({ studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
+  s.document.mockResolvedValue({ id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId }, studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
   const media = vi.fn().mockRejectedValue(new Error('Must not read inherited images during reset'))
   await operateEmailTemplate(s.request, 'team', { ...edit, template: null }, { ...s.deps, media }, 'booking')
   expect(media).not.toHaveBeenCalled()

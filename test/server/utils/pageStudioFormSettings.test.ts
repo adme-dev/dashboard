@@ -8,7 +8,7 @@ const body = { checkpointId: 'checkpoint_one', expectedRevision: 0, settings: { 
 function setup() {
   const authority = { scope, canEdit: true }
   const authorize = vi.fn().mockResolvedValue(authority)
-  const document = vi.fn().mockResolvedValue({ studio: { checkpointId: 'checkpoint_one', pages: [
+  const document = vi.fn().mockResolvedValue({ id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId }, studio: { checkpointId: 'checkpoint_one', pages: [
     { id: identity.pageId, route: '/', visibility: 'public', forms: [{ id: identity.formId, fields: [{ id: 'name', type: 'text' }] }] },
     { id: 'page_thanks', route: '/thank-you', visibility: 'hidden', forms: [] }
   ] } })

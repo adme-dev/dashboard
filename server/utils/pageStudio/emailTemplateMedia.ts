@@ -43,23 +43,28 @@ async function readBounded(image: Awaited<ReturnType<typeof readStandaloneMedia>
 /** Never fetches a user URL. Reuses scoped, scanned R2 asset admission and embeds
  * bounded raster bytes so the sandboxed iframe needs no authenticated image URL. */
 export async function resolveEmailTemplateMedia(request: ContentAuthorityRequest, template: EmailTemplate, deps: { read?: typeof readStandaloneMedia } = {}) {
+  return resolveScopedEmailTemplateMedia(template, async (id) => {
+    if (request.actor.role !== 'client' || !request.actor.clientId) throw createError({ statusCode: 403, statusMessage: 'Website image access denied' })
+    return (deps.read ?? readStandaloneMedia)({ siteId: request.siteId, clientId: request.actor.clientId, userId: request.actor.actorId, tokenHash: request.login.tokenHash }, id, { bucket: request.env.MEDIA_BUCKET as NonNullable<Parameters<typeof readStandaloneMedia>[2]>['bucket'] })
+  })
+}
+
+export async function resolveScopedEmailTemplateMedia(template: EmailTemplate, readAsset: (assetId: string) => Promise<Awaited<ReturnType<typeof readStandaloneMedia>>>, recheck: () => Promise<unknown> = async () => {}) {
   const references = emailTemplateImages(template)
   const images: Record<string, string> = {}
   const warnings: string[] = []
-  if (!references.length) return { images, warnings }
-  if (request.actor.role !== 'client' || !request.actor.clientId) throw createError({ statusCode: 403, statusMessage: 'Website image access denied' })
-  const input = { siteId: request.siteId, clientId: request.actor.clientId, userId: request.actor.actorId, tokenHash: request.login.tokenHash }
-  const read = deps.read ?? readStandaloneMedia
   let total = 0
   for (const id of new Set(references.map(image => image.assetId))) {
     try {
-      const image = await read(input, id, { bucket: request.env.MEDIA_BUCKET as NonNullable<Parameters<typeof readStandaloneMedia>[2]>['bucket'] })
+      const image = await readAsset(id)
       const bytes = await readBounded(image)
+      await recheck()
       const renderedBytes = bytes.byteLength * references.filter(item => item.assetId === id).length
       if (total + renderedBytes > EMAIL_IMAGES_MAX_BYTES) throw unavailable()
       total += renderedBytes
       images[id] = `data:${image.mediaType};base64,${Buffer.from(bytes).toString('base64')}`
     } catch (error) {
+      await recheck()
       if ((error as { statusCode?: number })?.statusCode !== 404) throw error
       warnings.push('An image is unavailable or too large. Choose a current website image up to 512 KB (2 MB total).')
     }

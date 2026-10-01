@@ -51,13 +51,15 @@ export async function readStandaloneSiteWorkspace(input: StandaloneSiteInput, de
   if (current.tenant_id !== scope.tenant_id || document.id !== input.siteId || document.site.id !== input.siteId || document.site.clientId !== input.clientId) {
     throw createError({ statusCode: 503, statusMessage: 'Website changed. Refresh before continuing.' })
   }
-  return { canEdit: current.role === 'editor', document, assets: assets.map((asset) => {
-    const renditions = Array.isArray(asset.renditions) ? asset.renditions : []
-    const original = renditions.find(value => value.kind === 'original') ?? renditions[0]
-    return { id: String(asset.id), altText: typeof asset.altText === 'string' ? asset.altText : null,
-      mediaType: String(asset.mediaType), publicationStatus: String(asset.publicationStatus),
-      previewAvailable: asset.scanStatus === 'clean' && asset.publicationStatus !== 'archived' && ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(String(asset.mediaType)),
-      fileName: typeof original?.fileName === 'string' ? original.fileName : null,
-      size: typeof original?.size === 'number' ? original.size : null }
-  }) }
+  return { canEdit: current.role === 'editor', document, assets: assets.map(safePageStudioAssetSummary) }
+}
+
+export function safePageStudioAssetSummary(asset: Record<string, unknown>): StandaloneSiteWorkspace['assets'][number] {
+  const renditions = Array.isArray(asset.renditions) ? asset.renditions as Array<Record<string, unknown>> : []
+  const original = renditions.find(value => value.kind === 'original') ?? renditions[0]
+  return { id: String(asset.id), altText: typeof asset.altText === 'string' ? asset.altText : null,
+    mediaType: String(asset.mediaType), publicationStatus: String(asset.publicationStatus),
+    previewAvailable: asset.scanStatus === 'clean' && asset.publicationStatus !== 'archived' && ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(String(asset.mediaType)),
+    fileName: typeof original?.fileName === 'string' ? original.fileName : null,
+    size: typeof original?.size === 'number' && Number.isSafeInteger(original.size) && original.size >= 0 ? original.size : null }
 }
