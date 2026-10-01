@@ -13,7 +13,16 @@ const websiteUrl = `${formSiteApi(props.siteId, props.apiAudience)}/email-templa
 const url = props.definitionId ? `${formSiteApi(props.siteId, props.apiAudience)}/forms/${encodeURIComponent(props.definitionId)}/email-templates/${props.audience}` : websiteUrl
 const customised = ref(false)
 const resetOpen = ref(false)
-const snapshot = () => JSON.stringify({ template: template.value, customised: customised.value })
+const removedOverrideIds = ref<string[]>([])
+const obsoleteTemplates = computed(() => data.value?.record?.overrides?.filter(item => data.value?.removedDefinitionIds?.includes(item.definitionId)) ?? [])
+const snapshot = () => JSON.stringify({ template: template.value, customised: customised.value, removedOverrideIds: removedOverrideIds.value })
+function toggleRemoval(definitionId: string) {
+  if (props.definitionId || !editable.value || saving.value || uncertain.value) return
+  if (!obsoleteTemplates.value.some(item => item.definitionId === definitionId)) return
+  removedOverrideIds.value = removedOverrideIds.value.includes(definitionId)
+    ? removedOverrideIds.value.filter(id => id !== definitionId)
+    : [...removedOverrideIds.value, definitionId]
+}
 const inheritedCount = computed(() => props.forms.filter(form => !data.value?.record?.overrides?.some(item => item.definitionId === form.key)).length)
 function customise() {
   customised.value = true
@@ -184,6 +193,7 @@ function moveBlock(index: number, direction: number) {
   template.value.blocks = blocks
 }
 function resetFromSaved() {
+  removedOverrideIds.value = []
   expectedRevision.value = data.value?.record?.revision ?? 0
   recording = false
   const override = data.value?.record?.overrides?.find(item => item.definitionId === props.definitionId)
@@ -227,7 +237,12 @@ async function save() {
   saveError.value = ''
   savedNotice.value = ''
   try {
-    const result = await $fetch<EmailTemplateState>(url, { method: 'PUT', body: { checkpointId: props.checkpointId, expectedRevision: expectedRevision.value, template: props.definitionId && !customised.value ? null : parsed.data } })
+    // Opening a legacy template fills optional editor fields. Cleanup alone must
+    // preserve the saved website design exactly, including absent fields.
+    const savedTemplate = data.value?.record?.template
+    const unchangedWebsite = !props.definitionId && savedTemplate && JSON.stringify(template.value) === JSON.stringify(prepareEmailTemplate(savedTemplate, props.audience))
+    const nextTemplate = unchangedWebsite ? savedTemplate : parsed.data
+    const result = await $fetch<EmailTemplateState>(url, { method: 'PUT', body: { checkpointId: props.checkpointId, expectedRevision: expectedRevision.value, template: props.definitionId && !customised.value ? null : nextTemplate, ...(!props.definitionId && removedOverrideIds.value.length ? { removeOverrideDefinitionIds: removedOverrideIds.value } : {}) } })
     if (!active) return
     data.value = result
     resetFromSaved()
@@ -687,6 +702,35 @@ async function discardAndReload() {
           </div>
         </section>
       </div>
+      <section v-if="!definitionId && !error && obsoleteTemplates.length" aria-label="Templates for removed forms" class="space-y-3 border-t border-default pt-5">
+        <div>
+          <h4 class="text-sm font-medium text-highlighted">
+            Templates for removed forms
+          </h4>
+          <p class="mt-1 text-sm text-muted">
+            These forms are no longer in your website. Their custom templates are kept until you remove them and save this draft.
+          </p>
+        </div>
+        <div v-for="item in obsoleteTemplates" :key="item.definitionId" class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-elevated px-4 py-3">
+          <div class="min-w-0 flex-1 basis-48">
+            <p class="break-words text-sm font-medium" :class="removedOverrideIds.includes(item.definitionId) ? 'text-muted line-through' : 'text-highlighted'">
+              {{ item.template.subject }}
+            </p>
+            <p class="mt-1 break-words text-xs text-muted">
+              {{ removedOverrideIds.includes(item.definitionId) ? 'Will be removed when you save' : `Removed form: ${item.definitionId}` }}
+            </p>
+          </div>
+          <UButton
+            :label="removedOverrideIds.includes(item.definitionId) ? 'Undo removal' : 'Remove template'"
+            :icon="removedOverrideIds.includes(item.definitionId) ? 'i-lucide-undo-2' : 'i-lucide-trash-2'"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            :disabled="!editable || saving || uncertain"
+            @click="toggleRemoval(item.definitionId)"
+          />
+        </div>
+      </section>
       <UAlert v-if="saveError" color="error" :title="saveError" />
       <p v-if="savedNotice" role="status" class="text-sm text-success">
         {{ savedNotice }}

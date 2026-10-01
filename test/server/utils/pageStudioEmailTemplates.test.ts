@@ -161,6 +161,51 @@ describe('shared-form template overrides', () => {
     await expect(operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 2 }, s.deps, 'booking')).rejects.toMatchObject({ statusCode: 503 })
     expect(s.service.writeEmailTemplateDraft).toHaveBeenCalledTimes(1)
   })
+  it('lists only overrides for deleted definitions, retaining unused shared forms', async () => {
+    const s = existing()
+    s.record.overrides.push({ definitionId: 'removed', template })
+    const result = await operateEmailTemplate(s.request, 'team', undefined, s.deps)
+    expect(result.removedDefinitionIds).toEqual(['removed'])
+    expect(result.record?.overrides).toEqual(s.record.overrides)
+    expect(s.service.writeEmailTemplateDraft).not.toHaveBeenCalled()
+  })
+  it('removes only explicitly selected obsolete overrides while preserving defaults and other templates', async () => {
+    const s = existing()
+    s.record.overrides.push({ definitionId: 'removed', template }, { definitionId: 'keep_removed', template })
+    const result = await operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 2, removeOverrideDefinitionIds: ['removed'] }, s.deps)
+    expect(result.record?.revision).toBe(3)
+    expect(result.record?.template).toEqual(template)
+    expect(result.record?.overrides?.map(item => item.definitionId)).toEqual(['contact', 'keep_removed'])
+    expect(result.removedDefinitionIds).toEqual(['keep_removed'])
+    expect(s.service.writeEmailTemplateDraft.mock.calls[0]![0]).not.toHaveProperty('removeOverrideDefinitionIds')
+  })
+  it.each([['contact'], ['unknown'], ['removed', 'removed']])('rejects unsafe cleanup selection %j without writing', async (...ids) => {
+    const s = existing()
+    s.record.overrides.push({ definitionId: 'removed', template })
+    await expect(operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 2, removeOverrideDefinitionIds: ids }, s.deps)).rejects.toMatchObject({ statusCode: 400 })
+    expect(s.service.writeEmailTemplateDraft).not.toHaveBeenCalled()
+  })
+  it('keeps cleanup website-only and enforces stale revisions and checkpoint conflicts', async () => {
+    const s = existing()
+    s.record.overrides.push({ definitionId: 'removed', template })
+    const cleanup = { ...edit, expectedRevision: 2, removeOverrideDefinitionIds: ['removed'] }
+    await expect(operateEmailTemplate(s.request, 'team', cleanup, s.deps, 'contact')).rejects.toMatchObject({ statusCode: 400 })
+    await expect(operateEmailTemplate(s.request, 'team', { ...cleanup, expectedRevision: 1 }, s.deps)).rejects.toMatchObject({ statusCode: 409 })
+    await expect(operateEmailTemplate(s.request, 'team', { ...cleanup, checkpointId: 'stale' }, s.deps)).rejects.toMatchObject({ statusCode: 409 })
+    expect(s.service.writeEmailTemplateDraft).not.toHaveBeenCalled()
+  })
+  it('cleans obsolete overrides without resolving unchanged default images, but validates changed defaults', async () => {
+    const s = existing()
+    s.record.overrides.push({ definitionId: 'removed', template })
+    const media = vi.fn().mockResolvedValue({ images: {}, warnings: ['The saved image was removed'] })
+    const cleanup = { ...edit, expectedRevision: 2, removeOverrideDefinitionIds: ['removed'] }
+    const result = await operateEmailTemplate(s.request, 'team', cleanup, { ...s.deps, media })
+    expect(result.record?.template).toEqual(s.record.template)
+    expect(media).not.toHaveBeenCalled()
+    await expect(operateEmailTemplate(s.request, 'team', { ...cleanup, template: { ...template, subject: 'Changed' } }, { ...s.deps, media })).rejects.toMatchObject({ statusCode: 400 })
+    expect(media).toHaveBeenCalledOnce()
+    expect(s.service.writeEmailTemplateDraft).toHaveBeenCalledOnce()
+  })
 })
 
 it('shows and persists the same initial website design when the first save is a form override', async () => {

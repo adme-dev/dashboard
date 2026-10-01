@@ -37,6 +37,14 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Current checkpoint / next action
 
+**2 October local follow-up:** explicit cleanup of custom email templates whose
+shared form was removed is implemented and independently reviewed. Website
+defaults list only server-confirmed removed definitions; stage Remove, Undo or
+save with revision protection. Existing unused forms retain their templates.
+The local browser/API checks pass, including exact default preservation and
+390px layout. See [cleanup receipt](2026-10-02-email-template-cleanup.md).
+This follow-up has not been deployed; the preview source below is unchanged.
+
 **2 October preview:** native customer authority, APIs and Forms UI are implemented,
 reviewed and deployed (`1d44f4ee`, source `a0e369591`). Signed-in CMS/QR navigation
 and the native unavailable state pass in Chrome. Customer activation stays closed.
@@ -109,8 +117,9 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
 - [x] Website team/customer template defaults (draft only).
 - [x] Vehicle Marketplace-inspired compact block palette and debounced safe preview.
 - [x] Explicit per-form template overrides and reset to website default.
-- [ ] Explicit cleanup for overrides whose shared form was removed; preserve them
-      until the customer reviews them.
+- [x] Explicit cleanup for overrides whose shared form was removed; preserve them
+      until the customer reviews and saves the cleanup. Local browser/API acceptance
+      and independent review pass; hosted release remains pending.
 - [x] Structured template editing, subject/preheader, brand styling and
       desktop/mobile preview.
 - [ ] Stored template revision-history/restore UI (session undo/redo is complete).
@@ -167,7 +176,7 @@ end-to-end in this standalone demo, not necessarily zero code exists.
   Preserve the private directory and media; do not commit credentials or copied data.
 - Recipient sample revision 4: `office@example.test`, with Contact override
   `contact@example.test`. These are inert demo addresses, not approved recipients.
-- Template samples: team revision 2; customer revision 14 with a Booking enquiry override for five pages;
+- Template samples: team revision 6 (same design as revision 2 after disposable cleanup acceptance); customer revision 14 with a Booking enquiry override for five pages;
   website default has a 200px logo and 520px photo. Contact details are explicitly fictional.
   Evidence: `customer-cms-demo/check-templates.mjs` and
   `customer-cms-demo/fantasy-limo-email-templates.png`.

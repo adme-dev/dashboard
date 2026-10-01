@@ -63,12 +63,15 @@ export function validateTemplateVariables(template: EmailTemplate): string[] {
 export const ValidatedEmailTemplateSchema = EmailTemplateSchema.refine(template => !validateTemplateVariables(template).length, 'Use only the supported website and form name variables')
 export const EmailTemplateReadSchema = z.object({ scope: PageStudioContentScopeSchema, audience: EmailAudienceSchema }).strict()
 export const EmailTemplateEditSchema = z.object({ checkpointId: Identity, expectedRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1), template: ValidatedEmailTemplateSchema }).strict()
+export const WebsiteEmailTemplateEditSchema = EmailTemplateEditSchema.extend({
+  removeOverrideDefinitionIds: z.array(Identity).max(100).refine(ids => new Set(ids).size === ids.length, 'Choose each removed form only once').optional()
+}).strict()
 export const EmailTemplateOverridesSchema = z.array(z.object({ definitionId: Identity, template: ValidatedEmailTemplateSchema }).strict()).max(100).refine(items => new Set(items.map(item => item.definitionId)).size === items.length, 'Each form can have only one template override')
 export const EmailTemplateOverrideEditSchema = EmailTemplateEditSchema.extend({ template: ValidatedEmailTemplateSchema.nullable() }).strict()
 export const emailTemplateRecordFits = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 1_500_000
 export const EmailTemplateWriteSchema = EmailTemplateEditSchema.extend({ overrides: EmailTemplateOverridesSchema.optional(), scope: PageStudioContentScopeSchema, audience: EmailAudienceSchema, actorId: Identity }).strict().refine(value => emailTemplateRecordFits({ template: value.template, overrides: value.overrides ?? [] }), 'The combined email templates are too large. Shorten a template before saving.')
 export const EmailTemplateRecordSchema = EmailTemplateReadSchema.extend({ overrides: EmailTemplateOverridesSchema.optional(), checkpointId: Identity, actorId: Identity, revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), updatedAt: z.string().datetime(), template: ValidatedEmailTemplateSchema }).strict().refine(value => emailTemplateRecordFits({ template: value.template, overrides: value.overrides ?? [] }), 'The combined email templates are too large. Shorten a template before saving.')
-export interface EmailTemplateState { activation: 'draft_only', canEdit: boolean, record: z.infer<typeof EmailTemplateRecordSchema> | null }
+export interface EmailTemplateState { activation: 'draft_only', canEdit: boolean, record: z.infer<typeof EmailTemplateRecordSchema> | null, removedDefinitionIds?: string[] }
 export const EmailTemplatePreviewSchema = z.object({ template: ValidatedEmailTemplateSchema, pageId: Identity, formId: Identity }).strict()
 export function starterEmailTemplate(audience: EmailAudience): EmailTemplate {
   return { schemaVersion: 1, subject: audience === 'team' ? 'New submission: {{form.name}} | {{site.name}}' : 'We received your enquiry | {{site.name}}', preheader: audience === 'team' ? 'A new website enquiry is ready to review.' : 'Thank you for getting in touch.', accentColor: '#243047', canvasColor: '#ffffff', backgroundColor: '#f3f4f6', textColor: '#243047', fontFamily: 'MODERN_SANS', blocks: [

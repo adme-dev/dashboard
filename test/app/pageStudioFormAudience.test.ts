@@ -9,6 +9,7 @@ import Media from '~~/app/components/page-studio/EmailMediaPicker.client.vue'
 import { useEmailTemplatePreview } from '~~/app/composables/useEmailTemplatePreview'
 import type { FormApiAudience } from '~~/app/utils/pageStudioFormApi'
 import { defaultFormOutcomes } from '~~/shared/pageStudio/formOutcomes'
+import { starterEmailTemplate } from '~~/shared/pageStudio/emailTemplates'
 
 let app: App, host: HTMLElement
 const readValues = new Map<string, unknown>()
@@ -88,6 +89,53 @@ describe('shared Forms API audience', () => {
       await flush()
     }
   }
+  function obsoleteTemplateFixture() {
+    const template = starterEmailTemplate('team')
+    const state = { canEdit: true, activation: 'draft_only', removedDefinitionIds: ['removed'], record: { revision: 4, template, overrides: [{ definitionId: 'removed', template: { ...template, subject: 'Old booking reply' } }, { definitionId: 'unused_but_saved', template }] } }
+    readValues.set('/api/portal/page-studio/sites/owned/email-templates/team', state)
+    return state
+  }
+  it('stages explicit obsolete template removal with undo and saves only the selected IDs', async () => {
+    const state = obsoleteTemplateFixture()
+    await mount(Template, editorProps())
+    expect(host.textContent).toContain('Old booking reply')
+    expect(host.textContent).not.toContain('unused_but_saved')
+    expect(button('Save template draft').disabled).toBe(true)
+    await click('Remove template')
+    expect(button('Save template draft').disabled).toBe(false)
+    expect(mutate).not.toHaveBeenCalled()
+    await click('Undo removal')
+    expect(button('Save template draft').disabled).toBe(true)
+    await click('Remove template')
+    mutate.mockResolvedValueOnce({ ...state, removedDefinitionIds: [], record: { ...state.record, revision: 5, overrides: state.record.overrides.slice(1) } })
+    await click('Save template draft')
+    expect(mutate).toHaveBeenCalledWith('/api/portal/page-studio/sites/owned/email-templates/team', expect.objectContaining({ method: 'PUT', body: expect.objectContaining({ expectedRevision: 4, removeOverrideDefinitionIds: ['removed'] }) }))
+    expect(mutate.mock.calls[0]![1].body.template).toEqual(state.record.template)
+    expect(host.textContent).not.toContain('Old booking reply')
+  })
+  it('preserves cleanup edits on conflict, does not replay, and clears them on discard', async () => {
+    obsoleteTemplateFixture()
+    await mount(Template, editorProps())
+    await click('Remove template')
+    mutate.mockRejectedValueOnce({ statusCode: 409 })
+    await click('Save template draft')
+    expect(host.textContent).toContain('Your edits are preserved')
+    expect(button('Undo removal').disabled).toBe(true)
+    expect(button('Save template draft').disabled).toBe(true)
+    await click('Save template draft')
+    expect(mutate).toHaveBeenCalledTimes(1)
+    await click('Discard edits and reload')
+    expect(button('Remove template').disabled).toBe(false)
+    expect(button('Save template draft').disabled).toBe(true)
+  })
+  it('prevents read-only template cleanup', async () => {
+    obsoleteTemplateFixture()
+    await mount(Template, { ...editorProps(), canEdit: false })
+    expect(button('Remove template').disabled).toBe(true)
+    await click('Remove template')
+    expect(button('Save template draft').disabled).toBe(true)
+    expect(mutate).not.toHaveBeenCalled()
+  })
   it('keeps the legacy portal workspace editable when both optional props are omitted', async () => {
     const portalProps = Object.fromEntries(Object.entries(props).filter(([key]) => !['apiAudience', 'canEdit'].includes(key)))
     await mount(Workspace, portalProps)

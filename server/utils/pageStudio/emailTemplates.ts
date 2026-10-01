@@ -7,7 +7,7 @@ import type { authorizePageStudioBusinessContent, ContentAuthorityRequest } from
 import type { resolveEmailTemplateMedia } from './emailTemplateMedia'
 import type { getPageStudioDocument } from './documents'
 import { samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
-import { EmailTemplatePreviewSchema, EmailTemplateWriteSchema, EmailTemplateEditSchema, EmailTemplateOverrideEditSchema, defaultWebsiteEmailTemplate, EmailTemplateRecordSchema, EmailAudienceSchema, type EmailTemplateState } from '~~/shared/pageStudio/emailTemplates'
+import { EmailTemplatePreviewSchema, EmailTemplateWriteSchema, WebsiteEmailTemplateEditSchema, EmailTemplateOverrideEditSchema, defaultWebsiteEmailTemplate, EmailTemplateRecordSchema, EmailAudienceSchema, type EmailTemplateState } from '~~/shared/pageStudio/emailTemplates'
 
 interface Dependencies {
   authorize?: typeof authorizePageStudioBusinessContent
@@ -34,17 +34,11 @@ export async function operateTrustedEmailTemplate(context: TrustedFormContext, a
   if (!document.studio) throw unavailable()
   const service = context.service
   if (definitionId !== undefined && !document.studio.formLibrary?.definitions.some(item => item.id === definitionId)) throw new PageStudioBusinessContentError('FORM_NOT_FOUND', 404, 'Choose a saved shared form')
-  const edit = writing ? (definitionId !== undefined ? EmailTemplateOverrideEditSchema : EmailTemplateEditSchema).safeParse(body) : undefined
+  const websiteEdit = writing && definitionId === undefined ? WebsiteEmailTemplateEditSchema.safeParse(body) : undefined
+  const edit = writing && definitionId !== undefined ? EmailTemplateOverrideEditSchema.safeParse(body) : websiteEdit
   if (edit && !edit.success) throw invalid('Check the template fields and variables and try again')
   const proposed = edit?.success ? edit.data : undefined
-  if (proposed) {
-    if (proposed.checkpointId !== document.studio.checkpointId) throw conflict()
-    if (proposed.template) {
-      const media = await context.resolveMedia(proposed.template)
-      await recheckFormAuthority(context, before, writing)
-      if (media.warnings.length) throw invalid(media.warnings[0]!)
-    }
-  }
+  if (proposed && proposed.checkpointId !== document.studio.checkpointId) throw conflict()
 
   await recheckFormAuthority(context, before, writing)
 
@@ -55,19 +49,39 @@ export async function operateTrustedEmailTemplate(context: TrustedFormContext, a
     if (!parsed.success || !samePageStudioContentScope(parsed.data.scope, before.scope) || parsed.data.audience !== parsedAudience.data) throw unavailable()
     return parsed.data
   }
+  const removals = websiteEdit?.success ? websiteEdit.data.removeOverrideDefinitionIds ?? [] : []
+  let head: ReturnType<typeof decode> | null = null
+  if (proposed) {
+    if (!service?.writeEmailTemplateDraft || !service.readEmailTemplateDraft) throw unavailable()
+    let saved: unknown
+    try {
+      saved = await service.readEmailTemplateDraft({ scope: before.scope, audience: parsedAudience.data })
+    } catch {
+      throw unavailable()
+    }
+    await recheckFormAuthority(context, before, writing)
+    head = saved === null ? null : decode(saved)
+    if ((head?.revision ?? 0) !== proposed.expectedRevision) throw conflict()
+    if (removals.some(id => !head?.overrides?.some(item => item.definitionId === id) || document.studio!.formLibrary?.definitions.some(item => item.id === id))) {
+      throw invalid('Only templates for removed forms can be cleared. Reload the saved website and review your selection.')
+    }
+    // Removing unrelated overrides must still work if an unchanged default image
+    // became unavailable. Any actual template edit retains normal media checks.
+    const cleanupOnly = removals.length > 0 && JSON.stringify(proposed.template) === JSON.stringify(head?.template)
+    if (proposed.template && !cleanupOnly) {
+      const media = await context.resolveMedia(proposed.template)
+      await recheckFormAuthority(context, before, writing)
+      if (media.warnings.length) throw invalid(media.warnings[0]!)
+    }
+  }
   try {
     if (proposed) {
       if (!service?.writeEmailTemplateDraft) throw unavailable()
-      if (!service.readEmailTemplateDraft) throw unavailable()
-      const saved = await service.readEmailTemplateDraft({ scope: before.scope, audience: parsedAudience.data })
-      await recheckFormAuthority(context, before, writing)
-      const head = saved === null ? null : decode(saved)
-      if ((head?.revision ?? 0) !== proposed.expectedRevision) throw conflict()
       const overrides = head?.overrides ?? []
       outgoing = definitionId !== undefined
         ? { template: head?.template ?? defaultWebsiteEmailTemplate(parsedAudience.data), overrides: [...overrides.filter(item => item.definitionId !== definitionId), ...(proposed.template ? [{ definitionId, template: proposed.template }] : [])] }
-        : { template: proposed.template!, overrides }
-      const write = EmailTemplateWriteSchema.safeParse({ scope: before.scope, audience: parsedAudience.data, ...proposed, ...outgoing, actorId: before.actorId })
+        : { template: proposed.template!, overrides: overrides.filter(item => !removals.includes(item.definitionId)) }
+      const write = EmailTemplateWriteSchema.safeParse({ scope: before.scope, audience: parsedAudience.data, checkpointId: proposed.checkpointId, expectedRevision: proposed.expectedRevision, ...outgoing, actorId: before.actorId })
       if (!write.success) throw invalid(write.error.issues[0]?.message ?? 'Check your template settings')
       outgoing = { template: write.data.template, overrides: write.data.overrides ?? [] }
       value = await service.writeEmailTemplateDraft(write.data)
@@ -87,7 +101,8 @@ export async function operateTrustedEmailTemplate(context: TrustedFormContext, a
   if (!record.success || !samePageStudioContentScope(record.data.scope, before.scope)
     || record.data.audience !== parsedAudience.data
     || (proposed && (record.data.revision !== proposed.expectedRevision + 1 || record.data.actorId !== before.actorId || record.data.checkpointId !== proposed.checkpointId || JSON.stringify(record.data.template) !== JSON.stringify(outgoing?.template) || JSON.stringify(record.data.overrides ?? []) !== JSON.stringify(outgoing?.overrides)))) throw unavailable()
-  return { record: record.data, canEdit: after.canEdit, activation: 'draft_only' }
+  const removedDefinitionIds = (record.data.overrides ?? []).filter(item => !document.studio!.formLibrary?.definitions.some(form => form.id === item.definitionId)).map(item => item.definitionId)
+  return { record: record.data, canEdit: after.canEdit, activation: 'draft_only', removedDefinitionIds }
 }
 
 export async function previewTrustedEmailTemplate(context: TrustedFormContext, audience: string, body: unknown) {
