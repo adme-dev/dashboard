@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { emailDesigns, styleEmailTemplate, emailStarterLayout, prepareEmailTemplate } from '../../../shared/pageStudio/emailTemplateDesigns'
 import { EmailTemplateSchema, starterEmailTemplate, validateTemplateVariables } from '../../../shared/pageStudio/emailTemplates'
 import { renderCustomerEmailPreview } from '../../../server/utils/pageStudio/emailTemplatePreview'
 import { operateEmailTemplate } from '../../../server/utils/pageStudio/emailTemplates'
@@ -56,4 +57,59 @@ describe('customer email template drafts', () => {
     s.service.readEmailTemplateDraft.mockResolvedValue({ ...record, audience: 'customer', scope, actorId: 'user_one', revision: 1, updatedAt: '2026-10-01T00:00:00.000Z' })
     await expect(operateEmailTemplate(s.request, 'team', undefined, s.deps)).rejects.toThrow()
   })
+})
+
+describe('email business identity', () => {
+  it('stores bounded contact details while rejecting unsafe links and duplicate social platforms', async () => {
+    const identity = { businessName: '{{site.name}}', tagline: 'Travel in comfort', phone: '+61 3 0000 0000', email: 'hello@example.test', address: 'Melbourne\nVictoria', websiteUrl: 'https://example.test', disclaimer: 'Example disclaimer', socials: [{ platform: 'Instagram', url: 'https://instagram.com/example' }] }
+    const withIdentity = { ...template, identity }
+    expect(EmailTemplateSchema.safeParse(withIdentity).success).toBe(true)
+    expect(EmailTemplateSchema.safeParse({ ...withIdentity, identity: { ...identity, websiteUrl: 'javascript:bad()' } }).success).toBe(false)
+    expect(EmailTemplateSchema.safeParse({ ...withIdentity, identity: { ...identity, socials: [...identity.socials, ...identity.socials] } }).success).toBe(false)
+    const s = setup()
+    const saved = await operateEmailTemplate(s.request, 'team', { ...edit, template: withIdentity }, s.deps)
+    expect(saved.record?.template.identity).toEqual(identity)
+  })
+  it('renders header and footer in order, escapes every detail and omits empty contact rows', () => {
+    const identity = { businessName: '{{site.name}}', tagline: '<img src=x>', phone: '03 0000 0000', email: 'hello@example.test', address: 'First line\nSecond line', websiteUrl: 'https://example.test', disclaimer: '<script>bad()</script>', socials: [{ platform: 'Instagram' as const, url: 'https://instagram.com/example' }] }
+    const preview = renderCustomerEmailPreview({ ...template, identity }, { siteName: 'Demo business', formName: 'Contact', fields: [] })
+    expect(preview.html).toContain('&lt;img src=x&gt;')
+    expect(preview.html).toContain('&lt;script&gt;bad()&lt;/script&gt;')
+    expect(preview.html).toContain('Instagram')
+    expect(preview.html).toContain('First line<br>Second line')
+    expect(preview.html.indexOf('Travel in comfort')).toBe(-1)
+    expect(preview.html.indexOf('&lt;img')).toBeLessThan(preview.html.lastIndexOf('New submission: Contact'))
+    expect(preview.html.indexOf('hello@example.test')).toBeGreaterThan(preview.html.lastIndexOf('New submission: Contact'))
+    expect(preview.html).not.toContain('href="https://')
+  })
+})
+
+describe('email starting designs', () => {
+  it('keeps message and identity when applying a visual style', () => {
+    for (const design of emailDesigns) {
+      const styled = styleEmailTemplate(template, design.id)
+      expect(styled.blocks).toEqual(template.blocks)
+      expect(styled.subject).toBe(template.subject)
+      expect(EmailTemplateSchema.safeParse(styled).success).toBe(true)
+    }
+  })
+  it('creates valid audience-specific layouts without confirming a booking', () => {
+    for (const audience of ['team', 'customer'] as const) {
+      for (const kind of ['enquiry', 'booking'] as const) {
+        const layout = emailStarterLayout(audience, kind, template)
+        expect(EmailTemplateSchema.safeParse(layout).success).toBe(true)
+        expect(layout.identity?.businessName).toBe('{{site.name}}')
+        if (audience === 'customer' && kind === 'booking') expect(JSON.stringify(layout.blocks)).toContain('confirmed only when')
+      }
+    }
+  })
+})
+
+it('preserves the rendered appearance of a saved legacy template when opening the editor', () => {
+  const context = { siteName: 'Demo', formName: 'Contact', fields: [] }
+  const edited = prepareEmailTemplate(template, 'team')
+  expect(edited.identity?.businessName).toBe('')
+  expect(renderCustomerEmailPreview(edited, context).html).toBe(renderCustomerEmailPreview(template, context).html)
+  expect(prepareEmailTemplate(null, 'customer').identity?.businessName).toBe('{{site.name}}')
+  expect(prepareEmailTemplate(null, 'customer').blocks.some(block => block.id === 'footer')).toBe(false)
 })

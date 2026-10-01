@@ -14,6 +14,17 @@ const link = z.string().max(2048).url().refine((value) => {
     return false
   }
 }, 'Use a fixed HTTPS link without variables or credentials')
+export const socialPlatforms = ['Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'X'] as const
+export const EmailIdentitySchema = z.object({
+  businessName: line, tagline: line, phone: line,
+  email: z.union([z.literal(''), z.string().email().max(254)]),
+  address: z.string().max(1000), websiteUrl: z.union([z.literal(''), link]),
+  disclaimer: z.string().max(4000),
+  socials: z.array(z.object({ platform: z.enum(socialPlatforms), url: link }).strict()).max(6)
+    .refine(items => new Set(items.map(item => item.platform)).size === items.length, 'Choose each social platform only once')
+}).strict()
+export type EmailIdentity = z.infer<typeof EmailIdentitySchema>
+export const emptyEmailIdentity = (): EmailIdentity => ({ businessName: '{{site.name}}', tagline: '', phone: '', email: '', address: '', websiteUrl: '', disclaimer: '', socials: [] })
 export const EmailAudienceSchema = z.enum(['team', 'customer'])
 export const EmailTemplateBlockSchema = z.discriminatedUnion('type', [
   z.object({ id: Identity, type: z.literal('heading'), text }).strict(),
@@ -25,6 +36,7 @@ export const EmailTemplateBlockSchema = z.discriminatedUnion('type', [
 export const EmailTemplateSchema = z.object({
   schemaVersion: z.literal(1), subject: line.refine(value => value.trim().length > 0, 'Enter a subject'), preheader: line,
   accentColor: color, canvasColor: color, backgroundColor: color, textColor: color,
+  identity: EmailIdentitySchema.optional(),
   fontFamily: z.enum(['MODERN_SANS', 'BOOK_SERIF']),
   blocks: z.array(EmailTemplateBlockSchema).min(1).max(30).refine(blocks => new Set(blocks.map(block => block.id)).size === blocks.length, 'Block IDs must be unique')
 }).strict()
@@ -33,7 +45,7 @@ export type EmailTemplateBlock = z.infer<typeof EmailTemplateBlockSchema>
 export type EmailAudience = z.infer<typeof EmailAudienceSchema>
 export function validateTemplateVariables(template: EmailTemplate): string[] {
   const errors: string[] = []
-  for (const value of [template.subject, template.preheader, ...template.blocks.flatMap(block => 'text' in block ? [block.text] : [])]) {
+  for (const value of [template.subject, template.preheader, ...(template.identity ? [template.identity.businessName, template.identity.tagline, template.identity.phone, template.identity.address, template.identity.disclaimer] : []), ...template.blocks.flatMap(block => 'text' in block ? [block.text] : [])]) {
     const remaining = value.replace(/\{\{([^{}]+)\}\}/g, (_, variable: string) => {
       if (!['site.name', 'form.name'].includes(variable)) errors.push(`Unknown variable: ${variable}`)
       return ''

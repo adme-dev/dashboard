@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ValidatedEmailTemplateSchema, starterEmailTemplate, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailAudience } from '~~/shared/pageStudio/emailTemplates'
+import { ValidatedEmailTemplateSchema, starterEmailTemplate, socialPlatforms, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailAudience } from '~~/shared/pageStudio/emailTemplates'
+
+import { emailDesigns, styleEmailTemplate, emailStarterLayout, prepareEmailTemplate, type EmailDesignId } from '~~/shared/pageStudio/emailTemplateDesigns'
 
 const props = defineProps<{ siteId: string, checkpointId: string, audience: EmailAudience, forms: Array<{ key: string, name: string, pageId: string, formId: string }>, reloadWorkspace: () => Promise<unknown> }>()
 const emit = defineEmits<{ dirty: [value: boolean] }>()
@@ -36,6 +38,26 @@ const dirty = computed(() => ready.value && JSON.stringify(template.value) !== b
 const canSave = computed(() => ready.value && data.value?.canEdit && (dirty.value || !data.value?.record) && !saving.value && !uncertain.value)
 const previewForm = ref(props.forms[0]?.key ?? '__none__')
 const device = ref('desktop')
+const panel = ref('content')
+const openBlock = ref<string | undefined>()
+const layout = ref<'enquiry' | 'booking'>('enquiry')
+const replaceLayoutOpen = ref(false)
+const identity = computed(() => template.value.identity!)
+const blockItems = computed(() => template.value.blocks.map((block, index) => ({ value: block.id, label: block.type === 'answers' ? 'Enquiry details' : block.type.charAt(0).toUpperCase() + block.type.slice(1), description: 'text' in block ? block.text.slice(0, 65) : block.type === 'answers' ? 'The fields from your form' : 'A little breathing room', slot: 'block' as const, block, index })))
+function chooseDesign(id: EmailDesignId) {
+  template.value = styleEmailTemplate(template.value, id)
+}
+function useLayout() {
+  template.value = emailStarterLayout(props.audience, layout.value, template.value)
+  openBlock.value = template.value.blocks[0]?.id
+  replaceLayoutOpen.value = false
+  panel.value = 'content'
+}
+function addSocial() {
+  const platform = socialPlatforms.find(value => !identity.value.socials.some(item => item.platform === value))
+  if (platform) identity.value.socials.push({ platform, url: '' })
+}
+
 const blockChoices = [
   { type: 'heading', label: 'Heading', icon: 'i-lucide-heading' },
   { type: 'text', label: 'Text', icon: 'i-lucide-align-left' },
@@ -103,6 +125,7 @@ function addBlock(type: EmailTemplateBlock['type']) {
   const id = `block_${crypto.randomUUID()}`
   const block: EmailTemplateBlock = type === 'divider' || type === 'answers' ? { id, type } : type === 'button' ? { id, type, text: 'Visit our website', url: 'https://example.com' } : { id, type: type === 'heading' ? 'heading' : 'text', text: '' }
   template.value.blocks.push(block)
+  openBlock.value = id
 }
 function moveBlock(index: number, direction: number) {
   const blocks = [...template.value.blocks]
@@ -115,7 +138,8 @@ function moveBlock(index: number, direction: number) {
 function resetFromSaved() {
   expectedRevision.value = data.value?.record?.revision ?? 0
   recording = false
-  template.value = JSON.parse(JSON.stringify(data.value?.record?.template ?? starterEmailTemplate(props.audience)))
+  template.value = prepareEmailTemplate(data.value?.record?.template ?? null, props.audience)
+  openBlock.value = template.value.blocks[0]?.id
   recording = true
   history.value = [JSON.stringify(template.value)]
   future.value = []
@@ -180,25 +204,36 @@ async function discardAndReload() {
 
 <template>
   <section class="@container space-y-5" :aria-label="audience === 'team' ? 'Team notification template' : 'Customer reply template'">
-    <div>
-      <h3 class="font-semibold text-highlighted">
-        {{ audience === 'team' ? 'Team notification' : 'Customer reply' }}
-      </h3>
-      <p class="mt-1 max-w-prose text-sm text-muted">
-        Design the website default email. Preview uses example answers; no email is sent.
-      </p>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div class="flex items-center gap-2">
+          <h3 class="font-semibold text-highlighted">
+            {{ audience === 'team' ? 'Team notification' : 'Customer reply' }}
+          </h3>
+          <UBadge
+            label="Draft only"
+            color="neutral"
+            variant="subtle"
+            size="sm"
+          />
+        </div>
+        <p class="mt-1 text-sm text-muted">
+          {{ audience === 'team' ? 'Give your team the details they need to follow up.' : 'A thoughtful first reply, in your own style.' }}
+        </p>
+      </div>
+      <UButton
+        label="Save template draft"
+        icon="i-lucide-check"
+        :disabled="!canSave"
+        :loading="saving"
+        @click="save"
+      />
     </div>
-    <UAlert
-      color="neutral"
-      variant="soft"
-      title="Template draft"
-      description="Save a reusable design now. Sender verification, customer reply routing and delivery are still being connected."
-    />
     <UAlert
       v-if="error"
       color="error"
       title="Template storage is unavailable"
-      description="Try loading the saved draft again before editing."
+      description="Load the saved draft before editing."
     >
       <template #actions>
         <UButton
@@ -209,145 +244,284 @@ async function discardAndReload() {
         />
       </template>
     </UAlert>
-    <USkeleton v-if="pending && !ready" class="h-48 w-full" />
+    <USkeleton v-if="pending && !ready" class="h-96 w-full" />
     <template v-else-if="ready">
-      <div class="grid min-w-0 grid-cols-1 gap-6 @3xl:grid-cols-2">
-        <fieldset :disabled="!data?.canEdit || saving || uncertain" class="min-w-0 space-y-5">
-          <legend class="sr-only">
-            Template design
-          </legend>
-          <UFormField label="Subject">
-            <UInput v-model="template.subject" class="w-full" />
-          </UFormField>
-          <UFormField label="Preheader" description="A short summary shown next to the subject in an inbox.">
-            <UInput v-model="template.preheader" class="w-full" />
-          </UFormField>
-          <UAccordion :items="[{ label: 'Brand styling', slot: 'brand' }, { label: 'Insert a variable', slot: 'variables' }]">
-            <template #brand>
-              <div class="grid grid-cols-1 gap-4 pb-4 @lg:grid-cols-2">
-                <UFormField v-for="field in [{ key: 'accentColor', label: 'Accent colour' }, { key: 'textColor', label: 'Text colour' }, { key: 'canvasColor', label: 'Email background' }, { key: 'backgroundColor', label: 'Outer background' }]" :key="field.key" :label="field.label">
-                  <UInput v-model="template[field.key as 'accentColor' | 'textColor' | 'canvasColor' | 'backgroundColor']" class="w-full" />
-                </UFormField>
-                <UFormField label="Font" class="@lg:col-span-2">
-                  <USelect v-model="template.fontFamily" :items="[{ label: 'Sans serif', value: 'MODERN_SANS' }, { label: 'Serif', value: 'BOOK_SERIF' }]" class="w-full" />
-                </UFormField>
-              </div>
-            </template>
-            <template #variables>
-              <div class="space-y-3 pb-4">
-                <p class="text-sm text-muted">
-                  Website and form names resolve for each enquiry. The Answers block uses that form's visible fields.
-                </p>
-                <UFormField label="Insert into">
-                  <USelect v-model="insertionTarget" :items="insertionChoices" class="w-full" />
-                </UFormField>
-                <div class="flex flex-wrap gap-2">
+      <div class="grid min-w-0 grid-cols-1 items-start gap-6 @3xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.3fr)]">
+        <div class="min-w-0 rounded-xl border border-default bg-default">
+          <UTabs
+            v-model="panel"
+            :items="[{ label: 'Content', value: 'content', icon: 'i-lucide-align-left' }, { label: 'Design', value: 'design', icon: 'i-lucide-palette' }, { label: 'Details', value: 'details', icon: 'i-lucide-building-2' }]"
+            :content="false"
+            class="w-full border-b border-default p-2"
+          />
+          <fieldset :disabled="!data?.canEdit || saving || uncertain" class="@container min-w-0 space-y-5 p-4 @3xl:max-h-[740px] @3xl:overflow-y-auto">
+            <legend class="sr-only">
+              Template design
+            </legend>
+            <template v-if="panel === 'content'">
+              <UFormField label="Subject">
+                <UInput v-model="template.subject" class="w-full" />
+              </UFormField>
+              <UFormField label="Inbox preview" description="The short line shown beside your subject.">
+                <UInput v-model="template.preheader" class="w-full" />
+              </UFormField>
+              <div class="flex flex-wrap items-center justify-between gap-2 border-t border-default pt-4">
+                <h4 class="text-sm font-medium">
+                  Your message
+                </h4>
+                <div class="flex gap-1">
                   <UButton
-                    label="Website name"
+                    aria-label="Undo"
+                    icon="i-lucide-undo-2"
                     color="neutral"
-                    variant="outline"
-                    @click="insertVariable('{{site.name}}')"
-                  /><UButton
-                    label="Form name"
+                    variant="ghost"
+                    size="sm"
+                    :disabled="history.length < 2"
+                    @click="undo"
+                  />
+                  <UButton
+                    aria-label="Redo"
+                    icon="i-lucide-redo-2"
                     color="neutral"
-                    variant="outline"
-                    @click="insertVariable('{{form.name}}')"
+                    variant="ghost"
+                    size="sm"
+                    :disabled="!future.length"
+                    @click="redo"
                   />
                 </div>
               </div>
-            </template>
-          </UAccordion>
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h4 class="text-sm font-medium">
-              Email content
-            </h4><div class="flex gap-2">
-              <UButton
-                label="Undo"
-                icon="i-lucide-undo-2"
-                color="neutral"
-                variant="ghost"
-                :disabled="history.length < 2"
-                @click="undo"
-              /><UButton
-                label="Redo"
-                icon="i-lucide-redo-2"
-                color="neutral"
-                variant="ghost"
-                :disabled="!future.length"
-                @click="redo"
-              />
-            </div>
-          </div>
-          <div v-for="(block, index) in template.blocks" :key="block.id" class="space-y-3 rounded-lg border border-default p-4">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <p class="text-sm font-medium">
-                {{ index + 1 }}. {{ block.type === 'answers' ? 'Answers' : block.type.charAt(0).toUpperCase() + block.type.slice(1) }}
-              </p><div class="flex gap-1">
+              <UAccordion v-model="openBlock" :items="blockItems">
+                <template #default="{ item }">
+                  <span class="block text-sm font-medium">{{ item.label }}</span>
+                  <span class="block max-w-60 truncate text-xs font-normal text-muted">{{ item.description || 'Add your text' }}</span>
+                </template>
+                <template #block="{ item }">
+                  <div class="space-y-3 pb-4">
+                    <UFormField v-if="'text' in item.block" :label="item.block.type === 'button' ? 'Button label' : 'Text'">
+                      <UTextarea v-model="item.block.text" :rows="item.block.type === 'text' ? 4 : 2" class="w-full" />
+                    </UFormField>
+                    <UFormField v-if="item.block.type === 'button'" label="Website link" description="Use an HTTPS address. Preview links are inactive.">
+                      <UInput v-model="item.block.url" class="w-full" />
+                    </UFormField>
+                    <p v-if="item.block.type === 'answers'" class="text-sm text-muted">
+                      Includes the visible fields from the selected form. The preview uses example answers.
+                    </p>
+                    <div class="flex items-center justify-end gap-1">
+                      <UButton
+                        :aria-label="`Move block ${item.index + 1} up`"
+                        icon="i-lucide-arrow-up"
+                        color="neutral"
+                        variant="ghost"
+                        size="sm"
+                        :disabled="item.index === 0"
+                        @click="moveBlock(item.index, -1)"
+                      />
+                      <UButton
+                        :aria-label="`Move block ${item.index + 1} down`"
+                        icon="i-lucide-arrow-down"
+                        color="neutral"
+                        variant="ghost"
+                        size="sm"
+                        :disabled="item.index === template.blocks.length - 1"
+                        @click="moveBlock(item.index, 1)"
+                      />
+                      <UButton
+                        :aria-label="`Remove block ${item.index + 1}`"
+                        icon="i-lucide-trash-2"
+                        color="neutral"
+                        variant="ghost"
+                        size="sm"
+                        :disabled="template.blocks.length === 1"
+                        @click="() => { template.blocks = template.blocks.filter(block => block.id !== item.block.id) }"
+                      />
+                    </div>
+                  </div>
+                </template>
+              </UAccordion>
+              <div class="flex flex-wrap gap-2" role="group" aria-label="Add content block">
                 <UButton
-                  :aria-label="`Move block ${index + 1} up`"
-                  icon="i-lucide-arrow-up"
+                  v-for="choice in blockChoices"
+                  :key="choice.type"
+                  :label="choice.label"
+                  :aria-label="`Add ${choice.label.toLowerCase()} block`"
+                  :icon="choice.icon"
                   color="neutral"
-                  variant="ghost"
-                  :disabled="index === 0"
-                  @click="moveBlock(index, -1)"
-                />
-                <UButton
-                  :aria-label="`Move block ${index + 1} down`"
-                  icon="i-lucide-arrow-down"
-                  color="neutral"
-                  variant="ghost"
-                  :disabled="index === template.blocks.length - 1"
-                  @click="moveBlock(index, 1)"
-                />
-                <UButton
-                  :aria-label="`Remove block ${index + 1}`"
-                  icon="i-lucide-trash-2"
-                  color="neutral"
-                  variant="ghost"
-                  :disabled="template.blocks.length === 1"
-                  @click="() => { template.blocks = template.blocks.filter(item => item.id !== block.id) }"
+                  variant="outline"
+                  size="sm"
+                  :disabled="template.blocks.length >= 30"
+                  @click="addBlock(choice.type)"
                 />
               </div>
+              <UAccordion :items="[{ label: 'Personalise with website details', slot: 'variables' }]">
+                <template #variables>
+                  <div class="space-y-3 pb-3">
+                    <UFormField label="Insert into">
+                      <USelect v-model="insertionTarget" :items="insertionChoices" class="w-full" />
+                    </UFormField>
+                    <div class="flex flex-wrap gap-2">
+                      <UButton
+                        label="Website name"
+                        color="neutral"
+                        variant="outline"
+                        size="sm"
+                        @click="insertVariable('{{site.name}}')"
+                      /><UButton
+                        label="Form name"
+                        color="neutral"
+                        variant="outline"
+                        size="sm"
+                        @click="insertVariable('{{form.name}}')"
+                      />
+                    </div>
+                  </div>
+                </template>
+              </UAccordion>
+            </template>
+            <template v-else-if="panel === 'design'">
+              <div>
+                <h4 class="text-sm font-medium">
+                  Choose a look
+                </h4><p class="mt-1 text-xs text-muted">
+                  Your wording and contact details stay as they are.
+                </p>
+              </div>
+              <div class="space-y-2">
+                <UButton
+                  v-for="design in emailDesigns"
+                  :key="design.id"
+                  color="neutral"
+                  variant="outline"
+                  class="w-full justify-start gap-3 p-3 text-left"
+                  :aria-label="`Use ${design.name} style`"
+                  @click="chooseDesign(design.id)"
+                >
+                  <span class="flex h-14 w-12 shrink-0 flex-col gap-1 rounded border border-black/10 p-2" :style="{ background: design.canvasColor, color: design.accentColor }" aria-hidden="true"><span class="text-base font-semibold" :class="design.fontFamily === 'BOOK_SERIF' ? 'font-serif' : 'font-sans'">Aa</span><span class="h-0.5 w-full bg-current opacity-30" /><span class="h-0.5 w-2/3 bg-current opacity-30" /></span>
+                  <span><span class="block font-medium">{{ design.name }}</span><span class="block text-xs font-normal text-muted">{{ design.description }}</span></span>
+                </UButton>
+              </div>
+              <UAccordion :items="[{ label: 'Custom colours & type', slot: 'brand' }, { label: 'Start with a ready-made message', slot: 'layout' }]">
+                <template #brand>
+                  <div class="grid grid-cols-1 gap-4 pb-4 @lg:grid-cols-2">
+                    <UFormField v-for="field in [{ key: 'accentColor', label: 'Accent colour' }, { key: 'textColor', label: 'Text colour' }, { key: 'canvasColor', label: 'Email background' }, { key: 'backgroundColor', label: 'Outer background' }]" :key="field.key" :label="field.label">
+                      <UInput v-model="template[field.key as 'accentColor' | 'textColor' | 'canvasColor' | 'backgroundColor']" class="w-full" />
+                    </UFormField>
+                    <UFormField label="Font" class="@lg:col-span-2">
+                      <USelect v-model="template.fontFamily" :items="[{ label: 'Sans serif', value: 'MODERN_SANS' }, { label: 'Serif', value: 'BOOK_SERIF' }]" class="w-full" />
+                    </UFormField>
+                  </div>
+                </template>
+                <template #layout>
+                  <div class="space-y-3 pb-4">
+                    <UFormField label="Starting layout">
+                      <USelect v-model="layout" :items="audience === 'customer' ? [{ label: 'Enquiry acknowledgement', value: 'enquiry' }, { label: 'Booking enquiry', value: 'booking' }] : [{ label: 'Team enquiry summary', value: 'enquiry' }]" class="w-full" />
+                    </UFormField>
+                    <p class="text-xs text-muted">
+                      Replace the message with a starting layout. Your style and business details are kept.
+                    </p>
+                    <UButton
+                      label="Use starting layout"
+                      color="neutral"
+                      variant="outline"
+                      @click="() => { replaceLayoutOpen = true }"
+                    />
+                  </div>
+                </template>
+              </UAccordion>
+            </template>
+            <template v-else>
+              <div>
+                <h4 class="text-sm font-medium">
+                  Header & footer
+                </h4><p class="mt-1 text-xs text-muted">
+                  Identify your business and make it easy to get in touch. Empty details are hidden.
+                </p>
+              </div>
+              <UFormField label="Business name" description="Shown in the header and footer.">
+                <UInput v-model="identity.businessName" placeholder="Your business name" class="w-full" />
+              </UFormField>
+              <UFormField label="Header tagline" hint="Optional">
+                <UInput v-model="identity.tagline" placeholder="A short line about your business" class="w-full" />
+              </UFormField>
+              <div class="space-y-4 border-t border-default pt-4">
+                <UFormField label="Phone number">
+                  <UInput v-model="identity.phone" class="w-full" />
+                </UFormField>
+                <UFormField label="Contact email" description="Displayed in the footer; this does not set the sending address.">
+                  <UInput v-model="identity.email" type="email" class="w-full" />
+                </UFormField>
+                <UFormField label="Business address">
+                  <UTextarea v-model="identity.address" :rows="2" class="w-full" />
+                </UFormField>
+                <UFormField label="Website">
+                  <UInput v-model="identity.websiteUrl" placeholder="https://yourwebsite.com" class="w-full" />
+                </UFormField>
+              </div>
+              <div class="space-y-3 border-t border-default pt-4">
+                <div class="flex items-center justify-between gap-2">
+                  <h4 class="text-sm font-medium">
+                    Social links
+                  </h4><UButton
+                    label="Add social link"
+                    icon="i-lucide-plus"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :disabled="identity.socials.length >= socialPlatforms.length"
+                    @click="addSocial"
+                  />
+                </div>
+                <div v-for="(social, index) in identity.socials" :key="index" class="space-y-2 rounded-lg border border-default p-3">
+                  <UFormField :label="`Social platform ${index + 1}`">
+                    <USelect v-model="social.platform" :items="socialPlatforms.filter(value => value === social.platform || !identity.socials.some(item => item.platform === value))" class="w-full" />
+                  </UFormField>
+                  <UFormField :label="`${social.platform} link`">
+                    <UInput v-model="social.url" placeholder="https://…" class="w-full" />
+                  </UFormField>
+                  <UButton
+                    :label="`Remove ${social.platform}`"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    @click="() => { identity.socials.splice(index, 1) }"
+                  />
+                </div>
+              </div>
+              <UFormField label="Disclaimer or business note" description="Optional text shown at the bottom of the email.">
+                <UTextarea v-model="identity.disclaimer" :rows="4" class="w-full" />
+              </UFormField>
+            </template>
+          </fieldset>
+        </div>
+        <section class="min-w-0 overflow-hidden rounded-xl border border-default bg-elevated/40" aria-label="Email preview" :aria-busy="previewStatus === 'waiting' || previewStatus === 'loading'">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default px-4 py-3">
+            <div class="flex items-center gap-2 text-sm font-medium">
+              <UIcon name="i-lucide-mail" class="size-4 text-muted" /> Email preview
             </div>
-            <UFormField v-if="'text' in block" :label="block.type === 'button' ? 'Button label' : 'Text'">
-              <UTextarea v-model="block.text" :rows="block.type === 'heading' || block.type === 'button' ? 2 : 4" class="w-full" />
-            </UFormField>
-            <UFormField v-if="block.type === 'button'" label="HTTPS destination" description="Use a fixed link. Links are inactive in the preview.">
-              <UInput v-model="block.url" class="w-full" />
-            </UFormField>
-            <p v-if="block.type === 'answers'" class="text-sm text-muted">
-              Includes the selected form's visible field labels and example answers. Real enquiry data is never loaded for this preview.
-            </p>
-          </div>
-          <div class="space-y-2" role="group" aria-label="Add content block">
-            <p class="text-sm font-medium">
-              Add content
-            </p>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex items-center gap-1">
               <UButton
-                v-for="choice in blockChoices"
-                :key="choice.type"
-                :label="choice.label"
-                :aria-label="`Add ${choice.label.toLowerCase()} block`"
-                :icon="choice.icon"
+                v-for="size in ['desktop', 'mobile']"
+                :key="size"
+                :aria-label="size === 'desktop' ? 'Desktop' : 'Mobile'"
+                :icon="size === 'desktop' ? 'i-lucide-monitor' : 'i-lucide-smartphone'"
                 color="neutral"
-                variant="outline"
+                :variant="device === size ? 'soft' : 'ghost'"
                 size="sm"
-                :disabled="template.blocks.length >= 30"
-                @click="addBlock(choice.type)"
+                @click="() => { device = size }"
+              />
+              <UButton
+                aria-label="Refresh preview"
+                icon="i-lucide-refresh-cw"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                :loading="previewStatus === 'loading'"
+                :disabled="previewStatus === 'loading' || !previewInput"
+                @click="showPreview"
               />
             </div>
-            <p v-if="template.blocks.length >= 30" class="text-xs text-muted">
-              This template has reached its 30-block limit.
-            </p>
           </div>
-        </fieldset>
-        <section class="min-w-0 space-y-4" aria-label="Email preview" :aria-busy="previewStatus === 'waiting' || previewStatus === 'loading'">
-          <h4 class="text-sm font-medium">
-            Live preview
-          </h4>
-          <div class="@container space-y-4 rounded-lg border border-default p-4">
-            <UFormField label="Preview form">
+          <div class="space-y-3 p-4">
+            <UFormField label="Preview with">
               <USelect
                 v-model="previewForm"
                 :items="forms.map(form => ({ label: form.name, value: form.key }))"
@@ -355,74 +529,69 @@ async function discardAndReload() {
                 class="w-full"
               />
             </UFormField>
-            <div class="flex flex-wrap items-center gap-2">
-              <UButton
-                label="Refresh preview"
-                icon="i-lucide-refresh-cw"
-                :loading="previewStatus === 'loading'"
-                :disabled="previewStatus === 'loading' || !previewInput"
-                @click="showPreview"
-              /><UButton
-                v-for="size in ['desktop', 'mobile']"
-                :key="size"
-                :label="size === 'desktop' ? 'Desktop' : 'Mobile'"
-                color="neutral"
-                :variant="device === size ? 'soft' : 'ghost'"
-                @click="() => { device = size }"
+            <UAlert v-if="previewError" color="error" :title="previewError" />
+            <UAlert
+              v-else-if="!validTemplate.success"
+              color="warning"
+              variant="soft"
+              title="Preview paused"
+              :description="validTemplate.error.issues[0]?.message"
+            />
+            <template v-if="preview">
+              <div class="space-y-1 rounded-lg bg-default px-4 py-3 text-sm">
+                <p class="break-words font-medium">
+                  {{ preview.subject }}
+                </p><p class="break-words text-xs text-muted">
+                  {{ preview.preheader }}
+                </p>
+              </div>
+              <iframe
+                :srcdoc="preview.html"
+                sandbox=""
+                referrerpolicy="no-referrer"
+                title="Email preview with example answers"
+                class="mx-auto h-[600px] w-full rounded-lg border border-default"
+                :style="{ maxWidth: device === 'mobile' ? '375px' : '100%' }"
               />
+            </template>
+            <div v-else class="flex min-h-80 items-center justify-center px-6 text-center text-sm text-muted">
+              {{ previewStatus === 'waiting' || previewStatus === 'loading' ? 'Updating your preview…' : 'Complete the details to see your email here.' }}
             </div>
             <p class="text-xs text-muted">
-              Updates automatically as you edit, using example answers. No email is sent.
+              Live preview with example answers. Links are inactive.
             </p>
           </div>
-          <UAlert v-if="previewError" color="error" :title="previewError" />
-          <UAlert
-            v-else-if="!validTemplate.success"
-            color="warning"
-            variant="soft"
-            title="Preview paused"
-            :description="validTemplate.error.issues[0]?.message"
-          />
-          <template v-if="preview">
-            <div class="space-y-1 text-sm">
-              <p class="break-words font-medium">
-                {{ preview.subject }}
-              </p><p class="break-words text-muted">
-                {{ preview.preheader }}
-              </p>
-            </div><iframe
-              :srcdoc="preview.html"
-              sandbox=""
-              referrerpolicy="no-referrer"
-              title="Email preview with example answers"
-              class="mx-auto h-[700px] w-full rounded-lg border border-default"
-              :style="{ maxWidth: device === 'mobile' ? '375px' : '100%' }"
-            />
-          </template>
-          <p v-else class="py-10 text-center text-sm text-muted">
-            {{ previewStatus === 'waiting' || previewStatus === 'loading' ? 'Updating preview…' : 'Choose a form and complete the template to see your design.' }}
-          </p>
         </section>
       </div>
       <UAlert v-if="saveError" color="error" :title="saveError" />
       <p v-if="savedNotice" role="status" class="text-sm text-success">
         {{ savedNotice }}
       </p>
-      <div class="flex flex-wrap items-center gap-3 border-t border-default pt-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
+        <span v-if="dirty">Unsaved changes. Save before closing this tab.</span><span v-else-if="data?.record">Saved draft · Revision {{ data.record.revision }}</span><span v-else>Starting design · Not saved yet</span>
         <UButton
-          label="Save template draft"
-          :disabled="!canSave"
-          :loading="saving"
-          @click="save"
-        /><UButton
           label="Discard edits and reload"
           color="neutral"
-          variant="outline"
+          variant="ghost"
+          size="xs"
           :disabled="saving"
           @click="discardAndReload"
-        /><span v-if="dirty" class="text-xs text-muted">Unsaved changes. Save before refreshing or closing this tab.</span><span v-else-if="data?.record" class="text-xs text-muted">Saved draft revision {{ data.record.revision }}</span><span v-else class="text-xs text-muted">Starter design — not saved yet</span>
+        />
       </div>
+      <p class="text-xs text-muted">
+        Design only. Sending and reply routing are not enabled yet.
+      </p>
     </template>
+    <UModal v-model:open="replaceLayoutOpen" title="Use this starting layout?" description="This replaces your subject and message. Your business details and style stay the same. You can undo this change.">
+      <template #footer>
+        <UButton
+          label="Keep my message"
+          color="neutral"
+          variant="outline"
+          @click="() => { replaceLayoutOpen = false }"
+        /><UButton label="Use layout" :disabled="saving || uncertain || !data?.canEdit" @click="useLayout" />
+      </template>
+    </UModal>
     <UModal v-model:open="leaveOpen" title="Leave without saving?" description="Your template changes have not been saved.">
       <template #footer>
         <UButton

@@ -488,3 +488,20 @@ work. Manual Refresh retries failures without an automatic request loop. Save,
 revision conflicts, undo/redo and the sandboxed synthetic renderer are unchanged.
 Eight focused tests and real-browser acceptance pass; review found no blockers.
 The [current checklist](customer-cms-status.md) records verification and next steps.
+
+## Template appearance and business identity — 1 October 2026
+
+Implemented a focused three-tab editor with collapsible content blocks and a wider
+preview. Three styles preserve message content; enquiry and booking-enquiry starter
+messages require explicit replacement and support undo. Booking acknowledgement
+explicitly does not confirm a reservation. Optional structured identity adds a
+business-name/tagline header and contact/social/disclaimer footer to the safe
+renderer. Both Dashboard and customer-worker contracts validate these fields;
+customer-owned JSON draft revisions persist them without a SQL migration.
+Legacy saved templates render identically until edited. New drafts use one identity
+footer. Website and social links require HTTPS and remain inactive in previews.
+
+Acceptance, sample revisions, screenshots and remaining tasks are recorded in
+[the current checklist](customer-cms-status.md). This is a draft-design feature;
+logo/media blocks, shared business-profile settings and sender/delivery activation
+are not included.

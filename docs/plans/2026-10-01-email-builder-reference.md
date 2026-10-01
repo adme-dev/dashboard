@@ -55,3 +55,23 @@ structured document and require Apply, leaving manual editing available.
 This reference is incorporated into the active checklist. Website template drafts
 are already locally verified; these additional UX/media/override features are
 not marked complete until implemented and tested.
+
+## Design and identity follow-through — 1 October 2026
+
+Adopted an optional business header/footer as structured customer-owned template
+fields, with contact details, six supported social platforms and disclaimer text.
+The editor now groups Content/Design/Details, with compact collapsible blocks,
+three looks and explicit enquiry-message starting layouts. Styles preserve wording;
+layout replacement preserves business identity and supports undo.
+
+Primary design references reviewed 1 October 2026:
+- [Mailchimp layout and purpose](https://templates.mailchimp.com/design/layout-and-purpose/):
+  message hierarchy and a clear content-led layout.
+- [Mailchimp accessibility](https://mailchimp.com/help/accessibility-in-email-marketing/):
+  logical headings, contrast and readable responsive content.
+- [Mailchimp section design](https://mailchimp.com/help/section-design-landing-page-email/):
+  distinct message body and footer areas.
+
+This implementation uses the existing safe email renderer; reference patterns do
+not establish delivery/client compatibility. Logo/media blocks and a central
+reusable business profile still require their own storage and acceptance work.

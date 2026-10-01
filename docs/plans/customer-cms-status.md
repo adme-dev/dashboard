@@ -30,6 +30,8 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
       undo/redo and sandboxed desktop/mobile previews with synthetic answers.
 - [x] Template browser/API acceptance: save/reload, audience separation, conflicts,
       variable validation, navigation guards and 390px layout without overflow.
+- [x] Polished Content/Design/Details editor, three design looks, enquiry starting
+      layouts and optional business header/contact footer/social links/disclaimer.
 - [x] Durable local demo files, database/media copies, backup and restart instructions.
 - [x] Relevant marketing descriptions updated with explicit local-preview limits.
 
@@ -39,8 +41,8 @@ Website template drafts are implemented, locally verified and committed. Both
 implementation branches are pushed; no hosted rollout has happened.
 
 Next concrete slice: **explicit per-form template overrides** with an effective
-website-default preview and reset action. The compact block palette and safe live
-preview from the Vehicle Marketplace reference are now locally verified.
+website-default preview and reset action. The compact block palette, safe live
+preview, design looks and business header/footer are now locally verified.
 Preserve shared form identity so a form used on several pages is configured only
 once. Customer media blocks and AI proposals follow; AI requires explicit Apply
 and preserves manual edits.
@@ -86,17 +88,17 @@ end-to-end in this standalone demo, not necessarily zero code exists.
   Branch `feat/standalone-site-workspace`; last implementation `5b55bbdf5`.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
-  Branch `feat/customer-form-settings-drafts`; last implementation `ebe2413`.
+  Branch `feat/customer-form-settings-drafts`; last implementation `972845d`.
 - Both feature branches are pushed. Fetch and check divergence before continuing;
   do not implement in the unrelated dirty Dashboard root or deploy a stale branch.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
   Restart with that directory's `start.sh`; do not start a second server on port 3044.
 - URL: `http://127.0.0.1:3044/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
-- Latest local backup: `customer-cms-demo/private/backups/2026-10-01T05-53-20.749Z/`.
+- Latest local backup: `customer-cms-demo/private/backups/2026-10-01T06-31-07.283Z/`.
   Preserve the private directory and media; do not commit credentials or copied data.
 - Recipient sample revision 4: `office@example.test`, with Contact override
   `contact@example.test`. These are inert demo addresses, not approved recipients.
-- Template samples: team revision 2; customer revision 2 after the conflict check.
+- Template samples: team revision 2; customer revision 3 with clearly labelled example contact details.
   Evidence: `customer-cms-demo/check-templates.mjs` and
   `customer-cms-demo/fantasy-limo-email-templates.png`.
 
@@ -138,3 +140,27 @@ diagnostics, with none in the changed editor/composable. Screenshot:
 At each completed slice, tick only verified work, record the implementation
 commits and acceptance evidence, and name the next concrete step. Before stopping
 mid-slice, replace the In progress note with exact partial changes and blockers.
+
+## Polished templates and business identity — 1 October 2026
+
+Content, Design and Details separate the message from appearance and business
+identity. Clean/Warm/Classic change only style; explicit starting-layout replacement
+is undoable and preserves identity. Details supports an optional business name and
+tagline, phone, contact email, address, HTTPS website/social links and disclaimer.
+Empty details are omitted. Existing saved templates retain their original appearance
+until edited; new drafts avoid a duplicate legacy footer. Identity remains part of
+each website audience template, not a central business-profile settings record.
+
+13 focused tests and targeted lint pass. Browser/API checks verify identity
+save/reload, separate audiences (team 2/customer 3), style/layout preservation,
+undo/redo, strict validation, stale-save rejection and 390px layout with no horizontal
+overflow. Screenshot: `customer-cms-demo/fantasy-limo-email-design.png`. The saved
+customer sample uses explicitly fictional contact details. Dashboard typecheck stays
+at its 934 baseline diagnostics, none in this slice. Studio build/typecheck/package
+and action checks pass; its known route-count security assertion remains unchanged.
+Studio full formatting passed (1,520 files); independent review found no remaining
+blocker after legacy-template compatibility and duplicate-new-footer fixes.
+
+No deployment or sending. Logos/images, central business-profile reuse, per-form
+overrides and actual delivery remain separate work. Contact email is displayed
+content, not a verified sender or reply-routing setting.
