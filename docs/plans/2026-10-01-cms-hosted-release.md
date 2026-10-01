@@ -309,3 +309,11 @@ capability activation is still required after installed storage. Hosted acceptan
 needs two fresh approved native test identities; the requested email addresses are
 pending. No hosted save, production activation or completed customer rollout is
 claimed by these local results.
+
+## Staging rollout completed — 2 October 2026
+
+Dashboard `5b9b978e0` and Studio `e261995` are deployed to the documented preview
+and private staging targets. Coordinator migrations 0011–0013 are applied; no form
+capability or customer runtime is activated. Provider readbacks, exact version IDs,
+browser smoke, rollback and pending acceptance are recorded in the
+[native forms staging receipt](2026-10-02-native-forms-staging-receipt.md).

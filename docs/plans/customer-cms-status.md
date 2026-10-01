@@ -37,6 +37,13 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Current checkpoint / next action
 
+**2 October release:** matching Dashboard preview and private executor/coordinator/router
+are deployed; coordinator migrations 0011–0013 are applied and verified. Customer
+form activation remains closed. All local Studio gates and focused Dashboard tests
+pass. Next: two fresh approved native test identities, followed by hosted save/reload,
+conflict and isolation acceptance. Full source/version/rollback evidence is in the
+[native forms staging receipt](2026-10-02-native-forms-staging-receipt.md).
+
 Website template drafts are implemented, locally verified and committed. Both
 implementation branches are pushed. Dashboard preview and the private staging
 router are deployed; hosted form storage activation and production remain pending.
@@ -68,7 +75,7 @@ are implemented and independently reviewed. Final native status fixes pass 78
 Dashboard tests, including 46 real PostgreSQL cases. Full Studio build, typecheck,
 lint and tests pass (40 package tasks, 36 security and 48 action-runtime tests).
 Hosted acceptance remains pending two fresh approved native test identities.
-Coordinator migrations 0011–0013 must precede the new private worker deployment.
+Coordinator migrations 0011–0013 are now applied before the new private workers.
 
 ## Remaining form and email work
 
