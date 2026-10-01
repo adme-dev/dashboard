@@ -4,7 +4,7 @@ import { preparePageStudioContentLogin } from './contentNativeLogin'
 import { readPageStudioJson } from './boundedJson'
 import { pageStudioHttpError } from './http'
 import { operateEmailTemplate, previewTrustedEmailTemplate } from './emailTemplates'
-import { portalFormContext } from './formAuthority'
+import { portalFormContext } from './portalFormContext'
 
 export async function handleEmailTemplate(event: H3Event, method: 'GET' | 'PUT' | 'PREVIEW') {
   setHeader(event, 'cache-control', 'private, no-store')

@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { formSiteApi, type FormApiAudience } from '~/utils/pageStudioFormApi'
 import { defaultFormRecipients, FormRecipientSettingsSchema, effectiveFormRecipients, type FormRecipientsState } from '~~/shared/pageStudio/formRecipients'
 
-const props = defineProps<{ siteId: string, checkpointId: string, definitionId?: string, forms: Array<{ definitionId?: string, name: string }>, reloadWorkspace: () => Promise<unknown> }>()
+const props = withDefaults(defineProps<{ siteId: string, apiAudience?: FormApiAudience, canEdit?: boolean, checkpointId: string, definitionId?: string, forms: Array<{ definitionId?: string, name: string }>, reloadWorkspace: () => Promise<unknown> }>(), { canEdit: undefined })
+const editable = computed(() => props.canEdit !== false && !error.value && !pending.value && Boolean(data.value?.canEdit))
+let active = true
 const emit = defineEmits<{ dirty: [value: boolean] }>()
-const url = `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/recipients`
-const { data, pending, error, refresh } = useFetch<FormRecipientsState>(url)
+const url = `${formSiteApi(props.siteId, props.apiAudience)}/forms/recipients`
+const { data, pending, error, refresh } = useFetch<FormRecipientsState>(url, { getCachedData: () => undefined })
 const settings = ref(defaultFormRecipients())
 const recipientsText = ref('')
 const mode = ref('website')
@@ -35,7 +38,7 @@ watch(leaveOpen, (open) => {
   if (!open) finishLeave(false)
 })
 const dirty = computed(() => ready.value && JSON.stringify([mode.value, recipientsText.value, settings.value.overrides]) !== baseline.value)
-const canSave = computed(() => ready.value && data.value?.canEdit && dirty.value && !saving.value && !uncertain.value)
+const canSave = computed(() => ready.value && editable.value && dirty.value && !saving.value && !uncertain.value)
 const recipientList = computed(() => recipientsText.value.split(/[\n,;]/).map(value => value.trim()).filter(Boolean))
 const effective = computed(() => props.definitionId && mode.value === 'website' ? settings.value.recipients : recipientList.value)
 const inheriting = computed(() => props.forms.filter(form => !settings.value.overrides.some(item => item.definitionId === form.definitionId)).map(form => form.name))
@@ -65,6 +68,8 @@ watch([dirty, saving], ([hasEdits, inFlight]) => {
   emit('dirty', hasEdits || inFlight)
 }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => {
+  active = false
+  finishLeave(false)
   unsavedFormSettings.value = false
   emit('dirty', false)
 })
@@ -85,10 +90,12 @@ async function save() {
   savedNotice.value = ''
   try {
     const result = await $fetch<FormRecipientsState>(url, { method: 'PUT', body: { checkpointId: props.checkpointId, expectedRevision: expectedRevision.value, settings: parsed.data } })
+    if (!active) return
     data.value = result
     resetFromSaved()
     savedNotice.value = `Draft revision ${result.record?.revision} saved. No emails have been sent.`
   } catch (cause) {
+    if (!active) return
     uncertain.value = true
     saveError.value = (cause as { statusCode?: number })?.statusCode === 409 ? 'A newer website or recipient revision needs review. Your edits are preserved. Discard them and reload to continue.' : 'We could not confirm the save. Your edits are preserved. Reload the saved settings before retrying.'
   } finally {
@@ -100,8 +107,9 @@ async function discardAndReload() {
   ready.value = false
   try {
     await props.reloadWorkspace()
+    if (!active) return
     await refresh()
-    if (data.value && !error.value) {
+    if (active && data.value && !error.value) {
       resetFromSaved()
       ready.value = true
     }
@@ -139,7 +147,7 @@ async function discardAndReload() {
     </UAlert>
     <USkeleton v-if="pending && !ready" class="h-40 w-full" />
     <template v-else-if="ready">
-      <fieldset :disabled="!data?.canEdit || saving || uncertain" class="@container min-w-0 space-y-4">
+      <fieldset :disabled="!editable || saving || uncertain" class="@container min-w-0 space-y-4">
         <legend class="sr-only">
           Team notification recipients
         </legend>
@@ -191,7 +199,7 @@ async function discardAndReload() {
             label="Remove obsolete override"
             color="neutral"
             variant="outline"
-            :disabled="!data?.canEdit || saving || uncertain"
+            :disabled="!editable || saving || uncertain"
             @click="() => { settings.overrides = settings.overrides.filter(override => override.definitionId !== item.definitionId) }"
           />
         </div>

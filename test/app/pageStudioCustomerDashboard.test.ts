@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createApp, nextTick, ref, computed, onMounted, type App } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import Dashboard from '~~/app/pages/studio/dashboard.vue'
+import Dashboard from '~~/app/components/studio/CustomerDashboard.client.vue'
 
 let app: App, host: HTMLElement
 const read = vi.fn(), mutate = vi.fn(), navigate = vi.fn()

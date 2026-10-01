@@ -1,13 +1,16 @@
 <script setup lang="ts">
+import { formSiteApi, type FormApiAudience } from '~/utils/pageStudioFormApi'
 import { ValidatedEmailTemplateSchema, effectiveEmailTemplate, starterEmailTemplate, socialPlatforms, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailAudience, type EmailImage, emailTemplateImages } from '~~/shared/pageStudio/emailTemplates'
 
 import type { StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 import { emailDesigns, styleEmailTemplate, emailStarterLayout, prepareEmailTemplate, type EmailDesignId } from '~~/shared/pageStudio/emailTemplateDesigns'
 
-const props = defineProps<{ siteId: string, assets: StandaloneSiteWorkspace['assets'], checkpointId: string, definitionId?: string, placementCount?: number, audience: EmailAudience, forms: Array<{ key: string, name: string, pageId: string, formId: string }>, reloadWorkspace: () => Promise<unknown> }>()
+const props = withDefaults(defineProps<{ siteId: string, apiAudience?: FormApiAudience, canEdit?: boolean, assets: StandaloneSiteWorkspace['assets'], checkpointId: string, definitionId?: string, placementCount?: number, audience: EmailAudience, forms: Array<{ key: string, name: string, pageId: string, formId: string }>, reloadWorkspace: () => Promise<unknown> }>(), { canEdit: undefined })
+const editable = computed(() => props.canEdit !== false && !error.value && !pending.value && Boolean(data.value?.canEdit))
+let active = true
 const emit = defineEmits<{ dirty: [value: boolean] }>()
-const websiteUrl = `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/email-templates/${props.audience}`
-const url = props.definitionId ? `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/${encodeURIComponent(props.definitionId)}/email-templates/${props.audience}` : websiteUrl
+const websiteUrl = `${formSiteApi(props.siteId, props.apiAudience)}/email-templates/${props.audience}`
+const url = props.definitionId ? `${formSiteApi(props.siteId, props.apiAudience)}/forms/${encodeURIComponent(props.definitionId)}/email-templates/${props.audience}` : websiteUrl
 const customised = ref(false)
 const resetOpen = ref(false)
 const snapshot = () => JSON.stringify({ template: template.value, customised: customised.value })
@@ -20,7 +23,7 @@ function resetToDefault() {
   template.value = prepareEmailTemplate(effectiveEmailTemplate(data.value?.record ?? null, props.audience), props.audience)
   resetOpen.value = false
 }
-const { data, pending, error, refresh } = useFetch<EmailTemplateState>(url)
+const { data, pending, error, refresh } = useFetch<EmailTemplateState>(url, { getCachedData: () => undefined })
 const template = ref<EmailTemplate>(starterEmailTemplate(props.audience))
 const baseline = ref('')
 const saving = ref(false)
@@ -49,7 +52,7 @@ watch(leaveOpen, (open) => {
   if (!open) finishLeave(false)
 })
 const dirty = computed(() => ready.value && snapshot() !== baseline.value)
-const canSave = computed(() => ready.value && data.value?.canEdit && (dirty.value || (!props.definitionId && !data.value?.record)) && !saving.value && !uncertain.value)
+const canSave = computed(() => ready.value && editable.value && (dirty.value || (!props.definitionId && !data.value?.record)) && !saving.value && !uncertain.value)
 const previewForm = ref(props.forms[0]?.key ?? '__none__')
 const device = ref('desktop')
 const panel = ref('content')
@@ -68,7 +71,7 @@ function updateImage(id: string, value: EmailImage) {
   template.value.blocks = template.value.blocks.map(block => block.id === id && block.type === 'image' ? { ...block, ...value } : block)
 }
 function selectImage(asset: StandaloneSiteWorkspace['assets'][number]) {
-  if (!data.value?.canEdit || saving.value || uncertain.value) return
+  if (!editable.value || saving.value || uncertain.value) return
   const image: EmailImage = { assetId: asset.id, alt: asset.altText || '', width: imageTarget.value === 'logo' ? 160 : 520, alignment: 'center' }
   if (imageTarget.value === 'logo') {
     if (!identity.value.logo && imageCount.value >= 6) return
@@ -208,6 +211,8 @@ watch([dirty, saving], ([hasEdits, inFlight]) => {
   emit('dirty', hasEdits || inFlight)
 }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => {
+  active = false
+  finishLeave(false)
   unsavedFormSettings.value = false
   emit('dirty', false)
 })
@@ -223,10 +228,12 @@ async function save() {
   savedNotice.value = ''
   try {
     const result = await $fetch<EmailTemplateState>(url, { method: 'PUT', body: { checkpointId: props.checkpointId, expectedRevision: expectedRevision.value, template: props.definitionId && !customised.value ? null : parsed.data } })
+    if (!active) return
     data.value = result
     resetFromSaved()
     savedNotice.value = props.definitionId && !customised.value ? 'Uses the website default again. No emails have been sent.' : `Draft revision ${result.record?.revision} saved. No emails have been sent.`
   } catch (cause) {
+    if (!active) return
     if ((cause as { statusCode?: number })?.statusCode === 400) {
       saveError.value = (cause as { data?: { statusMessage?: string } })?.data?.statusMessage ?? 'Check the template fields and size before saving.'
       return
@@ -242,8 +249,9 @@ async function discardAndReload() {
   ready.value = false
   try {
     await props.reloadWorkspace()
+    if (!active) return
     await refresh()
-    if (data.value && !error.value) {
+    if (active && data.value && !error.value) {
       resetFromSaved()
       ready.value = true
     }
@@ -311,7 +319,7 @@ async function discardAndReload() {
           label="Customise for this form"
           color="neutral"
           variant="outline"
-          :disabled="!data?.canEdit || saving || uncertain"
+          :disabled="!editable || saving || uncertain"
           @click="customise"
         />
         <UButton
@@ -319,7 +327,7 @@ async function discardAndReload() {
           label="Use website default"
           color="neutral"
           variant="outline"
-          :disabled="!data?.canEdit || saving || uncertain"
+          :disabled="!editable || saving || uncertain"
           @click="() => { resetOpen = true }"
         />
       </div>
@@ -334,7 +342,7 @@ async function discardAndReload() {
             :content="false"
             class="w-full border-b border-default p-2"
           />
-          <fieldset :disabled="!data?.canEdit || saving || uncertain" class="@container min-w-0 space-y-5 p-4 @3xl:max-h-[740px] @3xl:overflow-y-auto">
+          <fieldset :disabled="!editable || saving || uncertain" class="@container min-w-0 space-y-5 p-4 @3xl:max-h-[740px] @3xl:overflow-y-auto">
             <legend class="sr-only">
               Template design
             </legend>
@@ -701,6 +709,7 @@ async function discardAndReload() {
     <PageStudioEmailMediaPicker
       v-model:open="pickerOpen"
       :site-id="siteId"
+      :api-audience="apiAudience"
       :assets="assets"
       @select="selectImage"
     />
@@ -712,7 +721,7 @@ async function discardAndReload() {
           variant="outline"
           @click="() => { resetOpen = false }"
         />
-        <UButton label="Use website default" :disabled="saving || uncertain || !data?.canEdit" @click="resetToDefault" />
+        <UButton label="Use website default" :disabled="saving || uncertain || !editable" @click="resetToDefault" />
       </template>
     </UModal>
     <UModal v-model:open="replaceLayoutOpen" title="Use this starting layout?" description="This replaces your subject and message. Your business details and style stay the same. You can undo this change.">
@@ -722,7 +731,7 @@ async function discardAndReload() {
           color="neutral"
           variant="outline"
           @click="() => { replaceLayoutOpen = false }"
-        /><UButton label="Use layout" :disabled="saving || uncertain || !data?.canEdit" @click="useLayout" />
+        /><UButton label="Use layout" :disabled="saving || uncertain || !editable" @click="useLayout" />
       </template>
     </UModal>
     <UModal v-model:open="leaveOpen" title="Leave without saving?" description="Your template changes have not been saved.">

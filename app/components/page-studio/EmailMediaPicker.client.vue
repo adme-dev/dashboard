@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { formSiteApi, type FormApiAudience } from '~/utils/pageStudioFormApi'
 import type { StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 import { EMAIL_IMAGE_MAX_BYTES } from '~~/shared/pageStudio/emailTemplates'
 
-const props = defineProps<{ siteId: string, assets: StandaloneSiteWorkspace['assets'] }>()
+const props = defineProps<{ siteId: string, apiAudience?: FormApiAudience, assets: StandaloneSiteWorkspace['assets'] }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ select: [asset: StandaloneSiteWorkspace['assets'][number]] }>()
 const search = ref('')
@@ -64,7 +65,7 @@ function select(asset: StandaloneSiteWorkspace['assets'][number]) {
               <UIcon v-if="failed.has(asset.id)" name="i-lucide-image-off" class="size-8 text-muted" />
               <img
                 v-else
-                :src="`/api/portal/page-studio/sites/${encodeURIComponent(siteId)}/assets/${encodeURIComponent(asset.id)}/content`"
+                :src="`${formSiteApi(siteId, apiAudience)}/assets/${encodeURIComponent(asset.id)}/content`"
                 :alt="asset.altText || ''"
                 class="size-full object-contain"
                 loading="lazy"

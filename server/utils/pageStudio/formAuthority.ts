@@ -1,6 +1,5 @@
-import { PageStudioBusinessContentError, authorizePageStudioBusinessContent, type ContentAuthorityRequest } from './businessContent'
-import { getPageStudioDocument } from './documents'
-import { resolveEmailTemplateMedia } from './emailTemplateMedia'
+import { PageStudioBusinessContentError } from './businessContent'
+import type { getPageStudioDocument } from './documents'
 import { samePageStudioContentScope, type PageStudioContentScope } from '~~/shared/pageStudio/businessContent'
 import type { EmailTemplate } from '~~/shared/pageStudio/emailTemplates'
 
@@ -35,15 +34,4 @@ export async function recheckFormAuthority(context: Pick<TrustedFormContext, 'au
 }
 export function admitFormDocument(document: Awaited<ReturnType<typeof getPageStudioDocument>>, scope: PageStudioContentScope) {
   if (document.id !== scope.siteId || document.site?.id !== scope.siteId || document.site.clientId !== scope.clientId) throw new PageStudioBusinessContentError('FORM_DOCUMENT_DENIED', 403, 'Website access denied')
-}
-export function portalFormContext(request: ContentAuthorityRequest, deps: { authorize?: typeof authorizePageStudioBusinessContent, document?: typeof getPageStudioDocument, media?: typeof resolveEmailTemplateMedia } = {}): TrustedFormContext {
-  return {
-    authorize: async (writing) => {
-      const current = await (deps.authorize ?? authorizePageStudioBusinessContent)(request, writing, { policyOnly: true })
-      return { ...current, actorId: request.actor.actorId, authorityKey: JSON.stringify([request.actor.role, request.actor.actorId, request.actor.clientId, current.scope.businessId, current.scope.clientId, current.scope.tenantId]) }
-    },
-    readDocument: scope => (deps.document ?? getPageStudioDocument)(scope.tenantId, scope.siteId, request.env.PAGE_STUDIO_CHECKPOINTS as Parameters<typeof getPageStudioDocument>[2]),
-    service: request.env.PAGE_STUDIO_CONTENT_ROUTER as FormDraftService | undefined,
-    resolveMedia: template => (deps.media ?? resolveEmailTemplateMedia)(request, template)
-  }
 }

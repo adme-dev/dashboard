@@ -40,10 +40,13 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 **2 October release:** matching Dashboard preview and private executor/coordinator/router
 are deployed; coordinator migrations 0011–0013 are applied and verified. Customer
 form activation remains closed. All local Studio gates and focused Dashboard tests
-pass. Next: connect the separate native customer login to the Forms dashboard and
-prepare its private activation caller, then run two-customer hosted acceptance.
+pass for that release. Native authority, APIs and Forms UI are now implemented
+and independently reviewed locally. Next: finish the private activation caller,
+verify the final build and deploy matching preview code, then run two-customer
+hosted acceptance.
 The [source-verified integration and acceptance plan](2026-10-02-native-forms-acceptance.md)
-records this additional software gap; test email addresses are also pending.
+records the integration and remaining acceptance gates; test email addresses
+are also pending.
 Full source/version/rollback evidence is in the
 [native forms staging receipt](2026-10-02-native-forms-staging-receipt.md).
 
@@ -77,22 +80,24 @@ Separate scoped RPC capability activation and all six actual-bound draft methods
 are implemented and independently reviewed. Final native status fixes pass 78
 Dashboard tests, including 46 real PostgreSQL cases. Full Studio build, typecheck,
 lint and tests pass (40 package tasks, 36 security and 48 action-runtime tests).
-Hosted acceptance remains pending the native CMS connection, private activation
-caller and two fresh approved native test identities.
+Hosted acceptance remains pending the matching native UI/API release, private
+activation caller and two fresh approved native test identities.
 Coordinator migrations 0011–0013 are now applied before the new private workers.
 
 ## Remaining form and email work
 
 - [x] Current native customer form authority: fresh session, workspace role and
       exact retained site/entitlement checks; 44 local PostgreSQL cases pass and
-      independent review approved. HTTP/UI connection remains below.
+      independent review approved.
 
 - [x] Native customer workspace/draft APIs and safe template/media previews;
       shared validation preserves invited-client routes. Independent review approved;
       98 focused tests and 69 local PostgreSQL cases pass (including 44 authority
       and 19 portal regressions). Dedicated staging Forms gate remains closed.
-- [ ] Connect the native overview and Forms screen to those native APIs; preserve
-      the invited-client UI and verify end-to-end browser behavior.
+- [x] Connect native overview/Forms to native APIs, preserving invited-client UI.
+      Independent review and 47 UI tests pass. Real Chrome verifies restored portal
+      editing, dirty/discard behavior and native closed-gate routes at 390px.
+- [ ] Release the connection and verify the native hosted browser journey.
 - [ ] Implement and review the private staging activation caller, then execute the
       two-customer hosted acceptance matrix.
 
@@ -136,12 +141,13 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
   Branch `feat/standalone-site-workspace`; deployed implementation `5b9b978e0`.
-  Current native authority checkpoint `6c9e722a2` is pushed; HTTP/UI work follows.
+  Native API checkpoint `db89c9533` is pushed; reviewed native UI is the next commit.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
   Branch `feat/customer-form-settings-drafts`; deployed private executor, coordinator
   and router source `e26199556`. Exact service versions are in the staging receipt.
-- Previous checkpoints are pushed; native integration has current uncommitted work.
+- Previous checkpoints are pushed; native UI is reviewed and the private activation
+  CLI is in progress.
   The Dashboard integration plan and its
   `.superpowers/sdd/2026-10-02-native-forms-acceptance/` ledger track current task
   ownership and review status; the earlier Studio integration ledger records the

@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import type { FormApiAudience } from '~/utils/pageStudioFormApi'
 import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
 import type { StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 import type { PageStudioSavedPages } from '~~/shared/pageStudio/savedPages'
 
-const props = defineProps<{ siteId: string, assets: StandaloneSiteWorkspace['assets'], pages: PageStudioSavedPages['pages'], checkpointId?: string, formLibrary?: PageStudioSavedPages['formLibrary'], reloadWorkspace: () => Promise<unknown> }>()
+const props = withDefaults(defineProps<{ siteId: string, apiAudience?: FormApiAudience, canEdit?: boolean, assets: StandaloneSiteWorkspace['assets'], pages: PageStudioSavedPages['pages'], checkpointId?: string, formLibrary?: PageStudioSavedPages['formLibrary'], reloadWorkspace: () => Promise<unknown> }>(), { canEdit: undefined })
+// Every editor uses an immutable request scope and is remounted when its session/site changes.
+const scopeKey = computed(() => `${props.apiAudience ?? 'portal'}:${props.siteId}`)
 const emit = defineEmits<{ dirty: [value: boolean], reload: [], enquiries: [value: { placements: Array<{ formId: string, pageRoute?: string }>, name: string }] }>()
 const selectedKey = ref('__none__')
 const dirty = ref(false)
@@ -58,7 +61,10 @@ watch(selectedKey, () => {
       </div>
       <PageStudioFormRecipientsEditor
         v-if="emailView === 'recipients'"
+        :key="`${scopeKey}:website-recipients`"
         :site-id="siteId"
+        :api-audience="apiAudience"
+        :can-edit="canEdit"
         :checkpoint-id="checkpointId"
         :forms="recipientForms"
         :reload-workspace="reloadWorkspace"
@@ -66,9 +72,11 @@ watch(selectedKey, () => {
       />
       <PageStudioEmailTemplateEditor
         v-else
-        :key="emailView"
+        :key="`${scopeKey}:website:${emailView}`"
         :assets="assets"
         :site-id="siteId"
+        :api-audience="apiAudience"
+        :can-edit="canEdit"
         :checkpoint-id="checkpointId"
         :audience="emailView === 'team' ? 'team' : 'customer'"
         :forms="previewForms"
@@ -101,6 +109,7 @@ watch(selectedKey, () => {
             </p>
           </div>
           <UButton
+            v-if="apiAudience !== 'customer'"
             label="View enquiries"
             icon="i-lucide-inbox"
             color="neutral"
@@ -109,6 +118,9 @@ watch(selectedKey, () => {
             @click="emit('enquiries', { placements: selected.placements.map(item => ({ formId: item.formId, pageRoute: selected.definitionId ? undefined : item.route })), name: selected.form.name || 'Website form' })"
           />
         </div>
+        <p v-if="apiAudience === 'customer'" class="text-sm text-muted">
+          Enquiries are not available in this workspace yet. Form and email settings are saved as drafts.
+        </p>
         <UAccordion v-if="selected.definitionId && selected.placements.length" :items="[{ label: 'Pages using this form', slot: 'placements' }]">
           <template #placements>
             <ul class="space-y-2 pb-3 text-sm text-muted">
@@ -134,8 +146,10 @@ watch(selectedKey, () => {
         </div>
         <PageStudioFormSettingsEditor
           v-if="tab === 'settings' && checkpointId && selected.form.fields && firstPlacement"
-          :key="`${selected.key}:${checkpointId}`"
+          :key="`${scopeKey}:${selected.key}:${checkpointId}`"
           :site-id="siteId"
+          :api-audience="apiAudience"
+          :can-edit="canEdit"
           :page-id="firstPlacement.pageId"
           :form-id="firstPlacement.formId"
           :checkpoint-id="checkpointId"
@@ -146,8 +160,10 @@ watch(selectedKey, () => {
         />
         <PageStudioFormRecipientsEditor
           v-else-if="tab === 'emails' && checkpointId && selected.definitionId"
-          :key="selected.key"
+          :key="`${scopeKey}:${selected.key}:recipients`"
           :site-id="siteId"
+          :api-audience="apiAudience"
+          :can-edit="canEdit"
           :checkpoint-id="checkpointId"
           :definition-id="selected.definitionId"
           :forms="recipientForms"
@@ -156,9 +172,11 @@ watch(selectedKey, () => {
         />
         <PageStudioEmailTemplateEditor
           v-else-if="(tab === 'team-template' || tab === 'customer-template') && checkpointId && selected.definitionId"
-          :key="`${selected.key}:${tab}`"
+          :key="`${scopeKey}:${selected.key}:${tab}`"
           :assets="assets"
           :site-id="siteId"
+          :api-audience="apiAudience"
+          :can-edit="canEdit"
           :checkpoint-id="checkpointId"
           :definition-id="selected.definitionId"
           :placement-count="selected.placements.length"

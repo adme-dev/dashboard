@@ -1,24 +1,25 @@
 # Native customer forms: integration and hosted acceptance
 
 Status: implementation in progress on 2 October 2026. Current native authority is
-reviewed and committed (`6c9e722a2`); HTTP adapters have passed independent review. This is a
+reviewed and committed (`6c9e722a2`); HTTP adapters and native Forms UI have passed independent review. This is a
 runbook and implementation plan, not evidence that the customer journey passes.
 See [deployed backend receipt](2026-10-02-native-forms-staging-receipt.md).
 
-## Correction to the previous checkpoint
+## Gap identified at the previous checkpoint
 
 Two test mailboxes are necessary but are not the only remaining prerequisite.
-The private native setup/capability backend is deployed. The visible Forms dashboard
-still belongs to the invited-client session path. Native self-service customer
-sign-up has its own account/session and website overview; it does not yet expose
-that operational Forms dashboard. A worker RPC test cannot prove this UI connection.
+The private native setup/capability backend is deployed. At that checkpoint, the visible Forms dashboard
+belonged to the invited-client session path. Native self-service customer
+sign-up has its own account/session and website overview; it did not expose
+that operational Forms dashboard. Tasks 1–3 below now implement that connection;
+hosted acceptance and release remain separate gates. A worker RPC test cannot prove this UI connection.
 
 Verified source boundaries:
 
 | Boundary | Current source and behavior |
 | --- | --- |
 | Native sign-in | `server/utils/pageStudio/customerSignupHttp.ts` reads `studio_customer_session`; exact-origin mutation guard and signup gate. |
-| Native overview | `app/pages/studio/dashboard.vue` calls `/api/portal/page-studio/customer/dashboard` and opens Studio; no Forms navigation. |
+| Native overview | `app/pages/studio/dashboard.vue` calls `/api/portal/page-studio/customer/dashboard` and opens Studio; now offers Forms only after native availability admission. |
 | Existing CMS screen | `app/pages/studio/sites/[siteId]/index.vue` uses `studio-auth` and the portal workspace endpoint. |
 | Existing form handlers | `formSettingsHttp.ts`, `formRecipientsHttp.ts`, `emailTemplatesHttp.ts` resolve the `portal` audience. |
 | Portal identity | `httpActor.ts` calls `requireClientAuth`; `businessContent.ts` accepts agency/client actors and joins `agency_clients`. |
@@ -33,7 +34,12 @@ this gap. Keep Fantasy Limo's invited-client demo working through its existing p
 
 Task 1 is complete with 44 real local PostgreSQL tests and independent review.
 Task 2 is reviewed with 98 focused tests and 69 local PostgreSQL cases passing.
-Tasks 3–6 remain pending; no hosted native Forms acceptance is claimed.
+Task 3 is reviewed with 47 UI tests passing after the permission-default fix.
+Actual Chrome confirms the invited-client editor, dirty/discard behavior and native
+unavailable/overview routes; the native unavailable screen fits 390px without
+horizontal overflow. No stored demo values changed. Tasks 4 and 6 remain pending;
+Task 5 automated coverage is included in Tasks 1–3, with hosted acceptance outstanding.
+The final build size and baseline typecheck comparison remain release gates.
 
 1. Add a dedicated current-native-customer authority adapter. Derive identity and
    workspace from the native session and completed setup; derive site/environment

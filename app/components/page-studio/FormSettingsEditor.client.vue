@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import { formSiteApi, type FormApiAudience } from '~/utils/pageStudioFormApi'
 import { defaultFormOutcomes, FormOutcomeSettingsSchema, validateFormOutcomeFields } from '~~/shared/pageStudio/formOutcomes'
 import type { FormSettingsState } from '~~/shared/pageStudio/formSettings'
 
-const props = defineProps<{ siteId: string, pageId: string, formId: string, checkpointId: string, fields: Array<{ id: string, name: string, type: string }>, pages: Array<{ title: string, route: string }> }>()
+const props = withDefaults(defineProps<{ siteId: string, apiAudience?: FormApiAudience, canEdit?: boolean, pageId: string, formId: string, checkpointId: string, fields: Array<{ id: string, name: string, type: string }>, pages: Array<{ title: string, route: string }> }>(), { canEdit: undefined })
+const editable = computed(() => props.canEdit !== false && !error.value && !pending.value && Boolean(data.value?.canEdit))
+let active = true
 const emit = defineEmits<{ dirty: [value: boolean], reload: [] }>()
-const url = `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/pages/${encodeURIComponent(props.pageId)}/forms/${encodeURIComponent(props.formId)}/settings`
-const { data, pending, error, refresh } = useFetch<FormSettingsState>(url)
+const url = `${formSiteApi(props.siteId, props.apiAudience)}/pages/${encodeURIComponent(props.pageId)}/forms/${encodeURIComponent(props.formId)}/settings`
+const { data, pending, error, refresh } = useFetch<FormSettingsState>(url, { getCachedData: () => undefined })
 const settings = ref(defaultFormOutcomes())
 const baseline = ref(JSON.stringify(settings.value))
 const saving = ref(false)
@@ -32,7 +35,7 @@ watch(leaveOpen, (open) => {
   if (!open) finishLeave(false)
 })
 const dirty = computed(() => JSON.stringify(settings.value) !== baseline.value)
-const canSave = computed(() => ready.value && data.value?.canEdit && dirty.value && !saving.value)
+const canSave = computed(() => ready.value && editable.value && dirty.value && !saving.value)
 const availableFields = computed(() => props.fields.filter(field => field.type !== 'hidden'))
 const operators = [{ label: 'equals', value: 'equals' }, { label: 'does not equal', value: 'not_equals' }, { label: 'contains', value: 'contains' }, { label: 'is greater than', value: 'greater_than' }, { label: 'is less than', value: 'less_than' }]
 function resetFromSaved() {
@@ -47,13 +50,15 @@ watch(data, (value) => {
   ready.value = true
 }, { immediate: true })
 watch(dirty, (value) => {
-  emit('dirty', value)
   if (value) savedNotice.value = ''
 }, { immediate: true })
 watch([dirty, saving], ([hasEdits, inFlight]) => {
   unsavedFormSettings.value = hasEdits || inFlight
+  emit('dirty', hasEdits || inFlight)
 }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => {
+  active = false
+  finishLeave(false)
   unsavedFormSettings.value = false
   emit('dirty', false)
 })
@@ -79,21 +84,28 @@ async function save() {
   savedNotice.value = ''
   try {
     const result = await $fetch<FormSettingsState>(url, { method: 'PUT', body: { checkpointId: props.checkpointId, expectedRevision: data.value?.record?.revision ?? 0, settings: parsed.success ? parsed.data : settings.value } })
+    if (!active) return
     data.value = result
     resetFromSaved()
     savedNotice.value = `Draft revision ${result.record?.revision} saved. Your live form has not changed.`
   } catch (cause) {
+    if (!active) return
     saveError.value = (cause as { statusCode?: number })?.statusCode === 409 ? 'A newer form or settings revision needs review. Your edits are preserved. Discard them and reload to continue.' : 'We could not confirm the save. Your edits are preserved. Reload the saved settings before retrying.'
   } finally {
     saving.value = false
   }
 }
 async function discardAndReload() {
+  saving.value = true
   resetFromSaved()
   ready.value = false
   emit('reload')
-  await refresh()
-  if (data.value && !error.value) ready.value = true
+  try {
+    await refresh()
+    if (active && data.value && !error.value) ready.value = true
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -120,7 +132,7 @@ async function discardAndReload() {
       <p v-if="data?.record" class="text-xs text-muted">
         Saved draft revision {{ data.record.revision }}
       </p>
-      <fieldset :disabled="!data?.canEdit || saving" class="min-w-0 space-y-6">
+      <fieldset :disabled="!editable || saving" class="min-w-0 space-y-6">
         <legend class="sr-only">
           Outcome settings
         </legend>

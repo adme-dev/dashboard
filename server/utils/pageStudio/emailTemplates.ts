@@ -1,6 +1,7 @@
+import { portalFormContext } from './portalFormContext'
 import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
 import { renderCustomerEmailPreview } from './emailTemplatePreview'
-import { admitFormDocument, portalFormContext, recheckFormAuthority, type TrustedFormContext } from './formAuthority'
+import { admitFormDocument, recheckFormAuthority, type TrustedFormContext } from './formAuthority'
 import { PageStudioBusinessContentError } from './businessContent'
 import type { authorizePageStudioBusinessContent, ContentAuthorityRequest } from './businessContent'
 import type { resolveEmailTemplateMedia } from './emailTemplateMedia'
