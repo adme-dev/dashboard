@@ -505,3 +505,23 @@ Acceptance, sample revisions, screenshots and remaining tasks are recorded in
 [the current checklist](customer-cms-status.md). This is a draft-design feature;
 logo/media blocks, shared business-profile settings and sender/delivery activation
 are not included.
+
+## Shared-form template overrides — 1 October 2026
+
+Completed targeted template overrides for both audiences. Each shared definition
+has one optional complete template regardless of page placements. Inherited forms
+show the effective website preview; Customise opens the existing editor, and Use
+website default requires confirmation plus an explicit save. Website editors show
+the number of inheriting forms and preserve all custom templates.
+
+The existing website/audience revision stores a bounded unique overrides array.
+Targeted operations validate definition ownership/current checkpoint and expected
+revision, read and validate the scoped head, then CAS-append the merged document.
+Reset removes the override, allowing later defaults to propagate. Both contracts
+limit UTF-8 JSON of template plus overrides to 1.5 MB, leaving metadata headroom
+below customer D1 limits. No SQL migration or delivery authority is introduced.
+
+Backward compatibility covers absent overrides and legacy identity. The initial
+website default has one shared factory so first-form saves do not alter its look.
+Detailed test/browser evidence and remaining work are in the current checklist.
+The user-facing cleanup of removed-definition overrides is explicitly deferred.

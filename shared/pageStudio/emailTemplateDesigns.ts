@@ -1,4 +1,4 @@
-import { starterEmailTemplate, emptyEmailIdentity, type EmailAudience, type EmailTemplate } from './emailTemplates'
+import { starterEmailTemplate, defaultWebsiteEmailTemplate, emptyEmailIdentity, type EmailAudience, type EmailTemplate } from './emailTemplates'
 
 export const emailDesigns = [
   { id: 'clean', name: 'Clean', description: 'Crisp, clear and professional.', accentColor: '#243047', textColor: '#243047', canvasColor: '#ffffff', backgroundColor: '#eef1f5', fontFamily: 'MODERN_SANS' },
@@ -29,8 +29,7 @@ export function emailStarterLayout(audience: EmailAudience, kind: 'enquiry' | 'b
 
 /** Hydrate editing controls without changing how an older saved email looks. */
 export function prepareEmailTemplate(saved: EmailTemplate | null, audience: EmailAudience): EmailTemplate {
-  const template: EmailTemplate = JSON.parse(JSON.stringify(saved ?? starterEmailTemplate(audience)))
+  const template: EmailTemplate = JSON.parse(JSON.stringify(saved ?? defaultWebsiteEmailTemplate(audience)))
   template.identity ??= { ...emptyEmailIdentity(), businessName: saved ? '' : '{{site.name}}' }
-  if (!saved) template.blocks = template.blocks.filter(block => block.id !== 'footer')
   return template
 }

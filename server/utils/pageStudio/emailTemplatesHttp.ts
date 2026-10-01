@@ -19,7 +19,7 @@ export async function handleEmailTemplate(event: H3Event, method: 'GET' | 'PUT' 
     const body = method !== 'GET' ? await readPageStudioJson(event, 300_000, ['Templates must be JSON', 'Template is too large', 'Template is required', 'Invalid template', 'Invalid template JSON']) : undefined
     const request = { actor, login, siteId: getRouterParam(event, 'siteId') ?? '', env: event.context.cloudflare?.env ?? {} }
     const audience = getRouterParam(event, 'audience') ?? ''
-    if (method !== 'PREVIEW') return await operateEmailTemplate(request, audience, body)
+    if (method !== 'PREVIEW') return await operateEmailTemplate(request, audience, body, {}, getRouterParam(event, 'definitionId'))
     const parsed = EmailTemplatePreviewSchema.safeParse(body)
     if (!parsed.success || !EmailAudienceSchema.safeParse(audience).success) throw new PageStudioBusinessContentError('EMAIL_TEMPLATE_INVALID', 400, 'Check the template fields and preview form')
     const before = await authorizePageStudioBusinessContent(request, false, { policyOnly: true })

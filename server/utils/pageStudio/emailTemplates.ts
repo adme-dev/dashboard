@@ -1,7 +1,7 @@
 import { authorizePageStudioBusinessContent, PageStudioBusinessContentError as SettingsError, type ContentAuthorityRequest } from './businessContent'
 import { getPageStudioDocument } from './documents'
 import { samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
-import { EmailTemplateEditSchema, EmailTemplateRecordSchema, EmailAudienceSchema, type EmailTemplateState } from '~~/shared/pageStudio/emailTemplates'
+import { EmailTemplateWriteSchema, EmailTemplateEditSchema, EmailTemplateOverrideEditSchema, defaultWebsiteEmailTemplate, EmailTemplateRecordSchema, EmailAudienceSchema, type EmailTemplateState } from '~~/shared/pageStudio/emailTemplates'
 
 interface Dependencies {
   authorize?: typeof authorizePageStudioBusinessContent
@@ -11,7 +11,7 @@ const invalid = (message: string) => new SettingsError('EMAIL_TEMPLATE_INVALID',
 const unavailable = () => new SettingsError('EMAIL_TEMPLATE_UNAVAILABLE', 503, 'Email template storage is not connected. Your website has not changed.')
 const conflict = () => new SettingsError('EMAIL_TEMPLATE_CONFLICT', 409, 'This form or its settings changed. Reload the saved version before saving again.')
 
-export async function operateEmailTemplate(request: ContentAuthorityRequest, audience: string, body?: unknown, deps: Dependencies = {}): Promise<EmailTemplateState> {
+export async function operateEmailTemplate(request: ContentAuthorityRequest, audience: string, body?: unknown, deps: Dependencies = {}, definitionId?: string): Promise<EmailTemplateState> {
   const parsedAudience = EmailAudienceSchema.safeParse(audience)
   if (!parsedAudience.success) throw invalid('Unknown email audience')
   const writing = body !== undefined
@@ -23,7 +23,8 @@ export async function operateEmailTemplate(request: ContentAuthorityRequest, aud
   const current = await authorize(request, writing, { policyOnly: true })
   if (!samePageStudioContentScope(before.scope, current.scope)) throw new SettingsError('EMAIL_TEMPLATE_DENIED', 403, 'Email template access denied')
   const service = request.env.PAGE_STUDIO_CONTENT_ROUTER as { readEmailTemplateDraft?: (input: unknown) => Promise<unknown>, writeEmailTemplateDraft?: (input: unknown) => Promise<unknown> } | undefined
-  const edit = writing ? EmailTemplateEditSchema.safeParse(body) : undefined
+  if (definitionId !== undefined && !document.studio.formLibrary?.definitions.some(item => item.id === definitionId)) throw new SettingsError('FORM_NOT_FOUND', 404, 'Choose a saved shared form')
+  const edit = writing ? (definitionId !== undefined ? EmailTemplateOverrideEditSchema : EmailTemplateEditSchema).safeParse(body) : undefined
   if (edit && !edit.success) throw invalid('Check the template fields and variables and try again')
   const proposed = edit?.success ? edit.data : undefined
   if (proposed) {
@@ -31,10 +32,27 @@ export async function operateEmailTemplate(request: ContentAuthorityRequest, aud
   }
 
   let value: unknown
+  let outgoing: { template: ReturnType<typeof defaultWebsiteEmailTemplate>, overrides: NonNullable<NonNullable<EmailTemplateState['record']>['overrides']> } | undefined
+  const decode = (value: unknown) => {
+    const parsed = EmailTemplateRecordSchema.safeParse(value)
+    if (!parsed.success || !samePageStudioContentScope(parsed.data.scope, before.scope) || parsed.data.audience !== parsedAudience.data) throw unavailable()
+    return parsed.data
+  }
   try {
     if (proposed) {
       if (!service?.writeEmailTemplateDraft) throw unavailable()
-      value = await service.writeEmailTemplateDraft({ scope: before.scope, audience: parsedAudience.data, ...proposed, actorId: request.actor.actorId })
+      if (!service.readEmailTemplateDraft) throw unavailable()
+      const saved = await service.readEmailTemplateDraft({ scope: before.scope, audience: parsedAudience.data })
+      const head = saved === null ? null : decode(saved)
+      if ((head?.revision ?? 0) !== proposed.expectedRevision) throw conflict()
+      const overrides = head?.overrides ?? []
+      outgoing = definitionId !== undefined
+        ? { template: head?.template ?? defaultWebsiteEmailTemplate(parsedAudience.data), overrides: [...overrides.filter(item => item.definitionId !== definitionId), ...(proposed.template ? [{ definitionId, template: proposed.template }] : [])] }
+        : { template: proposed.template!, overrides }
+      const write = EmailTemplateWriteSchema.safeParse({ scope: before.scope, audience: parsedAudience.data, ...proposed, ...outgoing, actorId: request.actor.actorId })
+      if (!write.success) throw invalid(write.error.issues[0]?.message ?? 'Check your template settings')
+      outgoing = { template: write.data.template, overrides: write.data.overrides ?? [] }
+      value = await service.writeEmailTemplateDraft(write.data)
     } else {
       if (!service?.readEmailTemplateDraft) throw unavailable()
       value = await service.readEmailTemplateDraft({ scope: before.scope, audience: parsedAudience.data })
@@ -51,6 +69,6 @@ export async function operateEmailTemplate(request: ContentAuthorityRequest, aud
   const record = EmailTemplateRecordSchema.safeParse(value)
   if (!record.success || !samePageStudioContentScope(record.data.scope, before.scope)
     || record.data.audience !== parsedAudience.data
-    || (proposed && (record.data.revision !== proposed.expectedRevision + 1 || record.data.actorId !== request.actor.actorId || record.data.checkpointId !== proposed.checkpointId || JSON.stringify(record.data.template) !== JSON.stringify(proposed.template)))) throw unavailable()
+    || (proposed && (record.data.revision !== proposed.expectedRevision + 1 || record.data.actorId !== request.actor.actorId || record.data.checkpointId !== proposed.checkpointId || JSON.stringify(record.data.template) !== JSON.stringify(outgoing?.template) || JSON.stringify(record.data.overrides ?? []) !== JSON.stringify(outgoing?.overrides)))) throw unavailable()
   return { record: record.data, canEdit: after.canEdit, activation: 'draft_only' }
 }

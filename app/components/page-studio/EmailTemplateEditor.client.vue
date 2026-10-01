@@ -1,11 +1,24 @@
 <script setup lang="ts">
-import { ValidatedEmailTemplateSchema, starterEmailTemplate, socialPlatforms, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailAudience } from '~~/shared/pageStudio/emailTemplates'
+import { ValidatedEmailTemplateSchema, effectiveEmailTemplate, starterEmailTemplate, socialPlatforms, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailAudience } from '~~/shared/pageStudio/emailTemplates'
 
 import { emailDesigns, styleEmailTemplate, emailStarterLayout, prepareEmailTemplate, type EmailDesignId } from '~~/shared/pageStudio/emailTemplateDesigns'
 
-const props = defineProps<{ siteId: string, checkpointId: string, audience: EmailAudience, forms: Array<{ key: string, name: string, pageId: string, formId: string }>, reloadWorkspace: () => Promise<unknown> }>()
+const props = defineProps<{ siteId: string, checkpointId: string, definitionId?: string, placementCount?: number, audience: EmailAudience, forms: Array<{ key: string, name: string, pageId: string, formId: string }>, reloadWorkspace: () => Promise<unknown> }>()
 const emit = defineEmits<{ dirty: [value: boolean] }>()
-const url = `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/email-templates/${props.audience}`
+const websiteUrl = `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/email-templates/${props.audience}`
+const url = props.definitionId ? `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/${encodeURIComponent(props.definitionId)}/email-templates/${props.audience}` : websiteUrl
+const customised = ref(false)
+const resetOpen = ref(false)
+const snapshot = () => JSON.stringify({ template: template.value, customised: customised.value })
+const inheritedCount = computed(() => props.forms.filter(form => !data.value?.record?.overrides?.some(item => item.definitionId === form.key)).length)
+function customise() {
+  customised.value = true
+}
+function resetToDefault() {
+  customised.value = false
+  template.value = prepareEmailTemplate(effectiveEmailTemplate(data.value?.record ?? null, props.audience), props.audience)
+  resetOpen.value = false
+}
 const { data, pending, error, refresh } = useFetch<EmailTemplateState>(url)
 const template = ref<EmailTemplate>(starterEmailTemplate(props.audience))
 const baseline = ref('')
@@ -34,8 +47,8 @@ onBeforeRouteLeave(async () => {
 watch(leaveOpen, (open) => {
   if (!open) finishLeave(false)
 })
-const dirty = computed(() => ready.value && JSON.stringify(template.value) !== baseline.value)
-const canSave = computed(() => ready.value && data.value?.canEdit && (dirty.value || !data.value?.record) && !saving.value && !uncertain.value)
+const dirty = computed(() => ready.value && snapshot() !== baseline.value)
+const canSave = computed(() => ready.value && data.value?.canEdit && (dirty.value || (!props.definitionId && !data.value?.record)) && !saving.value && !uncertain.value)
 const previewForm = ref(props.forms[0]?.key ?? '__none__')
 const device = ref('desktop')
 const panel = ref('content')
@@ -75,7 +88,7 @@ const previewInput = computed(() => {
 })
 const { preview, status: previewStatus, error: previewError, refresh: showPreview } = useEmailTemplatePreview(
   () => previewInput.value,
-  (body, signal) => $fetch(`${url}/preview`, { method: 'POST', body, signal })
+  (body, signal) => $fetch(`${websiteUrl}/preview`, { method: 'POST', body, signal })
 )
 watch(() => props.forms, (forms) => {
   if (!forms.some(form => form.key === previewForm.value)) previewForm.value = forms[0]?.key ?? '__none__'
@@ -138,12 +151,14 @@ function moveBlock(index: number, direction: number) {
 function resetFromSaved() {
   expectedRevision.value = data.value?.record?.revision ?? 0
   recording = false
-  template.value = prepareEmailTemplate(data.value?.record?.template ?? null, props.audience)
+  const override = data.value?.record?.overrides?.find(item => item.definitionId === props.definitionId)
+  customised.value = Boolean(override)
+  template.value = prepareEmailTemplate(props.definitionId ? effectiveEmailTemplate(data.value?.record ?? null, props.audience, props.definitionId) : data.value?.record?.template ?? null, props.audience)
   openBlock.value = template.value.blocks[0]?.id
   recording = true
   history.value = [JSON.stringify(template.value)]
   future.value = []
-  baseline.value = JSON.stringify(template.value)
+  baseline.value = snapshot()
   saveError.value = ''
   savedNotice.value = ''
   uncertain.value = false
@@ -175,11 +190,15 @@ async function save() {
   saveError.value = ''
   savedNotice.value = ''
   try {
-    const result = await $fetch<EmailTemplateState>(url, { method: 'PUT', body: { checkpointId: props.checkpointId, expectedRevision: expectedRevision.value, template: parsed.data } })
+    const result = await $fetch<EmailTemplateState>(url, { method: 'PUT', body: { checkpointId: props.checkpointId, expectedRevision: expectedRevision.value, template: props.definitionId && !customised.value ? null : parsed.data } })
     data.value = result
     resetFromSaved()
-    savedNotice.value = `Draft revision ${result.record?.revision} saved. No emails have been sent.`
+    savedNotice.value = props.definitionId && !customised.value ? 'Uses the website default again. No emails have been sent.' : `Draft revision ${result.record?.revision} saved. No emails have been sent.`
   } catch (cause) {
+    if ((cause as { statusCode?: number })?.statusCode === 400) {
+      saveError.value = (cause as { data?: { statusMessage?: string } })?.data?.statusMessage ?? 'Check the template fields and size before saving.'
+      return
+    }
     uncertain.value = true
     saveError.value = (cause as { statusCode?: number })?.statusCode === 409 ? 'A newer website or template revision needs review. Your edits are preserved. Discard them and reload to continue.' : 'We could not confirm the save. Your edits are preserved. Reload the saved settings before retrying.'
   } finally {
@@ -246,8 +265,37 @@ async function discardAndReload() {
     </UAlert>
     <USkeleton v-if="pending && !ready" class="h-96 w-full" />
     <template v-else-if="ready">
-      <div class="grid min-w-0 grid-cols-1 items-start gap-6 @3xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.3fr)]">
-        <div class="min-w-0 rounded-xl border border-default bg-default">
+      <div v-if="definitionId" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default px-4 py-3">
+        <div>
+          <p class="text-sm font-medium">
+            {{ customised ? 'Custom template' : 'Uses website default' }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ customised ? 'Website template changes will not replace this design.' : 'Changes to the website template will also update this form.' }} Applies to all {{ placementCount || 1 }} {{ placementCount === 1 ? 'page' : 'pages' }} using this form.
+          </p>
+        </div>
+        <UButton
+          v-if="!customised"
+          label="Customise for this form"
+          color="neutral"
+          variant="outline"
+          :disabled="!data?.canEdit || saving || uncertain"
+          @click="customise"
+        />
+        <UButton
+          v-else
+          label="Use website default"
+          color="neutral"
+          variant="outline"
+          :disabled="!data?.canEdit || saving || uncertain"
+          @click="() => { resetOpen = true }"
+        />
+      </div>
+      <p v-else class="text-sm text-muted">
+        Used by {{ inheritedCount }} of {{ forms.length }} forms. Custom form templates keep their own design.
+      </p>
+      <div class="grid min-w-0 grid-cols-1 items-start gap-6" :class="!definitionId || customised ? '@3xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.3fr)]' : ''">
+        <div v-if="!definitionId || customised" class="min-w-0 rounded-xl border border-default bg-default">
           <UTabs
             v-model="panel"
             :items="[{ label: 'Content', value: 'content', icon: 'i-lucide-align-left' }, { label: 'Design', value: 'design', icon: 'i-lucide-palette' }, { label: 'Details', value: 'details', icon: 'i-lucide-building-2' }]"
@@ -582,6 +630,17 @@ async function discardAndReload() {
         Design only. Sending and reply routing are not enabled yet.
       </p>
     </template>
+    <UModal v-model:open="resetOpen" title="Use the website template?" description="This form will follow the website default, including future changes. Save the draft to apply this reset.">
+      <template #footer>
+        <UButton
+          label="Keep custom template"
+          color="neutral"
+          variant="outline"
+          @click="() => { resetOpen = false }"
+        />
+        <UButton label="Use website default" :disabled="saving || uncertain || !data?.canEdit" @click="resetToDefault" />
+      </template>
+    </UModal>
     <UModal v-model:open="replaceLayoutOpen" title="Use this starting layout?" description="This replaces your subject and message. Your business details and style stay the same. You can undo this change.">
       <template #footer>
         <UButton

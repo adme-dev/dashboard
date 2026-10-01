@@ -121,7 +121,7 @@ watch(selectedKey, () => {
         </p>
         <div class="flex flex-wrap gap-2" role="group" aria-label="Form views">
           <UButton
-            v-for="item in [{ value: 'settings', label: 'After submission' }, { value: 'fields', label: 'Fields' }, ...(selected.definitionId ? [{ value: 'emails', label: 'Email recipients' }] : [])]"
+            v-for="item in [{ value: 'settings', label: 'After submission' }, { value: 'fields', label: 'Fields' }, ...(selected.definitionId ? [{ value: 'emails', label: 'Email recipients' }, { value: 'team-template', label: 'Team template' }, { value: 'customer-template', label: 'Customer template' }] : [])]"
             :key="item.value"
             :label="item.label"
             color="neutral"
@@ -149,6 +149,18 @@ watch(selectedKey, () => {
           :checkpoint-id="checkpointId"
           :definition-id="selected.definitionId"
           :forms="recipientForms"
+          :reload-workspace="reloadWorkspace"
+          @dirty="dirty = $event"
+        />
+        <PageStudioEmailTemplateEditor
+          v-else-if="(tab === 'team-template' || tab === 'customer-template') && checkpointId && selected.definitionId"
+          :key="`${selected.key}:${tab}`"
+          :site-id="siteId"
+          :checkpoint-id="checkpointId"
+          :definition-id="selected.definitionId"
+          :placement-count="selected.placements.length"
+          :audience="tab === 'team-template' ? 'team' : 'customer'"
+          :forms="previewForms.filter(item => item.key === selected.key)"
           :reload-workspace="reloadWorkspace"
           @dirty="dirty = $event"
         />

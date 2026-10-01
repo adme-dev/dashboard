@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { emailDesigns, styleEmailTemplate, emailStarterLayout, prepareEmailTemplate } from '../../../shared/pageStudio/emailTemplateDesigns'
-import { EmailTemplateSchema, starterEmailTemplate, validateTemplateVariables } from '../../../shared/pageStudio/emailTemplates'
+import { emailTemplateRecordFits, EmailTemplateWriteSchema, EmailTemplateSchema, effectiveEmailTemplate, starterEmailTemplate, validateTemplateVariables } from '../../../shared/pageStudio/emailTemplates'
 import { renderCustomerEmailPreview } from '../../../server/utils/pageStudio/emailTemplatePreview'
 import { operateEmailTemplate } from '../../../server/utils/pageStudio/emailTemplates'
 import type { ContentAuthorityRequest } from '../../../server/utils/pageStudio/businessContent'
@@ -112,4 +112,77 @@ it('preserves the rendered appearance of a saved legacy template when opening th
   expect(renderCustomerEmailPreview(edited, context).html).toBe(renderCustomerEmailPreview(template, context).html)
   expect(prepareEmailTemplate(null, 'customer').identity?.businessName).toBe('{{site.name}}')
   expect(prepareEmailTemplate(null, 'customer').blocks.some(block => block.id === 'footer')).toBe(false)
+})
+
+describe('shared-form template overrides', () => {
+  function existing() {
+    const s = setup()
+    s.document.mockResolvedValue({ site: { name: 'Demo' }, studio: { checkpointId: edit.checkpointId, pages: [], formLibrary: { definitions: [{ id: 'booking', placements: [{ pageId: 'one', formId: 'a' }, { pageId: 'two', formId: 'b' }] }, { id: 'contact', placements: [] }] } } })
+    const record = { scope, audience: 'team' as const, actorId: 'user_one', checkpointId: edit.checkpointId, revision: 2, updatedAt: '2026-10-01T00:00:00.000Z', template, overrides: [{ definitionId: 'contact', template: { ...template, subject: 'Contact only' } }] }
+    s.service.readEmailTemplateDraft.mockResolvedValue(record)
+    return { ...s, record }
+  }
+  it('resolves inheritance by definition rather than placement and follows later defaults after reset', () => {
+    const s = existing()
+    expect(effectiveEmailTemplate(s.record, 'team', 'contact').subject).toBe('Contact only')
+    expect(effectiveEmailTemplate({ ...s.record, template: { ...template, subject: 'New default' } }, 'team', 'booking').subject).toBe('New default')
+    expect(effectiveEmailTemplate({ ...s.record, overrides: [] }, 'team', 'contact')).toEqual(template)
+  })
+  it('saves one override for the shared definition and preserves defaults and other forms', async () => {
+    const s = existing()
+    const result = await operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 2, template: { ...template, subject: 'Booking only' } }, s.deps, 'booking')
+    expect(result.record?.template).toEqual(template)
+    expect(result.record?.overrides).toEqual([...s.record.overrides, { definitionId: 'booking', template: { ...template, subject: 'Booking only' } }])
+  })
+  it('preserves overrides when changing the website default and rejects injected override arrays', async () => {
+    const s = existing()
+    const result = await operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 2 }, s.deps)
+    expect(result.record?.overrides).toEqual(s.record.overrides)
+    await expect(operateEmailTemplate(s.request, 'team', { ...edit, overrides: [] }, s.deps)).rejects.toMatchObject({ statusCode: 400 })
+  })
+  it('reset removes only the selected override, so future website edits remain inherited', async () => {
+    const s = existing()
+    const result = await operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 2, template: null }, s.deps, 'contact')
+    expect(result.record?.overrides).toEqual([])
+    expect(result.record?.template).toEqual(template)
+    await expect(operateEmailTemplate(s.request, 'team', { ...edit, template: null }, s.deps)).rejects.toMatchObject({ statusCode: 400 })
+  })
+  it('rejects removed or foreign forms, stale saves and mismatched stored scopes before writing', async () => {
+    const s = existing()
+    await expect(operateEmailTemplate(s.request, 'team', undefined, s.deps, 'foreign')).rejects.toMatchObject({ statusCode: 404 })
+    await expect(operateEmailTemplate(s.request, 'team', edit, s.deps, 'booking')).rejects.toMatchObject({ statusCode: 409 })
+    s.service.readEmailTemplateDraft.mockResolvedValue({ ...s.record, scope: { ...scope, siteId: 'foreign' } })
+    await expect(operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 2 }, s.deps, 'booking')).rejects.toMatchObject({ statusCode: 503 })
+    expect(s.service.writeEmailTemplateDraft).not.toHaveBeenCalled()
+  })
+  it('rejects a worker acknowledgement that silently drops overrides', async () => {
+    const s = existing()
+    s.service.writeEmailTemplateDraft.mockImplementation(async ({ expectedRevision, overrides: _overrides, ...input }) => ({ ...input, revision: expectedRevision + 1, updatedAt: s.record.updatedAt }))
+    await expect(operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 2 }, s.deps, 'booking')).rejects.toMatchObject({ statusCode: 503 })
+    expect(s.service.writeEmailTemplateDraft).toHaveBeenCalledTimes(1)
+  })
+})
+
+it('shows and persists the same initial website design when the first save is a form override', async () => {
+  const s = setup()
+  s.document.mockResolvedValue({ studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
+  const initial = prepareEmailTemplate(null, 'team')
+  const inherited = effectiveEmailTemplate(null, 'team', 'booking')
+  expect(inherited).toEqual(initial)
+  const result = await operateEmailTemplate(s.request, 'team', edit, s.deps, 'booking')
+  expect(result.record?.template).toEqual(initial)
+})
+
+it('bounds aggregate UTF-8 records before dispatching a customer-storage write', async () => {
+  expect(emailTemplateRecordFits('a'.repeat(1_499_998))).toBe(true)
+  expect(emailTemplateRecordFits('a'.repeat(1_499_999))).toBe(false)
+  expect(emailTemplateRecordFits('界'.repeat(500_000))).toBe(false)
+  const large = { ...template, blocks: Array.from({ length: 30 }, (_, index) => ({ id: `text_${index}`, type: 'text' as const, text: 'a'.repeat(8000) })) }
+  const overrides = Array.from({ length: 5 }, (_, index) => ({ definitionId: `form_${index}`, template: large }))
+  const s = setup()
+  s.document.mockResolvedValue({ studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
+  s.service.readEmailTemplateDraft.mockResolvedValue({ scope, audience: 'team', actorId: 'user_one', checkpointId: edit.checkpointId, revision: 1, updatedAt: '2026-10-01T00:00:00.000Z', template: large, overrides })
+  expect(EmailTemplateWriteSchema.safeParse({ ...edit, actorId: 'user_one', scope, audience: 'team', template: large, overrides: [...overrides, { definitionId: 'booking', template: large }] }).success).toBe(false)
+  await expect(operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 1, template: large }, s.deps, 'booking')).rejects.toMatchObject({ statusCode: 400 })
+  expect(s.service.writeEmailTemplateDraft).not.toHaveBeenCalled()
 })

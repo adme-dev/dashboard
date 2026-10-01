@@ -40,8 +40,9 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 Website template drafts are implemented, locally verified and committed. Both
 implementation branches are pushed; no hosted rollout has happened.
 
-Next concrete slice: **explicit per-form template overrides** with an effective
-website-default preview and reset action. The compact block palette, safe live
+Next concrete slice: **customer-owned logo/image blocks** in templates, using
+scoped site media and safe previews. Per-form template overrides and reset are
+implemented and verified locally. The compact block palette, safe live
 preview, design looks and business header/footer are now locally verified.
 Preserve shared form identity so a form used on several pages is configured only
 once. Customer media blocks and AI proposals follow; AI requires explicit Apply
@@ -51,7 +52,9 @@ and preserves manual edits.
 
 - [x] Website team/customer template defaults (draft only).
 - [x] Vehicle Marketplace-inspired compact block palette and debounced safe preview.
-- [ ] Explicit per-form template overrides and reset to website default.
+- [x] Explicit per-form template overrides and reset to website default.
+- [ ] Explicit cleanup for overrides whose shared form was removed; preserve them
+      until the customer reviews them.
 - [x] Structured template editing, subject/preheader, brand styling and
       desktop/mobile preview.
 - [ ] Stored template revision-history/restore UI (session undo/redo is complete).
@@ -94,11 +97,12 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
   Restart with that directory's `start.sh`; do not start a second server on port 3044.
 - URL: `http://127.0.0.1:3044/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
-- Latest local backup: `customer-cms-demo/private/backups/2026-10-01T06-31-07.283Z/`.
+- Latest local backup: `customer-cms-demo/private/backups/2026-10-01T06-50-40.120Z/`.
   Preserve the private directory and media; do not commit credentials or copied data.
 - Recipient sample revision 4: `office@example.test`, with Contact override
   `contact@example.test`. These are inert demo addresses, not approved recipients.
-- Template samples: team revision 2; customer revision 3 with clearly labelled example contact details.
+- Template samples: team revision 2; customer revision 12 with a Booking enquiry override for five pages;
+  website design/contact details remain unchanged and explicitly fictional.
   Evidence: `customer-cms-demo/check-templates.mjs` and
   `customer-cms-demo/fantasy-limo-email-templates.png`.
 
@@ -113,7 +117,7 @@ has 934 existing diagnostics, none in the changed slice; Studio security has one
 pre-existing staging route-count assertion failure (35 pass).
 
 No merge/deployment or email delivery enabled for these local slices. Hosted
-schema activation, published outcomes, per-form template overrides, AI design and
+schema activation, published outcomes, AI design and
 email delivery remain pending. The website template draft editor is locally complete.
 Unsaved in-app navigation is protected; hard browser refresh/close still discards
 unsaved edits, and the UI asks the user to save first.
@@ -161,6 +165,51 @@ and action checks pass; its known route-count security assertion remains unchang
 Studio full formatting passed (1,520 files); independent review found no remaining
 blocker after legacy-template compatibility and duplicate-new-footer fixes.
 
-No deployment or sending. Logos/images, central business-profile reuse, per-form
-overrides and actual delivery remain separate work. Contact email is displayed
+No deployment or sending. Logos/images, central business-profile reuse and actual delivery remain separate
+work. Per-form overrides were completed in the following slice. Contact email is displayed
 content, not a verified sender or reply-routing setting.
+
+### Shared-form override design
+
+Preserve the existing website/audience revision as the atomic concurrency boundary.
+Add bounded, unique shared-definition overrides to its customer-owned JSON record.
+Dashboard accepts a targeted override/reset operation, validates current definition
+ownership, reads and preserves the other drafts, then appends with expected revision.
+Website saves preserve all form overrides. Reset removes one override (does not copy
+the current default). Existing documents remain valid with absent overrides.
+
+The UI inherits the existing semantic colours and typography: a simple status row,
+Customise action, effective preview and explicit reset confirmation. Editing reuses
+the three-tab editor. Shared-form page count and website-default impact stay visible.
+Acceptance covers isolation, concurrent/stale saves, default propagation, reset,
+shared placements, mobile and no delivery side effects.
+
+### Override acceptance — 1 October 2026
+
+- [x] Form → Team template / Customer template shows effective inheritance.
+- [x] Explicit Customise copies the effective design for all shared placements.
+- [x] Explicit confirmed reset removes one override and follows future defaults.
+- [x] Website saves preserve all custom form templates; impact reads 3 of 4 forms
+      for the final customer sample. Team and customer revisions remain independent.
+- [x] Server validates current definition ownership, checkpoint and frozen revision;
+      validates stored scope/audience before preserving other templates.
+- [x] Worker verifies complete acknowledgement, including overrides; records remain
+      append-only customer-owned JSON, without a new database migration.
+- [x] Matching 1.5 MB aggregate UTF-8 payload bounds fail before RPC with actionable
+      validation, leaving the draft editable. New/legacy defaults preserve appearance.
+- [x] Browser acceptance: saved override, cancel reset, confirm/save reset, reload,
+      shared five-page scope, dirty-navigation protection and 390px layout.
+- [x] Authenticated local API acceptance: two-form preservation across website edits,
+      reset inheritance, audience isolation, stale409, foreign404, injected400, no-login401.
+
+Evidence: `customer-cms-demo/check-template-overrides.mjs` and
+`fantasy-limo-form-template-override.png`. Focused Dashboard tests: 21 pass.
+Worker storage/router tests: 38 pass. Independent full-file review resolved initial
+default parity and aggregate-size findings; no remaining blockers. Removed-form
+overrides remain stored and need an explicit cleanup UI in a later slice.
+No merge, deployment or email delivery occurred.
+
+Broader checks for this slice: Studio build28/typecheck44 plus security types and
+package-test40 tasks pass. The existing security staging-route count assertion
+still fails (35 pass/1 fail); Dashboard typecheck stays at934 existing diagnostics,
+none in the changed files.

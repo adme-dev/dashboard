@@ -47,8 +47,8 @@ structured document and require Apply, leaving manual editing available.
 1. **Locally complete:** compact supported-block palette and debounced safe
    preview, retaining undo/redo and conflict protection. Eight focused tests and
    browser acceptance pass; details are in the current checklist.
-2. Add explicit shared-form template overrides and reset-to-default with effective
-   design preview and an impact summary.
+2. **Locally complete:** shared-form template overrides and reset-to-default with
+   effective design preview and an impact summary.
 3. Add customer media blocks, then AI proposals against the approved schema.
 4. Complete sender/routing/outbox and hosted acceptance separately.
 
