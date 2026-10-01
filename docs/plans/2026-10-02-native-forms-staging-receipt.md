@@ -73,6 +73,12 @@ current caller and does not require the original setup user to stay logged in.
 
 ## Remaining acceptance
 
+Source audit after deployment found an additional prerequisite: the existing Forms
+UI and HTTP handlers use the invited-client session, while native self-service
+sign-up has a separate account/session. The native CMS authority/UI adapter and a
+private activation caller must be completed before claiming browser acceptance.
+See the [integration and acceptance plan](2026-10-02-native-forms-acceptance.md).
+
 Two fresh native test identities are required because previous preview approval
 expired. Their email addresses were requested and are pending; no sign-in email
 has been sent and no replacement approval manufactured. The original immutable

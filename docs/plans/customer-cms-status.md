@@ -40,8 +40,11 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 **2 October release:** matching Dashboard preview and private executor/coordinator/router
 are deployed; coordinator migrations 0011–0013 are applied and verified. Customer
 form activation remains closed. All local Studio gates and focused Dashboard tests
-pass. Next: two fresh approved native test identities, followed by hosted save/reload,
-conflict and isolation acceptance. Full source/version/rollback evidence is in the
+pass. Next: connect the separate native customer login to the Forms dashboard and
+prepare its private activation caller, then run two-customer hosted acceptance.
+The [source-verified integration and acceptance plan](2026-10-02-native-forms-acceptance.md)
+records this additional software gap; test email addresses are also pending.
+Full source/version/rollback evidence is in the
 [native forms staging receipt](2026-10-02-native-forms-staging-receipt.md).
 
 Website template drafts are implemented, locally verified and committed. Both
@@ -74,10 +77,16 @@ Separate scoped RPC capability activation and all six actual-bound draft methods
 are implemented and independently reviewed. Final native status fixes pass 78
 Dashboard tests, including 46 real PostgreSQL cases. Full Studio build, typecheck,
 lint and tests pass (40 package tasks, 36 security and 48 action-runtime tests).
-Hosted acceptance remains pending two fresh approved native test identities.
+Hosted acceptance remains pending the native CMS connection, private activation
+caller and two fresh approved native test identities.
 Coordinator migrations 0011–0013 are now applied before the new private workers.
 
 ## Remaining form and email work
+
+- [ ] Connect self-service native customer login and roles to the Forms dashboard
+      and draft APIs; preserve the invited-client path.
+- [ ] Implement and review the private staging activation caller, then execute the
+      two-customer hosted acceptance matrix.
 
 - [x] Website team/customer template defaults (draft only).
 - [x] Vehicle Marketplace-inspired compact block palette and debounced safe preview.
