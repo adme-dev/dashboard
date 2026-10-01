@@ -87,10 +87,10 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
-  Branch `feat/standalone-site-workspace`; last implementation `737a7a025`.
+  Branch `feat/standalone-site-workspace`; last implementation `7a8deed16`.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
-  Branch `feat/customer-form-settings-drafts`; last implementation `6987586`.
+  Branch `feat/customer-form-settings-drafts`; last implementation `0101046`.
 - Both feature branches are pushed. Fetch and check divergence before continuing;
   do not implement in the unrelated dirty Dashboard root or deploy a stale branch.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
@@ -247,3 +247,18 @@ No merge, deployment or sending. The picker uses existing website media; upload
 and AI image generation inside this editor remain separate. Inline browser preview
 acceptance does not establish delivered-email image/client compatibility. Hosted
 activation requires the matching Dashboard and worker contracts first.
+
+### Next-slice implementation pointers
+
+Inspect `server/utils/pageStudio/aiAllowance.ts` and `aiUsage.ts` for existing
+text-model admission, reservations and replay semantics. Image-credit wallets are
+separate; do not charge a text template proposal against image credits implicitly.
+The current usage wrapper requires signed Studio session claims and a configured
+staging/production environment, so native customer-CMS authorization and the local
+demo adapter need an explicit design before reuse. Do not fabricate session claims
+or silently call an unmetered provider. AI proposals must produce the approved
+structured template, preserve manual edits until Apply, and keep sending disabled.
+
+Final media checkpoints: Dashboard `7a8deed16`, Studio `0101046`. Studio pre-commit
+formatting passed all 1,520 files with no fixes. Both feature branches are pushed;
+no merge or deployment occurred.
