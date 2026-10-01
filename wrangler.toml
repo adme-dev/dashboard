@@ -379,6 +379,16 @@ binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
+# Temporary staging acceptance only; two synthetic workspace approvals expire 2026-10-02.
+PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_ORIGIN = "https://preview.agency-dashboard-6cm.pages.dev"
+PAGE_STUDIO_CUSTOMER_TERMS_VERSION = "synthetic-hosted-acceptance-20261001"
+PAGE_STUDIO_CUSTOMER_EMAIL_FROM = "notification@adme.net.au"
+PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN = "https://studio-staging.xeroflow.io"
+PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_PREVIEW_APPROVALS = "[{\"workspaceId\":\"08de6bd6-4955-43a4-867a-8afe7eead01b\",\"starterVersion\":\"floristry-v1\",\"policy\":{\"approvalId\":\"60b95486-b0c6-40aa-8471-72e43a05a90a\",\"approvedBy\":\"10000000-0000-4000-8000-000000000002\",\"expiresAt\":\"2026-10-02T00:27:45.445Z\",\"pagesPerSiteLimit\":10,\"storageBytesLimit\":104857600,\"monthlyBuildLimit\":10,\"monthlyTrafficBytesLimit\":104857600}},{\"workspaceId\":\"ca169d3a-dbb4-45c2-9c76-cd287e0ef906\",\"starterVersion\":\"floristry-v1\",\"policy\":{\"approvalId\":\"32efea39-646e-4577-b545-6d82a845ad92\",\"approvedBy\":\"10000000-0000-4000-8000-000000000002\",\"expiresAt\":\"2026-10-02T00:28:00.272Z\",\"pagesPerSiteLimit\":10,\"storageBytesLimit\":104857600,\"monthlyBuildLimit\":10,\"monthlyTrafficBytesLimit\":104857600}}]"
 PAGE_STUDIO_CMS_OBJECT_TRANSPORT = "placed-fetch"
 # Required by native CMS graph verification, including collection-only candidates.
 # Match the verified Studio runtime identity; this does not enable action forms.

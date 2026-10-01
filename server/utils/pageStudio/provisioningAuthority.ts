@@ -79,9 +79,11 @@ export async function verifyPageStudioProvisioningJobAuthority(input: unknown, e
     || JSON.stringify(job.scope) !== JSON.stringify(job.plan.scope)) denied()
 
   if (job.actor.kind === 'customer-user') {
-    return dependencies.transaction
+    const authority = dependencies.transaction
       ? await verifyCustomerProvisioningAuthority(job, dependencies.transaction, job.phase === 'failed')
       : await transaction(db => verifyCustomerProvisioningAuthority(job, db, job.phase === 'failed'))
+    // Keep native ownership metadata internal; the Worker response is strict.
+    return { job: authority.job, userId: authority.userId }
   }
 
   // Only the retained job selects this branch. Never accept an actor kind in the

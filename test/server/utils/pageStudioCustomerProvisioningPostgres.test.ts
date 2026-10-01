@@ -451,6 +451,18 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
     expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=\'customer.provisioning.recovered\'')).rows[0].count).toBe('0')
   })
 
+  it('returns the exact worker authority contract for a native customer', async () => {
+    const job = await prepare()
+    const { authorizePageStudioProvisioning } = await import('~~/server/utils/pageStudio/provisioningAuthority')
+    const binding = { createProvisioning: vi.fn(), readProvisioning: vi.fn().mockResolvedValue(job) }
+    // The Worker uses a strict { job, userId } schema. Internal workspace
+    // authority metadata must not cross this existing transport boundary.
+    await expect(authorizePageStudioProvisioning(binding, {
+      requestKey: job.requestKey, scope: job.scope
+    }, 'staging')).resolves.toEqual({ job, userId: ids.owner })
+    expect(binding.createProvisioning).not.toHaveBeenCalled()
+  })
+
   it('retains one native customer login and content-only plan across concurrent retries', async () => {
     const jobs = await Promise.all([prepare(), prepare(), prepare()])
     expect(jobs[1]).toEqual(jobs[0])
