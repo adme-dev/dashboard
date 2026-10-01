@@ -5,7 +5,8 @@ This checklist tracks the active standalone CMS work; it does not declare the
 entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Form settings completion](2026-10-01-form-settings-completion.md),
 [Fantasy Limo demo](2026-10-01-fantasy-limo-demo.md),
-[standalone style guide](../design/standalone-cms-style-guide.md).
+[standalone style guide](../design/standalone-cms-style-guide.md),
+[Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
 
 ## Completed and verified locally
 
@@ -37,14 +38,17 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 Website template drafts are implemented, locally verified and committed. Both
 implementation branches are pushed; no hosted rollout has happened.
 
-Next concrete slice: **explicit per-form template overrides** with an effective
-website-default preview and reset-to-default action. Preserve the shared form
-identity so a form used on several pages is configured only once. Then connect
-AI design proposals with explicit Apply and manual-edit preservation.
+Next concrete slice: simplify the editor using the Vehicle Marketplace reference
+(compact block palette and safe debounced preview), then **explicit per-form
+template overrides** with an effective website-default preview and reset action.
+Preserve shared form identity so a form used on several pages is configured only
+once. Customer media blocks and AI proposals follow; AI requires explicit Apply
+and preserves manual edits.
 
 ## Remaining form and email work
 
 - [x] Website team/customer template defaults (draft only).
+- [ ] Vehicle Marketplace-inspired compact block palette and debounced safe preview.
 - [ ] Explicit per-form template overrides and reset to website default.
 - [x] Structured template editing, subject/preheader, brand styling and
       desktop/mobile preview.

@@ -466,3 +466,13 @@ Demo evidence lives in `customer-cms-demo/check-templates.mjs` and
 schema upgrades, template overrides, image blocks, AI proposals, revision restore
 UI, verified senders/customer field selection, outbox and delivery are outstanding.
 The hard-refresh/close unsaved-edit limitation remains explicit in the UI.
+
+
+## Additional builder reference — 1 October 2026
+
+Paul supplied Vehicle Marketplace's simple template builder. The inspected source
+contains named templates, a compact reorderable block editor, media picker and
+live preview. Its older fixed-layout specification predates the current builder.
+[The reference/adaptation note](2026-10-01-email-builder-reference.md) records exact
+source paths, adoption decisions and the next UX slice. No changes were made to
+Vehicle Marketplace and no additional CMS capabilities are claimed from this review.
