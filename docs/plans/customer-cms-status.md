@@ -23,21 +23,33 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
       inheritance impact, effective addresses and explicit obsolete-override cleanup.
 - [x] Browser validation of recipient saves, override preservation, conflicts,
       discard/reload, in-app navigation protection and mobile layout.
+- [x] Separate website Team notification and Customer reply template drafts in
+      customer-owned storage, with independent revisions and stale-save protection.
+- [x] Structured template blocks, subject/preheader, brand styles, approved variables,
+      undo/redo and sandboxed desktop/mobile previews with synthetic answers.
+- [x] Template browser/API acceptance: save/reload, audience separation, conflicts,
+      variable validation, navigation guards and 390px layout without overflow.
 - [x] Durable local demo files, database/media copies, backup and restart instructions.
 - [x] Relevant marketing descriptions updated with explicit local-preview limits.
 
-## In progress now
+## Current checkpoint / next action
 
-- [ ] **Admin/team and customer email template drafts.** Inspect/adapt the existing
-      structured email editor/rendering core; implement customer-scoped drafts,
-      approved variables and safe previews with synthetic answers.
-      Current state: source inspection only; no template implementation committed.
+Website template drafts are implemented, locally verified and committed. Both
+implementation branches are pushed; no hosted rollout has happened.
+
+Next concrete slice: **explicit per-form template overrides** with an effective
+website-default preview and reset-to-default action. Preserve the shared form
+identity so a form used on several pages is configured only once. Then connect
+AI design proposals with explicit Apply and manual-edit preservation.
 
 ## Remaining form and email work
 
-- [ ] Website template defaults and explicit per-form template overrides.
-- [ ] Visual structured template editing, subject/preheader, brand styling,
-      desktop/mobile preview and draft revision history.
+- [x] Website team/customer template defaults (draft only).
+- [ ] Explicit per-form template overrides and reset to website default.
+- [x] Structured template editing, subject/preheader, brand styling and
+      desktop/mobile preview.
+- [ ] Stored template revision-history/restore UI (session undo/redo is complete).
+- [ ] Customer-owned media/image blocks in templates; previews must remain safe.
 - [ ] AI template proposals through the existing gateway/credit conventions;
       validate output and require Apply; preserve manual edits.
 - [ ] Verified sender/reply-to and customer email-field selection.
@@ -67,30 +79,36 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
-  Branch `feat/standalone-site-workspace`; last implementation `6713dbb0d`.
+  Branch `feat/standalone-site-workspace`; last implementation `f08d9adfe`.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
-  Branch `feat/customer-form-settings-drafts`; last implementation `8b7516a`.
+  Branch `feat/customer-form-settings-drafts`; last implementation `ebe2413`.
 - Both feature branches are pushed. Fetch and check divergence before continuing;
   do not implement in the unrelated dirty Dashboard root or deploy a stale branch.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
   Restart with that directory's `start.sh`; do not start a second server on port 3044.
 - URL: `http://127.0.0.1:3044/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
-- Latest local backup: `customer-cms-demo/private/backups/2026-10-01T05-20-43.918Z/`.
+- Latest local backup: `customer-cms-demo/private/backups/2026-10-01T05-53-20.749Z/`.
   Preserve the private directory and media; do not commit credentials or copied data.
 - Recipient sample revision 4: `office@example.test`, with Contact override
   `contact@example.test`. These are inert demo addresses, not approved recipients.
+- Template samples: team revision 2; customer revision 2 after the conflict check.
+  Evidence: `customer-cms-demo/check-templates.mjs` and
+  `customer-cms-demo/fantasy-limo-email-templates.png`.
 
 ## Verification and boundaries
 
-Recipient slice: 50 focused tests and browser checks pass. Studio build (28 tasks),
+Recipient slice: 50 focused tests and browser checks pass. Template slice: 15
+focused Dashboard tests and 37 Studio tests pass, with independent review and
+browser/API acceptance. Studio build (28 tasks),
 typecheck (44 plus security types), package tests (40 tasks), action runtime (48)
-and full formatting (1,517 files) pass. Known broader failures: Dashboard typecheck
+and full formatting (1,520 files) pass. Known broader failures: Dashboard typecheck
 has 934 existing diagnostics, none in the changed slice; Studio security has one
 pre-existing staging route-count assertion failure (35 pass).
 
 No merge/deployment or email delivery enabled for these local slices. Hosted
-schema activation, published outcomes and the template builder remain pending.
+schema activation, published outcomes, per-form template overrides, AI design and
+email delivery remain pending. The website template draft editor is locally complete.
 Unsaved in-app navigation is protected; hard browser refresh/close still discards
 unsaved edits, and the UI asks the user to save first.
 

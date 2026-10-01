@@ -420,3 +420,49 @@ Evidence files are in the durable demo directory: `fantasy-limo-email-defaults.p
 `private/backups/2026-10-01T05-20-43.918Z/`. Example recipient revision 4 has website
 `office@example.test` and Contact override `contact@example.test`; these are demo
 values and must not be treated as customer-approved delivery addresses.
+
+
+## Website email template drafts — local slice, 1 October 2026
+
+Forms → Website email defaults now separates Team recipients, Team template and
+Customer template. Team/customer designs save as independent append-only customer
+records with revision checks. Defaults are website-wide; per-form template
+customisation is the next slice, not yet implemented.
+
+The editor supports subject/preheader, colour/font styling, headings, text,
+dividers, answers and fixed HTTPS buttons, block add/remove/reorder, session
+undo/redo and approved website/form name variables. There is no raw HTML input.
+The existing EDM rendering core is reused through a restricted adapter; agency
+EDM records, campaigns and mutable editor state are not used for customer storage.
+Safe preview endpoints derive the form from the saved customer checkpoint, escape
+all text, substitute synthetic answers, disable links and render in a sandboxed
+iframe with restrictive CSP. No remote images or real enquiries are loaded.
+
+`email_template_drafts` is introduced through the separate private migration
+catalogue (`0004_email_template_drafts.sql`). Scope and audience are enforced by
+both the private store and router; response scope, actor, revision, checkpoint and
+payload are checked. A save is never automatically replayed after an uncertain
+response. The UI freezes the loaded revision while dirty and preserves edits on
+conflict; discard reload awaits the workspace before reloading the template.
+
+Acceptance: 15 focused Dashboard tests and 37 focused Studio tests pass. Browser
+checks cover independent team/customer saves, reload, unsupported variable
+rejection, block add/reorder/remove, undo/redo, synthetic preview, stale-save edit
+preservation and explicit recovery, in-app leave confirmation and 390px responsive
+layout without overflow. Local authenticated HTTP checks cover separate audiences,
+preview context, foreign form 404, unknown variable 400, stale revision 409,
+injected delivery control 400, unauthenticated 401 and foreign website 404.
+
+Full Studio build (28 tasks), typecheck (44 plus security types), package tests
+(40 tasks) and action runtime (48) pass. The unchanged staging-route security
+assertion remains (35 pass/1 fail). Dashboard typecheck remains at 934 existing
+diagnostics, none in this slice. Independent full-file review found no blockers.
+Targeted Dashboard lint passes; Studio full formatting passes through its commit
+hook (1,520 files). Implementation commits: Dashboard `f08d9adfe`, Studio `ebe2413`.
+
+Demo evidence lives in `customer-cms-demo/check-templates.mjs` and
+`fantasy-limo-email-templates.png`; backup/commit references are kept in
+[the current checklist](customer-cms-status.md). No emails were sent. Hosted
+schema upgrades, template overrides, image blocks, AI proposals, revision restore
+UI, verified senders/customer field selection, outbox and delivery are outstanding.
+The hard-refresh/close unsaved-edit limitation remains explicit in the UI.
