@@ -88,10 +88,10 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
-  Branch `feat/standalone-site-workspace`; last implementation `1a2cd4d4b`.
+  Branch `feat/standalone-site-workspace`; last implementation `737a7a025`.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
-  Branch `feat/customer-form-settings-drafts`; last implementation `972845d`.
+  Branch `feat/customer-form-settings-drafts`; last implementation `6987586`.
 - Both feature branches are pushed. Fetch and check divergence before continuing;
   do not implement in the unrelated dirty Dashboard root or deploy a stale branch.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
@@ -200,7 +200,7 @@ shared placements, mobile and no delivery side effects.
 - [x] Browser acceptance: saved override, cancel reset, confirm/save reset, reload,
       shared five-page scope, dirty-navigation protection and 390px layout.
 - [x] Authenticated local API acceptance: two-form preservation across website edits,
-      reset inheritance, audience isolation, stale409, foreign404, injected400, no-login401.
+      reset inheritance, audience isolation, stale saves (409), foreign forms (404), injected fields (400) and missing login (401).
 
 Evidence: `customer-cms-demo/check-template-overrides.mjs` and
 `fantasy-limo-form-template-override.png`. Focused Dashboard tests: 21 pass.
@@ -209,7 +209,12 @@ default parity and aggregate-size findings; no remaining blockers. Removed-form
 overrides remain stored and need an explicit cleanup UI in a later slice.
 No merge, deployment or email delivery occurred.
 
-Broader checks for this slice: Studio build28/typecheck44 plus security types and
-package-test40 tasks pass. The existing security staging-route count assertion
-still fails (35 pass/1 fail); Dashboard typecheck stays at934 existing diagnostics,
+Broader checks for this slice: Studio build (28 tasks), typecheck (44 tasks
+plus security types) and package tests (40 tasks) pass. The existing security staging-route count assertion
+still fails (35 pass/1 fail); Dashboard typecheck stays at 934 existing diagnostics,
 none in the changed files.
+
+Final formatting: the first full lint read the pre-format version and reported
+three corrected formatting findings. Targeted recheck passed; the final full
+pre-commit check passed all 1,520 files with no fixes. Implementation checkpoints:
+Dashboard `737a7a025`, Studio `6987586`; both feature branches pushed.

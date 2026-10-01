@@ -75,3 +75,20 @@ Primary design references reviewed 1 October 2026:
 This implementation uses the existing safe email renderer; reference patterns do
 not establish delivery/client compatibility. Logo/media blocks and a central
 reusable business profile still require their own storage and acceptance work.
+
+## Next media slice — inspected implementation entry points
+
+- `CustomerMediaBrowser.client.vue` already lists scoped assets and authenticated
+  previews; reuse its names/search patterns for an explicit picker.
+- `server/utils/pageStudio/standaloneMedia.ts` rechecks customer/site access and
+  clean, non-archived asset metadata around R2 reads. It permits JPEG/PNG/WebP/GIF
+  and currently bounds general previews to 20 MB; email previews need a tighter
+  per-image and aggregate bound before embedding or loading media.
+- `emailTemplatePreview.ts` deliberately has `img-src 'none'` today. Adding image
+  blocks requires an explicit safe-preview strategy, asset-ID ownership checks,
+  accessible alt text and missing/archived-asset behavior. Do not accept arbitrary
+  image URLs or weaken the existing HTML/script isolation.
+- Keep draft preview acceptance separate from how delivered emails will carry
+  images (public immutable assets or attachments); delivery is not yet active.
+
+These are inspected entry points and constraints, not implemented image support.
