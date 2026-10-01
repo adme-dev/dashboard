@@ -2,13 +2,16 @@
 import type { PageStudioSavedPages } from '~~/shared/pageStudio/savedPages'
 
 const props = defineProps<{ siteId: string, pages: PageStudioSavedPages['pages'], checkpointId?: string }>()
-const emit = defineEmits<{ dirty: [value: boolean], reload: [] }>()
-const selectedKey = ref('all')
+const emit = defineEmits<{ dirty: [value: boolean], reload: [], enquiries: [value: { formId: string, pageRoute: string, name: string }] }>()
+const selectedKey = ref('__none__')
 const dirty = ref(false)
 const tab = ref('settings')
 const forms = computed(() => props.pages.flatMap(page => page.forms.map(form => ({ ...form, key: `${page.id}:${form.id}`, pageId: page.id, pageTitle: page.title, route: page.route }))))
 const selected = computed(() => forms.value.find(form => form.key === selectedKey.value))
-const choices = computed(() => [{ label: 'All enquiries', value: 'all' }, ...forms.value.map(form => ({ label: `${form.name || 'Website form'} — ${form.route}`, value: form.key }))])
+const choices = computed(() => forms.value.map(form => ({ label: `${form.name || 'Website form'} — ${form.route}`, value: form.key })))
+watch(forms, (value) => {
+  if (!value.some(form => form.key === selectedKey.value)) selectedKey.value = value[0]?.key ?? '__none__'
+}, { immediate: true })
 const destinations = computed(() => props.pages.filter(page => ['public', 'hidden'].includes(page.visibility)))
 watch(dirty, value => emit('dirty', value))
 watch(selectedKey, () => {
@@ -17,15 +20,15 @@ watch(selectedKey, () => {
 </script>
 
 <template>
-  <section class="min-w-0 space-y-6" aria-label="Forms and enquiries">
+  <section class="min-w-0 space-y-6" aria-label="Form settings">
     <div>
       <h2 class="text-xl font-semibold tracking-tight text-highlighted">
-        Forms & enquiries
+        Forms
       </h2><p class="mt-1 text-sm text-muted">
-        Choose from {{ forms.length }} saved form placements. Forms on different pages can have the same fields.
+        Manage fields and what happens after someone submits a form.
       </p>
     </div>
-    <UFormField label="Form placement" :description="dirty ? 'Save or discard your changes before switching forms.' : undefined">
+    <UFormField v-if="forms.length" label="Form placement" :description="dirty ? 'Save or discard your changes before switching forms.' : undefined">
       <USelect
         v-model="selectedKey"
         :items="choices"
@@ -33,7 +36,12 @@ watch(selectedKey, () => {
         class="w-full"
       />
     </UFormField>
-    <PageStudioFormSubmissionsWorkspace v-if="!selected" :site-id="siteId" audience="portal" />
+    <UAlert
+      v-if="!selected"
+      title="No saved forms"
+      description="Add a form to your website in Page Studio to manage it here."
+      color="neutral"
+    />
     <template v-else>
       <div class="flex flex-wrap items-start justify-between gap-3 border-b border-default pb-4">
         <div>
@@ -43,11 +51,18 @@ watch(selectedKey, () => {
             {{ selected.pageTitle }} · {{ selected.route }}
           </p>
         </div>
-        <UBadge label="Saved placement" color="neutral" variant="subtle" />
+        <UButton
+          label="View enquiries"
+          icon="i-lucide-inbox"
+          color="neutral"
+          variant="outline"
+          :disabled="dirty"
+          @click="emit('enquiries', { formId: selected.id, pageRoute: selected.route, name: selected.name || 'Website form' })"
+        />
       </div>
       <div class="flex flex-wrap gap-2" role="group" aria-label="Form views">
         <UButton
-          v-for="item in [{ value: 'settings', label: 'After submission' }, { value: 'fields', label: 'Fields' }, { value: 'entries', label: 'Entries' }]"
+          v-for="item in [{ value: 'settings', label: 'After submission' }, { value: 'fields', label: 'Fields' }]"
           :key="item.value"
           :label="item.label"
           color="neutral"
@@ -92,13 +107,6 @@ watch(selectedKey, () => {
           Fields are shown from the saved website. Field editing remains in Page Studio.
         </p>
       </div>
-      <PageStudioFormSubmissionsWorkspace
-        v-else-if="tab === 'entries'"
-        :site-id="siteId"
-        audience="portal"
-        :form-id="selected.id"
-        :page-route="selected.route"
-      />
       <UAlert
         v-else
         title="Form details are unavailable"

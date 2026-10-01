@@ -9,7 +9,7 @@ interface Submission {
   submittedAt: string
 }
 
-const props = withDefaults(defineProps<{ siteId: string, audience?: 'agency' | 'portal', formId?: string, pageRoute?: string }>(), { audience: 'agency' })
+const props = withDefaults(defineProps<{ siteId: string, audience?: 'agency' | 'portal', formId?: string, pageRoute?: string, heading?: string }>(), { audience: 'agency', heading: 'Form submissions' })
 const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
 const { data, status, error, refresh, clear } = await useFetch<{ submissions: Submission[] }>(endpoint, { watch: false })
 const submissions = computed(() => data.value?.submissions ?? [])
@@ -83,7 +83,7 @@ async function refreshSubmissions() {
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 class="font-semibold text-highlighted">
-            Form submissions
+            {{ heading }}
           </h2>
           <p class="mt-1 text-sm text-muted">
             Review website enquiries and their submitted details.

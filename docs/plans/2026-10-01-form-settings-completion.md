@@ -231,3 +231,25 @@ shared template/recipient changes affect all placements; website defaults and
 per-form overrides resolve consistently; other-site references fail; existing
 submission IDs and originating page attribution survive adoption. Enforcement is
 pending implementation and is now recorded in the repository's AGENTS.md.
+
+
+## Clean navigation: Forms and Enquiries (1 October 2026)
+
+Implemented in the standalone local demo:
+- **Forms** contains the form selector, Fields and After submission settings.
+- **Enquiries** is a separate inbox for received submissions, with details and live/test filters.
+- **View enquiries** opens the selected form/page filter; **Show all enquiries** and the Enquiries navigation item clear that filter.
+- Removed the embedded inbox and Entries tab from Forms. Unsaved settings still protect navigation.
+
+Browser verified with the Fantasy Limo demo at localhost:3044. Screenshot:
+`/private/tmp/fantasy-limo-separated-enquiries-20261001.png`.
+This is a local UI change, not evidence of hosted activation.
+
+Shared-form protocol, typed operations, projection validation and AI reuse guards
+are implemented as a reviewed foundation in the Studio branch. They do not yet migrate Fantasy Limo's
+eight placement IDs or share its private settings. Customer-storage adoption,
+settings-conflict review, shared email defaults/templates and delivery activation
+remain required before the catalogue can show one form with “Used on N pages”.
+
+For this navigation slice, changed-source ESLint and 27 focused Dashboard tests
+passed. Independent review found no blocking navigation/filter issues.

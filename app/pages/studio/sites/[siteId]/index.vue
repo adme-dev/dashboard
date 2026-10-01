@@ -6,6 +6,15 @@ const route = useRoute()
 const siteId = computed(() => String(route.params.siteId))
 const section = ref('overview')
 const formDirty = ref(false)
+const enquiryFilter = ref<{ formId: string, pageRoute: string, name: string } | null>(null)
+function openEnquiries(value: { formId: string, pageRoute: string, name: string }) {
+  enquiryFilter.value = value
+  section.value = 'enquiries'
+}
+function selectSection(value: string) {
+  if (value === 'enquiries') enquiryFilter.value = null
+  section.value = value
+}
 const localPreview = import.meta.dev
 const { data, pending, error, refresh } = await useFetch<StandaloneSiteWorkspace>(
   () => `/api/portal/page-studio/sites/${encodeURIComponent(siteId.value)}/workspace`
@@ -21,7 +30,8 @@ const sections = [
   { value: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
   { value: 'pages', label: 'Pages & SEO', icon: 'i-lucide-files' },
   { value: 'media', label: 'Media library', icon: 'i-lucide-images' },
-  { value: 'forms', label: 'Forms & enquiries', icon: 'i-lucide-inbox' }
+  { value: 'forms', label: 'Forms', icon: 'i-lucide-list-checks' },
+  { value: 'enquiries', label: 'Enquiries', icon: 'i-lucide-inbox' }
 ]
 const stats = computed(() => [
   { label: 'Saved pages', value: pages.value.length, section: 'pages', icon: 'i-lucide-files' },
@@ -113,7 +123,7 @@ async function openStudio() {
             :aria-current="section === item.value ? 'page' : undefined"
             :disabled="formDirty && section !== item.value"
             class="justify-start"
-            @click="() => { section = item.value }"
+            @click="selectSection(item.value)"
           />
           <div class="hidden border-t border-default my-3 md:block" />
           <UButton
@@ -173,10 +183,10 @@ async function openStudio() {
                     </p>
                   </div>
                   <UButton
-                    label="View forms"
+                    label="View enquiries"
                     color="neutral"
                     variant="outline"
-                    @click="() => { section = 'forms' }"
+                    @click="selectSection('enquiries')"
                   />
                 </div>
                 <div class="flex flex-wrap items-center justify-between gap-4 pt-5">
@@ -229,8 +239,29 @@ async function openStudio() {
               :site-id="siteId"
               :pages="pages"
               :checkpoint-id="data.document.studio?.checkpointId"
+              @enquiries="openEnquiries"
               @dirty="formDirty = $event"
               @reload="refresh()"
+            />
+          </template>
+          <template v-else-if="section === 'enquiries'">
+            <div v-if="enquiryFilter" class="flex flex-wrap items-center justify-between gap-3">
+              <p class="text-sm text-muted">
+                {{ enquiryFilter.name }} · {{ enquiryFilter.pageRoute }}
+              </p>
+              <UButton
+                label="Show all enquiries"
+                color="neutral"
+                variant="outline"
+                @click="selectSection('enquiries')"
+              />
+            </div>
+            <PageStudioFormSubmissionsWorkspace
+              heading="Enquiries"
+              :site-id="siteId"
+              audience="portal"
+              :form-id="enquiryFilter?.formId"
+              :page-route="enquiryFilter?.pageRoute"
             />
           </template>
         </div>
