@@ -157,3 +157,33 @@ and marker definitions before importing them into predecessor validators. The
 current physical installer already imports collection/staging helpers, so making
 those helpers import the installer would create an initialization cycle. Keep
 catalogue identity separate from coordinator/native authorization and verify both.
+
+## Continued implementation — storage compatibility
+
+Collection, workflow and staging validators now recognize the exact form extension
+only with matching current upgrade evidence and physical markers. The form contract
+and catalogue were extracted from the installer to avoid initialization cycles.
+The managed route supports a strict optional form receipt/digest envelope; the actual
+D1 binding verifies its complete physical schema and owner before serving CMS reads.
+Existing routes remain unchanged, and routing does not yet discover or emit form
+proof automatically. This is compatibility support, not capability admission.
+
+Eighty-six focused tests pass, including a real Worker RPC reading previously
+prepared CMS content after form installation, denial without form proof, altered
+receipt/digest/predecessor chain, wrong D1 binding, partial/extra schema, forged
+physical markers and changed evidence during final validation. Independent review
+found no blocking findings. Full build: 28 tasks; typecheck: 44 plus security types;
+package tests: 40 tasks, including 1,000 business-content-worker tests. The known
+security staging-route assertion remains the sole full-test failure (35 pass/1 fail).
+Logs use `customer-cms-demo/private/forms-compatibility-{build,types,tests,lint}.log`.
+Full lint and the normal pre-commit check both passed all 1,528 files with no
+fixes. Studio checkpoint `dd93e852cbb6583acf47540ed5b560c9a2b656db` is pushed;
+the deployed router source remains `0101046`.
+
+No hosted database, deployment or customer authorization changed. The next step
+is the separately retained runtime successor and matching selector/view/provider
+checks, followed by native customer admission and scoped six-RPC activation.
+The native receipt comparison needs an explicit projection: retain runtime pins
+in operation identity, but omit them from the physical storage receipt without
+weakening strict receipt validation. Database/predecessor/runtime discovery must
+remain server-owned. See Studio `docs/architecture/form-drafts-hosted-upgrade.md`.
