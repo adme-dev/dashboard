@@ -22,10 +22,10 @@ watch(selectedKey, () => {
       <h2 class="text-xl font-semibold tracking-tight text-highlighted">
         Forms & enquiries
       </h2><p class="mt-1 text-sm text-muted">
-        Review enquiries or choose one of your {{ forms.length }} saved forms to manage its settings.
+        Choose from {{ forms.length }} saved form placements. Forms on different pages can have the same fields.
       </p>
     </div>
-    <UFormField label="Form" :description="dirty ? 'Save or discard your changes before switching forms.' : undefined">
+    <UFormField label="Form placement" :description="dirty ? 'Save or discard your changes before switching forms.' : undefined">
       <USelect
         v-model="selectedKey"
         :items="choices"
@@ -43,7 +43,7 @@ watch(selectedKey, () => {
             {{ selected.pageTitle }} · {{ selected.route }}
           </p>
         </div>
-        <UBadge label="Saved form" color="neutral" variant="subtle" />
+        <UBadge label="Saved placement" color="neutral" variant="subtle" />
       </div>
       <div class="flex flex-wrap gap-2" role="group" aria-label="Form views">
         <UButton

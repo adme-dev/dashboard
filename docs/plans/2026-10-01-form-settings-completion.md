@@ -170,3 +170,43 @@ and disabled sign-out while dirty. Screenshot:
 `/private/tmp/fantasy-limo-form-settings-20261001.png`. The final browser pass used
 native Chrome control after the browser debugger detached; exact responsive
 breakpoint checks for this new form editor remain pending.
+
+## Form identity and inherited email defaults
+
+Follow-up requirement, 1 October 2026: customers must not repeat their admin email
+address on every page. Provide website-wide team recipients, verified sender and
+default team/customer templates. Forms inherit those defaults unless a customer
+explicitly selects an override. Display “Using website defaults” or “Custom for
+this form”, show the effective recipients/template, and offer reset to default.
+Changes to website defaults must show which inheriting forms will be affected;
+existing overrides stay intact. Resolve and snapshot effective approved settings
+when creating each delivery job, so retries do not send to newly changed recipients.
+
+The current saved Fantasy Limo manifest has eight independent form IDs:
+- `/contact` and `/enquiries`: same four-field structure, separate IDs.
+- `/bookings`: one 21-field quote form.
+- `/book-1hour`, `/book-one-hour-limo-hire`, `/book`, `/free-limo-quote`,
+  `/general-hire-quote`: same nine-field booking structure, five separate IDs.
+
+This proves three structural groups, not three authoritative shared definitions.
+The current dropdown lists placements, and now labels that explicitly. Identical
+fields or names do not establish shared operational identity; do not auto-merge or
+delete forms. Introduce reusable form definitions with explicit placements and
+shared defaults. Adoption must preserve old IDs/submission attribution, review
+configuration differences, and permit intentional independent copies. Future
+catalogue shows one definition with “Used on N pages” and a placement list.
+
+Email default inheritance, reusable-form linking and adoption are pending work;
+the current outcome editor still saves per page/form identity. Templates, shared
+recipients and delivery configuration are not active in this local slice.
+
+### Confirmed product decision
+
+The user clarified that identical booking copies are one reusable form displayed
+on multiple pages. Adopt that model: “Booking enquiry — used on 5 pages”, with one
+shared email/settings configuration and page-of-origin attribution on entries.
+Distinct IDs in the current saved format are a migration concern, not a reason to
+require customers to configure the same form repeatedly. Create a separate form
+only through an intentional “Duplicate as new form” action; placing an existing
+form on another page must retain the shared definition. Reconciliation preserves
+legacy IDs and entries while binding placements to the shared definition.
