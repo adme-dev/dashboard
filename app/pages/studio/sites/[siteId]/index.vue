@@ -5,6 +5,7 @@ definePageMeta({ layout: 'studio', middleware: 'studio-auth' })
 const route = useRoute()
 const siteId = computed(() => String(route.params.siteId))
 const section = ref('overview')
+const formDirty = ref(false)
 const localPreview = import.meta.dev
 const { data, pending, error, refresh } = await useFetch<StandaloneSiteWorkspace>(
   () => `/api/portal/page-studio/sites/${encodeURIComponent(siteId.value)}/workspace`
@@ -45,6 +46,7 @@ async function openStudio() {
     <UButton
       to="/studio/sites"
       label="All websites"
+      :disabled="formDirty"
       icon="i-lucide-arrow-left"
       color="neutral"
       variant="link"
@@ -94,7 +96,7 @@ async function openStudio() {
           label="Open Page Studio"
           icon="i-lucide-panel-top-open"
           color="neutral"
-          :disabled="!canLaunch"
+          :disabled="!canLaunch || formDirty"
           :loading="launching"
           @click="openStudio"
         />
@@ -109,13 +111,15 @@ async function openStudio() {
             color="neutral"
             :variant="section === item.value ? 'soft' : 'ghost'"
             :aria-current="section === item.value ? 'page' : undefined"
+            :disabled="formDirty && section !== item.value"
             class="justify-start"
-            @click="section = item.value"
+            @click="() => { section = item.value }"
           />
           <div class="hidden border-t border-default my-3 md:block" />
           <UButton
             :to="`/studio/sites/${siteId}/content`"
             label="Content collections"
+            :disabled="formDirty"
             icon="i-lucide-library"
             color="neutral"
             variant="ghost"
@@ -124,6 +128,7 @@ async function openStudio() {
           <UButton
             :to="`/studio/sites/${siteId}/history`"
             label="Draft history"
+            :disabled="formDirty"
             icon="i-lucide-history"
             color="neutral"
             variant="ghost"
@@ -150,7 +155,7 @@ async function openStudio() {
                   color="neutral"
                   variant="link"
                   class="mt-2 p-0 text-xs"
-                  @click="section = stat.section"
+                  @click="() => { section = stat.section }"
                 />
               </div>
             </div>
@@ -171,7 +176,7 @@ async function openStudio() {
                     label="View forms"
                     color="neutral"
                     variant="outline"
-                    @click="section = 'forms'"
+                    @click="() => { section = 'forms' }"
                   />
                 </div>
                 <div class="flex flex-wrap items-center justify-between gap-4 pt-5">
@@ -186,7 +191,7 @@ async function openStudio() {
                     label="View pages"
                     color="neutral"
                     variant="outline"
-                    @click="section = 'pages'"
+                    @click="() => { section = 'pages' }"
                   />
                 </div>
               </div>
@@ -220,27 +225,13 @@ async function openStudio() {
             <PageStudioCustomerMediaBrowser :site-id="siteId" :assets="data.assets" />
           </template>
           <template v-else-if="section === 'forms'">
-            <div>
-              <h2 class="text-xl font-semibold text-highlighted">
-                Forms & enquiries
-              </h2><p class="mt-2 text-sm leading-6 text-muted">
-                {{ forms.length }} forms in your saved pages. Enquiries below come from submitted website forms.
-              </p>
-            </div>
-            <UAccordion v-if="forms.length" :items="[{ label: 'Where your forms appear', icon: 'i-lucide-map-pin', slot: 'forms' }]">
-              <template #forms>
-                <ul class="divide-y divide-default">
-                  <li v-for="form in forms" :key="`${form.route}:${form.id}`" class="py-3">
-                    <p class="font-medium text-highlighted">
-                      {{ form.page }}
-                    </p><p class="mt-1 break-all text-sm text-muted">
-                      {{ form.route }}
-                    </p>
-                  </li>
-                </ul>
-              </template>
-            </UAccordion>
-            <PageStudioFormSubmissionsWorkspace :key="siteId" :site-id="siteId" audience="portal" />
+            <PageStudioCustomerFormsWorkspace
+              :site-id="siteId"
+              :pages="pages"
+              :checkpoint-id="data.document.studio?.checkpointId"
+              @dirty="formDirty = $event"
+              @reload="refresh()"
+            />
           </template>
         </div>
       </div>

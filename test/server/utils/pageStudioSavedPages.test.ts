@@ -52,6 +52,8 @@ describe('Dashboard Pages reads the authoritative Studio website', () => {
     expect(result.studio?.pages[1]).toMatchObject({ title: 'Request a booking', forms: [{ id: 'booking-form' }] })
     expect(result.studio?.pages[0].seo.description).toBe('Latest saved SEO')
     expect(result.studio?.pages[1]).not.toHaveProperty('components')
+    // Legacy forms without stable field IDs remain readable, but cannot be edited.
+    expect(result.studio?.pages[1].forms[0].fields).toBeUndefined()
     expect(result.updatedAt).toBe(row.checkpoint_created_at)
     expect(storage.get).toHaveBeenCalledWith(key)
     expect(database.queryOne).not.toHaveBeenCalled()

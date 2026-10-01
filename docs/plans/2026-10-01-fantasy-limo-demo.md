@@ -96,3 +96,15 @@ empty-result recovery and pagination. No document overflow at 320/768/1024/1440p
 Screenshot: `/private/tmp/fantasy-limo-media-library-20261001.png`.
 Independent review found no blocking issues; its transient-preview retry
 suggestion was implemented. Focused storage/authority tests: 16 passed.
+
+## Form settings local preview
+
+The Forms section now selects actual saved forms and offers After submission,
+Fields and Entries. Contact enquiry has a saved message and a wedding condition
+previewing `/wedding-limo-hire`. Draft revisions persist in isolated local customer
+storage. Concurrent-save conflicts preserve edits, and leaving with edits opens
+a confirmation dialog. These settings are not active on the live site.
+
+See `2026-10-01-form-settings-completion.md` for the remaining published-outcome,
+notification, reply, webhook and inbox work, the Toyota reference, and the hosted
+schema/runtime installation blocker. No production storage or delivery was changed.

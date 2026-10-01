@@ -9,7 +9,7 @@ interface Submission {
   submittedAt: string
 }
 
-const props = withDefaults(defineProps<{ siteId: string, audience?: 'agency' | 'portal' }>(), { audience: 'agency' })
+const props = withDefaults(defineProps<{ siteId: string, audience?: 'agency' | 'portal', formId?: string, pageRoute?: string }>(), { audience: 'agency' })
 const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
 const { data, status, error, refresh, clear } = await useFetch<{ submissions: Submission[] }>(endpoint, { watch: false })
 const submissions = computed(() => data.value?.submissions ?? [])
@@ -21,7 +21,9 @@ const modes = [
   { label: 'Test only', value: 'test' }
 ]
 const filtered = computed(() => submissions.value.filter(submission =>
-  mode.value === 'all' || submission.isTest === (mode.value === 'test')
+  (!props.formId || submission.formId === props.formId)
+  && (!props.pageRoute || submission.pageRoute === props.pageRoute)
+  && (mode.value === 'all' || submission.isTest === (mode.value === 'test'))
 ))
 const selected = computed(() => status.value === 'success' && !error.value
   ? filtered.value.find(submission => submission.id === selectedId.value)
@@ -39,7 +41,7 @@ watch(() => [props.siteId, props.audience], async () => {
   clear()
   await refresh()
 }, { flush: 'sync' })
-watch(mode, () => {
+watch([mode, () => props.formId, () => props.pageRoute], () => {
   selectedId.value = null
 })
 function submittedDate(value: string) {

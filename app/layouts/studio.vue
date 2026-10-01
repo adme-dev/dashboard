@@ -1,8 +1,9 @@
 <script setup lang="ts">
 const { user, logout } = usePortalAuth()
 const signingOut = ref(false)
+const unsavedFormSettings = useState<boolean>('studio-unsaved-form-settings', () => false)
 async function signOut() {
-  if (signingOut.value) return
+  if (signingOut.value || unsavedFormSettings.value) return
   signingOut.value = true
   try {
     await logout('/studio')
@@ -39,6 +40,7 @@ async function signOut() {
             color="neutral"
             variant="ghost"
             :loading="signingOut"
+            :disabled="unsavedFormSettings"
             @click="signOut"
           />
         </nav>
