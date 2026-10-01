@@ -38,9 +38,9 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 Website template drafts are implemented, locally verified and committed. Both
 implementation branches are pushed; no hosted rollout has happened.
 
-Next concrete slice: simplify the editor using the Vehicle Marketplace reference
-(compact block palette and safe debounced preview), then **explicit per-form
-template overrides** with an effective website-default preview and reset action.
+Next concrete slice: **explicit per-form template overrides** with an effective
+website-default preview and reset action. The compact block palette and safe live
+preview from the Vehicle Marketplace reference are now locally verified.
 Preserve shared form identity so a form used on several pages is configured only
 once. Customer media blocks and AI proposals follow; AI requires explicit Apply
 and preserves manual edits.
@@ -48,7 +48,7 @@ and preserves manual edits.
 ## Remaining form and email work
 
 - [x] Website team/customer template defaults (draft only).
-- [ ] Vehicle Marketplace-inspired compact block palette and debounced safe preview.
+- [x] Vehicle Marketplace-inspired compact block palette and debounced safe preview.
 - [ ] Explicit per-form template overrides and reset to website default.
 - [x] Structured template editing, subject/preheader, brand styling and
       desktop/mobile preview.
@@ -115,6 +115,23 @@ schema activation, published outcomes, per-form template overrides, AI design an
 email delivery remain pending. The website template draft editor is locally complete.
 Unsaved in-app navigation is protected; hard browser refresh/close still discards
 unsaved edits, and the UI asks the user to save first.
+
+## Live editor UX acceptance — 1 October 2026
+
+Direct Heading/Text/Answers/Button/Divider actions replace the block dropdown.
+Preview loads automatically and refreshes after a 400ms typing pause. Invalid
+input pauses preview; request cancellation and sequence guards prevent stale
+successes/errors from replacing current results. Leaving the editor cancels both
+timers and in-flight requests. Refresh remains available for explicit retries.
+Saving is still explicit; browser testing left both saved template revisions at 2.
+
+Eight focused tests pass (four preview lifecycle tests plus four existing template
+contract/renderer/authority tests). Browser checks cover automatic first preview,
+one-click blocks, edit → live preview, undo, invalid-variable pause/recovery,
+Booking fields, discard/reload and 390px layout. Independent review found no
+blockers; targeted lint passes. Dashboard typecheck remains at 934 existing
+diagnostics, with none in the changed editor/composable. Screenshot:
+`customer-cms-demo/fantasy-limo-live-template-editor.png`.
 
 ## Update rule
 

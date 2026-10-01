@@ -476,3 +476,15 @@ live preview. Its older fixed-layout specification predates the current builder.
 [The reference/adaptation note](2026-10-01-email-builder-reference.md) records exact
 source paths, adoption decisions and the next UX slice. No changes were made to
 Vehicle Marketplace and no additional CMS capabilities are claimed from this review.
+
+
+## Live template editor UX — 1 October 2026
+
+The first Vehicle Marketplace adaptation is complete locally: a compact labelled
+block palette and automatic 400ms-debounced previews. A dedicated composable clones
+validated preview input, aborts superseded requests and checks a sequence before
+applying results/errors. Invalid input pauses preview; disposal cancels pending
+work. Manual Refresh retries failures without an automatic request loop. Save,
+revision conflicts, undo/redo and the sandboxed synthetic renderer are unchanged.
+Eight focused tests and real-browser acceptance pass; review found no blockers.
+The [current checklist](customer-cms-status.md) records verification and next steps.

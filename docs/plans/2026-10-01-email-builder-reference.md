@@ -44,8 +44,9 @@ structured document and require Apply, leaving manual editing available.
 
 ## Next bounded implementation
 
-1. Simplify the current template editor with the compact supported-block palette
-   and debounced safe preview, retaining undo/redo and conflict protection.
+1. **Locally complete:** compact supported-block palette and debounced safe
+   preview, retaining undo/redo and conflict protection. Eight focused tests and
+   browser acceptance pass; details are in the current checklist.
 2. Add explicit shared-form template overrides and reset-to-default with effective
    design preview and an impact summary.
 3. Add customer media blocks, then AI proposals against the approved schema.

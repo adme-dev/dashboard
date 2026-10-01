@@ -34,19 +34,35 @@ watch(leaveOpen, (open) => {
 })
 const dirty = computed(() => ready.value && JSON.stringify(template.value) !== baseline.value)
 const canSave = computed(() => ready.value && data.value?.canEdit && (dirty.value || !data.value?.record) && !saving.value && !uncertain.value)
-const preview = ref<{ html: string, subject: string, preheader: string } | null>(null)
-const previewBusy = ref(false)
-const previewError = ref('')
 const previewForm = ref(props.forms[0]?.key ?? '__none__')
 const device = ref('desktop')
-const newBlockType = ref('text')
+const blockChoices = [
+  { type: 'heading', label: 'Heading', icon: 'i-lucide-heading' },
+  { type: 'text', label: 'Text', icon: 'i-lucide-align-left' },
+  { type: 'answers', label: 'Answers', icon: 'i-lucide-list' },
+  { type: 'button', label: 'Button', icon: 'i-lucide-mouse-pointer-2' },
+  { type: 'divider', label: 'Divider', icon: 'i-lucide-minus' }
+] as const
+const validTemplate = computed(() => ValidatedEmailTemplateSchema.safeParse(template.value))
+const previewInput = computed(() => {
+  const form = props.forms.find(item => item.key === previewForm.value)
+  const parsed = validTemplate.value
+  return ready.value && !error.value && parsed.success && form
+    ? { template: parsed.data, pageId: form.pageId, formId: form.formId }
+    : null
+})
+const { preview, status: previewStatus, error: previewError, refresh: showPreview } = useEmailTemplatePreview(
+  () => previewInput.value,
+  (body, signal) => $fetch(`${url}/preview`, { method: 'POST', body, signal })
+)
+watch(() => props.forms, (forms) => {
+  if (!forms.some(form => form.key === previewForm.value)) previewForm.value = forms[0]?.key ?? '__none__'
+})
 const insertionTarget = ref('subject')
 const history = ref<string[]>([])
 const future = ref<string[]>([])
 let recording = true
 watch(template, () => {
-  preview.value = null
-  previewError.value = ''
   if (!recording) return
   const snapshot = JSON.stringify(template.value)
   if (history.value.at(-1) !== snapshot) {
@@ -55,9 +71,6 @@ watch(template, () => {
     future.value = []
   }
 }, { deep: true, flush: 'sync' })
-watch(previewForm, () => {
-  preview.value = null
-})
 const insertionChoices = computed(() => [{ label: 'Subject', value: 'subject' }, { label: 'Preheader', value: 'preheader' }, ...template.value.blocks.flatMap((block, index) => 'text' in block ? [{ label: `Block ${index + 1}: ${block.type}`, value: `block:${block.id}` }] : [])])
 watch(insertionChoices, (choices) => {
   if (!choices.some(item => item.value === insertionTarget.value)) insertionTarget.value = 'subject'
@@ -85,10 +98,9 @@ function redo() {
   template.value = JSON.parse(snapshot)
   recording = true
 }
-function addBlock() {
+function addBlock(type: EmailTemplateBlock['type']) {
   if (template.value.blocks.length >= 30) return
   const id = `block_${crypto.randomUUID()}`
-  const type = newBlockType.value
   const block: EmailTemplateBlock = type === 'divider' || type === 'answers' ? { id, type } : type === 'button' ? { id, type, text: 'Visit our website', url: 'https://example.com' } : { id, type: type === 'heading' ? 'heading' : 'text', text: '' }
   template.value.blocks.push(block)
 }
@@ -99,25 +111,6 @@ function moveBlock(index: number, direction: number) {
   const [block] = blocks.splice(index, 1)
   blocks.splice(destination, 0, block!)
   template.value.blocks = blocks
-}
-async function showPreview() {
-  previewError.value = ''
-  const parsed = ValidatedEmailTemplateSchema.safeParse(template.value)
-  const form = props.forms.find(item => item.key === previewForm.value)
-  if (!parsed.success || !form) {
-    previewError.value = parsed.success ? 'Choose a form to preview.' : parsed.error.issues[0]?.message ?? 'Check your template.'
-    return
-  }
-  const snapshot = JSON.stringify(template.value)
-  previewBusy.value = true
-  try {
-    const result = await $fetch<{ html: string, subject: string, preheader: string }>(`${url}/preview`, { method: 'POST', body: { template: parsed.data, pageId: form.pageId, formId: form.formId } })
-    if (snapshot === JSON.stringify(template.value) && form.key === previewForm.value) preview.value = result
-  } catch {
-    previewError.value = 'Preview is unavailable. Your draft has not changed.'
-  } finally {
-    previewBusy.value = false
-  }
 }
 function resetFromSaved() {
   expectedRevision.value = data.value?.record?.revision ?? 0
@@ -326,20 +319,33 @@ async function discardAndReload() {
               Includes the selected form's visible field labels and example answers. Real enquiry data is never loaded for this preview.
             </p>
           </div>
-          <div class="space-y-3">
-            <UFormField label="New block">
-              <USelect v-model="newBlockType" :items="[{ label: 'Text', value: 'text' }, { label: 'Heading', value: 'heading' }, { label: 'Divider', value: 'divider' }, { label: 'Answers', value: 'answers' }, { label: 'Button', value: 'button' }]" class="w-full" />
-            </UFormField><UButton
-              label="Add block"
-              icon="i-lucide-plus"
-              color="neutral"
-              variant="outline"
-              :disabled="template.blocks.length >= 30"
-              @click="addBlock"
-            />
+          <div class="space-y-2" role="group" aria-label="Add content block">
+            <p class="text-sm font-medium">
+              Add content
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                v-for="choice in blockChoices"
+                :key="choice.type"
+                :label="choice.label"
+                :aria-label="`Add ${choice.label.toLowerCase()} block`"
+                :icon="choice.icon"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :disabled="template.blocks.length >= 30"
+                @click="addBlock(choice.type)"
+              />
+            </div>
+            <p v-if="template.blocks.length >= 30" class="text-xs text-muted">
+              This template has reached its 30-block limit.
+            </p>
           </div>
         </fieldset>
-        <section class="min-w-0 space-y-4" aria-label="Email preview">
+        <section class="min-w-0 space-y-4" aria-label="Email preview" :aria-busy="previewStatus === 'waiting' || previewStatus === 'loading'">
+          <h4 class="text-sm font-medium">
+            Live preview
+          </h4>
           <div class="@container space-y-4 rounded-lg border border-default p-4">
             <UFormField label="Preview form">
               <USelect
@@ -351,9 +357,10 @@ async function discardAndReload() {
             </UFormField>
             <div class="flex flex-wrap items-center gap-2">
               <UButton
-                label="Preview changes"
-                :loading="previewBusy"
-                :disabled="previewBusy || !forms.length"
+                label="Refresh preview"
+                icon="i-lucide-refresh-cw"
+                :loading="previewStatus === 'loading'"
+                :disabled="previewStatus === 'loading' || !previewInput"
                 @click="showPreview"
               /><UButton
                 v-for="size in ['desktop', 'mobile']"
@@ -365,10 +372,17 @@ async function discardAndReload() {
               />
             </div>
             <p class="text-xs text-muted">
-              Synthetic preview only. Changing the draft clears the previous preview.
+              Updates automatically as you edit, using example answers. No email is sent.
             </p>
           </div>
           <UAlert v-if="previewError" color="error" :title="previewError" />
+          <UAlert
+            v-else-if="!validTemplate.success"
+            color="warning"
+            variant="soft"
+            title="Preview paused"
+            :description="validTemplate.error.issues[0]?.message"
+          />
           <template v-if="preview">
             <div class="space-y-1 text-sm">
               <p class="break-words font-medium">
@@ -386,7 +400,7 @@ async function discardAndReload() {
             />
           </template>
           <p v-else class="py-10 text-center text-sm text-muted">
-            Choose a form and preview your design.
+            {{ previewStatus === 'waiting' || previewStatus === 'loading' ? 'Updating preview…' : 'Choose a form and complete the template to see your design.' }}
           </p>
         </section>
       </div>
