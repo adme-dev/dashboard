@@ -8,6 +8,8 @@ const selectedKey = ref('__none__')
 const dirty = ref(false)
 const tab = ref('settings')
 const websiteDefaults = ref(false)
+const emailView = ref('recipients')
+const previewForms = computed(() => forms.value.flatMap(item => item.placements[0] ? [{ key: item.key, name: item.form.name || 'Website form', pageId: item.placements[0].pageId, formId: item.placements[0].formId }] : []))
 const recipientForms = computed(() => forms.value.map(item => ({ definitionId: item.definitionId, name: item.form.name || 'Website form' })))
 const forms = computed(() => formCatalogue(props.pages, props.formLibrary))
 const selected = computed(() => forms.value.find(form => form.key === selectedKey.value))
@@ -41,14 +43,37 @@ watch(selectedKey, () => {
       :disabled="dirty"
       @click="() => { websiteDefaults = !websiteDefaults }"
     />
-    <PageStudioFormRecipientsEditor
-      v-if="websiteDefaults && checkpointId"
-      :site-id="siteId"
-      :checkpoint-id="checkpointId"
-      :forms="recipientForms"
-      :reload-workspace="reloadWorkspace"
-      @dirty="dirty = $event"
-    />
+    <template v-if="websiteDefaults && checkpointId">
+      <div class="flex flex-wrap gap-2" role="group" aria-label="Website email settings">
+        <UButton
+          v-for="item in [{ value: 'recipients', label: 'Team recipients' }, { value: 'team', label: 'Team template' }, { value: 'customer', label: 'Customer template' }]"
+          :key="item.value"
+          :label="item.label"
+          color="neutral"
+          :variant="emailView === item.value ? 'soft' : 'ghost'"
+          :disabled="dirty && emailView !== item.value"
+          @click="() => { emailView = item.value }"
+        />
+      </div>
+      <PageStudioFormRecipientsEditor
+        v-if="emailView === 'recipients'"
+        :site-id="siteId"
+        :checkpoint-id="checkpointId"
+        :forms="recipientForms"
+        :reload-workspace="reloadWorkspace"
+        @dirty="dirty = $event"
+      />
+      <PageStudioEmailTemplateEditor
+        v-else
+        :key="emailView"
+        :site-id="siteId"
+        :checkpoint-id="checkpointId"
+        :audience="emailView === 'team' ? 'team' : 'customer'"
+        :forms="previewForms"
+        :reload-workspace="reloadWorkspace"
+        @dirty="dirty = $event"
+      />
+    </template>
     <template v-else>
       <UFormField v-if="forms.length" :label="formLibrary ? 'Form' : 'Form placement'" :description="dirty ? 'Save or discard your changes before switching forms.' : undefined">
         <USelect

@@ -121,7 +121,7 @@ async function discardAndReload() {
         {{ definitionId ? 'Choose who should receive enquiries from this form, wherever it appears.' : 'Set your team recipients once. Forms use these addresses unless you choose a custom list.' }}
       </p>
     </div>
-    <UAlert color="neutral" title="Draft only" description="You can save recipient lists now. Email delivery, sender verification and templates are not connected yet. Saving does not send email." />
+    <UAlert color="neutral" title="Draft only" description="You can save recipient lists now. Email delivery and sender verification are not connected yet. Saving does not send email." />
     <UAlert
       v-if="error"
       color="error"
