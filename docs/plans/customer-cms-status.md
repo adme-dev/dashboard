@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 1 October 2026. Start here after an interruption.
+Last updated: 2 October 2026. Start here after an interruption.
 This checklist tracks the active standalone CMS work; it does not declare the
 entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Form settings completion](2026-10-01-form-settings-completion.md),
@@ -50,16 +50,19 @@ blocks and shared-form overrides remain verified. See [release record](2026-10-0
 
 Hosted smoke found an expired synthetic staging entitlement (30 September), so
 the site workspace correctly denies access. Site list and agency QR navigation
-pass. Normal authorized test-entitlement renewal is needed before hosted acceptance;
-no access checks or entitlement dates were changed. The private physical schema
+pass. No supported preview-renewal path has been located: admission also checks
+the immutable original preview policy. Hosted acceptance needs an audited renewal
+implementation or a fresh authorized fixture; no access checks or dates were changed. The private physical schema
 installer/readback passes nine SQLite tests. The private retained coordinator now
 passes 17 real D1 tests for recovery, leases, cancellation, identity and database
 fencing. Exact form-extension compatibility is now implemented in collection,
 workflow, staging and actual CMS binding checks; 86 focused tests pass, including
 a real Worker read of existing CMS content after form installation. A separately
 retained runtime successor, provider inspection and matching routing selection are
-now implemented with 23 new runtime tests. Hosted setup remains unwired. Native
-customer admission and scoped RPC capability remain the next work. Coordinator
+now implemented with 23 new runtime tests. Paired form runtime/storage contracts
+and native original-session/recovery admission pass independent review and 41
+local PostgreSQL tests. Private worker bridges and actual provider verification
+are in progress; scoped RPC capability and hosted acceptance follow. Coordinator
 migration 0012 must precede any deployment of the new routing code.
 
 ## Remaining form and email work
@@ -109,7 +112,9 @@ end-to-end in this standalone demo, not necessarily zero code exists.
   Branch `feat/customer-form-settings-drafts`; runtime successor `cc22110`
   (storage compatibility `dd93e85`, private coordinator `508981e`, installer `75e8a31`);
   deployed router remains `0101046`.
-- Both feature branches are pushed. Fetch and check divergence before continuing;
+- Previous checkpoints are pushed; native integration has current uncommitted work.
+  The Studio integration plan and its `.superpowers/sdd/2026-10-02-form-native-integration/`
+  ledger track task ownership and review status. Fetch/check divergence before continuing;
   do not implement in the unrelated dirty Dashboard root or deploy a stale branch.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
   Restart with that directory's `start.sh`; do not start a second server on port 3044.

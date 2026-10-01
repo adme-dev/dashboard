@@ -6,11 +6,11 @@ import { CustomerSchemaUpgradeRequestSchema, CustomerSchemaUpgradeStatusSchema }
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
 import { CustomerEditorClaimsSchema, type CustomerEditorClaims } from './customerEditorToken'
 import { assertCustomerEditorSessionAuthority } from './customerEditorSessions'
-import { collectionUpgradeContract, workflowUpgradeContract, collectionStagingUpgradeContract, type SchemaUpgradeContract } from './schemaUpgradeContract'
+import { formDraftsRuntimeContract, formDraftsUpgradeContract, collectionUpgradeContract, workflowUpgradeContract, collectionStagingUpgradeContract, type SchemaUpgradeContract } from './schemaUpgradeContract'
 import { requirePageStudioProvisioningRuntime } from './provisioningBinding'
 import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
 
-const contracts = { 'collection': collectionUpgradeContract, 'workflow': workflowUpgradeContract, 'collection-staging': collectionStagingUpgradeContract }
+const contracts = { 'form-runtime': formDraftsRuntimeContract, 'form-drafts': formDraftsUpgradeContract, 'collection': collectionUpgradeContract, 'workflow': workflowUpgradeContract, 'collection-staging': collectionStagingUpgradeContract }
 type Binding = Record<string, (input: unknown) => Promise<unknown>>
 type Dependencies = { runTransaction?: RunPageStudioTransaction, binding?: Binding, env?: Record<string, unknown> }
 const denied = () => createError({ statusCode: 403, statusMessage: 'Customer CMS setup is not available.' })
@@ -156,8 +156,8 @@ export async function coordinateCustomerSchemaUpgrade(input: unknown, tokenClaim
             return { status: value.state, receipt: value.receipt }
           })())
     : z.discriminatedUnion('status', [z.object({ status: z.literal('running') }).strict(), z.object({ status: z.literal('installed'), receipt }).strict()]).parse(raw)
-  const { actor: _actor, version: _version, policyVersion: _policy, ...expected } = prepared.saved.intent
-  if (state.status === 'installed' && (!('receipt' in state) || !same(state.receipt, receipt.parse(expected)))) throw unavailable()
+  const expected = contract.expectedReceipt(prepared.saved.intent)
+  if (state.status === 'installed' && (!('receipt' in state) || !same(state.receipt, expected))) throw unavailable()
   const currentHead = await run(async (db) => {
     await authorize(db)
     const head = await admission(db, contract, prepared.saved)

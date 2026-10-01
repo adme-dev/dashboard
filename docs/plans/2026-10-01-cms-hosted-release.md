@@ -238,3 +238,32 @@ first-generation policy, whose three older upgrades intentionally share one dige
 Studio checkpoint `cc22110` is pushed. Its normal pre-commit check passed all
 1,530 files with no fixes. Both implementations remain on their documented feature
 branches; no merge or hosted deployment occurred in this slice.
+
+## Native form authorization checkpoint — 2 October 2026
+
+Paired strict contracts now distinguish runtime setup (`form-runtime`) from form
+storage setup (`form-drafts`). Each retains its own native request, cancellation
+and recovery history. Runtime setup cannot invent successor pins; storage setup
+requires server-discovered pins in its immutable identity. Physical receipt
+projection explicitly excludes those pins, and the runtime completion receipt has
+its own fixed discriminator. Cross-kind receipts and browser-supplied database or
+runtime identities are rejected.
+
+Private native callbacks retain original-session or explicit recovery authority.
+Real local PostgreSQL tests cover all five setup kinds, independent recovery and
+withdrawal, revoked sessions/membership/entitlements/approvers, forged pins and
+installed worker evidence without native authority. Forty-one tests pass; paired
+protocol, worker and existing native authority regressions pass. Independent task
+review found no blocking findings.
+
+This is the contract/admission portion only. Private worker bridges, actual
+provider verification at setup fences, separate scoped capability activation and
+hosted acceptance remain in progress. No hosted database, runtime, entitlement,
+deployment or capability changed. The integration plan is Studio
+`docs/architecture/2026-10-02-form-native-integration.md`.
+
+Access preflight corrected an earlier assumption: no supported native preview
+renewal path has been located. Preview admission compares the original retained
+policy, including expiry, with the entitlement. Updating the entitlement date alone
+would fail that check. Hosted acceptance requires an audited renewal implementation
+or a fresh authorized synthetic fixture; do not alter the original evidence ad hoc.

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-const kind = z.enum(['collection', 'workflow', 'collection-staging'])
+const kind = z.enum(['collection', 'workflow', 'collection-staging', 'form-runtime', 'form-drafts'])
 const id = z.string().uuid()
 export const CustomerSchemaUpgradeRequestSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('status'), kind }).strict(),

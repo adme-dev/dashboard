@@ -120,21 +120,33 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
   const api = () => import('~~/server/utils/pageStudio/customerSchemaUpgrade')
   const binding = () => {
     const calls: CollectionUpgradeOperation[] = []
-    return { calls, value: Object.fromEntries(['Collection', 'Workflow', 'CollectionStaging'].flatMap(kind => [
-      [`read${kind}UpgradeDatabase`, async (scope: unknown) => ({ scope, accountId: 'a'.repeat(32), databaseId: '11111111-1111-4111-8111-111111111111', name: `ps-content-${'b'.repeat(32)}`, ...(kind !== 'Collection' ? { collectionOperationId: 'collection_original' } : {}), ...(kind === 'CollectionStaging' ? { workflowOperationId: 'workflow_original' } : {}) })],
-      [`execute${kind}Upgrade`, async (input: unknown) => {
-        const intent = input as CollectionUpgradeOperation
-        calls.push(intent)
-        const { actor, version, policyVersion, ...receipt } = intent
-        return { status: 'installed', receipt }
-      }],
-      [`read${kind}UpgradeOperation`, async () => null]
-    ])) }
+    return { calls, value: Object.fromEntries([
+      ['Collection', 'collection'], ['Workflow', 'workflow'], ['CollectionStaging', 'collection-staging'],
+      ['FormDraftsRuntime', 'form-runtime'], ['FormDraftsUpgrade', 'form-drafts']
+    ].flatMap(([name, kind]) => {
+      const stem = name!.startsWith('Form') ? name! : `${name}Upgrade`
+      const form = kind!.startsWith('form-')
+      return [
+        [`read${stem}Database`, async (scope: unknown) => ({ scope, accountId: 'a'.repeat(32), databaseId: '11111111-1111-4111-8111-111111111111', name: `ps-content-${'b'.repeat(32)}`,
+          ...(kind !== 'collection' ? { collectionOperationId: 'collection_original' } : {}),
+          ...(kind === 'collection-staging' || form ? { workflowOperationId: 'workflow_original' } : {}),
+          ...(form ? { stagingOperationId: 'staging_original' } : {}),
+          ...(kind === 'form-drafts' ? { runtime: { digest: 'd'.repeat(64), etag: 'verified-etag', successorIdentity: 'e'.repeat(64) } } : {}) })],
+        [`execute${stem}`, async (input: unknown) => {
+          const intent = input as CollectionUpgradeOperation & { runtime?: unknown }
+          calls.push(intent)
+          const { actor, version, policyVersion, runtime, ...physical } = intent
+          return { status: 'installed', receipt: kind === 'form-runtime' ? { ...physical, runtimeKind: 'form-drafts-v1' } : physical }
+        }],
+        [`read${stem}Operation`, async () => null]
+      ]
+    })) }
   }
+
   const coordinate = async (input: unknown, claims: unknown, worker: ReturnType<typeof binding>) =>
     (await api()).coordinateCustomerSchemaUpgrade(input, claims, { runTransaction, binding: worker.value })
 
-  it.each(['collection', 'workflow', 'collection-staging'])('retains and executes a customer %s upgrade with exact private authority', async (kind) => {
+  it.each(['collection', 'workflow', 'collection-staging', 'form-runtime', 'form-drafts'])('retains and executes a customer %s upgrade with exact private authority', async (kind) => {
     const { claims } = await session(), worker = binding(), requestId = randomUUID()
     expect(await coordinate({ action: 'status', kind }, claims, worker)).toMatchObject({ status: 'pending', recoveryId: null })
     expect(worker.calls).toHaveLength(0)
@@ -172,9 +184,9 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
     await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp() WHERE nonce=$1', [third.claims.nonce])
     await expect((await api()).authorizeCustomerSchemaUpgrade(contract, original, 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
   })
-  it.each(['child', 'parent', 'membership', 'entitlement', 'approver', 'account'])('denies retained worker callbacks after %s revocation', async (reason) => {
+  it.each(['collection', 'form-runtime', 'form-drafts'].flatMap(kind => ['child', 'parent', 'membership', 'entitlement', 'approver', 'account'].map(reason => [kind, reason])))('denies retained %s callbacks after %s revocation', async (kind, reason) => {
     const { claims } = await session(), worker = binding(), requestId = randomUUID()
-    await coordinate({ action: 'start', kind: 'collection', requestId }, claims, worker)
+    await coordinate({ action: 'start', kind, requestId }, claims, worker)
     const mutations: Record<string, string> = {
       child: 'UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp()',
       parent: 'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
@@ -184,9 +196,9 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
       account: 'UPDATE page_studio_customer_accounts SET status=\'suspended\''
     }
     await db.query(mutations[reason]!)
-    const contract = (await contracts()).find(value => value.kind === 'collection')!
+    const contract = (await contracts()).find(value => value.kind === kind)!
     await expect((await api()).authorizeCustomerSchemaUpgrade(contract, worker.calls[0], 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
-    await expect(coordinate({ action: 'start', kind: 'collection', requestId }, claims, worker)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(coordinate({ action: 'start', kind, requestId }, claims, worker)).rejects.toMatchObject({ statusCode: 403 })
     expect(worker.calls).toHaveLength(1)
   })
   it('rejects caller-selected scope and foreign signed claims before discovery', async () => {
@@ -311,5 +323,71 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
     expect(transactionAttempt).not.toHaveBeenCalled()
     expect(discoveryAttempt).not.toHaveBeenCalled()
     expect(recheck).not.toHaveBeenCalled()
+  })
+  it('keeps runtime and form storage recovery and withdrawal independently retained', async () => {
+    const first = await session(), second = await session(), worker = binding()
+    for (const kind of ['form-runtime', 'form-drafts']) await coordinate({ action: 'start', kind, requestId: randomUUID() }, first.claims, worker)
+    const [runtimeIntent, formIntent] = structuredClone(worker.calls)
+    const list = await contracts(), runtime = list.find(value => value.kind === 'form-runtime')!, forms = list.find(value => value.kind === 'form-drafts')!
+    await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp() WHERE nonce=$1', [first.claims.nonce])
+    const runtimeRecovery = randomUUID()
+    await coordinate({ action: 'recover', kind: 'form-runtime', requestId: runtimeRecovery, expectedRecoveryId: null }, second.claims, worker)
+    expect(worker.calls.at(-1)).toEqual(runtimeIntent)
+    expect(await coordinate({ action: 'status', kind: 'form-drafts' }, second.claims, worker)).toMatchObject({ status: 'reconciliation', recoveryId: null })
+    await expect((await api()).authorizeCustomerSchemaUpgrade(forms, formIntent, 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    const formRecovery = randomUUID()
+    await coordinate({ action: 'recover', kind: 'form-drafts', requestId: formRecovery, expectedRecoveryId: null }, second.claims, worker)
+    expect(worker.calls.at(-1)).toEqual(formIntent)
+    expect(await coordinate({ action: 'status', kind: 'form-runtime' }, second.claims, worker)).toMatchObject({ recoveryId: runtimeRecovery })
+    expect(await coordinate({ action: 'status', kind: 'form-drafts' }, second.claims, worker)).toMatchObject({ recoveryId: formRecovery })
+    await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id)
+      VALUES($1,$2,$3,$4,'customer','content.form-drafts-upgrade.disabled','form-drafts_upgrade',$5)`, [first.claims.tenantId, first.claims.clientId, first.claims.siteId, first.claims.userId, formIntent!.operationId])
+    await expect((await api()).authorizeCustomerSchemaUpgrade(forms, formIntent, 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    expect(await (await api()).authorizeCustomerSchemaUpgrade(runtime, runtimeIntent, 'staging', { runTransaction })).toEqual(runtimeIntent)
+    const rows = (await db.query('SELECT metadata->\'intent\' AS intent FROM page_studio_audit_events WHERE action IN (\'content.form-runtime-upgrade.requested\',\'content.form-drafts-upgrade.requested\') ORDER BY recorded_at')).rows
+    expect(rows.map(row => row.intent)).toEqual([runtimeIntent, formIntent])
+  })
+  it.each(['form-runtime', 'form-drafts'])('rejects cross-kind receipts and stale logout for %s', async (kind) => {
+    const { claims } = await session(), worker = binding(), stem = kind === 'form-runtime' ? 'FormDraftsRuntime' : 'FormDraftsUpgrade'
+    const execute = worker.value[`execute${stem}`]!, request = { action: 'start', kind, requestId: randomUUID() }
+    worker.value[`execute${stem}`] = async (input) => {
+      const result = await execute(input) as { status: string, receipt: Record<string, unknown> }
+      if (kind === 'form-runtime') delete result.receipt.runtimeKind
+      else result.receipt.runtimeKind = 'form-drafts-v1'
+      return result
+    }
+    await expect(coordinate(request, claims, worker)).rejects.toThrow()
+    worker.value[`execute${stem}`] = async (input) => {
+      const result = await execute(input)
+      await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+      return result
+    }
+    await expect(coordinate(request, claims, worker)).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('retains and checks server-discovered runtime pins without accepting substitutions', async () => {
+    const { claims } = await session(), worker = binding(), request = { action: 'start', kind: 'form-drafts', requestId: randomUUID() }
+    const discover = worker.value.readFormDraftsUpgradeDatabase!
+    worker.value.readFormDraftsUpgradeDatabase = async (scope) => {
+      const { runtime, ...missing } = await discover(scope) as Record<string, unknown>
+      return missing
+    }
+    await expect(coordinate(request, claims, worker)).rejects.toThrow()
+    expect(worker.calls).toHaveLength(0)
+    worker.value.readFormDraftsUpgradeDatabase = discover
+    await coordinate(request, claims, worker)
+    const contract = (await contracts()).find(value => value.kind === 'form-drafts')!, intent = worker.calls[0] as CollectionUpgradeOperation & { runtime: Record<string, string> }
+    for (const field of ['digest', 'etag', 'successorIdentity']) await expect((await api()).authorizeCustomerSchemaUpgrade(contract, { ...intent, runtime: { ...intent.runtime, [field]: field === 'etag' ? 'forged' : 'f'.repeat(64) } }, 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    expect(await (await api()).authorizeCustomerSchemaUpgrade(contract, intent, 'staging', { runTransaction })).toEqual(intent)
+  })
+  it.each(['form-runtime', 'form-drafts'])('rejects worker-only %s evidence without a retained native grant', async (kind) => {
+    const { claims } = await session(), worker = binding()
+    const contract = (await contracts()).find(value => value.kind === kind)!
+    const scope = { tenantId: claims.tenantId, clientId: claims.clientId, businessId: claims.clientId, siteId: claims.siteId, environment: claims.environment }
+    const intent = contract.schema.parse({ ...await worker.value[contract.discoveryMethod]!(scope) as object,
+      operationId: randomUUID(), version: 1, policyVersion: contract.schema.shape.policyVersion.value,
+      sourceDigest: contract.schema.shape.sourceDigest.value, targetDigest: contract.schema.shape.targetDigest.value,
+      actor: { kind: 'customer-user', userId: claims.userId, loginSessionHash: hash(token) } })
+    expect(await worker.value[contract.executeMethod]!(intent)).toMatchObject({ status: 'installed' })
+    await expect((await api()).authorizeCustomerSchemaUpgrade(contract, intent, 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
   })
 })
