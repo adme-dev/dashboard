@@ -25,7 +25,7 @@ interface Receipt {
   editor_origin: string
   expires_at: Date
 }
-function configuration(value: unknown) {
+export function parseCustomerEditorHandoffConfiguration(value: unknown) {
   const parsed = Configuration.safeParse(value)
   if (!parsed.success) throw denied()
   return parsed.data
@@ -40,7 +40,7 @@ async function audit(db: PageStudioQueryClient, receipt: Receipt, action: string
 /** Internal only. A transport ticket is NOT a Studio JWT, editor permission or Ready receipt.
  * Future HTTP producer must enforce exact origin/rate limit and readiness before calling. */
 export async function issueCustomerEditorHandoff(sessionToken: unknown, trustedConfiguration: unknown, dependencies: Dependencies = {}) {
-  const config = configuration(trustedConfiguration)
+  const config = parseCustomerEditorHandoffConfiguration(trustedConfiguration)
   if (!Token.safeParse(sessionToken).success) throw denied()
   const token = generatePortalMagicLinkToken()
   const tokenHash = await digestPortalSessionToken(token)
@@ -78,7 +78,7 @@ export async function issueCustomerEditorHandoff(sessionToken: unknown, trustedC
 /** For an authenticated private Studio adapter only. Origins are trusted server config,
  * not proof of caller identity. Returned context cannot authorize editing or publication. */
 export async function redeemCustomerEditorHandoff(token: unknown, trustedConfiguration: unknown, dependencies: Dependencies = {}) {
-  const config = configuration(trustedConfiguration)
+  const config = parseCustomerEditorHandoffConfiguration(trustedConfiguration)
   if (!Token.safeParse(token).success) throw denied()
   const hash = await digestPortalSessionToken(token as string)
   return (dependencies.runTransaction ?? transaction)(async (db) => {

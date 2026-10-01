@@ -695,6 +695,31 @@ const adoptionReceiptSchema = z
     digest: z.string()
   })
   .strict()
+/** Read-only activation proof under existing native/site/CMS locks. The original
+ * application stays immutable even after ordinary saves advance the latest head. */
+export async function readManagedCmsAdoptionReceipt(db: PageStudioControlQueryClient, scope: PageStudioContentScope) {
+  const raw = (await db.query<AdoptionRow>('SELECT * FROM page_studio_cms_scopes WHERE scope_key=$1', [contentScopeKey(scope)])).rows[0]
+  const intent = CmsAdoptionIntentSchema.parse(raw?.adoption_request)
+  if (!cmsEqual(intent.scope, scope)) throw cmsUnavailable()
+  const row = await lock(db, intent)
+  const receipt = adoptionReceiptSchema.parse(row.adoption_receipt)
+  const { digest, ...body } = receipt
+  if (row.state !== 'managed' || row.active_generation !== intent.generation
+    || await collectionDigest(body) !== digest || receipt.adoptionId !== intent.adoptionId
+    || receipt.generation !== intent.generation || receipt.freezeDigest !== row.freeze_digest
+    || !cmsEqual(receipt.scope, scope) || !cmsEqual(receipt.checkpoint, intent.expectedCheckpoint)) throw cmsUnavailable()
+  const initial = (await db.query<{ manifest: unknown, digest: string }>(
+    'SELECT manifest,digest FROM page_studio_application_versions WHERE scope_key=$1 AND generation=$2 AND id=$3 AND adoption_id=$4 AND previous_application_id IS NULL',
+    [row.scope_key, intent.generation, receipt.application.id, intent.adoptionId]
+  )).rows[0]
+  const manifest = CmsApplicationManifestSchema.parse(initial?.manifest)
+  if (initial?.digest !== receipt.application.digest || await collectionDigest(manifest) !== receipt.application.digest
+    || manifest.applicationId !== receipt.application.id || manifest.generation !== intent.generation
+    || manifest.previousApplicationId !== null || !cmsEqual(manifest.scope, scope)
+    || !cmsEqual(manifest.checkpoint, intent.expectedCheckpoint)) throw cmsUnavailable()
+  return receipt
+}
+
 /** Existing independent-component legacy graphs only; full feature approval is
  * deliberately separate. Graph/body storage I/O completes before native locks. */
 export async function activateCmsAdoption(

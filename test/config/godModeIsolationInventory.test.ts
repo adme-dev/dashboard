@@ -38,8 +38,9 @@ const API_INVENTORY = {
   // Customer dashboard adds a native-session GET and origin-guarded preview POST.
   // Neither accepts God mode or customer-selected scope.
   // Customer recovery adds one native-cookie, exact-origin POST without a bypass.
-  totalRouteFiles: 2196,
-  mutationRouteFiles: 1202,
+  // Customer editor adds one native-cookie, origin-guarded handoff POST; no bypass.
+  totalRouteFiles: 2197,
+  mutationRouteFiles: 1203,
   explicitlyGuardedMutationFiles: 400,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -78,8 +79,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2196,
-      mutationRouteFiles: 1202,
+      totalRouteFiles: 2197,
+      mutationRouteFiles: 1203,
       explicitlyGuardedMutationFiles: 400,
       guardedMutationFilesWithTransactionCall: 47
     })

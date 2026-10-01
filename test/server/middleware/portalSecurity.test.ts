@@ -30,6 +30,27 @@ describe('portal response security middleware', () => {
     editorUrl = ''
   })
 
+  it.each(['/studio/signup', '/studio/dashboard', '/portal/login'])('permits only the configured native editor after navigation from %s', (path) => {
+    const env = { PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED: 'true', PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED: 'true',
+      PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging',
+      PAGE_STUDIO_CUSTOMER_ORIGIN: 'https://customers.example.test', PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: 'https://native-editor.example.test' }
+    const policy = () => {
+      vi.clearAllMocks()
+      portalSecurityMiddleware({ path, context: { cloudflare: { env } } } as never)
+      return vi.mocked(testGlobal.setHeader).mock.calls.find(([, name]) => name === 'Content-Security-Policy')?.[2]
+    }
+    expect(policy()).toContain('form-action \'self\' https://native-editor.example.test;')
+    expect(testGlobal.setHeader).toHaveBeenCalledWith(expect.anything(), 'Referrer-Policy', 'origin')
+    env.PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED = 'false'
+    expect(policy()).not.toContain('native-editor')
+    env.PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED = 'true'
+    env.PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN += '/path'
+    expect(policy()).not.toContain('native-editor')
+    env.PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN = 'https://native-editor.example.test'
+    env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'production'
+    expect(policy()).not.toContain('native-editor')
+  })
+
   it('prevents storage and reuse of every portal API response', () => {
     const event = { path: '/api/portal/dashboard' }
     portalSecurityMiddleware(event as never)

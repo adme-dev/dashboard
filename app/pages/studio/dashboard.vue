@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { openCustomerStudio } from '~/utils/pageStudioCustomerLaunch'
 import type { CustomerDashboard } from '~~/shared/pageStudio/customerDashboard'
 
 definePageMeta({ layout: false })
@@ -17,7 +18,9 @@ const views: Record<CustomerDashboard['state'], { title: string, description: st
   'needs-attention': { title: 'Your setup needs attention', description: 'We’ve kept your existing setup. Contact support so we can check it and help you continue.', icon: 'i-lucide-life-buoy' },
   'unavailable': { title: 'Status is temporarily unavailable', description: 'We could not check your website. Refresh the status in a moment. Your saved setup will be kept.', icon: 'i-lucide-cloud-off' }
 }
-const view = computed(() => data.value ? views[data.value.state] : null)
+const view = computed(() => data.value?.canOpenStudio
+  ? { title: 'Continue editing your website', description: 'Open Studio to edit your saved draft. Your changes stay private until a separate publishing step.', icon: 'i-lucide-panels-top-left' }
+  : data.value ? views[data.value.state] : null)
 const steps = computed(() => [
   { label: 'Business details saved', done: true },
   { label: 'Website prepared', done: (data.value?.stage ?? 0) >= 3 },
@@ -61,6 +64,18 @@ async function recoverPreview() {
     busy.value = false
     await load()
   }
+}
+async function openStudio() {
+  if (busy.value || loadError.value || !data.value?.canOpenStudio) return
+  busy.value = true
+  actionError.value = ''
+  try {
+    const session = await $fetch<{ token: string, editorOrigin: string, expiresAt: string }>(`${api}/editor`, { method: 'POST', body: {} })
+    openCustomerStudio(session)
+  } catch (error) {
+    if ((error as { statusCode?: number })?.statusCode === 401) await navigateTo('/studio/signup', { replace: true })
+    actionError.value = 'We could not open Studio. Your saved draft is safe. Refresh your overview and try again, or contact support.'
+  } finally { busy.value = false }
 }
 async function signOut() {
   if (busy.value) return
@@ -148,7 +163,17 @@ async function signOut() {
             </p>
           </div>
           <UButton
-            v-if="data.canCreate"
+            v-if="data.canOpenStudio"
+            class="mt-6"
+            label="Open Studio"
+            icon="i-lucide-panels-top-left"
+            size="lg"
+            :loading="busy"
+            :disabled="Boolean(loadError)"
+            @click="openStudio"
+          />
+          <UButton
+            v-else-if="data.canCreate"
             class="mt-6"
             label="Create preview"
             icon="i-lucide-plus"

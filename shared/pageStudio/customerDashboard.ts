@@ -12,5 +12,6 @@ export interface CustomerDashboard {
   stage: number
   canCreate: boolean
   canRetry: boolean
+  canOpenStudio?: boolean
   recovery?: Omit<z.infer<typeof CustomerProvisioningRecoverySchema>, 'recoveryId'>
 }
