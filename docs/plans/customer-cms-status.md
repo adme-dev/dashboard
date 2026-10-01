@@ -61,9 +61,14 @@ a real Worker read of existing CMS content after form installation. A separately
 retained runtime successor, provider inspection and matching routing selection are
 now implemented with 23 new runtime tests. Paired form runtime/storage contracts
 and native original-session/recovery admission pass independent review and 41
-local PostgreSQL tests. Private worker bridges and actual provider verification
-are in progress; scoped RPC capability and hosted acceptance follow. Coordinator
-migration 0012 must precede any deployment of the new routing code.
+local PostgreSQL tests. Private worker bridges, actual provider/schema verification
+and recovery pass focused tests and independent review after two fence/status fixes.
+Separate scoped RPC capability activation and all six actual-bound draft methods
+are implemented and independently reviewed. Final native status fixes pass 78
+Dashboard tests, including 46 real PostgreSQL cases. Full Studio build, typecheck,
+lint and tests pass (40 package tasks, 36 security and 48 action-runtime tests).
+Hosted acceptance remains pending two fresh approved native test identities.
+Coordinator migrations 0011–0013 must precede the new private worker deployment.
 
 ## Remaining form and email work
 

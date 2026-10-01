@@ -124,7 +124,7 @@ export function createSchemaUpgradeSetup(contract: SchemaUpgradeContract, prepar
           ? null
           : z
               .object({
-                state: z.enum(['reserved', 'installed', 'disabled']),
+                state: z.enum(['reserved', 'running', 'installed', 'disabled']),
                 leaseUntil: z.string().nullable(),
                 receipt: Receipt.nullable()
               })

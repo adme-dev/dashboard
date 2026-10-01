@@ -152,7 +152,7 @@ export async function coordinateCustomerSchemaUpgrade(input: unknown, tokenClaim
     ? (raw === null
         ? { status: 'pending' }
         : (() => {
-            const value = z.object({ state: z.enum(['reserved', 'installed', 'disabled']), leaseUntil: z.string().nullable(), receipt: receipt.nullable() }).strict().parse(raw)
+            const value = z.object({ state: z.enum(['reserved', 'running', 'installed', 'disabled']), leaseUntil: z.string().nullable(), receipt: receipt.nullable() }).strict().parse(raw)
             return { status: value.state, receipt: value.receipt }
           })())
     : z.discriminatedUnion('status', [z.object({ status: z.literal('running') }).strict(), z.object({ status: z.literal('installed'), receipt }).strict()]).parse(raw)

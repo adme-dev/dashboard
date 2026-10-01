@@ -146,6 +146,72 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
   const coordinate = async (input: unknown, claims: unknown, worker: ReturnType<typeof binding>) =>
     (await api()).coordinateCustomerSchemaUpgrade(input, claims, { runTransaction, binding: worker.value })
 
+  it('returns retained form-runtime running status only after fresh native authority', async () => {
+    const { claims } = await session(), worker = binding(), requestId = randomUUID()
+    worker.value.executeFormDraftsRuntime = async (intent) => {
+      worker.calls.push(intent as CollectionUpgradeOperation)
+      return { status: 'running' }
+    }
+    await coordinate({ action: 'start', kind: 'form-runtime', requestId }, claims, worker)
+    const intent = structuredClone(worker.calls[0])
+    let statusReturned = false, finalTransactions = 0
+    worker.value.readFormDraftsRuntimeOperation = async (request) => {
+      expect(request).toEqual(intent)
+      await db.query('SELECT 1')
+      statusReturned = true
+      return { state: 'running', leaseUntil: new Date(Date.now() + 60_000).toISOString(), receipt: null }
+    }
+    const observingRun: RunPageStudioTransaction = (callback) => {
+      if (statusReturned) finalTransactions++
+      return runTransaction(callback)
+    }
+    expect(await (await api()).coordinateCustomerSchemaUpgrade({ action: 'status', kind: 'form-runtime' }, claims,
+      { runTransaction: observingRun, binding: worker.value })).toEqual({ kind: 'form-runtime', status: 'running', requestId, recoveryId: null, canConfigure: true })
+    expect(finalTransactions).toBe(1)
+    expect(worker.calls).toEqual([intent])
+    expect((await db.query('SELECT metadata->\'intent\' AS intent FROM page_studio_audit_events WHERE action=\'content.form-runtime-upgrade.requested\'')).rows.map(row => row.intent)).toEqual([intent])
+  })
+  it.each(['child', 'parent', 'membership'])('withholds retained form-runtime running status after awaited %s revocation', async (reason) => {
+    const { claims } = await session(), worker = binding(), requestId = randomUUID()
+    worker.value.executeFormDraftsRuntime = async (intent) => {
+      worker.calls.push(intent as CollectionUpgradeOperation)
+      return { status: 'running' }
+    }
+    await coordinate({ action: 'start', kind: 'form-runtime', requestId }, claims, worker)
+    const mutations: Record<string, string> = {
+      child: 'UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp()',
+      parent: 'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+      membership: 'UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()'
+    }
+    const readStatus = vi.fn(async () => {
+      await db.query(mutations[reason]!)
+      return { state: 'running', leaseUntil: null, receipt: null }
+    })
+    worker.value.readFormDraftsRuntimeOperation = readStatus
+    await expect(coordinate({ action: 'status', kind: 'form-runtime' }, claims, worker)).rejects.toMatchObject({ statusCode: 403 })
+    expect(readStatus).toHaveBeenCalledWith(worker.calls[0])
+    expect(worker.calls).toHaveLength(1)
+  })
+  it('keeps retained form-runtime status strict and verifies its installed receipt', async () => {
+    const { claims } = await session(), worker = binding()
+    await coordinate({ action: 'start', kind: 'form-runtime', requestId: randomUUID() }, claims, worker)
+    const contract = (await contracts()).find(value => value.kind === 'form-runtime')!
+    const receipt = contract.expectedReceipt(worker.calls[0])
+    for (const raw of [
+      { state: 'uploading', leaseUntil: null, receipt: null },
+      { state: 'running', leaseUntil: null, receipt: null, unexpected: true },
+      { state: 'installed', leaseUntil: null, receipt: { ...receipt, runtimeKind: 'foreign' } }
+    ]) {
+      worker.value.readFormDraftsRuntimeOperation = async () => raw
+      await expect(coordinate({ action: 'status', kind: 'form-runtime' }, claims, worker)).rejects.toThrow()
+    }
+    worker.value.readFormDraftsRuntimeOperation = async () => ({ state: 'installed', leaseUntil: null, receipt: { ...receipt, databaseId: randomUUID() } })
+    await expect(coordinate({ action: 'status', kind: 'form-runtime' }, claims, worker)).rejects.toMatchObject({ statusCode: 503 })
+    worker.value.readFormDraftsRuntimeOperation = async () => ({ state: 'installed', leaseUntil: null, receipt })
+    expect(await coordinate({ action: 'status', kind: 'form-runtime' }, claims, worker)).toMatchObject({ status: 'installed' })
+    expect(worker.calls).toHaveLength(1)
+  })
+
   it.each(['collection', 'workflow', 'collection-staging', 'form-runtime', 'form-drafts'])('retains and executes a customer %s upgrade with exact private authority', async (kind) => {
     const { claims } = await session(), worker = binding(), requestId = randomUUID()
     expect(await coordinate({ action: 'status', kind }, claims, worker)).toMatchObject({ status: 'pending', recoveryId: null })

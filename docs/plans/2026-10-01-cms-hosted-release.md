@@ -267,3 +267,45 @@ renewal path has been located. Preview admission compares the original retained
 policy, including expiry, with the entitlement. Updating the entitlement date alone
 would fail that check. Hosted acceptance requires an audited renewal implementation
 or a fresh authorized synthetic fixture; do not alter the original evidence ad hoc.
+
+Private worker bridge verification now passes independent review. Original runtime
+and later storage native authority remain separate; runtime bytes, provider pins
+and physical schema are checked before reporting installed. Review fixes cover a
+legal runtime disable during the final native callback (no new physical write)
+and consistent disabled status while retaining the audit receipt. Actual local
+workerd RPC/D1/R2 and older-upgrade regressions pass; no hosted change occurred.
+Dashboard native checkpoint c93b044db is pushed and deploy:check passes. An isolated
+non-deploying build of c93b044db passes while scoped capability work continues in
+Studio. Raw Worker: 25,457,677 / 25,468,928 bytes (11,251 headroom); gzip: 7,026,713
+/ 9,750,000 bytes. The existing size guard is unchanged. No upload was performed.
+The previous root security assertion failure was reconciled to exact intentionally
+committed routes, image and variables; focused root4/package3 tests and independent
+review pass. Configuration and production assertions were not changed.
+
+Dashboard full typecheck remains failing at its 934-diagnostic baseline. Comparison
+with the saved prior output found no new diagnostic (the existing qrcode error
+only contains a different absolute checkout path). Two unchanged diagnostics in
+customerSchemaUpgrade.ts predate this change. Build and type logs are retained as
+`customer-cms-demo/private/native-form-dashboard-{build,types}.log`.
+
+## Final native integration verification — 2 October 2026
+
+Tasks 1–3 and the final paired integration review are complete. The final review
+fixed admission of the legitimate runtime `running` state while preserving strict
+receipts and fresh native authority. All 78 focused Dashboard tests pass, including
+46 real local PostgreSQL tests. The full Dashboard typecheck retains its previously
+recorded 934 baseline diagnostics; it is not reported as passing.
+
+Studio full gates pass: build 28 tasks; typecheck 44 tasks plus security types;
+lint 1,544 files; all 40 package test tasks, 36 security tests and 48 action-runtime
+tests. Business worker passes 1,046 tests and Sandbox 900. A single multioperation
+integration test uses the existing bounded 30-second harness convention after its
+5-second default expired under full-suite load; assertions are unchanged. Final
+scoped review approved both fixes. Evidence: `customer-cms-demo/private/native-forms-*`.
+
+Staging readback confirms coordinator migrations 0001–0010. Apply 0011–0013 before
+new private worker deployment. Runtime configuration remains absent, and explicit
+capability activation is still required after installed storage. Hosted acceptance
+needs two fresh approved native test identities; the requested email addresses are
+pending. No hosted save, production activation or completed customer rollout is
+claimed by these local results.
