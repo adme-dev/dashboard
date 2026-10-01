@@ -40,13 +40,11 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 Website template drafts are implemented, locally verified and committed. Both
 implementation branches are pushed; no hosted rollout has happened.
 
-Next concrete slice: **customer-owned logo/image blocks** in templates, using
-scoped site media and safe previews. Per-form template overrides and reset are
-implemented and verified locally. The compact block palette, safe live
-preview, design looks and business header/footer are now locally verified.
-Preserve shared form identity so a form used on several pages is configured only
-once. Customer media blocks and AI proposals follow; AI requires explicit Apply
-and preserves manual edits.
+Next concrete slice: **AI template proposals** through the existing gateway and
+credit conventions, with schema validation, explicit Apply and preservation of
+manual edits. Logo/image blocks, scoped library selection, safe previews and
+per-form overrides are implemented and verified locally. Preserve shared form
+identity so a form used on several pages is configured only once.
 
 ## Remaining form and email work
 
@@ -58,7 +56,8 @@ and preserves manual edits.
 - [x] Structured template editing, subject/preheader, brand styling and
       desktop/mobile preview.
 - [ ] Stored template revision-history/restore UI (session undo/redo is complete).
-- [ ] Customer-owned media/image blocks in templates; previews must remain safe.
+- [x] Customer-owned logo/image references, scoped library picker, required alt text,
+      sizing/alignment and bounded safe previews.
 - [ ] AI template proposals through the existing gateway/credit conventions;
       validate output and require Apply; preserve manual edits.
 - [ ] Verified sender/reply-to and customer email-field selection.
@@ -97,12 +96,12 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
   Restart with that directory's `start.sh`; do not start a second server on port 3044.
 - URL: `http://127.0.0.1:3044/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
-- Latest local backup: `customer-cms-demo/private/backups/2026-10-01T06-50-40.120Z/`.
+- Latest local backup: `customer-cms-demo/private/backups/2026-10-01T07-23-22.623Z/`.
   Preserve the private directory and media; do not commit credentials or copied data.
 - Recipient sample revision 4: `office@example.test`, with Contact override
   `contact@example.test`. These are inert demo addresses, not approved recipients.
-- Template samples: team revision 2; customer revision 12 with a Booking enquiry override for five pages;
-  website design/contact details remain unchanged and explicitly fictional.
+- Template samples: team revision 2; customer revision 14 with a Booking enquiry override for five pages;
+  website default has a 200px logo and 520px photo. Contact details are explicitly fictional.
   Evidence: `customer-cms-demo/check-templates.mjs` and
   `customer-cms-demo/fantasy-limo-email-templates.png`.
 
@@ -218,3 +217,33 @@ Final formatting: the first full lint read the pre-format version and reported
 three corrected formatting findings. Targeted recheck passed; the final full
 pre-commit check passed all 1,520 files with no fixes. Implementation checkpoints:
 Dashboard `737a7a025`, Studio `6987586`; both feature branches pushed.
+
+## Email logo/image acceptance — 1 October 2026
+
+- [x] Optional header logo and image content blocks select from the website library.
+- [x] Required alt text, 40–600px width, alignment, replacement, removal and undo.
+- [x] Six references maximum, including logo; only asset IDs and presentation fields
+      persist in customer-owned JSON. No migration is needed.
+- [x] Authenticated scanned/non-archived raster reads; signature/MIME and actual
+      stream size verified, at most 512 KB each and 2 MB total rendered bytes.
+- [x] Missing images show preview warnings and block saving; reset can remove an
+      override without resolving its images. Authority is checked again before write.
+- [x] Browser acceptance: logo/photo selection, replacement, width/alignment,
+      save/reload, discard, remove/undo and 390px picker/preview without overflow.
+- [x] Local API checks: asset references only, unchanged team and Booking override,
+      two embedded preview images, missing-image warning, unavailable save (400)
+      without revision change and external-URL rejection (400).
+
+Evidence: `customer-cms-demo/check-email-media.mjs` and
+`customer-cms-demo/fantasy-limo-email-images.png`. Customer sample revision 14 has
+Fantasy Limousines logo and countryside limousine photo; team remains revision 2.
+Dashboard focused tests: 40 pass. Studio storage/router tests: 39 pass. Independent
+full-file review found no remaining blockers; targeted Dashboard lint passes.
+Studio build, typecheck and full formatting pass. Broader baseline remains 934
+Dashboard type diagnostics (none in edited files), and the existing Studio security
+route-count assertion (35 pass/1 fail). Local private backup recorded above.
+
+No merge, deployment or sending. The picker uses existing website media; upload
+and AI image generation inside this editor remain separate. Inline browser preview
+acceptance does not establish delivered-email image/client compatibility. Hosted
+activation requires the matching Dashboard and worker contracts first.

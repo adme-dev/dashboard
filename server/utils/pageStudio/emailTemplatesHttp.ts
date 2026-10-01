@@ -9,6 +9,7 @@ import { getPageStudioDocument } from './documents'
 import { samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
 import { EmailAudienceSchema, EmailTemplatePreviewSchema } from '~~/shared/pageStudio/emailTemplates'
 import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
+import { resolveEmailTemplateMedia } from './emailTemplateMedia'
 import { renderCustomerEmailPreview } from './emailTemplatePreview'
 
 export async function handleEmailTemplate(event: H3Event, method: 'GET' | 'PUT' | 'PREVIEW') {
@@ -26,10 +27,11 @@ export async function handleEmailTemplate(event: H3Event, method: 'GET' | 'PUT' 
     const document = await getPageStudioDocument(before.scope.tenantId, request.siteId, request.env.PAGE_STUDIO_CHECKPOINTS)
     const form = document.studio && formCatalogue(document.studio.pages, document.studio.formLibrary).find(item => item.placements.some(placement => placement.pageId === parsed.data.pageId && placement.formId === parsed.data.formId))?.form
     if (!form?.fields) throw new PageStudioBusinessContentError('FORM_NOT_FOUND', 404, 'Choose a saved form for the preview')
-    const preview = renderCustomerEmailPreview(parsed.data.template, { siteName: document.site.name, formName: form.name || 'Website form', fields: form.fields })
+    const media = await resolveEmailTemplateMedia(request, parsed.data.template)
+    const preview = renderCustomerEmailPreview(parsed.data.template, { siteName: document.site.name, formName: form.name || 'Website form', fields: form.fields, images: media.images })
     const after = await authorizePageStudioBusinessContent(request, false, { policyOnly: true })
     if (!samePageStudioContentScope(before.scope, after.scope)) throw new PageStudioBusinessContentError('EMAIL_TEMPLATE_DENIED', 403, 'Template access denied')
-    return preview
+    return { ...preview, warnings: media.warnings }
   } catch (error) {
     pageStudioHttpError(error)
   }

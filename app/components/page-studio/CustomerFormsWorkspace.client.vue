@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
+import type { StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 import type { PageStudioSavedPages } from '~~/shared/pageStudio/savedPages'
 
-const props = defineProps<{ siteId: string, pages: PageStudioSavedPages['pages'], checkpointId?: string, formLibrary?: PageStudioSavedPages['formLibrary'], reloadWorkspace: () => Promise<unknown> }>()
+const props = defineProps<{ siteId: string, assets: StandaloneSiteWorkspace['assets'], pages: PageStudioSavedPages['pages'], checkpointId?: string, formLibrary?: PageStudioSavedPages['formLibrary'], reloadWorkspace: () => Promise<unknown> }>()
 const emit = defineEmits<{ dirty: [value: boolean], reload: [], enquiries: [value: { placements: Array<{ formId: string, pageRoute?: string }>, name: string }] }>()
 const selectedKey = ref('__none__')
 const dirty = ref(false)
@@ -66,6 +67,7 @@ watch(selectedKey, () => {
       <PageStudioEmailTemplateEditor
         v-else
         :key="emailView"
+        :assets="assets"
         :site-id="siteId"
         :checkpoint-id="checkpointId"
         :audience="emailView === 'team' ? 'team' : 'customer'"
@@ -155,6 +157,7 @@ watch(selectedKey, () => {
         <PageStudioEmailTemplateEditor
           v-else-if="(tab === 'team-template' || tab === 'customer-template') && checkpointId && selected.definitionId"
           :key="`${selected.key}:${tab}`"
+          :assets="assets"
           :site-id="siteId"
           :checkpoint-id="checkpointId"
           :definition-id="selected.definitionId"

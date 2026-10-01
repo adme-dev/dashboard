@@ -237,6 +237,7 @@ async function openStudio() {
           </template>
           <template v-else-if="section === 'forms'">
             <PageStudioCustomerFormsWorkspace
+              :assets="data.assets"
               :site-id="siteId"
               :pages="pages"
               :checkpoint-id="data.document.studio?.checkpointId"

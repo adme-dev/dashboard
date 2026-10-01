@@ -1,4 +1,5 @@
 import { authorizePageStudioBusinessContent, PageStudioBusinessContentError as SettingsError, type ContentAuthorityRequest } from './businessContent'
+import { resolveEmailTemplateMedia } from './emailTemplateMedia'
 import { getPageStudioDocument } from './documents'
 import { samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
 import { EmailTemplateWriteSchema, EmailTemplateEditSchema, EmailTemplateOverrideEditSchema, defaultWebsiteEmailTemplate, EmailTemplateRecordSchema, EmailAudienceSchema, type EmailTemplateState } from '~~/shared/pageStudio/emailTemplates'
@@ -6,6 +7,7 @@ import { EmailTemplateWriteSchema, EmailTemplateEditSchema, EmailTemplateOverrid
 interface Dependencies {
   authorize?: typeof authorizePageStudioBusinessContent
   document?: typeof getPageStudioDocument
+  media?: typeof resolveEmailTemplateMedia
 }
 const invalid = (message: string) => new SettingsError('EMAIL_TEMPLATE_INVALID', 400, message)
 const unavailable = () => new SettingsError('EMAIL_TEMPLATE_UNAVAILABLE', 503, 'Email template storage is not connected. Your website has not changed.')
@@ -20,8 +22,6 @@ export async function operateEmailTemplate(request: ContentAuthorityRequest, aud
   const before = await authorize(request, writing, { policyOnly: true })
   const document = await (deps.document ?? getPageStudioDocument)(before.scope.tenantId, request.siteId, request.env.PAGE_STUDIO_CHECKPOINTS as Parameters<typeof getPageStudioDocument>[2])
   if (!document.studio) throw unavailable()
-  const current = await authorize(request, writing, { policyOnly: true })
-  if (!samePageStudioContentScope(before.scope, current.scope)) throw new SettingsError('EMAIL_TEMPLATE_DENIED', 403, 'Email template access denied')
   const service = request.env.PAGE_STUDIO_CONTENT_ROUTER as { readEmailTemplateDraft?: (input: unknown) => Promise<unknown>, writeEmailTemplateDraft?: (input: unknown) => Promise<unknown> } | undefined
   if (definitionId !== undefined && !document.studio.formLibrary?.definitions.some(item => item.id === definitionId)) throw new SettingsError('FORM_NOT_FOUND', 404, 'Choose a saved shared form')
   const edit = writing ? (definitionId !== undefined ? EmailTemplateOverrideEditSchema : EmailTemplateEditSchema).safeParse(body) : undefined
@@ -29,7 +29,14 @@ export async function operateEmailTemplate(request: ContentAuthorityRequest, aud
   const proposed = edit?.success ? edit.data : undefined
   if (proposed) {
     if (proposed.checkpointId !== document.studio.checkpointId) throw conflict()
+    if (proposed.template) {
+      const media = await (deps.media ?? resolveEmailTemplateMedia)(request, proposed.template)
+      if (media.warnings.length) throw invalid(media.warnings[0]!)
+    }
   }
+
+  const current = await authorize(request, writing, { policyOnly: true })
+  if (!samePageStudioContentScope(before.scope, current.scope)) throw new SettingsError('EMAIL_TEMPLATE_DENIED', 403, 'Email template access denied')
 
   let value: unknown
   let outgoing: { template: ReturnType<typeof defaultWebsiteEmailTemplate>, overrides: NonNullable<NonNullable<EmailTemplateState['record']>['overrides']> } | undefined

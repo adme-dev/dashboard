@@ -49,7 +49,7 @@ structured document and require Apply, leaving manual editing available.
    browser acceptance pass; details are in the current checklist.
 2. **Locally complete:** shared-form template overrides and reset-to-default with
    effective design preview and an impact summary.
-3. Add customer media blocks, then AI proposals against the approved schema.
+3. **Locally complete:** customer media blocks. Next: AI proposals against the approved schema.
 4. Complete sender/routing/outbox and hosted acceptance separately.
 
 This reference is incorporated into the active checklist. Website template drafts
@@ -92,3 +92,17 @@ reusable business profile still require their own storage and acceptance work.
   images (public immutable assets or attachments); delivery is not yet active.
 
 These are inspected entry points and constraints, not implemented image support.
+
+## Media follow-through — 1 October 2026
+
+The media slice above is now implemented and locally accepted. The scoped library
+picker supports an optional logo and image blocks, required alt text, width and
+alignment. Templates store UUID references only, with six images maximum.
+Authenticated clean asset reads validate raster signatures and bound actual bytes
+to 512 KB each and 2 MB rendered total. The preview CSP now permits only embedded
+raster data images; scripts and external resources remain blocked. Missing assets
+produce placeholders/warnings and prevent saving until replaced or removed.
+
+Desktop/mobile browser checks, save/reload, replacement, remove/undo and negative
+API cases pass; evidence lives in the current checklist. Email delivery is still
+inactive and needs its own image hosting/attachment strategy and client tests.

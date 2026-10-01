@@ -2,7 +2,7 @@ import { onScopeDispose, ref, watch } from 'vue'
 import type { EmailTemplate } from '~~/shared/pageStudio/emailTemplates'
 
 export interface EmailPreviewInput { template: EmailTemplate, pageId: string, formId: string }
-export interface EmailPreviewResult { html: string, subject: string, preheader: string }
+export interface EmailPreviewResult { html: string, subject: string, preheader: string, warnings?: string[] }
 
 /** Preview only: latest input wins, even if the transport ignores cancellation. */
 export function useEmailTemplatePreview(input: () => EmailPreviewInput | null, request: (input: EmailPreviewInput, signal: AbortSignal) => Promise<EmailPreviewResult>) {

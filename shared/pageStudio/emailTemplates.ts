@@ -14,8 +14,13 @@ const link = z.string().max(2048).url().refine((value) => {
     return false
   }
 }, 'Use a fixed HTTPS link without variables or credentials')
+export const EmailImageSchema = z.object({ assetId: z.string().uuid(), alt: z.string().trim().min(1, 'Describe the image for people who cannot see it').max(300), width: z.number().int().min(40).max(600), alignment: z.enum(['left', 'center', 'right']) }).strict()
+export type EmailImage = z.infer<typeof EmailImageSchema>
+export const EMAIL_IMAGE_MAX_BYTES = 512 * 1024
+export const EMAIL_IMAGES_MAX_BYTES = 2 * 1024 * 1024
 export const socialPlatforms = ['Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'X'] as const
 export const EmailIdentitySchema = z.object({
+  logo: EmailImageSchema.optional(),
   businessName: line, tagline: line, phone: line,
   email: z.union([z.literal(''), z.string().email().max(254)]),
   address: z.string().max(1000), websiteUrl: z.union([z.literal(''), link]),
@@ -27,6 +32,7 @@ export type EmailIdentity = z.infer<typeof EmailIdentitySchema>
 export const emptyEmailIdentity = (): EmailIdentity => ({ businessName: '{{site.name}}', tagline: '', phone: '', email: '', address: '', websiteUrl: '', disclaimer: '', socials: [] })
 export const EmailAudienceSchema = z.enum(['team', 'customer'])
 export const EmailTemplateBlockSchema = z.discriminatedUnion('type', [
+  EmailImageSchema.extend({ id: Identity, type: z.literal('image') }),
   z.object({ id: Identity, type: z.literal('heading'), text }).strict(),
   z.object({ id: Identity, type: z.literal('text'), text }).strict(),
   z.object({ id: Identity, type: z.literal('divider') }).strict(),
@@ -39,7 +45,7 @@ export const EmailTemplateSchema = z.object({
   identity: EmailIdentitySchema.optional(),
   fontFamily: z.enum(['MODERN_SANS', 'BOOK_SERIF']),
   blocks: z.array(EmailTemplateBlockSchema).min(1).max(30).refine(blocks => new Set(blocks.map(block => block.id)).size === blocks.length, 'Block IDs must be unique')
-}).strict()
+}).strict().refine(template => template.blocks.filter(block => block.type === 'image').length + (template.identity?.logo ? 1 : 0) <= 6, 'Use up to six images, including your logo')
 export type EmailTemplate = z.infer<typeof EmailTemplateSchema>
 export type EmailTemplateBlock = z.infer<typeof EmailTemplateBlockSchema>
 export type EmailAudience = z.infer<typeof EmailAudienceSchema>
@@ -81,4 +87,8 @@ export function effectiveEmailTemplate(record: EmailTemplateState['record'], aud
 export function defaultWebsiteEmailTemplate(audience: EmailAudience): EmailTemplate {
   const template = starterEmailTemplate(audience)
   return { ...template, identity: emptyEmailIdentity(), blocks: template.blocks.filter(block => block.id !== 'footer') }
+}
+
+export function emailTemplateImages(template: EmailTemplate): EmailImage[] {
+  return [...(template.identity?.logo ? [template.identity.logo] : []), ...template.blocks.filter((block): block is Extract<EmailTemplateBlock, { type: 'image' }> => block.type === 'image')]
 }

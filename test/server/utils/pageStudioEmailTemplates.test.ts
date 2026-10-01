@@ -186,3 +186,26 @@ it('bounds aggregate UTF-8 records before dispatching a customer-storage write',
   await expect(operateEmailTemplate(s.request, 'team', { ...edit, expectedRevision: 1, template: large }, s.deps, 'booking')).rejects.toMatchObject({ statusCode: 400 })
   expect(s.service.writeEmailTemplateDraft).not.toHaveBeenCalled()
 })
+
+it('rejects unavailable image references before writing and rechecks permission after media reads', async () => {
+  const s = setup()
+  const withImage = { ...template, blocks: [{ id: 'photo', type: 'image', assetId: '10000000-0000-4000-8000-000000000001', alt: 'Photo', width: 500, alignment: 'center' }] }
+  const media = vi.fn().mockResolvedValue({ images: {}, warnings: ['Choose a current website image'] })
+  await expect(operateEmailTemplate(s.request, 'team', { ...edit, template: withImage }, { ...s.deps, media })).rejects.toMatchObject({ statusCode: 400 })
+  expect(s.service.writeEmailTemplateDraft).not.toHaveBeenCalled()
+  media.mockImplementation(async () => {
+    s.authorize.mockRejectedValueOnce(new Error('Permission revoked during media read'))
+    return { images: {}, warnings: [] }
+  })
+  await expect(operateEmailTemplate(s.request, 'team', { ...edit, template: withImage }, { ...s.deps, media })).rejects.toThrow('Permission revoked during media read')
+  expect(s.service.writeEmailTemplateDraft).not.toHaveBeenCalled()
+})
+
+it('allows reset without reading stale images in the inherited template', async () => {
+  const s = setup()
+  s.document.mockResolvedValue({ studio: { checkpointId: edit.checkpointId, formLibrary: { definitions: [{ id: 'booking' }] } } })
+  const media = vi.fn().mockRejectedValue(new Error('Must not read inherited images during reset'))
+  await operateEmailTemplate(s.request, 'team', { ...edit, template: null }, { ...s.deps, media }, 'booking')
+  expect(media).not.toHaveBeenCalled()
+  expect(s.service.writeEmailTemplateDraft).toHaveBeenCalledOnce()
+})

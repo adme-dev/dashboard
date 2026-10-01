@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ValidatedEmailTemplateSchema, effectiveEmailTemplate, starterEmailTemplate, socialPlatforms, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailAudience } from '~~/shared/pageStudio/emailTemplates'
+import { ValidatedEmailTemplateSchema, effectiveEmailTemplate, starterEmailTemplate, socialPlatforms, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailAudience, type EmailImage, emailTemplateImages } from '~~/shared/pageStudio/emailTemplates'
 
+import type { StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 import { emailDesigns, styleEmailTemplate, emailStarterLayout, prepareEmailTemplate, type EmailDesignId } from '~~/shared/pageStudio/emailTemplateDesigns'
 
-const props = defineProps<{ siteId: string, checkpointId: string, definitionId?: string, placementCount?: number, audience: EmailAudience, forms: Array<{ key: string, name: string, pageId: string, formId: string }>, reloadWorkspace: () => Promise<unknown> }>()
+const props = defineProps<{ siteId: string, assets: StandaloneSiteWorkspace['assets'], checkpointId: string, definitionId?: string, placementCount?: number, audience: EmailAudience, forms: Array<{ key: string, name: string, pageId: string, formId: string }>, reloadWorkspace: () => Promise<unknown> }>()
 const emit = defineEmits<{ dirty: [value: boolean] }>()
 const websiteUrl = `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/email-templates/${props.audience}`
 const url = props.definitionId ? `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/${encodeURIComponent(props.definitionId)}/email-templates/${props.audience}` : websiteUrl
@@ -56,7 +57,33 @@ const openBlock = ref<string | undefined>()
 const layout = ref<'enquiry' | 'booking'>('enquiry')
 const replaceLayoutOpen = ref(false)
 const identity = computed(() => template.value.identity!)
-const blockItems = computed(() => template.value.blocks.map((block, index) => ({ value: block.id, label: block.type === 'answers' ? 'Enquiry details' : block.type.charAt(0).toUpperCase() + block.type.slice(1), description: 'text' in block ? block.text.slice(0, 65) : block.type === 'answers' ? 'The fields from your form' : 'A little breathing room', slot: 'block' as const, block, index })))
+const pickerOpen = ref(false)
+const imageTarget = ref('new')
+const imageCount = computed(() => emailTemplateImages(template.value).length)
+function chooseImage(target: string) {
+  imageTarget.value = target
+  pickerOpen.value = true
+}
+function updateImage(id: string, value: EmailImage) {
+  template.value.blocks = template.value.blocks.map(block => block.id === id && block.type === 'image' ? { ...block, ...value } : block)
+}
+function selectImage(asset: StandaloneSiteWorkspace['assets'][number]) {
+  if (!data.value?.canEdit || saving.value || uncertain.value) return
+  const image: EmailImage = { assetId: asset.id, alt: asset.altText || '', width: imageTarget.value === 'logo' ? 160 : 520, alignment: 'center' }
+  if (imageTarget.value === 'logo') {
+    if (!identity.value.logo && imageCount.value >= 6) return
+    identity.value.logo = { ...image, width: identity.value.logo?.width ?? 160, alignment: identity.value.logo?.alignment ?? 'left' }
+  } else if (imageTarget.value === 'new') {
+    if (template.value.blocks.length >= 30 || imageCount.value >= 6) return
+    const id = `image_${crypto.randomUUID()}`
+    template.value.blocks.push({ ...image, id, type: 'image' })
+    openBlock.value = id
+  } else {
+    const block = template.value.blocks.find(item => item.id === imageTarget.value)
+    if (block?.type === 'image') updateImage(block.id, { ...block, assetId: image.assetId, alt: image.alt })
+  }
+}
+const blockItems = computed(() => template.value.blocks.map((block, index) => ({ value: block.id, label: block.type === 'answers' ? 'Enquiry details' : block.type.charAt(0).toUpperCase() + block.type.slice(1), description: block.type === 'image' ? (block.alt || 'Add an image description') : 'text' in block ? block.text.slice(0, 65) : block.type === 'answers' ? 'The fields from your form' : 'A little breathing room', slot: 'block' as const, block, index })))
 function chooseDesign(id: EmailDesignId) {
   template.value = styleEmailTemplate(template.value, id)
 }
@@ -76,7 +103,8 @@ const blockChoices = [
   { type: 'text', label: 'Text', icon: 'i-lucide-align-left' },
   { type: 'answers', label: 'Answers', icon: 'i-lucide-list' },
   { type: 'button', label: 'Button', icon: 'i-lucide-mouse-pointer-2' },
-  { type: 'divider', label: 'Divider', icon: 'i-lucide-minus' }
+  { type: 'divider', label: 'Divider', icon: 'i-lucide-minus' },
+  { type: 'image', label: 'Image', icon: 'i-lucide-image' }
 ] as const
 const validTemplate = computed(() => ValidatedEmailTemplateSchema.safeParse(template.value))
 const previewInput = computed(() => {
@@ -134,6 +162,10 @@ function redo() {
   recording = true
 }
 function addBlock(type: EmailTemplateBlock['type']) {
+  if (type === 'image') {
+    chooseImage('new')
+    return
+  }
   if (template.value.blocks.length >= 30) return
   const id = `block_${crypto.randomUUID()}`
   const block: EmailTemplateBlock = type === 'divider' || type === 'answers' ? { id, type } : type === 'button' ? { id, type, text: 'Visit our website', url: 'https://example.com' } : { id, type: type === 'heading' ? 'heading' : 'text', text: '' }
@@ -351,6 +383,12 @@ async function discardAndReload() {
                     <UFormField v-if="item.block.type === 'button'" label="Website link" description="Use an HTTPS address. Preview links are inactive.">
                       <UInput v-model="item.block.url" class="w-full" />
                     </UFormField>
+                    <PageStudioEmailImageFields
+                      v-if="item.block.type === 'image'"
+                      :model-value="item.block"
+                      @update:model-value="value => updateImage(item.block.id, value)"
+                      @replace="chooseImage(item.block.id)"
+                    />
                     <p v-if="item.block.type === 'answers'" class="text-sm text-muted">
                       Includes the visible fields from the selected form. The preview uses example answers.
                     </p>
@@ -396,7 +434,7 @@ async function discardAndReload() {
                   color="neutral"
                   variant="outline"
                   size="sm"
-                  :disabled="template.blocks.length >= 30"
+                  :disabled="template.blocks.length >= 30 || (choice.type === 'image' && imageCount >= 6)"
                   @click="addBlock(choice.type)"
                 />
               </div>
@@ -483,6 +521,30 @@ async function discardAndReload() {
                 </h4><p class="mt-1 text-xs text-muted">
                   Identify your business and make it easy to get in touch. Empty details are hidden.
                 </p>
+              </div>
+              <div class="space-y-3 border-b border-default pb-4">
+                <h4 class="text-sm font-medium">
+                  Business logo
+                </h4>
+                <template v-if="identity.logo">
+                  <PageStudioEmailImageFields :model-value="identity.logo" @update:model-value="value => { identity.logo = value }" @replace="chooseImage('logo')" />
+                  <UButton
+                    label="Remove logo"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    @click="() => { delete identity.logo }"
+                  />
+                </template>
+                <UButton
+                  v-else
+                  label="Choose logo"
+                  icon="i-lucide-image"
+                  color="neutral"
+                  variant="outline"
+                  :disabled="imageCount >= 6"
+                  @click="chooseImage('logo')"
+                />
               </div>
               <UFormField label="Business name" description="Shown in the header and footer.">
                 <UInput v-model="identity.businessName" placeholder="Your business name" class="w-full" />
@@ -585,6 +647,12 @@ async function discardAndReload() {
               title="Preview paused"
               :description="validTemplate.error.issues[0]?.message"
             />
+            <UAlert
+              v-if="preview?.warnings?.length"
+              color="warning"
+              title="Check your images"
+              :description="preview.warnings.join(' ')"
+            />
             <template v-if="preview">
               <div class="space-y-1 rounded-lg bg-default px-4 py-3 text-sm">
                 <p class="break-words font-medium">
@@ -630,6 +698,12 @@ async function discardAndReload() {
         Design only. Sending and reply routing are not enabled yet.
       </p>
     </template>
+    <PageStudioEmailMediaPicker
+      v-model:open="pickerOpen"
+      :site-id="siteId"
+      :assets="assets"
+      @select="selectImage"
+    />
     <UModal v-model:open="resetOpen" title="Use the website template?" description="This form will follow the website default, including future changes. Save the draft to apply this reset.">
       <template #footer>
         <UButton

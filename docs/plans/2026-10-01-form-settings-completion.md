@@ -525,3 +525,19 @@ Backward compatibility covers absent overrides and legacy identity. The initial
 website default has one shared factory so first-form saves do not alter its look.
 Detailed test/browser evidence and remaining work are in the current checklist.
 The user-facing cleanup of removed-definition overrides is explicitly deferred.
+
+## Email logo and image blocks — 1 October 2026
+
+Completed optional identity logos and structured image blocks using existing scoped
+website assets. The picker offers searchable, paginated thumbnails; required alt
+text, size/alignment and change/remove controls use the existing editor and undo.
+Only bounded asset references persist. Authenticated raster resolution checks
+signature, MIME and actual byte limits before preview embedding and save; missing
+assets warn in previews and prevent saving. Fresh authority checks follow media
+resolution. Reset-to-default remains available when old images are unavailable.
+
+Forty focused Dashboard tests and 39 Studio storage/router tests pass, with real
+browser/API acceptance and independent review. Full verification, screenshots and
+remaining work are in [the checklist](customer-cms-status.md). This completes the
+local draft media slice; delivery/client compatibility, picker uploads and AI image
+generation are separate. Next: validated AI template proposals with explicit Apply.

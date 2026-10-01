@@ -1,11 +1,11 @@
-import { ValidatedEmailTemplateSchema, type EmailTemplate } from '~~/shared/pageStudio/emailTemplates'
+import { ValidatedEmailTemplateSchema, type EmailTemplate, type EmailImage } from '~~/shared/pageStudio/emailTemplates'
 import { renderFlyhubDocumentToHtml } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
 import { escapeHtml } from '~~/server/utils/email-marketing/render/blocks/helpers'
 import type { FlyhubDocument } from '~~/server/utils/email-marketing/render/blocks/types'
 
 /** Safe adapter into the existing EDM renderer. No raw markup, remote images,
  * arbitrary style objects, answer interpolation into URLs, or agency state. */
-export function renderCustomerEmailPreview(input: EmailTemplate, context: { siteName: string, formName: string, fields: Array<{ id: string, name: string, type: string }> }) {
+export function renderCustomerEmailPreview(input: EmailTemplate, context: { siteName: string, formName: string, fields: Array<{ id: string, name: string, type: string }>, images?: Record<string, string> }) {
   const template = ValidatedEmailTemplateSchema.parse(input)
   const values: Record<string, string> = { 'site.name': context.siteName, 'form.name': context.formName }
   const resolve = (value: string) => value.replace(/\{\{(site.name|form.name)\}\}/g, (_, variable: string) => values[variable] ?? '')
@@ -14,6 +14,16 @@ export function renderCustomerEmailPreview(input: EmailTemplate, context: { site
   const doc: FlyhubDocument = { root: { type: 'EmailLayout', data: { props: { backdropColor: template.backgroundColor, canvasColor: template.canvasColor, textColor: template.textColor, fontFamily: template.fontFamily, borderRadius: 12 }, childrenIds: [] } } }
   const identity = template.identity
   const safeText = (value: string) => escapeHtml(resolve(value)).replace(/\n/g, '<br>')
+  const imageMarkup = (image: EmailImage) => {
+    const source = context.images?.[image.assetId]
+    if (!source || source.length > 710_000 || !/^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(source)) return '<p>Image unavailable — choose another image from your website library.</p>'
+    const margin = image.alignment === 'center' ? '0 auto' : image.alignment === 'right' ? '0 0 0 auto' : '0'
+    return `<img src="${source}" alt="${escapeHtml(image.alt)}" width="${image.width}" style="display:block;width:${image.width}px;max-width:100%;height:auto;margin:${margin};" />`
+  }
+  if (identity?.logo) {
+    doc.root.data.childrenIds!.push('business-logo')
+    doc['business-logo'] = { type: 'Text', data: { style: { padding: { top: 24, bottom: 0, left: 28, right: 28 } }, props: { text: imageMarkup(identity.logo) } } }
+  }
   if (identity && (identity.businessName.trim() || identity.tagline.trim())) {
     doc.root.data.childrenIds!.push('business-header')
     doc['business-header'] = { type: 'Text', data: { style: { color: template.accentColor, fontSize: 14, padding: { top: 30, bottom: 20, left: 28, right: 28 } }, props: { text: [identity.businessName.trim() ? `<strong>${safeText(identity.businessName)}</strong>` : '', identity.tagline.trim() ? safeText(identity.tagline) : ''].filter(Boolean).join('<br>') } } }
@@ -22,7 +32,8 @@ export function renderCustomerEmailPreview(input: EmailTemplate, context: { site
     const id = `template-${index}`
     doc.root.data.childrenIds!.push(id)
     const style = { color: template.textColor, padding: { top: 12, bottom: 12, left: 28, right: 28 } }
-    if (block.type === 'heading') doc[id] = { type: 'Heading', data: { style: { ...style, color: template.accentColor }, props: { level: index === 0 ? 'h1' : 'h2', text: resolve(block.text) } } }
+    if (block.type === 'image') doc[id] = { type: 'Text', data: { style, props: { text: imageMarkup(block) } } }
+    else if (block.type === 'heading') doc[id] = { type: 'Heading', data: { style: { ...style, color: template.accentColor }, props: { level: index === template.blocks.findIndex(item => item.type === 'heading') ? 'h1' : 'h2', text: resolve(block.text) } } }
     else if (block.type === 'text') doc[id] = { type: 'Text', data: { style, props: { text: escapeHtml(resolve(block.text)).replace(/\n/g, '<br>') } } }
     else if (block.type === 'divider') doc[id] = { type: 'Divider', data: { style, props: { lineColor: template.accentColor, lineThickness: 1 } } }
     else if (block.type === 'button') doc[id] = { type: 'Button', data: { style, props: { text: resolve(block.text), url: '#', buttonBackgroundColor: template.accentColor, buttonTextColor: '#ffffff' } } }
@@ -40,6 +51,6 @@ export function renderCustomerEmailPreview(input: EmailTemplate, context: { site
   const subject = header(template.subject)
   const preheader = header(template.preheader)
   const html = renderFlyhubDocumentToHtml(doc, { subjectLine: escapeHtml(subject), previewText: escapeHtml(preheader), primaryColor: template.accentColor })
-    .replace('<head>', '<head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src \'none\'; form-action \'none\'; base-uri \'none\'">')
+    .replace('<head>', '<head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; form-action \'none\'; base-uri \'none\'">')
   return { subject, preheader, html, sample: true as const }
 }
