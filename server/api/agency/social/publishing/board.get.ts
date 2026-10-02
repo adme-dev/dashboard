@@ -1,5 +1,5 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { isPlannerEnabled } from '~~/server/utils/socialPublishing/plannerGate'
 import { deriveLane, needsAttention } from '~~/server/utils/socialPublishing/lanes'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
@@ -18,7 +18,7 @@ export default defineEventHandler(async (event): Promise<SocialBoardPost[]> => {
   let where = 'p.client_id = $1'
   if (q.campaignId) { params.push(q.campaignId); where += ` AND p.campaign_id = $${params.length}` }
 
-  const rows = await queryRows<any>(
+  const rows = await queryRowsFresh<any>(
     `SELECT p.*, c.id AS c_id, c.name AS c_name, c.color AS c_color
        FROM social_posts p
        LEFT JOIN social_campaigns c ON c.id = p.campaign_id

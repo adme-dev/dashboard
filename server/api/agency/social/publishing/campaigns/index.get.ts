@@ -1,5 +1,5 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { isPlannerEnabled } from '~~/server/utils/socialPublishing/plannerGate'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   const clientId = getQuery(event).clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
   await requireSocialClientAccess(event, clientId)
-  return await queryRows(
+  return await queryRowsFresh(
     `SELECT c.*,
             COUNT(p.id)::int AS post_count,
             COUNT(p.id) FILTER (WHERE p.status IN ('approved','scheduled'))::int AS scheduled_count,
