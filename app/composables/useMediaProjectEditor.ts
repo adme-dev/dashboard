@@ -121,17 +121,23 @@ export function nextPollDelay(status: string): number | null {
   return 2500
 }
 
-/** Read a video File's intrinsic duration (seconds) via an object URL. Falls back to 5s. */
-function readVideoDuration(file: File): Promise<number> {
+/** Read intrinsic video metadata. A failed read retains the legacy 5s clip fallback. */
+function readVideoMetadata(file: File): Promise<{ width: number, height: number, durationSec: number } | null> {
   return new Promise((resolve) => {
     try {
       const url = URL.createObjectURL(file)
       const v = document.createElement('video')
       v.preload = 'metadata'
-      v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 5) }
-      v.onerror = () => { URL.revokeObjectURL(url); resolve(5) }
+      v.onloadedmetadata = () => {
+        URL.revokeObjectURL(url)
+        resolve(Number.isFinite(v.duration) && v.duration > 0 && v.videoWidth > 0 && v.videoHeight > 0 ? { width: v.videoWidth, height: v.videoHeight, durationSec: v.duration } : null)
+      }
+      v.onerror = () => {
+        URL.revokeObjectURL(url)
+        resolve(null)
+      }
       v.src = url
-    } catch { resolve(5) }
+    } catch { resolve(null) }
   })
 }
 
@@ -378,18 +384,20 @@ export function useMediaProjectEditor(projectId: string) {
   // ─── V1.3 AV actions ──────────────────────────────────────────────────────────
 
   /** Upload footage/still → R2 → merge its presigned URL into sources → return r2_key + duration. */
-  async function uploadMedia(file: File, kind: 'footage' | 'still'): Promise<{ r2Key: string; url: string; durationSec: number }> {
-    const durationSec = kind === 'footage' ? await readVideoDuration(file) : 5
+  async function uploadMedia(file: File, kind: 'footage' | 'still'): Promise<{ r2Key: string, url: string, durationSec: number, assetId: string | null }> {
+    const metadata = kind === 'footage' ? await readVideoMetadata(file) : null
+    const durationSec = metadata?.durationSec ?? 5
     const fd = new FormData()
     fd.append('file', file)
     fd.append('kind', kind)
-    const res = await apiFetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, {
+    if (metadata) fd.append('videoMetadata', JSON.stringify(metadata))
+    const res = await apiFetch<{ r2_key: string, url: string, assetId: string | null }>(`/api/agency/audio/projects/${projectId}/upload-media`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey('upload') },
       body: fd
     })
     mergeSource(res.r2_key, res.url, { durationSec })
-    return { r2Key: res.r2_key, url: res.url, durationSec }
+    return { r2Key: res.r2_key, url: res.url, durationSec, assetId: res.assetId ?? null }
   }
 
   /** Add a video clip (footage or still). Ensures a video track exists. One undo step.
