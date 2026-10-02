@@ -35,3 +35,16 @@ export function verifyState<T = any>(token: string, secret: string, maxAgeMs: nu
   if (typeof data?.ts !== 'number' || Date.now() - data.ts > maxAgeMs) return null
   return data as T
 }
+
+/** Recovery labels only; NEVER authorizes code exchange or account mutation. */
+export function expiredMetaStateContext(token: string, secret: string, maxAgeMs: number): { clientId: string; userId: string } | null {
+  if (!secret || token.split('.').length !== 2) return null
+  // Verify the signature independently of age, then accept ONLY an expired,
+  // schema-valid Meta payload. verifyState remains strict for all OAuth callers.
+  const data = verifyState<any>(token, secret, Infinity)
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!data || !Number.isFinite(data.ts) || Date.now() - data.ts <= maxAgeMs
+    || typeof data.clientId !== 'string' || typeof data.userId !== 'string' || typeof data.nonce !== 'string'
+    || data.platform !== 'meta' || !uuid.test(data.clientId) || !uuid.test(data.userId) || !uuid.test(data.nonce)) return null
+  return { clientId: data.clientId, userId: data.userId }
+}
