@@ -52,7 +52,7 @@ export async function claimAndPublishSocialPost(
     `UPDATE social_posts
         SET status='publishing', last_attempt_at=NOW(), updated_at=NOW()
       WHERE id=$1
-        AND ($2::text IS NULL OR client_id=$2)
+        AND ($2::uuid IS NULL OR client_id=$2)
         AND status = ANY($3::text[])
         AND ($4::int IS NULL OR publish_attempts < $4)
         AND ($5::timestamptz IS NULL OR (scheduled_at = $5::timestamptz AND scheduled_at <= NOW()))
