@@ -44,10 +44,11 @@ export async function fetchMcpNewsSource(source: SocialNewsSource, options: News
   let response = await fetchImpl(source.endpointUrl, {
     method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method: 'tools/call', params: { name: toolName, arguments: params } }),
-    redirect: 'error',
+    // Workers supports manual redirects; non-success responses below are rejected.
+    redirect: 'manual',
     signal: AbortSignal.timeout(15_000),
   })
-  if (!response.ok && response.status === 405) response = await fetchImpl(source.endpointUrl, { headers: { accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(15_000) })
+  if (!response.ok && response.status === 405) response = await fetchImpl(source.endpointUrl, { headers: { accept: 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(15_000) })
   if (!response.ok) return []
   const payload: any = await response.json()
   const result = payload?.result ?? payload
