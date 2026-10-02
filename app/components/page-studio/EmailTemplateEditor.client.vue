@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import PageStudioEmailTemplateHistory from './EmailTemplateHistory.client.vue'
 import { formSiteApi, type FormApiAudience } from '~/utils/pageStudioFormApi'
-import { ValidatedEmailTemplateSchema, effectiveEmailTemplate, starterEmailTemplate, socialPlatforms, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailAudience, type EmailImage, emailTemplateImages } from '~~/shared/pageStudio/emailTemplates'
+import { ValidatedEmailTemplateSchema, effectiveEmailTemplate, starterEmailTemplate, socialPlatforms, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailTemplateHistoricalVersion, type EmailAudience, type EmailImage, emailTemplateImages } from '~~/shared/pageStudio/emailTemplates'
 
 import type { StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 import { emailDesigns, styleEmailTemplate, emailStarterLayout, prepareEmailTemplate, type EmailDesignId } from '~~/shared/pageStudio/emailTemplateDesigns'
@@ -12,10 +13,27 @@ const emit = defineEmits<{ dirty: [value: boolean] }>()
 const websiteUrl = `${formSiteApi(props.siteId, props.apiAudience)}/email-templates/${props.audience}`
 const url = props.definitionId ? `${formSiteApi(props.siteId, props.apiAudience)}/forms/${encodeURIComponent(props.definitionId)}/email-templates/${props.audience}` : websiteUrl
 const customised = ref(false)
+const savedHistoryOpen = ref(false)
+const restoredRevision = ref<number | null>(null)
+const exactTemplate = ref<EmailTemplate | null>(null)
+const exactPreparedSnapshot = ref('')
+function setEditableTemplate(value: EmailTemplate | null) {
+  exactTemplate.value = value ? JSON.parse(JSON.stringify(value)) : null
+  template.value = prepareEmailTemplate(value, props.audience)
+  exactPreparedSnapshot.value = JSON.stringify(template.value)
+}
+function applySavedVersion(version: EmailTemplateHistoricalVersion) {
+  if (!editable.value || saving.value || uncertain.value) return
+  restoredRevision.value = version.revision
+  customised.value = Boolean(props.definitionId && version.template)
+  setEditableTemplate(version.template ?? effectiveEmailTemplate(data.value?.record ?? null, props.audience))
+  openBlock.value = template.value.blocks[0]?.id
+  savedHistoryOpen.value = false
+}
 const resetOpen = ref(false)
 const removedOverrideIds = ref<string[]>([])
 const obsoleteTemplates = computed(() => data.value?.record?.overrides?.filter(item => data.value?.removedDefinitionIds?.includes(item.definitionId)) ?? [])
-const snapshot = () => JSON.stringify({ template: template.value, customised: customised.value, removedOverrideIds: removedOverrideIds.value })
+const snapshot = () => JSON.stringify({ template: template.value, customised: customised.value, removedOverrideIds: removedOverrideIds.value, restoredRevision: restoredRevision.value })
 function toggleRemoval(definitionId: string) {
   if (props.definitionId || !editable.value || saving.value || uncertain.value) return
   if (!obsoleteTemplates.value.some(item => item.definitionId === definitionId)) return
@@ -29,7 +47,7 @@ function customise() {
 }
 function resetToDefault() {
   customised.value = false
-  template.value = prepareEmailTemplate(effectiveEmailTemplate(data.value?.record ?? null, props.audience), props.audience)
+  setEditableTemplate(effectiveEmailTemplate(data.value?.record ?? null, props.audience))
   resetOpen.value = false
 }
 const { data, pending, error, refresh } = useFetch<EmailTemplateState>(url, { getCachedData: () => undefined })
@@ -193,12 +211,13 @@ function moveBlock(index: number, direction: number) {
   template.value.blocks = blocks
 }
 function resetFromSaved() {
+  restoredRevision.value = null
   removedOverrideIds.value = []
   expectedRevision.value = data.value?.record?.revision ?? 0
   recording = false
   const override = data.value?.record?.overrides?.find(item => item.definitionId === props.definitionId)
   customised.value = Boolean(override)
-  template.value = prepareEmailTemplate(props.definitionId ? effectiveEmailTemplate(data.value?.record ?? null, props.audience, props.definitionId) : data.value?.record?.template ?? null, props.audience)
+  setEditableTemplate(props.definitionId ? effectiveEmailTemplate(data.value?.record ?? null, props.audience, props.definitionId) : data.value?.record?.template ?? null)
   openBlock.value = template.value.blocks[0]?.id
   recording = true
   history.value = [JSON.stringify(template.value)]
@@ -237,11 +256,8 @@ async function save() {
   saveError.value = ''
   savedNotice.value = ''
   try {
-    // Opening a legacy template fills optional editor fields. Cleanup alone must
-    // preserve the saved website design exactly, including absent fields.
-    const savedTemplate = data.value?.record?.template
-    const unchangedWebsite = !props.definitionId && savedTemplate && JSON.stringify(template.value) === JSON.stringify(prepareEmailTemplate(savedTemplate, props.audience))
-    const nextTemplate = unchangedWebsite ? savedTemplate : parsed.data
+    // Editor-only identity defaults must not rewrite an unchanged saved revision.
+    const nextTemplate = exactTemplate.value && JSON.stringify(template.value) === exactPreparedSnapshot.value ? exactTemplate.value : parsed.data
     const result = await $fetch<EmailTemplateState>(url, { method: 'PUT', body: { checkpointId: props.checkpointId, expectedRevision: expectedRevision.value, template: props.definitionId && !customised.value ? null : nextTemplate, ...(!props.definitionId && removedOverrideIds.value.length ? { removeOverrideDefinitionIds: removedOverrideIds.value } : {}) } })
     if (!active) return
     data.value = result
@@ -295,13 +311,23 @@ async function discardAndReload() {
           {{ audience === 'team' ? 'Give your team the details they need to follow up.' : 'A thoughtful first reply, in your own style.' }}
         </p>
       </div>
-      <UButton
-        label="Save template draft"
-        icon="i-lucide-check"
-        :disabled="!canSave"
-        :loading="saving"
-        @click="save"
-      />
+      <div class="flex flex-wrap gap-2">
+        <UButton
+          label="Revision history"
+          icon="i-lucide-history"
+          color="neutral"
+          variant="outline"
+          :disabled="!ready || Boolean(error) || pending || saving"
+          @click="savedHistoryOpen = true"
+        />
+        <UButton
+          label="Save template draft"
+          icon="i-lucide-check"
+          :disabled="!canSave"
+          :loading="saving"
+          @click="save"
+        />
+      </div>
     </div>
     <UAlert
       v-if="error"
@@ -750,6 +776,18 @@ async function discardAndReload() {
         Design only. Sending and reply routing are not enabled yet.
       </p>
     </template>
+    <PageStudioEmailTemplateHistory
+      v-if="savedHistoryOpen"
+      :url="url"
+      :website-url="websiteUrl"
+      :audience="audience"
+      :is-form="Boolean(definitionId)"
+      :can-apply="editable && !saving && !uncertain"
+      :current-default="effectiveEmailTemplate(data?.record ?? null, audience)"
+      :preview-form="forms.find(item => item.key === previewForm) ?? null"
+      @close="savedHistoryOpen = false"
+      @apply="applySavedVersion"
+    />
     <PageStudioEmailMediaPicker
       v-model:open="pickerOpen"
       :site-id="siteId"

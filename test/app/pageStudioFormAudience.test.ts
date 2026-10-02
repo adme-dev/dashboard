@@ -5,6 +5,7 @@ import Workspace from '~~/app/components/page-studio/CustomerFormsWorkspace.clie
 import Settings from '~~/app/components/page-studio/FormSettingsEditor.client.vue'
 import Recipients from '~~/app/components/page-studio/FormRecipientsEditor.client.vue'
 import Template from '~~/app/components/page-studio/EmailTemplateEditor.client.vue'
+import SavedHistory from '~~/app/components/page-studio/EmailTemplateHistory.client.vue'
 import Media from '~~/app/components/page-studio/EmailMediaPicker.client.vue'
 import { useEmailTemplatePreview } from '~~/app/composables/useEmailTemplatePreview'
 import type { FormApiAudience } from '~~/app/utils/pageStudioFormApi'
@@ -25,17 +26,19 @@ function button(label: string) {
   return [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === label)!
 }
 async function click(label: string) {
+  expect(button(label), `Expected button: ${label}`).toBeTruthy()
   button(label).click()
   await flush()
 }
 async function mount(component: Component = Workspace, componentProps: Record<string, unknown> = props) {
   host = document.createElement('div')
   app = createApp({ components: { Target: component }, setup: () => ({ componentProps }), template: '<Target v-bind="componentProps"/>' })
-  for (const [name, component] of Object.entries({ PageStudioFormSettingsEditor: Settings, PageStudioFormRecipientsEditor: Recipients, PageStudioEmailTemplateEditor: Template, PageStudioEmailMediaPicker: Media })) app.component(name, component)
+  for (const [name, component] of Object.entries({ PageStudioFormSettingsEditor: Settings, PageStudioFormRecipientsEditor: Recipients, PageStudioEmailTemplateEditor: Template, PageStudioEmailMediaPicker: Media, PageStudioEmailTemplateHistory: SavedHistory })) app.component(name, component)
   app.component('UButton', { props: ['disabled', 'loading', 'label'], template: '<button :disabled="disabled || loading">{{ label }}<slot/></button>' })
   app.component('UAlert', { props: ['title', 'description'], template: '<div>{{ title }} {{ description }}<slot name="actions"/></div>' })
   app.component('UInput', { props: ['modelValue'], emits: ['update:modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)"/>' })
   app.component('UTextarea', { props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)"/>' })
+  app.component('USlideover', { props: ['open'], template: '<aside v-if="open"><slot name="body"/><slot name="footer"/></aside>' })
   app.component('UModal', { props: ['open'], template: '<div v-if="open"><slot name="body"/><slot name="footer"/></div>' })
   app.component('PageStudioFormOutcomeInput', { props: ['modelValue'], emits: ['update:modelValue'], template: '<button @click="$emit(\'update:modelValue\', {type: \'message\', message: \'Changed draft\'})">Change outcome</button>' })
   for (const name of ['UFormField', 'USkeleton', 'UBadge', 'UIcon', 'UPagination', 'PageStudioFormOutcomePreview', 'PageStudioEmailImageFields']) app.component(name, { template: '<div><slot/></div>' })
@@ -95,6 +98,244 @@ describe('shared Forms API audience', () => {
     readValues.set('/api/portal/page-studio/sites/owned/email-templates/team', state)
     return state
   }
+  function historyFixture(apiAudience = 'portal', definitionId?: string) {
+    const base = `/api/portal/page-studio/${apiAudience === 'customer' ? 'customer/' : ''}sites/owned`
+    const url = `${base}/${definitionId ? `forms/${definitionId}/` : ''}email-templates/team`
+    const current = { ...starterEmailTemplate('team'), subject: 'Current default' }
+    const historical = { ...starterEmailTemplate('team'), subject: 'Historical design' }
+    readValues.set(url, { canEdit: true, activation: 'draft_only', record: { revision: 14, template: current, overrides: definitionId ? [{ definitionId, template: { ...current, subject: 'Current custom' } }] : [] } })
+    mutate.mockImplementation(async (target, options) => {
+      if (target === `${url}/history`) return { audience: 'team', canEdit: true, revisions: options?.query?.beforeRevision ? [{ revision: 4, updatedAt: '2026-09-01T00:00:00.000Z' }] : Array.from({ length: 10 }, (_, index) => ({ revision: 14 - index, updatedAt: '2026-10-01T00:00:00.000Z' })), nextBeforeRevision: options?.query?.beforeRevision ? null : 5 }
+      if (target === `${url}/history/14`) return { revision: 14, updatedAt: '2026-10-01T00:00:00.000Z', template: historical }
+      if (target.includes('/history/')) return { revision: Number(target.split('/').at(-1)), updatedAt: '2026-09-01T00:00:00.000Z', template: null }
+      if (options?.method === 'PUT') return { canEdit: true, record: { revision: 15, template: current, overrides: [] } }
+      return { html: `<p>${options?.body?.template?.subject}</p>`, subject: options?.body?.template?.subject, preheader: '', warnings: [] }
+    })
+    return { url, historical, current }
+  }
+  async function editSubject(value: string) {
+    const subject = host.querySelector('input')!
+    subject.value = value
+    subject.dispatchEvent(new Event('input'))
+    await flush()
+  }
+  it.each(['portal', 'customer'])('browses and pages %s history lazily without changing edits, then explicitly restores an unsaved legacy draft', async (apiAudience) => {
+    const { url, historical } = historyFixture(apiAudience)
+    await mount(Template, { ...editorProps(), apiAudience })
+    expect(mutate).not.toHaveBeenCalled()
+    await editSubject('My manual edits')
+    await click('Revision history')
+    expect(mutate.mock.calls.at(-1)![0]).toBe(`${url}/history`)
+    expect(host.textContent).toContain('other form templates')
+    await click('Revision 14')
+    expect(host.querySelector('input')?.value).toBe('My manual edits')
+    await vi.advanceTimersByTimeAsync(450)
+    await flush()
+    expect(host.querySelector('iframe[title="Saved revision preview with example answers"]')?.getAttribute('srcdoc')).toContain('Historical design')
+    expect(mutate.mock.calls.findLast(call => call[0] === `${url}/preview`)![1].body).toEqual({ template: historical, pageId: 'page', formId: 'placement' })
+    await click('Load older')
+    expect(mutate.mock.calls.at(-1)).toEqual([`${url}/history`, expect.objectContaining({ query: { beforeRevision: 5 } })])
+    expect(button('Revision 4')).toBeTruthy()
+    await click('Use this version')
+    expect(host.querySelector('input')?.value).toBe('Historical design')
+    expect(host.textContent).toContain('Unsaved changes')
+    expect(mutate.mock.calls.filter(call => call[1]?.method === 'PUT')).toHaveLength(0)
+    const decision = guards.at(-1)!()
+    await flush()
+    await click('Keep editing')
+    expect(await decision).toBe(false)
+    await click('Save template draft')
+    expect(mutate.mock.calls.at(-1)).toEqual([url, expect.objectContaining({ method: 'PUT', body: { checkpointId: 'saved', expectedRevision: 14, template: historical } })])
+    expect(mutate.mock.calls.at(-1)![1].body.template).not.toHaveProperty('identity')
+  })
+  it('restores only the current form and uses the current default for historical inheritance', async () => {
+    const { url } = historyFixture('customer', 'shared')
+    await mount(Template, { ...editorProps(), apiAudience: 'customer', definitionId: 'shared' })
+    await click('Revision history')
+    await click('Revision 13')
+    await vi.advanceTimersByTimeAsync(450)
+    await flush()
+    expect(host.textContent).toContain('current website default')
+    expect(host.querySelector('iframe[title="Saved revision preview with example answers"]')?.getAttribute('srcdoc')).toContain('Current default')
+    await click('Use this version')
+    expect(host.querySelector('input')).toBeNull()
+    await click('Save template draft')
+    expect(mutate.mock.calls.at(-1)).toEqual([url, expect.objectContaining({ body: { checkpointId: 'saved', expectedRevision: 14, template: null } })])
+  })
+  it('keeps staged cleanup when restoring a website revision and does not copy old overrides', async () => {
+    const { url, historical } = historyFixture()
+    const state = obsoleteTemplateFixture()
+    await mount(Template, editorProps())
+    await click('Remove template')
+    await click('Revision history')
+    await click('Revision 14')
+    await click('Use this version')
+    await click('Save template draft')
+    expect(mutate.mock.calls.at(-1)![1].body).toEqual({ checkpointId: 'saved', expectedRevision: 4, template: historical, removeOverrideDefinitionIds: ['removed'] })
+    expect(mutate.mock.calls.at(-1)![0]).toBe(url)
+    expect(state.record.overrides).toHaveLength(2)
+  })
+  it('allows read-only browsing but prevents applying even if history grants edit access', async () => {
+    historyFixture()
+    await mount(Template, { ...editorProps(), canEdit: false })
+    await click('Revision history')
+    await click('Revision 14')
+    expect(button('Use this version').disabled).toBe(true)
+    await click('Use this version')
+    expect(host.querySelector('input')?.value).toBe('Current default')
+  })
+  it('preserves a restored draft after conflict and discards it only on reload', async () => {
+    historyFixture()
+    await mount(Template, editorProps())
+    await click('Revision history')
+    await click('Revision 14')
+    await click('Use this version')
+    mutate.mockRejectedValueOnce({ statusCode: 409 })
+    await click('Save template draft')
+    expect(host.querySelector('input')?.value).toBe('Historical design')
+    expect(button('Save template draft').disabled).toBe(true)
+    await click('Discard edits and reload')
+    expect(host.querySelector('input')?.value).toBe('Current default')
+    expect(mutate.mock.calls.filter(call => call[1]?.method === 'PUT')).toHaveLength(1)
+  })
+  it('clears selected details during loads, ignores stale responses and cancels on close/unmount', async () => {
+    const { url } = historyFixture()
+    await mount(Template, editorProps())
+    await click('Revision history')
+    let finish!: (value: unknown) => void
+    mutate.mockImplementationOnce(() => new Promise((resolve) => {
+      finish = resolve
+    }))
+    await click('Revision 14')
+    const signal = mutate.mock.calls.at(-1)![1].signal as AbortSignal
+    await click('Revision 13')
+    expect(signal.aborted).toBe(true)
+    finish({ revision: 14, updatedAt: '2026-10-01T00:00:00.000Z', template: { ...starterEmailTemplate('team'), subject: 'STALE SECRET' } })
+    await flush()
+    expect(host.textContent).not.toContain('STALE SECRET')
+    expect(button('Use this version').disabled).toBe(true) // Null is invalid for a website default.
+    mutate.mockImplementationOnce(() => new Promise(() => {}))
+    await click('Revision 14')
+    const closeSignal = mutate.mock.calls.at(-1)![1].signal as AbortSignal
+    await click('Close history')
+    expect(closeSignal.aborted).toBe(true)
+    await click('Revision history')
+    const request = mutate.mock.calls.findLast(call => call[0] === `${url}/history`)!
+    app.unmount()
+    expect(request[1].signal.aborted).toBe(true)
+  })
+  it('shows actionable history errors without falling back to latest or allowing apply', async () => {
+    historyFixture()
+    await mount(Template, editorProps())
+    mutate.mockRejectedValueOnce({ statusCode: 503 })
+    await click('Revision history')
+    expect(host.textContent).toContain('History is unavailable')
+    expect(button('Retry history')).toBeTruthy()
+    await click('Retry history')
+    mutate.mockRejectedValueOnce({ statusCode: 503 })
+    await click('Revision 14')
+    expect(host.textContent).toContain('Could not load this revision')
+    expect(button('Use this version').disabled).toBe(true)
+    expect(host.querySelector('input')?.value).toBe('Current default')
+  })
+  it('marks a restored current design as unsaved so Save can append a revision', async () => {
+    const { current } = historyFixture()
+    await mount(Template, editorProps())
+    await click('Revision history')
+    mutate.mockResolvedValueOnce({ revision: 14, updatedAt: '2026-10-01T00:00:00.000Z', template: current })
+    await click('Revision 14')
+    expect(button('Save template draft').disabled).toBe(true)
+    await click('Use this version')
+    expect(button('Save template draft').disabled).toBe(false)
+    await click('Save template draft')
+    expect(mutate.mock.calls.at(-1)![1].body.template).toEqual(current)
+  })
+  it('keeps custom form restores targeted and retains legacy fields with no placement preview', async () => {
+    const { url, historical } = historyFixture('portal', 'shared')
+    await mount(Template, { ...editorProps(), definitionId: 'shared', forms: [] })
+    await click('Revision history')
+    await click('Revision 14')
+    expect(host.textContent).toContain('no page placement')
+    await click('Use this version')
+    await click('Save template draft')
+    expect(mutate.mock.calls.at(-1)).toEqual([url, expect.objectContaining({ body: { checkpointId: 'saved', expectedRevision: 14, template: historical } })])
+  })
+  it('clears a previous preview when another revision is loading and ignores stale preview responses', async () => {
+    historyFixture()
+    await mount(Template, editorProps())
+    await click('Revision history')
+    await click('Revision 14')
+    await vi.advanceTimersByTimeAsync(450)
+    await flush()
+    let finish!: (value: unknown) => void
+    const request = mutate.getMockImplementation()!
+    mutate.mockImplementation((target, options) => target.endsWith('/preview') && options?.body?.template?.subject === 'Historical design'
+      ? new Promise((resolve) => {
+          finish = resolve
+        })
+      : request(target, options))
+    await click('Revision 14')
+    await vi.advanceTimersByTimeAsync(450)
+    await flush()
+    const previewSignal = mutate.mock.calls.at(-1)![1].signal as AbortSignal
+    await click('Revision 13')
+    expect(host.querySelector('iframe[title="Saved revision preview with example answers"]')).toBeNull()
+    expect(previewSignal.aborted).toBe(true)
+    finish({ html: '<p>STALE PREVIEW</p>', subject: 'STALE PREVIEW', preheader: '' })
+    await flush()
+    expect(host.textContent).not.toContain('STALE PREVIEW')
+  })
+  it('requires fresh history permission and preserves the draft when history is closed', async () => {
+    const { url } = historyFixture()
+    await mount(Template, editorProps())
+    await editSubject('Keep this local edit')
+    mutate.mockResolvedValueOnce({ audience: 'team', canEdit: false, revisions: [{ revision: 14, updatedAt: '2026-10-01T00:00:00.000Z' }], nextBeforeRevision: null })
+    await click('Revision history')
+    await click('Revision 14')
+    expect(button('Use this version').disabled).toBe(true)
+    await click('Close history')
+    expect(host.querySelector('input')?.value).toBe('Keep this local edit')
+    expect(mutate.mock.calls.filter(call => call[0] === url && call[1]?.method === 'PUT')).toHaveLength(0)
+  })
+  it('shows historical missing-image warnings and preserves restored edits when an ordinary save rejects images', async () => {
+    historyFixture()
+    await mount(Template, editorProps())
+    await click('Revision history')
+    await click('Revision 14')
+    const request = mutate.getMockImplementation()!
+    mutate.mockImplementation((target, options) => target.endsWith('/preview') && options?.body?.template?.subject === 'Historical design' ? Promise.resolve({ html: '<p>Historical image missing</p>', subject: 'Historical design', preheader: '', warnings: ['An image is no longer available.'] }) : request(target, options))
+    await vi.advanceTimersByTimeAsync(450)
+    await flush()
+    expect(host.textContent).toContain('An image is no longer available.')
+    await click('Use this version')
+    mutate.mockRejectedValueOnce({ statusCode: 400, data: { statusMessage: 'Replace the unavailable image before saving.' } })
+    await click('Save template draft')
+    expect(host.textContent).toContain('Replace the unavailable image before saving.')
+    expect(host.querySelector('input')?.value).toBe('Historical design')
+  })
+  it('cancels list/detail loads and rejects stale site/audience replies in the history panel', async () => {
+    let finish!: (value: unknown) => void
+    mutate.mockImplementationOnce(() => new Promise((resolve) => {
+      finish = resolve
+    }))
+    const historyProps = reactive({ url: '/api/portal/page-studio/customer/sites/owned/email-templates/team', websiteUrl: '/api/portal/page-studio/customer/sites/owned/email-templates/team', audience: 'team', isForm: false, canApply: true, currentDefault: starterEmailTemplate('team'), previewForm: { pageId: 'page', formId: 'placement' } })
+    await mount(SavedHistory, historyProps)
+    const signal = mutate.mock.calls.at(-1)![1].signal as AbortSignal
+    mutate.mockResolvedValueOnce({ audience: 'customer', canEdit: true, revisions: [{ revision: 2, updatedAt: '2026-10-01T00:00:00.000Z' }], nextBeforeRevision: null })
+    historyProps.url = '/api/portal/page-studio/sites/other/email-templates/customer'
+    historyProps.websiteUrl = historyProps.url
+    historyProps.audience = 'customer'
+    await flush()
+    finish({ audience: 'team', canEdit: true, revisions: [{ revision: 999, updatedAt: '2026-10-01T00:00:00.000Z' }], nextBeforeRevision: null })
+    await flush()
+    expect(signal.aborted).toBe(true)
+    expect(button('Revision 999')).toBeUndefined()
+    expect(button('Revision 2')).toBeTruthy()
+    mutate.mockResolvedValueOnce({ revision: 3, updatedAt: '2026-10-01T00:00:00.000Z', template: starterEmailTemplate('customer') })
+    await click('Revision 2')
+    expect(button('Use this version').disabled).toBe(true)
+    expect(host.textContent).toContain('Could not load this revision')
+  })
   it('stages explicit obsolete template removal with undo and saves only the selected IDs', async () => {
     const state = obsoleteTemplateFixture()
     await mount(Template, editorProps())
