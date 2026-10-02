@@ -1,7 +1,10 @@
 // @ts-check
+import { plugin as shadcn } from '@shadcn/lint'
 import withNuxt from './.nuxt/eslint.config.mjs'
 
 export default withNuxt({
+  plugins: { shadcn },
+  // shadcn/* rules are opt-in; see README's Design-system linting section.
   rules: {
     'vue/no-multiple-template-root': 'off',
     'vue/max-attributes-per-line': ['error', { singleline: 3 }],

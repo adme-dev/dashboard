@@ -154,6 +154,27 @@ The app starts on http://localhost:3000. Cloudflare bindings (KV, Queues, AI, Ve
 | `pnpm graphify:rebuild` | Rebuild local Graphify architecture artifacts |
 | `pnpm readiness:agency-workflows` | Run Workflows cutover readiness checks |
 
+### Design-system linting
+
+`@shadcn/lint` is registered in the root `eslint.config.mjs` alongside Nuxt's
+existing ESLint configuration. Run `pnpm lint`, or target files with
+`pnpm exec eslint app/components/MarketingNav.vue`. After a fresh checkout, run
+`pnpm install` (which runs `nuxt prepare`) to generate `.nuxt/eslint.config.mjs`.
+
+No `shadcn/*` rules or presets are enabled. Existing rules, Vue/TypeScript parsers,
+scripts and ignores are preserved. Add chosen rules to the existing `rules` object
+in `eslint.config.mjs`; see the [available rules](https://github.com/shadcn-ui/lint/blob/main/docs/rules.md)
+and [configuration examples](https://github.com/shadcn-ui/lint/blob/main/README.md#settings).
+
+This is a Nuxt UI application, without `components.json`. Its Tailwind v4 entry is
+`app/assets/css/main.css`, and local components live in `app/components` (`~/components`
+or `@/components`). Theme discovery can use the stylesheet's Tailwind import.
+Before enabling component-specific rules, configure and verify component discovery
+for Nuxt UI and Nuxt's auto-imported components; registration alone does not establish
+that coverage. See the [Vue guide](https://github.com/shadcn-ui/lint/blob/main/docs/vue.md)
+and [discovery documentation](https://github.com/shadcn-ui/lint/blob/main/docs/how-it-works.md).
+The root config owns this app's linting; standalone Worker packages are unchanged.
+
 ## Deploying to Cloudflare Pages
 
 The project is configured for Cloudflare Pages via `wrangler.toml`.
