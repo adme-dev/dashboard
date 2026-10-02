@@ -523,7 +523,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Campaigns as First-Class Plans',
-        content: 'Group posts into campaigns — a launch, a promotion, an always-on theme — each with its own colour, date window, brief, and goal. Flip on "Group by campaign" to see the board as swimlanes with live rollups (12 posts · 4 scheduled · goal 20), so you always know how a launch is tracking. Campaigns are the connective tissue across Compose, the Calendar, and the Queue.'
+        content: 'Group posts into campaigns — a launch, a promotion, an always-on theme — each with its own colour, date window, brief, and goal. Choose an optional campaign in Compose for manual posts and video drafts; choices belong to the selected client and clear when you switch clients. Flip on "Group by campaign" to see the board as swimlanes with live rollups (12 posts · 4 scheduled · goal 20), so you always know how a launch is tracking.'
       },
       {
         title: 'AI Drafts a Week in One Click',
@@ -781,7 +781,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Client Presets and Controlled Generation',
-        content: 'Start a video project for the selected client from Planner. Save its style guide, motion prompt and social caption brief, with an explicit monthly generation budget. Generate an approved source image with Seedance 2.5, review the clip, then hand it to Compose as a draft.'
+        content: 'Start a video project for the selected client from Planner. Link a client-owned Brand Kit to share its style guide with Banner Studio, or retain a local video guide. Save a campaign-specific motion prompt and social caption brief, with an explicit monthly generation budget. Generate an approved source image with Seedance 2.5, review the clip, then hand it to Compose as a draft and select its client campaign. Shared guide edits appear when you reload; motion prompts remain separately reviewed.'
       },
       {
         title: 'Render Once, Ship Everywhere',

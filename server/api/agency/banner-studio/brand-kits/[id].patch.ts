@@ -2,6 +2,7 @@ import { transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { brandKitInputSchema, getBrandKit, setDefaultBrandKit, snapshotBrandKitVersion } from '~~/server/utils/banner/brandKits'
+import { lockBrandKitForWrite, requireBrandKitWriteAccess } from '~~/server/utils/banner/brandKitAccess'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
@@ -17,11 +18,15 @@ export default defineEventHandler(async (event) => {
   const contentChanged = ['name', 'colors', 'fonts', 'logos', 'guidelines'].some(k => k in input)
 
   await transaction(async (db) => {
+    const currentClient = await lockBrandKitForWrite(event, db, id)
+    const nextClient = 'clientId' in input ? input.clientId ?? null : currentClient
+    if (nextClient !== currentClient) await requireBrandKitWriteAccess(event, nextClient)
     // Snapshot before changing content so every edit is recoverable
     if (contentChanged) await snapshotBrandKitVersion(db, id, user.id)
     await db.query(`
       UPDATE brand_kits SET
         name = COALESCE($2, name),
+        is_default = CASE WHEN $3::boolean AND client_id IS DISTINCT FROM $4::uuid THEN false ELSE is_default END,
         client_id = CASE WHEN $3::boolean THEN $4::uuid ELSE client_id END,
         colors = COALESCE($5::jsonb, colors),
         fonts = COALESCE($6::jsonb, fonts),
@@ -40,13 +45,11 @@ export default defineEventHandler(async (event) => {
       'guidelines' in input, input.guidelines ?? null,
       'sourceUrl' in input, input.sourceUrl ?? null
     ])
+    if (input.isDefault === true) await setDefaultBrandKit(id, nextClient, db)
+    else if (input.isDefault === false || nextClient !== currentClient) {
+      await db.query('UPDATE brand_kits SET is_default = false WHERE id = $1', [id])
+    }
   })
-
-  if (input.isDefault === true) {
-    await setDefaultBrandKit(id, 'clientId' in input ? (input.clientId ?? null) : existing.clientId)
-  } else if (input.isDefault === false && existing.isDefault) {
-    await transaction(db => db.query(`UPDATE brand_kits SET is_default = false WHERE id = $1`, [id]))
-  }
 
   return await getBrandKit(id)
 })

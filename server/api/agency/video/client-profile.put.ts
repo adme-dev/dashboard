@@ -20,13 +20,18 @@ export default defineEventHandler(async (event) => {
   await requireSocialClientAccess(event, clientId)
   await transaction(async (db) => {
     await db.query('SELECT pg_advisory_xact_lock(hashtextextended(\'videogen:budget:\' || $1::text, 0))', [clientId])
+    if (p.brandKitId) {
+      const kit = await db.query('SELECT id FROM brand_kits WHERE id = $1 AND client_id::text = $2 FOR SHARE', [p.brandKitId, clientId])
+      if (!kit.rows.length) throw createError({ statusCode: 400, statusMessage: 'Brand kit is not available for this client' })
+    }
     await db.query(`INSERT INTO client_video_generation_profiles
-      (client_id,enabled,monthly_cap_cents,allowed_model_ids,brand_name,brand_website,style_guide,template_prompt,social_brief,updated_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (client_id) DO UPDATE SET
+      (client_id,enabled,monthly_cap_cents,allowed_model_ids,brand_name,brand_website,style_guide,template_prompt,social_brief,updated_by,brand_kit_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (client_id) DO UPDATE SET
       enabled=EXCLUDED.enabled,monthly_cap_cents=EXCLUDED.monthly_cap_cents,allowed_model_ids=EXCLUDED.allowed_model_ids,
       brand_name=EXCLUDED.brand_name,brand_website=EXCLUDED.brand_website,style_guide=EXCLUDED.style_guide,
-      template_prompt=EXCLUDED.template_prompt,social_brief=EXCLUDED.social_brief,updated_by=EXCLUDED.updated_by,updated_at=now()`,
-    [clientId, p.enabled, p.monthlyCapCents, JSON.stringify(p.allowedModelIds), p.brandName, p.brandWebsite, p.styleGuide, p.templatePrompt, p.socialBrief, user.id])
+      template_prompt=EXCLUDED.template_prompt,social_brief=EXCLUDED.social_brief,updated_by=EXCLUDED.updated_by,
+      brand_kit_id=CASE WHEN $12 THEN EXCLUDED.brand_kit_id ELSE client_video_generation_profiles.brand_kit_id END,updated_at=now()`,
+    [clientId, p.enabled, p.monthlyCapCents, JSON.stringify(p.allowedModelIds), p.brandName, p.brandWebsite, p.styleGuide, p.templatePrompt, p.socialBrief, user.id, p.brandKitId ?? null, p.brandKitId !== undefined])
   })
   return { saved: true }
 })
