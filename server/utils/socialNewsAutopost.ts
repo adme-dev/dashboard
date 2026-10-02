@@ -5,7 +5,7 @@ import { canonicalNewsUrl, DRIVEAGENT_NEWS_ORIGIN, eligiblePublishedStory, NEWS_
 export interface NewsAutopostRule {
   id: string
   client_id: string
-  account_id: string
+  account_id: string | null
   mode: 'paused' | 'review' | 'automatic'
   configured_by: string
 }

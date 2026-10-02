@@ -23,6 +23,8 @@ export default {
         status: resp.status,
         body: (await resp.text()).slice(0, 300)
       })
-    }))
+    }).map(task => task.catch(() => {
+      console.error('social-dispatch-cron.request-failed', { message: 'Scheduled request failed; the next tick will retry.' })
+    })))
   }
 }

@@ -2,7 +2,7 @@
 interface Rule {
   id: string
   client_id: string
-  account_id: string
+  account_id: string | null
   mode: 'paused' | 'review' | 'automatic'
   last_checked_at: string | null
   last_error: string | null
