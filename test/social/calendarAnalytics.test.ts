@@ -13,6 +13,7 @@ const mockRequireSocialClientAccess = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: (...a: unknown[]) => mockRequireAuth(...a) }))
 vi.mock('~~/server/utils/db', () => ({
+  queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
   queryOne: (...a: unknown[]) => mockQueryOne(...a),
 }))
