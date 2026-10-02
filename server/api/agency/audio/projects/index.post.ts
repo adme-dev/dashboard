@@ -66,6 +66,15 @@ export default defineEventHandler(async (event) => {
         if (!row || row.client_id !== body.clientId || row.current_timeline_id !== source.project.currentTimelineId || row.created_by !== source.project.createdBy || row.media_type !== 'av') {
           throw createError({ statusCode: 409, statusMessage: 'Source project changed; refresh and try again' })
         }
+        // Autosave changes the state in place. Read again after locking the
+        // project so a completed save cannot supply stale campaign guidance.
+        const current = await db.query<{ campaign_prompt: unknown }>(
+          "SELECT state->'campaign_prompt' AS campaign_prompt FROM media_timelines WHERE id = $1 FOR SHARE", [row.current_timeline_id]
+        )
+        const settings = CampaignPromptSchema.safeParse(current.rows[0]?.campaign_prompt)
+        if (!settings.success || JSON.stringify(settings.data) !== JSON.stringify(parsed.data.campaign_prompt)) {
+          throw createError({ statusCode: 409, statusMessage: 'Source campaign settings changed; refresh and try again' })
+        }
       }
       const created = await createProjectIn(db, {
         createdBy: user.id,

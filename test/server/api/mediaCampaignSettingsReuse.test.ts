@@ -29,7 +29,7 @@ beforeEach(() => {
   mocks.access.mockResolvedValue({})
   mocks.campaign.mockResolvedValue(undefined)
   mocks.project.mockResolvedValue(source)
-  mocks.query.mockResolvedValue({ rows: [{ client_id: clientId, current_timeline_id: 'timeline-1', created_by: 'creator', media_type: 'av' }] })
+  mocks.query.mockImplementation((sql: string) => Promise.resolve({ rows: sql.includes('FROM media_timelines') ? [{ campaign_prompt: settings }] : [{ client_id: clientId, current_timeline_id: 'timeline-1', created_by: 'creator', media_type: 'av' }] }))
   mocks.create.mockImplementation((_db, input) => Promise.resolve({ project: { id: 'new-project', ...input }, timeline: { state: input.initialState } }))
 })
 describe('reusable video campaign settings', () => {
@@ -80,6 +80,11 @@ describe('reusable video campaign settings', () => {
   })
   it('rejects a source reassigned while creation is in flight', async () => {
     mocks.query.mockResolvedValue({ rows: [{ client_id: null, current_timeline_id: 'timeline-1', created_by: 'creator', media_type: 'av' }] })
+    await expect(create(event())).rejects.toMatchObject({ statusCode: 409 })
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+  it('rejects guidance autosaved without a timeline version change', async () => {
+    mocks.query.mockImplementation((sql: string) => Promise.resolve({ rows: sql.includes('FROM media_timelines') ? [{ campaign_prompt: { ...settings, prompt: 'Newly reviewed prompt' } }] : [{ client_id: clientId, current_timeline_id: 'timeline-1', created_by: 'creator', media_type: 'av' }] }))
     await expect(create(event())).rejects.toMatchObject({ statusCode: 409 })
     expect(mocks.create).not.toHaveBeenCalled()
   })
