@@ -151,6 +151,7 @@ const genJobs = useVideoGenerationJobs(projectId.value)
 const videoAssets = ref<VideoAsset[]>([])
 const selectedClipId = ref<string | null>(null)
 const captionGeneratingAssetId = ref<string | null>(null)
+const publishingStudioAssetId = ref<string | null>(null)
 const activeGenerationJobCount = computed(() => genJobs.jobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
 const latestRenderJobStatus = computed(() => editor.renderJobs.value[0]?.status ?? null)
 const selectedStudioAssetId = ref<string | null>(null)
@@ -446,12 +447,15 @@ function onStudioAssetInspect(asset: VideoStudioAsset) {
 
 async function onStudioAssetPublish(asset: VideoStudioAsset) {
   selectStudioAsset(asset)
-  if (!asset.libraryAssetId) return
+  if (!asset.libraryAssetId || publishingStudioAssetId.value) return
+  publishingStudioAssetId.value = asset.libraryAssetId
   try {
     const res = await editor.publishVideoAssetToSocial(asset.libraryAssetId)
     await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
   } catch (e: unknown) {
-    toast.add({ title: 'Could not publish asset', description: apiErrorDescription(e, ''), color: 'error' })
+    toast.add({ title: 'Could not create social draft', description: apiErrorDescription(e, ''), color: 'error' })
+  } finally {
+    publishingStudioAssetId.value = null
   }
 }
 
@@ -1270,6 +1274,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 v-model:selected-id="selectedStudioAssetModel"
                 :assets="studioAssets"
                 :loading="studioLibraryLoading"
+                :publishing-asset-id="publishingStudioAssetId"
                 @refresh="refreshStudioLibrary"
                 @add-asset="onStudioAssetAdd"
                 @generate-from-asset="onStudioAssetGenerate"

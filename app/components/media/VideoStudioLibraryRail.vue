@@ -15,9 +15,11 @@ const props = withDefaults(defineProps<{
   assets: VideoStudioAsset[]
   selectedId?: string | null
   loading?: boolean
+  publishingAssetId?: string | null
 }>(), {
   selectedId: null,
   loading: false,
+  publishingAssetId: null,
 })
 
 const emit = defineEmits<{
@@ -542,8 +544,10 @@ function sourceLabel(value: VideoStudioAssetSource) {
               size="xs"
               variant="ghost"
               color="neutral"
-              aria-label="Publish asset"
-              :disabled="!canPublishAsset(asset)"
+              aria-label="Create social draft"
+              title="Create social draft"
+              :loading="props.publishingAssetId === asset.libraryAssetId"
+              :disabled="!canPublishAsset(asset) || !!props.publishingAssetId"
               @click.stop="emit('publish-asset', asset)"
             />
             <UButton
