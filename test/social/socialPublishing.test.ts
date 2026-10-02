@@ -438,3 +438,18 @@ describe('publishedTargetsForAccount', () => {
     })).toEqual([{ postId: 'P1', platformPostId: 'legacy_post' }])
   })
 })
+
+describe('Facebook photo destination links', () => {
+  it('keeps the tracked link in photo captions because attached media cannot use a link preview', async () => {
+    await publishPost({
+      id: 'photo-1', content: 'Sponsor: Explore ARIYA', media_urls: ['https://cdn.example.com/ariya.jpg'],
+      link_url: 'https://www.northernnissan.com.au/', first_comment: null,
+      platforms: ['facebook'], platform_overrides: {},
+      accounts: [{ id: 'fb', platform: 'facebook', platform_account_id: 'PAGE', access_token: 'test', account_name: 'DriveAgent News' }]
+    })
+    const payload = providerMocks.post.mock.calls[0][1]
+    expect(payload.content).toContain('https://www.northernnissan.com.au/')
+    expect(payload.content).toContain('utm_source=facebook')
+    expect(payload.content).toContain('utm_campaign=post_photo-1')
+  })
+})
