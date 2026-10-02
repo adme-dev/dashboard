@@ -117,11 +117,11 @@ async function duplicateProject(project: MediaProject) {
     const src = await apiFetch<{ project: MediaProject, timeline: { state: TimelineState } | null }>(
       `/api/agency/audio/projects/${project.id}`
     )
-    const initialState = src.timeline?.state ?? defaultTimelineState()
+    const initialState = src.timeline?.state ?? (src.project.mediaType === 'audio' ? defaultTimelineState() : undefined)
     const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', {
       method: 'POST',
       headers: { 'Idempotency-Key': `media-duplicate:${project.id}:${Date.now().toString(36)}` },
-      body: { title: `${project.title ?? 'Untitled'} (copy)`, initialState }
+      body: { title: `${project.title ?? 'Untitled'} (copy)`, clientId: src.project.clientId, mediaType: src.project.mediaType, initialState }
     })
     toast.add({ title: 'Project duplicated', color: 'success' })
     await refresh()
@@ -173,6 +173,14 @@ const creating = ref(false)
 const newClientId = ref(typeof route.query.client === 'string' ? route.query.client : 'none')
 const { data: clients } = useFetch<Array<{ id: string; name: string }>>('/api/agency/clients', { default: () => [] })
 const clientItems = computed(() => [{ label: 'No client', value: 'none' }, ...clients.value.map(c => ({ label: c.name, value: c.id }))])
+const campaignSourceId = ref('__none__')
+const campaignSourceItems = computed(() => [
+  { label: 'Start without saved settings', value: '__none__' },
+  ...allProjects.value.filter(p => p.mediaType === 'av' && p.clientId === newClientId.value).map(p => ({ label: p.title || 'Untitled video', value: p.id }))
+])
+watch([newClientId, newKind], () => {
+  campaignSourceId.value = '__none__'
+}, { flush: 'sync' })
 onMounted(() => { if (route.query.create === '1') openCreateProject() })
 
 watch(mediaTypeFilter, () => {
@@ -181,6 +189,7 @@ watch(mediaTypeFilter, () => {
 
 function openCreateProject() {
   newKind.value = isVideoStudio.value ? 'av' : 'audio'
+  campaignSourceId.value = '__none__'
   createOpen.value = true
 }
 
@@ -190,6 +199,7 @@ async function createProject() {
   try {
     const body: Record<string, unknown> = { title: newTitle.value.trim() || null, mediaType: newKind.value }
     if (newClientId.value !== 'none') body.clientId = newClientId.value
+    if (newKind.value === 'av' && newClientId.value !== 'none' && campaignSourceId.value !== '__none__') body.campaignSourceProjectId = campaignSourceId.value
     // Audio seeds two empty lanes; AV is auto-seeded server-side via emptyAvTimeline().
     if (newKind.value === 'audio') body.initialState = defaultTimelineState()
     const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', {
@@ -316,22 +326,41 @@ async function createProject() {
   </div>
 
   <!-- Create project modal -->
-  <UModal v-model:open="createOpen" title="New project">
+  <UModal v-model:open="createOpen" title="New project" :dismissible="!creating">
     <template #content>
-      <div class="p-4 space-y-4">
+      <div class="p-4 space-y-4 max-h-[85dvh] overflow-y-auto">
         <UFormField label="Project type">
           <USelect
             v-model="newKind"
+            :disabled="creating"
             :items="[{ label: 'Audio (multitrack)', value: 'audio' }, { label: 'Video (footage + overlay)', value: 'av' }]"
             value-key="value"
             class="w-full"
           />
         </UFormField>
-        <UFormField label="Client"><USelectMenu v-model="newClientId" :items="clientItems" value-key="value" class="w-full" /></UFormField>
+        <UFormField label="Client">
+          <USelectMenu
+            v-model="newClientId"
+            :disabled="creating"
+            :items="clientItems"
+            value-key="value"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField v-if="newKind === 'av' && newClientId !== 'none'" label="Reuse campaign settings" description="Choose a video with saved settings. Copies its brief, reviewed prompt, caption brief and campaign into an empty timeline. Review these before generating with new artwork.">
+          <USelectMenu
+            v-model="campaignSourceId"
+            :items="campaignSourceItems"
+            value-key="value"
+            :disabled="creating || pending"
+            class="w-full"
+          />
+        </UFormField>
         <UFormField label="Project title">
           <UInput
             class="w-full"
             v-model="newTitle"
+            :disabled="creating"
             placeholder="e.g. Q3 Radio Campaign"
             autofocus
             @keydown.enter="createProject"
@@ -342,6 +371,7 @@ async function createProject() {
             variant="ghost"
             color="neutral"
             label="Cancel"
+            :disabled="creating"
             @click="createOpen = false"
           />
           <UButton
