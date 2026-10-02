@@ -25,6 +25,12 @@ const cursor = ref(new Date())
 const posts = ref<SocialPost[]>([])
 const loading = ref(false)
 const approvalsCount = ref(0)
+const draggingPost = ref<SocialPost | null>(null)
+const dragOverKey = ref<string | null>(null)
+const loadedClientId = ref<string | null>(null)
+let loadGeneration = 0
+const isCurrentContext = (id: string, generation: number) =>
+  clientId.value === id && loadGeneration === generation && loadedClientId.value === id
 
 const STATUS_COLOR: Record<string, string> = {
   draft: 'neutral', approved: 'info', scheduled: 'primary', publishing: 'warning',
@@ -64,13 +70,31 @@ function postTime(p: SocialPost): string {
 }
 
 async function load() {
-  if (!clientId.value) return
-  loading.value = true
+  const id = clientId.value
+  const generation = ++loadGeneration
+  const { from, to } = range.value
+  loadedClientId.value = null
+  posts.value = []
+  approvalsCount.value = 0
+  draggingPost.value = null
+  dragOverKey.value = null
+  loading.value = !!id
+  if (!id) return
   try {
-    posts.value = await api.getCalendar(clientId.value, range.value.from.toISOString(), range.value.to.toISOString())
-    approvalsCount.value = (await api.getApprovalsBadge(clientId.value)).count
+    const [calendar, approvals] = await Promise.all([
+      api.getCalendar(id, from.toISOString(), to.toISOString()),
+      api.getApprovalsBadge(id),
+    ])
+    if (generation !== loadGeneration || id !== clientId.value) return
+    posts.value = calendar
+    approvalsCount.value = approvals.count
+    loadedClientId.value = id
+  } catch (e: any) {
+    if (generation === loadGeneration && id === clientId.value) {
+      toast.add({ title: 'Could not load calendar', description: e?.data?.statusMessage, color: 'error' })
+    }
   } finally {
-    loading.value = false
+    if (generation === loadGeneration) loading.value = false
   }
 }
 watch([clientId, cursor, view], load, { immediate: true })
@@ -92,14 +116,13 @@ const headingLabel = computed(() => {
 })
 
 function newPostOn(day: Date) {
+  if (!clientId.value) return
   navigateTo({ path: '/agency/social/publishing/compose', query: { client: clientId.value, date: day.toISOString() } })
 }
 
 // --- Drag-and-drop reschedule (Slice 2) ---
-const draggingPost = ref<SocialPost | null>(null)
-const dragOverKey = ref<string | null>(null)
-
 function onDragStart(p: SocialPost, e: DragEvent) {
+  if (!clientId.value || !isCurrentContext(clientId.value, loadGeneration) || !posts.value.includes(p)) return
   draggingPost.value = p
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move'
@@ -113,7 +136,9 @@ function onDrop(day: Date) {
   if (p) reschedule(p, day)
 }
 async function reschedule(post: SocialPost, day: Date) {
-  if (!canReschedule(post.status)) return
+  const id = clientId.value
+  const generation = loadGeneration
+  if (!id || !isCurrentContext(id, generation) || !posts.value.includes(post) || !canReschedule(post.status)) return
   const currentIso = postIso(post)
   if (currentIso && isSameDay(parseISO(currentIso), day)) return // dropped on the same day — no-op
   const scheduledAt = computeRescheduledAt(currentIso, day)
@@ -122,12 +147,15 @@ async function reschedule(post: SocialPost, day: Date) {
   try {
     if (post.status === 'approved' || post.status === 'scheduled') {
       await api.schedulePost(post.id, { scheduledAt })
+      if (!isCurrentContext(id, generation)) return
       post.status = 'scheduled'
     } else {
       await api.updatePost(post.id, { scheduledAt })
     }
+    if (!isCurrentContext(id, generation)) return
     toast.add({ title: 'Post rescheduled', description: `Moved to ${format(day, 'd MMM')}`, color: 'success' })
   } catch (e: any) {
+    if (!isCurrentContext(id, generation)) return
     post.scheduled_at = prev // rollback
     toast.add({ title: 'Reschedule failed', description: e?.data?.statusMessage, color: 'error' })
     await load()
@@ -150,7 +178,7 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
       >
         {{ approvalsCount }} awaiting approval
       </UButton>
-      <UButton :to="{ path: '/agency/social/publishing/compose', query: { client: clientId } }" color="primary" icon="i-lucide-plus">
+      <UButton :disabled="!clientId" :to="{ path: '/agency/social/publishing/compose', query: { client: clientId } }" color="primary" icon="i-lucide-plus">
         New post
       </UButton>
     </template>
@@ -167,11 +195,11 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
           :color="view === v.value ? 'primary' : 'neutral'"
           :variant="view === v.value ? 'subtle' : 'ghost'"
           size="sm"
-          @click="view = v.value"
+          @click="() => { view = v.value }"
         >{{ v.label }}</UButton>
         <div class="flex items-center gap-1">
           <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" @click="navigate(-1)" />
-          <UButton color="neutral" variant="ghost" size="sm" @click="cursor = new Date()">Today</UButton>
+          <UButton color="neutral" variant="ghost" size="sm" @click="() => { cursor = new Date() }">Today</UButton>
           <UButton icon="i-lucide-chevron-right" color="neutral" variant="ghost" @click="navigate(1)" />
         </div>
       </div>
@@ -203,7 +231,7 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
           <div class="mt-1 space-y-1">
             <NuxtLink
               v-for="p in postsOn(day)" :key="p.id"
-              :to="{ path: '/agency/social/publishing/compose', query: { edit: p.id } }"
+              :to="{ path: '/agency/social/publishing/compose', query: { client: clientId, edit: p.id } }"
               class="block"
               :class="canReschedule(p.status) ? 'cursor-grab active:cursor-grabbing' : ''"
               :draggable="canReschedule(p.status)"
@@ -247,7 +275,7 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
         <div class="space-y-1">
           <NuxtLink
             v-for="p in postsOn(day)" :key="p.id"
-            :to="{ path: '/agency/social/publishing/compose', query: { edit: p.id } }"
+            :to="{ path: '/agency/social/publishing/compose', query: { client: clientId, edit: p.id } }"
             class="block"
             :class="canReschedule(p.status) ? 'cursor-grab active:cursor-grabbing' : ''"
             :draggable="canReschedule(p.status)"
@@ -277,7 +305,7 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
       </div>
       <NuxtLink
         v-for="p in postsOn(cursor)" :key="p.id"
-        :to="{ path: '/agency/social/publishing/compose', query: { edit: p.id } }"
+        :to="{ path: '/agency/social/publishing/compose', query: { client: clientId, edit: p.id } }"
         class="flex items-start gap-3 p-3 hover:bg-elevated transition-colors"
       >
         <span class="text-sm tabular-nums text-muted w-12 shrink-0 pt-0.5">{{ postTime(p) || '—' }}</span>
