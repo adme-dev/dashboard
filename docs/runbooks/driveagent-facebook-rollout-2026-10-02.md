@@ -48,3 +48,9 @@ The isolated source branch `feat/driveagent-facebook-rollout-20261002` is based 
 ## Verified application deployment
 
 Cloudflare Pages production `agency-dashboard`: deployment `c27cbd16-bdf3-4f11-b130-ce2ab3915e5c`, immutable URL `https://c27cbd16.agency-dashboard-6cm.pages.dev`, exact source `e4eaa3c26f80718336e7dfeb48916b64a301271c`. API readback at 06:26:36 UTC reports success and canonical production. Guarded full Nuxt build and deployment succeeded; current main remained `8c8a5b5c4b6ccb6a17dc7a9405169ac4bc671f0e`. No post was manually retried during release.
+
+## Successful scheduled publishing receipt
+
+The existing automatic dispatcher published the welcome once at **2 October 2026 16:28:16 AEST** after the corrected release. Database state: `published`, `publish_attempts=1`; provider status `success`, correct client/account and Page asset. Provider post `1391237540730945_122096087481502996`, public URL https://www.facebook.com/1391237540730945/posts/122096087481502996.
+
+The cron tick returned HTTP 200, processed one post, healthy status, zero due backlog and zero exhausted failures. No manual retry occurred. Chrome opened the actual provider permalink and verified the public DriveAgent News profile `61595089886357`, complete welcome caption, image and stamped Facebook UTM link. Screenshot and machine-readable receipt: website workspace `output/facebook-rollout-20261002/welcome-published.png` and `publication-receipt.json`. Seventeen approved future first-week posts remain scheduled, including today's F1 report at 17:30 AEST.
