@@ -4,10 +4,11 @@ import { readPageStudioJson } from './boundedJson'
 import { createCustomerFormContext, readCustomerFormsWorkspace, readCustomerDefaultWebsite, readCustomerFormsAvailability, type CustomerFormsDependencies } from './customerForms'
 import { operateTrustedFormSettings } from './formSettings'
 import { operateTrustedFormRecipients } from './formRecipients'
-import { operateTrustedEmailTemplate, previewTrustedEmailTemplate } from './emailTemplates'
+import { operateTrustedEmailTemplate, previewTrustedEmailTemplate, listTrustedEmailTemplateHistory, readTrustedEmailTemplateRevision } from './emailTemplates'
+import { EmailTemplateHistoryQuerySchema, EmailTemplateRevisionParamSchema } from '~~/shared/pageStudio/emailTemplates'
 import { readScopedMedia } from './standaloneMedia'
 
-type Operation = 'workspace' | 'asset' | 'settings' | 'recipients' | 'template' | 'website' | 'availability'
+type Operation = 'workspace' | 'asset' | 'settings' | 'recipients' | 'template' | 'website' | 'availability' | 'template-history' | 'template-history-version'
 export function customerFormsEnabled(event: H3Event) {
   const env = event.context.cloudflare?.env ?? {}
   return (env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED ?? process.env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED) === 'true'
@@ -16,6 +17,7 @@ export function customerFormsEnabled(event: H3Event) {
 function safeError(error: unknown): never {
   const code = (error as { statusCode?: number })?.statusCode
   const messages: Record<number, string> = { 400: 'Check the form details and try again.', 401: 'Sign in to continue.', 403: 'Customer form access is not available.', 404: 'The saved website or form is not available.', 409: 'This form or its settings changed. Reload the saved version before saving again.', 405: 'This request method is not available.', 413: 'The form settings are too large.', 415: 'Form settings must be JSON.' }
+  if ((error as { code?: string })?.code === 'EMAIL_TEMPLATE_HISTORY_UNAVAILABLE') throw createError({ statusCode: 503, statusMessage: 'Email template history is unavailable on this website runtime. Your draft has not changed.' })
   const statusCode = code && messages[code] ? code : 503
   throw createError({ statusCode, statusMessage: messages[statusCode] ?? 'Form storage is unavailable. Reload the saved version before trying again.' })
 }
@@ -44,6 +46,15 @@ export async function customerFormsHandler(event: H3Event, operation: Operation,
       : await readPageStudioJson(event, operation === 'settings' ? 48_000 : 300_000,
           ['Settings must be JSON', 'Settings are too large', 'Settings are required', 'Invalid settings', 'Invalid settings JSON'])
     const context = createCustomerFormContext({ sessionToken, siteId, environment: 'staging' }, env, deps)
+    if (operation === 'template-history' || operation === 'template-history-version') {
+      const query = getQuery(event)
+      const cursor = EmailTemplateHistoryQuerySchema.safeParse(query)
+      const revision = EmailTemplateRevisionParamSchema.safeParse(getRouterParam(event, 'revision'))
+      if (!cursor.success || (operation === 'template-history-version' && (!revision.success || Object.keys(query).length))) throw createError({ statusCode: 400 })
+      const audience = getRouterParam(event, 'audience') ?? ''
+      const definitionId = getRouterParam(event, 'definitionId')
+      return operation === 'template-history' ? await listTrustedEmailTemplateHistory(context, audience, cursor.data, definitionId) : await readTrustedEmailTemplateRevision(context, audience, revision.data, definitionId)
+    }
     if (operation === 'workspace') return await readCustomerFormsWorkspace(context, deps)
     if (operation === 'settings') return await operateTrustedFormSettings(context, { pageId: getRouterParam(event, 'pageId') ?? '', formId: getRouterParam(event, 'formId') ?? '' }, body)
     if (operation === 'recipients') return await operateTrustedFormRecipients(context, body)

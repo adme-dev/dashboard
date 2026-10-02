@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createApp, createRouter, eventHandler, toWebHandler } from 'h3'
 import { customerFormsHandler } from '../../../server/utils/pageStudio/customerFormsHttp'
+import { starterEmailTemplate } from '../../../shared/pageStudio/emailTemplates'
 import { createCustomerFormContext, readCustomerFormsWorkspace, readCustomerDefaultWebsite } from '../../../server/utils/pageStudio/customerForms'
 
 const scope = { tenantId: '10000000-0000-4000-8000-000000000001', clientId: '10000000-0000-4000-8000-000000000002', businessId: '10000000-0000-4000-8000-000000000002', siteId: '10000000-0000-4000-8000-000000000003', environment: 'staging' as const }
@@ -35,6 +36,16 @@ function http(env: Record<string, unknown> = config, dependencies = {}) {
     event.context.cloudflare = { env }
     return customerFormsHandler(event, 'website', 'GET', dependencies)
   }))
+  for (const prefix of ['/sites/:siteId/templates/:audience', '/sites/:siteId/forms/:definitionId/templates/:audience']) {
+    router.use(prefix + '/history', eventHandler((event) => {
+      event.context.cloudflare = { env }
+      return customerFormsHandler(event, 'template-history', 'GET', dependencies)
+    }))
+    router.use(prefix + '/history/:revision', eventHandler((event) => {
+      event.context.cloudflare = { env }
+      return customerFormsHandler(event, 'template-history-version', 'GET', dependencies)
+    }))
+  }
   app.use(router)
   return toWebHandler(app)
 }
@@ -138,4 +149,31 @@ it('rejects foreign asset rows and returns safe finite summaries without storage
   const workspace = await readCustomerFormsWorkspace(createCustomerFormContext(input, {}, d), { ...d, assets: async () => [asset] })
   expect(workspace.assets[0]).toMatchObject({ id: 'asset_one', previewAvailable: true, size: null })
   expect(JSON.stringify(workspace.assets)).not.toContain('private-key')
+})
+
+it('native history validates exact queries, projects selected forms and fails closed on older runtimes', async () => {
+  const d = deps()
+  d.document.mockResolvedValue({ ...document, studio: { checkpointId: 'checkpoint_one', pages: [], formLibrary: { definitions: [{ id: 'contact' }] } } })
+  const updatedAt = '2026-10-02T00:00:00.000Z'
+  const service = { listEmailTemplateDraftHistory: vi.fn().mockResolvedValue({ scope, audience: 'team', revisions: [{ revision: 2, updatedAt }], nextBeforeRevision: null }), readEmailTemplateDraft: vi.fn().mockResolvedValue({ scope, audience: 'team', actorId: 'private_actor', checkpointId: 'old_checkpoint', revision: 2, updatedAt, template: starterEmailTemplate('team') }) }
+  const env = { ...config, PAGE_STUDIO_CONTENT_ROUTER: service }
+  const headers = { cookie: 'studio_customer_session=' + input.sessionToken }
+  const base = `https://studio.test/sites/${scope.siteId}`
+  const handle = http(env, d)
+  const list = await handle(new Request(base + '/templates/team/history?beforeRevision=3', { headers }))
+  expect(list.status).toBe(200)
+  expect(list.headers.get('cache-control')).toBe('private, no-store')
+  expect(await list.json()).toEqual({ audience: 'team', canEdit: true, revisions: [{ revision: 2, updatedAt }], nextBeforeRevision: null })
+  const detail = await handle(new Request(base + '/forms/contact/templates/team/history/2', { headers }))
+  expect(await detail.json()).toEqual({ revision: 2, updatedAt, template: null })
+  for (const suffix of ['/templates/team/history?beforeRevision=0', '/templates/team/history?beforeRevision=1&beforeRevision=2', '/templates/team/history?limit=100', '/templates/team/history/01', '/templates/team/history/2?scope=foreign']) {
+    const invalid = await handle(new Request(base + suffix, { headers }))
+    expect(invalid.status).toBe(400)
+    expect(invalid.headers.get('cache-control')).toBe('private, no-store')
+  }
+  const portal = await handle(new Request(base + '/templates/team/history', { headers: { cookie: 'client_session_token=' + input.sessionToken } }))
+  expect(portal.status).toBe(401)
+  const old = await http({ ...env, PAGE_STUDIO_CONTENT_ROUTER: { readEmailTemplateDraft: service.readEmailTemplateDraft } }, d)(new Request(base + '/templates/team/history', { headers }))
+  expect(old.status).toBe(503)
+  expect(await old.text()).toContain('Email template history is unavailable')
 })

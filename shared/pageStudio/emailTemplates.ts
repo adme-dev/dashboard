@@ -61,7 +61,17 @@ export function validateTemplateVariables(template: EmailTemplate): string[] {
   return errors
 }
 export const ValidatedEmailTemplateSchema = EmailTemplateSchema.refine(template => !validateTemplateVariables(template).length, 'Use only the supported website and form name variables')
-export const EmailTemplateReadSchema = z.object({ scope: PageStudioContentScopeSchema, audience: EmailAudienceSchema }).strict()
+export const EmailTemplateRevisionSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER)
+export const EmailTemplateReadSchema = z.object({ scope: PageStudioContentScopeSchema, audience: EmailAudienceSchema, revision: EmailTemplateRevisionSchema.optional() }).strict()
+export const EmailTemplateHistoryReadSchema = EmailTemplateReadSchema.omit({ revision: true }).extend({ beforeRevision: EmailTemplateRevisionSchema.optional() }).strict()
+export const EmailTemplateHistoryCursorSchema = z.object({ beforeRevision: EmailTemplateRevisionSchema.optional() }).strict()
+export const EmailTemplateRevisionParamSchema = z.string().regex(/^[1-9][0-9]*$/).transform(Number).pipe(EmailTemplateRevisionSchema)
+export const EmailTemplateHistoryQuerySchema = z.object({ beforeRevision: EmailTemplateRevisionParamSchema.optional() }).strict()
+export const EmailTemplateRevisionMetadataSchema = z.object({ revision: EmailTemplateRevisionSchema, updatedAt: z.string().datetime() }).strict()
+export const EmailTemplateHistorySchema = z.object({ scope: PageStudioContentScopeSchema, audience: EmailAudienceSchema, revisions: z.array(EmailTemplateRevisionMetadataSchema).max(10), nextBeforeRevision: EmailTemplateRevisionSchema.nullable() }).strict().refine(value => value.revisions.every((item, index) => index === 0 || item.revision < value.revisions[index - 1]!.revision) && (value.nextBeforeRevision === null || (value.revisions.length === 10 && value.nextBeforeRevision === value.revisions[9]!.revision)), 'Invalid email template history page')
+export type EmailTemplateRevisionMetadata = z.infer<typeof EmailTemplateRevisionMetadataSchema>
+export interface EmailTemplateHistoryPage { audience: EmailAudience, canEdit: boolean, revisions: EmailTemplateRevisionMetadata[], nextBeforeRevision: number | null }
+export interface EmailTemplateHistoricalVersion { revision: number, updatedAt: string, template: EmailTemplate | null }
 export const EmailTemplateEditSchema = z.object({ checkpointId: Identity, expectedRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1), template: ValidatedEmailTemplateSchema }).strict()
 export const WebsiteEmailTemplateEditSchema = EmailTemplateEditSchema.extend({
   removeOverrideDefinitionIds: z.array(Identity).max(100).refine(ids => new Set(ids).size === ids.length, 'Choose each removed form only once').optional()

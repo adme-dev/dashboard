@@ -15,6 +15,7 @@ export interface FormDraftService {
   writeFormSettingsDraft?: (input: unknown) => Promise<unknown>
   readFormRecipientsDraft?: (input: unknown) => Promise<unknown>
   writeFormRecipientsDraft?: (input: unknown) => Promise<unknown>
+  listEmailTemplateDraftHistory?: (input: unknown) => Promise<unknown>
   readEmailTemplateDraft?: (input: unknown) => Promise<unknown>
   writeEmailTemplateDraft?: (input: unknown) => Promise<unknown>
 }

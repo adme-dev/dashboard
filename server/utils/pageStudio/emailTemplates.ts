@@ -7,7 +7,7 @@ import type { authorizePageStudioBusinessContent, ContentAuthorityRequest } from
 import type { resolveEmailTemplateMedia } from './emailTemplateMedia'
 import type { getPageStudioDocument } from './documents'
 import { samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
-import { EmailTemplatePreviewSchema, EmailTemplateWriteSchema, WebsiteEmailTemplateEditSchema, EmailTemplateOverrideEditSchema, defaultWebsiteEmailTemplate, EmailTemplateRecordSchema, EmailAudienceSchema, type EmailTemplateState } from '~~/shared/pageStudio/emailTemplates'
+import { EmailTemplatePreviewSchema, EmailTemplateWriteSchema, WebsiteEmailTemplateEditSchema, EmailTemplateOverrideEditSchema, defaultWebsiteEmailTemplate, EmailTemplateRecordSchema, EmailAudienceSchema, EmailTemplateHistoryCursorSchema, EmailTemplateHistorySchema, EmailTemplateRevisionSchema, type EmailTemplateHistoryPage, type EmailTemplateHistoricalVersion, type EmailTemplateState } from '~~/shared/pageStudio/emailTemplates'
 
 interface Dependencies {
   authorize?: typeof authorizePageStudioBusinessContent
@@ -119,4 +119,48 @@ export async function previewTrustedEmailTemplate(context: TrustedFormContext, a
   const preview = renderCustomerEmailPreview(parsed.data.template, { siteName: document.site.name, formName: form.name || 'Website form', fields: form.fields, images: media.images })
   await recheckFormAuthority(context, before, false)
   return { ...preview, warnings: media.warnings }
+}
+
+const historyUnavailable = () => new PageStudioBusinessContentError('EMAIL_TEMPLATE_HISTORY_UNAVAILABLE', 503, 'Email template history is unavailable on this website runtime. Your draft has not changed.')
+const historyNotFound = () => new PageStudioBusinessContentError('EMAIL_TEMPLATE_REVISION_NOT_FOUND', 404, 'The saved template version is not available.')
+async function authorizeTemplateHistory(context: TrustedFormContext, definitionId?: string) {
+  const before = await context.authorize(false)
+  const document = await context.readDocument(before.scope)
+  await recheckFormAuthority(context, before, false)
+  admitFormDocument(document, before.scope)
+  if (!document.studio) throw historyUnavailable()
+  if (definitionId !== undefined && !document.studio.formLibrary?.definitions.some(item => item.id === definitionId)) throw new PageStudioBusinessContentError('FORM_NOT_FOUND', 404, 'Choose a saved shared form')
+  return before
+}
+/** The audience document log includes saves to its other shared-form templates. */
+export async function listTrustedEmailTemplateHistory(context: TrustedFormContext, audience: string, cursor: unknown = {}, definitionId?: string): Promise<EmailTemplateHistoryPage> {
+  const parsedAudience = EmailAudienceSchema.safeParse(audience)
+  const parsedCursor = EmailTemplateHistoryCursorSchema.safeParse(cursor)
+  if (!parsedAudience.success || !parsedCursor.success) throw invalid('Choose an email audience and a valid history cursor')
+  const before = await authorizeTemplateHistory(context, definitionId)
+  if (!context.service?.listEmailTemplateDraftHistory) throw historyUnavailable()
+  let value: unknown
+  try {
+    value = await context.service.listEmailTemplateDraftHistory({ scope: before.scope, audience: parsedAudience.data, ...parsedCursor.data })
+  } catch { throw historyUnavailable() }
+  const current = await recheckFormAuthority(context, before, false)
+  const page = EmailTemplateHistorySchema.safeParse(value)
+  if (!page.success || !samePageStudioContentScope(page.data.scope, before.scope) || page.data.audience !== parsedAudience.data || page.data.revisions.some(item => parsedCursor.data.beforeRevision !== undefined && item.revision >= parsedCursor.data.beforeRevision)) throw historyUnavailable()
+  return { audience: page.data.audience, canEdit: current.canEdit, revisions: page.data.revisions, nextBeforeRevision: page.data.nextBeforeRevision }
+}
+export async function readTrustedEmailTemplateRevision(context: TrustedFormContext, audience: string, revision: unknown, definitionId?: string): Promise<EmailTemplateHistoricalVersion> {
+  const parsedAudience = EmailAudienceSchema.safeParse(audience)
+  const parsedRevision = EmailTemplateRevisionSchema.safeParse(revision)
+  if (!parsedAudience.success || !parsedRevision.success) throw invalid('Choose an email audience and a valid saved revision')
+  const before = await authorizeTemplateHistory(context, definitionId)
+  if (!context.service?.readEmailTemplateDraft) throw historyUnavailable()
+  let value: unknown
+  try {
+    value = await context.service.readEmailTemplateDraft({ scope: before.scope, audience: parsedAudience.data, revision: parsedRevision.data })
+  } catch { throw historyUnavailable() }
+  await recheckFormAuthority(context, before, false)
+  if (value === null) throw historyNotFound()
+  const record = EmailTemplateRecordSchema.safeParse(value)
+  if (!record.success || !samePageStudioContentScope(record.data.scope, before.scope) || record.data.audience !== parsedAudience.data || record.data.revision !== parsedRevision.data) throw historyUnavailable()
+  return { revision: record.data.revision, updatedAt: record.data.updatedAt, template: definitionId === undefined ? record.data.template : record.data.overrides?.find(item => item.definitionId === definitionId)?.template ?? null }
 }
