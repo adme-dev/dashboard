@@ -9,7 +9,7 @@ export interface VideoGenerationOutputAsset {
 
 export interface ProcessVideoGenerationDeps {
   getJob(id: string): Promise<VideoGenerationJob | null>
-  markRunning(id: string, providerRequestId?: string | null): Promise<VideoGenerationJob>
+  markRunning(id: string, providerRequestId?: string | null): Promise<VideoGenerationJob | null>
   markFailed(id: string, errorMessage: string): Promise<VideoGenerationJob>
   markSucceeded(input: {
     id: string
@@ -111,6 +111,9 @@ export async function processVideoGenerationJob(
       })
       return { skipped: false, status: 'failed' }
     }
+    // Claim before the synchronous provider call; generation may take several minutes.
+    const claimed = await deps.markRunning(job.id)
+    if (!claimed) return { skipped: true, reason: 'terminal_or_running' }
     const submission = await provider.submit({
       jobId: job.id, tenantId: job.tenantId, projectId: job.projectId, userId: job.createdBy,
       modelId: job.modelId, mode: job.mode, prompt: job.prompt,

@@ -1,32 +1,22 @@
 import pg from 'pg'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type { VideoGenerationJob, VideoGenerationJobStatus } from '../../../server/utils/video-generation/types'
 
-let client: pg.Client | null = null
-let connectPromise: Promise<pg.Client> | null = null
-
-function getConnectionString(): string {
-  const cs = (globalThis as any).__HYPERDRIVE_CS || process.env.DATABASE_URL
-  if (!cs) throw new Error('No HYPERDRIVE connection string or DATABASE_URL')
-  return cs
+// A connection belongs to one query/request, never a module-global Worker isolate.
+const connectionScope = new AsyncLocalStorage<string>()
+export function withVideoGenerationDatabase<T>(connectionString: string, run: () => Promise<T>): Promise<T> {
+  return connectionScope.run(connectionString, run)
 }
-
-async function getClient(): Promise<pg.Client> {
-  if (client) return client
-  if (connectPromise) return connectPromise
-  connectPromise = (async () => {
-    const c = new pg.Client({ connectionString: getConnectionString() })
-    await c.connect()
-    client = c
-    connectPromise = null
-    return c
-  })()
-  return connectPromise
-}
-
 async function queryRows<T = any>(sql: string, params?: any[]): Promise<T[]> {
-  const c = await getClient()
-  const result = await c.query(sql, params)
-  return result.rows as T[]
+  const connectionString = connectionScope.getStore()
+  if (!connectionString) throw new Error('Video generation database context unavailable')
+  const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10000 })
+  try {
+    await client.connect()
+    return (await client.query(sql, params)).rows as T[]
+  } finally {
+    await client.end().catch(() => undefined)
+  }
 }
 
 async function queryOne<T = any>(sql: string, params?: any[]): Promise<T | null> {
@@ -134,16 +124,15 @@ export async function dbGetVideoGenerationJob(id: string): Promise<VideoGenerati
   return row ? mapJob(row) : null
 }
 
-export async function dbMarkVideoGenerationJobRunning(id: string, providerRequestId?: string | null): Promise<VideoGenerationJob> {
+export async function dbMarkVideoGenerationJobRunning(id: string, providerRequestId?: string | null): Promise<VideoGenerationJob | null> {
   const row = await queryOne(
     `UPDATE video_generation_jobs
      SET status = 'running', provider_request_id = COALESCE($2, provider_request_id),
          provider_status = 'running', started_at = COALESCE(started_at, now()), updated_at = now()
-     WHERE id = $1 RETURNING *`,
+     WHERE id = $1 AND (status = 'queued' OR (status = 'running' AND $2::text IS NOT NULL)) RETURNING *`,
     [id, providerRequestId ?? null]
   )
-  if (!row) throw new Error(`video generation job ${id} not found`)
-  return mapJob(row)
+  return row ? mapJob(row) : null
 }
 
 export async function dbMarkVideoGenerationJobFailed(id: string, errorMessage: string): Promise<VideoGenerationJob> {

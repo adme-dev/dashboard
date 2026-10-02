@@ -365,7 +365,7 @@ async function submit() {
              stacked form. The prompt is the primary object; everything else is a
              setting hanging off it. -->
         <template v-if="hasModels">
-          <UAlert v-if="modelId === 'aigateway/seedance-25-i2v'" color="neutral" variant="subtle" title="Use artwork sized for your destination" description="Seedance 2.5 keeps the source image's aspect ratio. Prepare a portrait image for Reels; add crisp logos and titles in the editor." />
+          <UAlert v-if="modelId === 'aigateway/seedance-25-i2v'" color="neutral" variant="subtle" title="Use artwork sized for your destination" description="Seedance 2.5 adapts framing from the source image. Prepare artwork for your destination and review the generated dimensions; add crisp logos and titles in the editor." />
           <!-- Start from a template — visible while the prompt is blank -->
           <div v-if="templatesVisible" class="space-y-2">
             <p class="text-xs font-semibold uppercase tracking-widest text-muted">

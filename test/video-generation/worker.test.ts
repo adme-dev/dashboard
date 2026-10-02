@@ -205,3 +205,20 @@ describe('video generation worker orchestration', () => {
     expect(d.providers.mock.submit).toHaveBeenCalledWith(expect.objectContaining({ sourceAssetUrls: ['https://r2/x?sig'] }))
   })
 })
+
+it('claims the job before starting a slow provider generation', async () => {
+  const d = deps(baseJob)
+  d.providers.mock.submit.mockImplementation(async () => {
+    expect(d.markRunning).toHaveBeenCalledWith('job-1')
+    return { providerRequestId: 'provider-job-1', status: 'submitted' }
+  })
+  await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)
+  expect(d.providers.mock.submit).toHaveBeenCalledTimes(1)
+  expect(d.markRunning.mock.invocationCallOrder[0]).toBeLessThan(d.providers.mock.submit.mock.invocationCallOrder[0])
+})
+
+it('does not call the provider when another consumer already claimed the job', async () => {
+  const d = deps(baseJob, { markRunning: vi.fn().mockResolvedValue(null) })
+  expect(await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)).toEqual({ skipped: true, reason: 'terminal_or_running' })
+  expect(d.providers.mock.submit).not.toHaveBeenCalled()
+})
