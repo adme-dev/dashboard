@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
 import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
-import { missingAccountPlatforms, useSocialComposer } from '~/composables/useSocialComposer'
+import { isApprovedComposerUnchanged, missingAccountPlatforms, useSocialComposer } from '~/composables/useSocialComposer'
 import type { SocialAccount } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -28,6 +28,10 @@ const accounts = ref<SocialAccount[]>([])
 const accountsLoading = ref(false)
 
 const saving = ref(false)
+const persistedStatus = ref<string | null>(null)
+const approvedBody = ref<string | null>(null)
+const canPublishSavedPost = computed(() => isApprovedComposerUnchanged(
+  state.value, clientId.value ?? '', persistedStatus.value, approvedBody.value))
 
 const platformLabel: Record<string, string> = {
   facebook: 'Facebook',
@@ -61,6 +65,8 @@ onMounted(async () => {
       const post = await api.getPost(editId)
       loadFromPost(post)
       clientId.value = post.client_id
+      persistedStatus.value = post.status
+      approvedBody.value = JSON.stringify(toBody(post.client_id))
     } catch {
       toast.add({ title: 'Could not load post', color: 'error' })
     }
@@ -89,6 +95,7 @@ onMounted(async () => {
       const prefill = JSON.parse(decodeURIComponent(escape(atob(prefillRaw))))
       if (prefill.clientId) clientId.value = prefill.clientId
       if (prefill.caption && !state.value.content) state.value.content = prefill.caption
+      if (typeof prefill.link === 'string' && !state.value.linkUrl) state.value.linkUrl = prefill.link
       if (prefill.imageUrl && !state.value.mediaUrls.includes(prefill.imageUrl)) {
         state.value.mediaUrls.push(prefill.imageUrl)
       }
@@ -119,7 +126,28 @@ async function upsert(extra: Record<string, any> = {}): Promise<string | null> {
     ? await api.updatePost(state.value.id, body)
     : await api.createPost(body)
   state.value.id = row.id
+  persistedStatus.value = row.status
+  approvedBody.value = row.status === 'approved' ? JSON.stringify(toBody(cid)) : null
   return row.id
+}
+
+async function publishApprovedPost() {
+  if (!state.value.id || !canPublishSavedPost.value) return
+  saving.value = true
+  try {
+    // Publish the saved, approved payload. Saving edits here would reset approval.
+    const result = await api.publishNow(state.value.id) as { status: string, platformResults?: Record<string, { error?: string }> }
+    persistedStatus.value = result.status
+    const errors = Object.values(result.platformResults ?? {}).flatMap(target => target.error ? [target.error] : [])
+    toast.add({
+      title: result.status === 'published' ? 'Published' : result.status === 'partially_published' ? 'Partially published' : 'Publishing failed',
+      description: errors.join('; ') || undefined,
+      color: result.status === 'published' ? 'success' : result.status === 'partially_published' ? 'warning' : 'error'
+    })
+  } catch (error: unknown) {
+    const failure = error as { data?: { statusMessage?: string } }
+    toast.add({ title: 'Could not publish', description: failure?.data?.statusMessage, color: 'error' })
+  } finally { saving.value = false }
 }
 
 async function saveDraft() {
@@ -188,6 +216,15 @@ const primaryLabel = computed(() => ({
         />
 
         <div class="mt-8 flex flex-wrap items-center gap-3 border-t border-default pt-5">
+          <UButton
+            v-if="persistedStatus === 'approved'"
+            :loading="saving"
+            :disabled="!canPublishSavedPost"
+            icon="i-lucide-send"
+            @click="publishApprovedPost"
+          >
+            Publish approved post
+          </UButton>
           <UButton :loading="saving" color="primary" icon="i-lucide-check" @click="primaryAction">
             {{ primaryLabel }}
           </UButton>
@@ -198,6 +235,9 @@ const primaryLabel = computed(() => ({
             Request approval
           </UButton>
         </div>
+        <p v-if="persistedStatus === 'approved' && !canPublishSavedPost" class="mt-3 text-sm text-muted">
+          Your edits need approval before publishing. Save and request approval again.
+        </p>
       </div>
 
       <!-- Preview -->

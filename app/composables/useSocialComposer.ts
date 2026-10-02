@@ -71,6 +71,12 @@ export function composerToBody(state: ComposerState, clientId: string): Record<s
   }
 }
 
+/** Only the exact saved, approved payload may be dispatched without another review. */
+export function isApprovedComposerUnchanged(state: ComposerState, clientId: string, status: string | null, approvedBody: string | null): boolean {
+  return Boolean(state.id && clientId && status === 'approved' && approvedBody
+    && approvedBody === JSON.stringify(composerToBody(state, clientId)))
+}
+
 type ComposerAccount = Pick<SocialAccount, 'id' | 'platform' | 'is_active' | 'last_error' | 'requires_reconnect' | 'connection_health'>
 
 function isSelectablePublishingAccount(account: ComposerAccount): boolean {

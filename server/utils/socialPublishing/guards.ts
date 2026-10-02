@@ -1,5 +1,5 @@
 import { createError, type H3Event } from 'h3'
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOne, queryOneFresh, queryRows } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { classifySocialPublishingAccountHealth } from '~~/server/utils/socialPublishing/accountHealth'
 import {
@@ -209,7 +209,7 @@ export function assertNoControlledSocialPostFields(body: Record<string, unknown>
 }
 
 export async function requireSocialPostClientAccess(event: H3Event, postId: string): Promise<SocialPostClientRef> {
-  const row = await queryOne<SocialPostClientRef>(
+  const row = await queryOneFresh<SocialPostClientRef>(
     `SELECT id, client_id, platforms, account_ids, status, approval_requested_at,
             client_approval_status, metadata
        FROM social_posts WHERE id = $1`,

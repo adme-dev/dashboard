@@ -1,5 +1,5 @@
 import { defineEventHandler, getHeader, createError } from 'h3'
-import { queryRows, queryOne } from '~~/server/utils/db'
+import { queryRowsFresh, queryOneFresh } from '~~/server/utils/db'
 import { startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/client'
 import { claimAndPublishSocialPost } from '~~/server/utils/socialPublishing/dispatch'
 
@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const due = await queryRows<DuePostRow>(
+  const due = await queryRowsFresh<DuePostRow>(
     `SELECT id, client_id, scheduled_at::text
        FROM social_posts
       WHERE scheduled_at <= NOW() AND status = 'scheduled' AND publish_attempts < 3
@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
     results.push({ id: post.id, status: dispatch.status ?? 'failed' })
   }
 
-  const health = dispatchHealth(await queryOne<DispatchHealthRow>(
+  const health = dispatchHealth(await queryOneFresh<DispatchHealthRow>(
     `SELECT
         COUNT(*) FILTER (
           WHERE scheduled_at <= NOW()

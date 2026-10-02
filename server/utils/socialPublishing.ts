@@ -220,7 +220,7 @@ async function publishResolvedTarget(
     const r = await provider.post({
       accountId: target.accountId,
       accessToken: target.accessToken,
-      content: buildPublishContent(platform, resolved.content, link),
+      content: buildPublishContent(platform, resolved.content, link, resolved.mediaUrls.length > 0),
       media: resolved.mediaUrls.map(url => ({ url, type: mediaTypeForUrl(url) })),
       options: publishOptions
     })
@@ -312,8 +312,10 @@ function buildPublishOptions(
   return options
 }
 
-function buildPublishContent(platform: string, content: string, link: string | null): string {
-  if (!link || platformSupportsStructuredLink(platform)) return content
+function buildPublishContent(platform: string, content: string, link: string | null, hasMedia = false): string {
+  // Facebook photo/video posts attach media instead of a link preview. Keep their
+  // tracked destination in the caption so readers can still visit the advertiser.
+  if (!link || (platformSupportsStructuredLink(platform) && !(platform === 'facebook' && hasMedia))) return content
   return `${content}\n${link}`
 }
 

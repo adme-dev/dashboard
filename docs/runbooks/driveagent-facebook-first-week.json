@@ -1,0 +1,153 @@
+{
+  "clientId": "bc8a15a8-f523-4a75-a8f4-a501649bb71d",
+  "timezone": "Australia/Melbourne",
+  "posts": [
+    {
+      "kind": "news",
+      "newsItemId": "e8b40161-4d79-48e7-8a37-2cac729075b3",
+      "content": "Martin Pakula reappointed as Australian Grand Prix Corporation chair\n\nFrom our 2 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/martin-pakula-reappointed-as-australian-grand-prix-corporation-chair-86c1bcd0",
+      "image": "https://driveagent.news/api/news/media/86c1bcd030b068195573f396ac9b5fb0",
+      "scheduledAt": "2026-10-02T07:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "f78caed8-e5ca-4f38-a7f4-e32319b2c840",
+      "content": "BYD Australia studying battery-electric wagon following Seal 6 Touring feedback\n\nFrom our 2 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/byd-australia-studying-battery-electric-wagon-following-seal-6-touring-feedback-3748ed3d",
+      "image": "https://driveagent.news/api/news/media/3748ed3d9b6604b8115771401f9fea9a",
+      "scheduledAt": "2026-10-02T23:00:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "abe1d65b-574b-445c-8185-1a15b795baa9",
+      "content": "BYD Atto 2 DM-i and Atto 3 Evo land in Australia: prices, specs and early verdicts\n\nFrom our 2 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/byd-atto-2-dm-i-and-atto-3-evo-land-in-australia-prices-specs-and-early-verdicts-2680e93e",
+      "image": "https://driveagent.news/api/news/media/2680e93ed4b9231109ae3173f6514df7",
+      "scheduledAt": "2026-10-03T07:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "505e5a49-1677-4442-8eba-e057d904c5db",
+      "content": "2027 Hyundai Inster trimmed to two grades in Australia with $1500 price cuts\n\nFrom our 2 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/2027-hyundai-inster-trimmed-to-two-grades-in-australia-with-1500-price-cuts-ddf03018",
+      "image": "https://driveagent.news/api/news/media/ddf0301846960107564538a1e94e79e9",
+      "scheduledAt": "2026-10-03T22:00:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "bc7dace9-952e-46ba-813a-fd6d8e66e4c1",
+      "content": "Suzuki Jimny three-door returns to Australia with upgraded safety tech — but prices keep climbing\n\nFrom our 2 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/suzuki-jimny-three-door-returns-to-australia-with-upgraded-safety-tech-but-prices-keep-climbing-0123dd6b",
+      "image": "https://driveagent.news/api/news/media/0123dd6b053d4e36c78ef13298ff8f34",
+      "scheduledAt": "2026-10-04T06:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "2153dfbb-9554-4909-b157-44613c584889",
+      "content": "2027 Kia Seltos Hybrid priced for Australia: six grades from $39,990 drive-away\n\nFrom our 2 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/2027-kia-seltos-hybrid-priced-for-australia-six-grades-from-39-990-drive-away-7837e7e6",
+      "image": "https://driveagent.news/api/news/media/7837e7e6f129d6aadbc424f28de126a2",
+      "scheduledAt": "2026-10-04T22:00:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "b16f5308-523f-4f18-9c56-220070cd97b6",
+      "content": "Aston Martin DBX GT adds a comfort-focused flagship to the SUV range with DBX S power\n\nFrom our 2 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/aston-martin-dbx-gt-adds-a-comfort-focused-flagship-to-the-suv-range-with-dbx-s-power-6e6d2a42",
+      "image": "https://driveagent.news/api/news/media/6e6d2a4282b053b755bdf038a879e300",
+      "scheduledAt": "2026-10-05T06:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "3e41ce78-3b2c-4e99-b11d-77e2ccd3b526",
+      "content": "2027 Hyundai Tucson revealed: bigger fifth-gen SUV locked in for hybrid-only Australian launch in 2027\n\nFrom our 2 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/2027-hyundai-tucson-revealed-bigger-fifth-gen-suv-locked-in-for-hybrid-only-australian-launch-in-202-6bd8885c",
+      "image": "https://driveagent.news/api/news/media/6bd8885c75428d9b27768677c066a4e3",
+      "scheduledAt": "2026-10-05T22:00:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "be699129-cd61-43ff-916c-98c886a515d9",
+      "content": "BYD launches $4,000 cashback across Australian plug-in hybrid range and Sealion 7\n\nFrom our 1 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/byd-launches-4-000-cashback-across-australian-plug-in-hybrid-range-and-sealion-7-a890a016",
+      "image": "https://driveagent.news/api/news/media/a890a01656c0daa746b4d59829f3e6e9",
+      "scheduledAt": "2026-10-06T06:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "92d27d4c-fa30-45a9-93f8-8fe162f1a4f5",
+      "content": "GWM launches new 3.0-litre turbo-diesel in Tank 500 and Cannon Alpha for Australia\n\nFrom our 1 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/gwm-launches-new-3-0-litre-turbo-diesel-in-tank-500-and-cannon-alpha-for-australia-2cfeede4",
+      "image": "https://driveagent.news/api/news/media/2cfeede4b4ebe6cf91432a322a392864",
+      "scheduledAt": "2026-10-06T22:00:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "50cb83f4-8e28-47dd-9291-1e2e283742f7",
+      "content": "Xpeng posts 2026 monthly delivery high as first right-hand-drive G9Ls head for Australia\n\nFrom our 1 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/xpeng-posts-2026-monthly-delivery-high-as-first-right-hand-drive-g9ls-head-for-australia-8bb0e451",
+      "image": "https://driveagent.news/api/news/media/8bb0e451a6ed0f29180e0fa6df812c91",
+      "scheduledAt": "2026-10-07T06:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "0fc8fd95-af38-4abd-850c-22296347bbe7",
+      "content": "Tesla Model 3 range updated: new $45,900 entry grade opens the line-up\n\nFrom our 1 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/tesla-model-3-range-updated-new-45-900-entry-grade-opens-the-line-up-5f958ec0",
+      "image": "https://driveagent.news/api/news/media/5f958ec069954db4c57d0995dd9ec167",
+      "scheduledAt": "2026-10-07T22:00:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "54c5195f-4b3b-43c4-a1d2-77ad3231225c",
+      "content": "Chery opens Stockman reservations with $2000 Bunnings card and pre-launch servicing offer\n\nFrom our 1 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/chery-opens-stockman-reservations-with-2000-bunnings-card-and-pre-launch-servicing-offer-4717232f",
+      "image": "https://driveagent.news/api/news/media/4717232fa4f07ee38811c25fec6ae2e0",
+      "scheduledAt": "2026-10-08T06:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "news",
+      "newsItemId": "2f27f3bc-43cf-4a2d-a02d-dbb5a024346c",
+      "content": "Nissan Oceania requests nearly all of its Chinese new-energy line-up while the Leaf stays on hold\n\nFrom our 1 October coverage. Read the full story at DriveAgent News.",
+      "link": "https://driveagent.news/news/nissan-oceania-requests-nearly-all-of-its-chinese-new-energy-line-up-while-the-leaf-stays-on-hold-50871645",
+      "image": "https://driveagent.news/api/news/media/50871645d385b8ddcf1524cf1880b16a",
+      "scheduledAt": "2026-10-08T22:00:00.000Z",
+      "tags": "driveagent-rollout-20261002, news"
+    },
+    {
+      "kind": "sponsor",
+      "content": "Sponsored: Northern Motor Group\n\nLooking for your next car? Explore Northern Motor Group's range and contact the team about current stock and offers.\n\nNorthern Motor Group is an advertising partner of DriveAgent News.",
+      "link": "https://www.northernmotorgroup.com.au/",
+      "scheduledAt": "2026-10-05T01:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, sponsor, northern-motor-group"
+    },
+    {
+      "kind": "sponsor",
+      "content": "Sponsored: Northern Nissan\n\nMeet the Nissan ARIYA. Explore this electric SUV with Northern Nissan and ask the team about specifications, availability and a test drive.\n\nNorthern Nissan is an advertising partner of DriveAgent News.",
+      "link": "https://www.northernnissan.com.au/",
+      "scheduledAt": "2026-10-07T01:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, sponsor, northern-nissan, ariya"
+    },
+    {
+      "kind": "sponsor",
+      "content": "Sponsored: Northern Kia\n\nDiscover the Kia EV4 with Northern Kia. Explore the model and contact the team about specifications, availability and a test drive.\n\nNorthern Kia is an advertising partner of DriveAgent News.",
+      "link": "https://www.northernkia.com.au/",
+      "scheduledAt": "2026-10-09T01:30:00.000Z",
+      "tags": "driveagent-rollout-20261002, sponsor, northern-kia, ev4"
+    }
+  ]
+}

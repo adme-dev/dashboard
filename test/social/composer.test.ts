@@ -82,3 +82,19 @@ describe('composer account binding', () => {
     expect(syncComposerAccountIds(['facebook'], ['webhook'], attentionAccounts)).toEqual(['webhook'])
   })
 })
+
+describe('approved composer payload integrity', () => {
+  it('allows only the exact approved saved payload', async () => {
+    const { isApprovedComposerUnchanged } = await import('../../app/composables/useSocialComposer')
+    const saved = { ...emptyComposerState(), id: 'saved-post', content: 'Approved text', platforms: ['facebook' as const], accountIds: ['correct-page'] }
+    const approvedBody = JSON.stringify(composerToBody(saved, 'client-1'))
+    expect(isApprovedComposerUnchanged(saved, 'client-1', 'approved', approvedBody)).toBe(true)
+    for (const status of ['draft', 'scheduled', 'publishing', 'published', 'partially_published', 'failed', 'cancelled']) {
+      expect(isApprovedComposerUnchanged(saved, 'client-1', status, approvedBody)).toBe(false)
+    }
+    expect(isApprovedComposerUnchanged({ ...saved, content: 'Unreviewed change' }, 'client-1', 'approved', approvedBody)).toBe(false)
+    expect(isApprovedComposerUnchanged({ ...saved, accountIds: ['other-page'] }, 'client-1', 'approved', approvedBody)).toBe(false)
+    expect(isApprovedComposerUnchanged(saved, 'other-client', 'approved', approvedBody)).toBe(false)
+    expect(isApprovedComposerUnchanged({ ...saved, id: null }, 'client-1', 'approved', approvedBody)).toBe(false)
+  })
+})
