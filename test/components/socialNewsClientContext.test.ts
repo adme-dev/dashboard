@@ -8,7 +8,7 @@ let app: ReturnType<typeof createApp>
 afterEach(() => { app?.unmount(); document.body.innerHTML = '' })
 async function flush() { for (let i = 0; i < 12; i++) await nextTick() }
 
-async function mount(query: Record<string, unknown> = { client: 'news' }) {
+async function mount(query: Record<string, unknown> = { client: 'news' }, profileResponse?: (id: string) => Promise<any>) {
   const route = reactive({ query })
   const cookie = ref('adme')
   const fetch = vi.fn(async (url: string, options?: any) => {
@@ -18,7 +18,7 @@ async function mount(query: Record<string, unknown> = { client: 'news' }) {
     if (url.endsWith('/context')) return { activePackage: null, evidence: { pendingCount: 0, approvedCount: 0, approved: [] } }
     if (url.endsWith('/package-options')) return { packages: [], projects: [], allocations: [], rateCards: [] }
     if (url.includes('/evidence')) return { data: [], totalItems: 0 }
-    if (/\/profiles\/[^/]+$/.test(url)) return { industry: 'Automotive', contentPillars: [], includeKeywords: [], excludeKeywords: [], makes: [], preferredPlatforms: ['facebook'], defaultTone: 'professional', defaultWorkflow: 'draft' }
+    if (/\/profiles\/[^/]+$/.test(url)) return profileResponse ? profileResponse(url.split('/').at(-1)!) : { industry: 'Automotive', contentPillars: [], includeKeywords: [], excludeKeywords: [], makes: [], preferredPlatforms: ['facebook'], defaultTone: 'professional', defaultWorkflow: 'draft' }
     if (url.startsWith('/api/agency/social/news?')) return [{ id: 'article', title: 'News article', topics: [], relevance_reasons: [] }]
     if (url.startsWith('/api/agency/clients')) return [{ id: 'adme', name: 'ADME' }, { id: 'news', name: 'DriveAgent News' }]
     return []
@@ -44,7 +44,7 @@ async function mount(query: Record<string, unknown> = { client: 'news' }) {
   app.mount(root)
   await flush()
   const click = async (label: string) => { const button = [...root.querySelectorAll('button')].find(el => el.textContent === label)!; button.click(); await flush() }
-  return { root, fetch, click }
+  return { root, fetch, click, route }
 }
 
 describe('News client context', () => {
@@ -66,5 +66,36 @@ describe('News client context', () => {
   it('does not load or save a different client when an explicit query is invalid', async () => {
     const { fetch } = await mount({ client: ['news', 'adme'] })
     expect(fetch.mock.calls.some(([url]) => url.includes('/profiles/') || url.includes('accounts?'))).toBe(false)
+  })
+
+  it('blocks profile editing while the newly selected client is delayed or fails to load', async () => {
+    let rejectLoad!: (error: Error) => void
+    const { root, fetch, click, route } = await mount({ client: 'news' }, async id => {
+      if (id === 'adme') return new Promise((_resolve, reject) => { rejectLoad = reject })
+      return { industry: 'News industry', contentPillars: [], includeKeywords: [], excludeKeywords: [], makes: [], preferredPlatforms: ['facebook'], defaultTone: 'professional', defaultWorkflow: 'draft' }
+    })
+    await click('Client content profile')
+    route.query = { client: 'adme' }; await flush()
+    const open = [...root.querySelectorAll('button')].find(el => el.textContent === 'Client content profile')!
+    expect(open.disabled).toBe(true)
+    open.click(); await flush()
+    expect(root.textContent).not.toContain('Save profile')
+    rejectLoad(new Error('Profile unavailable')); await flush()
+    expect(open.disabled).toBe(true)
+    expect(fetch.mock.calls.some(([, options]) => options?.method === 'PUT')).toBe(false)
+  })
+
+  it('ignores an older News load after switching News to ADME and back to News', async () => {
+    const pending: Array<{ id: string; resolve: (value: any) => void }> = []
+    const { root, route, click, fetch } = await mount({ client: 'news' }, id => new Promise(resolve => pending.push({ id, resolve })))
+    route.query = { client: 'adme' }; await flush()
+    route.query = { client: 'news' }; await flush()
+    const profile = (industry: string) => ({ industry, contentPillars: [], includeKeywords: [], excludeKeywords: [], makes: [], preferredPlatforms: ['facebook'], defaultTone: 'professional', defaultWorkflow: 'draft' })
+    pending[2]!.resolve(profile('Current News')); await flush()
+    pending[0]!.resolve(profile('Old News')); await flush()
+    pending[1]!.resolve(profile('ADME')); await flush()
+    await click('Client content profile'); await click('Save profile')
+    expect(fetch).toHaveBeenCalledWith('/api/agency/social/news/profiles/news', expect.objectContaining({ method: 'PUT', body: expect.objectContaining({ industry: 'Current News' }) }))
+    expect(root.textContent).not.toContain('Old News')
   })
 })
