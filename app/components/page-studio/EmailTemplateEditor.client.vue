@@ -318,7 +318,7 @@ async function discardAndReload() {
           color="neutral"
           variant="outline"
           :disabled="!ready || Boolean(error) || pending || saving"
-          @click="savedHistoryOpen = true"
+          @click="() => { savedHistoryOpen = true }"
         />
         <UButton
           label="Save template draft"
