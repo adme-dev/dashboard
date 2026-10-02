@@ -11,6 +11,9 @@ import { videoAssetPublicUrl } from '~~/server/utils/video/assetLinks'
 import { getAccessibleVideoAsset } from '~~/server/utils/video/assets'
 import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 import { getAppUrl } from '~~/server/utils/appUrl'
+import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
+import { videoSocialCampaignContext } from '~~/server/utils/video/socialCampaignContext'
+import { assertSocialCampaign } from '~~/server/utils/socialPublishing/campaigns'
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
 export default defineEventHandler(event => withGodModeLedger(event, 'assetPublishSocial', async () => {
@@ -21,14 +24,15 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetPublis
   const asset = await getAccessibleVideoAsset(id, user)
   if (!asset) throw createError({ statusCode: 404, statusMessage: 'Asset not found' })
 
-  let clientId = asset.clientId
-  if (!clientId && asset.sourceProjectId) {
-    const project = await getProjectWithCurrentTimeline(asset.sourceProjectId)
-    clientId = project?.project.clientId ?? null
-  }
+  const project = asset.sourceProjectId ? await getProjectWithCurrentTimeline(asset.sourceProjectId) : null
+  const clientId = asset.clientId ?? project?.project.clientId ?? null
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'This video has no client; assign a client before publishing to social.' })
 
   await requireSocialClientAccess(event, clientId)
+  const context = project?.project.clientId === clientId && canUseVideoGenerationProject(user, project.project)
+    ? videoSocialCampaignContext(clientId, project.timeline?.state)
+    : { campaignId: null, socialBrief: null }
+  await assertSocialCampaign(clientId, context.campaignId)
   const clientProfile = await loadVideoClientProfile(clientId)
   const baseUrl = getAppUrl(event)
   const mediaUrl = await videoAssetPublicUrl(asset.id, baseUrl)
@@ -41,13 +45,15 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetPublis
     jobId: asset.sourceJobId,
     assetId: asset.id,
     prompt: asset.generationPrompt,
-    socialBrief: clientProfile?.socialBrief,
+    socialBrief: context.socialBrief || clientProfile?.socialBrief,
+    campaignId: context.campaignId,
     modelId: asset.generationModelId,
     captionGenerator: async ({ topic, platform, tone }) => generateModelRoutedGroqInsight(
       [
         `Write a ${tone} organic social media post for ${platform}.`,
         `Topic / brief: ${topic}`,
         'Return ONLY the post copy.',
+        'Use approved facts and the stated CTA. Omit production instructions; do not invent claims, prices or offers.',
       ].join('\n'),
       {
         defaultModelId: GROQ_MODELS.LLAMA_70B,
@@ -73,9 +79,9 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetPublis
   })
 
   const post = await queryOne<{ id: string }>(
-    `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, tags, status, metadata, link_url)
-     VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8) RETURNING id`,
-    [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata), clientProfile?.brandWebsite || null],
+    `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, tags, status, metadata, link_url, campaign_id)
+     VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8,$9) RETURNING id`,
+    [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata), clientProfile?.brandWebsite || null, context.campaignId],
   )
   if (!post) throw new Error('failed to create social post draft')
   return { postId: post.id, clientId }

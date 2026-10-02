@@ -112,7 +112,9 @@ export const CampaignPromptSchema = z.object({
   clientId: z.string().uuid(),
   brief: z.string().trim().min(1).max(600),
   guideRules: z.string().max(600),
-  prompt: z.string().trim().min(1).max(2000)
+  prompt: z.string().trim().min(1).max(2000),
+  campaignId: z.string().uuid().nullable().optional(),
+  socialBrief: z.string().trim().max(1200).optional()
 })
 export type CampaignPrompt = z.infer<typeof CampaignPromptSchema>
 

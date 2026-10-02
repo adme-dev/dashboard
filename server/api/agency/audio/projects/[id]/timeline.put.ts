@@ -5,6 +5,7 @@ import { getProjectWithCurrentTimeline, getTimelineIn, saveDraftTimelineIn } fro
 import { TimelineStateSchema, validateTimeline } from '~~/server/utils/audio/timelineSchema'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
+import { assertSocialCampaign } from '~~/server/utils/socialPublishing/campaigns'
 
 const BodySchema = z.object({ state: z.unknown() })
 
@@ -33,6 +34,7 @@ export default defineEventHandler(async (event) => {
   // A project may have been reassigned since this version was saved. Discard
   // campaign metadata from the previous client; never reuse it for the new one.
   if (parsed.data.campaign_prompt?.clientId !== existing.project.clientId) delete parsed.data.campaign_prompt
+  if (existing.project.clientId) await assertSocialCampaign(existing.project.clientId, parsed.data.campaign_prompt?.campaignId)
   const check = validateTimeline(parsed.data)
   if (check.ok === false) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid timeline', data: { errors: check.errors } })

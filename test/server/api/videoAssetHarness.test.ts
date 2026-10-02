@@ -1,5 +1,8 @@
+import { assertSocialCampaign } from '~~/server/utils/socialPublishing/campaigns'
+
 vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: vi.fn().mockResolvedValue({ id: 'user-1' }) }))
 vi.mock('~~/server/utils/video-generation/clientProfile', () => ({ loadVideoClientProfile: vi.fn().mockResolvedValue(null) }))
+vi.mock('~~/server/utils/socialPublishing/campaigns', () => ({ assertSocialCampaign: vi.fn().mockResolvedValue(undefined) }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent { params?: Record<string, string>; body?: any; query?: Record<string, any> }
@@ -638,6 +641,36 @@ describe('video asset harness API', () => {
     )
     expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO social_posts'), expect.any(Array))
     expect(res).toEqual({ postId: 'post-1', clientId: '55555555-5555-4555-8555-555555555555' })
+  })
+
+  it('hands the current client campaign and caption brief to the saved asset draft', async () => {
+    const clientId = '55555555-5555-4555-8555-555555555555'
+    const campaignId = '01a60d22-ff86-4501-a0a7-521bc12e4cc9'
+    mockGetProject.mockResolvedValue({ project: { clientId, createdBy: 'user-1' }, timeline: { state: { campaign_prompt: { clientId, campaignId, brief: 'Launch', guideRules: '', prompt: 'Animate artwork.', socialBrief: 'Approved campaign message. Book a demo.' } } } })
+    mockQueryOne.mockResolvedValueOnce({ id: 'asset-1', client_id: clientId, created_by: 'user-1', source_project_id: 'project-1', r2_key: 'asset.mp4', format: '16:9', generation_prompt: 'Original motion prompt' })
+    mockQueryOne.mockResolvedValueOnce({ id: 'post-1' })
+    await publishSocialHandler({ params: { id: 'asset-1' } } as unknown as Parameters<typeof publishSocialHandler>[0])
+    expect(mockBuildVideoStudioSocialDraft).toHaveBeenCalledWith(expect.objectContaining({ campaignId, socialBrief: 'Approved campaign message. Book a demo.', prompt: 'Original motion prompt' }))
+    expect(assertSocialCampaign).toHaveBeenCalledWith(clientId, campaignId)
+    expect(mockQueryOne.mock.calls.at(-1)?.[1].at(-1)).toBe(campaignId)
+  })
+
+  it('rejects a stale or foreign project campaign before creating a caption or post', async () => {
+    const clientId = '55555555-5555-4555-8555-555555555555'
+    mockGetProject.mockResolvedValue({ project: { clientId, createdBy: 'user-1' }, timeline: { state: { campaign_prompt: { clientId, campaignId: '01a60d22-ff86-4501-a0a7-521bc12e4cc9', brief: 'Launch', guideRules: '', prompt: 'Animate artwork.' } } } })
+    mockQueryOne.mockResolvedValueOnce({ id: 'asset-1', client_id: clientId, created_by: 'user-1', source_project_id: 'project-1', r2_key: 'asset.mp4', format: '16:9' })
+    vi.mocked(assertSocialCampaign).mockRejectedValueOnce(Object.assign(new Error('Campaign unavailable'), { statusCode: 400 }))
+    await expect(publishSocialHandler({ params: { id: 'asset-1' } } as unknown as Parameters<typeof publishSocialHandler>[0])).rejects.toMatchObject({ statusCode: 400 })
+    expect(mockBuildVideoStudioSocialDraft).not.toHaveBeenCalled()
+  })
+  it('does not read social guidance from a source project assigned to another client', async () => {
+    const clientId = '55555555-5555-4555-8555-555555555555'
+    const foreignClient = 'f7c142a6-a63f-4f75-90aa-700db68c1c76'
+    mockGetProject.mockResolvedValue({ project: { clientId: foreignClient, createdBy: 'user-1' }, timeline: { state: { campaign_prompt: { clientId: foreignClient, campaignId: '01a60d22-ff86-4501-a0a7-521bc12e4cc9', brief: 'Foreign campaign', guideRules: '', prompt: 'Animate artwork.', socialBrief: 'Foreign private brief' } } } })
+    mockQueryOne.mockResolvedValueOnce({ id: 'asset-1', client_id: clientId, created_by: 'user-1', source_project_id: 'project-1', r2_key: 'asset.mp4', format: '16:9' })
+    mockQueryOne.mockResolvedValueOnce({ id: 'post-1' })
+    await publishSocialHandler({ params: { id: 'asset-1' } } as unknown as Parameters<typeof publishSocialHandler>[0])
+    expect(mockBuildVideoStudioSocialDraft).toHaveBeenCalledWith(expect.objectContaining({ campaignId: null, socialBrief: undefined }))
   })
 
   it('rejects extraction when the bucket item belongs to another project', async () => {

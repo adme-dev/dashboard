@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), access: vi.fn(), project: vi.fn(), save: vi.fn(), query: vi.fn() }))
+const campaign = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('~~/server/utils/socialPublishing/campaigns', () => ({ assertSocialCampaign: campaign }))
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: mocks.auth }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: mocks.access }))
 vi.mock('~~/server/utils/audio/projects', () => ({ getProjectWithCurrentTimeline: mocks.project, getTimelineIn: vi.fn(), saveDraftTimelineIn: mocks.save }))
@@ -45,6 +47,11 @@ describe('project campaign prompt persistence access', () => {
   it('refuses a save when the project was reassigned while the request was in flight', async () => {
     mocks.query.mockResolvedValue({ rows: [{ client_id: 'bc8a15a8-f523-4a75-a8f4-a501649bb71d', current_timeline_id: 'timeline-1', status: 'draft' }] })
     await expect(handler({ body: { state: { campaign_prompt: draft } } } as unknown as Parameters<typeof handler>[0])).rejects.toMatchObject({ statusCode: 409 })
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+  it('rejects a foreign or deleted campaign before saving project guidance', async () => {
+    campaign.mockRejectedValueOnce(Object.assign(new Error('Campaign is not available for this client'), { statusCode: 400 }))
+    await expect(handler({ body: { state: { campaign_prompt: { ...draft, campaignId: '01a60d22-ff86-4501-a0a7-521bc12e4cc9' } } } } as unknown as Parameters<typeof handler>[0])).rejects.toMatchObject({ statusCode: 400 })
     expect(mocks.save).not.toHaveBeenCalled()
   })
 })

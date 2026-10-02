@@ -3,6 +3,21 @@ import { createRenderer, defineComponent, effectScope, h, nextTick, ref } from '
 import { useComposerCampaigns } from '../../app/composables/useComposerCampaigns'
 
 describe('composer campaign client changes', () => {
+  it('preserves a hydrated post campaign when the initial client list resolves late', async () => {
+    const client = ref<string | null>(null)
+    const selected = ref<string | null>(null)
+    const scope = effectScope()
+    scope.run(() => useComposerCampaigns(() => client.value, selected, async () => []))
+    selected.value = 'saved-campaign-b'
+    client.value = 'client-b'
+    await nextTick()
+    expect(selected.value).toBe('saved-campaign-b')
+    client.value = null
+    expect(selected.value).toBeNull()
+    client.value = 'client-a'
+    expect(selected.value).toBeNull()
+    scope.stop()
+  })
   it('hydrates only after child props receive a different saved client', async () => {
     const client = ref<string | null>('client-a')
     const selected = ref<string | null>(null)

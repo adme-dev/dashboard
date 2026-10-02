@@ -9,6 +9,7 @@ export interface VideoStudioDraftInput {
   jobId?: string | null
   assetId?: string | null
   socialBrief?: string | null
+  campaignId?: string | null
   prompt?: string | null
   modelId?: string | null
   captionGenerator?: (brief: { topic: string, platform: SocialPublishPlatform, tone: string }) => Promise<string>
@@ -54,6 +55,8 @@ export async function buildVideoStudioSocialDraft(input: VideoStudioDraftInput):
       jobId: input.jobId ?? null,
       assetId: input.assetId ?? null,
       format: input.format,
+      campaignId: input.campaignId ?? null,
+      socialBrief: input.socialBrief ?? null,
       prompt: input.prompt ?? null,
       modelId: input.modelId ?? null
     }
