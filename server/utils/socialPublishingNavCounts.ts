@@ -1,4 +1,4 @@
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
 import { isPlannerEnabled } from '~~/server/utils/socialPublishing/plannerGate'
 
 /**
@@ -22,7 +22,7 @@ export interface SocialPublishingNavCounts {
 export async function getSocialPublishingNavCounts(
   clientId?: string | null
 ): Promise<SocialPublishingNavCounts> {
-  const row = await queryOne<Partial<SocialPublishingNavCounts>>(
+  const row = await queryOneFresh<Partial<SocialPublishingNavCounts>>(
     `SELECT
        (SELECT COUNT(*)::int FROM social_accounts
          WHERE is_active = true

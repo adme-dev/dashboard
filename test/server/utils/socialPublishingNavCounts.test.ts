@@ -1,14 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockQueryOne = vi.fn()
+const mockQueryOneFresh = vi.fn()
 
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryOneFresh: (...args: unknown[]) => mockQueryOneFresh(...args)
 }))
 
 describe('getSocialPublishingNavCounts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockQueryOneFresh.mockImplementation((...args: unknown[]) => mockQueryOne(...args))
   })
   afterEach(() => {
     vi.unstubAllEnvs()
@@ -46,6 +49,14 @@ describe('getSocialPublishingNavCounts', () => {
     const { getSocialPublishingNavCounts } = await import('~~/server/utils/socialPublishingNavCounts')
 
     await expect(getSocialPublishingNavCounts('client-1')).resolves.toMatchObject({ campaigns: 9 })
+  })
+
+  it('reflects a saved campaign and draft immediately instead of older cached badges', async () => {
+    vi.stubEnv('SOCIAL_PLANNER_ENABLED', 'true')
+    mockQueryOne.mockResolvedValue({ accounts: 1, scheduled: 0, pendingApprovals: 0, drafts: 0, campaigns: 0 })
+    mockQueryOneFresh.mockResolvedValue({ accounts: 1, scheduled: 0, pendingApprovals: 0, drafts: 1, campaigns: 1 })
+    const { getSocialPublishingNavCounts } = await import('~~/server/utils/socialPublishingNavCounts')
+    await expect(getSocialPublishingNavCounts('client-1')).resolves.toMatchObject({ drafts: 1, campaigns: 1 })
   })
 
   it('coerces missing/partial count columns to zero', async () => {
