@@ -1,7 +1,7 @@
 import { onScopeDispose, ref, watch, type Ref } from 'vue'
 import type { SocialCampaignWithCounts } from '~/types'
 
-/** Clear on a client change; never let a late client request replace the current list. */
+/** Clear when leaving a resolved client; ignore late responses from earlier clients. */
 export function useComposerCampaigns(
   clientId: () => string | null,
   selected: Ref<string | null>,
@@ -28,7 +28,9 @@ export function useComposerCampaigns(
     }
   }
   watch(clientId, (_next, previous) => {
-    if (previous !== undefined) selected.value = null
+    // Initial client-list loading may resolve after a saved post has hydrated.
+    // Losing/changing a known client still clears selection immediately.
+    if (previous != null) selected.value = null
     void reload()
   }, { immediate: true, flush: 'sync' })
   onScopeDispose(() => {
