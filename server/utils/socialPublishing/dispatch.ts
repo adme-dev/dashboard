@@ -1,4 +1,5 @@
-import { execute, queryOne, queryRows } from '~~/server/utils/db'
+import { verifyAutomaticNewsSource } from '~~/server/utils/socialNewsAutopostSource'
+import { execute, queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { publishPost, type PublishableAccount, type PublishablePost, type PublishOutcome } from '~~/server/utils/socialPublishing'
 import { recordSocialPublishingAudit, type SocialPublishingAuditAction } from '~~/server/utils/socialPublishing/audit'
 
@@ -23,13 +24,14 @@ export interface ClaimAndPublishSocialPostResult {
   status?: PublishOutcome['status']
   platformResults?: PublishOutcome['platformResults']
   skipped?: boolean
-  reason?: 'not_claimed'
+  reason?: 'not_claimed' | 'source_unavailable' | 'story_withdrawn'
   currentStatus?: string | null
   accountsCount?: number
   targets?: string[]
 }
 
 interface SocialPostDispatchRow extends PublishablePost {
+  metadata?: Record<string, unknown>
   client_id: string
   status: string
   account_ids: string[] | null
@@ -54,6 +56,12 @@ export async function claimAndPublishSocialPost(
       WHERE id=$1
         AND ($2::uuid IS NULL OR client_id=$2)
         AND status = ANY($3::text[])
+        AND (metadata->>'newsAutopostAutomatic' IS DISTINCT FROM 'true' OR EXISTS (
+          SELECT 1 FROM social_news_autopost_rules r
+          WHERE r.id::text = social_posts.metadata->>'newsAutopostRuleId'
+            AND r.client_id = social_posts.client_id AND r.mode = 'automatic'
+            AND r.account_id = ANY(social_posts.account_ids)
+        ))
         AND ($4::int IS NULL OR publish_attempts < $4)
         AND ($5::timestamptz IS NULL OR (scheduled_at = $5::timestamptz AND scheduled_at <= NOW()))
       RETURNING *`,
@@ -83,6 +91,18 @@ export async function claimAndPublishSocialPost(
     return skipped
   }
 
+  const sourceStatus = await verifyAutomaticNewsSource(claimed)
+  if (sourceStatus !== 'ready') {
+    await transaction(async (db) => {
+      await db.query('SELECT pg_advisory_xact_lock(hashtextextended(\'news-autopost:\' || $1::text, 0))', [claimed.client_id])
+      const rule = (await db.query(`SELECT mode,account_id FROM social_news_autopost_rules
+        WHERE id::text=$1 AND client_id=$2 FOR UPDATE`, [claimed.metadata?.newsAutopostRuleId, claimed.client_id])).rows[0]
+      const retryAllowed = sourceStatus === 'retry' && rule?.mode === 'automatic' && claimed.account_ids?.includes(rule.account_id)
+      await db.query(`UPDATE social_posts SET status=$2,updated_at=NOW() WHERE id=$1 AND status='publishing'`, [claimed.id, retryAllowed ? 'scheduled' : 'cancelled'])
+    })
+    log.warn('social-news-autopost.source-check', { postId: claimed.id, status: sourceStatus })
+    return { ok: true, skipped: true, postId: claimed.id, clientId: claimed.client_id, reason: sourceStatus === 'withdrawn' ? 'story_withdrawn' : 'source_unavailable' }
+  }
   const published = await publishClaimedPost(claimed, input, log)
   const outcome = published.outcome
   await execute(

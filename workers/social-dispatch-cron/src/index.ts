@@ -12,15 +12,19 @@ interface Env {
 
 export default {
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext) {
-    const url = `${env.APP_BASE_URL}/api/cron/publish-social-posts`
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'x-cron-secret': env.CRON_SECRET },
-    })
-    const text = await resp.text()
-    console.log('social-dispatch-cron.run', {
-      status: resp.status,
-      body: text.slice(0, 200),
-    })
-  },
+    await Promise.allSettled(['publish-social-posts', 'replenish-social-news'].map(async (job) => {
+      const resp = await fetch(`${env.APP_BASE_URL}/api/cron/${job}`, {
+        method: 'POST',
+        headers: { 'x-cron-secret': env.CRON_SECRET },
+        signal: AbortSignal.timeout(55_000)
+      })
+      console.log('social-dispatch-cron.run', {
+        job,
+        status: resp.status,
+        body: (await resp.text()).slice(0, 300)
+      })
+    }).map(task => task.catch(() => {
+      console.error('social-dispatch-cron.request-failed', { message: 'Scheduled request failed; the next tick will retry.' })
+    })))
+  }
 }

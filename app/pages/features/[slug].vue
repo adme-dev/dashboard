@@ -543,7 +543,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-share-2',
     categoryIconBg: 'bg-sky-50',
     categoryIconColor: 'text-sky-600',
-    description: 'Turn a shared industry news feed into client-specific social opportunities, with explainable relevance, optional AI rewriting, connected-account targeting, and human approval throughout.',
+    description: 'Turn a shared industry news feed into client-specific social opportunities, with explainable relevance, optional AI rewriting, connected-account targeting, and review controls and opt-in published-news scheduling.',
     details: [
       {
         title: 'One Feed, Filtered Per Client',
@@ -556,6 +556,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Client Knowledge With a Review Gate',
         content: 'Client briefs, decisions, plans, and performance findings can inform recommendations and rewrites only after they have been approved inside XeroFlow. Mapped Monday plans and discussions can be previewed and imported as pending evidence; they never become AI guidance automatically, and XeroFlow remains the operational source of truth.'
+      },
+      {
+        title: 'Published-News Auto-Posting',
+        content: 'Opt a client into the DriveAgent published-news source and select their connected Facebook Page. XeroFlow checks every 15 minutes, skips duplicate and archived articles, and schedules recent stories into free recurring news slots across a rolling week. Review mode sends drafts for approval; pausing cancels pending automatic posts. Existing calendar posts and sponsor slots remain in place.'
       },
       {
         title: 'Packages Connected to Real Budgets',

@@ -1,3 +1,4 @@
+import { normalizeSlotContentKind } from '~~/server/utils/socialSlotContentKind'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
@@ -14,10 +15,11 @@ export default defineEventHandler(async (event) => {
   await requireSocialClientAccess(event, b.clientId)
   if (b.dayOfWeek == null || !b.timeOfDay) throw createError({ statusCode: 400, statusMessage: 'dayOfWeek and timeOfDay required' })
 
+  const contentKind = normalizeSlotContentKind(b.contentKind)
   const row = await queryOne(
     `INSERT INTO social_slot_schedules
-       (client_id, name, platforms, day_of_week, time_of_day, timezone, capacity, enabled)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+       (client_id, name, platforms, day_of_week, time_of_day, timezone, capacity, enabled, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) RETURNING *`,
     [
       b.clientId,
       b.name ?? 'Posting slot',
@@ -27,7 +29,8 @@ export default defineEventHandler(async (event) => {
       b.timezone ?? 'Australia/Sydney',
       b.capacity ?? 1,
       b.enabled ?? true,
-    ],
+      JSON.stringify({ contentKind })
+    ]
   )
   return row
 })

@@ -2161,6 +2161,7 @@ export interface SocialSlot {
   time_of_day: string
   timezone: string
   capacity: number
+  metadata?: { contentKind?: 'general' | 'news' | 'sponsor', [key: string]: unknown }
   enabled: boolean
 }
 

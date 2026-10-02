@@ -1,3 +1,4 @@
+import { normalizeSlotContentKind } from '~~/server/utils/socialSlotContentKind'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
@@ -14,7 +15,7 @@ const FIELDS: Record<string, string> = {
   timeOfDay: 'time_of_day',
   timezone: 'timezone',
   capacity: 'capacity',
-  enabled: 'enabled',
+  enabled: 'enabled'
 }
 
 export default defineEventHandler(async (event) => {
@@ -22,7 +23,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const b = await readBody(event)
-  const existing = await queryOne<{ id: string; client_id: string }>(
+  const existing = await queryOne<{ id: string, client_id: string }>(
     'SELECT id, client_id FROM social_slot_schedules WHERE id = $1',
     [id]
   )
@@ -30,11 +31,15 @@ export default defineEventHandler(async (event) => {
   await requireSocialClientAccess(event, existing.client_id)
 
   const sets: string[] = []
-  const params: any[] = []
+  const params: unknown[] = []
   for (const [key, col] of Object.entries(FIELDS)) {
     if (!(key in b)) continue
     params.push(b[key])
     sets.push(`${col} = $${params.length}`)
+  }
+  if ('contentKind' in b) {
+    params.push(JSON.stringify(normalizeSlotContentKind(b.contentKind)))
+    sets.push(`metadata = jsonb_set(COALESCE(metadata,'{}'::jsonb),'{contentKind}', $${params.length}::jsonb, true)`)
   }
   if (sets.length === 0) throw createError({ statusCode: 400, statusMessage: 'No updatable fields provided' })
 
@@ -43,7 +48,7 @@ export default defineEventHandler(async (event) => {
   params.push(existing.client_id)
   const row = await queryOne(
     `UPDATE social_slot_schedules SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND client_id = $${params.length} RETURNING *`,
-    params,
+    params
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Slot not found' })
   return row
