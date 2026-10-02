@@ -105,11 +105,11 @@ onMounted(async () => {
   }
 })
 
-function guard(): string | null {
+function guard(requireAccounts = true): string | null {
   if (!clientId.value) { toast.add({ title: 'Pick a client first', color: 'warning' }); return null }
   if (!state.value.platforms.length) { toast.add({ title: 'Select at least one network', color: 'warning' }); return null }
   const missing = missingAccountPlatforms(state.value.platforms, state.value.accountIds, accounts.value)
-  if (missing.length) {
+  if (requireAccounts && missing.length) {
     toast.add({
       title: 'Select publishing accounts',
       description: missing.map(platform => platformLabel[platform] || platform).join(', '),
@@ -120,8 +120,8 @@ function guard(): string | null {
   return clientId.value
 }
 
-async function upsert(extra: Record<string, any> = {}): Promise<string | null> {
-  const cid = guard()
+async function upsert(extra: Record<string, unknown> = {}, requireAccounts = true): Promise<string | null> {
+  const cid = guard(requireAccounts)
   if (!cid) return null
   const body = { ...toBody(cid), ...extra }
   const row = state.value.id
@@ -155,7 +155,7 @@ async function publishApprovedPost() {
 async function saveDraft() {
   saving.value = true
   try {
-    const id = await upsert()
+    const id = await upsert({}, false)
     if (id) toast.add({ title: 'Draft saved', color: 'success' })
   } catch (e: any) {
     toast.add({ title: 'Save failed', description: e?.data?.statusMessage, color: 'error' })
@@ -239,6 +239,9 @@ const primaryLabel = computed(() => ({
         </div>
         <p v-if="persistedStatus === 'approved' && !canPublishSavedPost" class="mt-3 text-sm text-muted">
           Your edits need approval before publishing. Save and request approval again.
+        </p>
+        <p v-if="state.platforms.length && missingAccountPlatforms(state.platforms, state.accountIds, accounts).length" class="mt-3 text-sm text-muted">
+          You can save this draft now. Select publishing accounts before sending it for approval or scheduling.
         </p>
       </div>
 

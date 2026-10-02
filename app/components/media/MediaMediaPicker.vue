@@ -8,11 +8,11 @@ import { isPossiblyAppliedFailure } from '~~/app/utils/apiError'
 const props = defineProps<{
   open: boolean
   /** the editor composable's uploadMedia(file, kind) */
-  uploader: (file: File, kind: 'footage' | 'still') => Promise<{ r2Key: string; url: string; durationSec: number }>
+  uploader: (file: File, kind: 'footage' | 'still') => Promise<{ r2Key: string, url: string, durationSec: number, assetId?: string | null }>
 }>()
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
-  (e: 'uploaded', payload: { r2Key: string; durationSec: number; baseSource: 'uploaded_footage' | 'still_kenburns' }): void
+  (e: 'uploaded', payload: { r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns', assetId?: string | null }): void
 }>()
 
 const kind = ref<'footage' | 'still'>('footage')
@@ -35,8 +35,9 @@ async function onFile(e: Event) {
   if (!file || !props.uploader) return
   uploading.value = true; error.value = null
 
-  // Phase 1 — upload to R2. A failure here means the file never landed.
-  let res: { r2Key: string; url: string; durationSec: number }
+  // Phase 1 — upload to R2 and register video footage. A possibly-applied
+  // failure may have reached storage; inspect the library before a new attempt.
+  let res: { r2Key: string, url: string, durationSec: number, assetId?: string | null }
   try {
     res = await props.uploader(file, kind.value)
   } catch (e: any) {
@@ -45,6 +46,7 @@ async function onFile(e: Event) {
     if (isPossiblyAppliedFailure(e)) {
       // The file may have reached storage. Refreshing the assets rail shows it if so.
       toast.add({ title: 'Upload may have completed', description: `${error.value}. Refresh the assets rail before uploading again.`, color: 'warning', icon: 'i-lucide-clock-alert' })
+      uploading.value = false
       return
     }
     toast.add({ title: 'Upload failed', description: error.value ?? '', color: 'error' })
@@ -56,7 +58,7 @@ async function onFile(e: Event) {
   // so a failure here is NOT an upload failure — surface the real cause instead
   // of the misleading "Upload failed".
   try {
-    emit('uploaded', { r2Key: res.r2Key, durationSec: res.durationSec, baseSource: kind.value === 'footage' ? 'uploaded_footage' : 'still_kenburns' })
+    emit('uploaded', { r2Key: res.r2Key, durationSec: res.durationSec, assetId: res.assetId, baseSource: kind.value === 'footage' ? 'uploaded_footage' : 'still_kenburns' })
     toast.add({ title: 'Media added', color: 'success' })
     emit('update:open', false)
   } catch (e: any) {

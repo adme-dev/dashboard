@@ -769,7 +769,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'One Screen, Every Source',
-        content: 'Assets on the left, preview and selected-clip controls in the centre, the inspector on the right, and the timeline docked along the bottom — nothing scrolls away. Drop in uploaded footage and stills, pull overlays straight from Banner Studio, add voiceover and music from Audio Studio, or generate B-roll and image-to-video clips with AI — all from the same command bar.'
+        content: 'Assets on the left, preview and selected-clip controls in the centre, the inspector on the right, and the timeline docked along the bottom — nothing scrolls away. Drop in uploaded footage and stills, pull overlays straight from Banner Studio, add voiceover and music from Audio Studio, or generate B-roll and image-to-video clips with AI — all from the same command bar. Uploaded videos are also saved in the library with their client and source project. Create a social draft from the original file to retain its dimensions and audio without rendering it again.'
       },
       {
         title: 'A Real Editing Timeline',
@@ -785,7 +785,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Render Once, Ship Everywhere',
-        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place.'
+        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. You can save a social draft while an account connection is still being prepared; select the publishing accounts before requesting approval or scheduling. Failed renders explain why and retry in place.'
       }
     ]
   },

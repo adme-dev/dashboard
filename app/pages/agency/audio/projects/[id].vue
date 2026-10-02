@@ -134,8 +134,9 @@ const mediaPickerOpen = ref(false)
 function onOverlayPick(p: { gsapProjectId: string; gsapFormatKey: string; durationSec?: number; startSec?: number }) {
   editor.addOverlayClipAction(p.gsapProjectId, p.gsapFormatKey, p.durationSec ?? 5, p.startSec ?? editor.currentTime.value)
 }
-function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'uploaded_footage' | 'still_kenburns' }) {
-  editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value)
+function onMediaUploaded(p: { r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns', assetId?: string | null }) {
+  editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value, p.assetId ?? null)
+  if (p.assetId) void refreshVideoAssets()
 }
 
 // ─── Video generation wiring ──────────────────────────────────────────────────
