@@ -22,7 +22,7 @@ const clients = computed<any[]>(() => {
   const d = clientsData.value as any
   return Array.isArray(d) ? d : (d?.clients ?? [])
 })
-const { clientId } = useSocialPublishingClient()
+const { clientId, selectClient } = useSocialPublishingClient()
 const pageName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || '')
 const accounts = ref<SocialAccount[]>([])
 const accountsLoading = ref(false)
@@ -63,8 +63,10 @@ onMounted(async () => {
   if (editId) {
     try {
       const post = await api.getPost(editId)
+      await selectClient(post.client_id)
+      // Let child client-change resets run before hydrating the saved campaign.
+      await nextTick()
       loadFromPost(post)
-      clientId.value = post.client_id
       persistedStatus.value = post.status
       approvedBody.value = JSON.stringify(toBody(post.client_id))
     } catch {

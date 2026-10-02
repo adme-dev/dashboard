@@ -84,6 +84,37 @@ describe('publishing posts CRUD', () => {
   it('rejects create without clientId', async () => {
     await expect(createH({ body: {} })).rejects.toThrow('clientId required')
   })
+  it('rejects a foreign campaign on create before inserting a draft', async () => {
+    mockQueryOne.mockResolvedValueOnce(null)
+    await expect(createH({ body: { clientId: 'C1', campaignId: '7e7cb0e9-4f90-448b-8e17-2ebff3d5d1cd', platforms: ['facebook'] } }))
+      .rejects.toThrow('Campaign is not available for this client')
+    expect(mockQueryOne).toHaveBeenCalledTimes(1)
+    expect(mockQueryOne.mock.calls[0][0]).toContain('client_id::text = $2')
+  })
+  it('rejects malformed campaign identifiers without querying campaigns', async () => {
+    await expect(createH({ body: { clientId: 'C1', campaignId: 'invalid', platforms: ['facebook'] } }))
+      .rejects.toThrow('Valid campaignId required')
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+  it('creates a campaign-linked draft and preserves video provenance', async () => {
+    const campaignId = '7e7cb0e9-4f90-448b-8e17-2ebff3d5d1cd'
+    const metadata = { source: 'video_studio', assetId: 'asset-1' }
+    mockQueryOne.mockResolvedValueOnce({ id: campaignId }).mockResolvedValueOnce({ id: 'P1' })
+    await createH({ body: { clientId: 'C1', campaignId, metadata, platforms: ['facebook'] } })
+    const [, params] = mockQueryOne.mock.calls[1]
+    expect(params[13]).toBe('draft')
+    expect(JSON.parse(params[14])).toEqual(metadata)
+    expect(params[15]).toBe(campaignId)
+  })
+  it('rejects foreign campaigns on patch and supports explicit unlinking', async () => {
+    mockQueryOne.mockResolvedValueOnce({ id: 'P1', client_id: 'C1' }).mockResolvedValueOnce(null)
+    await expect(patchH({ params: { id: 'P1' }, body: { campaignId: '7e7cb0e9-4f90-448b-8e17-2ebff3d5d1cd' } }))
+      .rejects.toThrow('Campaign is not available for this client')
+    expect(mockQueryOne).toHaveBeenCalledTimes(2)
+    mockQueryOne.mockClear().mockResolvedValue({ id: 'P1', client_id: 'C1' })
+    await patchH({ params: { id: 'P1' }, body: { campaignId: null } })
+    expect(mockQueryOne.mock.calls[1][1]).toEqual([null, 'P1', 'C1'])
+  })
 
   it('rejects unsupported publish platforms at create', async () => {
     await expect(createH({ body: { clientId: 'C1', platforms: ['mastodon'] } }))

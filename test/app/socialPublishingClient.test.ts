@@ -39,6 +39,26 @@ describe('social publishing client context', () => {
     cookie.value = 'news'
     expect(useSocialPublishingClient().clientId.value).toBe('news')
   })
+  it('allows Compose to await route selection before hydrating an edited post', async () => {
+    route.query = { client: 'adme', edit: 'saved-post' }
+    const context = useSocialPublishingClient()
+    let finish: () => void = () => {}
+    replace.mockImplementationOnce(({ query }) => new Promise<void>((resolve) => {
+      finish = () => {
+        route.query = query
+        resolve()
+      }
+    }))
+    let completed = false
+    const selecting = context.selectClient('news').then(() => { completed = true })
+    await Promise.resolve()
+    expect(completed).toBe(false)
+    expect(context.clientId.value).toBe('adme')
+    finish()
+    await selecting
+    expect(context.clientId.value).toBe('news')
+    expect(route.query.edit).toBe('saved-post')
+  })
 
   it.each(['unknown', ['news', 'adme'], ''])('does not silently use ADME for an invalid explicit query %j', value => {
     cookie.value = 'adme'

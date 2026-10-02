@@ -10,6 +10,7 @@ import {
   normalizeSocialPostPayloadFields
 } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
+import { assertSocialCampaign } from '~~/server/utils/socialPublishing/campaigns'
 
 interface CreatedSocialPost {
   id: string
@@ -24,6 +25,7 @@ export default defineEventHandler(async (event) => {
   const b = await readBody(event)
   if (!b.clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
   await requireSocialClientAccess(event, b.clientId)
+  await assertSocialCampaign(b.clientId, b.campaignId)
   const explicitTargets = await normalizePublishingTargets(b.clientId, b.targets)
   const platforms = explicitTargets?.platforms ?? normalizeProductionReadyPublishPlatforms(b.platforms)
   const accountIds = explicitTargets?.accountIds ?? await assertPublishingTargets(b.clientId, platforms, b.accountIds)

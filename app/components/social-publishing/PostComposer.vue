@@ -11,6 +11,7 @@ import {
 } from '~/utils/socialPublishingPlatforms'
 import type { SocialAccount, SocialPublishPlatform } from '~/types'
 import { syncComposerAccountIds, useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
+import { useComposerCampaigns } from '~/composables/useComposerCampaigns'
 
 const { state, setOverride, resolved } = useSocialComposer()
 const apiFetch = $fetch as <T = unknown>(
@@ -25,6 +26,21 @@ const props = defineProps<{
 }>()
 
 const PLATFORM_OPTIONS = LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS
+const campaignId = computed({
+  get: () => state.value.campaignId,
+  set: (value: string | null) => { state.value.campaignId = value }
+})
+const { campaigns, loading: campaignsLoading, failed: campaignsFailed, reload: reloadCampaigns } = useComposerCampaigns(
+  () => props.clientId, campaignId, useSocialPlanner().listCampaigns
+)
+const campaignOptions = computed(() => [
+  { label: 'No campaign', value: '__none__' },
+  ...campaigns.value.filter(c => c.status !== 'archived' || c.id === campaignId.value).map(c => ({ label: c.name, value: c.id }))
+])
+const campaignSelection = computed({
+  get: () => campaignId.value ?? '__none__',
+  set: (value: string) => { campaignId.value = value === '__none__' ? null : value }
+})
 const labelFor = socialPublishingPlatformLabel
 
 const activeAccounts = computed(() => props.accounts.filter(account => account.is_active && !account.last_error))
@@ -240,6 +256,26 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
 
 <template>
   <div class="space-y-6">
+    <UFormField label="Campaign" help="Optional. Group this post with a campaign in the client's Planner.">
+      <USelectMenu
+        v-model="campaignSelection"
+        :items="campaignOptions"
+        value-key="value"
+        label-key="label"
+        :loading="campaignsLoading"
+        :disabled="!props.clientId || campaignsLoading || campaignsFailed"
+        class="w-full"
+      />
+      <div v-if="campaignsFailed" class="mt-2 flex items-center gap-2 text-xs text-muted">
+        Campaigns could not be loaded.
+        <UButton
+          label="Retry"
+          size="xs"
+          variant="ghost"
+          @click="reloadCampaigns"
+        />
+      </div>
+    </UFormField>
     <!-- Networks -->
     <UFormField label="Networks" help="Pick which connected accounts this post goes to.">
       <USelectMenu

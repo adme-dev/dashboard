@@ -29,6 +29,10 @@ export function useSocialPublishingClient() {
     return Array.isArray(data) ? data : (data?.clients ?? [])
   })
   const requestedClient = computed(() => route.query.client !== undefined ? route.query.client : cookie.value)
+  async function selectClient(value: string | null) {
+    cookie.value = value || null
+    await router.replace({ query: { ...route.query, client: value || undefined } })
+  }
 
   const clientId = computed<string | null>({
     get: () => {
@@ -36,9 +40,8 @@ export function useSocialPublishingClient() {
       return typeof value === 'string' && clients.value.some(client => client.id === value) ? value : null
     },
     set: (value) => {
-      cookie.value = value || null
       // Keep the URL in sync (deep-linkable) without stacking history entries.
-      router.replace({ query: { ...route.query, client: value || undefined } })
+      void selectClient(value)
     },
   })
 
@@ -53,5 +56,5 @@ export function useSocialPublishingClient() {
   })
   const invalidSelection = computed(() => clientsData.value != null && requestedClient.value != null && !clientId.value)
 
-  return { clientId, clients, invalidSelection }
+  return { clientId, clients, invalidSelection, selectClient }
 }
