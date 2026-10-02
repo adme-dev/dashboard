@@ -3,7 +3,7 @@
 // The master clock is engine.currentTime(); an rAF loop mirrors it into currentTime
 // for the playhead (clock rule: the view slaves to the engine, never the reverse).
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import type { TimelineState, Track } from '~~/server/utils/audio/timelineSchema'
+import type { CampaignPrompt, TimelineState, Track } from '~~/server/utils/audio/timelineSchema'
 import type { MediaProject } from '~~/app/types'
 import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/audio/audioSchedulePlanner'
 import { createAudioEngine, type AudioEngine, type AudioEngineDeps, type LoadResult } from '~~/app/composables/useAudioEngine'
@@ -252,6 +252,11 @@ export function useMediaProjectEditor(projectId: string) {
     void reloadEngine(next)
     scheduleAutosave()
     syncUndoRedo()
+  }
+
+  function setCampaignPromptAction(draft: CampaignPrompt) {
+    if (!timeline.value || draft.clientId !== project.value?.clientId) throw new Error('Campaign client changed. Reload and try again.')
+    applyEdit({ ...timeline.value, campaign_prompt: draft })
   }
 
   // ---------------------------------------------------------------------------
@@ -664,7 +669,7 @@ export function useMediaProjectEditor(projectId: string) {
     timeline, clips, tracks, status, error,
     isPlaying, currentTime, duration,
     canUndo, canRedo, saveStatus, saveError, dirty, saveNow,
-    project, updateProject,
+    project, updateProject, setCampaignPromptAction,
     /** Clip ids whose source couldn't be loaded (deleted/404). Non-fatal warning. */
     missingClipIds,
     mediaType,
