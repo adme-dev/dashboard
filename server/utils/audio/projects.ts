@@ -129,7 +129,7 @@ export async function getProjectWithCurrentTimeline(
   const project = mapProjectRow(projectRow)
   let timeline: MediaTimeline | null = null
   if (project.currentTimelineId) {
-    const tlRow = await queryOne(`SELECT * FROM media_timelines WHERE id = $1`, [project.currentTimelineId])
+    const tlRow = await queryOneFresh(`SELECT * FROM media_timelines WHERE id = $1`, [project.currentTimelineId])
     timeline = tlRow ? mapTimelineRow(tlRow) : null
   }
   return { project, timeline }
