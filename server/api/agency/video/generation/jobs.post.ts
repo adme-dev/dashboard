@@ -1,3 +1,7 @@
+import { loadSourceAssetsByIds } from '~~/server/utils/video-generation/sourceAssetStore'
+import { sourceAspectRatio } from '~~/server/utils/video-generation/sourceDimensions'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
@@ -32,8 +36,8 @@ const BodySchema = z.object({
   idempotencyKey: z.string().min(6).max(200),
 })
 
-function assertEnabled() {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+function assertEnabled(event: import('h3').H3Event) {
+  if (!videoFeatureEnabled('VIDEO_GENERATION_ENABLED', event)) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
 }
@@ -108,7 +112,7 @@ async function recordVideoGenerationRequest(input: {
 }
 
 export default defineEventHandler(async (event) => {
-  assertEnabled()
+  assertEnabled(event)
   const user = await requireWriteAccess(event)
   const parsed = BodySchema.safeParse(await readBody(event))
   if (!parsed.success) {
@@ -128,6 +132,8 @@ export default defineEventHandler(async (event) => {
   if (!canUseVideoGenerationProject(user, existing.project)) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
   }
+
+  if (existing.project.clientId) await requireSocialClientAccess(event, existing.project.clientId)
 
   // Owners (God mode) run this under the execution ledger with a reserved job id so a
   // retried request replays the same job. The body idempotencyKey already dedupes for
@@ -155,6 +161,12 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, statusMessage: 'Not found' })
     }
     assertModelSupportsRequest(model, body)
+    if (model.id === 'aigateway/seedance-25-i2v') {
+      if (body.prompt.length > 2000) throw createError({ statusCode: 400, statusMessage: 'Seedance 2.5 prompts must be at most 2000 characters' })
+      const source = (await loadSourceAssetsByIds(body.sourceAssetIds))[0]
+      if (!source?.width || !source.height) throw createError({ statusCode: 400, statusMessage: 'Re-upload a PNG or JPEG source so its dimensions can be checked for Seedance 2.5' })
+      body.aspectRatio = sourceAspectRatio(source.width, source.height)
+    }
 
     let sourceAssets = []
     try {

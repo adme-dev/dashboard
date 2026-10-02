@@ -1,3 +1,6 @@
+import { sourceImageDimensions } from '~~/server/utils/video-generation/sourceDimensions'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { uploadFile, validateFileType, validateFileSize, getMaxFileSize } from '~~/server/utils/storage'
@@ -11,7 +14,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
 export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetUpload', async ({ reservedId }) => {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (!videoFeatureEnabled('VIDEO_GENERATION_ENABLED', event)) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
   const user = await requireWriteAccess(event)
@@ -28,6 +31,8 @@ export default defineEventHandler(event => withGodModeLedger(event, 'sourceAsset
   if (!canUseVideoGenerationProject(user, project.project)) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
   }
+  if (project.project.clientId) await requireSocialClientAccess(event, project.project.clientId)
+
   const fileType = file.type || 'application/octet-stream'
   if (!validateFileType(fileType, 'media-image')) throw createError({ statusCode: 400, statusMessage: `Unsupported image type: ${fileType}` })
   if (!validateFileSize(file.data.length, 'media-image')) {
@@ -36,6 +41,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'sourceAsset
   }
   const subjectType = subjectField?.data ? new TextDecoder().decode(subjectField.data) : 'unknown'
   if (!SUBJECT_TYPES.has(subjectType)) throw createError({ statusCode: 400, statusMessage: 'Invalid subjectType' })
+  const dimensions = sourceImageDimensions(Buffer.from(file.data))
   const ext = (file.filename.split('.').pop() || 'jpg').toLowerCase()
   const clientId = project.project.clientId ?? null
   const r2Key = `video-gen-sources/${clientId ?? 'agency'}/${randomUUID()}.${ext}`
@@ -48,6 +54,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'sourceAsset
     contentType: fileType,
     subjectType,
     originalFilename: file.filename,
+    width: dimensions?.width, height: dimensions?.height,
   })
   setResponseStatus(event, 201)
   return { id: asset.id, status: asset.status }

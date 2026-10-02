@@ -1,9 +1,14 @@
+import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
 // Create a social_posts DRAFT pre-filled with a rendered video's public link + the project's
 // client, so the user can finish/schedule it in the composer. Server-signs the render link.
+import { loadVideoClientProfile } from '~~/server/utils/video-generation/clientProfile'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline, getRenderJob } from '~~/server/utils/audio/projects'
 import { renderPublicUrl } from '~~/server/utils/audio/renderLinks'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import { queryOne } from '~~/server/utils/db'
 import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
@@ -14,7 +19,7 @@ const BodySchema = z.object({ format: z.string().min(1) })
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
 export default defineEventHandler(event => withGodModeLedger(event, 'renderPublishSocial', async () => {
-  if (process.env.VIDEO_STUDIO_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'Not found' })
+  if (!videoFeatureEnabled('VIDEO_STUDIO_ENABLED', event)) throw createError({ statusCode: 404, statusMessage: 'Not found' })
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
   const jobId = getRouterParam(event, 'jobId')!
@@ -26,12 +31,14 @@ export default defineEventHandler(event => withGodModeLedger(event, 'renderPubli
   const clientId = project.project.clientId ?? null
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'This project has no client; assign one before publishing to social.' })
 
+  if (!canUseVideoGenerationProject(user, project.project)) throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
+  await requireSocialClientAccess(event, clientId)
+  const clientProfile = await loadVideoClientProfile(clientId)
   const job = await getRenderJob(jobId)
   if (!job || job.projectId !== id) throw createError({ statusCode: 404, statusMessage: 'Render job not found' })
   if (!job.variants?.[format]) throw createError({ statusCode: 404, statusMessage: 'Render variant not available' })
 
-  const config = useRuntimeConfig()
-  const baseUrl = (config.public as { appUrl?: string }).appUrl || process.env.APP_URL || ''
+  const baseUrl = getAppUrl(event)
   const mediaUrl = await renderPublicUrl(jobId, format, baseUrl)
   const draft = await buildVideoStudioSocialDraft({
     clientId,
@@ -41,6 +48,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'renderPubli
     projectId: id,
     jobId,
     prompt: project.project.title,
+    socialBrief: clientProfile?.socialBrief,
     captionGenerator: async ({ topic, platform, tone }) => generateModelRoutedGroqInsight(
       [
         `Write a ${tone} organic social media post for ${platform}.`,
@@ -69,9 +77,9 @@ export default defineEventHandler(event => withGodModeLedger(event, 'renderPubli
   })
 
   const row = await queryOne(
-    `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, tags, status, metadata)
-     VALUES ($1,$2,$3,$4,$5,$6,'draft',$7) RETURNING id`,
-    [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata)]
+    `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, tags, status, metadata, link_url)
+     VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8) RETURNING id`,
+    [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata), clientProfile?.brandWebsite || null]
   )
   return { postId: (row as { id: string }).id, clientId }
 }))

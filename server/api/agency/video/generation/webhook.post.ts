@@ -1,3 +1,4 @@
+import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
 // LEGACY/INERT: muapi-shaped webhook. The active CF AI Gateway transport is synchronous and
 // never calls this. Kept for the future fal.ai async path (which will use ED25519, not this).
 import { verifyMuapiSignature } from '~~/server/utils/video-generation/webhookAuth'
@@ -7,7 +8,7 @@ import { finalizeVideoGenerationJob } from '~~/server/utils/video-generation/fin
 import { classifyMuapiWebhook } from '~~/server/utils/video-generation/webhookPayload'
 
 export default defineEventHandler(async (event) => {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (!videoFeatureEnabled('VIDEO_GENERATION_ENABLED', event)) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
   const raw = await readRawBody(event)

@@ -12,6 +12,15 @@ function conservativeCapabilities(): VideoGenerationCapabilities {
 
 const MODELS: VideoGenerationModel[] = [
   {
+    id: 'aigateway/seedance-25-i2v', provider: 'aigateway', displayName: 'Seedance 2.5 (image-to-video + audio)',
+    modes: ['image-to-video'], allowedSubjectTypes: ['vehicle', 'non_vehicle'], requiresApprovedSourceAsset: true,
+    supportsNativeAudio: true, durationsSeconds: Array.from({ length: 27 }, (_, i) => i + 4),
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p'],
+    estimatedCostCents: 30, costUnit: 'second',
+    capabilities: { extendVideo: false, endFrame: true, videoToVideo: false },
+    safetyClass: 'vehicle_i2v_safe', defaultEnabled: true, cfModel: 'bytedance/seedance-2.5', surface: 'tenant', modality: 'i2v',
+  },
+  {
     id: 'mock/i2v-safe',
     provider: 'mock',
     displayName: 'Mock Safe Image-to-Video',

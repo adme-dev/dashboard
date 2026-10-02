@@ -1,3 +1,5 @@
+vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: vi.fn().mockResolvedValue({ id: 'user-1' }) }))
+vi.mock('~~/server/utils/video-generation/clientProfile', () => ({ loadVideoClientProfile: vi.fn().mockResolvedValue(null) }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent { params?: Record<string, string>; body?: any; query?: Record<string, any> }

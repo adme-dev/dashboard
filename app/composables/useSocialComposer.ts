@@ -18,6 +18,7 @@ export interface ComposerState {
   scheduledAt: string | null
   timezone: string
   creativeId: string | null
+  metadata: Record<string, unknown>
 }
 
 export function emptyComposerState(): ComposerState {
@@ -36,7 +37,8 @@ export function emptyComposerState(): ComposerState {
     scheduleMode: 'schedule',
     scheduledAt: null,
     timezone: 'Australia/Sydney',
-    creativeId: null
+    creativeId: null,
+    metadata: {}
   }
 }
 
@@ -54,6 +56,7 @@ export function resolveComposerContent(
 
 /** Pure: serialize composer state to the posts API body. */
 export function composerToBody(state: ComposerState, clientId: string): Record<string, unknown> {
+  const { creativeId: _previousCreativeId, ...metadata } = state.metadata ?? {}
   return {
     clientId,
     content: state.content,
@@ -67,7 +70,7 @@ export function composerToBody(state: ComposerState, clientId: string): Record<s
     tags: state.tags.length ? state.tags : null,
     scheduledAt: state.scheduleMode === 'now' ? null : state.scheduledAt,
     timezone: state.timezone,
-    metadata: state.creativeId ? { creativeId: state.creativeId } : {}
+    metadata: { ...metadata, ...(state.creativeId ? { creativeId: state.creativeId } : {}) }
   }
 }
 
@@ -150,7 +153,8 @@ export function useSocialComposer() {
       scheduleMode: post.scheduled_at ? 'schedule' : 'now',
       scheduledAt: post.scheduled_at,
       timezone: post.timezone ?? 'Australia/Sydney',
-      creativeId: typeof creativeId === 'string' ? creativeId : null
+      creativeId: typeof creativeId === 'string' ? creativeId : null,
+      metadata: { ...post.metadata }
     }
   }
 

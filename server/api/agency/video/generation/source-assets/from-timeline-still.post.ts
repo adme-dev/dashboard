@@ -1,3 +1,5 @@
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
@@ -14,7 +16,7 @@ const BodySchema = z.object({
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
 export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetFromStill', async ({ reservedId }) => {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (!videoFeatureEnabled('VIDEO_GENERATION_ENABLED', event)) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
 
@@ -29,6 +31,8 @@ export default defineEventHandler(event => withGodModeLedger(event, 'sourceAsset
   if (!canUseTimelineStillProject(user, project.project)) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
   }
+
+  if (project.project.clientId) await requireSocialClientAccess(event, project.project.clientId)
 
   const still = findTimelineStillSource(project.timeline.state, parsed.data.clipId)
   if (!still) throw createError({ statusCode: 404, statusMessage: 'Timeline still not found' })

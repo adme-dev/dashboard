@@ -263,16 +263,24 @@ watch(showProjectSettings, (open) => {
   settingsClientId.value = state.project?.clientId || 'none'
 })
 async function saveProjectSettings() {
-  if (!state.project?.id) { state.project = { ...(state.project as any), name: settingsName.value }; showProjectSettings.value = false; return }
+  const nextClient = settingsClientId.value === 'none' ? null : settingsClientId.value
+  const clientName = clientsForSettings.value?.find(c => c.id === nextClient)?.name
+  if (!state.project?.id) {
+    const prevClient = state.project?.clientId
+    state.project = { ...(state.project as any), name: settingsName.value.trim(), clientId: nextClient, clientName }
+    state.isDirty = true
+    showProjectSettings.value = false
+    if (nextClient && nextClient !== prevClient) offerDefaultBrandKit(nextClient)
+    return
+  }
   settingsSaving.value = true
   const prevClient = state.project.clientId
   try {
-    const nextClient = settingsClientId.value === 'none' ? null : settingsClientId.value
     const updated = await $fetch(`/api/agency/banner-studio/projects/${state.project.id}`, {
       method: 'PATCH',
       body: { name: settingsName.value.trim() || state.project.name, clientId: nextClient },
     }) as any
-    state.project = { ...state.project, name: updated?.name ?? settingsName.value, clientId: nextClient, clientName: clientsForSettings.value?.find(c => c.id === nextClient)?.name }
+    state.project = { ...state.project, name: updated?.name ?? settingsName.value, clientId: nextClient, clientName }
     showProjectSettings.value = false
     if (nextClient && nextClient !== prevClient) offerDefaultBrandKit(nextClient)
   } catch {
@@ -341,6 +349,7 @@ const REVIEW_STATUS_LABELS: Record<string, string> = {
 
 async function handleSave() {
   if (state.isSaving) return // ignore double-clicks while a save is in flight
+  state.isSaving = true
   try {
     // Auto-create project on first save when route is "new"
     if (!state.project?.id) {
@@ -349,6 +358,7 @@ async function handleSave() {
         headers: { 'Idempotency-Key': createProjectIdempotencyKey },
         body: {
           name: state.project?.name || 'Untitled Banner',
+          clientId: state.project?.clientId || null,
           canvasData: state.sets,
         },
       })
@@ -364,6 +374,8 @@ async function handleSave() {
   } catch (error) {
     if (!isAmbiguousApiFailure(error)) createProjectIdempotencyKey = crypto.randomUUID()
     toast.add({ title: 'Error', description: 'Failed to save project', color: 'error' })
+  } finally {
+    state.isSaving = false
   }
 }
 

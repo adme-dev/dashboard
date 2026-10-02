@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isVideoMediaUrl } from '~/utils/social/videoMedia'
 import type { DateValue } from '@internationalized/date'
 import { isoToScheduleParts, partsToIso } from '~/utils/socialSchedule'
 import { insertAtCaret } from '~/utils/insertAtCaret'
@@ -401,7 +402,8 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
       </div>
       <div v-if="state.mediaUrls.length" class="mt-2 flex flex-wrap gap-2">
         <div v-for="url in state.mediaUrls" :key="url" class="relative group/media">
-          <img :src="url" alt="" class="h-16 w-16 rounded-md object-cover border border-default">
+          <video v-if="isVideoMediaUrl(url)" :src="url" controls playsinline preload="metadata" class="h-24 w-44 rounded-md object-contain border border-default" aria-label="Attached video preview" />
+          <img v-else :src="url" alt="" class="h-16 w-16 rounded-md object-cover border border-default">
           <UButton
             icon="i-lucide-x" size="xs" color="neutral" variant="solid"
             class="absolute -top-1.5 -right-1.5 opacity-0 group-hover/media:opacity-100 transition-opacity rounded-full"

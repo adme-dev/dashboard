@@ -5,6 +5,7 @@ const queryOneMock = vi.fn()
 const queryRowsMock = vi.fn()
 const transactionMock = vi.fn()
 vi.mock('~~/server/utils/db', () => ({
+  queryOneFresh: (...args: unknown[]) => queryOneMock(...args),
   queryOne: (...a: any[]) => queryOneMock(...a),
   queryRows: (...a: any[]) => queryRowsMock(...a),
   transaction: (cb: any) => transactionMock(cb)

@@ -56,6 +56,12 @@ export async function reserveAndCreateVideoGenerationJob(
       return { ok: true, reused: true, job: mapVideoGenerationJobRow(existing.rows[0]) }
     }
 
+    const profileRow = await db.query('SELECT enabled, monthly_cap_cents, allowed_model_ids FROM client_video_generation_profiles WHERE client_id::text = $1', [input.tenantId])
+    const profile = profileRow.rows?.[0]
+    if (profile) {
+      policy = { enabled: profile.enabled, monthlyCapCents: Number(profile.monthly_cap_cents), allowedModelIds: profile.allowed_model_ids }
+      if (!profile.enabled || !profile.allowed_model_ids.includes(input.modelId)) return { ok: false, reason: 'tenant_generation_disabled' }
+    }
     const spendRow = await db.query(
       `SELECT COALESCE(SUM(COALESCE(actual_cost_cents, estimated_cost_cents)), 0) AS total
          FROM video_generation_jobs

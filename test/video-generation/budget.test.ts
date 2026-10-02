@@ -36,6 +36,7 @@ const enabledPolicy: VideoGenerationTenantPolicy = { enabled: true, monthlyCapCe
 function makeFakeTransaction(opts: {
   spendCents: number
   existingRow?: Record<string, unknown> | null
+  clientProfile?: Record<string, unknown>
 }) {
   const calls: string[] = []
   const insertCalls: any[][] = []
@@ -51,6 +52,7 @@ function makeFakeTransaction(opts: {
           calls.push('existing')
           return { rows: opts.existingRow ? [opts.existingRow] : [] }
         }
+        if (text.includes('FROM client_video_generation_profiles')) return { rows: opts.clientProfile ? [opts.clientProfile] : [] }
         if (text.includes('SUM')) {
           calls.push('spend')
           return { rows: [{ total: opts.spendCents }] }
@@ -216,4 +218,10 @@ describe('reserveAndCreateVideoGenerationJob', () => {
     expect(fake.insertCalls).toHaveLength(0)
     expect(fake.calls).not.toContain('spend')
   })
+})
+
+it('re-checks revoked production settings while holding the budget lock', async () => {
+  const fake = makeFakeTransaction({ spendCents: 0, clientProfile: { enabled: false, monthly_cap_cents: 100, allowed_model_ids: ['aigateway/seedance-i2v'] } })
+  expect(await reserveAndCreateVideoGenerationJob(baseInput(), enabledPolicy, { transaction: fake.transaction as any })).toMatchObject({ ok: false, reason: 'tenant_generation_disabled' })
+  expect(fake.insertCalls).toHaveLength(0)
 })

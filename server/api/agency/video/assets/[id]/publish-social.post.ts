@@ -1,3 +1,6 @@
+import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
+import { loadVideoClientProfile } from '~~/server/utils/video-generation/clientProfile'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { queryOne } from '~~/server/utils/db'
@@ -7,10 +10,11 @@ import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
 import { videoAssetPublicUrl } from '~~/server/utils/video/assetLinks'
 import { getAccessibleVideoAsset } from '~~/server/utils/video/assets'
 import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
+import { getAppUrl } from '~~/server/utils/appUrl'
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
 export default defineEventHandler(event => withGodModeLedger(event, 'assetPublishSocial', async () => {
-  if (process.env.VIDEO_STUDIO_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'Not found' })
+  if (!videoFeatureEnabled('VIDEO_STUDIO_ENABLED', event)) throw createError({ statusCode: 404, statusMessage: 'Not found' })
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
 
@@ -24,8 +28,9 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetPublis
   }
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'This video has no client; assign a client before publishing to social.' })
 
-  const config = useRuntimeConfig()
-  const baseUrl = (config.public as { appUrl?: string }).appUrl || process.env.APP_URL || ''
+  await requireSocialClientAccess(event, clientId)
+  const clientProfile = await loadVideoClientProfile(clientId)
+  const baseUrl = getAppUrl(event)
   const mediaUrl = await videoAssetPublicUrl(asset.id, baseUrl)
   const draft = await buildVideoStudioSocialDraft({
     clientId,
@@ -36,6 +41,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetPublis
     jobId: asset.sourceJobId,
     assetId: asset.id,
     prompt: asset.generationPrompt,
+    socialBrief: clientProfile?.socialBrief,
     modelId: asset.generationModelId,
     captionGenerator: async ({ topic, platform, tone }) => generateModelRoutedGroqInsight(
       [
@@ -67,9 +73,9 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetPublis
   })
 
   const post = await queryOne<{ id: string }>(
-    `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, tags, status, metadata)
-     VALUES ($1,$2,$3,$4,$5,$6,'draft',$7) RETURNING id`,
-    [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata)],
+    `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, tags, status, metadata, link_url)
+     VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8) RETURNING id`,
+    [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata), clientProfile?.brandWebsite || null],
   )
   if (!post) throw new Error('failed to create social post draft')
   return { postId: post.id, clientId }

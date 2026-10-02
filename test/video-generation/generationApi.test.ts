@@ -1,4 +1,6 @@
+vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: vi.fn().mockResolvedValue({ id: 'user-1' }) }))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 interface TestEvent {
   params?: Record<string, string>
@@ -369,4 +371,9 @@ describe('GET /agency/video/generation/jobs/:id', () => {
 
     expect(res.job.id).toBe('job-1')
   })
+})
+
+it('rejects a project creator whose current client access has been removed', async () => {
+  vi.mocked(requireSocialClientAccess).mockRejectedValueOnce(Object.assign(new Error('No access to this client'), { statusCode: 403 }))
+  await expect(createH({ body: allowedBody, context: {} } as any)).rejects.toMatchObject({ statusCode: 403 })
 })

@@ -4,7 +4,7 @@
 // DB boundary only.
 import { randomUUID } from 'crypto'
 import type { MediaProject, MediaTimeline, MediaRenderJob } from '~~/app/types'
-import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { queryOne, queryOneFresh, queryRows, transaction } from '~~/server/utils/db'
 import type { GodModeTransactionDb as Db } from '~~/server/utils/godMode/transactionCoordinator'
 import { computeDuration, type TimelineState } from '~~/server/utils/audio/timelineSchema'
 
@@ -124,7 +124,7 @@ export async function getProjectWithCurrentTimelineIn(
 export async function getProjectWithCurrentTimeline(
   id: string
 ): Promise<{ project: MediaProject; timeline: MediaTimeline | null } | null> {
-  const projectRow = await queryOne(`SELECT * FROM media_projects WHERE id = $1`, [id])
+  const projectRow = await queryOneFresh(`SELECT * FROM media_projects WHERE id = $1`, [id])
   if (!projectRow) return null
   const project = mapProjectRow(projectRow)
   let timeline: MediaTimeline | null = null

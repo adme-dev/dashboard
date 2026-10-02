@@ -1,7 +1,13 @@
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import type { VideoGenerationTenantPolicy } from '~~/server/utils/video-generation/types'
 
 export async function loadTenantVideoGenerationPolicy(tenantId: string): Promise<VideoGenerationTenantPolicy> {
+  const profile = await queryOneFresh<{ enabled: boolean; monthly_cap_cents: number | string; allowed_model_ids: string[] }>(
+    'SELECT enabled, monthly_cap_cents, allowed_model_ids FROM client_video_generation_profiles WHERE client_id::text = $1', [tenantId]
+  )
+  if (profile) return profile.enabled
+    ? { enabled: true, monthlyCapCents: Number(profile.monthly_cap_cents), allowedModelIds: profile.allowed_model_ids }
+    : { enabled: false, monthlyCapCents: 0, allowedModelIds: [] }
   if (process.env.VIDEO_GENERATION_TEST_TENANT_ENABLED === 'true') {
     const testTenantIds = (process.env.VIDEO_GENERATION_TEST_TENANT_ID ?? '')
       .split(',')
@@ -13,8 +19,7 @@ export async function loadTenantVideoGenerationPolicy(tenantId: string): Promise
     return {
       enabled: true,
       monthlyCapCents: Number(process.env.VIDEO_GENERATION_TEST_TENANT_CAP_CENTS ?? 1000),
-      // No allow-list -> every registered, selectable model is permitted under the
-      // configured test tenant (there is no DB-backed per-client policy yet).
+      // Explicit legacy test tenant fallback; saved production settings take precedence.
     }
   }
   return { enabled: false, monthlyCapCents: 0, allowedModelIds: [] }

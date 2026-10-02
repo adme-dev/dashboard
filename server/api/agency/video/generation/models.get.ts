@@ -1,3 +1,5 @@
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { listSelectableVideoGenerationModels } from '~~/server/utils/video-generation/modelRegistry'
@@ -8,7 +10,7 @@ import { selectableVideoModelOptions } from '~~/app/utils/video/modelPresentatio
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default defineEventHandler(async (event) => {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (!videoFeatureEnabled('VIDEO_GENERATION_ENABLED', event)) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
   const user = await requireWriteAccess(event)
@@ -27,10 +29,12 @@ export default defineEventHandler(async (event) => {
   if (!canUseVideoGenerationProject(user, project.project)) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
   }
+  if (project.project.clientId) await requireSocialClientAccess(event, project.project.clientId)
+
   const tenantId = project.project.clientId ?? 'agency'
   const policy = await loadTenantVideoGenerationPolicy(tenantId)
   return {
-    models: policy.enabled ? selectableVideoModelOptions(listSelectableVideoGenerationModels()) : [],
+    models: policy.enabled ? selectableVideoModelOptions(listSelectableVideoGenerationModels().filter(m => !policy.allowedModelIds || policy.allowedModelIds.includes(m.id))) : [],
     policy: { enabled: policy.enabled, monthlyCapCents: policy.monthlyCapCents },
   }
 })
