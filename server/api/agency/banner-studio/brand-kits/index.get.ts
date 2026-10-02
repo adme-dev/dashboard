@@ -1,4 +1,4 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { BRAND_KIT_SELECT, normaliseKitRow } from '~~/server/utils/banner/brandKits'
 
@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
     params.push(clientId)
     where = `WHERE bk.client_id = $1 OR bk.client_id IS NULL`
   }
-  const rows = await queryRows(`
+  const rows = await queryRowsFresh(`
     SELECT ${BRAND_KIT_SELECT}
     FROM brand_kits bk
     LEFT JOIN agency_clients ac ON ac.id = bk.client_id

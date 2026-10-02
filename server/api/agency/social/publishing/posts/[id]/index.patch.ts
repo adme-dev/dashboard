@@ -11,6 +11,7 @@ import {
   requireSocialPostClientAccess
 } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
+import { assertSocialCampaign } from '~~/server/utils/socialPublishing/campaigns'
 
 /**
  * PATCH /api/agency/social/publishing/posts/:id
@@ -61,6 +62,7 @@ export default defineEventHandler(async (event) => {
   const b = await readBody(event)
   assertNoControlledSocialPostFields(b)
   const existing = await requireSocialPostClientAccess(event, id)
+  if ('campaignId' in b) await assertSocialCampaign(existing.client_id, b.campaignId)
 
   if ('targets' in b) {
     const explicitTargets = await normalizePublishingTargets(existing.client_id, b.targets)

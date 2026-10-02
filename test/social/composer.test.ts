@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import { ref } from 'vue'
 import {
   composerToBody,
   emptyComposerState,
@@ -31,6 +32,23 @@ describe('composerToBody', () => {
     expect(composerToBody(state, 'client-1').metadata).toEqual({ ...source, creativeId: 'new' })
     state.creativeId = null
     expect(composerToBody(state, 'client-1').metadata).toEqual({ source: 'video_studio', projectId: 'project-1', assetId: 'asset-1', prompt: 'Approved motion' })
+  })
+  it('serializes an optional campaign and supports clearing it', () => {
+    const state = { ...emptyComposerState(), campaignId: 'campaign-1' }
+    expect(composerToBody(state, 'client-1').campaignId).toBe('campaign-1')
+    state.campaignId = null
+    expect(composerToBody(state, 'client-1').campaignId).toBeNull()
+  })
+  it('hydrates a saved campaign along with video provenance', async () => {
+    vi.stubGlobal('useState', (_key: string, init: () => unknown) => ref(init()))
+    const { useSocialComposer } = await import('../../app/composables/useSocialComposer')
+    const composer = useSocialComposer()
+    composer.loadFromPost({ id: 'post-1', campaign_id: 'campaign-1', metadata: { source: 'video_studio' } } as never)
+    expect(composer.state.value.campaignId).toBe('campaign-1')
+    expect(composer.toBody('client-1').metadata).toEqual({ source: 'video_studio' })
+    composer.reset()
+    expect(composer.state.value.campaignId).toBeNull()
+    vi.unstubAllGlobals()
   })
   it('omits overrides when customization is off and nulls empty arrays', () => {
     const s = { ...emptyComposerState(), content: 'hi', platforms: ['facebook' as const], platformOverrides: { x: {} } }

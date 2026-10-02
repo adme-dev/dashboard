@@ -4,6 +4,7 @@ export type ScheduleMode = 'now' | 'schedule' | 'queue'
 
 export interface ComposerState {
   id: string | null
+  campaignId: string | null
   content: string
   mediaUrls: string[]
   linkUrl: string
@@ -24,6 +25,7 @@ export interface ComposerState {
 export function emptyComposerState(): ComposerState {
   return {
     id: null,
+    campaignId: null,
     content: '',
     mediaUrls: [],
     linkUrl: '',
@@ -59,6 +61,7 @@ export function composerToBody(state: ComposerState, clientId: string): Record<s
   const { creativeId: _previousCreativeId, ...metadata } = state.metadata ?? {}
   return {
     clientId,
+    campaignId: state.campaignId,
     content: state.content,
     mediaUrls: state.mediaUrls.length ? state.mediaUrls : null,
     linkUrl: state.linkUrl || null,
@@ -140,6 +143,7 @@ export function useSocialComposer() {
     const creativeId = post.metadata?.creativeId
     state.value = {
       id: post.id,
+      campaignId: post.campaign_id ?? null,
       content: post.content ?? '',
       mediaUrls: post.media_urls ?? [],
       linkUrl: post.link_url ?? '',

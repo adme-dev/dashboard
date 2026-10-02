@@ -6,6 +6,7 @@ import { loadVideoClientProfile } from '~~/server/utils/video-generation/clientP
 import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
 import { getTenantVideoGenerationSpendCents } from '~~/server/utils/video-generation/policy'
 import { roleHasPermission } from '~~/server/utils/permissions'
+import { queryRowsFresh } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -17,6 +18,7 @@ export default defineEventHandler(async (event) => {
   const clientId = project.project.clientId
   if (clientId) await requireSocialClientAccess(event, clientId)
   return { clientId, profile: clientId ? await loadVideoClientProfile(clientId) : null,
+    brandKits: clientId ? await queryRowsFresh<{ id: string, name: string }>('SELECT id, name FROM brand_kits WHERE client_id::text = $1 ORDER BY name, id', [clientId]) : [],
     spentCents: clientId ? await getTenantVideoGenerationSpendCents(clientId) : 0,
     canManage: roleHasPermission(user.role, 'MANAGEMENT') || !!user.permissionGroups?.includes('MANAGEMENT'),
     harnessEnabled: videoFeatureEnabled('VIDEO_ASSET_HARNESS_ENABLED', event),

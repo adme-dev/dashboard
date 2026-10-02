@@ -1,17 +1,23 @@
 <script setup lang="ts">
-import type { VideoClientProfile } from '~~/server/utils/video-generation/clientProfile'
+import type { VideoClientProfile, VideoClientProfileView } from '~~/server/utils/video-generation/clientProfile'
 
-const props = defineProps<{ projectId: string, clientId?: string | null, profile?: VideoClientProfile | null, canManage?: boolean, spentCents?: number }>()
+const props = defineProps<{ projectId: string, clientId?: string | null, profile?: VideoClientProfileView | null, brandKits?: { id: string, name: string }[], canManage?: boolean, spentCents?: number }>()
 const emit = defineEmits<{ saved: [], preset: [prompt: string] }>()
 const open = ref(false)
 const saving = ref(false)
 const toast = useToast()
-const defaultSettings = (): VideoClientProfile => ({ enabled: false, monthlyCapCents: 2000, allowedModelIds: ['aigateway/seedance-25-i2v'], brandName: '', brandWebsite: '', styleGuide: '', templatePrompt: '', socialBrief: '' })
+const defaultSettings = (): VideoClientProfile => ({ enabled: false, monthlyCapCents: 2000, allowedModelIds: ['aigateway/seedance-25-i2v'], brandName: '', brandWebsite: '', brandKitId: null, styleGuide: '', templatePrompt: '', socialBrief: '' })
 const settings = ref<VideoClientProfile>(defaultSettings())
 watch(() => [props.clientId, props.projectId, props.profile] as const, () => {
   settings.value = props.profile ? JSON.parse(JSON.stringify(props.profile)) : defaultSettings()
+  if (props.profile) settings.value.styleGuide = props.profile.localStyleGuide
   open.value = false
 }, { immediate: true })
+const guideOptions = computed(() => [{ label: 'Use local video guide', value: '__local__' }, ...(props.brandKits ?? []).map(kit => ({ label: kit.name, value: kit.id }))])
+const guideSelection = computed({
+  get: () => settings.value.brandKitId ?? '__local__',
+  set: (value: string) => { settings.value.brandKitId = value === '__local__' ? null : value }
+})
 const monthlyBudget = computed({ get: () => settings.value.monthlyCapCents / 100, set: (v: number) => {
   settings.value.monthlyCapCents = Math.round(Number(v) * 100)
 } })
@@ -52,6 +58,9 @@ async function save() {
       />
     </div>
     <template v-if="profile">
+      <p v-if="profile.guideKitName" class="text-xs text-muted">
+        Shared guide: {{ profile.guideKitName }}. Brand Kit edits appear when you reload this project.
+      </p>
       <p class="text-xs text-muted">
         Generation {{ profile.enabled ? 'enabled' : 'disabled' }} · ${{ ((spentCents || 0) / 100).toFixed(2) }} of ${{ (profile.monthlyCapCents / 100).toFixed(2) }} monthly estimate budget (USD)
       </p>
@@ -77,7 +86,23 @@ async function save() {
       <UFormField label="Website">
         <UInput v-model="settings.brandWebsite" placeholder="https://example.com" class="w-full" />
       </UFormField>
-      <UFormField label="Style guide" help="Brand colours, logo rules, composition and review checks.">
+      <UFormField label="Shared brand guide" help="Link this client's Brand Kit to reuse its guide in Banner and Video Studio.">
+        <USelectMenu
+          v-model="guideSelection"
+          :items="guideOptions"
+          value-key="value"
+          label-key="label"
+          class="w-full"
+        />
+      </UFormField>
+      <UButton
+        v-if="settings.brandKitId"
+        to="/agency/banner-studio/brand-kits"
+        label="Edit shared guide in Brand Kits"
+        size="xs"
+        variant="ghost"
+      />
+      <UFormField v-else label="Style guide" help="Brand colours, logo rules, composition and review checks. Saved as this video's client fallback.">
         <UTextarea v-model="settings.styleGuide" :rows="6" class="w-full" />
       </UFormField>
       <UFormField label="Default motion prompt" help="Describe movement; keep permanent titles and logos in the editor.">

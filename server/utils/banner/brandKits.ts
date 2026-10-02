@@ -4,7 +4,7 @@
  * and the prompt block that feeds brand context into the AI endpoints.
  */
 import { z } from 'zod'
-import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { queryOneFresh, queryRowsFresh, transaction } from '~~/server/utils/db'
 
 export const COLOR_ROLES = ['primary', 'secondary', 'accent', 'background', 'text', 'extra'] as const
 export const FONT_ROLES = ['heading', 'body', 'extra'] as const
@@ -72,7 +72,7 @@ export function normaliseKitRow<T extends { colors: any, fonts: any, logos: any 
 }
 
 export async function getBrandKit(id: string) {
-  const row = await queryOne(`
+  const row = await queryOneFresh(`
     SELECT ${BRAND_KIT_SELECT}
     FROM brand_kits bk
     LEFT JOIN agency_clients ac ON ac.id = bk.client_id
@@ -83,7 +83,7 @@ export async function getBrandKit(id: string) {
 
 /** The kit a project should inherit: the client's default, else the agency-wide default. */
 export async function getDefaultBrandKitForClient(clientId: string | null | undefined) {
-  const rows = await queryRows(`
+  const rows = await queryRowsFresh(`
     SELECT ${BRAND_KIT_SELECT}
     FROM brand_kits bk
     LEFT JOIN agency_clients ac ON ac.id = bk.client_id
@@ -106,15 +106,17 @@ export async function snapshotBrandKitVersion(db: { query: (sql: string, params?
 }
 
 /** Enforce one default per client scope. */
-export async function setDefaultBrandKit(kitId: string, clientId: string | null) {
-  await transaction(async (db) => {
+export async function setDefaultBrandKit(kitId: string, clientId: string | null, existingDb?: { query: (sql: string, params: unknown[]) => Promise<unknown> }) {
+  const update = async (db: { query: (sql: string, params: unknown[]) => Promise<unknown> }) => {
     if (clientId) {
       await db.query(`UPDATE brand_kits SET is_default = false WHERE client_id = $1 AND id <> $2 AND is_default`, [clientId, kitId])
     } else {
       await db.query(`UPDATE brand_kits SET is_default = false WHERE client_id IS NULL AND id <> $1 AND is_default`, [kitId])
     }
     await db.query(`UPDATE brand_kits SET is_default = true, updated_at = NOW() WHERE id = $1`, [kitId])
-  })
+  }
+  if (existingDb) await update(existingDb)
+  else await transaction(update)
 }
 
 /**
@@ -146,7 +148,7 @@ export async function brandContextForRequest(opts: { brandKitId?: string | null,
     }
     let clientId = opts.clientId || null
     if (!clientId && opts.projectId) {
-      const p = await queryOne(`SELECT client_id FROM banner_projects WHERE id = $1`, [opts.projectId]) as any
+      const p = await queryOneFresh(`SELECT client_id FROM banner_projects WHERE id = $1`, [opts.projectId]) as any
       clientId = p?.client_id || null
     }
     return brandContextBlock(await getDefaultBrandKitForClient(clientId))
