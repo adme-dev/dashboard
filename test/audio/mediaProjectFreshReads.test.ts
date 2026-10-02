@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
+
 const rows = vi.hoisted(() => ({ current: { id: 'timeline-1', state: {} as Record<string, unknown> } }))
 vi.mock('~~/server/utils/db', () => ({
   queryOneFresh: vi.fn(async (sql: string) => sql.includes('media_projects')
@@ -9,7 +11,6 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: vi.fn(),
   transaction: vi.fn()
 }))
-import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 describe('saved media project readback', () => {
   beforeEach(() => {
     rows.current = { id: 'timeline-1', state: {} }
