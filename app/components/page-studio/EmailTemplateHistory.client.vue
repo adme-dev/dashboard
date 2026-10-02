@@ -115,7 +115,7 @@ void loadHistory()
           This is the {{ audience === 'team' ? 'team notification' : 'customer reply' }} revision log. It includes saves to the website default and other form templates in this audience. Only this template will be restored.
         </p>
         <div class="grid min-w-0 grid-cols-1 gap-5 @2xl:grid-cols-[200px_minmax(0,1fr)]">
-          <nav aria-label="Saved revisions" class="space-y-2">
+          <nav aria-label="Saved revisions" class="max-h-48 space-y-2 overflow-y-auto @2xl:max-h-none @2xl:overflow-visible">
             <UAlert v-if="listError" color="error" :title="listError">
               <template #actions>
                 <UButton
@@ -226,8 +226,9 @@ void loadHistory()
         <UAlert
           v-if="canApply && historyCanEdit"
           color="warning"
+          variant="soft"
           title="Replaces your unsaved template edits"
-          description="Use this version replaces this template in the editor. Save template draft to keep it as a new revision. Pending removals of templates for removed forms are kept. Nothing is sent or published."
+          description="Using this version replaces this template in the editor. Save it as a new revision when ready. Nothing is sent or published."
         />
         <p v-else class="text-sm text-muted">
           Browsing is available. Applying a revision requires current edit access and a saved draft ready to edit.
