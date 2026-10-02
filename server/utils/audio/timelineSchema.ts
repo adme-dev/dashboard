@@ -108,6 +108,14 @@ export const DuckingRuleSchema = z.object({
   threshold_db: z.number().default(-30)
 })
 
+export const CampaignPromptSchema = z.object({
+  clientId: z.string().uuid(),
+  brief: z.string().trim().min(1).max(600),
+  guideRules: z.string().max(600),
+  prompt: z.string().trim().min(1).max(2000)
+})
+export type CampaignPrompt = z.infer<typeof CampaignPromptSchema>
+
 export const TimelineStateSchema = z.object({
   schema_version: z.union([z.literal(1), z.literal(2)]).default(1),
   media_type: z.enum(['audio', 'av']).default('audio'),
@@ -117,7 +125,8 @@ export const TimelineStateSchema = z.object({
   height: z.number().int().positive().default(1920),
   duration_sec: z.number().default(0), // computed on save via computeDuration
   tracks: z.array(TrackSchema).default([]),
-  ducking: z.array(DuckingRuleSchema).default([])
+  ducking: z.array(DuckingRuleSchema).default([]),
+  campaign_prompt: CampaignPromptSchema.optional()
 })
 
 export type AudioClip = z.infer<typeof AudioClipSchema>

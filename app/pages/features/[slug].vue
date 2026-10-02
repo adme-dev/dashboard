@@ -781,7 +781,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Client Presets and Controlled Generation',
-        content: 'Start a video project for the selected client from Planner. Link a client-owned Brand Kit to share its style guide with Banner Studio, or retain a local video guide. Save a campaign-specific motion prompt and social caption brief, with an explicit monthly generation budget. Generate an approved source image with Seedance 2.5, review the clip, then hand it to Compose as a draft and select its client campaign. Shared guide edits appear when you reload; motion prompts remain separately reviewed.'
+        content: 'Start a video project for the selected client from Planner. Link a client-owned Brand Kit to share its style guide with Banner Studio, or retain a local video guide. Prepare an editable prompt from a project-specific campaign brief, the client motion preset and your selected guide rules. Save and apply the reviewed prompt without a generation charge; your permanent client preset stays separate. Choose an approved source image, model and duration within the client monthly budget, review the clip, then hand it to Compose as a draft and select its client campaign. Shared guide edits appear when you reload.'
       },
       {
         title: 'Render Once, Ship Everywhere',

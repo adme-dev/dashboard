@@ -32,7 +32,7 @@ import type { VideoRenderFormatId } from '~~/app/utils/video/renderFormats'
 import type { VideoStudioSelectedAssetActivity } from '~~/app/components/media/VideoStudioSelectedAssetPanel.vue'
 import type { AudioAsset, MediaRenderJob } from '~~/app/types'
 import { videoStudioAssetImageSource, type VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
-import type { VideoClip } from '~~/server/utils/audio/timelineSchema'
+import type { CampaignPrompt, VideoClip } from '~~/server/utils/audio/timelineSchema'
 import type { VideoAsset } from '~~/server/utils/video/assets'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
@@ -156,6 +156,13 @@ const videoGenerationStatusDetail = computed(() => {
 })
 const generatePickerOpen = ref(false)
 const generationDraftPrompt = ref<string | null>(null)
+watch(() => editor.project.value?.clientId, () => {
+  generationDraftPrompt.value = null
+}, { flush: 'sync' })
+async function saveCampaignPrompt(draft: CampaignPrompt) {
+  editor.setCampaignPromptAction(draft)
+  await editor.saveNow()
+}
 const genJobs = useVideoGenerationJobs(projectId.value)
 const videoAssets = ref<VideoAsset[]>([])
 const selectedClipId = ref<string | null>(null)
@@ -1537,6 +1544,17 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   @saved="refreshVideoClient"
                   @preset="generationDraftPrompt = $event"
                 />
+                <MediaVideoStudioCampaignPrompt
+                  v-if="editor.project.value?.clientId && videoClientData?.clientId === editor.project.value.clientId && videoClientData?.profile"
+                  :key="`${projectId}:${editor.project.value.clientId}`"
+                  :client-id="editor.project.value.clientId"
+                  :brand-name="videoClientData.profile.brandName"
+                  :template-prompt="videoClientData.profile.templatePrompt"
+                  :style-guide="videoClientData.profile.styleGuide"
+                  :saved-draft="editor.timeline.value?.campaign_prompt"
+                  :save-draft="saveCampaignPrompt"
+                  @apply="generationDraftPrompt = $event"
+                />
                   <UAlert v-if="videoClientError" color="error" :title="videoClientError" />
                   <UButton v-if="videoClientError" label="Retry client settings" size="xs" @click="refreshVideoClient" />
                   <div v-if="videoGenerationEnabled" class="space-y-2">
@@ -1546,6 +1564,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                       <UBadge v-if="activeGenerationJobCount" :label="`${activeGenerationJobCount} active`" size="xs" variant="subtle" color="primary" class="ml-auto" />
                     </div>
                     <MediaGenerateComposer
+                    :key="`${projectId}:${editor.project.value?.clientId}:inline`"
                     active
                     :project-id="projectId"
                     :timeline-stills="timelineStills"
@@ -1735,6 +1754,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
   <!-- AI video generation picker -->
   <MediaGeneratePicker
     v-if="videoGenerationEnabled"
+    :key="`${projectId}:${editor.project.value?.clientId}:modal`"
     v-model:open="generatePickerOpen"
     :project-id="projectId"
     :timeline-stills="timelineStills"

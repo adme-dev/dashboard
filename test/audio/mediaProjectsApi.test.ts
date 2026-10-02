@@ -59,6 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockRequireAuth.mockResolvedValue({ id: 'u1' })
   mockRequireWriteAccess.mockResolvedValue({ id: 'u1' })
+  stubDb.query.mockResolvedValue({ rows: [{ client_id: null, current_timeline_id: 't1', status: 'draft' }] })
 })
 
 describe('GET /agency/audio/projects', () => {
@@ -125,19 +126,19 @@ describe('PUT /agency/audio/projects/:id/timeline (autosave)', () => {
       .rejects.toMatchObject({ statusCode: 404 })
   })
   it('409s when the project is not in draft status', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1', status: 'approved', currentTimelineId: 't1' }, timeline: { id: 't1' } })
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1', clientId: null, status: 'approved', currentTimelineId: 't1' }, timeline: { id: 't1' } })
     await expect(putH({ params: { id: 'p1' }, body: { state: goodState } } as any))
       .rejects.toMatchObject({ statusCode: 409 })
   })
   it('400s on an invalid timeline', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1', status: 'draft', currentTimelineId: 't1' }, timeline: { id: 't1' } })
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1', clientId: null, status: 'draft', currentTimelineId: 't1' }, timeline: { id: 't1' } })
     const bad = { ...goodState, ducking: [{ id: 'd', source_track_id: 't', target_track_id: 'missing', amount_db: -6 }] }
     await expect(putH({ params: { id: 'p1' }, body: { state: bad } } as any))
       .rejects.toMatchObject({ statusCode: 400 })
     expect(mockSaveDraft).not.toHaveBeenCalled()
   })
   it('saves the draft timeline on a valid body', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1', status: 'draft', currentTimelineId: 't1' }, timeline: { id: 't1' } })
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1', clientId: null, status: 'draft', currentTimelineId: 't1' }, timeline: { id: 't1' } })
     mockSaveDraft.mockResolvedValue({ id: 't1', version: 1, state: goodState })
     const res = await putH({ params: { id: 'p1' }, body: { state: goodState } } as any)
     expect(mockSaveDraft).toHaveBeenCalled()
