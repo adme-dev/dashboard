@@ -16,8 +16,6 @@ const emit = defineEmits<{ (e: 'created', campaignId: string): void }>()
 
 const api = useQrCodes()
 const toast = useToast()
-const { data: clientsData } = await useFetch<{ id: string, name: string }[]>('/api/agency/qr-codes/clients') // bare array (see memory)
-const clients = computed(() => (clientsData.value ?? []).map(c => ({ label: c.name, value: c.id })))
 
 const form = reactive({
   clientId: props.clientId ?? '',
@@ -37,6 +35,7 @@ const form = reactive({
 })
 const folders = ref<QrFolder[]>([])
 const creating = ref(false)
+const clientCreating = ref(false)
 
 watch(open, (v) => {
   if (!v) return
@@ -54,7 +53,7 @@ const urlError = computed(() => {
   const d = validateDestinationUrl(form.destinationUrl)
   return isDestinationInvalid(d) ? d.reason : ''
 })
-const canCreate = computed(() => !!form.clientId && !!form.campaignName.trim() && !!form.baseName.trim() && variants.value.length > 0 && !!form.destinationUrl && !urlError.value)
+const canCreate = computed(() => !clientCreating.value && !!form.clientId && !!form.campaignName.trim() && !!form.baseName.trim() && variants.value.length > 0 && !!form.destinationUrl && !urlError.value)
 
 const folderItems = computed(() => [{ label: 'No folder', value: 'none' }, ...folders.value.map(f => ({ label: f.name, value: f.id }))])
 const folderModel = computed({
@@ -102,27 +101,22 @@ async function create() {
     :ui="{ content: 'max-w-2xl' }"
   >
     <template #body>
-      <div class="space-y-6">
-        <div class="grid grid-cols-2 gap-4">
+      <div class="@container space-y-6">
+        <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
           <UFormField label="Client" required>
-            <USelectMenu
-              v-model="form.clientId"
-              :items="clients"
-              value-key="value"
-              :search-input="{ placeholder: 'Find a client…' }"
-              class="w-full"
-            />
+            <QrClientSelect v-model="form.clientId" @creating="clientCreating = $event" @update:model-value="form.folderId = null" />
           </UFormField>
           <UFormField label="Folder">
             <USelectMenu
               v-model="folderModel"
               :items="folderItems"
               value-key="value"
+              :disabled="!form.clientId || clientCreating"
               class="w-full"
             />
           </UFormField>
         </div>
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
           <UFormField label="Campaign" required help="Groups the codes for roll-up analytics and a single ZIP download.">
             <UInput v-model="form.campaignName" placeholder="Spring catalogue 2026" class="w-full" />
           </UFormField>
@@ -153,7 +147,7 @@ async function create() {
               class="w-full"
             />
           </UFormField>
-          <div v-else class="grid grid-cols-2 gap-4">
+          <div v-else class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
             <UFormField label="How many">
               <UInput
                 v-model.number="form.count"
@@ -184,7 +178,7 @@ async function create() {
           <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
             Shared settings
           </h4>
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
             <UFormField label="Placement (utm_medium)">
               <USelectMenu
                 v-model="form.utmMedium"
@@ -197,7 +191,7 @@ async function create() {
               <USwitch v-model="form.utmEnabled" :label="form.utmEnabled ? 'On' : 'Off'" />
             </UFormField>
           </div>
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
             <UFormField label="Frame">
               <USelectMenu
                 v-model="form.frame.style"

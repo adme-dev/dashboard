@@ -225,11 +225,16 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/pageStudio/cmsCommitAuthority.ts\tif (input.mutation === \'image-billing\' && admitted.collectionPolicy.native_user_role !== \'admin\') throw denied()\tidentity_tenant_hard_boundary'
     )
-    expect(inventory.rows).toHaveLength(1595)
+    // QR inline creation mirrors the existing client-create role check in the
+    // UI. The server mutation's audit, idempotency and role checks are retained.
+    expect(inventory.rows).toContain(
+      'app/components/qr/QrClientSelect.vue\tconst canCreateClient = computed(() => canWrite.value && hasRole([\'owner\', \'admin\', \'sales\']))\tapplication_governance_bypass'
+    )
+    expect(inventory.rows).toHaveLength(1596)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 123,
       provider_infrastructure_availability: 228,
-      application_governance_bypass: 1620,
+      application_governance_bypass: 1621,
       ordinary_user_behavior: 190,
       unrelated_configuration: 433
     })
@@ -246,7 +251,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('f83ceb1804c27807f604b59734f141c05ebbec77d7c44217ba0a129f2ff317f4')
+    expect(inventory.digest).toBe('706fc0cd2bb3045e8c30303c4809b61ba21c2da37247e3b885e2816f2be603ae')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

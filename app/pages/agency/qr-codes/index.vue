@@ -6,7 +6,7 @@ useHead({ title: 'QR Codes' })
 
 const { canAccessMediaBuying } = useAuth()
 const ALL = 'all' // USelectMenu sentinel — never an empty string
-const { data: clientsData } = await useFetch<{ id: string, name: string }[]>('/api/agency/qr-codes/clients')
+const { data: clientsData } = await useFetch<{ id: string, name: string }[]>('/api/agency/qr-codes/clients', { key: 'qr-clients' })
 const clientItems = computed(() => [
   { label: 'All clients', value: ALL, icon: 'i-lucide-layers' },
   ...(clientsData.value ?? []).map(c => ({ label: c.name, value: c.id }))
