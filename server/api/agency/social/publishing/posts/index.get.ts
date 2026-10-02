@@ -1,5 +1,5 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
@@ -23,5 +23,5 @@ export default defineEventHandler(async (event) => {
   params.push(limit)
   sql += ` ORDER BY COALESCE(scheduled_at, created_at) DESC LIMIT $${params.length}`
 
-  return await queryRows(sql, params)
+  return await queryRowsFresh(sql, params)
 })
