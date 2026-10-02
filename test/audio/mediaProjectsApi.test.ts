@@ -112,7 +112,7 @@ describe('GET /agency/audio/projects/:id', () => {
     await expect(getH({ params: { id: 'nope' } } as any)).rejects.toMatchObject({ statusCode: 404 })
   })
   it('returns the project + current timeline', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline: { id: 't1' } })
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1', clientId: null }, timeline: { id: 't1' } })
     const res = await getH({ params: { id: 'p1' } } as any)
     expect(res.project.id).toBe('p1')
     expect(res.timeline.id).toBe('t1')
