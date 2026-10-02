@@ -2,6 +2,8 @@
 import { computed, onScopeDispose, ref } from 'vue'
 import type { CampaignPrompt } from '~~/server/utils/audio/timelineSchema'
 import { prepareCampaignVideoPrompt } from '~~/app/utils/video/campaignPrompt'
+import { useComposerCampaigns } from '~~/app/composables/useComposerCampaigns'
+import type { SocialCampaignWithCounts } from '~~/app/types'
 
 const props = defineProps<{
   clientId: string
@@ -16,6 +18,22 @@ const open = ref(false)
 const brief = ref('')
 const guideRules = ref('')
 const prompt = ref('')
+const socialBrief = ref('')
+const campaignId = ref<string | null>(null)
+const { campaigns, loading: campaignsLoading, failed: campaignsFailed, reload: reloadCampaigns } = useComposerCampaigns(
+  () => props.clientId, campaignId,
+  client => $fetch<SocialCampaignWithCounts[]>('/api/agency/social/publishing/campaigns', { query: { clientId: client } })
+)
+const campaignUnavailable = computed(() => Boolean(campaignId.value && !campaignsLoading.value && !campaignsFailed.value && !campaigns.value.some(c => c.id === campaignId.value)))
+const campaignItems = computed(() => [
+  { label: 'No campaign', value: '__none__' },
+  ...(campaignUnavailable.value ? [{ label: 'Unavailable campaign', value: campaignId.value! }] : []),
+  ...campaigns.value.filter(c => c.status !== 'archived' || c.id === campaignId.value).map(c => ({ label: c.name, value: c.id }))
+])
+const campaignSelection = computed({
+  get: () => campaignId.value ?? '__none__',
+  set: (value: string) => { campaignId.value = value === '__none__' ? null : value }
+})
 const error = ref<string | null>(null)
 const saving = ref(false)
 const toast = useToast()
@@ -28,6 +46,9 @@ function edit() {
   brief.value = saved.value?.brief ?? ''
   guideRules.value = saved.value?.guideRules ?? ''
   prompt.value = saved.value?.prompt ?? ''
+  socialBrief.value = saved.value?.socialBrief ?? ''
+  campaignId.value = saved.value?.campaignId ?? null
+  void reloadCampaigns()
   error.value = null
   open.value = true
 }
@@ -45,7 +66,7 @@ async function save() {
   saving.value = true
   error.value = null
   try {
-    await props.saveDraft({ clientId, brief: brief.value.trim(), guideRules: guideRules.value, prompt: prompt.value.trim() })
+    await props.saveDraft({ clientId, brief: brief.value.trim(), guideRules: guideRules.value, prompt: prompt.value.trim(), campaignId: campaignId.value, socialBrief: socialBrief.value.trim() })
     if (!active || props.clientId !== clientId) return
     emit('apply', prompt.value.trim())
     open.value = false
@@ -86,6 +107,25 @@ async function save() {
               class="w-full"
             />
           </UFormField>
+          <UFormField label="Social campaign" help="Optional. New social drafts from this project will join this client's Planner campaign." :error="campaignUnavailable ? 'Choose an available campaign or No campaign.' : undefined">
+            <USelectMenu
+              v-model="campaignSelection"
+              :items="campaignItems"
+              :loading="campaignsLoading"
+              :disabled="saving || campaignsLoading || campaignsFailed"
+              value-key="value"
+              label-key="label"
+              class="w-full"
+            />
+          </UFormField>
+          <UButton
+            v-if="campaignsFailed"
+            label="Retry campaigns"
+            size="xs"
+            color="neutral"
+            variant="soft"
+            @click="reloadCampaigns"
+          />
           <details v-if="styleGuide" class="text-sm">
             <summary class="cursor-pointer text-muted">
               Read the client style guide
@@ -119,6 +159,15 @@ async function save() {
               class="w-full"
             />
           </UFormField>
+          <UFormField label="Social caption brief" help="Approved message, audience and CTA for the social post. Leave blank to use the client default; motion instructions are kept separate.">
+            <UTextarea
+              v-model="socialBrief"
+              :rows="3"
+              :maxlength="1200"
+              :disabled="saving"
+              class="w-full"
+            />
+          </UFormField>
           <UAlert v-if="error" color="error" :title="error" />
         </div>
       </template>
@@ -133,7 +182,7 @@ async function save() {
         <UButton
           label="Save and apply prompt"
           :loading="saving"
-          :disabled="!brief.trim() || !prompt.trim() || prompt.length > 2000"
+          :disabled="!brief.trim() || !prompt.trim() || prompt.length > 2000 || campaignUnavailable || campaignsLoading"
           @click="save"
         />
       </template>

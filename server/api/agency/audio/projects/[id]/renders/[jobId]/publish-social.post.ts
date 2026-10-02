@@ -14,6 +14,8 @@ import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
+import { videoSocialCampaignContext } from '~~/server/utils/video/socialCampaignContext'
+import { assertSocialCampaign } from '~~/server/utils/socialPublishing/campaigns'
 
 const BodySchema = z.object({ format: z.string().min(1) })
 
@@ -37,6 +39,8 @@ export default defineEventHandler(event => withGodModeLedger(event, 'renderPubli
   const job = await getRenderJob(jobId)
   if (!job || job.projectId !== id) throw createError({ statusCode: 404, statusMessage: 'Render job not found' })
   if (!job.variants?.[format]) throw createError({ statusCode: 404, statusMessage: 'Render variant not available' })
+  const context = videoSocialCampaignContext(clientId, project.timeline?.state)
+  await assertSocialCampaign(clientId, context.campaignId)
 
   const baseUrl = getAppUrl(event)
   const mediaUrl = await renderPublicUrl(jobId, format, baseUrl)
@@ -48,12 +52,14 @@ export default defineEventHandler(event => withGodModeLedger(event, 'renderPubli
     projectId: id,
     jobId,
     prompt: project.project.title,
-    socialBrief: clientProfile?.socialBrief,
+    socialBrief: context.socialBrief || clientProfile?.socialBrief,
+    campaignId: context.campaignId,
     captionGenerator: async ({ topic, platform, tone }) => generateModelRoutedGroqInsight(
       [
         `Write a ${tone} organic social media post for ${platform}.`,
         `Topic / brief: ${topic}`,
         'Return ONLY the post copy.',
+        'Use approved facts and the stated CTA. Omit production instructions; do not invent claims, prices or offers.',
       ].join('\n'),
       {
         defaultModelId: GROQ_MODELS.LLAMA_70B,
@@ -77,9 +83,9 @@ export default defineEventHandler(event => withGodModeLedger(event, 'renderPubli
   })
 
   const row = await queryOne(
-    `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, tags, status, metadata, link_url)
-     VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8) RETURNING id`,
-    [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata), clientProfile?.brandWebsite || null]
+    `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, tags, status, metadata, link_url, campaign_id)
+     VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8,$9) RETURNING id`,
+    [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata), clientProfile?.brandWebsite || null, context.campaignId]
   )
   return { postId: (row as { id: string }).id, clientId }
 }))

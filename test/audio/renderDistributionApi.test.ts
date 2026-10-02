@@ -1,5 +1,6 @@
 vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: vi.fn().mockResolvedValue({ id: 'user-1' }) }))
 vi.mock('~~/server/utils/video-generation/clientProfile', () => ({ loadVideoClientProfile: vi.fn().mockResolvedValue(null) }))
+vi.mock('~~/server/utils/socialPublishing/campaigns', () => ({ assertSocialCampaign: vi.fn().mockResolvedValue(undefined) }))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent { params?: Record<string, string>; body?: any; context?: any }
@@ -194,6 +195,7 @@ describe('render distribution endpoints', () => {
         ['video-studio', 'reels_9x16'],
         JSON.stringify({ source: 'video_studio', projectId: 'project-1', jobId: 'job-1', format: 'reels_9x16' }),
         null,
+        null,
       ]
     )
     expect(res).toEqual({ postId: 'post-1', clientId: 'client-1' })
@@ -206,6 +208,17 @@ describe('render distribution endpoints', () => {
     await expect(publishSocialHandler(event())).rejects.toMatchObject({ statusCode: 400 })
     expect(mockCreateVideoReview).not.toHaveBeenCalled()
     expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('assigns the saved campaign and caption brief to a rendered video draft', async () => {
+    const clientId = 'f7c142a6-a63f-4f75-90aa-700db68c1c76'
+    const campaignId = '01a60d22-ff86-4501-a0a7-521bc12e4cc9'
+    mockGetProjectWithCurrentTimeline.mockResolvedValue({ project: { ...project.project, clientId }, timeline: { state: { campaign_prompt: { clientId, campaignId, brief: 'Product introduction', guideRules: '', prompt: 'Animate artwork.', socialBrief: 'Book a DriveAgent demo.' } } } })
+    mockBuildVideoStudioSocialDraft.mockResolvedValue({ content: 'Book a demo', mediaUrls: [], platforms: ['facebook'], tags: [], metadata: {} })
+    mockQueryOne.mockResolvedValue({ id: 'post-1' })
+    await publishSocialHandler(event())
+    expect(mockBuildVideoStudioSocialDraft).toHaveBeenCalledWith(expect.objectContaining({ campaignId, socialBrief: 'Book a DriveAgent demo.' }))
+    expect(mockQueryOne.mock.calls.at(-1)?.[1].at(-1)).toBe(campaignId)
   })
 
   it('rejects distribution when the requested render variant is missing', async () => {
