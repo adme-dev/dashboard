@@ -37,6 +37,16 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Current checkpoint / next action
 
+**2 October — saved template history:** implemented, independently reviewed and
+verified in the Fantasy Limo demo on desktop and mobile. Customers can browse
+saved revisions, preview one, and explicitly restore it as an unsaved draft.
+Saving preserves other form templates and current inheritance. Original demo
+designs are restored (Team 8 / Customer 16). Private staging router is deployed;
+Dashboard preview `00e6ade1` is deployed and live CMS/QR/closed Forms checks pass.
+No new type diagnostics against the 499-identity baseline. See [history release record](2026-10-02-email-template-history.md).
+Dashboard source `3f48a7845` includes current main `9c095c174`; Studio source
+`6adea020` includes current main `50d372e1c`. Both feature branches are pushed.
+
 **2 October preview follow-up:** explicit cleanup of custom email templates whose
 shared form was removed is implemented and independently reviewed. Website
 defaults list only server-confirmed removed definitions; stage Remove, Undo or
@@ -122,9 +132,12 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
       and independent review pass; closed preview deployed, hosted acceptance pending.
 - [x] Structured template editing, subject/preheader, brand styling and
       desktop/mobile preview.
-- [ ] Stored template revision-history/restore UI (session undo/redo is complete).
+- [x] Stored template history browser and targeted unsaved restore; local browser/API
+      acceptance and independent review pass. Hosted runtime upgrade remains pending.
 - [x] Customer-owned logo/image references, scoped library picker, required alt text,
       sizing/alignment and bounded safe previews.
+- [ ] Plan bounded server extraction before adding backend features: current Pages
+      bundle has only 6,152 bytes remaining under the unchanged safety budget.
 - [ ] AI template proposals through the existing gateway/credit conventions;
       validate output and require Apply; preserve manual edits.
 - [ ] Verified sender/reply-to and customer email-field selection.
@@ -154,14 +167,16 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
-  Branch `feat/standalone-site-workspace`; deployed implementation `de1a2eb67`.
-  Includes native authority/API/UI `a0e369591` and the reviewed template cleanup.
+  Branch `feat/standalone-site-workspace`; current history implementation `3f48a7845`.
+  Preview `00e6ade1-0d35-4784-8b3b-9a7c62ea298d` uses that exact source.
+  Includes native authority/API/UI, template cleanup and reviewed revision history.
 - Studio: `/Users/paulgiurin/Documents/Projects/customer-cms-studio`
   (`dashboard/.worktrees/studio-customer-forms` is a symlink).
   Branch `feat/customer-form-settings-drafts`; deployed private executor, coordinator
-  and router source `e26199556`; private operator source `c219655` is pushed.
-  Operator tooling requires no worker redeployment. Exact service versions are in
-  the staging receipt.
+  source `e26199556`; router updated to `6adea020`, version
+  `c12c04e7-441f-48ad-b363-0d13f3aacfd0`. Private operator `c219655` remains included.
+  New history-capable runtime artifact is unapproved/uninstalled; digest and exact
+  service versions are recorded in the history release record.
 - Implementation checkpoints are pushed; final integration review approves closed-gate
   preview, with hosted acceptance remaining.
   The Dashboard integration plan and its
@@ -172,16 +187,17 @@ end-to-end in this standalone demo, not necessarily zero code exists.
 - Demo: `/Users/paulgiurin/Documents/Projects/customer-cms-demo/README.md`.
   Restart with that directory's `start.sh`; do not start a second server on port 3044.
 - URL: `http://127.0.0.1:3044/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
-- Latest local backup: `customer-cms-demo/private/backups/2026-10-01T07-23-22.623Z/`.
+- Latest local backup: `customer-cms-demo/private/backups/2026-10-02T00-13-54.328Z/`.
   Preserve the private directory and media; do not commit credentials or copied data.
 - Recipient sample revision 4: `office@example.test`, with Contact override
   `contact@example.test`. These are inert demo addresses, not approved recipients.
-- Template samples: team revision 6 (same design as revision 2 after disposable cleanup acceptance); customer revision 14 with a Booking enquiry override for five pages;
+- Template samples: Team revision 8 and Customer revision 16 after history acceptance;
+  original designs preserved, including the Booking enquiry override for five pages;
   website default has a 200px logo and 520px photo. Contact details are explicitly fictional.
   Evidence: `customer-cms-demo/check-templates.mjs` and
   `customer-cms-demo/fantasy-limo-email-templates.png`.
 
-## Verification and boundaries
+## Earlier local verification and boundaries — 1 October 2026
 
 Recipient slice: 50 focused tests and browser checks pass. Template slice: 15
 focused Dashboard tests and 37 Studio tests pass, with independent review and
