@@ -13,24 +13,11 @@ defineProps<{
   subtitle?: string
 }>()
 
-const { clientId } = useSocialPublishingClient()
+const { clientId, clients, invalidSelection } = useSocialPublishingClient()
 
 // Clients for the global selector. /api/agency/clients is sometimes a bare array
 // and sometimes { clients } — handle both (see agency-clients-bare-array note).
-const { data: clientsData } = useFetch('/api/agency/clients', { query: { limit: 200 } })
-const clientOptions = computed(() => {
-  const d = clientsData.value as any
-  const list = Array.isArray(d) ? d : (d?.clients ?? [])
-  return list.map((c: any) => ({ label: c.name, value: c.id }))
-})
-
-// Default to the first client the first time the list loads with nothing chosen,
-// so the suite is never stuck on an empty selection.
-watchEffect(() => {
-  if (!clientId.value && clientOptions.value.length) {
-    clientId.value = clientOptions.value[0].value
-  }
-})
+const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
 
 // Live tile-nav badge counts, refetched whenever the client changes.
 const { data: countsData } = useFetch('/api/agency/social/publishing/nav-counts', {
@@ -63,6 +50,7 @@ const counts = computed(
       </div>
     </div>
 
+    <UAlert v-if="invalidSelection" title="Choose a client" description="The selected client is unavailable. Choose a client before editing or publishing." color="warning" icon="i-lucide-building-2" class="mb-4" />
     <SocialPublishingNav :counts="counts" />
 
     <slot />

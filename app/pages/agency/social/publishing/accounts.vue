@@ -4,6 +4,7 @@ import { useSocialPublishingClient } from '~/composables/useSocialPublishingClie
 import {
   filterSocialPublishingAccounts,
   socialPublishingAccountsForPlatform,
+  socialPublishingConnectionRecovery,
   stripSocialPublishingConnectQuery
 } from '~/utils/socialPublishingAccounts'
 import {
@@ -31,6 +32,7 @@ const { clientId } = useSocialPublishingClient()
 const accounts = ref<SocialAccount[]>([])
 const loading = ref(false)
 const search = ref('')
+const connectionRecovery = ref<ReturnType<typeof socialPublishingConnectionRecovery>>(null)
 
 const PLATFORMS = SOCIAL_PUBLISHING_PLATFORM_OPTIONS.map(option => option.value)
 const META_PLATFORMS = ['facebook', 'instagram'] // both connect via the same Meta flow
@@ -104,6 +106,7 @@ function canReconnectAccount(a: SocialAccount) {
 
 function connect(platform: string) {
   if (!clientId.value) return
+  connectionRecovery.value = null
   if (META_PLATFORMS.includes(platform)) {
     window.location.href = `/api/agency/social/publishing/accounts/connect/meta?clientId=${encodeURIComponent(clientId.value)}`
   } else if (platform === 'google-business') {
@@ -184,6 +187,7 @@ onMounted(async () => {
     await load()
     clearConnectQuery()
   } else if (route.query.social_error) {
+    connectionRecovery.value = socialPublishingConnectionRecovery(route.query.social_error)
     toast.add({ title: 'Connection failed', description: String(route.query.social_error).replace(/_/g, ' '), color: 'error' })
     clearConnectQuery()
   } else if (route.query.social_select) {
@@ -208,6 +212,11 @@ onMounted(async () => {
     title="Connected accounts"
     subtitle="Publishing connections (pages/profiles) for this client."
   >
+    <UAlert v-if="connectionRecovery" :title="connectionRecovery.title" :description="connectionRecovery.description" color="warning" icon="i-lucide-refresh-cw" class="mb-5">
+      <template #actions>
+        <UButton v-if="connectionRecovery.retryMeta" label="Retry Facebook connection" :disabled="!clientId" color="warning" @click="connect('facebook')" />
+      </template>
+    </UAlert>
     <UAlert
       icon="i-lucide-info"
       color="info"

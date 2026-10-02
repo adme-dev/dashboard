@@ -18,6 +18,14 @@ const campaigns = ref<SocialCampaignWithCounts[]>([])
 const loading = ref(false)
 const groupByCampaign = ref(false)
 const filterValue = ref<string>('all') // 'all' sentinel → never an empty-string USelectMenu value
+const dragPost = ref<SocialBoardPost | null>(null)
+const dragOverLane = ref<SocialPlannerLane | null>(null)
+const loadedClientId = ref<string | null>(null)
+let loadGeneration = 0
+const isCurrentContext = (id: string, generation: number) =>
+  props.clientId === id && loadGeneration === generation && loadedClientId.value === id
+// A campaign selection belongs to its client; do not carry it into another board.
+watch(() => props.clientId, () => { filterValue.value = 'all' }, { flush: 'sync' })
 
 const filterItems = computed(() => [
   { label: 'All campaigns', value: 'all' },
@@ -25,17 +33,32 @@ const filterItems = computed(() => [
 ])
 
 async function load() {
-  if (!props.clientId) { posts.value = []; campaigns.value = []; return }
-  loading.value = true
+  const id = props.clientId
+  const generation = ++loadGeneration
+  loadedClientId.value = null
+  posts.value = []
+  campaigns.value = []
+  dragPost.value = null
+  dragOverLane.value = null
+  loading.value = !!id
+  if (!id) return
   const campaignId = filterValue.value === 'all' ? undefined : filterValue.value
   try {
     const [board, camps] = await Promise.all([
-      planner.getBoard(props.clientId, campaignId),
-      planner.listCampaigns(props.clientId),
+      planner.getBoard(id, campaignId),
+      planner.listCampaigns(id),
     ])
+    if (generation !== loadGeneration || id !== props.clientId) return
     posts.value = board
     campaigns.value = camps
-  } finally { loading.value = false }
+    loadedClientId.value = id
+  } catch (e: any) {
+    if (generation === loadGeneration && id === props.clientId) {
+      toast.add({ title: 'Could not load planner', description: e?.data?.statusMessage, color: 'error' })
+    }
+  } finally {
+    if (generation === loadGeneration) loading.value = false
+  }
 }
 watch([() => props.clientId, () => props.reloadKey, filterValue], load, { immediate: true })
 
@@ -64,13 +87,13 @@ function swimlanesFor(lane: SocialPlannerLane): Swimlane[] {
 const goalFor = (campaignId: string) => campaigns.value.find(c => c.id === campaignId)?.goal_post_count ?? null
 
 function openPost(p: SocialBoardPost) {
-  navigateTo({ path: '/agency/social/publishing/compose', query: { edit: p.id } })
+  if (!isCurrentContext(props.clientId, loadGeneration) || !posts.value.includes(p)) return
+  navigateTo({ path: '/agency/social/publishing/compose', query: { client: props.clientId, edit: p.id } })
 }
 
 // --- Drag-to-lane ---
-const dragPost = ref<SocialBoardPost | null>(null)
-const dragOverLane = ref<SocialPlannerLane | null>(null)
 function onDragStart(e: DragEvent, post: SocialBoardPost) {
+  if (!isCurrentContext(props.clientId, loadGeneration) || !posts.value.includes(post)) return
   dragPost.value = post
   if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', post.id) }
 }
@@ -78,8 +101,10 @@ function onDragEnd() { dragPost.value = null; dragOverLane.value = null }
 
 async function onDrop(lane: SocialPlannerLane) {
   const post = dragPost.value
+  const id = props.clientId
+  const generation = loadGeneration
   onDragEnd()
-  if (!post || post.lane === lane) return
+  if (!post || !isCurrentContext(id, generation) || !posts.value.includes(post) || post.lane === lane) return
   if (lane === 'published') {
     toast.add({ title: 'Publish from the post', description: 'Open it to publish or schedule.', color: 'neutral' })
     return
@@ -103,10 +128,13 @@ async function onDrop(lane: SocialPlannerLane) {
       return
     } else if (lane === 'scheduled') {
       await $fetch(`/api/agency/social/publishing/posts/${post.id}/request-approval`, { method: 'POST' })
+      if (!isCurrentContext(id, generation)) return
       toast.add({ title: 'Sent for approval', color: 'success' })
     }
+    if (!isCurrentContext(id, generation)) return
     await load()
   } catch (e: any) {
+    if (!isCurrentContext(id, generation)) return
     posts.value = prev // rollback
     toast.add({ title: 'Could not move post', description: e?.data?.statusMessage, color: 'error' })
   }

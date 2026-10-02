@@ -6,6 +6,24 @@ const TRANSIENT_CONNECT_QUERY_KEYS = new Set([
   'social_select'
 ])
 
+export function socialPublishingConnectionRecovery(error: unknown) {
+  if (error === 'expired_state') {
+    return {
+      title: 'Facebook connection expired',
+      description: 'Start a fresh connection for the selected client. Your existing account assignments are kept.',
+      retryMeta: true
+    }
+  }
+  if (error === 'invalid_state') {
+    return {
+      title: 'Connection could not be completed',
+      description: 'The connection session is no longer valid. Choose the correct client and reconnect the account.',
+      retryMeta: false
+    }
+  }
+  return null
+}
+
 function normaliseSearch(value: string): string {
   return value.trim().toLowerCase()
 }

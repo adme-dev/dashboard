@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { buildNewsPublishTargets } from '~/utils/socialNewsPublishing'
 import { updateStringSelection } from '~/utils/stringSelection'
+import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 useHead({ title: 'News Inbox' })
@@ -19,8 +20,7 @@ const error = ref<string | null>(null)
 const selected = ref<string[]>([])
 const toast = useToast()
 const { isAdmin } = useAuth()
-const clients = ref<Array<{ id: string; name: string }>>([])
-const clientId = ref('')
+const { clients, clientId } = useSocialPublishingClient()
 const accounts = ref<Array<{ id: string; platform: string; account_name: string | null; is_active: boolean }>>([])
 const accountIds = ref<string[]>([])
 const platforms = ref<string[]>(['facebook'])
@@ -41,11 +41,13 @@ const makeFilter = ref('')
 const relevantOnly = ref(false)
 const showClientProfile = ref(false)
 const profileSaving = ref(false)
-const profileForm = ref({ industry: '', targetAudience: '', contentPillars: '', includeKeywords: '', excludeKeywords: '', makes: '', brandVoice: '', defaultTone: 'professional', aiInstructions: '', preferredPlatforms: [] as string[], timezone: 'Australia/Melbourne', defaultWorkflow: 'draft' as 'draft' | 'schedule' })
+const emptyProfileForm = () => ({ industry: '', targetAudience: '', contentPillars: '', includeKeywords: '', excludeKeywords: '', makes: '', brandVoice: '', defaultTone: 'professional', aiInstructions: '', preferredPlatforms: [] as string[], timezone: 'Australia/Melbourne', defaultWorkflow: 'draft' as 'draft' | 'schedule' })
+const profileForm = ref(emptyProfileForm())
 const governance = ref<GovernanceContext | null>(null)
 const packageOptions = ref<PackageOptions>({ packages: [], projects: [], allocations: [], rateCards: [] })
 const packageSaving = ref(false)
-const packageForm = ref({ packageVersionId: '', projectId: '', rateCardItemId: '', budgetAllocationId: '', startsOn: new Date().toISOString().slice(0, 10), endsOn: '' })
+const emptyPackageForm = () => ({ packageVersionId: '', projectId: '', rateCardItemId: '', budgetAllocationId: '', startsOn: new Date().toISOString().slice(0, 10), endsOn: '' })
+const packageForm = ref(emptyPackageForm())
 const newPackage = ref({ name: '', includedVolumes: 'facebook: 8, instagram: 8, linkedin: 4', approvalSlaHours: 24, overagePolicy: 'warn' })
 const evidenceSaving = ref(false)
 const evidenceForm = ref({ evidenceType: 'decision', title: '', content: '' })
@@ -60,6 +62,8 @@ const recommendation = ref<{ audience: string | null; timezone: string; platform
 const recommendationLoading = ref(false)
 const platformOptions = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'google-business'] as const
 let clientLoadSequence = 0
+const loadedContext = ref<{ id: string; sequence: number } | null>(null)
+const contextReady = computed(() => !!clientId.value && loadedContext.value?.id === clientId.value && loadedContext.value.sequence === clientLoadSequence)
 const publishTargetCount = computed(() => buildNewsPublishTargets(accounts.value, accountIds.value, platforms.value).length)
 
 function platformLabel(platform: string) {
@@ -73,6 +77,7 @@ function parseIncludedVolumes(value: string) {
   return Object.fromEntries(value.split(',').map(entry => entry.trim().split(':').map(part => part.trim())).filter(([platform, count]) => platform && Number.isInteger(Number(count)) && Number(count) >= 0).map(([platform, count]) => [platform, Number(count)]))
 }
 async function openClientProfile() {
+  if (!contextReady.value) return
   showClientProfile.value = true
   if (isAdmin.value) {
     try { await Promise.all([reloadGovernance(), loadPendingEvidence()]) }
@@ -82,18 +87,23 @@ async function openClientProfile() {
 function closeClientProfile() { showClientProfile.value = false }
 async function openSourceSettings() { showSourceSettings.value = true; await loadSourceSettings() }
 function closeSourceSettings() { showSourceSettings.value = false }
-function openDraftOptions() { showDraftOptions.value = true }
+function openDraftOptions() { if (contextReady.value) showDraftOptions.value = true }
 function closeDraftOptions() { showDraftOptions.value = false }
 async function loadRecommendation() {
   if (!clientId.value) return
+  const id = clientId.value
+  const sequence = clientLoadSequence
   recommendationLoading.value = true
   try {
-    recommendation.value = await apiFetch<typeof recommendation.value>(`/api/agency/social/news/recommendations?clientId=${clientId.value}&newsId=${selected.value[0] || ''}&platforms=${platforms.value.join(',')}`)
+    const value = await apiFetch<typeof recommendation.value>(`/api/agency/social/news/recommendations?clientId=${id}&newsId=${selected.value[0] || ''}&platforms=${platforms.value.join(',')}`)
+    if (sequence === clientLoadSequence && id === clientId.value) recommendation.value = value
   } catch (e: any) { toast.add({ title: 'Could not load recommendation', description: e?.data?.statusMessage || 'Try again later', color: 'error' }) }
   finally { recommendationLoading.value = false }
 }
 
 async function refresh() {
+  const id = clientId.value
+  const sequence = clientLoadSequence
   pending.value = true; error.value = null
   try {
     const query = new URLSearchParams({ status: status.value })
@@ -102,10 +112,11 @@ async function refresh() {
     if (topicFilter.value.trim()) query.set('topic', topicFilter.value.trim())
     if (makeFilter.value.trim()) query.set('make', makeFilter.value.trim())
     if (relevantOnly.value) query.set('relevantOnly', 'true')
-    items.value = await apiFetch<NewsItem[]>(`/api/agency/social/news?${query}`)
+    const result = await apiFetch<NewsItem[]>(`/api/agency/social/news?${query}`)
+    if (sequence === clientLoadSequence && id === clientId.value) items.value = result
   }
-  catch (e: any) { error.value = e?.data?.statusMessage || 'Could not load the news inbox' }
-  finally { pending.value = false }
+  catch (e: any) { if (sequence === clientLoadSequence && id === clientId.value) error.value = e?.data?.statusMessage || 'Could not load the news inbox' }
+  finally { if (sequence === clientLoadSequence && id === clientId.value) pending.value = false }
 }
 async function refreshSource() {
   pending.value = true
@@ -128,13 +139,7 @@ async function saveSourceSettings() {
   catch (e: any) { toast.add({ title: 'Could not save source', description: e?.data?.statusMessage || 'Check the HTTPS URL', color: 'error' }) }
   finally { sourceSaving.value = false }
 }
-onMounted(async () => {
-  const response = await apiFetch<any>('/api/agency/clients?limit=200')
-  clients.value = Array.isArray(response) ? response : (response?.clients ?? [])
-  clientId.value = clients.value[0]?.id ?? ''
-})
-async function loadClientProfile(id: string) {
-  const value = await apiFetch<ClientProfile>(`/api/agency/social/news/profiles/${id}`)
+function hydrateClientProfile(value: ClientProfile) {
   profileForm.value = {
     industry: value.industry,
     targetAudience: value.targetAudience,
@@ -154,26 +159,44 @@ async function loadClientProfile(id: string) {
   if (value.preferredPlatforms.length) platforms.value = [...value.preferredPlatforms]
 }
 watch(clientId, async (id) => {
-  if (!id) return
   const sequence = ++clientLoadSequence
+  loadedContext.value = null
+  profileForm.value = emptyProfileForm()
+  packageForm.value = emptyPackageForm()
+  packageOptions.value = { packages: [], projects: [], allocations: [], rateCards: [] }
+  newPackage.value = { name: '', includedVolumes: 'facebook: 8, instagram: 8, linkedin: 4', approvalSlaHours: 24, overagePolicy: 'warn' }
+  evidenceForm.value = { evidenceType: 'decision', title: '', content: '' }
+  recommendation.value = null
+  recommendationLoading.value = false
+  slackImportText.value = ''
+  error.value = null
+  pending.value = false
+  items.value = []
   accounts.value = []
   accountIds.value = []
   pendingEvidence.value = []
   mondayEvidencePreview.value = []
   mondayEvidenceSelected.value = []
+  selected.value = []
+  governance.value = null
+  showClientProfile.value = false
+  showDraftOptions.value = false
+  if (!id) { items.value = []; return }
   try {
-    const [loadedAccounts, , loadedGovernance, loadedPackageOptions] = await Promise.all([
+    const [loadedAccounts, loadedProfile, loadedGovernance, loadedPackageOptions] = await Promise.all([
       apiFetch<any[]>(`/api/agency/social/publishing/accounts?clientId=${id}`),
-      loadClientProfile(id),
+      apiFetch<ClientProfile>(`/api/agency/social/news/profiles/${id}`),
       apiFetch<GovernanceContext>(`/api/agency/social/news/profiles/${id}/context`),
       isAdmin.value ? apiFetch<PackageOptions>(`/api/agency/social/news/profiles/${id}/package-options`) : Promise.resolve(null),
     ])
     if (sequence !== clientLoadSequence || id !== clientId.value) return
+    hydrateClientProfile(loadedProfile)
     accounts.value = loadedAccounts
     governance.value = loadedGovernance
     hydratePackageForm(loadedGovernance)
     if (loadedPackageOptions) packageOptions.value = loadedPackageOptions
     accountIds.value = []
+    loadedContext.value = { id, sequence }
     if (showClientProfile.value && isAdmin.value) await loadPendingEvidence(id)
     await refresh()
   } catch (e: any) {
@@ -181,12 +204,19 @@ watch(clientId, async (id) => {
     items.value = []
     error.value = e?.data?.statusMessage || 'Could not load this client’s news publishing context'
   }
-})
+}, { immediate: true })
 async function reloadGovernance() {
-  if (!clientId.value) return
-  governance.value = await apiFetch<GovernanceContext>(`/api/agency/social/news/profiles/${clientId.value}/context`)
-  hydratePackageForm(governance.value)
-  if (isAdmin.value) packageOptions.value = await apiFetch<PackageOptions>(`/api/agency/social/news/profiles/${clientId.value}/package-options`)
+  const id = clientId.value
+  const sequence = clientLoadSequence
+  if (!id || !contextReady.value) return
+  const [context, options] = await Promise.all([
+    apiFetch<GovernanceContext>(`/api/agency/social/news/profiles/${id}/context`),
+    isAdmin.value ? apiFetch<PackageOptions>(`/api/agency/social/news/profiles/${id}/package-options`) : Promise.resolve(null)
+  ])
+  if (sequence !== clientLoadSequence || id !== clientId.value) return
+  governance.value = context
+  hydratePackageForm(context)
+  if (options) packageOptions.value = options
 }
 function hydratePackageForm(context: GovernanceContext | null) {
   const active = context?.activePackage
@@ -201,7 +231,7 @@ function hydratePackageForm(context: GovernanceContext | null) {
   }
 }
 async function saveClientProfile() {
-  if (!clientId.value) return
+  if (!contextReady.value || profileSaving.value) return
   profileSaving.value = true
   try {
     await apiFetch<ClientProfile>(`/api/agency/social/news/profiles/${clientId.value}`, {
@@ -221,7 +251,8 @@ async function saveClientProfile() {
   finally { profileSaving.value = false }
 }
 async function createPackageFromProfile() {
-  if (!newPackage.value.name.trim()) return
+  if (!contextReady.value || packageSaving.value || !newPackage.value.name.trim()) return
+  const sequence = clientLoadSequence
   packageSaving.value = true
   try {
     const created = await apiFetch<{ version_id: string }>('/api/agency/social/news/packages', {
@@ -239,14 +270,16 @@ async function createPackageFromProfile() {
         commercialScope: { includedPostVolumes: parseIncludedVolumes(newPackage.value.includedVolumes), approvalSlaHours: newPackage.value.approvalSlaHours, overagePolicy: newPackage.value.overagePolicy },
       },
     } as any)
+    if (sequence !== clientLoadSequence) return
     await reloadGovernance()
+    if (sequence !== clientLoadSequence) return
     packageForm.value.packageVersionId = created.version_id
     toast.add({ title: 'Content package created', description: 'Version 1 is published and ready to assign.', color: 'success' })
   } catch (e: any) { toast.add({ title: 'Could not create package', description: e?.data?.statusMessage, color: 'error' }) }
   finally { packageSaving.value = false }
 }
 async function assignPackage() {
-  if (!clientId.value || !packageForm.value.packageVersionId) return
+  if (!contextReady.value || packageSaving.value || !packageForm.value.packageVersionId) return
   packageSaving.value = true
   try {
     await apiFetch(`/api/agency/social/news/profiles/${clientId.value}/package`, { method: 'PUT', body: {
@@ -263,7 +296,7 @@ async function assignPackage() {
   finally { packageSaving.value = false }
 }
 async function saveCanonicalEvidence() {
-  if (!clientId.value || !evidenceForm.value.title.trim() || !evidenceForm.value.content.trim()) return
+  if (!contextReady.value || !evidenceForm.value.title.trim() || !evidenceForm.value.content.trim()) return
   evidenceSaving.value = true
   try {
     await apiFetch(`/api/agency/social/news/profiles/${clientId.value}/evidence`, { method: 'POST', body: { ...evidenceForm.value, sourceSystem: 'xeroflow', reviewStatus: 'approved' } } as any)
@@ -274,14 +307,16 @@ async function saveCanonicalEvidence() {
   finally { evidenceSaving.value = false }
 }
 async function loadPendingEvidence(requestedClientId = clientId.value) {
+  const sequence = clientLoadSequence
   if (!requestedClientId || !isAdmin.value) return
   const response = await apiFetch<{ data: EvidenceReviewItem[] }>(`/api/agency/social/news/profiles/${requestedClientId}/evidence?reviewStatus=pending&pageSize=100`)
-  if (requestedClientId !== clientId.value) return
+  if (sequence !== clientLoadSequence || requestedClientId !== clientId.value) return
   pendingEvidence.value = response.data
 }
 async function loadMondayEvidencePreview(requestedClientId: string, announce: boolean) {
+  const sequence = clientLoadSequence
   const response = await apiFetch<{ data: MondayEvidencePreviewItem[]; totalItems: number }>(`/api/agency/social/news/profiles/${requestedClientId}/evidence/imports/monday/preview?limit=100`)
-  if (requestedClientId !== clientId.value) return
+  if (sequence !== clientLoadSequence || requestedClientId !== clientId.value) return
   mondayEvidencePreview.value = response.data
   mondayEvidenceSelected.value = response.data.filter(item => !item.importedStatus).map(item => item.sourceId)
   if (announce) {
@@ -348,7 +383,7 @@ async function reviewEvidence(evidenceId: string, reviewStatus: 'approved' | 're
   finally { evidenceReviewingId.value = '' }
 }
 async function createDrafts() {
-  if (draftSaving.value) return
+  if (!contextReady.value || draftSaving.value) return
   draftSaving.value = true
   try {
     const targets = buildNewsPublishTargets(accounts.value, accountIds.value, platforms.value)
@@ -372,7 +407,7 @@ async function createDrafts() {
       <UCheckbox v-model="relevantOnly" label="Relevant only" />
       <UButton icon="i-lucide-filter" color="neutral" variant="subtle" label="Apply" @click="refresh" />
       <UButton icon="i-lucide-refresh-cw" color="neutral" variant="subtle" label="Refresh source" :loading="pending" @click="refreshSource" />
-      <UButton v-if="isAdmin && clientId" icon="i-lucide-book-open-text" color="neutral" variant="subtle" label="Client content profile" @click="openClientProfile" />
+      <UButton v-if="isAdmin && clientId" icon="i-lucide-book-open-text" color="neutral" variant="subtle" label="Client content profile" :disabled="!contextReady" @click="openClientProfile" />
       <UButton v-if="isAdmin" icon="i-lucide-settings-2" color="neutral" variant="subtle" label="Source settings" @click="openSourceSettings" />
       <span class="text-sm text-muted ml-auto">{{ selected.length }} selected</span>
       <UButton icon="i-lucide-send" label="Create drafts" :disabled="!selected.length" @click="openDraftOptions" />
@@ -446,7 +481,7 @@ async function createDrafts() {
         <p class="text-xs text-muted">Generated posts still require XeroFlow approval before publishing.</p>
         <div class="ml-auto flex gap-2">
           <UButton label="Cancel" color="neutral" variant="ghost" @click="closeClientProfile" />
-          <UButton label="Save profile" icon="i-lucide-save" :loading="profileSaving" @click="saveClientProfile" />
+          <UButton label="Save profile" icon="i-lucide-save" :loading="profileSaving" :disabled="!contextReady" @click="saveClientProfile" />
         </div>
       </div>
       <template v-if="isAdmin">

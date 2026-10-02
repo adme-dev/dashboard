@@ -1,5 +1,5 @@
 import { queryOne, execute } from '~~/server/utils/db'
-import { verifyState, signState } from '~~/server/utils/socialOAuth/state'
+import { verifyState, signState, expiredMetaStateContext } from '~~/server/utils/socialOAuth/state'
 import { exchangeMetaCode, exchangeForLongLivedToken } from '~~/server/utils/metaClient'
 import { listManagedPages, mapPagesToAccountRows, subscribePageWebhook, type ManagedPage } from '~~/server/utils/socialOAuth/meta'
 import { upsertSocialAccount, markWebhookSubscribed } from '~~/server/utils/socialOAuth/store'
@@ -31,16 +31,25 @@ export default defineEventHandler(async (event) => {
     ...(clientId ? { client: clientId } : {})
   }), 302)
 
-  if (q.error) return fail(String(q.error_description || q.error))
   const state = verifyState<{ clientId: string, userId: string }>(String(q.state || ''), secret, 600_000)
-  if (!state) return fail('invalid_state')
+  if (!state) {
+    const context = expiredMetaStateContext(String(q.state || ''), secret, 600_000)
+    if (context) {
+      try {
+        const user = await requireSocialClientAccess(event, context.clientId)
+        if (String(user.id) === context.userId) return fail('expired_state', context.clientId)
+      } catch { /* Invalid/unauthorised recovery stays anonymous and fail-closed. */ }
+    }
+    return fail('invalid_state')
+  }
   try {
     await requireSocialClientAccess(event, state.clientId)
   } catch (err) {
     logOAuthFailure('meta', 'client_access_required', err, state.clientId)
     return fail('client_access_required', state.clientId)
   }
-  if (!q.code) return fail('no_code')
+  if (q.error) return fail(String(q.error_description || q.error), state.clientId)
+  if (!q.code) return fail('no_code', state.clientId)
 
   let userToken: string
   let expiresAt: string | null = null
