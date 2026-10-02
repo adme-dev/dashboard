@@ -1526,17 +1526,17 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 </template>
 
                 <template #produce>
-                  <VideoStudioClientProfile
-                    :key="`${projectId}:${editor.project.value?.clientId}`"
-                    :project-id="projectId"
-                    :client-id="editor.project.value?.clientId"
-                    :profile="videoClientData?.profile"
-                    :brand-kits="videoClientData?.brandKits"
-                    :spent-cents="videoClientData?.spentCents"
-                    :can-manage="videoClientData?.canManage"
-                    @saved="refreshVideoClient"
-                    @preset="generationDraftPrompt = $event"
-                  />
+                <VideoStudioClientProfile
+                  :key="`${projectId}:${editor.project.value?.clientId}`"
+                  :project-id="projectId"
+                  :client-id="editor.project.value?.clientId"
+                  :profile="videoClientData?.profile"
+                  :brand-kits="videoClientData?.brandKits"
+                  :spent-cents="videoClientData?.spentCents"
+                  :can-manage="videoClientData?.canManage"
+                  @saved="refreshVideoClient"
+                  @preset="generationDraftPrompt = $event"
+                />
                   <UAlert v-if="videoClientError" color="error" :title="videoClientError" />
                   <UButton v-if="videoClientError" label="Retry client settings" size="xs" @click="refreshVideoClient" />
                   <div v-if="videoGenerationEnabled" class="space-y-2">

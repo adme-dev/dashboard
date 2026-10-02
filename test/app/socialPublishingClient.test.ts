@@ -50,7 +50,9 @@ describe('social publishing client context', () => {
       }
     }))
     let completed = false
-    const selecting = context.selectClient('news').then(() => { completed = true })
+    const selecting = context.selectClient('news').then(() => {
+      completed = true
+    })
     await Promise.resolve()
     expect(completed).toBe(false)
     expect(context.clientId.value).toBe('adme')
