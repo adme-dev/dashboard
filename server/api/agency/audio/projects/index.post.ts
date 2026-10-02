@@ -69,7 +69,7 @@ export default defineEventHandler(async (event) => {
         // Autosave changes the state in place. Read again after locking the
         // project so a completed save cannot supply stale campaign guidance.
         const current = await db.query<{ campaign_prompt: unknown }>(
-          "SELECT state->'campaign_prompt' AS campaign_prompt FROM media_timelines WHERE id = $1 FOR SHARE", [row.current_timeline_id]
+          'SELECT state->\'campaign_prompt\' AS campaign_prompt FROM media_timelines WHERE id = $1 FOR SHARE', [row.current_timeline_id]
         )
         const settings = CampaignPromptSchema.safeParse(current.rows[0]?.campaign_prompt)
         if (!settings.success || JSON.stringify(settings.data) !== JSON.stringify(parsed.data.campaign_prompt)) {
