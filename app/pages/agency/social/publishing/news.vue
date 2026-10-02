@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { buildNewsPublishTargets } from '~/utils/socialNewsPublishing'
 import { updateStringSelection } from '~/utils/stringSelection'
+import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 useHead({ title: 'News Inbox' })
@@ -19,8 +20,7 @@ const error = ref<string | null>(null)
 const selected = ref<string[]>([])
 const toast = useToast()
 const { isAdmin } = useAuth()
-const clients = ref<Array<{ id: string; name: string }>>([])
-const clientId = ref('')
+const { clients, clientId } = useSocialPublishingClient()
 const accounts = ref<Array<{ id: string; platform: string; account_name: string | null; is_active: boolean }>>([])
 const accountIds = ref<string[]>([])
 const platforms = ref<string[]>(['facebook'])
@@ -128,13 +128,9 @@ async function saveSourceSettings() {
   catch (e: any) { toast.add({ title: 'Could not save source', description: e?.data?.statusMessage || 'Check the HTTPS URL', color: 'error' }) }
   finally { sourceSaving.value = false }
 }
-onMounted(async () => {
-  const response = await apiFetch<any>('/api/agency/clients?limit=200')
-  clients.value = Array.isArray(response) ? response : (response?.clients ?? [])
-  clientId.value = clients.value[0]?.id ?? ''
-})
 async function loadClientProfile(id: string) {
   const value = await apiFetch<ClientProfile>(`/api/agency/social/news/profiles/${id}`)
+  if (id !== clientId.value) return
   profileForm.value = {
     industry: value.industry,
     targetAudience: value.targetAudience,
@@ -154,13 +150,17 @@ async function loadClientProfile(id: string) {
   if (value.preferredPlatforms.length) platforms.value = [...value.preferredPlatforms]
 }
 watch(clientId, async (id) => {
-  if (!id) return
   const sequence = ++clientLoadSequence
   accounts.value = []
   accountIds.value = []
   pendingEvidence.value = []
   mondayEvidencePreview.value = []
   mondayEvidenceSelected.value = []
+  selected.value = []
+  governance.value = null
+  showClientProfile.value = false
+  showDraftOptions.value = false
+  if (!id) { items.value = []; return }
   try {
     const [loadedAccounts, , loadedGovernance, loadedPackageOptions] = await Promise.all([
       apiFetch<any[]>(`/api/agency/social/publishing/accounts?clientId=${id}`),
@@ -181,7 +181,7 @@ watch(clientId, async (id) => {
     items.value = []
     error.value = e?.data?.statusMessage || 'Could not load this client’s news publishing context'
   }
-})
+}, { immediate: true })
 async function reloadGovernance() {
   if (!clientId.value) return
   governance.value = await apiFetch<GovernanceContext>(`/api/agency/social/news/profiles/${clientId.value}/context`)
@@ -348,7 +348,7 @@ async function reviewEvidence(evidenceId: string, reviewStatus: 'approved' | 're
   finally { evidenceReviewingId.value = '' }
 }
 async function createDrafts() {
-  if (draftSaving.value) return
+  if (!clientId.value || draftSaving.value) return
   draftSaving.value = true
   try {
     const targets = buildNewsPublishTargets(accounts.value, accountIds.value, platforms.value)
