@@ -2,10 +2,12 @@
 // so a stable URL (no embedded expiry) can sit in social media_urls and survive scheduled
 // posts. Mirrors the email-marketing links signer. Web Crypto (works on CF Workers + Node).
 
+import { getCachedCfBinding } from '~~/server/utils/cfBindings'
+
 export interface RenderTokenPayload { jobId: string; format: string }
 
 function getSecret(): string {
-  const s = process.env.RENDER_LINK_SECRET
+  const s = getCachedCfBinding('RENDER_LINK_SECRET') || process.env.RENDER_LINK_SECRET
   if (s) return s
   // Fail closed in production; permit a dev-only fixed secret locally so the feature is testable.
   if (process.env.NODE_ENV === 'production') {

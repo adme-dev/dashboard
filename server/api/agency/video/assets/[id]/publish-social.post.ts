@@ -10,6 +10,7 @@ import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
 import { videoAssetPublicUrl } from '~~/server/utils/video/assetLinks'
 import { getAccessibleVideoAsset } from '~~/server/utils/video/assets'
 import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
+import { getAppUrl } from '~~/server/utils/appUrl'
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
 export default defineEventHandler(event => withGodModeLedger(event, 'assetPublishSocial', async () => {
@@ -29,8 +30,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetPublis
 
   await requireSocialClientAccess(event, clientId)
   const clientProfile = await loadVideoClientProfile(clientId)
-  const config = useRuntimeConfig()
-  const baseUrl = (config.public as { appUrl?: string }).appUrl || process.env.APP_URL || ''
+  const baseUrl = getAppUrl(event)
   const mediaUrl = await videoAssetPublicUrl(asset.id, baseUrl)
   const draft = await buildVideoStudioSocialDraft({
     clientId,

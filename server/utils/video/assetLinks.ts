@@ -1,11 +1,12 @@
 import { queryOne } from '~~/server/utils/db'
 import { getPresignedDownloadUrl, getPublicUrl, isStorageConfigured } from '~~/server/utils/storage'
 import { mapVideoAssetRow } from '~~/server/utils/video/assets'
+import { getCachedCfBinding } from '~~/server/utils/cfBindings'
 
 export interface VideoAssetTokenPayload { assetId: string }
 
 function getSecret(): string {
-  const s = process.env.RENDER_LINK_SECRET
+  const s = getCachedCfBinding('RENDER_LINK_SECRET') || process.env.RENDER_LINK_SECRET
   if (s) return s
   if (process.env.NODE_ENV === 'production') throw new Error('RENDER_LINK_SECRET is not set')
   return 'dev-insecure-render-link-secret'

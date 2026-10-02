@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline, getRenderJob } from '~~/server/utils/audio/projects'
 import { renderPublicUrl } from '~~/server/utils/audio/renderLinks'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import { queryOne } from '~~/server/utils/db'
 import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
@@ -37,8 +38,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'renderPubli
   if (!job || job.projectId !== id) throw createError({ statusCode: 404, statusMessage: 'Render job not found' })
   if (!job.variants?.[format]) throw createError({ statusCode: 404, statusMessage: 'Render variant not available' })
 
-  const config = useRuntimeConfig()
-  const baseUrl = (config.public as { appUrl?: string }).appUrl || process.env.APP_URL || ''
+  const baseUrl = getAppUrl(event)
   const mediaUrl = await renderPublicUrl(jobId, format, baseUrl)
   const draft = await buildVideoStudioSocialDraft({
     clientId,
