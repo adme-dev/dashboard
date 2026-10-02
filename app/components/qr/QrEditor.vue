@@ -12,8 +12,6 @@ const emit = defineEmits<{ (e: 'saved', code: QrCode): void }>()
 
 const api = useQrCodes()
 const toast = useToast()
-const { data: clientsData } = await useFetch<{ id: string, name: string }[]>('/api/agency/qr-codes/clients') // bare array (see memory)
-const clients = computed(() => (clientsData.value ?? []).map(c => ({ label: c.name, value: c.id })))
 
 const form = reactive({
   name: '',
@@ -29,6 +27,7 @@ const form = reactive({
 })
 const folders = ref<QrFolder[]>([])
 const saving = ref(false)
+const clientCreating = ref(false)
 const urlError = computed(() => {
   if (!form.destinationUrl) return ''
   const d = validateDestinationUrl(form.destinationUrl)
@@ -47,7 +46,7 @@ const trackedPreview = computed(() => {
   if (!form.destinationUrl || urlError.value) return ''
   return buildTrackedUrl(form.destinationUrl, { code: props.code?.code ?? 'AbC1234', enabled: form.utmEnabled, medium: form.utmMedium, source: form.utmSource, campaign: folderName.value || form.name })
 })
-const canSave = computed(() => !!form.name.trim() && !!form.clientId && !!form.destinationUrl && !urlError.value)
+const canSave = computed(() => !clientCreating.value && !!form.name.trim() && !!form.clientId && !!form.destinationUrl && !urlError.value)
 
 watch(() => open.value, (o) => {
   if (!o) return
@@ -116,7 +115,7 @@ async function save() {
   >
     <template #body>
       <div class="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <div class="space-y-6 min-w-0">
+        <div class="@container space-y-6 min-w-0">
           <UFormField label="Name" required help="Where it lives — e.g. front window decal, flyer, table tent.">
             <UInput
               v-model="form.name"
@@ -125,15 +124,13 @@ async function save() {
               autofocus
             />
           </UFormField>
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
             <UFormField label="Client" required>
-              <USelectMenu
+              <QrClientSelect
                 v-model="form.clientId"
-                :items="clients"
-                value-key="value"
                 :disabled="!!code"
-                placeholder="Select client"
-                class="w-full"
+                @creating="clientCreating = $event"
+                @update:model-value="form.folderId = null"
               />
             </UFormField>
             <UFormField label="Folder">
@@ -141,7 +138,7 @@ async function save() {
                 v-model="folderModel"
                 :items="folderItems"
                 value-key="value"
-                :disabled="!form.clientId"
+                :disabled="!form.clientId || clientCreating"
                 class="w-full"
               />
             </UFormField>
@@ -163,7 +160,7 @@ async function save() {
             <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
               Analytics tagging
             </h4>
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div class="grid grid-cols-1 gap-4 @2xl:grid-cols-3">
               <UFormField label="Tag the destination" help="Adds utm_source=qr and a click id so the client's GA4 / Meta / XeroFlow tracking attributes visits to this code.">
                 <USwitch v-model="form.utmEnabled" :label="form.utmEnabled ? 'On' : 'Off'" />
               </UFormField>
@@ -227,7 +224,7 @@ async function save() {
             <p class="text-xs text-muted">
               Wraps the export in a coloured border with a prompt like “Scan to enter”, so print files are ready without a designer pass.
             </p>
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <UFormField label="Frame">
                 <USelectMenu
                   v-model="form.frame.style"
@@ -245,7 +242,7 @@ async function save() {
                 />
               </UFormField>
             </div>
-            <div v-if="form.frame.style !== 'none'" class="grid grid-cols-2 gap-4">
+            <div v-if="form.frame.style !== 'none'" class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <QrColorField v-model="frameColorModel" label="Frame colour" />
               <QrColorField :model-value="form.frame.textColor" label="Label colour" @update:model-value="(v: string) => form.frame = { ...form.frame, textColor: v }" />
             </div>

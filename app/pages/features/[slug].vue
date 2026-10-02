@@ -3156,7 +3156,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Organised by client',
-        content: 'Codes live in folders per client, with a QR tab on every client record so a whole client\'s codes are one click away. Account managers retain access to their assigned clients. Graphic design and marketing team members can create and manage agency QR codes through their team tags. Administrators can also grant QR Codes separately, without granting advertising, finance or administration access.'
+        content: 'Codes live in folders per client, with a QR tab on every client record so a whole client\'s codes are one click away. Staff with client-creation permission can add an unlisted client directly from the single-code or bulk-variant form and keep working on their QR draft. Account managers retain access to their assigned clients. Graphic design and marketing team members can create and manage agency QR codes through their team tags. Administrators can also grant QR Codes separately, without granting advertising, finance or administration access.'
       }
     ]
   },
