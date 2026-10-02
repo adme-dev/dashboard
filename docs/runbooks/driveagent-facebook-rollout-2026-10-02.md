@@ -54,3 +54,11 @@ Cloudflare Pages production `agency-dashboard`: deployment `c27cbd16-bdf3-4f11-b
 The existing automatic dispatcher published the welcome once at **2 October 2026 16:28:16 AEST** after the corrected release. Database state: `published`, `publish_attempts=1`; provider status `success`, correct client/account and Page asset. Provider post `1391237540730945_122096087481502996`, public URL https://www.facebook.com/1391237540730945/posts/122096087481502996.
 
 The cron tick returned HTTP 200, processed one post, healthy status, zero due backlog and zero exhausted failures. No manual retry occurred. Chrome opened the actual provider permalink and verified the public DriveAgent News profile `61595089886357`, complete welcome caption, image and stamped Facebook UTM link. Screenshot and machine-readable receipt: website workspace `output/facebook-rollout-20261002/welcome-published.png` and `publication-receipt.json`. Seventeen approved future first-week posts remain scheduled, including today's F1 report at 17:30 AEST.
+
+## Immediate news posts requested by Paul
+
+Paul requested news posts now, explicitly through XeroFlow. Reused the first-week F1 post `c16ebbec-121a-4c38-95b2-abdd298f648b`, changed its mode to immediate, submitted for approval, approved and clicked **Publish approved post**. Published 16:47:10 AEST once. Its former 17:30 schedule is cleared, so it will not repeat. Facebook URL: https://www.facebook.com/1391237540730945/posts/122096097081502996.
+
+Created Toyota Kluger recall post `06306122-a67f-4fda-81ff-68b0151ccecf` through the same XeroFlow Compose/approval/publish UI, linking the new published article. Published 16:51:21 AEST once. Facebook URL: https://www.facebook.com/1391237540730945/posts/122096098713502996.
+
+Both returned Facebook success for the correct DriveAgent Page/account, `publish_attempts=1`. Chrome opened each actual permalink and verified caption, article image preview and Facebook UTM link. Final live Planner: **3 published (welcome + two news), 16 scheduled, zero drafts, zero pending approvals**. The initial first-week JSON remains the original planned schedule; this receipt supersedes its F1 timing. Evidence: website workspace `output/facebook-rollout-20261002/news-posts-now-receipt.json`, `f1-news-published.png`, `toyota-news-published-context.png`.
