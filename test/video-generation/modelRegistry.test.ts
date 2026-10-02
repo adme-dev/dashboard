@@ -88,6 +88,7 @@ describe('video generation model registry', () => {
     expect(ids).not.toContain('muapi/i2v-kling')
     expect(ids).not.toContain('muapi/t2v-wan')
     expect(ids).toEqual([
+      'aigateway/seedance-25-i2v',
       'aigateway/seedance-i2v',
       'aigateway/seedance-2-i2v',
       'aigateway/wan-i2v',
@@ -100,7 +101,7 @@ describe('video generation model registry', () => {
     for (const model of listVideoGenerationModels()) {
       expect(model.capabilities).toEqual({
         extendVideo: false,
-        endFrame: model.id === 'aigateway/vidu-i2v',
+        endFrame: ['aigateway/vidu-i2v', 'aigateway/seedance-25-i2v'].includes(model.id),
         videoToVideo: false,
       })
     }

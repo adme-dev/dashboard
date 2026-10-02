@@ -1,3 +1,5 @@
+vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: vi.fn().mockResolvedValue({ id: 'user-1' }) }))
+vi.mock('~~/server/utils/video-generation/clientProfile', () => ({ loadVideoClientProfile: vi.fn().mockResolvedValue(null) }))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent { params?: Record<string, string>; body?: any; context?: any }
@@ -84,7 +86,7 @@ function event(body: Record<string, unknown> = { format: 'reels_9x16' }) {
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.VIDEO_STUDIO_ENABLED = 'true'
-  mockRequireWriteAccess.mockResolvedValue({ id: 'user-1' })
+  mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'admin' })
   mockGetProjectWithCurrentTimeline.mockResolvedValue(project)
   mockGetRenderJob.mockResolvedValue(job)
 })
@@ -191,6 +193,7 @@ describe('render distribution endpoints', () => {
         ['instagram', 'tiktok'],
         ['video-studio', 'reels_9x16'],
         JSON.stringify({ source: 'video_studio', projectId: 'project-1', jobId: 'job-1', format: 'reels_9x16' }),
+        null,
       ]
     )
     expect(res).toEqual({ postId: 'post-1', clientId: 'client-1' })

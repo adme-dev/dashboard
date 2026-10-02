@@ -170,6 +170,10 @@ const createOpen = ref(false)
 const newTitle = ref('')
 const newKind = ref<'audio' | 'av'>(isVideoStudio.value ? 'av' : 'audio')
 const creating = ref(false)
+const newClientId = ref(typeof route.query.client === 'string' ? route.query.client : 'none')
+const { data: clients } = useFetch<Array<{ id: string; name: string }>>('/api/agency/clients', { default: () => [] })
+const clientItems = computed(() => [{ label: 'No client', value: 'none' }, ...clients.value.map(c => ({ label: c.name, value: c.id }))])
+onMounted(() => { if (route.query.create === '1') openCreateProject() })
 
 watch(mediaTypeFilter, () => {
   if (!createOpen.value) newKind.value = isVideoStudio.value ? 'av' : 'audio'
@@ -185,6 +189,7 @@ async function createProject() {
   creating.value = true
   try {
     const body: Record<string, unknown> = { title: newTitle.value.trim() || null, mediaType: newKind.value }
+    if (newClientId.value !== 'none') body.clientId = newClientId.value
     // Audio seeds two empty lanes; AV is auto-seeded server-side via emptyAvTimeline().
     if (newKind.value === 'audio') body.initialState = defaultTimelineState()
     const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', {
@@ -319,10 +324,13 @@ async function createProject() {
             v-model="newKind"
             :items="[{ label: 'Audio (multitrack)', value: 'audio' }, { label: 'Video (footage + overlay)', value: 'av' }]"
             value-key="value"
+            class="w-full"
           />
         </UFormField>
+        <UFormField label="Client"><USelectMenu v-model="newClientId" :items="clientItems" value-key="value" class="w-full" /></UFormField>
         <UFormField label="Project title">
           <UInput
+            class="w-full"
             v-model="newTitle"
             placeholder="e.g. Q3 Radio Campaign"
             autofocus

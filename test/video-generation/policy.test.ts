@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+
+vi.mock('~~/server/utils/db', () => ({ queryOne: vi.fn(), queryOneFresh: vi.fn().mockResolvedValue(null) }))
 
 afterEach(() => {
   delete process.env.VIDEO_GENERATION_TEST_TENANT_ENABLED

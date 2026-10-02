@@ -20,6 +20,7 @@ function bumpReload() { reloadKey.value++ }
     subtitle="Plan campaigns and let AI draft a week of content. Drafts flow to Compose, Queue, and the Calendar."
   >
     <template #actions>
+      <UButton icon="i-lucide-clapperboard" variant="subtle" :disabled="!clientId" :to="clientId ? `/agency/audio/projects?mediaType=av&client=${clientId}&create=1` : undefined">Create video</UButton>
       <template v-if="enabled">
         <UButton icon="i-lucide-folder-kanban" variant="subtle" :disabled="!clientId" @click="showCampaigns = true">Campaigns</UButton>
         <UButton v-if="aiEnabled" icon="i-lucide-sparkles" :disabled="!clientId" @click="showAi = true">Generate plan</UButton>

@@ -99,8 +99,22 @@ const publicConfig = config.public as {
   videoAssetHarnessEnabled?: boolean
   videoGenerationEnabled?: boolean
 }
-const videoStudioEnabled = computed(() => Boolean(publicConfig.videoStudioEnabled))
-const videoAssetHarnessEnabled = computed(() => Boolean(publicConfig.videoAssetHarnessEnabled))
+const videoClientData = ref<{ clientId: string | null; profile: import('~~/server/utils/video-generation/clientProfile').VideoClientProfile | null; spentCents: number; canManage: boolean; harnessEnabled: boolean; studioEnabled: boolean; generationEnabled: boolean } | null>(null)
+const videoClientError = ref('')
+let videoClientRequest = 0
+async function refreshVideoClient() {
+  const request = ++videoClientRequest
+  if (editor.mediaType.value !== 'av') return
+  try {
+    const result = await $fetch('/api/agency/video/client-profile', { query: { projectId: projectId.value } })
+    if (request !== videoClientRequest || result.clientId !== (editor.project.value?.clientId ?? null)) return
+    videoClientData.value = result
+    videoClientError.value = ''
+  } catch { if (request === videoClientRequest) { videoClientData.value = null; videoClientError.value = 'Could not load client video settings. Retry to continue.' } }
+}
+watch(() => [projectId.value, editor.mediaType.value, editor.project.value?.clientId], () => { videoClientData.value = null; void refreshVideoClient() }, { immediate: true })
+const videoStudioEnabled = computed(() => videoClientData.value?.studioEnabled ?? Boolean(publicConfig.videoStudioEnabled))
+const videoAssetHarnessEnabled = computed(() => videoClientData.value?.harnessEnabled ?? Boolean(publicConfig.videoAssetHarnessEnabled))
 const isAv = computed(() => editor.mediaType.value === 'av')
 
 // AV pickers
@@ -116,7 +130,8 @@ function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'u
 
 // ─── Video generation wiring ──────────────────────────────────────────────────
 
-const videoGenerationEnabled = computed(() => Boolean(publicConfig.videoGenerationEnabled))
+const videoGenerationEnabled = computed(() => Boolean(videoClientData.value?.generationEnabled && videoClientData.value?.profile?.enabled))
+watch(videoGenerationEnabled, enabled => { if (enabled) void genJobs.start(); else genJobs.stop() })
 const videoGenerationModelsAvailable = computed(() => videoGenerationEnabled.value)
 const videoGenerationReady = computed(() => videoGenerationEnabled.value && videoGenerationModelsAvailable.value)
 const videoGenerationStatusLabel = computed(() => {
@@ -126,7 +141,7 @@ const videoGenerationStatusLabel = computed(() => {
 })
 const videoGenerationStatusDetail = computed(() => {
   if (videoGenerationReady.value) return 'Cloudflare AI Gateway video models are available for this project.'
-  if (!videoGenerationEnabled.value) return 'Video generation is disabled for this workspace. Ask an admin to enable the Video Studio generation policy.'
+  if (!videoGenerationEnabled.value) return 'Assign a client and enable its budget in Brand settings under Produce to generate video.'
   return 'No runnable video models are configured for this Cloudflare account.'
 })
 const generatePickerOpen = ref(false)
@@ -1496,6 +1511,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 </template>
 
                 <template #produce>
+                  <VideoStudioClientProfile :key="`${projectId}:${editor.project.value?.clientId}`" :project-id="projectId" :client-id="editor.project.value?.clientId" :profile="videoClientData?.profile" :spent-cents="videoClientData?.spentCents" :can-manage="videoClientData?.canManage" @saved="refreshVideoClient" @preset="generationDraftPrompt = $event" />
+                  <UAlert v-if="videoClientError" color="error" :title="videoClientError" />
+                  <UButton v-if="videoClientError" label="Retry client settings" size="xs" @click="refreshVideoClient" />
                   <div v-if="videoGenerationEnabled" class="space-y-2">
                     <div class="flex items-center gap-2">
                       <UIcon name="i-lucide-sparkles" class="size-4 text-muted" />

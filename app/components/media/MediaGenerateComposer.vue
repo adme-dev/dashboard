@@ -93,7 +93,7 @@ const modelItems = computed(() => models.value.map((m) => {
   return { label: m.label, value: m.id, ...presentation }
 }))
 const selectedModelIcon = computed(() => (model.value ? videoModelPresentation(model.value).icon : 'i-lucide-box'))
-const costChipLabel = computed(() => `~$${(estCostCents.value / 100).toFixed(2)} · ${durationSeconds.value}s`)
+const costChipLabel = computed(() => `~US$${(estCostCents.value / 100).toFixed(2)} · ${durationSeconds.value}s`)
 const recentJobs = computed(() => (props.recentJobs ?? []).slice(0, 5))
 
 // Templates gallery shows while the prompt is empty (the blank-page moment);
@@ -191,6 +191,9 @@ watch(() => props.initialSourceAsset?.assetId ?? null, () => {
   registeredInitialSource.value = null
   if (props.active ?? true) void applyInitialSourceAsset()
 })
+
+watch(() => props.initialPrompt, value => { if (value) prompt.value = value })
+watch(() => props.projectId, () => { clearSource(); prompt.value = ''; void refreshModels() })
 
 function clearSource() {
   sourceAssetId.value = null
@@ -362,6 +365,7 @@ async function submit() {
              stacked form. The prompt is the primary object; everything else is a
              setting hanging off it. -->
         <template v-if="hasModels">
+          <UAlert v-if="modelId === 'aigateway/seedance-25-i2v'" color="neutral" variant="subtle" title="Use artwork sized for your destination" description="Seedance 2.5 keeps the source image's aspect ratio. Prepare a portrait image for Reels; add crisp logos and titles in the editor." />
           <!-- Start from a template — visible while the prompt is blank -->
           <div v-if="templatesVisible" class="space-y-2">
             <p class="text-xs font-semibold uppercase tracking-widest text-muted">

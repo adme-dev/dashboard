@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { executeGodModeMediaProjectCreate } from '~~/server/utils/audio/godModeMutations'
 import { createProjectIn, getProjectWithCurrentTimelineIn } from '~~/server/utils/audio/projects'
@@ -16,6 +17,7 @@ const BodySchema = z.object({
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
   const body = BodySchema.parse(await readBody(event))
+  if (body.clientId) await requireSocialClientAccess(event, body.clientId)
 
   // Seed: use provided initialState, or auto-seed based on mediaType.
   const seed = body.initialState ?? (body.mediaType === 'av' ? emptyAvTimeline() : {})

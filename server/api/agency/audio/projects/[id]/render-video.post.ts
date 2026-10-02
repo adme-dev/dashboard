@@ -1,3 +1,4 @@
+import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
 // server/api/agency/audio/projects/[id]/render-video.post.ts
 // Flag-gated composite-video render endpoint. Available only on AV projects and
 // only when VIDEO_STUDIO_ENABLED='true'. Mirrors render.post.ts: snapshot →
@@ -24,7 +25,7 @@ const BodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  if (process.env.VIDEO_STUDIO_ENABLED !== 'true') {
+  if (!videoFeatureEnabled('VIDEO_STUDIO_ENABLED', event)) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
 

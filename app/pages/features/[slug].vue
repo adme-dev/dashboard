@@ -780,6 +780,10 @@ const features: Record<string, Feature> = {
         content: 'Select any video clip to set its framing (fit, fill or crop) and stack effect presets — film grain, motion blur, VHS, shake, bloom, fisheye — with the preview approximating what it can and flagging what is render-only. Generated clips carry their prompt and model with them, so you can copy the prompt, duplicate the clip, or publish it directly.'
       },
       {
+        title: 'Client Presets and Controlled Generation',
+        content: 'Start a video project for the selected client from Planner. Save its style guide, motion prompt and social caption brief, with an explicit monthly generation budget. Generate an approved source image with Seedance 2.5, review the clip, then hand it to Compose as a draft.'
+      },
+      {
         title: 'Render Once, Ship Everywhere',
         content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place.'
       }

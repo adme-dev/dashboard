@@ -1,3 +1,4 @@
+vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: vi.fn().mockResolvedValue({ id: 'user-1' }) }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const g = globalThis as any

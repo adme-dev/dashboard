@@ -66,6 +66,18 @@ const RUNWAY_RATIO: Record<string, string> = {
 }
 
 export function buildCfVideoInputs(cfModel: string, req: CfVideoInputRequest): Record<string, unknown> {
+  // Seedance 2.5 schema verified 2026-10-02. Image output inherits the source ratio.
+  if (cfModel === 'bytedance/seedance-2.5') {
+    const inputs: Record<string, unknown> = {
+      prompt: req.prompt.slice(0, 2000), duration: clampInt(req.durationSeconds, 4, 30),
+      aspect_ratio: req.image ? 'adaptive' : pickEnum(req.aspectRatio, ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'], '16:9'),
+      resolution: pickResolution(req.resolution, ['480p', '720p'], '720p'),
+      fps: 24, camera_fixed: false, watermark: false, output_format: 'mp4', use_virtual_avatar: false, generate_audio: true,
+    }
+    if (req.image) inputs.image = req.image
+    if (req.image && req.endImage) inputs.last_frame_image = req.endImage
+    return inputs
+  }
   // bytedance/seedance-2.0[-fast]: prompt, image?, duration 4–12 and native audio on the full model.
   if (cfModel.startsWith('bytedance/seedance')) {
     const fullModel = cfModel === 'bytedance/seedance-2.0'

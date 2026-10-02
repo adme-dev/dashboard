@@ -1,3 +1,5 @@
+import { videoFeatureEnabled } from '~~/server/utils/video-generation/features'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { createSourceAsset } from '~~/server/utils/video-generation/sourceAssetStore'
@@ -15,7 +17,7 @@ const BodySchema = z.object({
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
 export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetFromAsset', async ({ reservedId }) => {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (!videoFeatureEnabled('VIDEO_GENERATION_ENABLED', event)) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
   const user = await requireWriteAccess(event)
@@ -25,6 +27,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'sourceAsset
   const asset = await getAccessibleVideoAsset(parsed.data.assetId, user)
   if (!asset?.r2Key) throw createError({ statusCode: 404, statusMessage: 'Asset not found' })
 
+  if (asset.clientId) await requireSocialClientAccess(event, asset.clientId)
   const contentType = imageContentTypeForR2Key(asset.r2Key)
   if (!contentType) throw createError({ statusCode: 400, statusMessage: 'Source asset must be an image' })
 
@@ -34,6 +37,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'sourceAsset
     createdBy: user.id,
     r2Key: asset.r2Key,
     contentType,
+    width: asset.width, height: asset.height,
     subjectType: parsed.data.subjectType,
   })
   setResponseStatus(event, 201)
