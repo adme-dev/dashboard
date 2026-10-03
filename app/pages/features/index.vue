@@ -345,7 +345,7 @@ const categories = [
     iconColor: 'text-orange-600',
     features: [
       { title: 'Brief Templates', slug: 'brief-templates', icon: 'i-lucide-file-plus', description: 'A ready-made library spanning paid media, creative, print, web, email, and direct response — built from 30+ field types with structured offer, compliance, and sign-off fields and drag-and-drop ordering.' },
-      { title: 'Template Builder', slug: 'template-builder', icon: 'i-lucide-blocks', description: 'Configure intake fields and reusable job tasks with instructions, boards, dates and prerequisites. Choose a job template when converting an approved brief.' },
+      { title: 'Template Builder', slug: 'template-builder', icon: 'i-lucide-blocks', description: 'Configure intake fields and reusable job tasks with instructions, boards, dates and prerequisites. Choose a job template when converting an approved brief, then connect a delivery task to its client’s publishing draft.' },
       { title: 'AI Brief Tools', slug: 'ai-brief-tools', icon: 'i-lucide-sparkles', description: 'AI-powered field suggestions, brief scoring (completeness + quality), and full brief generation from minimal input.' },
       { title: 'Brief-to-Quote', slug: 'brief-to-quote', icon: 'i-lucide-receipt', description: 'Auto-generate quotes from approved briefs. Rate card matching, Xero push, and quote-to-invoice conversion.' },
       { title: 'Bulk Operations', slug: 'bulk-brief-operations', icon: 'i-lucide-layers', description: 'Multi-select briefs for bulk status changes, assignment, duplication, and export. Floating action bar for fast ops.' },

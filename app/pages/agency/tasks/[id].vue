@@ -7,6 +7,7 @@ interface Task {
   id: string
   title: string
   description: string | null
+  projectId: string | null
   department: { id: string, slug: string | null, name: string }
 }
 const task = ref<Task | null>(null)
@@ -75,10 +76,8 @@ const breadcrumbItems = computed(() => [
               {{ task.description || 'No description provided.' }}
             </p>
           </section>
+          <TaskPublishingHandoff v-if="task.projectId" :key="`publishing-${task.id}`" :task-id="task.id" />
           <section class="space-y-3">
-            <h2 class="font-semibold">
-              Subtasks
-            </h2>
             <TaskSubtaskList :key="task.id" :task-id="task.id" />
           </section>
           <section class="space-y-3">

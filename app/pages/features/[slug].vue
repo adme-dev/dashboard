@@ -3588,7 +3588,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Reusable Job Tasks',
-        content: 'Add or edit task instructions, acceptance criteria, boards, priorities, estimates and prerequisites in a project template. When converting an approved brief, choose the job template and see its task count before creating the project. Instructions and prerequisite links carry into the new tasks. Client publishing approval remains a separate review step.'
+        content: 'Add or edit task instructions, acceptance criteria, boards, priorities, estimates and prerequisites in a project template. When converting an approved brief, choose the job template and see its task count before creating the project. Instructions and prerequisite links carry into the new tasks. Connect a delivery task to an existing client draft or create one; repeated handoffs reopen the same post. Review its saved status and source brief before continuing in the composer. Client publishing approval remains a separate review step.'
       }
     ]
   },

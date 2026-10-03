@@ -32,3 +32,11 @@ Existing example: SOC-26-0007 / project 3abc7881-3176-4c5c-8049-58314e36fe9b / p
 Required tests: cross-template dependency rejection; cycle rejection; correct six-task mapping; concurrent/retried conversion; immediate mutation freshness; exact client isolation; idempotent draft handoff; approval revision invalidation; provider failure/success reconciliation; no job closure before reporting. Browser verify the full account-manager path and portal role boundaries.
 
 Live completion still needs the correct product Facebook Page and designated customer approver. These are separate from the engineering work above.
+
+## Task-to-Planner implementation — 3 October 2026
+
+The next bounded slice adds one publishing deliverable per task. An account manager can link an existing unreviewed draft or create a blank draft, then open the same saved post and client Planner. The existing source brief remains the strategy reference; this operation does not copy strategy into public caption text.
+
+Migration 447 adds `task_publishing_links` with unique task and post identities. A transaction locks the task/project and existing post, derives client/brief from the task, checks board and client access, rejects cross-client or reassigned ownership, and writes an audit with the link. Creation, linkage and audit roll back together. No provider call, approval, schedule or task completion occurs. Already-linked retries return the current post, including its actual persisted state.
+
+Customer approval reconciliation and provider-receipt completion remain separate, unfinished slices. The panel does not claim that prerequisite tasks authorize publication. Production example should link existing draft `ef0bd231-020f-4e81-be02-87c1f59c7903` to delivery task `dbe23b55-d379-46af-9e13-3de194822b31`; no additional test social post is needed.
