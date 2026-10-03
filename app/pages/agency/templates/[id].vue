@@ -1,5 +1,5 @@
 <template>
-  <div class="p-6 space-y-6">
+  <div class="h-full min-h-0 overflow-y-auto p-6 space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-4">
@@ -19,6 +19,7 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <UButton icon="i-lucide-plus" variant="outline" :disabled="!template" @click="editTemplateTask(null)">Add task</UButton>
         <UButton
           variant="outline"
           color="error"
@@ -100,6 +101,7 @@
                     class="flex items-center justify-between text-sm py-1"
                   >
                     <span>{{ task.title }}</span>
+                    <UButton variant="ghost" size="xs" :aria-label="`Edit ${task.title}`" icon="i-lucide-pencil" @click="editTemplateTask(task)" />
                     <span v-if="task.estimatedHours" class="text-gray-400">{{ task.estimatedHours }}h</span>
                   </div>
                 </div>
@@ -140,6 +142,7 @@
                 </div>
               </div>
               <div class="flex items-center gap-3">
+                <UButton variant="ghost" size="xs" :aria-label="`Edit ${task.title}`" icon="i-lucide-pencil" @click="editTemplateTask(task)" />
                 <UBadge v-if="task.priority" :color="getPriorityColor(task.priority)" size="xs">
                   {{ task.priority }}
                 </UBadge>
@@ -641,6 +644,16 @@
         </div>
       </template>
     </UModal>
+    <TemplatesTaskEditor
+      v-if="template"
+      v-model:open="taskEditorOpen"
+      :template-id="template.template.id"
+      :revision="template.template.taskRevision"
+      :tasks="template.tasks"
+      :task="editingTemplateTask"
+      :default-department-id="template.template.departmentId"
+      @saved="refreshTemplate"
+    />
   </div>
 </template>
 
@@ -715,6 +728,7 @@ interface Document {
 
 interface TemplateData {
   template: {
+    taskRevision: string
     id: string
     name: string
     description: string | null
@@ -744,6 +758,12 @@ interface TemplateData {
 
 // Fetch template data
 const template = ref<TemplateData | null>(null)
+const taskEditorOpen = ref(false)
+const editingTemplateTask = ref<Task | null>(null)
+function editTemplateTask(task: Task | null) {
+  editingTemplateTask.value = task
+  taskEditorOpen.value = true
+}
 const pending = ref(false)
 
 async function refreshTemplate() {

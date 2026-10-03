@@ -3572,7 +3572,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-file-text',
     categoryIconBg: 'bg-orange-50',
     categoryIconColor: 'text-orange-600',
-    description: 'Visual template editor with live preview, field configuration panels, section grouping, and default value management. Design professional intake forms without code.',
+    description: 'Visual template editor with live preview, field configuration panels, section grouping, and default value management. Design intake forms and reusable job tasks without code.',
     details: [
       {
         title: 'Visual Field Editor',
@@ -3587,8 +3587,8 @@ const features: Record<string, Feature> = {
         content: 'Set minimum and maximum character counts for text fields, restrict file uploads to specific formats and sizes, define number ranges for budget fields, and require specific date ranges for timeline fields. Validation errors appear inline as users fill out the brief, catching issues before submission rather than during review.'
       },
       {
-        title: 'Default Values & Prefills',
-        content: 'Set sensible defaults for fields that commonly have the same value — default currency, standard deliverable sizes, typical timeline lengths. When team members or clients start a new brief from this template, defaults are pre-filled so they only need to change what is different from the norm.'
+        title: 'Reusable Job Tasks',
+        content: 'Add or edit task instructions, acceptance criteria, boards, priorities, estimates and prerequisites in a project template. When converting an approved brief, choose the job template and see its task count before creating the project. Instructions and prerequisite links carry into the new tasks. Client publishing approval remains a separate review step.'
       }
     ]
   },
