@@ -575,23 +575,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-share-2',
     categoryIconBg: 'bg-sky-50',
     categoryIconColor: 'text-sky-600',
-    description: 'Author a post once and tailor it per network — Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business — with live per-network previews as you type.',
+    description: 'Prepare a post in three clear sections — destination, content and timing — with live network previews, client account choices and a single draft/approval action bar.',
     details: [
       {
-        title: 'Customise Per Network',
-        content: 'Write a base post, then flip on per-network customisation to override the copy or media for any specific platform. Blank tabs inherit the base post automatically, so you only customise what actually needs to differ. Character counters warn you against the tightest limit across your selected networks.'
+        title: 'A Focused Publishing Workspace',
+        content: 'Choose the client and campaign, prepare the copy and media, then set the timing. Destination, Content & media, and Timing keep each decision together. Optional links, hashtags and internal tags expand when needed. One action bar saves the draft or sends it through the approval workflow; drafts can be prepared before account onboarding is complete.'
       },
       {
         title: 'Live Previews',
-        content: 'See exactly how your post will render on each network as you write — Facebook feed, LinkedIn, TikTok, and YouTube previews update in real time from the resolved content (base plus any per-network override), reusing the same preview engine that powers paid ad mockups.'
+        content: 'Review copy and artwork beside the editor, including a larger video preview that retains the source proportions. Tailor copy for individual networks and check character limits. Previews are visual approximations; the network determines the final published layout. Caption failures keep the video in a draft and direct the producer to add approved copy.'
       },
       {
         title: 'Creative From Banner Studio',
-        content: 'Pull finished creatives straight from Banner Studio, add media from your library, or attach image URLs — the same creative engine your paid ads run on, now feeding organic. Outbound links are automatically UTM-stamped per network so attribution flows into your analytics.'
+        content: 'Pull finished creatives from Banner Studio, reuse a Video Studio handoff, or attach image and video links. Uploaded originals retain their dimensions and audio. Outbound links are UTM-stamped per network so attribution flows into your analytics.'
       },
       {
         title: 'Deep-Linkable',
-        content: 'The composer opens pre-filled from anywhere — a calendar day, an existing draft, or a future campaign — via simple query parameters. First comments, hashtag groups, and internal tags round out a post that\'s ready to schedule across every channel at once.'
+        content: 'Open a saved draft or begin from a calendar day with the client and requested date already selected. Review the campaign, account choices and final copy before approval. First comments, hashtags and internal tags remain available in the expandable details section.'
       }
     ]
   },

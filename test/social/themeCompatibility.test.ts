@@ -22,7 +22,7 @@ const THEME_CHECK_FILES = [
   'app/components/social-publishing/PlannerBoard.vue',
   'app/components/social-publishing/PlannerCard.vue',
   'app/components/social-publishing/PlatformPreviewPane.vue',
-  'app/components/social-publishing/PostComposer.vue',
+  'app/components/social-publishing/PostComposer.client.vue',
   'app/components/social-publishing/SlotManager.vue',
   'app/components/social-publishing/SocialPublishingNav.vue',
   'app/components/social-publishing/SocialPublishingShell.vue'

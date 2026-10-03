@@ -9,6 +9,11 @@ const handler = (await import('~~/server/api/agency/social/publishing/ai/generat
 
 beforeEach(() => vi.clearAllMocks())
 describe('Compose AI caption response', () => {
+  it('defaults to the supported replacement model for the retired Llama caption model', async () => {
+    mocks.generate.mockResolvedValue('Your dealership. Connected.')
+    await handler({} as never)
+    expect(mocks.generate).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ defaultModelId: 'openai/gpt-oss-120b', maxTokens: 1200 }))
+  })
   it.each(['', '  ', ' Unable to generate insight '])('rejects unusable output (%j) so existing post copy is preserved', async (caption) => {
     mocks.generate.mockResolvedValue(caption)
     await expect(handler({} as never)).rejects.toMatchObject({ statusCode: 502 })

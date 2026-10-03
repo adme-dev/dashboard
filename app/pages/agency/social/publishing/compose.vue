@@ -15,17 +15,12 @@ const apiFetch = $fetch as <T = unknown>(
   options?: { query?: Record<string, unknown> }
 ) => Promise<T>
 
-// /api/agency/clients returns a BARE array — unwrap defensively (a {clients} access silently empties it).
-const clientsData = ref<any>([])
-clientsData.value = await apiFetch('/api/agency/clients', { query: { limit: 200 } }).catch(() => [])
-const clients = computed<any[]>(() => {
-  const d = clientsData.value as any
-  return Array.isArray(d) ? d : (d?.clients ?? [])
-})
-const { clientId, selectClient } = useSocialPublishingClient()
+const { clientId, clients, selectClient } = useSocialPublishingClient()
 const pageName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || '')
 const accounts = ref<SocialAccount[]>([])
 const accountsLoading = ref(false)
+const captionNeedsReview = computed(() => state.value.metadata.captionGenerationFailed === true && !state.value.content.trim())
+const missingPlatforms = computed(() => missingAccountPlatforms(state.value.platforms, state.value.accountIds, accounts.value))
 
 const saving = ref(false)
 const persistedStatus = ref<string | null>(null)
@@ -108,6 +103,10 @@ onMounted(async () => {
 function guard(requireAccounts = true): string | null {
   if (!clientId.value) { toast.add({ title: 'Pick a client first', color: 'warning' }); return null }
   if (!state.value.platforms.length) { toast.add({ title: 'Select at least one network', color: 'warning' }); return null }
+  if (requireAccounts && captionNeedsReview.value) {
+    toast.add({ title: 'Add your caption before approval', color: 'warning' })
+    return null
+  }
   const missing = missingAccountPlatforms(state.value.platforms, state.value.accountIds, accounts.value)
   if (requireAccounts && missing.length) {
     toast.add({
@@ -162,16 +161,6 @@ async function saveDraft() {
   } finally { saving.value = false }
 }
 
-async function requestApproval() {
-  saving.value = true
-  try {
-    const id = await upsert()
-    if (id) { await api.requestApproval(id); toast.add({ title: 'Sent for approval', color: 'success' }) }
-  } catch (e: any) {
-    toast.add({ title: 'Could not request approval', description: e?.data?.statusMessage, color: 'error' })
-  } finally { saving.value = false }
-}
-
 async function primaryAction() {
   saving.value = true
   try {
@@ -199,55 +188,42 @@ async function primaryAction() {
 const primaryLabel = computed(() => ({
   now: 'Send for approval',
   schedule: 'Schedule for approval',
-  queue: 'Add to queue',
+  queue: 'Save for queue'
 }[state.value.scheduleMode]))
 </script>
 
 <template>
   <SocialPublishingShell
     title="Compose"
-    subtitle="Author one post, tailor it per network, and schedule across channels."
+    subtitle="Prepare your content, check the preview, then send it for approval."
   >
-    <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
       <!-- Authoring -->
-      <div>
-        <SocialPublishingPostComposer
-          :client-id="clientId"
-          :accounts="accounts"
-          :accounts-loading="accountsLoading"
-        />
-
-        <div class="mt-8 flex flex-wrap items-center gap-3 border-t border-default pt-5">
-          <UButton
-            v-if="persistedStatus === 'approved'"
-            :loading="saving"
-            :disabled="!canPublishSavedPost"
-            icon="i-lucide-send"
-            @click="publishApprovedPost"
-          >
-            Publish approved post
-          </UButton>
-          <UButton :loading="saving" color="primary" icon="i-lucide-check" @click="primaryAction">
-            {{ primaryLabel }}
-          </UButton>
-          <UButton :loading="saving" color="neutral" variant="subtle" icon="i-lucide-save" @click="saveDraft">
-            Save draft
-          </UButton>
-          <UButton :loading="saving" color="neutral" variant="ghost" icon="i-lucide-send-horizontal" @click="requestApproval">
-            Request approval
-          </UButton>
-        </div>
-        <p v-if="persistedStatus === 'approved' && !canPublishSavedPost" class="mt-3 text-sm text-muted">
-          Your edits need approval before publishing. Save and request approval again.
-        </p>
-        <p v-if="state.platforms.length && missingAccountPlatforms(state.platforms, state.accountIds, accounts).length" class="mt-3 text-sm text-muted">
-          You can save this draft now. Select publishing accounts before sending it for approval or scheduling.
-        </p>
+      <div class="min-w-0">
+        <ClientOnly>
+          <SocialPublishingPostComposer
+            :client-id="clientId"
+            :accounts="accounts"
+            :accounts-loading="accountsLoading"
+          />
+          <template #fallback>
+            <div role="status" aria-label="Loading post editor" class="space-y-5">
+              <USkeleton class="h-64 rounded-xl motion-reduce:animate-none" />
+              <USkeleton class="h-96 rounded-xl motion-reduce:animate-none" />
+              <USkeleton class="h-40 rounded-xl motion-reduce:animate-none" />
+            </div>
+          </template>
+        </ClientOnly>
       </div>
 
       <!-- Preview -->
-      <aside class="lg:sticky lg:top-6 self-start">
-        <h2 class="text-xs font-medium uppercase tracking-wide text-muted mb-3">Live preview</h2>
+      <aside class="min-w-0 lg:sticky lg:top-0 self-start lg:max-h-[calc(100svh-3rem)] lg:overflow-y-auto">
+        <h2 class="text-base font-semibold mb-1">
+          Post preview
+        </h2>
+        <p class="text-sm text-muted mb-4">
+          Check the copy and media for each selected network.
+        </p>
         <SocialPublishingPlatformPreviewPane
           :platforms="state.platforms"
           :page-name="pageName"
@@ -255,5 +231,43 @@ const primaryLabel = computed(() => ({
         />
       </aside>
     </div>
+    <div class="sticky bottom-0 z-10 mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-default bg-default/95 p-4 backdrop-blur">
+      <UBadge color="neutral" variant="subtle" class="capitalize mr-auto">
+        {{ persistedStatus?.replace(/_/g, ' ') || 'Unsaved draft' }}
+      </UBadge>
+      <UButton
+        :loading="saving"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-save"
+        @click="saveDraft"
+      >
+        Save draft
+      </UButton>
+      <UButton
+        v-if="canPublishSavedPost"
+        :loading="saving"
+        :disabled="!canPublishSavedPost"
+        icon="i-lucide-send"
+        @click="publishApprovedPost"
+      >
+        Publish approved post
+      </UButton>
+      <UButton
+        v-else
+        :loading="saving"
+        color="primary"
+        icon="i-lucide-check"
+        @click="primaryAction"
+      >
+        {{ primaryLabel }}
+      </UButton>
+    </div>
+    <p v-if="persistedStatus === 'approved' && !canPublishSavedPost" class="mt-3 text-sm text-muted">
+      Your edits need approval before publishing. Save and request approval again.
+    </p>
+    <p v-if="missingPlatforms.length" class="mt-3 text-sm text-muted">
+      Save your draft at any time. Select accounts for {{ missingPlatforms.map(p => platformLabel[p] || p).join(', ') }} before approval or scheduling.
+    </p>
   </SocialPublishingShell>
 </template>

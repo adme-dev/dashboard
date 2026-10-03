@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
   ].join('\n')
 
   const caption = await generateModelRoutedGroqInsight(prompt, {
-    defaultModelId: GROQ_MODELS.LLAMA_70B,
+    defaultModelId: GROQ_MODELS.REASONING_120B,
     temperature: 0.7,
     maxTokens: 1200,
     systemPrompt:
