@@ -178,21 +178,21 @@
           <div class="flex items-center gap-3">
             <div
               class="w-2 h-2 rounded-full"
-              :style="{ backgroundColor: (row as any).status?.color || '#9ca3af' }"
+              :style="{ backgroundColor: row.original.status?.color || '#9ca3af' }"
             />
             <div>
               <NuxtLink
-                :to="`/agency/tasks/${(row as any).id}`"
+                :to="`/agency/tasks/${row.original.id}`"
                 class="font-medium hover:text-primary-500"
               >
-                {{ (row as any).title }}
+                {{ row.original.title }}
               </NuxtLink>
               <div class="flex items-center gap-2 mt-0.5">
-                <span v-if="(row as any).project" class="text-xs text-gray-400">
-                  {{ (row as any).project.name }}
+                <span v-if="row.original.project" class="text-xs text-gray-400">
+                  {{ row.original.project.name }}
                 </span>
                 <UBadge
-                  v-for="label in ((row as any).labels || []).slice(0, 2)"
+                  v-for="label in (row.original.labels || []).slice(0, 2)"
                   :key="label.id"
                   size="xs"
                   variant="subtle"
@@ -207,50 +207,50 @@
 
         <template #status-cell="{ row }">
           <UBadge
-            :style="{ backgroundColor: (row as any).status?.color + '20', color: (row as any).status?.color }"
+            :style="{ backgroundColor: row.original.status?.color + '20', color: row.original.status?.color }"
             size="sm"
           >
-            {{ (row as any).status?.name }}
+            {{ row.original.status?.name }}
           </UBadge>
         </template>
 
         <template #priority-cell="{ row }">
-          <UBadge :color="getPriorityColor((row as any).priority)" size="sm">
-            {{ (row as any).priority }}
+          <UBadge :color="getPriorityColor(row.original.priority)" size="sm">
+            {{ row.original.priority }}
           </UBadge>
         </template>
 
         <template #assignee-cell="{ row }">
-          <div v-if="(row as any).assignee" class="flex items-center gap-2">
-            <UAvatar :alt="(row as any).assignee.name" size="xs" />
-            <span class="text-sm">{{ (row as any).assignee.name }}</span>
+          <div v-if="row.original.assignee" class="flex items-center gap-2">
+            <UAvatar :alt="row.original.assignee.name" size="xs" />
+            <span class="text-sm">{{ row.original.assignee.name }}</span>
           </div>
           <span v-else class="text-gray-400 text-sm">Unassigned</span>
         </template>
 
         <template #dueDate-cell="{ row }">
-          <div v-if="(row as any).dueDate" class="flex items-center gap-1">
+          <div v-if="row.original.dueDate" class="flex items-center gap-1">
             <UIcon
-              v-if="isOverdue((row as any).dueDate, (row as any).status?.isFinal)"
+              v-if="isOverdue(row.original.dueDate, row.original.status?.isFinal)"
               name="i-lucide-triangle-alert"
               class="w-4 h-4 text-error-500"
             />
-            <span :class="isOverdue((row as any).dueDate, (row as any).status?.isFinal) ? 'text-error-500' : ''">
-              {{ formatDate((row as any).dueDate) }}
+            <span :class="isOverdue(row.original.dueDate, row.original.status?.isFinal) ? 'text-error-500' : ''">
+              {{ formatDate(row.original.dueDate) }}
             </span>
           </div>
           <span v-else class="text-gray-400">-</span>
         </template>
 
         <template #progress-cell="{ row }">
-          <div v-if="(row as any).subtaskCount > 0" class="flex items-center gap-2">
+          <div v-if="row.original.subtaskCount > 0" class="flex items-center gap-2">
             <UProgress
-              :value="((row as any).completedSubtasks / (row as any).subtaskCount) * 100"
+              :value="(row.original.completedSubtasks / row.original.subtaskCount) * 100"
               size="sm"
               class="w-16"
             />
             <span class="text-xs text-gray-500">
-              {{ (row as any).completedSubtasks }}/{{ (row as any).subtaskCount }}
+              {{ row.original.completedSubtasks }}/{{ row.original.subtaskCount }}
             </span>
           </div>
           <span v-else class="text-gray-400 text-sm">-</span>
@@ -262,13 +262,13 @@
               icon="i-lucide-eye"
               variant="ghost"
               size="xs"
-              :to="`/agency/tasks/${(row as any).id}`"
+              :to="`/agency/tasks/${row.original.id}`"
             />
             <UButton
               icon="i-lucide-pencil"
               variant="ghost"
               size="xs"
-              @click="editTask(row as any)"
+              @click="editTask(row.original)"
             />
           </div>
         </template>
