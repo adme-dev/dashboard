@@ -58,7 +58,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetPublis
       {
         defaultModelId: GROQ_MODELS.LLAMA_70B,
         temperature: 0.7,
-        maxTokens: 400,
+        maxTokens: 1200,
         featureKey: 'video_asset_publish_social_caption',
         userId: user.id,
         clientId,

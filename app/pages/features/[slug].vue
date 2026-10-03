@@ -785,7 +785,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Render Once, Ship Everywhere',
-        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. You can save a social draft while an account connection is still being prepared; select the publishing accounts before requesting approval or scheduling. Failed renders explain why and retry in place.'
+        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule. If AI cannot produce a caption, the video still reaches a reviewable draft with empty copy. Write your approved caption before review. You can save a draft before account onboarding; select publishing accounts before requesting approval or scheduling. Failed renders explain why and retry in place.'
       }
     ]
   },

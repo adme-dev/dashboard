@@ -13,3 +13,13 @@ New uploads are registered automatically. Existing uploads made before this rele
 Upload access follows the project creator/admin/owner and client access checks. Registration also checks for project reassignment after storage dispatch. Video metadata never authorizes client access or determines file storage keys.
 
 Regression coverage: `test/server/api/mediaUploadLibrary.test.ts` and `test/app/socialComposerDraftWithoutAccount.test.ts`.
+
+## Caption failure recovery
+
+Video Studio retains the media and campaign in a draft if the caption provider fails, returns empty copy, or returns its failure sentinel. Post copy stays empty; production instructions and provider errors are never substituted. Compose's **Write with AI** rejects unusable output and preserves the existing copy. Add approved copy before requesting review.
+
+The 3 October investigation found the routed `openai/gpt-oss-20b` caption request used all 400 completion tokens without visible output. A reasoning-budget limit is the likely cause; the old ledger did not retain finish reasons, so the historical truncation cannot be confirmed. The three social caption routes now allow 1,200 completion tokens. Groq telemetry records empty visible output as `error` / `empty_completion`, preserves measured usage, and includes the finish reason without storing reasoning or caption text. No automatic retry is added for empty output.
+
+Regression coverage: `test/social/videoStudioDraft.test.ts`, `test/server/api/socialCaptionFailure.test.ts`, and `test/server/utils/groqEmptyCompletion.test.ts`.
+
+Verification on 3 October: 1,346 focused tests passed (208 files). The full suite had 15,341 passed, 1,608 skipped and three failures. All three reproduced on unchanged source `5473491ac`: `godModeGateInventory.test.ts` (frozen gate inventory), `godModeIsolationInventory.test.ts` (mechanical route inventory), and `videoGenerationForm.test.ts` (model-mode filter expectation). New caption tests/helpers and marketing copy lint clean; edited legacy files add no lint diagnostics.

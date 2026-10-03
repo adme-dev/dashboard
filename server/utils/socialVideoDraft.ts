@@ -38,9 +38,17 @@ export async function buildVideoStudioSocialDraft(input: VideoStudioDraftInput):
   const platforms = defaultPlatformsForVideoFormat(input.format)
   const primaryPlatform = platforms[0] ?? 'facebook'
   const topic = input.socialBrief?.trim() || input.prompt?.trim() || `New video creative in ${input.format}`
-  const content = input.captionGenerator
-    ? await input.captionGenerator({ topic, platform: primaryPlatform, tone: 'professional' })
-    : topic
+  let content = topic
+  let captionGenerationFailed = false
+  if (input.captionGenerator) {
+    try {
+      content = (await input.captionGenerator({ topic, platform: primaryPlatform, tone: 'professional' })).trim()
+      captionGenerationFailed = !content || content === 'Unable to generate insight'
+    } catch {
+      captionGenerationFailed = true
+    }
+    if (captionGenerationFailed) content = ''
+  }
 
   return {
     clientId: input.clientId,
@@ -51,6 +59,7 @@ export async function buildVideoStudioSocialDraft(input: VideoStudioDraftInput):
     tags: ['video-studio', input.format],
     metadata: {
       source: 'video_studio',
+      ...(captionGenerationFailed ? { captionGenerationFailed: true } : {}),
       projectId: input.projectId,
       jobId: input.jobId ?? null,
       assetId: input.assetId ?? null,

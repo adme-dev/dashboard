@@ -64,7 +64,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'renderPubli
       {
         defaultModelId: GROQ_MODELS.LLAMA_70B,
         temperature: 0.7,
-        maxTokens: 400,
+        maxTokens: 1200,
         featureKey: 'audio_render_publish_social_caption',
         userId: user.id,
         clientId,

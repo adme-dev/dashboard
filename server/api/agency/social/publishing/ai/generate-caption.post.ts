@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
   const caption = await generateModelRoutedGroqInsight(prompt, {
     defaultModelId: GROQ_MODELS.LLAMA_70B,
     temperature: 0.7,
-    maxTokens: 400,
+    maxTokens: 1200,
     systemPrompt:
       'You are an expert social media copywriter for a digital marketing agency. Write engaging, on-brand captions that fit the platform. Output only the caption text.',
     featureKey: 'social_publishing_caption',
@@ -49,5 +49,9 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  return { caption: caption.trim() }
+  const content = caption.trim()
+  if (!content || content === 'Unable to generate insight') {
+    throw createError({ statusCode: 502, statusMessage: 'No caption was generated. Your existing copy is unchanged. Try again or write your caption.' })
+  }
+  return { caption: content }
 })
