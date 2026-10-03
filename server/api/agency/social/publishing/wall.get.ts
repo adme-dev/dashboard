@@ -18,6 +18,9 @@ export default defineEventHandler(async (event) => {
   return await queryRows(
     `SELECT
         p.*,
+        publisher.name AS published_by_name,
+        publication.actor_id AS published_by_id,
+        publication.source AS publication_source,
         c.name AS campaign_name,
         c.color AS campaign_color,
         COALESCE(accounts.accounts, '[]'::jsonb) AS accounts,
@@ -42,6 +45,16 @@ export default defineEventHandler(async (event) => {
         ) AS metrics,
         COALESCE(metrics.by_platform, '{}'::jsonb) AS metrics_by_platform
        FROM social_posts p
+       LEFT JOIN LATERAL (
+         SELECT e.actor_id, e.metadata->>'source' AS source
+         FROM social_publishing_audit_events e
+         WHERE e.post_id = p.id AND e.client_id = p.client_id
+           AND e.action = 'post_published'
+           AND e.metadata->>'status' IN ('published', 'partially_published')
+         ORDER BY e.created_at ASC, e.id ASC
+         LIMIT 1
+       ) publication ON TRUE
+       LEFT JOIN team_members publisher ON publisher.id::text = publication.actor_id
        LEFT JOIN social_campaigns c ON c.id = p.campaign_id
        LEFT JOIN LATERAL (
          SELECT jsonb_agg(
@@ -56,6 +69,7 @@ export default defineEventHandler(async (event) => {
          FROM social_accounts sa
          WHERE p.account_ids IS NOT NULL
            AND sa.id = ANY(p.account_ids)
+           AND sa.client_id = p.client_id
        ) accounts ON TRUE
        LEFT JOIN LATERAL (
          SELECT

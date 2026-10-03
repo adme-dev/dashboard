@@ -616,6 +616,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Partial-Success Aware',
         content: 'When a post targets several networks and one fails — an expired token, a platform hiccup — the others still go out. Per-network results are recorded individually, so you can see exactly what published where and retry only what failed, rather than re-blasting every channel.'
+      },
+      {
+        title: 'Publishing History',
+        content: 'The publishing Wall brings together saved creative, publication dates, destination accounts and links to network posts. Publisher attribution comes from successful publishing audit events, with manual and automated delivery identified separately. Older posts without attribution are marked as not recorded. Published copy is read-only in XeroFlow; changes and removals made directly on a network are not yet synchronised back.'
       }
     ]
   },

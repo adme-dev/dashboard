@@ -36,7 +36,7 @@ const agencySocialRouteNavs = new Map([
   ['app/pages/agency/social/reporting/index.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/publishing/accounts.vue', 'SocialPublishingShell'],
   ['app/pages/agency/social/publishing/analytics.vue', 'SocialPublishingShell'],
-  ['app/pages/agency/social/publishing/approvals.vue', 'SocialPublishingShell'],
+  ['app/pages/agency/social/publishing/approvals.vue', 'SocialPublishingApprovalWorkspace'],
   ['app/pages/agency/social/publishing/calendar.vue', 'SocialPublishingCalendarView'],
   ['app/pages/agency/social/publishing/compose.vue', 'SocialPublishingShell'],
   ['app/pages/agency/social/publishing/feed.vue', 'SocialPublishingShell'],
@@ -54,6 +54,10 @@ const portalSocialRouteNavs = new Map([
 ])
 
 describe('social route navigation coverage', () => {
+  it('keeps the client-only approvals workspace covered by publishing navigation', () => {
+    expect(read('app/components/social-publishing/ApprovalWorkspace.client.vue'))
+      .toContain('SocialPublishingShell')
+  })
   it('keeps every agency social route covered by the expected section navigation', () => {
     const routeFiles = listVueFiles('app/pages/agency/social').sort()
 

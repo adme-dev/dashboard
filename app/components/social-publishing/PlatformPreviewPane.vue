@@ -12,33 +12,33 @@ const props = defineProps<{
   platforms: SocialPublishPlatform[]
   pageName?: string
   // (platform) => { content, mediaUrls } — resolved base+override from the composer
-  resolve: (platform: string) => { content: string; mediaUrls: string[] }
+  resolve: (platform: string) => { content: string, mediaUrls: string[] }
 }>()
 
 const META = {
-  facebook: { label: 'Facebook', icon: 'i-lucide-facebook', comp: MetaFeedPreview },
-  instagram: { label: 'Instagram', icon: 'i-lucide-instagram', comp: InstagramPreview },
-  linkedin: { label: 'LinkedIn', icon: 'i-lucide-linkedin', comp: LinkedInPreview },
-  tiktok: { label: 'TikTok', icon: 'i-lucide-music', comp: TikTokPreview },
-  youtube: { label: 'YouTube', icon: 'i-lucide-youtube', comp: YouTubePreview },
-  'google-business': { label: 'Google Business', icon: 'i-lucide-store', comp: GoogleBusinessPreview },
+  'facebook': { label: 'Facebook', icon: 'i-lucide-facebook', comp: MetaFeedPreview },
+  'instagram': { label: 'Instagram', icon: 'i-lucide-instagram', comp: InstagramPreview },
+  'linkedin': { label: 'LinkedIn', icon: 'i-lucide-linkedin', comp: LinkedInPreview },
+  'tiktok': { label: 'TikTok', icon: 'i-lucide-music', comp: TikTokPreview },
+  'youtube': { label: 'YouTube', icon: 'i-lucide-youtube', comp: YouTubePreview },
+  'google-business': { label: 'Google Business', icon: 'i-lucide-store', comp: GoogleBusinessPreview }
 } as const
 
 const cards = computed(() =>
   props.platforms.map((p) => {
     const r = props.resolve(p)
     return { platform: p, meta: META[p], content: r.content, image: r.mediaUrls?.[0] }
-  }),
+  })
 )
 </script>
 
 <template>
-  <div class="space-y-5">
+  <div class="min-w-0 w-full space-y-5">
     <p v-if="!platforms.length" class="text-sm text-muted">
       Select one or more networks to preview the post.
     </p>
 
-    <div v-for="card in cards" :key="card.platform" class="space-y-2">
+    <div v-for="card in cards" :key="card.platform" class="min-w-0 space-y-2">
       <div class="flex items-center gap-2 text-sm font-medium text-muted">
         <UIcon :name="card.meta.icon" class="size-4" />
         {{ card.meta.label }}
@@ -56,7 +56,7 @@ const cards = computed(() =>
             </p>
           </div>
         </div>
-        <p class="whitespace-pre-wrap px-3 pb-3 text-sm">
+        <p class="whitespace-pre-wrap px-3 pb-3 text-sm [overflow-wrap:anywhere]">
           {{ card.content }}
         </p>
         <video

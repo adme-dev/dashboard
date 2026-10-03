@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SocialPublishPlatform, SocialWallPost } from '~/types'
 import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
+import { isVideoMediaUrl } from '~/utils/social/videoMedia'
 
 const { clientId } = useSocialPublishingClient()
 
@@ -14,20 +15,24 @@ const apiFetch = $fetch as <T = unknown>(
 
 const posts = ref<SocialWallPost[]>([])
 const pending = ref(false)
-const error = ref<any>(null)
+const error = ref<unknown>(null)
+let refreshVersion = 0
 
 async function refresh() {
+  const version = ++refreshVersion
+  const requestedClient = clientId.value
   pending.value = true
+  posts.value = []
   error.value = null
   try {
-    posts.value = await apiFetch<SocialWallPost[]>('/api/agency/social/publishing/wall', {
-      query: { clientId: clientId.value, limit: 180 },
+    const result = await apiFetch<SocialWallPost[]>('/api/agency/social/publishing/wall', {
+      query: { clientId: requestedClient, limit: 180 }
     })
+    if (version === refreshVersion && requestedClient === clientId.value) posts.value = result
   } catch (err) {
-    posts.value = []
-    error.value = err
+    if (version === refreshVersion) error.value = err
   } finally {
-    pending.value = false
+    if (version === refreshVersion) pending.value = false
   }
 }
 
@@ -74,6 +79,7 @@ const filteredPosts = computed(() => {
       post.hashtags?.join(' '),
       post.tags?.join(' '),
       post.campaign_name,
+      post.published_by_name,
       ...post.platforms,
       ...post.accounts.map(account => account.account_name || account.platform_account_id)
     ].filter(Boolean).join(' ').toLowerCase().includes(q)
@@ -98,8 +104,10 @@ function fmtDate(value: string | null) {
   return new Date(value).toLocaleString(undefined, {
     day: 'numeric',
     month: 'short',
+    year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    timeZoneName: 'short'
   })
 }
 
@@ -118,27 +126,13 @@ function platformResultLinks(post: SocialWallPost) {
 }
 
 function previewContent(post: SocialWallPost) {
-  return post.content?.trim() || 'No copy saved for this post.'
+  return post.platform_overrides?.[post.platforms[0] || '']?.content?.trim()
+    || post.content?.trim() || 'No copy saved for this post.'
 }
 
-function previewPlatforms(post: SocialWallPost): SocialPublishPlatform[] {
-  return post.platforms.slice(0, 1)
-}
-
-function previewPageName(post: SocialWallPost) {
-  const primaryPlatform = post.platforms[0]
-  const account = post.accounts.find(item => item.platform === primaryPlatform) ?? post.accounts[0]
-  return account?.account_name || post.campaign_name || 'Your Brand'
-}
-
-function resolvePreview(post: SocialWallPost) {
-  return (platform: string) => {
-    const override = post.platform_overrides?.[platform]
-    return {
-      content: override?.content?.trim() || post.content || '',
-      mediaUrls: override?.mediaUrls?.length ? override.mediaUrls : post.media_urls || []
-    }
-  }
+function previewMedia(post: SocialWallPost) {
+  const override = post.platform_overrides?.[post.platforms[0] || '']
+  return override?.mediaUrls?.length ? override.mediaUrls : post.media_urls || []
 }
 </script>
 
@@ -158,6 +152,15 @@ function resolvePreview(post: SocialWallPost) {
         Refresh
       </UButton>
     </template>
+
+    <UAlert
+      color="neutral"
+      variant="soft"
+      icon="i-lucide-history"
+      title="Publishing history"
+      description="This Wall records posts managed in XeroFlow. Published copy is read-only here; edits and removals made on a social network are not synced back yet. Open the network link to check the current live post."
+      class="mb-4"
+    />
 
     <div class="mb-4 grid gap-2 lg:grid-cols-[minmax(0,1fr)_12rem_13rem]">
       <UInput
@@ -204,17 +207,52 @@ function resolvePreview(post: SocialWallPost) {
       <article
         v-for="post in filteredPosts"
         :key="post.id"
-        class="flex min-h-0 flex-col overflow-hidden rounded-md border border-default bg-default"
+        class="@container flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-default bg-default"
       >
-        <div class="border-b border-default bg-elevated p-3">
-          <div class="overflow-x-auto pb-1">
-            <div class="flex min-w-[380px] justify-center">
-              <SocialPublishingPlatformPreviewPane
-                :platforms="previewPlatforms(post)"
-                :page-name="previewPageName(post)"
-                :resolve="resolvePreview(post)"
-              />
-            </div>
+        <div v-if="previewMedia(post).length" class="min-w-0 border-b border-default bg-elevated p-3">
+          <video
+            v-if="isVideoMediaUrl(previewMedia(post)[0])"
+            :src="previewMedia(post)[0]"
+            controls
+            playsinline
+            preload="metadata"
+            class="block max-h-96 w-full max-w-full rounded-md bg-default object-contain"
+            :aria-label="`${post.accounts[0]?.account_name || 'Social post'} video`"
+          />
+          <a
+            v-else
+            :href="previewMedia(post)[0]"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="block"
+            aria-label="Open post image at full size"
+          >
+            <img
+              :src="previewMedia(post)[0]"
+              alt="Post artwork"
+              loading="lazy"
+              class="max-h-96 w-full rounded-md object-contain"
+            >
+          </a>
+          <div v-if="previewMedia(post).length > 1" class="mt-2 flex flex-wrap gap-2">
+            <a
+              v-for="(media, index) in previewMedia(post).slice(1)"
+              :key="media"
+              :href="media"
+              target="_blank"
+              rel="noopener noreferrer"
+              :aria-label="`Open attachment ${index + 2}`"
+              class="flex size-14 items-center justify-center overflow-hidden rounded border border-default"
+            >
+              <UIcon v-if="isVideoMediaUrl(media)" name="i-lucide-play" class="size-5" />
+              <img
+                v-else
+                :src="media"
+                alt=""
+                loading="lazy"
+                class="size-full object-contain"
+              >
+            </a>
           </div>
         </div>
 
@@ -236,7 +274,7 @@ function resolvePreview(post: SocialWallPost) {
             </UBadge>
           </div>
 
-          <p class="line-clamp-4 whitespace-pre-wrap text-sm leading-6">
+          <p class="line-clamp-4 whitespace-pre-wrap text-sm leading-6 [overflow-wrap:anywhere]">
             {{ previewContent(post) }}
           </p>
 
@@ -252,10 +290,10 @@ function resolvePreview(post: SocialWallPost) {
             </UBadge>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="grid grid-cols-1 gap-2 text-xs @xs:grid-cols-2">
             <div class="rounded-md border border-default p-2">
               <div class="text-muted">
-                Schedule
+                {{ post.published_at ? 'Published' : 'Scheduled' }}
               </div>
               <div class="mt-0.5 font-medium">
                 {{ fmtDate(post.published_at || post.scheduled_at) }}
@@ -268,6 +306,18 @@ function resolvePreview(post: SocialWallPost) {
               <div class="mt-0.5 truncate font-medium">
                 {{ post.campaign_name || 'Unassigned' }}
               </div>
+            </div>
+          </div>
+
+          <div v-if="post.published_at" class="rounded-md border border-default p-3 text-xs [overflow-wrap:anywhere]">
+            <div class="text-muted">
+              Published via XeroFlow by
+            </div>
+            <div class="mt-1 font-medium">
+              {{ post.published_by_name || (post.published_by_id ? 'Former team member' : post.publication_source && post.publication_source !== 'manual' ? 'XeroFlow automation' : 'Not recorded') }}
+            </div>
+            <div v-if="post.publication_source" class="mt-1 text-muted">
+              {{ post.publication_source === 'manual' ? 'Manual publish' : 'Automated delivery' }}
             </div>
           </div>
 
@@ -373,7 +423,7 @@ function resolvePreview(post: SocialWallPost) {
               color="neutral"
               icon="i-lucide-external-link"
             >
-              {{ platformLabel(link.platform) }}
+              Open on {{ platformLabel(link.platform) }}
             </UButton>
           </div>
         </div>

@@ -2336,6 +2336,9 @@ export interface SocialWallEngagement {
 }
 
 export interface SocialWallPost extends SocialPost {
+  published_by_name: string | null
+  published_by_id: string | null
+  publication_source: string | null
   campaign_name: string | null
   campaign_color: string | null
   accounts: SocialWallAccount[]

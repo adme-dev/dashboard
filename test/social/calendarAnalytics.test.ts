@@ -67,6 +67,12 @@ describe('analytics/overview.get', () => {
 })
 
 describe('wall.get', () => {
+  it('does not query posts when client access is denied', async () => {
+    mockRequireSocialClientAccess.mockRejectedValueOnce(new Error('Forbidden'))
+    await expect(wallH({ query: { clientId: 'other-client' } } as any)).rejects.toThrow('Forbidden')
+    expect(mockQueryRows).not.toHaveBeenCalled()
+  })
+
   it('requires clientId', async () => {
     await expect(wallH({ query: {} } as any)).rejects.toThrow('clientId required')
   })
@@ -85,6 +91,11 @@ describe('wall.get', () => {
     expect(sql).toContain('social_accounts')
     expect(sql).toContain('linked_social_post_id = p.id')
     expect(sql).toContain('conversation_count')
+    // Never attribute a failed retry or a different client's audit event.
+    expect(sql).toContain('e.client_id = p.client_id')
+    expect(sql).toContain("e.metadata->>'status' IN ('published', 'partially_published')")
+    expect(sql).toContain('publisher.id::text = publication.actor_id')
+    expect(sql).toContain('sa.client_id = p.client_id')
     expect(params).toEqual(['C1', 40])
   })
 })
