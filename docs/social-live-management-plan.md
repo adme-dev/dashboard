@@ -11,3 +11,5 @@ Approved scope: user requested live Wall editing/removal with actor history and 
 Verification: provider contract and failure tests; client/account isolation; role/customer gate; concurrent/idempotent operation tests; unchanged archive retention; full build/source guards; live UI read-only probe. No real post will be deleted solely to test the control.
 
 Primary provider reference: Meta official facebook-python-business-sdk facebook_business/adobjects/post.py (api_get, api_update message, api_delete). Official developer documentation returned 429 during research.
+
+Delivery handoff implemented as provider-receipt reconciliation on task reads: confirmed/partial/unverified/pending, exact target count, publication timestamp, and recorded removals. No task/job status is changed automatically. The existing task lifecycle remains authoritative for completion and brief approval. Wall and archive reads bypass database caching so explicit refresh observes recorded changes.

@@ -627,7 +627,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Publishing Archive',
-        content: 'Open History on a Wall post to review recorded creation, edit, approval, scheduling and publication events with actor names and full timestamps. Older events load on demand. Client boundaries are enforced, and missing historical attribution is shown explicitly rather than guessed.'
+        content: 'Open History on a Wall post to review recorded creation, edit, approval, scheduling and publication events with actor names and full timestamps. Linked tasks show saved provider delivery confirmations, partial delivery and recorded removals, with a refresh control and archive link. Completing the task and brief remains subject to their workflow. Older events load on demand. Client boundaries are enforced, and missing historical attribution is shown explicitly rather than guessed.'
       },
       {
         title: 'Manage Live Facebook Posts',

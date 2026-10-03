@@ -1,4 +1,4 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireSocialPostClientAccess } from '~~/server/utils/socialPublishing/guards'
 
 /** Client-scoped, paginated archive of recorded publishing actions. */
@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid history offset' })
   }
-  const rows = await queryRows(
+  const rows = await queryRowsFresh(
     `SELECT e.id, e.action, e.created_at, e.actor_id, t.name AS actor_name,
        a.account_name, a.platform,
        jsonb_strip_nulls(jsonb_build_object(

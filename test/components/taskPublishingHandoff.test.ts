@@ -77,6 +77,17 @@ describe('task publishing controls', () => {
     expect(host.textContent).toContain('Ownership changed')
     expect((host.querySelector('select') as HTMLSelectElement).value).toBe('existing')
   })
+  it('shows confirmed delivery and refreshes receipts without completing the task', async () => {
+    fetchMock.mockResolvedValue({ clientId: 'product', post: { id: 'published', status: 'published', delivery: { state: 'confirmed', confirmed: 1, total: 1, removed: 0, publishedAt: '2026-10-03T15:00:00Z' } }, drafts: [] })
+    const { host } = mount(PublishingHandoff, { taskId: 'task' })
+    await flush()
+    expect(host.textContent).toContain('1 of 1 destination accounts have saved provider confirmations')
+    expect(host.textContent).toContain('Publication archive')
+    click(host, 'Refresh delivery')
+    await flush()
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/agency/tasks/task/publishing')
+    expect(fetchMock.mock.calls.every(call => call.length === 1)).toBe(true)
+  })
   it('never renders a stale response after switching tasks', async () => {
     let resolveOld: (v: unknown) => void
     fetchMock.mockReturnValueOnce(new Promise((resolve) => {

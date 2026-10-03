@@ -1,4 +1,4 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
 
   const limit = Math.min(Math.max(Number(q.limit) || 120, 1), 250)
 
-  return await queryRows(
+  return await queryRowsFresh(
     `SELECT
         p.*,
         publisher.name AS published_by_name,

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 const m = vi.hoisted(() => ({ access: vi.fn(), rows: vi.fn() }))
 vi.mock('~~/server/utils/socialPublishing/guards', () => ({ requireSocialPostClientAccess: m.access }))
-vi.mock('~~/server/utils/db', () => ({ queryRows: m.rows }))
+vi.mock('~~/server/utils/db', () => ({ queryRowsFresh: m.rows }))
 vi.stubGlobal('defineEventHandler', (fn: unknown) => fn)
 vi.stubGlobal('getRouterParam', () => 'post')
 vi.stubGlobal('getQuery', (e: { query: unknown }) => e.query)

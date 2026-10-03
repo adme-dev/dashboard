@@ -42,7 +42,7 @@ const run = (input: { postId?: string } = {}, taskId = ids.task) => handoffTaskP
 describe.skipIf(process.env.XF_LOCAL_WORKFLOW_TESTS !== '1')('task → Planner with isolated PostgreSQL', () => {
   beforeAll(async () => {
     await pool.query(`CREATE SCHEMA ${schema}`)
-    await rows(`CREATE TABLE agency_clients(id uuid PRIMARY KEY); CREATE TABLE projects(id uuid PRIMARY KEY, client_id uuid); CREATE TABLE briefs(id uuid PRIMARY KEY, client_id uuid); CREATE TABLE tasks(id uuid PRIMARY KEY, project_id uuid, brief_id uuid, department_id uuid, title text, description text); CREATE TABLE social_posts(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), client_id uuid, created_by text, content text, status text DEFAULT 'draft', timezone text, platforms text[], metadata jsonb DEFAULT '{}', created_at timestamptz DEFAULT NOW(), approval_requested_at timestamptz, approved_at timestamptz, scheduled_at timestamptz, published_at timestamptz); CREATE TABLE social_publishing_audit_events(client_id uuid, post_id uuid, actor_id text, action text, metadata jsonb);`)
+    await rows(`CREATE TABLE agency_clients(id uuid PRIMARY KEY); CREATE TABLE projects(id uuid PRIMARY KEY, client_id uuid); CREATE TABLE briefs(id uuid PRIMARY KEY, client_id uuid); CREATE TABLE tasks(id uuid PRIMARY KEY, project_id uuid, brief_id uuid, department_id uuid, title text, description text); CREATE TABLE social_posts(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), client_id uuid, created_by text, content text, status text DEFAULT 'draft', timezone text, platforms text[], account_ids uuid[], platform_results jsonb DEFAULT '{}', metadata jsonb DEFAULT '{}', created_at timestamptz DEFAULT NOW(), approval_requested_at timestamptz, approved_at timestamptz, scheduled_at timestamptz, published_at timestamptz); CREATE TABLE social_publishing_audit_events(client_id uuid, post_id uuid, actor_id text, action text, metadata jsonb);`)
     await rows(readFileSync('server/database/migrations/447_task_publishing_handoff.sql', 'utf8'))
   })
   beforeEach(async () => {
@@ -110,6 +110,14 @@ describe.skipIf(process.env.XF_LOCAL_WORKFLOW_TESTS !== '1')('task → Planner w
     expect(state.post).toMatchObject({ id: linked.post.id, status: 'published' })
     expect(state.drafts).toHaveLength(0)
     expect((await run()).post).toMatchObject({ id: linked.post.id, status: 'published' })
+  })
+  it('reconciles provider receipts into the linked task without changing the task', async () => {
+    const linked = await run()
+    await rows("UPDATE social_posts SET status='published',published_at=NOW(),account_ids=$2,platforms='{facebook}',platform_results=$3::jsonb WHERE id=$1", [linked.post.id, [ids.client], JSON.stringify({ facebook: { accountId: ids.client, platform: 'facebook', platformAccountId: '123', platformPostId: '123_456', status: 'success' } })])
+    const before = await rows('SELECT * FROM tasks WHERE id=$1', [ids.task])
+    const state = await getTaskPublishing(ids.task, authorize)
+    expect(state.post.delivery).toMatchObject({ state: 'confirmed', confirmed: 1, total: 1 })
+    expect(await rows('SELECT * FROM tasks WHERE id=$1', [ids.task])).toEqual(before)
   })
   it('denied access leaves no draft or link', async () => {
     authorize.mockRejectedValueOnce(Object.assign(new Error('Forbidden'), { statusCode: 403 }))

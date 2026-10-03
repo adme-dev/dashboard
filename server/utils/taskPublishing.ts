@@ -1,3 +1,4 @@
+import { publishingDelivery } from '~~/server/utils/socialPublishing/deliveryReceipt'
 import { createError } from 'h3'
 import { z } from 'zod'
 import { queryOneFresh, queryRowsFresh, transaction } from '~~/server/utils/db'
@@ -7,7 +8,7 @@ type Authorize = (clientId: string, boardId: string) => Promise<unknown>
 interface TaskScope { id: string, project_id: string, brief_id: string | null, department_id: string, client_id: string, title: string }
 const scopeSql = `SELECT t.id,t.project_id,t.brief_id,t.department_id,t.title,p.client_id
   FROM tasks t JOIN projects p ON p.id=t.project_id WHERE t.id=$1`
-const linkedSql = `SELECT p.id,p.client_id,p.status,p.scheduled_at,p.published_at,l.client_id AS linked_client_id,l.project_id
+const linkedSql = `SELECT p.id,p.client_id,p.status,p.scheduled_at,p.published_at,p.account_ids,p.platforms,p.platform_results,p.metadata,l.client_id AS linked_client_id,l.project_id
   FROM task_publishing_links l JOIN social_posts p ON p.id=l.post_id WHERE l.task_id=$1`
 function assertScope(task: TaskScope | undefined | null): asserts task is TaskScope {
   if (!task) throw createError({ statusCode: 404, statusMessage: 'Task with a client project not found' })
@@ -20,7 +21,7 @@ function assertLink(task: TaskScope, post: Record<string, unknown>) {
 }
 function result(task: TaskScope, post: Record<string, unknown> | null) {
   return { clientId: task.client_id, projectId: task.project_id, briefId: task.brief_id,
-    post: post ? { id: post.id, status: post.status, scheduledAt: post.scheduled_at, publishedAt: post.published_at } : null }
+    post: post ? { id: post.id, status: post.status, scheduledAt: post.scheduled_at, publishedAt: post.published_at, delivery: publishingDelivery(post) } : null }
 }
 export async function getTaskPublishing(taskId: string, authorize: Authorize) {
   const task = await queryOneFresh<TaskScope>(scopeSql, [taskId])
