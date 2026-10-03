@@ -9,25 +9,35 @@
  * - clientId?: string - override client (default: brief's client)
  */
 
-import { requireAuth } from '~~/server/utils/auth'
+import { z } from 'zod'
+import { requireWriteAccess } from '~~/server/utils/auth'
 import { convertBriefToProject } from '~~/server/utils/briefConversion'
 import { maybeAcknowledgeBrief } from '~~/server/utils/automation/actionedConfirmationRunner'
 
+const conversionInput = z.object({
+  projectTemplateId: z.string().uuid().nullable().optional(),
+  projectName: z.string().trim().min(1).max(255).nullable().optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  clientId: z.string().uuid().nullable().optional()
+}).strict()
+
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
   const briefId = getRouterParam(event, 'id')
 
   if (!briefId) {
     throw createError({ statusCode: 400, statusMessage: 'Brief ID is required' })
   }
 
-  const body = await readBody(event)
+  const parsed = conversionInput.safeParse((await readBody(event)) ?? {})
+  if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Check the project name, template, client and start date' })
+  const body = parsed.data
 
   try {
     const result = await convertBriefToProject({
       briefId,
       userId: user.id,
-      projectTemplateId: body?.projectTemplateId || null,
+      projectTemplateId: body?.projectTemplateId,
       projectName: body?.projectName || null,
       startDate: body?.startDate || null,
       clientId: body?.clientId || null

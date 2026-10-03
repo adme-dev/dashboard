@@ -3,7 +3,7 @@
  * GET /api/agency/templates/:id
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOneFresh as queryOne, queryRowsFresh as queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     // Get template
     const template = await queryOne(`
       SELECT
-        pt.*,
+        pt.*, pt.updated_at::text AS task_revision,
         tm.name as created_by_name,
         d.name as department_name
       FROM project_templates pt
@@ -80,6 +80,7 @@ export default defineEventHandler(async (event) => {
     return {
       template: {
         id: template.id,
+        taskRevision: template.task_revision,
         name: template.name,
         description: template.description,
         category: template.category,

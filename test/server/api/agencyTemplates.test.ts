@@ -35,7 +35,13 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
-  queryOne: (...args: unknown[]) => mockQueryOne(...args)
+  queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  transaction: async (fn: (db: unknown) => unknown) => fn({ query: async (sql: string, params: unknown[]) => {
+    if (sql.includes('SELECT * FROM template_tasks')) return { rows: await mockQueryRows(sql, params) }
+    const row = await mockQueryOne(sql, params)
+    return { rows: row ? [row] : [] }
+  } })
 }))
 
 const { default: listTemplates } = await import('~~/server/api/agency/templates/index.get')

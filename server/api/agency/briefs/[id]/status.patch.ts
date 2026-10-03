@@ -2,7 +2,7 @@
  * Update brief status
  */
 
-import { queryOne, execute } from '~~/server/utils/db'
+import { queryOneFresh as queryOne, execute } from '~~/server/utils/db'
 import { getAuthUser } from '~~/server/utils/auth'
 import { notifyBriefStatusChanged } from '~~/server/utils/briefNotifications'
 import { convertBriefToProject } from '~~/server/utils/briefConversion'

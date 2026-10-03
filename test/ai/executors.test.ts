@@ -39,7 +39,8 @@ describe('scheduleSocialPost executor', () => {
     )
     expect(res.resultRef).toBe('post-7')
     expect(res.summary).toContain('Acme')
-    expect(res.summary).toContain('2026-07-01T09:00:00Z')
+    expect(res.summary).toContain('draft')
+    expect(res.summary).not.toContain('scheduled for')
     expect(post.mock.calls[0][0]).toMatchObject({ clientId: 'cl1', content: 'Launch day', status: 'scheduled', platforms: ['facebook'] })
   })
 
@@ -47,6 +48,17 @@ describe('scheduleSocialPost executor', () => {
     const exec = makeScheduleSocialPostExecutor(vi.fn().mockResolvedValue({ id: 'p1' }))
     const res = await exec.execute({ clientId: 'cl1', clientName: 'Acme', content: 'x', status: 'draft' }, ctx() as any)
     expect(res.summary).toContain('draft')
+  })
+
+  it('uses the saved schedule only when the response confirms scheduling', async () => {
+    const exec = makeScheduleSocialPostExecutor(vi.fn().mockResolvedValue({ id: 'p1', status: 'scheduled', scheduled_at: '2026-10-05T10:00:00Z' }))
+    const res = await exec.execute({ clientId: 'cl1', content: 'x', scheduledAt: '2026-10-04T10:00:00Z', status: 'scheduled' }, ctx() as any)
+    expect(res.summary).toContain('scheduled for 2026-10-05T10:00:00Z')
+    expect(res.summary).not.toContain('2026-10-04')
+  })
+  it('does not claim success when no post was returned', async () => {
+    const exec = makeScheduleSocialPostExecutor(vi.fn().mockResolvedValue({}))
+    await expect(exec.execute({ clientId: 'cl1', content: 'x' }, ctx() as any)).rejects.toThrow('no id')
   })
 
   it('propagates a failed post (so executeProposal can revert)', async () => {

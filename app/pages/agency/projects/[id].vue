@@ -187,7 +187,11 @@ watch(activeTab, (tab) => {
             icon="i-lucide-arrow-left"
             variant="ghost"
             to="/agency/projects"
+            aria-label="Back to projects"
           />
+          <h1 class="text-lg font-semibold truncate">
+            {{ project?.name || 'Project' }}
+          </h1>
         </template>
         <template #right>
           <UButton
@@ -448,7 +452,7 @@ watch(activeTab, (tab) => {
                     v-for="task in boardGroup.tasks"
                     :key="task.id"
                     class="flex items-center gap-3 py-2.5 px-1 hover:bg-gray-50 dark:hover:bg-neutral-800 rounded cursor-pointer"
-                    @click="navigateTo(`/agency/boards/${boardGroup.boardSlug}?task=${task.id}`)"
+                    @click="navigateTo(`/agency/tasks/${task.id}`)"
                   >
                     <div class="w-2 h-2 rounded-full flex-shrink-0" :style="{ backgroundColor: task.statusColor }" />
                     <p class="text-sm flex-1 truncate">{{ task.title }}</p>

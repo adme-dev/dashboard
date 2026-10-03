@@ -12,16 +12,17 @@ const props = defineProps<{
 
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{
-  created: [task: any]
+  created: [task: { id: string }]
 }>()
 
 const { user } = useAuth()
 const toast = useToast()
-const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
 // Form state
 const selectedBoard = ref<string>('_none')
 const title = ref('')
+const description = ref('')
 const assignee = ref('_none')
 const priority = ref('medium')
 const estimatedHours = ref<number | null>(null)
@@ -30,13 +31,15 @@ const creating = ref(false)
 // Lazy-loaded data
 const boardsLoaded = ref(false)
 const membersLoaded = ref(false)
-const boards = ref<any[]>([])
-const members = ref<any[]>([])
+interface NamedOption { id: string, name: string }
+const boards = ref<NamedOption[]>([])
+const members = ref<NamedOption[]>([])
 
 // Reset form when modal opens
 watch(open, (isOpen) => {
   if (isOpen) {
     title.value = props.prefillTitle || ''
+    description.value = props.prefillDescription || ''
     estimatedHours.value = props.prefillEstimatedHours ?? null
     selectedBoard.value = '_none'
     assignee.value = '_none'
@@ -50,16 +53,16 @@ watch(open, (isOpen) => {
 
 async function fetchBoards() {
   try {
-    const data = await apiFetch<any>('/api/agency/boards')
-    boards.value = data?.boards || data || []
+    const data = await apiFetch<NamedOption[] | { boards: NamedOption[] }>('/api/agency/boards')
+    boards.value = Array.isArray(data) ? data : data?.boards || []
     boardsLoaded.value = true
   } catch { /* silent */ }
 }
 
 async function fetchMembers() {
   try {
-    const data = await apiFetch<any>('/api/agency/team-members')
-    members.value = data?.members || data || []
+    const data = await apiFetch<NamedOption[] | { members: NamedOption[] }>('/api/agency/team-members')
+    members.value = Array.isArray(data) ? data : data?.members || []
     membersLoaded.value = true
   } catch { /* silent */ }
 }
@@ -78,7 +81,7 @@ const priorityOptions = [
   { label: 'Urgent', value: 'urgent' },
   { label: 'High', value: 'high' },
   { label: 'Medium', value: 'medium' },
-  { label: 'Low', value: 'low' },
+  { label: 'Low', value: 'low' }
 ]
 
 const canCreate = computed(() =>
@@ -86,15 +89,16 @@ const canCreate = computed(() =>
 )
 
 async function handleCreate() {
-  if (!canCreate.value) return
+  if (!canCreate.value || creating.value) return
   creating.value = true
 
   try {
-    const task = await apiFetch('/api/agency/tasks', {
+    const task = await apiFetch<{ id: string }>('/api/agency/tasks', {
       method: 'POST',
       body: {
         departmentId: selectedBoard.value,
         title: title.value.trim(),
+        description: description.value.trim() || undefined,
         assigneeId: assignee.value !== '_none' ? assignee.value : undefined,
         priority: priority.value,
         estimatedHours: estimatedHours.value != null ? estimatedHours.value : undefined,
@@ -102,17 +106,18 @@ async function handleCreate() {
         reporterId: user.value?.id,
         quoteLineItemId: props.sourceType === 'quote-line-item' ? props.quoteLineItemId : undefined,
         briefId: props.sourceType === 'brief' ? props.briefId : undefined,
-        budgetSource: props.sourceType === 'quote-line-item' ? 'quote' : 'brief',
+        budgetSource: props.sourceType === 'quote-line-item' ? 'quote' : 'brief'
       }
     })
 
     toast.add({ title: 'Task created', color: 'success' })
     emit('created', task)
     open.value = false
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const error = err as { data?: { statusMessage?: string }, message?: string }
     toast.add({
       title: 'Failed to create task',
-      description: err.data?.statusMessage || err.message,
+      description: error.data?.statusMessage || error.message,
       color: 'error'
     })
   } finally {
@@ -124,8 +129,10 @@ async function handleCreate() {
 <template>
   <UModal v-model:open="open">
     <template #content>
-      <div class="p-6 space-y-5">
-        <h3 class="text-lg font-semibold">Create Task</h3>
+      <div class="@container max-h-[85svh] overflow-y-auto p-6 space-y-5">
+        <h3 class="text-lg font-semibold">
+          Create Task
+        </h3>
 
         <!-- Source context banner -->
         <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 text-sm">
@@ -138,8 +145,7 @@ async function handleCreate() {
 
         <!-- Form -->
         <div class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium mb-1">Board <span class="text-red-500">*</span></label>
+          <UFormField label="Board" required>
             <USelectMenu
               v-model="selectedBoard"
               :items="boardOptions"
@@ -147,20 +153,27 @@ async function handleCreate() {
               placeholder="Select a board..."
               class="w-full"
             />
-          </div>
+          </UFormField>
 
-          <div>
-            <label class="block text-sm font-medium mb-1">Title <span class="text-red-500">*</span></label>
+          <UFormField label="Title" required>
             <UInput
               v-model="title"
               placeholder="Task title"
               class="w-full"
             />
-          </div>
+          </UFormField>
 
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium mb-1">Assignee</label>
+          <UFormField label="Description" help="Include the deliverable, acceptance criteria and relevant links.">
+            <UTextarea
+              v-model="description"
+              :rows="4"
+              class="w-full"
+              placeholder="What needs to be delivered?"
+            />
+          </UFormField>
+
+          <div class="grid grid-cols-1 @lg:grid-cols-2 gap-4">
+            <UFormField label="Assignee">
               <USelectMenu
                 v-model="assignee"
                 :items="memberOptions"
@@ -168,21 +181,19 @@ async function handleCreate() {
                 placeholder="Unassigned"
                 class="w-full"
               />
-            </div>
+            </UFormField>
 
-            <div>
-              <label class="block text-sm font-medium mb-1">Priority</label>
+            <UFormField label="Priority">
               <USelectMenu
                 v-model="priority"
                 :items="priorityOptions"
                 value-key="value"
                 class="w-full"
               />
-            </div>
+            </UFormField>
           </div>
 
-          <div>
-            <label class="block text-sm font-medium mb-1">Estimated Hours</label>
+          <UFormField label="Estimated Hours">
             <UInput
               v-model.number="estimatedHours"
               type="number"
@@ -191,12 +202,14 @@ async function handleCreate() {
               placeholder="e.g. 8"
               class="w-full"
             />
-          </div>
+          </UFormField>
         </div>
 
         <!-- Footer -->
         <div class="flex justify-end gap-2 pt-2">
-          <UButton variant="ghost" @click="open = false">Cancel</UButton>
+          <UButton variant="ghost" @click="open = false">
+            Cancel
+          </UButton>
           <UButton
             :loading="creating"
             :disabled="!canCreate"

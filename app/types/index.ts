@@ -635,6 +635,7 @@ export interface BriefFieldCondition {
 }
 
 export interface BriefTemplate {
+  projectTemplateId?: string | null
   id: string
   categoryId: string
   departmentId?: string

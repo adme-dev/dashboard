@@ -5,6 +5,7 @@ const props = defineProps<{
   template: BriefTemplate
   initialValues?: BriefFormValues
   disabled?: boolean
+  clients?: { id: string, name: string }[]
 }>()
 
 const emit = defineEmits<{
@@ -415,6 +416,7 @@ function handleCancel() {
                 v-model="formValues[field.fieldKey]"
                 :field="{ ...field, isRequired: isFieldRequired(field) }"
                 :disabled="disabled || isSubmitting"
+                :clients="clients"
                 :class="{
                   'md:col-span-2': field.width === 'full',
                   'md:col-span-1': field.width === 'half' || field.width === 'third'

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useId } from 'vue'
 import { parseDate, type CalendarDate, type DateValue } from '@internationalized/date'
 import type { BriefTemplateField, BriefFieldOption } from '~/types'
 
@@ -18,6 +19,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: any]
 }>()
+
+const checkboxGroupId = useId()
 
 const value = computed({
   get: () => props.modelValue,
@@ -504,7 +507,9 @@ const acceptedFileTypes = computed(() => {
         <div class="space-y-2">
           <UCheckbox
             v-for="option in field.options"
+            :id="`${checkboxGroupId}-${option.value}`"
             :key="option.value"
+            :aria-label="option.label"
             :model-value="arrayValue.includes(option.value)"
             :label="option.label"
             :disabled="disabled"

@@ -63,14 +63,12 @@ const selectedStatus = ref<BriefStatus | null>(null)
 
 // Convert to project state
 const showConvertModal = ref(false)
-const convertProjectName = ref('')
-const convertStartDate = ref(new Date().toISOString().split('T')[0])
 const isConverting = ref(false)
 
 // Can convert: approved and not yet converted
 const canConvert = computed(() => {
   if (!brief.value) return false
-  return brief.value.status === 'approved' && !brief.value.convertedToProjectId
+  return ['approved', 'in_progress'].includes(brief.value.status) && !brief.value.convertedToProjectId
 })
 
 // G9: roll the brief's linked tasks up to a project-level summary for the Linked Project card.
@@ -328,24 +326,19 @@ async function updateStatus(status: BriefStatus) {
 
 // Open convert modal
 function openConvertModal() {
-  convertProjectName.value = brief.value?.title || ''
-  convertStartDate.value = new Date().toISOString().split('T')[0]
   showConvertModal.value = true
 }
 
 // Handle conversion
-async function handleConvert() {
-  if (!convertProjectName.value.trim()) return
+async function handleConvert(options: { projectName: string, startDate: string, projectTemplateId: string | null }) {
+  if (isConverting.value || !options.projectName.trim()) return
 
   isConverting.value = true
 
   try {
     const result = await apiFetch<any>(`/api/agency/briefs/${briefId.value}/convert`, {
       method: 'POST',
-      body: {
-        projectName: convertProjectName.value.trim(),
-        startDate: convertStartDate.value || undefined
-      }
+      body: options
     })
 
     showConvertModal.value = false
@@ -359,6 +352,10 @@ async function handleConvert() {
       duration: 5000
     })
   } catch (error: any) {
+    if (error.statusCode === 409 || error.status === 409) {
+      await refresh()
+      if (brief.value?.convertedToProjectId) showConvertModal.value = false
+    }
     toast.add({
       title: 'Error',
       description: error.data?.statusMessage || 'Failed to convert brief to project',
@@ -1014,39 +1011,12 @@ async function duplicateBrief() {
       @created="onTaskCreatedFromBrief"
     />
 
-    <!-- Convert to Project Modal -->
-    <UModal v-model:open="showConvertModal">
-      <template #content>
-        <div class="p-6 space-y-4">
-          <h3 class="text-lg font-semibold">Convert Brief to Project</h3>
-          <p class="text-sm text-muted">
-            This will create a new project from this brief. If the brief template has a linked project template, tasks will be auto-generated.
-          </p>
-
-          <div class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium mb-1">Project Name</label>
-              <UInput v-model="convertProjectName" class="w-full" placeholder="Enter project name" />
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium mb-1">Start Date</label>
-              <UInput v-model="convertStartDate" type="date" class="w-full" />
-            </div>
-          </div>
-
-          <div class="flex justify-end gap-2 pt-4">
-            <UButton variant="ghost" @click="showConvertModal = false">Cancel</UButton>
-            <UButton
-              :loading="isConverting"
-              :disabled="!convertProjectName.trim()"
-              @click="handleConvert"
-            >
-              Create Project
-            </UButton>
-          </div>
-        </div>
-      </template>
-    </UModal>
+    <BriefsConvertProjectModal
+      v-model:open="showConvertModal"
+      :title="brief?.title || ''"
+      :template-id="brief?.template?.projectTemplateId"
+      :loading="isConverting"
+      @submit="handleConvert"
+    />
   </div>
 </template>

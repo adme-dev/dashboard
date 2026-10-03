@@ -385,7 +385,7 @@ DECLARE
   sequence_num INTEGER;
 BEGIN
   -- Get category prefix
-  SELECT UPPER(LEFT(slug, 3)) INTO category_prefix
+  SELECT UPPER(LEFT(bc.slug, 3)) INTO category_prefix
   FROM brief_categories bc
   JOIN brief_templates bt ON bc.id = bt.category_id
   WHERE bt.id = NEW.template_id;

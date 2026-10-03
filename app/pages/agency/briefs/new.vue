@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BriefCategory, BriefTemplate } from '~/types'
+import type { BriefCategory, BriefTemplate, BriefTemplateField } from '~/types'
 
 definePageMeta({
   title: 'Submit New Brief'
@@ -15,24 +15,26 @@ const isSubmitting = ref(false)
 const showAiGenerator = ref(false)
 const formRef = ref<any>(null)
 
-// Fetch categories with templates
+// Categories expose counts; template choices come from the separate templates API.
 const { data: categories, pending: categoriesLoading } = await useFetch('/api/agency/briefs/categories')
+const { data: templates } = await useFetch('/api/agency/briefs/templates')
+const { data: clientsData } = await useFetch('/api/agency/clients')
+const clients = computed(() => clientsData.value || [])
 
 // Fetch full template with fields when selected
 const { data: templateData, pending: templateLoading } = await useFetch(
   () => selectedTemplate.value?.slug ? `/api/agency/briefs/templates/${selectedTemplate.value.slug}` as const : '/api/agency/briefs/templates' as const,
   {
     watch: [selectedTemplate],
-    immediate: false
+    immediate: true
   }
 )
 
 // Templates for selected category
 const categoryTemplates = computed(() => {
-  if (!selectedCategory.value || !categories.value) return []
-  const categoriesList = categories.value as any[]
-  const category = categoriesList.find((c: any) => c.id === selectedCategory.value?.id)
-  return category?.templates || []
+  if (!selectedCategory.value) return []
+  return ((templates.value || []) as BriefTemplate[])
+    .filter(template => template.categoryId === selectedCategory.value?.id)
 })
 
 // Select category
@@ -68,16 +70,18 @@ async function handleSubmit(values: Record<string, any>, isDraft: boolean) {
     // Derive the brief title from whichever title-bearing field the template uses.
     // Different templates name their headline field differently (campaign vs. subject
     // vs. bug summary vs. change-request title) — check them all before falling back.
-    const titleKeys = ['project_name', 'campaign_name', 'subject', 'bug_summary', 'change_request_title', 'title']
+    const titleKeys = ['project_name', 'campaign_name', 'content_brief_title', 'subject', 'bug_summary', 'change_request_title', 'title']
     const derivedTitle = titleKeys
       .map(k => values[k])
       .find(v => typeof v === 'string' && v.trim())
       || `${templateDataValue.name} - ${new Date().toLocaleDateString()}`
+    const clientField = templateDataValue.fields?.find((field: BriefTemplateField) => field.fieldType === 'client')
     const response = await $fetch('/api/agency/briefs', {
       method: 'POST',
       body: {
         templateId: templateDataValue.id,
         title: derivedTitle,
+        clientId: clientField ? values[clientField.fieldKey] || undefined : undefined,
         description: values.description || values.description_of_change || values.project_description || '',
         priority: values.priority || templateDataValue.defaultPriority || 'medium',
         fieldValues: values,
@@ -89,7 +93,7 @@ async function handleSubmit(values: Record<string, any>, isDraft: boolean) {
       title: isDraft ? 'Draft Saved' : 'Brief Submitted',
       description: isDraft
         ? 'Your brief has been saved as a draft.'
-        : `Your brief has been submitted successfully. Reference: ${response.reference}`,
+        : `Your brief has been submitted successfully. Reference: ${response.referenceNumber}`,
       color: 'success',
       duration: 5000
     })
@@ -346,6 +350,7 @@ function getCategoryColorClass(category: any) {
             <BriefsBriefFormRenderer
               ref="formRef"
               :template="templateData as any"
+              :clients="clients"
               :disabled="isSubmitting"
               @submit="handleSubmit"
               @cancel="handleCancel"
