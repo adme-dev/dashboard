@@ -8,6 +8,8 @@ Categories return counts; available templates are loaded from the templates endp
 
 Regression coverage: `test/app/briefIntake.test.ts`, plus the existing brief conversion, notification and utility checks. The client fixture matches the actual array response from `/api/agency/clients`.
 
+The first live probe exposed a second loading regression: `immediate: false` prevented the template's first field request from starting on selection under Nuxt 4. The fetch now starts normally; the regression harness also models the deferred-fetch behavior so selecting a card alone cannot falsely pass as a working form. See the [Nuxt upgrade guide](https://nuxt.com/docs/4.x/getting-started/upgrade).
+
 ## Customer approval is a distinct handoff
 
 Where the brief requires customer sign-off, the job must have an internal review followed by a client-portal decision on the same creative/copy version. Revisions reopen review. Keep delivery pending until the required reviewer has approved the current payload. Do not approve on a customer's behalf during a simulation.

@@ -17,7 +17,7 @@ Object.assign(globalThis, {
   computed, ref, watch, onMounted, definePageMeta: vi.fn(),
   useAuth: () => ({ user: ref({ id: 'paul' }) }), useToast: () => ({ add: vi.fn() }),
   navigateTo: navigate, $fetch: post,
-  useFetch: async (request: string | (() => string)) => {
+  useFetch: async (request: string | (() => string), options: { immediate?: boolean } = {}) => {
     fetches.push(request)
     const data = ref<unknown>(null)
     const load = () => {
@@ -30,7 +30,10 @@ Object.assign(globalThis, {
             ? template
             : [template, { id: 'other-template', categoryId: 'other', name: 'Website Brief' }]
     }
-    watchEffect(load)
+    // Nuxt 4 does not start a never-executed immediate:false fetch on key changes.
+    watchEffect(() => {
+      if (options.immediate !== false) load()
+    })
     return { data, pending: ref(false) }
   }
 })

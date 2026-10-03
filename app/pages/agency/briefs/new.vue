@@ -26,7 +26,7 @@ const { data: templateData, pending: templateLoading } = await useFetch(
   () => selectedTemplate.value?.slug ? `/api/agency/briefs/templates/${selectedTemplate.value.slug}` as const : '/api/agency/briefs/templates' as const,
   {
     watch: [selectedTemplate],
-    immediate: false
+    immediate: true
   }
 )
 
