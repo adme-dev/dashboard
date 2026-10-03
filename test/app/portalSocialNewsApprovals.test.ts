@@ -38,7 +38,7 @@ describe('portal social news approval UI', () => {
   })
 
   it('surfaces the portal decision in agency Approvals and prevents premature internal approval', () => {
-    const source = read('app/pages/agency/social/publishing/approvals.vue')
+    const source = read('app/components/social-publishing/ApprovalWorkspace.client.vue')
     expect(source).toContain('client_approval_status')
     expect(source).toContain('Client decision')
     expect(source).toContain('Client approval is required before agency approval')

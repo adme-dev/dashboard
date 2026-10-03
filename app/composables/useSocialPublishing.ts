@@ -34,11 +34,11 @@ export function useSocialPublishing() {
   const requestApproval = (id: string) =>
     apiFetch(`${base}/posts/${id}/request-approval`, { method: 'POST' })
 
-  const approve = (id: string) =>
-    apiFetch(`${base}/posts/${id}/approve`, { method: 'POST' })
+  const approve = (id: string, reviewVersion: string) =>
+    apiFetch(`${base}/posts/${id}/approve`, { method: 'POST', body: { reviewVersion } })
 
-  const reject = (id: string, reason: string) =>
-    apiFetch(`${base}/posts/${id}/reject`, { method: 'POST', body: { reason } })
+  const reject = (id: string, reason: string, reviewVersion: string) =>
+    apiFetch(`${base}/posts/${id}/reject`, { method: 'POST', body: { reason, reviewVersion } })
 
   const listAccounts = (clientId: string) =>
     apiFetch<SocialAccount[]>(`${base}/accounts`, { query: { clientId } })

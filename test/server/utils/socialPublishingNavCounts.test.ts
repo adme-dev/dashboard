@@ -40,7 +40,7 @@ describe('getSocialPublishingNavCounts', () => {
     expect(sql).toContain("status = 'draft'")
     // pending-approval predicate mirrors approvals/badge.get.ts
     expect(sql).toContain('approval_requested_at IS NOT NULL')
-    expect(sql).toContain('approved_at IS NULL')
+    expect(sql).toMatch(/approval_requested_at IS NOT NULL\s+AND approved_at IS NULL\s+AND status = 'draft'/)
   })
 
   it('surfaces the campaigns count when the planner flag is on', async () => {

@@ -1,4 +1,5 @@
-import { requireRole } from '~~/server/utils/auth'
+import { socialReviewVersionSql } from '~~/server/utils/socialPublishing/reviewVersion'
+import { requireRole, requireWriteAccess } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
 import {
@@ -56,7 +57,8 @@ const CONTENT_LOCKED_STATUSES = new Set(['publishing', 'published', 'partially_p
 const APPROVAL_RESET_STATUSES = new Set(['approved', 'scheduled', 'failed'])
 
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, PERMISSIONS.CREATIVE)
+  const user = await requireWriteAccess(event)
+  await requireRole(event, PERMISSIONS.CREATIVE)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const b = await readBody(event)
@@ -104,10 +106,10 @@ export default defineEventHandler(async (event) => {
   }
   const shouldResetApproval = touchesApprovalSensitiveFields && (
     Boolean(existing.approval_requested_at)
+    || Boolean(existing.client_approval_status)
     || (existing.status ? APPROVAL_RESET_STATUSES.has(existing.status) : false)
   )
   const shouldResetClientApproval = shouldResetApproval
-    && existing.metadata?.source === 'mcp_news'
     && Boolean(existing.client_approval_status)
 
   const sets: string[] = []
@@ -140,11 +142,13 @@ export default defineEventHandler(async (event) => {
   sets.push('updated_at = NOW()')
   params.push(id)
   params.push(existing.client_id)
+  params.push(existing.review_version)
   const row = await queryOne(
-    `UPDATE social_posts SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND client_id = $${params.length} RETURNING *`,
+    `UPDATE social_posts SET ${sets.join(', ')} WHERE id = $${params.length - 2} AND client_id = $${params.length - 1}
+       AND ${socialReviewVersionSql()} = $${params.length} RETURNING *`,
     params
   )
-  if (!row) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
+  if (!row) throw createError({ statusCode: 409, statusMessage: 'Post changed while saving. Reload and review the current version.' })
   await recordSocialPublishingAudit({
     clientId: existing.client_id,
     postId: id,

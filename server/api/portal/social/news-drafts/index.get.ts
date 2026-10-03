@@ -1,4 +1,4 @@
-import { queryRows, transaction } from '~~/server/utils/db'
+import { queryRowsFresh, transaction } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { listPortalSocialNewsDrafts } from '~~/server/utils/socialNewsPortal'
 import { isUUID } from '~~/server/utils/ids'
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   }
 
   return listPortalSocialNewsDrafts(
-    { queryRows, transaction },
+    { queryRows: queryRowsFresh, transaction },
     clientUser.clientId,
     {
       status: typeof query.status === 'string' ? query.status : undefined,

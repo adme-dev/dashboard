@@ -8,10 +8,10 @@ import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
 export default defineEventHandler(async (event) => {
   const clientId = getQuery(event).clientId as string | undefined
   await requireSocialClientScope(event, clientId)
-  const params: any[] = []
+  const params: unknown[] = []
   let sql = `SELECT COUNT(*)::int AS count FROM social_posts
               WHERE approval_requested_at IS NOT NULL AND approved_at IS NULL
-                AND status NOT IN ('cancelled','published')`
+                AND status = 'draft'`
   if (clientId) {
     params.push(clientId)
     sql += ` AND client_id = $${params.length}`

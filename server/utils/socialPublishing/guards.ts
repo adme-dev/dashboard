@@ -1,5 +1,6 @@
+import { socialReviewVersionSql } from './reviewVersion'
 import { createError, type H3Event } from 'h3'
-import { queryOne, queryOneFresh, queryRows } from '~~/server/utils/db'
+import { queryOneFresh, queryRows } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { classifySocialPublishingAccountHealth } from '~~/server/utils/socialPublishing/accountHealth'
 import {
@@ -35,6 +36,7 @@ const CONTROLLED_SOCIAL_POST_FIELDS = new Set([
 ])
 
 export interface SocialPostClientRef {
+  review_version?: string
   id: string
   client_id: string
   platforms?: string[] | null
@@ -42,7 +44,7 @@ export interface SocialPostClientRef {
   status?: string | null
   approval_requested_at?: string | null
   client_approval_status?: string | null
-  metadata?: Record<string, any> | null
+  metadata?: Record<string, unknown> | null
 }
 
 export interface NormalizedPublishingTarget {
@@ -211,7 +213,7 @@ export function assertNoControlledSocialPostFields(body: Record<string, unknown>
 export async function requireSocialPostClientAccess(event: H3Event, postId: string): Promise<SocialPostClientRef> {
   const row = await queryOneFresh<SocialPostClientRef>(
     `SELECT id, client_id, platforms, account_ids, status, approval_requested_at,
-            client_approval_status, metadata
+            client_approval_status, metadata, ${socialReviewVersionSql()} AS review_version
        FROM social_posts WHERE id = $1`,
     [postId]
   )

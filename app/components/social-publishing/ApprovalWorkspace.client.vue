@@ -35,7 +35,7 @@ const previewContent = computed(() =>
   selectedPost.value ? approvalPrimaryContent(selectedPost.value, previewPlatform.value) : ''
 )
 const clientApprovalBlocked = computed(() =>
-  selectedPost.value?.metadata?.source === 'mcp_news'
+  (selectedPost.value?.client_approval_status || selectedPost.value?.metadata?.source === 'mcp_news')
   && selectedPost.value.client_approval_status !== 'approved'
 )
 
@@ -86,12 +86,13 @@ watch(selectedPost, (post) => {
 async function approve(p: SocialPost) {
   approvingId.value = p.id
   try {
-    await api.approve(p.id)
+    await api.approve(p.id, p.review_version)
     toast.add({ title: 'Approved', color: 'success' })
     await load()
     await refreshNuxtData('social-publishing-nav-counts')
   } catch (e: unknown) {
     toast.add({ title: 'Approve failed', description: (e as { data?: { statusMessage?: string } })?.data?.statusMessage, color: 'error' })
+    if ((e as { statusCode?: number }).statusCode === 409) await load()
   } finally {
     approvingId.value = null
   }
@@ -111,7 +112,7 @@ async function confirmReject() {
   }
   rejecting.value = true
   try {
-    await api.reject(rejectTarget.value.id, reason)
+    await api.reject(rejectTarget.value.id, reason, rejectTarget.value.review_version)
     toast.add({ title: 'Sent back for changes', color: 'success' })
     rejectTarget.value = null
     rejectReason.value = ''
@@ -119,6 +120,10 @@ async function confirmReject() {
     await refreshNuxtData('social-publishing-nav-counts')
   } catch (e: unknown) {
     toast.add({ title: 'Reject failed', description: (e as { data?: { statusMessage?: string } })?.data?.statusMessage, color: 'error' })
+    if ((e as { statusCode?: number }).statusCode === 409) {
+      rejectTarget.value = null
+      await load()
+    }
   } finally {
     rejecting.value = false
   }
@@ -453,7 +458,7 @@ async function confirmReject() {
                   icon="i-lucide-check"
                   block
                   :loading="approvingId === selectedPost.id"
-                  :disabled="selectedPost.metadata?.source === 'mcp_news' && selectedPost.client_approval_status !== 'approved'"
+                  :disabled="(selectedPost.client_approval_status || selectedPost.metadata?.source === 'mcp_news') && selectedPost.client_approval_status !== 'approved'"
                   @click="approve(selectedPost)"
                 >
                   Approve

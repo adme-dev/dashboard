@@ -1,4 +1,5 @@
-import { requireRole } from '~~/server/utils/auth'
+import { assertSocialReviewVersion, socialReviewVersionSql } from '~~/server/utils/socialPublishing/reviewVersion'
+import { requireRole, requireWriteAccess } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
@@ -16,11 +17,15 @@ interface RejectedPost {
  * Reject a post back to draft (MANAGEMENT) with a reason, and notify the requester.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, PERMISSIONS.MANAGEMENT)
+  const user = await requireWriteAccess(event)
+  await requireRole(event, PERMISSIONS.MANAGEMENT)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const b = await readBody(event)
   const existing = await requireSocialPostClientAccess(event, id)
+
+  if (existing.status !== 'draft') throw createError({ statusCode: 409, statusMessage: 'Only draft posts can be rejected' })
+  assertSocialReviewVersion(b?.reviewVersion, existing.review_version)
 
   const post = await queryOne<RejectedPost>(
     `WITH existing AS (
@@ -37,17 +42,18 @@ export default defineEventHandler(async (event) => {
              approval_requested_by = NULL,
              updated_at = NOW()
         FROM existing
-       WHERE p.id = existing.id AND p.client_id = $3
+       WHERE p.id = existing.id AND p.client_id = $3 AND p.status = 'draft'
+         AND ${socialReviewVersionSql('p')} = $4
       RETURNING p.id, p.content, existing.approval_requested_by`,
-    [id, b.reason ?? null, existing.client_id]
+    [id, b.reason ?? null, existing.client_id, b.reviewVersion]
   )
-  if (!post) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
+  if (!post) throw createError({ statusCode: 409, statusMessage: 'Post changed before the decision. Reload and review again.' })
   await recordSocialPublishingAudit({
     clientId: existing.client_id,
     postId: id,
     actorId: user.id,
     action: 'post_rejected',
-    metadata: { hasReason: Boolean(b.reason) }
+    metadata: { hasReason: Boolean(b.reason), reviewVersion: b.reviewVersion }
   })
 
   if (post.approval_requested_by) {

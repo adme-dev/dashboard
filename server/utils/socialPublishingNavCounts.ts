@@ -34,7 +34,7 @@ export async function getSocialPublishingNavCounts(
        (SELECT COUNT(*)::int FROM social_posts
          WHERE approval_requested_at IS NOT NULL
            AND approved_at IS NULL
-           AND status NOT IN ('cancelled', 'published')
+           AND status = 'draft'
            AND ($1::uuid IS NULL OR client_id = $1)) AS "pendingApprovals",
        (SELECT COUNT(*)::int FROM social_posts
          WHERE status = 'draft'

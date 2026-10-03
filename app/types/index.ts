@@ -2049,6 +2049,7 @@ export interface SocialPlatformResult {
 }
 
 export interface SocialPost {
+  review_version?: string
   id: string
   client_id: string
   created_by: string | null
@@ -2091,6 +2092,7 @@ export type PortalSocialNewsApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type PortalSocialNewsAction = 'approve' | 'reject' | 'request_changes'
 
 export interface PortalSocialNewsDraft {
+  reviewVersion: string
   id: string
   content: string
   mediaUrls: string[]

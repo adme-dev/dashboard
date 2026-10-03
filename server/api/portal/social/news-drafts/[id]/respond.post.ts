@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid news draft ID' })
   }
 
-  const body = await readBody<{ action?: unknown, feedback?: unknown }>(event)
+  const body = await readBody<{ action?: unknown, feedback?: unknown, reviewVersion?: string }>(event)
   const allowed = new Set<PortalSocialNewsAction>(['approve', 'reject', 'request_changes'])
   if (typeof body?.action !== 'string' || !allowed.has(body.action as PortalSocialNewsAction)) {
     throw createError({ statusCode: 400, statusMessage: 'Valid action is required' })
@@ -41,6 +41,7 @@ export default defineEventHandler(async (event) => {
       clientId: clientUser.clientId,
       clientUserId: clientUser.id,
       postId,
+      reviewVersion: body.reviewVersion,
       action: body.action as PortalSocialNewsAction,
       feedback: feedback || null
     }

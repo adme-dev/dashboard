@@ -1,3 +1,4 @@
+import { SOCIAL_CUSTOMER_GATE_SQL } from './reviewVersion'
 import { verifyAutomaticNewsSource } from '~~/server/utils/socialNewsAutopostSource'
 import { execute, queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { publishPost, type PublishableAccount, type PublishablePost, type PublishOutcome } from '~~/server/utils/socialPublishing'
@@ -56,6 +57,7 @@ export async function claimAndPublishSocialPost(
       WHERE id=$1
         AND ($2::uuid IS NULL OR client_id=$2)
         AND status = ANY($3::text[])
+        AND ${SOCIAL_CUSTOMER_GATE_SQL}
         AND (metadata->>'newsAutopostAutomatic' IS DISTINCT FROM 'true' OR EXISTS (
           SELECT 1 FROM social_news_autopost_rules r
           WHERE r.id::text = social_posts.metadata->>'newsAutopostRuleId'

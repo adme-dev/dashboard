@@ -25,6 +25,7 @@ const mockExecute = vi.fn()
 const mockRequireSocialClientAccess = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
+  requireWriteAccess: (...a: unknown[]) => mockRequireAuth(...a),
   requireAuth: (...a: unknown[]) => mockRequireAuth(...a),
   requireRole: (...a: unknown[]) => mockRequireRole(...a)
 }))
@@ -53,7 +54,7 @@ const delH = deleteHandler as TestHandler
 
 describe('publishing posts CRUD', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     mockRequireAuth.mockResolvedValue({ id: 'U1' })
     mockRequireRole.mockResolvedValue({ id: 'U1' })
     mockQueryRows.mockResolvedValue([])
@@ -111,9 +112,9 @@ describe('publishing posts CRUD', () => {
     await expect(patchH({ params: { id: 'P1' }, body: { campaignId: '7e7cb0e9-4f90-448b-8e17-2ebff3d5d1cd' } }))
       .rejects.toThrow('Campaign is not available for this client')
     expect(mockQueryOne).toHaveBeenCalledTimes(2)
-    mockQueryOne.mockClear().mockResolvedValue({ id: 'P1', client_id: 'C1' })
+    mockQueryOne.mockClear().mockResolvedValue({ id: 'P1', client_id: 'C1', review_version: 'a'.repeat(64) })
     await patchH({ params: { id: 'P1' }, body: { campaignId: null } })
-    expect(mockQueryOne.mock.calls[1][1]).toEqual([null, 'P1', 'C1'])
+    expect(mockQueryOne.mock.calls[1][1]).toEqual([null, 'P1', 'C1', 'a'.repeat(64)])
   })
 
   it('rejects unsupported publish platforms at create', async () => {
@@ -472,8 +473,8 @@ describe('publishing posts CRUD', () => {
     const res = await delH(event)
     expect(res).toEqual({ ok: true })
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(event, 'C1')
-    expect(mockExecute).toHaveBeenCalledWith(
-      expect.stringContaining('DELETE FROM social_posts WHERE id = $1 AND client_id = $2'),
+    expect(mockQueryOne).toHaveBeenLastCalledWith(
+      expect.stringContaining('DELETE FROM social_posts p WHERE p.id=$1 AND p.client_id=$2'),
       ['P1', 'C1']
     )
   })

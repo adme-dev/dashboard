@@ -19,7 +19,7 @@ function portalDb(rows: Record<string, unknown>[] = []) {
 describe('portal social news draft projection', () => {
   it('scopes the projection to the authenticated client and exposes only portal-safe fields', async () => {
     const db = portalDb([{
-      id: 'post-1',
+      id: 'post-1', review_version: 'a'.repeat(64),
       client_approval_status: 'pending',
       content: 'Base copy',
       media_urls: ['https://cdn.example.test/image.jpg'],
@@ -54,7 +54,7 @@ describe('portal social news draft projection', () => {
     expect(db.calls[0].sql).toMatch(/p\.client_id\s*=\s*\$1/i)
     expect(db.calls[0].params[0]).toBe('client-a')
     expect(result.drafts[0]).toMatchObject({
-      id: 'post-1',
+      id: 'post-1', reviewVersion: 'a'.repeat(64),
       approval: { status: 'pending' },
       source: {
         title: 'Immutable source title',
@@ -121,7 +121,7 @@ describe('portal social news approval actions', () => {
           return { rows: options.owned === false
             ? []
             : [{
-                id: 'post-1',
+                id: 'post-1', review_version: 'a'.repeat(64),
                 client_id: 'client-a',
                 status: 'draft',
                 approved_at: null,
@@ -151,7 +151,7 @@ describe('portal social news approval actions', () => {
         if (/FROM unnest/i.test(sql)) {
           return { rows: [{ platform: 'facebook', used: options.packageUsed || 0 }] }
         }
-        if (/UPDATE social_posts/i.test(sql)) return { rows: [{ id: 'post-1', client_approval_status: params[0] }] }
+        if (/UPDATE social_posts/i.test(sql)) return { rows: [{ id: 'post-1', review_version: 'a'.repeat(64), client_approval_status: params[0] }] }
         return { rows: [] }
       })
     }
@@ -171,7 +171,7 @@ describe('portal social news approval actions', () => {
 
     const result = await respondToPortalSocialNewsDraft(db, {
       clientId: 'client-a',
-      clientUserId: 'portal-user-1',
+      clientUserId: 'portal-user-1', reviewVersion: 'a'.repeat(64),
       postId: 'post-1',
       action,
       feedback: action === 'approve' ? null : 'Please revise the opening line.'
@@ -193,7 +193,7 @@ describe('portal social news approval actions', () => {
     const { db } = actionDb({ owned: false })
     await expect(respondToPortalSocialNewsDraft(db, {
       clientId: 'client-b',
-      clientUserId: 'portal-user-2',
+      clientUserId: 'portal-user-2', reviewVersion: 'a'.repeat(64),
       postId: 'post-1',
       action: 'approve',
       feedback: null
@@ -203,24 +203,24 @@ describe('portal social news approval actions', () => {
   it('enforces target-account and package gates before recording a decision', async () => {
     const invalidAccounts = actionDb({ validAccounts: false })
     await expect(respondToPortalSocialNewsDraft(invalidAccounts.db, {
-      clientId: 'client-a', clientUserId: 'portal-user-1', postId: 'post-1', action: 'approve', feedback: null
+      clientId: 'client-a', clientUserId: 'portal-user-1', reviewVersion: 'a'.repeat(64), postId: 'post-1', action: 'approve', feedback: null
     })).rejects.toMatchObject({ statusCode: 409 })
 
     const inactivePackage = actionDb({ packageActive: false })
     await expect(respondToPortalSocialNewsDraft(inactivePackage.db, {
-      clientId: 'client-a', clientUserId: 'portal-user-1', postId: 'post-1', action: 'approve', feedback: null
+      clientId: 'client-a', clientUserId: 'portal-user-1', reviewVersion: 'a'.repeat(64), postId: 'post-1', action: 'approve', feedback: null
     })).rejects.toMatchObject({ statusCode: 409 })
 
     const blockedVolume = actionDb({ packagePolicy: 'block', packageUsed: 9 })
     await expect(respondToPortalSocialNewsDraft(blockedVolume.db, {
-      clientId: 'client-a', clientUserId: 'portal-user-1', postId: 'post-1', action: 'approve', feedback: null
+      clientId: 'client-a', clientUserId: 'portal-user-1', reviewVersion: 'a'.repeat(64), postId: 'post-1', action: 'approve', feedback: null
     })).rejects.toMatchObject({ statusCode: 409 })
   })
 
   it('allows non-publishing account warnings that do not require reconnect', async () => {
     const warningOnly = actionDb({ accountLastError: 'webhook subscribe failed: timeout' })
     await expect(respondToPortalSocialNewsDraft(warningOnly.db, {
-      clientId: 'client-a', clientUserId: 'portal-user-1', postId: 'post-1', action: 'approve', feedback: null
+      clientId: 'client-a', clientUserId: 'portal-user-1', reviewVersion: 'a'.repeat(64), postId: 'post-1', action: 'approve', feedback: null
     })).resolves.toEqual({ ok: true, status: 'approved' })
     const accountQuery = warningOnly.calls.find(call => /FROM social_accounts/i.test(call.sql))!
     expect(accountQuery.sql).not.toContain('COALESCE(last_error, \'\') = \'\'')
@@ -229,14 +229,14 @@ describe('portal social news approval actions', () => {
   it('blocks account errors that require reconnect', async () => {
     const reconnectRequired = actionDb({ accountLastError: 'OAuth token revoked' })
     await expect(respondToPortalSocialNewsDraft(reconnectRequired.db, {
-      clientId: 'client-a', clientUserId: 'portal-user-1', postId: 'post-1', action: 'approve', feedback: null
+      clientId: 'client-a', clientUserId: 'portal-user-1', reviewVersion: 'a'.repeat(64), postId: 'post-1', action: 'approve', feedback: null
     })).rejects.toMatchObject({ statusCode: 409 })
   })
 
   it('refuses to record a decision when immutable news provenance is invalid', async () => {
     const invalidProvenance = actionDb({ validProvenance: false })
     await expect(respondToPortalSocialNewsDraft(invalidProvenance.db, {
-      clientId: 'client-a', clientUserId: 'portal-user-1', postId: 'post-1', action: 'approve', feedback: null
+      clientId: 'client-a', clientUserId: 'portal-user-1', reviewVersion: 'a'.repeat(64), postId: 'post-1', action: 'approve', feedback: null
     })).rejects.toMatchObject({ statusCode: 409 })
   })
 })

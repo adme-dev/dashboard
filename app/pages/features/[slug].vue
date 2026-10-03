@@ -655,7 +655,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Client-Portal Review',
-        content: 'Clients review news-backed social drafts in their own scoped portal, switch between platform-specific versions, verify the original source and target accounts, and approve, reject, or request changes with attributable feedback. Client sign-off remains separate from agency approval, so it can never publish content directly.'
+        content: 'Staff and customer decisions are tied to the reviewed post version. If content, targets, schedule or approval state changes, the reviewer must reload before deciding. Clients review news-backed social drafts in their own scoped portal, switch between platform-specific versions, verify the original source and target accounts, and approve, reject, or request changes with attributable feedback. Client sign-off remains separate from agency approval, so it can never publish content directly.'
       }
     ]
   },

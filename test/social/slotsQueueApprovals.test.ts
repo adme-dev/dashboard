@@ -35,6 +35,7 @@ const mockRequireAllSocialClientAccess = vi.fn()
 const mockStartSocialPublishingWorkflow = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
+  requireWriteAccess: (...a: unknown[]) => mockRequireAuth(...a),
   requireAuth: (...a: unknown[]) => mockRequireAuth(...a),
   requireRole: (...a: unknown[]) => mockRequireRole(...a)
 }))
@@ -79,7 +80,7 @@ const scheduleH = schedule as TestHandler
 const approvalsBadgeH = approvalsBadge as TestHandler
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   mockRequireAuth.mockResolvedValue({ id: 'U1' })
   mockRequireRole.mockResolvedValue({ id: 'U1' })
   mockQueryRows.mockResolvedValue([])
@@ -141,9 +142,9 @@ describe('queue reorder', () => {
 
 describe('approval workflow', () => {
   it('request-approval notifies managers (excluding the requester)', async () => {
-    const event: TestEvent = { params: { id: 'P1' } }
+    const event: TestEvent = { params: { id: 'P1' }, body: { reviewVersion: 'a'.repeat(64) } }
     mockQueryOne
-      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft', review_version: 'a'.repeat(64) })
       .mockResolvedValueOnce({ id: 'P1', content: 'hi', client_id: 'C1' })
     mockQueryRows.mockResolvedValueOnce([{ id: 'U1' }, { id: 'MGR' }]) // U1 is requester, excluded
     await requestApprovalH(event)
@@ -155,9 +156,9 @@ describe('approval workflow', () => {
   })
 
   it('approve sets approved + notifies requester', async () => {
-    const event: TestEvent = { params: { id: 'P1' } }
+    const event: TestEvent = { params: { id: 'P1' }, body: { reviewVersion: 'a'.repeat(64) } }
     mockQueryOne
-      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft', review_version: 'a'.repeat(64) })
       .mockResolvedValueOnce({ id: 'P1', content: 'hi', approval_requested_by: 'REQ' })
     await approveH(event)
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(event, 'C1')
@@ -186,9 +187,9 @@ describe('approval workflow', () => {
 
   it('approve starts the publishing workflow when a future scheduled post becomes scheduled', async () => {
     const scheduledAt = new Date(Date.now() + 86_400_000).toISOString()
-    const event: TestEvent = { params: { id: 'P1' } }
+    const event: TestEvent = { params: { id: 'P1' }, body: { reviewVersion: 'a'.repeat(64) } }
     mockQueryOne
-      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft', review_version: 'a'.repeat(64) })
       .mockResolvedValueOnce({
         id: 'P1',
         content: 'hi',
@@ -245,7 +246,7 @@ describe('approval workflow', () => {
   })
 
   it('schedule rejects drafts and invalid scheduledAt values', async () => {
-    mockQueryOne.mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
+    mockQueryOne.mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft', review_version: 'a'.repeat(64) })
     await expect(scheduleH({ params: { id: 'P1' }, body: { scheduledAt: new Date(Date.now() + 86_400_000).toISOString() } }))
       .rejects.toThrow('approved before scheduling')
 
@@ -259,9 +260,9 @@ describe('approval workflow', () => {
   })
 
   it('reject sets draft + reason + notifies requester', async () => {
-    const event: TestEvent = { params: { id: 'P1' }, body: { reason: 'fix the copy' } }
+    const event: TestEvent = { params: { id: 'P1' }, body: { reason: 'fix the copy', reviewVersion: 'a'.repeat(64) } }
     mockQueryOne
-      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft', review_version: 'a'.repeat(64) })
       .mockResolvedValueOnce({ id: 'P1', content: 'hi', approval_requested_by: 'REQ' })
     await rejectH(event)
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(event, 'C1')

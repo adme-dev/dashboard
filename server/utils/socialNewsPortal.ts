@@ -1,3 +1,4 @@
+import { assertSocialReviewVersion, socialReviewVersionSql } from './socialPublishing/reviewVersion'
 import { createError } from 'h3'
 import { isUUID } from '~~/server/utils/ids'
 import { classifySocialPublishingAccountHealth } from '~~/server/utils/socialPublishing/accountHealth'
@@ -19,6 +20,7 @@ interface PortalSocialNewsListFilters {
 }
 
 interface PortalSocialNewsActionInput {
+  reviewVersion: string
   clientId: string
   clientUserId: string
   postId: string
@@ -94,7 +96,7 @@ export async function listPortalSocialNewsDrafts(
 
   const rows = await db.queryRows<DbRow>(
     `SELECT
-       p.id, p.content, p.media_urls, p.platforms, p.platform_overrides,
+       p.id, ${socialReviewVersionSql('p')} AS review_version, p.content, p.media_urls, p.platforms, p.platform_overrides,
        p.scheduled_at, p.timezone, p.status AS internal_status,
        p.approval_requested_at, p.due_at,
        p.client_approval_status, p.client_approval_responded_at,
@@ -161,6 +163,7 @@ export async function listPortalSocialNewsDrafts(
     const commercialScope = objectValue(row.commercial_scope)
     return {
       id: row.id,
+      reviewVersion: row.review_version,
       content: row.content || '',
       mediaUrls: arrayValue<string>(row.media_urls),
       platformPreviews: platforms.map((platform) => {
@@ -241,7 +244,7 @@ export async function respondToPortalSocialNewsDraft(
 
   return db.transaction(async (client) => {
     const ownedResult = await client.query(
-      `SELECT p.id, p.client_id, p.status, p.approved_at, p.client_approval_status,
+      `SELECT p.id, ${socialReviewVersionSql('p')} AS review_version, p.client_id, p.status, p.approved_at, p.client_approval_status,
               p.account_ids, p.platforms, p.metadata
          FROM social_posts p
         WHERE p.id = $1 AND p.client_id = $2
@@ -256,6 +259,7 @@ export async function respondToPortalSocialNewsDraft(
       throw createError({ statusCode: 409, statusMessage: 'News draft is no longer awaiting client approval' })
     }
 
+    assertSocialReviewVersion(input.reviewVersion, post.review_version)
     const metadata = objectValue(post.metadata)
     const newsItemId = typeof metadata.newsItemId === 'string' ? metadata.newsItemId : ''
     if (!isUUID(newsItemId)) {
@@ -355,7 +359,7 @@ export async function respondToPortalSocialNewsDraft(
     }
 
     const actorId = `client:${input.clientUserId}`
-    const auditMetadata = JSON.stringify({ source: 'client_portal', hasFeedback: Boolean(feedback), feedback: feedback || undefined })
+    const auditMetadata = JSON.stringify({ source: 'client_portal', reviewVersion: input.reviewVersion, hasFeedback: Boolean(feedback), feedback: feedback || undefined })
     await client.query(
       `INSERT INTO social_publishing_audit_events
          (client_id, post_id, actor_id, action, metadata)

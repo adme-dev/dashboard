@@ -1,4 +1,5 @@
-import { requireRole } from '~~/server/utils/auth'
+import { assertSocialReviewVersion, socialReviewVersionSql, SOCIAL_CUSTOMER_GATE_SQL } from '~~/server/utils/socialPublishing/reviewVersion'
+import { requireRole, requireWriteAccess } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
@@ -20,14 +21,17 @@ interface ApprovedPost {
  * Approve a post (MANAGEMENT) and notify the requester.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, PERMISSIONS.MANAGEMENT)
+  const user = await requireWriteAccess(event)
+  await requireRole(event, PERMISSIONS.MANAGEMENT)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const existing = await requireSocialPostClientAccess(event, id)
   if (existing.status !== 'draft') {
     throw createError({ statusCode: 409, statusMessage: 'Only draft posts can be approved' })
   }
-  if (existing.metadata?.source === 'mcp_news' && existing.client_approval_status !== 'approved') {
+  const body = await readBody(event)
+  assertSocialReviewVersion(body?.reviewVersion, existing.review_version)
+  if ((existing.client_approval_status || existing.metadata?.source === 'mcp_news') && existing.client_approval_status !== 'approved') {
     throw createError({ statusCode: 409, statusMessage: 'Client approval is required before internal approval' })
   }
 
@@ -41,15 +45,17 @@ export default defineEventHandler(async (event) => {
             approved_at = NOW(),
             rejection_reason = NULL, updated_at = NOW()
       WHERE id = $1 AND client_id = $3 AND status = 'draft'
+        AND ${socialReviewVersionSql()} = $4 AND ${SOCIAL_CUSTOMER_GATE_SQL}
       RETURNING id, content, approval_requested_by, status, scheduled_at`,
-    [id, user.id, existing.client_id]
+    [id, user.id, existing.client_id, body.reviewVersion]
   )
   if (!post) throw createError({ statusCode: 409, statusMessage: 'Post changed state before approval' })
   await recordSocialPublishingAudit({
     clientId: existing.client_id,
     postId: id,
     actorId: user.id,
-    action: 'post_approved'
+    action: 'post_approved',
+    metadata: { reviewVersion: body.reviewVersion }
   })
   const newsItemId = (existing as { metadata?: { newsItemId?: string } }).metadata?.newsItemId
   if (newsItemId) {

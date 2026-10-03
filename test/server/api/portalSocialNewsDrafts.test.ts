@@ -36,6 +36,7 @@ vi.mock('~~/server/utils/socialNewsPortal', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: vi.fn(),
+  queryRowsFresh: vi.fn(),
   transaction: vi.fn()
 }))
 
