@@ -22,7 +22,7 @@ const mockConvertBriefToProject = vi.fn()
 const mockMaybeAcknowledgeBrief = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
+  requireWriteAccess: (...args: unknown[]) => mockRequireAuth(...args),
 }))
 
 vi.mock('~~/server/utils/briefConversion', () => ({
@@ -62,7 +62,7 @@ describe('POST /api/agency/briefs/:id/convert', () => {
     expect(mockConvertBriefToProject).toHaveBeenCalledWith({
       briefId: 'brief-1',
       userId: 'user-1',
-      projectTemplateId: null,
+      projectTemplateId: undefined,
       projectName: 'Winter Campaign',
       startDate: '2026-07-01',
       clientId: null,
@@ -78,6 +78,17 @@ describe('POST /api/agency/briefs/:id/convert', () => {
         gaps: [{ field: 'budgetAllocation', severity: 'required' }],
       },
     })
+  })
+
+  it('requires write access before conversion', async () => {
+    mockRequireAuth.mockRejectedValueOnce({ statusCode: 403 })
+    await expect(handler({ params: { id: 'brief' }, body: {} })).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockConvertBriefToProject).not.toHaveBeenCalled()
+  })
+
+  it('rejects malformed request options before conversion', async () => {
+    await expect(handler({ params: { id: 'brief' }, body: { projectTemplateId: 'invalid' } })).rejects.toMatchObject({ statusCode: 400 })
+    expect(mockConvertBriefToProject).not.toHaveBeenCalled()
   })
 
   it('defaults optional P2 metadata when older conversion results omit it', async () => {

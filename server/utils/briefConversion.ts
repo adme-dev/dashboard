@@ -3,7 +3,8 @@
  * Shared utility used by both the convert endpoint and auto-convert on approval.
  */
 
-import { queryOne, queryRows, execute, transaction } from '~~/server/utils/db'
+import { queryOneFresh as queryOne, queryRowsFresh as queryRows, execute, transaction } from '~~/server/utils/db'
+import { validateTemplateTaskGraph, templateTaskDescription } from '~~/server/utils/briefConversion/taskGraph'
 import { findBestMatch } from '~~/server/utils/rateCardMatcher'
 import { pickDepartmentId, resolveTaskAssignee } from '~~/server/utils/briefConversion/assignment'
 import { applyFieldMapping } from '~~/server/utils/briefConversion/fieldMapping'
@@ -23,7 +24,7 @@ interface ConvertBriefOptions {
 }
 
 interface ConvertBriefResult {
-  project: { id: string; name: string }
+  project: { id: string, name: string }
   tasksCreated: number
   /** P2: count of proposed budget allocations carried from the brief (surfaced for AM confirm). */
   budgetAllocationsCreated?: number
@@ -56,7 +57,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
     SELECT
       b.id, b.title, b.reference_number, b.client_id, b.status, b.converted_to_project_id,
       b.requested_deadline, b.budget_min, b.budget_max, b.budget_currency,
-      b.quote_id, b.assigned_to,
+      b.quote_id, b.assigned_to, b.updated_at::text AS version,
       bt.project_template_id AS template_project_template_id,
       bt.slug AS template_slug,
       bt.field_mapping, bt.auto_convert_on_approval, bt.auto_assign_department
@@ -86,16 +87,32 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
   }
 
   // 4. Resolve params
-  const projectTemplateId = opts.projectTemplateId || brief.template_project_template_id
+  if (brief.client_id && opts.clientId && brief.client_id !== opts.clientId) {
+    throw createError({ statusCode: 400, statusMessage: 'Conversion must use the client saved on the brief' })
+  }
+  const lockBrief = async (txClient: { query: (sql: string, params: unknown[]) => Promise<{ rows: { status: string, converted_to_project_id: string | null, version: string }[] }> }) => {
+    const locked = (await txClient.query(
+      'SELECT status, converted_to_project_id, updated_at::text AS version FROM briefs WHERE id = $1 FOR UPDATE', [briefId]
+    )).rows[0]
+    if (!locked || locked.converted_to_project_id || locked.version !== brief.version || !['approved', 'in_progress'].includes(locked.status)) {
+      throw createError({ statusCode: 409, statusMessage: 'Brief changed or was already converted. Refresh before trying again.' })
+    }
+  }
+
+  const projectTemplateId = opts.projectTemplateId === null ? null : opts.projectTemplateId || brief.template_project_template_id
   const projectName = opts.projectName || brief.title || 'Untitled Project'
   const clientId = opts.clientId || brief.client_id
-  const startDate = opts.startDate || new Date().toISOString().split('T')[0]
+  const startDate = opts.startDate || new Date().toISOString().slice(0, 10)
 
   if (!clientId) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Client ID is required (either from brief or request body)'
     })
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(Date.parse(startDate)) || new Date(startDate).toISOString().slice(0, 10) !== startDate) {
+    throw createError({ statusCode: 400, statusMessage: 'Project start date must be a valid YYYY-MM-DD date' })
   }
 
   // Verify client exists
@@ -112,7 +129,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
     const startDateObj = new Date(startDate)
     const month = `${startDateObj.getFullYear()}-${String(startDateObj.getMonth() + 1).padStart(2, '0')}`
     const isAdJob = isMondayMappableTemplate(brief.template_slug || '')
-    let mappedDescription = ''
+    let mappedDescription = `Source brief: /agency/briefs/${briefId}`
     let proposedAllocations: ReturnType<typeof deriveBriefAllocations> = []
     let gatekeeper: GatekeeperResult | undefined
     try {
@@ -121,7 +138,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
            FROM brief_field_values fv
            JOIN brief_template_fields tf ON tf.id = fv.field_id
           WHERE fv.brief_id = $1`,
-        [briefId],
+        [briefId]
       )
       const fields: Record<string, unknown> = {}
       for (const r of fvRows as any[]) fields[r.field_key] = unwrapFieldValue(r.value)
@@ -129,13 +146,13 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       // G3: honour field_mapping where set — a "From the brief" block on the project
       // description (no-op until a template configures a mapping, so zero regression).
       const { descriptionLines } = applyFieldMapping(coerceMapping(brief.field_mapping), fields)
-      if (descriptionLines.length) mappedDescription = ['— From the brief —', ...descriptionLines].join('\n')
+      if (descriptionLines.length) mappedDescription += ['\nFrom the brief:', ...descriptionLines].join('\n')
 
       // Structured budget: resolve the Monday campaign type, derive a *proposed* allocation.
       const campaignType = briefToMondayCampaignType({ templateSlug: brief.template_slug, fields })
       proposedAllocations = deriveBriefAllocations({
         budgetMin: brief.budget_min, budgetMax: brief.budget_max,
-        currency: brief.budget_currency, campaignType, month,
+        currency: brief.budget_currency, campaignType, month
       })
 
       // Gatekeeper (AI fills gaps, human confirms): compute gaps + proposals, never block.
@@ -145,7 +162,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
         // AI's derived proposal — passing proposedAllocations here would make the gatekeeper
         // think a typed allocation was already captured and suppress its proposal entirely.
         allocations: [], budgetMin: brief.budget_min, budgetMax: brief.budget_max,
-        currency: brief.budget_currency, requestedDeadline: brief.requested_deadline, month,
+        currency: brief.budget_currency, requestedDeadline: brief.requested_deadline, month
       })
     } catch (err) {
       console.error('[Brief] P2 intake compute failed (non-fatal):', err)
@@ -153,9 +170,11 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
 
     // Use transaction for template-based creation
     const result = await transaction(async (txClient) => {
+      await lockBrief(txClient)
+      // Serialize template edits against conversion.
       // Get template
       const templateResult = await txClient.query(
-        'SELECT * FROM project_templates WHERE id = $1 AND is_active = true',
+        'SELECT * FROM project_templates WHERE id = $1 AND is_active = true FOR UPDATE',
         [projectTemplateId]
       )
       const template = templateResult.rows[0]
@@ -180,8 +199,8 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
         clientId,
         template.default_budget_type || 'time_materials',
         template.default_budget_amount || 0,
-        projectStartDate.toISOString().split('T')[0],
-        projectEndDate.toISOString().split('T')[0],
+        projectStartDate.toISOString().slice(0, 10),
+        projectEndDate.toISOString().slice(0, 10),
         brief.assigned_to || userId,
         mappedDescription || null
       ])
@@ -194,14 +213,19 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
         ORDER BY phase_id NULLS FIRST, sort_order
       `, [projectTemplateId])
       const templateTasks = tasksResult.rows
+      if (!templateTasks.length) {
+        throw createError({ statusCode: 422, statusMessage: 'This job template has no tasks. Add tasks or choose project only.' })
+      }
+      validateTemplateTaskGraph(templateTasks)
+      const taskIds = new Map<string, string>()
 
       // Department fallback chain so every task is board-visible (tasks list INNER JOINs departments).
       const fallbackDeptResult = await txClient.query(
-        `SELECT id FROM departments WHERE is_active = true ORDER BY sort_order NULLS LAST, created_at LIMIT 1`,
+        `SELECT id FROM departments WHERE is_active = true ORDER BY sort_order NULLS LAST, created_at LIMIT 1`
       )
       const fallbackDeptId: string | null = fallbackDeptResult.rows[0]?.id ?? null
       const projectManagerId: string | null = brief.assigned_to || userId
-      const assignedForNotify: Array<{ taskId: string; assigneeId: string; title: string; dueDate: string }> = []
+      const assignedForNotify: Array<{ taskId: string, assigneeId: string, title: string, dueDate: string }> = []
 
       // Fetch quote line items for auto-matching (if brief has a linked quote)
       let quoteLineItems: any[] = []
@@ -219,7 +243,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
             priceUnit: 'fixed',
             categoryName: '',
             hourlyRate: r.hourly_rate ? Number(r.hourly_rate) : null,
-            estimatedHours: r.estimated_hours ? Number(r.estimated_hours) : null,
+            estimatedHours: r.estimated_hours ? Number(r.estimated_hours) : null
           }))
         } catch { /* non-critical */ }
       }
@@ -227,8 +251,10 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       // Create tasks from template
       let tasksCreated = 0
       for (const tt of templateTasks) {
-        const dueDate = new Date(projectStartDate)
-        dueDate.setDate(dueDate.getDate() + (tt.start_day_offset || 0) + (tt.duration_days || 1))
+        const taskStartDate = new Date(projectStartDate)
+        taskStartDate.setUTCDate(taskStartDate.getUTCDate() + (tt.start_day_offset || 0))
+        const dueDate = new Date(taskStartDate)
+        dueDate.setUTCDate(dueDate.getUTCDate() + (tt.duration_days ?? 1))
 
         // Try to match this template task to a quote line item
         let matchedLineItemId: string | null = null
@@ -249,51 +275,52 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
 
         const departmentId = pickDepartmentId([
           tt.default_department_id,
+          template.department_id,
           brief.auto_assign_department,
-          fallbackDeptId,
+          fallbackDeptId
         ])
         if (!departmentId) {
           throw createError({
             statusCode: 422,
-            statusMessage: 'Cannot convert: no department resolved for task (set default_department_id on the template task, auto_assign_department on the brief template, or ensure an active department exists)',
+            statusMessage: 'Cannot convert: no department resolved for task (set default_department_id on the template task, auto_assign_department on the brief template, or ensure an active department exists)'
           })
         }
         const statusResult = await txClient.query(
           `SELECT id FROM task_statuses
            WHERE (department_id IS NULL OR department_id = $1) AND is_default = true
            ORDER BY department_id NULLS LAST LIMIT 1`,
-          [departmentId],
+          [departmentId]
         )
         const statusId: string | null = statusResult.rows[0]?.id ?? null
         if (!statusId) {
           throw createError({
             statusCode: 422,
-            statusMessage: 'Cannot convert: no default task status for the resolved department',
+            statusMessage: 'Cannot convert: no default task status for the resolved department'
           })
         }
         const { assigneeId } = resolveTaskAssignee({
           defaultAssigneeId: tt.default_assignee_id,
           defaultRole: tt.default_role,
-          projectManagerId,
+          projectManagerId
         })
-        const dueDateStr = dueDate.toISOString().split('T')[0]
+        const dueDateStr = dueDate.toISOString().slice(0, 10)
 
         const insertedTask = await txClient.query(`
           INSERT INTO tasks (
             project_id, department_id, status_id, title, description, priority,
             task_type, estimated_hours, due_date, reporter_id, assignee_id,
             brief_id, budget_source, quote_line_item_id,
-            estimated_cost, billing_rate
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            estimated_cost, billing_rate, is_billable, start_date
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
           RETURNING id
         `, [
           project.id,
           departmentId,
           statusId,
           tt.title,
-          tt.description,
+          templateTaskDescription(tt.description, tt.checklist),
           tt.priority || 'medium',
-          tt.task_type || 'task',
+          tt.task_type === 'approval' ? 'review' : tt.task_type === 'deliverable' ? 'task' : tt.task_type || 'task',
           tt.estimated_hours,
           dueDateStr,
           userId,
@@ -303,11 +330,25 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
           matchedLineItemId,
           estimatedCost,
           billingRate,
+          tt.billable ?? true,
+          taskStartDate.toISOString().slice(0, 10)
         ])
+        taskIds.set(tt.id, insertedTask.rows[0].id)
         tasksCreated++
 
         if (assigneeId && assigneeId !== userId) {
           assignedForNotify.push({ taskId: insertedTask.rows[0].id, assigneeId, title: tt.title, dueDate: dueDateStr })
+        }
+      }
+
+      // Translate template IDs only after every actual task exists.
+      for (const tt of templateTasks) {
+        if (tt.parent_task_id) {
+          await txClient.query('UPDATE tasks SET parent_task_id = $1 WHERE id = $2', [taskIds.get(tt.parent_task_id), taskIds.get(tt.id)])
+        }
+        for (const dependency of new Set<string>(tt.depends_on_task_ids || [])) {
+          await txClient.query(`INSERT INTO task_dependencies (task_id, depends_on_task_id, dependency_type)
+            VALUES ($1, $2, 'blocks')`, [taskIds.get(tt.id), taskIds.get(dependency)])
         }
       }
 
@@ -348,7 +389,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
         taskId: a.taskId,
         taskTitle: a.title,
         assignerId: userId,
-        dueDate: new Date(a.dueDate),
+        dueDate: new Date(a.dueDate)
       }).catch(err => console.error('[Brief] task-assigned notify failed:', err))
     }
     // P2: optional additive writes AFTER the core conversion has committed — a failure here
@@ -392,14 +433,14 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       projectName: result.project.name,
       tasksCreated: result.tasksCreated,
       ownerId: brief.assigned_to || null,
-      actorId: userId,
+      actorId: userId
     }).catch(err => console.error('[Brief] conversion notify failed:', err))
 
     return {
       project: result.project,
       tasksCreated: result.tasksCreated,
       budgetAllocationsCreated,
-      gatekeeper,
+      gatekeeper
     }
   } else {
     // Simple project creation (no template)
@@ -407,19 +448,41 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
     const projectEndDate = new Date(projectStartDate)
     projectEndDate.setDate(projectEndDate.getDate() + 30)
 
-    const project = await queryOne(`
+    const project = await transaction(async (txClient) => {
+      await lockBrief(txClient)
+      const project = (await txClient.query(`
       INSERT INTO projects (
         name, client_id, status, budget_type, budget_amount,
         start_date, end_date, project_manager_id
       ) VALUES ($1, $2, 'active', 'time_materials', 0, $3, $4, $5)
       RETURNING id, name
     `, [
-      projectName,
-      clientId,
-      projectStartDate.toISOString().split('T')[0],
-      projectEndDate.toISOString().split('T')[0],
-      brief.assigned_to || userId
-    ])
+        projectName,
+        clientId,
+        projectStartDate.toISOString().slice(0, 10),
+        projectEndDate.toISOString().slice(0, 10),
+        brief.assigned_to || userId
+      ])).rows[0]
+      // Update brief
+      await txClient.query(`
+      UPDATE briefs
+      SET converted_to_project_id = $1, converted_at = NOW(), auto_project_created = false, updated_at = NOW()
+      WHERE id = $2
+    `, [project.id, briefId])
+
+      // Log activity
+      await txClient.query(`
+      INSERT INTO brief_activities (brief_id, user_id, activity_type, new_value, content)
+      VALUES ($1, $2, 'converted_to_project', $3, $4)
+    `, [
+        briefId,
+        userId,
+        JSON.stringify({ projectId: project.id }),
+        `Converted to project "${project.name}"`
+      ])
+
+      return project
+    })
 
     // P2 (no-template path): still surface the brief budget as a proposed allocation.
     let budgetAllocationsCreated = 0
@@ -429,7 +492,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
            FROM brief_field_values fv
            JOIN brief_template_fields tf ON tf.id = fv.field_id
           WHERE fv.brief_id = $1`,
-        [briefId],
+        [briefId]
       )
       const fields: Record<string, unknown> = {}
       for (const r of fvResult as any[]) fields[r.field_key] = unwrapFieldValue(r.value)
@@ -437,7 +500,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       const month = `${projectStartDate.getFullYear()}-${String(projectStartDate.getMonth() + 1).padStart(2, '0')}`
       const allocs = deriveBriefAllocations({
         budgetMin: brief.budget_min, budgetMax: brief.budget_max,
-        currency: brief.budget_currency, campaignType, month,
+        currency: brief.budget_currency, campaignType, month
       })
       for (const a of allocs) {
         await execute(`
@@ -451,24 +514,6 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       console.error('[Brief] budget allocation insert (no-template) failed (non-fatal):', err)
     }
 
-    // Update brief
-    await execute(`
-      UPDATE briefs
-      SET converted_to_project_id = $1, converted_at = NOW(), auto_project_created = false, updated_at = NOW()
-      WHERE id = $2
-    `, [project.id, briefId])
-
-    // Log activity
-    await execute(`
-      INSERT INTO brief_activities (brief_id, user_id, activity_type, new_value, content)
-      VALUES ($1, $2, 'converted_to_project', $3, $4)
-    `, [
-      briefId,
-      userId,
-      JSON.stringify({ projectId: project.id }),
-      `Converted to project "${project.name}"`
-    ])
-
     // G5: notify owner + watchers (no-template path).
     notifyBriefConverted({
       briefId,
@@ -478,7 +523,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       projectName: project.name,
       tasksCreated: 0,
       ownerId: brief.assigned_to || null,
-      actorId: userId,
+      actorId: userId
     }).catch(err => console.error('[Brief] conversion notify failed:', err))
 
     return { project: { id: project.id, name: project.name }, tasksCreated: 0, budgetAllocationsCreated }

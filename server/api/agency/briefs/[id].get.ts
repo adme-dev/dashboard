@@ -2,7 +2,7 @@
  * Get single brief with all details
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOneFresh as queryOne, queryRowsFresh as queryRows } from '~~/server/utils/db'
 import { reconcileGooglePmaxInventoryBudget } from '~~/server/utils/googleCampaignBudgetReconciliation'
 
 export default defineEventHandler(async (event) => {
@@ -25,6 +25,7 @@ export default defineEventHandler(async (event) => {
         bt.slug AS template_slug,
         bt.icon AS template_icon,
         bt.is_multi_step AS template_is_multi_step,
+        bt.project_template_id AS template_project_template_id,
         -- Category
         bc.id AS category_id,
         bc.name AS category_name,
@@ -181,7 +182,8 @@ export default defineEventHandler(async (event) => {
         name: brief.template_name,
         slug: brief.template_slug,
         icon: brief.template_icon,
-        isMultiStep: brief.template_is_multi_step
+        isMultiStep: brief.template_is_multi_step,
+        projectTemplateId: brief.template_project_template_id
       },
       category: {
         id: brief.category_id,

@@ -13,8 +13,8 @@ Object.assign(globalThis, {
 })
 
 vi.mock('~~/server/utils/db', () => ({
-  queryOne: (...args: unknown[]) => queryOneMock(...args),
-  queryRows: (...args: unknown[]) => queryRowsMock(...args)
+  queryOneFresh: (...args: unknown[]) => queryOneMock(...args),
+  queryRowsFresh: (...args: unknown[]) => queryRowsMock(...args)
 }))
 
 const briefRow = {

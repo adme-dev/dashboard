@@ -10,7 +10,8 @@
  * - projectManagerId: Optional team member responsible for the project
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { transaction } from '~~/server/utils/db'
+import { validateTemplateTaskGraph, templateTaskDescription } from '~~/server/utils/briefConversion/taskGraph'
 import { requireWriteAccess } from '~~/server/utils/auth'
 
 const WORKFLOW_TASK_TYPES = new Set(['task', 'milestone', 'bug', 'feature', 'review', 'meeting'])
@@ -43,61 +44,69 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (startDate && (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(Date.parse(startDate)) || new Date(startDate).toISOString().slice(0, 10) !== startDate)) {
+    throw createError({ statusCode: 400, statusMessage: 'Choose a valid project start date' })
+  }
   try {
-    // Get template
-    const template = await queryOne(`
-      SELECT * FROM project_templates WHERE id = $1 AND is_active = true
+    return await transaction(async (db) => {
+      const queryRows = async (sql: string, params?: unknown[]) => (await db.query(sql, params)).rows
+      const queryOne = async (sql: string, params?: unknown[]) => (await queryRows(sql, params))[0]
+      // Get template
+      const template = await queryOne(`
+      SELECT * FROM project_templates WHERE id = $1 AND is_active = true FOR UPDATE
     `, [templateId])
 
-    if (!template) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Template not found'
-      })
-    }
+      if (!template) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'Template not found'
+        })
+      }
 
-    // Verify client exists
-    const client = await queryOne(`
+      // Verify client exists
+      const client = await queryOne(`
       SELECT id, name FROM agency_clients WHERE id = $1
     `, [clientId])
 
-    if (!client) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Client not found'
-      })
-    }
+      if (!client) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'Client not found'
+        })
+      }
 
-    if (projectManagerId) {
-      const projectManager = await queryOne(`
+      if (projectManagerId) {
+        const projectManager = await queryOne(`
         SELECT id, name
         FROM team_members
         WHERE id = $1 AND is_active = true
       `, [projectManagerId])
 
-      if (!projectManager) {
-        throw createError({
-          statusCode: 404,
-          statusMessage: 'Project manager not found'
-        })
+        if (!projectManager) {
+          throw createError({
+            statusCode: 404,
+            statusMessage: 'Project manager not found'
+          })
+        }
       }
-    }
 
-    const projectStartDate = startDate ? new Date(startDate) : new Date()
-    const projectEndDate = new Date(projectStartDate)
-    projectEndDate.setDate(projectEndDate.getDate() + (template.estimated_duration_days || 30))
+      const projectStartDate = startDate ? new Date(startDate) : new Date()
+      const projectEndDate = new Date(projectStartDate)
+      projectEndDate.setDate(projectEndDate.getDate() + (template.estimated_duration_days || 30))
 
-    // Get template tasks and resolve workflow defaults before creating the project,
-    // so template launch fails cleanly if task infrastructure is missing.
-    const templateTasks = await queryRows(`
+      // Get template tasks and resolve workflow defaults before creating the project,
+      // so template launch fails cleanly if task infrastructure is missing.
+      const templateTasks = await queryRows(`
       SELECT * FROM template_tasks
       WHERE template_id = $1
       ORDER BY phase_id NULLS FIRST, sort_order
     `, [templateId])
 
-    let fallbackDepartmentId = template.department_id as string | null
-    if (!fallbackDepartmentId && templateTasks.length > 0) {
-      const fallbackDepartment = await queryOne(`
+      validateTemplateTaskGraph(templateTasks)
+
+      let fallbackDepartmentId = template.department_id as string | null
+      if (!fallbackDepartmentId && templateTasks.length > 0) {
+        const fallbackDepartment = await queryOne(`
         SELECT id
         FROM departments
         WHERE is_active = true
@@ -111,25 +120,25 @@ export default defineEventHandler(async (event) => {
           name
         LIMIT 1
       `)
-      fallbackDepartmentId = fallbackDepartment?.id || null
-    }
+        fallbackDepartmentId = fallbackDepartment?.id || null
+      }
 
-    const departmentIds = Array.from(new Set(
-      templateTasks
-        .map(tt => tt.default_department_id || fallbackDepartmentId)
-        .filter(Boolean)
-    ))
+      const departmentIds = Array.from(new Set(
+        templateTasks
+          .map(tt => tt.default_department_id || fallbackDepartmentId)
+          .filter(Boolean)
+      ))
 
-    if (templateTasks.length > 0 && departmentIds.length === 0) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'No workflow department is available for this template'
-      })
-    }
+      if (templateTasks.length > 0 && departmentIds.length === 0) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'No workflow department is available for this template'
+        })
+      }
 
-    const defaultStatusByDepartment = new Map<string, string>()
-    for (const departmentId of departmentIds) {
-      const defaultStatus = await queryOne(`
+      const defaultStatusByDepartment = new Map<string, string>()
+      for (const departmentId of departmentIds) {
+        const defaultStatus = await queryOne(`
         SELECT id
         FROM task_statuses
         WHERE (department_id IS NULL OR department_id = $1)
@@ -138,18 +147,18 @@ export default defineEventHandler(async (event) => {
         LIMIT 1
       `, [departmentId])
 
-      if (!defaultStatus?.id) {
-        throw createError({
-          statusCode: 500,
-          statusMessage: 'No default workflow status is available for this template'
-        })
+        if (!defaultStatus?.id) {
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'No default workflow status is available for this template'
+          })
+        }
+
+        defaultStatusByDepartment.set(departmentId, defaultStatus.id)
       }
 
-      defaultStatusByDepartment.set(departmentId, defaultStatus.id)
-    }
-
-    // Create project
-    const project = await queryOne(`
+      // Create project
+      const project = await queryOne(`
       INSERT INTO projects (
         name,
         client_id,
@@ -162,25 +171,27 @@ export default defineEventHandler(async (event) => {
       ) VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)
       RETURNING *
     `, [
-      projectName,
-      clientId,
-      template.default_budget_type || 'time_materials',
-      budgetOverride || template.default_budget_amount || 0,
-      projectStartDate.toISOString().split('T')[0],
-      projectEndDate.toISOString().split('T')[0],
-      projectManagerId || null
-    ])
+        projectName,
+        clientId,
+        template.default_budget_type || 'time_materials',
+        budgetOverride || template.default_budget_amount || 0,
+        projectStartDate.toISOString().split('T')[0],
+        projectEndDate.toISOString().split('T')[0],
+        projectManagerId || null
+      ])
 
-    // Create tasks from template
-    const taskIdMap: Record<string, string> = {}
+      // Create tasks from template
+      const taskIdMap: Record<string, string> = {}
 
-    for (const tt of templateTasks) {
-      const dueDate = new Date(projectStartDate)
-      dueDate.setDate(dueDate.getDate() + (tt.start_day_offset || 0) + (tt.duration_days || 1))
-      const departmentId = tt.default_department_id || fallbackDepartmentId
-      const statusId = departmentId ? defaultStatusByDepartment.get(departmentId) : null
+      for (const tt of templateTasks) {
+        const taskStartDate = new Date(projectStartDate)
+        taskStartDate.setUTCDate(taskStartDate.getUTCDate() + (tt.start_day_offset || 0))
+        const dueDate = new Date(taskStartDate)
+        dueDate.setUTCDate(dueDate.getUTCDate() + (tt.duration_days ?? 1))
+        const departmentId = tt.default_department_id || fallbackDepartmentId
+        const statusId = departmentId ? defaultStatusByDepartment.get(departmentId) : null
 
-      const task = await queryOne(`
+        const task = await queryOne(`
         INSERT INTO tasks (
           project_id,
           department_id,
@@ -192,59 +203,71 @@ export default defineEventHandler(async (event) => {
           estimated_hours,
           due_date,
           reporter_id,
-          last_modified_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          last_modified_by, start_date, is_billable
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING id
       `, [
-        project.id,
-        departmentId,
-        statusId,
-        tt.title,
-        tt.description,
-        tt.priority || 'medium',
-        normalizeWorkflowTaskType(tt.task_type),
-        tt.estimated_hours,
-        dueDate.toISOString().split('T')[0],
-        user.id,
-        user.id
-      ])
+          project.id,
+          departmentId,
+          statusId,
+          tt.title,
+          templateTaskDescription(tt.description, tt.checklist),
+          tt.priority || 'medium',
+          normalizeWorkflowTaskType(tt.task_type),
+          tt.estimated_hours,
+          dueDate.toISOString().split('T')[0],
+          user.id,
+          user.id,
+          taskStartDate.toISOString().split('T')[0],
+          tt.billable ?? true
+        ])
 
-      taskIdMap[tt.id] = task.id
-    }
+        taskIdMap[tt.id] = task.id
+      }
 
-    // Update template usage stats
-    await queryOne(`
+      for (const task of templateTasks) {
+        if (task.parent_task_id) {
+          await queryOne('UPDATE tasks SET parent_task_id=$1 WHERE id=$2', [taskIdMap[task.parent_task_id], taskIdMap[task.id]])
+        }
+        for (const dependency of new Set<string>(task.depends_on_task_ids || [])) {
+          await queryOne('INSERT INTO task_dependencies (task_id, depends_on_task_id, dependency_type) VALUES ($1,$2,\'blocks\')', [taskIdMap[task.id], taskIdMap[dependency]])
+        }
+      }
+
+      // Update template usage stats
+      await queryOne(`
       UPDATE project_templates
       SET times_used = times_used + 1, last_used_at = NOW()
       WHERE id = $1
     `, [templateId])
 
-    // Record usage
-    await queryOne(`
+      // Record usage
+      await queryOne(`
       INSERT INTO template_usage_history (template_id, project_id, used_by)
       VALUES ($1, $2, $3)
     `, [templateId, project.id, user.id])
 
-    return {
-      project: {
-        id: project.id,
-        name: project.name,
-        clientId: project.client_id,
-        clientName: client.name,
-        status: project.status,
-        budgetType: project.budget_type,
-        budgetAmount: Number(project.budget_amount || 0),
-        startDate: project.start_date,
-        endDate: project.end_date,
-        projectManagerId: project.project_manager_id,
-        createdAt: project.created_at
-      },
-      tasksCreated: Object.keys(taskIdMap).length,
-      templateUsed: {
-        id: template.id,
-        name: template.name
+      return {
+        project: {
+          id: project.id,
+          name: project.name,
+          clientId: project.client_id,
+          clientName: client.name,
+          status: project.status,
+          budgetType: project.budget_type,
+          budgetAmount: Number(project.budget_amount || 0),
+          startDate: project.start_date,
+          endDate: project.end_date,
+          projectManagerId: project.project_manager_id,
+          createdAt: project.created_at
+        },
+        tasksCreated: Object.keys(taskIdMap).length,
+        templateUsed: {
+          id: template.id,
+          name: template.name
+        }
       }
-    }
+    })
   } catch (error: unknown) {
     console.error('Failed to create project from template:', error)
     if (error && typeof error === 'object' && 'statusCode' in error) throw error
