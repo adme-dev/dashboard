@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, createApp, h, nextTick, reactive, ref, shallowRef, watch } from 'vue'
-import PublishingHandoff from '~~/app/components/task/PublishingHandoff.vue'
+import PublishingHandoff from '~~/app/components/task/PublishingHandoff.client.vue'
 
 const fetchMock = vi.fn()
 Object.assign(globalThis, { computed, ref, shallowRef, watch, $fetch: (...args: unknown[]) => fetchMock(...args), useToast: () => ({ add: vi.fn() }) })
