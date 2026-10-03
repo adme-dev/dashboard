@@ -42,7 +42,7 @@ Two further live errors explained the remaining intake failures. Shared Nitro ro
 
 ## Discovery ledger and follow-up
 
-The shared marketing folder contains the ongoing ledger at `marketing/xeroflow-account-manager-rd-20261003/DISCOVERY-LEDGER.md`, with exact live records in `live-probe.json`. It separates delivered/verified repairs from missing templates, mappings, integration gaps and client setup blockers. Update evidence, owner role, priority, status and acceptance checks during each walkthrough.
+The canonical [discovery ledger](account-manager-discovery-ledger.md) lives beside this runbook. A reference copy and exact live records are in the shared DriveAgent marketing folder: `marketing/xeroflow-account-manager-rd-20261003/DISCOVERY-LEDGER.md` and `live-probe.json`. It separates delivered/verified repairs from missing templates, mappings, integration gaps and client setup blockers. Update evidence, owner role, priority, status and acceptance checks during each walkthrough.
 
 Further observed issues remain open: checkbox options share IDs and label activation can choose the wrong option; immediate post-mutation detail reads can show stale review/task counts; the legacy task list uses row-index links; the legacy task-detail page contains sample audit/comments; board Details does not normalize saved fields. This probe used precise checkbox buttons and genuine board Updates, then verified persisted IDs and states. Those manual workarounds do not close the ledger issues.
 

@@ -1,0 +1,63 @@
+# XeroFlow workflow discovery ledger
+
+Canonical ledger: XeroFlow `docs/runbooks/account-manager-discovery-ledger.md`. The shared DriveAgent marketing copy is a walkthrough reference; update the canonical ledger and refresh that copy together.
+
+Updated: 3 October 2026. Scope: account-manager brief → tasks → review/customer portal → publishing → reporting. DriveAgent product and DriveAgent News are separate clients.
+
+This ledger is the durable follow-up record for each walkthrough. Add evidence when an issue is discovered; link implementation and verification before closing it. A proposed template, skill or integration is not installed merely because it appears here.
+
+## Status and priority
+
+Status: Open, Proposed, In progress, Delivered, Verified, Blocked, or Deferred. Delivered means released; Verified means the relevant real workflow passed. P1 prevents correct client routing, approval or delivery; P2 creates manual work or ambiguity; P3 improves convenience. Owner is the responsible role, not an assignment or notification to a staff member.
+
+| ID | Type / priority | Discovery and evidence | Status | Next action / owner | Completion check |
+| --- | --- | --- | --- | --- | --- |
+| XF-001 | Bug / P1 | Brief categories return counts; new-brief page expected nested templates and showed an empty category. | Verified | Engineering: PR 628, source e5cfe0845df6e15868873f0b59d6e39d8c8f25ad, release 7a99e764-970f-4981-a952-b4fd912e8310. | Live Social Media shows both templates; submit the example. |
+| XF-002 | Bug / P1 | Client list is an array; renderer lacked client options and submission omitted top-level clientId. | Verified | Engineering: same repair. | Saved brief belongs to the exact selected DriveAgent product client. |
+| XF-003 | Bug / P2 | content_brief_title was absent from title extraction; success toast read the wrong reference property. | Verified | Engineering: same repair. | Actual saved title/reference match the entered values. |
+| XF-004 | Bug / P1 | Live selection exposed an initial field fetch that never started with Nuxt 4 immediate:false. Regression harness now models deferred requests. | Verified | Engineering: follow-up e5cfe084; 821 relevant checks passed. | Fresh live selection displays fields and accepts complete submission. |
+| XF-005 | Template / P2 | Social Media Content has no project-template mapping. Conversion without one creates a project with zero tasks. | Open | Workflow product/engineering: expose mapping and author a dedicated six-stage organic video job. | Conversion creates exactly six linked tasks and preserves brief strategy; duplicate conversion rejected. |
+| XF-006 | Template authoring / P2 | Inspected project-template UI/API supports metadata but no task authoring; existing Social Media Management variants have 16 tasks. | Open | Workflow product/engineering: reusable task editor with dependencies, due offsets and acceptance criteria. | Account manager can create/edit a template through supported controls. |
+| XF-007 | Integration / P1 | Generic client portal approvals do not reconcile social_posts readiness; inspected social client gate is news-source-specific. | Open | Publishing/portal engineering: versioned approval for current copy/media, exact client permissions and decision bridge. | Required customer approval blocks scheduling; revisions invalidate sign-off; approve/reject/revise flow verified. |
+| XF-008 | Client setup / P1 | Neither DriveAgent client has an active portal approver. Product has no publishing account; News has its own Facebook account. | Blocked | Account manager: identify customer approver and product Page. Invite/access grants need appropriate confirmation. | Authorized customer can review correct client; product publishes only to its own connected Page. |
+| XF-009 | Integration / P1 | Post creation has no first-class brief/project/task handoff and delivery-to-task reconciliation. | Open | Publishing/workflow engineering: stable links and idempotent draft handoff. | Retry opens same draft; receipt completes delivery task; failure remains open. |
+| XF-010 | Bug / P1 | AI post executor wording follows requested status, while create endpoint stores Draft. | Open | Publishing engineering: derive wording from persisted response. | Suggested date never described as successfully scheduled. |
+| XF-011 | Form / P2 | daterange field currently falls back to a text input; optional user selectors are not populated in this intake. Source inspection; live behavior to verify. | Open | Briefing engineering: typed date-range input and supported owner options. | Valid range persists with explicit timezone; correct owner choices appear. |
+| XF-012 | Skills/profile / P2 | Publishing procedures and client profile are local proposed artifacts, not installed universal platform skills. Existing content profiles are news-scoped. | Proposed | Product/engineering: versioned reusable publishing rules, client profile and channel rules referenced by template. | Job records exact versions, brand/audience/CTA inheritance and overrides without granting approval or spend. |
+| XF-017 | Database bug / P1 | Complete live brief returned 500. generate_brief_reference selected unqualified slug from categories/templates; read-only EXPLAIN reproduced ambiguity. | Verified | Engineering: migration 446 / ea76d5b81 applied; base schema corrected. | Live submission succeeded as SOC-26-0007 (4c8deb23-32bd-459e-a990-d45af8a4556c), exact product client and fields verified. |
+| XF-019 | UI truthfulness / P1 | /agency/tasks/:id renders hard-coded sample updates/activity (including a fictitious assignment), raw status object and /boards/undefined breadcrumb. Source confirms sample arrays. Canonical board panel correctly begins with no updates. | Open | Workflow engineering: replace placeholders with real audit/update data; normalize status/board fields. Use board panel for this probe. | New task has no invented comments or assignment history; correct status and board navigation shown. |
+| XF-020 | Handoff / P2 | Brief Add Task preserves brief_id/project_id but offers no description/acceptance field; its prefillDescription prop is unused. Board Details also shows Not set for saved task fields. | Open | Workflow engineering: carry stage criteria into task description and normalize Details payload. Use genuine board Updates for probe evidence. | Saved task criteria and actual status/project display without a separate manual update. |
+| XF-018 | Freshness / P2 | Status PATCH returned 200 and database became under_review; immediate detail GET still returned submitted. Later reload showed Under Review. Database reads use cached Hyperdrive by default. | Open | Brief/workflow engineering: fresh reads at decision boundaries or explicit invalidation; diagnose actual cache lifetime. | Mutation response and refreshed UI agree immediately; stale review state cannot drive conversion. |
+| XF-016 | Form bug / P1 | Group options share one checkbox DOM ID/accessibility name. Live click on Reel / Short Video label selected Static Post instead; direct checkbox buttons correctly selected Facebook and Reel. | Open | Briefing engineering: unique option IDs and names; verify label activation. | Each label toggles only its own option, with accessible option names. |
+| XF-015 | UI bug / P2 | Live /agency/tasks list renders blank task titles/statuses and row-index links (/agency/tasks/0 etc), while total is populated. New Task modal opens. | Open | Workflow engineering: inspect Nuxt UI row binding; keep this walkthrough linked to the actual project/task IDs. | Table shows actual titles/statuses and navigates to real task UUIDs. |
+| XF-014 | Bug / P1 | Live GET /api/agency/briefs/templates/social-content returned 400: Template slug is required. Shared dynamic routing uses id; reader accepted only slug. | Verified | Engineering: f0e50b242 released as 65db04bb-c5b1-4cf4-a3b3-0e127c645fb7; 824 checks passed and live fields load. Complete submission probe. | Live template fields loaded and SOC-26-0007 submitted successfully. |
+| XF-013 | Reporting / P2 | Offline completion model is synthetic; no real delivery receipt or performance report for this product draft. | Blocked | Account manager/analytics: capture actual delivery and measurement window after approval and correct Page connection. | Provider receipt, permalink and observed metrics support job closure. |
+
+## Template candidates
+
+These are candidates to compare with the existing catalog, not claims that every corresponding template is absent. Avoid creating near-duplicates.
+
+| Candidate | Reuse / difference | Priority | Status / next action |
+| --- | --- | --- | --- |
+| Organic social video (single deliverable) | Existing Social Media Content intake + six-stage job; reuse uploaded video or explicitly authorized generation. | P1 | Missing dedicated mapped six-task workflow; design and author. |
+| Recurring organic content month | Cadence, source intake, per-post approvals, calendar refill and monthly reporting. | P2 | Audit current scheduling/automation templates before adding. |
+| Dealer sponsor campaign | Verified vehicle/offer, local audience, sponsor disclosure, website banners and social variants. | P2 | Compare advertising templates; keep each dealer/client approval explicit. |
+| News/F1 article-to-social | Source/date verification, article link, News client account, deduplication and correction handling. | P2 | Audit existing news automation; do not mix product promotions. |
+| Paid social campaign | Objective, audience, budget authorization, ad account and conversion measurement. | P2 | Audit Digital Marketing catalog separately from organic publication. |
+| Creative revision / customer approval | Versioned payload, internal review, portal decision, revision loop and resubmission. | P1 | Shared stage/subworkflow proposed; customer approval bridge is XF-007. |
+
+## Catalog check — 3 October 2026
+
+Read-only inspection found these active intake templates: Social Media Content; Influencer Campaign; Marketing Campaign Brief; Advertising Creative Brief; Display Banner Campaign; Google Ads Campaign; Google Performance Max; Meta Ads Campaign; Meta Automotive Inventory Ads; TikTok Ads Campaign. Of these ten, only Google Performance Max currently has a project-template mapping and automatic conversion enabled. Missing workflow mappings are distinct from missing intake templates. Prefer adding an appropriate mapping/subworkflow before duplicating these intakes.
+
+## Walkthrough update rule
+
+At every handoff record: client and job IDs, template/version, expected behavior, actual behavior, reproducible evidence, impact, workaround, next action, owner role and status. Link PR/release and a real verification result when delivered. Keep blockers visible; a manual workaround does not close an automation gap. Do not store access tokens, approval secrets or private contact details in this ledger.
+
+## Session history
+
+- 3 October: user requested a persistent ledger while testing workflows. Twenty initial entries seeded from code, live UI and read-only data inspection. PR 628 app repairs released as f0e50b242 / 65db04bb; migration 446 applied from ea76d5b81. Live intake/conversion and six manual tasks verified; see live-probe.json. Offline six-scenario model passed, but does not prove production automation.
+
+- Live probe: SOC-26-0007 was submitted, internally approved and converted to project 3abc7881-3176-4c5c-8049-58314e36fe9b. Conversion created zero tasks. Six tasks were then manually created through Brief Add Task, preserving exact brief/project links. Approval, publication and completion remain pending; manual creation does not close XF-005.
+
+- Each of the six real tasks now has one saved board Update carrying stage criteria, exact client/brief/project references and the existing creative/Planner draft. They remain To Do; no provider delivery or customer approval is claimed. Project scope and planned end date 10 October were saved through Edit Project.
