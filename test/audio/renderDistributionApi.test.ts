@@ -168,7 +168,7 @@ describe('render distribution endpoints', () => {
       expect.stringContaining('Topic / brief: Launch brief'),
       expect.objectContaining({
         temperature: 0.7,
-        maxTokens: 400,
+        maxTokens: 1200,
         featureKey: 'audio_render_publish_social_caption',
         userId: 'user-1',
         clientId: 'client-1',

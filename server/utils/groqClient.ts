@@ -156,6 +156,7 @@ async function recordGroqChatInvocation(input: {
   if (!input.options.featureKey) return
 
   const usage = usageFromCompletion(input.completion)
+  const emptyCompletion = input.completion && !input.completion.choices?.[0]?.message?.content?.trim()
   await recordAiInvocation({
     featureKey: input.options.featureKey,
     provider: 'groq',
@@ -168,10 +169,13 @@ async function recordGroqChatInvocation(input: {
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,
     totalTokens: usage.totalTokens,
-    status: input.status,
-    errorCode: input.error ? errorCode(input.error) : null,
+    status: emptyCompletion ? 'error' : input.status,
+    errorCode: input.error ? errorCode(input.error) : emptyCompletion ? 'empty_completion' : null,
     latencyMs: Date.now() - input.startedAt,
-    metadata: input.options.metadata ?? {}
+    metadata: {
+      ...input.options.metadata,
+      ...(input.completion ? { finishReason: input.completion.choices?.[0]?.finish_reason ?? null } : {})
+    }
   })
 }
 
@@ -219,7 +223,7 @@ export async function generateGroqInsight(
       completion
     })
 
-    return completion.choices[0]?.message?.content || 'Unable to generate insight'
+    return completion.choices[0]?.message?.content?.trim() || 'Unable to generate insight'
   } catch (error) {
     if (gatewayConfigured) {
       console.warn('Groq AI Gateway request failed; retrying direct Groq:', error)
@@ -250,7 +254,7 @@ export async function generateGroqInsight(
           completion: directCompletion
         })
 
-        return directCompletion.choices[0]?.message?.content || 'Unable to generate insight'
+        return directCompletion.choices[0]?.message?.content?.trim() || 'Unable to generate insight'
       } catch (directError) {
         await recordGroqChatInvocation({
           options,
