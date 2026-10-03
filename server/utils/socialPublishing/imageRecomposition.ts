@@ -28,5 +28,5 @@ export function legacySocialImageKey(sourceUrl: string, creatorId: string, bucke
 
 export function recompositionPrompt(format: SocialImageFormat, instruction: string) {
   const target = SOCIAL_IMAGE_FORMATS[format]
-  return `Recompose the supplied finished advertisement for a ${target.width} by ${target.height} canvas (${target.label}). Re-layout the full design; do not stretch or crop off content. Preserve every word, logo, brand colour, vehicle detail and call to action exactly. Keep all text readable with clear margins. Extend the background and reposition existing design elements to suit this format. Do not add claims, prices, offers or new objects. Return a polished complete advertisement. ${instruction}`.trim()
+  return `Recompose the supplied finished advertisement for a high-resolution 2K canvas (${target.label}). Re-layout the full design; do not stretch or crop off content. Preserve every word, logo, brand colour, vehicle detail and call to action exactly. Keep all text readable with clear margins. Extend the background and reposition existing design elements to suit this format. Do not add claims, prices, offers or new objects. Return a polished complete advertisement. ${instruction}`.trim()
 }

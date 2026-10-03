@@ -3,7 +3,7 @@ const m = vi.hoisted(() => ({ access: vi.fn(), query: vi.fn(), edit: vi.fn(), up
 vi.mock('~~/server/utils/auth', () => ({ requireRole: async () => ({ id: 'user' }) }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: m.access }))
 vi.mock('~~/server/utils/db', () => ({ queryOne: m.query }))
-vi.mock('~~/server/utils/qwenImageEditor', () => ({ editImageWithAI: m.edit }))
+vi.mock('~~/server/utils/socialPublishing/imageGateway', () => ({ recomposeImageWithGateway: m.edit, SOCIAL_IMAGE_MODEL: 'google/nano-banana-2' }))
 vi.mock('~~/server/utils/ai/invocationLedger', () => ({ recordAiInvocation: m.audit }))
 vi.mock('~~/server/utils/banner/assetDelivery', () => ({ resolveBannerAssetDelivery: () => ({ signingSecret: 'secret' }) }))
 vi.mock('~~/server/utils/appUrl', () => ({ getAppUrl: () => 'https://app.xeroflow.io' }))
@@ -21,7 +21,8 @@ const client = '11111111-1111-4111-8111-111111111111'
 const source = 'https://app.xeroflow.io/saved-image'
 const body = { clientId: client, postId: '22222222-2222-4222-8222-222222222222', sourceUrl: source, format: 'portrait' }
 const post = { client_id: client, created_by: 'user', status: 'draft', media_urls: [source] }
-const invoke = () => handler({ body, context: {} } as never)
+const env = { AI: { run: vi.fn() }, AI_GATEWAY_SPEND_LIMIT_CONFIRMED: 'true', AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD: '250', AI_GATEWAY_URL: 'https://gateway.ai.cloudflare.com/v1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/default' }
+const invoke = (bindings = env) => handler({ body, context: { cloudflare: { env: bindings } } } as never)
 beforeEach(() => {
   vi.clearAllMocks()
   m.access.mockResolvedValue({ id: 'user' })
@@ -32,7 +33,7 @@ beforeEach(() => {
 describe('social image recomposition endpoint', () => {
   it('writes a new preview asset and never updates or publishes the post', async () => {
     expect(await invoke()).toMatchObject({ sourceUrl: source, width: 1152, height: 1440, assetId: 'new-asset' })
-    expect(m.edit.mock.calls[0][2]).toMatchObject({ width: 1152, height: 1440, rewritePrompt: false })
+    expect(m.edit.mock.calls[0][1]).toMatchObject({ aspectRatio: '4:5', gatewayId: 'default', mime: 'image/png' })
     expect(m.query.mock.calls.map(c => c[0]).join(' ')).not.toMatch(/UPDATE social_posts|DELETE FROM/)
     expect(m.query.mock.calls[2][0]).toContain('INSERT INTO banner_assets')
     expect(m.audit).toHaveBeenCalledWith(expect.objectContaining({ status: 'success', clientId: client }))
@@ -53,8 +54,12 @@ describe('social image recomposition endpoint', () => {
     await expect(invoke()).rejects.toThrow('Only draft')
     expect(m.edit).not.toHaveBeenCalled()
   })
+  it('requires the existing gateway spending control before generation', async () => {
+    await expect(invoke({ ...env, AI_GATEWAY_SPEND_LIMIT_CONFIRMED: 'false' })).rejects.toThrow('not configured')
+    expect(m.edit).not.toHaveBeenCalled()
+  })
   it('preserves the draft when the provider fails', async () => {
-    m.edit.mockResolvedValueOnce(null)
+    m.edit.mockRejectedValueOnce(new Error('Provider failed'))
     await expect(invoke()).rejects.toThrow('original is unchanged')
     expect(m.upload).not.toHaveBeenCalled()
     expect(m.audit).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }))

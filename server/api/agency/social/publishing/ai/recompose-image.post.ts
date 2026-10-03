@@ -10,7 +10,9 @@ import { getAppUrl } from '~~/server/utils/appUrl'
 import { detectBannerAssetMime } from '~~/shared/utils/bannerAssetIdentity'
 import { SOCIAL_IMAGE_FORMATS } from '~~/shared/social/imageRecomposition'
 import { legacySocialImageKey, recompositionPrompt, validateRecompositionSource } from '~~/server/utils/socialPublishing/imageRecomposition'
-import { editImageWithAI } from '~~/server/utils/qwenImageEditor'
+import { recomposeImageWithGateway, SOCIAL_IMAGE_MODEL } from '~~/server/utils/socialPublishing/imageGateway'
+import type { CreativeAiBinding } from '~~/server/utils/creative-generation/aiGatewayProvider'
+import { getAiGatewayGenerationPolicyStatus } from '~~/server/utils/aiGatewayGenerationPolicy'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 const schema = z.object({
@@ -51,6 +53,15 @@ export default defineEventHandler(async (event) => {
   if (active >= 2) throw createError({ statusCode: 429, statusMessage: 'Image editor is busy. Try again shortly.' })
   const { nativeUpload, signingSecret } = resolveBannerAssetDelivery(event)
   if (!signingSecret) throw createError({ statusCode: 503, statusMessage: 'Image delivery is not configured' })
+  const ai = event.context.cloudflare?.env?.AI as CreativeAiBinding | undefined
+  if (!ai || !getAiGatewayGenerationPolicyStatus(env).spendLimitConfirmed) {
+    throw createError({ statusCode: 503, statusMessage: 'AI image editing is not configured for this environment' })
+  }
+  const gatewayUrl = String(env?.AI_GATEWAY_URL || config.aiGatewayUrl || '')
+  const gatewayId = gatewayUrl.split('/').filter(Boolean).at(-1)
+  if (!gatewayId || !/^https:\/\/gateway\.ai\.cloudflare\.com\/v1\/[a-f0-9]{32}\/[a-z0-9-]+\/?$/.test(gatewayUrl)) {
+    throw createError({ statusCode: 503, statusMessage: 'AI image gateway is not configured' })
+  }
   active++
   const started = Date.now()
   let succeeded = false
@@ -60,15 +71,21 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 422, statusMessage: 'Source image is missing or larger than 10 MB' })
     }
     const input = Buffer.from(await new Response(object.body).arrayBuffer())
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(detectBannerAssetMime(input) || '')) {
+    const inputMime = detectBannerAssetMime(input)
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(inputMime || '')) {
       throw createError({ statusCode: 422, statusMessage: 'Choose a PNG, JPEG or WebP image' })
     }
     const format = SOCIAL_IMAGE_FORMATS[body.format]
-    const result = await editImageWithAI(input, recompositionPrompt(body.format, body.instruction), {
-      width: format.width, height: format.height, rewritePrompt: false,
-      hfToken: env?.HF_API_TOKEN || config.hfApiToken || undefined
-    })
-    if (!result) throw createError({ statusCode: 502, statusMessage: 'The image editor could not finish. Your original is unchanged. Try again shortly.' })
+    let result: { buffer: Buffer }
+    try {
+      result = await recomposeImageWithGateway(ai, {
+        buffer: input, mime: inputMime!, prompt: recompositionPrompt(body.format, body.instruction),
+        aspectRatio: body.format === 'portrait' ? '4:5' : body.format === 'square' ? '1:1' : '9:16',
+        gatewayId, metadata: { feature: 'social_image_recomposition', clientId: body.clientId, postId: body.postId, userId: user.id }
+      })
+    } catch {
+      throw createError({ statusCode: 502, statusMessage: 'The image editor could not finish. Your original is unchanged. Try again shortly.' })
+    }
     const mime = detectBannerAssetMime(result.buffer)
     const extension = mime === 'image/png' ? 'png' : mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : null
     if (!extension) throw createError({ statusCode: 502, statusMessage: 'The editor returned an invalid image. Your original is unchanged.' })
@@ -85,7 +102,7 @@ export default defineEventHandler(async (event) => {
     return { assetId, url, sourceUrl: body.sourceUrl, format: body.format, width: format.width, height: format.height }
   } finally {
     active--
-    await recordAiInvocation({ featureKey: 'social_image_recomposition', provider: 'huggingface', modelId: 'Qwen/Qwen-Image-Edit-2511',
+    await recordAiInvocation({ featureKey: 'social_image_recomposition', provider: 'cloudflare-ai-gateway', modelId: SOCIAL_IMAGE_MODEL,
       userId: user.id, clientId: body.clientId, status: succeeded ? 'success' : 'error', latencyMs: Date.now() - started,
       metadata: { postId: body.postId, format: body.format } })
   }

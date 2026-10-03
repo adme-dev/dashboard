@@ -13,7 +13,6 @@ const reviewed = ref(false)
 const dimensions = ref<{ width: number, height: number } | null>(null)
 let generation = 0
 const formats = Object.entries(SOCIAL_IMAGE_FORMATS).map(([value, item]) => ({ value, label: item.label }))
-const target = computed(() => SOCIAL_IMAGE_FORMATS[format.value])
 const ratioMatches = computed(() => dimensions.value && result.value
   && Math.abs(dimensions.value.width / dimensions.value.height - result.value.width / result.value.height) < 0.01)
 function reset() {
@@ -56,7 +55,7 @@ function loaded(event: Event) {
 }
 function apply() {
   if (!result.value || !reviewed.value || !ratioMatches.value) return
-  emit('apply', result.value)
+  emit('apply', { ...result.value, ...dimensions.value! })
   open.value = false
 }
 </script>
@@ -84,7 +83,7 @@ function apply() {
           />
         </div>
         <div class="grid grid-cols-1 gap-4 @2xl:grid-cols-[16rem_minmax(0,1fr)]">
-          <UFormField label="Output format" :help="`Target: ${target.width} × ${target.height} pixels`">
+          <UFormField label="Output format" help="High-resolution output · 2K. Final dimensions appear in the preview.">
             <USelect
               v-model="format"
               :items="formats"
@@ -144,6 +143,17 @@ function apply() {
             </div>
           </figure>
         </div>
+        <UButton
+          v-if="result"
+          :to="result.url"
+          target="_blank"
+          color="neutral"
+          variant="link"
+          icon="i-lucide-external-link"
+          class="mt-3"
+        >
+          Open full-size preview
+        </UButton>
         <p class="mt-4 text-sm text-muted">
           AI can change lettering or details. Check the copy, logos and vehicles before using the result. Your original remains available.
         </p>
