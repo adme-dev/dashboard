@@ -8,7 +8,7 @@
  * - limit: Max results (default 50)
  */
 
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh as queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
