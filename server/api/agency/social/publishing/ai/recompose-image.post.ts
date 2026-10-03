@@ -83,7 +83,13 @@ export default defineEventHandler(async (event) => {
         aspectRatio: body.format === 'portrait' ? '4:5' : body.format === 'square' ? '1:1' : '9:16',
         gatewayId, metadata: { feature: 'social_image_recomposition', clientId: body.clientId, postId: body.postId, userId: user.id }
       })
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown gateway error'
+      // Do not log full output URLs, credentials or source image data.
+      console.warn('[social-image-recomposition] gateway failed', {
+        postId: body.postId,
+        message: message.replace(/https?:\/\/\S+/g, '[url]').replace(/Bearer\s+\S+/gi, 'Bearer [redacted]').slice(0, 300)
+      })
       throw createError({ statusCode: 502, statusMessage: 'The image editor could not finish. Your original is unchanged. Try again shortly.' })
     }
     const mime = detectBannerAssetMime(result.buffer)
@@ -102,7 +108,7 @@ export default defineEventHandler(async (event) => {
     return { assetId, url, sourceUrl: body.sourceUrl, format: body.format, width: format.width, height: format.height }
   } finally {
     active--
-    await recordAiInvocation({ featureKey: 'social_image_recomposition', provider: 'cloudflare-ai-gateway', modelId: SOCIAL_IMAGE_MODEL,
+    await recordAiInvocation({ featureKey: 'social_image_recomposition', provider: 'cloudflare-ai-gateway', modelId: SOCIAL_IMAGE_MODEL, gatewayUsed: true,
       userId: user.id, clientId: body.clientId, status: succeeded ? 'success' : 'error', latencyMs: Date.now() - started,
       metadata: { postId: body.postId, format: body.format } })
   }

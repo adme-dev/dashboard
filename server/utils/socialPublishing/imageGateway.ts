@@ -29,7 +29,7 @@ export async function recomposeImageWithGateway(
   const response = await fetchImpl(url, { redirect: 'error', signal: AbortSignal.timeout(30000) })
   const limit = 20 * 1024 * 1024
   if (!response.ok || !response.body || Number(response.headers.get('content-length')) > limit) {
-    throw new Error('Image gateway output could not be downloaded')
+    throw new Error(`Image gateway output could not be downloaded (HTTP ${response.status})`)
   }
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
