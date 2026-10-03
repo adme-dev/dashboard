@@ -496,7 +496,7 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     surface: '/agency/social/publishing',
     owner: 'Creative',
     provider: 'groq',
-    modelId: GROQ_MODELS.LLAMA_70B,
+    modelId: GROQ_MODELS.REASONING_120B,
     modality: 'text',
     riskTier: 'medium',
     sourceFile: 'server/api/agency/social/publishing/ai/generate-caption.post.ts'
