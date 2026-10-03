@@ -27,3 +27,23 @@ Neither DriveAgent client had an active portal user/approver at inspection. No p
 - AI scheduling summaries must reflect saved status: the draft-creation endpoint always creates a draft even if a requested date is supplied.
 
 Run the existing interfaces to expose these boundaries; do not insert workflow records directly into the database to make the demonstration appear automatic.
+
+## Verified live probe — 3 October 2026
+
+- Brief: SOC-26-0007, `4c8deb23-32bd-459e-a990-d45af8a4556c`, DriveAgent product client `f7c142a6-a63f-4f75-90aa-700db68c1c76`. Internal intake approved; the stored customer sign-off policy remains `client`.
+- Project: `3abc7881-3176-4c5c-8049-58314e36fe9b`, active, planned end 10 October. Conversion created zero automatic tasks.
+- Six tasks were created manually through Brief Add Task. All preserve actual brief/project links and remain To Do. Each has one real board Update with stage criteria and links to the existing creative and Planner draft. Quick-create has no description field, so those notes are not task descriptions.
+- Existing post `ef0bd231-020f-4e81-be02-87c1f59c7903` remains Draft with no scheduled or published time. Planner shows one product draft and zero approval/scheduled/published posts.
+- No new campaign, social post, generation job or paid spend. No portal invitation or customer approval.
+
+The app repair released as `f0e50b242463ec7f0c39f7d7ae88b9301492c53a`, Cloudflare deployment `65db04bb-c5b1-4cf4-a3b3-0e127c645fb7`. The final 824 relevant tests passed across 128 files. A local disk-space failure was resolved by pruning unused package-cache files; the guarded retry succeeded. QR list → detail → list was checked before upload and after release.
+
+Two further live errors explained the remaining intake failures. Shared Nitro routing named the template segment `id`; the reader now accepts both `slug` and `id`, covered by `test/server/api/briefTemplateEndpoint.test.ts`. Brief creation then failed inside `generate_brief_reference`: both joined tables have `slug`. Migration 446 qualifies `bc.slug`, and the base schema is corrected. The migration was applied from `ea76d5b81293bfe95684ea6216c5f9f911351555`; read-only EXPLAIN reproduced the old ambiguity and verified the qualified query, then actual UI submission succeeded.
+
+## Discovery ledger and follow-up
+
+The shared marketing folder contains the ongoing ledger at `marketing/xeroflow-account-manager-rd-20261003/DISCOVERY-LEDGER.md`, with exact live records in `live-probe.json`. It separates delivered/verified repairs from missing templates, mappings, integration gaps and client setup blockers. Update evidence, owner role, priority, status and acceptance checks during each walkthrough.
+
+Further observed issues remain open: checkbox options share IDs and label activation can choose the wrong option; immediate post-mutation detail reads can show stale review/task counts; the legacy task list uses row-index links; the legacy task-detail page contains sample audit/comments; board Details does not normalize saved fields. This probe used precise checkbox buttons and genuine board Updates, then verified persisted IDs and states. Those manual workarounds do not close the ledger issues.
+
+Among ten inspected active marketing/social/advertising intakes, only Google Performance Max had a project mapping and automatic conversion enabled. Prefer completing workflow mappings before duplicating existing intake templates. The dedicated six-stage organic video workflow, versioned customer approval bridge and task-to-post/delivery reconciliation remain the next design slices.
