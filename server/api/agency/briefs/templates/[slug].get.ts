@@ -5,7 +5,8 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
-  const slug = getRouterParam(event, 'slug')
+  // Nitro may name the shared dynamic segment `id` for sibling write/mapping routes.
+  const slug = getRouterParam(event, 'slug') || getRouterParam(event, 'id')
 
   if (!slug) {
     throw createError({
