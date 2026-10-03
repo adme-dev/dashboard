@@ -26,7 +26,9 @@ export async function recomposeImageWithGateway(
     || !/^ai-gateway-outputs\.[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(url.hostname)) {
     throw new Error('Image gateway returned an unsupported output location')
   }
-  const response = await fetchImpl(url, { redirect: 'error', signal: AbortSignal.timeout(30000) })
+  // Workers rejects redirect: 'error'. Manual mode returns 3xx without following it;
+  // the non-2xx check below rejects those responses before reading any content.
+  const response = await fetchImpl(url, { redirect: 'manual', signal: AbortSignal.timeout(30000) })
   const limit = 20 * 1024 * 1024
   if (!response.ok || !response.body || Number(response.headers.get('content-length')) > limit) {
     throw new Error(`Image gateway output could not be downloaded (HTTP ${response.status})`)
