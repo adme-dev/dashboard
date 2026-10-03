@@ -623,11 +623,15 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Publishing History',
-        content: 'The publishing Wall brings together saved creative, publication dates, destination accounts and links to network posts. Publisher attribution comes from successful publishing audit events, with manual and automated delivery identified separately. Older posts without attribution are marked as not recorded. Published copy is read-only in XeroFlow; changes and removals made directly on a network are not yet synchronised back.'
+        content: 'The publishing Wall brings together saved creative, publication dates, destination accounts and links to network posts. Publisher attribution comes from successful publishing audit events, with manual and automated delivery identified separately. Older posts without attribution are marked as not recorded. The original publication stays in the archive when a live Facebook change is recorded.'
       },
       {
         title: 'Publishing Archive',
         content: 'Open History on a Wall post to review recorded creation, edit, approval, scheduling and publication events with actor names and full timestamps. Older events load on demand. Client boundaries are enforced, and missing historical attribution is shown explicitly rather than guessed.'
+      },
+      {
+        title: 'Manage Live Facebook Posts',
+        content: 'Managers can read the current caption of a verified Facebook feed post, approve a text revision or explicitly confirm removal from its connected Page. Before and after captions, actor and provider outcome remain recorded. Unconfirmed requests block additional changes, and customer-approval-governed posts remain locked pending a new approved version. Videos, media replacement and other networks are not supported by these live controls.'
       }
     ]
   },

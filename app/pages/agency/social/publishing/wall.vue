@@ -4,10 +4,15 @@ import { useSocialPublishingClient } from '~/composables/useSocialPublishingClie
 import { isVideoMediaUrl } from '~/utils/social/videoMedia'
 
 const { clientId } = useSocialPublishingClient()
+const { isManager, canWrite } = useAuth()
+const livePost = ref<SocialWallPost | null>(null)
+const liveOpen = ref(false)
 
 const historyPost = ref<SocialWallPost | null>(null)
 const historyOpen = ref(false)
 watch(clientId, () => {
+  liveOpen.value = false
+  livePost.value = null
   historyOpen.value = false
   historyPost.value = null
 })
@@ -170,7 +175,7 @@ function previewMedia(post: SocialWallPost) {
       variant="soft"
       icon="i-lucide-history"
       title="Publishing history"
-      description="This Wall records posts managed in XeroFlow. Published copy is read-only here; edits and removals made on a social network are not synced back yet. Open the network link to check the current live post."
+      description="This Wall retains original publications and their history. Managers can review live Facebook feed captions and removals through Manage Facebook. External changes are checked when that panel opens; other networks remain read-only."
       class="mb-4"
     />
 
@@ -302,6 +307,14 @@ function previewMedia(post: SocialWallPost) {
             </UBadge>
           </div>
 
+          <div v-for="account in post.accounts.filter(a => post.metadata?.liveFacebook?.[a.id])" :key="`live-${account.id}`" class="space-y-2 rounded-md border border-default p-3">
+            <p class="text-xs font-medium">
+              {{ account.account_name }} · {{ post.metadata.liveFacebook[account.id].removed ? 'Removed from Facebook' : 'Updated Facebook caption' }}
+            </p>
+            <p v-if="!post.metadata.liveFacebook[account.id].removed" class="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
+              {{ post.metadata.liveFacebook[account.id].message }}
+            </p>
+          </div>
           <div class="grid grid-cols-1 gap-2 text-xs @xs:grid-cols-2">
             <div class="rounded-md border border-default p-2">
               <div class="text-muted">
@@ -426,6 +439,16 @@ function previewMedia(post: SocialWallPost) {
 
           <div class="flex flex-wrap justify-end gap-2">
             <UButton
+              v-if="isManager && canWrite && ['published', 'partially_published'].includes(post.status) && post.platforms.includes('facebook')"
+              size="xs"
+              variant="outline"
+              color="neutral"
+              icon="i-lucide-pencil"
+              @click="livePost = post; liveOpen = true"
+            >
+              Manage Facebook
+            </UButton>
+            <UButton
               size="xs"
               variant="outline"
               color="neutral"
@@ -451,5 +474,6 @@ function previewMedia(post: SocialWallPost) {
       </article>
     </div>
     <SocialPublishingPostHistory v-model:open="historyOpen" :post="historyPost" />
+    <SocialPublishingLivePostManager v-model:open="liveOpen" :post="livePost" @changed="refresh" />
   </SocialPublishingShell>
 </template>

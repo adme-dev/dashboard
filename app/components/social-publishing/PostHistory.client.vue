@@ -19,6 +19,7 @@ const error = ref('')
 const nextOffset = ref<number | null>(null)
 let request = 0
 const labels: Record<string, string> = {
+  live_post_requested: 'Live change requested', live_post_edit: 'Facebook caption revision', live_post_remove: 'Facebook removal',
   post_created: 'Draft created', post_updated: 'Draft updated', approval_requested: 'Approval requested',
   post_approved: 'Approved', post_rejected: 'Changes requested', post_scheduled: 'Scheduled',
   post_published: 'Publishing result', client_approval_approved: 'Client approved',
