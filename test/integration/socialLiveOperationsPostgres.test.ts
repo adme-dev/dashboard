@@ -49,11 +49,13 @@ describe.skipIf(process.env.XF_LOCAL_WORKFLOW_TESTS !== '1')('live Facebook oper
   beforeAll(async () => {
     await pool.query(`CREATE SCHEMA ${schema}`)
     await rows(`CREATE TABLE agency_clients(id uuid PRIMARY KEY);
+      CREATE TABLE client_users(id text PRIMARY KEY,client_id uuid,name text);
       CREATE TABLE team_members(id uuid PRIMARY KEY,name text);
       CREATE TABLE social_accounts(id uuid PRIMARY KEY,client_id uuid,platform text,platform_account_id text,access_token text,is_active boolean,account_name text);
       CREATE TABLE social_posts(id uuid PRIMARY KEY,client_id uuid,status text,client_approval_status text,metadata jsonb DEFAULT '{}',account_ids uuid[],platform_results jsonb,updated_at timestamptz);
       CREATE TABLE social_publishing_audit_events(client_id uuid,post_id uuid,social_account_id uuid,actor_id text,action text,metadata jsonb);`)
     await rows(readFileSync('server/database/migrations/448_social_live_operations.sql','utf8'))
+    await rows(readFileSync('server/database/migrations/449_social_live_review_requests.sql','utf8'))
   })
   beforeEach(async () => {
     await rows('TRUNCATE social_live_operations,social_publishing_audit_events,social_posts,social_accounts,agency_clients CASCADE')

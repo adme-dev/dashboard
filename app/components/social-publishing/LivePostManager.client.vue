@@ -1,16 +1,18 @@
 <script setup lang="ts">
+import type { SocialLiveReview } from '~~/shared/types/socialLiveReview'
 import type { SocialWallPost } from '~/types'
 
 const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{ post: SocialWallPost | null }>()
 const emit = defineEmits<{ changed: [] }>()
 interface Operation { id: string, action: string, status: string, before_message: string, after_message: string | null, created_at: string, actor_name: string | null }
-interface Snapshot { accountName: string, message: string | null, removed: boolean, customerApprovalRequired: boolean, readError: string, operations: Operation[] }
+interface Snapshot { reviews: SocialLiveReview[], accountName: string, message: string | null, removed: boolean, customerApprovalRequired: boolean, readError: string, operations: Operation[] }
 const accountId = ref('')
 const snapshot = ref<Snapshot | null>(null)
 const message = ref('')
 const confirmed = ref(false)
 const removeConfirmed = ref(false)
+const reviewConfirmed = ref(false)
 const removalOpen = ref(false)
 const busy = ref(false)
 const loading = ref(false)
@@ -19,7 +21,8 @@ const notice = ref('')
 let version = 0
 const accounts = computed(() => (props.post?.accounts || []).filter(a => a.platform === 'facebook').map(a => ({ label: a.account_name || a.platform_account_id, value: a.id })))
 const unresolved = computed(() => snapshot.value?.operations.find(o => ['pending', 'uncertain'].includes(o.status)))
-const locked = computed(() => busy.value || loading.value || !snapshot.value || snapshot.value.message === null || snapshot.value.removed || snapshot.value.customerApprovalRequired || !!unresolved.value)
+const approvedReview = computed(() => snapshot.value?.reviews?.find(r => r.status === 'approved' && !r.expired))
+const locked = computed(() => busy.value || loading.value || !snapshot.value || snapshot.value.message === null || snapshot.value.removed || !!unresolved.value)
 function date(value: string) {
   return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long' })
 }
@@ -31,6 +34,7 @@ async function load() {
   loading.value = true
   snapshot.value = null
   confirmed.value = false
+  reviewConfirmed.value = false
   removalOpen.value = false
   removeConfirmed.value = false
   error.value = ''
@@ -64,9 +68,10 @@ watch(accountId, () => {
 watch(message, () => {
   confirmed.value = false
 })
-async function submit(action: 'edit' | 'remove' | 'reconcile') {
+async function submit(action: 'edit' | 'remove' | 'reconcile', review?: SocialLiveReview) {
   if (busy.value || !props.post || !snapshot.value) return
-  if (action !== 'reconcile' && (locked.value || (action === 'edit' ? !confirmed.value : !removeConfirmed.value))) return
+  if (action !== 'reconcile' && (locked.value || (review ? !reviewConfirmed.value : action === 'edit' ? !confirmed.value : !removeConfirmed.value))) return
+  const requestReview = !review && action !== 'reconcile' && snapshot.value.customerApprovalRequired
   const postId = props.post.id
   const client = props.post.client_id
   const account = accountId.value
@@ -75,12 +80,13 @@ async function submit(action: 'edit' | 'remove' | 'reconcile') {
   notice.value = ''
   try {
     const result = await $fetch<{ status: string }>(`/api/agency/social/publishing/posts/${postId}/live`, { method: 'POST', retry: 0, timeout: 90000,
-      body: { operationId: action === 'reconcile' ? unresolved.value?.id : crypto.randomUUID(), accountId: account, action,
-        ...(action !== 'reconcile' ? { expectedMessage: snapshot.value.message } : {}),
-        ...(action === 'edit' ? { message: message.value } : {}), confirmed: true }
+      body: { operationId: review?.id || (action === 'reconcile' ? unresolved.value?.id : crypto.randomUUID()), accountId: account, action,
+        ...(review ? { reviewRequestId: review.id } : requestReview ? { requestReview: true } : {}),
+        ...(action !== 'reconcile' ? { expectedMessage: review?.before_message ?? snapshot.value.message } : {}),
+        ...(action === 'edit' ? { message: review?.after_message ?? message.value } : {}), confirmed: true }
     })
     if (props.post?.id !== postId || props.post?.client_id !== client || accountId.value !== account) return
-    notice.value = result.status === 'succeeded' ? (action === 'remove' ? 'Removed from Facebook. The publication archive is retained.' : 'Facebook confirmed the caption. The revision is recorded below.') : 'Facebook has not confirmed the outcome. Further changes are blocked; check the operation below.'
+    notice.value = requestReview ? 'Sent to customer portal Approvals. A manager must apply the approved request separately.' : result.status === 'succeeded' ? (action === 'remove' ? 'Removed from Facebook. The publication archive is retained.' : 'Facebook confirmed the caption. The revision is recorded below.') : 'Facebook has not confirmed the outcome. Further changes are blocked; check the operation below.'
     emit('changed')
     await load()
   } catch (e: unknown) {
@@ -149,7 +155,7 @@ async function submit(action: 'edit' | 'remove' | 'reconcile') {
             color="warning"
             variant="soft"
             title="Customer approval required"
-            description="Changes to this post need a new customer-approved version. Live changes are currently locked here."
+            description="Send the exact change to the customer portal. After approval, a manager can apply that version here."
           />
           <UAlert
             v-if="unresolved"
@@ -182,9 +188,9 @@ async function submit(action: 'edit' | 'remove' | 'reconcile') {
                 class="w-full"
               />
             </UFormField>
-            <UCheckbox v-model="confirmed" label="I approve this caption for the selected Facebook Page." :disabled="locked" />
+            <UCheckbox v-model="confirmed" :label="snapshot.customerApprovalRequired ? 'I have reviewed this caption for customer approval.' : 'I approve this caption for the selected Facebook Page.'" :disabled="locked" />
             <UButton :disabled="locked || !confirmed || !message.trim() || message === snapshot.message" :loading="busy" @click="submit('edit')">
-              Approve and update Facebook
+              {{ snapshot.customerApprovalRequired ? 'Send caption for customer review' : 'Approve and update Facebook' }}
             </UButton>
           </div>
           <section v-if="!snapshot.removed" class="space-y-3 border-t border-default pt-5">
@@ -199,7 +205,7 @@ async function submit(action: 'edit' | 'remove' | 'reconcile') {
               color="error"
               variant="outline"
               :disabled="locked"
-              @click="removalOpen = true"
+              @click="() => { removalOpen = true }"
             >
               Review removal
             </UButton>
@@ -211,9 +217,67 @@ async function submit(action: 'edit' | 'remove' | 'reconcile') {
                 :loading="busy"
                 @click="submit('remove')"
               >
-                Permanently remove from Facebook
+                {{ snapshot.customerApprovalRequired ? 'Request customer approval for removal' : 'Permanently remove from Facebook' }}
               </UButton>
             </template>
+          </section>
+          <section v-if="snapshot.reviews?.length" class="space-y-4 border-t border-default pt-5">
+            <h3 class="font-semibold">
+              Customer review history
+            </h3>
+            <p class="text-sm text-muted">
+              A new request replaces any pending or approved request for this Page.
+            </p>
+            <article v-for="review in snapshot.reviews" :key="review.id" class="space-y-3 rounded-lg border border-default p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="font-medium">
+                  {{ review.action === 'remove' ? 'Removal request' : 'Caption revision' }}
+                </p>
+                <UBadge color="neutral" variant="subtle">
+                  {{ review.expired && ['pending', 'approved'].includes(review.status) ? 'Expired' : review.status.replaceAll('_', ' ') }}
+                </UBadge>
+              </div>
+              <p class="text-xs text-muted">
+                Requested by {{ review.requester_name || 'Agency staff' }} · {{ date(review.created_at) }}
+              </p>
+              <p v-if="review.responded_at" class="text-xs text-muted">
+                {{ review.responder_name || 'Customer' }} · {{ date(review.responded_at) }}
+              </p>
+              <p v-if="review.feedback" class="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
+                {{ review.feedback }}
+              </p>
+              <UAccordion :items="[{ label: 'Review exact requested change', slot: 'change' }]">
+                <template #change>
+                  <p class="text-xs font-medium">
+                    Before
+                  </p>
+                  <p class="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
+                    {{ review.before_message }}
+                  </p>
+                  <p class="mt-3 text-xs font-medium">
+                    {{ review.action === 'remove' ? 'Proposed action: permanently remove this Facebook post' : 'Proposed caption' }}
+                  </p>
+                  <p v-if="review.after_message !== null" class="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
+                    {{ review.after_message }}
+                  </p>
+                </template>
+              </UAccordion>
+              <template v-if="approvedReview?.id === review.id">
+                <UAlert v-if="review.before_message !== snapshot.message" color="warning" description="The live caption changed. Send a fresh review request before applying a change." />
+                <UCheckbox v-model="reviewConfirmed" :disabled="locked" :label="review.action === 'remove' ? 'I confirm permanent removal approved by the customer, including loss of Facebook comments and reactions.' : 'I approve applying the exact customer-approved caption above.'" />
+                <UButton
+                  :color="review.action === 'remove' ? 'error' : 'primary'"
+                  :loading="busy"
+                  :disabled="locked || !reviewConfirmed || review.before_message !== snapshot.message"
+                  @click="submit(review.action, review)"
+                >
+                  {{ review.action === 'remove' ? 'Apply approved removal' : 'Apply approved caption' }}
+                </UButton>
+              </template>
+              <p v-if="review.operation_status" class="text-sm text-muted">
+                Facebook operation: {{ review.operation_status }}<span v-if="review.operation_created_at"> · {{ review.operator_name || 'Agency staff' }} · {{ date(review.operation_created_at) }}</span>
+              </p>
+            </article>
           </section>
           <section v-if="snapshot.operations.length" class="space-y-4 border-t border-default pt-5">
             <h3 class="font-semibold">

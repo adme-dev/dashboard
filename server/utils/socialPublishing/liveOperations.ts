@@ -1,10 +1,12 @@
+import { consumeLiveReview, listLiveReviews } from './liveReviews'
+import { socialReviewVersionSql } from './reviewVersion'
 import { createError } from 'h3'
 import { queryOneFresh, queryRowsFresh, transactionWithoutRetry } from '~~/server/utils/db'
 import { assertLiveRevisionAllowed, facebookLiveRequest, resolveLiveFacebookTarget, type LiveFacebookAccount, type LiveFacebookPost } from './liveFacebook'
 
 const fail = (message: string) => createError({ statusCode: 409, statusMessage: message })
 interface Operation { id: string, post_id: string, client_id: string, account_id: string, provider_post_id: string, action: 'edit' | 'remove', status: string, before_message: string, after_message: string | null }
-export interface LiveOperationInput { operationId: string, accountId: string, action: 'edit' | 'remove' | 'reconcile', expectedMessage?: string, message?: string }
+export interface LiveOperationInput { operationId: string, reviewRequestId?: string, accountId: string, action: 'edit' | 'remove' | 'reconcile', expectedMessage?: string, message?: string }
 async function target(postId: string, clientId: string, accountId: string) {
   const post = await queryOneFresh<LiveFacebookPost>('SELECT * FROM social_posts WHERE id=$1 AND client_id=$2', [postId, clientId])
   const account = await queryOneFresh<LiveFacebookAccount>('SELECT * FROM social_accounts WHERE id=$1 AND client_id=$2', [accountId, clientId])
@@ -27,7 +29,7 @@ export async function readLiveFacebook(postId: string, clientId: string, account
     }
   }
   return { accountName: account.account_name, providerId, message: live?.message ?? null, removed, operations,
-    readError, customerApprovalRequired: !!post.client_approval_status || post.metadata?.source === 'mcp_news' }
+    readError, reviews: await listLiveReviews(clientId, postId, accountId), customerApprovalRequired: !!post.client_approval_status || post.metadata?.source === 'mcp_news' }
 }
 async function finish(op: Operation, actorId: string, status: 'succeeded' | 'failed' | 'uncertain', source: string) {
   const outcome = await transactionWithoutRetry(async (db) => {
@@ -61,23 +63,26 @@ export async function manageLiveFacebook(postId: string, clientId: string, actor
     if (current.message !== op.after_message) throw fail('Facebook has not confirmed the requested caption. Further changes remain blocked.')
     return finish(op, actorId, 'succeeded', 'reconciled')
   }
-  assertLiveRevisionAllowed(post)
+  if (!input.reviewRequestId) assertLiveRevisionAllowed(post)
+  if (input.reviewRequestId && input.operationId !== input.reviewRequestId) throw fail('Use the approved review request ID for this operation')
   // Reserve before any provider write. Post lock plus unique unresolved-target index serializes requests.
   const reserved = await transactionWithoutRetry(async (db) => {
-    const locked = (await db.query<LiveFacebookPost>('SELECT * FROM social_posts WHERE id=$1 AND client_id=$2 FOR UPDATE', [postId, clientId])).rows[0]
+    const locked = (await db.query<LiveFacebookPost & { review_version: string }>(`SELECT *,${socialReviewVersionSql()} AS review_version FROM social_posts WHERE id=$1 AND client_id=$2 FOR UPDATE`, [postId, clientId])).rows[0]
     const bound = (await db.query<LiveFacebookAccount>('SELECT * FROM social_accounts WHERE id=$1 AND client_id=$2 FOR SHARE', [account.id, clientId])).rows[0]
     if (!locked || !bound || resolveLiveFacebookTarget(locked, bound) !== providerId) throw fail('Publishing target changed')
-    assertLiveRevisionAllowed(locked)
+    if (!input.reviewRequestId) assertLiveRevisionAllowed(locked)
     const existing = (await db.query<Operation>('SELECT * FROM social_live_operations WHERE id=$1', [input.operationId])).rows[0]
     if (existing) {
       if (existing.post_id !== postId || existing.client_id !== clientId || existing.account_id !== account.id || existing.action !== input.action || existing.before_message !== input.expectedMessage || existing.after_message !== (input.action === 'edit' ? input.message : null)) throw fail('Operation ID belongs to a different request')
       return { op: existing, fresh: false }
     }
+    if (input.reviewRequestId) await consumeLiveReview(db, locked, providerId, input)
     const blocked = (await db.query(`SELECT id FROM social_live_operations WHERE post_id=$1 AND account_id=$2
       AND (status IN ('pending','uncertain') OR (action='remove' AND status='succeeded')) LIMIT 1`, [postId, account.id])).rows[0]
     if (blocked) throw fail('This target was removed or has an unresolved operation. Check its history before continuing.')
     const op = (await db.query<Operation>(`INSERT INTO social_live_operations(id,post_id,client_id,account_id,provider_post_id,actor_id,action,status,before_message,after_message)
       VALUES($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9) RETURNING *`, [input.operationId, postId, clientId, account.id, providerId, actorId, input.action, input.expectedMessage, input.action === 'edit' ? input.message : null])).rows[0]
+    if (!op) throw fail('Could not reserve the live operation')
     await db.query(`INSERT INTO social_publishing_audit_events(client_id,post_id,social_account_id,actor_id,action,metadata)
       VALUES($1,$2,$3,$4,'live_post_requested',$5::jsonb)`, [clientId, postId, account.id, actorId, JSON.stringify({ operationId: op.id, status: 'pending', source: input.action })])
     return { op, fresh: true }

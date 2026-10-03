@@ -104,7 +104,7 @@ const statusColors: Record<string, string> = {
       </h1>
       <div v-if="data?.summary" class="flex items-center gap-3 text-sm">
         <UBadge v-if="data.summary.pending > 0" color="warning" variant="subtle">
-          {{ data.summary.pending }} pending
+          {{ data.summary.pending }} project approvals pending
         </UBadge>
       </div>
     </div>
@@ -118,7 +118,7 @@ const statusColors: Record<string, string> = {
         @click="activeTab = 'pending'"
       >
         <p class="text-xs text-muted">
-          Pending decisions
+          Pending project decisions
         </p>
         <p class="mt-1 text-lg font-semibold">
           {{ data.summary.pending }}
@@ -238,6 +238,7 @@ const statusColors: Record<string, string> = {
     </UCard>
 
     <PortalSocialNewsApprovals :status="statusFilter" />
+    <PortalSocialLiveReviews />
 
     <div v-if="pending" class="space-y-3">
       <div v-for="i in 4" :key="i" class="h-24 rounded-lg bg-elevated animate-pulse" />

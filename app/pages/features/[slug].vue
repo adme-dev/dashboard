@@ -631,7 +631,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Manage Live Facebook Posts',
-        content: 'Managers can read the current caption of a verified Facebook feed post, approve a text revision or explicitly confirm removal from its connected Page. Before and after captions, actor and provider outcome remain recorded. Unconfirmed requests block additional changes, and customer-approval-governed posts remain locked pending a new approved version. Videos, media replacement and other networks are not supported by these live controls.'
+        content: 'Managers can read the current caption of a verified Facebook feed post, approve a text revision or explicitly confirm removal from its connected Page. Before and after captions, actor and provider outcome remain recorded. Unconfirmed requests block additional changes, and customer-governed changes go through an immutable portal review request before a manager applies the approved version. Changed captions, replaced requests and expired decisions require a fresh review. Videos, media replacement and other networks are not supported by these live controls.'
       }
     ]
   },
@@ -655,7 +655,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Client-Portal Review',
-        content: 'Staff and customer decisions are tied to the reviewed post version. If content, targets, schedule or approval state changes, the reviewer must reload before deciding. Clients review news-backed social drafts in their own scoped portal, switch between platform-specific versions, verify the original source and target accounts, and approve, reject, or request changes with attributable feedback. Client sign-off remains separate from agency approval, so it can never publish content directly.'
+        content: 'Published Facebook caption changes and removals can be reviewed in the portal with before-and-after text, Page identity, feedback and attributable decisions. Customer approval never edits Facebook directly; a manager applies the approved request separately. Staff and customer decisions are tied to the reviewed post version. If content, targets, schedule or approval state changes, the reviewer must reload before deciding. Clients review news-backed social drafts in their own scoped portal, switch between platform-specific versions, verify the original source and target accounts, and approve, reject, or request changes with attributable feedback. Client sign-off remains separate from agency approval, so it can never publish content directly.'
       }
     ]
   },
