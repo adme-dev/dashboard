@@ -4,8 +4,9 @@ import { useSocialPublishingClient } from '~/composables/useSocialPublishingClie
 import {
   approvalPrimaryContent,
   approvalReviewSummary,
-  formatApprovalDate,
+  formatApprovalDate
 } from '~/utils/socialPublishingApprovals'
+import { isVideoMediaUrl } from '~/utils/social/videoMedia'
 import { platformLabel } from '~~/app/utils/socialReportScheduleForm'
 import type { SocialPost, SocialPublishPlatform } from '~/types'
 
@@ -90,8 +91,9 @@ async function approve(p: SocialPost) {
     await api.approve(p.id)
     toast.add({ title: 'Approved', color: 'success' })
     await load()
-  } catch (e: any) {
-    toast.add({ title: 'Approve failed', description: e?.data?.statusMessage, color: 'error' })
+    await refreshNuxtData('social-publishing-nav-counts')
+  } catch (e: unknown) {
+    toast.add({ title: 'Approve failed', description: (e as { data?: { statusMessage?: string } })?.data?.statusMessage, color: 'error' })
   } finally {
     approvingId.value = null
   }
@@ -116,8 +118,9 @@ async function confirmReject() {
     rejectTarget.value = null
     rejectReason.value = ''
     await load()
-  } catch (e: any) {
-    toast.add({ title: 'Reject failed', description: e?.data?.statusMessage, color: 'error' })
+    await refreshNuxtData('social-publishing-nav-counts')
+  } catch (e: unknown) {
+    toast.add({ title: 'Reject failed', description: (e as { data?: { statusMessage?: string } })?.data?.statusMessage, color: 'error' })
   } finally {
     rejecting.value = false
   }
@@ -131,6 +134,7 @@ async function confirmReject() {
   >
     <template #actions>
       <UButton
+        aria-label="Refresh approvals"
         icon="i-lucide-refresh-cw"
         color="neutral"
         variant="ghost"
@@ -148,35 +152,67 @@ async function confirmReject() {
       Loading approvals...
     </div>
 
-    <div v-else-if="!pending.length" class="rounded-lg border border-default p-10 text-center text-muted">
-      <UIcon name="i-lucide-check-circle-2" class="size-8 mx-auto mb-2 opacity-50" />
-      Nothing awaiting approval.
-    </div>
+    <section v-else-if="!pending.length" class="flex min-h-80 flex-col items-center justify-center rounded-xl border border-default bg-default px-6 py-12 text-center" aria-labelledby="approvals-empty-title">
+      <div class="mb-5 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
+        <UIcon name="i-lucide-check-check" class="size-7" aria-hidden="true" />
+      </div>
+      <h2 id="approvals-empty-title" class="text-lg font-semibold">
+        All caught up
+      </h2>
+      <p class="mt-2 max-w-md text-sm leading-6 text-muted">
+        There are no posts waiting for approval for this client. Approved posts still need to be published or scheduled.
+      </p>
+      <div class="mt-6 flex flex-wrap justify-center gap-3">
+        <UButton :to="{ path: '/agency/social/publishing/calendar', query: { client: clientId } }" icon="i-lucide-calendar-days">
+          View calendar
+        </UButton>
+        <UButton
+          :to="{ path: '/agency/social/publishing/compose', query: { client: clientId } }"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-plus"
+        >
+          Create a post
+        </UButton>
+      </div>
+    </section>
 
-    <div v-else class="grid gap-6 xl:grid-cols-[minmax(320px,0.7fr)_minmax(0,1fr)]">
-      <section class="space-y-3">
+    <div v-else class="grid min-w-0 gap-6 xl:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]">
+      <section class="min-w-0 space-y-3">
         <div class="flex items-center justify-between gap-3">
-          <h2 class="text-sm font-semibold">Approval queue</h2>
-          <UBadge color="neutral" variant="subtle">{{ pending.length }} pending</UBadge>
+          <h2 class="text-sm font-semibold">
+            Approval queue
+          </h2>
+          <UBadge color="neutral" variant="subtle">
+            {{ pending.length }} pending
+          </UBadge>
         </div>
 
         <button
           v-for="p in pending"
           :key="p.id"
           type="button"
-          class="w-full rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          class="min-w-0 w-full rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           :class="selectedPost?.id === p.id ? 'border-primary bg-primary/5' : 'border-default hover:border-muted'"
           :aria-pressed="selectedPost?.id === p.id"
           @click="selectedId = p.id"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ approvalPrimaryContent(p, null) }}</p>
+              <p class="text-sm font-medium truncate">
+                {{ approvalPrimaryContent(p, null) }}
+              </p>
               <p class="text-xs text-muted mt-1">
                 Requested {{ formatApprovalDate(p.approval_requested_at, p.timezone) }}
               </p>
               <div class="flex flex-wrap gap-1 mt-3">
-                <UBadge v-for="pl in p.platforms" :key="pl" color="neutral" variant="subtle" size="xs">
+                <UBadge
+                  v-for="pl in p.platforms"
+                  :key="pl"
+                  color="neutral"
+                  variant="subtle"
+                  size="xs"
+                >
                   {{ platformLabel(pl) }}
                 </UBadge>
                 <UBadge
@@ -194,10 +230,12 @@ async function confirmReject() {
         </button>
       </section>
 
-      <section v-if="selectedPost" class="rounded-lg border border-default bg-default">
+      <section v-if="selectedPost" class="@container min-w-0 rounded-lg border border-default bg-default">
         <div class="flex flex-wrap items-start justify-between gap-3 border-b border-default p-4">
           <div>
-            <h2 class="text-sm font-semibold">Review request</h2>
+            <h2 class="text-sm font-semibold">
+              Review request
+            </h2>
             <p class="text-xs text-muted mt-1">
               Scheduled {{ formatApprovalDate(selectedPost.scheduled_at, selectedPost.timezone) }}
             </p>
@@ -223,7 +261,7 @@ async function confirmReject() {
           </div>
         </div>
 
-        <div class="grid gap-6 p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div class="grid min-w-0 gap-4 p-4 @3xl:grid-cols-[minmax(0,1fr)_240px]">
           <div class="min-w-0 space-y-4">
             <div class="rounded-lg border border-default p-4">
               <div class="flex items-center justify-between gap-3 mb-3">
@@ -232,43 +270,82 @@ async function confirmReject() {
                   {{ platformLabel(previewPlatform) }}
                 </UBadge>
               </div>
-              <p class="text-sm whitespace-pre-wrap">{{ previewContent }}</p>
-              <div v-if="selectedPost.media_urls?.length" class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-4">
-                <img
-                  v-for="url in selectedPost.media_urls"
-                  :key="url"
-                  :src="url"
-                  alt=""
-                  class="aspect-video w-full rounded-md border border-default object-cover bg-elevated"
-                  loading="lazy"
-                >
+              <p class="text-sm leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {{ previewContent }}
+              </p>
+              <div v-if="selectedPost.media_urls?.length" class="grid grid-cols-1 @md:grid-cols-2 gap-3 mt-4">
+                <div v-for="(url, index) in selectedPost.media_urls" :key="url" class="min-w-0 overflow-hidden rounded-md border border-default bg-elevated">
+                  <video
+                    v-if="isVideoMediaUrl(url)"
+                    :src="url"
+                    controls
+                    preload="metadata"
+                    class="max-h-80 w-full"
+                    :aria-label="`Attached video ${index + 1}`"
+                  />
+                  <a
+                    v-else
+                    :href="url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="block focus-visible:outline-2 focus-visible:outline-primary"
+                    :aria-label="`Open image ${index + 1} at full size`"
+                  >
+                    <img
+                      :src="url"
+                      :alt="`Post artwork ${index + 1}`"
+                      class="max-h-80 w-full object-contain"
+                      loading="lazy"
+                    >
+                  </a>
+                </div>
               </div>
-              <p v-if="selectedPost.first_comment" class="mt-4 rounded-md bg-elevated p-3 text-xs text-muted">
+              <p v-if="selectedPost.first_comment" class="mt-4 rounded-md bg-elevated p-3 text-xs text-muted whitespace-pre-wrap [overflow-wrap:anywhere]">
                 First comment: {{ selectedPost.first_comment }}
               </p>
             </div>
 
             <div class="rounded-lg border border-default p-4">
-              <h3 class="text-sm font-semibold mb-3">Review notes</h3>
-              <dl class="grid gap-3 sm:grid-cols-2">
+              <h3 class="text-sm font-semibold mb-3">
+                Review notes
+              </h3>
+              <dl class="grid min-w-0 gap-3 @lg:grid-cols-2">
                 <div>
-                  <dt class="text-xs text-muted">Requested</dt>
-                  <dd class="text-sm">{{ formatApprovalDate(selectedPost.approval_requested_at, selectedPost.timezone) }}</dd>
+                  <dt class="text-xs text-muted">
+                    Requested
+                  </dt>
+                  <dd class="text-sm [overflow-wrap:anywhere]">
+                    {{ formatApprovalDate(selectedPost.approval_requested_at, selectedPost.timezone) }}
+                  </dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-muted">Due</dt>
-                  <dd class="text-sm">{{ formatApprovalDate(selectedPost.due_at, selectedPost.timezone) }}</dd>
+                  <dt class="text-xs text-muted">
+                    Due
+                  </dt>
+                  <dd class="text-sm [overflow-wrap:anywhere]">
+                    {{ formatApprovalDate(selectedPost.due_at, selectedPost.timezone) }}
+                  </dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-muted">Campaign</dt>
-                  <dd class="text-sm">{{ selectedPost.campaign_id || 'No campaign linked' }}</dd>
+                  <dt class="text-xs text-muted">
+                    Campaign
+                  </dt>
+                  <dd class="text-sm [overflow-wrap:anywhere]">
+                    {{ selectedPost.campaign_id || 'No campaign linked' }}
+                  </dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-muted">Assigned to</dt>
-                  <dd class="text-sm">{{ selectedPost.assigned_to || 'Unassigned' }}</dd>
+                  <dt class="text-xs text-muted">
+                    Assigned to
+                  </dt>
+                  <dd class="text-sm [overflow-wrap:anywhere]">
+                    {{ selectedPost.assigned_to || 'Unassigned' }}
+                  </dd>
                 </div>
                 <div v-if="selectedPost.metadata?.source === 'mcp_news'">
-                  <dt class="text-xs text-muted">Client decision</dt>
+                  <dt class="text-xs text-muted">
+                    Client decision
+                  </dt>
                   <dd class="mt-0.5">
                     <UBadge :color="clientDecisionColor(selectedPost.client_approval_status)" variant="subtle" size="xs">
                       {{ clientDecisionLabel(selectedPost.client_approval_status) }}
@@ -276,37 +353,72 @@ async function confirmReject() {
                   </dd>
                 </div>
                 <div v-if="selectedPost.client_approval_responded_at">
-                  <dt class="text-xs text-muted">Client responded</dt>
-                  <dd class="text-sm">{{ formatApprovalDate(selectedPost.client_approval_responded_at, selectedPost.timezone) }}</dd>
+                  <dt class="text-xs text-muted">
+                    Client responded
+                  </dt>
+                  <dd class="text-sm [overflow-wrap:anywhere]">
+                    {{ formatApprovalDate(selectedPost.client_approval_responded_at, selectedPost.timezone) }}
+                  </dd>
                 </div>
               </dl>
               <div v-if="selectedPost.client_approval_feedback" class="mt-4 rounded-md border border-default bg-elevated p-3">
-                <p class="text-xs font-medium text-muted">Client feedback</p>
-                <p class="mt-1 whitespace-pre-wrap text-sm">{{ selectedPost.client_approval_feedback }}</p>
+                <p class="text-xs font-medium text-muted">
+                  Client feedback
+                </p>
+                <p class="mt-1 whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
+                  {{ selectedPost.client_approval_feedback }}
+                </p>
               </div>
               <div v-if="selectedPost.hashtags?.length || selectedPost.tags?.length" class="flex flex-wrap gap-1 mt-4">
-                <UBadge v-for="tag in selectedPost.tags" :key="`tag-${tag}`" color="neutral" variant="subtle" size="xs">
+                <UBadge
+                  v-for="tag in selectedPost.tags"
+                  :key="`tag-${tag}`"
+                  color="neutral"
+                  variant="subtle"
+                  size="xs"
+                >
                   {{ tag }}
                 </UBadge>
-                <UBadge v-for="tag in selectedPost.hashtags" :key="`hash-${tag}`" color="neutral" variant="outline" size="xs">
+                <UBadge
+                  v-for="tag in selectedPost.hashtags"
+                  :key="`hash-${tag}`"
+                  color="neutral"
+                  variant="outline"
+                  size="xs"
+                >
                   #{{ tag }}
                 </UBadge>
               </div>
-              <ULink v-if="selectedPost.link_url" :to="selectedPost.link_url" target="_blank" class="mt-4 inline-flex items-center gap-1 text-xs text-primary">
+              <ULink
+                v-if="selectedPost.link_url"
+                :to="selectedPost.link_url"
+                target="_blank"
+                class="mt-4 flex min-w-0 items-start gap-1 text-xs text-primary [overflow-wrap:anywhere]"
+              >
                 <UIcon name="i-lucide-external-link" class="size-3" />
                 {{ selectedPost.link_url }}
               </ULink>
             </div>
           </div>
 
-          <aside class="space-y-4">
+          <aside class="min-w-0 space-y-4 @3xl:sticky @3xl:top-4 self-start">
             <div class="rounded-lg border border-default p-4">
-              <h3 class="text-sm font-semibold mb-3">Checklist</h3>
+              <h3 class="text-sm font-semibold mb-3">
+                Checklist
+              </h3>
               <div v-if="selectedSummary" class="space-y-2 text-sm">
-                <div class="flex justify-between gap-3"><span class="text-muted">Platforms</span><span>{{ selectedSummary.platforms }}</span></div>
-                <div class="flex justify-between gap-3"><span class="text-muted">Media</span><span>{{ selectedSummary.media }}</span></div>
-                <div class="flex justify-between gap-3"><span class="text-muted">Hashtags</span><span>{{ selectedSummary.hashtags }}</span></div>
-                <div class="flex justify-between gap-3"><span class="text-muted">Tags</span><span>{{ selectedSummary.tags }}</span></div>
+                <div class="flex justify-between gap-3">
+                  <span class="text-muted">Platforms</span><span>{{ selectedSummary.platforms }}</span>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <span class="text-muted">Media</span><span>{{ selectedSummary.media }}</span>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <span class="text-muted">Hashtags</span><span>{{ selectedSummary.hashtags }}</span>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <span class="text-muted">Tags</span><span>{{ selectedSummary.tags }}</span>
+                </div>
                 <div class="flex justify-between gap-3">
                   <span class="text-muted">First comment</span>
                   <UBadge :color="selectedSummary.hasFirstComment ? 'success' : 'neutral'" variant="subtle" size="xs">
@@ -323,7 +435,12 @@ async function confirmReject() {
             </div>
 
             <div class="rounded-lg border border-default p-4">
-              <h3 class="text-sm font-semibold mb-3">Decision</h3>
+              <h3 class="text-sm font-semibold mb-2">
+                Decision
+              </h3>
+              <p class="mb-4 text-xs leading-5 text-muted">
+                Approval marks this post as ready. Publishing happens in the composer or at its scheduled time.
+              </p>
               <UAlert
                 v-if="clientApprovalBlocked"
                 color="warning"
@@ -362,13 +479,29 @@ async function confirmReject() {
     <UModal :open="!!rejectTarget" @update:open="(v) => { if (!v) rejectTarget = null }">
       <template #content>
         <div class="p-5 space-y-4">
-          <h3 class="font-semibold">Request changes</h3>
+          <h3 class="font-semibold">
+            Request changes
+          </h3>
           <UFormField label="Reason" help="Shared with the requester.">
-            <UTextarea v-model="rejectReason" :rows="4" placeholder="What needs to change?" class="w-full" />
+            <UTextarea
+              v-model="rejectReason"
+              :rows="4"
+              placeholder="What needs to change?"
+              class="w-full"
+            />
           </UFormField>
           <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="rejectTarget = null">Cancel</UButton>
-            <UButton color="error" :loading="rejecting" :disabled="!rejectReason.trim()" @click="confirmReject">Send back</UButton>
+            <UButton color="neutral" variant="ghost" @click="rejectTarget = null">
+              Cancel
+            </UButton>
+            <UButton
+              color="error"
+              :loading="rejecting"
+              :disabled="!rejectReason.trim()"
+              @click="confirmReject"
+            >
+              Send back
+            </UButton>
           </div>
         </div>
       </template>

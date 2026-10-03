@@ -21,6 +21,7 @@ const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, va
 
 // Live tile-nav badge counts, refetched whenever the client changes.
 const { data: countsData } = useFetch('/api/agency/social/publishing/nav-counts', {
+  key: 'social-publishing-nav-counts',
   query: { clientId },
   watch: [clientId]
 })
