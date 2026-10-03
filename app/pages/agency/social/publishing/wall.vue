@@ -37,25 +37,28 @@ let refreshVersion = 0
 async function refresh() {
   const version = ++refreshVersion
   const requestedClient = clientId.value
-  pending.value = true
+  pending.value = !!requestedClient
   posts.value = []
   error.value = null
+  if (!requestedClient) return
   try {
     const result = await apiFetch<SocialWallPost[]>('/api/agency/social/publishing/wall', {
       query: { clientId: requestedClient, limit: 180 }
     })
     if (version === refreshVersion && requestedClient === clientId.value) posts.value = result
   } catch (err) {
-    if (version === refreshVersion) error.value = err
+    if (version === refreshVersion && requestedClient === clientId.value) error.value = err
   } finally {
     if (version === refreshVersion) pending.value = false
   }
 }
 
-await refresh()
-
+// Register before any request can suspend setup; client validation may finish later.
 watch(clientId, () => {
   void refresh()
+}, { immediate: true, flush: 'sync' })
+onScopeDispose(() => {
+  refreshVersion++
 })
 
 const errorDescription = computed(() => {
@@ -164,6 +167,7 @@ function previewMedia(post: SocialWallPost) {
         color="neutral"
         variant="ghost"
         :loading="pending"
+        :disabled="!clientId"
         @click="() => refresh()"
       >
         Refresh
@@ -217,7 +221,7 @@ function previewMedia(post: SocialWallPost) {
     </div>
 
     <div v-else-if="!filteredPosts.length" class="rounded-md border border-default p-8 text-center text-sm text-muted">
-      No managed posts match the current filters.
+      {{ clientId ? 'No managed posts match the current filters.' : 'Choose a client to view its publishing history.' }}
     </div>
 
     <div v-else class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
