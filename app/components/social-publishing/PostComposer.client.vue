@@ -12,6 +12,7 @@ import {
 import type { SocialAccount, SocialPublishPlatform } from '~/types'
 import { syncComposerAccountIds, useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
 import { useComposerCampaigns } from '~/composables/useComposerCampaigns'
+import type { SocialImagePreview } from '~~/shared/social/imageRecomposition'
 
 const { state, setOverride, resolved } = useSocialComposer()
 const apiFetch = $fetch as <T = unknown>(
@@ -23,6 +24,7 @@ const props = defineProps<{
   clientId: string | null
   accounts: SocialAccount[]
   accountsLoading?: boolean
+  imageEditingAllowed?: boolean
 }>()
 
 const PLATFORM_OPTIONS = LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS
@@ -52,7 +54,7 @@ function accountsFor(platform: SocialPublishPlatform) {
 function accountOptionsFor(platform: SocialPublishPlatform) {
   return accountsFor(platform).map(account => ({
     label: account.account_name || account.platform_account_id,
-    value: account.id,
+    value: account.id
   }))
 }
 
@@ -80,7 +82,7 @@ watch(
     const next = syncComposerAccountIds(state.value.platforms, state.value.accountIds, props.accounts)
     if (next.join('|') !== state.value.accountIds.join('|')) state.value.accountIds = next
   },
-  { deep: true, immediate: true },
+  { deep: true, immediate: true }
 )
 
 // tightest character limit across selected networks, for the base counter
@@ -94,7 +96,7 @@ const overBase = computed(() => tightestLimit.value > 0 && state.value.content.l
 function csvModel(key: 'hashtags' | 'tags') {
   return computed<string>({
     get: () => state.value[key].join(', '),
-    set: (v) => { state.value[key] = v.split(',').map(s => s.trim()).filter(Boolean) },
+    set: (v) => { state.value[key] = v.split(',').map(s => s.trim()).filter(Boolean) }
   })
 }
 const hashtagsModel = csvModel('hashtags')
@@ -111,8 +113,41 @@ function removeMedia(url: string) {
   state.value.mediaUrls = state.value.mediaUrls.filter(u => u !== url)
 }
 
+const resizeOpen = ref(false)
+const resizeSource = ref('')
+const resizePostId = ref<string | null>(null)
+const resizeClientId = ref<string | null>(null)
+function openResize(url: string) {
+  resizeSource.value = url
+  resizePostId.value = state.value.id
+  resizeClientId.value = props.clientId
+  resizeOpen.value = true
+}
+function imageHistory(): SocialImagePreview[] {
+  const history = state.value.metadata.imageRecompositions
+  return Array.isArray(history) ? history.filter(item => typeof item?.sourceUrl === 'string' && typeof item?.url === 'string') : []
+}
+function applyResize(preview: SocialImagePreview) {
+  if (state.value.id !== resizePostId.value || props.clientId !== resizeClientId.value) return
+  const index = state.value.mediaUrls.indexOf(preview.sourceUrl)
+  if (index < 0) return
+  state.value.mediaUrls[index] = preview.url
+  state.value.creativeId = null
+  state.value.metadata = { ...state.value.metadata, imageRecompositions: [...imageHistory(), preview] }
+  toast.add({ title: 'Preview added to draft', description: 'Save your changes and review the updated artwork before publishing.', color: 'success' })
+}
+function restoreImage(url: string) {
+  const previous = imageHistory().findLast(item => item.url === url)
+  if (!previous) return
+  state.value.mediaUrls = state.value.mediaUrls.map(item => item === url ? previous.sourceUrl : item)
+  state.value.creativeId = null
+}
+watch(() => [props.clientId, state.value.id], () => {
+  resizeOpen.value = false
+})
+
 // Banner Studio creative picker
-interface BannerCreative { id: string; url: string; projectName: string; formatKey: string; width: number; height: number }
+interface BannerCreative { id: string, url: string, projectName: string, formatKey: string, width: number, height: number }
 const bannerOpen = ref(false)
 const bannerLoading = ref(false)
 const bannerCreatives = ref<BannerCreative[]>([])
@@ -173,18 +208,21 @@ const aiLoading = ref(false)
 const TONES = ['friendly', 'professional', 'playful', 'bold', 'informative']
 async function generateCaption() {
   const topic = aiBrief.value.trim() || state.value.content.trim()
-  if (!topic) { toast.add({ title: 'Add a brief or some copy first', color: 'warning' }); return }
+  if (!topic) {
+    toast.add({ title: 'Add a brief or some copy first', color: 'warning' })
+    return
+  }
   aiLoading.value = true
   try {
     const { caption } = await apiFetch<{ caption: string }>('/api/agency/social/publishing/ai/generate-caption', {
       method: 'POST',
-      body: { topic, platform: state.value.platforms[0] ?? 'facebook', tone: aiTone.value },
+      body: { topic, platform: state.value.platforms[0] ?? 'facebook', tone: aiTone.value }
     })
     state.value.content = caption
     aiOpen.value = false
     aiBrief.value = ''
-  } catch (e: any) {
-    toast.add({ title: 'Caption generation failed', description: e?.data?.statusMessage, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Caption generation failed', description: (e as { data?: { statusMessage?: string } })?.data?.statusMessage, color: 'error' })
   } finally {
     aiLoading.value = false
   }
@@ -196,18 +234,21 @@ const aiImgPrompt = ref('')
 const aiImgLoading = ref(false)
 async function generateImage() {
   const prompt = aiImgPrompt.value.trim()
-  if (!prompt) { toast.add({ title: 'Describe the image first', color: 'warning' }); return }
+  if (!prompt) {
+    toast.add({ title: 'Describe the image first', color: 'warning' })
+    return
+  }
   aiImgLoading.value = true
   try {
     const { url } = await apiFetch<{ url: string }>('/api/agency/banner-studio/ai/generate-image', {
       method: 'POST',
-      body: { prompt },
+      body: { prompt }
     })
     if (url && !state.value.mediaUrls.includes(url)) state.value.mediaUrls.push(url)
     aiImgOpen.value = false
     aiImgPrompt.value = ''
-  } catch (e: any) {
-    toast.add({ title: 'Image generation failed', description: e?.data?.statusMessage, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Image generation failed', description: (e as { data?: { statusMessage?: string } })?.data?.statusMessage, color: 'error' })
   } finally {
     aiImgLoading.value = false
   }
@@ -247,10 +288,10 @@ const scheduleLabel = computed(() => scheduleDate.value
   ? dateFmt.format(new Date(state.value.scheduledAt || Date.now()))
   : 'Pick a date')
 
-const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
+const scheduleModes: { value: ScheduleMode, label: string, icon: string }[] = [
   { value: 'now', label: 'Review now', icon: 'i-lucide-send' },
   { value: 'schedule', label: 'Schedule', icon: 'i-lucide-calendar-clock' },
-  { value: 'queue', label: 'Add to queue', icon: 'i-lucide-list-plus' },
+  { value: 'queue', label: 'Add to queue', icon: 'i-lucide-list-plus' }
 ]
 </script>
 
@@ -486,6 +527,29 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
               aria-label="Remove attached media"
               @click="removeMedia(url)"
             />
+            <div v-if="!isVideoMediaUrl(url)" class="mt-2 flex flex-wrap items-center gap-2">
+              <UButton
+                icon="i-lucide-scan"
+                size="sm"
+                color="neutral"
+                variant="subtle"
+                :disabled="!state.id || imageEditingAllowed === false"
+                @click="openResize(url)"
+              >
+                Resize with AI
+              </UButton>
+              <UButton
+                v-if="imageHistory().some(item => item.url === url)"
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                :disabled="imageEditingAllowed === false"
+                @click="restoreImage(url)"
+              >
+                Restore original
+              </UButton>
+              <span v-if="!state.id" class="text-xs text-muted">Save the draft first.</span>
+            </div>
           </div>
         </div>
       </UFormField>
@@ -616,24 +680,39 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
       <template #content>
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold">Pick a Banner Studio creative</h3>
-            <UButton icon="i-lucide-x" color="neutral" variant="ghost" @click="bannerOpen = false" />
+            <h3 class="font-semibold">
+              Pick a Banner Studio creative
+            </h3>
+            <UButton
+              icon="i-lucide-x"
+              color="neutral"
+              variant="ghost"
+              @click="bannerOpen = false"
+            />
           </div>
-          <div v-if="bannerLoading" class="py-10 text-center text-sm text-muted">Loading creatives…</div>
+          <div v-if="bannerLoading" class="py-10 text-center text-sm text-muted">
+            Loading creatives…
+          </div>
           <div v-else-if="!bannerCreatives.length" class="py-10 text-center text-sm text-muted">
             No published Banner Studio creatives found.
           </div>
           <div v-else class="max-h-[60vh] overflow-y-auto space-y-5">
             <div v-for="(items, project) in bannerByProject" :key="project">
-              <div class="text-xs font-medium uppercase tracking-wide text-muted mb-2">{{ project }}</div>
+              <div class="text-xs font-medium uppercase tracking-wide text-muted mb-2">
+                {{ project }}
+              </div>
               <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
                 <button
-                  v-for="c in items" :key="c.id" type="button"
+                  v-for="c in items"
+                  :key="c.id"
+                  type="button"
                   class="group/c rounded-lg border border-default overflow-hidden hover:ring-2 hover:ring-primary transition-all text-left"
                   @click="pickCreative(c)"
                 >
                   <img :src="c.url" :alt="c.formatKey" class="w-full aspect-square object-cover bg-elevated">
-                  <div class="px-2 py-1 text-[11px] text-muted truncate">{{ c.formatKey }}</div>
+                  <div class="px-2 py-1 text-[11px] text-muted truncate">
+                    {{ c.formatKey }}
+                  </div>
                 </button>
               </div>
             </div>
@@ -646,9 +725,16 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
     <UModal v-model:open="aiOpen">
       <template #content>
         <div class="p-5 space-y-4">
-          <h3 class="font-semibold flex items-center gap-2"><UIcon name="i-lucide-sparkles" class="size-4 text-primary" /> Write with AI</h3>
+          <h3 class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-sparkles" class="size-4 text-primary" /> Write with AI
+          </h3>
           <UFormField label="What's the post about?" help="Leave blank to rewrite your current draft.">
-            <UTextarea v-model="aiBrief" :rows="3" placeholder="e.g. launch of our new winter range, 20% off this weekend" class="w-full" />
+            <UTextarea
+              v-model="aiBrief"
+              :rows="3"
+              placeholder="e.g. launch of our new winter range, 20% off this weekend"
+              class="w-full"
+            />
           </UFormField>
           <UFormField label="Tone">
             <USelectMenu
@@ -658,26 +744,61 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
               class="w-full"
             />
           </UFormField>
-          <p class="text-xs text-muted">Tuned for {{ labelFor(state.platforms[0]) || 'Facebook' }} (your first selected network).</p>
+          <p class="text-xs text-muted">
+            Tuned for {{ labelFor(state.platforms[0]) || 'Facebook' }} (your first selected network).
+          </p>
           <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="aiOpen = false">Cancel</UButton>
-            <UButton color="primary" icon="i-lucide-sparkles" :loading="aiLoading" @click="generateCaption">Generate</UButton>
+            <UButton color="neutral" variant="ghost" @click="aiOpen = false">
+              Cancel
+            </UButton>
+            <UButton
+              color="primary"
+              icon="i-lucide-sparkles"
+              :loading="aiLoading"
+              @click="generateCaption"
+            >
+              Generate
+            </UButton>
           </div>
         </div>
       </template>
     </UModal>
 
     <!-- AI image -->
+    <SocialPublishingImageRecomposeModal
+      v-model:open="resizeOpen"
+      :client-id="clientId"
+      :post-id="state.id"
+      :source-url="resizeSource"
+      @apply="applyResize"
+    />
+
     <UModal v-model:open="aiImgOpen">
       <template #content>
         <div class="p-5 space-y-4">
-          <h3 class="font-semibold flex items-center gap-2"><UIcon name="i-lucide-sparkles" class="size-4 text-primary" /> Generate an image</h3>
+          <h3 class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-sparkles" class="size-4 text-primary" /> Generate an image
+          </h3>
           <UFormField label="Describe the image" help="Generated via the Banner Studio image engine and added to your media.">
-            <UTextarea v-model="aiImgPrompt" :rows="3" placeholder="e.g. cosy winter scene, knitted jumper flatlay, warm tones" class="w-full" />
+            <UTextarea
+              v-model="aiImgPrompt"
+              :rows="3"
+              placeholder="e.g. cosy winter scene, knitted jumper flatlay, warm tones"
+              class="w-full"
+            />
           </UFormField>
           <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="aiImgOpen = false">Cancel</UButton>
-            <UButton color="primary" icon="i-lucide-sparkles" :loading="aiImgLoading" @click="generateImage">Generate</UButton>
+            <UButton color="neutral" variant="ghost" @click="aiImgOpen = false">
+              Cancel
+            </UButton>
+            <UButton
+              color="primary"
+              icon="i-lucide-sparkles"
+              :loading="aiImgLoading"
+              @click="generateImage"
+            >
+              Generate
+            </UButton>
           </div>
         </div>
       </template>

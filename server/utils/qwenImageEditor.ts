@@ -1,8 +1,7 @@
 const SPACE_BASE = 'https://qwen-qwen-image-edit-2511.hf.space'
 const API_PREFIX = '/gradio_api'
 
-// Trusted domains for output image URLs returned by the Space
-const TRUSTED_HOSTS = ['.hf.space', '.huggingface.co']
+const MAX_OUTPUT_BYTES = 20 * 1024 * 1024
 
 function bufferToBlobPart(buffer: Buffer): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(buffer.length)
@@ -31,6 +30,7 @@ export async function editImageWithAI(
     seed?: number
     randomizeSeed?: boolean
     hfToken?: string
+    rewritePrompt?: boolean
   }
 ): Promise<EditResult | null> {
   const width = Math.min(Math.max(options?.width ?? 512, 256), 2048)
@@ -55,7 +55,7 @@ export async function editImageWithAI(
 
     // Step 2: Submit edit request
     const eventId = await submitEdit(uploadPath, prompt, {
-      width, height, guidanceScale, steps, seed, randomizeSeed,
+      width, height, guidanceScale, steps, seed, randomizeSeed, rewritePrompt: options?.rewritePrompt ?? true
     }, headers, controller.signal)
     if (!eventId) return null
 
@@ -64,13 +64,27 @@ export async function editImageWithAI(
     if (!streamOutput?.imageUrl) return null
 
     // Step 4: Download the edited image
-    const resp = await fetch(streamOutput.imageUrl, { headers, signal: controller.signal })
+    const resp = await fetch(streamOutput.imageUrl, { headers, signal: controller.signal, redirect: 'error' })
     if (!resp.ok) {
       console.warn(`[ImageEditor] Download failed: ${resp.status}`)
       return null
     }
 
-    const buf = Buffer.from(await resp.arrayBuffer())
+    if (Number(resp.headers.get('content-length')) > MAX_OUTPUT_BYTES || !resp.body) return null
+    const reader = resp.body.getReader()
+    const chunks: Uint8Array[] = []
+    let size = 0
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > MAX_OUTPUT_BYTES) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+    const buf = Buffer.concat(chunks)
     if (buf.length === 0) {
       console.warn('[ImageEditor] Downloaded empty buffer')
       return null
@@ -78,8 +92,8 @@ export async function editImageWithAI(
 
     console.log(`[ImageEditor] Edit complete, ${buf.length} bytes, seed=${streamOutput.seed}`)
     return { buffer: buf, seed: streamOutput.seed }
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
       console.warn('[ImageEditor] Request timed out after 180s')
     } else {
       console.warn('[ImageEditor] Edit failed:', err)
@@ -104,7 +118,7 @@ async function uploadToSpace(
       method: 'POST',
       headers,
       body: formData,
-      signal,
+      signal
     })
 
     if (!resp.ok) {
@@ -112,7 +126,7 @@ async function uploadToSpace(
       return null
     }
 
-    const result = await resp.json() as any[]
+    const result = await resp.json() as Array<string | { name?: string, path?: string }>
     if (!result || result.length === 0) {
       console.warn('[ImageEditor] Upload returned empty result')
       return null
@@ -135,7 +149,7 @@ async function uploadToSpace(
 async function submitEdit(
   uploadPath: string,
   prompt: string,
-  params: { width: number; height: number; guidanceScale: number; steps: number; seed: number; randomizeSeed: boolean },
+  params: { width: number, height: number, guidanceScale: number, steps: number, seed: number, randomizeSeed: boolean, rewritePrompt: boolean },
   headers: Record<string, string>,
   signal: AbortSignal
 ): Promise<string | null> {
@@ -145,22 +159,22 @@ async function submitEdit(
       method: 'POST',
       headers: {
         ...headers,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         data: [
-          [{ path: uploadPath }],  // images — Gallery format
-          prompt,                   // prompt
-          params.seed,              // seed
-          params.randomizeSeed,     // randomize_seed
-          params.guidanceScale,     // true_guidance_scale
-          params.steps,             // num_inference_steps
-          params.height,            // height
-          params.width,             // width
-          true,                     // rewrite_prompt
-        ],
+          [{ image: { path: uploadPath, meta: { _type: 'gradio.FileData' } } }],
+          prompt, // prompt
+          params.seed, // seed
+          params.randomizeSeed, // randomize_seed
+          params.guidanceScale, // true_guidance_scale
+          params.steps, // num_inference_steps
+          params.height, // height
+          params.width, // width
+          params.rewritePrompt
+        ]
       }),
-      signal,
+      signal
     })
 
     if (!resp.ok) {
@@ -194,7 +208,7 @@ async function streamResult(
   try {
     const resp = await fetch(`${SPACE_BASE}${API_PREFIX}/call/infer/${eventId}`, {
       headers,
-      signal,
+      signal
     })
 
     if (!resp.ok) {
@@ -219,7 +233,7 @@ async function streamResult(
           const imageUrl = extractFirstImageUrl(data)
           const seed = extractSeed(data)
           return { imageUrl, seed }
-        } catch (parseErr) {
+        } catch {
           console.warn('[ImageEditor] Failed to parse complete event data:', line.slice(6))
           return null
         }
@@ -240,46 +254,25 @@ async function streamResult(
   }
 }
 
-function extractFirstImageUrl(data: any): string | null {
-  // Walk the data structure to find the first image URL
-  // Gradio returns gallery format: [[{url: "..."}, ...], seed]
-  function walk(node: any): string | null {
-    if (!node) return null
-    if (typeof node === 'object' && node.url && typeof node.url === 'string') {
-      const rawUrl = node.url
-      if (rawUrl.startsWith('http')) {
-        try {
-          const parsed = new URL(rawUrl)
-          const isTrusted = TRUSTED_HOSTS.some(h => parsed.hostname.endsWith(h))
-          if (!isTrusted) {
-            console.warn('[ImageEditor] Skipping untrusted URL:', rawUrl)
-            return null
-          }
-        } catch {
-          return null
-        }
-        return rawUrl
-      } else {
-        return `${SPACE_BASE}${API_PREFIX}/file=${rawUrl}`
-      }
-    }
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const found = walk(item)
-        if (found) return found
-      }
-    }
+function extractFirstImageUrl(data: unknown): string | null {
+  if (!Array.isArray(data) || !Array.isArray(data[0])) return null
+  const item = data[0][0]
+  const raw = item?.image?.url ?? item?.url
+  if (typeof raw !== 'string') return null
+  try {
+    const url = new URL(raw, SPACE_BASE)
+    if (url.origin !== SPACE_BASE || url.username || url.password) return null
+    return url.href
+  } catch {
     return null
   }
-
-  return walk(data)
 }
 
 /**
  * Extract the seed number from the response data.
  * Response format: [Gallery, seed_number]
  */
-function extractSeed(data: any): number | null {
+function extractSeed(data: unknown): number | null {
   if (!Array.isArray(data)) return null
   // The seed is typically the second element in the top-level array
   for (const item of data) {

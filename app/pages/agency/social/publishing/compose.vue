@@ -29,12 +29,12 @@ const canPublishSavedPost = computed(() => isApprovedComposerUnchanged(
   state.value, clientId.value ?? '', persistedStatus.value, approvedBody.value))
 
 const platformLabel: Record<string, string> = {
-  facebook: 'Facebook',
-  instagram: 'Instagram',
-  linkedin: 'LinkedIn',
-  tiktok: 'TikTok',
-  youtube: 'YouTube',
-  'google-business': 'Google Business',
+  'facebook': 'Facebook',
+  'instagram': 'Instagram',
+  'linkedin': 'LinkedIn',
+  'tiktok': 'TikTok',
+  'youtube': 'YouTube',
+  'google-business': 'Google Business'
 }
 
 async function loadAccounts() {
@@ -76,7 +76,7 @@ onMounted(async () => {
   const creativeId = route.query.creative as string | undefined
   if (creativeId) {
     try {
-      const creatives = await apiFetch<{ id: string; url: string }[]>('/api/agency/banner-studio/published/with-projects')
+      const creatives = await apiFetch<{ id: string, url: string }[]>('/api/agency/banner-studio/published/with-projects')
       const match = creatives.find(c => c.id === creativeId)
       if (match) {
         if (!state.value.mediaUrls.includes(match.url)) state.value.mediaUrls.push(match.url)
@@ -101,8 +101,14 @@ onMounted(async () => {
 })
 
 function guard(requireAccounts = true): string | null {
-  if (!clientId.value) { toast.add({ title: 'Pick a client first', color: 'warning' }); return null }
-  if (!state.value.platforms.length) { toast.add({ title: 'Select at least one network', color: 'warning' }); return null }
+  if (!clientId.value) {
+    toast.add({ title: 'Pick a client first', color: 'warning' })
+    return null
+  }
+  if (!state.value.platforms.length) {
+    toast.add({ title: 'Select at least one network', color: 'warning' })
+    return null
+  }
   if (requireAccounts && captionNeedsReview.value) {
     toast.add({ title: 'Add your caption before approval', color: 'warning' })
     return null
@@ -112,7 +118,7 @@ function guard(requireAccounts = true): string | null {
     toast.add({
       title: 'Select publishing accounts',
       description: missing.map(platform => platformLabel[platform] || platform).join(', '),
-      color: 'warning',
+      color: 'warning'
     })
     return null
   }
@@ -156,8 +162,8 @@ async function saveDraft() {
   try {
     const id = await upsert({}, false)
     if (id) toast.add({ title: 'Draft saved', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'Save failed', description: e?.data?.statusMessage, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Save failed', description: (e as { data?: { statusMessage?: string } })?.data?.statusMessage, color: 'error' })
   } finally { saving.value = false }
 }
 
@@ -170,7 +176,10 @@ async function primaryAction() {
       await api.requestApproval(id)
       toast.add({ title: 'Sent for approval', color: 'success' })
     } else if (state.value.scheduleMode === 'schedule') {
-      if (!state.value.scheduledAt) { toast.add({ title: 'Pick a date to schedule', color: 'warning' }); return }
+      if (!state.value.scheduledAt) {
+        toast.add({ title: 'Pick a date to schedule', color: 'warning' })
+        return
+      }
       const id = await upsert()
       if (id) {
         await api.requestApproval(id)
@@ -180,8 +189,8 @@ async function primaryAction() {
       const id = await upsert()
       if (id) toast.add({ title: 'Added — arrange timing in the Queue', color: 'success' })
     }
-  } catch (e: any) {
-    toast.add({ title: 'Action failed', description: e?.data?.statusMessage, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Action failed', description: (e as { data?: { statusMessage?: string } })?.data?.statusMessage, color: 'error' })
   } finally { saving.value = false }
 }
 
@@ -205,6 +214,7 @@ const primaryLabel = computed(() => ({
             :client-id="clientId"
             :accounts="accounts"
             :accounts-loading="accountsLoading"
+            :image-editing-allowed="!persistedStatus || ['draft', 'approved'].includes(persistedStatus)"
           />
           <template #fallback>
             <div role="status" aria-label="Loading post editor" class="space-y-5">

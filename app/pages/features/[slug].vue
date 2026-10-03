@@ -592,6 +592,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Deep-Linkable',
         content: 'Open a saved draft or begin from a calendar day with the client and requested date already selected. Review the campaign, account choices and final copy before approval. First comments, hashtags and internal tags remain available in the expandable details section.'
+      },
+      {
+        title: 'Recompose Artwork for Social',
+        content: 'Open Resize with AI on a saved draft image to request a portrait, square or story composition. Compare the generated preview with the original and inspect the text, branding and product details before using it. The original remains available to restore, and edited drafts need to be saved and reviewed before publication. Generation depends on image provider availability and never publishes a post.'
       }
     ]
   },
