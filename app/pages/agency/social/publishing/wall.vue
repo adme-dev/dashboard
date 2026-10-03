@@ -5,6 +5,17 @@ import { isVideoMediaUrl } from '~/utils/social/videoMedia'
 
 const { clientId } = useSocialPublishingClient()
 
+const historyPost = ref<SocialWallPost | null>(null)
+const historyOpen = ref(false)
+watch(clientId, () => {
+  historyOpen.value = false
+  historyPost.value = null
+})
+function showHistory(post: SocialWallPost) {
+  historyPost.value = post
+  historyOpen.value = true
+}
+
 const search = ref('')
 const statusFilter = ref('all')
 const platformFilter = ref<'all' | SocialPublishPlatform>('all')
@@ -118,7 +129,8 @@ function formatNumber(value: number | null | undefined) {
 function platformResultLinks(post: SocialWallPost) {
   return Object.entries(post.platform_results || {})
     .map(([platform, result]) => ({
-      platform,
+      key: platform,
+      platform: result?.platform || platform.split(':')[0],
       status: result?.status || 'unknown',
       url: result?.url || null
     }))
@@ -412,10 +424,19 @@ function previewMedia(post: SocialWallPost) {
             </div>
           </div>
 
-          <div v-if="platformResultLinks(post).length" class="flex flex-wrap justify-end gap-2">
+          <div class="flex flex-wrap justify-end gap-2">
+            <UButton
+              size="xs"
+              variant="outline"
+              color="neutral"
+              icon="i-lucide-history"
+              @click="showHistory(post)"
+            >
+              History
+            </UButton>
             <UButton
               v-for="link in platformResultLinks(post)"
-              :key="`${post.id}-${link.platform}`"
+              :key="`${post.id}-${link.key}`"
               :to="link.url || undefined"
               target="_blank"
               size="xs"
@@ -429,5 +450,6 @@ function previewMedia(post: SocialWallPost) {
         </div>
       </article>
     </div>
+    <SocialPublishingPostHistory v-model:open="historyOpen" :post="historyPost" />
   </SocialPublishingShell>
 </template>

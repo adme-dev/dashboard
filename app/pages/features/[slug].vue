@@ -583,7 +583,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Live Previews',
-        content: 'Review copy and artwork beside the editor, including a larger video preview that retains the source proportions. Tailor copy for individual networks and check character limits. Previews are visual approximations; the network determines the final published layout. Caption failures keep the video in a draft and direct the producer to add approved copy.'
+        content: 'Review the actual copy and every attachment beside the editor, including video previews that retain source proportions. Organic previews contain no sample engagement counts or paid-ad calls to action. Tailor copy for individual networks and check character limits. Previews are visual approximations; the network determines the final published layout. Caption failures keep the video in a draft and direct the producer to add approved copy.'
       },
       {
         title: 'Creative From Banner Studio',
@@ -624,6 +624,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Publishing History',
         content: 'The publishing Wall brings together saved creative, publication dates, destination accounts and links to network posts. Publisher attribution comes from successful publishing audit events, with manual and automated delivery identified separately. Older posts without attribution are marked as not recorded. Published copy is read-only in XeroFlow; changes and removals made directly on a network are not yet synchronised back.'
+      },
+      {
+        title: 'Publishing Archive',
+        content: 'Open History on a Wall post to review recorded creation, edit, approval, scheduling and publication events with actor names and full timestamps. Older events load on demand. Client boundaries are enforced, and missing historical attribution is shown explicitly rather than guessed.'
       }
     ]
   },

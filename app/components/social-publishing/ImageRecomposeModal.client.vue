@@ -24,6 +24,9 @@ function reset() {
   busy.value = false
 }
 watch(() => [props.clientId, props.postId, props.sourceUrl, open.value], reset)
+watch(() => [props.clientId, props.postId, props.sourceUrl], () => {
+  instruction.value = ''
+})
 watch(format, () => {
   result.value = null
   dimensions.value = null
