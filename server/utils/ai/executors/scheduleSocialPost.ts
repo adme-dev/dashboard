@@ -9,10 +9,10 @@ import { fetchInternalExecution } from './internalExecutionFetch'
  * the default uses Nitro's global $fetch (resolves the internal relative route on the CF runtime — see
  * #129). Low-risk (`confirm`): it writes an internal draft/scheduled row, not a live platform publish.
  */
-export type SocialPostPoster = (body: ReturnType<typeof proposalToSocialPostBody>, ctx: ToolContext) => Promise<{ id: string }>
+export type SocialPostPoster = (body: ReturnType<typeof proposalToSocialPostBody>, ctx: ToolContext) => Promise<{ id: string, status?: string, scheduled_at?: string | null }>
 
 const defaultPoster: SocialPostPoster = (body, ctx) =>
-  fetchInternalExecution<{ id: string }>('/api/agency/social/publishing/posts', { method: 'POST', body }, ctx)
+  fetchInternalExecution<{ id: string, status?: string, scheduled_at?: string | null }>('/api/agency/social/publishing/posts', { method: 'POST', body }, ctx)
 
 export function makeScheduleSocialPostExecutor(post: SocialPostPoster = defaultPoster): ActionExecutor {
   return {
@@ -23,9 +23,10 @@ export function makeScheduleSocialPostExecutor(post: SocialPostPoster = defaultP
     executionClass: 'internal-http',
     async execute(payload: any, ctx: ToolContext): Promise<ExecutorResult> {
       const created = await post(proposalToSocialPostBody(payload), ctx)
+      if (!created?.id) throw new Error('Social post creation returned no id')
       const client = payload?.clientName ?? 'the client'
-      const when = payload?.status === 'scheduled' && payload?.scheduledAt
-        ? ` scheduled for ${payload.scheduledAt}`
+      const when = created.status === 'scheduled' && created.scheduled_at
+        ? ` scheduled for ${created.scheduled_at}`
         : ' as a draft'
       return {
         resultRef: created.id,
