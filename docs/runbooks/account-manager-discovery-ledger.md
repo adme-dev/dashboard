@@ -38,6 +38,8 @@ Status: Open, Proposed, In progress, Delivered, Verified, Blocked, or Deferred. 
 
 | XF-024 | Routing / P1 | Live View Details changed the template URL but left the catalog rendered, including after reload. templates.vue was a parent page with no NuxtPage outlet. | In progress | Move the catalog to templates/index.vue so catalog and detail are sibling routes; regression added. Initial release stopped before upload to include this repair. | View Details displays the exact template and reachable task editor. |
 
+| XF-025 | Duplication / P1 | Live Duplicate created SOC-26-0008 (f6b9e2d7-a2e0-4878-b161-d971adcd0863) with zero fields and returned failure. Raw JSONB values were rebound as ordinary text/arrays outside a transaction. | In progress | Transactional INSERT SELECT preserves JSON types and rolls back the draft if copying fails; 18 local PostgreSQL scenarios now pass. Retain the empty draft as failure evidence; do not use for conversion. | Duplicate contains all source fields and is a fresh draft; failed copy leaves no new brief. |
+
 ## Template candidates
 
 These are candidates to compare with the existing catalog, not claims that every corresponding template is absent. Avoid creating near-duplicates.
@@ -76,3 +78,5 @@ At every handoff record: client and job IDs, template/version, expected behavior
 - Repository-wide typecheck reports existing broad diagnostics; new component click-handler return types and conversion date narrowing were corrected. Final scoped diagnostic check/release evidence pending. QR pre-release list → Gendore detail → list passed (6 codes / 26 scans; detail 5 scans / 3 visits / 0 leads).
 
 - Final typecheck still fails repository-wide, but reports no diagnostics in the new task/conversion components, task writer, task graph, brief conversion utility or direct template-use endpoint. Existing page and unrelated module diagnostics remain. Template routing regression and affected components/database scenarios pass (21 tests).
+
+- Release was held again before upload when live duplication exposed XF-025. Local PostgreSQL reproduced the failure; field copy now remains inside PostgreSQL and the brief/fields/activity are atomic. The empty production draft SOC-26-0008 has not been approved or converted.

@@ -51,9 +51,10 @@ vi.mock('~~/server/utils/db', () => ({
 vi.mock('~~/server/utils/notifications', () => ({ notifyTaskAssigned: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('~~/server/utils/briefNotifications', () => ({ notifyBriefConverted: vi.fn().mockResolvedValue(undefined) }))
 const { saveProjectTemplateTask, templateTaskInput } = await import('~~/server/utils/projectTemplateTasks')
-vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: vi.fn().mockResolvedValue({ id: 'manager' }) }))
-Object.assign(globalThis, { defineEventHandler: <T>(handler: T) => handler, getRouterParam: () => 'organic', readBody: async (event: { body: unknown }) => event.body })
+vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: vi.fn().mockResolvedValue({ id: 'manager' }), requireAuth: vi.fn().mockResolvedValue({ id: 'manager' }) }))
+Object.assign(globalThis, { defineEventHandler: <T>(handler: T) => handler, getRouterParam: (event: { params?: { id?: string } }) => event.params?.id || 'organic', readBody: async (event: { body: unknown }) => event.body })
 const { default: useTemplate } = await import('~~/server/api/agency/templates/[id]/use.post')
+const { default: duplicateBrief } = await import('~~/server/api/agency/briefs/[id]/duplicate.post')
 const { convertBriefToProject } = await import('~~/server/utils/briefConversion')
 
 describe.skipIf(!enabled)('brief conversion with real local PostgreSQL', () => {
@@ -62,7 +63,7 @@ describe.skipIf(!enabled)('brief conversion with real local PostgreSQL', () => {
     await rows(`
       CREATE TABLE agency_clients (id text PRIMARY KEY, name text);
       CREATE TABLE brief_templates (id text PRIMARY KEY, project_template_id text, slug text, field_mapping jsonb, auto_convert_on_approval boolean, auto_assign_department text);
-      CREATE TABLE briefs (id text PRIMARY KEY, title text, reference_number text, client_id text, status text, converted_to_project_id text, template_id text, requested_deadline date, budget_min numeric, budget_max numeric, budget_currency text, quote_id text, assigned_to text, updated_at timestamptz DEFAULT NOW(), converted_at timestamptz, auto_project_created boolean);
+      CREATE TABLE briefs (id text PRIMARY KEY DEFAULT gen_random_uuid()::text, project_id text, department_id text, submitted_by text, priority text, source text, title text, reference_number text, client_id text, status text, converted_to_project_id text, template_id text, requested_deadline date, budget_min numeric, budget_max numeric, budget_currency text, quote_id text, assigned_to text, updated_at timestamptz DEFAULT NOW(), converted_at timestamptz, auto_project_created boolean);
       CREATE TABLE template_usage_history (template_id text, project_id text, used_by text);
       CREATE TABLE project_templates (id text PRIMARY KEY, name text, department_id text, is_active boolean DEFAULT true, estimated_duration_days int, default_budget_type text, default_budget_amount numeric, times_used int DEFAULT 0, last_used_at timestamptz, updated_at timestamptz DEFAULT NOW());
       CREATE TABLE template_tasks (id text PRIMARY KEY, template_id text, phase_id text, sort_order int, title text, description text, default_department_id text, default_assignee_id text, default_role text, priority text, task_type text, estimated_hours numeric, start_day_offset int, duration_days int, depends_on_task_ids text[], parent_task_id text, checklist jsonb, billable boolean, updated_at timestamptz DEFAULT NOW());
@@ -108,6 +109,26 @@ describe.skipIf(!enabled)('brief conversion with real local PostgreSQL', () => {
     expect(await rows('SELECT * FROM task_dependencies')).toHaveLength(6)
     expect(tasks.every(t => t.description.includes('Acceptance recorded'))).toBe(true)
     expect(tasks.every(t => t.is_billable === false)).toBe(true)
+  })
+  it('duplicates all JSON field values into a new unapproved brief', async () => {
+    await rows('INSERT INTO brief_template_fields VALUES (\'platforms\',\'platforms\')')
+    await rows(`INSERT INTO brief_field_values VALUES ('brief','platforms','["facebook","instagram"]')`)
+    const duplicate = await duplicateBrief({ params: { id: 'brief' } } as never)
+    const copy = await one('SELECT * FROM briefs WHERE id=$1', [duplicate.id])
+    expect(copy.status).toBe('draft')
+    expect(copy.client_id).toBe('product')
+    expect(copy.converted_to_project_id).toBeNull()
+    const fields = await rows('SELECT field_id,value FROM brief_field_values WHERE brief_id=$1 ORDER BY field_id', [duplicate.id])
+    expect(fields).toEqual(await rows('SELECT field_id,value FROM brief_field_values WHERE brief_id=\'brief\' ORDER BY field_id'))
+  })
+  it('does not leave an empty draft when field copying fails', async () => {
+    await rows('ALTER TABLE brief_field_values ADD CONSTRAINT test_copy_failure CHECK (brief_id=\'brief\')')
+    try {
+      await expect(duplicateBrief({ params: { id: 'brief' } } as never)).rejects.toMatchObject({ statusCode: 500 })
+      expect(await rows('SELECT * FROM briefs')).toHaveLength(1)
+    } finally {
+      await rows('ALTER TABLE brief_field_values DROP CONSTRAINT test_copy_failure')
+    }
   })
   it('also preserves dependencies through the direct Use Template route', async () => {
     const result = await useTemplate({ body: { clientId: 'product', projectName: 'Direct job', startDate: '2026-10-03' } } as never)
