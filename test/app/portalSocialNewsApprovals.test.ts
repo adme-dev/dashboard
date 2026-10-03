@@ -11,7 +11,7 @@ describe('portal social news approval UI', () => {
   })
 
   it('shows per-platform previews, immutable attribution, targets, package/SLA status, and audit history', () => {
-    const source = read('app/components/portal/SocialNewsApprovalCard.vue')
+    const source = read('app/components/portal/SocialNewsApprovalCard.client.vue')
     for (const token of [
       'platformPreviews',
       'AI-assisted rewrite',
@@ -27,7 +27,7 @@ describe('portal social news approval UI', () => {
   })
 
   it('uses explicit confirmations and a labelled feedback field for all client decisions', () => {
-    const source = read('app/components/portal/SocialNewsApprovals.vue')
+    const source = read('app/components/portal/SocialNewsApprovals.client.vue')
     expect(source).toContain('/api/portal/social/news-drafts')
     expect(source).toContain('action: \'approve\'')
     expect(source).toContain('action: \'request_changes\'')

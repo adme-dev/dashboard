@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
 import { computed, createApp, nextTick, ref, watch } from 'vue'
-import SocialNewsApprovals from '~~/app/components/portal/SocialNewsApprovals.vue'
+import SocialNewsApprovals from '~~/app/components/portal/SocialNewsApprovals.client.vue'
 
 vi.mock('~/composables/usePortalAuth', () => ({ usePortalAuth: () => ({ hasPermission: () => true }) }))
 const fetchMock = vi.fn()
