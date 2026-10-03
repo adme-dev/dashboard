@@ -23,3 +23,13 @@ The 3 October investigation found the routed `openai/gpt-oss-20b` caption reques
 Regression coverage: `test/social/videoStudioDraft.test.ts`, `test/server/api/socialCaptionFailure.test.ts`, and `test/server/utils/groqEmptyCompletion.test.ts`.
 
 Verification on 3 October: 1,346 focused tests passed (208 files). The full suite had 15,341 passed, 1,608 skipped and three failures. All three reproduced on unchanged source `5473491ac`: `godModeGateInventory.test.ts` (frozen gate inventory), `godModeIsolationInventory.test.ts` (mechanical route inventory), and `videoGenerationForm.test.ts` (model-mode filter expectation). New caption tests/helpers and marketing copy lint clean; edited legacy files add no lint diagnostics.
+
+## Publishing workspace
+
+Compose groups controls into Destination, Content & media, and Timing. The client selector is labelled and responsive; campaign, network and single-line inputs use matching control sizes. Links, hashtags and internal tags sit behind an expandable section without clearing their values. Larger attached-media previews have a visible labelled remove button; the adjacent video preview uses the original proportions.
+
+The sticky action bar provides Save draft and the relevant approval/queue action. Only an unchanged approved payload shows Publish approved post. **Review now** requests approval without a scheduled date; it does not publish immediately. Failed-caption drafts remain saveable, but Compose directs the producer to add copy before approval. Client/account and existing approval boundaries remain enforced. Compose reuses the shared client list instead of fetching it separately.
+
+The interactive editor renders inside Nuxt `ClientOnly`, with a reduced-motion-compatible loading skeleton before hydration. This private form requires browser interaction and has no public SEO content; removing its server-rendered implementation recovers Pages Worker capacity without changing backend permissions or overriding the size guard. Client/campaign hydration must be checked on a full reload. Framework behavior: https://nuxt.com/docs/4.x/api/components/client-only.
+
+UI verification on 3 October: 1,341 focused tests passed across 207 files after the ClientOnly change. The UI full-suite run had 15,339 passed, 1,612 skipped and the same three baseline failures. Edited UI files introduce no lint diagnostics; existing diagnostics remain. Full typecheck remains unsuccessful (920 diagnostics, including four unchanged Groq lines). Pre-commit review covered client hydration, saved-payload approval checks, account guards, accordion state persistence, responsive widths and the shared publishing shell. Production release and browser acceptance are recorded in the marketing example handoff.
