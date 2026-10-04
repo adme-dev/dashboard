@@ -30,4 +30,12 @@ describe('production public video links on Cloudflare Pages', () => {
     await expect(signVideoAssetToken({ assetId: 'asset-1' })).rejects.toThrow('RENDER_LINK_SECRET')
     await expect(signRenderToken({ jobId: 'job-1', format: '16:9' })).rejects.toThrow('RENDER_LINK_SECRET')
   })
+  it('rejects a forged asset capability and a modified asset payload', async () => {
+    setCachedCfBindings({ RENDER_LINK_SECRET: 'test-video-link-secret' })
+    const signed = await signVideoAssetToken({ assetId: 'asset-1' })
+    const [body, signature] = signed.split('.')
+    expect(await verifyVideoAssetToken(`${body}.forged`)).toBeNull()
+    const other = await signVideoAssetToken({ assetId: 'asset-2' })
+    expect(await verifyVideoAssetToken(`${other.split('.')[0]}.${signature}`)).toBeNull()
+  })
 })

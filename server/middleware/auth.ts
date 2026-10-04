@@ -101,6 +101,9 @@ const publicRoutes = [
 // Private Banner Studio objects are exposed only through one exact signed
 // asset-id path segment; the route verifies the HMAC and live database row.
 const BANNER_ASSET_CAPABILITY_PATH = /^\/api\/public\/banner-assets\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
+// Social networks fetch these without staff cookies. Only the exact capability
+// path reaches the handler, which verifies the HMAC before resolving the asset.
+const VIDEO_ASSET_CAPABILITY_PATH = /^\/api\/public\/video-assets\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 
 // These operational diagnostics accept either an admin session or the
 // dedicated smoke secret in their handlers. They must reach that inline guard
@@ -160,7 +163,8 @@ export default defineEventHandler(async (event) => {
 
   // Skip auth for public API routes
   if (publicRoutes.some(route => pathname.startsWith(route))
-    || BANNER_ASSET_CAPABILITY_PATH.test(pathname)) {
+    || BANNER_ASSET_CAPABILITY_PATH.test(pathname)
+    || VIDEO_ASSET_CAPABILITY_PATH.test(pathname)) {
     return
   }
 

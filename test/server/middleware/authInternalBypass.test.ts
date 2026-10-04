@@ -108,6 +108,20 @@ describe('auth middleware internal bearer endpoints', () => {
     })
   })
 
+  it('lets an exact video asset capability reach its inline HMAC guard without a staff session', async () => {
+    await expect(handler(fakeEvent('/api/public/video-assets/asset.signature'))).resolves.toBeUndefined()
+    expect(validateSession).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    '/api/public/video-assets/',
+    '/api/public/video-assets/unsigned',
+    '/api/public/video-assets/asset.signature/admin',
+    '/api/public/video-assets-private/asset.signature'
+  ])('keeps %s behind the staff-session boundary', async (pathname) => {
+    await expect(handler(fakeEvent(pathname))).rejects.toMatchObject({ statusCode: 401 })
+  })
+
   it.each([
     '/api/agency/workflows/readiness',
     '/api/agency/workflows/status',
