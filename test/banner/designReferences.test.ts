@@ -154,7 +154,7 @@ describe('project scoped design references', () => {
     expect(await loadDesignClientStyleGuide(clientId)).toHaveLength(12000)
   })
   it('uses the native request bucket without requiring S3 credentials', async () => {
-    const bucket = { get: vi.fn(async key => {
+    const bucket = { get: vi.fn(async (key) => {
       const bytes = objects.get(key)
       return bytes ? { size: bytes.length, body: new Blob([bytes]).stream() } : null
     }), put: vi.fn(async (key, bytes) => { objects.set(key, bytes) }), delete: vi.fn() }
