@@ -6,7 +6,7 @@ import { executeGodModeTransactionMutation } from '~~/server/utils/godMode/trans
 import { BANNER_SOCIAL_DRAFT } from '~~/server/utils/banner/godModeSocialDraft'
 import { createBannerSocialDraft } from '~~/server/utils/banner/socialDraft'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
   const body = await readBody(event)
   const jobId = body?.renderJobId
