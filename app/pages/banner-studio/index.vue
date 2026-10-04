@@ -833,7 +833,7 @@ const mockLayers = [
 const capabilityCards = [
   {
     title: 'Visual Design',
-    description: 'Layer-based editor with text, images, buttons, shapes, and video backgrounds. Google Fonts, custom font upload, grid and snap guides.',
+    description: 'Edit layers by hand or describe changes in Create with AI. Preview editable layouts, animation and social variants, then apply or undo.',
     icon: 'i-lucide-palette',
     iconBg: 'bg-rose-500/10',
     iconColor: 'text-rose-600'
@@ -857,7 +857,7 @@ const capabilityCards = [
 // Feature lists
 const editorFeatures = [
   'Multi-format editing (300x250, 728x90, 160x600, etc.)',
-  'Smart resize with AI-assisted reflow',
+  'Chat-guided layouts, animation and social variants',
   'Google Fonts + custom font upload (WOFF2/TTF)',
   'Grid overlay, snap guides, and alignment tools'
 ]

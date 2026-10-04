@@ -156,7 +156,7 @@ const categories = [
   },
   {
     title: 'Banner Studio',
-    subtitle: 'HTML5 ad design, animation, and production',
+    subtitle: 'Visual and AI design, animation, and production',
     icon: 'i-lucide-palette',
     iconBg: 'bg-rose-50 dark:bg-rose-500/10',
     iconColor: 'text-rose-600',
@@ -165,13 +165,13 @@ const categories = [
       { title: 'Animation & Timeline', slug: 'banner-animation', icon: 'i-lucide-clapperboard', description: 'GSAP-powered keyframe timeline with entry/exit animations, easing curves, and motion paths.' },
       { title: 'Motion Paths', slug: 'motion-paths', icon: 'i-lucide-spline', description: 'SVG-based motion path editor with draggable waypoints, curviness control, and auto-rotate.' },
       { title: 'Static & GIF Export', slug: 'banner-export', icon: 'i-lucide-image', description: 'Export to PNG/JPG at 1x/2x via headless Chromium, or animated GIF with configurable FPS.' },
-      { title: 'Video Export', slug: 'video-export', icon: 'i-lucide-film', description: 'Preview and download rendered MP4s, then create a client-linked social draft for review and publishing.' },
+      { title: 'Video Export', slug: 'video-export', icon: 'i-lucide-film', description: 'Recover queued renders, preview completed MP4s, then carry your caption into a client-linked social draft for approval and scheduling.' },
       { title: 'Ad Tags & Publishing', slug: 'ad-tags', icon: 'i-lucide-code', description: 'Publish with stable CDN URLs. Generate iframe, JavaScript, and AMPHTML tags with tracking pixels.' },
       { title: 'Brand Kits', slug: 'brand-kits', icon: 'i-lucide-swatch-book', description: 'Colour roles, heading/body fonts, light & dark logos and guidelines per client. Extract from a website, apply in one click, enforce at export.' },
       { title: 'Template Marketplace', slug: 'template-marketplace', icon: 'i-lucide-store', description: 'Save designs as templates. Browse a categorised gallery with search, tags, and usage tracking.' },
       { title: 'Data Feeds & DCO', slug: 'data-feeds-dco', icon: 'i-lucide-database', description: 'Upload CSV/JSON feeds, bind columns to layers, and auto-generate per-row banner variants at scale.' },
       { title: 'Design Precision', slug: 'design-precision', icon: 'i-lucide-grid-3x3', description: 'Google Fonts, custom font upload, pixel grid, snap-to-grid, smart guides, and layer alignment tools.' },
-      { title: 'AI Creative Assistant', slug: 'ai-creative-assistant', icon: 'i-lucide-sparkles', description: 'AI text-to-image generation, layer editing & decomposition, copy suggestions, URL-to-banner, auto-resize, and image recommendations.' },
+      { title: 'AI Creative Assistant', slug: 'ai-creative-assistant', icon: 'i-lucide-sparkles', description: 'Chat with the design assistant to propose editable layouts, animations and social variants. Preview, refine, apply and undo; generate backgrounds with clear model information.' },
       { title: 'Real-Time Collaboration', slug: 'banner-collaboration', icon: 'i-lucide-users', description: 'Multi-user editing with live cursors, soft layer locking, presence indicators, and version history.' }
     ]
   },

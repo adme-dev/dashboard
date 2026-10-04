@@ -2579,11 +2579,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Social Media Ready',
-        content: 'Preview a completed MP4 in Banner Studio and choose Create social draft. The draft retains the banner client, source project, export and dimensions. Add a caption and connected account, then follow the normal approval and publishing workflow. Repeated clicks reopen the existing post instead of creating duplicates.'
+        content: 'Preview a completed MP4 in Banner Studio and choose Create social draft. The draft retains the banner client, source project, export and dimensions. Review the caption, choose a connected account and follow the normal approval and publishing workflow. AI caption and timing suggestions can accompany the draft; a suggestion alone never schedules a post. Repeated clicks reopen the existing post instead of creating duplicates.'
       },
       {
-        title: 'R2 Storage',
-        content: 'Exported videos are uploaded to Cloudflare R2 with a stable URL so they can be shared with clients or embedded in presentations. Each export includes metadata about the source project, format dimensions, duration, and frame rate for easy reference.'
+        title: 'Recoverable Renders',
+        content: 'Queued and rendering jobs remain saved when you close the export dialog. Reopen it to recover status, preview or download completed videos, and create a social draft. Temporary status errors keep retrying without submitting replacement renders. Export metadata retains the source project, dimensions and timing.'
       }
     ]
   },
@@ -2743,11 +2743,19 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'AI text-to-image generation, layer editing & decomposition, copy suggestions, URL-to-banner, auto-resize, and image recommendations — built into the editor.',
+    description: 'A conversational design assistant for native layers, animation and social variants, alongside image generation and existing creative tools — built into the editor.',
     details: [
       {
+        title: 'Create with AI',
+        content: 'Describe your audience, offer and changes in the optional chat panel. The assistant uses the current project, client brand kit and authorised assets to propose editable native layers. Preview the animation, refine it with follow-up messages, then apply it as one undoable revision. Locked layers stay protected unless you explicitly allow changes. Manual controls remain available.'
+      },
+      {
+        title: 'Social Variants and Publishing',
+        content: 'Request matching square, portrait and story layouts with a caption. Apply the proposal, save the project and open MP4 export. Completed videos can create a client-linked social draft with the proposed caption and a suggested posting time. Review the content, select the connected account and set the exact date and timezone through the normal approval and scheduling workflow.'
+      },
+      {
         title: 'AI Text-to-Image Generation',
-        content: 'Describe an image and AI generates it directly in the editor. Powered by Qwen-Image-2512, the generator supports five aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4), adjustable guidance and inference steps, optional prompt enhancement, and reproducible seed control. Generated images upload to your asset library and drop onto the canvas with one click. Use the "Reuse Seed" button to create variations of a result you like.'
+        content: 'Describe a background or non-vehicle visual and generate it using Recraft V4.1 through Cloudflare AI Gateway. The panel shows the current model, supported image shapes and a generation-only cost estimate with a link to provider pricing. Preview a result that passes quality review, then add it as an image or fill the active artboard as a background.'
       },
       {
         title: 'AI Layer Editing',
