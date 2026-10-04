@@ -21,10 +21,10 @@ export default defineEventHandler(async (event) => {
   } | undefined
   if (!env?.BANNER_RENDER_QUEUE || !env.MEDIA_BUCKET) throw createError({ statusCode: 503, statusMessage: 'The render queue or source storage is unavailable' })
   if (!await env.MEDIA_BUCKET.head(job.source_r2_key)) {
-    // A missing source is definitive. Release an orphaned queued row, without
+    // A missing source is definitive. Release a queued or expired row, without
     // overwriting a worker that acquired it while source storage was checked.
     await execute(`UPDATE banner_render_jobs SET status='failed', error=$2, finished_at=now(), updated_at=now()
-      WHERE id=$1 AND status='queued' AND updated_at <= now() - interval '15 minutes'`,
+      WHERE id=$1 AND status IN ('queued', 'rendering') AND updated_at <= now() - interval '15 minutes'`,
     [jobId, 'The render source is no longer available. Export the current design instead.'])
     throw createError({ statusCode: 410, statusMessage: 'The source for this render is no longer available. Export the current design instead.' })
   }

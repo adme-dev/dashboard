@@ -31,8 +31,11 @@ export async function uploadBannerMp4(
   _formatKey: string,
   bytes: Uint8Array,
   jobId: string,
+  attemptId?: string,
 ): Promise<{ r2Key: string; url: string; size: number }> {
-  const r2Key = `banner-videos/${projectId}/${jobId}.mp4`
+  const r2Key = attemptId
+    ? `banner-videos/${projectId}/${jobId}-${attemptId}.mp4`
+    : `banner-videos/${projectId}/${jobId}.mp4`
   await env.AUDIO_BUCKET.put(r2Key, bytes, { httpMetadata: { contentType: 'video/mp4' } })
   return {
     r2Key,

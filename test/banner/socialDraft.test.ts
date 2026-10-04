@@ -28,6 +28,11 @@ describe('Banner render to social draft', () => {
     expect(writes.find(([sql]) => sql.includes('INSERT INTO video_assets'))![1][7]).toBe('6:5')
     expect(writes.at(-1)![0]).toContain('social_publishing_audit_events')
   })
+  it('accepts a fenced render attempt object key for the normal social handoff', async () => {
+    const f = fixture({ r2_key: `banner-videos/${projectId}/${jobId}-33333333-3333-4333-8333-333333333333.mp4` })
+    expect((await f.run()).postId).toBe('post-id')
+    expect(f.head).toHaveBeenCalledOnce()
+  })
   it('reuses an existing draft without creating assets or writing another post', async () => {
     const f = fixture({}, { id: 'already-published', client_id: 'client-a' })
     expect((await f.run()).postId).toBe('already-published')

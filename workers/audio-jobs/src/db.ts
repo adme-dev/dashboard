@@ -118,24 +118,40 @@ export async function dbLoadBannerJob(jobId: string): Promise<BannerJobDb | null
        FROM banner_render_jobs WHERE id=$1`, [jobId])
   return rows[0] ?? null
 }
-export async function dbMarkBannerRendering(jobId: string): Promise<boolean> {
+export async function dbMarkBannerRendering(jobId: string): Promise<string | null> {
+  const rows = await queryRows<{ token: string }>(
+    `UPDATE banner_render_jobs SET status='rendering', started_at=GREATEST(clock_timestamp(), started_at + interval '1 microsecond'), updated_at=now(), error=NULL
+       WHERE id=$1 AND (status IN ('queued', 'failed')
+         OR (status='rendering' AND updated_at <= now() - interval '15 minutes'))
+       RETURNING started_at::text AS token`, [jobId])
+  // Keep PostgreSQL's exact timestamp text; converting through Date loses precision.
+  return rows[0]?.token ?? null
+}
+export async function dbRenewBannerLease(jobId: string, token: string): Promise<boolean> {
   const rows = await queryRows<{ id: string }>(
-    `UPDATE banner_render_jobs SET status='rendering', started_at=now(), updated_at=now(), error=NULL
-       WHERE id=$1 AND status IN ('queued', 'failed') RETURNING id`, [jobId])
+    `UPDATE banner_render_jobs SET updated_at=now()
+      WHERE id=$1 AND status='rendering' AND started_at=$2::timestamptz
+        AND updated_at > now() - interval '15 minutes' RETURNING id`, [jobId, token])
   return rows.length > 0
 }
-export async function dbInsertBannerExport(a: { projectId: string, formatKey: string, r2Key: string, url: string, size: number, quality: number, userId: string }): Promise<string> {
+export async function dbMarkBannerDone(jobId: string, token: string, o: { r2Key: string, url: string, size: number }): Promise<boolean> {
+  // Lock and fence the claim, then insert its export and settle the job atomically.
   const rows = await queryRows<{ id: string }>(
-    `INSERT INTO banner_exports (project_id, format_key, r2_key, url, file_size, export_type, quality, exported_by)
-     VALUES ($1,$2,$3,$4,$5,'mp4',$6,$7) RETURNING id`,
-    [a.projectId, a.formatKey, a.r2Key, a.url, a.size, a.quality, a.userId])
-  return rows[0].id
+    `WITH owned AS (
+       SELECT * FROM banner_render_jobs WHERE id=$1 AND status='rendering'
+         AND started_at=$2::timestamptz AND updated_at > now() - interval '15 minutes' FOR UPDATE
+     ), exported AS (
+       INSERT INTO banner_exports (project_id, format_key, r2_key, url, file_size, export_type, quality, exported_by)
+       SELECT project_id, format_key, $3, $4, $5, 'mp4', quality, created_by FROM owned RETURNING id
+     )
+     UPDATE banner_render_jobs SET status='done', r2_key=$3, url=$4, file_size=$5,
+       export_id=exported.id, finished_at=now(), updated_at=now()
+     FROM owned, exported WHERE banner_render_jobs.id=owned.id RETURNING banner_render_jobs.id`,
+    [jobId, token, o.r2Key, o.url, o.size])
+  return rows.length > 0
 }
-export async function dbMarkBannerDone(jobId: string, o: { r2Key: string, url: string, size: number, exportId: string }): Promise<void> {
-  await execute(
-    `UPDATE banner_render_jobs SET status='done', r2_key=$1, url=$2, file_size=$3, export_id=$4, finished_at=now(), updated_at=now() WHERE id=$5`,
-    [o.r2Key, o.url, o.size, o.exportId, jobId])
-}
-export async function dbMarkBannerFailed(jobId: string, error: string): Promise<void> {
-  await execute(`UPDATE banner_render_jobs SET status='failed', error=$1, finished_at=now(), updated_at=now() WHERE id=$2`, [error, jobId])
+export async function dbMarkBannerFailed(jobId: string, token: string, error: string): Promise<void> {
+  await execute(`UPDATE banner_render_jobs SET status='failed', error=$3, finished_at=now(), updated_at=now()
+    WHERE id=$1 AND status='rendering' AND started_at=$2::timestamptz
+      AND updated_at > now() - interval '15 minutes'`, [jobId, token, error])
 }

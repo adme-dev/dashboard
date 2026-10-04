@@ -9,6 +9,7 @@ type TestEvent = {
 }
 type TestHandler = (event: TestEvent) => unknown
 type TestGlobals = typeof globalThis & {
+  setHeader: (event: TestEvent, name: string, value: string) => void
   defineEventHandler: (handler: TestHandler) => TestHandler
   getQuery: (event: TestEvent) => Record<string, string>
   getRouterParam: (event: TestEvent, name: string) => string | undefined
@@ -16,6 +17,7 @@ type TestGlobals = typeof globalThis & {
 }
 
 const g = globalThis as TestGlobals
+g.setHeader = vi.fn()
 g.defineEventHandler = handler => handler
 g.getQuery = event => event.query ?? {}
 g.getRouterParam = (event, name) => event.params?.[name]
@@ -31,7 +33,9 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => queryOne(...args),
-  queryRows: (...args: unknown[]) => queryRows(...args)
+  queryRows: (...args: unknown[]) => queryRows(...args),
+  queryOneFresh: (...args: unknown[]) => queryOne(...args),
+  queryRowsFresh: (...args: unknown[]) => queryRows(...args)
 }))
 
 const { default: jobsHandler } = await import('~~/server/api/agency/banner-studio/export-video/jobs.get')
@@ -76,7 +80,7 @@ describe('GET /agency/banner-studio/export-video/jobs', () => {
     queryRows.mockResolvedValueOnce([{
       id: JOB_ID, project_id: PROJECT_ID, format_key: 'leaderboard', width: 728, height: 90,
       fps: 30, crf: 23, quality: 1, source_r2_key: 'banner-render-jobs/source.html',
-      status: 'done', url: 'https://pub-old-example.r2.dev/leaked.mp4', file_size: 71546, error: null
+      status: 'done', url: 'https://pub-old-example.r2.dev/leaked.mp4', file_size: 71546, error: null, created_by: 'user-1'
     }])
 
     await expect(jobsHandler({ query: { ids: JOB_ID } } as TestEvent)).resolves.toEqual({
@@ -86,7 +90,8 @@ describe('GET /agency/banner-studio/export-video/jobs', () => {
         status: 'done',
         url: `/api/agency/banner-studio/export-video/jobs/${JOB_ID}/download`,
         fileSize: 71546,
-        error: null
+        error: null,
+        canRetry: false
       }]
     })
   })
@@ -110,6 +115,16 @@ describe('GET /agency/banner-studio/export-video/jobs/:id/download', () => {
     expect(response.headers.get('content-disposition')).toBe(`attachment; filename="leaderboard_${JOB_ID}.mp4"`)
     expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('WHERE id = $1'), [JOB_ID])
     expect(bucket.get).toHaveBeenCalledWith(KEY, undefined)
+  })
+
+  it('serves a fenced attempt key through the stable private job URL', async () => {
+    const key = `banner-videos/${PROJECT_ID}/${JOB_ID}-33333333-3333-4333-8333-333333333333.mp4`
+    queryOne.mockResolvedValueOnce({ id: JOB_ID, project_id: PROJECT_ID, r2_key: key, status: 'done', format_key: 'leaderboard' })
+    const bucket = { head: vi.fn(async () => objectBody()), get: vi.fn(async () => objectBody()) }
+    expect(downloadHandler).toBeTypeOf('function')
+    const response = await downloadHandler!(event({ bucket }))
+    expect(response.status).toBe(200)
+    expect(bucket.get).toHaveBeenCalledWith(key, undefined)
   })
 
   it('serves a byte range for MP4 seeking without exposing another project key', async () => {

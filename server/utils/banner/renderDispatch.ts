@@ -1,10 +1,13 @@
 export const BANNER_RETRY_WAIT_MS = 15 * 60 * 1000
+export const BANNER_RENDER_LEASE_MS = 15 * 60 * 1000
+export const BANNER_RENDER_HEARTBEAT_MS = 30 * 1000
 
 export function canRetryBannerJob(job: { status: string, updated_at?: Date | string }, now = Date.now()): boolean {
   if (job.status === 'failed') return true
-  if (job.status !== 'queued' || !job.updated_at) return false
+  if (!['queued', 'rendering'].includes(job.status) || !job.updated_at) return false
   const updated = new Date(job.updated_at).getTime()
-  return Number.isFinite(updated) && now - updated >= BANNER_RETRY_WAIT_MS
+  const wait = job.status === 'rendering' ? BANNER_RENDER_LEASE_MS : BANNER_RETRY_WAIT_MS
+  return Number.isFinite(updated) && now - updated >= wait
 }
 
 /** A queue binding rejection does not prove that the message was never accepted. */
@@ -35,5 +38,5 @@ export const RECORD_BANNER_DISPATCH_FAILURE_SQL = `UPDATE banner_render_jobs
 // One contender reserves a retry; late/duplicate requests cannot send again.
 export const RESERVE_BANNER_RETRY_SQL = `UPDATE banner_render_jobs
   SET status = 'queued', error = NULL, finished_at = NULL, updated_at = now()
-  WHERE id = $1 AND (status = 'failed' OR (status = 'queued' AND updated_at <= now() - interval '15 minutes'))
+  WHERE id = $1 AND (status = 'failed' OR (status IN ('queued', 'rendering') AND updated_at <= now() - interval '15 minutes'))
   RETURNING id`
