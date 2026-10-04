@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyDesignProposal, designAssistRequestSchema, validateDesignCanvas, designCanvasDimensions, DESIGN_FORMAT_DIMENSIONS, type DesignCanvas } from '../../server/utils/banner/designAssistant'
 
-import { FORMATS } from '../../app/utils/banner-constants'
+import { FORMATS, TEMPLATES, migrateLayer } from '../../app/utils/banner-constants'
 
 const asset = 'https://assets.example.com/client/image.png'
 const allowed = new Set([asset])
@@ -18,6 +18,35 @@ describe('native design proposal boundary', () => {
     expect(Object.keys(DESIGN_FORMAT_DIMENSIONS).sort()).toEqual(Object.keys(FORMATS).sort())
     for (const [key, format] of Object.entries(FORMATS)) expect(DESIGN_FORMAT_DIMENSIONS[key]).toEqual({ w: format.w, h: format.h })
     expect(designCanvasDimensions({ custom_640x480: { layers: [] } })).toEqual({ custom_640x480: { w: 640, h: 480 } })
+  })
+  it.each([
+    'cubic-bezier(0.250,0.100,0.250,1.000)',
+    'cubic-bezier(0.123,-0.500,0.789,1.500)',
+    'none', 'power2.inOut', 'back.out(1.7)', 'elastic.out(1,0.5)'
+  ])('accepts native easing output in every animation field: %s', (easing) => {
+    const changes = {
+      ease: easing, animOutEase: easing,
+      keyframes: { opacity: [{ time: 0, value: 0, easing }, { time: 1, value: 1 }] },
+      motionPathTweens: [{ startTime: 0, endTime: 2, pathStart: 0, pathEnd: 1, ease: easing }]
+    }
+    const result = propose({ updates: [{ formatKey: 'fb_sq', layerId: 2, changes }] })
+    expect(result.canvasData.fb_sq.layers[1]).toMatchObject(changes)
+    expect(validateDesignCanvas(result.canvasData, allowed)).toEqual(result.canvasData)
+  })
+  it.each([
+    'cubic-bezier(0,0,1)', 'cubic-bezier(0,0,1,1,1)',
+    'cubic-bezier(-0.01,0,1,1)', 'cubic-bezier(0,0,1.1,1)',
+    'cubic-bezier(0,-11,1,1)', 'cubic-bezier(0,0,1,11)',
+    'cubic-bezier(0,NaN,1,Infinity)', 'cubic-bezier(0,0,1,1);alert(1)',
+    'cubic-bezier(0,expression(1),1,1)'
+  ])('rejects malformed, unbounded or executable Bézier easing: %s', (ease) => {
+    expect(() => propose({ updates: [{ formatKey: 'fb_sq', layerId: 2, changes: { ease } }] })).toThrow()
+  })
+  it('accepts the native migrated template defaults including fonts and line heights', () => {
+    for (const template of TEMPLATES) {
+      const canvas = { mrec: { layers: template.layers(FORMATS.mrec).map((layer, index) => migrateLayer({ ...layer, id: index })) } }
+      expect(validateDesignCanvas(canvas, allowed)).toEqual(canvas)
+    }
   })
   it('updates text/layout/animation while retaining advanced native fields and the original', () => {
     const canvas = original()

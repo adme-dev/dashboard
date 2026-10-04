@@ -8,7 +8,17 @@ const id = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const key = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).refine(v => !['__proto__', 'prototype', 'constructor'].includes(v))
 const color = z.string().max(180).regex(/^(?:#[\da-fA-F]{3,8}|[a-zA-Z]+|rgba?\([\d.,%\s]+\)|hsla?\([\d.,%\s]+\))$/)
 const safeCss = z.string().max(400).regex(/^[\w\s#.,()%+-]*$/).refine(v => !/(?:url|expression|image-set|var)\s*\(/i.test(v))
-const ease = z.string().max(60).regex(/^(?:none|linear|[a-zA-Z0-9]+(?:\.(?:in|out|inOut))?(?:\([\d.,\s]+\))?)$/)
+const presetEase = /^(?:none|linear|[a-zA-Z0-9]+(?:\.(?:in|out|inOut))?(?:\([\d.,\s]+\))?)$/
+const bezierEase = /^cubic-bezier\(\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*\)$/
+const ease = z.string().max(60).refine((value) => {
+  if (presetEase.test(value)) return true
+  const match = bezierEase.exec(value)
+  if (!match) return false
+  const [x1, y1, x2, y2] = match.slice(1).map(Number)
+  // CSS requires x control points in [0,1]. Bounded y overshoot includes the
+  // native editor's -0.5..1.5 drag range and imported spring/bounce presets.
+  return x1 >= 0 && x1 <= 1 && x2 >= 0 && x2 <= 1 && Math.abs(y1) <= 10 && Math.abs(y2) <= 10
+})
 const animIn = z.enum(['none', 'fadeIn', 'slideL', 'slideR', 'slideU', 'slideD', 'zoomIn', 'zoomOut', 'spinIn', 'bounceIn', 'elastic', 'kenBurns'])
 const animOut = z.enum(['none', 'fadeOut', 'slideL', 'slideR', 'slideU', 'slideD', 'zoomIn', 'zoomOut', 'spinOut'])
 const keyframes = z.object(Object.fromEntries(['opacity', 'x', 'y', 'scaleX', 'scaleY', 'rotation'].map(property => [property,
