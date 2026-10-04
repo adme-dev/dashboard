@@ -4,7 +4,7 @@ const access = vi.hoisted(() => vi.fn())
 vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: access }))
 vi.mock('~~/server/utils/video/assetLinks', () => ({ videoAssetPublicUrl: async (id: string) => `https://app.test/api/public/video-assets/signed-${id}` }))
 vi.mock('~~/server/utils/appUrl', () => ({ getAppUrl: () => 'https://app.test' }))
-import { createBannerSocialDraft } from '../../server/utils/banner/socialDraft'
+import { createBannerSocialDraft, parseBannerSocialSuggestion } from '../../server/utils/banner/socialDraft'
 const projectId = '22222222-2222-4222-8222-222222222222'
 const jobId = '11111111-1111-4111-8111-111111111111'
 function fixture(overrides = {}, existing?: { id: string; client_id: string }) {
@@ -63,5 +63,29 @@ describe('Banner render to social draft', () => {
       return query(sql)
     })
     await expect(f.run()).rejects.toThrow('audit unavailable')
+  })
+})
+
+
+describe('Banner assistant social suggestion handoff', () => {
+  it('saves copy and timing as a draft suggestion, never a scheduled publication', async () => {
+    const f = fixture()
+    await createBannerSocialDraft(f.event, jobId, 'actor', f.db as never, { caption: 'Reviewed copy', suggestedSchedule: 'Next month at 10am Melbourne' })
+    const writes = f.db.query.mock.calls as unknown as Array<[string, unknown[]]>
+    const insert = writes.find(([sql]) => sql.includes('INSERT INTO social_posts'))!
+    expect(insert[0]).toContain("'draft'")
+    expect(insert[0]).not.toContain('scheduled_at')
+    expect(insert[1][4]).toBe('Reviewed copy')
+    expect(JSON.parse(insert[1][3] as string).bannerSuggestedSchedule).toBe('Next month at 10am Melbourne')
+  })
+  it('does not overwrite an existing post when reopening an export', async () => {
+    const f = fixture({}, { id: 'existing', client_id: 'client-a' })
+    await createBannerSocialDraft(f.event, jobId, 'actor', f.db as never, { caption: 'Different copy' })
+    expect(f.db.query).toHaveBeenCalledTimes(2)
+  })
+  it('bounds and normalizes suggestions', () => {
+    expect(parseBannerSocialSuggestion({ caption: ' Hello ', suggestedSchedule: ' Tomorrow ' })).toEqual({ caption: 'Hello', suggestedSchedule: 'Tomorrow' })
+    expect(() => parseBannerSocialSuggestion({ caption: 'x'.repeat(5001) })).toThrow()
+    expect(() => parseBannerSocialSuggestion({ suggestedSchedule: {} })).toThrow()
   })
 })

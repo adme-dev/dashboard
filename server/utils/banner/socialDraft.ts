@@ -4,8 +4,23 @@ import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { videoAssetPublicUrl } from '~~/server/utils/video/assetLinks'
 import { getAppUrl } from '~~/server/utils/appUrl'
 
+export interface BannerSocialSuggestion { caption?: string, suggestedSchedule?: string }
+
+export function parseBannerSocialSuggestion(value: unknown): BannerSocialSuggestion {
+  if (value == null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) throw createError({ statusCode: 400, statusMessage: 'Invalid social suggestion' })
+  const input = value as Record<string, unknown>
+  const result: BannerSocialSuggestion = {}
+  for (const [key, limit] of [['caption', 5000], ['suggestedSchedule', 500]] as const) {
+    if (input[key] === undefined) continue
+    if (typeof input[key] !== 'string' || input[key].length > limit) throw createError({ statusCode: 400, statusMessage: `Invalid ${key}` })
+    result[key] = input[key].trim()
+  }
+  return result
+}
+
 /** Serialize on the render so retries and double clicks always reuse its draft. */
-export async function createBannerSocialDraft(event: H3Event, jobId: string, actorId: string, db: GodModeTransactionDb) {
+export async function createBannerSocialDraft(event: H3Event, jobId: string, actorId: string, db: GodModeTransactionDb, suggestion: BannerSocialSuggestion = {}) {
   const { rows: [job] } = await db.query(`
     SELECT j.*, p.client_id, p.name FROM banner_render_jobs j
     JOIN banner_projects p ON p.id = j.project_id WHERE j.id = $1 FOR UPDATE OF j, p`, [jobId])
@@ -37,11 +52,11 @@ export async function createBannerSocialDraft(event: H3Event, jobId: string, act
     (id,client_id,created_by,title,source_project_id,source_job_id,r2_key,format,width,height)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
   [assetId, job.client_id, actorId, job.name, job.project_id, job.id, job.r2_key, format, width, height])
-  const metadata = { source: 'banner_studio', projectId: job.project_id, renderJobId: job.id, assetId, formatKey: job.format_key, width, height }
+  const metadata = { source: 'banner_studio', projectId: job.project_id, renderJobId: job.id, assetId, formatKey: job.format_key, width, height, ...(suggestion.suggestedSchedule ? { bannerSuggestedSchedule: suggestion.suggestedSchedule } : {}) }
   const { rows: [post] } = await db.query(`INSERT INTO social_posts
     (client_id,created_by,content,media_urls,platforms,tags,status,metadata)
-    VALUES ($1,$2,'',$3,ARRAY['facebook'],ARRAY[]::text[],'draft',$4::jsonb) RETURNING id`,
-  [job.client_id, actorId, [mediaUrl], JSON.stringify(metadata)])
+    VALUES ($1,$2,$5,$3,ARRAY['facebook'],ARRAY[]::text[],'draft',$4::jsonb) RETURNING id`,
+  [job.client_id, actorId, [mediaUrl], JSON.stringify(metadata), suggestion.caption || ''])
   if (!post) throw new Error('Social draft was not created')
   // Fail closed: attribution and the draft commit together.
   await db.query(`INSERT INTO social_publishing_audit_events(client_id,post_id,actor_id,action,metadata)

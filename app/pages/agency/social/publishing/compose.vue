@@ -10,16 +10,13 @@ const route = useRoute()
 const toast = useToast()
 const api = useSocialPublishing()
 const { state, reset, loadFromPost, resolved, toBody } = useSocialComposer()
-const apiFetch = $fetch as <T = unknown>(
-  request: string,
-  options?: { query?: Record<string, unknown> }
-) => Promise<T>
 
 const { clientId, clients, selectClient } = useSocialPublishingClient()
 const pageName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || '')
 const accounts = ref<SocialAccount[]>([])
 const accountsLoading = ref(false)
 const captionNeedsReview = computed(() => state.value.metadata.captionGenerationFailed === true && !state.value.content.trim())
+const bannerSuggestedSchedule = computed(() => typeof state.value.metadata.bannerSuggestedSchedule === 'string' ? state.value.metadata.bannerSuggestedSchedule : '')
 const missingPlatforms = computed(() => missingAccountPlatforms(state.value.platforms, state.value.accountIds, accounts.value))
 
 const saving = ref(false)
@@ -201,6 +198,14 @@ const primaryLabel = computed(() => ({
     <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
       <!-- Authoring -->
       <div class="min-w-0">
+        <UAlert
+          v-if="bannerSuggestedSchedule"
+          class="mb-5"
+          title="Suggested posting time"
+          :description="`${bannerSuggestedSchedule}. Choose the exact date, time and timezone in Timing below before requesting approval.`"
+          color="info"
+          variant="subtle"
+        />
         <ClientOnly>
           <SocialPublishingPostComposer
             :client-id="clientId"

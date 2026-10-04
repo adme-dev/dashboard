@@ -4,6 +4,8 @@ import { brandColor, brandFont, isLogoLayer, isDarkColor } from '~/utils/banner-
 
 // Module-scope singleton state
 let _uid = 1
+let projectEpoch = 0
+let pendingSave: Promise<void> | null = null
 
 // Animation clipboard (module-scope singleton)
 const animClipboard = ref<{
@@ -60,7 +62,7 @@ const undoStack = ref<UndoAction[]>([])
 const redoStack = ref<UndoAction[]>([])
 
 function pushUndo(action: UndoAction) {
-  undoStack.value.push(action)
+  undoStack.value.push({ ...action, formatKey: state.activeKey })
   if (undoStack.value.length > 50) undoStack.value.shift()
   redoStack.value = []
   state.isDirty = true
@@ -454,17 +456,21 @@ export function useBannerStudio() {
     const action = undoStack.value.pop()
     if (!action) return
     redoStack.value.push(action)
+    state.isDirty = true
 
-    if (action.type === 'addLayer' && action.after) {
-      const layers = state.sets[state.activeKey]?.layers
+    if (action.type === 'assistantCanvas') {
+      restoreCanvasData(action.before.canvasData)
+      if (state.sets[action.before.activeKey]) state.activeKey = action.before.activeKey
+    } else if (action.type === 'addLayer' && action.after) {
+      const layers = state.sets[action.formatKey || state.activeKey]?.layers
       if (layers) {
         const idx = layers.findIndex(l => l.id === action.after.id)
         if (idx >= 0) layers.splice(idx, 1)
       }
     } else if (action.type === 'removeLayer' && action.before) {
-      state.sets[state.activeKey]?.layers.push(action.before)
+      state.sets[action.formatKey || state.activeKey]?.layers.push(action.before)
     } else if (action.type === 'updateLayer' && action.before) {
-      const layer = state.sets[state.activeKey]?.layers.find(l => l.id === action.before.id)
+      const layer = state.sets[action.formatKey || state.activeKey]?.layers.find(l => l.id === action.before.id)
       if (layer) Object.assign(layer, action.before)
     } else if (action.type === 'applyBrandKit' && action.before) {
       // Restore all artboard states and global colors
@@ -478,17 +484,21 @@ export function useBannerStudio() {
     const action = redoStack.value.pop()
     if (!action) return
     undoStack.value.push(action)
+    state.isDirty = true
 
-    if (action.type === 'addLayer' && action.after) {
-      state.sets[state.activeKey]?.layers.push(action.after)
+    if (action.type === 'assistantCanvas') {
+      restoreCanvasData(action.after.canvasData)
+      if (state.sets[action.after.activeKey]) state.activeKey = action.after.activeKey
+    } else if (action.type === 'addLayer' && action.after) {
+      state.sets[action.formatKey || state.activeKey]?.layers.push(action.after)
     } else if (action.type === 'removeLayer' && action.before) {
-      const layers = state.sets[state.activeKey]?.layers
+      const layers = state.sets[action.formatKey || state.activeKey]?.layers
       if (layers) {
         const idx = layers.findIndex(l => l.id === action.before.id)
         if (idx >= 0) layers.splice(idx, 1)
       }
     } else if (action.type === 'updateLayer' && action.after) {
-      const layer = state.sets[state.activeKey]?.layers.find(l => l.id === action.after.id)
+      const layer = state.sets[action.formatKey || state.activeKey]?.layers.find(l => l.id === action.after.id)
       if (layer) Object.assign(layer, action.after)
     } else if (action.type === 'applyBrandKit' && action.after) {
       state.sets = JSON.parse(JSON.stringify(action.after.sets))
@@ -500,8 +510,13 @@ export function useBannerStudio() {
   // ── Project I/O ───────────────────────
 
   function loadProject(project: BannerProject) {
+    projectEpoch++
+    undoStack.value = []
+    redoStack.value = []
+    state.clipboard = null
+    animClipboard.value = null
     state.project = project
-    state.sets = project.canvasData || {}
+    state.sets = JSON.parse(JSON.stringify(project.canvasData || {}))
     state.setKeys = Object.keys(state.sets)
     for (const key of state.setKeys) {
       const format = resolveBannerFormat(key)
@@ -512,13 +527,6 @@ export function useBannerStudio() {
     zoomToFitFormat(state.activeKey)
     state.selectedLayerId = null
     state.isDirty = false
-    // Debug: check what came from DB
-    state.setKeys.forEach(key => {
-      state.sets[key].layers?.forEach((l: any) => {
-        if (l.motionPathTweens?.length) console.log('[load] layer', l.id, l.name, 'motionPathTweens:', JSON.stringify(l.motionPathTweens))
-        if (l.motionPath?.length) console.log('[load] layer', l.id, l.name, 'motionPath:', l.motionPath.length, 'points')
-      })
-    })
     // Migrate all layers
     state.setKeys.forEach(key => {
       state.sets[key].layers = state.sets[key].layers.map(l => migrateLayer(l))
@@ -536,7 +544,7 @@ export function useBannerStudio() {
   }
 
   function restoreCanvasData(canvasData: Record<string, ArtboardState>) {
-    state.sets = canvasData || {}
+    state.sets = JSON.parse(JSON.stringify(canvasData || {}))
     state.setKeys = Object.keys(state.sets)
     for (const key of state.setKeys) {
       const format = resolveBannerFormat(key)
@@ -557,31 +565,40 @@ export function useBannerStudio() {
     _uid = maxId + 1
   }
 
-  async function saveProject() {
+  function applyAssistantCanvas(canvasData: Record<string, ArtboardState>) {
+    const before = { canvasData: getCanvasData(), activeKey: state.activeKey }
+    restoreCanvasData(canvasData)
+    if (state.sets[before.activeKey]) state.activeKey = before.activeKey
+    pushUndo({ type: 'assistantCanvas', before, after: { canvasData: getCanvasData(), activeKey: state.activeKey } })
+  }
+
+  async function saveProject(): Promise<void> {
+    // Serialize saves so a slower older request cannot overwrite a newer one.
+    if (pendingSave) {
+      await pendingSave
+      if (state.isDirty) return saveProject()
+      return
+    }
     if (!state.project?.id) return
+    const projectId = state.project.id
+    const epoch = projectEpoch
+    const name = state.project.name
+    const canvasData = getCanvasData()
+    const snapshot = JSON.stringify(canvasData)
     state.isSaving = true
+    const operation = (async () => {
+      await $fetch(`/api/agency/banner-studio/projects/${projectId}`, {
+        method: 'PATCH', body: { canvasData, name }
+      })
+      if (epoch === projectEpoch && state.project?.id === projectId) {
+        state.isDirty = JSON.stringify(getCanvasData()) !== snapshot || state.project.name !== name
+      }
+    })()
+    pendingSave = operation
     try {
-      const cd = getCanvasData()
-      // Debug: verify motion path tweens are in the save payload
-      Object.values(cd).forEach((s: any) => {
-        s.layers?.forEach((l: any) => {
-          if (l.motionPathTweens?.length) {
-            console.log('[save] layer', l.id, l.name, 'motionPathTweens:', JSON.stringify(l.motionPathTweens))
-          }
-          if (l.motionPath?.length) {
-            console.log('[save] layer', l.id, l.name, 'motionPath:', l.motionPath.length, 'points')
-          }
-        })
-      })
-      await $fetch(`/api/agency/banner-studio/projects/${state.project.id}`, {
-        method: 'PATCH',
-        body: {
-          canvasData: cd,
-          name: state.project.name,
-        },
-      })
-      state.isDirty = false
+      await operation
     } finally {
+      if (pendingSave === operation) pendingSave = null
       state.isSaving = false
     }
   }
@@ -939,6 +956,7 @@ export function useBannerStudio() {
     loadProject,
     getCanvasData,
     restoreCanvasData,
+    applyAssistantCanvas,
     saveProject,
     initDefault,
     nextId,

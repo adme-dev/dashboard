@@ -297,6 +297,7 @@ export interface SelectionState {
 }
 
 export interface UndoAction {
+  formatKey?: string
   type: string
   before: any
   after: any
@@ -567,6 +568,8 @@ export interface EditLayerResult {
 // ── AI Image Generation Types ──
 
 export interface GenerateImageResult {
+  status?: 'ready' | 'review_blocked'
+  modelId?: string
   url: string
   r2Key: string
   seed: number | null
