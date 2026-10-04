@@ -63,7 +63,7 @@ onBeforeUnmount(() => {
 })
 
 function canRetry(job: ExportJob) {
-  return job.canRetry === true && ['failed', 'queued'].includes(job.status)
+  return job.canRetry === true && job.status !== 'done'
 }
 async function retryJob(job: ExportJob) {
   if (retrying.value || !canRetry(job)) return
@@ -154,7 +154,7 @@ async function createDraft(job: ExportJob) {
       </div>
       <UButton
         v-if="canRetry(job)"
-        label="Retry render"
+        :label="job.status === 'rendering' ? 'Recover render' : 'Retry render'"
         icon="i-lucide-rotate-cw"
         variant="outline"
         size="sm"

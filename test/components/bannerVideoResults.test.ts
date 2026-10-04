@@ -90,12 +90,32 @@ describe('saved banner video results', () => {
     expect(toast.mock.calls[0][0].title).toBe('Could not confirm render retry')
   })
 
+  it('recovers a rendering job only when the server confirms its lease expired', async () => {
+    let finish!: () => void
+    fetchMock.mockImplementation((url: string) => url.endsWith('/retry')
+      ? new Promise<void>((resolve) => { finish = resolve })
+      : Promise.resolve({ jobs: [job({ status: 'rendering', canRetry: true, error: null })] }))
+    const view = await mount()
+    const recover = view.button('Recover render')!
+    recover.click()
+    recover.click()
+    await settle()
+    expect(recover.disabled).toBe(true)
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/retry'))).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/agency/banner-studio/export-video/jobs/job-1/retry', { method: 'POST' })
+    expect(view.host.textContent).toContain('1 rendering')
+    finish()
+    await settle()
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/jobs'))).toHaveLength(2)
+  })
+
   it('reports pending format keys separately without blocking unrelated formats', async () => {
-    fetchMock.mockResolvedValue({ jobs: [job({ status: 'rendering', canRetry: true }), job({ jobId: 'done', formatKey: 'ig_port', status: 'done', canRetry: true, url: '/video.mp4' })] })
+    fetchMock.mockResolvedValue({ jobs: [job({ status: 'rendering', canRetry: false }), job({ jobId: 'done', formatKey: 'ig_port', status: 'done', canRetry: true, url: '/video.mp4' })] })
     const view = await mount()
     expect(view.blocked).toHaveBeenLastCalledWith(false)
     expect(view.pendingFormats).toHaveBeenLastCalledWith(['mrec'])
     expect(view.button('Retry render')).toBeUndefined()
+    expect(view.button('Recover render')).toBeUndefined()
   })
 
   it('uses stored copy for the actual video after reopening instead of a newer modal suggestion', async () => {
