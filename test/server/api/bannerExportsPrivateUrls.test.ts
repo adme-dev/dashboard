@@ -50,11 +50,11 @@ describe('GET /agency/banner-studio/exports', () => {
       {
         id: 'export-mp4', projectId: 'project-1', formatKey: 'mrec', r2Key: 'banner-videos/project-1/job-1.mp4',
         url: '/api/agency/banner-studio/export-video/jobs/11111111-1111-4111-8111-111111111111/download',
-        fileSize: 10, exportedBy: 'user-1', exportedAt: '2026-08-06'
+        fileSize: 10, exportedBy: 'user-1', exportedAt: '2026-08-06', exportType: 'mp4', renderJobId: '11111111-1111-4111-8111-111111111111'
       },
       {
         id: 'export-html', projectId: 'project-1', formatKey: 'mrec', r2Key: 'banner-exports/project-1/export.zip',
-        url: 'https://files.example/export.zip', fileSize: 20, exportedBy: 'user-1', exportedAt: '2026-08-06'
+        url: 'https://files.example/export.zip', fileSize: 20, exportedBy: 'user-1', exportedAt: '2026-08-06', exportType: 'html5', renderJobId: null
       }
     ])
     expect(queryRows.mock.calls[0]?.[0]).toMatch(/LEFT JOIN banner_render_jobs j ON j\.export_id = e\.id AND j\.status = 'done'/)

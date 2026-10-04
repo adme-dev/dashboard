@@ -121,6 +121,7 @@ export function buildEngagrFrameRuntimeScript(args: {
       try {
         if (tl && typeof tl.pause === 'function') tl.pause();
         if (tl && typeof tl.seek === 'function') tl.seek(seekTime, false);
+        if (typeof window.__engagrUpdateMasks === 'function') window.__engagrUpdateMasks();
         pauseMedia();
         runtime.duration = readDuration();
       } catch (err) {

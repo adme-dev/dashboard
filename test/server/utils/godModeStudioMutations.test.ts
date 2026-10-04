@@ -13,6 +13,7 @@ testGlobal.defineNitroPlugin = <T>(plugin: T) => plugin
 
 const { registerGodModeMediaProjectMutationFamilies } = await import('../../../server/utils/audio/godModeMutations')
 const { registerGodModeMediaExternalMutationFamilies } = await import('../../../server/utils/audio/godModeExternalMutations')
+const { registerGodModeBannerSocialDraftFamily } = await import('../../../server/utils/banner/godModeSocialDraft')
 const { registerGodModeStudioMutationFamilies, matchStudioFamily } = await import('../../../server/utils/video/godModeStudioMutations')
 
 const ACTOR_ID = '11111111-1111-4111-8111-111111111111'
@@ -108,4 +109,11 @@ describe('Video Studio God mode coverage', () => {
     expect(matchStudioFamily('POST', '/api/agency/video/generation/source-assets/x')).toBeNull()
     expect(matchStudioFamily('GET', '/api/agency/audio/voiceover')).toBeNull()
   })
+})
+
+it('registers Banner Studio social drafts with mandatory idempotency', async () => {
+  const unregister = registerGodModeBannerSocialDraftFamily()
+  try {
+    await expect(prepareRegisteredGodModeMutation(event('POST', '/api/agency/banner-studio/social-draft'))).rejects.toMatchObject({ statusCode: 428 })
+  } finally { unregister() }
 })

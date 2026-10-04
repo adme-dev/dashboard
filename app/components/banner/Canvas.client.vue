@@ -3,7 +3,7 @@ import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 
 const props = defineProps<{ projectId?: string }>()
 
-const { state, setActiveArtboard, selectLayer } = useBannerStudio()
+const { state, setActiveArtboard, selectLayer, zoomToFitFormat } = useBannerStudio()
 const { sendCursorMove } = useBannerRealtime()
 const commentMode = inject<Ref<boolean>>('commentMode', ref(false))
 
@@ -11,6 +11,13 @@ const artboardRefs = ref<Record<string, any>>({})
 const canvasEl = ref<HTMLElement | null>(null)
 const isPanning = ref(false)
 const panStart = ref({ x: 0, y: 0, scrollX: 0, scrollY: 0 })
+
+// Initialise after layout, and only on project/artboard changes. Resizing a panel
+// must not undo a zoom level the designer has deliberately chosen.
+watch([() => state.project?.id, () => state.activeKey, canvasEl], () => {
+  const el = canvasEl.value
+  if (el) zoomToFitFormat(state.activeKey, { width: el.clientWidth, height: el.clientHeight })
+}, { flush: 'post', immediate: true })
 
 function setArtboardRef(key: string, el: any) {
   if (el) artboardRefs.value[key] = el

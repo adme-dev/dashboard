@@ -1,5 +1,5 @@
 import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
-import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG } from '~/utils/banner-constants'
+import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } from '~/utils/banner-constants'
 import { brandColor, brandFont, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
 
 // Module-scope singleton state
@@ -24,7 +24,7 @@ const state = reactive({
   activeKey: '',
   selectedLayerId: null as number | null,
   clipboard: null as Layer | null,
-  wsScale: 0.22,
+  wsScale: 1,
   isDirty: false,
   isSaving: false,
   accentColor: '#e8c84a',
@@ -203,13 +203,15 @@ export function useBannerStudio() {
 
   // ── Artboard operations ───────────────
 
-  function zoomToFitFormat(fmtKey: string) {
+  function zoomToFitFormat(fmtKey: string, viewport?: { width: number; height: number }, maxScale = 1) {
     const fmt = FORMATS[fmtKey]
     if (typeof window === 'undefined' || !fmt) return
-    const availW = Math.max(400, window.innerWidth - 64 - 256 - 40 - 288)
-    const availH = Math.max(300, window.innerHeight - 64 - 40 - 200)
+    // Prefer the mounted canvas: sidebars and the timeline can be resized.
+    const availW = viewport ? viewport.width - 64 : window.innerWidth - 64 - 256 - 40 - 288
+    const availH = viewport ? viewport.height - 104 : window.innerHeight - 64 - 40 - 200
+    if (availW <= 0 || availH <= 0) return
     const scale = Math.min(availW / fmt.w, availH / fmt.h) * 0.95
-    state.wsScale = Math.max(0.1, Math.min(2.0, scale))
+    state.wsScale = Math.max(0.05, Math.min(maxScale, Math.floor(scale * 100) / 100))
   }
 
   function setActiveArtboard(key: string) {
@@ -501,7 +503,13 @@ export function useBannerStudio() {
     state.project = project
     state.sets = project.canvasData || {}
     state.setKeys = Object.keys(state.sets)
+    for (const key of state.setKeys) {
+      const format = resolveBannerFormat(key)
+      if (format) FORMATS[key] = format
+    }
     state.activeKey = state.setKeys[0] || ''
+    state.wsScale = 1
+    zoomToFitFormat(state.activeKey)
     state.selectedLayerId = null
     state.isDirty = false
     // Debug: check what came from DB
@@ -530,6 +538,10 @@ export function useBannerStudio() {
   function restoreCanvasData(canvasData: Record<string, ArtboardState>) {
     state.sets = canvasData || {}
     state.setKeys = Object.keys(state.sets)
+    for (const key of state.setKeys) {
+      const format = resolveBannerFormat(key)
+      if (format) FORMATS[key] = format
+    }
     state.activeKey = state.setKeys[0] || ''
     state.selectedLayerId = null
     state.isDirty = true
@@ -903,6 +915,7 @@ export function useBannerStudio() {
     selectLayer,
     // Artboard ops
     setActiveArtboard,
+    zoomToFitFormat,
     addSizeToSet,
     addSizeWithLayers,
     removeSizeFromSet,

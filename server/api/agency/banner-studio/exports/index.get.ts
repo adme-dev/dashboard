@@ -46,6 +46,8 @@ export default defineEventHandler(async (event) => {
 
     return rows.map(({ exportType, renderJobId, ...row }) => ({
       ...row,
+      exportType,
+      renderJobId,
       url: exportType === 'mp4'
         ? (renderJobId ? bannerRenderDownloadUrl(renderJobId) : null)
         : row.url

@@ -6,7 +6,7 @@ export interface BannerFormat {
   h: number
   name: string
   label: string
-  platform: 'Google' | 'Facebook' | 'Instagram' | 'TikTok' | 'LinkedIn'
+  platform: 'Google' | 'Facebook' | 'Instagram' | 'TikTok' | 'LinkedIn' | 'Custom'
   icon: string
 }
 

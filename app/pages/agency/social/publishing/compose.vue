@@ -72,17 +72,9 @@ onMounted(async () => {
     state.value.scheduleMode = 'schedule'
     state.value.scheduledAt = new Date(route.query.date as string).toISOString()
   }
-  // Deep-link from Banner Studio: ?creative=<bannerPublishedId> prefills the media + creativeId.
-  const creativeId = route.query.creative as string | undefined
-  if (creativeId) {
-    try {
-      const creatives = await apiFetch<{ id: string, url: string }[]>('/api/agency/banner-studio/published/with-projects')
-      const match = creatives.find(c => c.id === creativeId)
-      if (match) {
-        if (!state.value.mediaUrls.includes(match.url)) state.value.mediaUrls.push(match.url)
-        state.value.creativeId = match.id
-      }
-    } catch { /* non-fatal — composer still opens */ }
+  // Legacy web-ad links cannot be attached as photos or video.
+  if (route.query.creative) {
+    toast.add({ title: 'Export this banner as media first', description: 'In Banner Studio, export MP4 and choose Create social draft, or upload a PNG/JPG here.', color: 'warning' })
   }
 
   // Deep-link from Auto Feed: ?prefill=<base64 JSON {clientId, caption, imageUrl, link}>

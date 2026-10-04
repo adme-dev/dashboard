@@ -37,11 +37,21 @@ export const FORMATS: Record<string, BannerFormat> = {
 // PLATFORM METADATA
 // ══════════════════════════════════════
 export const PLATFORM_META: Record<string, PlatformMeta> = {
+  Custom:    { color: '#888888', bg: 'rgba(128,128,128,0.12)', label: 'Custom sizes' },
   Google:    { color: '#4285f4', bg: 'rgba(66,133,244,0.12)',  label: 'Google Display' },
   Facebook:  { color: '#1877f2', bg: 'rgba(24,119,242,0.12)',  label: 'Facebook' },
   Instagram: { color: '#e1306c', bg: 'rgba(225,48,108,0.12)',  label: 'Instagram' },
   TikTok:    { color: '#ff0050', bg: 'rgba(255,0,80,0.12)',    label: 'TikTok' },
   LinkedIn:  { color: '#0a66c2', bg: 'rgba(10,102,194,0.12)',  label: 'LinkedIn' },
+}
+
+/** Recover dimensions encoded by the image-importer's custom format keys. */
+export function resolveBannerFormat(key: string): BannerFormat | undefined {
+  if (Object.prototype.hasOwnProperty.call(FORMATS, key)) return FORMATS[key]
+  const match = /^custom_([1-9]\d{0,3})x([1-9]\d{0,3})$/.exec(key)
+  if (!match) return undefined
+  const w = Number(match[1]), h = Number(match[2])
+  return { key, w, h, name: 'Custom', label: `${w}×${h} · Custom`, platform: 'Custom', icon: 'C' }
 }
 
 // ══════════════════════════════════════

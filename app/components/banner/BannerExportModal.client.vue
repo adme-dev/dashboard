@@ -25,6 +25,12 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
 const selected = ref<Set<string>>(new Set(state.setKeys))
 const isExporting = ref(false)
 const exportProgress = ref(0)
+const completedVideos = ref<ExportJob[]>([])
+
+watch(() => props.open, open => {
+  if (open) selected.value = new Set(state.setKeys)
+})
+watch(() => state.project?.id, () => { completedVideos.value = [] })
 
 // Export type: html5, png, jpg, gif, mp4
 const exportType = ref<'html5' | 'png' | 'jpg' | 'gif' | 'mp4'>('html5')
@@ -187,7 +193,7 @@ async function exportImages() {
     // Build HTML for each selected format (static, no animations)
     const formats = keys.map(key => {
       const fmt = FORMATS[key]
-      if (!fmt) return null
+      if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildExportHTML(key, layers)
       return { key, html, width: fmt.w, height: fmt.h }
@@ -267,7 +273,7 @@ async function exportGifs() {
     // Build HTML for each selected format (WITH animations for GSAP)
     const formats = keys.map(key => {
       const fmt = FORMATS[key]
-      if (!fmt) return null
+      if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
         includeAnimations: true,
@@ -343,7 +349,7 @@ async function exportVideos() {
   try {
     const formats = keys.map(key => {
       const fmt = FORMATS[key]
-      if (!fmt) return null
+      if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
         includeAnimations: true,
@@ -370,6 +376,7 @@ async function exportVideos() {
       })
     )
 
+    if (!jobIds.length) throw new Error('No render jobs were created. Try exporting again.')
     exportProgress.value = 10
 
     // Poll until all jobs finish (max 150 polls ≈ 5 min at 2s intervals)
@@ -383,7 +390,7 @@ async function exportVideos() {
           isExporting.value = false
           toast.add({
             title: 'Still processing',
-            description: 'Still processing — check the exports gallery.',
+            description: 'The render is continuing. Reopen Export to check completed videos.',
             color: 'warning',
           })
           resolve()
@@ -397,7 +404,7 @@ async function exportVideos() {
           // Map render progress to 10–95% range
           exportProgress.value = 10 + Math.round(summary.progress * 0.85)
 
-          if (summary.finished) {
+          if (summary.finished && jobs.length === jobIds.length) {
             if (summary.failed > 0) {
               toast.add({
                 title: 'Some exports failed',
@@ -406,31 +413,13 @@ async function exportVideos() {
               })
             }
             if (summary.urls.length > 0) {
-              const projectName = state.project?.name || 'banners'
-              if (summary.urls.length === 1) {
-                window.open(summary.urls[0], '_blank')
-              } else {
-                // Download as ZIP using the same downloadBlob helper
-                const zip = new JSZip()
-                const jobsDone = jobs.filter(j => j.status === 'done')
-                for (const job of jobsDone) {
-                  const fmt = FORMATS[job.formatKey]
-                  const filename = `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.mp4`
-                  const response = await fetch(job.url as string)
-                  const blob = await response.blob()
-                  zip.file(filename, blob)
-                }
-                exportProgress.value = 97
-                const blob = await zip.generateAsync({ type: 'blob' })
-                downloadBlob(blob, `${projectName}_videos.zip`)
-              }
+              completedVideos.value = jobs.filter(job => job.status === 'done' && job.url)
               exportProgress.value = 100
               toast.add({
                 title: 'Export complete',
                 description: `${summary.urls.length} MP4 video${summary.urls.length > 1 ? 's' : ''} ready at ${videoFps.value}fps`,
                 color: 'success',
               })
-              emit('update:open', false)
             }
             resolve()
           } else {
@@ -485,7 +474,7 @@ const exportButtonLabel = computed(() => {
 <template>
   <UModal :open="props.open" @update:open="emit('update:open', $event)">
     <template #content>
-      <div class="p-4">
+      <div class="p-4 max-h-[90dvh] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-semibold">Export Banners</h3>
           <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="emit('update:open', false)" />
@@ -716,6 +705,14 @@ const exportButtonLabel = computed(() => {
             />
           </div>
         </div>
+
+        <BannerVideoResults
+          v-if="state.project?.id && isVideoExport"
+          :project-id="state.project.id"
+          :client-id="state.project.clientId"
+          :completed="completedVideos"
+          :open="props.open"
+        />
 
         <!-- Actions -->
         <div class="flex gap-2 pt-3 border-t border-(--ui-border)">

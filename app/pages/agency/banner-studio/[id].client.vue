@@ -28,6 +28,7 @@ const {
   duplicateLayer,
   updateLayer,
   setActiveArtboard,
+  zoomToFitFormat,
   loadProject,
   saveProject,
   initDefault,
@@ -404,22 +405,19 @@ async function handleSaveVersion() {
 
 // Zoom controls
 function zoomIn() {
-  state.wsScale = Math.min(2, state.wsScale * 1.2)
+  state.wsScale = Math.min(4, state.wsScale * 1.2)
+}
+function resetZoom() {
+  state.wsScale = 1
 }
 function zoomOut() {
   state.wsScale = Math.max(0.05, state.wsScale / 1.2)
 }
 function zoomFit() {
-  const fmt = activeFormat.value
-  if (!fmt) { state.wsScale = 0.22; return }
-  // Measure the actual scrollable canvas area (panels can be resized/collapsed),
-  // falling back to a window-based estimate before the canvas has mounted.
   const canvasEl = (canvasRef.value as any)?.$el as HTMLElement | undefined
-  const pad = 64 // canvas p-8 on both sides
-  const availW = canvasEl ? canvasEl.clientWidth - pad : Math.max(400, window.innerWidth - 64 - 256 - 40 - 288)
-  const availH = canvasEl ? canvasEl.clientHeight - pad - 40 /* artboard label */ : Math.max(300, window.innerHeight - 64 - 40 - 200)
-  const scale = Math.min(availW / fmt.w, availH / fmt.h) * 0.92
-  state.wsScale = Math.max(0.1, Math.min(4, Math.round(scale * 100) / 100))
+  zoomToFitFormat(state.activeKey, canvasEl
+    ? { width: canvasEl.clientWidth, height: canvasEl.clientHeight }
+    : undefined, 4)
 }
 
 const zoomPercent = computed(() => Math.round(state.wsScale * 100))
@@ -584,7 +582,9 @@ const { activeSize } = useBannerFileSize()
       <!-- Zoom -->
       <div class="flex items-center gap-1">
         <UTooltip text="Zoom out"><UButton icon="i-lucide-zoom-out" variant="ghost" size="xs" @click="zoomOut" /></UTooltip>
-        <span class="text-[11px] font-mono tabular-nums text-[#888] w-12 text-center">{{ zoomPercent }}%</span>
+        <UTooltip text="Actual size (100%)">
+          <UButton :label="`${zoomPercent}%`" aria-label="Reset zoom to actual size (100%)" variant="ghost" color="neutral" size="xs" class="w-14 justify-center font-mono tabular-nums" @click="resetZoom" />
+        </UTooltip>
         <UTooltip text="Zoom in"><UButton icon="i-lucide-zoom-in" variant="ghost" size="xs" @click="zoomIn" /></UTooltip>
         <UTooltip text="Fit to view"><UButton icon="i-lucide-scan" variant="ghost" size="xs" @click="zoomFit" /></UTooltip>
       </div>

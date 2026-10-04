@@ -165,7 +165,7 @@ const categories = [
       { title: 'Animation & Timeline', slug: 'banner-animation', icon: 'i-lucide-clapperboard', description: 'GSAP-powered keyframe timeline with entry/exit animations, easing curves, and motion paths.' },
       { title: 'Motion Paths', slug: 'motion-paths', icon: 'i-lucide-spline', description: 'SVG-based motion path editor with draggable waypoints, curviness control, and auto-rotate.' },
       { title: 'Static & GIF Export', slug: 'banner-export', icon: 'i-lucide-image', description: 'Export to PNG/JPG at 1x/2x via headless Chromium, or animated GIF with configurable FPS.' },
-      { title: 'Video Export', slug: 'video-export', icon: 'i-lucide-film', description: 'MP4 video export with frame-by-frame GSAP capture and ffmpeg encoding.' },
+      { title: 'Video Export', slug: 'video-export', icon: 'i-lucide-film', description: 'Preview and download rendered MP4s, then create a client-linked social draft for review and publishing.' },
       { title: 'Ad Tags & Publishing', slug: 'ad-tags', icon: 'i-lucide-code', description: 'Publish with stable CDN URLs. Generate iframe, JavaScript, and AMPHTML tags with tracking pixels.' },
       { title: 'Brand Kits', slug: 'brand-kits', icon: 'i-lucide-swatch-book', description: 'Colour roles, heading/body fonts, light & dark logos and guidelines per client. Extract from a website, apply in one click, enforce at export.' },
       { title: 'Template Marketplace', slug: 'template-marketplace', icon: 'i-lucide-store', description: 'Save designs as templates. Browse a categorised gallery with search, tags, and usage tracking.' },

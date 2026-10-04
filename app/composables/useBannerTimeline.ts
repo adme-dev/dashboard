@@ -4,7 +4,8 @@ import { CustomEase } from 'gsap/CustomEase'
 import { parseCubicEase, cubicEaseToSvg } from '~/utils/banner-ease'
 import type { Layer, Keyframe, KeyframeProperty } from '~/types/banner-studio'
 import { ANIM_IN, ANIM_OUT } from '~/utils/banner-constants'
-import { computeClipPathPx } from '~/utils/banner-mask'
+import { computeAnimatedClipPath } from '~/utils/banner-mask'
+import { registerTimelineMaskUpdate, updateTimelineMasks } from '~/utils/bannerTimelineMasks'
 
 gsap.registerPlugin(MotionPathPlugin, CustomEase)
 
@@ -353,8 +354,8 @@ function addAudioSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   }, startTime)
 }
 
-/** Add animated mask clip-path proxy to timeline */
-function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
+/** Recompute animated clips after timeline transforms have settled. */
+function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, layers: Layer[]) {
   if (!layer.isMask || !layer.maskTargetIds?.length) return
 
   // Hide mask layer visually during playback
@@ -366,7 +367,7 @@ function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const targets = layer.maskTargetIds
     .map(id => ({
       el: artboard.querySelector(`#lyr-${id}`) as HTMLElement,
-      layer: lastLayers.find(l => l.id === id)!,
+      layer: layers.find(l => l.id === id)!,
     }))
     .filter(t => t.el && t.layer)
 
@@ -374,43 +375,28 @@ function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
 
   const shape = layer.maskShape || 'rect'
   const invert = layer.maskInvert || false
-  const start = layer.startTime || 0
-  const end = layer.endTime || (start + 3)
+  // Update only after all child tweens have applied their transforms.
+  registerTimelineMaskUpdate(tl, () => {
+    // Read GSAP-animated transform values from mask element
+    const gx = (gsap.getProperty(el, 'x') as number) || 0
+    const gy = (gsap.getProperty(el, 'y') as number) || 0
+    const sx = (gsap.getProperty(el, 'scaleX') as number) ?? 1
+    const sy = (gsap.getProperty(el, 'scaleY') as number) ?? 1
 
-  // Proxy tween that updates clip-path on targets every frame
-  tl.to({ t: 0 }, {
-    t: 1,
-    duration: end - start,
-    ease: 'none',
-    onUpdate() {
-      // Read GSAP-animated transform values from mask element
-      const gx = (gsap.getProperty(el, 'x') as number) || 0
-      const gy = (gsap.getProperty(el, 'y') as number) || 0
-      const sx = (gsap.getProperty(el, 'scaleX') as number) || 1
-      const sy = (gsap.getProperty(el, 'scaleY') as number) || 1
-      const mx = layer.x + gx
-      const my = layer.y + gy
-      const mw = layer.w * sx
-      const mh = layer.h * sy
-
-      for (const t of targets) {
-        const tgx = (gsap.getProperty(t.el, 'x') as number) || 0
-        const tgy = (gsap.getProperty(t.el, 'y') as number) || 0
-        const tsx = (gsap.getProperty(t.el, 'scaleX') as number) || 1
-        const tsy = (gsap.getProperty(t.el, 'scaleY') as number) || 1
-        const tx = t.layer.x + tgx
-        const ty = t.layer.y + tgy
-        const tw = t.layer.w * tsx
-        const th = t.layer.h * tsy
-        t.el.style.clipPath = computeClipPathPx(
-          { x: mx, y: my, w: mw, h: mh },
-          { x: tx, y: ty, w: tw, h: th },
-          shape,
-          invert,
-        )
-      }
-    },
-  }, start)
+    for (const t of targets) {
+      const tgx = (gsap.getProperty(t.el, 'x') as number) || 0
+      const tgy = (gsap.getProperty(t.el, 'y') as number) || 0
+      const tsx = (gsap.getProperty(t.el, 'scaleX') as number) ?? 1
+      const tsy = (gsap.getProperty(t.el, 'scaleY') as number) ?? 1
+      t.el.style.clipPath = computeAnimatedClipPath(
+        layer, t.layer,
+        { x: gx, y: gy, scaleX: sx, scaleY: sy },
+        { x: tgx, y: tgy, scaleX: tsx, scaleY: tsy },
+        shape,
+        invert,
+      )
+    }
+  })
 }
 
 /** Add a layer's animation to a GSAP timeline (keyframes or preset) */
@@ -461,8 +447,6 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
   }
 
   addVideoSync(tl, el, layer)
-  // Mask layers: hide visually, animate clip-path on targets
-  addMaskAnimation(tl, el, layer)
 }
 
 /** Get the latest end time from a layer's keyframes */
@@ -509,6 +493,7 @@ export function useBannerTimeline() {
         if (state.loopIn != null && state.loopOut != null && state.isLooping) {
           if (state.currentTime >= state.loopOut) {
             masterTl.seek(state.loopIn)
+            updateTimelineMasks(masterTl)
             state.currentTime = state.loopIn
           }
         }
@@ -539,6 +524,7 @@ export function useBannerTimeline() {
         if (state.isLooping) {
           const loopStart = state.loopIn != null ? state.loopIn : 0
           masterTl?.seek(loopStart)
+          if (masterTl) updateTimelineMasks(masterTl)
           masterTl?.play()
           startTimePoller()
         } else {
@@ -561,6 +547,7 @@ export function useBannerTimeline() {
 
       const soloId = state.soloMotionPath ? state.selectedLayerId : null
       addLayerToTimeline(masterTl!, el, layer, soloId)
+      addMaskAnimation(masterTl!, el, layer, layers)
     })
 
     state.duration = naturalEnd || 5
@@ -588,6 +575,7 @@ export function useBannerTimeline() {
     } else {
       if (masterTl) {
         masterTl.seek(0)
+        updateTimelineMasks(masterTl)
         state.isPlaying = true
         masterTl.play()
         startTimePoller()
@@ -599,6 +587,7 @@ export function useBannerTimeline() {
     if (!masterTl) return
     pauseTimeline()
     masterTl.seek(time)
+    updateTimelineMasks(masterTl)
     state.currentTime = time
     // Manually sync video and audio elements to the seeked time
     if (lastArtboardEl) {
@@ -665,6 +654,7 @@ export function useBannerTimeline() {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (!el) return
       addLayerToTimeline(tl, el, layer)
+      addMaskAnimation(tl, el, layer, layers)
     })
 
     return tl

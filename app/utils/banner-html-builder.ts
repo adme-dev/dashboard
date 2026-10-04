@@ -1,4 +1,4 @@
-import { FORMATS, ANIM_IN, ANIM_OUT } from '~/utils/banner-constants'
+import { ANIM_IN, ANIM_OUT, resolveBannerFormat } from '~/utils/banner-constants'
 import type { Layer, KeyframeProperty, Keyframe } from '~/types/banner-studio'
 import { computeClipPathPx } from '~/utils/banner-mask'
 import { buildEngagrFrameRuntimeScript, buildVisibleElementManifest, estimateBannerDuration } from '~/utils/banner-render-runtime'
@@ -164,17 +164,16 @@ export function buildBannerHTML(
 ): string {
   const { includeAnimations = true, bgColor = '#0a0a10', feedUrl, feedBindings, customFonts = [] } = options
   const customFontFamilies = new Set(customFonts.map(cf => cf.family))
-  const fmt = FORMATS[fmtKey]
+  const fmt = resolveBannerFormat(fmtKey)
   if (!fmt) return ''
 
   const layerDivs = [...layers]
     .sort((a, b) => a.zIndex - b.zIndex)
     .map((l) => {
-      // Skip mask layers — they don't render in output
-      if (l.isMask) return ''
-
       let style = `position:absolute;left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;opacity:${l.opacity};`
       if (l.rotation) style += `transform:rotate(${l.rotation}deg);`
+      // Invisible geometry keeps mask keyframes and motion paths on the same timeline.
+      if (l.isMask) return `<div class="layer" data-id="${l.id}" style="${style}visibility:hidden!important;pointer-events:none;"></div>`
 
       // Apply initial clip-path from mask layer targeting this layer
       const maskLayer = layers.find(m => m.isMask && m.maskTargetIds?.includes(l.id))
@@ -239,9 +238,6 @@ export function buildBannerHTML(
     const lines: string[] = []
 
     sortedByTime.forEach((l) => {
-      // Skip mask layers — they have no DOM element in export
-      if (l.isMask) return
-
       // Audio layers only need sync script — no visual animation
       if (l.type === 'audio') {
         const startTime = l.startTime || 0
@@ -372,8 +368,6 @@ export function buildBannerHTML(
     // Animated mask clip-path proxy scripts
     const maskLayers = sortedByTime.filter(l => l.isMask && l.maskTargetIds?.length)
     maskLayers.forEach((mask) => {
-      const startTime = mask.startTime || 0
-      const endTime = mask.endTime || (startTime + 3)
       const shape = mask.maskShape || 'rect'
       const invert = mask.maskInvert || false
 
@@ -386,20 +380,16 @@ export function buildBannerHTML(
       const sels = targets.map(t => `'[data-id="${t.id}"]'`).join(',')
       const tData = targets.map(t => `{x:${t.x},y:${t.y},w:${t.w},h:${t.h}}`).join(',')
 
-      // Generate proxy animation with onUpdate computing clip-path
-      const preset = ANIM_IN.find((a: any) => a.id === mask.animIn)
-      const animDur = mask.animInDur || 0.6
-      const ease = mask.ease || 'power2.out'
-
-      // Compute initial mask position based on animation preset
-      const fromX = (preset?.from?.x as number) || 0
-      const fromY = (preset?.from?.y as number) || 0
-      const fromScale = (preset?.from?.scale as number) || 1
-
       lines.push(`  (function() {
     var sels = [${sels}];
     var tData = [${tData}];
-    var mask = { x: ${mask.x + fromX}, y: ${mask.y + fromY}, w: ${mask.w * fromScale}, h: ${mask.h * fromScale} };
+    var maskEl = document.querySelector('[data-id="${mask.id}"]');
+    var origin = { x: ${mask.x}, y: ${mask.y}, w: ${mask.w}, h: ${mask.h} };
+    function bounds(el, base) {
+      var sx = Number(gsap.getProperty(el, 'scaleX')), sy = Number(gsap.getProperty(el, 'scaleY'));
+      sx = isFinite(sx) ? sx : 1; sy = isFinite(sy) ? sy : 1;
+      return { x: base.x + (Number(gsap.getProperty(el, 'x')) || 0) + base.w * (1-sx)/2, y: base.y + (Number(gsap.getProperty(el, 'y')) || 0) + base.h * (1-sy)/2, w: base.w * sx, h: base.h * sy, sx: sx, sy: sy };
+    }
     function clip(m, t) {
       ${shape === 'ellipse'
         ? `var rx=m.w/2, ry=m.h/2, cx=(m.x-t.x)+rx, cy=(m.y-t.y)+ry; return 'ellipse('+rx+'px '+ry+'px at '+cx+'px '+cy+'px)';`
@@ -407,8 +397,13 @@ export function buildBannerHTML(
           ? `var il=Math.max(0,Math.min(t.w,m.x-t.x)), it=Math.max(0,Math.min(t.h,m.y-t.y)), ir=Math.max(0,Math.min(t.w,m.x-t.x+m.w)), ib=Math.max(0,Math.min(t.h,m.y-t.y+m.h)); return 'polygon(0px 0px,'+t.w+'px 0px,'+t.w+'px '+t.h+'px,0px '+t.h+'px,0px 0px,'+il+'px '+it+'px,'+il+'px '+ib+'px,'+ir+'px '+ib+'px,'+ir+'px '+it+'px,'+il+'px '+it+'px)';`
           : `var tp=Math.max(0,m.y-t.y), rt=Math.max(0,t.w-(m.x-t.x+m.w)), bt=Math.max(0,t.h-(m.y-t.y+m.h)), lt=Math.max(0,m.x-t.x); return 'inset('+tp+'px '+rt+'px '+bt+'px '+lt+'px)';`}
     }
-    function upd() { sels.forEach(function(s, i) { var el=document.querySelector(s); if(el) el.style.clipPath=clip(mask, tData[i]); }); }
-    tl.to(mask, { x: ${mask.x}, y: ${mask.y}, w: ${mask.w}, h: ${mask.h}, duration: ${animDur}, ease: ${easeToExportExpr(ease)}, onUpdate: upd }, ${startTime});
+    function upd() { if (!maskEl) return; var mask = bounds(maskEl, origin); sels.forEach(function(s, i) {
+      var el=document.querySelector(s); if (!el) return; var t=bounds(el, tData[i]);
+      if (!t.sx || !t.sy) { el.style.clipPath='inset(50%)'; return; }
+      var x1=(mask.x-t.x)/t.sx, x2=(mask.x+mask.w-t.x)/t.sx, y1=(mask.y-t.y)/t.sy, y2=(mask.y+mask.h-t.y)/t.sy;
+      el.style.clipPath=clip({ x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1),h:Math.abs(y2-y1) }, { x:0,y:0,w:tData[i].w,h:tData[i].h });
+    }); }
+    maskUpdates.push(upd);
   })();`)
     })
 
@@ -434,7 +429,7 @@ export function buildBannerHTML(
     : ''
   const animScript =
     includeAnimations && animLines
-      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline();\n  window.__engagrTimeline = tl;\n${animLines}\n<\/script>`
+      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline();\n  const maskUpdates = [];\n  window.__engagrTimeline = tl;\n${animLines}\n  window.__engagrUpdateMasks = function() { maskUpdates.forEach(function(update) { update(); }); };\n  tl.eventCallback('onUpdate', window.__engagrUpdateMasks);\n<\/script>`
       : ''
   const runtimeScript = includeAnimations
     ? buildEngagrFrameRuntimeScript({

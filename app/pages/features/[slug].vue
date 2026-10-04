@@ -2579,7 +2579,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Social Media Ready',
-        content: 'MP4 exports are formatted for direct upload to social platforms. The container format, codec, and pixel format are chosen for maximum compatibility with Meta, LinkedIn, Twitter, and YouTube upload requirements. This extends Banner Studio beyond traditional display ads into short-form video content for social campaigns.'
+        content: 'Preview a completed MP4 in Banner Studio and choose Create social draft. The draft retains the banner client, source project, export and dimensions. Add a caption and connected account, then follow the normal approval and publishing workflow. Repeated clicks reopen the existing post instead of creating duplicates.'
       },
       {
         title: 'R2 Storage',

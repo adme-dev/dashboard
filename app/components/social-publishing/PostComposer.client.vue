@@ -146,33 +146,10 @@ watch(() => [props.clientId, state.value.id], () => {
   resizeOpen.value = false
 })
 
-// Banner Studio creative picker
-interface BannerCreative { id: string, url: string, projectName: string, formatKey: string, width: number, height: number }
+// HTML5 ad tags are not social media attachments. Animated banners enter through
+// the completed MP4 export, where client ownership and source are retained.
 const bannerOpen = ref(false)
-const bannerLoading = ref(false)
-const bannerCreatives = ref<BannerCreative[]>([])
-const bannerByProject = computed(() => {
-  const groups: Record<string, BannerCreative[]> = {}
-  for (const c of bannerCreatives.value) (groups[c.projectName] ??= []).push(c)
-  return groups
-})
-async function openBanner() {
-  bannerOpen.value = true
-  if (bannerCreatives.value.length) return
-  bannerLoading.value = true
-  try {
-    bannerCreatives.value = await apiFetch<BannerCreative[]>('/api/agency/banner-studio/published/with-projects')
-  } catch {
-    bannerCreatives.value = []
-  } finally {
-    bannerLoading.value = false
-  }
-}
-function pickCreative(c: BannerCreative) {
-  if (!state.value.mediaUrls.includes(c.url)) state.value.mediaUrls.push(c.url)
-  state.value.creativeId = c.id
-  bannerOpen.value = false
-}
+function openBanner() { bannerOpen.value = true }
 
 const toast = useToast()
 
@@ -690,32 +667,10 @@ const scheduleModes: { value: ScheduleMode, label: string, icon: string }[] = [
               @click="bannerOpen = false"
             />
           </div>
-          <div v-if="bannerLoading" class="py-10 text-center text-sm text-muted">
-            Loading creatives…
-          </div>
-          <div v-else-if="!bannerCreatives.length" class="py-10 text-center text-sm text-muted">
-            No published Banner Studio creatives found.
-          </div>
-          <div v-else class="max-h-[60vh] overflow-y-auto space-y-5">
-            <div v-for="(items, project) in bannerByProject" :key="project">
-              <div class="text-xs font-medium uppercase tracking-wide text-muted mb-2">
-                {{ project }}
-              </div>
-              <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                <button
-                  v-for="c in items"
-                  :key="c.id"
-                  type="button"
-                  class="group/c rounded-lg border border-default overflow-hidden hover:ring-2 hover:ring-primary transition-all text-left"
-                  @click="pickCreative(c)"
-                >
-                  <img :src="c.url" :alt="c.formatKey" class="w-full aspect-square object-cover bg-elevated">
-                  <div class="px-2 py-1 text-[11px] text-muted truncate">
-                    {{ c.formatKey }}
-                  </div>
-                </button>
-              </div>
-            </div>
+          <div class="space-y-4">
+            <p class="text-sm text-muted">Open your client’s banner, export it as MP4, then choose <strong class="text-default">Create social draft</strong>. Your animation and source project will come through together.</p>
+            <p class="text-xs text-muted">For a still image, export PNG or JPG and attach it here.</p>
+            <UButton label="Open Banner Studio" icon="i-lucide-external-link" to="/agency/banner-studio" target="_blank" />
           </div>
         </div>
       </template>
