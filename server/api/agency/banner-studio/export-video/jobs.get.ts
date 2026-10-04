@@ -1,3 +1,4 @@
+import { canRetryBannerJob } from '~~/server/utils/banner/renderDispatch'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import { projectJobStatus, type BannerJobRow } from '~~/server/utils/banner/renderJob'
@@ -20,17 +21,17 @@ export default defineEventHandler(async (event) => {
     if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
     await requireProjectAccess(project)
     // Keep every pending job visible, plus the latest twenty settled jobs.
-    const rows = await queryRowsFresh<BannerJobRow>(
+    const rows = await queryRowsFresh<BannerJobRow & { updated_at: string }>(
       `SELECT * FROM banner_render_jobs WHERE project_id = $1 AND (
         status NOT IN ('done', 'failed') OR id IN (
           SELECT id FROM banner_render_jobs WHERE project_id = $1
           AND status IN ('done', 'failed') ORDER BY created_at DESC LIMIT 20
         )) ORDER BY created_at DESC`, [projectId])
-    return { jobs: projectJobStatus(rows) }
+    return { jobs: projectJobStatus(rows).map((job, index) => ({ ...job, canRetry: canRetryBannerJob(rows[index]) })) }
   }
   const ids = String(query.ids ?? '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 20)
   if (!ids.length) return { jobs: [] }
-  const rows = await queryRowsFresh<BannerJobRow & ProjectAccess>(
+  const rows = await queryRowsFresh<BannerJobRow & ProjectAccess & { updated_at: string }>(
     `SELECT j.*, p.client_id, p.created_by FROM banner_render_jobs j
        JOIN banner_projects p ON p.id = j.project_id WHERE j.id = ANY($1)`, [ids])
   const checked = new Set<string>()
@@ -39,5 +40,5 @@ export default defineEventHandler(async (event) => {
     await requireProjectAccess(row)
     checked.add(row.project_id)
   }
-  return { jobs: projectJobStatus(rows) }
+  return { jobs: projectJobStatus(rows).map((job, index) => ({ ...job, canRetry: canRetryBannerJob(rows[index]) })) }
 })

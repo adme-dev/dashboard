@@ -9,7 +9,7 @@ const job = (over: Partial<BannerJob> = {}): BannerJob => ({
 function deps(over: Partial<BannerRenderDeps> = {}): BannerRenderDeps {
   return {
     loadJob: vi.fn().mockResolvedValue(job()),
-    markRendering: vi.fn().mockResolvedValue(undefined),
+    markRendering: vi.fn().mockResolvedValue(true),
     getSourceHtml: vi.fn().mockResolvedValue('<div>a</div>'),
     render: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
     uploadMp4: vi.fn().mockResolvedValue({ r2Key: 'banner-videos/p1/a.mp4', url: 'https://x/a.mp4', size: 3 }),
@@ -39,6 +39,26 @@ describe('runBannerRenderJob', () => {
     await runBannerRenderJob({ jobId: 'j1' }, d2)
     expect(d2.render).not.toHaveBeenCalled()
     expect(d2.markRendering).not.toHaveBeenCalled()
+  })
+
+  it('allows only one concurrent delivery to render and preserves source for the skipped delivery', async () => {
+    let claimed = false
+    const d = deps({ markRendering: vi.fn(async () => {
+      if (claimed) return false
+      claimed = true
+      return true
+    }) })
+    const results = await Promise.all([runBannerRenderJob({ jobId: 'j1' }, d), runBannerRenderJob({ jobId: 'j1' }, d)])
+    expect(results.sort()).toEqual([false, true])
+    expect(d.render).toHaveBeenCalledOnce()
+    expect(d.insertExport).toHaveBeenCalledOnce()
+  })
+
+  it('does not render when another worker owns the claim', async () => {
+    const d = deps({ markRendering: vi.fn().mockResolvedValue(false) })
+    expect(await runBannerRenderJob({ jobId: 'j1' }, d)).toBe(false)
+    expect(d.getSourceHtml).not.toHaveBeenCalled()
+    expect(d.markFailed).not.toHaveBeenCalled()
   })
 
   it('marks failed and rethrows when rendering throws (so the queue retries)', async () => {

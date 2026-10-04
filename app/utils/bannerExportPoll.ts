@@ -1,4 +1,4 @@
-export type ExportJob = { jobId: string, formatKey: string, status: string, url: string | null, fileSize: number | null, error: string | null }
+export type ExportJob = { canRetry?: boolean, jobId: string, formatKey: string, status: string, url: string | null, fileSize: number | null, error: string | null }
 
 export function summarizeExportJobs(jobs: ExportJob[]) {
   const total = jobs.length

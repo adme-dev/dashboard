@@ -7,7 +7,7 @@ export type BannerJob = {
 }
 export type BannerRenderDeps = {
   loadJob: (jobId: string) => Promise<BannerJob | null>
-  markRendering: (jobId: string) => Promise<void>
+  markRendering: (jobId: string) => Promise<boolean>
   getSourceHtml: (key: string) => Promise<string>
   render: (html: string, params: { width: number, height: number, fps: number, crf: number, quality: number }) => Promise<Uint8Array>
   uploadMp4: (projectId: string, formatKey: string, bytes: Uint8Array) => Promise<{ r2Key: string, url: string, size: number }>
@@ -16,17 +16,19 @@ export type BannerRenderDeps = {
   markFailed: (jobId: string, error: string) => Promise<void>
 }
 
-export async function runBannerRenderJob(msg: { jobId: string }, deps: BannerRenderDeps): Promise<void> {
+export async function runBannerRenderJob(msg: { jobId: string }, deps: BannerRenderDeps): Promise<boolean> {
   const job = await deps.loadJob(msg.jobId)
-  if (!job) return                 // nothing to render
-  if (job.status === 'done') return // idempotent: already rendered
-  await deps.markRendering(job.id)
+  if (!job) return false
+  if (job.status === 'done') return true
+  // Atomic claim prevents duplicate deliveries and explicit retries from rendering twice.
+  if (!await deps.markRendering(job.id)) return false
   try {
     const html = await deps.getSourceHtml(job.source_r2_key)
     const bytes = await deps.render(html, { width: job.width, height: job.height, fps: job.fps, crf: job.crf, quality: job.quality })
     const { r2Key, url, size } = await deps.uploadMp4(job.project_id, job.format_key, bytes)
     const exportId = await deps.insertExport({ projectId: job.project_id, formatKey: job.format_key, r2Key, url, size, quality: job.quality, userId: job.created_by })
     await deps.markDone(job.id, { r2Key, url, size, exportId })
+    return true
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     const category = classifyBannerRenderError(message)

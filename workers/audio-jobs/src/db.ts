@@ -118,8 +118,11 @@ export async function dbLoadBannerJob(jobId: string): Promise<BannerJobDb | null
        FROM banner_render_jobs WHERE id=$1`, [jobId])
   return rows[0] ?? null
 }
-export async function dbMarkBannerRendering(jobId: string): Promise<void> {
-  await execute(`UPDATE banner_render_jobs SET status='rendering', started_at=now(), updated_at=now() WHERE id=$1`, [jobId])
+export async function dbMarkBannerRendering(jobId: string): Promise<boolean> {
+  const rows = await queryRows<{ id: string }>(
+    `UPDATE banner_render_jobs SET status='rendering', started_at=now(), updated_at=now(), error=NULL
+       WHERE id=$1 AND status IN ('queued', 'failed') RETURNING id`, [jobId])
+  return rows.length > 0
 }
 export async function dbInsertBannerExport(a: { projectId: string, formatKey: string, r2Key: string, url: string, size: number, quality: number, userId: string }): Promise<string> {
   const rows = await queryRows<{ id: string }>(

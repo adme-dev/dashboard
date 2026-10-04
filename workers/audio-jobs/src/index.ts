@@ -76,7 +76,7 @@ export default {
       for (const msg of batch.messages) {
         const { jobId } = msg.body as { jobId: string }
         try {
-          await runBannerRenderJob({ jobId }, {
+          const completed = await runBannerRenderJob({ jobId }, {
             loadJob: db.dbLoadBannerJob,
             markRendering: db.dbMarkBannerRendering,
             getSourceHtml: (key) => getSourceHtml(env as any, key),
@@ -87,7 +87,9 @@ export default {
             markFailed: db.dbMarkBannerFailed,
           })
           // Cleanup source HTML on success only (keep on failure so retries can re-read).
-          try { await (env.AUDIO_BUCKET as R2Bucket).delete(`banner-render-jobs/${jobId}/source.html`) } catch { /* ignore */ }
+          if (completed) {
+            try { await (env.AUDIO_BUCKET as R2Bucket).delete(`banner-render-jobs/${jobId}/source.html`) } catch { /* ignore */ }
+          }
           msg.ack()
         } catch (e) {
           console.error('audio-jobs.banner-render.error', jobId, e)
