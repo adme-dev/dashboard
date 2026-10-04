@@ -56,8 +56,22 @@ MRec initial scale verified at 100%. Signed video asset delivery fixed in 7f781f
 - Recovery and audio pipeline: 482 tests passed across 71 files.
 - New and focused modified files pass ESLint. Repository-wide lint has tens of thousands of pre-existing findings; no repository-wide clean claim.
 - Combined regression run: 522 tests passed across 76 files before the final abandoned-lease fix.
-- Production build, guarded release and Safari verification: pending.
+- Production build, guarded release and Safari verification completed; see final release record below.
 
 - Release review approved fenced render recovery at eba4fb50d: 503 banner/audio tests pass, plus exact SQL verified against isolated PostgreSQL.
 - Build assessment exceeded raw budget by 9,613 bytes. Extended existing lossless string compaction to bound SQL literals and static AI instructions across generated server chunks; budget unchanged. Exact-content and actual workerd/postbuild tests: 16 passing. Assessment estimates 45 KB saved.
 - Removed only this worktree's generated .nuxt files after local ENOSPC, then regenerated configuration.
+
+
+## Final release and live verification — 4 October 2026
+
+- Native rendering worker deployed version95d45f5f-0f15-4d26-bad8-9da2b6bf2208 before Pages.
+- Final web source b03f7a39d; guarded production deployment https://0a8108d9.agency-dashboard-6cm.pages.dev (app.xeroflow.io). Raw25,423,952/25,468,928 bytes; gzip6,944,638/9,750,000. Limits unchanged.
+- Combined regression:82files,592tests passed. Scoped lint passed after callback-format correction. Independent backend/model review123tests; UI review18tests. No remaining material findings in those reviews.
+- Added project/client-scoped image references and private TXT/Markdown guide manifests; direct native bucket access, actual image vision analysis, finite upload limits and stale-response guards. Existing client brand/profile context confirmed in successful proposal.
+- Live Groq provider returned404 for legacy Llama70B. Account catalog verified GPT OSS120B/20B; native design now has its own managed assignment. Auto/Quality use120B with20B fallback; Fast20B. Other feature assignments unchanged.
+- Safari uploaded campaign-visual-guide.md (6,524characters) and driveagent-customer-profiles-square.png; actual LLaVA analysis became ready. GPT OSS120B successfully returned an editable proposal including both references and saved DriveAgent kit/profile context.
+- Safari Apply/Undo/reapply verified. Saved QA project9accbca3-321f-4de4-b416-28d8310917d9 has headline Connected teams. / Better outcomes.
+- Prepare social export saved and opened MP4; renderd28bd149-5b1e-4e09-ad5d-4fe2906f9fb1 completed and played in Safari. Create social draft produceda63650c7-6b2a-4b44-924b-637f18a3a59b with the suggested caption and correct DriveAgent client. Database confirmed draft, no scheduled/published timestamp.
+- Existing November post5ded46fd-4b92-4f00-8097-aee84476c79e remained scheduled4November10:00Melbourne. No QA content publicly published.
+- Known limits: PDF extraction unsupported; image analysis is visual inspiration, not exact editable-layer extraction. Session selections persist within the browser tab, not a cross-device attachment library. New example is a300×250verification render, not a portrait campaign delivery.
