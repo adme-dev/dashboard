@@ -6,12 +6,14 @@ import { createBannerSocialDraftSession } from '~/utils/bannerSocialDraftSession
 import { bannerRenderSuggestions } from '~/utils/bannerRenderSuggestions'
 
 const props = defineProps<{ projectId: string, clientId?: string | null, completed: ExportJob[], open: boolean, socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
-const emit = defineEmits<{ blocked: [value: boolean] }>()
+const emit = defineEmits<{ 'blocked': [value: boolean], 'pending-formats': [value: string[]] }>()
 const toast = useToast()
 const history = ref<ExportJob[]>([])
 const loading = ref(false)
 const loadError = ref(false)
 const creating = ref<string | null>(null)
+const retrying = ref<string | null>(null)
+let mounted = true
 const drafts = reactive<Record<string, string>>({})
 const sessions = new Map<string, ReturnType<typeof createBannerSocialDraftSession>>()
 const checked = ref(false)
@@ -53,8 +55,36 @@ watch([() => props.open, () => props.projectId], ([open], previous) => {
 watch(() => props.completed, () => {
   if (props.open) void poller.refresh()
 })
-watch(() => !checked.value || loadError.value || summary.value.pending > 0, value => emit('blocked', value), { immediate: true })
-onBeforeUnmount(() => poller.stop())
+watch(() => !checked.value || loadError.value || !!retrying.value, value => emit('blocked', value), { immediate: true })
+watch(() => [...new Set(jobs.value.filter(job => !['done', 'failed'].includes(job.status)).map(job => job.formatKey))], value => emit('pending-formats', value), { immediate: true })
+onBeforeUnmount(() => {
+  mounted = false
+  poller.stop()
+})
+
+function canRetry(job: ExportJob) {
+  return job.canRetry === true && ['failed', 'queued'].includes(job.status)
+}
+async function retryJob(job: ExportJob) {
+  if (retrying.value || !canRetry(job)) return
+  const projectId = props.projectId
+  retrying.value = job.jobId
+  try {
+    await $fetch(`/api/agency/banner-studio/export-video/jobs/${encodeURIComponent(job.jobId)}/retry`, { method: 'POST' })
+    if (mounted && props.projectId === projectId) {
+      toast.add({ title: 'Render retry requested', description: 'The existing render job will be refreshed below.', color: 'success' })
+    }
+  } catch (error: unknown) {
+    if (mounted && props.projectId === projectId) {
+      toast.add({ title: 'Could not confirm render retry', description: apiErrorDescription(error, 'Refresh this job before trying again.'), color: 'error' })
+    }
+  } finally {
+    // A failed response can still mean the queue accepted the same job.
+    // Keep its existing status until the authoritative history read returns.
+    if (mounted && props.projectId === projectId) await poller.refresh()
+    retrying.value = null
+  }
+}
 
 async function createDraft(job: ExportJob) {
   if (creating.value || !props.clientId) return
@@ -122,6 +152,16 @@ async function createDraft(job: ExportJob) {
           {{ job.status }}
         </UBadge>
       </div>
+      <UButton
+        v-if="canRetry(job)"
+        label="Retry render"
+        icon="i-lucide-rotate-cw"
+        variant="outline"
+        size="sm"
+        :disabled="!!retrying"
+        :loading="retrying === job.jobId"
+        @click="retryJob(job)"
+      />
       <p v-if="job.error" class="text-xs text-muted">
         {{ job.error }}
       </p>

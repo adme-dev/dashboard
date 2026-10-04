@@ -28,7 +28,10 @@ const selected = ref<Set<string>>(new Set(state.setKeys))
 const isExporting = ref(false)
 const exportProgress = ref(0)
 const currentJobs = ref<ExportJob[]>([])
-const videoJobsBlocked = ref(true)
+const videoJobsUnavailable = ref(true)
+const videoPendingFormats = ref<string[]>([])
+const videoJobsBlocked = computed(() => videoJobsUnavailable.value || videoPendingFormats.value.some(key => selected.value.has(key)))
+const currentVideoBlocked = computed(() => videoJobsUnavailable.value || videoPendingFormats.value.includes(state.activeKey))
 
 watch(() => props.open, (open) => {
   if (open) {
@@ -38,7 +41,8 @@ watch(() => props.open, (open) => {
 })
 watch(() => state.project?.id, () => {
   currentJobs.value = []
-  videoJobsBlocked.value = true
+  videoJobsUnavailable.value = true
+  videoPendingFormats.value = []
 })
 
 // Export type: html5, png, jpg, gif, mp4
@@ -398,7 +402,7 @@ async function exportVideos() {
       currentJobs.value = jobIds.map((jobId, index) => ({
         jobId, formatKey: formats[index]?.key || '', status: 'queued', url: null, fileSize: null, error: null
       }))
-      videoJobsBlocked.value = true
+      videoPendingFormats.value = [...new Set([...videoPendingFormats.value, ...keys])]
     }
     toast.add({ title: 'Video exports queued', description: `${jobIds.length} render jobs saved. You can close this dialog and return to check their status.`, color: 'success' })
   } catch (err: unknown) {
@@ -696,7 +700,8 @@ const exportButtonLabel = computed(() => {
           :completed="currentJobs"
           :social-suggestion="props.socialSuggestion"
           :open="props.open"
-          @blocked="videoJobsBlocked = $event"
+          @blocked="videoJobsUnavailable = $event"
+          @pending-formats="videoPendingFormats = $event"
         />
 
         <!-- Actions -->
@@ -706,7 +711,7 @@ const exportButtonLabel = computed(() => {
             :icon="isVideoExport ? 'i-lucide-video' : isGifExport ? 'i-lucide-film' : isImageExport ? 'i-lucide-image' : 'i-lucide-file-code'"
             variant="outline"
             size="sm"
-            :disabled="isExporting || (isVideoExport && videoJobsBlocked)"
+            :disabled="isExporting || (isVideoExport && currentVideoBlocked)"
             @click="exportCurrent"
           />
           <UButton
