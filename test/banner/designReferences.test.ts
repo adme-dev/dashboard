@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDesignReference, resolveDesignReferences, validateDesignReferenceFile, loadDesignClientStyleGuide } from '../../server/utils/banner/designReferences'
 import handler from '../../server/api/agency/banner-studio/ai/references.post'
 
-const mock = vi.hoisted(() => ({ query: vi.fn(), execute: vi.fn(), upload: vi.fn(), imageUpload: vi.fn(), read: vi.fn(), remove: vi.fn(), ai: vi.fn(), record: vi.fn(), profile: vi.fn(), write: vi.fn(), scope: vi.fn(), validate: vi.fn() }))
+const mock = vi.hoisted(() => ({ query: vi.fn(), execute: vi.fn(), upload: vi.fn(), imageUpload: vi.fn(), read: vi.fn(), remove: vi.fn(), ai: vi.fn(), record: vi.fn(), profile: vi.fn(), write: vi.fn(), scope: vi.fn(), validate: vi.fn(), delivery: vi.fn() }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mock.query, execute: mock.execute }))
 vi.mock('~~/server/utils/storage', () => ({ readStoredObject: mock.read, uploadFile: mock.upload, deleteFile: mock.remove }))
 vi.mock('~~/server/utils/bannerStorage', () => ({ createBannerAssetStorageKey: () => 'banner-assets/user/random/reference.png', bannerAssetDeliveryUrl: async (id: string) => `https://app.example.com/api/public/banner-assets/${id}`, uploadBannerAsset: mock.imageUpload }))
-vi.mock('~~/server/utils/banner/assetDelivery', () => ({ resolveBannerAssetDelivery: () => ({ nativeUpload: { bucket: {} }, signingSecret: 'test-private-signing-secret' }) }))
+vi.mock('~~/server/utils/banner/assetDelivery', () => ({ resolveBannerAssetDelivery: mock.delivery }))
 vi.mock('~~/server/utils/banner/assetUploadValidation', () => ({ validateBannerAssetUpload: mock.validate }))
 vi.mock('~~/server/utils/appUrl', () => ({ getAppUrl: () => 'https://app.example.com' }))
 vi.mock('~~/server/utils/ai/invocationLedger', () => ({ recordAiInvocation: mock.record }))
@@ -30,6 +30,7 @@ const putManifest = (id = referenceId, overrides = {}) => {
 beforeEach(() => {
   vi.resetAllMocks()
   objects.clear()
+  mock.delivery.mockReturnValue({ nativeUpload: { bucket: {} }, signingSecret: 'test-private-signing-secret' })
   mock.execute.mockResolvedValue(undefined)
   mock.remove.mockResolvedValue(undefined)
   mock.write.mockResolvedValue({ id: userId })
@@ -55,7 +56,7 @@ describe('project scoped design references', () => {
     const reference = await create()
     expect(reference).toMatchObject({ kind: 'image', name: 'reference.png', description: 'A restrained blue layout with generous margins and a large headline.' })
     expect(mock.ai).toHaveBeenCalledWith('@cf/llava-hf/llava-1.5-7b-hf', expect.objectContaining({ image: Array.from(Buffer.from('image-bytes')) }))
-    expect(mock.read).toHaveBeenCalledWith('banner-assets/user/random/reference.png', expect.anything())
+    expect(mock.read).toHaveBeenCalledWith('banner-assets/user/random/reference.png')
     expect(mock.execute).toHaveBeenCalledWith(expect.stringContaining('client_id'), expect.arrayContaining([clientId, userId]))
     expect(mock.record).toHaveBeenCalledWith(expect.objectContaining({ featureKey: 'banner_design_reference_vision', status: 'success', clientId }))
     const manifest = JSON.parse(Buffer.from(objects.get(`banner-design-references/${projectId}/${reference.id}.json`)!).toString())
@@ -78,7 +79,7 @@ describe('project scoped design references', () => {
     await expect(create()).rejects.toMatchObject({ statusCode: 502 })
     expect(mock.execute).not.toHaveBeenCalled()
     expect(mock.upload).not.toHaveBeenCalled()
-    expect(mock.remove).toHaveBeenCalledWith('banner-assets/user/random/reference.png', expect.anything())
+    expect(mock.remove).toHaveBeenCalledWith('banner-assets/user/random/reference.png')
   })
   it('does not upload an image when no vision binding is available', async () => {
     await expect(create(file(), { context: {} } as never)).rejects.toMatchObject({ statusCode: 503 })
@@ -147,6 +148,22 @@ describe('project scoped design references', () => {
     expect(await loadDesignClientStyleGuide(clientId)).toBe('Brand blue and spacious typography.')
     expect(mock.profile).toHaveBeenCalledWith(clientId)
     expect(await loadDesignClientStyleGuide(null)).toBe('')
+  })
+  it('bounds valid existing 20k client brand guidelines without failing generation', async () => {
+    mock.profile.mockResolvedValue({ styleGuide: 'a'.repeat(20000) })
+    expect(await loadDesignClientStyleGuide(clientId)).toHaveLength(12000)
+  })
+  it('uses the native request bucket without requiring S3 credentials', async () => {
+    const bucket = { get: vi.fn(async key => {
+      const bytes = objects.get(key)
+      return bytes ? { size: bytes.length, body: new Blob([bytes]).stream() } : null
+    }), put: vi.fn(async (key, bytes) => { objects.set(key, bytes) }), delete: vi.fn() }
+    mock.delivery.mockReturnValue({ nativeUpload: { bucket }, signingSecret: 'test-private-signing-secret' })
+    const reference = await create(file('native-guide.md', 'Use lime accents'))
+    expect(bucket.put).toHaveBeenCalled()
+    expect(mock.upload).not.toHaveBeenCalled()
+    expect((await resolveDesignReferences(event() as never, projectId, clientId, [reference.id])).guideText).toBe('Use lime accents')
+    expect(mock.read).not.toHaveBeenCalled()
   })
   it('authorizes multipart uploads against the persisted project rather than a supplied client', async () => {
     const request = { ...event(), form: [{ name: 'projectId', data: Buffer.from(projectId) }, { name: 'file', ...file('guide.md', 'Keep it simple') }] }

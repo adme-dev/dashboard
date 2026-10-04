@@ -3,6 +3,7 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
 import { brandContextBlock, getDefaultBrandKitForClient } from '~~/server/utils/banner/brandKits'
+import { loadDesignClientStyleGuide, resolveDesignReferences } from '~~/server/utils/banner/designReferences'
 import { edgeGenerate } from '~~/server/utils/edgeAi'
 import { generateGroqInsight, GROQ_MODELS, type GroqModel } from '~~/server/utils/groqClient'
 import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
@@ -33,15 +34,17 @@ export default defineEventHandler(async (event) => {
   // Saved source assets and the client library are authority. Never derive scope
   // from a client ID, an asset ID or an arbitrary URL supplied in the request.
   const persistedUrls = canvasAssetUrls(project.canvas_data)
-  const [kit, assets] = await Promise.all([
+  const [kit, assets, references, clientStyleGuide] = await Promise.all([
     getDefaultBrandKitForClient(project.client_id),
     queryRowsFresh<{ name: string, url: string, client_id: string | null }>(
       `SELECT name, url, client_id FROM banner_assets
        WHERE client_id IS NOT DISTINCT FROM $1::uuid
        ORDER BY created_at DESC LIMIT 500`, [project.client_id]
-    )
+    ),
+    resolveDesignReferences(event, body.projectId, project.client_id, body.referenceIds),
+    loadDesignClientStyleGuide(project.client_id)
   ])
-  const allowedUrls = new Set(persistedUrls.filter(isSafeDesignAssetUrl))
+  const allowedUrls = new Set([...persistedUrls, ...references.assetUrls].filter(isSafeDesignAssetUrl))
   const availableAssets: { name: string, url: string }[] = []
   for (const asset of assets) {
     if (isSafeDesignAssetUrl(asset.url)) {
@@ -75,19 +78,20 @@ export default defineEventHandler(async (event) => {
   }
 
   const prompt = JSON.stringify({
-    project: project.name, brand: brandContextBlock(kit), brief: body.brief || '',
+    project: project.name, brand: brandContextBlock(kit), clientStyleGuide, brief: body.brief || '',
+    references: references.references, guideText: references.guideText,
     activeKey: body.activeKey, allowLocked: body.allowLocked, canvasData: canvas, formats: designCanvasDimensions(canvas),
     assets: authorizedAssets.slice(0, 60), history: body.history, request: body.prompt
   })
-  // Reuse the existing Banner assistant's platform-managed assignment in auto.
+  // Native design has its own assignment; legacy code-assist routing is unchanged.
   // Explicit modes remain finite supported choices, not arbitrary provider IDs.
   const assignment = body.model === 'auto'
     ? await resolveAiModelAssignment({
-        featureKey: 'banner_code_assist', defaultProvider: 'workers_ai',
-        defaultModelId: '@cf/meta/llama-3.1-8b-instruct', defaultFallbackModelId: GROQ_MODELS.LLAMA_70B,
+        featureKey: 'banner_design_assist', defaultProvider: 'groq',
+        defaultModelId: GROQ_MODELS.REASONING_120B, defaultFallbackModelId: GROQ_MODELS.REASONING_20B,
         supportedProviders: ['workers_ai', 'groq']
       })
-    : { provider: body.model === 'quality' ? 'groq' : 'workers_ai', modelId: body.model === 'quality' ? GROQ_MODELS.LLAMA_70B : '@cf/meta/llama-3.1-8b-instruct', fallbackModelId: body.model === 'fast' ? GROQ_MODELS.LLAMA_8B : null, source: 'explicit' }
+    : { provider: 'groq', modelId: body.model === 'quality' ? GROQ_MODELS.REASONING_120B : GROQ_MODELS.REASONING_20B, fallbackModelId: body.model === 'quality' ? GROQ_MODELS.REASONING_20B : null, source: 'explicit' }
   const options = {
     systemPrompt: DESIGN_ASSIST_SYSTEM_PROMPT, maxTokens: 6000, temperature: 0.3,
     featureKey: 'banner_design_assist', userId: user.id, clientId: project.client_id,
@@ -100,20 +104,22 @@ export default defineEventHandler(async (event) => {
       raw = await edgeGenerate(event, prompt, { ...options, modelId: assignment.modelId })
     } catch { /* A configured fallback can handle provider unavailability. */ }
   }
-  if (!raw && (assignment.provider === 'groq' || assignment.fallbackModelId)) {
-    const groqModel = groqModelIdFromAssignment(assignment.provider === 'groq' ? assignment.modelId : assignment.fallbackModelId!)
-    // Never pass a Workers/other provider fallback ID to Groq's API.
+  const groqCandidates = [...new Set([
+    ...(assignment.provider === 'groq' ? [assignment.modelId] : []),
+    ...(assignment.fallbackModelId ? [assignment.fallbackModelId] : [])
+  ].map(groqModelIdFromAssignment))]
+  for (const groqModel of groqCandidates) {
+    if (raw) break
+    // Never send another provider's model ID to Groq.
     if (!(Object.values(GROQ_MODELS) as string[]).includes(groqModel)) throw createError({ statusCode: 503, statusMessage: 'Configured design model is unavailable' })
     model = `groq/${groqModel}`
     try {
       raw = await generateGroqInsight(prompt, { ...options, model: groqModel as GroqModel })
-    } catch {
-      throw createError({ statusCode: 502, statusMessage: 'Design assistant is unavailable; your canvas has not changed' })
-    }
+    } catch { /* Try only the finite, configured fallback. */ }
   }
   if (!raw) throw createError({ statusCode: 502, statusMessage: 'Design assistant returned no proposal; your canvas has not changed' })
   try {
-    return { ...applyDesignProposal(raw, canvas, allowedUrls, body.allowLocked), model }
+    return { ...applyDesignProposal(raw, canvas, allowedUrls, body.allowLocked), model, context: { brandKit: kit?.name || null, clientStyleGuide: Boolean(clientStyleGuide), references: references.references.map(({ id, name, kind }) => ({ id, name, kind })) } }
   } catch {
     throw createError({ statusCode: 502, statusMessage: 'Design assistant returned an invalid proposal; your canvas has not changed. Try a smaller edit.' })
   }

@@ -123,6 +123,7 @@ const FEATURE_RUNTIME_SUPPORTED_PROVIDERS: Record<string, RuntimeModelProvider[]
   banner_image_suggest: ['workers_ai', 'groq'],
   banner_copy_suggest: ['workers_ai', 'groq'],
   banner_code_assist: ['workers_ai', 'groq'],
+  banner_design_assist: ['workers_ai', 'groq'],
   task_wiki_summary: ['groq'],
   agency_task_assist_creation: ['groq'],
   agency_task_assist_analysis: ['groq'],

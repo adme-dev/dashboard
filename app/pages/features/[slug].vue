@@ -2747,7 +2747,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Create with AI',
-        content: 'Describe your audience, offer and changes in the optional chat panel. The assistant uses the current project, client brand kit and authorised assets to propose editable native layers. Preview the animation, refine it with follow-up messages, then apply it as one undoable revision. Locked layers stay protected unless you explicitly allow changes. Manual controls remain available.'
+        content: 'Describe your audience, offer and changes in the optional chat panel. Attach reference images and text/Markdown style guides. The assistant uses their analysed visual context, the current project, client brand kit and authorised assets to propose editable native layers. Preview the animation, refine it with follow-up messages, then apply it as one undoable revision. Locked layers stay protected unless you explicitly allow changes. Manual controls remain available.'
       },
       {
         title: 'Social Variants and Publishing',

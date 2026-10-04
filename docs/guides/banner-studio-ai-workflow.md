@@ -26,13 +26,21 @@ The existing November DriveAgent post is a separate scheduled item. Creating or 
 
 Native masks, motion paths and supported layer animation can be proposed. Inspect the actual preview: a text reply alone is not proof of a successful effect. Requests for unsupported effects or invalid output leave the original unchanged.
 
+## Reference images and client guides
+
+In **Create with AI → References and guides**, attach up to three PNG, JPEG or WebP images (5 MB each) and UTF-8 TXT/Markdown guides. Six attachments maximum; guides total12,000 characters. Image uploads are analysed from the stored image bytes before becoming ready. The panel shows the actual analysis model or guide character count; failed analysis cannot masquerade as an attached reference. Remove a reference to exclude it from the next request.
+
+Screenshots of client UI/design profiles can be image references. Existing same-client brand kit and reusable client profile guidelines also enter the design context; a successful proposal confirms which context was included. PDF files are currently unsupported—export the guide as text/Markdown or attach visual reference images. Reference images guide composition; this workflow does not automatically dissect screenshots into editable layers.
+
+References are bound to the saved project and client. Uploaded guide manifests are private; switching project/client clears the panel's attachment selection and ignores late upload responses. Only opaque IDs and display metadata are retained in the session.
+
 ## Model choices and images
 
 | Control | Behaviour |
 | --- | --- |
-| Automatic | Uses the platform's existing Banner assistant model assignment. The response identifies the actual model. |
-| Fast | Workers AI Llama 3.1 8B, with the supported Groq 8B fallback when unavailable. |
-| Quality | Groq Llama 3.3 70B. |
+| Automatic | Uses the native design assistant assignment: GPT OSS120B with GPT OSS20B fallback by default. The response identifies the actual model. |
+| Fast | Groq GPT OSS20B. |
+| Quality | Groq GPT OSS120B, with GPT OSS20B fallback when unavailable. |
 | Generate image | Existing image tool, using Recraft V4.1 through Cloudflare AI Gateway for backgrounds and non-vehicle imagery. |
 
 Ordinary design chat edits native layers and reuses authorised assets; it does not regenerate every image. Generated images require a successful quality review before they can be added as an image or artboard-filling background.

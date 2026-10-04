@@ -65,7 +65,7 @@ export function validateDesignReferenceFile(file: BannerAssetUploadFile) {
 }
 
 async function readReferenceBytes(key: string, maximum: number, bucket?: R2BucketBinding): Promise<Uint8Array> {
-  const stored = await readStoredObject(key, { requestBucket: bucket })
+  const stored = bucket?.get ? await bucket.get(key) : await readStoredObject(key)
   if (!stored || stored.size <= 0 || stored.size > maximum) throw createError({ statusCode: 404, statusMessage: 'Design reference is unavailable or exceeds its size limit' })
   const reader = stored.body.getReader()
   const chunks: Uint8Array[] = []
@@ -126,13 +126,16 @@ export async function createDesignReference(event: H3Event, input: { projectId: 
     }
     manifestSchema.parse(manifest)
     // The private manifest is never served as an asset or exposed via a URL.
-    await uploadFile(Buffer.from(JSON.stringify(manifest)), metadataKey, 'application/json', undefined, bucket)
+    const manifestBytes = Buffer.from(JSON.stringify(manifest))
+    if (bucket?.put) await bucket.put(metadataKey, manifestBytes, { httpMetadata: { contentType: 'application/json' } })
+    else await uploadFile(manifestBytes, metadataKey, 'application/json')
     return { id, name: manifest.name, kind: manifest.kind, description: manifest.description, ...(url ? { url, analysisModel: manifest.analysisModel } : { guideCharacterCount: manifest.guideText!.length }) }
   } catch (error) {
     // Only this request's new objects/row are eligible for compensation.
     if (assetInserted) await execute('DELETE FROM banner_assets WHERE id = $1 AND client_id IS NOT DISTINCT FROM $2::uuid', [id, input.clientId]).catch(() => {})
-    if (imageKey) await deleteFile(imageKey, bucket).catch(() => {})
-    await deleteFile(metadataKey, bucket).catch(() => {})
+    const remove = (key: string) => bucket?.delete ? bucket.delete(key) : deleteFile(key)
+    if (imageKey) await remove(imageKey).catch(() => {})
+    await remove(metadataKey).catch(() => {})
     throw error
   }
 }
@@ -178,5 +181,5 @@ export async function loadDesignClientStyleGuide(clientId: string | null): Promi
   if (!clientId) return ''
   // Existing loader joins the selected kit on both kit ID and client ID.
   const profile = await loadVideoClientProfile(clientId)
-  return profile?.styleGuide?.trim() ? validateDesignGuide(profile.styleGuide) : ''
+  return profile?.styleGuide?.trim() ? profile.styleGuide.trim().slice(0, MAX_DESIGN_GUIDE_CHARACTERS) : ''
 }
