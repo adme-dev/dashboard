@@ -46,7 +46,7 @@ MRec initial scale verified at 100%. Signed video asset delivery fixed in 7f781f
 - Recraft V4.1 image UI with current supported controls, generation-only estimate, quality-review enforcement and project/client response guards.
 - Caption/timing handoff to deduplicated drafts, scoped to project/client/render within the current browser-tab session; scheduling still requires an exact reviewed date/time.
 - Independent review identified five integration bugs. Fixed supported cubic-Bezier validation, lost render suggestions, same-project client-switch invalidation, unsaved-image null identity and orphaned queued-job recovery.
-- Recovery now uses same-job retries with atomic reservations and worker claims. Deploy the audio queue worker before Pages. Running jobs are never automatically reset.
+- Recovery now uses same-job retries with atomic reservations and worker claims. Deploy the audio queue worker before Pages. Active rendering leases remain protected. Expired leases can be recovered with fencing so an old attempt cannot overwrite a newer result.
 - Updated public feature pages/navigation and docs/guides/banner-studio-ai-workflow.md.
 
 ## Verification / release
@@ -55,4 +55,9 @@ MRec initial scale verified at 100%. Signed video asset delivery fixed in 7f781f
 - Root save/image/draft regressions: 24 tests passed across 3 files.
 - Recovery and audio pipeline: 482 tests passed across 71 files.
 - New and focused modified files pass ESLint. Repository-wide lint has tens of thousands of pre-existing findings; no repository-wide clean claim.
-- Final combined test run, production build, guarded release and Safari verification: pending.
+- Combined regression run: 522 tests passed across 76 files before the final abandoned-lease fix.
+- Production build, guarded release and Safari verification: pending.
+
+- Release review approved fenced render recovery at eba4fb50d: 503 banner/audio tests pass, plus exact SQL verified against isolated PostgreSQL.
+- Build assessment exceeded raw budget by 9,613 bytes. Extended existing lossless string compaction to bound SQL literals and static AI instructions across generated server chunks; budget unchanged. Exact-content and actual workerd/postbuild tests: 16 passing. Assessment estimates 45 KB saved.
+- Removed only this worktree's generated .nuxt files after local ENOSPC, then regenerated configuration.

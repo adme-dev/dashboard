@@ -17,10 +17,16 @@ export function compactSsrMarkupSource(source) {
 /** SQL text is immutable data, not executed by the build. Preserve all whitespace,
  * parameters and escape sequences. Dynamic/tagged templates are never encoded. */
 export function compactSqlSource(source) {
-  return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value))
+  return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value), true)
 }
 
-function compactStaticSource(source, marker, accepts) {
+/** Long, literal AI instructions are immutable text. Preserve their exact bytes;
+ * never compact templates containing runtime input or tagged templates. */
+export function compactPromptSource(source) {
+  return compactStaticSource(source, 'XEROFLOW_STATIC_PROMPT_DATA', value => /^\s*You are\s/.test(value), true)
+}
+
+function compactStaticSource(source, marker, accepts, includeBindings = false) {
   const unchanged = { code: source, literals: 0 }
   if (source.includes(marker)) return unchanged
   const file = ts.createSourceFile('ssr.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
@@ -34,7 +40,8 @@ function compactStaticSource(source, marker, accepts) {
       && ((ts.isCallExpression(node.parent)
         && node.parent.expression.kind !== ts.SyntaxKind.ImportKeyword
         && node.parent.arguments.includes(node))
-      || (ts.isPropertyAssignment(node.parent) && node.parent.initializer === node))
+      || (ts.isPropertyAssignment(node.parent) && node.parent.initializer === node)
+      || (includeBindings && ts.isVariableDeclaration(node.parent) && node.parent.initializer === node))
     && node.text.length >= MIN_LITERAL_CHARACTERS
     && accepts(node.text)
     // UTF-8 replaces lone surrogates, so do not encode those JS strings.
@@ -130,12 +137,27 @@ export default JSON.parse(brotliDecompressSync(Buffer.from(XEROFLOW_COMPACT_PUBL
   }
 }
 
-/** The final Nitro chunk owns server queries. Do not scan client chunks or
- * source maps, and fail closed if Nitro changes this generated boundary. */
-export async function compactNitroSqlModule(workerDirectory) {
-  const file = path.join(workerDirectory, 'chunks', 'nitro', 'nitro.mjs')
-  const source = await readFile(file, 'utf8')
-  const result = compactSqlSource(source)
-  if (result.code !== source) await writeFile(file, result.code)
-  return { literals: result.literals, savedBytes: Buffer.byteLength(source) - Buffer.byteLength(result.code) }
+/** Walk generated server chunks only. Route splitting can retain static queries
+ * and prompts outside Nitro's main chunk; client assets and source maps are excluded. */
+export async function compactServerTextDirectory(workerDirectory) {
+  let literals = 0, promptLiterals = 0, savedBytes = 0
+  async function walk(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name)
+      if (entry.isDirectory()) {
+        await walk(file)
+        continue
+      }
+      if (!entry.isFile() || !/\.(?:mjs|js)$/.test(entry.name)) continue
+      const source = await readFile(file, 'utf8')
+      const sql = compactSqlSource(source)
+      const result = compactPromptSource(sql.code)
+      if (result.code !== source) await writeFile(file, result.code)
+      literals += sql.literals
+      promptLiterals += result.literals
+      savedBytes += Buffer.byteLength(source) - Buffer.byteLength(result.code)
+    }
+  }
+  await walk(path.join(workerDirectory, 'chunks'))
+  return { literals, promptLiterals, savedBytes }
 }
