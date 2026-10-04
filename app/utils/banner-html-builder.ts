@@ -198,10 +198,11 @@ export function buildBannerHTML(
         return `<div class="layer" data-id="${l.id}" style="${style}"></div>`
       }
       if (l.type === 'text') {
+        style += 'white-space:pre-wrap;word-break:break-word;'
         style += `font-size:${l.fontSize || 16}px;font-weight:${l.fontWeight || 400};font-family:'${l.fontFamily || 'Barlow Condensed'}',sans-serif;color:${l.color || '#fff'};`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
         if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
-        if (l.lineHeight) style += `line-height:${l.lineHeight};`
+        style += `line-height:${l.lineHeight || 1.2};`
         if (l.textAlign) style += `text-align:${l.textAlign};`
         if (l.bgColor) style += `background:${l.bgColor};`
         return `<div class="layer" data-id="${l.id}" style="${style}">${escapeHtml(l.text || '')}</div>`

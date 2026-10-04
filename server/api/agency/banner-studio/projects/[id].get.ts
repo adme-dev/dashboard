@@ -1,8 +1,9 @@
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
+  setHeader(event, 'Cache-Control', 'private, no-store')
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -10,7 +11,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const row = await queryOne(`
+    const row = await queryOneFresh(`
       SELECT
         p.id, p.name,
         p.client_id AS "clientId",

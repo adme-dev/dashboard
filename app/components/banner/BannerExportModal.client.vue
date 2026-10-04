@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import JSZip from 'jszip'
+import { apiErrorDescription, apiErrorStatus } from '~/utils/apiError'
 import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import type { Layer, ImageExportResult } from '~/types/banner-studio'
-import { summarizeExportJobs } from '~/utils/bannerExportPoll'
+import { exportFormatLabel } from '~/utils/bannerExportPoll'
 import type { ExportJob } from '~/utils/bannerExportPoll'
 import { describeBannerVideoExportError } from '~/utils/bannerExportError'
 import { createBannerVideoExportSession } from '~/utils/bannerVideoExport'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean, initialType?: 'html5' | 'png' | 'jpg' | 'gif' | 'mp4', socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const { state, activeLayers } = useBannerStudio()
@@ -25,15 +26,22 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
 const selected = ref<Set<string>>(new Set(state.setKeys))
 const isExporting = ref(false)
 const exportProgress = ref(0)
-const completedVideos = ref<ExportJob[]>([])
+const currentJobs = ref<ExportJob[]>([])
+const videoJobsBlocked = ref(true)
 
-watch(() => props.open, open => {
-  if (open) selected.value = new Set(state.setKeys)
+watch(() => props.open, (open) => {
+  if (open) {
+    selected.value = new Set(state.setKeys)
+    if (props.initialType) exportType.value = props.initialType
+  }
 })
-watch(() => state.project?.id, () => { completedVideos.value = [] })
+watch(() => state.project?.id, () => {
+  currentJobs.value = []
+  videoJobsBlocked.value = true
+})
 
 // Export type: html5, png, jpg, gif, mp4
-const exportType = ref<'html5' | 'png' | 'jpg' | 'gif' | 'mp4'>('html5')
+const exportType = ref<'html5' | 'png' | 'jpg' | 'gif' | 'mp4'>(props.initialType || 'html5')
 const imageQuality = ref<1 | 2>(1) // 1x or 2x retina
 const jpgQuality = ref(90) // 0-100
 const gifFps = ref(10) // 5-15
@@ -46,7 +54,7 @@ const exportTypeOptions = [
   { label: 'PNG', value: 'png', icon: 'i-lucide-image', desc: 'Static images (lossless)' },
   { label: 'JPG', value: 'jpg', icon: 'i-lucide-image', desc: 'Static images (compressed)' },
   { label: 'GIF', value: 'gif', icon: 'i-lucide-film', desc: 'Animated images' },
-  { label: 'MP4', value: 'mp4', icon: 'i-lucide-video', desc: 'Video files (H.264)' },
+  { label: 'MP4', value: 'mp4', icon: 'i-lucide-video', desc: 'Video files (H.264)' }
 ]
 
 const isImageExport = computed(() => exportType.value === 'png' || exportType.value === 'jpg')
@@ -58,11 +66,12 @@ const estimatedVideoFrames = computed(() => Math.ceil(state.duration * videoFps.
 // Group by platform
 const platformGroups = computed(() => {
   const groups: Record<string, string[]> = {}
-  state.setKeys.forEach(key => {
+  state.setKeys.forEach((key) => {
     const fmt = FORMATS[key]
     if (!fmt) return
-    if (!groups[fmt.platform]) groups[fmt.platform] = []
-    groups[fmt.platform].push(key)
+    const platform = isVideoExport.value && ['Facebook', 'Instagram'].includes(fmt.platform) ? 'Social formats' : fmt.platform
+    if (!groups[platform]) groups[platform] = []
+    groups[platform].push(key)
   })
   return groups
 })
@@ -70,7 +79,7 @@ const platformGroups = computed(() => {
 function togglePlatform(platform: string) {
   const keys = platformGroups.value[platform] || []
   const allSelected = keys.every(k => selected.value.has(k))
-  keys.forEach(k => {
+  keys.forEach((k) => {
     if (allSelected) selected.value.delete(k)
     else selected.value.add(k)
   })
@@ -85,7 +94,7 @@ function buildExportHTML(fmtKey: string, layers: Layer[]): string {
   return buildBannerHTML(fmtKey, layers, {
     includeAnimations: !isImageExport.value,
     bgColor: state.sets[fmtKey]?.bgColor || state.bgColor || '#0a0a10',
-    customFonts: getExportCustomFonts(layers),
+    customFonts: getExportCustomFonts(layers)
   })
 }
 
@@ -102,13 +111,16 @@ function getScaledLayers(fmtKey: string): Layer[] {
   const sx = tgtFmt.w / srcFmt.w
   const sy = tgtFmt.h / srcFmt.h
 
-  return srcLayers.map(l => {
+  return srcLayers.map((l) => {
     const n = { ...JSON.parse(JSON.stringify(l)) }
     n.x = Math.round(l.x * sx)
     n.y = Math.round(l.y * sy)
     n.w = Math.round(l.w * sx)
     n.h = Math.round(l.h * sy)
-    if (n.type === 'bg') { n.w = tgtFmt.w; n.h = tgtFmt.h }
+    if (n.type === 'bg') {
+      n.w = tgtFmt.w
+      n.h = tgtFmt.h
+    }
     if (n.fontSize) n.fontSize = Math.max(7, Math.round(n.fontSize * Math.min(sx, sy)))
     return n
   })
@@ -134,7 +146,9 @@ function exportCurrent() {
     const prevSelected = selected.value
     selected.value = keys
     const exportFn = isVideoExport.value ? exportVideos : isGifExport.value ? exportGifs : exportImages
-    exportFn().finally(() => { selected.value = prevSelected })
+    exportFn().finally(() => {
+      selected.value = prevSelected
+    })
     return
   }
   const html = buildExportHTML(state.activeKey, activeLayers.value)
@@ -169,7 +183,7 @@ async function exportZip() {
 
     toast.add({ title: 'Export complete', description: `${keys.length} banners exported as ZIP`, color: 'success' })
     emit('update:open', false)
-  } catch (err) {
+  } catch {
     toast.add({ title: 'Export failed', description: 'Something went wrong during export', color: 'error' })
   } finally {
     isExporting.value = false
@@ -191,7 +205,7 @@ async function exportImages() {
 
   try {
     // Build HTML for each selected format (static, no animations)
-    const formats = keys.map(key => {
+    const formats = keys.map((key) => {
       const fmt = FORMATS[key]
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
@@ -209,8 +223,8 @@ async function exportImages() {
         formats,
         quality: imageQuality.value,
         format: exportType.value,
-        jpgQuality: exportType.value === 'jpg' ? jpgQuality.value : undefined,
-      },
+        jpgQuality: exportType.value === 'jpg' ? jpgQuality.value : undefined
+      }
     })
 
     exportProgress.value = 80
@@ -245,11 +259,11 @@ async function exportImages() {
     toast.add({
       title: 'Export complete',
       description: `${results.length} ${exportType.value.toUpperCase()}${qualityLabel} images exported`,
-      color: 'success',
+      color: 'success'
     })
     emit('update:open', false)
-  } catch (err: any) {
-    const message = err?.data?.statusMessage || err?.message || 'Image export failed'
+  } catch (err: unknown) {
+    const message = apiErrorDescription(err, 'Image export failed')
     toast.add({ title: 'Export failed', description: message, color: 'error' })
   } finally {
     isExporting.value = false
@@ -271,14 +285,14 @@ async function exportGifs() {
 
   try {
     // Build HTML for each selected format (WITH animations for GSAP)
-    const formats = keys.map(key => {
+    const formats = keys.map((key) => {
       const fmt = FORMATS[key]
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
         includeAnimations: true,
         bgColor: state.sets[key]?.bgColor || state.bgColor || '#0a0a10',
-        customFonts: getExportCustomFonts(layers),
+        customFonts: getExportCustomFonts(layers)
       })
       return { key, html, width: fmt.w, height: fmt.h }
     }).filter(Boolean)
@@ -290,8 +304,8 @@ async function exportGifs() {
       body: {
         projectId: state.project.id,
         formats,
-        fps: gifFps.value,
-      },
+        fps: gifFps.value
+      }
     })
 
     exportProgress.value = 80
@@ -320,11 +334,11 @@ async function exportGifs() {
     toast.add({
       title: 'Export complete',
       description: `${results.length} GIF${results.length > 1 ? 's' : ''} exported at ${gifFps.value}fps`,
-      color: 'success',
+      color: 'success'
     })
     emit('update:open', false)
-  } catch (err: any) {
-    const message = err?.data?.statusMessage || err?.message || 'GIF export failed'
+  } catch (err: unknown) {
+    const message = apiErrorDescription(err, 'GIF export failed')
     toast.add({ title: 'Export failed', description: message, color: 'error' })
   } finally {
     isExporting.value = false
@@ -333,6 +347,7 @@ async function exportGifs() {
 }
 
 async function exportVideos() {
+  if (isExporting.value || videoJobsBlocked.value) return
   const keys = [...selected.value]
   if (!keys.length) return
 
@@ -344,22 +359,20 @@ async function exportVideos() {
   isExporting.value = true
   exportProgress.value = 0
 
-  let pollTimer: ReturnType<typeof setTimeout> | null = null
+  const projectId = state.project.id
 
   try {
-    const formats = keys.map(key => {
+    const formats = keys.map((key) => {
       const fmt = FORMATS[key]
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
         includeAnimations: true,
         bgColor: state.sets[key]?.bgColor || state.bgColor || '#0a0a10',
-        customFonts: getExportCustomFonts(layers),
+        customFonts: getExportCustomFonts(layers)
       })
       return { key, html, width: fmt.w, height: fmt.h }
     }).filter(Boolean)
-
-    exportProgress.value = 5
 
     // Enqueue render jobs
     const { jobIds } = await videoExportSession.attempt(async headers =>
@@ -367,7 +380,7 @@ async function exportVideos() {
         method: 'POST',
         headers,
         body: {
-          projectId: state.project.id,
+          projectId,
           formats,
           fps: videoFps.value,
           quality: videoQuality.value,
@@ -377,68 +390,20 @@ async function exportVideos() {
     )
 
     if (!jobIds.length) throw new Error('No render jobs were created. Try exporting again.')
-    exportProgress.value = 10
-
-    // Poll until all jobs finish (max 150 polls ≈ 5 min at 2s intervals)
-    const MAX_POLL_ATTEMPTS = 150
-    let pollAttempts = 0
-    await new Promise<void>((resolve, reject) => {
-      const poll = async () => {
-        pollAttempts++
-        if (pollAttempts > MAX_POLL_ATTEMPTS) {
-          if (pollTimer) clearTimeout(pollTimer)
-          isExporting.value = false
-          toast.add({
-            title: 'Still processing',
-            description: 'The render is continuing. Reopen Export to check completed videos.',
-            color: 'warning',
-          })
-          resolve()
-          return
-        }
-        try {
-          const { jobs } = await apiFetch<{ jobs: ExportJob[] }>(
-            `/api/agency/banner-studio/export-video/jobs?ids=${jobIds.join(',')}`,
-          )
-          const summary = summarizeExportJobs(jobs)
-          // Map render progress to 10–95% range
-          exportProgress.value = 10 + Math.round(summary.progress * 0.85)
-
-          if (summary.finished && jobs.length === jobIds.length) {
-            if (summary.failed > 0) {
-              toast.add({
-                title: 'Some exports failed',
-                description: `${summary.failed} of ${summary.total} MP4 render${summary.failed > 1 ? 's' : ''} failed`,
-                color: 'error',
-              })
-            }
-            if (summary.urls.length > 0) {
-              completedVideos.value = jobs.filter(job => job.status === 'done' && job.url)
-              exportProgress.value = 100
-              toast.add({
-                title: 'Export complete',
-                description: `${summary.urls.length} MP4 video${summary.urls.length > 1 ? 's' : ''} ready at ${videoFps.value}fps`,
-                color: 'success',
-              })
-            }
-            resolve()
-          } else {
-            pollTimer = setTimeout(poll, 2000)
-          }
-        } catch (pollErr) {
-          reject(pollErr)
-        }
-      }
-      poll()
-    })
-  } catch (err: any) {
-    const status = err?.statusCode ?? err?.status
+    if (state.project?.id === projectId) {
+      currentJobs.value = jobIds.map((jobId, index) => ({
+        jobId, formatKey: formats[index]?.key || '', status: 'queued', url: null, fileSize: null, error: null
+      }))
+      videoJobsBlocked.value = true
+    }
+    toast.add({ title: 'Video exports queued', description: `${jobIds.length} render jobs saved. You can close this dialog and return to check their status.`, color: 'success' })
+  } catch (err: unknown) {
+    const status = apiErrorStatus(err) ?? (err && typeof err === 'object' && 'status' in err ? err.status : null)
     const message = status === 503
       ? 'MP4 export isn\'t enabled yet — the render queue binding is not active'
       : describeBannerVideoExportError(err)
     toast.add({ title: 'Export failed', description: message, color: 'error' })
   } finally {
-    if (pollTimer) clearTimeout(pollTimer)
     isExporting.value = false
     exportProgress.value = 0
   }
@@ -476,8 +441,15 @@ const exportButtonLabel = computed(() => {
     <template #content>
       <div class="p-4 max-h-[90dvh] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold">Export Banners</h3>
-          <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="emit('update:open', false)" />
+          <h3 class="text-lg font-semibold">
+            Export Banners
+          </h3>
+          <UButton
+            icon="i-lucide-x"
+            variant="ghost"
+            size="xs"
+            @click="emit('update:open', false)"
+          />
         </div>
 
         <!-- Export type selector -->
@@ -536,7 +508,7 @@ const exportButtonLabel = computed(() => {
               max="100"
               step="5"
               class="w-full accent-(--ui-primary)"
-            />
+            >
           </div>
         </div>
 
@@ -554,7 +526,7 @@ const exportButtonLabel = computed(() => {
               max="15"
               step="1"
               class="w-full accent-(--ui-primary)"
-            />
+            >
           </div>
           <div class="flex items-center justify-between text-[11px]">
             <span class="text-(--ui-text-muted)">
@@ -625,7 +597,7 @@ const exportButtonLabel = computed(() => {
               max="35"
               step="1"
               class="w-full accent-(--ui-primary)"
-            />
+            >
             <div class="flex justify-between text-[10px] text-(--ui-text-dimmed) mt-0.5">
               <span>Higher quality</span>
               <span>Smaller file</span>
@@ -668,13 +640,13 @@ const exportButtonLabel = computed(() => {
                   :model-value="selected.has(key)"
                   @update:model-value="toggleSize(key)"
                 />
-                <span class="text-xs">{{ FORMATS[key]?.name }}</span>
+                <span class="text-xs">{{ exportFormatLabel(key, FORMATS[key]?.name) }}</span>
                 <span class="text-[11px] font-mono text-(--ui-text-muted)">{{ FORMATS[key]?.w }}x{{ FORMATS[key]?.h }}</span>
                 <span v-if="isImageExport && imageQuality === 2" class="text-[10px] text-(--ui-text-dimmed)">
                   ({{ (FORMATS[key]?.w || 0) * 2 }}x{{ (FORMATS[key]?.h || 0) * 2 }})
                 </span>
                 <BannerFileSizeMeter
-                  v-if="state.sets[key]"
+                  v-if="exportType === 'html5' && state.sets[key]"
                   :total="estimateSize(key).total"
                   compact
                   class="flex-1"
@@ -685,16 +657,18 @@ const exportButtonLabel = computed(() => {
         </div>
 
         <!-- Platform validation -->
-        <div v-if="state.project?.id" class="mb-4 p-3 bg-(--ui-bg) rounded-lg">
-          <div class="text-xs font-medium text-(--ui-text-muted) mb-2">Platform Compliance</div>
+        <div v-if="state.project?.id && exportType === 'html5'" class="mb-4 p-3 bg-(--ui-bg) rounded-lg">
+          <div class="text-xs font-medium text-(--ui-text-muted) mb-2">
+            HTML5 display-ad compliance
+          </div>
           <BannerValidationBadges :project-id="state.project.id" />
         </div>
 
         <!-- Progress -->
-        <div v-if="isExporting" class="mb-4">
+        <div v-if="isExporting && !isVideoExport" class="mb-4">
           <div class="flex items-center justify-between mb-1">
             <span class="text-xs text-(--ui-text-muted)">
-              {{ isVideoExport ? 'Encoding videos...' : isGifExport ? 'Generating GIFs...' : isImageExport ? 'Rendering images...' : 'Exporting...' }}
+              {{ isGifExport ? 'Generating GIFs...' : isImageExport ? 'Rendering images...' : 'Exporting...' }}
             </span>
             <span class="text-xs font-mono text-(--ui-text-muted)">{{ exportProgress }}%</span>
           </div>
@@ -706,12 +680,19 @@ const exportButtonLabel = computed(() => {
           </div>
         </div>
 
+        <p v-if="isExporting && isVideoExport" role="status" class="mb-4 text-xs text-muted">
+          Submitting render jobs…
+        </p>
+
         <BannerVideoResults
           v-if="state.project?.id && isVideoExport"
+          :key="state.project.id"
           :project-id="state.project.id"
           :client-id="state.project.clientId"
-          :completed="completedVideos"
+          :completed="currentJobs"
+          :social-suggestion="props.socialSuggestion"
           :open="props.open"
+          @blocked="videoJobsBlocked = $event"
         />
 
         <!-- Actions -->
@@ -721,7 +702,7 @@ const exportButtonLabel = computed(() => {
             :icon="isVideoExport ? 'i-lucide-video' : isGifExport ? 'i-lucide-film' : isImageExport ? 'i-lucide-image' : 'i-lucide-file-code'"
             variant="outline"
             size="sm"
-            :disabled="isExporting"
+            :disabled="isExporting || (isVideoExport && videoJobsBlocked)"
             @click="exportCurrent"
           />
           <UButton
@@ -729,7 +710,7 @@ const exportButtonLabel = computed(() => {
             :icon="isVideoExport ? 'i-lucide-video' : isGifExport ? 'i-lucide-film' : isImageExport ? 'i-lucide-images' : 'i-lucide-archive'"
             size="sm"
             class="flex-1"
-            :disabled="selected.size === 0 || isExporting"
+            :disabled="selected.size === 0 || isExporting || (isVideoExport && videoJobsBlocked)"
             :loading="isExporting"
             @click="handleExport"
           />
