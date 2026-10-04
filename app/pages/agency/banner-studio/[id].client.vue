@@ -142,6 +142,38 @@ const leftTabItems = [
 // Modals
 const showSizePicker = ref(false)
 const showExportModal = ref(false)
+const showDesignAssistant = ref(false)
+const exportInitialType = ref<'html5' | 'mp4'>('html5')
+const socialSuggestion = ref<{ caption?: string, suggestedSchedule?: string } | undefined>()
+const { openGenerate: openGenerateImage } = useAiImageGenerate()
+async function prepareAssistantSocial(suggestion: { caption?: string, suggestedSchedule?: string }) {
+  const sourceProjectId = state.project?.id
+  const sourceCanvas = JSON.stringify(state.sets)
+  const sourceClient = state.project?.clientId
+  if (!sourceProjectId) return
+  try {
+    await saveProject()
+    if (state.project?.id !== sourceProjectId) return
+    if (state.isDirty || JSON.stringify(state.sets) !== sourceCanvas || state.project?.clientId !== sourceClient) {
+      toast.add({ title: 'Project changed', description: 'Review the latest canvas and prepare the export again.', color: 'warning' })
+      showDesignAssistant.value = true
+      return
+    }
+    socialSuggestion.value = suggestion
+    exportInitialType.value = 'mp4'
+    showExportModal.value = true
+  } catch {
+    if (state.project?.id !== sourceProjectId) return
+    toast.add({ title: 'Could not save project', description: 'Your applied design is still on the canvas. Try preparing the export again.', color: 'error' })
+    showDesignAssistant.value = true
+  }
+}
+watch(showExportModal, (open) => {
+  if (!open) {
+    exportInitialType.value = 'html5'
+    socialSuggestion.value = undefined
+  }
+})
 const showPlayAll = ref(false)
 const showGenerateUrl = ref(false)
 const showDissector = ref(false)
@@ -638,6 +670,13 @@ const { activeSize } = useBannerFileSize()
         <UButton label="Publish" icon="i-lucide-megaphone" variant="soft" size="xs" @click="showAdPublish = true" />
       </UTooltip>
       <UButton v-if="hasFeedBindings" label="DCO" icon="i-lucide-layers" variant="soft" color="warning" size="xs" @click="showDCOModal = true" />
+        <UButton
+          label="Create with AI"
+          icon="i-lucide-wand-sparkles"
+          variant="soft"
+          size="xs"
+          @click="showDesignAssistant = true"
+        />
       <UButton label="Export" icon="i-lucide-download" size="xs" @click="showExportModal = true" />
       <UDropdownMenu :items="moreMenuItems" :content="{ align: 'end' }">
         <UTooltip text="More — versions, templates, analytics, A/B tests">
@@ -715,7 +754,18 @@ const { activeSize } = useBannerFileSize()
 
     <!-- Modals -->
     <BannerSizePicker v-if="showSizePicker" v-model:open="showSizePicker" />
-    <BannerExportModal v-if="showExportModal" v-model:open="showExportModal" />
+    <BannerDesignAssistant
+      v-model:open="showDesignAssistant"
+      :project-id="projectId"
+      @prepare-social="prepareAssistantSocial"
+      @generate-image="openGenerateImage"
+    />
+    <BannerExportModal
+      v-if="showExportModal"
+      v-model:open="showExportModal"
+      :initial-type="exportInitialType"
+      :social-suggestion="socialSuggestion"
+    />
     <BannerPlayAll v-if="showPlayAll" v-model:open="showPlayAll" />
     <BannerGenerateFromUrl v-if="showGenerateUrl" v-model:open="showGenerateUrl" />
     <BannerDissectorModal v-if="showDissector" v-model:open="showDissector" />
