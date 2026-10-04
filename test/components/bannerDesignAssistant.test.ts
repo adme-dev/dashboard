@@ -22,6 +22,8 @@ async function mount(projectId = 'project-1') {
   document.body.appendChild(host)
   const app = createApp({ render: () => h(DesignAssistant, { open: true, projectId: id.value, onPrepareSocial: social }) })
   app.component('USlideover', { template: '<section><slot name="body"/></section>' })
+  app.component('UFileUpload', { props: ['modelValue', 'disabled'], emits: ['update:modelValue'], template: '<input type="file" multiple :disabled="disabled" @change="$emit(\'update:modelValue\', Array.from($event.target.files))" />' })
+  app.component('UIcon', { template: '<span/>' })
   app.component('UFormField', { props: ['label'], template: '<label>{{ label }}<slot/></label>' })
   app.component('UButton', { props: ['label', 'disabled'], emits: ['click'], template: '<button :disabled="disabled" @click="$emit(\'click\')">{{ label }}</button>' })
   app.component('UTextarea', { props: ['modelValue', 'disabled'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" :disabled="disabled" @input="$emit(\'update:modelValue\', $event.target.value)" />' })
@@ -50,7 +52,13 @@ async function mount(projectId = 'project-1') {
     await prompt('Improve this design')
     await click('Preview proposal')
   }
-  return { host, id, button, click, prompt, request, social, app }
+  const upload = async (files: File[]) => {
+    const input = host.querySelector('input[type="file"]')!
+    Object.defineProperty(input, 'files', { value: files, configurable: true })
+    input.dispatchEvent(new Event('change'))
+    await settle()
+  }
+  return { host, id, button, click, prompt, request, social, app, upload }
 }
 beforeEach(() => {
   sessionStorage.clear()
@@ -210,7 +218,7 @@ describe('native Banner Studio design assistant', () => {
   it('requires explicit opt-in for locked layers and passes selected model preference', async () => {
     const view = await mount()
     await view.click('Advanced options')
-    const checkbox = view.host.querySelector('input')!
+    const checkbox = view.host.querySelector<HTMLInputElement>('input[type="checkbox"]')!
     checkbox.checked = true
     checkbox.dispatchEvent(new Event('change'))
     const model = view.host.querySelector('select')!
@@ -219,5 +227,116 @@ describe('native Banner Studio design assistant', () => {
     await settle()
     await view.request()
     expect(fetchMock.mock.calls[0][1].body).toMatchObject({ model: 'quality', allowLocked: true })
+  })
+  it('uploads a scoped visual reference, waits for analysis, and sends only its ID', async () => {
+    const imageId = 'e1111111-1111-4111-8111-111111111111'
+    let finish!: (value: unknown) => void
+    fetchMock.mockImplementation((url: string) => url.endsWith('/references')
+      ? new Promise((resolve) => { finish = resolve })
+      : Promise.resolve({ ...response(), context: { brandKit: 'DriveAgent brand', clientStyleGuide: true, references: [{ id: imageId, name: 'layout.png', kind: 'image' }] } }))
+    const view = await mount()
+    await view.prompt('Use the spacing in my reference')
+    await view.upload([new File(['image'], 'layout.png', { type: 'image/png' })])
+    expect(view.button('Preview proposal').disabled).toBe(true)
+    expect(view.host.textContent).toContain('Uploading and preparing layout.png')
+    const body = fetchMock.mock.calls[0][1].body as FormData
+    expect(body.get('projectId')).toBe('project-1')
+    expect(body.get('file')).toBeInstanceOf(File)
+    finish({ reference: { id: imageId, name: 'layout.png', kind: 'image', description: 'Large headline above a quiet footer', url: 'https://assets.example/ref.png', analysisModel: 'workers-ai/vision' } })
+    await settle()
+    expect(view.host.textContent).toContain('Visual analysis ready')
+    expect(view.host.textContent).toContain('workers-ai/vision')
+    expect(view.host.querySelector('img')?.getAttribute('src')).toBe('https://assets.example/ref.png')
+    await view.click('Review visual analysis')
+    expect(view.host.textContent).toContain('Large headline above a quiet footer')
+    await view.click('Preview proposal')
+    expect(fetchMock.mock.calls[1][1].body.referenceIds).toEqual([imageId])
+    expect(fetchMock.mock.calls[1][1].body).not.toHaveProperty('references')
+    expect(view.host.textContent).toContain('Brand kit included: DriveAgent brand')
+    expect(view.host.textContent).toContain('Client style guide included.')
+  })
+
+  it('persists reference metadata and guide counts, then removes a guide from subsequent requests', async () => {
+    const guideId = 'e2222222-2222-4222-8222-222222222222'
+    fetchMock.mockImplementation((url: string) => Promise.resolve(url.endsWith('/references')
+      ? { reference: { id: guideId, kind: 'guide', name: 'brand.md', description: 'Use generous spacing', guideCharacterCount: 20 } }
+      : response()))
+    const view = await mount()
+    await view.upload([new File(['Use generous spacing'], 'brand.md', { type: 'text/markdown' })])
+    expect(view.host.textContent).toContain('Guide text ready')
+    expect(view.host.textContent).toContain('20/12,000 guide characters')
+    const saved = JSON.parse(sessionStorage.getItem('banner-design-chat:v2:project-1:client-1')!)
+    expect(saved.references).toHaveLength(1)
+    expect(saved.references[0]).not.toHaveProperty('file')
+    expect(saved.references[0]).not.toHaveProperty('guideText')
+    const reopened = await mount()
+    expect(reopened.host.textContent).toContain('brand.md')
+    reopened.host.querySelector<HTMLButtonElement>('[aria-label="Remove brand.md"]')!.click()
+    await settle()
+    await reopened.request()
+    expect(fetchMock.mock.calls.at(-1)![1].body.referenceIds).toEqual([])
+  })
+
+  it('rejects unsupported PDFs, oversized images, and guide text above the total limit', async () => {
+    const view = await mount()
+    await view.upload([new File(['pdf'], 'guide.pdf', { type: 'application/pdf' })])
+    expect(view.host.textContent).toContain('PDF is not supported')
+    expect(fetchMock).not.toHaveBeenCalled()
+    await view.upload([new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.png', { type: 'image/png' })])
+    expect(view.host.textContent).toContain('5 MB or smaller')
+    await view.upload([new File(['a'.repeat(12001)], 'large.md', { type: 'text/markdown' })])
+    expect(view.host.textContent).toContain('12,000 characters or fewer')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('enforces the combined guide limit against restored references before uploading', async () => {
+    sessionStorage.setItem('banner-design-chat:v2:project-1:client-1', JSON.stringify({ references: [{ id: 'e5555555-5555-4555-8555-555555555555', kind: 'guide', name: 'existing.md', description: 'Existing guidance', guideCharacterCount: 7000 }] }))
+    const view = await mount()
+    await view.upload([new File(['a'.repeat(6000)], 'extra.md', { type: 'text/markdown' })])
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(view.host.textContent).toContain('total 12,000 characters or fewer')
+    expect(view.host.querySelectorAll('article')).toHaveLength(1)
+  })
+
+  it('does not attach an image when visual analysis fails', async () => {
+    fetchMock.mockRejectedValue({ data: { statusMessage: 'Visual reference analysis is unavailable' } })
+    const view = await mount()
+    await view.upload([new File(['image'], 'layout.png', { type: 'image/png' })])
+    expect(view.host.textContent).toContain('Visual reference analysis is unavailable')
+    expect(view.host.textContent).not.toContain('Visual analysis ready')
+    expect(view.host.querySelectorAll('article')).toHaveLength(0)
+    expect(applyMock).not.toHaveBeenCalled()
+  })
+
+  it('limits visual references to three and retains existing references on provider failure', async () => {
+    let uploads = 0
+    fetchMock.mockImplementation(() => {
+      uploads++
+      return Promise.resolve({ reference: { id: `e3333333-3333-4333-8333-${String(uploads).padStart(12, '0')}`, kind: 'image', name: `ref-${uploads}.png`, description: 'Visual description' } })
+    })
+    const view = await mount()
+    await view.upload(Array.from({ length: 4 }, (_, i) => new File(['image'], `${i}.png`, { type: 'image/png' })))
+    await settle()
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(view.host.textContent).toContain('at most three reference images')
+    fetchMock.mockRejectedValue({ data: { statusMessage: 'Visual reference analysis is unavailable' } })
+    await view.upload([new File(['Guide'], 'guide.txt', { type: 'text/plain' })])
+    expect(view.host.textContent).toContain('Visual reference analysis is unavailable')
+    expect(view.host.querySelectorAll('article')).toHaveLength(3)
+  })
+
+  it('ignores a late upload after the same project changes client', async () => {
+    let finish!: (value: unknown) => void
+    fetchMock.mockImplementation(() => new Promise((resolve) => {
+      finish = resolve
+    }))
+    const view = await mount()
+    await view.upload([new File(['image'], 'layout.png', { type: 'image/png' })])
+    state.project.clientId = 'client-2'
+    finish({ reference: { id: 'e4444444-4444-4444-8444-444444444444', kind: 'image', name: 'layout.png', description: 'Old client reference' } })
+    await settle()
+    expect(view.host.querySelectorAll('article')).toHaveLength(0)
+    expect(view.host.textContent).not.toContain('Old client reference')
+    expect(sessionStorage.getItem('banner-design-chat:v2:project-1:client-2')).toBeNull()
   })
 })

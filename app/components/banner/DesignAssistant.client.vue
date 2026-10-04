@@ -4,10 +4,12 @@ import { useElementSize } from '@vueuse/core'
 import type { ArtboardState } from '~/types/banner-studio'
 import { resolveBannerFormat } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
+import { apiErrorDescription } from '~/utils/apiError'
 
 type Canvas = Record<string, ArtboardState>
 type Message = { role: 'user' | 'assistant', content: string }
-type Proposal = { reply: string, model: string, canvasData: Canvas, caption?: string, suggestedSchedule?: string }
+type DesignReference = { id: string, name: string, kind: 'image' | 'guide', description: string, url?: string, guideCharacterCount?: number, analysisModel?: string }
+type Proposal = { reply: string, model: string, canvasData: Canvas, caption?: string, suggestedSchedule?: string, context?: { brandKit: string | null, clientStyleGuide: boolean, references: Array<{ id: string, name: string, kind: 'image' | 'guide' }> } }
 const props = defineProps<{ open: boolean, projectId: string }>()
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -19,6 +21,15 @@ const { getExportCustomFonts } = useBannerFonts()
 const prompt = ref('')
 const brief = ref('')
 const messages = ref<Message[]>([])
+const references = ref<DesignReference[]>([])
+const referenceFiles = ref<File[]>([])
+const uploadingReference = ref(false)
+const uploadingName = ref('')
+const attachmentErrors = ref<string[]>([])
+const expandedReference = ref<string | null>(null)
+let uploadVersion = 0
+let uploadController: AbortController | undefined
+const guideCharacters = computed(() => references.value.reduce((total, item) => total + (item.guideCharacterCount || 0), 0))
 const model = ref<'auto' | 'fast' | 'quality'>('auto')
 const allowLocked = ref(false)
 const advanced = ref(false)
@@ -37,7 +48,8 @@ let controller: AbortController | undefined
 const snapshot = computed(() => JSON.stringify(getCanvasData()))
 const stale = computed(() => !!proposal.value && (proposalProjectId.value !== props.projectId || proposalClientId.value !== clientId.value || sourceSnapshot.value !== snapshot.value))
 const applied = computed(() => !!appliedSnapshot.value && appliedSnapshot.value === snapshot.value && proposalProjectId.value === props.projectId && proposalClientId.value === clientId.value)
-const canRequest = computed(() => !!prompt.value.trim() && !pending.value && props.projectId !== 'new' && state.project?.id === props.projectId)
+const canRequest = computed(() => !!prompt.value.trim() && !uploadingReference.value && !pending.value && props.projectId !== 'new' && state.project?.id === props.projectId)
+const canAttach = computed(() => !pending.value && !uploadingReference.value && references.value.length < 6 && props.projectId !== 'new' && state.project?.id === props.projectId)
 const formats = computed(() => Object.keys(proposal.value?.canvasData || {}).flatMap((key) => {
   const format = resolveBannerFormat(key)
   if (!format) return []
@@ -67,12 +79,20 @@ function storageKey(id: string) {
 }
 function persist() {
   try {
-    sessionStorage.setItem(storageKey(props.projectId), JSON.stringify({ messages: messages.value.slice(-20), brief: brief.value.slice(0, 4000) }))
+    sessionStorage.setItem(storageKey(props.projectId), JSON.stringify({ messages: messages.value.slice(-20), brief: brief.value.slice(0, 4000), references: references.value }))
   } catch { /* Private browsing or a full session store must not block editing. */ }
 }
 watch([() => props.projectId, clientId], () => {
   requestVersion++
   controller?.abort()
+  uploadVersion++
+  uploadController?.abort()
+  uploadingReference.value = false
+  uploadingName.value = ''
+  attachmentErrors.value = []
+  referenceFiles.value = []
+  references.value = []
+  expandedReference.value = null
   pending.value = false
   proposal.value = null
   appliedSnapshot.value = ''
@@ -88,12 +108,96 @@ watch([() => props.projectId, clientId], () => {
         .slice(-20).map((m: Message) => ({ role: m.role, content: m.content.slice(0, 4000) }))
     }
     if (typeof saved?.brief === 'string') brief.value = saved.brief.slice(0, 4000)
+    if (Array.isArray(saved?.references)) {
+      for (const candidate of saved.references.slice(0, 6)) {
+        const item = normalizeReference(candidate)
+        if (!item || references.value.some(reference => reference.id === item.id)) continue
+        if (item.kind === 'image' && references.value.filter(reference => reference.kind === 'image').length >= 3) continue
+        if (item.kind === 'guide' && guideCharacters.value + (item.guideCharacterCount || 0) > 12000) continue
+        references.value.push(item)
+      }
+    }
   } catch { /* Invalid history can be replaced by the next successful request. */ }
 }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => {
   requestVersion++
   controller?.abort()
+  uploadVersion++
+  uploadController?.abort()
 })
+
+function normalizeReference(value: unknown): DesignReference | null {
+  if (!value || typeof value !== 'object') return null
+  const item = value as Partial<DesignReference>
+  if (typeof item.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(item.id) || !['image', 'guide'].includes(item.kind || '') || typeof item.name !== 'string' || typeof item.description !== 'string') return null
+  if (item.kind === 'guide' && (!Number.isInteger(item.guideCharacterCount) || item.guideCharacterCount! < 1 || item.guideCharacterCount! > 12000)) return null
+  return {
+    id: item.id, kind: item.kind!, name: item.name.slice(0, 200), description: item.description.slice(0, 4000),
+    ...(typeof item.url === 'string' && /^https?:\/\//.test(item.url) ? { url: item.url.slice(0, 4000) } : {}),
+    ...(item.kind === 'guide' ? { guideCharacterCount: item.guideCharacterCount } : {}),
+    ...(typeof item.analysisModel === 'string' ? { analysisModel: item.analysisModel.slice(0, 200) } : {})
+  }
+}
+async function uploadReferences(files: File[] | null) {
+  if (!files?.length || !canAttach.value) return
+  attachmentErrors.value = []
+  if (references.value.length + files.length > 6) {
+    attachmentErrors.value = ['Attach at most six references and guides in total.']
+    referenceFiles.value = []
+    return
+  }
+  const version = ++uploadVersion
+  const projectId = props.projectId
+  const contextClientId = clientId.value
+  const current = () => version === uploadVersion && props.projectId === projectId && clientId.value === contextClientId
+  uploadController = new AbortController()
+  uploadingReference.value = true
+  try {
+    for (const file of files) {
+      if (!current()) return
+      uploadingName.value = file.name
+      try {
+        const extension = file.name.split('.').pop()?.toLowerCase()
+        const isGuide = ['txt', 'md', 'markdown'].includes(extension || '')
+        let characterCount: number | undefined
+        if (isGuide) {
+          if (file.size > 48000) throw new Error('Guides must total 12,000 text characters or fewer.')
+          characterCount = (await file.text()).trim().length
+          if (!current()) return
+          if (!characterCount || guideCharacters.value + characterCount > 12000) throw new Error('Guides must contain text and total 12,000 characters or fewer.')
+        } else {
+          if (!['png', 'jpg', 'jpeg', 'webp'].includes(extension || '')) throw new Error('Use PNG, JPEG or WebP images, or TXT/Markdown guides. PDF is not supported.')
+          if (file.size > 5 * 1024 * 1024) throw new Error('Reference images must be 5 MB or smaller.')
+          if (references.value.filter(item => item.kind === 'image').length >= 3) throw new Error('Attach at most three reference images.')
+        }
+        const body = new FormData()
+        body.append('projectId', projectId)
+        body.append('file', file)
+        const result = await $fetch<{ reference: DesignReference }>('/api/agency/banner-studio/ai/references', { method: 'POST', body, signal: uploadController.signal })
+        if (!current()) return
+        const item = normalizeReference({ ...result.reference, ...(isGuide ? { guideCharacterCount: result.reference.guideCharacterCount ?? characterCount } : {}) })
+        if (!item) throw new Error('Reference analysis could not be confirmed. Please upload it again.')
+        references.value.push(item)
+        persist()
+      } catch (cause: unknown) {
+        if (!current()) return
+        attachmentErrors.value.push(`${file.name}: ${apiErrorDescription(cause, 'Upload or analysis failed. Try again.')}`)
+      }
+    }
+  } finally {
+    if (current()) {
+      uploadingReference.value = false
+      uploadingName.value = ''
+      referenceFiles.value = []
+    }
+  }
+}
+function removeReference(id: string) {
+  if (pending.value || uploadingReference.value) return
+  references.value = references.value.filter(item => item.id !== id)
+  if (expandedReference.value === id) expandedReference.value = null
+  persist()
+}
 
 async function requestProposal() {
   if (!canRequest.value) return
@@ -110,7 +214,7 @@ async function requestProposal() {
   try {
     const result = await $fetch<Proposal>('/api/agency/banner-studio/ai/design-assist', {
       method: 'POST', signal: controller.signal,
-      body: { projectId, prompt: text, brief: brief.value, history, canvasData, activeKey: state.activeKey, model: model.value, allowLocked: allowLocked.value }
+      body: { projectId, prompt: text, brief: brief.value, history, canvasData, activeKey: state.activeKey, model: model.value, allowLocked: allowLocked.value, referenceIds: references.value.map(item => item.id) }
     })
     if (version !== requestVersion || props.projectId !== projectId || clientId.value !== requestClientId) return
     proposal.value = result
@@ -147,6 +251,8 @@ function prepareSocial() {
 }
 function clearConversation() {
   messages.value = []
+  references.value = []
+  expandedReference.value = null
   brief.value = ''
   discard()
   persist()
@@ -189,6 +295,78 @@ const quickActions = [
             @blur="persist"
           />
         </UFormField>
+        <section aria-label="References and guides" class="space-y-3 rounded-lg border border-default p-3">
+          <UFormField label="Reference images and design guides" help="Describe how to use each reference in your brief. Ready attachments are included in your next request.">
+            <UFileUpload
+              v-model="referenceFiles"
+              multiple
+              reset
+              :preview="false"
+              accept="image/png,image/jpeg,image/webp,.txt,.md,.markdown"
+              label="Add images or guides"
+              description="Up to 3 images · 5 MB each · TXT/Markdown guides"
+              class="w-full"
+              :disabled="!canAttach"
+              @update:model-value="uploadReferences"
+            />
+          </UFormField>
+          <p class="text-xs text-muted">
+            {{ references.length }}/6 attachments · {{ guideCharacters.toLocaleString() }}/12,000 guide characters. PDF is not supported; upload a text/Markdown version or reference images of its pages.
+          </p>
+          <p
+            v-if="uploadingReference"
+            role="status"
+            aria-live="polite"
+            class="text-sm text-muted"
+          >
+            Uploading and preparing {{ uploadingName }}… Images are attached only after visual analysis succeeds.
+          </p>
+          <UAlert
+            v-if="attachmentErrors.length"
+            title="Some references were not attached"
+            :description="attachmentErrors.join(' ')"
+            color="error"
+          />
+          <article v-for="reference in references" :key="reference.id" class="space-y-2 rounded border border-default p-3">
+            <div class="flex items-start gap-3">
+              <img
+                v-if="reference.kind === 'image' && reference.url"
+                :src="reference.url"
+                :alt="`Reference: ${reference.name}`"
+                class="size-14 shrink-0 rounded bg-elevated object-contain"
+                referrerpolicy="no-referrer"
+              >
+              <UIcon v-else name="i-lucide-file-text" class="size-6 shrink-0 text-muted" />
+              <div class="min-w-0 flex-1">
+                <p class="break-words text-sm font-medium">
+                  {{ reference.name }}
+                </p>
+                <p class="text-xs text-muted">
+                  {{ reference.kind === 'image' ? 'Visual analysis ready' : 'Guide text ready' }}<span v-if="reference.analysisModel"> · {{ reference.analysisModel }}</span>
+                </p>
+              </div>
+              <UButton
+                icon="i-lucide-x"
+                :aria-label="`Remove ${reference.name}`"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                :disabled="pending || uploadingReference"
+                @click="removeReference(reference.id)"
+              />
+            </div>
+            <UButton
+              :label="expandedReference === reference.id ? 'Hide reference details' : reference.kind === 'image' ? 'Review visual analysis' : 'Review guide excerpt'"
+              variant="link"
+              size="xs"
+              :aria-expanded="expandedReference === reference.id"
+              @click="expandedReference = expandedReference === reference.id ? null : reference.id"
+            />
+            <p v-if="expandedReference === reference.id" class="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-xs text-muted">
+              {{ reference.description }}
+            </p>
+          </article>
+        </section>
         <div
           v-if="messages.length"
           role="log"
@@ -285,6 +463,17 @@ const quickActions = [
               class="max-w-full break-all"
             />
           </div>
+          <div v-if="proposal.context" class="space-y-1 text-xs text-muted" aria-label="Included design context">
+            <p v-if="proposal.context.brandKit">
+              Brand kit included: {{ proposal.context.brandKit }}
+            </p>
+            <p v-if="proposal.context.clientStyleGuide">
+              Client style guide included.
+            </p>
+            <p v-if="proposal.context.references.length">
+              References included: {{ proposal.context.references.map(item => item.name).join(', ') }}
+            </p>
+          </div>
           <UFormField label="Preview format">
             <USelect v-model="previewKey" :items="formats" class="w-full" />
           </UFormField>
@@ -363,7 +552,7 @@ const quickActions = [
           variant="ghost"
           color="neutral"
           size="sm"
-          :disabled="pending"
+          :disabled="pending || uploadingReference"
           @click="clearConversation"
         />
       </div>
