@@ -69,6 +69,7 @@ export interface Layer {
   zIndex: number
   opacity: number
   rotation?: number
+  mixBlendMode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity'
   // Visibility
   locked?: boolean
   hidden?: boolean
@@ -77,6 +78,9 @@ export interface Layer {
   fontSize?: number
   fontWeight?: number
   fontFamily?: string
+  /** Imported text can include a larger whitespace run that determines its baseline. */
+  lineBoxFontSize?: number
+  textAntialias?: boolean
   color?: string
   textTransform?: string
   letterSpacing?: string

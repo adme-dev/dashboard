@@ -68,6 +68,8 @@ function onKeydown(e: KeyboardEvent) {
         fontSize: `${layer.fontSize || 16}px`,
         fontWeight: layer.fontWeight || 400,
         fontFamily: layer.fontFamily || 'Barlow Condensed',
+        WebkitFontSmoothing: layer.textAntialias ? 'antialiased' : undefined,
+        textRendering: layer.textAntialias ? 'optimizeLegibility' : undefined,
         color: (layer.gradientColors?.length ?? 0) >= 2 ? undefined : displayColor,
         fontStyle: layer.fontStyle || 'normal',
         textShadow: layer.textShadow || 'none',
@@ -91,6 +93,10 @@ function onKeydown(e: KeyboardEvent) {
       }"
       @blur="onBlur"
       @keydown="onKeydown"
-    >{{ isEditing ? (layer.text || '') : displayText }}</div>
+    >{{ isEditing ? (layer.text || '') : displayText }}<span
+      v-if="!isEditing && layer.lineBoxFontSize && layer.lineBoxFontSize > (layer.fontSize || 16)"
+      aria-hidden="true"
+      :style="{ fontSize: `${layer.lineBoxFontSize}px` }"
+    >&#160;</span></div>
   </div>
 </template>

@@ -214,11 +214,13 @@ function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Lay
   const isBg = layer.type === 'bg'
   const kfs = layer.keyframes!
 
-  // Set initial hidden state
+  // Preserve zero-time opacity when seeking backwards to the first frame.
+  const firstOpacity = [...(kfs.opacity || [])].sort((a, b) => a.time - b.time)[0]
+  const initialOpacity = firstOpacity?.time === 0 ? firstOpacity.value : 0
   if (isBg) {
-    tl.set(el, { autoAlpha: 0, immediateRender: false }, 0)
+    tl.set(el, { autoAlpha: initialOpacity, immediateRender: false }, 0)
   } else {
-    tl.set(el, { opacity: 0, immediateRender: false }, 0)
+    tl.set(el, { opacity: initialOpacity, immediateRender: false }, 0)
   }
 
   // Build each property track (skip x/y when motion path is active)

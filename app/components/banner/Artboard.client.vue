@@ -370,6 +370,7 @@ defineExpose({ artboardEl })
         width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
         height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
         zIndex: layer.zIndex,
+        mixBlendMode: layer.mixBlendMode || 'normal',
         pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
         visibility: layer.hidden && layer.type !== 'audio' ? 'hidden' : 'visible',
         transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,

@@ -98,11 +98,14 @@ function buildKeyframeAnimLines(l: Layer): string[] {
   const kfs = l.keyframes!
   const skipXY = (l.motionPath?.length ?? 0) >= 2
 
-  // Initial hidden state
+  // A zero-time hold must restore its first opacity when scrubbing backwards.
+  // Hiding first at the same timestamp otherwise wins GSAP's reverse seek.
+  const firstOpacity = [...(kfs.opacity || [])].sort((a, b) => a.time - b.time)[0]
+  const initialOpacity = firstOpacity?.time === 0 ? firstOpacity.value : 0
   if (isBg) {
-    lines.push(`  tl.set(${sel}, { autoAlpha: 0 }, 0);`)
+    lines.push(`  tl.set(${sel}, { autoAlpha: ${initialOpacity} }, 0);`)
   } else {
-    lines.push(`  tl.set(${sel}, { opacity: 0 }, 0);`)
+    lines.push(`  tl.set(${sel}, { opacity: ${initialOpacity} }, 0);`)
   }
 
   // Build each property track (skip x/y when motion path active)
@@ -182,6 +185,9 @@ export function buildBannerHTML(
     .map((l) => {
       let style = `position:absolute;left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;opacity:${l.opacity};`
       if (l.rotation) style += `transform:rotate(${l.rotation}deg);`
+      if (l.mixBlendMode && /^(normal|multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/.test(l.mixBlendMode)) {
+        style += `mix-blend-mode:${l.mixBlendMode};`
+      }
       // Invisible geometry keeps mask keyframes and motion paths on the same timeline.
       if (l.isMask) return `<div class="layer" data-id="${l.id}" style="${style}visibility:hidden!important;pointer-events:none;"></div>`
 
@@ -209,13 +215,17 @@ export function buildBannerHTML(
       }
       if (l.type === 'text') {
         style += 'white-space:pre-wrap;word-break:break-word;'
+        if (l.textAntialias) style += '-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;'
         style += `font-size:${l.fontSize || 16}px;font-weight:${l.fontWeight || 400};font-family:'${l.fontFamily || 'Barlow Condensed'}',sans-serif;color:${l.color || '#fff'};`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
         if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
         style += `line-height:${l.lineHeight || 1.2};`
         if (l.textAlign) style += `text-align:${l.textAlign};`
         if (l.bgColor) style += `background:${l.bgColor};`
-        return `<div class="layer" data-id="${l.id}" style="${style}">${escapeHtml(l.text || '')}</div>`
+        const lineStrut = Number.isFinite(l.lineBoxFontSize) && l.lineBoxFontSize! > (l.fontSize || 16)
+          ? `<span aria-hidden="true" style="font-size:${l.lineBoxFontSize}px">&#160;</span>`
+          : ''
+        return `<div class="layer" data-id="${l.id}" style="${style}">${escapeHtml(l.text || '')}${lineStrut}</div>`
       }
       if (l.type === 'button') {
         style += `font-size:${l.fontSize || 12}px;font-weight:${l.fontWeight || 700};font-family:'${l.fontFamily || 'Barlow Condensed'}',sans-serif;`

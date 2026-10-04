@@ -14,7 +14,7 @@ const displaySrc = computed(() => getFeedOverride(props.layer.id, 'src') ?? prop
   <div
     class="absolute inset-0"
     :style="{
-      backgroundColor: layer.bgColor || '#0a0a10',
+      background: layer.bgColor || '#0a0a10',
       opacity: layer.opacity,
       pointerEvents: 'none',
     }"
