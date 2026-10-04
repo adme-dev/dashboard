@@ -64,7 +64,8 @@ export const designAssistRequestSchema = z.object({
   projectId: z.string().uuid(), prompt: z.string().trim().min(1).max(4000), brief: z.string().max(4000).optional(),
   history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(4000) }).strict()).max(12).default([]),
   canvasData: z.unknown(), activeKey: key, model: z.enum(['auto', 'fast', 'quality']).default('auto'),
-  allowLocked: z.boolean().default(false)
+  allowLocked: z.boolean().default(false),
+  referenceIds: z.array(z.string().uuid()).max(6).refine(ids => new Set(ids).size === ids.length).default([])
 }).strict()
 
 export const DESIGN_VARIANTS = {
