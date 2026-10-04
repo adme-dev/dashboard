@@ -9,7 +9,7 @@ const response = () => ({ reply: 'Refined the headline and added a story.', mode
 const fetchMock = vi.fn()
 const applyMock = vi.fn()
 const undoMock = vi.fn()
-let state: { project: { id: string }, activeKey: string, bgColor: string, sets: ReturnType<typeof initialCanvas> }
+let state: { project: { id: string, clientId: string }, activeKey: string, bgColor: string, sets: ReturnType<typeof initialCanvas> }
 let previous: ReturnType<typeof initialCanvas>
 const cleanup: Array<() => void> = []
 async function settle() {
@@ -62,7 +62,7 @@ beforeEach(() => {
   undoMock.mockReset().mockImplementation(() => {
     state.sets = previous
   })
-  state = reactive({ project: { id: 'project-1' }, activeKey: 'mrec', bgColor: '#ffffff', sets: initialCanvas() })
+  state = reactive({ project: { id: 'project-1', clientId: 'client-1' }, activeKey: 'mrec', bgColor: '#ffffff', sets: initialCanvas() })
   vi.stubGlobal('$fetch', fetchMock)
   vi.stubGlobal('useBannerStudio', () => ({ state, getCanvasData: () => JSON.parse(JSON.stringify(state.sets)), applyAssistantCanvas: applyMock, undo: undoMock, canUndo: ref(true) }))
   vi.stubGlobal('useBannerFonts', () => ({ getExportCustomFonts: () => [] }))
@@ -117,7 +117,39 @@ describe('native Banner Studio design assistant', () => {
     await settle()
     expect(view.host.querySelector('iframe')).toBeNull()
     expect(view.host.textContent).not.toContain('Refined the headline')
-    expect(sessionStorage.getItem('banner-design-chat:v1:project-2')).toBeNull()
+    expect(sessionStorage.getItem('banner-design-chat:v2:project-2:client-1')).toBeNull()
+  })
+  it('ignores an in-flight response after the same project changes client', async () => {
+    let resolve!: (data: unknown) => void
+    fetchMock.mockImplementation(() => new Promise((done) => {
+      resolve = done
+    }))
+    const view = await mount()
+    await view.request()
+    state.project.clientId = 'client-2'
+    resolve(response())
+    await settle()
+    expect(view.host.querySelector('iframe')).toBeNull()
+    expect(view.host.textContent).not.toContain('Refined the headline')
+    expect(applyMock).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem('banner-design-chat:v2:project-1:client-2')).toBeNull()
+  })
+  it('clears proposals and isolates conversation when a saved project changes client', async () => {
+    const view = await mount()
+    await view.request()
+    await view.click('Apply to canvas')
+    state.project.clientId = 'client-2'
+    await settle()
+    expect(view.host.querySelector('iframe')).toBeNull()
+    expect(view.host.querySelector('[role="log"]')).toBeNull()
+    expect(view.host.querySelector('textarea')?.value).toBe('')
+    expect(view.social).not.toHaveBeenCalled()
+    await view.request()
+    expect(fetchMock.mock.calls[1][1].body.history).toEqual([])
+    state.project.clientId = 'client-1'
+    await settle()
+    expect(view.host.querySelector('iframe')).toBeNull()
+    expect(view.host.querySelectorAll('[role="log"] > div')).toHaveLength(2)
   })
   it('allows previewing a new custom format and replaying the isolated preview', async () => {
     const view = await mount()
@@ -164,7 +196,7 @@ describe('native Banner Studio design assistant', () => {
     expect(state.sets).toEqual(initialCanvas())
   })
   it('restores bounded project history without restoring proposals', async () => {
-    sessionStorage.setItem('banner-design-chat:v1:project-1', JSON.stringify({ brief: 'Approved brand', messages: Array.from({ length: 30 }, (_, i) => ({ role: 'user', content: `Message ${i}` })) }))
+    sessionStorage.setItem('banner-design-chat:v2:project-1:client-1', JSON.stringify({ brief: 'Approved brand', messages: Array.from({ length: 30 }, (_, i) => ({ role: 'user', content: `Message ${i}` })) }))
     const view = await mount()
     expect(view.host.querySelectorAll('[role="log"] > div')).toHaveLength(20)
     expect(view.host.querySelector('textarea')?.value).toBe('Approved brand')

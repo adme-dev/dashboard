@@ -8,6 +8,7 @@ import { exportFormatLabel } from '~/utils/bannerExportPoll'
 import type { ExportJob } from '~/utils/bannerExportPoll'
 import { describeBannerVideoExportError } from '~/utils/bannerExportError'
 import { createBannerVideoExportSession } from '~/utils/bannerVideoExport'
+import { bannerRenderSuggestions, snapshotBannerSocialSuggestion } from '~/utils/bannerRenderSuggestions'
 
 const props = defineProps<{ open: boolean, initialType?: 'html5' | 'png' | 'jpg' | 'gif' | 'mp4', socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
@@ -360,6 +361,8 @@ async function exportVideos() {
   exportProgress.value = 0
 
   const projectId = state.project.id
+  const suggestionClientId = state.project.clientId
+  const socialSuggestion = snapshotBannerSocialSuggestion(props.socialSuggestion)
 
   try {
     const formats = keys.map((key) => {
@@ -390,6 +393,7 @@ async function exportVideos() {
     )
 
     if (!jobIds.length) throw new Error('No render jobs were created. Try exporting again.')
+    bannerRenderSuggestions.remember(projectId, suggestionClientId, jobIds, socialSuggestion)
     if (state.project?.id === projectId) {
       currentJobs.value = jobIds.map((jobId, index) => ({
         jobId, formatKey: formats[index]?.key || '', status: 'queued', url: null, fileSize: null, error: null

@@ -28,13 +28,15 @@ const proposal = ref<Proposal | null>(null)
 const sourceSnapshot = ref('')
 const appliedSnapshot = ref('')
 const proposalProjectId = ref('')
+const clientId = computed(() => state.project?.clientId || null)
+const proposalClientId = ref<string | null>(null)
 const previewKey = ref('')
 const replay = ref(0)
 let requestVersion = 0
 let controller: AbortController | undefined
 const snapshot = computed(() => JSON.stringify(getCanvasData()))
-const stale = computed(() => !!proposal.value && (proposalProjectId.value !== props.projectId || sourceSnapshot.value !== snapshot.value))
-const applied = computed(() => !!appliedSnapshot.value && appliedSnapshot.value === snapshot.value && proposalProjectId.value === props.projectId)
+const stale = computed(() => !!proposal.value && (proposalProjectId.value !== props.projectId || proposalClientId.value !== clientId.value || sourceSnapshot.value !== snapshot.value))
+const applied = computed(() => !!appliedSnapshot.value && appliedSnapshot.value === snapshot.value && proposalProjectId.value === props.projectId && proposalClientId.value === clientId.value)
 const canRequest = computed(() => !!prompt.value.trim() && !pending.value && props.projectId !== 'new' && state.project?.id === props.projectId)
 const formats = computed(() => Object.keys(proposal.value?.canvasData || {}).flatMap((key) => {
   const format = resolveBannerFormat(key)
@@ -61,14 +63,14 @@ const preview = computed(() => {
 })
 
 function storageKey(id: string) {
-  return `banner-design-chat:v1:${id}`
+  return `banner-design-chat:v2:${encodeURIComponent(id)}:${encodeURIComponent(clientId.value || '__unassigned__')}`
 }
 function persist() {
   try {
     sessionStorage.setItem(storageKey(props.projectId), JSON.stringify({ messages: messages.value.slice(-20), brief: brief.value.slice(0, 4000) }))
   } catch { /* Private browsing or a full session store must not block editing. */ }
 }
-watch(() => props.projectId, () => {
+watch([() => props.projectId, clientId], () => {
   requestVersion++
   controller?.abort()
   pending.value = false
@@ -87,7 +89,7 @@ watch(() => props.projectId, () => {
     }
     if (typeof saved?.brief === 'string') brief.value = saved.brief.slice(0, 4000)
   } catch { /* Invalid history can be replaced by the next successful request. */ }
-}, { immediate: true })
+}, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => {
   requestVersion++
   controller?.abort()
@@ -97,6 +99,7 @@ async function requestProposal() {
   if (!canRequest.value) return
   const version = ++requestVersion
   const projectId = props.projectId
+  const requestClientId = clientId.value
   const original = JSON.stringify(getCanvasData())
   const canvasData = proposal.value && !stale.value && !applied.value ? proposal.value.canvasData : getCanvasData()
   const text = prompt.value.trim()
@@ -109,10 +112,11 @@ async function requestProposal() {
       method: 'POST', signal: controller.signal,
       body: { projectId, prompt: text, brief: brief.value, history, canvasData, activeKey: state.activeKey, model: model.value, allowLocked: allowLocked.value }
     })
-    if (version !== requestVersion || props.projectId !== projectId) return
+    if (version !== requestVersion || props.projectId !== projectId || clientId.value !== requestClientId) return
     proposal.value = result
     sourceSnapshot.value = original
     proposalProjectId.value = projectId
+    proposalClientId.value = requestClientId
     appliedSnapshot.value = ''
     previewKey.value = Object.hasOwn(result.canvasData, state.activeKey) ? state.activeKey : Object.keys(result.canvasData)[0] || ''
     replay.value++

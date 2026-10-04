@@ -3,6 +3,7 @@ import { createExportJobPoller, exportFormatLabel, summarizeExportJobs, type Exp
 import { apiErrorDescription } from '~/utils/apiError'
 import { FORMATS } from '~/utils/banner-constants'
 import { createBannerSocialDraftSession } from '~/utils/bannerSocialDraftSession'
+import { bannerRenderSuggestions } from '~/utils/bannerRenderSuggestions'
 
 const props = defineProps<{ projectId: string, clientId?: string | null, completed: ExportJob[], open: boolean, socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
 const emit = defineEmits<{ blocked: [value: boolean] }>()
@@ -61,15 +62,16 @@ async function createDraft(job: ExportJob) {
     await navigateTo({ path: '/agency/social/publishing/compose', query: { edit: drafts[job.jobId] } })
     return
   }
+  const socialSuggestion = bannerRenderSuggestions.get(props.projectId, props.clientId, job.jobId)
   creating.value = job.jobId
   const session = sessions.get(job.jobId) || createBannerSocialDraftSession()
   sessions.set(job.jobId, session)
   try {
     const draft = await session.attempt(headers => $fetch<{ postId: string, clientId: string }>('/api/agency/banner-studio/social-draft', {
-      method: 'POST', headers, body: { renderJobId: job.jobId }
+      method: 'POST', headers, body: { renderJobId: job.jobId, socialSuggestion }
     }))
     drafts[job.jobId] = draft.postId
-    toast.add({ title: 'Social draft ready', description: 'Add your caption and choose an account before requesting approval.', color: 'success' })
+    toast.add({ title: 'Social draft ready', description: 'Review the caption and choose an account before requesting approval.', color: 'success' })
     await navigateTo({ path: '/agency/social/publishing/compose', query: { edit: draft.postId } })
   } catch (error: unknown) {
     toast.add({ title: 'Could not open social draft', description: apiErrorDescription(error, 'Try again. An existing draft will be reused.'), color: 'error' })
