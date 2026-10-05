@@ -256,7 +256,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const opKey = isBg ? 'autoAlpha' : 'opacity'
 
   // Initial hidden state — skip x/y when motion path drives position
-  const init: Record<string, any> = { [opKey]: 0, scale: 1, rotation: 0, immediateRender: false }
+  const init: Record<string, any> = { [opKey]: 0, scale: 1, rotation: layer.rotation || 0, immediateRender: false }
   if (!hasMP) { init.x = 0; init.y = 0 }
   tl.set(el, init, 0)
 
@@ -278,7 +278,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
       ? Object.fromEntries(Object.entries(preset.from).filter(([k]) => k !== 'x' && k !== 'y'))
       : { ...preset.from }
     if (Object.keys(fromProps).length > 0) {
-      const toProp: Record<string, any> = { [opKey]: layer.opacity, scale: 1, rotation: 0, duration: animDur, ease, immediateRender: false }
+      const toProp: Record<string, any> = { [opKey]: layer.opacity, scale: 1, rotation: layer.rotation || 0, duration: animDur, ease, immediateRender: false }
       if (!hasMP) { toProp.x = 0; toProp.y = 0 }
       tl.fromTo(el, fromProps, toProp, startTime)
     } else {
@@ -474,11 +474,13 @@ export function useBannerTimeline() {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (el) {
         gsap.killTweensOf(el)
-        // Reset GSAP's internal transform cache so next timeline starts clean
-        gsap.set(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, clearProps: 'transform' })
+        // Clear animated transforms, then restore the model's resting transform
+        // through GSAP so both its cache and the inline style agree. Vue does not
+        // reapply unchanged rotation bindings after an imperative style reset.
+        gsap.set(el, { clearProps: 'transform' })
+        gsap.set(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: layer.rotation || 0 })
         el.style.removeProperty('opacity')
         el.style.removeProperty('visibility')
-        el.style.removeProperty('transform')
         el.style.removeProperty('clip-path')
         // Pause and reset audio elements
         const audioEl = el.querySelector('audio') as HTMLAudioElement

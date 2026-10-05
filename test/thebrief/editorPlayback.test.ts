@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
+import gsap from 'gsap'
 import { useBannerTimeline } from '../../app/composables/useBannerTimeline'
 import type { BannerPlayback, Layer } from '../../app/types/banner-studio'
 
@@ -29,4 +30,67 @@ it.each([0, 1, 3])('editor preserves source duration and %i plays despite legacy
   standalone.kill()
   timeline.kill()
   artboard.remove()
+})
+
+it.each(['keyframes', 'fadeIn', 'slideL', 'spinIn'] as const)('preserves static rotation after %s playback, stop and rebuild', (animation) => {
+  const layer: Layer = {
+    id: 1, name: 'Vertical divider', type: 'rect', x: 0, y: 0, w: 85, h: 3,
+    zIndex: 1, opacity: 1, rotation: 90, transformOrigin: { x: 42.5, y: 1.5 },
+    animIn: animation === 'keyframes' ? 'none' : animation, animInDur: 1,
+    animOut: 'none', startTime: 0, endTime: 4,
+    ...(animation === 'keyframes'
+      ? { keyframes: {
+          y: [{ time: 0, value: -50 }, { time: 1, value: 0 }],
+          opacity: [{ time: 0, value: 0 }, { time: 1, value: 1 }, { time: 4, value: 1 }]
+        } }
+      : {})
+  }
+  const state = { sets: { imported: { layers: [layer], playback: { duration: 4, loopCount: 1 } } }, activeKey: 'imported', isLooping: false, isPlaying: false, currentTime: 0, duration: 4 }
+  vi.stubGlobal('useBannerStudio', () => ({ state, activeLayers: ref([layer]) }))
+  const artboard = document.createElement('div')
+  const element = document.createElement('div')
+  element.id = 'lyr-1'
+  element.style.transform = 'rotate(90deg)'
+  element.style.transformOrigin = '42.5px 1.5px'
+  artboard.append(element)
+  document.body.append(artboard)
+  const studio = useBannerTimeline()
+  const timeline = studio.buildTimeline(artboard, [layer])
+  const expectRestingTransform = () => {
+    expect(Number(gsap.getProperty(element, 'rotation'))).toBeCloseTo(90)
+    expect(Number(gsap.getProperty(element, 'x'))).toBeCloseTo(0)
+    expect(Number(gsap.getProperty(element, 'y'))).toBeCloseTo(0)
+    expect(Number(gsap.getProperty(element, 'scaleX'))).toBeCloseTo(1)
+    expect(element.style.transformOrigin).toBe('42.5px 1.5px')
+    expect(element.style.transform).toContain('rotate(90deg)')
+  }
+  try {
+    expectRestingTransform()
+    timeline.totalTime(1.5, false)
+    expectRestingTransform()
+    studio.stopTimeline()
+    expectRestingTransform()
+    const rebuilt = studio.buildTimeline(artboard, [layer])
+    expectRestingTransform()
+    rebuilt.totalTime(1.5, false)
+    expectRestingTransform()
+    // Rotation edits must replace the old GSAP cache when rebuilding.
+    layer.rotation = 45
+    const edited = studio.buildTimeline(artboard, [layer])
+    expect(Number(gsap.getProperty(element, 'rotation'))).toBeCloseTo(45)
+    studio.stopTimeline()
+    expect(Number(gsap.getProperty(element, 'rotation'))).toBeCloseTo(45)
+    edited.kill()
+    // Legacy non-looping playback also returns to the rotated editing state.
+    delete state.sets.imported.playback
+    const legacy = studio.buildTimeline(artboard, [layer])
+    for (let tick = 1; tick <= 40; tick++) legacy.totalTime(tick / 10, false)
+    expect(Number(gsap.getProperty(element, 'rotation'))).toBeCloseTo(45)
+    expect(element.style.transform).toContain('rotate(45deg)')
+    legacy.kill()
+  } finally {
+    studio.stopTimeline()
+    timeline.kill()
+    artboard.remove()
+  }
 })
