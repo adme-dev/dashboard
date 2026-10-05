@@ -557,21 +557,32 @@ watch([() => route.path, () => mainNav.value.length], () => {
       id="agency"
       v-model:open="open"
       collapsible
+      :collapsed-size="4"
       resizable
       class="bg-elevated/25"
       :ui="{ footer: 'lg:border-t lg:border-default' }"
     >
       <template #header="{ collapsed }">
-        <div class="flex items-center gap-2 px-2">
+        <div class="flex w-full min-w-0 items-center gap-2" :class="collapsed ? 'justify-center' : 'px-2'">
           <UButton
-            v-if="!isSpendOnlyReviewer"
+            v-if="!collapsed && !isSpendOnlyReviewer"
             to="/agency/boards"
             variant="ghost"
             color="neutral"
             icon="i-lucide-arrow-left"
+            aria-label="Back to boards"
             size="sm"
           />
-          <span v-if="!collapsed" class="font-semibold">{{ isSpendOnlyReviewer ? 'Ad Spend' : 'Workspaces' }}</span>
+          <span v-if="!collapsed" class="min-w-0 flex-1 truncate font-semibold">{{ isSpendOnlyReviewer ? 'Ad Spend' : 'Workspaces' }}</span>
+          <UTooltip :text="collapsed ? 'Expand admin navigation' : 'Collapse admin navigation'">
+            <UDashboardSidebarCollapse
+              :aria-label="collapsed ? 'Expand admin navigation' : 'Collapse admin navigation'"
+              :aria-expanded="!collapsed"
+              aria-controls="dashboard-sidebar-agency"
+              class="shrink-0"
+              size="sm"
+            />
+          </UTooltip>
         </div>
       </template>
 
@@ -579,17 +590,18 @@ watch([() => route.path, () => mainNav.value.length], () => {
         <UDashboardSearchButton v-if="!isSpendOnlyReviewer" :collapsed="collapsed" class="bg-transparent ring-default" />
 
         <!-- New Board Button -->
-        <div v-if="!isSpendOnlyReviewer" class="px-2 py-2">
-          <UButton
-            v-if="!collapsed"
-            color="primary"
-            variant="soft"
-            icon="i-lucide-plus"
-            class="w-full justify-center"
-            @click="openCreateBoard"
-          >
-            New Board
-          </UButton>
+        <div v-if="!isSpendOnlyReviewer" :class="collapsed ? 'flex justify-center py-2' : 'px-2 py-2'">
+          <UTooltip text="New Board" :disabled="!collapsed">
+            <UButton
+              color="primary"
+              variant="soft"
+              icon="i-lucide-plus"
+              :class="collapsed ? 'justify-center' : 'w-full justify-center'"
+              :label="collapsed ? undefined : 'New Board'"
+              aria-label="New Board"
+              @click="openCreateBoard"
+            />
+          </UTooltip>
         </div>
 
         <!-- Workspace List -->
@@ -608,6 +620,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
             :items="mainNav"
             orientation="vertical"
             tooltip
+            popover
           />
         </div>
 
@@ -617,6 +630,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
           :items="footerNav"
           orientation="vertical"
           tooltip
+          popover
           class="mt-auto"
         />
       </template>

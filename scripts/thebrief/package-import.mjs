@@ -2,6 +2,7 @@ import { readFile, writeFile, realpath } from 'node:fs/promises'
 import { resolve, sep, basename, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
+import { resolveGoogleFonts } from './google-fonts.mjs'
 import { convertTheBriefHtml } from './convert-html.mjs'
 import { inspectArchive } from './inspect-archive.mjs'
 import { parseTheBriefPackage } from '../../app/utils/thebrief-import.ts'
@@ -23,6 +24,12 @@ async function sourceFile(path) {
   return bytes
 }
 const candidate = await convertTheBriefHtml((await sourceFile('index.html')).toString('utf8'))
+if (candidate.warnings.some(warning => /animation not converted|additional effects are not converted/.test(warning))) throw new Error('Import held: source animation requires an adapter; no package was created')
+const external = await resolveGoogleFonts(candidate.externalFontStylesheets || [])
+if (external.fonts.length) {
+  candidate.warnings = candidate.warnings.filter(warning => !warning.startsWith('External font stylesheet requires review'))
+  candidate.warnings.push('External Google fonts snapshotted with source URLs and checksums; original historical font version requires visual review')
+}
 const assets = []
 const sourceAssets = new Map()
 const fonts = []
@@ -53,12 +60,14 @@ for (const board of Object.values(candidate.canvasData)) {
     layer.src = asset.path
   }
 }
-for (const font of candidate.fonts || []) {
+for (const font of [...(candidate.fonts || []), ...external.fonts]) {
   if (font.style !== 'normal') throw new Error('Italic/oblique font imports need a compatible font adapter')
-  const bytes = await sourceFile(font.path)
+  const bytes = font.bytes || await sourceFile(font.path)
   const sha256 = hash(bytes)
   // Distinct family identity prevents an import replacing an existing brand font.
-  const family = `${font.family.slice(0, 84)} XF ${inspection.sha256.slice(0, 12)}`
+  const externalFamily = external.receipts.filter(face => face.family === font.family).map(face => `${face.weight}:${face.sha256}`).sort().join('|')
+  const identity = externalFamily ? hash(Buffer.from(externalFamily)) : inspection.sha256
+  const family = `${font.family.slice(0, 84)} XF ${identity.slice(0, 12)}`
   for (const board of Object.values(candidate.canvasData)) for (const layer of board.layers) if (layer.fontFamily === font.family) layer.fontFamily = family
   fonts.push({ ...font, family, fileName: `${sha256}${extname(font.path)}`, mimeType: { truetype: 'font/ttf', opentype: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' }[font.format], sha256, base64: bytes.toString('base64') })
 }
@@ -66,4 +75,5 @@ const pkg = parseTheBriefPackage({ kind: 'xeroflow-thebrief-import', version: 1,
   source: { designHash: candidate.source.designHash, sha256: inspection.sha256, folder, duration: candidate.source.duration, loopCount: candidate.source.loopCount },
   canvasData: candidate.canvasData, warnings: candidate.warnings, assets, fonts })
 await writeFile(output, JSON.stringify(pkg), { mode: 0o600 })
+await writeFile(`${output}.font-receipts.json`, JSON.stringify({ sourceArchiveSha256: inspection.sha256, retrievedAt: new Date().toISOString(), resources: external.receipts }, null, 2), { mode: 0o600 })
 console.log(JSON.stringify({ output, name, assets: assets.length, fonts: fonts.length, warnings: pkg.warnings }))

@@ -75,8 +75,12 @@ export interface Layer {
   // Visibility
   locked?: boolean
   hidden?: boolean
+  /** Imported hard-cut scenes use an explicit presence window. */
+  clipToPresence?: boolean
   // Text properties
   text?: string
+  /** Safe inline superscripts; rendered only while their text matches the layer. */
+  textRuns?: Array<{ text: string, fontSize?: number, top?: number }>
   fontSize?: number
   fontWeight?: number
   fontFamily?: string
@@ -106,6 +110,8 @@ export interface Layer {
   // Button
   textColor?: string
   borderRadius?: number
+  borderWidth?: number
+  borderColor?: string
   paddingH?: number
   paddingV?: number
   // Rect

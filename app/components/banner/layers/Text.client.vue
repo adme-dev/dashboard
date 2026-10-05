@@ -13,6 +13,7 @@ const { getFeedOverride } = useBannerFeeds()
 const displayText = computed(() => getFeedOverride(props.layer.id, 'text') ?? props.layer.text ?? '')
 const displayColor = computed(() => getFeedOverride(props.layer.id, 'color') ?? props.layer.color ?? '#fff')
 
+const displayRuns = computed(() => props.layer.textRuns?.map(run => run.text).join('') === displayText.value ? props.layer.textRuns : undefined)
 const isEditing = ref(false)
 const textEl = ref<HTMLDivElement | null>(null)
 
@@ -37,7 +38,20 @@ function onBlur() {
   isEditing.value = false
   const newText = textEl.value?.innerText || ''
   if (newText !== props.layer.text) {
-    updateLayer(props.layer.id, { text: newText })
+    // Preserve supported inline typography when users edit within an imported run.
+    const textRuns: NonNullable<Layer['textRuns']> = []
+    if (props.layer.textRuns && textEl.value) {
+      const collect = (node: Node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const span = node.parentElement
+          const fontSize = Number.parseFloat(span?.style.fontSize || '')
+          const top = Number.parseFloat(span?.style.top || '')
+          textRuns.push({ text: node.textContent || '', ...(span !== textEl.value && Number.isFinite(fontSize) ? { fontSize } : {}), ...(Number.isFinite(top) ? { top } : {}) })
+        } else for (const child of node.childNodes) collect(child)
+      }
+      for (const child of textEl.value.childNodes) collect(child)
+    }
+    updateLayer(props.layer.id, { text: newText, ...(props.layer.textRuns ? { textRuns: textRuns.map(run => run.text).join('') === newText ? textRuns : undefined } : {}) })
   }
 }
 
@@ -94,10 +108,24 @@ function onKeydown(e: KeyboardEvent) {
       }"
       @blur="onBlur"
       @keydown="onKeydown"
-    >{{ isEditing ? (layer.text || '') : displayText }}<span
-      v-if="!isEditing && layer.lineBoxFontSize && layer.lineBoxFontSize > (layer.fontSize || 16)"
-      aria-hidden="true"
-      :style="{ fontSize: `${layer.lineBoxFontSize}px` }"
-    >&#160;</span></div>
+    >
+      <template v-if="displayRuns">
+        <span
+          v-for="(run, index) in displayRuns"
+          :key="index"
+          :style="{
+            fontSize: run.fontSize ? `${run.fontSize}px` : undefined,
+            position: run.top !== undefined ? 'relative' : undefined,
+            top: run.top !== undefined ? `${run.top}px` : undefined
+          }"
+        >{{ run.text }}</span>
+      </template><template v-else>
+        {{ isEditing ? (layer.text || '') : displayText }}
+      </template><span
+        v-if="!isEditing && layer.lineBoxFontSize && layer.lineBoxFontSize > (layer.fontSize || 16)"
+        aria-hidden="true"
+        :style="{ fontSize: `${layer.lineBoxFontSize}px` }"
+      >&#160;</span>
+    </div>
   </div>
 </template>

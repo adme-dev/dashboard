@@ -20,7 +20,8 @@ const displayTextColor = computed(() => getFeedOverride(props.layer.id, 'color')
       backgroundColor: displayBgColor,
       borderRadius: `${layer.borderRadius ?? 2}px`,
       opacity: layer.opacity,
-      border: layer.bgColor === 'transparent' ? '1px solid rgba(255,255,255,0.3)' : 'none'
+      boxSizing: 'border-box',
+      border: layer.borderWidth !== undefined ? `${layer.borderWidth}px solid ${layer.borderColor || 'transparent'}` : layer.bgColor === 'transparent' ? '1px solid rgba(255,255,255,0.3)' : 'none'
     }"
   >
     <span
@@ -34,7 +35,7 @@ const displayTextColor = computed(() => getFeedOverride(props.layer.id, 'color')
         WebkitTextStroke: layer.textStroke || 'unset',
         textTransform: (layer.textTransform as any) || 'uppercase',
         letterSpacing: layer.letterSpacing || '0.1em',
-        lineHeight: 1,
+        lineHeight: layer.lineHeight || 1,
         whiteSpace: 'nowrap'
       }"
     >{{ displayText }}</span>

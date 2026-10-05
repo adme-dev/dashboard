@@ -243,3 +243,23 @@ Verification: 289 tests /42 suites passed, including banner/import, QR/auth navi
 Release ledger: `/Users/paulgiurin/Documents/XeroFlow Imports/banner-workspace-release-2026-10-05.json`.
 Logs: `/private/tmp/banner-sidebar-release.log`, `/private/tmp/banner-sidebar-tests.log`, `/private/tmp/banner-sidebar-final-lint.log`.
 This UI release does not add multi-slide/button/external-font import support; the complex qualification blockers above remain.
+
+
+## 5 October — complex conversion fixes and admin navigation correction
+
+The user clarified that the requested collapse control is for the **main admin navigation**. The agency layout now uses a 4rem icon rail (previous collapsed size was zero), a labelled header collapse/expand control, persistent Nuxt UI dashboard state, tooltips and navigation-group flyouts. New Board remains available as an icon. The Banner Studio tools rail and responsive action menu remain independent controls.
+
+Import work implemented in this pass:
+- Editable native buttons preserve border width/colour/radius and typography in editor and both HTML exporters.
+- Hard-cut slide sequences retain DOM-only static artwork and absolute timing; bounded duration raised from 60 to 300 seconds consistently in package validation and playback. Forward/backward/loop seeks and final capture hold have real GSAP regression coverage.
+- Superscript runs and static rotated text retain native text; unsupported mixed styles still reject. Plain text replacements invalidate stale runs; in-place run edits retain supported inline typography.
+- Preparation resolves only allowlisted Google Fonts CSS/static font URLs, with size/time limits and redirects disabled. Full font bytes are packaged for managed upload with SHA-256 receipts. External aliases derive from the family face hashes to prevent later downloads overwriting an earlier snapshot. This preserves the fetched faces, not proof of the historical external-font version.
+- Packaging now refuses unconverted animation warnings. Original HTML/JS is never executed by preparation or uploaded as native canvas data.
+
+Original eight samples rechecked. Five Northern Motor Group packages are prepared; **no new live imports and no visual fidelity approval yet**. Three Essential Caravans layouts remain held: 3D transforms (translateZ / rotate3d), nested static rotation combined with animated scale/rotation, and one effect that crosses a slide cut. Do not call this full animation compatibility or start bulk import. The six-slide timing foundation is implemented, but these additional effects require adapters and visual comparison.
+
+Artifacts: `/Users/paulgiurin/Documents/XeroFlow Imports/Complex sample 2026-10-05/corrected-2026-10-05/` contains packages, font receipts and separate results; original baseline is retained. Repeat package preparation after code changes affecting aliases and refresh the ledger.
+
+Safari was observed on a separate Facebook Login for Business approval dialog. No clicks were made there. An asynchronous availability question is pending; preserve that flow. Main navigation collapse/expand, reload persistence, nested flyouts, narrow toolbar and the prepared imports still need live browser checks. Do not describe unit tests or downloaded production bytes as a visual check.
+
+Validation before release: 300 tests across 44 suites passed (TheBrief, banner, project mutation/GodMode, audio overlay, QR access/navigation and social suite navigation). Full `pnpm lint`: 61,881 existing errors and 782 warnings; no diagnostics on changed/new lines. Agency layout and targeted new files lint clean. `pnpm deploy:check` passed on Node 24.18.0; latest fetched main is `8c8a5b5c4b6ccb6a17dc7a9405169ac4bc671f0e`, contained in this branch. Deployment result must be appended after the guarded build.

@@ -171,7 +171,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry) {
   return { tracks, transformOrigin }
 }
 
-/** Offline single-slide CSS export adapter. Source scripts are parsed, never run. */
+/** Offline CSS export adapter for bounded, hard-cut slide sequences. Source scripts are parsed, never run. */
 export async function convertTheBriefHtml(html) {
   if (Buffer.byteLength(html) > 2 * 1024 * 1024) throw new Error('HTML exceeds pilot limit')
   const window = new Window({ settings: { enableJavaScriptEvaluation: false, disableJavaScriptFileLoading: true, disableCSSFileLoading: true, disableIframePageLoading: true } })
@@ -179,20 +179,38 @@ export async function convertTheBriefHtml(html) {
     window.document.write(html)
     const document = window.document
     const source = sourceData(document)
-    if (source.animations?.length !== 1 || source.animations[0].type !== 'slide' || source.customAnimations?.length) throw new Error('Pilot supports single-slide exports without custom animations')
-    const slide = source.animations[0]
-    if (slide.effInDuration || slide.effOutDuration || slide.stop) throw new Error('Slide transitions/stop are not supported')
-    const duration = slide.duration / 1000
-    if (!(duration > 0 && duration <= 60) || !Number.isInteger(source.width) || !Number.isInteger(source.height) || source.width <= 0 || source.height <= 0 || source.width > 4096 || source.height > 4096) throw new Error('Invalid dimensions or duration')
+    if (!source.animations?.length || source.animations.length > 50 || source.customAnimations?.length) throw new Error('Unsupported slide sequence or custom animations')
+    let duration = 0
+    const slides = source.animations.map((slide) => {
+      if (slide.type !== 'slide' || !Array.isArray(slide.elements)) throw new Error('Invalid slide metadata')
+      if (slide.effInDuration || slide.effOutDuration || slide.stop || (slide.crossTypeOut && slide.crossTypeOut !== 'hide')) throw new Error('Slide transitions/stop are not supported')
+      if (!Number.isFinite(slide.duration) || slide.duration <= 0) throw new Error('Invalid slide duration')
+      const start = duration
+      duration += slide.duration / 1000
+      return { ...slide, start, end: duration }
+    })
+    if (new Set(slides.map(slide => slide.id)).size !== slides.length) throw new Error('Duplicate slide identity')
+    if (!(duration > 0 && duration <= 300) || !Number.isInteger(source.width) || !Number.isInteger(source.height) || source.width <= 0 || source.height <= 0 || source.width > 4096 || source.height > 4096) throw new Error('Invalid dimensions or duration')
     const style = element => window.getComputedStyle(element)
     const root = document.getElementById('designContainer')
     if (!root) throw new Error('Missing design container')
     const elements = [...root.querySelectorAll('[data-eltype][id^="element-"]')]
-    if (elements.length > 100) throw new Error('Too many elements')
+    const slideByElement = new Map()
+    for (const slide of slides) {
+      const container = document.getElementById(`slide-${slide.id}`)
+      if (!container || !root.contains(container)) throw new Error('Missing slide container')
+      for (const element of container.querySelectorAll('[data-eltype][id^="element-"]')) {
+        if (slideByElement.has(element)) throw new Error('Nested slide containers are unsupported')
+        slideByElement.set(element, slide)
+      }
+    }
+    if (elements.some(element => !slideByElement.has(element)) || new Set(elements.map(element => element.id)).size !== elements.length) throw new Error('Ambiguous element ownership')
+    if (elements.length > 150) throw new Error('Too many elements')
     const rules = [...document.styleSheets].flatMap(sheet => [...sheet.cssRules].filter(rule => rule.type === 7))
     if (!Number.isInteger(source.loopCount) || source.loopCount < 0 || source.loopCount > 1000) throw new Error('Unsupported source loop count')
     const warnings = []
     const fonts = fontManifest(document, warnings)
+    const externalFontStylesheets = [...document.querySelectorAll('link[rel="stylesheet"][href]')].map(link => link.getAttribute('href')).filter(href => /^https:\/\/fonts\.googleapis\.com\//i.test(href))
     if (source.hasClickTag || document.querySelector('a[href], [onclick]')) warnings.push('Click destinations are not migrated by this pilot')
     const layers = []
     const sourceElements = []
@@ -213,12 +231,13 @@ export async function convertTheBriefHtml(html) {
     for (const element of elements) {
       const css = style(element)
       const sourceId = Number(element.id.replace('element-', ''))
+      const slide = slideByElement.get(element)
       const timing = slide.elements.find(item => item.id === sourceId) || {}
-      const start = (timing.from || 0) / 1000
-      const end = Math.min(duration, timing.duration === undefined ? duration : start + timing.duration / 1000)
+      const start = slide.start + (timing.from || 0) / 1000
+      const end = Math.min(slide.end, timing.duration === undefined ? slide.end : start + timing.duration / 1000)
       if (!(start >= 0 && end > start)) throw new Error('Invalid element presence')
-      if (end !== duration) throw new Error('Elements ending before the loop need a visibility adapter')
-      const layerBase = { ...base, x: px(css.left), y: px(css.top), w: px(css.width), h: px(css.height), zIndex: id, startTime: start, endTime: end }
+      const clipToPresence = slides.length > 1 || end < duration
+      const layerBase = { ...base, x: px(css.left), y: px(css.top), w: px(css.width), h: px(css.height), zIndex: id, startTime: start, endTime: end, ...(clipToPresence ? { clipToPresence: true } : {}) }
       if ([layerBase.x, layerBase.y, layerBase.w, layerBase.h].some(n => !Number.isFinite(n))) throw new Error('Unsupported element geometry')
       if (css.mixBlendMode && css.mixBlendMode !== 'normal') {
         if (/^(multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/.test(css.mixBlendMode)) layerBase.mixBlendMode = css.mixBlendMode
@@ -232,7 +251,7 @@ export async function convertTheBriefHtml(html) {
         const exit = document.getElementById(`effOut${sourceId}`)
         if (exit) {
           const exitStart = start + seconds(style(exit).animationDelay || '0s')
-          if (exitStart >= duration) warnings.push(`${exit.id}: exit at ${exitStart}s is outside the ${duration}s loop`)
+          if (exitStart >= slide.end) warnings.push(`${exit.id}: exit at ${exitStart}s is outside the ${duration}s loop`)
           else throw new Error('Visible exit animation needs an adapter')
         }
       } catch (error) {
@@ -252,26 +271,68 @@ export async function convertTheBriefHtml(html) {
       if (type === 'text') {
         const rows = [...element.querySelectorAll('.row')]
         if (!rows.length) throw new Error('Unsupported text layout')
+        const rotations = [...element.querySelectorAll('div')].map(div => style(div).transform).filter(t => t && t !== 'none')
+        if (rotations.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t)) || rotations.length > 1) throw new Error('Unsupported static text transform')
+        const rotation = rotations.length ? Number.parseFloat(rotations[0].slice(7)) : 0
+        if (rotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) throw new Error('Nested text rotation with scale/rotation needs an adapter')
+        if (rotation) {
+          layerBase.rotation = rotation
+          layerBase.transformOrigin = { x: layerBase.w / 2, y: layerBase.h / 2 }
+        }
         let y = layerBase.y
         for (const row of rows) {
           const rowCss = style(row)
-          const span = [...row.querySelectorAll('span')].find(item => item.textContent.trim()) || row
+          const span = [...row.querySelectorAll('span')].find(item => item.textContent.trim() && !item.closest('sup')) || row
           const textCss = style(span)
           const textTransform = textCss.textTransform || rowCss.textTransform || 'none'
           if (!['none', 'uppercase', 'lowercase', 'capitalize'].includes(textTransform)) throw new Error('Unsupported text transform')
           if (textCss.fontStyle && textCss.fontStyle !== 'normal') warnings.push(`${element.id}: ${textCss.fontStyle} text is not preserved by native export`)
           const runs = [...row.querySelectorAll('span')].filter(item => item.textContent.trim())
           const signature = node => ['fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'color', 'letterSpacing'].map(key => style(node)[key]).join('|')
-          if (new Set(runs.map(signature)).size > 1) throw new Error('Mixed styled text within a line needs an adapter')
+          if (new Set(runs.filter(item => !item.closest('sup')).map(signature)).size > 1) throw new Error('Mixed styled text within a line needs an adapter')
+          const textRuns = []
+          if (row.querySelector('sup')) {
+            const walk = (node) => {
+              if (node.nodeType === 3 && node.textContent) {
+                const parent = node.parentElement
+                const runCss = style(parent)
+                if (['fontFamily', 'fontWeight', 'fontStyle', 'color', 'letterSpacing'].some(key => runCss[key] !== textCss[key])) throw new Error('Mixed styled superscript needs an adapter')
+                const sup = parent.closest('sup')
+                if (sup) {
+                  const supCss = style(sup)
+                  if (supCss.position !== 'relative' || supCss.verticalAlign !== 'baseline' || !Number.isFinite(px(supCss.top))) throw new Error('Unsupported superscript positioning')
+                  textRuns.push({ text: node.textContent, fontSize: px(runCss.fontSize), top: px(supCss.top) })
+                } else {
+                  if (runCss.fontSize !== textCss.fontSize) throw new Error('Mixed styled text within a line needs an adapter')
+                  textRuns.push({ text: node.textContent })
+                }
+              } else for (const child of node.childNodes) walk(child)
+            }
+            walk(row)
+          }
           const fontSize = px(textCss.fontSize)
           const lineBoxFontSize = Math.max(fontSize, ...[...row.querySelectorAll('span')].map(item => px(style(item).fontSize)))
           const lineHeight = /^\d*\.?\d+$/.test(rowCss.lineHeight) ? Number(rowCss.lineHeight) : px(rowCss.lineHeight) / fontSize
           const height = lineBoxFontSize * lineHeight
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
-          if (row.textContent.trim()) layers.push({ ...layerBase, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.trim(), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: textCss.color, textAlign: textCss.textAlign || 'left', letterSpacing: textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
+          if (row.textContent.trim()) layers.push({ ...layerBase, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.trim(), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: textCss.color, textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
         }
         if (new Set(rows.map(row => style(row).fontSize)).size > 1) warnings.push(`${element.id}: mixed-size text split into editable lines; baseline alignment needs visual review`)
+      } else if (type === 'button') {
+        const button = element.querySelector('button')
+        const label = button?.querySelector('label')
+        if (!button || !label) throw new Error('Unsupported button structure')
+        const buttonCss = style(button), textCss = style(label)
+        const borders = ['Top', 'Right', 'Bottom', 'Left'].map(side => [buttonCss[`border${side}Width`], buttonCss[`border${side}Style`], buttonCss[`border${side}Color`]].join('|'))
+        if (new Set(borders).size !== 1 || buttonCss.borderTopStyle !== 'solid') throw new Error('Unsupported button border')
+        if (['paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight'].some(key => px(buttonCss[key]) !== 0)) throw new Error('Unsupported button padding')
+        const radii = ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight'].map(corner => buttonCss[`border${corner}Radius`])
+        if (new Set(radii).size !== 1 || !Number.isFinite(px(radii[0]))) throw new Error('Unsupported button radii')
+        layers.push({ ...layerBase, id: id++, type: 'button', name: label.textContent.trim().slice(0, 60), text: label.textContent.trim(),
+          bgColor: buttonCss.backgroundColor, borderWidth: px(buttonCss.borderTopWidth), borderColor: buttonCss.borderTopColor, borderRadius: px(radii[0]),
+          fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontSize: px(textCss.fontSize), fontWeight: Number(textCss.fontWeight) || 400,
+          textColor: textCss.color, lineHeight: Number(textCss.lineHeight), letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing, textTransform: textCss.textTransform || 'none' })
       } else if (type === 'svg' || type === 'image') {
         const image = element.querySelector('img')
         const content = document.getElementById(`c-${sourceId}`)
@@ -295,9 +356,9 @@ export async function convertTheBriefHtml(html) {
       } else {
         throw new Error(`Unsupported layer type: ${type}`)
       }
-      sourceElements.push({ sourceId, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start, end })
+      sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start, end })
     }
-    return { schemaVersion: 1, adapter: 'thebrief-css-single-slide-pilot', fidelityVerified: false, fonts, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, canvasData: { [`custom_${source.width}x${source.height}`]: { playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
+    return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, canvasData: { [`custom_${source.width}x${source.height}`]: { playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
   } finally {
     await window.happyDOM.close()
   }

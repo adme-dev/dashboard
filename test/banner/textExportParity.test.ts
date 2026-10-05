@@ -54,3 +54,50 @@ describe('multiline editor/export parity', () => {
     editor.unmount()
   })
 })
+
+it('keeps imported button borders, line height and case identical in editor and both exports', () => {
+  vi.stubGlobal('computed', computed)
+  vi.stubGlobal('useBannerFeeds', () => ({ getFeedOverride: () => undefined }))
+  const layer = { id: 1, type: 'button', text: 'Find out more', fontFamily: 'Arial', fontWeight: 600, fontSize: 32, lineHeight: 1.4, textTransform: 'none', letterSpacing: '0px', borderWidth: 4, borderColor: '#fff', borderRadius: 50, bgColor: '#eb0a1e', x: 0, y: 0, w: 524, h: 79, zIndex: 1 } as Layer
+  const root = document.createElement('div')
+  const editor = createApp(ButtonLayer, { layer, isActive: true })
+  editor.mount(root)
+  try {
+    const html = buildBannerHTML('mrec', [layer], { includeAnimations: false })
+    expect(serverBuilder('mrec', [layer], { includeAnimations: false })).toBe(html)
+    const exported = new DOMParser().parseFromString(html, 'text/html').querySelector('[data-id="1"]') as HTMLElement
+    const outer = root.firstElementChild as HTMLElement
+    const label = root.querySelector('span')!
+    expect(exported.style.border).toBe(outer.style.border)
+    expect(exported.style.boxSizing).toBe(outer.style.boxSizing)
+    expect(exported.style.lineHeight).toBe(label.style.lineHeight)
+    expect(exported.style.textTransform).toBe(label.style.textTransform)
+  } finally { editor.unmount() }
+})
+
+it('keeps safe superscript runs in editor and exports, and ignores stale runs after a plain text edit', () => {
+  vi.stubGlobal('computed', computed)
+  vi.stubGlobal('ref', ref)
+  vi.stubGlobal('nextTick', nextTick)
+  vi.stubGlobal('useBannerStudio', () => ({ updateLayer: vi.fn() }))
+  vi.stubGlobal('useBannerFeeds', () => ({ getFeedOverride: () => undefined }))
+  const layer = { id: 1, type: 'text', text: '2nd Dec', textRuns: [{ text: '2' }, { text: 'nd', fontSize: 14, top: -5 }, { text: ' Dec' }], x: 0, y: 0, w: 200, h: 40, zIndex: 1 } as Layer
+  const root = document.createElement('div')
+  const editor = createApp(TextLayer, { layer, isActive: true })
+  editor.mount(root)
+  try {
+    const html = buildBannerHTML('mrec', [layer], { includeAnimations: false })
+    expect(serverBuilder('mrec', [layer], { includeAnimations: false })).toBe(html)
+    const exported = new DOMParser().parseFromString(html, 'text/html').querySelector('[data-id="1"]') as HTMLElement
+    const spans = [...root.querySelectorAll('[contenteditable] span')]
+    expect(exported.textContent).toBe('2nd Dec')
+    expect([...exported.children].map(el => (el as HTMLElement).style.cssText)).toEqual(spans.map(el => (el as HTMLElement).style.cssText))
+    expect(buildBannerHTML('mrec', [{ ...layer, text: 'New date' }], { includeAnimations: false })).not.toContain('top:-5px')
+  } finally { editor.unmount() }
+})
+
+it('exports a new text layer before any text or runs have been set', () => {
+  const layer = { id: 1, type: 'text', x: 0, y: 0, w: 200, h: 40, zIndex: 1 } as Layer
+  expect(() => buildBannerHTML('mrec', [layer], { includeAnimations: false })).not.toThrow()
+  expect(serverBuilder('mrec', [layer], { includeAnimations: false })).toBe(buildBannerHTML('mrec', [layer], { includeAnimations: false }))
+})

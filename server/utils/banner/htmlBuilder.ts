@@ -93,9 +93,9 @@ function kfGsapProp(prop: KeyframeProperty, isBg: boolean): string {
 }
 
 /** Generate GSAP animation JS lines for a keyframe-based layer */
-function buildKeyframeAnimLines(l: Layer): string[] {
+function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
   const lines: string[] = []
-  const isBg = l.type === 'bg'
+  const isBg = l.type === 'bg' && !l.clipToPresence
   const sel = `'[data-id="${l.id}"]'`
   const kfs = l.keyframes!
   const skipXY = (l.motionPath?.length ?? 0) >= 2
@@ -132,6 +132,12 @@ function buildKeyframeAnimLines(l: Layer): string[] {
       const ease = from.easing || 'power2.out'
       lines.push(`  tl.to(${sel}, { ${gProp}: ${to.value}, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
     }
+  }
+
+  if (l.clipToPresence) {
+    lines.push(`  tl.set(${sel}, { visibility: '${l.startTime === 0 ? 'visible' : 'hidden'}' }, 0);`)
+    if (l.startTime > 0) lines.push(`  tl.set(${sel}, { visibility: 'visible' }, ${l.startTime});`)
+    if (l.endTime !== cycleEnd) lines.push(`  tl.set(${sel}, { visibility: 'hidden' }, ${l.endTime});`)
   }
 
   // Motion path tweens (chained)
@@ -190,6 +196,7 @@ export function buildBannerHTML(
       let style = `position:absolute;left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;opacity:${l.opacity};`
       const transformOrigin = layerTransformOrigin(l.transformOrigin)
       if (transformOrigin) style += `transform-origin:${transformOrigin};`
+      if (l.clipToPresence && l.startTime > 0) style += 'visibility:hidden;'
       if (l.rotation) style += `transform:rotate(${l.rotation}deg);`
       if (l.mixBlendMode && /^(normal|multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/.test(l.mixBlendMode)) {
         style += `mix-blend-mode:${l.mixBlendMode};`
@@ -231,12 +238,13 @@ export function buildBannerHTML(
         const lineStrut = Number.isFinite(l.lineBoxFontSize) && l.lineBoxFontSize! > (l.fontSize || 16)
           ? `<span aria-hidden="true" style="font-size:${l.lineBoxFontSize}px">&#160;</span>`
           : ''
-        return `<div class="layer" data-id="${l.id}" style="${style}">${escapeHtml(l.text || '')}${lineStrut}</div>`
+        return `<div class="layer" data-id="${l.id}" style="${style}">${l.textRuns?.length && l.textRuns.map(run => run.text).join('') === l.text ? l.textRuns.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('') : escapeHtml(l.text || '')}${lineStrut}</div>`
       }
       if (l.type === 'button') {
         style += `font-size:${l.fontSize || 12}px;font-weight:${l.fontWeight || 700};font-family:'${l.fontFamily || 'Barlow Condensed'}',sans-serif;`
         style += `background:${l.bgColor || '#e8c84a'};color:${l.textColor || '#000'};`
-        style += `display:flex;align-items:center;justify-content:center;cursor:pointer;`
+        style += `display:flex;align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;white-space:nowrap;line-height:${l.lineHeight || 1};`
+        if (l.borderWidth !== undefined) style += `border:${l.borderWidth}px solid ${l.borderColor || 'transparent'};`
         if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
         if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
@@ -279,7 +287,7 @@ export function buildBannerHTML(
 
       // Keyframe-based layers use dedicated builder
       if (layerHasKeyframes(l)) {
-        lines.push(...buildKeyframeAnimLines(l))
+        lines.push(...buildKeyframeAnimLines(l, playback?.duration))
         // Video sync for keyframe layers
         if ((l.type === 'bg' && l.srcType === 'video') || l.type === 'video') {
           const startTime = l.startTime || 0

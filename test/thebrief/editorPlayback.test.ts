@@ -94,3 +94,49 @@ it.each(['keyframes', 'fadeIn', 'slideL', 'spinIn'] as const)('preserves static 
     artboard.remove()
   }
 })
+
+it('hard cuts imported scenes when seeking forward, backward and across loops', () => {
+  const scenes = [0, 1].map(index => ({ id: index + 1, type: 'rect', opacity: 1, x: 0, y: 0, w: 10, h: 10, startTime: index * 2, endTime: index * 2 + 2, clipToPresence: true, keyframes: { opacity: [{ time: index * 2, value: 1 }, { time: index * 2 + 2, value: 1 }] } })) as Layer[]
+  const playback = { duration: 4, loopCount: 0 }
+  const state = { sets: { imported: { layers: scenes, playback } }, activeKey: 'imported', isLooping: true, isPlaying: false, currentTime: 0, duration: 4 }
+  vi.stubGlobal('useBannerStudio', () => ({ state, activeLayers: ref(scenes) }))
+  const artboard = document.createElement('div')
+  artboard.innerHTML = '<div id="lyr-1"></div><div id="lyr-2"></div>'
+  document.body.append(artboard)
+  const studio = useBannerTimeline()
+  const timeline = studio.buildTimeline(artboard, scenes)
+  try {
+    for (const [time, expected] of [[0.1, ['visible', 'hidden']], [2.1, ['hidden', 'visible']], [0.5, ['visible', 'hidden']], [6.1, ['hidden', 'visible']], [4.1, ['visible', 'hidden']]] as const) {
+      timeline.totalTime(time, false)
+      expect([...artboard.children].map(el => (el as HTMLElement).style.visibility)).toEqual(expected)
+    }
+  } finally {
+    timeline.kill()
+    artboard.remove()
+  }
+})
+
+it('exports scene cuts that seek backwards and hold the last scene at the capture boundary', async () => {
+  const { buildBannerHTML } = await import('../../app/utils/banner-html-builder')
+  const { buildBannerHTML: serverBuilder } = await import('../../server/utils/banner/htmlBuilder')
+  const scenes = [0, 1].map(index => ({ id: index + 1, type: 'rect', opacity: 1, x: 0, y: 0, w: 10, h: 10, startTime: index * 2, endTime: index * 2 + 2, clipToPresence: true, keyframes: { opacity: [{ time: index * 2, value: 1, easing: 'linear' }, { time: index * 2 + 2, value: 1 }] } })) as Layer[]
+  const options = { playback: { duration: 4, loopCount: 1 } }
+  const html = buildBannerHTML('mrec', scenes, options)
+  expect(serverBuilder('mrec', scenes, options)).toBe(html)
+  const artboard = document.createElement('div')
+  artboard.innerHTML = '<div data-id="1"></div><div data-id="2"></div>'
+  document.body.append(artboard)
+  const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]).find(code => code.includes('const tl ='))!
+  const output = {} as { __engagrTimeline: gsap.core.Timeline }
+  try {
+    new Function('gsap', 'window', script)(gsap, output)
+    const timeline = output.__engagrTimeline.pause()
+    for (const [time, expected] of [[0.1, ['visible', 'hidden']], [2, ['hidden', 'visible']], [0, ['visible', 'hidden']], [4, ['hidden', 'visible']]] as const) {
+      timeline.totalTime(time, false)
+      expect([...artboard.children].map(el => (el as HTMLElement).style.visibility)).toEqual(expected)
+    }
+  } finally {
+    output.__engagrTimeline?.kill()
+    artboard.remove()
+  }
+})

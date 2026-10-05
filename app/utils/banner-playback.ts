@@ -1,7 +1,7 @@
 import type { BannerPlayback } from '~/types/banner-studio'
 
 export function resolveBannerPlayback(value?: BannerPlayback): BannerPlayback | undefined {
-  if (!value || !Number.isFinite(value.duration) || value.duration <= 0 || value.duration > 60
+  if (!value || !Number.isFinite(value.duration) || value.duration <= 0 || value.duration > 300
     || !Number.isInteger(value.loopCount) || value.loopCount < 0 || value.loopCount > 1000) return undefined
   return { duration: value.duration, loopCount: value.loopCount }
 }

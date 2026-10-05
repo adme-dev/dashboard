@@ -211,8 +211,8 @@ function addKeyframeTrack(
 }
 
 /** Add keyframe-based animation for a layer to a GSAP timeline */
-function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
-  const isBg = layer.type === 'bg'
+function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, cycleEnd?: number) {
+  const isBg = layer.type === 'bg' && !layer.clipToPresence
   const kfs = layer.keyframes!
 
   // Preserve zero-time opacity when seeking backwards to the first frame.
@@ -230,6 +230,12 @@ function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Lay
     if (!keyframes || keyframes.length < 2) continue
     if (skipXY && (prop === 'x' || prop === 'y')) continue
     addKeyframeTrack(tl, el, prop as KeyframeProperty, keyframes, isBg)
+  }
+
+  if (layer.clipToPresence) {
+    tl.set(el, { visibility: layer.startTime === 0 ? 'visible' : 'hidden', immediateRender: false }, 0)
+    if (layer.startTime > 0) tl.set(el, { visibility: 'visible', immediateRender: false }, layer.startTime)
+    if (layer.endTime !== cycleEnd) tl.set(el, { visibility: 'hidden', immediateRender: false }, layer.endTime)
   }
 
   // For properties without keyframes, set the default value at startTime
@@ -403,7 +409,7 @@ function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer,
 }
 
 /** Add a layer's animation to a GSAP timeline (keyframes or preset) */
-function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, soloPathLayerId?: number | null) {
+function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, soloPathLayerId?: number | null, cycleEnd?: number) {
   if (layer.type === 'audio') {
     // Audio layers skip visual animation — only sync playback
     addAudioSync(tl, el, layer)
@@ -419,7 +425,7 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
     tl.set(el, { [opKey]: layer.opacity }, layer.startTime || 0)
     tl.set(el, { [opKey]: 0 }, layer.endTime || ((layer.startTime || 0) + 3))
   } else if (hasKeyframes(layer)) {
-    buildLayerKeyframes(tl, el, layer)
+    buildLayerKeyframes(tl, el, layer, cycleEnd)
   } else {
     buildPresetLayer(tl, el, layer)
   }
@@ -480,7 +486,8 @@ export function useBannerTimeline() {
         gsap.set(el, { clearProps: 'transform' })
         gsap.set(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: layer.rotation || 0 })
         el.style.removeProperty('opacity')
-        el.style.removeProperty('visibility')
+        if (layer.clipToPresence) el.style.visibility = layer.hidden || state.currentTime < layer.startTime || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[state.activeKey]?.playback?.duration) ? 'hidden' : 'visible'
+        else el.style.removeProperty('visibility')
         el.style.removeProperty('clip-path')
         // Pause and reset audio elements
         const audioEl = el.querySelector('audio') as HTMLAudioElement
@@ -552,7 +559,7 @@ export function useBannerTimeline() {
       naturalEnd = Math.max(naturalEnd, endTime)
 
       const soloId = state.soloMotionPath ? state.selectedLayerId : null
-      addLayerToTimeline(masterTl!, el, layer, soloId)
+      addLayerToTimeline(masterTl!, el, layer, soloId, playback?.duration)
       addMaskAnimation(masterTl!, el, layer, layers)
     })
 
@@ -660,7 +667,7 @@ export function useBannerTimeline() {
     layers.forEach(layer => {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (!el) return
-      addLayerToTimeline(tl, el, layer)
+      addLayerToTimeline(tl, el, layer, null, playback?.duration)
       addMaskAnimation(tl, el, layer, layers)
     })
 

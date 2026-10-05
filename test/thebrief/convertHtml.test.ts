@@ -37,8 +37,8 @@ describe('TheBrief single-slide native conversion pilot', () => {
     await expect(convertTheBriefHtml(source.replace('width:300,height', 'width:(()=>{throw new Error("ran")})(),height'))).rejects.toThrow(/literal/i)
   })
 
-  it('rejects multiple slides instead of silently dropping one', async () => {
-    await expect(convertTheBriefHtml(source.replace('customAnimations:[]', 'customAnimations:[]').replace('animations:[', 'animations:[{type:"slide",id:2,duration:4000},'))).rejects.toThrow(/single.slide/i)
+  it('rejects malformed slide metadata instead of silently dropping a slide', async () => {
+    await expect(convertTheBriefHtml(source.replace('customAnimations:[]', 'customAnimations:[]').replace('animations:[', 'animations:[{type:"slide",id:2,duration:4000},'))).rejects.toThrow(/slide metadata/i)
   })
 
   it('reports unsupported transforms and preserves supported blend modes', async () => {

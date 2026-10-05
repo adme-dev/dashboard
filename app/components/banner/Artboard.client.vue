@@ -373,7 +373,7 @@ defineExpose({ artboardEl })
         zIndex: layer.zIndex,
         mixBlendMode: layer.mixBlendMode || 'normal',
         pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
-        visibility: layer.hidden && layer.type !== 'audio' ? 'hidden' : 'visible',
+        visibility: (layer.hidden && layer.type !== 'audio') || (layer.clipToPresence && (state.currentTime < layer.startTime || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[formatKey]?.playback?.duration))) ? 'hidden' : 'visible',
         transformOrigin: layerTransformOrigin(layer.transformOrigin),
         transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
         cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
