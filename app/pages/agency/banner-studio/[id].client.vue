@@ -129,6 +129,11 @@ watch(() => activeLayers.value, (layers) => {
 
 // Left panel tab state
 const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history'>('sets')
+const leftPanelCollapsed = useCookie<boolean>('banner-studio-sidebar-collapsed', {
+  default: () => false,
+  maxAge: 60 * 60 * 24 * 365,
+  sameSite: 'lax'
+})
 const leftTabItems = [
   { id: 'sets' as const, label: 'Sets', icon: 'i-lucide-layers' },
   { id: 'templates' as const, label: 'Templates', icon: 'i-lucide-layout-template' },
@@ -138,6 +143,12 @@ const leftTabItems = [
   { id: 'brand' as const, label: 'Brand', icon: 'i-lucide-palette' },
   { id: 'history' as const, label: 'History', icon: 'i-lucide-history' },
 ]
+function openLeftPanel(tab: string) {
+  const item = leftTabItems.find(item => item.id === tab)
+  if (!item) return
+  leftTab.value = item.id
+  leftPanelCollapsed.value = false
+}
 
 // Modals
 const showSizePicker = ref(false)
@@ -457,6 +468,15 @@ const zoomPercent = computed(() => Math.round(state.wsScale * 100))
 
 // Secondary actions live in an overflow menu so the toolbar stays scannable
 const moreMenuItems = computed(() => [[
+  { label: 'Create with AI', icon: 'i-lucide-wand-sparkles', onSelect: () => { showDesignAssistant.value = true } },
+  { label: 'From URL', icon: 'i-lucide-globe', onSelect: () => { showGenerateUrl.value = true } },
+  { label: 'Dissect artwork', icon: 'i-lucide-scan-line', onSelect: () => { showDissector.value = true } }
+], [
+  { label: 'Preview in ad placements', icon: 'i-lucide-eye', onSelect: () => { showPreview.value = true } },
+  { label: 'Ad tags & embed code', icon: 'i-lucide-code', onSelect: () => { showPublishModal.value = true } },
+  { label: 'Publish to Meta Ads', icon: 'i-lucide-megaphone', onSelect: () => { showAdPublish.value = true } },
+  ...(hasFeedBindings.value ? [{ label: 'Generate DCO variants', icon: 'i-lucide-layers', onSelect: () => { showDCOModal.value = true } }] : [])
+], [
   { label: 'Save version', icon: 'i-lucide-bookmark-plus', onSelect: () => { showSaveVersion.value = true } },
   { label: 'Save as template', icon: 'i-lucide-bookmark', onSelect: () => { showSaveTemplate.value = true } },
 ], [
@@ -471,18 +491,26 @@ const { activeSize } = useBannerFileSize()
 </script>
 
 <template>
-  <div class="flex flex-col h-[calc(100vh-0px)] overflow-hidden bg-[#1a1a1e]">
+  <div class="@container flex flex-col min-w-0 h-[calc(100vh-0px)] overflow-hidden bg-[#1a1a1e]">
     <!-- Top Toolbar -->
-    <div class="flex items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2d2d32] shrink-0">
+    <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2d2d32] shrink-0">
       <!-- Project name -->
       <div class="flex items-center gap-2 shrink-0">
         <UIcon name="i-lucide-palette" class="text-(--ui-text-muted) shrink-0" />
         <!-- Project settings: name + client. Name text hidden on narrow viewports (tab title carries it) -->
         <UPopover v-model:open="showProjectSettings">
           <UTooltip text="Project settings — name & client">
-            <button class="flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-white/[0.05] transition-colors min-w-0">
-              <span class="hidden 2xl:inline text-sm font-semibold truncate max-w-[12rem]">{{ state.project?.name || 'New Banner' }}</span>
-              <UBadge v-if="state.project?.clientName" variant="subtle" color="neutral" size="xs" class="hidden xl:inline-flex max-w-[9rem] truncate">{{ state.project.clientName }}</UBadge>
+            <button aria-label="Project settings" class="flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-white/[0.05] transition-colors min-w-0">
+              <span class="hidden @2xl:inline text-sm font-semibold truncate max-w-[12rem]">{{ state.project?.name || 'New Banner' }}</span>
+              <UBadge
+                v-if="state.project?.clientName"
+                variant="subtle"
+                color="neutral"
+                size="xs"
+                class="hidden @4xl:inline-flex max-w-[9rem] truncate"
+              >
+                {{ state.project.clientName }}
+              </UBadge>
               <UIcon name="i-lucide-chevron-down" class="w-3 h-3 text-(--ui-text-dimmed) shrink-0" />
             </button>
           </UTooltip>
@@ -517,8 +545,62 @@ const { activeSize } = useBannerFileSize()
         </UBadge>
       </div>
 
-      <div class="h-4 w-px bg-[#3a3a3f]" />
+      <!-- Essential actions remain visible; secondary actions also live in the menu. -->
+      <div class="ml-auto flex items-center gap-1 shrink-0">
+        <UTooltip :text="state.isDirty ? 'Save — unsaved changes' : 'Save'" :kbds="['meta', 'S']">
+          <UButton
+            icon="i-lucide-save"
+            aria-label="Save banner"
+            variant="ghost"
+            size="xs"
+            class="relative"
+            :loading="state.isSaving"
+            @click="handleSave"
+          >
+            <span
+              v-if="state.isDirty && !state.isSaving"
+              class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-warning ring-2 ring-[#2d2d32]"
+            />
+          </UButton>
+        </UTooltip>
+        <div class="hidden @5xl:flex items-center gap-1">
+          <UButton
+            label="Create with AI"
+            icon="i-lucide-wand-sparkles"
+            variant="soft"
+            size="xs"
+            @click="showDesignAssistant = true"
+          />
+          <UButton
+            label="Publish"
+            icon="i-lucide-megaphone"
+            variant="soft"
+            size="xs"
+            @click="showAdPublish = true"
+          />
+        </div>
+        <UButton
+          label="Export"
+          icon="i-lucide-download"
+          size="xs"
+          @click="showExportModal = true"
+        />
+        <UDropdownMenu :items="moreMenuItems" :content="{ align: 'end' }">
+          <UTooltip text="Create, preview, publish and manage this banner">
+            <UButton
+              label="Actions"
+              icon="i-lucide-ellipsis"
+              variant="soft"
+              color="neutral"
+              size="xs"
+            />
+          </UTooltip>
+        </UDropdownMenu>
+      </div>
+    </div>
 
+    <!-- Canvas controls wrap independently of project actions. -->
+    <div aria-label="Canvas controls" class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#252528] shrink-0">
       <!-- Undo / Redo -->
       <div class="flex gap-0.5">
         <UTooltip text="Undo" :kbds="['meta', 'Z']">
@@ -530,25 +612,6 @@ const { activeSize } = useBannerFileSize()
       </div>
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
-
-      <!-- Generate from URL -->
-      <UButton
-        icon="i-lucide-globe"
-        label="From URL"
-        variant="ghost"
-        size="xs"
-        @click="showGenerateUrl = true"
-      />
-      <!-- Dissect banner -->
-      <UButton
-        icon="i-lucide-scan-line"
-        label="Dissect"
-        variant="ghost"
-        size="xs"
-        @click="showDissector = true"
-      />
-
-      <div class="flex-1" />
 
       <!-- Active format chip -->
       <UButton
@@ -564,7 +627,7 @@ const { activeSize } = useBannerFileSize()
       </UButton>
 
       <!-- File size indicator -->
-      <BannerFileSizeMeter :total="activeSize.total" class="w-24 hidden 2xl:block" />
+      <BannerFileSizeMeter :total="activeSize.total" class="w-24 hidden @4xl:block" />
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
 
@@ -642,72 +705,55 @@ const { activeSize } = useBannerFileSize()
         </UTooltip>
       </div>
 
-      <div class="h-4 w-px bg-[#3a3a3f]" />
-
-      <!-- Actions: primary (Save · Preview · Ad tags · Publish · Export) + overflow -->
-      <div class="ml-auto flex items-center gap-1 shrink-0">
-      <UTooltip :text="state.isDirty ? 'Save — unsaved changes' : 'Save'" :kbds="['meta', 'S']">
-        <UButton
-          icon="i-lucide-save"
-          variant="ghost"
-          size="xs"
-          class="relative"
-          :loading="state.isSaving"
-          @click="handleSave"
-        >
-          <span
-            v-if="state.isDirty && !state.isSaving"
-            class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-warning ring-2 ring-[#2d2d32]"
-          />
-        </UButton>
-      </UTooltip>
-      <UTooltip text="Preview in ad placements">
-        <UButton icon="i-lucide-eye" variant="ghost" size="xs" @click="showPreview = true" />
-      </UTooltip>
-      <UTooltip text="Ad tags — click-through URL, pixels and embed code">
-        <UButton label="Ad tags" icon="i-lucide-code" variant="soft" size="xs" @click="showPublishModal = true" />
-      </UTooltip>
-      <UTooltip text="Publish to Meta Ads">
-        <UButton label="Publish" icon="i-lucide-megaphone" variant="soft" size="xs" @click="showAdPublish = true" />
-      </UTooltip>
-      <UButton v-if="hasFeedBindings" label="DCO" icon="i-lucide-layers" variant="soft" color="warning" size="xs" @click="showDCOModal = true" />
-        <UButton
-          label="Create with AI"
-          icon="i-lucide-wand-sparkles"
-          variant="soft"
-          size="xs"
-          @click="showDesignAssistant = true"
-        />
-      <UButton label="Export" icon="i-lucide-download" size="xs" @click="showExportModal = true" />
-      <UDropdownMenu :items="moreMenuItems" :content="{ align: 'end' }">
-        <UTooltip text="More — versions, templates, analytics, A/B tests">
-          <UButton icon="i-lucide-ellipsis" variant="ghost" size="xs" />
-        </UTooltip>
-      </UDropdownMenu>
-      </div>
     </div>
 
     <!-- Main Content -->
     <div class="flex flex-1 min-h-0 overflow-hidden">
       <!-- Left Sidebar -->
-      <div class="w-64 shrink-0 border-r border-[#3a3a3f] flex flex-col bg-[#252528]">
+      <aside
+        aria-label="Banner tools"
+        class="shrink-0 min-h-0 border-r border-[#3a3a3f] flex flex-col bg-[#252528]"
+        :class="leftPanelCollapsed ? 'w-12' : 'w-64'"
+      >
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-[#3a3a3f] p-1.5">
+          <span v-if="!leftPanelCollapsed" class="pl-1.5 text-xs font-medium text-muted">Tools & resources</span>
+          <UTooltip :text="leftPanelCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+            <UButton
+              :icon="leftPanelCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
+              :aria-label="leftPanelCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+              :aria-expanded="!leftPanelCollapsed"
+              aria-controls="banner-tools-content"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              class="shrink-0"
+              @click="leftPanelCollapsed = !leftPanelCollapsed"
+            />
+          </UTooltip>
+        </div>
         <!-- Left tabs (icon-only with tooltips) -->
-        <div class="flex items-center border-b border-[#3a3a3f] bg-[#2a2a2e]">
+        <div
+          class="flex bg-[#2a2a2e]"
+          :class="leftPanelCollapsed ? 'flex-col items-center gap-1 overflow-y-auto py-2' : 'shrink-0 items-center border-b border-[#3a3a3f]'"
+        >
           <UTooltip v-for="tab in leftTabItems" :key="tab.id" :text="tab.label" :delay-duration="300">
-            <button
-              class="flex-1 flex items-center justify-center py-2.5 transition-colors"
-              :class="leftTab === tab.id
-                ? 'text-[#4a8fe8] border-b-2 border-[#4a8fe8] bg-[#4a8fe8]/5'
-                : 'text-[#666] hover:text-[#999]'"
-              @click="leftTab = tab.id"
-            >
-              <UIcon :name="tab.icon" class="w-4 h-4" />
-            </button>
+            <UButton
+              :icon="tab.icon"
+              :aria-label="tab.label"
+              :aria-pressed="leftTab === tab.id && !leftPanelCollapsed"
+              aria-controls="banner-tools-content"
+              :variant="leftTab === tab.id ? 'soft' : 'ghost'"
+              :color="leftTab === tab.id ? 'primary' : 'neutral'"
+              size="sm"
+              class="justify-center shrink-0"
+              :class="leftPanelCollapsed ? 'size-9' : 'flex-1 rounded-none py-2.5'"
+              @click="openLeftPanel(tab.id)"
+            />
           </UTooltip>
         </div>
 
         <!-- Left panel content -->
-        <div class="flex-1 overflow-y-auto">
+        <div v-show="!leftPanelCollapsed" id="banner-tools-content" class="flex-1 min-h-0 overflow-y-auto">
           <BannerSetsPanel v-if="leftTab === 'sets'" />
           <BannerTemplatesPanel v-else-if="leftTab === 'templates'" />
           <BannerElementsPanel v-else-if="leftTab === 'elements'" />
@@ -716,10 +762,10 @@ const { activeSize } = useBannerFileSize()
           <BannerBrandPanel v-else-if="leftTab === 'brand'" />
           <BannerVersionHistoryPanel v-else-if="leftTab === 'history'" :project-id="projectId" />
         </div>
-      </div>
+      </aside>
 
       <!-- Vertical Toolbar -->
-      <BannerToolbar @switch-tab="(tab: string) => leftTab = tab as any" />
+      <BannerToolbar @switch-tab="openLeftPanel" />
 
       <!-- Center: Canvas + Timeline -->
       <div class="flex-1 flex flex-col min-w-0">

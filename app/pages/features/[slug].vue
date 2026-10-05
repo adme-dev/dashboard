@@ -2463,7 +2463,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Multi-Format Artboards',
-        content: 'Define multiple ad sizes in a single project — 300x250, 728x90, 160x600, 320x50, and any custom dimensions. Each format gets its own artboard with independent layer positioning, so you can fine-tune layouts per size while keeping shared assets and animations consistent. Add new formats at any time, and optionally use AI auto-resize to adapt layouts intelligently.'
+        content: 'Define multiple ad sizes in a single project — 300x250, 728x90, 160x600, 320x50, and any custom dimensions. Each format gets its own artboard with independent layer positioning, so you can fine-tune layouts per size while keeping shared assets and animations consistent. Collapse the tools sidebar into an icon rail for more canvas space; selecting a tool reopens its panel, and your layout preference is remembered. A wrapping canvas toolbar and labelled Actions menu keep creation and publishing controls accessible on smaller screens. Add new formats at any time, and optionally use AI auto-resize to adapt layouts intelligently.'
       },
       {
         title: 'Properties Panel',
