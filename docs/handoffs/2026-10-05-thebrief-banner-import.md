@@ -1,22 +1,23 @@
 # TheBrief → XeroFlow Banner Studio handoff
 
-Updated: 5 October 2026, Australia/Melbourne. **Work in progress — not deployed. No pilot banners have been saved into the live XeroFlow library in this turn.**
+Updated: 5 October 2026, Australia/Melbourne. **Pilot deployed; two native draft imports saved and reopened in production. Bulk migration remains pending. Final editor font correction is being verified.**
 
 ## Resume instruction
 
-Continue the approved TheBrief import pilot and compact banner-library UI. Read this document, the worktree AGENTS.md and current git diff first. Preserve uncommitted shared work. Fix the remaining import issues, visually compare the four frozen random samples, then verify save/reload in the real editor before bulk migration. Do not report the full migration or animation parity as complete.
+Continue the approved TheBrief import pilot and compact banner-library UI. Read this document, the worktree AGENTS.md and current git diff first. Preserve shared work. Read the live project and release records below. Finish any remaining visual checks, then sample structurally different animations before bulk migration. Do not report the full migration or animation parity as complete.
 
 ## Workspace and release
 
 - Worktree: `/private/tmp/xeroflow-thebrief-import-20261005`
 - Branch: `feat/thebrief-import-pilot-20261005`
-- HEAD when this document was created: `c07c0e26993d9c7a04efb9d6a8a559910ef7d7a7`
-- Last fetched origin/main: `8c8a5b5c4b6ccb6a17dc7a9405169ac4bc671f0e`; branch includes it, 90 commits ahead, zero behind. Fetch again before release; a branch name alone is not evidence of freshness.
-- Changes listed below are uncommitted. The current user cwd is the separate, dirty DriveAgent website repo: do not implement dashboard changes there.
+- Initial pilot implementation commit: `02372e0ec7e4c04900140481fba55b7e44696572`
+- Rotation reset correction: `b6fca705719d0bcb3b113837e8f73f34d035bc5d`
+- Last fetched origin/main: `8c8a5b5c4b6ccb6a17dc7a9405169ac4bc671f0e`; branch includes it, 92 commits ahead, zero behind. Fetch again before release; a branch name alone is not evidence of freshness.
+- Implementation and rotation fix are committed. Inspect current status for later font/documentation changes. The current user cwd is the separate, dirty DriveAgent website repo: do not implement dashboard changes there.
 - Use Node 24: `/Users/paulgiurin/.nvm/versions/node/v24.18.0/bin`. Default shell Node is 20.
 - node_modules symlinks to `/private/tmp/xeroflow-driveagent-facebook-rollout/node_modules`.
 - Deployment must use `pnpm deploy:check` and guarded `pnpm deploy:preview` / `pnpm deploy:production`. Target is **agency-dashboard** only. Never bypass guards or call wrangler pages deploy directly. Record source commit/deployment ID and check QR/navigation alongside banner features.
-- Existing server bundle is close to Cloudflare size limit (~45 KB headroom in previous release). HappyDOM stays offline in scripts, never in server imports.
+- Existing server bundle is close to Cloudflare size limit (~29 KB raw headroom in the pilot release). HappyDOM stays offline in scripts, never in server imports.
 - Public feature pages need an accurate update before releasing new capabilities; do not advertise complete ZIP migration.
 
 ## User intent and decisions
@@ -43,7 +44,7 @@ Private artifact root: `/Users/paulgiurin/Documents/XeroFlow Imports/Blind sampl
 - Original four ZIPs and `*.zip.inspection.json`: retained inspected archives, safe paths and SHA256s.
 - `source/<ZIP stem>/index.html`, media, fonts: extracted source bytes.
 - `*.candidate.json`: baseline candidates. Do not overwrite while claiming original blind outcomes.
-- Prepared packages now exist for all four samples as `<Creative name> Update.xeroflow.json`. They contain managed-ready media and one bundled font each; they have not been uploaded. Regenerate after further converter/packager fixes. Ignore the older `Bendigo Kia.xeroflow.json` draft package; use `Bendigo Kia Update.xeroflow.json`.
+- Prepared packages now exist for all four samples as `<Creative name> Update.xeroflow.json`. They contain managed-ready media and one bundled font each. Bendigo and Westernport have been imported; Frankston and Brighton remain held for ownership. Regenerate after further converter/packager fixes. Ignore the older `Bendigo Kia.xeroflow.json` draft package; use `Bendigo Kia Update.xeroflow.json`.
 - Previous Bay City proof: `/Users/paulgiurin/Documents/XeroFlow Imports/Bay City Auto Group - Pilot 2026-10-05`.
 - Accepted proposal: `/Users/paulgiurin/Documents/XeroFlow Imports/BANNER-LIBRARY-PROPOSAL.md`.
 
@@ -76,7 +77,7 @@ A question is pending: should Frankston GMSV belong to Frankston Motor Group, an
 
 DB credentials exist in `/Users/paulgiurin/Documents/Projects/dashboard/.env`; never print their values or mint auth tokens. Read-only inspection used dotenv.parse explicitly because inherited DATABASE_URL was empty and prevented node --env-file override. Production writes must use normal authenticated application flows and preserve God Mode execution ledger.
 
-## Implemented but unreleased
+## Implemented and deployed
 
 ### Library browsing
 
@@ -127,13 +128,22 @@ Reference is original exported CSS with scripts removed; native side is XeroFlow
 - Source duration and loop count now persist as artboard playback metadata. Editor, Play All and HTML export respect once/continuous/finite playback; frame/video capture intentionally renders one cycle. Existing projects without metadata retain defaults.
 - Converter retains source backgrounds/images, static rotation, uppercase text and uniform border radius. Unsafe/unsupported transforms remain explicit warnings. SVG artwork is rasterized with notes; source vectors retained privately.
 - Prepared packages deduplicate identical converted image bytes even when source filenames differ.
-- Build initially exceeded immutable raw Worker budget by7,460bytes. Moving browser-only import modal into `.client.vue` produced a successful build: raw25,439,713/25,468,928bytes; gzip6,951,257/9,750,000bytes. Final release rebuild still required after font-review fix.
-- Main freshly fetched; candidate includes origin/main8c8a5b5c4b6ccb6a17dc7a9405169ac4bc671f0e. Guarded deploy check passed. **No deployment or live saved-project verification yet.**
-- Combined tests before final font-review fix: **274 tests across38 suites passed**, `/private/tmp/thebrief-final-tests.log`. Final focused font/thumbnail run:9 passed. New files scoped lint clean. Full lint remains a baseline backlog:61,932errors and782warnings; do not report full lint clean.
-- Marketing feature pages now describe compact browsing accurately.
+- Initial guarded release: `02372e0ec7e4c04900140481fba55b7e44696572`, https://0297a5d3.agency-dashboard-6cm.pages.dev; production target agency-dashboard/main. Raw25,439,926/25,468,928bytes; gzip6,951,393/9,750,000bytes. Never weaken these budgets.
+- Live inspection found static rotation disappeared after GSAP cleared Vue's inline transform. Fixed reset/preset settling, added four playback/stop/rebuild/edit regressions; released `b6fca705719d0bcb3b113837e8f73f34d035bc5d` at https://eb031f63.agency-dashboard-6cm.pages.dev.
+- Final rotation test run: **287 tests across42 suites passed**, `/private/tmp/thebrief-final-rotation-tests.log`. Full lint has unchanged baseline61,932errors/782warnings (`/private/tmp/thebrief-static-rotation-lint.log`); do not call full lint clean.
+- Live Safari verified compact list/grid, client filter (Bendigo only), source-folder filter (both imports), and template gallery categories/list controls.
+- Native editor font difference identified: imported family alias includes a numeric-leading hash token; unquoted CSS font-family in native text is invalid, while quoted export/thumbnail is correct. Narrow fix in progress; recheck Bendigo against source after release.
 - Animated masks with shifted pivots, complex/multi-size source exports, and full-library compatibility remain unproven.
-- Frankston and Brighton owner mappings remain pending. Import only exact-client pilot packages first.
-- Need live library/list/grid/QR navigation checks, draft import, saved owner/tags/canvas/font verification and editor reload. Preserve full conversion notes in private migration ledger before scaling.
+- Frankston and Brighton owner mappings remain pending. No historical offers have been published.
+
+## Live pilot projects
+
+| Creative | Native project | Verified | Review hold |
+|---|---|---|---|
+| Bendigo Kia Update | https://app.xeroflow.io/agency/banner-studio/351c05c4-cdcc-4e91-9627-6545099f6c86 | Exact client selected; import GET verified saved draft; editor loads1080×1080 native layers and3.9s timeline; scrubbed1.1s shows animation | Recheck static divider after rotation release and font alias correction |
+| Westernport Ford Update | https://app.xeroflow.io/agency/banner-studio/9b20cc2f-586a-495e-851d-99a0643b6bd3 | Exact client selected; import GET verified;1000×1000 native layers; playback ends at3.0s and holds; full reload retains artwork/timeline | Exact-time-zero reference ghost remains a qualified comparison discrepancy |
+
+Both projects retain `import:needs-review`, original source hash, folder and timing. Do not re-import to overwrite edits. Server dedup by client/source hash returns existing project. New copies require an explicit separate workflow.
 
 ## Commands for next session
 
@@ -159,19 +169,19 @@ Comparison: `TSX_TSCONFIG_PATH=scripts/thebrief/tsconfig.json node --import tsx 
 
 ## Next actions in order
 
-1. Finish import/font review fixes and tests; read every changed file before commit.
-2. Generate all four current packages and font-aware private comparison pages, retaining baseline evidence separately.
-3. Compare source/native in Safari at multiple timestamps. Record failures and fixes. Add a structurally different/multi-size example before widening claims.
-4. Resolve/preserve loop behavior and pending client decisions; unassigned samples remain held.
-5. Complete UI browser verification, build/deploy guards, source freshness, public feature text and release record.
-6. Import exact-client pilot packages through authenticated XeroFlow UI. Verify project owner, source tags, dimensions, native layers, font appearance, animation and save/reload. Keep review status until passed.
-7. Only then perform controlled batches; keep a migration ledger of source→client→project IDs and QA outcomes. Never publish historical offers as part of migration.
+1. Finish live font/rotation verification and record final release/source below. Inspect current git status; do not repeat completed imports.
+2. Recheck QR Codes and template/list navigation on the final release.
+3. Confirm Frankston/Brighton ownership before any client assignment.
+4. Select additional unseen, structurally different/multi-size or masking animations. Freeze sample before inspecting. Compare source/native at entrance, middle, exit and loop/restart; preserve baseline outcomes.
+5. Only then perform controlled batches with source→client→project migration ledger. Never publish historical offers as part of migration.
+6. Direct ZIP upload, robust folder schema, full-library inventory/export and complex-engine adapters remain future increments. Prepared JSON import is the current live capability.
 
 ## Code recovery backup
 
-The primary workspace remains the worktree above. Because it is under /private/tmp and changes are not committed, a durable recovery snapshot is also stored beside this handoff:
+Primary worktree is under /private/tmp, so durable recovery artifacts are stored beside the private handoff:
 
-- `banner-import-worktree-2026-10-05.patch`: tracked-file diff against HEAD (binary-capable).
-- `banner-import-new-files-2026-10-05.tar.gz`: all untracked implementation/test/document files from this worktree, with relative paths.
+- `banner-import-2026-10-05.bundle`: committed branch history beyond origin/main; preferred recovery artifact. Fetch into an isolated checkout after inspecting refs.
+- `banner-import-worktree-2026-10-05.patch`: binary-capable diff from pre-pilot `c07c0e26993d9c7a04efb9d6a8a559910ef7d7a7` to the recorded final commit, including formerly new files.
+- `banner-import-new-files-2026-10-05.tar.gz`: historical pre-commit snapshot; superseded by bundle, do not apply over current files.
 
-Do not apply blindly over current files. Compare current branch/diff first; these are fallback recovery artifacts, not a released build. No credentials or original client creative assets are included in this code snapshot.
+Do not apply blindly. Branch includes a substantial pre-existing local commit chain; no push/merge was performed. Reconcile onto freshly fetched main before any integration. No credentials or client creative bytes are committed in the repo.
