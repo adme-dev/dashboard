@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Layer } from '~/types/banner-studio'
+import { bannerFontFamily } from '~/utils/banner-font-family'
 
 const props = defineProps<{
   layer: Layer
@@ -56,7 +57,7 @@ function onKeydown(e: KeyboardEvent) {
     :style="{
       opacity: layer.opacity,
       backgroundColor: layer.bgColor || 'transparent',
-      padding: layer.bgColor ? `${layer.paddingV || 4}px ${layer.paddingH || 10}px` : undefined,
+      padding: layer.bgColor ? `${layer.paddingV || 4}px ${layer.paddingH || 10}px` : undefined
     }"
     @dblclick="onDoubleClick"
   >
@@ -67,7 +68,7 @@ function onKeydown(e: KeyboardEvent) {
       :style="{
         fontSize: `${layer.fontSize || 16}px`,
         fontWeight: layer.fontWeight || 400,
-        fontFamily: layer.fontFamily || 'Barlow Condensed',
+        fontFamily: bannerFontFamily(layer.fontFamily),
         WebkitFontSmoothing: layer.textAntialias ? 'antialiased' : undefined,
         textRendering: layer.textAntialias ? 'optimizeLegibility' : undefined,
         color: (layer.gradientColors?.length ?? 0) >= 2 ? undefined : displayColor,
@@ -88,8 +89,8 @@ function onKeydown(e: KeyboardEvent) {
         ...((layer.gradientColors?.length ?? 0) >= 2 ? {
           background: `linear-gradient(to right, ${layer.gradientColors!.join(', ')})`,
           WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-        } : {}),
+          WebkitTextFillColor: 'transparent'
+        } : {})
       }"
       @blur="onBlur"
       @keydown="onKeydown"
