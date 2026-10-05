@@ -1,6 +1,6 @@
 # TheBrief → XeroFlow Banner Studio handoff
 
-Updated: 5 October 2026, Australia/Melbourne. **Pilot deployed; two native draft imports saved and reopened in production. Bulk migration remains pending. Editor rotation and font corrections are deployed and visually verified after reload.**
+Updated: 5 October 2026, Australia/Melbourne. **Pilot deployed; four native draft imports saved in production; the first two fully checked in the editor. Bulk migration remains pending. Editor rotation and font corrections are deployed and visually verified after reload.**
 
 ## Resume instruction
 
@@ -44,7 +44,7 @@ Private artifact root: `/Users/paulgiurin/Documents/XeroFlow Imports/Blind sampl
 - Original four ZIPs and `*.zip.inspection.json`: retained inspected archives, safe paths and SHA256s.
 - `source/<ZIP stem>/index.html`, media, fonts: extracted source bytes.
 - `*.candidate.json`: baseline candidates. Do not overwrite while claiming original blind outcomes.
-- Prepared packages now exist for all four samples as `<Creative name> Update.xeroflow.json`. They contain managed-ready media and one bundled font each. Bendigo and Westernport have been imported; Frankston and Brighton remain held for ownership. Regenerate after further converter/packager fixes. Ignore the older `Bendigo Kia.xeroflow.json` draft package; use `Bendigo Kia Update.xeroflow.json`.
+- Prepared packages now exist for all four samples as `<Creative name> Update.xeroflow.json`. They contain managed-ready media and one bundled font each. All four pilot packages have been imported under confirmed client ownership. Regenerate after further converter/packager fixes. Ignore the older `Bendigo Kia.xeroflow.json` draft package; use `Bendigo Kia Update.xeroflow.json`.
 - Previous Bay City proof: `/Users/paulgiurin/Documents/XeroFlow Imports/Bay City Auto Group - Pilot 2026-10-05`.
 - Accepted proposal: `/Users/paulgiurin/Documents/XeroFlow Imports/BANNER-LIBRARY-PROPOSAL.md`.
 
@@ -54,16 +54,16 @@ Batch export is available: select rows → Download → HTML5 → General usage 
 
 | Creative | Dimensions | Duration / source plays | Initial blind result | Client mapping |
 |---|---|---|---|---|
-| Frankston GMSV Update | 1000×1000 | 4s / continuous | Mixed-size text warning; no unsupported animation | Pending user decision |
+| Frankston GMSV Update | 1000×1000 | 4s / continuous | Mixed-size text warning; no unsupported animation | User confirmed parent-group client |
 | Westernport Ford Update | 1000×1000 | 3s / once | scale(8) text animation failed conversion | Exact client available |
 | Bendigo Kia Update | 1080×1080 | 3.9s / continuous | Shape transform-origin failed conversion | Exact client available |
-| Brighton Nissan Update | 1200×1200 | 4s / continuous | Text scale + shape transform-origin failed conversion | Pending user decision |
+| Brighton Nissan Update | 1200×1200 | 4s / continuous | Text scale + shape transform-origin failed conversion | User confirmed parent-group client |
 
 All four use CSS-keyframe exports. This sample does NOT establish compatibility with all TheBrief animation engines, masks, video, multi-size sets or complex nested effects.
 
 Sources contain bundled custom fonts: Kia Signature600, Nissan Brand300, Louis Global2Bold500, Ford Antenna300. Retain these; Google/system substitutions are not a fidelity pass.
 
-## Client IDs and pending question
+## Confirmed client IDs
 
 Read-only production lookup found:
 
@@ -73,7 +73,7 @@ Read-only production lookup found:
 - Frankston Motor Group: `8b45925c-bc32-4b7c-afc1-cfc46d81c9dd`
 - Brighton Auto Group: `6e072410-8893-4ef8-a38c-3bb655e0eaa0`
 
-A question is pending: should Frankston GMSV belong to Frankston Motor Group, and Brighton Nissan to Brighton Auto Group, or remain unassigned? Do not infer an answer from elapsed time. Exact matches can proceed independently.
+User explicitly confirmed on5October2026: Frankston GMSV belongs to Frankston Motor Group and Brighton Nissan to Brighton Auto Group, then requested continued imports. Both assignments are saved; do not ask again.
 
 DB credentials exist in `/Users/paulgiurin/Documents/Projects/dashboard/.env`; never print their values or mint auth tokens. Read-only inspection used dotenv.parse explicitly because inherited DATABASE_URL was empty and prevented node --env-file override. Production writes must use normal authenticated application flows and preserve God Mode execution ledger.
 
@@ -134,7 +134,7 @@ Reference is original exported CSS with scripts removed; native side is XeroFlow
 - Live Safari verified compact list/grid, client filter (Bendigo only), source-folder filter (both imports), and template gallery categories/list controls. QR Codes/New QR code verified authenticated after rotation release; final application change only quotes editor font families.
 - Native editor font difference identified: imported family alias includes a numeric-leading hash token; unquoted CSS font-family in native text is invalid, while quoted export/thumbnail is correct. Fixed in text/button layers by d4580cfab. Final Safari reload shows correct Kia font, intended two-line headline, source-aligned layout and vertical divider. Compared to source/native local CSS harness at3.8s; no pixel-perfect or full vendor-runtime claim.
 - Animated masks with shifted pivots, complex/multi-size source exports, and full-library compatibility remain unproven.
-- Frankston and Brighton owner mappings remain pending. No historical offers have been published.
+- Frankston and Brighton owner mappings are confirmed and imported. No historical offers have been published.
 
 ## Live pilot projects
 
@@ -142,8 +142,10 @@ Reference is original exported CSS with scripts removed; native side is XeroFlow
 |---|---|---|---|
 | Bendigo Kia Update | https://app.xeroflow.io/agency/banner-studio/351c05c4-cdcc-4e91-9627-6545099f6c86 | Exact client selected; import GET verified saved draft; editor loads1080×1080 native layers and3.9s timeline; scrubbed1.1s shows animation; continuous looping observed beyond one cycle after final release | Static divider and font/layout corrected and visually checked after full reload; retained review marker pending broader migration sign-off |
 | Westernport Ford Update | https://app.xeroflow.io/agency/banner-studio/9b20cc2f-586a-495e-851d-99a0643b6bd3 | Exact client selected; import GET verified;1000×1000 native layers; playback ends at3.0s and holds; full reload retains artwork/timeline | Exact-time-zero reference ghost remains a qualified comparison discrepancy |
+| Frankston GMSV Update | https://app.xeroflow.io/agency/banner-studio/ae7a4d3a-70ff-4da3-a9f3-b34f7f6157d7 | User-approved Frankston Motor Group owner; authenticated import reports saved; independent read confirms9layers,1000×1000,4s continuous; bundled font hash matches uploaded bytes | Final live editor visual/reload check interrupted by concurrent Safari session |
+| Brighton Nissan Update | https://app.xeroflow.io/agency/banner-studio/781db8c6-3a30-47ba-a9d6-87bf91ebf168 | User-approved Brighton Auto Group owner; saved draft; editor screenshot confirms1200×1200 artwork, rounded header, Nissan font and4s timeline; independent read confirms8layers and font hash | Live playback/reload check still pending |
 
-Both projects retain `import:needs-review`, original source hash, folder and timing. Do not re-import to overwrite edits. Server dedup by client/source hash returns existing project. New copies require an explicit separate workflow.
+All four projects retain `import:needs-review`, original source hash, folder and timing. Do not re-import to overwrite edits. Server dedup by client/source hash returns existing project. New copies require an explicit separate workflow.
 
 ## Commands for next session
 
@@ -171,7 +173,7 @@ Comparison: `TSX_TSCONFIG_PATH=scripts/thebrief/tsconfig.json node --import tsx 
 
 1. Read release and private ledger; do not repeat completed imports. Preserve review tags until migration sign-off.
 2. Font/rotation, source comparison and saved editor reload are complete for Bendigo. Westernport once-only playback and reload are verified; investigate the qualified exact-time-zero reference ghost before claiming first-frame parity.
-3. Confirm Frankston/Brighton ownership before any client assignment.
+3. Frankston/Brighton are imported under confirmed parent clients. Finish remaining live playback/reload visual checks without duplicating them.
 4. Select additional unseen, structurally different/multi-size or masking animations. Freeze sample before inspecting. Compare source/native at entrance, middle, exit and loop/restart; preserve baseline outcomes.
 5. Only then perform controlled batches with source→client→project migration ledger. Never publish historical offers as part of migration.
 6. Direct ZIP upload, robust folder schema, full-library inventory/export and complex-engine adapters remain future increments. Prepared JSON import is the current live capability.
@@ -194,4 +196,13 @@ Do not apply blindly. Branch includes a substantial pre-existing local commit ch
 - Raw Worker25,439,972/25,468,928bytes (28,956headroom), gzip6,951,383/9,750,000bytes.
 - Release log: `/private/tmp/thebrief-font-release.log`; test log `/private/tmp/thebrief-final-font-tests.log`.
 - Private saved-project ledger: `/Users/paulgiurin/Documents/XeroFlow Imports/Blind sample 2026-10-05/live-migration-ledger.json`.
-- No push/merge or full-library migration performed. Remaining source ownership and structural-animation coverage are explicit above.
+- No push/merge or full-library migration performed. Structural-animation coverage and further batch migration remain outstanding.
+
+## Latest import continuation
+
+- Four pilot drafts now exist; no additional batch has been downloaded/imported yet.
+- Read-only persistence and font verification: `Blind sample 2026-10-05/confirmed-pilot-persistence-and-fonts.json`. Both uploaded fonts match the retained source bytes by SHA256: Louis Global2Bold weight500 and Nissan Brand weight300. No direct database writes were used.
+- UI issue discovered: adding another package after a completed import rebuilds existing rows, resetting their saved labels/client selections. Database project dedup remains protective; record a future UI fix to preserve completed row state. For now use a fresh modal per batch.
+- Safari is concurrently switching between this task and unrelated local browser-test/review pages (ports5227/3112). Repeated tool actions are rejected or screenshots show the other session. Asked user to pause the other session's Safari controls; answer pending. Do not fight another automation session or act on stale selectors.
+- Next immediate action once Safari is available: verify Frankston and Brighton playback/reload; select next TheBrief batch, with unseen structural/multi-size animation samples frozen before inspection. Preserve editable fonts during HTML5 export.
+- User asked whether editing motion/tweening and correct fonts required changes: explained implemented native keyframes/timing/origin/loop support, rotation/scale/font fixes; complex masks/engines remain unproven.
