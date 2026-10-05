@@ -206,3 +206,18 @@ Do not apply blindly. Branch includes a substantial pre-existing local commit ch
 - Safari is concurrently switching between this task and unrelated local browser-test/review pages (ports5227/3112). Repeated tool actions are rejected or screenshots show the other session. Asked user to pause the other session's Safari controls; answer pending. Do not fight another automation session or act on stale selectors.
 - Next immediate action once Safari is available: verify Frankston and Brighton playback/reload; select next TheBrief batch, with unseen structural/multi-size animation samples frozen before inspection. Preserve editable fonts during HTML5 export.
 - User asked whether editing motion/tweening and correct fonts required changes: explained implemented native keyframes/timing/origin/loop support, rotation/scale/font fixes; complex masks/engines remain unproven.
+
+
+## Complex qualification — 5 October follow-up
+
+User approved complex samples before bulk. Exported and safely inspected **eight layouts from two purposefully selected campaign sets**: Essential Caravans Yard Sale (three sizes) and Northern Motor Group Autotrader (five sizes). **0/8 converted; no new live imports.** Existing four pilot drafts remain the only live pilot imports.
+
+- Essential: six slides in every size; current single-slide adapter rejects. Raw duration totals 5.9s, 61s, 63s; current 60s cap needs compatible editor/export review too.
+- Northern: all five layouts rejected on unsupported native `button` layers.
+- Bundled custom fonts are present, but IBM Plex Sans and Poppins are external Google stylesheet dependencies. Full font fidelity is not established.
+- No matched-frame, edit/save/reopen/export qualification was possible for these eight because conversion stopped. Masks, video, motion paths and other engines remain unqualified.
+- Evidence and next implementation checklist: `/Users/paulgiurin/Documents/XeroFlow Imports/Complex sample 2026-10-05/QUALIFICATION.md`.
+- Baseline errors, original ZIPs, inspection hashes and selection ledger are preserved beside it. This is purposeful complexity sampling, not a random whole-library test.
+- Bulk remains held. Next implement buttons, scene timelines/visibility, consistent long-duration support and external font retention; re-test these failures before adding more import volume. Do not flatten or bypass conversion guards.
+
+Safari worked reliably for these two exports during this follow-up. New archives downloaded to `Downloads/General usage-2` and `General usage-3` and were copied into the durable evidence directory. HTML5 / General usage / High90% / custom-font-to-SVG OFF. No application source or deployment changes in this qualification follow-up.
