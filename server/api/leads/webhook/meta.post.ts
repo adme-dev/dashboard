@@ -12,7 +12,7 @@
 //     returns full lead data → normalize via normalizeMetaPayload → insert
 //     via insertLeadWithDedup → enqueue routing → fire notifications.
 //
-// Always-200: Meta auto-disables subscriptions that return non-2xx.
+// Acknowledge authenticated events after processing or archiving failures.
 // Signature verified via HMAC-SHA256 over raw body using META_APP_SECRET.
 
 import { queryRows } from '~~/server/utils/db'
@@ -24,6 +24,7 @@ import { normalizeMetaPayload } from '~~/server/utils/leads/normalizer'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { resolveMetaLeadClient } from '~~/server/utils/leads/metaLeadClient'
 import { getMetaLeadgen, verifyMetaSignature } from '~~/server/utils/metaClient'
+import { resolveMetaOAuthRuntimeConfig } from '~~/server/utils/metaOAuthRuntimeConfig'
 
 interface MetaLeadgenChange {
   field: string
@@ -54,24 +55,21 @@ interface PageTokenRow {
 
 export default defineEventHandler(async (event) => {
   const headers = getRequestHeaders(event)
-  const config = useRuntimeConfig()
-  const appSecret = (config as any).metaAppSecret as string
-
-  // Read raw text first — needed for signature verification AND parsing.
-  const rawBody = await readRawBody(event, 'utf-8').catch(() => null)
-  if (!rawBody) {
-    return { ok: true }
+  const { metaAppSecret: appSecret } = resolveMetaOAuthRuntimeConfig(event)
+  if (!appSecret) {
+    throw createError({ statusCode: 503, statusMessage: 'meta_not_configured' })
   }
 
-  // Verify signature unless explicitly disabled (test envs without secret).
-  if (appSecret) {
-    const sig = headers['x-hub-signature-256'] as string | undefined
-    const ok = await verifyMetaSignature(rawBody, sig, appSecret)
-    if (!ok) {
-      // Don't reveal anything — just 401. Meta will retry events with
-      // valid signatures, so no harm.
-      throw createError({ statusCode: 401, statusMessage: 'invalid_signature' })
-    }
+  // Read raw text first — needed for signature verification AND parsing.
+  const rawBody = await readRawBody(event, 'utf-8')
+  if (!rawBody) {
+    throw createError({ statusCode: 400, statusMessage: 'empty_body' })
+  }
+
+  const sig = headers['x-hub-signature-256'] as string | undefined
+  const ok = await verifyMetaSignature(rawBody, sig, appSecret)
+  if (!ok) {
+    throw createError({ statusCode: 401, statusMessage: 'invalid_signature' })
   }
 
   let body: MetaWebhookBody
