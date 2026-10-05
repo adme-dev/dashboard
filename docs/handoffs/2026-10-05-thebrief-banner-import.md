@@ -1,6 +1,6 @@
 # TheBrief → XeroFlow Banner Studio handoff
 
-Updated: 5 October 2026, Australia/Melbourne. **Pilot deployed; two native draft imports saved and reopened in production. Bulk migration remains pending. Final editor font correction is being verified.**
+Updated: 5 October 2026, Australia/Melbourne. **Pilot deployed; two native draft imports saved and reopened in production. Bulk migration remains pending. Editor rotation and font corrections are deployed and visually verified after reload.**
 
 ## Resume instruction
 
@@ -12,8 +12,8 @@ Continue the approved TheBrief import pilot and compact banner-library UI. Read 
 - Branch: `feat/thebrief-import-pilot-20261005`
 - Initial pilot implementation commit: `02372e0ec7e4c04900140481fba55b7e44696572`
 - Rotation reset correction: `b6fca705719d0bcb3b113837e8f73f34d035bc5d`
-- Last fetched origin/main: `8c8a5b5c4b6ccb6a17dc7a9405169ac4bc671f0e`; branch includes it, 92 commits ahead, zero behind. Fetch again before release; a branch name alone is not evidence of freshness.
-- Implementation and rotation fix are committed. Inspect current status for later font/documentation changes. The current user cwd is the separate, dirty DriveAgent website repo: do not implement dashboard changes there.
+- Last fetched origin/main: `8c8a5b5c4b6ccb6a17dc7a9405169ac4bc671f0e`; branch includes it, 94 commits ahead at final application release84f764bc9, zero behind. Fetch again before release; a branch name alone is not evidence of freshness.
+- Implementation, rotation and font fixes are committed. Later documentation-only commits do not change the deployed application. The current user cwd is the separate, dirty DriveAgent website repo: do not implement dashboard changes there.
 - Use Node 24: `/Users/paulgiurin/.nvm/versions/node/v24.18.0/bin`. Default shell Node is 20.
 - node_modules symlinks to `/private/tmp/xeroflow-driveagent-facebook-rollout/node_modules`.
 - Deployment must use `pnpm deploy:check` and guarded `pnpm deploy:preview` / `pnpm deploy:production`. Target is **agency-dashboard** only. Never bypass guards or call wrangler pages deploy directly. Record source commit/deployment ID and check QR/navigation alongside banner features.
@@ -130,9 +130,9 @@ Reference is original exported CSS with scripts removed; native side is XeroFlow
 - Prepared packages deduplicate identical converted image bytes even when source filenames differ.
 - Initial guarded release: `02372e0ec7e4c04900140481fba55b7e44696572`, https://0297a5d3.agency-dashboard-6cm.pages.dev; production target agency-dashboard/main. Raw25,439,926/25,468,928bytes; gzip6,951,393/9,750,000bytes. Never weaken these budgets.
 - Live inspection found static rotation disappeared after GSAP cleared Vue's inline transform. Fixed reset/preset settling, added four playback/stop/rebuild/edit regressions; released `b6fca705719d0bcb3b113837e8f73f34d035bc5d` at https://eb031f63.agency-dashboard-6cm.pages.dev.
-- Final rotation test run: **287 tests across42 suites passed**, `/private/tmp/thebrief-final-rotation-tests.log`. Full lint has unchanged baseline61,932errors/782warnings (`/private/tmp/thebrief-static-rotation-lint.log`); do not call full lint clean.
-- Live Safari verified compact list/grid, client filter (Bendigo only), source-folder filter (both imports), and template gallery categories/list controls.
-- Native editor font difference identified: imported family alias includes a numeric-leading hash token; unquoted CSS font-family in native text is invalid, while quoted export/thumbnail is correct. Narrow fix in progress; recheck Bendigo against source after release.
+- Final rotation test run: **289 tests across42 suites passed**, `/private/tmp/thebrief-final-font-tests.log`. Full lint has baseline61,927errors/782warnings (`/private/tmp/thebrief-final-font-lint.log`), five fewer formatting errors; do not call full lint clean.
+- Live Safari verified compact list/grid, client filter (Bendigo only), source-folder filter (both imports), and template gallery categories/list controls. QR Codes/New QR code verified authenticated after rotation release; final application change only quotes editor font families.
+- Native editor font difference identified: imported family alias includes a numeric-leading hash token; unquoted CSS font-family in native text is invalid, while quoted export/thumbnail is correct. Fixed in text/button layers by d4580cfab. Final Safari reload shows correct Kia font, intended two-line headline, source-aligned layout and vertical divider. Compared to source/native local CSS harness at3.8s; no pixel-perfect or full vendor-runtime claim.
 - Animated masks with shifted pivots, complex/multi-size source exports, and full-library compatibility remain unproven.
 - Frankston and Brighton owner mappings remain pending. No historical offers have been published.
 
@@ -140,7 +140,7 @@ Reference is original exported CSS with scripts removed; native side is XeroFlow
 
 | Creative | Native project | Verified | Review hold |
 |---|---|---|---|
-| Bendigo Kia Update | https://app.xeroflow.io/agency/banner-studio/351c05c4-cdcc-4e91-9627-6545099f6c86 | Exact client selected; import GET verified saved draft; editor loads1080×1080 native layers and3.9s timeline; scrubbed1.1s shows animation | Recheck static divider after rotation release and font alias correction |
+| Bendigo Kia Update | https://app.xeroflow.io/agency/banner-studio/351c05c4-cdcc-4e91-9627-6545099f6c86 | Exact client selected; import GET verified saved draft; editor loads1080×1080 native layers and3.9s timeline; scrubbed1.1s shows animation; continuous looping observed beyond one cycle after final release | Static divider and font/layout corrected and visually checked after full reload; retained review marker pending broader migration sign-off |
 | Westernport Ford Update | https://app.xeroflow.io/agency/banner-studio/9b20cc2f-586a-495e-851d-99a0643b6bd3 | Exact client selected; import GET verified;1000×1000 native layers; playback ends at3.0s and holds; full reload retains artwork/timeline | Exact-time-zero reference ghost remains a qualified comparison discrepancy |
 
 Both projects retain `import:needs-review`, original source hash, folder and timing. Do not re-import to overwrite edits. Server dedup by client/source hash returns existing project. New copies require an explicit separate workflow.
@@ -169,8 +169,8 @@ Comparison: `TSX_TSCONFIG_PATH=scripts/thebrief/tsconfig.json node --import tsx 
 
 ## Next actions in order
 
-1. Finish live font/rotation verification and record final release/source below. Inspect current git status; do not repeat completed imports.
-2. Recheck QR Codes and template/list navigation on the final release.
+1. Read release and private ledger; do not repeat completed imports. Preserve review tags until migration sign-off.
+2. Font/rotation, source comparison and saved editor reload are complete for Bendigo. Westernport once-only playback and reload are verified; investigate the qualified exact-time-zero reference ghost before claiming first-frame parity.
 3. Confirm Frankston/Brighton ownership before any client assignment.
 4. Select additional unseen, structurally different/multi-size or masking animations. Freeze sample before inspecting. Compare source/native at entrance, middle, exit and loop/restart; preserve baseline outcomes.
 5. Only then perform controlled batches with source→client→project migration ledger. Never publish historical offers as part of migration.
@@ -185,3 +185,13 @@ Primary worktree is under /private/tmp, so durable recovery artifacts are stored
 - `banner-import-new-files-2026-10-05.tar.gz`: historical pre-commit snapshot; superseded by bundle, do not apply over current files.
 
 Do not apply blindly. Branch includes a substantial pre-existing local commit chain; no push/merge was performed. Reconcile onto freshly fetched main before any integration. No credentials or client creative bytes are committed in the repo.
+
+## Final release record
+
+- Production application source: `84f764bc968110cbaafae1c969811cead37084b4`, includes font fix `d4580cfab1f45142ead0de87ddaacf76b96cbcd7`.
+- Deployment: https://32ae8e6a.agency-dashboard-6cm.pages.dev, target agency-dashboard/main; guarded deploy completed exit0. Live app: https://app.xeroflow.io.
+- Source main: `8c8a5b5c4b6ccb6a17dc7a9405169ac4bc671f0e`, freshly fetched and included.
+- Raw Worker25,439,972/25,468,928bytes (28,956headroom), gzip6,951,383/9,750,000bytes.
+- Release log: `/private/tmp/thebrief-font-release.log`; test log `/private/tmp/thebrief-final-font-tests.log`.
+- Private saved-project ledger: `/Users/paulgiurin/Documents/XeroFlow Imports/Blind sample 2026-10-05/live-migration-ledger.json`.
+- No push/merge or full-library migration performed. Remaining source ownership and structural-animation coverage are explicit above.
