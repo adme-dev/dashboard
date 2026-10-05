@@ -89,12 +89,12 @@ export default defineEventHandler(async (event) => {
 
         for (const clip of overlayClips) {
           const fmtKey: string = clip.gsap_format_key ?? resolveOverlayFormatKey(profileW, profileH)
-          const { layers, width, height } = await loadBannerLayers(clip.gsap_project_id, fmtKey)
+          const { layers, width, height, playback } = await loadBannerLayers(clip.gsap_project_id, fmtKey)
           const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? ''
           // Placement is baked into the HTML so the Chromium capture (output-size
           // viewport) lands the banner exactly where the editor preview shows it.
           const html = applyOverlayPlacement(
-            buildBannerHTML(fmtKey, layers, { baseUrl }),
+            buildBannerHTML(fmtKey, layers, { baseUrl, playback }),
             clip.placement ?? null,
             { width: profileW, height: profileH },
             { width, height }

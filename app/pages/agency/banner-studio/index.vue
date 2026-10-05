@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { BannerProject } from '~/types/banner-studio'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
+import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary } from '~/utils/banner-library'
+import type { LibrarySort } from '~/utils/banner-library'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -8,6 +10,14 @@ const router = useRouter()
 const toast = useToast()
 
 const searchQuery = ref('')
+const clientFilter = ref('all')
+const folderFilter = ref('all')
+const tagFilter = ref('all')
+const view = useCookie<'list' | 'grid'>('banner-library-view', { default: () => 'list', sameSite: 'lax' })
+const sort = ref<LibrarySort>('modified')
+const page = ref(1)
+const pageSize = 36
+const showImportModal = ref(false)
 const statusFilter = ref<'all' | 'draft' | 'published'>('all')
 const showDeleteModal = ref(false)
 const deleteTarget = ref<BannerProject | null>(null)
@@ -37,32 +47,45 @@ onMounted(() => {
 
 const allProjects = computed(() => projectsData.value || [])
 
-const projects = computed(() => {
-  let list = allProjects.value
-  if (statusFilter.value !== 'all') {
-    list = list.filter(p => p.status === statusFilter.value)
+const clients = computed(() => {
+  const records = new Map<string, { id: string, name: string, count: number }>()
+  for (const project of allProjects.value) {
+    const id = project.clientId || 'unassigned'
+    const current = records.get(id)
+    records.set(id, { id, name: project.clientId ? project.clientName || 'Unnamed client' : 'Unassigned', count: (current?.count || 0) + 1 })
   }
-  if (searchQuery.value) {
-    const q = searchQuery.value.toLowerCase()
-    list = list.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.clientName?.toLowerCase().includes(q)
-    )
-  }
-  return list
+  return [...records.values()].sort((a, b) => a.name.localeCompare(b.name))
 })
-
-// Summary stats
-const totalCount = computed(() => allProjects.value.length)
-const draftCount = computed(() => allProjects.value.filter(p => p.status === 'draft').length)
-const publishedCount = computed(() => allProjects.value.filter(p => p.status === 'published').length)
-const totalFormats = computed(() => {
-  let count = 0
-  for (const p of allProjects.value) {
-    if (p.canvasData) count += Object.keys(p.canvasData).length
-  }
-  return count
+const clientProjects = computed(() => filterBannerProjects(allProjects.value, { client: clientFilter.value, tag: 'all', status: 'all', search: '' }))
+const facets = computed(() => bannerLibraryFacets(clientProjects.value))
+const folders = computed(() => facets.value.folders)
+const categories = computed(() => facets.value.categories)
+const projects = computed(() => sortLibrary(filterBannerProjects(clientProjects.value, {
+  client: 'all', tag: tagFilter.value, status: statusFilter.value, search: searchQuery.value
+}).filter(p => folderFilter.value === 'all' || p.tags?.includes(folderFilter.value)), sort.value))
+const visibleProjects = computed(() => projects.value.slice((page.value - 1) * pageSize, page.value * pageSize))
+const libraryItems = computed(() => visibleProjects.value.map(p => ({
+  id: p.id, name: p.name, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
+  category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status, dimensions: bannerDimensions(p.canvasData), type: 'Native editable',
+  date: p.updatedAt || p.createdAt, thumbnailUrl: p.thumbnailUrl, canvasData: p.canvasData,
+  to: `/agency/banner-studio/${p.id}`
+})))
+const projectById = computed(() => new Map(allProjects.value.map(p => [p.id, p])))
+watch([searchQuery, statusFilter, clientFilter, folderFilter, tagFilter, sort], () => {
+  page.value = 1
 })
+watch(clientFilter, () => {
+  folderFilter.value = 'all'
+  tagFilter.value = 'all'
+})
+watch(projects, (list) => {
+  page.value = Math.min(page.value, Math.max(1, Math.ceil(list.length / pageSize)))
+})
+const sortItems = [
+  { label: 'Recently modified', value: 'modified' },
+  { label: 'Name A–Z', value: 'name' },
+  { label: 'Oldest modified', value: 'oldest' }
+]
 
 function newProject() {
   router.push('/agency/banner-studio/new')
@@ -83,8 +106,8 @@ async function duplicateProject(p: BannerProject) {
         name: `${p.name} (copy)`,
         clientId: p.clientId,
         canvasData: p.canvasData,
-        status: 'draft',
-      },
+        status: 'draft'
+      }
     })
     duplicateIdempotencyKeys.delete(p.id)
     toast.add({ title: 'Duplicated', description: `${p.name} copied`, color: 'success' })
@@ -113,225 +136,316 @@ async function doDelete() {
   }
 }
 
-function formatDate(d: string) {
-  if (!d) return ''
-  return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function formatCount(n: number) {
-  return n.toString()
-}
-
 const statusItems = [
   { label: 'All', value: 'all' },
   { label: 'Draft', value: 'draft' },
-  { label: 'Published', value: 'published' },
+  { label: 'Published', value: 'published' }
 ]
 
 const dropdownItems = (p: BannerProject) => [
   [
     { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => editProject(p) },
-    { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => duplicateProject(p) },
+    { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => duplicateProject(p) }
   ],
   [
-    { label: 'Delete', icon: 'i-lucide-trash-2', onSelect: () => confirmDelete(p) },
-  ],
+    { label: 'Delete', icon: 'i-lucide-trash-2', onSelect: () => confirmDelete(p) }
+  ]
 ]
 
-const hasActiveFilters = computed(() => statusFilter.value !== 'all' || searchQuery.value.length > 0)
+const hasActiveFilters = computed(() => statusFilter.value !== 'all' || searchQuery.value.length > 0 || clientFilter.value !== 'all' || folderFilter.value !== 'all' || tagFilter.value !== 'all')
 
 function clearFilters() {
   searchQuery.value = ''
   statusFilter.value = 'all'
+  clientFilter.value = 'all'
+  folderFilter.value = 'all'
+  tagFilter.value = 'all'
 }
 </script>
 
 <template>
-  <div class="min-h-screen bg-[var(--ui-bg)] w-full overflow-y-auto">
-    <!-- Header -->
-    <div class="border-b border-[var(--ui-border)]">
-      <div class="px-6 lg:px-8 py-5">
-        <div class="flex items-start justify-between">
-          <div>
-            <h1 class="text-2xl font-semibold text-[var(--ui-text-highlighted)]">Banner Studio</h1>
-            <p class="text-sm text-[var(--ui-text-muted)] mt-0.5">Create and manage HTML5 banner ads</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <UButton to="/agency/banner-studio/custom-templates" color="neutral" variant="outline" icon="i-lucide-code" size="sm">
-              Custom HTML
-            </UButton>
-            <UButton to="/agency/banner-studio/templates" color="neutral" variant="outline" icon="i-lucide-layout-template" size="sm">
-              Templates
-            </UButton>
-            <UButton to="/agency/banner-studio/brand-kits" color="neutral" variant="outline" icon="i-lucide-palette" size="sm">
-              Brand Kits
-            </UButton>
-            <UButton color="primary" icon="i-lucide-plus" size="sm" @click="newProject">
-              New Project
-            </UButton>
-          </div>
-        </div>
+  <div class="flex h-full min-h-0 w-full flex-col bg-default">
+    <header class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-4 sm:px-6">
+      <div>
+        <h1 class="text-xl font-semibold">
+          Banner Studio
+        </h1>
+        <p class="mt-0.5 text-xs text-muted">
+          Your client banner library
+        </p>
       </div>
-    </div>
-
-    <div class="px-6 lg:px-8 py-6 space-y-6">
-      <!-- Summary Stats -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <UCard>
-          <div class="flex items-center gap-3">
-            <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-blue-50 dark:bg-blue-500/10">
-              <UIcon name="i-lucide-folder-kanban" class="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div class="min-w-0">
-              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-text-muted)]">Total Projects</p>
-              <USkeleton v-if="fetchStatus === 'pending'" class="h-7 w-10 rounded" />
-              <p v-else class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCount(totalCount) }}</p>
-            </div>
-          </div>
-        </UCard>
-        <UCard>
-          <div class="flex items-center gap-3">
-            <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-neutral-100 dark:bg-neutral-500/10">
-              <UIcon name="i-lucide-file-edit" class="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
-            </div>
-            <div class="min-w-0">
-              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-text-muted)]">Draft</p>
-              <USkeleton v-if="fetchStatus === 'pending'" class="h-7 w-10 rounded" />
-              <p v-else class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCount(draftCount) }}</p>
-            </div>
-          </div>
-        </UCard>
-        <UCard>
-          <div class="flex items-center gap-3">
-            <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-emerald-50 dark:bg-emerald-500/10">
-              <UIcon name="i-lucide-globe" class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div class="min-w-0">
-              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-text-muted)]">Published</p>
-              <USkeleton v-if="fetchStatus === 'pending'" class="h-7 w-10 rounded" />
-              <p v-else class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{{ formatCount(publishedCount) }}</p>
-            </div>
-          </div>
-        </UCard>
-        <UCard>
-          <div class="flex items-center gap-3">
-            <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-violet-50 dark:bg-violet-500/10">
-              <UIcon name="i-lucide-layout-grid" class="w-5 h-5 text-violet-600 dark:text-violet-400" />
-            </div>
-            <div class="min-w-0">
-              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-text-muted)]">Ad Formats</p>
-              <USkeleton v-if="fetchStatus === 'pending'" class="h-7 w-10 rounded" />
-              <p v-else class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCount(totalFormats) }}</p>
-            </div>
-          </div>
-        </UCard>
-      </div>
-
-      <!-- Filters -->
-      <div class="flex items-center gap-3">
-        <UInput
-          v-model="searchQuery"
-          icon="i-lucide-search"
-          placeholder="Search projects..."
-          class="w-64"
-          size="sm"
-        />
-        <USelectMenu
-          v-model="statusFilter"
-          :items="statusItems"
-          value-key="value"
-          class="w-36"
-          size="sm"
-        />
+      <div class="flex flex-wrap items-center gap-2">
         <UButton
-          v-if="hasActiveFilters"
-          label="Clear"
-          variant="ghost"
+          to="/agency/banner-studio/custom-templates"
           color="neutral"
-          size="xs"
-          icon="i-lucide-x"
-          @click="clearFilters"
-        />
-        <span class="text-xs text-[var(--ui-text-muted)] ml-auto">
-          {{ projects.length }} project{{ projects.length !== 1 ? 's' : '' }}
-        </span>
-      </div>
-
-      <!-- Project Grid -->
-      <div v-if="projects.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        <div
-          v-for="p in projects"
-          :key="p.id"
-          class="group cursor-pointer rounded-lg border border-[var(--ui-border)] hover:border-[var(--ui-border-accented)] bg-[var(--ui-bg)] hover:shadow-md transition-all duration-150 overflow-hidden"
-          @click="editProject(p)"
+          variant="ghost"
+          icon="i-lucide-code"
+          size="sm"
         >
-          <!-- Thumbnail -->
-          <div class="aspect-video bg-[var(--ui-bg-elevated)] flex items-center justify-center relative">
-            <img
-              v-if="safeMediaUrl(p.thumbnailUrl)"
-              :src="safeMediaUrl(p.thumbnailUrl)"
-              :alt="p.name"
-              class="w-full h-full object-cover"
-            >
-            <BannerThumbnail
-              v-else-if="p.canvasData && Object.keys(p.canvasData).length"
-              :canvas-data="p.canvasData"
-            />
-            <UIcon v-else name="i-lucide-image" class="w-10 h-10 text-[var(--ui-text-muted)] opacity-20" />
-            <!-- Hover overlay -->
-            <div class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
-              <div class="flex items-center gap-1.5 text-white text-xs font-semibold">
-                <UIcon name="i-lucide-pencil" class="w-3.5 h-3.5" />
-                Open Editor
-              </div>
-            </div>
-          </div>
-
-          <!-- Info -->
-          <div class="p-3">
-            <div class="flex items-start justify-between">
-              <div class="min-w-0 flex-1">
-                <h3 class="text-sm font-medium text-[var(--ui-text-highlighted)] truncate">{{ p.name }}</h3>
-                <p v-if="p.clientName" class="text-xs text-[var(--ui-text-muted)] mt-0.5 truncate">{{ p.clientName }}</p>
-              </div>
-              <UDropdownMenu :items="dropdownItems(p)">
-                <UButton icon="i-lucide-more-vertical" variant="ghost" color="neutral" size="xs" @click.stop />
-              </UDropdownMenu>
-            </div>
-
-            <div class="flex items-center gap-2 mt-2">
-              <UBadge :color="p.status === 'published' ? 'success' : 'neutral'" variant="subtle" size="sm">
-                {{ p.status }}
-              </UBadge>
-              <span class="text-[11px] text-[var(--ui-text-muted)]">{{ formatDate(p.createdAt) }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Empty State -->
-      <div v-else class="text-center py-16">
-        <div class="w-12 h-12 rounded-full bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mx-auto mb-3">
-          <UIcon name="i-lucide-image" class="w-6 h-6 text-violet-600 dark:text-violet-400" />
-        </div>
-        <p class="text-sm font-medium text-[var(--ui-text-highlighted)]">No projects yet</p>
-        <p class="text-xs text-[var(--ui-text-muted)] mt-1">Create your first banner project to get started</p>
-        <UButton color="primary" icon="i-lucide-plus" size="sm" class="mt-4" @click="newProject">
+          Custom HTML
+        </UButton>
+        <UButton
+          to="/agency/banner-studio/templates"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-layout-template"
+          size="sm"
+        >
+          Templates
+        </UButton>
+        <UButton
+          to="/agency/banner-studio/brand-kits"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-palette"
+          size="sm"
+        >
+          Brand Kits
+        </UButton>
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-upload"
+          size="sm"
+          @click="showImportModal = true"
+        >
+          Import from TheBrief
+        </UButton>
+        <UButton icon="i-lucide-plus" size="sm" @click="newProject">
           New Project
         </UButton>
       </div>
-    </div>
+    </header>
 
+    <div class="flex min-h-0 flex-1 flex-col md:flex-row">
+      <aside class="max-h-40 shrink-0 overflow-y-auto border-b border-default bg-elevated/30 p-3 md:max-h-none md:w-56 md:border-r md:border-b-0" aria-label="Banner library filters">
+        <h2 class="px-2 pb-2 text-xs font-semibold text-muted">
+          Clients
+        </h2>
+        <UButton
+          label="All clients"
+          icon="i-lucide-users"
+          :aria-pressed="clientFilter === 'all'"
+          :variant="clientFilter === 'all' ? 'soft' : 'ghost'"
+          color="neutral"
+          class="w-full justify-start"
+          @click="clientFilter = 'all'"
+        >
+          <template #trailing>
+            <span class="ml-auto text-xs text-muted">{{ allProjects.length }}</span>
+          </template>
+        </UButton>
+        <UButton
+          v-for="client in clients"
+          :key="client.id"
+          :label="client.name"
+          :title="client.name"
+          :variant="clientFilter === client.id ? 'soft' : 'ghost'"
+          :aria-pressed="clientFilter === client.id"
+          color="neutral"
+          class="w-full justify-start"
+          :ui="{ label: 'truncate' }"
+          @click="clientFilter = client.id"
+        >
+          <template #trailing>
+            <span class="ml-auto text-xs text-muted">{{ client.count }}</span>
+          </template>
+        </UButton>
+        <h2 class="mt-6 px-2 pb-2 text-xs font-semibold text-muted">
+          Folders
+        </h2>
+        <UButton
+          label="All folders"
+          icon="i-lucide-folders"
+          :aria-pressed="folderFilter === 'all'"
+          :variant="folderFilter === 'all' ? 'soft' : 'ghost'"
+          color="neutral"
+          class="w-full justify-start"
+          @click="folderFilter = 'all'"
+        />
+        <UButton
+          v-for="folder in folders"
+          :key="folder"
+          :label="folder.slice(14)"
+          :title="folder.slice(14)"
+          icon="i-lucide-folder"
+          :variant="folderFilter === folder ? 'soft' : 'ghost'"
+          :aria-pressed="folderFilter === folder"
+          color="neutral"
+          class="w-full justify-start"
+          :ui="{ label: 'truncate' }"
+          @click="folderFilter = folder"
+        />
+        <p v-if="!folders.length" class="px-2 py-2 text-xs text-muted">
+          No source folders recorded.
+        </p>
+        <h2 class="mt-6 px-2 pb-2 text-xs font-semibold text-muted">
+          Categories &amp; tags
+        </h2>
+        <UButton
+          label="All categories"
+          icon="i-lucide-tags"
+          :aria-pressed="tagFilter === 'all'"
+          :variant="tagFilter === 'all' ? 'soft' : 'ghost'"
+          color="neutral"
+          class="w-full justify-start"
+          @click="tagFilter = 'all'"
+        />
+        <UButton
+          v-for="tag in categories"
+          :key="tag"
+          :label="tag.replace(/^category:/, '')"
+          :title="tag.replace(/^category:/, '')"
+          :variant="tagFilter === tag ? 'soft' : 'ghost'"
+          :aria-pressed="tagFilter === tag"
+          color="neutral"
+          class="w-full justify-start"
+          :ui="{ label: 'truncate' }"
+          @click="tagFilter = tag"
+        />
+        <p v-if="!categories.length" class="px-2 py-2 text-xs text-muted">
+          No categories recorded.
+        </p>
+      </aside>
+
+      <main class="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div class="flex shrink-0 flex-wrap items-end gap-3 border-b border-default p-4">
+          <UFormField label="Search banners" class="min-w-40 flex-1">
+            <UInput
+              v-model="searchQuery"
+              icon="i-lucide-search"
+              placeholder="Name, client, tag or dimensions"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField label="Status">
+            <USelect v-model="statusFilter" :items="statusItems" class="w-32" />
+          </UFormField>
+          <UFormField label="Sort">
+            <USelect v-model="sort" :items="sortItems" class="w-44" />
+          </UFormField>
+          <div class="flex gap-1" role="group" aria-label="Library view">
+            <UButton
+              icon="i-lucide-list"
+              aria-label="List view"
+              :aria-pressed="view === 'list'"
+              :variant="view === 'list' ? 'soft' : 'ghost'"
+              color="neutral"
+              @click="view = 'list'"
+            />
+            <UButton
+              icon="i-lucide-layout-grid"
+              aria-label="Grid view"
+              :aria-pressed="view === 'grid'"
+              :variant="view === 'grid' ? 'soft' : 'ghost'"
+              color="neutral"
+              @click="view = 'grid'"
+            />
+          </div>
+        </div>
+        <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <div class="mb-4 flex items-center justify-between gap-2">
+            <p class="text-xs text-muted" role="status">
+              {{ projects.length }} project{{ projects.length === 1 ? '' : 's' }}
+            </p>
+            <UButton
+              v-if="hasActiveFilters"
+              label="Clear filters"
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              icon="i-lucide-x"
+              @click="clearFilters"
+            />
+          </div>
+          <div
+            v-if="fetchStatus === 'pending'"
+            class="space-y-3"
+            aria-label="Loading projects"
+            aria-busy="true"
+          >
+            <USkeleton v-for="n in 6" :key="n" class="h-20 w-full" />
+          </div>
+          <UAlert
+            v-else-if="fetchStatus === 'error'"
+            title="Could not load your banners"
+            description="Try loading the library again."
+            color="error"
+            icon="i-lucide-circle-alert"
+            :actions="[{ label: 'Retry', onClick: refresh }]"
+          />
+          <BannerLibraryItems
+            v-else-if="projects.length"
+            :items="libraryItems"
+            :view="view"
+            context-label="Client"
+          >
+            <template #actions="{ id }">
+              <UDropdownMenu :items="dropdownItems(projectById.get(id)!)">
+                <UButton
+                  icon="i-lucide-more-horizontal"
+                  :aria-label="`Actions for ${projectById.get(id)?.name}`"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                />
+              </UDropdownMenu>
+            </template>
+          </BannerLibraryItems>
+          <div v-else class="py-16 text-center">
+            <UIcon name="i-lucide-images" class="mb-3 size-8 text-muted" />
+            <h2 class="font-semibold">
+              {{ hasActiveFilters ? 'No matching banners' : 'Your banner library starts here' }}
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              {{ hasActiveFilters ? 'Try a different client, folder or search.' : 'Create a project or import a design from TheBrief.' }}
+            </p>
+            <UButton
+              v-if="hasActiveFilters"
+              class="mt-4"
+              variant="outline"
+              color="neutral"
+              @click="clearFilters"
+            >
+              Clear filters
+            </UButton>
+            <UButton
+              v-else
+              class="mt-4"
+              icon="i-lucide-plus"
+              @click="newProject"
+            >
+              New Project
+            </UButton>
+          </div>
+          <UPagination
+            v-if="projects.length > pageSize"
+            v-model:page="page"
+            :items-per-page="pageSize"
+            :total="projects.length"
+            class="mt-6 flex justify-center"
+          />
+        </div>
+      </main>
+    </div>
+    <BannerTheBriefImportModal v-model:open="showImportModal" @imported="refresh" />
     <!-- Delete Confirmation Modal -->
     <UModal v-model:open="showDeleteModal">
       <template #content>
         <div class="p-6">
-          <h3 class="text-lg font-semibold text-[var(--ui-text-highlighted)] mb-2">Delete Project</h3>
+          <h3 class="text-lg font-semibold text-[var(--ui-text-highlighted)] mb-2">
+            Delete Project
+          </h3>
           <p class="text-sm text-[var(--ui-text-muted)] mb-6">
             Are you sure you want to delete <span class="font-medium text-[var(--ui-text)]">"{{ deleteTarget?.name }}"</span>? This action cannot be undone.
           </p>
           <div class="flex justify-end gap-2">
-            <UButton label="Cancel" variant="outline" color="neutral" @click="showDeleteModal = false" />
+            <UButton
+              label="Cancel"
+              variant="outline"
+              color="neutral"
+              @click="showDeleteModal = false"
+            />
             <UButton label="Delete" color="error" @click="doDelete" />
           </div>
         </div>

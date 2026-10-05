@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { layerTransformOrigin } from '~/utils/banner-transform'
 import type { Layer } from '~/types/banner-studio'
 import { FORMATS } from '~/utils/banner-constants'
 import { computeClipPath } from '~/utils/banner-mask'
@@ -373,6 +374,7 @@ defineExpose({ artboardEl })
         mixBlendMode: layer.mixBlendMode || 'normal',
         pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
         visibility: layer.hidden && layer.type !== 'audio' ? 'hidden' : 'visible',
+        transformOrigin: layerTransformOrigin(layer.transformOrigin),
         transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
         cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
         clipPath: maskClipPaths.get(layer.id) || undefined,

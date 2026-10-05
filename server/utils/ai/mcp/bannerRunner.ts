@@ -1,3 +1,4 @@
+import type { BannerPlayback } from '~~/app/types/banner-studio'
 // server/utils/ai/mcp/bannerRunner.ts
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { escapeLike } from '~~/server/utils/ai/toolContext'
@@ -201,17 +202,17 @@ export function buildBannerProposeDeps(): BannerProposeDeps {
 }
 
 export interface BannerConfirmDeps {
-  loadLayers: (projectId: string, format: string) => Promise<{ layers: any[], width: number, height: number }>
-  buildHtml: (format: string, layers: any[], options: { baseUrl: string }) => string
+  loadLayers: (projectId: string, format: string) => Promise<{ layers: any[], width: number, height: number, playback?: BannerPlayback }>
+  buildHtml: (format: string, layers: any[], options: { baseUrl: string, playback?: BannerPlayback }) => string
   enqueue: (input: BannerRenderInput, deps: any) => Promise<{ jobIds: string[] }>
   execution?: TrustedSupplementalExecutionServices
 }
 
 export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload, ctx: ToolContext, deps: BannerConfirmDeps): Promise<{ ok: true, data: { jobIds: string[] } } | { ok: false, error: string, code: 'handler_error' }> {
   try {
-    const { layers, width, height } = await deps.loadLayers(payload.projectId, payload.format)
+    const { layers, width, height, playback } = await deps.loadLayers(payload.projectId, payload.format)
     const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? process.env.R2_PUBLIC_URL ?? ''
-    const html = deps.buildHtml(payload.format, layers, { baseUrl })
+    const html = deps.buildHtml(payload.format, layers, { baseUrl, ...(playback ? { playback } : {}) })
     const enqueueDeps = {
       genId: () => randomUUID(),
       putSourceHtml: async (key: string, h: string) => { await uploadFile(Buffer.from(h, 'utf8'), key, 'text/html') },

@@ -16,6 +16,11 @@ describe('loadBannerLayers', () => {
     const r = await loadBannerLayers('proj', 'fb_story')
     expect(r.layers).toEqual([{ id: 'l1' }]); expect(r.width).toBe(1080); expect(r.height).toBe(1920)
   })
+  it('returns imported custom dimensions and playback metadata', async () => {
+    const playback = { duration: 4, loopCount: 3 }
+    queryOneMock.mockResolvedValue({ canvasData: { custom_1200x1200: { layers: [], playback } } })
+    expect(await loadBannerLayers('proj', 'custom_1200x1200')).toEqual({ layers: [], width: 1200, height: 1200, playback })
+  })
   it('throws when the project or format is missing', async () => {
     queryOneMock.mockResolvedValue(null)
     await expect(loadBannerLayers('nope', 'fb_story')).rejects.toThrow()

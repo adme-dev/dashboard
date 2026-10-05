@@ -1,8 +1,9 @@
+import { applyBannerPlayback, resolveBannerPlayback } from '~/utils/banner-playback'
 import gsap from 'gsap'
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
 import { CustomEase } from 'gsap/CustomEase'
 import { parseCubicEase, cubicEaseToSvg } from '~/utils/banner-ease'
-import type { Layer, Keyframe, KeyframeProperty } from '~/types/banner-studio'
+import type { Layer, Keyframe, KeyframeProperty, BannerPlayback } from '~/types/banner-studio'
 import { ANIM_IN, ANIM_OUT } from '~/utils/banner-constants'
 import { computeAnimatedClipPath } from '~/utils/banner-mask'
 import { registerTimelineMaskUpdate, updateTimelineMasks } from '~/utils/bannerTimelineMasks'
@@ -492,7 +493,7 @@ export function useBannerTimeline() {
       if (masterTl && state.isPlaying) {
         state.currentTime = masterTl.time()
         // Loop range: if playhead exceeds loopOut, jump back to loopIn
-        if (state.loopIn != null && state.loopOut != null && state.isLooping) {
+        if (state.loopIn != null && state.loopOut != null && state.isLooping && !resolveBannerPlayback(state.sets[state.activeKey]?.playback)) {
           if (state.currentTime >= state.loopOut) {
             masterTl.seek(state.loopIn)
             updateTimelineMasks(masterTl)
@@ -518,12 +519,13 @@ export function useBannerTimeline() {
     lastArtboardEl = artboardEl
     lastLayers = layers
 
+    const playback = resolveBannerPlayback(state.sets[state.activeKey]?.playback)
     masterTl = gsap.timeline({
       paused: true,
       onComplete() {
         stopTimePoller()
         state.currentTime = state.duration
-        if (state.isLooping) {
+        if (!playback && state.isLooping) {
           const loopStart = state.loopIn != null ? state.loopIn : 0
           masterTl?.seek(loopStart)
           if (masterTl) updateTimelineMasks(masterTl)
@@ -531,7 +533,7 @@ export function useBannerTimeline() {
           startTimePoller()
         } else {
           state.isPlaying = false
-          if (lastArtboardEl) clearGsap(lastArtboardEl, lastLayers)
+          if (!playback && lastArtboardEl) clearGsap(lastArtboardEl, lastLayers)
         }
       },
     })
@@ -552,7 +554,8 @@ export function useBannerTimeline() {
       addMaskAnimation(masterTl!, el, layer, layers)
     })
 
-    state.duration = naturalEnd || 5
+    applyBannerPlayback(masterTl, playback)
+    state.duration = Math.max(naturalEnd, playback?.duration || 0) || 5
     return masterTl
   }
 
@@ -576,7 +579,7 @@ export function useBannerTimeline() {
       pauseTimeline()
     } else {
       if (masterTl) {
-        masterTl.seek(0)
+        masterTl.totalTime(0)
         updateTimelineMasks(masterTl)
         state.isPlaying = true
         masterTl.play()
@@ -642,11 +645,11 @@ export function useBannerTimeline() {
   }
 
   // Build a standalone timeline for a specific artboard key (for PlayAll)
-  function buildTimelineForKey(artboardEl: HTMLElement, layers: Layer[]): gsap.core.Timeline {
+  function buildTimelineForKey(artboardEl: HTMLElement, layers: Layer[], playback?: BannerPlayback): gsap.core.Timeline {
     const tl = gsap.timeline({
       paused: true,
       onComplete() {
-        if (state.isLooping) {
+        if (!resolveBannerPlayback(playback) && state.isLooping) {
           tl.restart()
         }
       },
@@ -659,6 +662,7 @@ export function useBannerTimeline() {
       addMaskAnimation(tl, el, layer, layers)
     })
 
+    applyBannerPlayback(tl, playback)
     return tl
   }
 

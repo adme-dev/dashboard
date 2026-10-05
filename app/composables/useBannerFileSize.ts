@@ -13,7 +13,7 @@ export function useBannerFileSize() {
 
   function estimateSize(fmtKey: string): { html: number; assets: number; total: number } {
     const layers = state.sets[fmtKey]?.layers ?? []
-    const html = buildBannerHTML(fmtKey, layers, { bgColor: state.bgColor, customFonts: getExportCustomFonts(layers) })
+    const html = buildBannerHTML(fmtKey, layers, { playback: state.sets[fmtKey]?.playback, bgColor: state.bgColor, customFonts: getExportCustomFonts(layers) })
     const htmlBytes = new Blob([html]).size
 
     let assetBytes = 0

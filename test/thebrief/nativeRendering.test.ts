@@ -18,6 +18,17 @@ describe('Imported native artwork rendering', () => {
     expect(server('mrec', [unsafe])).not.toContain('mix-blend-mode:')
   })
 
+  it('preserves finite local pixel origins in both exports and drops unsafe origins', () => {
+    const pivot = { ...layer, transformOrigin: { x: 100, y: -28.8 } }
+    expect(client('mrec', [pivot])).toContain('transform-origin:100px -28.8px;')
+    expect(server('mrec', [pivot])).toBe(client('mrec', [pivot]))
+    for (const transformOrigin of [{ x: Infinity, y: 0 }, { x: '0;opacity:0', y: 0 }]) {
+      const unsafe = { ...layer, transformOrigin } as Layer
+      expect(client('mrec', [unsafe])).not.toContain('transform-origin:')
+      expect(server('mrec', [unsafe])).not.toContain('transform-origin:')
+    }
+  })
+
   it('retains gradient backgrounds in both exports', () => {
     const background: Layer = { ...layer, type: 'bg', mixBlendMode: 'normal', bgColor: 'linear-gradient(180deg,#0084ff 0,#0d55b9 100%)' }
     expect(client('mrec', [background])).toContain('background:linear-gradient(180deg,#0084ff 0,#0d55b9 100%)')

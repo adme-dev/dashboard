@@ -145,6 +145,7 @@ async function publish() {
       }
 
       const html = buildBannerHTML(key, layers, {
+        playback: state.sets[key]?.playback,
         includeAnimations: true,
         bgColor: state.sets[key]?.bgColor || state.bgColor || '#0a0a10',
         customFonts: getExportCustomFonts(layers),

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
+import { findExistingTheBriefProject } from '../../../server/utils/banner/thebriefProjectImport'
 import { seedGodModeRouteAuditState } from '../../../server/utils/godMode/featureGate'
 
 const mockRequireAuth = vi.fn()
@@ -136,6 +137,30 @@ describe('God mode banner project creation coordination', () => {
     )
   })
 
+  it('records the reused import project in the GodMode ledger without another insert', async () => {
+    query.mockImplementation(async (sql: string) => {
+      if (sql.includes('INSERT INTO god_mode_execution_ledger')) return { rows: [{ state: 'in_progress' }] }
+      if (sql.includes('FROM agency_clients')) return { rows: [{ id: ACTOR_ID }] }
+      if (sql.includes('FROM banner_projects')) return { rows: [{ id: PROJECT_ID, name: 'Existing import' }] }
+      return { rows: [] }
+    })
+    const event = request()
+    const prepared = await prepareGodModeBannerProjectCreation(event, dependencies)
+    const project = await executeGodModeBannerProjectCreation(event, async db => await findExistingTheBriefProject(db, {
+      clientId: ACTOR_ID, sourceHashTag: `source-sha256:${'a'.repeat(64)}`, tags: ['source:thebrief']
+    }))
+    await prepared.persistTerminal({
+      actorUserId: ACTOR_ID,
+      correlationId: '33333333-3333-4333-8333-333333333333',
+      sessionDigest: 'a'.repeat(64), channel: 'application',
+      routeOrTool: 'POST /api/agency/banner-studio/projects', phase: 'succeeded',
+      bypassedControls: [], outcomeCode: 'http_2xx', emergencyDisabled: false
+    })
+    expect(project.id).toBe(PROJECT_ID)
+    expect(query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO banner_projects'), expect.anything())
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('UPDATE god_mode_execution_ledger'), expect.arrayContaining(['succeeded', PROJECT_ID]))
+  })
+
   it('posts an uploaded MRec canvas as an editable draft without rendering or publishing it', async () => {
     const assetUrl = 'https://assets.xeroflow.test/leapmotor-c10.png'
     const canvasData = {
@@ -177,7 +202,8 @@ describe('God mode banner project creation coordination', () => {
     expect(mockExecuteGodModeBannerProjectCreation).toHaveBeenCalledWith(expect.anything(), expect.any(Function))
     expect([...projectCreationRouteSource.matchAll(/^import\s+[^'"\n]+from\s+['"]([^'"]+)['"]/gm)].map(([, source]) => source)).toEqual([
       '~~/server/utils/auth',
-      '~~/server/utils/banner/godModeProjectCreation'
+      '~~/server/utils/banner/godModeProjectCreation',
+      '~~/server/utils/banner/thebriefProjectImport'
     ])
     expect(projectCreationRouteSource).not.toMatch(/\b(?:render(?:Job|Banner)?|publish(?:Banner|ToAdPlatform)?|enqueue|queue|export(?:Banner)?|upload(?:Asset)?)[A-Za-z0-9_]*\s*\(/i)
   })

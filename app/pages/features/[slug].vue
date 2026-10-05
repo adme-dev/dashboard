@@ -2659,15 +2659,15 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Save designs as reusable templates. Browse a categorised gallery with search, tags, and usage tracking.',
+    description: 'Save designs as reusable templates. Browse compact lists or visual grids with category filters, dimensions and search.',
     details: [
       {
         title: 'Save from Project',
         content: 'Turn any banner project into a template with one click. The template captures all layers, animations, formats, and brand settings as a snapshot. Add a description, tags, and category to make it discoverable. Saving a template does not affect the original project — it creates an independent copy that can be instantiated into new projects.'
       },
       {
-        title: 'Category Gallery',
-        content: 'Browse templates in a visual gallery organised by category — social media ads, display banners, email headers, promotional, and more. Each template card shows a preview thumbnail, format count, and usage statistics. Filter by category, search by name or tag, and sort by newest or most used.'
+        title: 'Browse Large Libraries',
+        content: 'Switch between a compact list and a visual grid, with previews, dimensions and dates. Templates have category filters, search and sorting. The project library also groups work by its assigned client, with source-folder and category filters for imported designs. Pagination and lazy previews keep large libraries manageable.'
       },
       {
         title: 'Usage Tracking',

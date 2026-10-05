@@ -1,5 +1,7 @@
+import { resolveBannerPlayback, bannerPlaybackRepeat } from '~~/app/utils/banner-playback'
+import { layerTransformOrigin } from '~~/app/utils/banner-transform'
 import { ANIM_IN, ANIM_OUT, resolveBannerFormat } from '~~/app/utils/banner-constants'
-import type { Layer, KeyframeProperty, Keyframe } from '~~/app/types/banner-studio'
+import type { Layer, KeyframeProperty, Keyframe, BannerPlayback } from '~~/app/types/banner-studio'
 import { buildEngagrFrameRuntimeScript, buildVisibleElementManifest, estimateBannerDuration } from '~~/app/utils/banner-render-runtime'
 import { computeClipPathPx } from './mask'
 
@@ -156,6 +158,7 @@ function buildKeyframeAnimLines(l: Layer): string[] {
 }
 
 export interface BuildBannerOptions {
+  playback?: BannerPlayback
   includeAnimations?: boolean
   bgColor?: string
   feedUrl?: string
@@ -176,6 +179,7 @@ export function buildBannerHTML(
   options: BuildBannerOptions = {},
 ): string {
   const { includeAnimations = true, bgColor = '#0a0a10', feedUrl, feedBindings, customFonts = [] } = options
+  const playback = resolveBannerPlayback(options.playback)
   const customFontFamilies = new Set(customFonts.map(cf => cf.family))
   const fmt = resolveBannerFormat(fmtKey)
   if (!fmt) return ''
@@ -184,6 +188,8 @@ export function buildBannerHTML(
     .sort((a, b) => a.zIndex - b.zIndex)
     .map((l) => {
       let style = `position:absolute;left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;opacity:${l.opacity};`
+      const transformOrigin = layerTransformOrigin(l.transformOrigin)
+      if (transformOrigin) style += `transform-origin:${transformOrigin};`
       if (l.rotation) style += `transform:rotate(${l.rotation}deg);`
       if (l.mixBlendMode && /^(normal|multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/.test(l.mixBlendMode)) {
         style += `mix-blend-mode:${l.mixBlendMode};`
@@ -428,6 +434,7 @@ export function buildBannerHTML(
   })();`)
     })
 
+    if (playback) lines.push(`  tl.to({}, { duration: ${playback.duration} }, 0);`)
     animLines = lines.join('\n')
   }
 
@@ -450,11 +457,12 @@ export function buildBannerHTML(
     : ''
   const animScript =
     includeAnimations && animLines
-      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline();\n  const maskUpdates = [];\n  window.__engagrTimeline = tl;\n${animLines}\n  window.__engagrUpdateMasks = function() { maskUpdates.forEach(function(update) { update(); }); };\n  tl.eventCallback('onUpdate', window.__engagrUpdateMasks);\n<\/script>`
+      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline(${playback ? `{ repeat: ${bannerPlaybackRepeat(playback)} }` : ''});\n  const maskUpdates = [];\n  window.__engagrTimeline = tl;\n${animLines}\n  window.__engagrUpdateMasks = function() { maskUpdates.forEach(function(update) { update(); }); };\n  tl.eventCallback('onUpdate', window.__engagrUpdateMasks);\n<\/script>`
       : ''
   const runtimeScript = includeAnimations
     ? buildEngagrFrameRuntimeScript({
-        durationSec: estimateBannerDuration(layers),
+        durationSec: playback ? Math.max(playback.duration, estimateBannerDuration(layers)) : estimateBannerDuration(layers),
+        fixedCycleDuration: Boolean(playback),
         visibleElements: buildVisibleElementManifest(layers),
       })
     : ''

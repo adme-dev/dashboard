@@ -97,6 +97,7 @@ function toggleSize(key: string) {
 
 function buildExportHTML(fmtKey: string, layers: Layer[]): string {
   return buildBannerHTML(fmtKey, layers, {
+    playback: state.sets[fmtKey]?.playback || state.sets[state.activeKey]?.playback,
     includeAnimations: !isImageExport.value,
     bgColor: state.sets[fmtKey]?.bgColor || state.bgColor || '#0a0a10',
     customFonts: getExportCustomFonts(layers)
@@ -295,6 +296,7 @@ async function exportGifs() {
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
+        playback: state.sets[key]?.playback || state.sets[state.activeKey]?.playback,
         includeAnimations: true,
         bgColor: state.sets[key]?.bgColor || state.bgColor || '#0a0a10',
         customFonts: getExportCustomFonts(layers)
@@ -374,6 +376,7 @@ async function exportVideos() {
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
+        playback: state.sets[key]?.playback || state.sets[state.activeKey]?.playback,
         includeAnimations: true,
         bgColor: state.sets[key]?.bgColor || state.bgColor || '#0a0a10',
         customFonts: getExportCustomFonts(layers)

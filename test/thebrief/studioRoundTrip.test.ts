@@ -31,6 +31,7 @@ describe('TheBrief candidate through native Banner Studio state', () => {
     studio.loadProject({ ...project, canvasData: saved })
     const restored = studio.activeLayers.value.find(layer => layer.id === headline.id)!
     expect(restored.text).toBe('Updated headline')
+    expect(studio.getCanvasData().custom_300x250.playback).toEqual({ duration: 4, loopCount: 0 })
     expect(restored.keyframes).toEqual(originalTracks)
     expect(restored.keyframes!.opacity!.at(-1)).toMatchObject({ time: 4, value: 1 })
     expect(studio.state.isDirty).toBe(false)

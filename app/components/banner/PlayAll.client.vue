@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import gsap from 'gsap'
+import { resolveBannerPlayback } from '~/utils/banner-playback'
 import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 
 const props = defineProps<{
@@ -47,18 +48,25 @@ function buildAll() {
       if (!artboardEl) return
 
       const layers = state.sets[key]?.layers ?? []
-      const tl = buildTimelineForKey(artboardEl, layers)
+      const playback = resolveBannerPlayback(state.sets[key]?.playback)
+      const tl = buildTimelineForKey(artboardEl, layers, playback)
 
       // Override onComplete for synced loop behavior
       tl.eventCallback('onComplete', () => {
-        if (isLooping.value) {
-          timelines.value.forEach(t => t.restart())
-        } else {
+        if (playback) {
+          if (timelines.value.every(t => t.repeat() !== -1 && t.totalProgress() === 1)) {
+            isPlaying.value = false
+            stopTimePoller()
+          }
+        } else if (isLooping.value) {
+          timelines.value.filter(t => !t.data?.importedPlayback).forEach(t => t.restart())
+        } else if (!timelines.value.some(t => t.data?.importedPlayback) || timelines.value.every(t => t.repeat() !== -1 && t.totalProgress() === 1)) {
           isPlaying.value = false
           stopTimePoller()
         }
       })
 
+      tl.data = { importedPlayback: Boolean(playback) }
       timelines.value.push(tl)
       maxEnd = Math.max(maxEnd, tl.duration())
     })
@@ -183,6 +191,8 @@ onUnmounted(() => {
           />
           <UButton
             icon="i-lucide-repeat"
+            :disabled="state.setKeys.every(key => !!state.sets[key]?.playback)"
+            title="Loop preview for boards without imported playback settings"
             :variant="isLooping ? 'soft' : 'ghost'"
             size="xs"
             :color="isLooping ? 'primary' : undefined"

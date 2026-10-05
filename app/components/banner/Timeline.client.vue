@@ -791,6 +791,8 @@ onUnmounted(() => {
       />
       <UButton
         icon="i-lucide-repeat"
+        :disabled="!!state.sets[state.activeKey]?.playback"
+        :title="state.sets[state.activeKey]?.playback ? 'Uses imported playback count' : 'Loop preview'"
         :variant="state.isLooping ? 'soft' : 'ghost'"
         size="xs"
         :color="state.isLooping ? 'primary' : undefined"

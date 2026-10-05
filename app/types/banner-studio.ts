@@ -69,6 +69,8 @@ export interface Layer {
   zIndex: number
   opacity: number
   rotation?: number
+  /** Local pixel pivot; may lie outside a split text row. Defaults to CSS centre. */
+  transformOrigin?: { x: number, y: number }
   mixBlendMode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity'
   // Visibility
   locked?: boolean
@@ -140,7 +142,14 @@ export interface Layer {
   dur?: number
 }
 
+export interface BannerPlayback {
+  /** Seconds per cycle. 0 loops means continuous; otherwise total plays. */
+  duration: number
+  loopCount: number
+}
+
 export interface ArtboardState {
+  playback?: BannerPlayback
   layers: Layer[]
   bgColor?: string
 }

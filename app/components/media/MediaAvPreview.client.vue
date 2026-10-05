@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { BannerPlayback } from '~/types/banner-studio'
 // MediaAvPreview.client.vue — frame-accurate AV preview. Base layer (footage + ken-burns
 // stills) is composited onto a <canvas> via drawImage; the GSAP overlay is an <iframe>
 // stacked on top, seeked to the same clock. Slaved to the `currentTime` prop (the editor's
@@ -261,7 +262,7 @@ async function buildOverlayHtmlFor(clip: any) {
   if (overlayHtml.value[clip.id] && overlayHtmlKey.value[clip.id] === key) return
   overlayHtmlKey.value = { ...overlayHtmlKey.value, [clip.id]: key }
   try {
-    const proj = await apiFetch<{ canvasData: Record<string, { layers?: unknown[] }> }>(`/api/agency/banner-studio/projects/${clip.gsap_project_id}`)
+    const proj = await apiFetch<{ canvasData: Record<string, { layers?: unknown[], playback?: BannerPlayback }> }>(`/api/agency/banner-studio/projects/${clip.gsap_project_id}`)
     const fmtKey = clip.gsap_format_key || Object.keys(proj.canvasData ?? {})[0]
     if (!fmtKey) return
     const layers = extractBannerLayers(proj.canvasData, fmtKey) as any
@@ -270,7 +271,7 @@ async function buildOverlayHtmlFor(clip: any) {
     // black backdrop over the preview canvas. Pin both sides to the same scheme.
     const bannerSize = bannerFormatSize(proj.canvasData, fmtKey)
     const html = applyOverlayPlacement(
-      buildBannerHTML(fmtKey, layers, { includeAnimations: true }),
+      buildBannerHTML(fmtKey, layers, { includeAnimations: true, playback: proj.canvasData[fmtKey]?.playback }),
       clip.placement ?? null,
       { width: W.value, height: H.value },
       bannerSize

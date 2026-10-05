@@ -177,6 +177,7 @@ async function generate() {
 
             // Build HTML with pre-baked data (no feedUrl/feedBindings)
             const html = buildBannerHTML(key, mutatedLayers, {
+              playback: state.sets[key]?.playback || state.sets[state.activeKey]?.playback,
               includeAnimations: true,
               bgColor,
               customFonts: getExportCustomFonts(mutatedLayers),

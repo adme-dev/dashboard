@@ -68,6 +68,7 @@ const preview = computed(() => {
   return {
     format, scale,
     html: buildBannerHTML(previewKey.value, artboard.layers, {
+      playback: artboard.playback,
       includeAnimations: true, bgColor: artboard.bgColor || state.bgColor,
       customFonts: getExportCustomFonts(artboard.layers)
     })

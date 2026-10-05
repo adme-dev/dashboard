@@ -190,6 +190,7 @@ const previewHtml = computed(() => {
   const layers = state.sets[state.activeKey]?.layers
   if (!layers?.length) return ''
   return buildBannerHTML(state.activeKey, layers, {
+    playback: state.sets[state.activeKey]?.playback,
     includeAnimations: true,
     bgColor: state.sets[state.activeKey]?.bgColor || state.bgColor || '#0a0a10',
     customFonts: getExportCustomFonts(layers),
