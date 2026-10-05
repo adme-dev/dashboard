@@ -1312,9 +1312,11 @@ export async function getMetaLeadgen(
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
-    return await ofetch<MetaLeadgenResolved>(
+    const lead = await ofetch<MetaLeadgenResolved>(
       `${META_GRAPH_BASE}/${leadgenId}`,
       {
+        // Graph JSON must not become a string when served as text/javascript.
+        responseType: 'json',
         query: {
           access_token: accessToken,
           fields: 'id,created_time,field_data,ad_id,ad_name,form_id,campaign_id,campaign_name',
@@ -1322,6 +1324,20 @@ export async function getMetaLeadgen(
         signal: ctrl.signal,
       },
     )
+    // A successful HTTP response alone is not a usable lead. Check identity
+    // before normalization so malformed results cannot reach the database.
+    if (
+      !lead || typeof lead !== 'object' || Array.isArray(lead)
+      || typeof lead.id !== 'string' || lead.id !== leadgenId
+      || !Array.isArray(lead.field_data) || lead.field_data.length === 0
+      || !lead.field_data.every(field =>
+        field && typeof field.name === 'string' && field.name.trim()
+        && Array.isArray(field.values) && field.values.every(value => typeof value === 'string')
+      )
+    ) {
+      throw new Error('Invalid Meta lead response: identity or form fields are missing or invalid')
+    }
+    return lead
   } catch (e: any) {
     const status = e?.status ?? e?.response?.status
     if (status === 404) return null
