@@ -221,3 +221,25 @@ User approved complex samples before bulk. Exported and safely inspected **eight
 - Bulk remains held. Next implement buttons, scene timelines/visibility, consistent long-duration support and external font retention; re-test these failures before adding more import volume. Do not flatten or bypass conversion guards.
 
 Safari worked reliably for these two exports during this follow-up. New archives downloaded to `Downloads/General usage-2` and `General usage-3` and were copied into the durable evidence directory. HTML5 / General usage / High90% / custom-font-to-SVG OFF. No application source or deployment changes in this qualification follow-up.
+
+
+## Workspace UI release — 5 October 2026
+
+User requested a collapsible sidebar and reachable Export/other controls on smaller screens. Implemented and deployed:
+
+- Left resources sidebar collapses from 256px to a 48px vertical icon rail. Labelled toggle and tooltips; tool icon selection reopens the panel. Image/audio creation toolbar also reopens Assets, even when that was the previously selected tab. `v-show` preserves the panel instance during collapse. Cookie remembers the layout without modifying project data or zoom.
+- Project actions have their own wrapping header. Save, Export and a labelled Actions menu remain available; direct AI/Publish shortcuts appear only when the editor container is wide enough. Actions includes AI, From URL, Dissect, Preview, Ad tags, Publish, conditional DCO and existing version/template/analytics controls.
+- Canvas controls wrap independently. Container-based breakpoints account for the agency navigation width. Updated public feature descriptions.
+
+Application source commit: `77606a76c4c048b70668d6fc99f01d5eb9dd1ad1`.
+Fetched main and guarded release main: `8c8a5b5c4b6ccb6a17dc7a9405169ac4bc671f0e`.
+Deployment: https://9ff22b8d.agency-dashboard-6cm.pages.dev (`agency-dashboard/main`), served at https://app.xeroflow.io.
+`pnpm deploy:check` and `pnpm deploy:production` succeeded. Raw worker25,441,421 /25,468,928 bytes (27,507 headroom). Preserve the guard.
+
+Verification: 289 tests /42 suites passed, including banner/import, QR/auth navigation and social suite. Full `pnpm lint` ran:61,883 existing errors /782 warnings,44 fewer errors than prior baseline; zero diagnostics on the changed editor lines. Full production build passed. Live `/_nuxt/Cfeak8_h.js` downloaded with curl and byte-matched built output (SHA256 `56f00ccfe64cc2a1e72ed17114b16d81e9cd8910cfc0d71d018c3ce284ae3a48`).
+
+**Live visual smoke checks are still pending.** Another session repeatedly switched Safari to local Nissan Ariya and editorial operations pages; the computer-use tool rejected a tab-selection action because Safari changed. Do not call the UI visually verified. An asynchronous question asks the user to pause the other session; no answer at this checkpoint. Do not compete with its controls. Once available, reload the Frankston editor, collapse/reopen rail, reopen Assets via its tool, reload to verify preference, test narrower effective viewport, open Export/Actions/AI without publishing, and smoke-check QR/navigation.
+
+Release ledger: `/Users/paulgiurin/Documents/XeroFlow Imports/banner-workspace-release-2026-10-05.json`.
+Logs: `/private/tmp/banner-sidebar-release.log`, `/private/tmp/banner-sidebar-tests.log`, `/private/tmp/banner-sidebar-final-lint.log`.
+This UI release does not add multi-slide/button/external-font import support; the complex qualification blockers above remain.
