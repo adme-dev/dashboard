@@ -169,6 +169,13 @@ export function normalizeMetaPayload(
   pageId: string | null,
   clientId: string | null,
 ): InsertLeadInput {
+  // Graph uses offsets such as +0000; canonical intake requires ISO 8601.
+  const submittedAt = resolved.created_time == null
+    ? new Date()
+    : new Date(resolved.created_time)
+  if (!Number.isFinite(submittedAt.getTime())) {
+    throw new Error('Invalid Meta lead timestamp')
+  }
   const fields: Record<string, string> = {}
   for (const f of resolved.field_data ?? []) {
     const v = (f.values ?? [])[0]
@@ -187,7 +194,7 @@ export function normalizeMetaPayload(
     campaign_id: resolved.campaign_id ?? null,
     campaign_name: resolved.campaign_name ?? null,
     page_id: pageId,
-    submitted_at: resolved.created_time ?? new Date().toISOString(),
+    submitted_at: submittedAt.toISOString(),
     field_data: fields,
     attribution: {
       provider: 'meta_lead_ads',
