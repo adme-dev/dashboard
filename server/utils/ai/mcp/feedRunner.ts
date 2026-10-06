@@ -40,7 +40,8 @@ import {
  * provider functions are called directly.
  */
 
-const FEED_PREVIEW_LIMIT = 500
+// Keep within the feed service's documented 1–100 preview range.
+const FEED_PREVIEW_LIMIT = 100
 
 interface ClientBindingRow {
   connection_id: string
