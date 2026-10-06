@@ -248,16 +248,16 @@ function summarizeFilterNode(node: unknown): string {
 
 /** Vehicle fields a server-side filter preview may reference, mapped onto VehicleSummary keys. */
 const FILTER_FIELD_MAP: Record<string, 'condition' | 'make' | 'model' | 'year' | 'price' | 'vin' | 'stockNumber'> = {
-  'vehicle_condition': 'condition',
-  'condition': 'condition',
-  'state_of_vehicle': 'condition',
-  'make': 'make',
-  'model': 'model',
-  'year': 'year',
-  'price': 'price',
-  'vin': 'vin',
-  'stock_number': 'stockNumber',
-  'retailer_id': 'stockNumber'
+  vehicle_condition: 'condition',
+  condition: 'condition',
+  state_of_vehicle: 'condition',
+  make: 'make',
+  model: 'model',
+  year: 'year',
+  price: 'price',
+  vin: 'vin',
+  stock_number: 'stockNumber',
+  retailer_id: 'stockNumber'
 }
 
 type FilterableItem = {

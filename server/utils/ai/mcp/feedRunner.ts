@@ -436,7 +436,7 @@ export function buildFeedConfirmDeps() {
       await provider.updateProductSet(payload.args.productSetId, { filter: payload.args.filter })
       // P-3 readback: the post-state filter must match the intent before we report success.
       const readback = await provider.getProductSet(payload.args.productSetId)
-      let readbackFilter: unknown = null
+      let readbackFilter: unknown
       try {
         readbackFilter = readback.filter ? JSON.parse(readback.filter) : null
       } catch {
