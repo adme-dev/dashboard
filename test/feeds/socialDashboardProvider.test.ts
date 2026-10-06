@@ -49,6 +49,7 @@ describe('socialDashboard provider', () => {
         matchedTotal: 7,
         validatedTotal: 5,
         invalidTotal: 2,
+        invalidIssueCounts: [{ field: 'url', count: 2, label: 'missing a vehicle URL' }],
         invalidSummaries: [
           { id: 'v1', issues: [{ field: 'url', message: 'url is required' }] }
         ],
@@ -80,7 +81,7 @@ describe('socialDashboard provider', () => {
 
     expect(out.total).toBe(7)
     expect(out.items[0]).toMatchObject({ id: 'v2', make: 'Hyundai', url: 'https://dealer.example/tucson' })
-    expect(out.validation).toMatchObject({ matchedTotal: 7, validatedTotal: 5, invalidTotal: 2 })
+    expect(out.validation).toMatchObject({ matchedTotal: 7, validatedTotal: 5, invalidTotal: 2, invalidIssueCounts: [{ field: 'url', count: 2, label: 'missing a vehicle URL' }] })
     expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds/preview', {
       filters: { condition: ['New'], onlyActive: true, sellerIds: ['kia-springvale'] },
       limit: 8,

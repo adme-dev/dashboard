@@ -5,6 +5,7 @@ import { proposeAction } from '~~/server/utils/ai/pendingActions'
 import { getDealerLink, linkToContext } from '~~/server/utils/feeds/dealerLinks'
 import { getSocialDashboardClient, resolveSocialDashboardBaseUrl } from '~~/server/utils/feeds/config'
 import { getFeedProvider } from '~~/server/utils/feeds/registry'
+import { summarizeFeedReadiness } from '~~/server/utils/feeds/readiness'
 import type { DealerLink, FeedProvider, FeedSummary, VehicleSummary } from '~~/server/utils/feeds/types'
 import { createMetaCatalogProvider } from '~~/server/utils/metaCatalogProvider'
 import {
@@ -79,7 +80,7 @@ async function loadServedItems(
   clientId: string,
   sourceFeedId: string,
   ctx: ToolContext
-): Promise<{ total: number, items: VehicleSummary[], feedName: string | null, readiness: unknown }> {
+): Promise<{ total: number, matchedTotal: number, items: VehicleSummary[], feedName: string | null, readiness: unknown }> {
   const { link, provider, providerContext } = await loadDealerContext(clientId, ctx)
   const feeds = await provider.listFeeds(providerContext, link)
   const feed = feeds.find(candidate => candidate.id === sourceFeedId) ?? null
@@ -89,7 +90,13 @@ async function loadServedItems(
     { providerId: link.providerId, feedId: sourceFeedId, platform: feed?.platform ?? 'facebook' },
     { limit: FEED_PREVIEW_LIMIT }
   )
-  return { total: preview.total, items: preview.items, feedName: feed?.name ?? null, readiness: preview.readiness ?? null }
+  return {
+    total: preview.validation?.validatedTotal ?? preview.total,
+    matchedTotal: preview.validation?.matchedTotal ?? preview.total,
+    items: preview.validation?.showingFallbackCandidates ? [] : preview.items,
+    feedName: feed?.name ?? null,
+    readiness: preview.readiness ?? (preview.validation ? summarizeFeedReadiness(preview.validation) : null)
+  }
 }
 
 async function connectionAuthority(clientId: string, connectionId: string): Promise<MetaCatalogConnectionRecord> {
@@ -192,11 +199,13 @@ export function buildFeedReadRunner() {
       const bindings = await listBindingsForClient(clientId)
       const baseUrl = await resolveSocialDashboardBaseUrl({})
 
+      const { provider: inventoryProvider, providerContext } = await loadDealerContext(clientId, ctx)
+      const sourceFeeds = await inventoryProvider.listFeeds(providerContext, link)
       const results = []
       for (const binding of bindings) {
         const serveUrl = buildServeUrl(baseUrl, binding.source_feed_id)
         const served = await loadServedItems(clientId, binding.source_feed_id, ctx)
-          .catch((error: unknown) => ({ total: null, items: [] as VehicleSummary[], feedName: null, readiness: null, error: error instanceof Error ? error.message : 'served feed unavailable' }))
+          .catch((error: unknown) => ({ total: null, matchedTotal: null, items: [] as VehicleSummary[], feedName: null, readiness: null, error: error instanceof Error ? error.message : 'served feed unavailable' }))
 
         let catalog: Record<string, unknown> = { catalogId: binding.product_catalog_id, productFeedId: binding.product_feed_id }
         let productSets: unknown[] = []
@@ -226,6 +235,8 @@ export function buildFeedReadRunner() {
           feedName: served.feedName,
           serveUrl,
           itemCount: served.total,
+          matchedItemCount: served.matchedTotal,
+          isActive: sourceFeeds.find(feed => feed.id === binding.source_feed_id)?.isActive ?? null,
           // P-03: byCondition/excluded are shaped from a bounded preview, never silently.
           previewLimit: FEED_PREVIEW_LIMIT,
           previewTruncated: (served.total ?? served.items.length) > served.items.length,
@@ -236,6 +247,32 @@ export function buildFeedReadRunner() {
           productSets,
           bindingState: binding.state,
           lastVerifiedAt: binding.last_verified_at
+        })
+      }
+
+      const boundFeedIds = new Set(bindings.map(binding => binding.source_feed_id))
+      for (const feed of sourceFeeds.filter(feed => !boundFeedIds.has(feed.id))) {
+        const served = await loadServedItems(clientId, feed.id, ctx)
+          .catch((error: unknown) => ({ total: null, matchedTotal: null, items: [] as VehicleSummary[], readiness: null, error: error instanceof Error ? error.message : 'served feed unavailable' }))
+        results.push({
+          dealerLinkId: link.clientId,
+          providerId: link.providerId,
+          feedId: feed.id,
+          feedName: feed.name,
+          platform: feed.platform,
+          isActive: feed.isActive,
+          serveUrl: buildServeUrl(baseUrl, feed.id),
+          itemCount: served.total,
+          matchedItemCount: served.matchedTotal,
+          previewLimit: FEED_PREVIEW_LIMIT,
+          previewTruncated: (served.total ?? served.items.length) > served.items.length,
+          byCondition: shapeByCondition(served.items),
+          excluded: shapeExcluded(served.readiness as Parameters<typeof shapeExcluded>[0]),
+          ...('error' in served ? { servedFeedError: served.error } : {}),
+          catalog: null,
+          productSets: [],
+          bindingState: 'unbound',
+          lastVerifiedAt: null
         })
       }
 
@@ -399,7 +436,7 @@ export function buildFeedConfirmDeps() {
       await provider.updateProductSet(payload.args.productSetId, { filter: payload.args.filter })
       // P-3 readback: the post-state filter must match the intent before we report success.
       const readback = await provider.getProductSet(payload.args.productSetId)
-      let readbackFilter: unknown = null
+      let readbackFilter: unknown
       try {
         readbackFilter = readback.filter ? JSON.parse(readback.filter) : null
       } catch {

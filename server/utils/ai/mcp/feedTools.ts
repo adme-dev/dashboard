@@ -57,7 +57,7 @@ export const feedReadTools: FeedToolDescriptor[] = [
   {
     name: 'get_inventory_feed_health',
     description:
-      'Per-client vehicle inventory feed health: the XeroFlow-served feed (serve URL, item count, '
+      'Per-client vehicle inventory feed health, including paused and unbound feeds: the XeroFlow-served feed (serve URL, validated item count, matchedItemCount, '
       + 'byCondition breakdown e.g. new/demo/used, and an excluded breakdown of items the feed DROPPED '
       + 'and why: invalidListingUrl / missingPrice / missingImage), the Meta catalog binding (catalogId, productFeedId, '
       + 'scheduled URL and whether it still points at XeroFlow), last upload status, and every product '
@@ -248,16 +248,16 @@ function summarizeFilterNode(node: unknown): string {
 
 /** Vehicle fields a server-side filter preview may reference, mapped onto VehicleSummary keys. */
 const FILTER_FIELD_MAP: Record<string, 'condition' | 'make' | 'model' | 'year' | 'price' | 'vin' | 'stockNumber'> = {
-  'vehicle_condition': 'condition',
-  'condition': 'condition',
-  'state_of_vehicle': 'condition',
-  'make': 'make',
-  'model': 'model',
-  'year': 'year',
-  'price': 'price',
-  'vin': 'vin',
-  'stock_number': 'stockNumber',
-  'retailer_id': 'stockNumber'
+  vehicle_condition: 'condition',
+  condition: 'condition',
+  state_of_vehicle: 'condition',
+  make: 'make',
+  model: 'model',
+  year: 'year',
+  price: 'price',
+  vin: 'vin',
+  stock_number: 'stockNumber',
+  retailer_id: 'stockNumber'
 }
 
 type FilterableItem = {

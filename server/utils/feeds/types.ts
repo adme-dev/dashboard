@@ -71,6 +71,7 @@ export interface FeedPreviewValidation {
   invalidTotal: number
   candidateLimit?: number
   invalidSummaries: FeedValidationIssueSummary[]
+  invalidIssueCounts?: Array<{ field: string, count: number, label: string }>
   showingFallbackCandidates?: boolean
 }
 

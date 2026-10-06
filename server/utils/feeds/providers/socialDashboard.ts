@@ -18,6 +18,7 @@ type PreviewResponse = {
   candidateLimit?: unknown
   candidate_limit?: unknown
   invalidSummaries?: unknown
+  invalidIssueCounts?: unknown
   invalid_summaries?: unknown
   items?: unknown
 }
@@ -182,6 +183,13 @@ function normalizePreviewValidation(
     invalidTotal,
     candidateLimit: candidateLimit === undefined ? undefined : finiteNumber(candidateLimit),
     invalidSummaries: normalizeInvalidSummaries(r.invalidSummaries ?? r.invalid_summaries),
+    ...(Array.isArray(r.invalidIssueCounts)
+      ? { invalidIssueCounts: r.invalidIssueCounts.filter(isRecord)
+          .filter(issue => typeof issue.field === 'string' && Number.isFinite(Number(issue.count)) && Number(issue.count) >= 0)
+          .map(issue => ({ field: String(issue.field), count: Number(issue.count), label: typeof issue.label === 'string'
+            ? issue.label
+            : String(issue.field) })) }
+      : {}),
     showingFallbackCandidates
   }
 }
@@ -294,8 +302,8 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
         name: detail.name,
         platform: ref.platform,
         filters: {
-        ...detail.filters,
-        ...(opts.search?.trim() ? { search: opts.search.trim() } : {})
+          ...detail.filters,
+          ...(opts.search?.trim() ? { search: opts.search.trim() } : {})
         },
         mappings: detail.mappings,
         platformSettings: detail.platformSettings,
