@@ -161,6 +161,29 @@ export function summarizeFeedReadiness(validation?: FeedPreviewValidation): Feed
     }
   }
 
+  if (validation.invalidIssueCounts?.length) {
+    const totals = new Map<string, number>()
+    for (const issue of validation.invalidIssueCounts) {
+      const classification = classifyIssue({ field: issue.field, message: issue.label })
+      if (!Number.isFinite(issue.count) || issue.count < 0) continue
+      totals.set(classification.key, (totals.get(classification.key) ?? 0) + issue.count)
+      if (!grouped.has(classification.key)) grouped.set(classification.key, {
+        ...classification, count: 0, sampleIds: [], messages: [issue.label]
+      })
+    }
+    for (const [key, count] of totals) grouped.get(key)!.count = Math.min(count, invalidTotal)
+    base.sourceRequiredCount = 0
+    base.aiAssistedCount = 0
+    base.mappingRequiredCount = 0
+    base.manualReviewCount = 0
+    for (const group of grouped.values()) {
+      if (group.fixMode === 'source_required') base.sourceRequiredCount += group.count
+      else if (group.fixMode === 'ai_assisted') base.aiAssistedCount += group.count
+      else if (group.fixMode === 'mapping_required') base.mappingRequiredCount += group.count
+      else base.manualReviewCount += group.count
+    }
+  }
+
   return {
     ...base,
     issueGroups: Array.from(grouped.values()).sort((a, b) => b.count - a.count)

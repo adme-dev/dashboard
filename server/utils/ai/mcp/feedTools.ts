@@ -57,7 +57,7 @@ export const feedReadTools: FeedToolDescriptor[] = [
   {
     name: 'get_inventory_feed_health',
     description:
-      'Per-client vehicle inventory feed health: the XeroFlow-served feed (serve URL, item count, '
+      'Per-client vehicle inventory feed health, including paused and unbound feeds: the XeroFlow-served feed (serve URL, validated item count, matchedItemCount, '
       + 'byCondition breakdown e.g. new/demo/used, and an excluded breakdown of items the feed DROPPED '
       + 'and why: invalidListingUrl / missingPrice / missingImage), the Meta catalog binding (catalogId, productFeedId, '
       + 'scheduled URL and whether it still points at XeroFlow), last upload status, and every product '

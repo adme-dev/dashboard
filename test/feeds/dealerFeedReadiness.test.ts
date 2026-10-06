@@ -61,3 +61,10 @@ describe('summarizeFeedReadiness', () => {
     expect(summary.issueGroups).toEqual([])
   })
 })
+
+// The provider returns at most five detailed examples, alongside full-population totals.
+it('uses aggregate issue counts rather than treating samples as the complete inventory', () => {
+  const summary = summarizeFeedReadiness({ matchedTotal: 14, validatedTotal: 0, invalidTotal: 14, invalidSummaries: [{ id: 'sample', issues: [{ field: 'url', message: 'URL required' }] }], invalidIssueCounts: [{ field: 'url', count: 14, label: 'missing a vehicle URL' }] })
+  expect(summary.issueGroups).toEqual([expect.objectContaining({ key: 'url', count: 14, sampleIds: ['sample'] })])
+  expect(summary.sourceRequiredCount).toBe(14)
+})
