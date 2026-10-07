@@ -1,0 +1,5 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+@source './components';
+:root {font-family:Arial,sans-serif;color:#f4f4f5;background:#151618;color-scheme:dark}
+body{margin:0}main{max-width:1040px;margin:auto;padding:40px 24px}header>p:first-child{font-size:11px;letter-spacing:.2em;color:#aaa}h1{font-size:36px;letter-spacing:-.04em;margin:12px 0}header>p{color:#aaa;font-size:14px}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:30px}.comparison section{border-radius:20px;padding:24px}.dark{background:#080909;color:white}.light{background:#f7f8fa;color:#17181b}h2{font-size:14px;margin:0}.hero-orb{width:224px;max-width:100%;margin:24px auto}footer{display:flex;justify-content:space-between;align-items:center;font-size:14px}.note{font-size:13px;color:#a7aaaf;margin-top:22px}.result{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:20px}@media(max-width:600px){main{padding:24px 16px}h1{font-size:29px}.comparison{grid-template-columns:1fr}.hero-orb{width:160px;margin:12px auto}.comparison section{padding:16px}}
