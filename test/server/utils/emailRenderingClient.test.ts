@@ -12,6 +12,34 @@ describe('Pages email renderer client', () => {
     expect(await client.renderDocument(document)).toContain('Hello & goodbye')
     expect(await client.renderCustomerPreview(customerFixture.template, customerFixture.context)).toMatchObject({ sample: true, html: expect.stringContaining('Content-Security-Policy') })
   })
+  it('accepts the transport-owned disposer and disposes successful RPC replies exactly once', async () => {
+    const dispose = vi.fn(function (this: unknown) {
+      expect(this).toBe(response)
+    })
+    const response = Object.defineProperty(structuredClone(reply), Symbol.dispose, { value: dispose })
+    await expect(clientFor(() => response).renderDocument(document)).resolves.toBe('<p>Valid</p>')
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(Object.getOwnPropertySymbols(response)).toEqual([Symbol.dispose])
+  })
+  it('disposes rejected RPC replies without admitting extra symbols or nested capabilities', async () => {
+    for (const value of [
+      { ...reply, [Symbol('extra')]: 'denied' },
+      { ...reply, value: { html: '<p>Valid</p>', [Symbol.dispose]: () => undefined } },
+      { ...reply, environment: 'production' },
+      { ...reply, a: 1, b: 2, c: 3 }
+    ]) {
+      const dispose = vi.fn()
+      Object.defineProperty(value, Symbol.dispose, { value: dispose })
+      await expect(clientFor(() => value).renderDocument(document)).rejects.toMatchObject({ statusCode: 503 })
+      expect(dispose).toHaveBeenCalledTimes(1)
+    }
+  })
+  it('does not invoke an accessor pretending to be the RPC disposer', async () => {
+    const get = vi.fn(() => () => undefined)
+    const response = Object.defineProperty(structuredClone(reply), Symbol.dispose, { get })
+    await expect(clientFor(() => response).renderDocument(document)).rejects.toMatchObject({ statusCode: 503 })
+    expect(get).not.toHaveBeenCalled()
+  })
   it.each([{}, { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' }, { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'preview', EMAIL_RENDERER: { render: () => reply } }])('fails closed without the explicit configured environment and binding', async (env) => {
     await expect(createEmailRenderer(env).renderDocument(document)).rejects.toMatchObject({ statusCode: 503 })
   })

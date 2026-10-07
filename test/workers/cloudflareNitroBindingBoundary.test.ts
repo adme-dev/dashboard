@@ -103,7 +103,24 @@ describeBuiltWorker('built Nitro Cloudflare binding boundary', () => {
       legalComments: 'none',
       logLevel: 'silent'
     }))
-    worker = new Miniflare({
+    const emittedRenderer = path.join(repositoryRoot, '.verification/email-rendering-worker-production/index.js')
+    const rendererPath = existsSync(emittedRenderer) ? emittedRenderer : path.join(directory, 'email-renderer.mjs')
+    if (!existsSync(emittedRenderer)) {
+      await stage('esbuild private renderer', build({
+        entryPoints: [path.join(repositoryRoot, 'workers/email-rendering/src/index.ts')],
+        outfile: rendererPath,
+        bundle: true,
+        format: 'esm',
+        platform: 'neutral',
+        target: 'esnext',
+        conditions: ['workerd', 'worker', 'browser'],
+        mainFields: ['module', 'main'],
+        external: ['cloudflare:*'],
+        logLevel: 'silent'
+      }))
+    }
+    worker = new Miniflare({ workers: [{
+      name: 'dashboard',
       modules: true,
       modulesRoot: repositoryRoot,
       scriptPath: bundlePath,
@@ -116,8 +133,10 @@ describeBuiltWorker('built Nitro Cloudflare binding boundary', () => {
       bindings: {
         APP_URL: 'https://app.xeroflow.test',
         DATABASE_URL,
-        RENDER_LINK_SECRET
+        RENDER_LINK_SECRET,
+        PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production'
       },
+      serviceBindings: { EMAIL_RENDERER: { name: 'email-renderer', entrypoint: 'EmailRenderer' } },
       // The actual login/session SQL goes through the built application's Neon
       // HTTP driver. All outbound requests terminate in this local fixture;
       // no provider credentials, production database or identity cache is used.
@@ -148,7 +167,14 @@ describeBuiltWorker('built Nitro Cloudflare binding boundary', () => {
       },
       kvNamespaces: ['CACHE'],
       r2Buckets: ['MEDIA_BUCKET']
-    })
+    }, {
+      name: 'email-renderer',
+      modules: true,
+      scriptPath: rendererPath,
+      compatibilityDate: '2026-07-15',
+      bindings: { EMAIL_RENDER_ENVIRONMENT: 'production' },
+      outboundService: () => { throw new Error('Renderer must not make outbound requests') }
+    }] })
     await stage('Miniflare startup', worker.ready)
     // Mint the session through the real Worker login handler, password check
     // and JWT signer; this remains valid if the application's signing changes.
@@ -167,6 +193,21 @@ describeBuiltWorker('built Nitro Cloudflare binding boundary', () => {
   afterAll(async () => {
     if (worker) await stage('Miniflare disposal', worker.dispose())
     if (directory) await rm(directory, { recursive: true, force: true })
+  }, 30_000)
+
+  it('renders email through the built Pages caller and real named Worker RPC', async () => {
+    const response = await stage('private renderer via Pages', worker.dispatchFetch(
+      'https://app.xeroflow.test/api/email/templates/render', {
+        method: 'POST',
+        headers: { 'authorization': `Bearer ${authToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ body_source: {
+          root: { type: 'EmailLayout', data: { childrenIds: ['text'] } },
+          text: { type: 'Text', data: { props: { text: 'Production renderer boundary' } } }
+        } })
+      }
+    ))
+    const body = await response.text()
+    expect({ status: response.status, body }).toMatchObject({ status: 200, body: expect.stringContaining('Production renderer boundary') })
   }, 30_000)
 
   it('carries the real Worker env through the dispatcher, Nitro localFetch, H3 middleware, and route', async () => {
