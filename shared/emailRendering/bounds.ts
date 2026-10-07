@@ -6,10 +6,10 @@ export class RenderBoundaryError extends Error {
     super(code === 'INVALID_INPUT' ? 'Invalid email rendering input.' : 'Email rendering limit exceeded.')
   }
 }
-const invalid = (): never => {
+function invalid(): never {
   throw new RenderBoundaryError('INVALID_INPUT')
 }
-const exceeded = (): never => {
+function exceeded(): never {
   throw new RenderBoundaryError('LIMIT_EXCEEDED')
 }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
