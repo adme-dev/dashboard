@@ -22,7 +22,14 @@ describe('standalone sign-in email', () => {
     expect(url.pathname).toBe('/studio/signup/verify')
     expect(url.search).toBe('')
     expect(url.hash).toBe(`#token=${delivery.token}`)
+    expect(options.message.subject).toBe('Continue to Page Studio')
     expect(options.message.html).toContain('15 minutes')
+    expect(options.message.html).toContain('works once')
+    // Both email-client CTA variants and the copyable fallback retain the same
+    // configured verification URL; styling must not redirect to staff sign-in.
+    const hrefs = [...options.message.html.matchAll(/href="([^"]+)"/g)].map(match => match[1])
+    expect(hrefs).toEqual([url.href, url.href, url.href])
+    expect(options.message.html).not.toContain('/auth/')
   })
   it('turns provider failures into a controlled error without provider details', async () => {
     mocks.send.mockImplementation(async options => options.resendSend())
