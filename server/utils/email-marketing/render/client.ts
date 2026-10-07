@@ -7,6 +7,29 @@ const failure = (code: 'INVALID_INPUT' | 'LIMIT_EXCEEDED' | 'UNAVAILABLE') => cr
   statusMessage: code === 'INVALID_INPUT' ? 'Invalid email rendering input.' : code === 'LIMIT_EXCEEDED' ? 'Email rendering limit exceeded.' : 'Email rendering is temporarily unavailable.'
 })
 
+/** Cloudflare decorates RPC object results with an own Symbol.dispose method.
+ * Preserve every payload descriptor for strict validation, omit only that root
+ * transport method, and release the original result even when validation fails.
+ * https://developers.cloudflare.com/workers/runtime-apis/rpc/lifecycle/
+ */
+function snapshotRpcReply(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return snapshotRenderInput(value, MAX_RENDER_OUTPUT_BYTES)
+  const disposer = Object.getOwnPropertyDescriptor(value, Symbol.dispose)
+  if (!disposer) return snapshotRenderInput(value, MAX_RENDER_OUTPUT_BYTES)
+  if (disposer.get || disposer.set || typeof disposer.value !== 'function') throw failure('UNAVAILABLE')
+  try {
+    // All response envelopes have five root fields. Bound descriptor copying
+    // before allocating; nested values still use the full byte/node/depth guard.
+    if (Object.getOwnPropertyNames(value).length > 5) throw failure('UNAVAILABLE')
+    const descriptors = Object.getOwnPropertyDescriptors(value)
+    Reflect.deleteProperty(descriptors, Symbol.dispose)
+    const payload = Object.create(Object.getPrototypeOf(value), descriptors)
+    return snapshotRenderInput(payload, MAX_RENDER_OUTPUT_BYTES)
+  } finally {
+    disposer.value.call(value)
+  }
+}
+
 /** Explicit environment and private service binding; no local or HTTP fallback. */
 export function createEmailRenderer(env: Record<string, unknown>): EmailRendererClient {
   const environment = RenderEnvironmentSchema.safeParse(env.PAGE_STUDIO_RELEASE_ENVIRONMENT)
@@ -21,7 +44,7 @@ export function createEmailRenderer(env: Record<string, unknown>): EmailRenderer
     }
     let response: ReturnType<typeof EmailRenderResponseSchema.parse>
     try {
-      response = EmailRenderResponseSchema.parse(snapshotRenderInput(await service.render(request), MAX_RENDER_OUTPUT_BYTES))
+      response = EmailRenderResponseSchema.parse(snapshotRpcReply(await service.render(request)))
     } catch {
       throw failure('UNAVAILABLE')
     }

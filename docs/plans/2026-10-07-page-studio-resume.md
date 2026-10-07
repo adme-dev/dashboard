@@ -208,3 +208,23 @@ Task 4 remains incomplete only for the hosted browser acceptance/handoff items.
 Rollback reference: prior preview `00e6ade1-0d35-4784-8b3b-9a7c62ea298d` from
 `3f48a78455818c1ee617ca06775c5681c9ac69b9`. Roll back Pages first and retain the
 renderer while referenced. Broader RND work remains open in the canonical backlog.
+
+## Production release attempt and rollback — 7 October
+
+The user explicitly authorized production release. PR #632 merged at current main
+`ec0c081f1fb2ecdc16af9b79b7e6f3f63adaeefb` after both GitHub CI runs passed.
+The private production renderer was deployed first, then guarded Pages deployment
+`def3bcb5-f2dc-4644-b1a0-3dee9b136087`. Provider readback confirmed exact source
+and `EMAIL_RENDERER` → `xeroflow-email-rendering-production` / `EmailRenderer`.
+Build budget: raw 25,408,170/25,468,928; gzip 7,019,912/9,750,000.
+
+Live authenticated email preview returned 503, so production was restored to
+`c2232396-e128-46b0-9712-19f570e3d170` / `eeefcc40f5514f4444b4d1021af174b588a28a2a`.
+The identical synthetic preview works on the restored artifact. The integration
+remains on main while its RPC lifecycle correction is verified; do not deploy
+uncorrected main. See [incident and regression](../incidents/2026-10-07-email-renderer-rpc-disposer.md).
+
+Original native customer/Studio/demo worktrees remain preserved. Dashboard #603–613
+heads are all proven ancestors of merged main; their still-open PRs represent
+integrated history, not release bases. Native activation and production migrations
+442–447 remain a separate rollout with customer gates closed by default.
