@@ -58,6 +58,18 @@ Fresh verification in the durable worktree:
 - A follow-up run enabled the separately named portal workspace database variable:
   all 19 portal authority cases plus the 16 corrected integration cases passed.
   These overlap the earlier corrected-test run; do not add them as 35 new tests.
+- On integration checkpoint `93aaeacf54bb4f0cc40d994c60d8d947f1cf2e8a`, all 17
+  previously gated CMS/Astro PostgreSQL files passed: 616 tests, one cross-repository
+  runtime case skipped. They used a separate disposable `studio_cms_activation_*`
+  database and cover adoption, graph acceptance, commit authority, publication,
+  rollback, runtime delivery, staging and checkpoint outbox behavior.
+- The remaining public D1 recovery case and connected native action suite then
+  passed with the saved Studio source `6adea020968da49c9a0aa46ff7665b0872b976e9`:
+  11 selected tests passed; 134 unrelated cases were excluded by the test-name filter.
+  Actual local Workerd, D1 and R2 fixtures verified restart/lost-response recovery.
+  These are local runtime results, not hosted acceptance. Fixtures were disposed
+  and PostgreSQL shutdown was confirmed. Logs: `cms-astro-postgres.log` and
+  `connected-runtime.log` in the evidence directory.
 - Both staged and unstaged whitespace checks passed.
 - The combined build completed compilation but failed the fixed artifact guard:
   raw 25,484,769 / 25,468,928 bytes (15,841 over); gzip 7,036,899 / 9,750,000.

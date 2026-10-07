@@ -108,3 +108,31 @@ as well as Page Studio. Resolve compatible payload limits and request-context
 plumbing during the focused implementation plan. If measured net savings do not
 provide useful room beyond the immediate 15,841-byte overage, stop and reassess the
 boundary rather than claim capacity from unbundled source size.
+
+
+## Read-only caller and limit findings — 7 October
+
+The source scan found direct agency rendering at template preview/test-send and
+inside template/campaign create/update helpers. Their current production callers
+are HTTP routes. `renderTrackedTemplateDocument` has no production call site in
+`server`, `workers` or `scripts`; retain an explicit regression decision for that
+export rather than assume it is a background caller. Customer preview has one
+shared service call in `emailTemplates.ts`, reached through separate native and
+portal adapters. Its existing post-render authority check must follow the new await.
+
+Customer templates already limit blocks to 30, image references to six, each
+image to 512 KiB and total rendered image bytes to 2 MiB (including repeated image
+references). Account for base64 expansion when sizing RPC envelopes. The renderer
+also imports responsive-style helpers from `app/utils/edmResponsive`; extraction
+must give those pure helpers explicit Worker-resolvable imports and retain parity.
+
+Agency preview/test-send currently accept `body_source: z.any()` followed by a
+format predicate; these handlers do not establish a document byte or depth limit.
+Therefore a new finite validation limit cannot be described as preserving every
+previously accepted payload. The detailed design must state the new boundary,
+check representative fixtures and give an actionable error, rather than silently
+truncate or claim an existing limit that was never enforced.
+
+Cloudflare documents a 32 MiB maximum serialized RPC message. This is an upper
+transport constraint, not the recommended application envelope budget:
+https://developers.cloudflare.com/workers/runtime-apis/rpc/#limitations
