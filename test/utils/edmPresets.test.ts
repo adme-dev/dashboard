@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildCampaignPreflight } from '~~/server/utils/email-marketing/campaignSend'
-import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
-import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
+import { renderTemplateDocumentLocally as renderTemplateDocument } from '~~/workers/email-rendering/src/render/document'
+import { isFlyhubFormat } from '~~/workers/email-rendering/src/render/flyhub-html-renderer'
 import { createEmptyDocument } from '~~/app/types/edm'
 import { POSTCARDS_IMPORTED_HTML } from '~~/app/utils/edmImportedPostcardsHtml.js'
 import {

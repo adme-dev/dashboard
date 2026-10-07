@@ -80,7 +80,7 @@ describe('campaign patch scheduling', () => {
 
       const result = await handler({} as never)
 
-      expect(mockUpdateCampaign).toHaveBeenCalledWith('camp-1', { name: 'June offers' })
+      expect(mockUpdateCampaign).toHaveBeenCalledWith('camp-1', { name: 'June offers' }, expect.objectContaining({ renderDocument: expect.any(Function) }))
       expect(mockScheduleCampaign).toHaveBeenCalledWith('camp-1', '2026-06-06T00:00:00.000Z', {
         sendingConfigured: true,
         senderDomainAuthenticated: true,
@@ -127,7 +127,7 @@ describe('campaign patch scheduling', () => {
     expect(mockUpdateCampaign).toHaveBeenCalledWith('camp-1', {
       from_email: 'Sales@Example.COM',
       reply_to: 'Replies@Example.COM'
-    })
+    }, expect.objectContaining({ renderDocument: expect.any(Function) }))
     expect(mockScheduleCampaign).not.toHaveBeenCalled()
   })
 })

@@ -1,0 +1,241 @@
+import { boundedText, boundedJoin } from './boundedText'
+import { replaceMergeFields } from './mergeFields'
+import type { createRenderBudget } from '../../../../shared/emailRendering/bounds'
+/**
+ * FlyHub to HTML Email Renderer
+ *
+ * Converts FlyHub document format to email-safe HTML with inline styles.
+ * This renderer preserves all FlyHub styles correctly and includes responsive
+ * CSS for mobile devices.
+ *
+ * Block rendering is delegated to the block registry — this file only
+ * handles document-level orchestration (HTML wrapper, head, responsive CSS).
+ */
+
+// Trigger block registration. Import a named export so Vite SSR can't
+// tree-shake the side-effect import (which registers every block type).
+import { BLOCKS_LOADED } from './blocks'
+import { renderBlock } from './block-registry'
+import { resolveFontFamily } from './blocks/types'
+import { escapeFontFamilyForHtml } from './blocks/helpers'
+import {
+  edmBlockHasResponsiveRules,
+  edmResponsiveClassForBlock,
+  getHideClassForBlock,
+  mobileStyleDeclarationsForBlock
+} from '../../../../app/utils/edmResponsive'
+import type {
+  FlyhubBlock,
+  BlockRenderContext,
+  FlyhubDocument,
+  PreviewVehicle,
+  PreviewOffer
+} from './blocks/types'
+
+void BLOCKS_LOADED
+
+function collectResponsiveCss(doc: FlyhubDocument, budget?: ReturnType<typeof createRenderBudget>): { desktopCss: string[], mobileCss: string[] } {
+  const desktopCss: string[] = []
+  const mobileCss: string[] = []
+
+  for (const [blockId, block] of Object.entries(doc)) {
+    if (blockId === 'root' || !edmBlockHasResponsiveRules(block)) continue
+    const className = edmResponsiveClassForBlock(blockId)
+    const hideClass = getHideClassForBlock(block)
+    const mobileDeclarations = mobileStyleDeclarationsForBlock(block)
+
+    if (mobileDeclarations.length > 0) {
+      mobileCss.push(boundedText(budget)`      .${className} { ${boundedJoin(mobileDeclarations.map(([prop, value]) => boundedText(budget)`${prop}: ${value} !important;`), ' ', budget)} }`)
+    }
+    if (hideClass === 'edm-hide-desktop' || hideClass === 'edm-hide-all') {
+      desktopCss.push(boundedText(budget)`    .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
+    }
+    if (hideClass === 'edm-hide-mobile' || hideClass === 'edm-hide-all') {
+      mobileCss.push(boundedText(budget)`      .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
+    }
+  }
+
+  return { desktopCss, mobileCss }
+}
+
+function responsiveClassesForBlock(id: string, block: FlyhubBlock): string {
+  return [
+    mobileStyleDeclarationsForBlock(block).length > 0 ? edmResponsiveClassForBlock(id) : '',
+    getHideClassForBlock(block) || ''
+  ].filter(Boolean).join(' ')
+}
+
+function withResponsiveRowClass(id: string, block: FlyhubBlock, html: string): string {
+  const className = responsiveClassesForBlock(id, block)
+  if (!className) return html
+
+  return html.replace(/<tr([^>]*)>/, (_match, attrs: string) => {
+    const currentAttrs = attrs || ''
+    if (/\sclass=(["'])/.test(currentAttrs)) {
+      return `<tr${currentAttrs.replace(/\sclass=(["'])(.*?)\1/, ` class=$1$2 ${className}$1`)}>`
+    }
+    return `<tr${currentAttrs} class="${className}">`
+  })
+}
+
+function renderRootChildrenHtml(
+  rootBlock: FlyhubBlock,
+  doc: FlyhubDocument,
+  context: BlockRenderContext
+): string {
+  const childrenIds = Array.isArray(rootBlock.data.childrenIds)
+    ? rootBlock.data.childrenIds as string[]
+    : []
+
+  return boundedJoin(childrenIds
+    .map((id) => {
+      const childBlock = Object.hasOwn(doc, id) ? doc[id] : undefined
+      if (!childBlock) return ''
+      return withResponsiveRowClass(id, childBlock, renderBlock(childBlock, 'html', context))
+    }), '\n', context.renderBudget)
+}
+
+/**
+ * Get font family CSS from FlyHub font family key
+ */
+function getFontFamily(fontKey: string | null | undefined): string {
+  return resolveFontFamily(fontKey)
+}
+
+/**
+ * Build a BlockRenderContext from the HTML renderer's parameters
+ */
+function buildBlockRenderContext(
+  document: FlyhubDocument,
+  primaryColor: string,
+  dynamicBlockVehicles?: Map<string, PreviewVehicle[]>,
+  dynamicBlockOffers?: Map<string, PreviewOffer[]>
+): BlockRenderContext {
+  const rootProps = (document.root.data.props || {}) as Record<string, unknown>
+  const fontFamily = getFontFamily(rootProps.fontFamily as string)
+
+  return {
+    dynamicData: {
+      vehicles: dynamicBlockVehicles || new Map(),
+      offers: dynamicBlockOffers || new Map()
+    },
+    mergeFields: {},
+    baseUrl: '',
+    primaryColor,
+    fontFamily,
+    _document: document as unknown as Record<string, FlyhubBlock>
+  }
+}
+
+/**
+ * Render a FlyHub document to complete email HTML
+ *
+ * This is the main export function that converts a FlyHub document to a complete
+ * HTML email with proper DOCTYPE, head, styles, and body.
+ */
+export function renderFlyhubDocumentToHtml(
+  doc: FlyhubDocument,
+  options: {
+    subjectLine?: string
+    previewText?: string
+    primaryColor?: string
+    dynamicBlockVehicles?: Map<string, PreviewVehicle[]>
+    dynamicBlockOffers?: Map<string, PreviewOffer[]>
+    variables?: Record<string, string>
+    renderBudget?: ReturnType<typeof createRenderBudget>
+  } = {}
+): string {
+  const rootBlock = doc.root
+  const rootProps = (rootBlock.data.props || {}) as Record<string, unknown>
+
+  const backdropColor = (rootProps.backdropColor as string) || '#F5F5F5'
+  const canvasColor = (rootProps.canvasColor as string) || '#FFFFFF'
+  const textColor = (rootProps.textColor as string) || '#262626'
+  const fontFamily = getFontFamily(rootProps.fontFamily as string)
+  const htmlFontFamily = escapeFontFamilyForHtml(fontFamily)
+  const borderRadius = (rootProps.borderRadius as number) || 0
+  const borderColor = (rootProps.borderColor as string) || ''
+  const contentWidth = 600
+  const primaryColor = options.primaryColor || '#2f4574'
+  const responsiveCss = collectResponsiveCss(doc, options.renderBudget)
+
+  // EmailLayout is the document root; render its children here so a stale dev
+  // registry cannot turn the whole preview into an EmailLayout placeholder.
+  const blockCtx = buildBlockRenderContext(
+    doc,
+    primaryColor,
+    options.dynamicBlockVehicles,
+    options.dynamicBlockOffers
+  )
+  blockCtx.renderBudget = options.renderBudget
+  const contentHtml = renderRootChildrenHtml(rootBlock, doc, blockCtx)
+
+  let html = boundedText(options.renderBudget)`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>${options.subjectLine || 'Email Preview'}</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <style type="text/css">
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+    body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+    a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
+${responsiveCss.desktopCss.length ? boundedText(options.renderBudget)`${boundedJoin(responsiveCss.desktopCss, '\n', options.renderBudget)}\n` : ''}    @media only screen and (max-width: 620px) {
+      .email-container { width: 100% !important; max-width: 100% !important; }
+      .fluid { max-width: 100% !important; height: auto !important; margin-left: auto !important; margin-right: auto !important; }
+      .stack-column, .stack-column-center { display: block !important; width: 100% !important; max-width: 100% !important; direction: ltr !important; }
+      .columns-row { display: block !important; }${responsiveCss.mobileCss.length ? boundedText(options.renderBudget)`\n${boundedJoin(responsiveCss.mobileCss, '\n', options.renderBudget)}` : ''}
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: ${backdropColor}; font-family: ${htmlFontFamily}; color: ${textColor};">
+  ${options.previewText ? boundedText(options.renderBudget)`<div style="display: none; font-size: 1px; color: ${backdropColor}; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">${options.previewText}</div>` : ''}
+
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: ${backdropColor};">
+    <tr>
+      <td align="center" style="padding: 20px 10px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${contentWidth}" class="email-container" style="max-width: ${contentWidth}px; background-color: ${canvasColor}; ${borderRadius ? boundedText(options.renderBudget)`border-radius: ${borderRadius}px;` : ''} ${borderColor ? boundedText(options.renderBudget)`border: 1px solid ${borderColor};` : ''} overflow: hidden;">
+          ${contentHtml}
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim()
+
+  // Replace variables if provided
+  if (options.variables) {
+    html = replaceMergeFields(html, options.variables, options.renderBudget)
+  }
+
+  // Builders already charged each allocation; response admission validates final bytes.
+  return html
+}
+
+/**
+ * Check if a JSON object is in FlyHub format
+ */
+export function isFlyhubFormat(json: unknown): json is FlyhubDocument {
+  return (
+    !!json
+    && typeof json === 'object'
+    && 'root' in json
+    && (json as FlyhubDocument).root !== undefined
+    && typeof (json as FlyhubDocument).root === 'object'
+    && (json as FlyhubDocument).root.type === 'EmailLayout'
+  )
+}

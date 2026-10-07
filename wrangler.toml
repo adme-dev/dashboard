@@ -379,6 +379,16 @@ binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
+# Temporary staging acceptance only; two synthetic workspace approvals expire 2026-10-02.
+PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "false"
+PAGE_STUDIO_CUSTOMER_ORIGIN = "https://preview.agency-dashboard-6cm.pages.dev"
+PAGE_STUDIO_CUSTOMER_TERMS_VERSION = "synthetic-hosted-acceptance-20261001"
+PAGE_STUDIO_CUSTOMER_EMAIL_FROM = "notification@adme.net.au"
+PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED = "false"
+PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN = "https://studio-staging.xeroflow.io"
+PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED = "false"
+PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED = "false"
+PAGE_STUDIO_CUSTOMER_PREVIEW_APPROVALS = "[]"
 PAGE_STUDIO_CMS_OBJECT_TRANSPORT = "placed-fetch"
 # Required by native CMS graph verification, including collection-only candidates.
 # Match the verified Studio runtime identity; this does not enable action forms.
@@ -470,3 +480,14 @@ PAGE_STUDIO_STAGING_TENANT_ID = "page-studio-staging"
 [[env.preview.services]]
 binding = "PAGE_STUDIO_IMAGE_PAYMENTS_SERVICE"
 service = "xeroflow-page-studio-payments-staging"
+
+# Private, stateless email rendering. Deploy service before the Pages caller.
+[[env.preview.services]]
+binding = "EMAIL_RENDERER"
+service = "xeroflow-email-rendering-staging"
+entrypoint = "EmailRenderer"
+
+[[env.production.services]]
+binding = "EMAIL_RENDERER"
+service = "xeroflow-email-rendering-production"
+entrypoint = "EmailRenderer"

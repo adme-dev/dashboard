@@ -26,11 +26,7 @@ export function createSchemaUpgradeSetup(contract: SchemaUpgradeContract, prepar
       contract.pendingMessage
     )
   const Receipt = contract.receiptSchema
-  function expectedReceipt(input: unknown) {
-    const operation = contract.schema.parse(input)
-    const { actor: _actor, version: _version, policyVersion: _policy, ...receipt } = operation
-    return Receipt.parse(receipt)
-  }
+  const expectedReceipt = contract.expectedReceipt
   const Body = z.object({ requestId: z.string().uuid() }).strict()
   return async function handleSchemaUpgradeSetup(
     event: H3Event,
@@ -128,7 +124,7 @@ export function createSchemaUpgradeSetup(contract: SchemaUpgradeContract, prepar
           ? null
           : z
               .object({
-                state: z.enum(['reserved', 'installed', 'disabled']),
+                state: z.enum(['reserved', 'running', 'installed', 'disabled']),
                 leaseUntil: z.string().nullable(),
                 receipt: Receipt.nullable()
               })

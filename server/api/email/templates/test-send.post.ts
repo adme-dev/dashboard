@@ -1,3 +1,4 @@
+import { createEmailRenderer } from '~~/server/utils/email-marketing/render/client'
 // Stateless test-send for the current EDM editor document. It renders the
 // provided body_source through the same server pipeline used for preview/save,
 // checks sendability, then sends one email through Resend.
@@ -6,7 +7,7 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
-import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
+import { isFlyhubFormat } from '~~/shared/emailRendering/format'
 import { isSenderDomainAllowed } from '~~/server/utils/email-marketing/campaignSend'
 import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
 import { checkEmailSendability, htmlToPlainText } from '~~/server/utils/email-marketing/sendability'
@@ -91,11 +92,11 @@ export default defineEventHandler(async (event) => {
 
   const subject = parsed.data.subject?.trim() || ''
   const previewText = parsed.data.preview_text?.trim() || ''
-  const html = renderTemplateDocument(parsed.data.body_source, {
+  const html = await renderTemplateDocument(parsed.data.body_source, {
     subjectLine: subject,
     previewText,
     variables: parsed.data.variables
-  })
+  }, createEmailRenderer(event.context?.cloudflare?.env ?? {}))
   const appUrl = getAppUrl(event)
   const sendableHtml = await prepareSendableHtmlWithMirroredAssets(html, {
     appUrl,

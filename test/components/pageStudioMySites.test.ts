@@ -41,7 +41,10 @@ it('opens the selected site through the customer launcher and retains product na
   button.click()
   await flush()
   expect(launch).toHaveBeenCalledExactlyOnceWith('site-a', 'portal')
-  expect([...host.querySelectorAll('a')].map(x => x.getAttribute('href'))).toEqual(['/studio/sites/site-a/history', '/studio/sites/site-a/content'])
+  expect([...host.querySelectorAll('a')].map(x => [x.textContent, x.getAttribute('href')])).toEqual([
+    ['Draft history', '/studio/sites/site-a/history'],
+    ['Manage website', '/studio/sites/site-a']
+  ])
   expect(host.textContent).toContain('Customer website')
 })
 it('does not display retained site links after an access error', async () => {

@@ -357,7 +357,7 @@ describe('email client-scoped route policy', () => {
     expect(mockCreateCampaign).toHaveBeenCalledWith(expect.objectContaining({
       from_email: 'Sales@Example.COM',
       reply_to: 'Replies@Example.COM'
-    }))
+    }), expect.objectContaining({ renderDocument: expect.any(Function) }))
   })
 
   it('blocks mixed-client campaign targets for scoped users', async () => {
@@ -393,7 +393,7 @@ describe('email client-scoped route policy', () => {
       name: 'Client template',
       client_id: CLIENT_1,
       created_by: 'user-1'
-    }))
+    }), expect.objectContaining({ renderDocument: expect.any(Function) }))
   })
 
   it('blocks template updates across client scope', async () => {

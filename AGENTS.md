@@ -334,3 +334,23 @@ If anything goes wrong:
 - **Stop notifications immediately**: set `ANOMALY_NOTIFICATIONS_DISABLED=true` on the deployed env, redeploy. Cron + manual scans still run, just no fan-out.
 - **Stop detection entirely**: disable the cron trigger in the CF dashboard. The page still works (reads from the persisted table).
 - **Revert the migration**: 085 + 086 are additive; safe to leave in place even if the rest of the feature is rolled back.
+
+
+## Customer CMS reusable forms (user decision, 1 October 2026)
+
+- A form is a reusable website definition; placing it on another page must retain
+  its identity, fields, settings and email templates. Page placement records
+  preserve the page of origin on every submission.
+- This rule applies equally to manual editing and AI generation. AI must reference
+  an existing suitable form by default. Creating an independent copy requires an
+  explicit create-new-form intent; do not silently duplicate a form per page.
+- Configure team recipients once through website defaults. Reusable forms inherit
+  those defaults unless an explicit per-form override is saved. Do not require the
+  same admin email or templates to be entered for every page placement.
+- Enforce reuse and independent-copy intent in server contracts and AI tools, not
+  prompts alone. Test placement reuse, override inheritance, cross-site reference
+  rejection and preservation of submission attribution.
+- Current saved forms are page-local. Shared-definition migration/enforcement is
+  pending; preserve legacy IDs, entries and configuration when reconciling them.
+  Do not claim that grouping dropdown labels implements shared storage.
+- See `docs/plans/2026-10-01-form-settings-completion.md` for acceptance and status.

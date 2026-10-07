@@ -1,3 +1,4 @@
+import { createEmailRenderer } from '~~/server/utils/email-marketing/render/client'
 // server/api/email/templates/[id].patch.ts
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
@@ -24,7 +25,7 @@ export default defineEventHandler(async (event) => {
   const existing = await getTemplate(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   await assertEmailClientAccess(event, user, existing.client_id)
-  const template = await updateTemplate(id, parsed.data)
+  const template = await updateTemplate(id, parsed.data, createEmailRenderer(event.context?.cloudflare?.env ?? {}))
   if (!template) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { template }
 })

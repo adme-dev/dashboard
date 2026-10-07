@@ -1,3 +1,4 @@
+import { testEmailRenderer } from '../fixtures/emailRenderer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cancelPendingRecipients, createCampaign, getCampaignListIds, materializeRecipients, scheduleCampaign, updateCampaign } from '~~/server/utils/email-marketing/campaigns'
 
@@ -84,7 +85,7 @@ describe('updateCampaign', () => {
       from_name: '  XeroFlow  ',
       from_email: '  Sales@Example.COM  ',
       reply_to: '  Replies@Example.COM  '
-    })
+    }, testEmailRenderer)
 
     const updateCall = queryOneMock.mock.calls.find(([sql]) =>
       String(sql).includes('UPDATE campaigns SET')
@@ -116,7 +117,7 @@ describe('createCampaign', () => {
       preview_text: '  Latest deals inside  ',
       body_source: null,
       created_by: 'user-1'
-    })
+    }, testEmailRenderer)
 
     expect(queryOneMock.mock.calls[0]?.[1]).toEqual(expect.arrayContaining([
       'June campaign',

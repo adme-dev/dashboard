@@ -1,10 +1,11 @@
 // server/utils/email-marketing/templates.ts
 // DB layer for edm_templates. body_html is always (re)rendered from
-// body_source on write via the pure-TS renderer.
+// body_source on write via the private rendering service.
 
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { renderTemplateDocument } from './render'
-import { isFlyhubFormat } from './render/flyhub-html-renderer'
+import { isFlyhubFormat } from '../../../shared/emailRendering/format'
+import type { EmailRendererClient } from '../../../shared/emailRendering/contract'
 import { addEmailClientScopeCondition, type EmailClientScope } from './access'
 
 export type EdmTemplateKind = 'template' | 'draft'
@@ -25,12 +26,12 @@ export interface EdmTemplate {
   updated_at: string
 }
 
-function renderHtml(bodySource: unknown, subject?: string | null, previewText?: string | null): string {
+async function renderHtml(renderer: EmailRendererClient, bodySource: unknown, subject?: string | null, previewText?: string | null): Promise<string> {
   if (!isFlyhubFormat(bodySource)) return ''
   return renderTemplateDocument(bodySource, {
     subjectLine: subject ?? undefined,
     previewText: previewText ?? undefined
-  })
+  }, renderer)
 }
 
 export async function listTemplates(clientIds?: EmailClientScope): Promise<EdmTemplate[]> {
@@ -53,7 +54,7 @@ export async function getTemplate(id: string): Promise<EdmTemplate | null> {
   return queryOne<EdmTemplate>('SELECT * FROM edm_templates WHERE id = $1', [id])
 }
 
-export async function createTemplate(input: {
+export interface CreateTemplateInput {
   name: string
   subject?: string | null
   preview_text?: string | null
@@ -62,9 +63,11 @@ export async function createTemplate(input: {
   folder_name?: string | null
   client_id?: string | null
   created_by: string | null
-}): Promise<EdmTemplate> {
+}
+
+export async function createTemplate(input: CreateTemplateInput, renderer: EmailRendererClient): Promise<EdmTemplate> {
   const source = input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
-  const html = renderHtml(source, input.subject, input.preview_text)
+  const html = await renderHtml(renderer, source, input.subject, input.preview_text)
   const kind = input.template_kind === 'draft' ? 'draft' : 'template'
   const folderName = input.folder_name?.trim() || null
   const row = await queryOne<EdmTemplate>(`
@@ -87,14 +90,16 @@ export async function createTemplate(input: {
   return row as EdmTemplate
 }
 
-export async function updateTemplate(id: string, patch: {
+export interface UpdateTemplateInput {
   name?: string
   subject?: string | null
   preview_text?: string | null
   body_source?: unknown
   template_kind?: EdmTemplateKind
   folder_name?: string | null
-}): Promise<EdmTemplate | null> {
+}
+
+export async function updateTemplate(id: string, patch: UpdateTemplateInput, renderer: EmailRendererClient): Promise<EdmTemplate | null> {
   const existing = await getTemplate(id)
   if (!existing) return null
 
@@ -108,7 +113,7 @@ export async function updateTemplate(id: string, patch: {
   const folderName = patch.folder_name !== undefined
     ? patch.folder_name?.trim() || null
     : existing.folder_name
-  const html = renderHtml(source, subject, previewText)
+  const html = await renderHtml(renderer, source, subject, previewText)
 
   return queryOne<EdmTemplate>(`
     UPDATE edm_templates

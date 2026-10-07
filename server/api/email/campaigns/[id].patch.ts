@@ -1,3 +1,4 @@
+import { createEmailRenderer } from '~~/server/utils/email-marketing/render/client'
 // server/api/email/campaigns/[id].patch.ts
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
@@ -54,7 +55,7 @@ export default defineEventHandler(async (event) => {
     }
     assertScopedCampaignLists(user, existing.client_id, await getCampaignListClientIds(id))
     if (Object.keys(draftPatch).length > 0) {
-      const updated = await updateCampaign(id, draftPatch)
+      const updated = await updateCampaign(id, draftPatch, createEmailRenderer(event.context?.cloudflare?.env ?? {}))
       if (!updated) throw createError({ statusCode: 404, statusMessage: 'not_found' })
     }
     const sendingConfigured = isEmailConfigured(event)
@@ -68,7 +69,7 @@ export default defineEventHandler(async (event) => {
     return { campaign }
   }
 
-  const campaign = await updateCampaign(id, parsed.data)
+  const campaign = await updateCampaign(id, parsed.data, createEmailRenderer(event.context?.cloudflare?.env ?? {}))
   if (!campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { campaign }
 })

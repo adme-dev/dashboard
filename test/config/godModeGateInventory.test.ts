@@ -230,13 +230,20 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'app/components/qr/QrClientSelect.vue\tconst canCreateClient = computed(() => canWrite.value && hasRole([\'owner\', \'admin\', \'sales\']))\tapplication_governance_bypass'
     )
+    // Main replaced the Meta webhook's runtime-config read with
+    // resolveMetaOAuthRuntimeConfig. Native Forms adds one lexical flag while
+    // retaining independent session/origin/scope checks.
+    // This classification does not register an actual God mode bypass.
+    expect(inventory.rows).toContain(
+      'server/utils/pageStudio/customerFormsHttp.ts\treturn (env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED ?? process.env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED) === \'true\'\tapplication_governance_bypass'
+    )
     expect(inventory.rows).toHaveLength(1596)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 123,
       provider_infrastructure_availability: 228,
-      application_governance_bypass: 1621,
+      application_governance_bypass: 1622,
       ordinary_user_behavior: 190,
-      unrelated_configuration: 433
+      unrelated_configuration: 432
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -251,7 +258,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('706fc0cd2bb3045e8c30303c4809b61ba21c2da37247e3b885e2816f2be603ae')
+    expect(inventory.digest).toBe('1f3dfb5cde1a864662a2475701f6ec08ca9af20c5815e53893fb5faeb5bbab1d')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

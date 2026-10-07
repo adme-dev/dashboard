@@ -18,7 +18,7 @@ import {
 } from '~~/app/utils/edmSectionBuilders'
 import { createEmptyDocument, generateBlockId } from '~~/app/types/edm'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
-import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { renderTemplateDocumentLocally as renderTemplateDocument } from '~~/workers/email-rendering/src/render/document'
 
 describe('picsum', () => {
   it('builds a seeded Lorem Picsum URL', () => {

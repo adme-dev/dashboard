@@ -117,3 +117,9 @@ describe('lossless generated Worker data compaction', () => {
     expect(() => compactPublicAssetsPlugin().transform(source, '\0virtual:#nitro-internal-virtual/public-assets-data')).toThrow()
   })
 })
+it('keeps the original minimum threshold for medium SSR literals', () => {
+  const markup = '<p>preserved</p>'.repeat(45)
+  expect(markup.length).toBeLessThan(1024)
+  const source = `export const data = { first: ${JSON.stringify(markup)}, second: ${JSON.stringify(markup)} };`
+  expect(compactSsrMarkupSource(source)).toEqual({ code: source, literals: 0 })
+})

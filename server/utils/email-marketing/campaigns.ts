@@ -7,7 +7,8 @@ import { createError } from 'h3'
 import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { renderTemplateDocument } from './render'
-import { isFlyhubFormat } from './render/flyhub-html-renderer'
+import { isFlyhubFormat } from '../../../shared/emailRendering/format'
+import type { EmailRendererClient } from '../../../shared/emailRendering/contract'
 import { buildCampaignPreflight, canTransition, type CampaignPreflightResult, type CampaignStatus } from './campaignSend'
 import { evaluateSegment, isValidSegment } from './segment'
 import { addEmailClientScopeCondition, type EmailClientScope } from './access'
@@ -69,12 +70,12 @@ export interface CampaignHtmlPrepareOptions {
   mirrorExternalAssets?: boolean
 }
 
-function renderHtml(bodySource: unknown, subject?: string | null, previewText?: string | null): string {
+async function renderHtml(renderer: EmailRendererClient, bodySource: unknown, subject?: string | null, previewText?: string | null): Promise<string> {
   if (!isFlyhubFormat(bodySource)) return ''
   return renderTemplateDocument(bodySource, {
     subjectLine: subject ?? undefined,
     previewText: previewText ?? undefined
-  })
+  }, renderer)
 }
 
 function normalizeNullableText(value: string | null | undefined): string | null | undefined {
@@ -214,7 +215,7 @@ export async function buildCampaignRecipientSnapshot(
   }
 }
 
-export async function createCampaign(input: {
+export interface CreateCampaignInput {
   name: string
   subject?: string | null
   from_name?: string | null
@@ -226,7 +227,9 @@ export async function createCampaign(input: {
   client_id?: string | null
   filter_rules?: unknown
   created_by: string | null
-}): Promise<Campaign> {
+}
+
+export async function createCampaign(input: CreateCampaignInput, renderer: EmailRendererClient): Promise<Campaign> {
   const source = input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
   const name = input.name.trim()
   const subject = normalizeNullableText(input.subject) ?? null
@@ -234,7 +237,7 @@ export async function createCampaign(input: {
   const fromEmail = normalizeNullableText(input.from_email) ?? null
   const replyTo = normalizeNullableText(input.reply_to) ?? null
   const previewText = normalizeNullableText(input.preview_text) ?? null
-  const html = renderHtml(source, subject, previewText)
+  const html = await renderHtml(renderer, source, subject, previewText)
   const row = await queryOne<Campaign>(`
     INSERT INTO campaigns
       (name, subject, from_name, from_email, reply_to, preview_text,
@@ -261,7 +264,7 @@ export async function createCampaign(input: {
 // Edits are only allowed while the campaign is a draft — once it's scheduled or
 // sending, the body/recipients are locked. Re-renders body_html if body_source
 // (or subject/preview_text) changes.
-export async function updateCampaign(id: string, patch: {
+export interface UpdateCampaignInput {
   name?: string
   subject?: string | null
   from_name?: string | null
@@ -272,7 +275,9 @@ export async function updateCampaign(id: string, patch: {
   template_id?: string | null
   scheduled_at?: string | null
   filter_rules?: unknown
-}): Promise<Campaign | null> {
+}
+
+export async function updateCampaign(id: string, patch: UpdateCampaignInput, renderer: EmailRendererClient): Promise<Campaign | null> {
   const existing = await getCampaign(id)
   if (!existing) return null
   if (existing.status !== 'draft') {
@@ -285,7 +290,7 @@ export async function updateCampaign(id: string, patch: {
   const fromEmail = patch.from_email !== undefined ? normalizeNullableText(patch.from_email) : existing.from_email
   const replyTo = patch.reply_to !== undefined ? normalizeNullableText(patch.reply_to) : existing.reply_to
   const source = patch.body_source !== undefined ? patch.body_source : existing.body_source
-  const html = renderHtml(source, subject, previewText)
+  const html = await renderHtml(renderer, source, subject, previewText)
   const filterRules = patch.filter_rules !== undefined ? patch.filter_rules : existing.filter_rules
   const name = patch.name !== undefined ? patch.name.trim() || existing.name : existing.name
 
@@ -303,7 +308,7 @@ export async function updateCampaign(id: string, patch: {
       scheduled_at = $11,
       filter_rules = $12::jsonb,
       updated_at   = NOW()
-    WHERE id = $1
+    WHERE id = $1 AND status = 'draft'
     RETURNING *
   `, [
     id,
@@ -319,6 +324,7 @@ export async function updateCampaign(id: string, patch: {
     patch.scheduled_at !== undefined ? patch.scheduled_at : existing.scheduled_at,
     filterRules == null ? null : JSON.stringify(filterRules)
   ])
+  if (!row) throw createError({ statusCode: 409, statusMessage: 'campaign_not_editable' })
   return row
 }
 

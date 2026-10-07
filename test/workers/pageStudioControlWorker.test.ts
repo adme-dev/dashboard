@@ -142,6 +142,18 @@ describe('Page Studio control gateway Worker', () => {
     expect(checkpointRequest.headers.get('x-xeroflow-preview-token')).toBeNull()
   })
 
+  it.each(['authorize', 'checkpoint', 'latest-checkpoint', 'cms-adoption', 'cms-prerequisites'])('forwards the customer token only for its private POST %s', async (operation) => {
+    const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
+    vi.stubGlobal('fetch', fetchMock)
+    const path = `/internal/page-studio/customer-sessions/${operation}`
+    await worker.fetch(request(path, { method: 'POST', headers: { 'x-page-studio-customer-session': 'native-token' }, body: '{}' }), environment(), {} as never)
+    expect(fetchMock.mock.calls[0]?.[0].headers.get('x-page-studio-customer-session')).toBe('native-token')
+    for (const [method, target] of [['GET', path], ['POST', `${path}/other`], ['POST', '/internal/page-studio/sessions/authorize'], ['POST', '/internal/page-studio/customer-sessions/exchange']]) {
+      await worker.fetch(request(target, { method, headers: { 'x-page-studio-customer-session': 'must-not-pass' } }), environment(), {} as never)
+      expect(fetchMock.mock.calls.at(-1)?.[0].headers.get('x-page-studio-customer-session')).toBeNull()
+    }
+  })
+
   it.each(['catalog', 'quote', 'generate', 'read', 'jobs', 'library'].map(operation => `/internal/page-studio/images/${operation}`).concat(['/internal/page-studio/features/requests', '/internal/page-studio/features/context', '/internal/page-studio/features/accept', '/internal/page-studio/components/data', '/internal/page-studio/form-actions', '/internal/page-studio/action-invocations', '/internal/page-studio/cms-adoption', '/internal/page-studio/ai-usage', '/internal/page-studio/ai-proposals/accept', '/internal/page-studio/sessions/authorize', '/internal/page-studio/checkpoints/editor-commit']))('forwards the signed editor session only for exact POST %s', async (path) => {
     const fetchMock = vi.fn(async (_input: Request) => Response.json({ acknowledged: true }))
     vi.stubGlobal('fetch', fetchMock)

@@ -130,6 +130,27 @@ describe('explicit collection setup', () => {
     expect(await response.json()).toEqual({ status: 'reconciliation', canConfigure: false })
     expect(mocks.status).not.toHaveBeenCalled()
   })
+  it('returns running status after rechecking the retained native authority', async () => {
+    mocks.query.mockResolvedValue({ metadata: { intent, body: { requestId } } })
+    mocks.status.mockResolvedValue({ state: 'running', leaseUntil: null, receipt: null })
+    const response = await request('GET')
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ status: 'running', requestId, canConfigure: true })
+    expect(mocks.authorize).toHaveBeenCalledTimes(2)
+    expect(mocks.authorize.mock.invocationCallOrder[0]).toBeLessThan(mocks.status.mock.invocationCallOrder[0]!)
+    expect(mocks.authorize.mock.invocationCallOrder[1]).toBeGreaterThan(mocks.status.mock.invocationCallOrder[0]!)
+    expect(mocks.prepare).not.toHaveBeenCalled()
+    expect(mocks.execute).not.toHaveBeenCalled()
+  })
+  it('withholds running status when native authority is revoked during the worker await', async () => {
+    mocks.query.mockResolvedValue({ metadata: { intent, body: { requestId } } })
+    mocks.status.mockImplementationOnce(async () => {
+      mocks.authorize.mockRejectedValue(Object.assign(new Error('Revoked'), { statusCode: 403 }))
+      return { state: 'running', leaseUntil: null, receipt: null }
+    })
+    expect((await request('GET')).status).toBe(403)
+    expect(mocks.authorize).toHaveBeenCalledTimes(2)
+  })
 })
 
 it.each(['GET', 'POST'] as const)('verifies the exact installed receipt on %s', async (method) => {
