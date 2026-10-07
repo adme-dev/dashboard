@@ -79,15 +79,12 @@ async function confirmAction() {
 <template>
   <div v-if="enabled">
     <!-- Launcher -->
-    <UButton
+    <AiOrbLauncher
       v-if="!open"
-      icon="i-lucide-sparkles"
-      size="lg"
-      class="fixed bottom-5 right-5 z-40 rounded-full shadow-lg"
+      label="Open Portal Assistant"
+      class="fixed bottom-5 right-5 z-40"
       @click="open = true"
-    >
-      Assistant
-    </UButton>
+    />
 
     <USlideover v-model:open="open" title="Portal Assistant" description="Ask about your projects, approvals, invoices and results.">
       <template #body>
