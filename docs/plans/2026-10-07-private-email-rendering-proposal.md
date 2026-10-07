@@ -1,7 +1,8 @@
 # Private email rendering service — proposed capacity repair
 
-Status: boundary approved by the user’s “proceed” instruction. No renderer or
-deployment changes implemented yet. Detailed [implementation plan](../superpowers/plans/2026-10-07-private-email-rendering.md) prepared for review.
+Status: boundary approved and implemented through caller checkpoint `b1a044ef8`.
+Local artifact and regression verification passes; independent review and hosted
+staging acceptance remain pending. See the [implementation plan](../superpowers/plans/2026-10-07-private-email-rendering.md).
 
 ## Problem and acceptance
 
@@ -104,9 +105,8 @@ Official transport references:
 
 ## Open decisions before implementation
 
-Confirm this shared-renderer boundary because it changes agency email infrastructure
-as well as Page Studio. Resolve compatible payload limits and request-context
-plumbing during the focused implementation plan. If measured net savings do not
+The user approved this shared-renderer boundary. Payload limits and explicit
+request-context plumbing are recorded in the implementation plan and runbook. If measured net savings do not
 provide useful room beyond the immediate 15,841-byte overage, stop and reassess the
 boundary rather than claim capacity from unbundled source size.
 

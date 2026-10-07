@@ -355,3 +355,13 @@ structured template, preserve manual edits until Apply, and keep sending disable
 Final media checkpoints: Dashboard `7a8deed16`, Studio `0101046`. Studio pre-commit
 formatting passed all 1,520 files with no fixes. Both feature branches are pushed;
 no merge or deployment occurred.
+
+
+### 7 October: approved private renderer extraction (local)
+
+The resumed current-main integration now passes the unchanged Pages size guard
+with60,678 raw bytes remaining (76,519 bytes saved). Full repository tests:
+15,612 pass/1,939 environment skips. Private Worker RPC parity, failure isolation,
+post-render authority checks and campaign draft-status races pass. Production
+customer access remains closed; independent review and staging acceptance are
+pending. [Evidence and limitations](2026-10-07-page-studio-resume.md).

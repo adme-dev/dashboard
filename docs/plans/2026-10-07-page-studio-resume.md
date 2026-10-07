@@ -137,3 +137,25 @@ were applied. This remains a scoped review, not new whole-feature certification.
 No cloud deployment, customer mutation, production activation or remote cleanup
 has occurred during this resumption. The renderer proposal requires review before
 implementation; two real test mailbox identities remain outstanding.
+
+## Approved renderer extraction — local verification
+
+Implemented the approved private Worker boundary in `1ce1c1d0e`, `5f68bc674`,
+`b1a044ef8`. Agency save/preview/test-send now await the environment-bound renderer;
+customer previews recheck authority after RPC. The Worker has no privileged
+bindings and no public rendering endpoint. Original renderer modules are removed
+from Pages; actual module/map inspection passes. No email was sent or customer
+access activated. See [service runbook](../runbooks/email-rendering-service.md).
+
+The unchanged Pages guard now passes: raw **25,408,250 /25,468,928**, leaving
+**60,678 bytes**; gzip **7,019,987 /9,750,000**. Raw savings are 76,519 bytes.
+This falls 4,858 bytes short of the plan's aspirational64KiB headroom. The boundary
+is retained for review because it clears the blocker beyond the unchanged128KiB
+provider margin; this does not establish capacity for future roadmap additions.
+
+Full repository run: **15,612 passed /1,939 skipped**, 2,220 passing files and69
+skipped files. Skips remain conditional environments, not acceptance evidence.
+Strict Worker types, reproducible environment declarations, both target guards,
+staging/production dry builds, source and emitted Workerd RPC tests pass.
+Independent review, exact type-baseline comparison and hosted staging acceptance
+are pending; these local results do not authorize production customer activation.

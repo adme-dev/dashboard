@@ -86,6 +86,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Private email renderer types, target guards and transport tests
+        run: |
+          pnpm --dir workers/email-rendering run types
+          git diff --exit-code -- workers/email-rendering/worker-staging.d.ts workers/email-rendering/worker-production.d.ts
+          pnpm --dir workers/email-rendering run typecheck
+          node workers/email-rendering/deploy.mjs staging --check-only
+          node workers/email-rendering/deploy.mjs production --check-only
+          pnpm exec vitest run test/workers/emailRenderingBoundary.test.ts test/workers/emailRenderingParity.test.ts test/workers/emailRenderingVariables.test.ts test/workers/emailRenderingDeploy.test.ts test/workers/emailRenderingRpc.test.ts test/workers/emailRenderingArtifacts.test.ts test/server/utils/emailRenderingClient.test.ts test/server/utils/emailRenderingPersistence.test.ts
+          node workers/email-rendering/deploy.mjs staging --dry-run
+          node workers/email-rendering/deploy.mjs production --dry-run
+          EMAIL_RENDER_TEST_ARTIFACT="$PWD/.verification/email-rendering-worker-staging/index.js" pnpm exec vitest run test/workers/emailRenderingRpc.test.ts
+        timeout-minutes: 5
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_LOG_PATH: ${{ runner.temp }}/email-rendering.log
+
       - name: Page Studio management generated binding reproducibility
         run: |
           pnpm --dir workers/page-studio-management run types
@@ -178,6 +194,10 @@ jobs:
         timeout-minutes: 20
         env:
           SEARCH_AUTHORITY_ENABLED: 'true'
+
+      - name: Email renderer artifact isolation
+        run: node scripts/check-email-rendering-artifacts.mjs
+        timeout-minutes: 2
 
       # Broadest signal, and `deploy` gates on this job. Until this
       # step existed CI ran ~750 of ~8200 tests, so a regression anywhere else

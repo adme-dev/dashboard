@@ -26,7 +26,7 @@ export function createEmailRenderer(env: Record<string, unknown>): EmailRenderer
       throw failure('UNAVAILABLE')
     }
     if (response.environment !== environment.data || response.operation !== request.operation) throw failure('UNAVAILABLE')
-    if (!response.ok) throw failure(response.error.code)
+    if (response.ok === false) throw failure(response.error.code)
     return response
   }
   return {
