@@ -183,14 +183,13 @@ watch(isOpen, (open) => {
   >
     <div
       v-show="!isOpen && !hidden"
-      class="fixed bottom-6 right-6 z-50 w-12 h-12"
+      class="fixed bottom-6 right-6 z-50 w-18 h-18"
     >
-      <button
-        class="w-full h-full rounded-full shadow-lg bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors cursor-pointer"
+      <AiOrbLauncher
+        v-if="!isOpen && !hidden"
+        label="Open Activity Hub"
         @click="toggle"
-      >
-        <UIcon name="i-lucide-activity" class="w-5 h-5" />
-      </button>
+      />
       <!-- Badge is a SIBLING of the button, not a child. Safari clips
            absolute descendants of a `border-radius: 9999px` element, which
            cropped the unread count. Sibling avoids that. -->
