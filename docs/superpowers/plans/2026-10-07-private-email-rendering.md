@@ -43,6 +43,7 @@ export const MAX_RENDER_BLOCKS = 2048
 export const MAX_RENDER_GRAPH_DEPTH = 32
 export const MAX_RENDER_VISITS = 4096
 export const MAX_RENDER_JSON_DEPTH = 64
+export const MAX_RENDER_JSON_NODES = 100_000
 export type RenderEnvironment = 'staging' | 'production'
 export interface DocumentRenderOptions {
   subjectLine?: string

@@ -2,7 +2,7 @@ import {
   extendedStyleDeclarations,
   safeCssColor,
   type EdmExtendedStyle
-} from '~~/app/utils/edmStyle'
+} from './edmStyle'
 
 export type EdmDevice = 'desktop' | 'mobile'
 
