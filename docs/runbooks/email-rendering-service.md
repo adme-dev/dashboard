@@ -83,3 +83,12 @@ with 121 source-map entries and no server/provider sources. Emitted Worker RPC
 checks passed. Final Pages capacity, independent review and staging deployment
 results are recorded in the resumption ledger; they are not implied by these
 local implementation checkpoints.
+
+
+Staged release (7 October): application source `383091cd9`, renderer version
+`edfb01c1-b968-4d78-9365-99afc0843b46`, Pages preview
+`6e4f2650-22a7-4103-9a8c-c64f0f91888f`. Provider readback confirms the exact private
+binding and closed native gates. Browser acceptance awaits user sign-in and the
+separate two-mailbox native matrix. Final deployment build has 60,429 raw bytes
+remaining; full suite 15,622 pass/1,939 conditional skips; broad types exactly match
+931 baseline diagnostics. No production deployment or customer activation.

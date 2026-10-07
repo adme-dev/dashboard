@@ -357,12 +357,12 @@ formatting passed all 1,520 files with no fixes. Both feature branches are pushe
 no merge or deployment occurred.
 
 
-### 7 October: approved private renderer extraction (local)
+### 7 October: approved private renderer extraction (staged)
 
 The resumed current-main integration now passes the unchanged Pages size guard
-with 60,490 raw bytes remaining (76,331 bytes saved). Full repository tests:
+with 60,429 raw bytes remaining (76,270 bytes saved). Full repository tests:
 15,622 pass/1,939 environment skips. Private Worker RPC parity, failure isolation,
 post-render authority checks and campaign draft-status races pass. Production
 customer access remains closed. Independent review findings on allocation bounds
 and exact customer image limits are fixed and covered by regression tests; hosted
-staging acceptance remains pending. [Evidence and limitations](2026-10-07-page-studio-resume.md).
+browser acceptance remains pending. Preview deployment `6e4f2650-22a7-4103-9a8c-c64f0f91888f` uses clean source `383091cd9` and the verified private staging binding. Draft PR #632 is open; production is unchanged. [Evidence and limitations](2026-10-07-page-studio-resume.md).

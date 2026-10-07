@@ -89,7 +89,7 @@ For agency documents validate a `root` EmailLayout and every block's string type
 
 **Interfaces:** `handleEmailRender(input:unknown, environment:unknown): RenderResponse`; `renderTemplateDocumentLocally(document:unknown, options?:DocumentRenderOptions):string`; existing `renderCustomerEmailPreview(template, context):CustomerEmailPreview` remains the pure customer implementation in its Worker module.
 
-- [ ] Write new boundary tests before implementation. Include this concrete valid fixture and environment denial:
+- [x] Write new boundary tests before implementation. Include this concrete valid fixture and environment denial:
 
 ```ts
 const document = {
@@ -108,14 +108,14 @@ it('rejects recursive document references', () => {
 })
 ```
 
-- [ ] Add exact-boundary/one-over cases for UTF-8 JSON bytes, output bytes, graph depth/visits and block count. Include non-ASCII strings, repeated references without cycles, columns cycles, absent children, malformed arrays, NaN/functions and deep JSON. Add customer raw-markup/remote-image rejection or safe placeholder cases using the existing adapter's behavior.
-- [ ] Run `pnpm exec vitest run test/workers/emailRenderingBoundary.test.ts`; verify the expected missing boundary fails. Save RED output under `.verification/resume-20261007/`.
-- [ ] Before moving sources, capture deterministic HTML bytes for the existing heading/text/button, responsive, raw HTML, unknown block, nested columns/container and customer image fixtures. Store synthetic golden fixtures with their source checkpoint in `test/fixtures/emailRendering.ts`; include two independent calls to expose accidental shared budget state.
-- [ ] Copy source files and update the copied imports mechanically; retain the original path until Task 3. `~~/app/utils/edmAnchor`, `edmStyle`, `edmResponsive`, `edmDivider` are pure shared-by-import helpers; use relative paths from the new location. Do not copy their implementations or import Nuxt/browser globals. Shared customer schemas also use relative imports.
-- [ ] Extract the existing `isFlyhubFormat` predicate into the lightweight shared format module. Keep the local document renderer's existing invalid-format error and supported HTML transformations.
-- [ ] Implement strict envelopes, byte admission and graph validation. Add a request-local budget to `BlockRenderContext`; charge in `renderBlock` before returning each block string, and bound the final HTML. Clear/reset no global budget because no such state exists. Only the boundary supplies limits; old pure-render unit fixtures continue to exercise exact valid output.
-- [ ] Implement `handleEmailRender`: validate environment/request; call exactly the requested renderer; validate bounded result; return fixed error codes. Never log input or exceptions. Do not import server authorization, database, fetch or mail code.
-- [ ] Run new boundary tests plus all existing pure renderer and customer preview tests. Compare golden HTML exactly and inspect moved modules end-to-end before committing `refactor: isolate bounded email renderer`.
+- [x] Add exact-boundary/one-over cases for UTF-8 JSON bytes, output bytes, graph depth/visits and block count. Include non-ASCII strings, repeated references without cycles, columns cycles, absent children, malformed arrays, NaN/functions and deep JSON. Add customer raw-markup/remote-image rejection or safe placeholder cases using the existing adapter's behavior.
+- [x] Run `pnpm exec vitest run test/workers/emailRenderingBoundary.test.ts`; verify the expected missing boundary fails. Save RED output under `.verification/resume-20261007/`.
+- [x] Before moving sources, capture deterministic HTML bytes for the existing heading/text/button, responsive, raw HTML, unknown block, nested columns/container and customer image fixtures. Store synthetic golden fixtures with their source checkpoint in `test/fixtures/emailRendering.ts`; include two independent calls to expose accidental shared budget state.
+- [x] Copy source files and update the copied imports mechanically; retain the original path until Task 3. `~~/app/utils/edmAnchor`, `edmStyle`, `edmResponsive`, `edmDivider` are pure shared-by-import helpers; use relative paths from the new location. Do not copy their implementations or import Nuxt/browser globals. Shared customer schemas also use relative imports.
+- [x] Extract the existing `isFlyhubFormat` predicate into the lightweight shared format module. Keep the local document renderer's existing invalid-format error and supported HTML transformations.
+- [x] Implement strict envelopes, byte admission and graph validation. Add a request-local budget to `BlockRenderContext`; charge in `renderBlock` before returning each block string, and bound the final HTML. Clear/reset no global budget because no such state exists. Only the boundary supplies limits; old pure-render unit fixtures continue to exercise exact valid output.
+- [x] Implement `handleEmailRender`: validate environment/request; call exactly the requested renderer; validate bounded result; return fixed error codes. Never log input or exceptions. Do not import server authorization, database, fetch or mail code.
+- [x] Run new boundary tests plus all existing pure renderer and customer preview tests. Compare golden HTML exactly and inspect moved modules end-to-end before committing `refactor: isolate bounded email renderer`.
 
 ## Task 2: private Worker and Pages RPC client
 
@@ -126,7 +126,7 @@ it('rejects recursive document references', () => {
 
 **Interfaces:** named `EmailRenderer extends WorkerEntrypoint<Env>` with `render(input:unknown):Promise<RenderResponse>`; `createEmailRenderer(env:Record<string,unknown>):EmailRendererClient` binds `env.EMAIL_RENDERER` and uses existing `env.PAGE_STUDIO_RELEASE_ENVIRONMENT` as expected environment.
 
-- [ ] Write client tests with a controlled transport; verify real HTML results, exact response admission, one RPC on failure and safe errors. A malformed response must never become a caller-visible preview:
+- [x] Write client tests with a controlled transport; verify real HTML results, exact response admission, one RPC on failure and safe errors. A malformed response must never become a caller-visible preview:
 
 ```ts
 it('denies missing binding', async () => {
@@ -144,13 +144,13 @@ it('redacts transport errors', async () => {
 })
 ```
 
-- [ ] Add mutation-after-call tests, extra-key/version/operation/environment mismatch, oversized response and payload-free error checks. Run and retain RED evidence before implementing the client.
-- [ ] Implement explicit bound method dispatch (`service.render(...)`, preserving the binding receiver), snapshot validation, fixed error mapping and no retry/fallback. Export no local renderer through this module.
-- [ ] Implement the Worker entrypoint and default fetch handler with 404. Use exactly `EMAIL_RENDER_ENVIRONMENT` as its only variable. Pin compatibility date `2026-07-15` to the available verified runtime; no Node compatibility is needed by the pure renderer. If compilation reveals a Node-only dependency, treat it as a design finding rather than silently grant compatibility.
-- [ ] Use immutable Worker names `xeroflow-email-rendering-staging` and `xeroflow-email-rendering-production`, account `a5b299b3ad15c1b5b895dc66f9357b17`. Configs have `workers_dev:false`, `preview_urls:false`, `routes:[]`, `triggers:{crons:[]}` and disabled invocation logs. The deploy guard rejects every undeclared binding/config capability, wrong name/account/date/main and additional arguments. Model clean-source/current-main checks on `workers/page-studio-management/deploy.mjs`; production must equal current main.
-- [ ] Generate module-local environment types using the existing management generation pattern, with names `EmailRenderingStagingEnv` / `EmailRenderingProductionEnv`. Reuse root pinned tools without adding dependencies.
-- [ ] Run actual local Workerd RPC through a synthetic caller binding to named `EmailRenderer`; prohibit outbound network in the harness, test both public fetch paths return 404, and verify a successful render and failure envelopes. Dispose all runtimes in `finally`.
-- [ ] Run strict Worker typecheck, generated-type reproducibility, both target guards and staging/production dry-run builds. Retain upload sizes and imported module metadata. Review and commit `feat: add private email rendering transport`.
+- [x] Add mutation-after-call tests, extra-key/version/operation/environment mismatch, oversized response and payload-free error checks. Run and retain RED evidence before implementing the client.
+- [x] Implement explicit bound method dispatch (`service.render(...)`, preserving the binding receiver), snapshot validation, fixed error mapping and no retry/fallback. Export no local renderer through this module.
+- [x] Implement the Worker entrypoint and default fetch handler with 404. Use exactly `EMAIL_RENDER_ENVIRONMENT` as its only variable. Pin compatibility date `2026-07-15` to the available verified runtime; no Node compatibility is needed by the pure renderer. If compilation reveals a Node-only dependency, treat it as a design finding rather than silently grant compatibility.
+- [x] Use immutable Worker names `xeroflow-email-rendering-staging` and `xeroflow-email-rendering-production`, account `a5b299b3ad15c1b5b895dc66f9357b17`. Configs have `workers_dev:false`, `preview_urls:false`, `routes:[]`, `triggers:{crons:[]}` and disabled invocation logs. The deploy guard rejects every undeclared binding/config capability, wrong name/account/date/main and additional arguments. Model clean-source/current-main checks on `workers/page-studio-management/deploy.mjs`; production must equal current main.
+- [x] Generate module-local environment types using the existing management generation pattern, with names `EmailRenderingStagingEnv` / `EmailRenderingProductionEnv`. Reuse root pinned tools without adding dependencies.
+- [x] Run actual local Workerd RPC through a synthetic caller binding to named `EmailRenderer`; prohibit outbound network in the harness, test both public fetch paths return 404, and verify a successful render and failure envelopes. Dispose all runtimes in `finally`.
+- [x] Run strict Worker typecheck, generated-type reproducibility, both target guards and staging/production dry-run builds. Retain upload sizes and imported module metadata. Review and commit `feat: add private email rendering transport`.
 
 ## Task 3: asynchronous agency and customer callers
 
@@ -175,14 +175,14 @@ updateCampaign(id: string, patch: UpdateCampaignInput, renderer: EmailRendererCl
 
 `CreateTemplateInput`, `UpdateTemplateInput`, `CreateCampaignInput`, `UpdateCampaignInput` name the existing inline argument types without altering their fields. `TrustedFormContext` gains `renderEmailPreview: EmailRendererClient['renderCustomerPreview']`; adapters always construct it from their explicit environment, and test contexts supply a controlled implementation. No environment is accepted from browser input.
 
-- [ ] Write deferred-render tests proving SQL mutation and provider send have not occurred before resolution, and never occur after rejection. Use a rejected renderer with a private exception and assert the outward safe error. Keep database/provider fakes at those actual side-effect boundaries, not inside production renderer code.
-- [ ] Add a customer preview test that changes the authority snapshot while a deferred render is pending. Resolve it and assert 403 with no preview value. Repeat for native and portal context wiring; retain image ownership, sample marker and CSP assertions.
-- [ ] Add campaign concurrency regression: schedule a draft while render is pending, resolve render, and assert the update cannot overwrite the now-scheduled campaign. Preserve the current conflict error. Implement the final campaign SQL update with `AND status='draft'` and handle a missing updated row as conflict. This is necessary because rendering introduces another asynchronous interval before persistence.
-- [ ] Run the targeted tests and verify RED for the missing await/transport behavior.
-- [ ] Change the server render entry to delegate to `renderer.renderDocument`; perform tracking only after awaited rendering. Keep the lightweight format guard; template/campaign invalid-format behavior remains empty HTML as currently implemented, while preview/test-send invalid input remains a validation error.
-- [ ] Pass `createEmailRenderer(event.context.cloudflare?.env ?? {})` from each authenticated HTTP caller. Helpers await rendering before SQL. Test send awaits it before asset processing/sendability/provider delivery; preserve all existing gates and receiver handling. Do not invent process-global or hosted fallback state.
-- [ ] Both form adapters construct their render callback from the explicit environment. Shared preview awaits it before the existing `recheckFormAuthority` call. Customer draft saves/recipients/history remain independent of rendering availability.
-- [ ] Add exact TOML bindings:
+- [x] Write deferred-render tests proving SQL mutation and provider send have not occurred before resolution, and never occur after rejection. Use a rejected renderer with a private exception and assert the outward safe error. Keep database/provider fakes at those actual side-effect boundaries, not inside production renderer code.
+- [x] Add a customer preview test that changes the authority snapshot while a deferred render is pending. Resolve it and assert 403 with no preview value. Repeat for native and portal context wiring; retain image ownership, sample marker and CSP assertions.
+- [x] Add campaign concurrency regression: schedule a draft while render is pending, resolve render, and assert the update cannot overwrite the now-scheduled campaign. Preserve the current conflict error. Implement the final campaign SQL update with `AND status='draft'` and handle a missing updated row as conflict. This is necessary because rendering introduces another asynchronous interval before persistence.
+- [x] Run the targeted tests and verify RED for the missing await/transport behavior.
+- [x] Change the server render entry to delegate to `renderer.renderDocument`; perform tracking only after awaited rendering. Keep the lightweight format guard; template/campaign invalid-format behavior remains empty HTML as currently implemented, while preview/test-send invalid input remains a validation error.
+- [x] Pass `createEmailRenderer(event.context.cloudflare?.env ?? {})` from each authenticated HTTP caller. Helpers await rendering before SQL. Test send awaits it before asset processing/sendability/provider delivery; preserve all existing gates and receiver handling. Do not invent process-global or hosted fallback state.
+- [x] Both form adapters construct their render callback from the explicit environment. Shared preview awaits it before the existing `recheckFormAuthority` call. Customer draft saves/recipients/history remain independent of rendering availability.
+- [x] Add exact TOML bindings:
 
 ```toml
 [[env.preview.services]]
@@ -196,20 +196,20 @@ service = "xeroflow-email-rendering-production"
 entrypoint = "EmailRenderer"
 ```
 
-- [ ] Update tests to pass an explicit test renderer. Pure-output tests use the moved local implementation; transport/caller tests exercise actual boundary behavior. Do not add a production test-only switch. Run agency template/campaign/render/test-send regressions and native/portal Forms/template tests.
-- [ ] Run a whole-source import search proving server/browser code has no runtime import of the moved renderer. Include indirect barrel exports and Nuxt auto-import generated output. Review all changed files and commit `refactor: route email rendering through private Worker`.
+- [x] Update tests to pass an explicit test renderer. Pure-output tests use the moved local implementation; transport/caller tests exercise actual boundary behavior. Do not add a production test-only switch. Run agency template/campaign/render/test-send regressions and native/portal Forms/template tests.
+- [x] Run a whole-source import search proving server/browser code has no runtime import of the moved renderer. Include indirect barrel exports and Nuxt auto-import generated output. Review all changed files and commit `refactor: route email rendering through private Worker`.
 
 ## Task 4: capacity, review and staged acceptance
 
 **Files:** update `docs/plans/2026-10-07-page-studio-resume.md`, `docs/plans/customer-cms-status.md`; create `docs/runbooks/email-rendering-service.md`; update `.github/workflows/ci.yml` with strict renderer types/guard/RPC checks and artifact inspection.
 
-- [ ] Run affected lint and strict Worker typecheck; compare Dashboard TypeScript diagnostics with the retained baseline, reporting new errors separately. Run `pnpm test` as the repository full suite; identify every failing test and environment skip rather than claiming a narrow suite is full verification.
-- [ ] Run the Page Studio, QR and deployment/source guard regression selection and the local PostgreSQL/connected-runtime cases already recorded in the resume checkpoint if changed dependencies affect them. Do not rerun unchanged database tests merely to inflate totals.
-- [ ] Build once with `pnpm run build`, retaining its process handle through completion and using the unchanged artifact guard. Target at least 64 KiB raw remaining after extraction, beyond just the 15,841-byte overage; if net savings are smaller, report the measured result and reassess the boundary. Never raise budgets or alter compaction.
-- [ ] Inspect the actual Pages module graph for renderer block code or local fallback, and inspect the Worker bundle for server/DB/provider dependencies. Run actual Workerd tests against the emitted Worker as well as source tests. Add CI checks that would catch reintroduction of the renderer into Pages.
-- [ ] Request independent whole-change review covering authority timing, payload bounds, byte parity, sending/persistence failures and deployment ordering. Resolve all must-fix findings and rerun the tests they affect.
-- [ ] Save a clean source checkpoint. Re-fetch main and verify ancestry, deployment target and source SHA. If source main advanced, reconcile and repeat affected checks before deployment.
-- [ ] Deploy only the private staging renderer with its guarded script; read back exact version/config and verify no public exposure. Then run `pnpm deploy:check` and guarded `pnpm deploy:preview`. Keep all native preview/signup/customer gates closed.
+- [x] Run affected lint and strict Worker typecheck; compare Dashboard TypeScript diagnostics with the retained baseline, reporting new errors separately. Run `pnpm test` as the repository full suite; identify every failing test and environment skip rather than claiming a narrow suite is full verification.
+- [x] Run the Page Studio, QR and deployment/source guard regression selection and the local PostgreSQL/connected-runtime cases already recorded in the resume checkpoint if changed dependencies affect them. Do not rerun unchanged database tests merely to inflate totals.
+- [x] Build once with `pnpm run build`, retaining its process handle through completion and using the unchanged artifact guard. Target at least 64 KiB raw remaining after extraction, beyond just the 15,841-byte overage; if net savings are smaller, report the measured result and reassess the boundary. Never raise budgets or alter compaction.
+- [x] Inspect the actual Pages module graph for renderer block code or local fallback, and inspect the Worker bundle for server/DB/provider dependencies. Run actual Workerd tests against the emitted Worker as well as source tests. Add CI checks that would catch reintroduction of the renderer into Pages.
+- [x] Request independent whole-change review covering authority timing, payload bounds, byte parity, sending/persistence failures and deployment ordering. Resolve all must-fix findings and rerun the tests they affect.
+- [x] Save a clean source checkpoint. Re-fetch main and verify ancestry, deployment target and source SHA. If source main advanced, reconcile and repeat affected checks before deployment.
+- [x] Deploy only the private staging renderer with its guarded script; read back exact version/config and verify no public exposure. Then run `pnpm deploy:check` and guarded `pnpm deploy:preview`. Keep all native preview/signup/customer gates closed.
 - [ ] In the authenticated preview browser, verify agency template rendering/saving, Page Studio invited-client template preview, mobile/keyboard preview use, existing CMS navigation and QR Codes. Use synthetic drafts and discard transient edits; do not send email. Record exact source/version/deployment IDs and observed results.
 - [ ] If preview fails, use the recorded previous Pages artifact; retain the compatible renderer while any Pages deployment references it. Never remove the Worker before its callers are rolled back. Record failures honestly and resolve before production.
 - [ ] Record staged acceptance, pending two-mailbox native hosted acceptance and the separate production release decision. Retire only completed owned branches/worktrees after eventual integration, preserving the remaining native stack and unrelated work.

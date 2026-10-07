@@ -95,12 +95,10 @@ credentials stay out of Git. Do not run in the unrelated dirty Dashboard root.
 
 ## Next work
 
-1. Retain the reviewed integration checkpoint and its failing build evidence.
-   Repair capacity before any preview release.
-2. Measure Pages capacity. Last verified 2 October build had 6,152 raw bytes spare.
-   Review the [private rendering proposal](2026-10-07-private-email-rendering-proposal.md)
-   before adding backend features; do not raise
-   the safety budget or change compaction just to fit features.
+1. Complete authenticated staging acceptance on the recorded renderer/Pages release below.
+   The capacity repair is implemented, reviewed and deployed to preview.
+2. Preserve the fixed capacity guard for subsequent backend work; the remaining
+   60,429 raw bytes do not establish capacity for the rest of the roadmap.
 3. Complete two-customer native signup/provisioning/editor and hosted Forms/template
    activation acceptance using the supported flow and exact retained scopes.
 4. Complete AI template proposals with credit admission, validation and explicit Apply;
@@ -117,7 +115,7 @@ recipients are inferred or messages authorized by that request alone. User terms
 acceptance and email verification use supported onboarding. Do not extend expired
 approval dates or substitute portal identities for native customer accounts.
 
-## Provider readback — 7 October 2026
+## Provider readback — 7 October, before staging release
 
 Cloudflare project and deployment APIs were read without changing configuration.
 Production deployment `c2232396-e128-46b0-9712-19f570e3d170`, created 6 October,
@@ -134,8 +132,8 @@ Independent follow-up review found no must-fix in the three test corrections or
 checkpoint/proposal documents. Its two minor wording/caller-inventory comments
 were applied. This remains a scoped review, not new whole-feature certification.
 
-No cloud deployment, customer mutation, production activation or remote cleanup
-has occurred during this resumption. The renderer proposal was subsequently approved; the implementation and review results follow below. Two real test mailbox identities remain outstanding.
+At the pre-implementation checkpoint, no cloud deployment, customer mutation,
+production activation or remote cleanup had occurred. The renderer proposal was subsequently approved; the implementation and review results follow below. Two real test mailbox identities remain outstanding.
 
 ## Approved renderer extraction — local verification
 
@@ -146,9 +144,9 @@ bindings and no public rendering endpoint. Original renderer modules are removed
 from Pages; actual module/map inspection passes. No email was sent or customer
 access activated. See [service runbook](../runbooks/email-rendering-service.md).
 
-The unchanged Pages guard now passes: raw **25,408,438 /25,468,928**, leaving
-**60,490 bytes**; gzip **7,020,140 /9,750,000**. Raw savings are 76,331 bytes.
-This falls 5,046 bytes short of the plan's aspirational 64 KiB headroom. The boundary
+The unchanged Pages guard now passes: raw **25,408,499 /25,468,928**, leaving
+**60,429 bytes**; gzip **7,020,168 /9,750,000**. Raw savings are 76,270 bytes.
+This falls 5,107 bytes short of the plan's aspirational 64 KiB headroom. The boundary
 was accepted by independent review because it clears the blocker beyond the unchanged 128 KiB
 provider margin; this does not establish capacity for future roadmap additions.
 
@@ -166,6 +164,47 @@ build: 707.47 KiB raw /108.09 KiB gzip. No runtime budget or deployment guard wa
 
 The pre-review Dashboard typecheck matched the fresh baseline exactly: 931 diagnostics,
 zero additions/removals after normalizing source locations. The post-review full suite passes 15,622 tests (1,939 conditional skips).
-The final Dashboard typecheck comparison is in progress. Hosted staging acceptance remains pending;
+The final Dashboard typecheck also matches all 931 baseline diagnostic identities,
+with zero additions or removals; it still exits 2 on those existing diagnostics. Hosted staging acceptance remains pending;
 the preview browser currently requires user sign-in. These results do not establish
 production customer activation or native two-account hosted acceptance.
+
+
+## Staging release — 7 October, 08:03 UTC
+
+- Clean application source: `383091cd987a9a2a18d134857b1f8dc1798aab9c`.
+  The guarded deployment fetched main before and after its build; current main
+  `eeefcc40f5514f4444b4d1021af174b588a28a2a` is an ancestor.
+- Private renderer version: `edfb01c1-b968-4d78-9365-99afc0843b46`;
+  Worker deployment: `f1817c81-8f3f-4fed-9281-4a267204afbc`, 100% active.
+  Full source tag matches. Its only binding is `EMAIL_RENDER_ENVIRONMENT=staging`.
+  Provider readback confirms workers.dev and preview URLs disabled, empty cron,
+  Logpush false and no tail consumers. Observability is null in provider readback;
+  the deployed guarded configuration explicitly disables observability/invocation logs.
+- Pages deployment: `6e4f2650-22a7-4103-9a8c-c64f0f91888f`, successful, clean source
+  above, project `agency-dashboard`, branch `preview`.
+  [Preview](https://preview.agency-dashboard-6cm.pages.dev) binds `EMAIL_RENDERER`
+  to `xeroflow-email-rendering-staging`, named entrypoint `EmailRenderer`.
+- Deployment build passed: raw 25,408,499/25,468,928 (60,429 remaining), gzip
+  7,020,168/9,750,000. Actual final artifact isolation passes (2,924 Pages files,
+  122 Worker source entries). The earlier verification build differed by 61 raw bytes;
+  these are the final deployment-build figures.
+- Native browser/editor/signup/preview flags remain false; approval list remains `[]`;
+  no enabled Forms flag was returned. Production remains deployment
+  `c2232396-e128-46b0-9712-19f570e3d170` from main `eeefcc40f...`.
+- Public sign-in returns HTTP 200. Unauthenticated `/api/health` returns the expected
+  `401 Authentication required` from existing middleware; this is an auth-boundary
+  observation, not a successful authenticated health or renderer check.
+- Browser tab “🧪 Page Studio” is retained at preview sign-in for user handoff.
+  Agency save/preview, invited-client preview, mobile/keyboard and CMS/QR browser
+  acceptance remain unverified until sign-in. Native two-account acceptance still
+  needs two real approved mailbox identities. No email was sent.
+- [Draft integration PR #632](https://github.com/adme-dev/dashboard/pull/632) is open;
+  CI is pending. No merge or customer production activation occurred. The owned
+  disposable baseline worktree was removed after its evidence was retained.
+  Active integration and original feature/Studio/demo worktrees are preserved.
+
+Task 4 remains incomplete only for the hosted browser acceptance/handoff items.
+Rollback reference: prior preview `00e6ade1-0d35-4784-8b3b-9a7c62ea298d` from
+`3f48a78455818c1ee617ca06775c5681c9ac69b9`. Roll back Pages first and retain the
+renderer while referenced. Broader RND work remains open in the canonical backlog.
