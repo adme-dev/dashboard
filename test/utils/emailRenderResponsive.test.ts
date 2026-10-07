@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { renderTemplateDocumentLocally as renderTemplateDocument } from '~~/workers/email-rendering/src/render/document'
 
 const baseDoc = {
   root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['a'] } },

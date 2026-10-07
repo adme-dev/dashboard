@@ -14,7 +14,7 @@ function setup() {
   const record = { scope, audience: 'team', actorId: 'private_actor', checkpointId: 'old_checkpoint', revision: 2, updatedAt, template, overrides: [{ definitionId: 'contact', template: { ...template, subject: 'Contact only' } }, { definitionId: 'removed', template }] }
   const page = { scope, audience: 'team', revisions: [{ revision: 2, updatedAt }], nextBeforeRevision: null }
   const service = { listEmailTemplateDraftHistory: vi.fn().mockResolvedValue(page), readEmailTemplateDraft: vi.fn().mockResolvedValue(record) }
-  const context = { authorize, readDocument, service, resolveMedia: vi.fn() } as TrustedFormContext
+  const context = { authorize, readDocument, service, renderEmailPreview: vi.fn(), resolveMedia: vi.fn() } as TrustedFormContext
   return { context, authority, authorize, document, readDocument, service, record, page }
 }
 describe('trusted customer template history', () => {

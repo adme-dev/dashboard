@@ -480,3 +480,14 @@ PAGE_STUDIO_STAGING_TENANT_ID = "page-studio-staging"
 [[env.preview.services]]
 binding = "PAGE_STUDIO_IMAGE_PAYMENTS_SERVICE"
 service = "xeroflow-page-studio-payments-staging"
+
+# Private, stateless email rendering. Deploy service before the Pages caller.
+[[env.preview.services]]
+binding = "EMAIL_RENDERER"
+service = "xeroflow-email-rendering-staging"
+entrypoint = "EmailRenderer"
+
+[[env.production.services]]
+binding = "EMAIL_RENDERER"
+service = "xeroflow-email-rendering-production"
+entrypoint = "EmailRenderer"

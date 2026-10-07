@@ -1,6 +1,6 @@
 // test/utils/emailRenderHeading.test.ts
 import { describe, it, expect } from 'vitest'
-import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { renderTemplateDocumentLocally as renderTemplateDocument } from '~~/workers/email-rendering/src/render/document'
 
 // A flyhub document is a flat keyed map with a `root` EmailLayout whose
 // childrenIds reference other blocks. Block type strings are capitalized.

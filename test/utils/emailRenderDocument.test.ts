@@ -1,8 +1,8 @@
 // test/utils/emailRenderDocument.test.ts
 import { describe, it, expect } from 'vitest'
-import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
-import { getBlockDefinition, registerBlock } from '~~/server/utils/email-marketing/render/block-registry'
-import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
+import { renderTemplateDocumentLocally as renderTemplateDocument } from '~~/workers/email-rendering/src/render/document'
+import { getBlockDefinition, registerBlock } from '~~/workers/email-rendering/src/render/block-registry'
+import { isFlyhubFormat } from '~~/workers/email-rendering/src/render/flyhub-html-renderer'
 
 describe('renderTemplateDocument — multi-block document', () => {
   it('renders heading + text + button in order', () => {
@@ -49,7 +49,7 @@ describe('renderTemplateDocument — multi-block document', () => {
     const emailLayoutDefinition = getBlockDefinition('EmailLayout')
     expect(emailLayoutDefinition).toBeTruthy()
 
-    const registry = (globalThis as unknown as { __edmBlockRegistry?: Map<string, unknown> }).__edmBlockRegistry
+    const registry = (globalThis as unknown as { __emailWorkerBlockRegistry?: Map<string, unknown> }).__emailWorkerBlockRegistry
     expect(registry).toBeTruthy()
 
     registry?.delete('EmailLayout')

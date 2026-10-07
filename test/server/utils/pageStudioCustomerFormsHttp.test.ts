@@ -1,3 +1,4 @@
+import { emailRendererEnv } from '../../fixtures/emailRenderer'
 import { describe, expect, it, vi } from 'vitest'
 import { createApp, createRouter, eventHandler, toWebHandler } from 'h3'
 import { customerFormsHandler } from '../../../server/utils/pageStudio/customerFormsHttp'
@@ -176,4 +177,19 @@ it('native history validates exact queries, projects selected forms and fails cl
   const old = await http({ ...env, PAGE_STUDIO_CONTENT_ROUTER: { readEmailTemplateDraft: service.readEmailTemplateDraft } }, d)(new Request(base + '/templates/team/history', { headers }))
   expect(old.status).toBe(503)
   expect(await old.text()).toContain('Email template history is unavailable')
+})
+
+it('rechecks native authority after the private renderer responds over HTTP', async () => {
+  const d = deps()
+  d.document.mockResolvedValue({ ...document, studio: { checkpointId: 'checkpoint_one', pages: [{ id: 'home', route: '/', forms: [{ id: 'contact', name: 'Contact', fields: [{ id: 'name', name: 'Name', type: 'text', required: true }] }] }] } } as never)
+  const render = vi.fn(async (request: unknown) => {
+    const result = await emailRendererEnv.EMAIL_RENDERER.render(request)
+    d.authority.mockResolvedValue({ ...authority, actor: { ...authority.actor, accountId: 'revoked_account' } })
+    return result
+  })
+  const handle = http({ ...config, ...emailRendererEnv, EMAIL_RENDERER: { render } }, d)
+  const response = await handle(new Request(`https://studio.test/sites/${scope.siteId}/preview/team`, { method: 'POST', headers: { 'origin': 'https://studio.test', 'cookie': 'studio_customer_session=' + input.sessionToken, 'content-type': 'application/json' }, body: JSON.stringify({ pageId: 'home', formId: 'contact', template: starterEmailTemplate('team') }) }))
+  expect(render).toHaveBeenCalledOnce()
+  expect(response.status).toBe(403)
+  expect(await response.text()).not.toContain('<!DOCTYPE html>')
 })

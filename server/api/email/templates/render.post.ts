@@ -1,3 +1,4 @@
+import { createEmailRenderer } from '~~/server/utils/email-marketing/render/client'
 // server/api/email/templates/render.post.ts
 // Stateless render of a flyhub document to email HTML — used by the editor's
 // live preview (Phase 2a-ii) and for test sends. Does not persist anything.
@@ -5,7 +6,7 @@
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
-import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
+import { isFlyhubFormat } from '~~/shared/emailRendering/format'
 
 const Body = z.object({
   body_source: z.any(),
@@ -23,10 +24,10 @@ export default defineEventHandler(async (event) => {
   if (!isFlyhubFormat(parsed.data.body_source)) {
     throw createError({ statusCode: 400, statusMessage: 'invalid_flyhub_document' })
   }
-  const html = renderTemplateDocument(parsed.data.body_source, {
+  const html = await renderTemplateDocument(parsed.data.body_source, {
     subjectLine: parsed.data.subject ?? undefined,
     previewText: parsed.data.preview_text ?? undefined,
     variables: parsed.data.variables
-  })
+  }, createEmailRenderer(event.context?.cloudflare?.env ?? {}))
   return { html }
 })

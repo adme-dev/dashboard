@@ -3,7 +3,7 @@
 // HTML render, and — critically — that absent props leave output unchanged
 // (no regression to the production send path).
 import { describe, it, expect } from 'vitest'
-import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { renderTemplateDocumentLocally as renderTemplateDocument } from '~~/workers/email-rendering/src/render/document'
 
 function doc(blockType: string, props: Record<string, unknown>, style: Record<string, unknown>) {
   return {

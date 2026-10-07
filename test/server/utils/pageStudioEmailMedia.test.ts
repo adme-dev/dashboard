@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { resolveEmailTemplateMedia } from '../../../server/utils/pageStudio/emailTemplateMedia'
 import { EmailTemplateSchema, starterEmailTemplate } from '../../../shared/pageStudio/emailTemplates'
-import { renderCustomerEmailPreview } from '../../../server/utils/pageStudio/emailTemplatePreview'
+import { renderCustomerEmailPreview } from '../../../workers/email-rendering/src/customerPreview'
 import type { ContentAuthorityRequest } from '../../../server/utils/pageStudio/businessContent'
 
 const id = '10000000-0000-4000-8000-000000000001'

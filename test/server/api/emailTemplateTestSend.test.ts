@@ -1,3 +1,4 @@
+import { emailRendererEnv } from '../../fixtures/emailRenderer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockReadBody = vi.fn()
@@ -94,7 +95,7 @@ describe('email template test-send endpoint', () => {
       body_source: validDocument
     })
 
-    const result = await handler({} as never)
+    const result = await handler({ context: { cloudflare: { env: emailRendererEnv } } } as never)
 
     expect(mockEmailsSend).toHaveBeenCalledOnce()
     expect(mockEmailsSend).toHaveBeenCalledWith(expect.objectContaining({
@@ -120,7 +121,7 @@ describe('email template test-send endpoint', () => {
       body_source: validDocument
     })
 
-    const result = await handler({} as never)
+    const result = await handler({ context: { cloudflare: { env: emailRendererEnv } } } as never)
 
     expect(mockEmailsSend).toHaveBeenCalledWith(expect.objectContaining({
       to: ['Buyer@Example.COM']
@@ -139,7 +140,7 @@ describe('email template test-send endpoint', () => {
       body_source: validDocument
     })
 
-    await expect(handler({} as never)).rejects.toMatchObject({
+    await expect(handler({ context: { cloudflare: { env: emailRendererEnv } } } as never)).rejects.toMatchObject({
       statusCode: 422,
       statusMessage: 'sendability_failed'
     })
@@ -156,7 +157,7 @@ describe('email template test-send endpoint', () => {
       body_source: validDocument
     })
 
-    await expect(handler({} as never)).rejects.toMatchObject({
+    await expect(handler({ context: { cloudflare: { env: emailRendererEnv } } } as never)).rejects.toMatchObject({
       statusCode: 422,
       statusMessage: 'sender_domain_not_allowed'
     })
@@ -173,7 +174,7 @@ describe('email template test-send endpoint', () => {
       body_source: validDocument
     })
 
-    const result = await handler({} as never)
+    const result = await handler({ context: { cloudflare: { env: emailRendererEnv } } } as never)
 
     expect(result).toEqual(expect.objectContaining({
       sent_to: 'test@example.com',
@@ -192,7 +193,7 @@ describe('email template test-send endpoint', () => {
       body_source: documentWithImportedImage
     })
 
-    await handler({} as never)
+    await handler({ context: { cloudflare: { env: emailRendererEnv } } } as never)
 
     expect(fetch).toHaveBeenCalledWith('https://app.test/email/postcards/glidex/car.png')
     expect(mockUploadBannerAsset).toHaveBeenCalledWith(
@@ -205,5 +206,24 @@ describe('email template test-send endpoint', () => {
       html: expect.stringContaining('src="https://email-assets.example.com/car.png"')
     }))
     expect(mockEmailsSend.mock.calls[0]?.[0]?.html).not.toContain('https://app.test/email/postcards')
+  })
+  it('waits for rendering before asset processing and sending, and redacts rejection', async () => {
+    const handler = (await import('~~/server/api/email/templates/test-send.post')).default
+    mockReadBody.mockResolvedValue({ to: 'test@example.com', subject: 'Subject', body_source: documentWithImportedImage })
+    let reject!: (error: Error) => void
+    const rendering = new Promise<never>((_resolve, no) => {
+      reject = no
+    })
+    void rendering.catch(() => {})
+    const render = vi.fn(() => rendering)
+    const pending = handler({ context: { cloudflare: { env: { ...emailRendererEnv, EMAIL_RENDERER: { render } } } } } as never)
+    for (let i = 0; i < 16; i++) await Promise.resolve()
+    expect(mockUploadBannerAsset).not.toHaveBeenCalled()
+    expect(mockEmailsSend).not.toHaveBeenCalled()
+    expect(render).toHaveBeenCalledOnce()
+    reject(new Error('private rendering payload'))
+    await expect(pending).rejects.toMatchObject({ statusCode: 503, statusMessage: 'Email rendering is temporarily unavailable.' })
+    expect(mockUploadBannerAsset).not.toHaveBeenCalled()
+    expect(mockEmailsSend).not.toHaveBeenCalled()
   })
 })

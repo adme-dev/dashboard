@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { buildStarterTemplateDocument } from '~~/app/utils/edmPresets'
-import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { renderTemplateDocumentLocally as renderTemplateDocument } from '~~/workers/email-rendering/src/render/document'
 import { checkEmailSendability } from '~~/server/utils/email-marketing/sendability'
 import {
   prepareSendableHtml,

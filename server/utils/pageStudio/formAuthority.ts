@@ -1,3 +1,4 @@
+import type { EmailRendererClient } from '~~/shared/emailRendering/contract'
 import { PageStudioBusinessContentError } from './businessContent'
 import type { getPageStudioDocument } from './documents'
 import { samePageStudioContentScope, type PageStudioContentScope } from '~~/shared/pageStudio/businessContent'
@@ -20,6 +21,7 @@ export interface FormDraftService {
   writeEmailTemplateDraft?: (input: unknown) => Promise<unknown>
 }
 export interface TrustedFormContext {
+  renderEmailPreview: EmailRendererClient['renderCustomerPreview']
   authorize: (writing: boolean) => Promise<TrustedFormAuthority>
   readDocument: (scope: PageStudioContentScope) => Promise<Awaited<ReturnType<typeof getPageStudioDocument>>>
   service: FormDraftService | undefined

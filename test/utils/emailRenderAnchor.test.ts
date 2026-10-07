@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { renderTemplateDocumentLocally as renderTemplateDocument } from '~~/workers/email-rendering/src/render/document'
 
 describe('renderTemplateDocument — block anchor IDs', () => {
   it('renders a safe anchor ID on the block wrapper row', () => {

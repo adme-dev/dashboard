@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { renderBlock } from '~~/server/utils/email-marketing/render/block-registry'
-import { BLOCKS_LOADED } from '~~/server/utils/email-marketing/render/blocks'
-import type { BlockRenderContext, FlyhubBlock } from '~~/server/utils/email-marketing/render/blocks/types'
+import { renderBlock } from '~~/workers/email-rendering/src/render/block-registry'
+import { BLOCKS_LOADED } from '~~/workers/email-rendering/src/render/blocks'
+import type { BlockRenderContext, FlyhubBlock } from '~~/workers/email-rendering/src/render/blocks/types'
 
 void BLOCKS_LOADED
 

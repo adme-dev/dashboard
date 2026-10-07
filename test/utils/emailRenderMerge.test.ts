@@ -1,6 +1,6 @@
 // test/utils/emailRenderMerge.test.ts
 import { describe, it, expect } from 'vitest'
-import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { renderTemplateDocumentLocally as renderTemplateDocument } from '~~/workers/email-rendering/src/render/document'
 
 describe('renderTemplateDocument — merge fields', () => {
   it('substitutes {{tokens}} from variables', () => {

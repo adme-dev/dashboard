@@ -1,3 +1,4 @@
+import { testEmailRenderer } from '../fixtures/emailRenderer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const queryRowsMock = vi.fn()
@@ -31,7 +32,7 @@ describe('email marketing template metadata', () => {
       template_kind: 'draft',
       folder_name: 'Newsletters',
       created_by: 'user-1'
-    })
+    }, testEmailRenderer)
 
     const [sql, params] = queryOneMock.mock.calls[0]
     expect(sql).toContain('template_kind')
@@ -59,7 +60,7 @@ describe('email marketing template metadata', () => {
         folder_name: 'Promos'
       })
 
-    await updateTemplate('tpl-1', { template_kind: 'draft', folder_name: 'Promos' })
+    await updateTemplate('tpl-1', { template_kind: 'draft', folder_name: 'Promos' }, testEmailRenderer)
 
     const [sql, params] = queryOneMock.mock.calls[1]
     expect(sql).toContain('template_kind')

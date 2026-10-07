@@ -1,6 +1,5 @@
 import { portalFormContext } from './portalFormContext'
 import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
-import { renderCustomerEmailPreview } from './emailTemplatePreview'
 import { admitFormDocument, recheckFormAuthority, type TrustedFormContext } from './formAuthority'
 import { PageStudioBusinessContentError } from './businessContent'
 import type { authorizePageStudioBusinessContent, ContentAuthorityRequest } from './businessContent'
@@ -116,7 +115,7 @@ export async function previewTrustedEmailTemplate(context: TrustedFormContext, a
   if (!form?.fields) throw new PageStudioBusinessContentError('FORM_NOT_FOUND', 404, 'Choose a saved form for the preview')
   const media = await context.resolveMedia(parsed.data.template)
   await recheckFormAuthority(context, before, false)
-  const preview = renderCustomerEmailPreview(parsed.data.template, { siteName: document.site.name, formName: form.name || 'Website form', fields: form.fields, images: media.images })
+  const preview = await context.renderEmailPreview(parsed.data.template, { siteName: document.site.name, formName: form.name || 'Website form', fields: form.fields.map(({ id, name, type }) => ({ id, name, type })), images: media.images })
   await recheckFormAuthority(context, before, false)
   return { ...preview, warnings: media.warnings }
 }

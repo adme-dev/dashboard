@@ -1,3 +1,4 @@
+import { createEmailRenderer } from '../email-marketing/render/client'
 import { createError } from 'h3'
 import { queryRowsFresh, transaction } from '~~/server/utils/db'
 import { resolveCustomerFormAuthority, type CustomerFormAuthority } from './customerFormAuthority'
@@ -27,6 +28,7 @@ export function customerTrustedAuthority(current: CustomerFormAuthority): Truste
 }
 export function createCustomerFormContext(input: CustomerFormsInput, env: Record<string, unknown>, deps: CustomerFormsDependencies = {}): TrustedFormContext {
   const context: TrustedFormContext = {
+    renderEmailPreview: createEmailRenderer(env).renderCustomerPreview,
     authorize: async writing => customerTrustedAuthority(await (deps.authority ?? resolveCustomerFormAuthority)({ ...input, writing }, { runTransaction: deps.runTransaction })),
     readDocument: scope => (deps.document ?? getPageStudioDocument)(scope.tenantId, scope.siteId, env.PAGE_STUDIO_CHECKPOINTS as Parameters<typeof getPageStudioDocument>[2]),
     service: env.PAGE_STUDIO_CONTENT_ROUTER as FormDraftService | undefined,

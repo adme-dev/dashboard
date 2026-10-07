@@ -1,3 +1,4 @@
+import { createEmailRenderer } from '~~/server/utils/email-marketing/render/client'
 // server/api/email/templates/index.post.ts
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
@@ -21,6 +22,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
   }
   const clientId = await resolveEmailWriteClientId(event, user, parsed.data.client_id ?? null)
-  const template = await createTemplate({ ...parsed.data, client_id: clientId, created_by: user.id })
+  const template = await createTemplate({ ...parsed.data, client_id: clientId, created_by: user.id }, createEmailRenderer(event.context?.cloudflare?.env ?? {}))
   return { template }
 })

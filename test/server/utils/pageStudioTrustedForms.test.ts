@@ -1,3 +1,4 @@
+import { testEmailRenderer } from '../../fixtures/emailRenderer'
 import { describe, expect, it, vi } from 'vitest'
 import { operateTrustedFormSettings } from '../../../server/utils/pageStudio/formSettings'
 import { operateTrustedFormRecipients } from '../../../server/utils/pageStudio/formRecipients'
@@ -16,7 +17,7 @@ function setup() {
   const write = async ({ expectedRevision, ...record }: Record<string, unknown>) => ({ ...record, revision: Number(expectedRevision) + 1, updatedAt: '2026-10-02T00:00:00.000Z' })
   const service = { readFormSettingsDraft: vi.fn().mockResolvedValue(null), writeFormSettingsDraft: vi.fn(write), readFormRecipientsDraft: vi.fn().mockResolvedValue(null), writeFormRecipientsDraft: vi.fn(write), readEmailTemplateDraft: vi.fn().mockResolvedValue(null), writeEmailTemplateDraft: vi.fn(write) }
   const resolveMedia = vi.fn().mockResolvedValue({ images: {}, warnings: [] })
-  const context = { authorize, readDocument, service, resolveMedia } as TrustedFormContext
+  const context = { authorize, readDocument, service, resolveMedia, renderEmailPreview: testEmailRenderer.renderCustomerPreview } as TrustedFormContext
   return { context, authority, authorize, readDocument, document, service, resolveMedia }
 }
 const edit = { checkpointId: 'checkpoint_one', expectedRevision: 0 }
@@ -105,4 +106,20 @@ it('returns fresh viewer editability after a read instead of the initial role', 
     return null
   })
   expect(await operateTrustedFormRecipients(s.context)).toMatchObject({ canEdit: false })
+})
+
+it('rechecks authority after a deferred renderer response', async () => {
+  const s = setup()
+  let resolve!: (value: Awaited<ReturnType<typeof testEmailRenderer.renderCustomerPreview>>) => void
+  const rendered = new Promise<Awaited<ReturnType<typeof testEmailRenderer.renderCustomerPreview>>>((yes) => {
+    resolve = yes
+  })
+  const render = vi.fn(() => rendered)
+  s.context.renderEmailPreview = render
+  const pending = previewTrustedEmailTemplate(s.context, 'team', { ...identity, template })
+  for (let i = 0; i < 16; i++) await Promise.resolve()
+  expect(render).toHaveBeenCalledOnce()
+  s.authorize.mockResolvedValue({ ...s.authority, authorityKey: 'revoked' })
+  resolve({ subject: 'Sample', preheader: '', html: '<p>Sample</p>', sample: true })
+  await expect(pending).rejects.toMatchObject({ statusCode: 403 })
 })

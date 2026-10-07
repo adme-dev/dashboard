@@ -1,8 +1,10 @@
+import { emailRendererEnv } from '../../fixtures/emailRenderer'
+import { portalFormContext } from '../../../server/utils/pageStudio/portalFormContext'
+import { previewTrustedEmailTemplate, operateEmailTemplate } from '../../../server/utils/pageStudio/emailTemplates'
 import { describe, expect, it, vi } from 'vitest'
 import { emailDesigns, styleEmailTemplate, emailStarterLayout, prepareEmailTemplate } from '../../../shared/pageStudio/emailTemplateDesigns'
 import { emailTemplateRecordFits, EmailTemplateWriteSchema, EmailTemplateSchema, effectiveEmailTemplate, starterEmailTemplate, validateTemplateVariables } from '../../../shared/pageStudio/emailTemplates'
-import { renderCustomerEmailPreview } from '../../../server/utils/pageStudio/emailTemplatePreview'
-import { operateEmailTemplate } from '../../../server/utils/pageStudio/emailTemplates'
+import { renderCustomerEmailPreview } from '../../../workers/email-rendering/src/customerPreview'
 import type { ContentAuthorityRequest } from '../../../server/utils/pageStudio/businessContent'
 
 const scope = { tenantId: 'tenant_one', clientId: 'client_one', businessId: 'client_one', siteId: 'site_one', environment: 'staging' as const }
@@ -253,4 +255,19 @@ it('allows reset without reading stale images in the inherited template', async 
   await operateEmailTemplate(s.request, 'team', { ...edit, template: null }, { ...s.deps, media }, 'booking')
   expect(media).not.toHaveBeenCalled()
   expect(s.service.writeEmailTemplateDraft).toHaveBeenCalledOnce()
+})
+
+it('binds portal rendering to the server environment and rechecks client scope afterwards', async () => {
+  const s = setup()
+  s.document.mockResolvedValue({ id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId, name: 'Demo' }, studio: { checkpointId: edit.checkpointId, pages: [{ id: 'home', route: '/', forms: [{ id: 'contact', name: 'Contact', fields: [{ id: 'name', name: 'Name', type: 'text', required: true }] }] }] } } as never)
+  const render = vi.fn(async (request: unknown) => {
+    const result = await emailRendererEnv.EMAIL_RENDERER.render(request)
+    expect(result.ok).toBe(true)
+    s.authorize.mockResolvedValue({ scope: { ...scope, clientId: 'other' }, canEdit: true })
+    return result
+  })
+  s.request.env = { ...emailRendererEnv, EMAIL_RENDERER: { render } }
+  const context = portalFormContext(s.request, { ...s.deps, media: vi.fn().mockResolvedValue({ images: {}, warnings: [] }) })
+  await expect(previewTrustedEmailTemplate(context, 'team', { pageId: 'home', formId: 'contact', template })).rejects.toMatchObject({ statusCode: 403 })
+  expect(render).toHaveBeenCalledOnce()
 })
