@@ -379,10 +379,13 @@ binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
-# Temporary staging acceptance only; two synthetic workspace approvals expire 2026-10-02.
-PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "false"
+# Temporary real-mailbox signup acceptance, 8 October 2026; close after verification.
+# Website provisioning/editor approvals remain disabled and empty.
+PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = "[\"4f36db1c1351562c55e99db985892ed17678bde2b89cddad965423398b39d02a\",\"c1964aec4e25e7848a739ecf7085a280c3ccabfbd18fba65d098078f905433af\"]"
+PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = "2026-10-10T00:00:00Z"
 PAGE_STUDIO_CUSTOMER_ORIGIN = "https://preview.agency-dashboard-6cm.pages.dev"
-PAGE_STUDIO_CUSTOMER_TERMS_VERSION = "synthetic-hosted-acceptance-20261001"
+PAGE_STUDIO_CUSTOMER_TERMS_VERSION = "xeroflow-terms-20260802"
 PAGE_STUDIO_CUSTOMER_EMAIL_FROM = "notification@adme.net.au"
 PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED = "false"
 PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN = "https://studio-staging.xeroflow.io"

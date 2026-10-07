@@ -37,6 +37,16 @@ All four settings must be supplied explicitly. Cloudflare request environment bi
 | `PAGE_STUDIO_CUSTOMER_TERMS_VERSION` | Operator-approved version identifier, 1–100 characters |
 | `PAGE_STUDIO_CUSTOMER_EMAIL_FROM` | Verified sender email address supported by the configured transport |
 
+For controlled acceptance, configure both `PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES`
+(a JSON array of 1–10 SHA-256 hex digests of trimmed, lowercase addresses; at most
+1,024 characters) and `PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT` (UTC ISO timestamp).
+Unapproved signup/sign-in requests retain the generic response but cannot create
+accounts, rotate tokens or send mail. Partial, malformed or expired configuration
+closes the native signup/session/setup boundary. With neither setting supplied,
+ordinary enabled signup retains its existing behavior. This controls admission of
+new mail requests, not revocation of existing sessions before the deadline. Hashes
+avoid plaintext addresses in configuration; they are not anonymization or secrets.
+
 HTTP loopback origins are allowed only in a Nuxt development build. Apply migrations 442 and 443 to the intended platform database before enabling. Validate transactional email delivery, legal-page suitability for the standalone product, data retention/cleanup for expired tokens and pending accounts, abuse controls, deployment source and domain routing in staging before public activation. The local acceptance fixture was removed before commit; it is never part of a deployment.
 
 This implementation does not announce self-service signup on public marketing pages because it remains a gated preview. Update marketing and the `/studio` entry when the complete customer provisioning journey is ready to open.

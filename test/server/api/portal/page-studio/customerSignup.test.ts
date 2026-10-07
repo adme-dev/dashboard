@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import { createApp, toNodeListener, defineEventHandler } from 'h3'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -81,6 +82,42 @@ describe('standalone signup HTTP boundaries', () => {
     expect(response.status).toBe(429)
     expect(response.headers.get('retry-after')).toBeTruthy()
     expect(mocks.request).not.toHaveBeenCalled()
+  })
+  const scopeSignup = () => {
+    config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = JSON.stringify([
+      createHash('sha256').update('owner@example.test').digest('hex')
+    ])
+    config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = new Date(Date.now() + 3600_000).toISOString()
+  }
+  it.each(['signup', 'signin'])('withholds unapproved %s requests before account or email effects', async (mode) => {
+    scopeSignup()
+    const body = { mode, email: 'other@example.test', ...(mode === 'signup' ? { name: 'Other', acceptedTerms: true } : {}) }
+    const response = await call('request', body)
+    expect(response.status).toBe(200)
+    const denied = await response.json()
+    expect(mocks.request).not.toHaveBeenCalled()
+    expect(mocks.send).not.toHaveBeenCalled()
+    const accepted = await call('request', { ...body, email: ' OWNER@EXAMPLE.TEST ' })
+    expect(accepted.status).toBe(200)
+    expect(await accepted.json()).toEqual(denied)
+    expect(mocks.request).toHaveBeenCalledTimes(1)
+    expect(mocks.send).toHaveBeenCalledTimes(1)
+  })
+  it.each(['missing hashes', 'missing expiry', 'empty', 'malformed', 'oversized', 'invalid expiry', 'expired'])('closes incomplete or invalid acceptance scope: %s', async (kind) => {
+    scopeSignup()
+    if (kind === 'missing hashes') delete config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES
+    if (kind === 'missing expiry') delete config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT
+    if (kind === 'empty') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = '[]'
+    if (kind === 'malformed') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = '["not-a-digest"]'
+    if (kind === 'oversized') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = `["${'a'.repeat(64)}"${' '.repeat(1025)}]`
+    if (kind === 'invalid expiry') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = 'tomorrow'
+    if (kind === 'expired') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = new Date(Date.now() - 1).toISOString()
+    expect(await (await call('config')).json()).toEqual({ enabled: false })
+    expect((await call('request', { mode: 'signin', email: 'owner@example.test' })).status).toBe(503)
+    expect((await call('verify', { token: 'A'.repeat(64) })).status).toBe(503)
+    expect(mocks.request).not.toHaveBeenCalled()
+    expect(mocks.verify).not.toHaveBeenCalled()
+    expect(mocks.send).not.toHaveBeenCalled()
   })
   it('sets a dedicated secure host-only HttpOnly cookie and returns only a fixed destination', async () => {
     const response = await call('verify', { token: 'A'.repeat(64) })
