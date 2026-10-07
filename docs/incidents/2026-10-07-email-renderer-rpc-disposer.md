@@ -1,5 +1,10 @@
 # Email renderer RPC response rejection — 7 October 2026
 
+**Resolved:** PR #633 merged and corrected production deployment `8de80181`
+passed authenticated preview and unsent draft save/reload on 7 October. The rollback
+below describes the initial containment. See the [completed release receipt](../plans/2026-10-08-page-studio-release-and-activation.md)
+for exact sources, deployments, final checks and the subsequent current production release.
+
 Production candidate `ec0c081f1fb2ecdc16af9b79b7e6f3f63adaeefb` was integrated by
 Dashboard PR #632 after both CI checks passed. Pages deployment
 `def3bcb5-f2dc-4644-b1a0-3dee9b136087` completed at 08:40:43 UTC. The production

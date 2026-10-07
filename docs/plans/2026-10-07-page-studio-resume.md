@@ -1,5 +1,10 @@
 # Page Studio resumption — 7 October 2026
 
+**Superseded release status:** production recovery and deployment completed later
+on 7 October. See the [8 October checkpoint](2026-10-08-page-studio-release-and-activation.md)
+for the exact final release, newer current production artifact and remaining
+customer activation work. The sections below retain historical sequence and evidence.
+
 The user requested all remaining Page Studio work and resumed execution with “proceed”.
 The recovered [canonical PRD](../prd/page-studio-customer-cms-prd.md) retains its
 24 RND tasks; [customer-cms-status.md](customer-cms-status.md) records the later

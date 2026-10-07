@@ -29,3 +29,14 @@ No production migration or public activation. Full frontend typecheck remains re
 ## Execution record
 
 Migration and trusted service implemented; 30 disposable PostgreSQL cases pass. Fresh review's repeatable-read ownership race was reproduced RED and fixed GREEN for both competing request orders. Focused lint passes; server typechecking matches the unchanged 289-diagnostic baseline. Migration444 was applied and replayed only in the owned local fixture. A populated legacy upgrade fixture is a minor review follow-up before production migration. The canonical PRD remains the task-status authority; RND-20/21 are not complete.
+
+### 8 October populated legacy upgrade follow-up
+
+Added a separate pre-444 fixture with populated active and archived legacy site
+graphs and an existing invited-customer workspace binding. It applies/replays the
+real migration and compares all retained row values, including publication pointers
+and audit evidence. Cross-scope references and unsafe deletion remain rejected;
+ordinary legacy name edits still work. The fixture runs in the existing PostgreSQL
+CI step; its exact local run passes 263 tests in 10 files. Focused lint and independent
+review pass. This closes the earlier fixture follow-up only; production migration and
+native hosted acceptance remain pending. See the [current checkpoint](2026-10-08-page-studio-release-and-activation.md).
