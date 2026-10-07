@@ -1,0 +1,319 @@
+# CMS hosted release — 1 October 2026
+
+User authorized deployment and continued implementation. Release is staged:
+Dashboard preview and private staging router first, then customer storage capability
+installation and hosted acceptance before production activation.
+
+## Source and rollback
+
+- Dashboard deployed source `fb1e1b61069ba95c0848b2d787ba8872d4166eab` includes freshly fetched main
+  `a98b83a53c65fbb80da48e8a2348610d2c9d24bb` (zero behind).
+- Studio `01010462722bfe9b90580412239af4135bfc4a8a` includes current main
+  `50d372e1cb0bc92a661379866062dbe75a4539d0` (zero behind).
+- Prior Pages preview: `6ae12ccc-139f-4cfa-ba7f-06da82a7b13e`, source `9f4c613`.
+- Prior private router: `448bf25a-150c-478e-be72-ef750d257dfe`, source
+  `a49c2ab85047a84f9e6ada74fc0e414c0053c62e`.
+- Rollback to those exact artifacts if regression; keep additive customer data.
+
+## Readiness
+
+- [x] Deployment target and current-main guard pass.
+- [x] 83 focused Dashboard deployment/media/forms/workspace tests pass.
+- [x] Close temporary native signup/editor/browser/preview flags and clear the
+  synthetic provisioning approvals before shipping the current preview.
+- [x] Deploy and read back private staging router.
+- [x] Deploy Dashboard through `pnpm deploy:preview`, verify exact artifact.
+- [x] Signed-in standalone site list and agency QR navigation smoke.
+- [ ] Invited-customer workspace smoke: synthetic staging entitlement expired;
+      access correctly fails closed. Restore the test entitlement through the
+      normal authorized administration process before accepting the workspace.
+- [ ] Managed form-settings catalogue/runtime capability upgrade and scope tests.
+- [ ] Hosted form/settings/template save, reload, isolation and conflict acceptance.
+- [ ] Production release after hosted acceptance; do not call preview production.
+
+The existing hosted schema upgrade accepts only collection, workflow and
+collection-staging. Local form-settings migrations 0001–0004 cannot be applied
+ad hoc to customer production databases. Until managed installation is complete,
+new settings RPCs must remain unavailable; deployment alone is not activation.
+The local Fantasy Limo fixture and saved template revision 14 remain intact.
+
+## Router receipt and Pages build repair
+
+Private staging router deployed from Studio `0101046`: version
+`cb5ea5be-39d0-4f20-820e-e3773b4f1d12`, read back at 100% on 1 October 2026.
+No Sandbox/container or customer runtime was deployed and no customer database
+was modified. Existing runtime pins and capability state are unchanged.
+
+The first Pages attempt stopped at the active Nuxt demo lock. This release used
+`customer-cms-release`, an isolated clean worktree, preserving port 3044.
+The next build stopped at the unchanged raw Worker size guard: 25,489,492 bytes,
+20,564 over the 25,468,928-byte safety budget. No Pages upload occurred.
+Dashboard `fb1e1b610` extends the existing lossless static SQL compaction threshold
+from 512 to 256 characters. Seventeen exact-roundtrip, exclusion and actual-workerd
+checks pass, as does lint. The budget and transformation restrictions are unchanged.
+The corrected clean build passed the unchanged budget and deployed successfully.
+
+## Pages receipt and hosted verification
+
+- Source: `fb1e1b61069ba95c0848b2d787ba8872d4166eab`.
+- Target: `agency-dashboard`, branch `preview` (not production).
+- Deployment: `2632007c-c8b9-4a4a-9b7e-840da2e830b9`.
+- Artifact: https://2632007c.agency-dashboard-6cm.pages.dev
+- Alias: https://preview.agency-dashboard-6cm.pages.dev
+- Wrangler deployment-list readback matches the source and deployment ID.
+- Raw Worker: 25,455,897 / 25,468,928 bytes (13,031 headroom).
+- Gzip Worker: 7,026,571 / 9,750,000 bytes.
+- Public signup configuration reads `enabled: false`; temporary native gates
+  remain closed. Signed-in site list, agency navigation and QR Codes render.
+- Site workspace displays “Website unavailable”. Read-only, explicitly scoped
+  staging Neon metadata confirmed the synthetic site's entitlement ended at
+  `2026-09-30T10:42:44.371Z`; database time was `2026-10-01T08:03:54.567Z`.
+  Client and site remain active. No permissions or entitlement dates were changed.
+- Hosted workspace/form acceptance is therefore incomplete. Production was not
+  deployed, and no hosted form storage or sending capability was activated.
+
+Evidence and build logs are preserved in `customer-cms-demo/private/`, including
+`cms-hosted-preview-deploy.log`, `pages-post-release-list.log` and
+`router-post-release-list.log`. Local Fantasy Limo remains running on port 3044.
+The owned release worktree and its merged temporary branch were retired after
+verification; only generated build output was removed. The development dependency
+directory remains intact and the local demo returned HTTP 200 after cleanup.
+Browser evidence: `customer-cms-demo/cms-deployed-preview-sites.png`.
+
+Independent review confirmed the physical upgrade must recognize exact successor
+schema in predecessor validators and retain a separate runtime successor. Directly
+adding forms tables would break current exact-schema CMS checks. The private
+installation/readback primitive now has nine SQL tests; it is deliberately unwired.
+The Studio plan is `docs/architecture/form-drafts-hosted-upgrade.md`. Coordinator,
+compatible runtime transition, scoped capability and hosted acceptance remain open.
+
+Private primitive checks: nine SQLite tests, business-worker typecheck, full Studio
+build (28 tasks), typecheck (44 tasks plus security types), package tests (40 tasks)
+and lint (1,522 files) pass. Full tests retain the previously recorded staging-route
+count assertion (35 pass / 1 fail). No hosted installer call has been made.
+Studio checkpoint: `75e8a31`; the final pre-commit check passed all 1,522 files
+with no fixes. This private installer is not part of the deployed router version.
+
+## Next implementation boundaries
+
+1. Studio protocol: add a versioned form-drafts upgrade operation beside
+   `packages/protocol/src/collection-staging-upgrade.ts`, then extend the native
+   customer upgrade union. Bind all three predecessor operation IDs, the exact
+   runtime successor and fixed source/target catalogue digests.
+2. Coordinator: use the existing staging operation store/executor as the pattern,
+   with a new retained table. Every lease/retention mutation must conditionally
+   check the ready database and unchanged collection/workflow/staging receipts.
+   Cover two-scope isolation, duplicate requests, conflicting identity, expired
+   leases, cancellation during provider awaits and lost-ack readback recovery.
+3. Runtime: preserve `content-runtime-generation.ts` first-generation evidence;
+   add an independently retained successor instead of overwriting migration
+   `0010_content_runtime_generations.sql` records. Test provider etag changes and
+   incomplete/disabled successors, then teach predecessor validators to accept
+   only the exact installed form extension with verified evidence.
+4. Dashboard: extend `server/utils/pageStudio/customerSchemaUpgrade.ts` only once
+   the matching protocol/executor exists. Require the original current customer
+   session, role, site and entitlement at each operation fence.
+5. Activation: gate all six form draft RPCs on the installed receipt and selected
+   runtime's actual bindings. A deployment/config flag alone is insufficient.
+   Restore the synthetic staging entitlement through normal administration and
+   run hosted save/reload, stale-write, isolation and legacy CMS regressions.
+
+The list above defines integration work. The checkpoint below records the
+completed private subset; it does not claim those hosted paths are wired.
+
+## Continued implementation — private coordinator
+
+The private form-drafts coordinator is implemented with immutable retained
+operation identity, a five-minute lease, cancellation and recovery. Each state
+mutation compares the exact snapshot of all three installed predecessors and
+the ready database reservation. Installed replay verifies physical evidence;
+missing schema is rejected rather than recreated. Runtime successor identity,
+digest and provider etag are bound into the private request, but are not proof
+of authorization until the native/runtime admission adapter is implemented.
+
+Seventeen real D1 coordinator tests pass, including persisted restart recovery,
+lost provider/coordinator responses, all predecessor revocations and changed
+database state at completion, expired leases, duplicate callers, two-site isolation,
+forged receipts and immutable history. The earlier installer suite still has nine
+passing SQLite tests; the existing staging coordinator regression suite also passes.
+Independent review found no blockers and both suggested test improvements were
+added. Full build and typecheck pass; package tests pass and the broader security
+suite retains the known staging-route assertion (35 pass / 1 fail).
+Full lint passed all 1,525 files with no fixes. Package verification completed
+40 tasks, including 978 business-content-worker tests. Build completed 28 tasks;
+typecheck completed 44 tasks plus security types. Logs are retained under
+`customer-cms-demo/private/forms-coordinator-{build,types,tests,lint}.log`.
+Studio checkpoint: `508981e`. Its full pre-commit check also passed all 1,525
+files with no fixes; the deployed router source remains `0101046`.
+
+Provisioning migration `0011_form_drafts_upgrades.sql` has been exercised against
+disposable real D1 only. No hosted database, deployment or capability changed in
+this slice. The coordinator has no worker-entrypoint, RPC or native caller.
+Next: independently retained runtime successor and actual-provider verifier,
+then matching native customer admission/protocol and six-RPC activation.
+
+Compatibility implementation detail: extract the pure form extension catalogue
+and marker definitions before importing them into predecessor validators. The
+current physical installer already imports collection/staging helpers, so making
+those helpers import the installer would create an initialization cycle. Keep
+catalogue identity separate from coordinator/native authorization and verify both.
+
+## Continued implementation — storage compatibility
+
+Collection, workflow and staging validators now recognize the exact form extension
+only with matching current upgrade evidence and physical markers. The form contract
+and catalogue were extracted from the installer to avoid initialization cycles.
+The managed route supports a strict optional form receipt/digest envelope; the actual
+D1 binding verifies its complete physical schema and owner before serving CMS reads.
+Existing routes remain unchanged, and routing does not yet discover or emit form
+proof automatically. This is compatibility support, not capability admission.
+
+Eighty-six focused tests pass, including a real Worker RPC reading previously
+prepared CMS content after form installation, denial without form proof, altered
+receipt/digest/predecessor chain, wrong D1 binding, partial/extra schema, forged
+physical markers and changed evidence during final validation. Independent review
+found no blocking findings. Full build: 28 tasks; typecheck: 44 plus security types;
+package tests: 40 tasks, including 1,000 business-content-worker tests. The known
+security staging-route assertion remains the sole full-test failure (35 pass/1 fail).
+Logs use `customer-cms-demo/private/forms-compatibility-{build,types,tests,lint}.log`.
+Full lint and the normal pre-commit check both passed all 1,528 files with no
+fixes. Studio checkpoint `dd93e852cbb6583acf47540ed5b560c9a2b656db` is pushed;
+the deployed router source remains `0101046`.
+
+No hosted database, deployment or customer authorization changed. The next step
+is the separately retained runtime successor and matching selector/view/provider
+checks, followed by native customer admission and scoped six-RPC activation.
+The native receipt comparison needs an explicit projection: retain runtime pins
+in operation identity, but omit them from the physical storage receipt without
+weakening strict receipt validation. Database/predecessor/runtime discovery must
+remain server-owned. See Studio `docs/architecture/form-drafts-hosted-upgrade.md`.
+
+## Continued implementation — independent form runtime
+
+The form-compatible runtime now has its own immutable coordinator record, generated
+script identity, policy, predecessor snapshot and provider etag. Original resource
+and first-CMS generation records remain unchanged. The selected runtime and
+effective-worker SQL view agree; an incomplete or disabled form successor withholds
+routing instead of silently falling back. Provider verification checks both the
+original CMS runtime and successor. Upload recovery inspects the retained artifact;
+an uncertain absent upload is not retried. No form RPC capability is granted here.
+
+Twenty-three runtime tests cover selection, immutable history, duplicate requests,
+lost/uncertain uploads, provider drift, changed scope/actor, lease expiry, SQL-boundary
+database-clock expiry, predecessor/database changes, final hashing races and native
+authorization revocation. Independent review's database-clock fence and database
+race fixture findings were fixed; the final review found no remaining blockers.
+
+**Release prerequisite:** apply coordinator migration `0012_form_drafts_runtimes.sql`
+after earlier migrations before deploying this router/provisioning source. All
+runtime selection now queries the new table, including sites without a successor.
+The migration has run in disposable SQLite and real D1 regression fixtures only;
+no hosted migration, runtime upload, customer database change or deployment occurred.
+The deployed router remains `0101046`; Dashboard preview remains `fb1e1b610`.
+
+Next: retain and authorize the initiating runtime request under the original or
+explicitly recovered native customer session, before creating a schema intent with
+the verified successor identity/digest/etag. Native discovery must remain server-owned;
+do not invent runtime pins before the successor exists or accept them from a browser.
+Then attach current form receipts to hosted route discovery and enable all six draft
+RPCs only with installed storage and selected-runtime evidence. The synthetic staging
+entitlement and hosted save/reload/conflict/isolation acceptance remain outstanding.
+
+Verification: build (28 tasks), typecheck (44 plus security types) and all 40 package
+test tasks pass, including 1,023 business-worker and 895 sandbox tests. Security
+retains the known staging-route-count assertion (35 pass/1 fail). Logs use
+`customer-cms-demo/private/forms-runtime-{build,types,tests,lint}.log`.
+Full lint passed all 1,530 files with no fixes.
+All 48 action-runtime tests also pass when run separately (the known security
+assertion stops the root test command before this final stage).
+
+Native integration pointers: Dashboard `customerEditorSessionHttp.ts` delegates
+setup to `customerSchemaUpgrade.ts`; `schemaUpgradeAuthority.ts` routes native
+callbacks. Studio `provisioning-worker.ts` performs server-owned discovery and
+delegates execution to sandbox `provisioning-executor-worker.ts`, which loads
+bounded runtime bytes from R2. Extend paired strict contracts and recovery tests.
+Keep the form transition separate from `customer-runtime-policy.ts`'s existing
+first-generation policy, whose three older upgrades intentionally share one digest.
+
+Studio checkpoint `cc22110` is pushed. Its normal pre-commit check passed all
+1,530 files with no fixes. Both implementations remain on their documented feature
+branches; no merge or hosted deployment occurred in this slice.
+
+## Native form authorization checkpoint — 2 October 2026
+
+Paired strict contracts now distinguish runtime setup (`form-runtime`) from form
+storage setup (`form-drafts`). Each retains its own native request, cancellation
+and recovery history. Runtime setup cannot invent successor pins; storage setup
+requires server-discovered pins in its immutable identity. Physical receipt
+projection explicitly excludes those pins, and the runtime completion receipt has
+its own fixed discriminator. Cross-kind receipts and browser-supplied database or
+runtime identities are rejected.
+
+Private native callbacks retain original-session or explicit recovery authority.
+Real local PostgreSQL tests cover all five setup kinds, independent recovery and
+withdrawal, revoked sessions/membership/entitlements/approvers, forged pins and
+installed worker evidence without native authority. Forty-one tests pass; paired
+protocol, worker and existing native authority regressions pass. Independent task
+review found no blocking findings.
+
+This is the contract/admission portion only. Private worker bridges, actual
+provider verification at setup fences, separate scoped capability activation and
+hosted acceptance remain in progress. No hosted database, runtime, entitlement,
+deployment or capability changed. The integration plan is Studio
+`docs/architecture/2026-10-02-form-native-integration.md`.
+
+Access preflight corrected an earlier assumption: no supported native preview
+renewal path has been located. Preview admission compares the original retained
+policy, including expiry, with the entitlement. Updating the entitlement date alone
+would fail that check. Hosted acceptance requires an audited renewal implementation
+or a fresh authorized synthetic fixture; do not alter the original evidence ad hoc.
+
+Private worker bridge verification now passes independent review. Original runtime
+and later storage native authority remain separate; runtime bytes, provider pins
+and physical schema are checked before reporting installed. Review fixes cover a
+legal runtime disable during the final native callback (no new physical write)
+and consistent disabled status while retaining the audit receipt. Actual local
+workerd RPC/D1/R2 and older-upgrade regressions pass; no hosted change occurred.
+Dashboard native checkpoint c93b044db is pushed and deploy:check passes. An isolated
+non-deploying build of c93b044db passes while scoped capability work continues in
+Studio. Raw Worker: 25,457,677 / 25,468,928 bytes (11,251 headroom); gzip: 7,026,713
+/ 9,750,000 bytes. The existing size guard is unchanged. No upload was performed.
+The previous root security assertion failure was reconciled to exact intentionally
+committed routes, image and variables; focused root4/package3 tests and independent
+review pass. Configuration and production assertions were not changed.
+
+Dashboard full typecheck remains failing at its 934-diagnostic baseline. Comparison
+with the saved prior output found no new diagnostic (the existing qrcode error
+only contains a different absolute checkout path). Two unchanged diagnostics in
+customerSchemaUpgrade.ts predate this change. Build and type logs are retained as
+`customer-cms-demo/private/native-form-dashboard-{build,types}.log`.
+
+## Final native integration verification — 2 October 2026
+
+Tasks 1–3 and the final paired integration review are complete. The final review
+fixed admission of the legitimate runtime `running` state while preserving strict
+receipts and fresh native authority. All 78 focused Dashboard tests pass, including
+46 real local PostgreSQL tests. The full Dashboard typecheck retains its previously
+recorded 934 baseline diagnostics; it is not reported as passing.
+
+Studio full gates pass: build 28 tasks; typecheck 44 tasks plus security types;
+lint 1,544 files; all 40 package test tasks, 36 security tests and 48 action-runtime
+tests. Business worker passes 1,046 tests and Sandbox 900. A single multioperation
+integration test uses the existing bounded 30-second harness convention after its
+5-second default expired under full-suite load; assertions are unchanged. Final
+scoped review approved both fixes. Evidence: `customer-cms-demo/private/native-forms-*`.
+
+Staging readback confirms coordinator migrations 0001–0010. Apply 0011–0013 before
+new private worker deployment. Runtime configuration remains absent, and explicit
+capability activation is still required after installed storage. Hosted acceptance
+needs two fresh approved native test identities; the requested email addresses are
+pending. No hosted save, production activation or completed customer rollout is
+claimed by these local results.
+
+## Staging rollout completed — 2 October 2026
+
+Dashboard `5b9b978e0` and Studio `e261995` are deployed to the documented preview
+and private staging targets. Coordinator migrations 0011–0013 are applied; no form
+capability or customer runtime is activated. Provider readbacks, exact version IDs,
+browser smoke, rollback and pending acceptance are recorded in the
+[native forms staging receipt](2026-10-02-native-forms-staging-receipt.md).

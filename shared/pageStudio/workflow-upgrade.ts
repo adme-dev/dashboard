@@ -9,7 +9,7 @@ export const WorkflowUpgradeOperationSchema = z.object({
   collectionOperationId: ContentAttachmentRequestSchema.shape.operationId,
   operationId: ContentAttachmentRequestSchema.shape.operationId,
   scope: ContentAttachmentRequestSchema.shape.scope,
-  actor: ContentAttachmentRequestSchema.shape.actor,
+  actor: ContentAttachmentRequestSchema.shape.actor.extend({ kind: z.enum(['agency-user', 'client-user', 'customer-user']) }),
   accountId: z.string().regex(/^[a-f0-9]{32}$/),
   databaseId: z.string().uuid(),
   name: z.string().regex(/^ps-content-[a-f0-9]{32}$/),

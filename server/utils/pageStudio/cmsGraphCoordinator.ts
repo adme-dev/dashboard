@@ -23,7 +23,7 @@ export interface CmsGraphSnapshot {
   checkpoint: { id: string, digest: string, object_key: string }
   schemas: AcceptedCmsObject[]
   content: AcceptedCmsObject | null
-  actor: { kind: 'agency-user' | 'client-user', userId: string, loginSessionHash: string }
+  actor: { kind: 'agency-user' | 'client-user' | 'customer-user', userId: string, loginSessionHash: string }
   principalIdentity: { source: CmsGraphPrincipal['source'], nonce: string | null }
 }
 export interface CmsGraphTransitionInput {
@@ -48,6 +48,10 @@ export const cmsAuthoringScopeConflict = () => new PageStudioBusinessContentErro
 export function cmsGraphEnvironment(principal: CmsGraphPrincipal) {
   return principal.source === 'native-login' ? principal.request.env : principal.env
 }
+function graphCheckpointMutation(principal: CmsGraphPrincipal) {
+  return principal.source === 'customer-session' ? 'customer-checkpoint' as const : 'business-content' as const
+}
+const denyCustomerGraphOperation = () => new PageStudioBusinessContentError('CMS_GRAPH_AUTHORITY_DENIED', 403, 'Customer sessions allow ordinary page saves only.')
 function freeze<T>(value: T): T {
   if (value && typeof value === 'object') {
     for (const child of Object.values(value)) freeze(child)
@@ -56,7 +60,7 @@ function freeze<T>(value: T): T {
   return value
 }
 async function resolveScope(principal: CmsGraphPrincipal, deps: CmsGraphDependencies) {
-  if (principal.source === 'studio-session') return PageStudioContentScopeSchema.parse({
+  if (principal.source !== 'native-login') return PageStudioContentScopeSchema.parse({
     tenantId: principal.claims.tenantId, clientId: principal.claims.clientId,
     businessId: principal.claims.clientId, siteId: principal.claims.siteId,
     environment: principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT
@@ -104,16 +108,18 @@ async function snapshotInTransaction(db: PageStudioControlQueryClient, scope: Pa
   const loginSessionHash = principal.source === 'native-login'
     ? principal.request.login.tokenHash
     : z.object({ login_session_hash: z.string().regex(/^[a-f0-9]{64}$/) }).parse((await db.query(
-      'SELECT login_session_hash FROM page_studio_sessions WHERE nonce=$1 AND user_id=$2', [principal.claims.nonce, userId]
+      principal.source === 'customer-session'
+        ? `SELECT handoff.login_session_hash FROM page_studio_customer_editor_sessions child JOIN page_studio_customer_editor_handoffs handoff ON handoff.id=child.handoff_id WHERE child.nonce=$1 AND handoff.identity_id=$2`
+        : 'SELECT login_session_hash FROM page_studio_sessions WHERE nonce=$1 AND user_id=$2', [principal.claims.nonce, userId]
     )).rows[0]).login_session_hash
-  const actor = { kind: role === 'agency' ? 'agency-user' as const : 'client-user' as const, userId, loginSessionHash }
-  const principalIdentity = { source: principal.source, nonce: principal.source === 'studio-session' ? principal.claims.nonce : null }
+  const actor = { kind: role === 'agency' ? 'agency-user' as const : role === 'customer' ? 'customer-user' as const : 'client-user' as const, userId, loginSessionHash }
+  const principalIdentity = { source: principal.source, nonce: principal.source !== 'native-login' ? principal.claims.nonce : null }
   return freeze(structuredClone({ scope, context, checkpoint, schemas, content, actor, principalIdentity }))
 }
 /** Authoritative snapshot only. Immutable remote bodies are loaded after locks release. */
 export async function readCmsGraphSnapshot(principal: CmsGraphPrincipal, deps: CmsGraphDependencies = {}): Promise<CmsGraphSnapshot> {
   const scope = await resolveScope(principal, deps)
-  return await withCmsCommitAuthority({ scope, principal, mutation: 'business-content' }, db => snapshotInTransaction(db, scope, principal), deps)
+  return await withCmsCommitAuthority({ scope, principal, mutation: graphCheckpointMutation(principal) }, db => snapshotInTransaction(db, scope, principal), deps)
 }
 /** Discovery rechecks native authority and exact accepted heads after private I/O. */
 export async function assertCmsGraphSnapshotCurrent(snapshot: CmsGraphSnapshot, principal: CmsGraphPrincipal, deps: CmsGraphDependencies = {}) {
@@ -137,9 +143,10 @@ export async function lookupCmsGraphOperation(
   expectedCandidate: { id: string, digest: string },
   deps: CmsGraphDependencies = {}
 ): Promise<CmsGraphCommitReceipt | null> {
+  if (principal.source === 'customer-session') throw denyCustomerGraphOperation()
   z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/).parse(operationId)
   const scope = await resolveScope(principal, deps)
-  const result = await withCmsCommitAuthority({ scope, principal, mutation: 'business-content' }, async (db) => {
+  const result = await withCmsCommitAuthority({ scope, principal, mutation: graphCheckpointMutation(principal) }, async (db) => {
     const snapshot = await snapshotInTransaction(db, scope, principal)
     const rows = (await db.query<{ request: { intent: CmsGraphTransitionInput, actor: CmsGraphSnapshot['actor'], principalIdentity: CmsGraphSnapshot['principalIdentity'], mutation: string }, result: CmsGraphCommitReceipt }>(
       'SELECT request,result FROM page_studio_cms_commits WHERE scope_key=$1 AND operation_id=$2', [snapshot.context.state.scope_key, operationId]
@@ -252,7 +259,7 @@ async function replayExact(db: PageStudioControlQueryClient, snapshot: CmsGraphS
 async function commitPreparedGraph(prepared: PreparedGraph, principal: CmsGraphPrincipal, deps: CmsGraphDependencies) {
   const { snapshot, input, proof } = prepared
   const mode = prepared.mode ?? 'feature'
-  const mutation = prepared.preparations.length ? 'collection-schema' as const : 'business-content' as const
+  const mutation = prepared.preparations.length ? 'collection-schema' as const : graphCheckpointMutation(principal)
   return await withCmsCommitAuthority({ scope: snapshot.scope, principal, mutation }, async (db) => {
     const current = await snapshotInTransaction(db, snapshot.scope, principal)
     const replay = await replayExact(db, current, input, mode)
@@ -285,7 +292,7 @@ async function commitPreparedGraph(prepared: PreparedGraph, principal: CmsGraphP
       const row = existing[0]!
       if (row.digest !== cp.digest || row.object_key !== cp.objectKey || row.etag !== cp.etag || row.author_id !== cp.userId || new Date(row.created_at as string).toISOString() !== cp.createdAt) throw cmsGraphConflict('Checkpoint identity was already used.')
     } else await db.query('INSERT INTO page_studio_checkpoints(id,tenant_id,client_id,site_id,digest,object_key,etag,author_id,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)', [cp.checkpointId, snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId, cp.digest, cp.objectKey, cp.etag, cp.userId, cp.createdAt])
-    const role = snapshot.actor.kind === 'agency-user' ? 'agency' : 'client'
+    const role = snapshot.actor.kind === 'agency-user' ? 'agency' : snapshot.actor.kind === 'customer-user' ? 'customer' : 'client'
     const version = mode === 'feature' || mode === 'ai-page'
       ? (await db.query<{ id: string }>(`INSERT INTO page_studio_versions(tenant_id,client_id,site_id,checkpoint_id,digest,author_id,author_role,summary,status,idempotency_key,submitted_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'in_review',$9,clock_timestamp()) RETURNING id`,
           [snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId, cp.checkpointId, cp.digest, cp.userId, role, input.summary, input.operationId])).rows[0]!
@@ -298,10 +305,12 @@ async function commitPreparedGraph(prepared: PreparedGraph, principal: CmsGraphP
     await db.query('INSERT INTO page_studio_cms_commits(scope_key,generation,id,operation_id,request_digest,prepared_digest,request,result,actor_id,audit_id,tenant_id,client_id,site_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)', [state.scope_key, state.active_generation, commitId, input.operationId, await collectionDigest(request), proof.proofDigest, request, receipt, cp.userId, auditId, snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId])
     await db.query('UPDATE page_studio_cms_scopes SET current_application_id=$2 WHERE scope_key=$1', [state.scope_key, appId])
     await db.query(`UPDATE page_studio_sites SET current_checkpoint_id=$4,current_version_id=CASE WHEN $6='checkpoint' THEN current_version_id ELSE $5::uuid END,updated_at=clock_timestamp() WHERE tenant_id=$1 AND client_id=$2 AND id=$3`, [snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId, cp.checkpointId, version?.id ?? null, mode])
-    const stagingOrigin = checkpointStagingOrigin({ formatVersion: 1, environment: cmsGraphEnvironment(principal).PAGE_STUDIO_RELEASE_ENVIRONMENT,
-      source: snapshot.principalIdentity.source, userId: snapshot.actor.userId, role, loginSessionHash: snapshot.actor.loginSessionHash,
-      ...(snapshot.principalIdentity.source === 'studio-session' ? { nonce: snapshot.principalIdentity.nonce } : {}) })
-    for (const action of version ? ['workspace.checkpointed', 'version.registered', 'version.submitted'] : ['workspace.checkpointed']) await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId, cp.userId, role, action, action === 'workspace.checkpointed' ? 'checkpoint' : 'version', action === 'workspace.checkpointed' ? cp.checkpointId : version!.id, `cms:graph:${input.operationId}:${action}`, { checkpointId: cp.checkpointId, digest: cp.digest, applicationId: appId, commitProtocol: 'cms-graph-v1', expectedCheckpointId: input.expectedCheckpoint.id, ...(action === 'workspace.checkpointed' && stagingOrigin ? { stagingOrigin } : {}) }])
+    const stagingOrigin = principal.source === 'customer-session'
+      ? null
+      : checkpointStagingOrigin({ formatVersion: 1, environment: cmsGraphEnvironment(principal).PAGE_STUDIO_RELEASE_ENVIRONMENT,
+          source: snapshot.principalIdentity.source, userId: snapshot.actor.userId, role, loginSessionHash: snapshot.actor.loginSessionHash,
+          ...(snapshot.principalIdentity.source === 'studio-session' ? { nonce: snapshot.principalIdentity.nonce } : {}) })
+    for (const action of version ? ['workspace.checkpointed', 'version.registered', 'version.submitted'] : ['workspace.checkpointed']) await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId, cp.userId, role, action, action === 'workspace.checkpointed' ? 'checkpoint' : 'version', action === 'workspace.checkpointed' ? cp.checkpointId : version!.id, `cms:graph:${input.operationId}:${action}`, { checkpointId: cp.checkpointId, digest: cp.digest, applicationId: appId, commitProtocol: 'cms-graph-v1', ...(principal.source === 'customer-session' ? { customerEditor: { sessionId: principal.claims.nonce, userId: principal.claims.userId, workspaceId: principal.claims.workspaceId } } : {}), expectedCheckpointId: input.expectedCheckpoint.id, ...(action === 'workspace.checkpointed' && stagingOrigin ? { stagingOrigin } : {}) }])
     if (prepared.history) await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,$5,'draft.history.saved','checkpoint',$6,$7,$8)`,
       [snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId, cp.userId, role, cp.checkpointId, `history:${role}:${cp.userId}:${prepared.history.requestId}`, { request: prepared.history, checkpointId: cp.checkpointId }])
     return receipt
@@ -313,6 +322,7 @@ export async function coordinateCmsGraphTransition(raw: CmsGraphTransitionInput,
     || !principal.claims.capabilities.includes('workspace:checkpoint')
     || !principal.claims.capabilities.includes('model:invoke')))
     throw new PageStudioBusinessContentError('CMS_GRAPH_AUTHORITY_DENIED', 403, 'Feature acceptance requires checkpoint and model invocation authority.')
+  if (principal.source === 'customer-session') throw denyCustomerGraphOperation()
   const parsed = transitionInput.parse(raw)
   const input: CmsGraphTransitionInput = { ...parsed, expectedContent: parsed.expectedContent, nextCheckpoint: requiredCheckpointScope(parsed.nextCheckpoint) }
   const snapshot = await readCmsGraphSnapshot(principal, deps)
@@ -348,10 +358,11 @@ export async function coordinateCmsGraphCheckpoint(
   const parsed = z.object({ checkpoint: graphCheckpoint, expectedCheckpointId: graphId.nullable() }).strict().parse(raw)
   const caller = { ...parsed, checkpoint: requiredCheckpointScope(parsed.checkpoint), acceptance: internal }
   const mode = internal.mode ?? 'checkpoint'
+  if (principal.source === 'customer-session' && (mode !== 'checkpoint' || Object.keys(internal).length !== 0)) throw denyCustomerGraphOperation()
   if (mode === 'ai-page' && principal.source === 'studio-session' && principal.capability !== 'model:invoke') throw cmsGraphConflict('AI page acceptance requires model invocation authority.')
   const snapshot = await readCmsGraphSnapshot(principal, deps)
   const operationId = `${mode.replace('-', '_')}_${await collectionDigest([snapshot.scope, internal.idempotencyKey ?? caller.checkpoint.checkpointId])}`
-  const original = await withCmsCommitAuthority({ scope: snapshot.scope, principal, mutation: 'business-content' }, async (db) => {
+  const original = await withCmsCommitAuthority({ scope: snapshot.scope, principal, mutation: graphCheckpointMutation(principal) }, async (db) => {
     const current = await snapshotInTransaction(db, snapshot.scope, principal)
     const rows = (await db.query<{ request: { intent: CmsGraphTransitionInput, caller: unknown, mode: string }, result: CmsGraphCommitReceipt }>('SELECT request,result FROM page_studio_cms_commits WHERE scope_key=$1 AND operation_id=$2', [current.context.state.scope_key, operationId])).rows
     if (!rows.length) return null
@@ -377,12 +388,13 @@ export async function coordinateCmsGraphCheckpoint(
 
 /** Native history restore retains today's accepted graph and independent records. */
 export async function coordinateCmsGraphRestore(raw: unknown, principal: CmsGraphPrincipal, deps: CmsGraphDependencies = {}) {
+  if (principal.source === 'customer-session') throw denyCustomerGraphOperation()
   const body = PageStudioHistoryMutationSchema.parse(raw)
   if (body.action !== 'restore') throw cmsGraphConflict('Only restore changes the accepted checkpoint.')
   const snapshot = await readCmsGraphSnapshot(principal, deps)
-  const role = snapshot.actor.kind === 'agency-user' ? 'agency' : 'client'
+  const role = snapshot.actor.kind === 'agency-user' ? 'agency' : snapshot.actor.kind === 'customer-user' ? 'customer' : 'client'
   const operationKey = `history:${role}:${snapshot.actor.userId}:${body.requestId}`
-  const selected = await withCmsCommitAuthority({ scope: snapshot.scope, principal, mutation: 'business-content' }, async (db) => {
+  const selected = await withCmsCommitAuthority({ scope: snapshot.scope, principal, mutation: graphCheckpointMutation(principal) }, async (db) => {
     const current = await snapshotInTransaction(db, snapshot.scope, principal)
     const receipt = (await db.query<{ metadata: { request: unknown, checkpointId: string } }>(
       'SELECT metadata FROM page_studio_audit_events WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND idempotency_key=$4 AND action=\'draft.history.saved\'',

@@ -133,6 +133,12 @@ jobs:
           PAGE_STUDIO_GRANT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_history_authority_ci
           PAGE_STUDIO_ATTACHMENT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_attachment_intent_ci
 
+      - name: Page Studio customer workspace ownership database tests
+        run: pnpm exec vitest run test/server/utils/pageStudioCustomerWorkspacesPostgres.test.ts test/server/utils/pageStudioCustomerSignupPostgres.test.ts test/server/utils/pageStudioCustomerSitesPostgres.test.ts test/server/utils/pageStudioCustomerProvisioningPostgres.test.ts test/server/utils/pageStudioCustomerEditorHandoffPostgres.test.ts test/server/utils/pageStudioCustomerEditorSessionsPostgres.test.ts test/server/utils/pageStudioCustomerCmsSavesPostgres.test.ts test/server/utils/pageStudioCustomerCmsAdoptionPostgres.test.ts test/server/utils/pageStudioCustomerSchemaUpgradePostgres.test.ts
+        timeout-minutes: 5
+        env:
+          PAGE_STUDIO_WORKSPACE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
+
       - name: Page Studio setup and provisioning authority database tests
         run: pnpm exec vitest run test/server/api/pageStudioAgencySetupProposalPostgres.test.ts test/server/api/pageStudioPortalSetupPostgres.test.ts test/server/utils/pageStudioProvisioningAuthorityPostgres.test.ts
         timeout-minutes: 5

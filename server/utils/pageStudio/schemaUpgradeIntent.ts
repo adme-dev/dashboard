@@ -40,6 +40,7 @@ export function createSchemaUpgradePreparation(contract: SchemaUpgradeContract, 
       // Invoke on the service binding itself: .bind() is a remote RPC property.
       return await binding[contract.discoveryMethod]!(scope)
     })
+    if (!['agency', 'client'].includes(actor.role)) throw denied()
     const agency = actor.role === 'agency'
     const native = await run(async (db) => {
     // Same site -> native login -> parent login lock order as CMS attachment.

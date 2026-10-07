@@ -1,0 +1,108 @@
+# CMS email builder — Vehicle Marketplace reference
+
+Reviewed locally on 1 October 2026 following Paul's reference to
+`/Users/paulgiurin/Documents/GitHub/vehicle-marketplace`.
+Read-only inspection; that repository has unrelated dependency edits which were
+not modified. This is a source-code comparison, not browser or delivery acceptance
+of Vehicle Marketplace.
+
+## Implementation references
+
+- `frontend/app/components/settings/SettingsInquiryEmailTemplate.vue`: compact
+  block editor, block palette, drag handles plus move buttons, named template
+  selection, media picker, variable hints, debounced preview and desktop/mobile mode.
+- `frontend/app/pages/dashboard/settings/inquiry-email.vue`: dedicated settings entry.
+- `frontend/server/utils/email/confirmation-template.ts`: renderer entry referenced
+  by the config and preview; inspect in depth before reusing renderer logic.
+- `frontend/server/utils/email/inquiry-email-config.ts`: named dealer templates,
+  default selection, routed-template fallback and branding/contact loaders.
+- `frontend/app/pages/dashboard/settings/templates.vue`: a separate plain-text
+  response-snippet library; distinct from the visual confirmation-email builder.
+
+The older 16 June design spec says fixed layout and one template. Current source
+has multiple named templates and reorderable blocks; use the inspected source
+as the evidence for its current UI, not that older scope description.
+
+## Adoption decisions
+
+| Reference pattern | CMS adaptation |
+| --- | --- |
+| Compact icon-labelled block palette | Replace the New block select/Add pair with direct actions for supported blocks. Keep Nuxt UI controls and accessible labels. |
+| Reorderable block cards | Keep existing up/down controls and undo; add drag handles only with keyboard/touch acceptance. |
+| Preview refreshes after edits | Add debounced preview with stale-response protection and cancellation on unmount; preserve the sandbox/CSP and synthetic answers. Keep an explicit refresh/retry action. |
+| Header/image/banner media picker | Use customer-owned site media IDs and authenticated safe previews. Image schema, asset authority and delivery references must be implemented before exposing these controls. |
+| Named designs and default selection | Follow website defaults → explicit shared-form override → reset to default. A placement does not create another form/template configuration. Named libraries are a later extension. |
+| Business branding and footer | Offer reusable website branding/contact details once customer-owned values are defined; avoid dealer-specific records. |
+| Vehicle/contact cards | Treat as future schema-backed industry blocks (product, booking, enquiry summary); do not copy automotive assumptions into the generic CMS. |
+
+The reference uses shadcn/raw controls and dealer-scoped mutable records. Adapt its
+interaction patterns to Nuxt UI v4, immutable customer revisions, scope/audience
+validation and explicit saves. Keep the CMS preview sandbox and strict document
+schema. The reference's sending toggle does not justify exposing delivery controls
+before verified sender/routing/outbox acceptance. AI should propose the same
+structured document and require Apply, leaving manual editing available.
+
+## Next bounded implementation
+
+1. **Locally complete:** compact supported-block palette and debounced safe
+   preview, retaining undo/redo and conflict protection. Eight focused tests and
+   browser acceptance pass; details are in the current checklist.
+2. **Locally complete:** shared-form template overrides and reset-to-default with
+   effective design preview and an impact summary.
+3. **Locally complete:** customer media blocks. Next: AI proposals against the approved schema.
+4. Complete sender/routing/outbox and hosted acceptance separately.
+
+This reference is incorporated into the active checklist. Website template drafts
+are already locally verified; these additional UX/media/override features are
+not marked complete until implemented and tested.
+
+## Design and identity follow-through — 1 October 2026
+
+Adopted an optional business header/footer as structured customer-owned template
+fields, with contact details, six supported social platforms and disclaimer text.
+The editor now groups Content/Design/Details, with compact collapsible blocks,
+three looks and explicit enquiry-message starting layouts. Styles preserve wording;
+layout replacement preserves business identity and supports undo.
+
+Primary design references reviewed 1 October 2026:
+- [Mailchimp layout and purpose](https://templates.mailchimp.com/design/layout-and-purpose/):
+  message hierarchy and a clear content-led layout.
+- [Mailchimp accessibility](https://mailchimp.com/help/accessibility-in-email-marketing/):
+  logical headings, contrast and readable responsive content.
+- [Mailchimp section design](https://mailchimp.com/help/section-design-landing-page-email/):
+  distinct message body and footer areas.
+
+This implementation uses the existing safe email renderer; reference patterns do
+not establish delivery/client compatibility. Logo/media blocks and a central
+reusable business profile still require their own storage and acceptance work.
+
+## Next media slice — inspected implementation entry points
+
+- `CustomerMediaBrowser.client.vue` already lists scoped assets and authenticated
+  previews; reuse its names/search patterns for an explicit picker.
+- `server/utils/pageStudio/standaloneMedia.ts` rechecks customer/site access and
+  clean, non-archived asset metadata around R2 reads. It permits JPEG/PNG/WebP/GIF
+  and currently bounds general previews to 20 MB; email previews need a tighter
+  per-image and aggregate bound before embedding or loading media.
+- `emailTemplatePreview.ts` deliberately has `img-src 'none'` today. Adding image
+  blocks requires an explicit safe-preview strategy, asset-ID ownership checks,
+  accessible alt text and missing/archived-asset behavior. Do not accept arbitrary
+  image URLs or weaken the existing HTML/script isolation.
+- Keep draft preview acceptance separate from how delivered emails will carry
+  images (public immutable assets or attachments); delivery is not yet active.
+
+These are inspected entry points and constraints, not implemented image support.
+
+## Media follow-through — 1 October 2026
+
+The media slice above is now implemented and locally accepted. The scoped library
+picker supports an optional logo and image blocks, required alt text, width and
+alignment. Templates store UUID references only, with six images maximum.
+Authenticated clean asset reads validate raster signatures and bound actual bytes
+to 512 KB each and 2 MB rendered total. The preview CSP now permits only embedded
+raster data images; scripts and external resources remain blocked. Missing assets
+produce placeholders/warnings and prevent saving until replaced or removed.
+
+Desktop/mobile browser checks, save/reload, replacement, remove/undo and negative
+API cases pass; evidence lives in the current checklist. Email delivery is still
+inactive and needs its own image hosting/attachment strategy and client tests.

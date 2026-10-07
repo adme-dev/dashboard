@@ -9,8 +9,8 @@ interface Submission {
   submittedAt: string
 }
 
-const props = defineProps<{ siteId: string }>()
-const endpoint = computed(() => `/api/agency/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
+const props = withDefaults(defineProps<{ siteId: string, audience?: 'agency' | 'portal', formId?: string, pageRoute?: string, heading?: string, placements?: Array<{ formId: string, pageRoute?: string }> }>(), { audience: 'agency', heading: 'Form submissions' })
+const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/forms/submissions`)
 const { data, status, error, refresh, clear } = await useFetch<{ submissions: Submission[] }>(endpoint, { watch: false })
 const submissions = computed(() => data.value?.submissions ?? [])
 const mode = ref('all')
@@ -21,7 +21,10 @@ const modes = [
   { label: 'Test only', value: 'test' }
 ]
 const filtered = computed(() => submissions.value.filter(submission =>
-  mode.value === 'all' || submission.isTest === (mode.value === 'test')
+  (!props.placements || props.placements.some(item => item.formId === submission.formId && (!item.pageRoute || item.pageRoute === submission.pageRoute)))
+  && (!props.formId || submission.formId === props.formId)
+  && (!props.pageRoute || submission.pageRoute === props.pageRoute)
+  && (mode.value === 'all' || submission.isTest === (mode.value === 'test'))
 ))
 const selected = computed(() => status.value === 'success' && !error.value
   ? filtered.value.find(submission => submission.id === selectedId.value)
@@ -33,13 +36,13 @@ const detailsOpen = computed({
   }
 })
 // Own the site transition so clearing old data cannot cancel an automatic fetch.
-watch(() => props.siteId, async () => {
+watch(() => [props.siteId, props.audience], async () => {
   selectedId.value = null
   mode.value = 'all'
   clear()
   await refresh()
 }, { flush: 'sync' })
-watch(mode, () => {
+watch([mode, () => props.formId, () => props.pageRoute, () => props.placements], () => {
   selectedId.value = null
 })
 function submittedDate(value: string) {
@@ -81,7 +84,7 @@ async function refreshSubmissions() {
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 class="font-semibold text-highlighted">
-            Form submissions
+            {{ heading }}
           </h2>
           <p class="mt-1 text-sm text-muted">
             Review website enquiries and their submitted details.

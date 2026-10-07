@@ -1,0 +1,33 @@
+{
+  "intent": {
+    "version": 1,
+    "policyVersion": "form-drafts-upgrade-v1",
+    "operationId": "form_drafts_fixture",
+    "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "databaseId": "10000000-0000-4000-8000-000000000001",
+    "name": "ps-content-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "actor": {
+      "kind": "agency-user",
+      "userId": "20000000-0000-4000-8000-000000000001",
+      "loginSessionHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "scope": {
+      "tenantId": "tenant_a",
+      "clientId": "client_a",
+      "businessId": "client_a",
+      "siteId": "site_a",
+      "environment": "staging"
+    },
+    "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+    "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2",
+    "collectionOperationId": "upgrade_a",
+    "workflowOperationId": "workflow_upgrade_a",
+    "stagingOperationId": "staging_upgrade_fixture",
+    "runtime": {
+      "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "etag": "verified-etag",
+      "successorIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  },
+  "identity": "a61b51ebb7c4c53b86c9c8e9a932edaeb0d7f36fa6e2c6c014c70257117d6b69"
+}

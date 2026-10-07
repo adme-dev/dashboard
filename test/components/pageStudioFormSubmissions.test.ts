@@ -12,7 +12,7 @@ const receipts = () => [
 const data = ref({ submissions: receipts() })
 const status = ref('success')
 const error = ref<unknown>(null)
-const props = reactive({ siteId: 'site-a' })
+const props = reactive<{ siteId: string, audience: 'agency' | 'portal', placements?: Array<{ formId: string, pageRoute?: string }> }>({ siteId: 'site-a', audience: 'agency' })
 const refresh = vi.fn()
 const clear = vi.fn(() => {
   data.value = { submissions: [] }
@@ -62,6 +62,8 @@ beforeEach(() => {
   status.value = 'success'
   error.value = null
   props.siteId = 'site-a'
+  props.audience = 'agency'
+  props.placements = undefined
   for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value)
   vi.stubGlobal('useFetch', fetchSubmissions)
 })
@@ -71,6 +73,16 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('website submission inspection', () => {
+  it('uses customer-scoped routes and clears agency data when audience changes', async () => {
+    await mount()
+    expect(fetchSubmissions).toHaveBeenCalledWith(expect.objectContaining({ value: '/api/agency/page-studio/sites/site-a/forms/submissions' }), { watch: false })
+    props.audience = 'portal'
+    await flush()
+    expect(fetchSubmissions).toHaveBeenCalledWith(expect.objectContaining({ value: '/api/portal/page-studio/sites/site-a/forms/submissions' }), { watch: false })
+    expect(clear).toHaveBeenCalledOnce()
+    expect(refresh).toHaveBeenCalledOnce()
+  })
+
   it('shows every recorded field as escaped text with receipt context and empty values', async () => {
     const host = await mount()
     details(host).click()
@@ -127,4 +139,27 @@ describe('website submission inspection', () => {
     await filter(host, 'test')
     expect(host.textContent).toContain('No matching submissions')
   })
+})
+
+it('combines shared placements without matching another page and clears the filter', async () => {
+  data.value.submissions.push({ ...receipts()[0]!, id: 'other-page', pageRoute: '/unrelated', fields: { name: 'Other visitor' } })
+  props.placements = [{ formId: 'quote', pageRoute: '/weddings' }, { formId: 'delivery', pageRoute: '/delivery' }]
+  const host = await mount()
+  expect(host.textContent).toContain('2 of 3 loaded submissions')
+  expect(host.textContent).not.toContain('Other visitor')
+  details(host).click()
+  await flush()
+  props.placements = undefined
+  await flush()
+  expect(host.querySelector('aside')).toBeNull()
+  expect(host.textContent).toContain('3 of 3 loaded submissions')
+})
+
+it('includes historical URLs when filtering a shared definition by stable form identity', async () => {
+  data.value.submissions.push({ ...receipts()[0]!, id: 'old-route', pageRoute: '/old-wedding-url', fields: { name: 'Earlier enquiry' } })
+  props.placements = [{ formId: 'quote' }]
+  const host = await mount()
+  expect(host.textContent).toContain('2 of 3 loaded submissions')
+  expect(host.textContent).toContain('Earlier enquiry')
+  expect(host.textContent).not.toContain('Test customer')
 })
