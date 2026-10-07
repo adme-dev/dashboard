@@ -1,6 +1,7 @@
 # Private email rendering service — proposed capacity repair
 
-Status: proposal; no renderer or deployment changes implemented.
+Status: boundary approved by the user’s “proceed” instruction. No renderer or
+deployment changes implemented yet. Detailed [implementation plan](../superpowers/plans/2026-10-07-private-email-rendering.md) prepared for review.
 
 ## Problem and acceptance
 
