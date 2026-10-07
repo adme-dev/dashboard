@@ -1,3 +1,4 @@
+import { boundedJoin } from '../boundedText'
 import { registerBlock, renderBlock } from '../block-registry'
 import { edmResponsiveClassForBlock, getHideClassForBlock, mobileStyleDeclarationsForBlock } from '../../../../../app/utils/edmResponsive'
 import type { FlyhubBlock, BlockRenderContext } from './types'
@@ -23,26 +24,24 @@ registerBlock({
     const { data } = block
     const childrenIds = (data.childrenIds || []) as string[]
 
-    return childrenIds
+    return boundedJoin(childrenIds
       .map((id) => {
         const childBlock = context._document && Object.hasOwn(context._document, id) ? context._document[id] : undefined
         if (!childBlock) return ''
         return renderBlock(childBlock, 'mjml', context)
-      })
-      .join('\n')
+      }), '\n', context.renderBudget)
   },
 
   renderHtml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block
     const childrenIds = (data.childrenIds || []) as string[]
 
-    return childrenIds
+    return boundedJoin(childrenIds
       .map((id) => {
         const childBlock = context._document && Object.hasOwn(context._document, id) ? context._document[id] : undefined
         if (!childBlock) return ''
         return wrapResponsiveHtml(id, childBlock, renderBlock(childBlock, 'html', context))
-      })
-      .join('\n')
+      }), '\n', context.renderBudget)
   },
 
   defaultProps: {

@@ -1,3 +1,4 @@
+import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
@@ -30,14 +31,14 @@ registerBlock({
 
     const starsMarkup
       = rating > 0
-        ? `<mj-text padding="0 24px 8px 24px" align="center" font-size="18px" line-height="1" color="#f59e0b">${renderStarsMjml(rating)}</mj-text>`
+        ? boundedText(context.renderBudget)`<mj-text padding="0 24px 8px 24px" align="center" font-size="18px" line-height="1" color="#f59e0b">${renderStarsMjml(rating)}</mj-text>`
         : ''
 
     const avatarMarkup = avatarUrl
-      ? `<mj-image padding="0 0 8px 0" align="center" src="${escapeUrl(avatarUrl)}" width="48px" height="48px" border-radius="24px" />`
+      ? boundedText(context.renderBudget)`<mj-image padding="0 0 8px 0" align="center" src="${escapeUrl(avatarUrl)}" width="48px" height="48px" border-radius="24px" />`
       : ''
 
-    return `
+    return boundedText(context.renderBudget)`
         <mj-section padding="0">
           <mj-column>
             <mj-text
@@ -69,7 +70,7 @@ registerBlock({
               line-height="1.4"
             >${escapeHtml(authorName)}</mj-text>${
               authorRole
-                ? `
+                ? boundedText(context.renderBudget)`
             <mj-text
               padding="0 24px 8px 24px"
               align="center"
@@ -103,14 +104,14 @@ registerBlock({
 
     const starsMarkup
       = rating > 0
-        ? `<p style="margin: 0 0 8px 0; text-align: center;">${renderStarsHtml(rating)}</p>`
+        ? boundedText(context.renderBudget)`<p style="margin: 0 0 8px 0; text-align: center;">${renderStarsHtml(rating)}</p>`
         : ''
 
     const avatarMarkup = avatarUrl
-      ? `<img src="${escapeUrl(avatarUrl)}" alt="" width="48" height="48" style="display: block; margin: 0 auto 8px auto; border-radius: 24px;" />`
+      ? boundedText(context.renderBudget)`<img src="${escapeUrl(avatarUrl)}" alt="" width="48" height="48" style="display: block; margin: 0 auto 8px auto; border-radius: 24px;" />`
       : ''
 
-    return `
+    return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: center;">
             <p style="margin: 0 0 8px 0; color: #d1d5db; font-size: 48px; font-family: Georgia, serif; line-height: 1;">&ldquo;</p>
@@ -119,7 +120,7 @@ registerBlock({
             ${avatarMarkup}
             <p style="margin: 0 0 4px 0; color: #111827; font-size: 14px; font-family: ${fontFamily}; font-weight: 600; line-height: 1.4;">${escapeHtml(authorName)}</p>${
               authorRole
-                ? `
+                ? boundedText(context.renderBudget)`
             <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 13px; font-family: ${fontFamily}; font-weight: normal; line-height: 1.4;">${escapeHtml(authorRole)}</p>`
                 : ''
             }

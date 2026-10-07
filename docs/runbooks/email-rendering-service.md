@@ -22,7 +22,7 @@ expanded visits. Star repetition is capped at 4,096. Merge names are literal tok
 replacement-string substitutions retain their previous meaning. Merge passes and
 chunks consume budget before concatenation, with at most 100,000 chunks. These are
 new finite agency admission limits, not a claim that all previously accepted
-unbounded payloads remain valid. Existing customer template and image limits remain.
+unbounded payloads remain valid. Customer schema and image limits also apply. Template literals, array joins and customer variable/HTML expansion consume the same request-local work budget before allocation; deeply nested or repeatedly copied content can exhaust it below the final reply size limit.
 
 Template/campaign SQL and test-send asset/provider work wait for a successful
 render. A campaign update also checks draft status atomically. Customer previews

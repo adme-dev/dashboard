@@ -1,3 +1,4 @@
+import { boundedText, boundedJoin } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
@@ -30,38 +31,38 @@ registerBlock({
 
     if (showAddress && dealerAddress) {
       parts.push(
-        `<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px">${escapeHtml(dealerAddress)}</mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px">${escapeHtml(dealerAddress)}</mj-text>`
       )
     }
 
     if (dealerWebsite) {
       parts.push(
-        `<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px"><a href="${escapeHtml(dealerWebsite)}" style="color:#6b7280;text-decoration:underline;" target="_blank">${escapeHtml(dealerWebsite)}</a></mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px"><a href="${escapeHtml(dealerWebsite)}" style="color:#6b7280;text-decoration:underline;" target="_blank">${escapeHtml(dealerWebsite)}</a></mj-text>`
       )
     }
 
     if (dealerName) {
       parts.push(
-        `<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px">&copy; ${escapeHtml(currentYear)} ${escapeHtml(dealerName)}. All rights reserved.</mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px">&copy; ${escapeHtml(currentYear)} ${escapeHtml(dealerName)}. All rights reserved.</mj-text>`
       )
     }
 
     if (additionalText) {
       parts.push(
-        `<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px">${escapeHtml(additionalText)}</mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px">${escapeHtml(additionalText)}</mj-text>`
       )
     }
 
     if (showUnsubscribe) {
       parts.push(
-        `<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px"><a href="${escapeHtml(unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline;" target="_blank">Unsubscribe</a></mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px"><a href="${escapeHtml(unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline;" target="_blank">Unsubscribe</a></mj-text>`
       )
     }
 
-    return `
+    return boundedText(context.renderBudget)`
         <mj-section padding="${padding}" background-color="${bgColor}">
           <mj-column>
-            ${parts.join('\n            ')}
+            ${boundedJoin(parts, '\n            ', context.renderBudget)}
           </mj-column>
         </mj-section>`
   },
@@ -87,38 +88,38 @@ registerBlock({
 
     if (showAddress && dealerAddress) {
       lines.push(
-        `<p style="margin:4px 0;font-size:12px;color:#9ca3af;">${escapeHtml(dealerAddress)}</p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;color:#9ca3af;">${escapeHtml(dealerAddress)}</p>`
       )
     }
 
     if (dealerWebsite) {
       lines.push(
-        `<p style="margin:4px 0;font-size:12px;"><a href="${escapeHtml(dealerWebsite)}" style="color:#6b7280;text-decoration:underline;" target="_blank">${escapeHtml(dealerWebsite)}</a></p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;"><a href="${escapeHtml(dealerWebsite)}" style="color:#6b7280;text-decoration:underline;" target="_blank">${escapeHtml(dealerWebsite)}</a></p>`
       )
     }
 
     if (dealerName) {
       lines.push(
-        `<p style="margin:4px 0;font-size:12px;color:#9ca3af;">&copy; ${escapeHtml(currentYear)} ${escapeHtml(dealerName)}. All rights reserved.</p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;color:#9ca3af;">&copy; ${escapeHtml(currentYear)} ${escapeHtml(dealerName)}. All rights reserved.</p>`
       )
     }
 
     if (additionalText) {
       lines.push(
-        `<p style="margin:4px 0;font-size:12px;color:#9ca3af;">${escapeHtml(additionalText)}</p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;color:#9ca3af;">${escapeHtml(additionalText)}</p>`
       )
     }
 
     if (showUnsubscribe) {
       lines.push(
-        `<p style="margin:4px 0;font-size:12px;"><a href="${escapeHtml(unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline;" target="_blank">Unsubscribe</a></p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;"><a href="${escapeHtml(unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline;" target="_blank">Unsubscribe</a></p>`
       )
     }
 
-    return `
+    return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: center; background-color: ${bgColor};">
-            ${lines.join('\n            ')}
+            ${boundedJoin(lines, '\n            ', context.renderBudget)}
           </td>
         </tr>`
   },

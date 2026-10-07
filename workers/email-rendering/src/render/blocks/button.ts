@@ -1,3 +1,4 @@
+import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
@@ -17,7 +18,7 @@ registerBlock({
     const padding = formatPadding(style.padding)
     const textAlign = (style.textAlign as string) || 'left'
     const bgColor = (style.backgroundColor as string) || ''
-    const fontSize = style.fontSize ? `${style.fontSize}px` : null
+    const fontSize = style.fontSize ? boundedText(context.renderBudget)`${style.fontSize}px` : null
     const fontFamily = resolveFontFamily(style.fontFamily, context.fontFamily)
     const fontWeight = (style.fontWeight as string) || 'normal'
     const richStyle = extendedStyleCss(style)
@@ -43,11 +44,11 @@ registerBlock({
     const buttonFontSize = fontSize || '16px'
 
     if (richStyle) {
-      return `
-        <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+      return boundedText(context.renderBudget)`
+        <mj-section padding="0"${bgColor ? boundedText(context.renderBudget)` background-color="${bgColor}"` : ''}>
           <mj-column>
             <mj-raw>
-              <div style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+              <div style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}">
                 <a href="${buttonUrl}" style="display: inline-block; padding: ${innerPadding}; background-color: ${buttonBgColor}; color: ${buttonTextColor}; text-decoration: none; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight === 'bold' ? 'bold' : '600'}; font-size: ${buttonFontSize}; line-height: 1; border-radius: ${borderRadius}; ${fullWidth ? 'width: 100%; text-align: center;' : ''}${richStyle}">
                   ${escapeHtml(buttonText)}
                 </a>
@@ -57,8 +58,8 @@ registerBlock({
         </mj-section>`
     }
 
-    return `
-        <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+    return boundedText(context.renderBudget)`
+        <mj-section padding="0"${bgColor ? boundedText(context.renderBudget)` background-color="${bgColor}"` : ''}>
           <mj-column>
             <mj-button
               padding="${padding}"
@@ -83,7 +84,7 @@ registerBlock({
     const style = data.style || {}
     const padding = formatPadding(style.padding)
     const textAlign = (style.textAlign as string) || 'left'
-    const fontSize = style.fontSize ? `${style.fontSize}px` : null
+    const fontSize = style.fontSize ? boundedText(context.renderBudget)`${style.fontSize}px` : null
     const fontFamily = resolveFontFamily(style.fontFamily, context.fontFamily)
     const fontWeight = (style.fontWeight as string) || 'normal'
     const richStyle = extendedStyleCss(style)
@@ -107,7 +108,7 @@ registerBlock({
     const buttonFontSize = fontSize || '16px'
 
     if (richStyle) {
-      return `
+      return boundedText(context.renderBudget)`
         <mj-raw>
           <div style="padding: ${padding}; text-align: ${textAlign || 'center'};">
             <a href="${buttonUrl}" style="display: inline-block; padding: ${innerPadding}; background-color: ${buttonBgColor}; color: ${buttonTextColor}; text-decoration: none; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight === 'bold' ? 'bold' : '600'}; font-size: ${buttonFontSize}; line-height: 1; border-radius: ${borderRadius}; ${fullWidth ? 'width: 100%; text-align: center;' : ''}${richStyle}">
@@ -117,7 +118,7 @@ registerBlock({
         </mj-raw>`
     }
 
-    return `<mj-button padding="${padding}" align="${textAlign || 'center'}" href="${buttonUrl}" background-color="${buttonBgColor}" color="${buttonTextColor}" border-radius="${borderRadius}" font-family="${fontFamily}" font-weight="${fontWeight === 'bold' ? 'bold' : '600'}" font-size="${buttonFontSize}" inner-padding="${innerPadding}">${escapeHtml(buttonText)}</mj-button>`
+    return boundedText(context.renderBudget)`<mj-button padding="${padding}" align="${textAlign || 'center'}" href="${buttonUrl}" background-color="${buttonBgColor}" color="${buttonTextColor}" border-radius="${borderRadius}" font-family="${fontFamily}" font-weight="${fontWeight === 'bold' ? 'bold' : '600'}" font-size="${buttonFontSize}" inner-padding="${innerPadding}">${escapeHtml(buttonText)}</mj-button>`
   },
 
   renderHtml(block: FlyhubBlock, context: BlockRenderContext): string {
@@ -127,7 +128,7 @@ registerBlock({
     const padding = formatPadding(style.padding)
     const textAlign = (style.textAlign as string) || 'left'
     const bgColor = (style.backgroundColor as string) || ''
-    const fontSize = style.fontSize ? `${style.fontSize}px` : null
+    const fontSize = style.fontSize ? boundedText(context.renderBudget)`${style.fontSize}px` : null
     const fontFamily = resolveFontFamily(style.fontFamily, context.fontFamily)
     const fontWeight = (style.fontWeight as string) || 'normal'
 
@@ -159,9 +160,9 @@ registerBlock({
     const buttonFontSize = fontSize || '16px'
 
     // Use MSO padding hack for proper button rendering in Outlook
-    return `
+    return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}">
             <a href="${buttonUrl}" style="display: inline-block; padding: ${innerPadding}; background-color: ${buttonBgColor}; color: ${buttonTextColor}; text-decoration: none; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight === 'bold' ? 'bold' : '600'}; font-size: ${buttonFontSize}; line-height: 1; border-radius: ${borderRadius}; ${fullWidth ? 'width: 100%; text-align: center;' : ''}${extendedStyleCss(style)}">
               <!--[if mso]><i style="mso-font-width: 150%; mso-text-raise: ${msoPadding.pb};" hidden>&emsp;</i><![endif]-->
               <span style="mso-text-raise: ${msoPadding.pt};">${escapeHtml(buttonText)}</span>

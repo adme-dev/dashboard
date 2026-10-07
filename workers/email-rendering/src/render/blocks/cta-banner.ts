@@ -1,3 +1,4 @@
+import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
@@ -23,7 +24,7 @@ registerBlock({
     const backgroundColor = (props.backgroundColor as string) || '#1e40af'
     const textColor = (props.textColor as string) || '#ffffff'
 
-    return `
+    return boundedText(context.renderBudget)`
         <mj-section padding="0" background-color="${backgroundColor}">
           <mj-column>
             <mj-text
@@ -36,7 +37,7 @@ registerBlock({
               line-height="1.3"
             >${escapeHtml(heading)}</mj-text>${
               subheading
-                ? `
+                ? boundedText(context.renderBudget)`
             <mj-text
               padding="0 24px 16px 24px"
               align="center"
@@ -80,12 +81,12 @@ registerBlock({
     const backgroundColor = (props.backgroundColor as string) || '#1e40af'
     const textColor = (props.textColor as string) || '#ffffff'
 
-    return `
+    return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; background-color: ${backgroundColor}; text-align: center;">
             <h2 style="margin: 0 0 8px 0; color: ${textColor}; font-size: 24px; font-family: ${fontFamily}; font-weight: bold; line-height: 1.3;">${escapeHtml(heading)}</h2>${
               subheading
-                ? `
+                ? boundedText(context.renderBudget)`
             <p style="margin: 0 0 16px 0; color: ${textColor}; font-size: 16px; font-family: ${fontFamily}; font-weight: normal; line-height: 1.5;">${escapeHtml(subheading)}</p>`
                 : ''
             }

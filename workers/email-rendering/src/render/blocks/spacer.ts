@@ -1,3 +1,4 @@
+import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { anchorIdAttribute } from '../../../../../app/utils/edmAnchor'
@@ -14,8 +15,8 @@ registerBlock({
     const bgColor = (style.backgroundColor as string) || ''
 
     const height = (props.height as number) || 24
-    return `
-        <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+    return boundedText(_context.renderBudget)`
+        <mj-section padding="0"${bgColor ? boundedText(_context.renderBudget)` background-color="${bgColor}"` : ''}>
           <mj-column>
             <mj-spacer height="${height}px" />
           </mj-column>
@@ -27,7 +28,7 @@ registerBlock({
     const props = (data.props || {}) as Record<string, unknown>
 
     const height = (props.height as number) || 24
-    return `<mj-spacer height="${height}px" />`
+    return boundedText(_context.renderBudget)`<mj-spacer height="${height}px" />`
   },
 
   renderHtml(block: FlyhubBlock, _context: BlockRenderContext): string {
@@ -37,9 +38,9 @@ registerBlock({
     const bgColor = (style.backgroundColor as string) || ''
 
     const height = (props.height as number) || 24
-    return `
+    return boundedText(_context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="height: ${height}px; ${bgColor ? `background-color: ${bgColor};` : ''}">&nbsp;</td>
+          <td style="height: ${height}px; ${bgColor ? boundedText(_context.renderBudget)`background-color: ${bgColor};` : ''}">&nbsp;</td>
         </tr>`
   },
 

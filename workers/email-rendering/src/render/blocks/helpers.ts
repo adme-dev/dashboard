@@ -1,3 +1,5 @@
+import { boundedReplace } from '../boundedText'
+import type { createRenderBudget } from '../../../../../shared/emailRendering/bounds'
 /**
  * Shared helpers for EDM block renderers
  */
@@ -5,13 +7,9 @@
 /**
  * Escape HTML entities in text content
  */
-export function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+export function escapeHtml(text: string, budget?: ReturnType<typeof createRenderBudget>): string {
+  const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#039;' }
+  return boundedReplace(text, /[&<>"']/g, character => entities[character]!, budget)
 }
 
 /**

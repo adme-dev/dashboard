@@ -1,3 +1,4 @@
+import { boundedJoin, boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
@@ -26,19 +27,18 @@ registerBlock({
 
     if (!features.length) return ''
 
-    const columns = features
+    const columns = boundedJoin(features
       .map(
-        f => `
+        f => boundedText(_context.renderBudget)`
             <mj-column padding="8px">
               <mj-text align="center" font-size="32px" padding="0 0 8px 0" color="${iconColor}">${f.icon || ''}</mj-text>
               <mj-text align="center" font-size="16px" font-weight="bold" color="#111827" padding="0 0 4px 0">${escapeHtml(f.heading || '')}</mj-text>
               <mj-text align="center" font-size="14px" color="#6b7280" padding="0">${escapeHtml(f.description || '')}</mj-text>
             </mj-column>`
-      )
-      .join('')
+      ), '', _context.renderBudget)
 
-    return `
-        <mj-section padding="${padding}"${bgColor ? ` background-color="${bgColor}"` : ''}>
+    return boundedText(_context.renderBudget)`
+        <mj-section padding="${padding}"${bgColor ? boundedText(_context.renderBudget)` background-color="${bgColor}"` : ''}>
           ${columns}
         </mj-section>`
   },
@@ -57,20 +57,19 @@ registerBlock({
 
     const colWidth = Math.floor(100 / columns)
 
-    const cells = features
+    const cells = boundedJoin(features
       .map(
-        f => `
+        f => boundedText(_context.renderBudget)`
               <td style="width:${colWidth}%;padding:8px;text-align:center;vertical-align:top;">
                 <div style="font-size:32px;color:${iconColor};margin-bottom:8px;">${f.icon || ''}</div>
                 <p style="margin:0 0 4px;font-size:16px;font-weight:bold;color:#111827;">${escapeHtml(f.heading || '')}</p>
                 <p style="margin:0;font-size:14px;color:#6b7280;">${escapeHtml(f.description || '')}</p>
               </td>`
-      )
-      .join('')
+      ), '', _context.renderBudget)
 
-    return `
+    return boundedText(_context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="padding: ${padding};${bgColor ? ` background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding};${bgColor ? boundedText(_context.renderBudget)` background-color: ${bgColor};` : ''}">
             <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
               <tr>
                 ${cells}

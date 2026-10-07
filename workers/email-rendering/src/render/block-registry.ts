@@ -1,3 +1,4 @@
+import { boundedJoin, boundedText } from './boundedText'
 /**
  * EDM Block Registry
  *
@@ -76,7 +77,7 @@ export function getRegisteredTypes(): string[] {
  * - Returns a styled placeholder for unregistered block types so emails
  *   degrade gracefully instead of breaking.
  */
-function renderBlockValue(
+export function renderBlock(
   block: FlyhubBlock,
   format: RenderFormat,
   context: BlockRenderContext
@@ -84,7 +85,7 @@ function renderBlockValue(
   const definition = registry.get(block.type)
 
   if (!definition) {
-    return renderPlaceholder(block.type, format)
+    return renderPlaceholder(block.type, format, context)
   }
 
   switch (format) {
@@ -103,35 +104,29 @@ function renderBlockValue(
 // Placeholder for unregistered blocks
 // ---------------------------------------------------------------------------
 
-function renderPlaceholder(type: string, format: RenderFormat): string {
-  const message = `[${type}] \u2014 available in upcoming update`
+function renderPlaceholder(type: string, format: RenderFormat, context: BlockRenderContext): string {
+  const message = boundedText(context.renderBudget)`[${type}] \u2014 available in upcoming update`
 
   if (format === 'mjml') {
-    return [
+    return boundedJoin([
       '<mj-section>',
       '  <mj-column>',
       `    <mj-text padding="12px 16px" font-size="13px" color="#94a3b8" font-style="italic" container-background-color="#f8fafc" border="1px dashed #cbd5e1" border-radius="4px">`,
-      `      ${message}`,
+      boundedText(context.renderBudget)`      ${message}`,
       '    </mj-text>',
       '  </mj-column>',
       '</mj-section>'
-    ].join('\n')
+    ], '\n', context.renderBudget)
   }
 
   // HTML and Maizzle — email-safe table placeholder
-  return [
+  return boundedJoin([
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0;">',
     '  <tr>',
     '    <td style="padding:12px 16px;font-size:13px;color:#94a3b8;font-style:italic;background-color:#f8fafc;border:1px dashed #cbd5e1;border-radius:4px;font-family:Arial,sans-serif;">',
-    `      ${message}`,
+    boundedText(context.renderBudget)`      ${message}`,
     '    </td>',
     '  </tr>',
     '</table>'
-  ].join('\n')
-}
-
-export function renderBlock(block: FlyhubBlock, format: RenderFormat, context: BlockRenderContext): string {
-  const html = renderBlockValue(block, format, context)
-  context.renderBudget?.charge(html)
-  return html
+  ], '\n', context.renderBudget)
 }

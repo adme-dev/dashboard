@@ -1,3 +1,4 @@
+import { boundedJoin, boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
@@ -22,16 +23,16 @@ registerBlock({
     const avatarSize = (props.size as number) || 64
     const avatarShape = (props.shape as string) || 'circle'
     const borderRadius = avatarShape === 'circle' ? '50%' : avatarShape === 'rounded' ? '8px' : '0'
-    const wrapperStyle = [
-      `padding: ${padding};`,
-      `text-align: ${textAlign || 'center'};`,
-      bgColor ? `background-color: ${bgColor};` : '',
+    const wrapperStyle = boundedJoin([
+      boundedText(_context.renderBudget)`padding: ${padding};`,
+      boundedText(_context.renderBudget)`text-align: ${textAlign || 'center'};`,
+      bgColor ? boundedText(_context.renderBudget)`background-color: ${bgColor};` : '',
       richStyle
-    ].filter(Boolean).join(' ')
+    ].filter(Boolean), ' ', _context.renderBudget)
 
     if (!avatarSrc) {
-      return `
-          <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+      return boundedText(_context.renderBudget)`
+          <mj-section padding="0"${bgColor ? boundedText(_context.renderBudget)` background-color="${bgColor}"` : ''}>
             <mj-column>
               <mj-raw>
                 <div style="${wrapperStyle}">
@@ -43,8 +44,8 @@ registerBlock({
     }
 
     if (richStyle) {
-      return `
-          <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+      return boundedText(_context.renderBudget)`
+          <mj-section padding="0"${bgColor ? boundedText(_context.renderBudget)` background-color="${bgColor}"` : ''}>
             <mj-column>
               <mj-raw>
                 <div style="${wrapperStyle}">
@@ -55,8 +56,8 @@ registerBlock({
           </mj-section>`
     }
 
-    return `
-        <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+    return boundedText(_context.renderBudget)`
+        <mj-section padding="0"${bgColor ? boundedText(_context.renderBudget)` background-color="${bgColor}"` : ''}>
           <mj-column>
             <mj-image
               padding="${padding}"
@@ -84,17 +85,17 @@ registerBlock({
     const borderRadius = avatarShape === 'circle' ? '50%' : avatarShape === 'rounded' ? '8px' : '0'
 
     if (!avatarSrc) {
-      return `
+      return boundedText(_context.renderBudget)`
           <tr${anchorIdAttribute(props)}>
-            <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+            <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? boundedText(_context.renderBudget)`background-color: ${bgColor};` : ''}">
               <div style="width: ${avatarSize}px; height: ${avatarSize}px; border-radius: ${borderRadius}; background-color: #e5e7eb; display: inline-block;"></div>
             </td>
           </tr>`
     }
 
-    return `
+    return boundedText(_context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
+          <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? boundedText(_context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             <img src="${avatarSrc}" alt="Avatar" style="width: ${avatarSize}px; height: ${avatarSize}px; border-radius: ${borderRadius}; display: inline-block;" />
           </td>
         </tr>`

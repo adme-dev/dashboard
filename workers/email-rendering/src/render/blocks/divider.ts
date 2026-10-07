@@ -1,3 +1,4 @@
+import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
@@ -20,8 +21,8 @@ registerBlock({
     const lineColor = (props.lineColor as string) || '#e5e7eb'
     const lineThickness = dividerLineThickness(props)
 
-    return `
-        <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+    return boundedText(_context.renderBudget)`
+        <mj-section padding="0"${bgColor ? boundedText(_context.renderBudget)` background-color="${bgColor}"` : ''}>
           <mj-column>
             <mj-divider
               padding="${padding}"
@@ -41,7 +42,7 @@ registerBlock({
     const lineColor = (props.lineColor as string) || '#e5e7eb'
     const lineThickness = dividerLineThickness(props)
 
-    return `<mj-divider padding="${padding}" border-color="${lineColor}" border-width="${lineThickness}px" />`
+    return boundedText(_context.renderBudget)`<mj-divider padding="${padding}" border-color="${lineColor}" border-width="${lineThickness}px" />`
   },
 
   renderHtml(block: FlyhubBlock, _context: BlockRenderContext): string {
@@ -54,9 +55,9 @@ registerBlock({
     const lineColor = (props.lineColor as string) || '#e5e7eb'
     const lineThickness = dividerLineThickness(props)
 
-    return `
+    return boundedText(_context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
+          <td style="padding: ${padding}; ${bgColor ? boundedText(_context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             <hr style="border: none; border-top: ${lineThickness}px solid ${lineColor}; margin: 0;" />
           </td>
         </tr>`

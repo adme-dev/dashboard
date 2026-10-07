@@ -90,10 +90,13 @@ export function snapshotRenderInput<T>(value: T, maxBytes = MAX_RENDER_REQUEST_B
 
 export function createRenderBudget(maxBytes = MAX_RENDER_OUTPUT_BYTES) {
   let remaining = maxBytes
-  return { charge(value: string) {
+  const chargeBytes = (bytes: number) => {
+    if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > remaining) exceeded()
+    remaining -= bytes
+  }
+  return { chargeBytes, charge(value: string) {
     if (value.length > remaining) exceeded()
-    remaining -= encoder.encode(value).byteLength
-    if (remaining < 0) exceeded()
+    chargeBytes(encoder.encode(value).byteLength)
   } }
 }
 

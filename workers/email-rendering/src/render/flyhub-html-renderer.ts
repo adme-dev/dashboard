@@ -1,3 +1,4 @@
+import { boundedText, boundedJoin } from './boundedText'
 import { replaceMergeFields } from './mergeFields'
 import type { createRenderBudget } from '../../../../shared/emailRendering/bounds'
 /**
@@ -33,7 +34,7 @@ import type {
 
 void BLOCKS_LOADED
 
-function collectResponsiveCss(doc: FlyhubDocument): { desktopCss: string[], mobileCss: string[] } {
+function collectResponsiveCss(doc: FlyhubDocument, budget?: ReturnType<typeof createRenderBudget>): { desktopCss: string[], mobileCss: string[] } {
   const desktopCss: string[] = []
   const mobileCss: string[] = []
 
@@ -44,13 +45,13 @@ function collectResponsiveCss(doc: FlyhubDocument): { desktopCss: string[], mobi
     const mobileDeclarations = mobileStyleDeclarationsForBlock(block)
 
     if (mobileDeclarations.length > 0) {
-      mobileCss.push(`      .${className} { ${mobileDeclarations.map(([prop, value]) => `${prop}: ${value} !important;`).join(' ')} }`)
+      mobileCss.push(boundedText(budget)`      .${className} { ${boundedJoin(mobileDeclarations.map(([prop, value]) => boundedText(budget)`${prop}: ${value} !important;`), ' ', budget)} }`)
     }
     if (hideClass === 'edm-hide-desktop' || hideClass === 'edm-hide-all') {
-      desktopCss.push(`    .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
+      desktopCss.push(boundedText(budget)`    .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
     }
     if (hideClass === 'edm-hide-mobile' || hideClass === 'edm-hide-all') {
-      mobileCss.push(`      .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
+      mobileCss.push(boundedText(budget)`      .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
     }
   }
 
@@ -86,13 +87,12 @@ function renderRootChildrenHtml(
     ? rootBlock.data.childrenIds as string[]
     : []
 
-  return childrenIds
+  return boundedJoin(childrenIds
     .map((id) => {
       const childBlock = Object.hasOwn(doc, id) ? doc[id] : undefined
       if (!childBlock) return ''
       return withResponsiveRowClass(id, childBlock, renderBlock(childBlock, 'html', context))
-    })
-    .join('\n')
+    }), '\n', context.renderBudget)
 }
 
 /**
@@ -157,7 +157,7 @@ export function renderFlyhubDocumentToHtml(
   const borderColor = (rootProps.borderColor as string) || ''
   const contentWidth = 600
   const primaryColor = options.primaryColor || '#2f4574'
-  const responsiveCss = collectResponsiveCss(doc)
+  const responsiveCss = collectResponsiveCss(doc, options.renderBudget)
 
   // EmailLayout is the document root; render its children here so a stale dev
   // registry cannot turn the whole preview into an EmailLayout placeholder.
@@ -170,7 +170,7 @@ export function renderFlyhubDocumentToHtml(
   blockCtx.renderBudget = options.renderBudget
   const contentHtml = renderRootChildrenHtml(rootBlock, doc, blockCtx)
 
-  let html = `
+  let html = boundedText(options.renderBudget)`
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -193,21 +193,21 @@ export function renderFlyhubDocumentToHtml(
     img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
     body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
     a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
-${responsiveCss.desktopCss.length ? `${responsiveCss.desktopCss.join('\n')}\n` : ''}    @media only screen and (max-width: 620px) {
+${responsiveCss.desktopCss.length ? boundedText(options.renderBudget)`${boundedJoin(responsiveCss.desktopCss, '\n', options.renderBudget)}\n` : ''}    @media only screen and (max-width: 620px) {
       .email-container { width: 100% !important; max-width: 100% !important; }
       .fluid { max-width: 100% !important; height: auto !important; margin-left: auto !important; margin-right: auto !important; }
       .stack-column, .stack-column-center { display: block !important; width: 100% !important; max-width: 100% !important; direction: ltr !important; }
-      .columns-row { display: block !important; }${responsiveCss.mobileCss.length ? `\n${responsiveCss.mobileCss.join('\n')}` : ''}
+      .columns-row { display: block !important; }${responsiveCss.mobileCss.length ? boundedText(options.renderBudget)`\n${boundedJoin(responsiveCss.mobileCss, '\n', options.renderBudget)}` : ''}
     }
   </style>
 </head>
 <body style="margin: 0; padding: 0; background-color: ${backdropColor}; font-family: ${htmlFontFamily}; color: ${textColor};">
-  ${options.previewText ? `<div style="display: none; font-size: 1px; color: ${backdropColor}; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">${options.previewText}</div>` : ''}
+  ${options.previewText ? boundedText(options.renderBudget)`<div style="display: none; font-size: 1px; color: ${backdropColor}; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">${options.previewText}</div>` : ''}
 
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: ${backdropColor};">
     <tr>
       <td align="center" style="padding: 20px 10px;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${contentWidth}" class="email-container" style="max-width: ${contentWidth}px; background-color: ${canvasColor}; ${borderRadius ? `border-radius: ${borderRadius}px;` : ''} ${borderColor ? `border: 1px solid ${borderColor};` : ''} overflow: hidden;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${contentWidth}" class="email-container" style="max-width: ${contentWidth}px; background-color: ${canvasColor}; ${borderRadius ? boundedText(options.renderBudget)`border-radius: ${borderRadius}px;` : ''} ${borderColor ? boundedText(options.renderBudget)`border: 1px solid ${borderColor};` : ''} overflow: hidden;">
           ${contentHtml}
         </table>
       </td>
@@ -222,7 +222,7 @@ ${responsiveCss.desktopCss.length ? `${responsiveCss.desktopCss.join('\n')}\n` :
     html = replaceMergeFields(html, options.variables, options.renderBudget)
   }
 
-  options.renderBudget?.charge(html)
+  // Builders already charged each allocation; response admission validates final bytes.
   return html
 }
 

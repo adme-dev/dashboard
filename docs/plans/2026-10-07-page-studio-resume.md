@@ -1,6 +1,6 @@
 # Page Studio resumption — 7 October 2026
 
-The user requested all remaining Page Studio work. The goal remains active.
+The user requested all remaining Page Studio work and resumed execution with “proceed”.
 The recovered [canonical PRD](../prd/page-studio-customer-cms-prd.md) retains its
 24 RND tasks; [customer-cms-status.md](customer-cms-status.md) records the later
 form/template implementation. Neither local tests nor a closed preview complete
@@ -135,8 +135,7 @@ checkpoint/proposal documents. Its two minor wording/caller-inventory comments
 were applied. This remains a scoped review, not new whole-feature certification.
 
 No cloud deployment, customer mutation, production activation or remote cleanup
-has occurred during this resumption. The renderer proposal requires review before
-implementation; two real test mailbox identities remain outstanding.
+has occurred during this resumption. The renderer proposal was subsequently approved; the implementation and review results follow below. Two real test mailbox identities remain outstanding.
 
 ## Approved renderer extraction — local verification
 
@@ -147,15 +146,26 @@ bindings and no public rendering endpoint. Original renderer modules are removed
 from Pages; actual module/map inspection passes. No email was sent or customer
 access activated. See [service runbook](../runbooks/email-rendering-service.md).
 
-The unchanged Pages guard now passes: raw **25,408,250 /25,468,928**, leaving
-**60,678 bytes**; gzip **7,019,987 /9,750,000**. Raw savings are 76,519 bytes.
-This falls 4,858 bytes short of the plan's aspirational64KiB headroom. The boundary
-is retained for review because it clears the blocker beyond the unchanged128KiB
+The unchanged Pages guard now passes: raw **25,408,438 /25,468,928**, leaving
+**60,490 bytes**; gzip **7,020,140 /9,750,000**. Raw savings are 76,331 bytes.
+This falls 5,046 bytes short of the plan's aspirational 64 KiB headroom. The boundary
+was accepted by independent review because it clears the blocker beyond the unchanged 128 KiB
 provider margin; this does not establish capacity for future roadmap additions.
 
-Full repository run: **15,612 passed /1,939 skipped**, 2,220 passing files and69
+Full repository run: **15,622 passed /1,939 skipped**, 2,221 passing files and 69
 skipped files. Skips remain conditional environments, not acceptance evidence.
 Strict Worker types, reproducible environment declarations, both target guards,
 staging/production dry builds, source and emitted Workerd RPC tests pass.
-Independent review, exact type-baseline comparison and hosted staging acceptance
-are pending; these local results do not authorize production customer activation.
+Independent review found two pre-allocation bounds failures; both were reproduced
+with allocation-intercepting tests and fixed. A follow-up image-limit regression
+was also reproduced and fixed: repeated and distinct images at the existing 2 MiB
+allowance render successfully. All 221 affected tests pass (25 environment skips),
+including exact HTML parity and 11 emitted-artifact Workerd cases. Artifact isolation
+passes across 2,924 Pages files and 122 Worker source-map entries. Final Worker dry
+build: 707.47 KiB raw /108.09 KiB gzip. No runtime budget or deployment guard was raised.
+
+The pre-review Dashboard typecheck matched the fresh baseline exactly: 931 diagnostics,
+zero additions/removals after normalizing source locations. The post-review full suite passes 15,622 tests (1,939 conditional skips).
+The final Dashboard typecheck comparison is in progress. Hosted staging acceptance remains pending;
+the preview browser currently requires user sign-in. These results do not establish
+production customer activation or native two-account hosted acceptance.

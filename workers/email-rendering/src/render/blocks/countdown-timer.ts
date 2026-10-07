@@ -1,3 +1,4 @@
+import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
@@ -27,9 +28,9 @@ registerBlock({
     const isExpired = diff <= 0
     const days = Math.floor(diff / (1000 * 60 * 60 * 24))
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    const countdownText = isExpired ? expiredText : `${days} days, ${hours} hours remaining`
+    const countdownText = isExpired ? expiredText : boundedText(_context.renderBudget)`${days} days, ${hours} hours remaining`
 
-    return `
+    return boundedText(_context.renderBudget)`
         <mj-section padding="0" background-color="${backgroundColor}">
           <mj-column>
             <mj-text
@@ -70,9 +71,9 @@ registerBlock({
     const isExpired = diff <= 0
     const days = Math.floor(diff / (1000 * 60 * 60 * 24))
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    const countdownText = isExpired ? expiredText : `${days} days, ${hours} hours remaining`
+    const countdownText = isExpired ? expiredText : boundedText(_context.renderBudget)`${days} days, ${hours} hours remaining`
 
-    return `
+    return boundedText(_context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; background-color: ${backgroundColor}; text-align: center;">
             <p style="margin: 0 0 4px 0; color: ${textColor}; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(label)}</p>

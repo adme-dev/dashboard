@@ -1,8 +1,8 @@
-# Private email rendering service — proposed capacity repair
+# Private email rendering service — approved capacity repair
 
 Status: boundary approved and implemented through caller checkpoint `b1a044ef8`.
-Local artifact and regression verification passes; independent review and hosted
-staging acceptance remain pending. See the [implementation plan](../superpowers/plans/2026-10-07-private-email-rendering.md).
+Local artifact and regression verification passes; independent review findings
+are fixed and covered by regressions. Hosted staging acceptance remains pending. See the [implementation plan](../superpowers/plans/2026-10-07-private-email-rendering.md).
 
 ## Problem and acceptance
 

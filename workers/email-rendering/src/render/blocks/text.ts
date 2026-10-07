@@ -1,3 +1,4 @@
+import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
@@ -18,14 +19,14 @@ registerBlock({
     const textAlign = (style.textAlign as string) || 'left'
     const textColor = (style.color as string) || ''
     const bgColor = (style.backgroundColor as string) || ''
-    const fontSize = style.fontSize ? `${style.fontSize}px` : null
+    const fontSize = style.fontSize ? boundedText(context.renderBudget)`${style.fontSize}px` : null
     const fontFamily = resolveFontFamily(style.fontFamily, context.fontFamily)
     const fontWeight = (style.fontWeight as string) || 'normal'
 
     const text = (props.text as string) || ''
     const textFontSize = fontSize || '16px'
-    return `
-        <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+    return boundedText(context.renderBudget)`
+        <mj-section padding="0"${bgColor ? boundedText(context.renderBudget)` background-color="${bgColor}"` : ''}>
           <mj-column>
             <mj-text
               padding="${padding}"
@@ -47,14 +48,14 @@ registerBlock({
     const padding = formatPadding(style.padding)
     const textAlign = (style.textAlign as string) || 'left'
     const textColor = (style.color as string) || ''
-    const fontSize = style.fontSize ? `${style.fontSize}px` : null
+    const fontSize = style.fontSize ? boundedText(context.renderBudget)`${style.fontSize}px` : null
     const fontFamily = resolveFontFamily(style.fontFamily, context.fontFamily)
     const fontWeight = (style.fontWeight as string) || 'normal'
 
     const text = (props.text as string) || ''
     const textFontSize = fontSize || '16px'
 
-    return `<mj-text padding="${padding}" align="${textAlign}" color="${textColor || '#374151'}" font-size="${textFontSize}" font-family="${fontFamily}" font-weight="${fontWeight}" line-height="1.6">${text}</mj-text>`
+    return boundedText(context.renderBudget)`<mj-text padding="${padding}" align="${textAlign}" color="${textColor || '#374151'}" font-size="${textFontSize}" font-family="${fontFamily}" font-weight="${fontWeight}" line-height="1.6">${text}</mj-text>`
   },
 
   renderHtml(block: FlyhubBlock, context: BlockRenderContext): string {
@@ -65,15 +66,15 @@ registerBlock({
     const textAlign = (style.textAlign as string) || 'left'
     const textColor = (style.color as string) || ''
     const bgColor = (style.backgroundColor as string) || ''
-    const fontSize = style.fontSize ? `${style.fontSize}px` : null
+    const fontSize = style.fontSize ? boundedText(context.renderBudget)`${style.fontSize}px` : null
     const fontFamily = resolveFontFamily(style.fontFamily, context.fontFamily)
     const fontWeight = (style.fontWeight as string) || 'normal'
 
     const text = (props.text as string) || ''
     const textFontSize = fontSize || '16px'
-    return `
+    return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="padding: ${padding}; text-align: ${textAlign}; color: ${textColor || '#374151'}; font-size: ${textFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight}; line-height: 1.6; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
+          <td style="padding: ${padding}; text-align: ${textAlign}; color: ${textColor || '#374151'}; font-size: ${textFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight}; line-height: 1.6; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             ${text}
           </td>
         </tr>`

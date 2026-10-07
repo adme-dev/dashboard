@@ -1,3 +1,4 @@
+import type { createRenderBudget } from '../../../../../shared/emailRendering/bounds'
 /**
  * Shared EDM Block Types
  *
@@ -189,7 +190,7 @@ export interface PreviewOffer {
  * Everything a block renderer needs to produce output.
  */
 export interface BlockRenderContext {
-  renderBudget?: { charge(value: string): void }
+  renderBudget?: ReturnType<typeof createRenderBudget>
   /** Dealer-level context (name, domain, colours, etc.) */
   dealerContext?: Record<string, unknown>
   /** Dynamic data keyed by block id */

@@ -1,3 +1,4 @@
+import { boundedText } from '../boundedText'
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any -- ported block; unused items + any belong to the stubbed offers/Maizzle/vehicle paths */
 import { registerBlock } from '../block-registry'
 import type {
@@ -904,8 +905,8 @@ registerBlock({
       if (dynamicBlockConfig.type === 'oem-offers' && context.dynamicData?.offers) {
         const offers = context.dynamicData.offers.get(dynamicBlockConfig.id) || []
         if (offers.length === 0) {
-          return `
-              <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+          return boundedText(context.renderBudget)`
+              <mj-section padding="0"${bgColor ? boundedText(context.renderBudget)` background-color="${bgColor}"` : ''}>
                 <mj-column>
                   <mj-text padding="${padding}" align="center" color="#9ca3af">
                     No offers available
@@ -941,8 +942,8 @@ registerBlock({
       if (context.dynamicData?.vehicles) {
         const vehicles = context.dynamicData.vehicles.get(dynamicBlockConfig.id) || []
         if (vehicles.length === 0) {
-          return `
-              <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+          return boundedText(context.renderBudget)`
+              <mj-section padding="0"${bgColor ? boundedText(context.renderBudget)` background-color="${bgColor}"` : ''}>
                 <mj-column>
                   <mj-text padding="${padding}" align="center" color="#9ca3af">
                     No vehicles available
@@ -961,8 +962,8 @@ registerBlock({
     }
 
     // Regular HTML content (non-dynamic block)
-    return `
-        <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+    return boundedText(context.renderBudget)`
+        <mj-section padding="0"${bgColor ? boundedText(context.renderBudget)` background-color="${bgColor}"` : ''}>
           <mj-column>
             <mj-raw>
               <div style="padding: ${padding};">
@@ -1028,7 +1029,7 @@ registerBlock({
         }
 
         // If no vehicles found, show informative placeholder
-        return `
+        return boundedText(context.renderBudget)`
             <div style="padding: ${padding};">
               <div style="
                 padding: 24px;
@@ -1049,9 +1050,9 @@ registerBlock({
     }
 
     // Regular HTML content (non-dynamic block)
-    return `
+    return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding}; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}">
             ${contents}
           </td>
         </tr>`
@@ -1077,7 +1078,7 @@ registerBlock({
       if (dynamicBlockConfig.type === 'oem-offers' && context.dynamicData?.offers) {
         const offers = context.dynamicData.offers.get(dynamicBlockConfig.id) || []
         if (offers.length === 0) {
-          return `
+          return boundedText(context.renderBudget)`
               <tr>
                 <td style="padding: ${padding}; text-align: center; color: #9ca3af;">No offers available</td>
               </tr>`
@@ -1140,7 +1141,7 @@ registerBlock({
       if (context.dynamicData?.vehicles) {
         const vehicles = context.dynamicData.vehicles.get(dynamicBlockConfig.id) || []
         if (vehicles.length === 0) {
-          return `
+          return boundedText(context.renderBudget)`
               <tr>
                 <td style="padding: ${padding}; text-align: center; color: #9ca3af;">No vehicles available</td>
               </tr>`
@@ -1155,9 +1156,9 @@ registerBlock({
       }
     }
 
-    return `
+    return boundedText(context.renderBudget)`
         <tr>
-          <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding}; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}">
             ${contents}
           </td>
         </tr>`

@@ -1,3 +1,4 @@
+import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
@@ -30,10 +31,10 @@ registerBlock({
 
     const starsText = renderStarsMjml(rating, maxStars)
     const labelMarkup = label
-      ? ` <span style="font-size:14px;color:#6b7280;margin-left:8px;">${escapeHtml(label)}</span>`
+      ? boundedText(_context.renderBudget)` <span style="font-size:14px;color:#6b7280;margin-left:8px;">${escapeHtml(label)}</span>`
       : ''
 
-    return `
+    return boundedText(_context.renderBudget)`
         <mj-section padding="0">
           <mj-column>
             <mj-text
@@ -63,13 +64,13 @@ registerBlock({
 
     const starsMarkup = renderStarsHtml(rating, maxStars, color).replace(
       /font-size:\d+px/,
-      `font-size:${fontSize}`
+      boundedText(_context.renderBudget)`font-size:${fontSize}`
     )
     const labelMarkup = label
-      ? `<span style="font-size:14px;color:#6b7280;margin-left:8px;">${escapeHtml(label)}</span>`
+      ? boundedText(_context.renderBudget)`<span style="font-size:14px;color:#6b7280;margin-left:8px;">${escapeHtml(label)}</span>`
       : ''
 
-    return `
+    return boundedText(_context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: center;">
             ${starsMarkup}${labelMarkup}

@@ -53,6 +53,19 @@ describe('actual Workerd private renderer RPC', () => {
     expect(await rpc({ version: 1, expectedEnvironment: 'staging', operation: 'customer-preview', ...customerFixture })).toMatchObject({ ok: true, value: golden.customer })
     expect(outboundRequests).toBe(0)
   })
+  it.each(['menu', 'feature-grid'])('bounds repeated %s content inside Workerd', async (type) => {
+    const props = type === 'menu'
+      ? { separator: 'x'.repeat(1024 * 1024), items: Array.from({ length: 150 }, () => ({ label: 'Link', url: '#' })) }
+      : { iconColor: 'x'.repeat(1024 * 1024), features: Array.from({ length: 150 }, () => ({ icon: '', heading: 'Feature', description: '' })) }
+    const document = { root: { type: 'EmailLayout', data: { childrenIds: ['block'] } }, block: { type, data: { props } } }
+    expect(await rpc({ version: 1, expectedEnvironment: 'staging', operation: 'document', document, options: {} })).toMatchObject({ ok: false, error: { code: 'LIMIT_EXCEEDED' } })
+    expect(outboundRequests).toBe(0)
+  })
+  it('bounds cumulative customer expansion inside Workerd', async () => {
+    const template = { ...customerFixture.template, blocks: Array.from({ length: 30 }, (_, index) => ({ id: `text-${index}`, type: 'text', text: '{{site.name}}'.repeat(615) })) }
+    expect(await rpc({ version: 1, expectedEnvironment: 'staging', operation: 'customer-preview', template, context: { siteName: 'x'.repeat(8000), formName: 'Form', fields: [] } })).toMatchObject({ ok: false, error: { code: 'LIMIT_EXCEEDED' } })
+    expect(outboundRequests).toBe(0)
+  })
   it('denies both default and named entrypoint HTTP access', async () => {
     for (const [worker, route] of [['renderer', '/'], ['caller', '/http']]) {
       const target = await runtime!.getWorker(worker!)

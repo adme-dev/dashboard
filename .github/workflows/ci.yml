@@ -93,7 +93,7 @@ jobs:
           pnpm --dir workers/email-rendering run typecheck
           node workers/email-rendering/deploy.mjs staging --check-only
           node workers/email-rendering/deploy.mjs production --check-only
-          pnpm exec vitest run test/workers/emailRenderingBoundary.test.ts test/workers/emailRenderingParity.test.ts test/workers/emailRenderingVariables.test.ts test/workers/emailRenderingDeploy.test.ts test/workers/emailRenderingRpc.test.ts test/workers/emailRenderingArtifacts.test.ts test/server/utils/emailRenderingClient.test.ts test/server/utils/emailRenderingPersistence.test.ts
+          pnpm exec vitest run test/workers/emailRenderingAllocation.test.ts test/workers/emailRenderingBoundary.test.ts test/workers/emailRenderingParity.test.ts test/workers/emailRenderingVariables.test.ts test/workers/emailRenderingDeploy.test.ts test/workers/emailRenderingRpc.test.ts test/workers/emailRenderingArtifacts.test.ts test/server/utils/emailRenderingClient.test.ts test/server/utils/emailRenderingPersistence.test.ts
           node workers/email-rendering/deploy.mjs staging --dry-run
           node workers/email-rendering/deploy.mjs production --dry-run
           EMAIL_RENDER_TEST_ARTIFACT="$PWD/.verification/email-rendering-worker-staging/index.js" pnpm exec vitest run test/workers/emailRenderingRpc.test.ts

@@ -1,3 +1,4 @@
+import { boundedJoin, boundedText } from '../boundedText'
 import { registerBlock, renderBlock, getBlockDefinition } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
@@ -45,20 +46,19 @@ registerBlock({
     const contentAlignment = (props.contentAlignment as string) || 'top'
     const fixedWidths = (props.fixedWidths as Array<number | null>) || []
 
-    const columnsMjml = columns
+    const columnsMjml = boundedJoin(columns
       .map((col, index) => {
-        const colChildrenMjml = (col.childrenIds || [])
+        const colChildrenMjml = boundedJoin((col.childrenIds || [])
           .map((id) => {
             const childBlock = context._document && Object.hasOwn(context._document, id) ? context._document[id] : undefined
             if (!childBlock) return ''
             // For column children, render inline without wrapping section
             return renderColumnChildToMjml(childBlock, context)
-          })
-          .join('\n')
+          }), '\n', context.renderBudget)
 
         // Calculate column width - use fixed width if set, otherwise split evenly
         const fixedWidth = fixedWidths[index]
-        const columnWidth = fixedWidth ? `${fixedWidth}px` : `${Math.floor(100 / columnsCount)}%`
+        const columnWidth = fixedWidth ? boundedText(context.renderBudget)`${fixedWidth}px` : boundedText(context.renderBudget)`${Math.floor(100 / columnsCount)}%`
         const verticalAlign
           = contentAlignment === 'middle'
             ? 'middle'
@@ -67,16 +67,15 @@ registerBlock({
               : 'top'
 
         // Use percentage width for desktop, MJML handles mobile stacking via mj-breakpoint
-        return `
+        return boundedText(context.renderBudget)`
           <mj-column width="${columnWidth}" vertical-align="${verticalAlign}" padding="${Math.floor(columnsGap / 2)}px">
             ${colChildrenMjml || '<mj-spacer height="40px" />'}
           </mj-column>`
-      })
-      .join('\n')
+      }), '\n', context.renderBudget)
 
     // mj-section with direction="ltr" ensures proper stacking order on mobile
-    return `
-        <mj-section padding="${padding}"${bgColor ? ` background-color="${bgColor}"` : ''} direction="ltr">
+    return boundedText(context.renderBudget)`
+        <mj-section padding="${padding}"${bgColor ? boundedText(context.renderBudget)` background-color="${bgColor}"` : ''} direction="ltr">
           ${columnsMjml}
         </mj-section>`
   },
@@ -93,32 +92,30 @@ registerBlock({
     const columnsGap = (props.columnsGap as number) || 16
     const fixedWidths = (props.fixedWidths as Array<number | null>) || []
 
-    const columnCells = columns
+    const columnCells = boundedJoin(columns
       .map((col, index) => {
-        const colChildrenHtml = (col.childrenIds || [])
+        const colChildrenHtml = boundedJoin((col.childrenIds || [])
           .map((id) => {
             const childBlock = context._document && Object.hasOwn(context._document, id) ? context._document[id] : undefined
             if (!childBlock) return ''
             return renderBlock(childBlock, 'html', context)
-          })
-          .join('\n')
+          }), '\n', context.renderBudget)
 
         const fixedWidth = fixedWidths[index]
-        const columnWidth = fixedWidth ? `${fixedWidth}px` : `${Math.floor(100 / columnsCount)}%`
+        const columnWidth = fixedWidth ? boundedText(context.renderBudget)`${fixedWidth}px` : boundedText(context.renderBudget)`${Math.floor(100 / columnsCount)}%`
 
         // Use class="stack-column" for mobile stacking
-        return `
+        return boundedText(context.renderBudget)`
           <td class="stack-column" style="width: ${columnWidth}; vertical-align: top; padding: 0 ${columnsGap / 2}px;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               ${colChildrenHtml || '<tr><td style="min-height: 40px;">&nbsp;</td></tr>'}
             </table>
           </td>`
-      })
-      .join('\n')
+      }), '\n', context.renderBudget)
 
-    return `
+    return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
+          <td style="padding: ${padding}; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr class="columns-row">
                 ${columnCells}
