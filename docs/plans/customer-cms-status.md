@@ -1,7 +1,8 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 2 October 2026. Start here after an interruption.
-Resumed 7 October: [current reconciliation and next actions](2026-10-07-page-studio-resume.md).
+Last updated: 8 October 2026. Start here after an interruption.
+Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
+Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
 This checklist tracks the active standalone CMS work; it does not declare the
 entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Form settings completion](2026-10-01-form-settings-completion.md),
@@ -37,6 +38,17 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 - [x] Relevant marketing descriptions updated with explicit local-preview limits.
 
 ## Current checkpoint / next action
+
+**8 October — application release complete; customer activation pending:**
+PRs #632/#633 merged and the corrected renderer passed authenticated production
+preview, draft save/reload, mobile/keyboard and Page Studio/QR navigation checks.
+Current production is the subsequent clean main `1ab514938` deployment `8810de23`,
+which includes that release. Native gates stay closed. The populated legacy
+ownership migration rehearsal is now included in CI. Two real approved mailbox
+identities and supported onboarding remain necessary for hosted customer acceptance.
+See the [current release and activation checkpoint](2026-10-08-page-studio-release-and-activation.md).
+All dated entries below are historical evidence; their pending integration/release
+statements are superseded by this checkpoint.
 
 **2 October — saved template history:** implemented, independently reviewed and
 verified in the Fantasy Limo demo on desktop and mobile. Customers can browse
@@ -137,8 +149,9 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
       acceptance and independent review pass. Hosted runtime upgrade remains pending.
 - [x] Customer-owned logo/image references, scoped library picker, required alt text,
       sizing/alignment and bounded safe previews.
-- [ ] Plan bounded server extraction before adding backend features: current Pages
-      bundle has only 6,152 bytes remaining under the unchanged safety budget.
+- [x] Extract private email rendering before adding backend features; released and
+      verified with 59,992 raw bytes remaining at the Page Studio production build.
+      Recheck capacity on current main before subsequent backend additions.
 - [ ] AI template proposals through the existing gateway/credit conventions;
       validate output and require Apply; preserve manual edits.
 - [ ] Verified sender/reply-to and customer email-field selection.
