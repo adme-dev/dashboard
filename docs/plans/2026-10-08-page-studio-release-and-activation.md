@@ -4,7 +4,42 @@ Completed production deployment and authenticated agency verification on 7 Octob
 This checkpoint supersedes the pending-release and rollback-only statuses in the
 earlier resumption ledger and customer CMS checklist.
 
-## Current provider/source readback — 8 October, 05:38 UTC
+## Current provider/source readback — 8 October, 07:00 UTC
+
+Dashboard main and production source are
+`008f8c8dd2357837b3586fab8fc9a5b577f8cdeb`, including PRs #639–643.
+The guarded production deployment to `agency-dashboard/main` is
+`a7190881-c08b-43b0-9016-296bc4998752`; Cloudflare reports success at
+07:00:05 UTC with the exact clean source commit. `pnpm deploy:check` verified
+source equals freshly fetched main before `pnpm deploy:production`.
+
+The live https://xeroflowpages.com/studio invitation entry now uses the same
+light layout, original colourful artwork and footer action bar as the approved
+signup preview. Local and live Chrome desktop/mobile checks passed, including
+390px without horizontal overflow. Existing email validation and portal
+sign-in authority remain intact. PR #643 full CI `37739220025`, focused lint
+and 15 existing UI regressions passed. The Worker uses 25,424,456 of
+25,468,928 raw bytes and 7,026,874 of 9,750,000 gzip bytes.
+Public QR Codes content/navigation and the app-host login guard were verified;
+a signed-in staff browser session was unavailable for authenticated QR operations.
+
+Native signup/editor/browser/preview production gates remain closed. This release
+includes the HTTPS `__Host-` customer-cookie boundary from #642. The controlled
+signup preview remains deployment `18797d36` from source `11f1a912`; it still
+requires reconciliation with current main before fresh hosted acceptance.
+No new sign-in email was sent during this release, and no account/workspace
+acceptance is claimed. Normal verification for B and onboarding for both remain.
+
+Studio dependency PR #120 is merged at
+`628474ad9faab3928e6a509876f1eb844cb0f4ab` after full Linux/Windows CI passed;
+both audits report zero advisories, without audit exceptions. Native PR #119
+includes that main. Combined run `37738273132` passed Linux, including Astro
+compiler/browser checks, but Windows exposed two portability issues in the
+newly included operator test harness. Process inspection and ESM preload-path
+corrections are being verified. The native integration, hosted acceptance and
+customer activation remain incomplete; no Studio worker release occurred.
+
+## Historical provider/source readback — 8 October, 05:38 UTC
 
 Dashboard main is `4d2d16b0581bb3c96510d75a7d6e962000d7087d`, including
 merged sign-in email PR #637, Cloudflare transport PR #639 and signup design #640. Production remains

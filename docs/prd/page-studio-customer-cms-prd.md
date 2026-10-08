@@ -321,18 +321,23 @@ All 24 tasks remain open until their full acceptance requirements are met; a
 merged foundation or a local fixture does not close an end-to-end task. As of
 8 October, Dashboard's customer foundation and native UI stack (#602–613) is
 integrated through #632/#633. Email transport and guided topic/goals/account UI
-follow-ups #637/#639/#640 are also merged. Production customer gates remain
-closed. The current source, deployed artifacts, account verification and retained
+follow-ups #637/#639/#640 are also merged. Cookie isolation #642 and the live
+entry design #643 are released in production source `008f8c8dd`, deployment
+`a7190881`; native customer production gates remain closed. The current source,
+deployed artifacts, account verification and retained
 acceptance gaps are recorded in the [release checkpoint](../plans/2026-10-08-page-studio-release-and-activation.md).
 The implementation entries in section 6 retain their historical source/test evidence;
 their earlier “in review” and “next” statements are not current integration status.
 
 Studio's corresponding #110–118 stack and later CMS form/template drafts are
 retained in consolidated draft [PR #119](https://github.com/adme-dev/xeroflow-page-studio/pull/119).
-Its fresh CI exposed dependency advisories before tests. Isolated remediation
-[PR #120](https://github.com/adme-dev/xeroflow-page-studio/pull/120) removes those
-advisories without audit exceptions; cross-platform verification is in progress.
-Neither draft is a customer activation or a new Worker release.
+Dependency remediation [PR #120](https://github.com/adme-dev/xeroflow-page-studio/pull/120)
+passed full Linux/Windows CI and merged at `628474ad` without audit exceptions.
+The combined native integration passed Linux CI, including the isolated Astro
+compiler/browser checks. Windows exposed portability defects in the newly added
+operator test harness; corrections and fresh cross-platform CI remain pending.
+Neither integration nor test success constitutes customer activation or a Worker
+release.
 
 Next complete supported onboarding for both approved test accounts, exact scoped
 staging approvals, verified database/runtime/bucket receipts and the

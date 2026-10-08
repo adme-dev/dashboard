@@ -40,16 +40,17 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 ## Current checkpoint / next action
 
 **8 October — application released; native acceptance in progress:**
-Production remains source `1ab514938`, deployment `8810de23`, with native gates
-closed. Preview `18797d36` includes the revised topic/goals/account flow and private
-Cloudflare sign-in email from XeroFlow. Both test mailboxes and email authorization
-are supplied; A is verified, B still needs verification, and workspace setup is
-pending for both. Sign-in email and Cloudflare transport PRs #637/#639 are merged;
-design #640 passed fresh CI and merged on current main. The approved main builder
-address https://xeroflowpages.com is connected and opens production Studio sign-in;
-the new signup flow remains on preview. Studio's retained 29-commit native
-Forms stack now has consolidated draft PR #119; its fresh cross-platform CI found
-a dependency-audit failure before tests. Dependency remediation is underway.
+Production is source `008f8c8dd`, deployment `a7190881`, with native gates
+closed. The exact live `/studio` entry now matches the approved colourful preview
+style; desktop/mobile checks pass. Preview `18797d36` retains the guided signup
+and private Cloudflare email flow but needs reconciliation with current main,
+including the HTTPS customer-cookie boundary. Both test mailboxes and email
+authorization are supplied; A is verified, B still needs verification, and
+workspace setup is pending for both. No new sign-in email accompanied this release.
+The approved main builder address is https://xeroflowpages.com.
+Studio dependency remediation #120 passed Linux/Windows CI and is merged.
+Native Forms draft #119 includes it; combined Linux CI passed, while Windows
+exposed two operator test-harness portability defects now being corrected.
 See the [current release and activation checkpoint](2026-10-08-page-studio-release-and-activation.md)
 for exact source, provider and account evidence. Older dated entries below are
 historical and their pending-mailbox/integration statements are superseded here.
