@@ -1,13 +1,18 @@
 <script setup lang="ts">
+import { SIGNUP_INTAKE_KEY, readSignupIntake, clearSignupIntake } from '~/utils/pageStudioSignupIntake'
 import type { CustomerSetup } from '~~/shared/pageStudio/customerSignup'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, colorMode: 'light' })
 useHead({ title: 'Set up your workspace — Page Studio' })
 const api = '/api/portal/page-studio/customer'
 const draft = reactive<CustomerSetup>({ businessName: '', businessType: '', timezone: 'UTC', goals: [] })
 const revision = ref(0)
 const workspaceId = ref<string | null>(null)
 const step = ref(1)
+const hasIntake = ref(false)
+const intakePending = ref(false)
+const titles = ['What’s your site about?', 'Tell us about your business.', 'What should your website do?']
+const descriptions = ['Start with a topic. We’ll use it to understand your business.', 'Give your workspace a name and choose your local timezone.', 'Choose what matters to your business. You can build on this later.']
 const ready = ref(false)
 const busy = ref(false)
 const error = ref('')
@@ -17,13 +22,6 @@ const saveOnSignOut = computed(() => ready.value && !workspaceId.value && !confl
 const signOutLabel = computed(() => saveOnSignOut.value ? 'Save and sign out' : ready.value && !workspaceId.value ? 'Sign out without saving' : 'Sign out')
 const timezones = Intl.supportedValuesOf('timeZone')
 if (!timezones.includes('UTC')) timezones.unshift('UTC')
-const goals: { value: CustomerSetup['goals'][number], label: string, description: string }[] = [
-  { value: 'enquiries', label: 'Receive enquiries', description: 'Let visitors contact your business.' },
-  { value: 'blog', label: 'Publish stories and updates', description: 'Share articles, news and expertise.' },
-  { value: 'gallery', label: 'Showcase your work', description: 'Bring projects and images together.' },
-  { value: 'bookings', label: 'Take bookings', description: 'Help visitors arrange a time with you.' },
-  { value: 'sales', label: 'Sell products or services', description: 'Make it easier for customers to buy.' }
-]
 watch(draft, () => {
   saved.value = false
 })
@@ -40,7 +38,24 @@ async function load() {
     revision.value = result.revision
     workspaceId.value = result.workspaceId
     conflict.value = false
+    hasIntake.value = false
+    intakePending.value = false
     ready.value = true
+    // Only a fresh verified account may adopt matching browser choices.
+    if (!result.revision && !result.workspaceId) {
+      try {
+        if (window.localStorage.getItem(SIGNUP_INTAKE_KEY)) {
+          const user = await $fetch<{ email: string }>(`${api}/me`)
+          const choices = readSignupIntake(window.localStorage, user.email)
+          if (choices) {
+            Object.assign(draft, choices)
+            hasIntake.value = true
+            intakePending.value = true
+            step.value = 2
+          }
+        }
+      } catch { /* Existing saved setup and blocked storage remain usable. */ }
+    }
     if (workspaceId.value) await navigateTo('/studio/dashboard', { replace: true })
   } catch (e: unknown) {
     if ((e as { statusCode?: number })?.statusCode === 401) await navigateTo('/studio/signup', { replace: true })
@@ -57,22 +72,32 @@ async function save() {
   const result = await $fetch<{ revision: number }>(`${api}/setup`, { method: 'PUT', body: { expectedRevision: revision.value, draft } })
   revision.value = result.revision
   saved.value = true
+  if (intakePending.value) {
+    try {
+      clearSignupIntake(window.localStorage)
+    } catch { /* Storage may be blocked. */ }
+    intakePending.value = false
+  }
 }
 async function advance() {
   if (busy.value || conflict.value) return
   error.value = ''
-  if (!draft.businessName.trim() || !draft.businessType.trim()) {
-    error.value = 'Add your business name and type to continue.'
+  if (!draft.businessType.trim()) {
+    error.value = 'Choose a topic or add your own to continue.'
     return
   }
-  if (step.value === 2 && !draft.goals.length) {
+  if (step.value >= 2 && !draft.businessName.trim()) {
+    error.value = 'Add your business name to continue.'
+    return
+  }
+  if (step.value === 3 && !draft.goals.length) {
     error.value = 'Choose at least one website goal.'
     return
   }
   busy.value = true
   try {
     await save()
-    if (step.value === 1) step.value = 2
+    if (step.value < 3 && !(hasIntake.value && step.value === 2)) step.value += 1
     else {
       workspaceId.value = (await $fetch<{ workspaceId: string }>(`${api}/complete`, { method: 'POST', body: { expectedRevision: revision.value } })).workspaceId
       await navigateTo('/studio/dashboard', { replace: true })
@@ -113,20 +138,20 @@ async function signOut() {
 </script>
 
 <template>
-  <StudioCustomerShell :title="workspaceId ? 'Your workspace is prepared.' : step === 1 ? 'Tell us about your business.' : 'What should your website do?'" :description="workspaceId ? 'Your business details and website goals are saved. Website creation is the next stage.' : 'Save your progress at any time and return using your email sign-in link.'">
+  <StudioEntryShell
+    :title="workspaceId ? 'Your workspace is prepared.' : titles[step - 1]"
+    :description="workspaceId ? 'Your business details and website goals are saved.' : descriptions[step - 1]"
+    :step="workspaceId || hasIntake ? undefined : step"
+    :steps="3"
+  >
     <template #header>
       <UButton
         :label="signOutLabel"
         color="neutral"
-        variant="ghost"
+        variant="link"
         :disabled="busy"
         @click="signOut"
       />
-    </template>
-    <template #eyebrow>
-      <p v-if="!workspaceId" class="mb-3 text-sm font-medium text-primary">
-        Step {{ step }} of 2 · Business setup
-      </p>
     </template>
     <UAlert
       v-if="error"
@@ -147,24 +172,34 @@ async function signOut() {
     <p v-if="!ready && busy" role="status" class="text-muted">
       Loading your setup…
     </p>
-    <UCard v-if="workspaceId">
-      <div class="flex items-start gap-3">
-        <UIcon name="i-lucide-check-check" class="mt-1 size-6 shrink-0 text-success" /><div>
-          <h2 class="font-semibold text-highlighted">
-            {{ draft.businessName }}
-          </h2><p class="mt-1 text-sm text-muted">
-            {{ draft.businessType }} · {{ draft.timezone }}
-          </p>
-        </div>
-      </div>
-      <p class="mt-5 text-sm leading-6 text-muted">
-        You’re ready for the next stage. Open your website overview to continue your setup.
+    <div v-if="workspaceId" class="space-y-5">
+      <UIcon name="i-lucide-check" class="size-8 text-highlighted" />
+      <h2 class="text-xl font-medium text-highlighted">
+        {{ draft.businessName }}
+      </h2>
+      <p class="text-muted">
+        {{ draft.businessType }}
       </p>
-      <UButton class="mt-4" to="/studio/dashboard" label="Go to website overview" />
-    </UCard>
-    <form v-else-if="ready" class="space-y-6" @submit.prevent="advance">
-      <fieldset class="space-y-5" :disabled="busy || conflict">
+      <UButton
+        to="/studio/dashboard"
+        label="Go to website overview"
+        color="neutral"
+        size="xl"
+        class="rounded-none"
+      />
+    </div>
+    <form
+      v-else-if="ready"
+      id="studio-setup-form"
+      class="space-y-6"
+      :class="{ 'xl:flex xl:h-full xl:min-h-0 xl:flex-col': step === 1 }"
+      @submit.prevent="advance"
+    >
+      <fieldset class="space-y-6" :class="{ 'xl:flex xl:min-h-0 xl:flex-1 xl:flex-col': step === 1 }" :disabled="busy || conflict">
         <template v-if="step === 1">
+          <StudioTopicPicker v-model="draft.businessType" :disabled="busy || conflict" />
+        </template>
+        <template v-else-if="step === 2">
           <UFormField label="Business or organisation name" required>
             <UInput
               v-model="draft.businessName"
@@ -172,17 +207,9 @@ async function signOut() {
               :maxlength="160"
               placeholder="e.g. Alex Flowers"
               class="w-full"
-              size="lg"
-              required
-            />
-          </UFormField>
-          <UFormField label="What kind of business is it?" help="A few words will do, such as florist, accounting firm or community group." required>
-            <UInput
-              v-model="draft.businessType"
-              :maxlength="100"
-              placeholder="e.g. Florist"
-              class="w-full"
-              size="lg"
+              size="xl"
+              color="neutral"
+              variant="soft"
               required
             />
           </UFormField>
@@ -191,64 +218,57 @@ async function signOut() {
               v-model="draft.timezone"
               :items="timezones"
               class="w-full"
-              size="lg"
+              size="xl"
+              color="neutral"
+              variant="soft"
             />
           </UFormField>
+          <p class="text-sm text-muted">
+            Website topic: {{ draft.businessType }}
+          </p>
         </template>
         <template v-else>
-          <UCard>
-            <p class="font-medium text-highlighted">
-              {{ draft.businessName }}
-            </p><p class="mt-1 text-sm text-muted">
-              {{ draft.businessType }} · {{ draft.timezone }}
-            </p>
-          </UCard>
-          <UFormField label="Website goals" help="Choose all that apply. These guide your setup; they do not activate paid features." required>
-            <UCheckboxGroup
-              v-model="draft.goals"
-              :items="goals"
-              class="mt-3"
-              :ui="{ fieldset: 'gap-4' }"
-            />
-          </UFormField>
+          <StudioGoalPicker v-model="draft.goals" :disabled="busy || conflict" />
         </template>
       </fieldset>
-      <p v-if="saved" class="text-sm text-success" role="status">
+      <p v-if="saved" class="text-sm text-muted" role="status">
         Progress saved. You can safely return later.
       </p>
-      <div class="space-y-3 border-t border-default pt-5">
-        <UButton
-          type="submit"
-          :label="step === 1 ? 'Save and continue' : 'Create my workspace'"
-          size="lg"
-          block
-          :loading="busy"
-          :disabled="conflict"
-        />
-        <div class="flex flex-wrap justify-between gap-3">
-          <UButton
-            v-if="step === 2"
-            label="Back to business details"
-            color="neutral"
-            variant="ghost"
-            :disabled="busy"
-            @click="step = 1"
-          />
-          <UButton
-            label="Save for later"
-            color="neutral"
-            variant="ghost"
-            :disabled="busy || conflict"
-            @click="saveForLater"
-          />
-        </div>
-      </div>
       <NuxtLink
         v-if="error && !conflict"
         to="/studio/signup"
         target="_blank"
-        class="block text-sm text-primary underline"
+        class="block text-sm text-highlighted underline"
       >Open sign-in in another tab</NuxtLink>
     </form>
-  </StudioCustomerShell>
+    <template v-if="ready && !workspaceId" #footer>
+      <div class="flex items-center gap-2">
+        <UButton
+          v-if="step > 1"
+          label="Back"
+          color="neutral"
+          variant="ghost"
+          :disabled="busy"
+          @click="step -= 1; hasIntake = false; error = ''"
+        />
+        <UButton
+          label="Save for later"
+          color="neutral"
+          variant="link"
+          :disabled="busy || conflict"
+          @click="saveForLater"
+        />
+      </div>
+      <UButton
+        form="studio-setup-form"
+        type="submit"
+        :label="step < 3 && !hasIntake ? 'Next' : 'Create my workspace'"
+        color="neutral"
+        size="xl"
+        class="ml-auto min-h-13 rounded-none px-8"
+        :loading="busy"
+        :disabled="conflict"
+      />
+    </template>
+  </StudioEntryShell>
 </template>

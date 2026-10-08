@@ -37,6 +37,16 @@ All four settings must be supplied explicitly. Cloudflare request environment bi
 | `PAGE_STUDIO_CUSTOMER_TERMS_VERSION` | Operator-approved version identifier, 1–100 characters |
 | `PAGE_STUDIO_CUSTOMER_EMAIL_FROM` | Verified sender email address supported by the configured transport |
 
+For controlled acceptance, configure both `PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES`
+(a JSON array of 1–10 SHA-256 hex digests of trimmed, lowercase addresses; at most
+1,024 characters) and `PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT` (UTC ISO timestamp).
+Unapproved signup/sign-in requests retain the generic response but cannot create
+accounts, rotate tokens or send mail. Partial, malformed or expired configuration
+closes the native signup/session/setup boundary. With neither setting supplied,
+ordinary enabled signup retains its existing behavior. This controls admission of
+new mail requests, not revocation of existing sessions before the deadline. Hashes
+avoid plaintext addresses in configuration; they are not anonymization or secrets.
+
 HTTP loopback origins are allowed only in a Nuxt development build. Apply migrations 442 and 443 to the intended platform database before enabling. Validate transactional email delivery, legal-page suitability for the standalone product, data retention/cleanup for expired tokens and pending accounts, abuse controls, deployment source and domain routing in staging before public activation. The local acceptance fixture was removed before commit; it is never part of a deployment.
 
 This implementation does not announce self-service signup on public marketing pages because it remains a gated preview. Update marketing and the `/studio` entry when the complete customer provisioning journey is ready to open.
@@ -51,3 +61,11 @@ This implementation does not announce self-service signup on public marketing pa
 ## Remaining journey
 
 Finish customer site creation and own-database provisioning, connect the customer workspace/dashboard and Page Studio launch authorization, then activate the end-to-end preview. Custom domains, subscriptions/AI credits, team invitations and operational CMS modules remain separate PRD work. No public activation or production migration is performed by this change.
+
+## Guided entry preview — 8 October 2026
+
+The gated signup page now asks for the website topic, then website goals, then account creation. Automotive is included, and the 14 goal choices are planning preferences, not feature activation. Existing customers can open email sign-in directly. Google and Apple are not configured for native customer authentication and are not presented as working options.
+
+After an email request succeeds, validated topic/goal preferences are stored locally for at most 24 hours, bound to the normalized email. No bearer tokens are stored. After verification, only a matching verified email with a revision-zero setup can restore these preferences. Existing server drafts remain authoritative. The customer adds their business name/timezone and completes the existing revisioned setup flow. Preferences are removed after a successful save. Blocking local storage or opening the link in another browser falls back to the normal setup questions; the inbox screen explains the same-browser requirement.
+
+Desktop topics fill available space above the fixed action footer and show a custom overflow scrollbar. Goal tiles become a single column on narrow screens. Original generated abstract artwork is stored at `public/images/studio/artistic-panel.webp`.

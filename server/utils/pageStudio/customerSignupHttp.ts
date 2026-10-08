@@ -7,7 +7,7 @@ import { customerEmailAvailable, sendCustomerSignInEmail } from './customerSignu
 import { requestCustomerSignIn, verifyCustomerSignIn, readCustomerSession, revokeCustomerSession, readCustomerSetup, saveCustomerSetup, completeCustomerSetup } from './customerSignup'
 
 const COOKIE = 'studio_customer_session'
-export interface CustomerSignupConfig { origin: string, termsVersion: string, from: string }
+export interface CustomerSignupConfig { origin: string, termsVersion: string, from: string, emailHashes?: string[] }
 function setting(event: H3Event, key: string): string {
   const value = event.context.cloudflare?.env?.[key] ?? process.env[key]
   return typeof value === 'string' ? value.trim() : ''
@@ -27,7 +27,19 @@ export function customerSignupConfig(event: H3Event): CustomerSignupConfig {
   const termsVersion = setting(event, 'PAGE_STUDIO_CUSTOMER_TERMS_VERSION')
   const from = setting(event, 'PAGE_STUDIO_CUSTOMER_EMAIL_FROM')
   if (!termsVersion || termsVersion.length > 100 || !z.string().email().safeParse(from).success) throw unavailable()
-  return { origin: url.origin, termsVersion, from }
+  // Optional paired acceptance scope: absent preserves ordinary signup; a partial,
+  // malformed or expired scope closes every native signup/session endpoint.
+  const hashes = setting(event, 'PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES')
+  const expiresAt = setting(event, 'PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT')
+  let emailHashes: string[] | undefined
+  if (hashes || expiresAt) {
+    if (!hashes || hashes.length > 1024 || !z.string().datetime().safeParse(expiresAt).success
+      || Date.parse(expiresAt) <= Date.now()) throw unavailable()
+    try {
+      emailHashes = z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(10).parse(JSON.parse(hashes))
+    } catch { throw unavailable() }
+  }
+  return { origin: url.origin, termsVersion, from, emailHashes }
 }
 function guard(event: H3Event, method: 'GET' | 'POST' | 'PUT') {
   const config = customerSignupConfig(event)
@@ -73,6 +85,8 @@ export async function customerRequestHandler(event: H3Event) {
   const input = await body(event, CustomerSignInRequest)
   await ipLimit(event, 'request', 20)
   await limit(event, `email:${await digestPortalSessionToken(input.email)}`, 5)
+  const response = { success: true, message: 'If this account is eligible, a sign-in link is on its way.' }
+  if (config.emailHashes && !config.emailHashes.includes(await digestPortalSessionToken(input.email))) return response
   if (!customerEmailAvailable(event)) throw createError({ statusCode: 503, statusMessage: 'Sign-in email is temporarily unavailable.' })
   const delivery = await requestCustomerSignIn(input, config.termsVersion)
   if (delivery) {
@@ -83,7 +97,7 @@ export async function customerRequestHandler(event: H3Event) {
       console.error('[Studio signup] Sign-in email delivery failed')
     }
   }
-  return { success: true, message: 'If this account is eligible, a sign-in link is on its way.' }
+  return response
 }
 export async function customerVerifyHandler(event: H3Event) {
   const config = guard(event, 'POST')
