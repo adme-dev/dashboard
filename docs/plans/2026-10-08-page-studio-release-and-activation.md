@@ -1,13 +1,29 @@
 # Page Studio production release and activation checkpoint — 8 October 2026
 
 
-9 October local increment: the manual saved-field picker, explicit fallback repair,
-parent Undo/Redo and neutral renderer/storage compatibility negotiation are implemented.
-Actual local browser QA caught and fixed authority snapshots cloning RPC methods.
-Both reviewed sources remain local only; no Actions, push, deployment, paid model
-call, email delivery or customer activation occurred. Coordinated renderer/router/
-retained-runtime rollout and real native hosted acceptance remain required.
-See [field reference design and local acceptance](2026-10-09-email-template-field-references.md).
+Current task status and next steps live in the
+[running CMS/Studio ledger](customer-cms-status.md#running-ledger--9-october-2026).
+This file retains release/source/provider evidence. Historical entries below do
+not authorize deploying an older branch or treating local checks as hosted acceptance.
+
+Latest local updates: email field picker and compatibility are committed at
+Dashboard `20b4ebe30` / native `1e3219b`; collapsed navigation is committed at
+native `d588cf286`. Dashboard application checkpoint is `9ac212310`; later ledger-only commits
+do not change that tested build.
+The 200px thumbnail cap is committed at native
+`6888688e8c13c36eac47601e55f02ac546c13381`: local browser/build/review and final
+1,576-file formatting checks pass. All remain unpushed and undeployed.
+
+Local Dashboard build passes at raw 25,458,639/25,468,928 bytes and gzip
+7,041,769/9,750,000. The scoped type graph retains the same 205 existing error
+identities; repository typechecking is not clean. Native build/types/tests and the
+prior full formatting gates pass. The new thumbnail sizing browser regression
+passes in light/dark mode and retains horizontal overflow in narrow containers.
+
+No Actions, deployment, email delivery, paid inference or customer activation was
+performed for these updates. Hosted signup/Forms/editor acceptance and coordinated
+private renderer/router/retained runtime rollout remain required. The new runtime
+candidate is still unapproved/uninstalled; native preview AI allowance remains zero.
 
 ## 9 October source reconciliation
 

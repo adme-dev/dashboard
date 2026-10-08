@@ -11,13 +11,61 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
 
 
-9 October local increment: the manual saved-field picker, explicit fallback repair,
-parent Undo/Redo and neutral renderer/storage compatibility negotiation are implemented.
-Actual local browser QA caught and fixed authority snapshots cloning RPC methods.
-Both reviewed sources remain local only; no Actions, push, deployment, paid model
-call, email delivery or customer activation occurred. Coordinated renderer/router/
-retained-runtime rollout and real native hosted acceptance remain required.
-See [field reference design and local acceptance](2026-10-09-email-template-field-references.md).
+## Running ledger — 9 October 2026
+
+This is the primary current ledger. **The full launch remains open.** Local
+implementation, hosted acceptance and production release are separate statuses.
+Older dated entries below are historical evidence and must not be treated as the
+current branch or as instructions to request mailbox identities again.
+
+| Work | Current status | Evidence / remaining work |
+|---|---|---|
+| Invited CMS access and light-first CMS style | Released; last live verification 8 October | Production source `c85bf265`, deployment `57353fad`; independent Fantasy Limo mailbox login still needs verification. |
+| Native editor light/dark, layouts, guarded history, thumbnails and overview | Locally built, tested and reviewed; unreleased | Native branch includes current main `17ac1f3`; wider hosted editor acceptance remains pending. |
+| Collapsed thumbnail controls integrated into toolbar | Locally committed and verified | Native `d588cf286056be56638d6aa5a912263b79e98e98`; collapse/expand/focus/overview and full-browser↔canvas checks pass. |
+| Thumbnail maximum width | Locally committed and verified; unreleased | Native `6888688e8c13c36eac47601e55f02ac546c13381`; 200px cards, centred 842px tray. Browser checks, build, review and the full formatting gate pass. |
+| Saved email field picker, fallback repair and Undo/Redo | Locally committed and verified; unreleased | Dashboard `20b4ebe30`, native compatibility `1e3219b`; actual local store/private renderer checks pass. Coordinated matching service release and hosted acceptance remain required. |
+| AI email proposals | Local implementation and review complete; hosted enablement pending | Gateway/model/allowance/API/preview/Apply foundations retained. Native preview AI allowance remains zero. |
+| Two native test accounts and hosted Forms acceptance | Pending | Both approved mailboxes already supplied; B verification and both workspace setups pending. No current native signed-in browser session is proven. |
+| Sender verification, live email delivery and published outcomes | Pending | Sender/reply-to, approved outbox, delivery activation and published outcome acceptance remain open. |
+| Wider standalone CMS launch | Pending end-to-end acceptance | Collections, invitations/roles, domains, analytics/SEO and CMS→saved Studio→release journey remain tracked below. |
+
+Current working sources:
+
+- Dashboard: `/Users/paulgiurin/Documents/Projects/page-studio-resume-20261007`,
+  branch `feat/studio-email-field-picker-20261009`, latest application checkpoint
+  `9ac2123109468638045090beba8365c8b6410947` (later ledger-only commits do not change
+  that tested application build). Main base `c85bf265`.
+- Native Studio: `/private/tmp/page-studio-native-integration-20261008`, branch
+  `feat/email-field-capabilities-20261009`, latest completed commit
+  `6888688e8c13c36eac47601e55f02ac546c13381`, including the thumbnail-width fix.
+  The normal 1,576-file formatting gate completed with no fixes.
+  Main base `17ac1f3` was freshly fetched for this change.
+- Neither branch is pushed or released. Preserve parent branches/worktrees until
+  batched integration; leave the unrelated dirty Dashboard root and original demo
+  database, media and backups untouched.
+
+Next steps, in order:
+
+1. Complete normal native sign-in/verification for the already-approved two
+   mailboxes, then their supported workspace setup.
+2. Install and verify the exact approved staging runtime/storage and matching
+   private renderer/router; activate scoped Forms capability through the existing
+   reviewed operator. An unapproved local runtime candidate is not an installed release.
+3. Run the hosted two-account matrix: roles/scopes, saves/reloads/conflicts,
+   template defaults/overrides/history/fields, media and saved-site editor launch.
+4. Complete sender/outbox/outcomes/webhooks and the remaining CMS acceptance items
+   below. Keep customer production activation separate from local implementation.
+5. Batch current-main integration and the required checks, deploy through the
+   guarded scripts, then verify live CMS, editor, established navigation and QR Codes.
+
+No GitHub Actions, push, deployment, paid model call, email delivery or customer
+production activation was used for these latest local changes. Native AI allowance
+remains zero. Re-fetch main and recheck provider state before integration/release.
+
+Detailed evidence: [email field picker](2026-10-09-email-template-field-references.md),
+[AI proposals](2026-10-08-email-template-ai-proposals.md), and
+[release/activation ledger](2026-10-08-page-studio-release-and-activation.md).
 
 ## Completed and verified locally
 
@@ -58,7 +106,9 @@ independent CMS remains unverified. Confirm provider state again before release.
 Native PR #119 is merged at `17ac1f3dd292f5da996daac82c523174606a3265`;
 its Linux/Windows CI passed. Local work now adds default-light/dark editor appearance,
 visual page/section layouts, guarded history and page/section thumbnails plus grouped
-overview through `29be3451d20f5b25ff6ea854c6f1e9136b2be19e`. These increments
+overview, with the collapsed-toolbar correction through `d588cf286`. The latest
+200px thumbnail cap is committed at `6888688e8`, with local browser/build/review
+and final formatting checks passed. These increments
 are locally reviewed/tested and remain unpushed/undeployed to conserve Actions.
 Their local branches retain current main ancestry; they are not production artifacts.
 
@@ -66,8 +116,8 @@ Dashboard's six local email-AI commits through `dd44d62a4` connect proposal sche
 Gateway models, real CMS-login allowance, API and explicit preview/Apply UI. Operator
 models remain disabled and native preview allowance remains zero. The 9 October
 [field-reference contract](2026-10-09-email-template-field-references.md) adds local
-V2 validation/rendering/storage; hosted manual controls, coordinated worker release and
-hosted field/schema acceptance remain unfinished. See the
+V2 validation/rendering/storage and the locally verified manual picker. Coordinated
+worker release and hosted field/schema acceptance remain unfinished. See the
 [AI proposal plan](2026-10-08-email-template-ai-proposals.md) for exact boundaries.
 
 The controlled signup preview was last verified at `5dec4699` / source `1f4e1250`.
@@ -103,7 +153,7 @@ and the native unavailable state pass in Chrome. Customer activation stays close
 The private operator and its final bounded-file-read fix are reviewed, committed
 and pushed. The final build passes, with no new type diagnostics.
 
-Next: two real customer test mailboxes, supported signup/approval, exact staging
+**Historical 2 October next step, now superseded:** supported signup/approval, exact staging
 setup/activation and the hosted acceptance matrix. No hosted native acceptance or
 production enablement is claimed. See the [connection receipt](2026-10-02-native-forms-ui-release.md),
 [integration plan](2026-10-02-native-forms-acceptance.md), and earlier
@@ -182,9 +232,12 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
 - [x] Extract private email rendering before adding backend features; released and
       verified with 59,992 raw bytes remaining at the Page Studio production build.
       Recheck capacity on current main before subsequent backend additions.
-- [ ] AI template proposals through the existing gateway/credit conventions;
-      validate output and require Apply; preserve manual edits.
-- [ ] Verified sender/reply-to and customer email-field selection.
+- [x] Local AI proposal implementation through the gateway/credit conventions,
+      validated output and explicit Apply preserving manual edits.
+- [ ] Hosted AI proposal/Apply acceptance and enablement under approved allowance.
+- [x] Local saved-field template picker, explicit fallback repair and Undo/Redo.
+- [ ] Hosted field/schema acceptance and verified sender/reply-to, including
+      selection of the customer email field for actual delivery.
 - [ ] Approved notification outbox: idempotency, suppression, bounded retries,
       redacted delivery history, explicit test sends and delivery activation.
 - [ ] Publish approved outcome revisions; redirect only after durable acceptance.
@@ -207,7 +260,10 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
 These wider items may have foundations elsewhere; unchecked means not accepted
 end-to-end in this standalone demo, not necessarily zero code exists.
 
-## Resume information
+## Historical resume information — 2 October
+
+Use the current working sources in the running ledger above. These paths and
+commits are preserved as historical evidence, not current release bases.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
