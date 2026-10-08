@@ -1,11 +1,9 @@
 import type { H3Event } from 'h3'
-import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
-import { isCloudflareEmailGatewayAvailable } from '~~/server/utils/cloudflareEmailGateway'
-import { sendPortalAuthTransactionalEmail } from '~~/server/utils/portalAuthEmailTransport'
+import { isCloudflareEmailGatewayAvailable, sendViaCloudflareEmailGateway } from '~~/server/utils/cloudflareEmailGateway'
 import type { CustomerSignupConfig } from './customerSignupHttp'
 
 export function customerEmailAvailable(event: H3Event) {
-  return isCloudflareEmailGatewayAvailable(event) || isEmailConfigured(event)
+  return isCloudflareEmailGatewayAvailable(event, 'PAGE_STUDIO_CUSTOMER_EMAIL')
 }
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' })[char]!)
 export async function sendCustomerSignInEmail(event: H3Event, config: CustomerSignupConfig, delivery: { email: string, token: string }) {
@@ -69,10 +67,8 @@ export async function sendCustomerSignInEmail(event: H3Event, config: CustomerSi
 </body>
 </html>`
   }
-  await sendPortalAuthTransactionalEmail({ event, message, resendSend: async () => {
-    const resend = getResendClient(event)
-    if (!resend) throw new Error('customer_email_unavailable')
-    const result = await resend.emails.send({ ...message, from: `Page Studio <${config.from}>` })
-    if (result.error) throw new Error('customer_email_delivery_failed')
-  } })
+  // Customer sign-in uses its own XeroFlow sender binding. Never fall back to
+  // staff/portal credentials or a different email provider on delivery failure.
+  const result = await sendViaCloudflareEmailGateway(event, message, 'PAGE_STUDIO_CUSTOMER_EMAIL')
+  if (result.outcome !== 'accepted') throw new Error('customer_email_delivery_failed')
 }

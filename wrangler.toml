@@ -335,6 +335,10 @@ mode = "smart"
 # Page Studio staging services remain isolated from production. No top-level
 # bindings or production mutable resources are inherited by this environment.
 [[env.preview.services]]
+binding = "PAGE_STUDIO_CUSTOMER_EMAIL"
+service = "xeroflow-page-studio-customer-email-staging"
+
+[[env.preview.services]]
 binding = "PAGE_STUDIO_CONTENT_ROUTER"
 service = "xeroflow-content-router-staging"
 
