@@ -21,7 +21,7 @@ Verified source boundaries:
 
 | Boundary | Current source and behavior |
 | --- | --- |
-| Native sign-in | `server/utils/pageStudio/customerSignupHttp.ts` reads `studio_customer_session`; exact-origin mutation guard and signup gate. |
+| Native sign-in | `server/utils/pageStudio/customerSignupHttp.ts` reads `__Host-studio_customer_session` on HTTPS; legacy cookies are ignored. Exact-origin mutation guard and signup gate remain. The unprefixed name is only for validated development HTTP loopback. |
 | Native overview | `app/components/studio/CustomerDashboard.client.vue` calls `/api/portal/page-studio/customer/dashboard` and opens Studio; now offers Forms only after native availability admission. |
 | Native Forms | `CustomerWebsite.client.vue` and `customerFormsHttp.ts` use native authority and explicit customer API audience; staging/gated. |
 | Existing CMS screen | `app/pages/studio/sites/[siteId]/index.vue` uses `studio-auth` and the portal workspace endpoint. |
