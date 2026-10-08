@@ -42,8 +42,10 @@ const API_INVENTORY = {
   // Native/portal workspaces, media, forms and template history add 33 routes
   // (10 mutations). Separate audience adapters and fresh scope checks remain;
   // no new route registers a God mode bypass.
-  totalRouteFiles: 2230,
-  mutationRouteFiles: 1213,
+  // Invited CMS membership adds GET and PUT. Both require selected-tenant
+  // PAGE_STUDIO_EDIT plus a fresh active agency-admin check; no God mode bypass.
+  totalRouteFiles: 2232,
+  mutationRouteFiles: 1214,
   explicitlyGuardedMutationFiles: 400,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -82,8 +84,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2230,
-      mutationRouteFiles: 1213,
+      totalRouteFiles: 2232,
+      mutationRouteFiles: 1214,
       explicitlyGuardedMutationFiles: 400,
       guardedMutationFilesWithTransactionCall: 47
     })
