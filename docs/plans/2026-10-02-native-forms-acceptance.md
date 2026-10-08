@@ -93,10 +93,12 @@ Task 6 closed-gate preview deployment/readback is verified; hosted acceptance re
 
 ## Hosted fixture preparation
 
-- [ ] Operator supplies two distinct test email addresses and authorizes the sign-in
-      messages. Addresses are pending; do not infer aliases or reuse an old approval.
-- [ ] Confirm verified sender and existing product terms configuration. The user must
-      complete any terms acceptance or email verification that requires their action.
+- [x] Operator supplied two distinct controlled test mailboxes and explicitly
+      authorized sign-in messages on 8 October. Retain addresses privately.
+- [x] Verified XeroFlow sender through Cloudflare Email Sending; both authorized
+      deliveries confirmed on 8 October. Existing product terms version is configured
+      and both accounts recorded acceptance. A email is verified; B remains pending.
+      Email verification is still required within the supported account journey below.
 - [ ] Use supported `/studio/signup` and onboarding flows for accounts A and B.
       Record only redacted evidence and server-derived workspace IDs; do not copy
       cookies or email-link secrets into reports.

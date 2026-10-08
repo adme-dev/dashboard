@@ -39,16 +39,20 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Current checkpoint / next action
 
-**8 October — application release complete; customer activation pending:**
-PRs #632/#633 merged and the corrected renderer passed authenticated production
-preview, draft save/reload, mobile/keyboard and Page Studio/QR navigation checks.
-Current production is the subsequent clean main `1ab514938` deployment `8810de23`,
-which includes that release. Native gates stay closed. The populated legacy
-ownership migration rehearsal is now included in CI. Two real approved mailbox
-identities and supported onboarding remain necessary for hosted customer acceptance.
-See the [current release and activation checkpoint](2026-10-08-page-studio-release-and-activation.md).
-All dated entries below are historical evidence; their pending integration/release
-statements are superseded by this checkpoint.
+**8 October — application released; native acceptance in progress:**
+Production remains source `1ab514938`, deployment `8810de23`, with native gates
+closed. Preview `18797d36` includes the revised topic/goals/account flow and private
+Cloudflare sign-in email from XeroFlow. Both test mailboxes and email authorization
+are supplied; A is verified, B still needs verification, and workspace setup is
+pending for both. Sign-in email and Cloudflare transport PRs #637/#639 are merged;
+design #640 passed fresh CI and merged on current main. The approved main builder
+address https://xeroflowpages.com is connected and opens production Studio sign-in;
+the new signup flow remains on preview. Studio's retained 29-commit native
+Forms stack now has consolidated draft PR #119; its fresh cross-platform CI found
+a dependency-audit failure before tests. Dependency remediation is underway.
+See the [current release and activation checkpoint](2026-10-08-page-studio-release-and-activation.md)
+for exact source, provider and account evidence. Older dated entries below are
+historical and their pending-mailbox/integration statements are superseded here.
 
 **2 October — saved template history:** implemented, independently reviewed and
 verified in the Fantasy Limo demo on desktop and mobile. Customers can browse
@@ -135,7 +139,8 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
       Studio `c219655`; focused tests/types/lint and normal 1,553-file hook pass.
 - [x] Bound operator manifest ingestion; eight Node tests and scoped final review
       pass, including file growth, partial reads and descriptor cleanup.
-- [ ] Execute the two-customer hosted acceptance matrix; real mailboxes pending.
+- [ ] Execute the two-customer hosted acceptance matrix; approved mailboxes are supplied,
+      A is verified, B verification and both workspace setups remain pending.
 
 - [x] Website team/customer template defaults (draft only).
 - [x] Vehicle Marketplace-inspired compact block palette and debounced safe preview.
