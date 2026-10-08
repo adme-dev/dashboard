@@ -4,20 +4,29 @@ import { PageStudioAiUsageError, updatePageStudioAiUsageLedger } from './aiUsage
 import { withCmsCommitAuthority } from './cmsCommitAuthority'
 import type { ContentAuthorityRequest } from './businessContent'
 import type { EmailTemplateGenerationExecution } from './emailTemplateGeneration'
+import { readPageStudioAiAllowance } from './aiAllowance'
+import type { TrustedFormAuthority } from './formAuthority'
 
 type UsageAdapters = Pick<EmailTemplateGenerationExecution, 'reserve' | 'settle'>
 type Dependencies = NonNullable<Parameters<typeof withCmsCommitAuthority>[2]>
 const denied = () => new PageStudioAiUsageError('AI_USAGE_DENIED', 403, 'AI usage access denied')
+
+export async function readPortalEmailTemplateAllowance(request: ContentAuthorityRequest, authority: TrustedFormAuthority, dependencies: Dependencies = {}) {
+  const scope = admitUsageAuthority(request, authority)
+  return withCmsCommitAuthority({ scope, principal: { source: 'native-login', request }, mutation: 'email-generation' }, async (db, scope) => {
+    const site = (await db.query<{ entitlement_id: string }>('SELECT entitlement_id FROM page_studio_sites WHERE tenant_id=$1 AND client_id=$2 AND id=$3', [scope.tenantId, scope.clientId, scope.siteId])).rows[0]
+    if (!site) throw denied()
+    return readPageStudioAiAllowance(db, { ...scope, entitlementId: site.entitlement_id })
+  }, dependencies)
+}
 
 /** Uses the ordinary, verified CMS login. Never creates/relabels an editor
  * session. Native customer-user preview is intentionally not this principal. */
 export function createPortalEmailTemplateUsage(request: ContentAuthorityRequest, dependencies: Dependencies = {}): UsageAdapters {
   const update = async (operation: Parameters<UsageAdapters['reserve']>[0], outcome?: 'succeeded' | 'failed') => {
     const { authority } = operation
-    const scope = PageStudioContentScopeSchema.parse(authority.scope)
-    const key = JSON.stringify([request.actor.role, request.actor.actorId, request.actor.role === 'client' ? request.actor.clientId : null, scope.businessId, scope.clientId, scope.tenantId])
-    if (!authority.canEdit || authority.actorId !== request.actor.actorId || authority.authorityKey !== key
-      || scope.siteId !== request.siteId || !['staging', 'production'].includes(scope.environment) || operation.kind !== 'model') throw denied()
+    const scope = admitUsageAuthority(request, authority)
+    if (operation.kind !== 'model') throw denied()
     const body = PageStudioAiUsageRequestSchema.parse({ operationId: operation.operationId, fingerprint: operation.fingerprint, kind: 'model',
       ...(outcome ? { action: 'settle', outcome } : { action: 'reserve' }) })
     return withCmsCommitAuthority({ scope, principal: { source: 'native-login', request }, mutation: 'email-generation' }, async (db) => {
@@ -35,4 +44,12 @@ export function createPortalEmailTemplateUsage(request: ContentAuthorityRequest,
     }, dependencies)
   }
   return { reserve: operation => update(operation), settle: operation => update(operation, operation.outcome) }
+}
+
+function admitUsageAuthority(request: ContentAuthorityRequest, authority: TrustedFormAuthority) {
+  const scope = PageStudioContentScopeSchema.parse(authority.scope)
+  const key = JSON.stringify([request.actor.role, request.actor.actorId, request.actor.role === 'client' ? request.actor.clientId : null, scope.businessId, scope.clientId, scope.tenantId])
+  if (!authority.canEdit || authority.actorId !== request.actor.actorId || authority.authorityKey !== key
+    || scope.siteId !== request.siteId || !['staging', 'production'].includes(scope.environment)) throw denied()
+  return scope
 }

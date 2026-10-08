@@ -6,7 +6,7 @@ import { assertPageStudioAiAllowanceAvailable } from '~~/server/utils/pageStudio
 import { updatePageStudioAiUsage } from '~~/server/utils/pageStudio/aiUsage'
 import type { PageStudioControlQueryClient } from '~~/server/utils/pageStudio/controlStore'
 import type { PageStudioSessionClaims } from '~~/server/utils/pageStudio/sessions'
-import { createPortalEmailTemplateUsage } from '~~/server/utils/pageStudio/emailTemplateUsage'
+import { createPortalEmailTemplateUsage, readPortalEmailTemplateAllowance } from '~~/server/utils/pageStudio/emailTemplateUsage'
 import type { ContentAuthorityRequest } from '~~/server/utils/pageStudio/businessContent'
 
 vi.mock('~~/server/utils/db', () => ({
@@ -348,8 +348,27 @@ describe.runIf(Boolean(databaseUrl))('native AI monthly usage on disposable Post
     const db = await connect()
     const adapter = createPortalEmailTemplateUsage(principal, { runTransaction: transactionFor(db) })
     const operation = { authority, operationId: 'email:proposal:1', fingerprint: 'b'.repeat(64), kind: 'model' as const }
-    return { adapter, operation, principal }
+    return { adapter, operation, principal, dependencies: { runTransaction: transactionFor(db) } }
   }
+
+  it('reports real remaining allowance without creating a charge, including exhausted budgets', async () => {
+    await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1')
+    const { adapter, operation, principal, dependencies } = await emailUsage(claims, true)
+    expect(await readPortalEmailTemplateAllowance(principal, operation.authority, dependencies)).toMatchObject({ used: '0', limit: 1, remaining: 1 })
+    expect(await rows()).toHaveLength(0)
+    await adapter.reserve(operation)
+    expect(await readPortalEmailTemplateAllowance(principal, operation.authority, dependencies)).toMatchObject({ used: '1', limit: 1, remaining: 0 })
+    expect(await rows()).toHaveLength(1)
+    await observer.query('UPDATE page_studio_site_memberships SET role=\'viewer\' WHERE user_id=$1', [principal.actor.actorId])
+    await expect(readPortalEmailTemplateAllowance(principal, operation.authority, dependencies)).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('rejects a changed allowance authority key or site before reading the budget', async () => {
+    const { operation, principal, dependencies } = await emailUsage()
+    await expect(readPortalEmailTemplateAllowance(principal, { ...operation.authority, authorityKey: 'changed' }, dependencies)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(readPortalEmailTemplateAllowance(principal, { ...operation.authority, scope: { ...operation.authority.scope, siteId: other.siteId } }, dependencies)).rejects.toMatchObject({ statusCode: 403 })
+    expect(await rows()).toHaveLength(0)
+  })
 
   it.each([false, true])('charges ordinary CMS generation once without creating editor sessions (invited=%s)', async (invited) => {
     const { adapter, operation } = await emailUsage(claims, invited)

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { starterEmailTemplate } from '../../../shared/pageStudio/emailTemplates'
 import { MockLanguageModelV3 } from 'ai/test'
-import { createEmailTemplateModelResolver } from '../../../server/utils/pageStudio/emailTemplateModel'
+import { createEmailTemplateModelResolver, listEmailTemplateModels } from '../../../server/utils/pageStudio/emailTemplateModel'
 
 const mocks = vi.hoisted(() => ({ gateway: vi.fn(), generate: vi.fn(), catalog: vi.fn(), features: vi.fn() }))
 vi.mock('~~/server/utils/claudeClient', () => ({ resolveGatewayTextModel: mocks.gateway }))
@@ -18,6 +18,13 @@ beforeEach(() => {
 const input = () => ({ prompt: 'Improve this draft', audience: 'team' as const, template: starterEmailTemplate('team'), siteName: 'Business', formName: 'Contact', fields: [{ id: 'name', name: 'Name', type: 'text' }] })
 
 describe('email proposal Gateway model adapter', () => {
+  it('lists only eligible configured selections without invoking or charging models', async () => {
+    expect(await listEmailTemplateModels(['groq/text-model', 'groq/text-model', 'other/model'])).toEqual([{ id: 'groq/text-model', label: 'groq/text-model' }])
+    mocks.gateway.mockReturnValue(null)
+    expect(await listEmailTemplateModels(['groq/text-model'])).toEqual([])
+    expect(mocks.generate).not.toHaveBeenCalled()
+  })
+
   it.each(['disabled', 'unknown', 'deprecated', 'audio', 'direct'])('refuses %s models without provider execution', async (scenario) => {
     if (scenario === 'unknown') mocks.catalog.mockReturnValue([])
     if (scenario === 'deprecated') mocks.catalog.mockReturnValue([{ provider: 'groq', modelId: 'text-model', status: 'deprecated' }])

@@ -48,3 +48,12 @@ export function createEmailTemplateModelResolver(enabledModelIds: readonly strin
     }
   }
 }
+
+export async function listEmailTemplateModels(enabledModelIds: readonly string[]) {
+  const resolve = createEmailTemplateModelResolver(enabledModelIds)
+  const models: { id: string, label: string }[] = []
+  for (const id of new Set(enabledModelIds)) {
+    if (await resolve(id)) models.push({ id, label: id })
+  }
+  return models
+}
