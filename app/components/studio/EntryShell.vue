@@ -65,10 +65,10 @@ watch(() => props.title, async () => {
 
     <aside class="fixed inset-y-2 right-2 hidden w-[calc(26%-8px)] overflow-hidden bg-neutral-200 lg:block" aria-hidden="true">
       <img
-        src="/images/studio/workspace.webp"
+        src="/images/studio/artistic-panel.webp"
         alt=""
-        width="1024"
-        height="1536"
+        width="941"
+        height="1672"
         fetchpriority="high"
         class="h-full w-full object-cover object-[52%_center]"
       >
