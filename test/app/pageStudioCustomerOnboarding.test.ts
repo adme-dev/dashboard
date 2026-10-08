@@ -20,10 +20,12 @@ function button(label: string) {
 async function mount() {
   host = document.createElement('div')
   app = createApp(Onboarding)
-  app.component('StudioCustomerShell', { template: '<div><header><slot name="header" /></header><slot /></div>' })
+  app.component('StudioEntryShell', { template: '<div><header><slot name="header" /></header><slot /><footer><slot name="footer" /></footer></div>' })
   app.component('UButton', { props: ['disabled', 'loading', 'label'], template: '<button :disabled="disabled || loading">{{ label }}</button>' })
   app.component('UAlert', { props: ['title', 'description'], template: '<div>{{ title }} {{ description }}</div>' })
-  for (const name of ['UCard', 'UFormField', 'UInput', 'USelectMenu', 'UCheckbox', 'UCheckboxGroup', 'UIcon', 'NuxtLink']) app.component(name, { template: '<div><slot /></div>' })
+  app.component('UInput', { props: ['modelValue'], emits: ['update:modelValue'], template: `<input :value="modelValue" @input="$emit('update:modelValue', $event.target.value)" />` })
+  app.component('UFormField', { props: ['label'], template: '<label>{{ label }}<slot /></label>' })
+  for (const name of ['UCard', 'USelectMenu', 'UCheckbox', 'UCheckboxGroup', 'UIcon', 'NuxtLink']) app.component(name, { template: '<div><slot /></div>' })
   app.mount(host)
   await flush()
 }
@@ -65,5 +67,46 @@ describe('customer onboarding escape paths', () => {
     await flush()
     expect(fetchMock.mock.calls.filter(c => c[1]?.method === 'PUT')).toHaveLength(1)
     expect(navigate).toHaveBeenCalledWith('/studio/signup')
+  })
+})
+
+async function submitStep() {
+  host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  await flush()
+}
+describe('customer setup steps', () => {
+  it('requires a selected topic and saves it before advancing, retaining it when going back', async () => {
+    fetchMock.mockResolvedValueOnce({ revision: 0, workspaceId: null, draft: { businessName: '', businessType: '', timezone: 'UTC', goals: [] } }).mockResolvedValue({ revision: 1 })
+    await mount()
+    await submitStep()
+    expect(host.textContent).toContain('Choose a topic')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    button('Photography').click()
+    await submitStep()
+    expect(host.textContent).toContain('Business or organisation name')
+    expect(fetchMock).toHaveBeenLastCalledWith(`${api}/setup`, expect.objectContaining({ method: 'PUT', body: expect.objectContaining({ expectedRevision: 0, draft: expect.objectContaining({ businessType: 'Photography' }) }) }))
+    await submitStep()
+    expect(host.textContent).toContain('Add your business name')
+    button('Back').click()
+    await flush()
+    expect(button('Photography').getAttribute('aria-pressed')).toBe('true')
+  })
+  it('accepts a custom topic and completes only after the business and goals steps are saved', async () => {
+    fetchMock.mockResolvedValueOnce({ revision: 2, workspaceId: null, draft: { businessName: 'Flowers', businessType: '', timezone: 'UTC', goals: ['enquiries'] } })
+      .mockResolvedValueOnce({ revision: 3 }).mockResolvedValueOnce({ revision: 4 }).mockResolvedValueOnce({ revision: 5 }).mockResolvedValueOnce({ workspaceId: 'new-workspace' })
+    await mount()
+    const search = host.querySelector('input')!
+    search.value = 'Florist'
+    search.dispatchEvent(new Event('input', { bubbles: true }))
+    await flush()
+    button('Use “Florist”').click()
+    await submitStep()
+    expect(fetchMock.mock.calls.some(call => call[0].endsWith('/complete'))).toBe(false)
+    await submitStep()
+    expect(host.textContent).toContain('Website goals')
+    expect(button('Create my workspace')).toBeTruthy()
+    await submitStep()
+    expect(fetchMock).toHaveBeenLastCalledWith(`${api}/complete`, { method: 'POST', body: { expectedRevision: 5 } })
+    expect(navigate).toHaveBeenCalledWith('/studio/dashboard', { replace: true })
   })
 })
