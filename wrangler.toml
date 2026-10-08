@@ -281,6 +281,7 @@ class_name = "RateLimiter"
 script_name = "rate-limiter-worker"
 
 [env.production.vars]
+PAGE_STUDIO_INVITED_ORIGIN = "https://xeroflowpages.com"
 PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
 PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"102d79c9f6e62c96365e31f9ae4a798cb58df4cafd451bdebf6e4f2a8fcb6322\",\"generation\":\"astro_runtime_5986dc6fe5cac2da5d354b0bfa611394e463f93ab42f86776caeb9853251f781\"}"
 PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS = "astro_runtime_a6a72b897cb1ddde19c975a711a37da398e7e00fbc72847a2b92ea30e8d43ac6"
@@ -383,6 +384,7 @@ binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
+PAGE_STUDIO_INVITED_ORIGIN = "https://preview.agency-dashboard-6cm.pages.dev"
 # Temporary staging acceptance only; two synthetic workspace approvals expire 2026-10-02.
 PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "false"
 PAGE_STUDIO_CUSTOMER_ORIGIN = "https://preview.agency-dashboard-6cm.pages.dev"

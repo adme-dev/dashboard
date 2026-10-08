@@ -1,6 +1,7 @@
 import { queryRowsFresh, transaction } from '~~/server/utils/db'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
 import { getAppUrl } from '~~/server/utils/appUrl'
+import { pageStudioInvitedOrigin } from '~~/server/utils/pageStudio/invitedOrigin'
 import {
   isEmailConfigured,
   sendClientPortalMagicLinkEmail
@@ -112,7 +113,9 @@ export default defineEventHandler(async (event) => {
   if (!users.length) return genericResponse
 
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
-  const appUrl = getAppUrl(event).replace(/\/$/, '')
+  const appUrl = redirect.startsWith('/studio/sites')
+    ? pageStudioInvitedOrigin(event)
+    : getAppUrl(event).replace(/\/$/, '')
   const deliveries = await transaction(async (client) => {
     const issued: Array<EligiblePortalUser & { magicLinkUrl: string }> = []
 

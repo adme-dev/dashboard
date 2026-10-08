@@ -264,6 +264,15 @@ async function launchStudio(site: PageStudioSiteSummary) {
                 size="sm"
               />
               <UButton
+                v-if="audience === 'agency'"
+                :to="`/agency/page-studio/${site.id}/access`"
+                label="CMS access"
+                icon="i-lucide-users"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
+              <UButton
                 v-if="audience === 'portal'"
                 :to="`/portal/page-studio/${site.id}/history`"
                 label="Draft history"
