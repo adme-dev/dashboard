@@ -17,6 +17,13 @@ export const EmailTemplateProposalDraftSchema = EmailTemplateEditSchema.extend({
   customised: z.boolean()
 }).strict()
 export type EmailTemplateProposalDraft = z.infer<typeof EmailTemplateProposalDraftSchema>
+export const EmailTemplateProposalRequestSchema = EmailTemplateProposalDraftSchema.omit({
+  siteId: true, apiAudience: true, audience: true, definitionId: true
+}).extend({
+  operationId: z.string().uuid(),
+  modelId: z.string().trim().min(1).max(200),
+  prompt: z.string().trim().min(1).max(4000)
+}).strict()
 
 /** The provider supplies design only. Scope, billing and proposal identity are
  * attached by the authenticated server after output validation. */

@@ -16,6 +16,13 @@ work on current Dashboard main, not hosted acceptance or customer activation.
   Current media ownership must still be checked by server generation/save adapters.
 - UTF-8 model output is bounded before JSON parsing. There is no silent repair,
   truncation, automatic retry or implied refund.
+- A server orchestration module now independently admits current edit authority,
+  saved form/schema, selected media, checkpoint and template revision. It checks
+  model availability, validates reservation/settlement receipts and withholds a
+  proposal after access or the saved base changes. Provider and ambiguous accounting
+  failures are sanitized and never retried. No real answers or field defaults are
+  passed to inference. This module requires explicit trusted adapters; it is not
+  exposed as an endpoint and does not bypass native preview's zero allowance.
 
 Local tests cover manual changes during generation/hash, site/audience/form/revision
 changes, optional-field JSON transport equivalence, unsafe output and image identity.
@@ -24,11 +31,9 @@ merge tags and defined fallbacks are not implemented by this contract slice.
 
 ## Remaining implementation and acceptance
 
-1. Add server generation using independently resolved current Forms authority.
-   Derive site/form schema and current saved revisions on the server; send no real
-   enquiry answers. Reject revoked/viewer access, foreign forms and stale bases
-   before reserving usage and after awaited calls. Validate selected media against
-   the admitted site's storage.
+1. Connect server generation to independently resolved current Forms authority.
+   The orchestration and failure tests are implemented locally; route adapters and
+   their end-to-end authority/media proof remain required before exposure.
 2. Connect the enabled model catalogue and existing Cloudflare AI Gateway execution
    and credit conventions. Check availability before charging, reserve atomically,
    preserve unknown outcomes without replay, and expose real usage information.
