@@ -31,6 +31,12 @@ work on current Dashboard main, not hosted acceptance or customer activation.
   connected. Each call has a 45-second abort signal, 8,000 output-token limit, no
   tools and zero SDK retries. The actual SDK is tested against a retryable 503 to
   verify a single attempt. Configuration checks are not a paid availability probe.
+- Agency/invited CMS usage now connects to the existing durable AI ledger through
+  the real CMS login. Reservations share the monthly allowance with editor and
+  public-action operations across sites/environments; concurrent requests cannot
+  spend the same remaining credit. Replay never admits a second call, failures
+  remain charged, and settlement rechecks login, membership and AI entitlement.
+  No editor session is created. This adapter is not yet exposed through a route.
 
 Local tests cover manual changes during generation/hash, site/audience/form/revision
 changes, optional-field JSON transport equivalence, unsafe output and image identity.
@@ -44,8 +50,9 @@ merge tags and defined fallbacks are not implemented by this contract slice.
    their end-to-end authority/media proof remain required before exposure.
 2. Connect the enabled model catalogue and existing Cloudflare AI Gateway execution
    and credit conventions to the routes/UI. The Gateway model adapter exists;
-   operator feature enablement, live usage/cost reporting and durable allowance
-   adapters are still required. Check availability before charging, reserve atomically,
+   operator feature enablement, live usage/cost reporting and the native customer
+   allowance adapter are still required. Agency/invited CMS accounting is connected
+   internally and verified on disposable PostgreSQL. Check availability before charging, reserve atomically,
    preserve unknown outcomes without replay, and expose real usage information.
    Never issue a synthetic editor session just to call the existing usage API.
 3. Add the adjacent conversation and proposal preview/Apply/Discard controls to the
@@ -64,9 +71,12 @@ merge tags and defined fallbacks are not implemented by this contract slice.
 
 `TrustedFormContext` already separates portal and native customer authority.
 `updatePageStudioAiUsage` requires a real Studio editor session, while its current
-usage table admits agency/client actor roles. Do not relabel a native customer as
-an invited client to reuse it. Select an explicit native reservation adapter with
-fresh authority and the same shared allowance accounting before exposing generation.
+usage table admits agency/client actor roles. The extracted SQL ledger is also used
+by the real CMS-login adapter under `withCmsCommitAuthority`; login provenance is
+recorded with a `cms-login:` prefix and does not manufacture a child editor session.
+Do not relabel a native customer as an invited client to reuse it. Select an explicit
+native reservation adapter with fresh authority and the same shared allowance
+accounting before exposing native generation.
 
 The immutable native preview policy in `customerSites.ts` currently requires
 `monthly_ai_operation_limit = 0`. Existing preview approval therefore cannot

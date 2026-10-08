@@ -1,7 +1,7 @@
 import { assertPageStudioAiAllowanceAvailable, PageStudioAiUsageError } from './aiAllowance'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { PageStudioAiUsageRequestSchema, type PageStudioAiUsageReceipt } from '~~/shared/pageStudio/aiUsage'
-import { PageStudioContentScopeSchema } from '~~/shared/pageStudio/businessContent'
+import { PageStudioContentScopeSchema, type PageStudioContentScope } from '~~/shared/pageStudio/businessContent'
 import type { PageStudioControlQueryClient } from './controlStore'
 import { assertPageStudioSessionAuthority } from './sessionAuthority'
 import { PageStudioSessionClaimsSchema, type PageStudioSessionClaims } from './sessions'
@@ -45,14 +45,30 @@ export async function updatePageStudioAiUsageInTransaction(
     [JSON.stringify(['page-studio-ai-usage', claims.tenantId, claims.clientId])])
   const authorize = () => assertPageStudioSessionAuthority(claims, 'model:invoke', { transaction: db })
   await authorize()
-  const key = [claims.tenantId, claims.clientId, scope.data.environment, request.operationId]
+  const receipt = await updatePageStudioAiUsageLedger(db, request, scope.data,
+    { id: claims.userId, role: claims.role, loginIdentity: claims.nonce }, site.entitlement_id)
+  await authorize()
+  return receipt
+}
+
+/** Internal SQL-only ledger primitive. The caller MUST hold the site and client
+ * advisory locks, admit current authority and recheck before transaction commit.
+ * Login provenance is audit data, never an invented editor session. */
+export async function updatePageStudioAiUsageLedger(
+  db: PageStudioControlQueryClient,
+  request: import('zod').z.infer<typeof PageStudioAiUsageRequestSchema>,
+  scope: PageStudioContentScope,
+  actor: { id: string, role: 'agency' | 'client', loginIdentity: string },
+  entitlementId: string
+): Promise<PageStudioAiUsageReceipt> {
+  const key = [scope.tenantId, scope.clientId, scope.environment, request.operationId]
   const existing = (await db.query<UsageRow>(`SELECT site_id,business_id,actor_id,actor_role,fingerprint,kind,state
       FROM page_studio_ai_usage WHERE tenant_id=$1 AND client_id=$2 AND environment=$3 AND operation_id=$4 FOR UPDATE`, key)).rows[0]
   let state: PageStudioAiUsageReceipt['state'] = 'reserved'
   let admitted = false
   if (existing) {
-    if (existing.site_id !== claims.siteId || existing.business_id !== claims.clientId || existing.actor_id !== claims.userId
-      || existing.actor_role !== claims.role || existing.fingerprint !== request.fingerprint || existing.kind !== request.kind) throw conflict()
+    if (existing.site_id !== scope.siteId || existing.business_id !== scope.clientId || existing.actor_id !== actor.id
+      || existing.actor_role !== actor.role || existing.fingerprint !== request.fingerprint || existing.kind !== request.kind) throw conflict()
     state = existing.state
     if (request.action === 'settle') {
       if (state !== 'reserved' && state !== request.outcome) throw conflict()
@@ -64,16 +80,15 @@ export async function updatePageStudioAiUsageInTransaction(
     }
   } else {
     if (request.action === 'settle') throw conflict()
-    const budget = await assertPageStudioAiAllowanceAvailable(db, { tenantId: claims.tenantId, clientId: claims.clientId, entitlementId: site.entitlement_id })
+    const budget = await assertPageStudioAiAllowanceAvailable(db, { tenantId: scope.tenantId, clientId: scope.clientId, entitlementId })
     await db.query(`INSERT INTO page_studio_ai_usage(tenant_id,client_id,environment,operation_id,site_id,business_id,
         fingerprint,kind,actor_id,actor_role,session_nonce,entitlement_id,period_start)
         VALUES($1,$2,$3,$4,$5,$2,$6,$7,$8,$9,$10,$11,$12::date)`,
-    [...key, claims.siteId, request.fingerprint, request.kind, claims.userId, claims.role, claims.nonce, site.entitlement_id, budget.period])
+    [...key, scope.siteId, request.fingerprint, request.kind, actor.id, actor.role, actor.loginIdentity, entitlementId, budget.period])
     admitted = true
   }
-  await authorize()
   return { operationId: request.operationId, fingerprint: request.fingerprint, kind: request.kind,
-    scope: scope.data, state, charged: true, admitted }
+    scope, state, charged: true, admitted }
 }
 
 function parseUsageInput(input: unknown, session: PageStudioSessionClaims, environment: unknown) {

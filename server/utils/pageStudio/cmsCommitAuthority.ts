@@ -18,7 +18,7 @@ import {
   type PageStudioContentScope
 } from '~~/shared/pageStudio/businessContent'
 
-type Mutation = 'customer-adoption' | 'customer-checkpoint' | 'business-content' | 'collection-record' | 'collection-schema' | 'action-execution' | 'image-billing'
+type Mutation = 'customer-adoption' | 'customer-checkpoint' | 'business-content' | 'collection-record' | 'collection-schema' | 'action-execution' | 'image-billing' | 'email-generation'
 type Principal
   = | { source: 'customer-session', claims: import('./customerEditorToken').CustomerEditorClaims, env: Record<string, unknown>, capability: 'workspace:checkpoint' | 'workspace:create' }
     | { source: 'native-login', request: ContentAuthorityRequest }
@@ -219,11 +219,12 @@ export async function withCmsCommitAuthority<T>(
   if (
     scope.businessId !== scope.clientId
     || !z
-      .enum(['customer-adoption', 'customer-checkpoint', 'business-content', 'collection-record', 'collection-schema', 'action-execution', 'image-billing'])
+      .enum(['customer-adoption', 'customer-checkpoint', 'business-content', 'collection-record', 'collection-schema', 'action-execution', 'image-billing', 'email-generation'])
       .safeParse(input.mutation).success
   )
     throw denied()
   if (input.mutation === 'image-billing' && (input.principal.source !== 'native-login' || input.principal.request.actor.role !== 'client')) throw denied()
+  if (input.mutation === 'email-generation' && input.principal.source !== 'native-login') throw denied()
   const run
     = dependencies.runTransaction
       ?? (callback =>
@@ -260,6 +261,12 @@ export async function withCmsCommitAuthority<T>(
         [scope.tenantId, scope.clientId, scope.siteId]
       )
       const request = await resolveCmsPrincipalRequest(db, input.principal, scope)
+      if (input.mutation === 'email-generation') {
+        // Same ordering as editor/public-action usage: serialize the shared
+        // allowance before holding entitlement/authority locks across sites.
+        await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          [JSON.stringify(['page-studio-ai-usage', scope.tenantId, scope.clientId])])
+      }
       await lockDependencies(
         db,
         request,
@@ -277,7 +284,7 @@ export async function withCmsCommitAuthority<T>(
         const admitted
           = input.mutation === 'image-billing'
             ? await authorizePageStudioBusinessContent({ ...request, collectionAccess: true }, false, deps)
-            : (input.mutation === 'business-content' || input.mutation === 'action-execution')
+            : (input.mutation === 'business-content' || input.mutation === 'action-execution' || input.mutation === 'email-generation')
                 ? await authorizePageStudioBusinessContent(input.mutation === 'action-execution' ? { ...request, collectionAccess: true } : request, true, deps)
                 : await authorizePageStudioCollections(
                     request,
