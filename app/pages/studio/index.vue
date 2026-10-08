@@ -39,7 +39,10 @@ async function signIn() {
   >
     <div v-if="sentTo" class="space-y-5" role="status">
       <UAlert
-        color="success"
+        color="neutral"
+        variant="soft"
+        class="rounded-none p-6"
+        :ui="{ icon: 'text-muted', title: 'font-medium text-highlighted', description: 'text-muted leading-6' }"
         title="Link requested"
         description="Your link expires in 15 minutes. Check your spam folder if it does not arrive."
         icon="i-lucide-mail-check"
@@ -54,7 +57,12 @@ async function signIn() {
         @click="sentTo = ''"
       />
     </div>
-    <form v-else id="studio-invitation-signin" class="space-y-6" @submit.prevent="signIn">
+    <form
+      v-else
+      id="studio-invitation-signin"
+      class="space-y-6"
+      @submit.prevent="signIn"
+    >
       <UFormField label="Email address" help="Use the email address your website team invited. We’ll send you a secure sign-in link." required>
         <UInput
           v-model="email"
@@ -81,7 +89,9 @@ async function signIn() {
       </p>
     </form>
     <template v-if="!sentTo" #footer>
-      <p class="text-sm text-muted">Your website, one step at a time.</p>
+      <p class="text-sm text-muted">
+        Your website, one step at a time.
+      </p>
       <UButton
         form="studio-invitation-signin"
         type="submit"
