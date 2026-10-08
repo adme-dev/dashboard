@@ -54,7 +54,7 @@ watch(() => props.title, async () => {
           </div>
         </div>
       </div>
-      <div class="w-full min-w-0 max-w-lg">
+      <div class="w-full min-w-0 max-w-lg xl:min-h-0">
         <slot />
       </div>
     </main>
@@ -84,6 +84,16 @@ watch(() => props.title, async () => {
 .studio-entry main {
   flex: 1;
   align-content: start;
+}
+@media (min-width: 1280px) {
+  .studio-entry {
+    height: 100dvh;
+  }
+  .studio-entry main {
+    min-height: 0;
+    overflow-y: auto;
+    align-content: stretch;
+  }
 }
 .studio-entry :deep(input:not([type='checkbox'])),
 .studio-entry :deep([role='combobox']) {
