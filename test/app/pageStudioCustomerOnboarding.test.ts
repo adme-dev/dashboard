@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick, ref, reactive, computed, watch, onMounted, type App } from 'vue'
+import TopicPicker from '~~/app/components/studio/TopicPicker.vue'
+import GoalPicker from '~~/app/components/studio/GoalPicker.vue'
+import { writeSignupIntake, SIGNUP_INTAKE_KEY } from '~~/app/utils/pageStudioSignupIntake'
 import Onboarding from '~~/app/pages/studio/onboarding.vue'
 
 const api = '/api/portal/page-studio/customer'
@@ -20,6 +23,8 @@ function button(label: string) {
 async function mount() {
   host = document.createElement('div')
   app = createApp(Onboarding)
+  app.component('StudioTopicPicker', TopicPicker)
+  app.component('StudioGoalPicker', GoalPicker)
   app.component('StudioEntryShell', { template: '<div><header><slot name="header" /></header><slot /><footer><slot name="footer" /></footer></div>' })
   app.component('UButton', { props: ['disabled', 'loading', 'label'], template: '<button :disabled="disabled || loading">{{ label }}</button>' })
   app.component('UAlert', { props: ['title', 'description'], template: '<div>{{ title }} {{ description }}</div>' })
@@ -31,6 +36,7 @@ async function mount() {
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  window.localStorage.clear()
   for (const [name, value] of Object.entries({ ref, reactive, computed, watch, onMounted, definePageMeta: vi.fn(), useHead: vi.fn(), $fetch: fetchMock, navigateTo: navigate })) vi.stubGlobal(name, value)
 })
 afterEach(() => {
@@ -108,5 +114,32 @@ describe('customer setup steps', () => {
     await submitStep()
     expect(fetchMock).toHaveBeenLastCalledWith(`${api}/complete`, { method: 'POST', body: { expectedRevision: 5 } })
     expect(navigate).toHaveBeenCalledWith('/studio/dashboard', { replace: true })
+  })
+})
+
+describe('verified signup choices', () => {
+  it('restores choices for the verified account and saves them before creating its workspace', async () => {
+    writeSignupIntake(window.localStorage, 'paul@example.com', { businessType: 'Automotive', goals: ['vehicles', 'enquiries'] })
+    fetchMock.mockResolvedValueOnce({ revision: 0, workspaceId: null, draft: { businessName: '', businessType: '', timezone: 'UTC', goals: [] } })
+      .mockResolvedValueOnce({ email: 'paul@example.com' }).mockResolvedValueOnce({ revision: 1 }).mockResolvedValueOnce({ workspaceId: 'automotive-workspace' })
+    await mount()
+    expect(host.textContent).toContain('Website topic: Automotive')
+    expect(button('Create my workspace')).toBeTruthy()
+    const name = host.querySelector('input')!
+    name.value = 'Example Motors'
+    name.dispatchEvent(new Event('input', { bubbles: true }))
+    await submitStep()
+    const saved = fetchMock.mock.calls.find(call => call[1]?.method === 'PUT')
+    expect(saved?.[1].body.draft).toMatchObject({ businessName: 'Example Motors', businessType: 'Automotive', goals: ['vehicles', 'enquiries'] })
+    expect(window.localStorage.getItem(SIGNUP_INTAKE_KEY)).toBeNull()
+    expect(navigate).toHaveBeenCalledWith('/studio/dashboard', { replace: true })
+  })
+  it('keeps an existing saved setup authoritative over browser preferences', async () => {
+    writeSignupIntake(window.localStorage, 'paul@example.com', { businessType: 'Automotive', goals: ['vehicles'] })
+    fetchMock.mockResolvedValueOnce({ revision: 1, workspaceId: null, draft: { businessName: 'Flowers', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] } })
+    await mount()
+    expect(host.textContent).toContain('Florist')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(button('Create my workspace')).toBeUndefined()
   })
 })
