@@ -34,11 +34,11 @@ describe('customer dashboard HTTP boundary', () => {
     mocks.create.mockResolvedValue({ state: 'preparing', canCreate: false })
   })
   const call = (body?: unknown, headers: Record<string, string> = {}) => fetch(`${base}/${body === undefined ? 'dashboard' : 'preview'}`, {
-    method: body === undefined ? 'GET' : 'POST', headers: { 'origin': 'https://studio.example.test', 'cookie': `studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers },
+    method: body === undefined ? 'GET' : 'POST', headers: { 'origin': 'https://studio.example.test', 'cookie': `__Host-studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   })
   const recover = (body: unknown, headers: Record<string, string> = {}) => fetch(`${base}/recover`, {
-    method: 'POST', headers: { 'origin': 'https://studio.example.test', 'cookie': `studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers }, body: JSON.stringify(body)
+    method: 'POST', headers: { 'origin': 'https://studio.example.test', 'cookie': `__Host-studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers }, body: JSON.stringify(body)
   })
   it('requires the current cookie, exact origin and strict recovery challenge before dispatch', async () => {
     const body = { recoveryId: '11111111-1111-4111-8111-111111111111', expectedRecoveryId: null, expectedJobDigest: 'a'.repeat(64) }

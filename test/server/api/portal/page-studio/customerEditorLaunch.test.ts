@@ -35,7 +35,7 @@ describe('native customer editor launch HTTP', () => {
     mocks.launch.mockResolvedValue({ token: 'b'.repeat(64), editorOrigin: 'https://editor.example.test', expiresAt: new Date(Date.now() + 60000).toISOString() })
   })
   const call = (body: unknown = {}, headers: Record<string, string> = {}, path = '/editor', method = 'POST') => fetch(`${base}${path}`, {
-    method, headers: { 'origin': 'https://customers.example.test', 'cookie': `studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers },
+    method, headers: { 'origin': 'https://customers.example.test', 'cookie': `__Host-studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers },
     ...(method === 'GET' ? {} : { body: JSON.stringify(body) })
   })
   it('projects availability without issuing a ticket and launches only on explicit POST', async () => {

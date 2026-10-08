@@ -6,8 +6,12 @@ import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { customerEmailAvailable, sendCustomerSignInEmail } from './customerSignupEmail'
 import { requestCustomerSignIn, verifyCustomerSignIn, readCustomerSession, revokeCustomerSession, readCustomerSetup, saveCustomerSetup, completeCustomerSetup } from './customerSignup'
 
-const COOKIE = 'studio_customer_session'
 export interface CustomerSignupConfig { origin: string, termsVersion: string, from: string }
+function cookieName(config: CustomerSignupConfig) {
+  // Published sibling sites must not be able to supply a parent-domain session cookie.
+  // The unprefixed name is only used by the validated development HTTP loopback origin.
+  return config.origin.startsWith('https:') ? '__Host-studio_customer_session' : 'studio_customer_session'
+}
 function setting(event: H3Event, key: string): string {
   const value = event.context.cloudflare?.env?.[key] ?? process.env[key]
   return typeof value === 'string' ? value.trim() : ''
@@ -37,7 +41,7 @@ function guard(event: H3Event, method: 'GET' | 'POST' | 'PUT') {
   return config
 }
 function sessionToken(event: H3Event) {
-  const token = getCookie(event, COOKIE)
+  const token = getCookie(event, cookieName(customerSignupConfig(event)))
   if (!token || !/^[A-Za-z0-9_-]{64}$/.test(token)) throw createError({ statusCode: 401, statusMessage: 'Sign in to continue.' })
   return token
 }
@@ -90,7 +94,7 @@ export async function customerVerifyHandler(event: H3Event) {
   const input = await body(event, z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{64}$/) }).strict())
   await ipLimit(event, 'verify', 30)
   const result = await verifyCustomerSignIn(input.token)
-  setCookie(event, COOKIE, result.sessionToken, { httpOnly: true, secure: config.origin.startsWith('https:'), sameSite: 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 })
+  setCookie(event, cookieName(config), result.sessionToken, { httpOnly: true, secure: config.origin.startsWith('https:'), sameSite: 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 })
   return { next: '/studio/onboarding' }
 }
 export async function customerMeHandler(event: H3Event) {
@@ -100,8 +104,8 @@ export async function customerMeHandler(event: H3Event) {
 }
 export async function customerLogoutHandler(event: H3Event) {
   const config = guard(event, 'POST')
-  await revokeCustomerSession(getCookie(event, COOKIE))
-  deleteCookie(event, COOKIE, { path: '/', httpOnly: true, secure: config.origin.startsWith('https:'), sameSite: 'lax' })
+  await revokeCustomerSession(getCookie(event, cookieName(config)))
+  deleteCookie(event, cookieName(config), { path: '/', httpOnly: true, secure: config.origin.startsWith('https:'), sameSite: 'lax' })
   return { success: true }
 }
 export async function customerSetupHandler(event: H3Event) {

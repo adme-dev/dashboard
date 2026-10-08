@@ -87,7 +87,7 @@ describe('standalone signup HTTP boundaries', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ next: '/studio/onboarding' })
     const cookie = response.headers.get('set-cookie')!
-    expect(cookie).toContain('studio_customer_session=')
+    expect(cookie).toMatch(/^__Host-studio_customer_session=/)
     for (const attr of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/']) expect(cookie).toContain(attr)
     expect(cookie).not.toContain('Domain=')
   })
@@ -100,8 +100,20 @@ describe('standalone signup HTTP boundaries', () => {
     expect((await call('setup', undefined, { cookie: 'client_session_token=portal; session_token=staff' })).status).toBe(401)
     expect(mocks.setup).not.toHaveBeenCalled()
   })
+  it.each(['me', 'setup'])('rejects an unprefixed parent-domain cookie for %s', async (route) => {
+    expect((await call(route, undefined, { cookie: `studio_customer_session=${'A'.repeat(64)}` })).status).toBe(401)
+    expect(mocks.me).not.toHaveBeenCalled()
+    expect(mocks.setup).not.toHaveBeenCalled()
+  })
+  it.each([true, false])('ignores a competing legacy cookie regardless of order (legacy first: %s)', async (legacyFirst) => {
+    const cookies = [`studio_customer_session=${'A'.repeat(64)}`, `__Host-studio_customer_session=${'B'.repeat(64)}`]
+    const cookie = (legacyFirst ? cookies : cookies.reverse()).join('; ')
+    mocks.setup.mockResolvedValueOnce({ revision: 0 })
+    expect((await call('setup', undefined, { cookie })).status).toBe(200)
+    expect(mocks.setup).toHaveBeenCalledWith('B'.repeat(64))
+  })
   it('derives the setup actor only from the standalone cookie and rejects foreign IDs', async () => {
-    const cookie = `studio_customer_session=${'B'.repeat(64)}`
+    const cookie = `__Host-studio_customer_session=${'B'.repeat(64)}`
     mocks.setup.mockResolvedValueOnce({ revision: 0 })
     expect((await call('setup', undefined, { cookie })).status).toBe(200)
     expect(mocks.setup).toHaveBeenCalledWith('B'.repeat(64))
@@ -109,8 +121,11 @@ describe('standalone signup HTTP boundaries', () => {
     expect(mocks.complete).not.toHaveBeenCalled()
   })
   it('revokes the current session and deletes its cookie on logout', async () => {
-    const response = await call('logout', {}, { cookie: `studio_customer_session=${'B'.repeat(64)}` })
+    const response = await call('logout', {}, { cookie: `__Host-studio_customer_session=${'B'.repeat(64)}; studio_customer_session=${'A'.repeat(64)}` })
     expect(mocks.logout).toHaveBeenCalledWith('B'.repeat(64))
-    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+    const cookie = response.headers.get('set-cookie')!
+    expect(cookie).toMatch(/^__Host-studio_customer_session=/)
+    for (const attr of ['Max-Age=0', 'HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/']) expect(cookie).toContain(attr)
+    expect(cookie).not.toContain('Domain=')
   })
 })
