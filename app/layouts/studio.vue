@@ -14,14 +14,11 @@ async function signOut() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-default text-default">
+  <div class="min-h-dvh bg-default text-default xl:pr-[18%]">
     <header class="border-b border-default">
-      <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-        <NuxtLink to="/studio/sites" class="flex items-center gap-2 font-semibold text-highlighted">
-          <UIcon name="i-lucide-panels-top-left" class="size-5 text-highlighted" />
-          Page Studio
-        </NuxtLink>
-        <nav aria-label="Page Studio" class="flex items-center gap-2">
+      <div class="flex min-h-24 flex-wrap items-center justify-between gap-4 px-6 py-5 sm:px-10">
+        <StudioBrand to="/studio/sites" />
+        <nav aria-label="Page Studio" class="flex flex-wrap items-center gap-1 sm:gap-2">
           <UButton
             to="/studio/sites"
             label="My sites"
@@ -35,6 +32,7 @@ async function signOut() {
             variant="ghost"
           />
           <span v-if="user?.clientName" class="hidden max-w-48 truncate px-2 text-sm text-muted sm:block">{{ user.clientName }}</span>
+          <StudioThemeToggle />
           <UButton
             label="Sign out"
             color="neutral"
@@ -46,8 +44,9 @@ async function signOut() {
         </nav>
       </div>
     </header>
-    <main class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+    <main class="mx-auto w-full max-w-[1440px] px-6 py-10 sm:px-10 sm:py-14">
       <slot />
     </main>
+    <StudioArtPanel class="fixed inset-y-2 right-2 hidden w-[calc(18%-8px)] xl:block" />
   </div>
 </template>

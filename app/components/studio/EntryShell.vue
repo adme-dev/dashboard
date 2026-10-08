@@ -9,12 +9,10 @@ watch(() => props.title, async () => {
 
 <template>
   <div class="studio-entry min-h-dvh bg-default text-default lg:pr-[26%]">
-    <header class="flex min-h-24 items-center justify-between gap-4 px-6 sm:px-10">
-      <NuxtLink :to="homeTo ?? '/studio/signup'" class="inline-flex items-center gap-3 text-highlighted" aria-label="XeroFlow Page Studio">
-        <span class="flex size-9 items-center justify-center rounded-lg bg-inverted text-sm font-semibold text-inverted">XF</span>
-        <span class="text-lg font-medium tracking-tight">Page Studio</span>
-      </NuxtLink>
-      <div class="shrink-0 text-sm">
+    <header class="flex min-h-24 flex-wrap items-center justify-between gap-4 px-6 py-5 sm:px-10">
+      <StudioBrand :to="homeTo ?? '/studio/signup'" />
+      <div class="flex shrink-0 items-center gap-2 text-sm">
+        <StudioThemeToggle />
         <slot name="header">
           <UButton
             to="/support"
@@ -63,16 +61,7 @@ watch(() => props.title, async () => {
       <slot name="footer" />
     </footer>
 
-    <aside class="fixed inset-y-2 right-2 hidden w-[calc(26%-8px)] overflow-hidden bg-neutral-200 lg:block" aria-hidden="true">
-      <img
-        src="/images/studio/artistic-panel.webp"
-        alt=""
-        width="941"
-        height="1672"
-        fetchpriority="high"
-        class="h-full w-full object-cover object-[52%_center]"
-      >
-    </aside>
+    <StudioArtPanel class="fixed inset-y-2 right-2 hidden w-[calc(26%-8px)] lg:block" />
   </div>
 </template>
 
