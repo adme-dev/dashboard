@@ -2,7 +2,7 @@
 
 Status: confirmed product direction; implementation in progress, broader CMS not complete.
 Owner: XeroFlow Product and Engineering.
-Last updated: 1 October 2026.
+Last updated: 8 October 2026 (product-domain decision; implementation checkpoints retain their dates).
 
 ## 1. Authority and purpose
 
@@ -122,12 +122,22 @@ Use a branded product origin for signup/login/CMS. Keep XeroFlow's agency entry 
 
 | Host purpose | Requirement |
 | --- | --- |
-| Product application | Trusted, configured origin for signup, CMS, help and branded authentication callbacks; exact brand/hostname remains to be chosen |
+| Product application | Owner-selected `https://xeroflowpages.com` (8 October 2026); trusted, configured origin for signup, CMS, help and branded authentication callbacks |
 | XeroFlow agency application | Existing staff portfolio and client operations; shared service contracts do not confer staff rights on product customers |
 | Visual editor | Approved editor origin with short-lived scoped handoff; no transferable agency session in URLs |
 | Preview/published user content | Isolated origin boundary from privileged applications; customer/generated scripts cannot read application cookies or credentials |
 | Customer custom website domain | Verified ownership, unique site/environment binding, DNS and TLS checks, primary-domain/canonical redirect behaviour, safe removal/reassignment |
 | Customer-branded CMS hostname | Later optional capability; not required to launch the standalone product |
+
+The apex is connected to the existing application and currently opens production
+Studio invited-customer sign-in at `/studio`. Existing invitation emails retain
+the established XeroFlow application callback during this transition. The guided
+native signup flow remains on preview pending hosted acceptance; its production
+activation must configure the exact product origin above and verify the complete
+sign-in/setup/editor-return journey on that origin. Domain connection alone is
+not evidence that this journey is activated. Published-site wildcard and staging
+subdomains retain their separate delivery routes. Provider IDs and rollback are
+recorded in the [8 October release checkpoint](../plans/2026-10-08-page-studio-release-and-activation.md).
 
 Do not share a parent-domain authentication cookie with untrusted previews. Explicitly allowlist authentication return URLs, editor launches and server-side trusted hosts; do not derive email-link origins from arbitrary request headers. Cross-origin authentication must use an audited one-time exchange or identity-provider redirect with state/replay protection. Preserve tenant/site scope after every handoff. A custom published domain never becomes an authentication or management origin merely because it is attached to a site.
 
@@ -307,7 +317,36 @@ Track task completion through linked source/tests and hosted evidence, not gener
 
 ## 8. Delivery order and canonical backlog
 
-All 24 tasks remain open. RND-01 has preliminary research but incomplete routing/migration validation. RND-17 now has a persistence/access foundation in review in [PR #602](https://github.com/adme-dev/dashboard/pull/602): atomic workspace ownership, explicit legacy client binding, scoped agency grants and 23 PostgreSQL cases. The standalone verified-identity adapter, baseline resumable step form and workspace-only portion of RND-18/19/20 are now in review in [PR #603](https://github.com/adme-dev/dashboard/pull/603). Legacy identity cutover, production migration validation, conditional onboarding questions, approved trial/plan/site provisioning, and hosted acceptance remain open. The internal owner registry and approved preview-site creation portion of RND-20 are in review in [PR #604](https://github.com/adme-dev/dashboard/pull/604). The internal customer-session provisioning/first-checkpoint portion of RND-21 is in review in [Dashboard PR #605](https://github.com/adme-dev/dashboard/pull/605) and [Studio PR #110](https://github.com/adme-dev/xeroflow-page-studio/pull/110). The customer create/progress/overview portion is now in review in [PR #606](https://github.com/adme-dev/dashboard/pull/606). The internal one-use customer handoff prerequisite is in review in [PR #607](https://github.com/adme-dev/dashboard/pull/607). The private native customer session and checkpoint metadata boundary is in review in [Dashboard PR #608](https://github.com/adme-dev/dashboard/pull/608) and [Studio PR #111](https://github.com/adme-dev/xeroflow-page-studio/pull/111). Typed document/storage validation is now in review in [Studio PR #112](https://github.com/adme-dev/xeroflow-page-studio/pull/112), ordinary managed-CMS saves in [Dashboard PR #609](https://github.com/adme-dev/dashboard/pull/609), and customer CMS adoption in [Dashboard PR #610](https://github.com/adme-dev/dashboard/pull/610) and [Studio PR #113](https://github.com/adme-dev/xeroflow-page-studio/pull/113). Explicit provisioning recovery is in review in [Dashboard PR #611](https://github.com/adme-dev/dashboard/pull/611) and [Studio PR #114](https://github.com/adme-dev/xeroflow-page-studio/pull/114). Native customer authorization for prerequisite collection/workflow/CMS staging upgrades is in review in [Dashboard PR #612](https://github.com/adme-dev/dashboard/pull/612) and [Studio PR #115](https://github.com/adme-dev/xeroflow-page-studio/pull/115). The private customer workspace lifecycle is in review in [Studio PR #116](https://github.com/adme-dev/xeroflow-page-studio/pull/116), and the gated browser checkpoint save integration is in review in [Studio PR #117](https://github.com/adme-dev/xeroflow-page-studio/pull/117). [Studio PR #118](https://github.com/adme-dev/xeroflow-page-studio/pull/118) adds the gated Studio launch/cookie/preview/socket/return consumer and native customer editor presentation. [Dashboard PR #613](https://github.com/adme-dev/dashboard/pull/613) adds the native dashboard launch producer/button, managed readiness checks and real Chrome form/CSP verification. Next complete hosted two-customer database/runtime/bucket receipt acceptance. Local isolation tests do not close hosted acceptance. IDs remain stable across the supporting documents. This is the only maintained task-status ledger for this PRD.
+All 24 tasks remain open until their full acceptance requirements are met; a
+merged foundation or a local fixture does not close an end-to-end task. As of
+8 October, Dashboard's customer foundation and native UI stack (#602–613) is
+integrated through #632/#633. Email transport and guided topic/goals/account UI
+follow-ups #637/#639/#640 are also merged. Production customer gates remain
+closed. The current source, deployed artifacts, account verification and retained
+acceptance gaps are recorded in the [release checkpoint](../plans/2026-10-08-page-studio-release-and-activation.md).
+The implementation entries in section 6 retain their historical source/test evidence;
+their earlier “in review” and “next” statements are not current integration status.
+
+Studio's corresponding #110–118 stack and later CMS form/template drafts are
+retained in consolidated draft [PR #119](https://github.com/adme-dev/xeroflow-page-studio/pull/119).
+Its fresh CI exposed dependency advisories before tests. Isolated remediation
+[PR #120](https://github.com/adme-dev/xeroflow-page-studio/pull/120) removes those
+advisories without audit exceptions; cross-platform verification is in progress.
+Neither draft is a customer activation or a new Worker release.
+
+Next complete supported onboarding for both approved test accounts, exact scoped
+staging approvals, verified database/runtime/bucket receipts and the
+[native two-customer acceptance matrix](../plans/2026-10-02-native-forms-acceptance.md).
+Account A is email-verified; account B verification and both workspace setups are
+pending. Do not substitute portal identities or local fixtures for that evidence.
+The owner-selected product apex is connected, but customer custom-domain ownership,
+first publishing, and full callback/editor return acceptance remain RND-22/23 work.
+
+Conditional onboarding, public trial/commercial policy, legacy cutover, published
+form outcomes, AI template proposals, durable delivery/outbox, wider CMS modules
+and the remaining task-specific requirements below stay open. Stable task IDs and
+acceptance requirements in this ledger remain authoritative; supporting receipts
+record implementation and release evidence without reducing their scope.
 
 1. **Identity and ownership foundation:** RND-01 and RND-17 — map current stores/identities and define customer workspace, agency grants and payer relationships. Validate on two isolated fixtures before adding signup.
 2. **Standalone onboarding:** RND-18–RND-21 — verified owner signup, resumable step form, idempotent customer/site creation and provisioning into the CMS. Existing invited customers converge on the same dashboard.
@@ -364,7 +403,7 @@ RND IDs describe deliverables; split larger deliverables into focused implementa
 
 ## 9. Open technical decisions and scope boundaries
 
-Before the corresponding capability ships, resolve storage adapters/outbox transactions and legacy cutover; role mapping; instance duplication; operational versus publication activation; safe redirect/egress strategy; provider onboarding; retry/retention limits; visitor identity provider; country/language support; and exact metric definitions. Public owner self-signup and dual standalone/agency entry are now in scope. Resolve the exact product name/hostname, identity-provider integration, workspace-to-existing-client schema mapping, starter trial/plan policy, supported payer transitions and standalone publication authority before their respective implementation slices. Customer-branded admin domains remain a later option.
+Before the corresponding capability ships, resolve storage adapters/outbox transactions and legacy cutover; role mapping; instance duplication; operational versus publication activation; safe redirect/egress strategy; provider onboarding; retry/retention limits; visitor identity provider; country/language support; and exact metric definitions. Public owner self-signup and dual standalone/agency entry are now in scope. The product entry hostname is now `xeroflowpages.com` as recorded in section 3.2. Resolve identity-provider integration, workspace-to-existing-client schema mapping, starter trial/plan policy, supported payer transitions and standalone publication authority before their respective implementation slices. Customer-branded admin domains remain a later option.
 
 This phase does not promise complete feature parity with any competitor, arbitrary app/backend generation, a replacement agency CRM, a general financial decision engine or an immediately available commerce/payment provider. Existing image billing design is not reopened. Broad product scope is recorded above; each capability ships through its acceptance gate.
 
