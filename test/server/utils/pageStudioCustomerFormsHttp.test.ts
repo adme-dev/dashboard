@@ -17,6 +17,10 @@ function http(env: Record<string, unknown> = config, dependencies = {}) {
     event.context.cloudflare = { env }
     return customerFormsHandler(event, 'workspace', 'GET', dependencies)
   }))
+  router.use('/sites/:siteId/fields/:audience', eventHandler((event) => {
+    event.context.cloudflare = { env }
+    return customerFormsHandler(event, 'template-fields', 'GET', dependencies)
+  }))
   router.use('/sites/:siteId/recipients', eventHandler((event) => {
     event.context.cloudflare = { env }
     return customerFormsHandler(event, 'recipients', 'PUT', dependencies)
@@ -192,4 +196,13 @@ it('rechecks native authority after the private renderer responds over HTTP', as
   expect(render).toHaveBeenCalledOnce()
   expect(response.status).toBe(403)
   expect(await response.text()).not.toContain('<!DOCTYPE html>')
+})
+
+it('native field options cannot use portal cookies or disclose fields without a native session and ready capability', async () => {
+  const d = deps()
+  const handle = http(config, d)
+  const url = `https://studio.test/sites/${scope.siteId}/fields/team?pageId=home&formId=contact`
+  expect((await handle(new Request(url, { headers: { cookie: 'client_session_token=' + 'b'.repeat(64) } }))).status).toBe(401)
+  expect((await http({ ...config, PAGE_STUDIO_CUSTOMER_FORMS_ENABLED: 'false' }, d)(new Request(url))).status).toBe(404)
+  expect(d.document).not.toHaveBeenCalled()
 })

@@ -1,5 +1,14 @@
 # Page Studio production release and activation checkpoint — 8 October 2026
 
+
+9 October local increment: the manual saved-field picker, explicit fallback repair,
+parent Undo/Redo and neutral renderer/storage compatibility negotiation are implemented.
+Actual local browser QA caught and fixed authority snapshots cloning RPC methods.
+Both reviewed sources remain local only; no Actions, push, deployment, paid model
+call, email delivery or customer activation occurred. Coordinated renderer/router/
+retained-runtime rollout and real native hosted acceptance remain required.
+See [field reference design and local acceptance](2026-10-09-email-template-field-references.md).
+
 ## 9 October source reconciliation
 
 This section supersedes older current-source statements below; dated release

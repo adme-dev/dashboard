@@ -10,7 +10,7 @@ function fixture() {
   const fields = [{ id: 'canonical_name', name: 'Name', type: 'text' }]
   const doc = { id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId, name: 'Demo' }, studio: { checkpointId: 'checkpoint_one', pages: [{ id: 'home', title: 'Home', route: '/', forms: [{ id: 'legacy_booking', name: 'Booking', fields: [{ ...fields[0], id: 'legacy_name' }] }] }], formLibrary: { schemaVersion: 1, definitions: [{ id: 'booking', revision: 1, form: { id: 'canonical_booking', name: 'Booking', fields }, placements: [{ pageId: 'home', formId: 'legacy_booking', fieldIds: { legacy_name: 'canonical_name' } }] }] } } }
   let saved: unknown = null
-  const service = { readEmailTemplateDraft: vi.fn(async () => saved), writeEmailTemplateDraft: vi.fn(async ({ expectedRevision, ...input }) => {
+  const service = { readEmailTemplateDraft: vi.fn(async input => (input as { contractVersion?: number }).contractVersion === 2 ? { scope, contractVersion: 2 } : saved), writeEmailTemplateDraft: vi.fn(async ({ expectedRevision, ...input }) => {
     saved = { ...input, revision: expectedRevision + 1, updatedAt: '2026-10-09T00:00:00.000Z' }
     return saved
   }) }
@@ -56,6 +56,17 @@ describe('current owned schema for email field references', () => {
     }
     expect(f.service.writeEmailTemplateDraft).toHaveBeenCalledTimes(1)
   })
+  it('withholds V2 writes and previews when installed storage cannot acknowledge the new format', async () => {
+    const f = fixture()
+    f.service.readEmailTemplateDraft.mockImplementation(async (input) => {
+      if ((input as { contractVersion?: number }).contractVersion === 2) throw new Error('Older codec')
+      return null
+    })
+    await expect(operateTrustedEmailTemplate(f.context, 'customer', f.edit)).rejects.toMatchObject({ statusCode: 503 })
+    await expect(previewTrustedEmailTemplate(f.context, 'customer', { template, pageId: 'home', formId: 'legacy_booking' })).rejects.toMatchObject({ statusCode: 503 })
+    expect(f.service.writeEmailTemplateDraft).not.toHaveBeenCalled()
+  })
+
   it('withholds preview when schema changes during rendering', async () => {
     const f = fixture()
     vi.mocked(f.context.renderEmailPreview).mockImplementation(async (...args) => {

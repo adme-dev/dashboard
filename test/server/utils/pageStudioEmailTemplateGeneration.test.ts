@@ -11,8 +11,8 @@ function setup() {
   const document = { id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId, name: 'Example business' }, studio: { checkpointId: 'checkpoint', pages: [{ id: 'contact', title: 'Contact', route: '/contact', forms: [{ id: 'enquiry', name: 'Contact form', fields: [{ id: 'name', name: 'Name', type: 'text', defaultValue: 'Private answer must not leak' }] }] }] } }
   const context = {
     authorize: vi.fn().mockResolvedValue(authority), readDocument: vi.fn().mockResolvedValue(document),
-    service: { readEmailTemplateDraft: vi.fn().mockResolvedValue(null), writeEmailTemplateDraft: vi.fn() },
-    resolveMedia: vi.fn().mockResolvedValue({ images: {}, warnings: [] }), renderEmailPreview: vi.fn()
+    service: { readEmailTemplateDraft: vi.fn(async input => (input as { contractVersion?: number }).contractVersion === 2 ? { scope, contractVersion: 2 } : null), writeEmailTemplateDraft: vi.fn() },
+    resolveMedia: vi.fn().mockResolvedValue({ images: {}, warnings: [] }), renderEmailPreview: vi.fn().mockResolvedValue({ subject: 'Field support check', preheader: '', html: '<p>Field support check</p>', sample: true })
   } as unknown as TrustedFormContext
   const invoke = vi.fn().mockResolvedValue(JSON.stringify(output))
   const execution = {
@@ -26,6 +26,13 @@ function setup() {
 }
 
 describe('authenticated email template proposal generation orchestration', () => {
+  it('excludes adapter service methods from the authority passed to usage accounting', async () => {
+    const s = setup()
+    vi.mocked(s.context.authorize).mockResolvedValue({ ...s.authority, service: { read: () => null } } as typeof s.authority)
+    await s.run()
+    expect(s.execution.reserve).toHaveBeenCalledWith(expect.objectContaining({ authority: s.authority }))
+    expect(s.execution.reserve.mock.calls[0][0].authority).not.toHaveProperty('service')
+  })
   it('reserves once, passes only design and field schema, settles and returns a reviewable proposal without saving', async () => {
     const s = setup()
     const result = await s.run()
@@ -62,6 +69,14 @@ describe('authenticated email template proposal generation orchestration', () =>
     await expect(s.run()).rejects.toMatchObject({ statusCode: 502 })
     expect(s.execution.settle).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'failed' }))
   })
+  it('does not reserve usage for a V2 input when installed services are older', async () => {
+    const s = setup()
+    Object.assign(s.body.template, { schemaVersion: 2, subject: '{{field.contact:enquiry.name}}', fieldBindings: [{ formKey: 'contact:enquiry', fieldId: 'name', type: 'text', fallback: '' }] })
+    vi.mocked(s.context.renderEmailPreview).mockRejectedValue(new Error('Old renderer'))
+    await expect(s.run()).rejects.toMatchObject({ statusCode: 503 })
+    expect(s.execution.reserve).not.toHaveBeenCalled()
+  })
+
   it('rejects a stale manually bound input before reserving paid usage', async () => {
     const s = setup()
     Object.assign(s.body.template, { schemaVersion: 2, subject: '{{field.contact:enquiry.missing}}', fieldBindings: [{ formKey: 'contact:enquiry', fieldId: 'missing', type: 'text', fallback: '' }] })

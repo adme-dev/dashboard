@@ -1,3 +1,4 @@
+import { requireEmailFieldReferences } from './emailTemplateFieldSupport'
 import { portalFormContext } from './portalFormContext'
 import { validateEmailTemplateFieldBindings } from '~~/shared/pageStudio/emailTemplateFields'
 import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
@@ -57,6 +58,7 @@ export async function operateTrustedEmailTemplate(context: TrustedFormContext, a
   if (proposed?.template) {
     const errors = fieldErrors(proposed.template, document, definitionId)
     if (errors.length) throw invalid(errors[0]!)
+    if (proposed.template.schemaVersion === 2) await requireEmailFieldReferences(context, before, parsedAudience.data, true)
   }
 
   await recheckFormAuthority(context, before, writing)
@@ -140,6 +142,7 @@ export async function previewTrustedEmailTemplate(context: TrustedFormContext, a
   if (!form?.fields) throw new PageStudioBusinessContentError('FORM_NOT_FOUND', 404, 'Choose a saved form for the preview')
   const errors = fieldErrors(parsed.data.template, document)
   if (errors.length) throw invalid(errors[0]!)
+  if (parsed.data.template.schemaVersion === 2) await requireEmailFieldReferences(context, before, EmailAudienceSchema.parse(audience), false)
   const media = await context.resolveMedia(parsed.data.template)
   await recheckFormAuthority(context, before, false)
   await recheckTemplateFields(context, before, parsed.data.template, document.studio!.checkpointId, false)

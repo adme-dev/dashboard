@@ -6,9 +6,10 @@ import { operateTrustedFormSettings } from './formSettings'
 import { operateTrustedFormRecipients } from './formRecipients'
 import { operateTrustedEmailTemplate, previewTrustedEmailTemplate, listTrustedEmailTemplateHistory, readTrustedEmailTemplateRevision } from './emailTemplates'
 import { EmailTemplateHistoryQuerySchema, EmailTemplateRevisionParamSchema } from '~~/shared/pageStudio/emailTemplates'
+import { readEmailTemplateFieldOptions } from './emailTemplateFieldSupport'
 import { readScopedMedia } from './standaloneMedia'
 
-type Operation = 'workspace' | 'asset' | 'settings' | 'recipients' | 'template' | 'website' | 'availability' | 'template-history' | 'template-history-version'
+type Operation = 'workspace' | 'asset' | 'settings' | 'recipients' | 'template' | 'website' | 'availability' | 'template-history' | 'template-history-version' | 'template-fields'
 export function customerFormsEnabled(event: H3Event) {
   const env = event.context.cloudflare?.env ?? {}
   return (env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED ?? process.env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED) === 'true'
@@ -46,6 +47,7 @@ export async function customerFormsHandler(event: H3Event, operation: Operation,
       : await readPageStudioJson(event, operation === 'settings' ? 48_000 : 300_000,
           ['Settings must be JSON', 'Settings are too large', 'Settings are required', 'Invalid settings', 'Invalid settings JSON'])
     const context = createCustomerFormContext({ sessionToken, siteId, environment: 'staging' }, env, deps)
+    if (operation === 'template-fields') return await readEmailTemplateFieldOptions(context, getRouterParam(event, 'audience') ?? '', getQuery(event), getRouterParam(event, 'definitionId'), 'customer')
     if (operation === 'template-history' || operation === 'template-history-version') {
       const query = getQuery(event)
       const cursor = EmailTemplateHistoryQuerySchema.safeParse(query)

@@ -1,8 +1,9 @@
 # Stable email field references — local contract, 9 October 2026
 
 Implements the validator, private renderer, generation admission and owned draft
-runtime portion of the accepted email-template plan. This is not hosted acceptance,
-a manual field picker or delivery activation.
+runtime portion of the accepted email-template plan, now including the local manual
+field picker and compatibility admission. Hosted acceptance and delivery activation
+remain pending.
 
 ## Contract
 
@@ -59,6 +60,31 @@ manual picker exposure. Do not enable field references against an older runtime.
 Existing managed installation, exact artifact, authority and capability gates remain
 in force. No new migration, public RPC, entitlement or native AI allowance is added.
 
+## Manual picker and compatibility admission
+
+The local editor offers saved visible fields, an explicit fallback (blank allowed),
+and Insert into subject, preheader or text-bearing blocks. One insertion is one
+unsaved history change. Binding fallback edits follow Undo; deliberately typed
+pending fallback text survives response refreshes. Use fallback text replaces all
+exact occurrences and removes the binding, returning to V1 when none remain.
+Variable-looking fallback text must be edited before conversion; rendering itself
+continues to treat it literally. Read-only and busy states withhold edits.
+
+Availability is a read-only, current-authority check: the existing private draft
+read RPC accepts a strict `{scope, audience, contractVersion:2}` probe. The installed
+runtime confirms codec support only after the existing template table is readable.
+The router validates the exact scope and rechecks managed route/capability after
+reply. Ordinary V1 reads preserve their strict original request/response shape.
+Dashboard additionally probes the real private V2 renderer with neutral synthetic
+content. The picker requires matching site, session surface, form key and checkpoint.
+Hidden fields, defaults and enquiry answers are excluded from field options.
+
+V2 save/preview/generation are withheld without both services. Generation derives
+its availability flag on the server and rejects V2 input before reserving usage
+when services are older. A provider cannot add V2 output when unavailable. Authority
+snapshots copy only scope, actor ID, authority key and edit permission: actual
+adapters also carry RPC services, which cannot safely be structured-cloned.
+
 ## Acceptance checklist
 
 - [x] Bounded V2 contract, literal fallbacks and legacy wire preservation.
@@ -68,7 +94,8 @@ in force. No new migration, public RPC, entitlement or native AI allowance is ad
 - [x] Customer SQLite immutable revision/history and stale-save checks.
 - [x] Independent code review and focused tests.
 - [x] Final local build/size, changed-file types/lint and broad regression checks.
-- [ ] Manual field picker and fallback controls with Undo/preview/Apply acceptance.
+- [x] Local manual field picker, fallback repair, parent Undo/Redo and real private preview.
+- [ ] Hosted picker and AI Apply acceptance after coordinated service release.
 - [ ] Coordinated matching renderer/router/runtime release and hosted acceptance.
 
 No paid model call, email, GitHub Actions, deployment or customer activation was used.
@@ -85,3 +112,28 @@ Native: build 28 tasks, types 44 plus security types, test 40 package tasks plus
 security and 8 operator tests, and full lint 1574 files pass. Four existing publisher
 skips remain. Independent code review approved the contract after 163 Dashboard and 8
 native tests; later V1/repair regressions also pass. No remote CI or deployment.
+
+## 9 October manual picker validation
+
+Local browser QA used the existing copied PostgreSQL workspace, owned SQLite draft
+store built from the matching native source and actual private renderer. Verified
+Insert, Undo/Redo, selected synthetic answer, foreign-form fallback, mobile email
+preview and light/dark controls. Restored the original revision-10 Team draft
+without saving; no original demo files, production data or draft history changed.
+No new device viewport acceptance is claimed. Two adapter-function snapshot
+regressions failed with DataCloneError before the correction and passed afterward.
+
+Independent review approves the picker and snapshot correction. Updated focused
+and broader validation receipts are recorded in the current local handoff; prior
+contract figures above refer to its earlier committed source, not this increment.
+
+Final picker build and review: Dashboard broader regression 209 passed with 31
+existing skips; 26 changed TypeScript/Vue files pass ESLint. The scoped Vue graph
+retains the same 205 normalised existing error identities (851 lines), with no
+new identities. Nuxt build/wrapping/size pass at raw 25,458,225/25,468,928 (10,703
+bytes spare), gzip 7,041,594/9,750,000. Repository typechecking is still not clean.
+Native compatibility increment passes build 28 tasks, types 44 plus security,
+full package/security/operator tests and lint 1576 files. Runtime candidate
+6cb34fd939e71028567270190fb6d02c59011b2cdc1c4b0497effb3f702367f5 is 911,081 bytes;
+releaseApproved remains false and no retained pins changed. Subsequent toolbar
+layout work is a separate local increment with its own tests and review.

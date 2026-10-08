@@ -10,6 +10,15 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [standalone style guide](../design/standalone-cms-style-guide.md),
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
 
+
+9 October local increment: the manual saved-field picker, explicit fallback repair,
+parent Undo/Redo and neutral renderer/storage compatibility negotiation are implemented.
+Actual local browser QA caught and fixed authority snapshots cloning RPC methods.
+Both reviewed sources remain local only; no Actions, push, deployment, paid model
+call, email delivery or customer activation occurred. Coordinated renderer/router/
+retained-runtime rollout and real native hosted acceptance remain required.
+See [field reference design and local acceptance](2026-10-09-email-template-field-references.md).
+
 ## Completed and verified locally
 
 - [x] Fantasy Limo standalone customer dashboard using its existing saved site.
@@ -57,7 +66,7 @@ Dashboard's six local email-AI commits through `dd44d62a4` connect proposal sche
 Gateway models, real CMS-login allowance, API and explicit preview/Apply UI. Operator
 models remain disabled and native preview allowance remains zero. The 9 October
 [field-reference contract](2026-10-09-email-template-field-references.md) adds local
-V2 validation/rendering/storage; manual controls, coordinated worker release and
+V2 validation/rendering/storage; hosted manual controls, coordinated worker release and
 hosted field/schema acceptance remain unfinished. See the
 [AI proposal plan](2026-10-08-email-template-ai-proposals.md) for exact boundaries.
 

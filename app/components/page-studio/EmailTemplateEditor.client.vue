@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageStudioEmailTemplateFields from './EmailTemplateFields.client.vue'
 import PageStudioEmailTemplateAi from './EmailTemplateAi.client.vue'
 import { EmailTemplateProposalDraftSchema } from '~~/shared/pageStudio/emailTemplateProposals'
 import PageStudioEmailTemplateHistory from './EmailTemplateHistory.client.vue'
@@ -170,6 +171,14 @@ watch(() => props.forms, (forms) => {
   if (!forms.some(form => form.key === previewForm.value)) previewForm.value = forms[0]?.key ?? '__none__'
 })
 const insertionTarget = ref('subject')
+const selectedPreview = computed(() => props.forms.find(item => item.key === previewForm.value))
+const fieldQuery = computed(() => ({ pageId: selectedPreview.value?.pageId ?? '__none__', formId: selectedPreview.value?.formId ?? '__none__' }))
+const { data: fieldOptions, pending: fieldOptionsPending } = useFetch(`${url}/fields`, { query: fieldQuery })
+function applyFieldEdit(value: EmailTemplate) {
+  if (!editable.value || saving.value || uncertain.value || aiBusy.value) return
+  template.value = value
+}
+
 const history = ref<string[]>([])
 const future = ref<string[]>([])
 let recording = true
@@ -538,6 +547,19 @@ async function discardAndReload() {
                         @click="insertVariable('{{form.name}}')"
                       />
                     </div>
+                    <PageStudioEmailTemplateFields
+                      :template="template"
+                      :site-id="siteId"
+                      :api-audience="apiAudience ?? 'portal'"
+                      :options="fieldOptions"
+                      :form-key="selectedPreview?.key ?? '__none__'"
+                      :checkpoint-id="checkpointId"
+                      :target="insertionTarget"
+                      :forms="forms"
+                      :loading="fieldOptionsPending"
+                      :disabled="!editable || saving || uncertain || aiBusy"
+                      @change="applyFieldEdit"
+                    />
                   </div>
                 </template>
               </UAccordion>

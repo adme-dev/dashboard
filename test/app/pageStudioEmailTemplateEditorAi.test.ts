@@ -24,7 +24,7 @@ function mount() {
   const data = ref({ activation: 'draft_only', canEdit: true, record: null }), refresh = vi.fn(), reload = vi.fn()
   const leave = vi.fn(), globalDirty = ref(false)
   for (const [name, value] of Object.entries({ computed, ref, watch, reactive, onBeforeUnmount, onBeforeRouteLeave: leave,
-    useState: () => globalDirty, useFetch: () => ({ data, pending: ref(false), error: ref(null), refresh }),
+    useState: () => globalDirty, useFetch: (url: string) => ({ data: url.endsWith('/fields') ? ref({ available: true, siteId: '30000000-0000-4000-8000-000000000001', apiAudience: 'portal', checkpointId: 'checkpoint', formKey: 'enquiry', fields: [{ fieldId: 'name', label: 'First name', type: 'text' }] }) : data, pending: ref(false), error: ref(null), refresh }),
     useEmailTemplatePreview: () => ({ preview: ref(null), status: ref('idle'), error: ref(''), refresh: vi.fn() }) })) vi.stubGlobal(name, value)
   host = document.createElement('div')
   document.body.appendChild(host)
@@ -32,8 +32,9 @@ function mount() {
   app.component('UButton', { props: ['label', 'disabled'], emits: ['click'], template: '<button :disabled="disabled" @click="$emit(\'click\')">{{ label }}<slot /></button>' })
   app.component('UInput', { props: ['modelValue'], template: '<input :value="modelValue">' })
   app.component('UFormField', { props: ['label'], template: '<label>{{ label }}<slot /></label>' })
-  for (const name of ['UAlert', 'UBadge', 'UIcon', 'USelect', 'USkeleton', 'UTabs', 'UTextarea', 'PageStudioEmailImageFields', 'PageStudioEmailMediaPicker']) app.component(name, { template: '<div><slot /></div>' })
-  app.component('UAccordion', { render: () => null })
+  app.component('USelect', { props: ['items', 'modelValue', 'disabled'], emits: ['update:modelValue'], template: '<select :value="modelValue" :disabled="disabled" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="item in items" :value="item.value">{{item.label}}</option></select>' })
+  for (const name of ['UAlert', 'UBadge', 'UIcon', 'USkeleton', 'UTabs', 'UTextarea', 'PageStudioEmailImageFields', 'PageStudioEmailMediaPicker']) app.component(name, { template: '<div><slot /></div>' })
+  app.component('UAccordion', { template: '<div><slot name="variables" /></div>' })
   app.component('UModal', { props: ['open'], template: '<div v-if="open"><slot name="footer" /></div>' })
   app.mount(host)
   const button = (label: string) => {
@@ -66,4 +67,33 @@ it('blocks reload and navigation while a proposal is in flight, then preserves A
   await nextTick()
   expect(host.querySelector('input')?.value).toBe(starterEmailTemplate('team').subject)
   expect(s.globalDirty.value).toBe(false)
+})
+
+it('records a complete manual field insertion and fallback conversion in the parent Undo and Redo history', async () => {
+  const s = mount()
+  await nextTick()
+  const select = host.querySelector('[aria-label="Form field text"] select') as HTMLSelectElement
+  select.value = 'name'
+  select.dispatchEvent(new Event('change'))
+  await nextTick()
+  const initial = starterEmailTemplate('team').subject
+  s.button('Insert field').click()
+  await nextTick()
+  expect(host.querySelector('input')?.value).toBe(`${initial}{{field.enquiry.name}}`)
+  expect(s.globalDirty.value).toBe(true)
+  s.button('Undo').click()
+  await nextTick()
+  expect(host.querySelector('input')?.value).toBe(initial)
+  expect(s.globalDirty.value).toBe(false)
+  expect(host.querySelector('[aria-label="Form field text"]')?.textContent).not.toContain('Use fallback text')
+  s.button('Redo').click()
+  await nextTick()
+  expect(host.querySelector('input')?.value).toBe(`${initial}{{field.enquiry.name}}`)
+  expect(host.querySelector('[aria-label="Form field text"]')?.textContent).toContain('Use fallback text')
+  s.button('Use fallback text').click()
+  await nextTick()
+  expect(host.querySelector('input')?.value).toBe(initial)
+  s.button('Undo').click()
+  await nextTick()
+  expect(host.querySelector('input')?.value).toBe(`${initial}{{field.enquiry.name}}`)
 })

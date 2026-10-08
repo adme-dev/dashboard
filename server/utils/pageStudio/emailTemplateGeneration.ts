@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { admitFormDocument, recheckFormAuthority, type TrustedFormContext, type TrustedFormAuthority } from './formAuthority'
+import { supportsEmailFieldReferences } from './emailTemplateFieldSupport'
+import { admitFormDocument, snapshotTrustedFormAuthority, recheckFormAuthority, type TrustedFormContext, type TrustedFormAuthority } from './formAuthority'
 import { PageStudioBusinessContentError } from './businessContent'
 import { PageStudioContentScopeSchema, samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
@@ -21,6 +22,7 @@ export interface EmailTemplateGenerationInput {
   siteName: string
   formName: string
   formKey: string
+  fieldReferencesAvailable: boolean
   fields: { id: string, name: string, type: string }[]
 }
 interface UsageOperation {
@@ -50,7 +52,7 @@ export async function generateEmailTemplateProposal(context: TrustedFormContext,
   if (!request.success || !selection.success) throw failure('EMAIL_AI_INVALID', 400, 'Check the email design request and try again.')
   const edit = request.data
   const selected = selection.data
-  const before = structuredClone(await context.authorize(true))
+  const before = snapshotTrustedFormAuthority(await context.authorize(true))
   if (!before.canEdit) throw failure('FORM_AUTHORITY_DENIED', 403, 'Form access denied')
 
   const readBase = async () => {
@@ -81,6 +83,8 @@ export async function generateEmailTemplateProposal(context: TrustedFormContext,
   }
   const base = await readBase()
   const { form } = base
+  const fieldReferencesAvailable = await supportsEmailFieldReferences(context, before, selected.audience, true)
+  if (edit.template.schemaVersion === 2 && !fieldReferencesAvailable) throw unavailable()
   const media = await context.resolveMedia(edit.template)
   await recheckFormAuthority(context, before, true)
   if (media.warnings.length) throw unavailable()
@@ -119,7 +123,7 @@ export async function generateEmailTemplateProposal(context: TrustedFormContext,
 
   let raw: string
   try {
-    raw = await model.invoke({ prompt, audience: selected.audience, template: edit.template, ...form })
+    raw = await model.invoke({ prompt, audience: selected.audience, template: edit.template, ...form, fieldReferencesAvailable })
   } catch {
     // Provider failure may mean a completed billable call. Retain the reservation;
     // neither a retry nor a refunded outcome can be inferred from transport errors.
@@ -136,6 +140,7 @@ export async function generateEmailTemplateProposal(context: TrustedFormContext,
   try {
     proposal = EmailTemplateProposalSchema.parse({ ...decodeEmailTemplateProposalOutput(raw), schemaVersion: 1, id: crypto.randomUUID(), baseDigest: snapshot.digest, modelId, operationId })
     applyEmailTemplateProposal(proposal, snapshot, draft)
+    if (proposal.template.schemaVersion === 2 && !fieldReferencesAvailable) throw unavailable()
     if (validateEmailTemplateFieldBindings(proposal.template, base.fieldSchemas, selected.definitionId).length) throw conflict()
     const offered = new Set([
       ...(edit.template.fieldBindings ?? []).map(emailFieldVariable),
