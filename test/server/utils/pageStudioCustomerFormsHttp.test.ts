@@ -56,7 +56,7 @@ describe('native form adapters', () => {
     const d = deps()
     const handle = http(config, d)
     expect((await handle(new Request(`https://studio.test/sites/${scope.siteId}/workspace`, { headers: { cookie: 'client_session_token=' + 'b'.repeat(64) } }))).status).toBe(401)
-    const response = await handle(new Request(`https://studio.test/sites/${scope.siteId}/workspace`, { headers: { cookie: 'studio_customer_session=' + input.sessionToken } }))
+    const response = await handle(new Request(`https://studio.test/sites/${scope.siteId}/workspace`, { headers: { cookie: '__Host-studio_customer_session=' + input.sessionToken } }))
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({ canEdit: true, document: { id: scope.siteId } })
     expect(d.authority.mock.calls.every(([value]) => value.sessionToken === input.sessionToken)).toBe(true)
@@ -68,13 +68,13 @@ describe('native form adapters', () => {
   })
   it('enforces exact origin for writes and read-only POST previews', async () => {
     for (const path of ['recipients', 'preview/team']) {
-      const response = await http()(new Request(`https://studio.test/sites/${scope.siteId}/${path}`, { method: path === 'recipients' ? 'PUT' : 'POST', headers: { 'origin': 'https://evil.test', 'cookie': 'studio_customer_session=' + input.sessionToken, 'content-type': 'application/json' }, body: '{}' }))
+      const response = await http()(new Request(`https://studio.test/sites/${scope.siteId}/${path}`, { method: path === 'recipients' ? 'PUT' : 'POST', headers: { 'origin': 'https://evil.test', 'cookie': '__Host-studio_customer_session=' + input.sessionToken, 'content-type': 'application/json' }, body: '{}' }))
       expect(response.status).toBe(403)
     }
   })
   it('rejects recipient bodies over the existing cap without Worker dispatch', async () => {
     const d = deps()
-    const response = await http(config, d)(new Request(`https://studio.test/sites/${scope.siteId}/recipients`, { method: 'PUT', headers: { 'origin': config.PAGE_STUDIO_CUSTOMER_ORIGIN, 'cookie': 'studio_customer_session=' + input.sessionToken, 'content-type': 'application/json' }, body: JSON.stringify({ padding: 'a'.repeat(300000) }) }))
+    const response = await http(config, d)(new Request(`https://studio.test/sites/${scope.siteId}/recipients`, { method: 'PUT', headers: { 'origin': config.PAGE_STUDIO_CUSTOMER_ORIGIN, 'cookie': '__Host-studio_customer_session=' + input.sessionToken, 'content-type': 'application/json' }, body: JSON.stringify({ padding: 'a'.repeat(300000) }) }))
     expect(response.status).toBe(413)
     expect(d.authority).not.toHaveBeenCalled()
   })
@@ -114,30 +114,30 @@ it('rejects an authority selection that differs from discovery even if rediscove
 })
 
 it.each([['settings', 'PUT', 48000], ['preview/team', 'POST', 300000]])('retains the %s observed byte cap', async (path, method, limit) => {
-  const response = await http()(new Request(`https://studio.test/sites/${scope.siteId}/${path}`, { method: String(method), headers: { 'origin': config.PAGE_STUDIO_CUSTOMER_ORIGIN, 'cookie': 'studio_customer_session=' + input.sessionToken, 'content-type': 'application/json' }, body: JSON.stringify({ padding: 'a'.repeat(Number(limit)) }) }))
+  const response = await http()(new Request(`https://studio.test/sites/${scope.siteId}/${path}`, { method: String(method), headers: { 'origin': config.PAGE_STUDIO_CUSTOMER_ORIGIN, 'cookie': '__Host-studio_customer_session=' + input.sessionToken, 'content-type': 'application/json' }, body: JSON.stringify({ padding: 'a'.repeat(Number(limit)) }) }))
   expect(response.status).toBe(413)
 })
 it('availability rechecks selection without reading document/assets and withholds changed discovery', async () => {
   const d = deps()
   const discover = vi.fn().mockResolvedValue(authority)
-  const response = await http(config, { ...d, discover })(new Request('https://studio.test/availability', { headers: { cookie: 'studio_customer_session=' + input.sessionToken } }))
+  const response = await http(config, { ...d, discover })(new Request('https://studio.test/availability', { headers: { cookie: '__Host-studio_customer_session=' + input.sessionToken } }))
   expect(await response.json()).toEqual({ available: true, siteId: scope.siteId })
   expect(d.document).not.toHaveBeenCalled()
   expect(d.assets).not.toHaveBeenCalled()
   discover.mockReset().mockResolvedValueOnce(authority).mockResolvedValueOnce({ ...authority, workspaceId: 'changed' })
-  const changed = await http(config, { ...d, discover })(new Request('https://studio.test/availability', { headers: { cookie: 'studio_customer_session=' + input.sessionToken } }))
+  const changed = await http(config, { ...d, discover })(new Request('https://studio.test/availability', { headers: { cookie: '__Host-studio_customer_session=' + input.sessionToken } }))
   expect(await changed.json()).toEqual({ available: false, siteId: null })
 })
 it('default discovery accepts no site selection or body', async () => {
   for (const [path, extra] of [['/website?siteId=other', {}], ['/website', { 'content-length': '1' }], ['/availability?siteId=other', {}]] as const) {
-    const response = await http()(new Request('https://studio.test' + path, { headers: { cookie: 'studio_customer_session=' + input.sessionToken, ...extra } }))
+    const response = await http()(new Request('https://studio.test' + path, { headers: { cookie: '__Host-studio_customer_session=' + input.sessionToken, ...extra } }))
     expect(response.status).toBe(400)
   }
 })
 it('redacts unexpected backend failures and never exposes native tokens', async () => {
   const d = deps()
   d.authority.mockRejectedValue(new Error('private token=' + input.sessionToken))
-  const response = await http(config, d)(new Request(`https://studio.test/sites/${scope.siteId}/workspace`, { headers: { cookie: 'studio_customer_session=' + input.sessionToken } }))
+  const response = await http(config, d)(new Request(`https://studio.test/sites/${scope.siteId}/workspace`, { headers: { cookie: '__Host-studio_customer_session=' + input.sessionToken } }))
   expect(response.status).toBe(503)
   expect(await response.text()).not.toContain(input.sessionToken)
 })
@@ -158,7 +158,7 @@ it('native history validates exact queries, projects selected forms and fails cl
   const updatedAt = '2026-10-02T00:00:00.000Z'
   const service = { listEmailTemplateDraftHistory: vi.fn().mockResolvedValue({ scope, audience: 'team', revisions: [{ revision: 2, updatedAt }], nextBeforeRevision: null }), readEmailTemplateDraft: vi.fn().mockResolvedValue({ scope, audience: 'team', actorId: 'private_actor', checkpointId: 'old_checkpoint', revision: 2, updatedAt, template: starterEmailTemplate('team') }) }
   const env = { ...config, PAGE_STUDIO_CONTENT_ROUTER: service }
-  const headers = { cookie: 'studio_customer_session=' + input.sessionToken }
+  const headers = { cookie: '__Host-studio_customer_session=' + input.sessionToken }
   const base = `https://studio.test/sites/${scope.siteId}`
   const handle = http(env, d)
   const list = await handle(new Request(base + '/templates/team/history?beforeRevision=3', { headers }))
@@ -188,7 +188,7 @@ it('rechecks native authority after the private renderer responds over HTTP', as
     return result
   })
   const handle = http({ ...config, ...emailRendererEnv, EMAIL_RENDERER: { render } }, d)
-  const response = await handle(new Request(`https://studio.test/sites/${scope.siteId}/preview/team`, { method: 'POST', headers: { 'origin': 'https://studio.test', 'cookie': 'studio_customer_session=' + input.sessionToken, 'content-type': 'application/json' }, body: JSON.stringify({ pageId: 'home', formId: 'contact', template: starterEmailTemplate('team') }) }))
+  const response = await handle(new Request(`https://studio.test/sites/${scope.siteId}/preview/team`, { method: 'POST', headers: { 'origin': 'https://studio.test', 'cookie': '__Host-studio_customer_session=' + input.sessionToken, 'content-type': 'application/json' }, body: JSON.stringify({ pageId: 'home', formId: 'contact', template: starterEmailTemplate('team') }) }))
   expect(render).toHaveBeenCalledOnce()
   expect(response.status).toBe(403)
   expect(await response.text()).not.toContain('<!DOCTYPE html>')
