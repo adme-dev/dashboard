@@ -53,7 +53,7 @@ async function openStudio() {
 </script>
 
 <template>
-  <section class="space-y-5">
+  <section class="space-y-8">
     <UButton
       to="/studio/sites"
       label="All websites"
@@ -96,7 +96,7 @@ async function openStudio() {
             variant="subtle"
             class="mb-3"
           />
-          <h1 class="break-words text-2xl font-semibold tracking-tight text-highlighted">
+          <h1 class="break-words text-[28px] leading-tight font-medium tracking-[-0.035em] text-highlighted sm:text-3xl">
             {{ data.document.site.name }}
           </h1>
           <p class="mt-2 text-sm leading-6 text-muted">
@@ -107,13 +107,14 @@ async function openStudio() {
           label="Open Page Studio"
           icon="i-lucide-panel-top-open"
           color="neutral"
+          class="min-h-12 rounded-none px-6"
           :disabled="!canLaunch || formDirty"
           :loading="launching"
           @click="openStudio"
         />
       </header>
-      <div class="grid min-w-0 overflow-hidden rounded-xl border border-default md:grid-cols-[192px_minmax(0,1fr)]">
-        <nav aria-label="Website management" class="flex flex-wrap content-start gap-1 border-b border-default bg-muted/30 p-3 md:flex-col md:border-b-0 md:border-r">
+      <div class="grid min-w-0 border-t border-default md:grid-cols-[192px_minmax(0,1fr)]">
+        <nav aria-label="Website management" class="flex flex-wrap content-start gap-1 border-b border-default py-4 md:flex-col md:border-b-0 md:border-r md:pr-5 md:py-6">
           <UButton
             v-for="item in sections"
             :key="item.value"
@@ -123,7 +124,7 @@ async function openStudio() {
             :variant="section === item.value ? 'soft' : 'ghost'"
             :aria-current="section === item.value ? 'page' : undefined"
             :disabled="formDirty && section !== item.value"
-            class="justify-start"
+            class="min-h-11 justify-start rounded-none"
             @click="selectSection(item.value)"
           />
           <div class="hidden border-t border-default my-3 md:block" />
@@ -146,10 +147,10 @@ async function openStudio() {
             class="justify-start"
           />
         </nav>
-        <div class="min-w-0 space-y-6 p-4 sm:p-6">
+        <div class="min-w-0 space-y-8 py-6 md:pl-8">
           <template v-if="section === 'overview'">
             <div>
-              <h2 class="text-xl font-semibold text-highlighted">
+              <h2 class="text-xl font-medium tracking-tight text-highlighted">
                 Website overview
               </h2>
               <p class="mt-2 text-sm leading-6 text-muted">
@@ -170,7 +171,7 @@ async function openStudio() {
                 />
               </div>
             </div>
-            <UCard>
+            <div>
               <h3 class="font-semibold text-highlighted">
                 Quick access
               </h3>
@@ -206,10 +207,12 @@ async function openStudio() {
                   />
                 </div>
               </div>
-            </UCard>
+            </div>
             <UAlert
               v-if="!editorOrigin"
               color="neutral"
+              variant="soft"
+              class="rounded-none"
               icon="i-lucide-info"
               title="Page Studio is not connected in this environment"
               description="You can review saved content here. Visual editing becomes available when the editor connection is configured."
@@ -217,6 +220,8 @@ async function openStudio() {
             <UAlert
               v-else-if="!data.canEdit"
               color="neutral"
+              variant="soft"
+              class="rounded-none"
               icon="i-lucide-eye"
               title="You have viewing access"
               description="Ask your website owner for editing access to make changes in Page Studio."
