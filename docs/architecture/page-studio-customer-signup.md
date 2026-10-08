@@ -67,3 +67,9 @@ The builder apex `https://xeroflowpages.com` shares a parent domain with publish
 After this change is deployed, existing native preview customers must sign in again. The server deliberately ignores the old unprefixed cookie on HTTPS; retaining a fallback would reopen the boundary. No session database migration, portal/staff cookie change, or signup activation is included. Production native activation still requires the exact customer origin, sender, legal version and completed hosted acceptance.
 
 HTTP regression tests cover issuance/deletion attributes, rejection of legacy-only cookies, both header orders when legacy and protected cookies coexist, and native dashboard/editor/Forms routes.
+
+The invited-customer `/studio` entry also uses the shared entry shell, light
+palette, original artistic side panel and bottom sign-in action. Its brand link
+returns to `/studio`; native signup retains its own home link. Invitation login,
+redirect validation and account eligibility continue through the existing portal
+authentication flow.
