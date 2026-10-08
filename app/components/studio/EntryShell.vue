@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = defineProps<{ title: string, description?: string, step?: number, steps?: number }>()
+const props = defineProps<{ title: string, description?: string, step?: number, steps?: number, homeTo?: string }>()
 const heading = ref<HTMLElement | null>(null)
 watch(() => props.title, async () => {
   await nextTick()
@@ -10,7 +10,7 @@ watch(() => props.title, async () => {
 <template>
   <div class="studio-entry min-h-dvh bg-default text-default lg:pr-[26%]">
     <header class="flex min-h-24 items-center justify-between gap-4 px-6 sm:px-10">
-      <NuxtLink to="/studio/signup" class="inline-flex items-center gap-3 text-highlighted" aria-label="XeroFlow Page Studio">
+      <NuxtLink :to="homeTo ?? '/studio/signup'" class="inline-flex items-center gap-3 text-highlighted" aria-label="XeroFlow Page Studio">
         <span class="flex size-9 items-center justify-center rounded-lg bg-inverted text-sm font-semibold text-inverted">XF</span>
         <span class="text-lg font-medium tracking-tight">Page Studio</span>
       </NuxtLink>
