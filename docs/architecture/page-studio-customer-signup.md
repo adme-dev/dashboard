@@ -51,3 +51,11 @@ This implementation does not announce self-service signup on public marketing pa
 ## Remaining journey
 
 Finish customer site creation and own-database provisioning, connect the customer workspace/dashboard and Page Studio launch authorization, then activate the end-to-end preview. Custom domains, subscriptions/AI credits, team invitations and operational CMS modules remain separate PRD work. No public activation or production migration is performed by this change.
+
+## Guided entry preview — 8 October 2026
+
+The gated signup page now asks for the website topic, then website goals, then account creation. Automotive is included, and the 14 goal choices are planning preferences, not feature activation. Existing customers can open email sign-in directly. Google and Apple are not configured for native customer authentication and are not presented as working options.
+
+After an email request succeeds, validated topic/goal preferences are stored locally for at most 24 hours, bound to the normalized email. No bearer tokens are stored. After verification, only a matching verified email with a revision-zero setup can restore these preferences. Existing server drafts remain authoritative. The customer adds their business name/timezone and completes the existing revisioned setup flow. Preferences are removed after a successful save. Blocking local storage or opening the link in another browser falls back to the normal setup questions; the inbox screen explains the same-browser requirement.
+
+Desktop topics fill available space above the fixed action footer and show a custom overflow scrollbar. Goal tiles become a single column on narrow screens. Original generated abstract artwork is stored at `public/images/studio/artistic-panel.webp`.

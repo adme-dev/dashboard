@@ -10,6 +10,9 @@ export const CustomerSignInRequest = z.object({
     context.addIssue({ code: 'custom', message: 'Name and terms acknowledgement are required' })
   }
 })
+export const CustomerGoal = z.enum(['enquiries', 'blog', 'gallery', 'bookings', 'sales', 'services', 'local_business', 'vehicles', 'test_drives', 'events', 'community', 'newsletter', 'resources', 'recruitment'])
+export const CustomerSiteChoices = z.object({ businessType: z.string().trim().min(1).max(100), goals: z.array(CustomerGoal).min(1).max(14).refine(values => new Set(values).size === values.length) }).strict()
+
 export const CustomerSetupDraft = z.object({
   businessName: z.string().trim().max(160),
   businessType: z.string().trim().max(100),
@@ -21,7 +24,7 @@ export const CustomerSetupDraft = z.object({
       return false
     }
   }, 'Choose a valid timezone'),
-  goals: z.array(z.enum(['enquiries', 'blog', 'gallery', 'bookings', 'sales'])).max(5)
+  goals: z.array(CustomerGoal).max(14)
     .refine(values => new Set(values).size === values.length, 'Choose each goal once')
 }).strict()
 export const CustomerSetupWrite = z.object({ expectedRevision: z.number().int().min(0), draft: CustomerSetupDraft }).strict()
