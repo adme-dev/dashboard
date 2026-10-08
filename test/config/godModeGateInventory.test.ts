@@ -237,13 +237,17 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/pageStudio/customerFormsHttp.ts\treturn (env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED ?? process.env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED) === \'true\'\tapplication_governance_bypass'
     )
-    expect(inventory.rows).toHaveLength(1596)
+    // Invited CMS access adds a hard agency-admin identity boundary, two UI
+    // role comparisons and an operator-configured sign-in origin. No bypass.
+    expect(inventory.rows).toContain('server/utils/pageStudio/invitedAccess.ts\tWHERE id = $1 AND is_active = TRUE AND user_role IN (\'owner\', \'admin\') FOR SHARE`, [input.actorId])\tidentity_tenant_hard_boundary')
+    expect(inventory.rows).toContain('server/utils/pageStudio/invitedOrigin.ts\t?? process.env.PAGE_STUDIO_INVITED_ORIGIN\tunrelated_configuration')
+    expect(inventory.rows).toHaveLength(1600)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 123,
+      identity_tenant_hard_boundary: 124,
       provider_infrastructure_availability: 228,
       application_governance_bypass: 1622,
-      ordinary_user_behavior: 190,
-      unrelated_configuration: 432
+      ordinary_user_behavior: 192,
+      unrelated_configuration: 433
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -258,7 +262,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('1f3dfb5cde1a864662a2475701f6ec08ca9af20c5815e53893fb5faeb5bbab1d')
+    expect(inventory.digest).toBe('06f6d4013d4d6f10ab1a29a7049b0084c7883051096041122cd4182139fb61fe')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

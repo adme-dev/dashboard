@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 interface TestEvent {
   body?: unknown
   headers?: Record<string, string>
+  context?: { cloudflare?: { env?: Record<string, string> } }
 }
 
 const testGlobal = globalThis as typeof globalThis & {
@@ -109,7 +110,7 @@ describe('client portal magic-link request', () => {
 
     expect(result).toEqual(genericResponse)
     expect(mockCheckAndConsume).toHaveBeenCalledTimes(2)
-    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client@example.com'])
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client@example.com', null])
     expect(mockClientQuery).toHaveBeenCalledTimes(4)
 
     const inserts = mockClientQuery.mock.calls.filter(call =>
@@ -146,6 +147,21 @@ describe('client portal magic-link request', () => {
     expect(mockQueryRows).not.toHaveBeenCalled()
   })
 
+  it('returns Studio sign-ins to the configured standalone origin, ignoring request hosts', async () => {
+    mockQueryRows.mockResolvedValue([{ id: 'user-1', email: 'client@example.com', name: 'Casey', status: 'active', client_name: 'Fantasy Limo' }])
+    mockClientQuery.mockResolvedValue({ rows: [] })
+    await requestHandler({
+      body: { email: 'client@example.com', redirect: '/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2' },
+      headers: { 'host': 'attacker.example', 'x-forwarded-host': 'attacker.example' },
+      context: { cloudflare: { env: { PAGE_STUDIO_INVITED_ORIGIN: 'https://xeroflowpages.com' } } }
+    })
+    const link = new URL(mockSendEmail.mock.calls[0][0].magicLinkUrl)
+    expect(link.origin).toBe('https://xeroflowpages.com')
+    expect(link.pathname).toBe('/studio/verify')
+    expect(link.searchParams.get('redirect')).toBe('/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2')
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client@example.com', 'c34f6347-cc63-4ed7-9a5a-da165ebefed2'])
+  })
+
   it('returns Retry-After when the request limit is exhausted', async () => {
     mockCheckAndConsume.mockResolvedValueOnce({
       allowed: false,
@@ -165,7 +181,7 @@ describe('client portal magic-link request', () => {
   })
 
   it('does not reactivate pending accounts whose invitation is expired or cancelled', () => {
-    const source = readFileSync('server/api/portal/auth/magic-link/request.post.ts', 'utf8')
+    const source = readFileSync('server/utils/portalMagicLinkRecipients.ts', 'utf8')
     expect(source).toContain('EXISTS (')
     expect(source).toContain('invitation.status = \'pending\'')
     expect(source).toContain('invitation.expires_at > NOW()')
