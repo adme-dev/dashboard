@@ -83,11 +83,13 @@ describe('video generation model registry', () => {
     expect(ids).not.toContain('aigateway/veo-t2v-internal')
   })
 
-  it('has only verified CF image-to-video models selectable by default', () => {
+  it('offers current Cloudflare models with Seedance 2.5 first', () => {
     const ids = listSelectableVideoGenerationModels().map((x) => x.id)
     expect(ids).not.toContain('muapi/i2v-kling')
     expect(ids).not.toContain('muapi/t2v-wan')
     expect(ids).toEqual([
+      'aigateway/seedance-25-i2v',
+      'aigateway/seedance-25-t2v',
       'aigateway/seedance-i2v',
       'aigateway/seedance-2-i2v',
       'aigateway/wan-i2v',

@@ -13,6 +13,7 @@ import {
 } from '~~/server/utils/ai/mcp/videoTools'
 import { buildVideoReadRunner } from '~~/server/utils/ai/mcp/videoRunner'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
+import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 
 // Deterministic RBAC: only 'admin' holds any permission (so only admin has CREATIVE).
 // Mirrors test/ai/mcpGenerationTools.test.ts so the non-CREATIVE role is simply "any non-admin".
@@ -191,6 +192,15 @@ describe('executeVideoPropose — video_generation', () => {
   it('returns structured unsupported parameters when the model rejects the params', async () => {
     const r = await executeVideoPropose('video_generation', { ...genArgs, durationSeconds: 6 }, ctx('admin'), baseProposeDeps())
     expect(r).toMatchObject({ ok: false, code: 'unsupported_model_parameters', details: { error: 'unsupported_model_parameters' } })
+  })
+  it('rejects Seedance 2.5 prompts above 2000 characters before a confirmable proposal is persisted', async () => {
+    const deps = { ...baseProposeDeps(), getModel: () => getVideoGenerationModel('aigateway/seedance-25-t2v')! }
+    const r = await executeVideoPropose('video_generation', {
+      ...genArgs, modelId: 'aigateway/seedance-25-t2v', prompt: 'x'.repeat(2001), subjectType: 'non_vehicle',
+    }, ctx('admin'), deps)
+    expect(r).toMatchObject({ ok: false, code: 'unsupported_model_parameters' })
+    expect(deps.persist).not.toHaveBeenCalled()
+    expect(deps.loadPolicy).not.toHaveBeenCalled()
   })
   it('returns a machine-readable approved-source requirement', async () => {
     const deps = {
