@@ -1,4 +1,5 @@
-import { queryRowsFresh, transaction } from '~~/server/utils/db'
+import { transaction } from '~~/server/utils/db'
+import { findPortalMagicLinkRecipients, type EligiblePortalUser } from '~~/server/utils/portalMagicLinkRecipients'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { pageStudioInvitedOrigin } from '~~/server/utils/pageStudio/invitedOrigin'
@@ -23,14 +24,6 @@ const requestSchema = z.object({
 const genericResponse = {
   success: true,
   message: 'If an eligible portal account exists, a sign-in link has been sent.'
-}
-
-interface EligiblePortalUser {
-  id: string
-  email: string
-  name: string
-  status: 'active' | 'pending'
-  client_name: string
 }
 
 async function enforceRequestLimit(
@@ -86,29 +79,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const users = await queryRowsFresh<EligiblePortalUser>(`
-    SELECT cu.id, cu.email, cu.name, cu.status, c.name AS client_name
-    FROM client_users cu
-    JOIN agency_clients c ON c.id = cu.client_id
-    WHERE LOWER(cu.email) = $1
-      AND (
-        cu.status = 'active'
-        OR (
-          cu.status = 'pending'
-          AND EXISTS (
-            SELECT 1
-            FROM client_invitations AS invitation
-            WHERE invitation.client_id = cu.client_id
-              AND LOWER(invitation.email) = LOWER(cu.email)
-              AND invitation.status = 'pending'
-              AND invitation.expires_at > NOW()
-          )
-        )
-      )
-      AND LOWER(cu.email) NOT LIKE '%@portal-access.local'
-    ORDER BY cu.created_at ASC
-    LIMIT 10
-  `, [email])
+  const users = await findPortalMagicLinkRecipients(email, redirect)
 
   if (!users.length) return genericResponse
 

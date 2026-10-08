@@ -110,7 +110,7 @@ describe('client portal magic-link request', () => {
 
     expect(result).toEqual(genericResponse)
     expect(mockCheckAndConsume).toHaveBeenCalledTimes(2)
-    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client@example.com'])
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client@example.com', null])
     expect(mockClientQuery).toHaveBeenCalledTimes(4)
 
     const inserts = mockClientQuery.mock.calls.filter(call =>
@@ -159,6 +159,7 @@ describe('client portal magic-link request', () => {
     expect(link.origin).toBe('https://xeroflowpages.com')
     expect(link.pathname).toBe('/studio/verify')
     expect(link.searchParams.get('redirect')).toBe('/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2')
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client@example.com', 'c34f6347-cc63-4ed7-9a5a-da165ebefed2'])
   })
 
   it('returns Retry-After when the request limit is exhausted', async () => {
@@ -180,7 +181,7 @@ describe('client portal magic-link request', () => {
   })
 
   it('does not reactivate pending accounts whose invitation is expired or cancelled', () => {
-    const source = readFileSync('server/api/portal/auth/magic-link/request.post.ts', 'utf8')
+    const source = readFileSync('server/utils/portalMagicLinkRecipients.ts', 'utf8')
     expect(source).toContain('EXISTS (')
     expect(source).toContain('invitation.status = \'pending\'')
     expect(source).toContain('invitation.expires_at > NOW()')

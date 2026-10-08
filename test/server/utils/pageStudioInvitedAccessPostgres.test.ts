@@ -4,8 +4,9 @@ import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readInvitedSiteAccess, writeInvitedSiteAccess } from '~~/server/utils/pageStudio/invitedAccess'
 import type { RunPageStudioTransaction } from '~~/server/utils/pageStudio/sites'
+import { findPortalMagicLinkRecipients } from '~~/server/utils/portalMagicLinkRecipients'
 
-vi.mock('~~/server/utils/db', () => ({ transaction: vi.fn() }))
+vi.mock('~~/server/utils/db', () => ({ transaction: vi.fn(), queryRowsFresh: vi.fn() }))
 const url = process.env.PAGE_STUDIO_INVITED_ACCESS_TEST_URL
 if (url && !['localhost', '127.0.0.1'].includes(new URL(url).hostname)) throw new Error('A disposable local PostgreSQL database is required')
 const ids = { actor: randomUUID(), client: randomUUID(), otherClient: randomUUID(), user: randomUUID(), otherUser: randomUUID(), site: randomUUID() }
@@ -30,9 +31,9 @@ describe.runIf(Boolean(url))('invited CMS grants on PostgreSQL', () => {
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: url, options: `-c search_path=${schema},pg_catalog -c statement_timeout=8000 -c lock_timeout=6000` })
     await pool.query(`CREATE SCHEMA "${schema}"`)
-    await pool.query(`CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN NOT NULL);
+    await pool.query(`CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN NOT NULL, name TEXT DEFAULT 'Client');
       CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN NOT NULL, user_role TEXT);
-      CREATE TABLE client_users (id UUID PRIMARY KEY, client_id UUID REFERENCES agency_clients(id), name TEXT, email TEXT, status TEXT, role TEXT);
+      CREATE TABLE client_users (id UUID PRIMARY KEY, client_id UUID REFERENCES agency_clients(id), name TEXT, email TEXT, status TEXT, role TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
       CREATE TABLE client_invitations (client_id UUID, email TEXT, status TEXT, expires_at TIMESTAMPTZ);
       CREATE TABLE custom_roles (id UUID PRIMARY KEY, slug TEXT);
       CREATE TABLE role_permission_groups (role_id UUID, permission_group TEXT, UNIQUE (role_id, permission_group));`)
@@ -60,6 +61,17 @@ describe.runIf(Boolean(url))('invited CMS grants on PostgreSQL', () => {
     expect((await pool.query('SELECT user_id, granted_by FROM page_studio_site_memberships')).rows).toEqual([{ user_id: ids.user, granted_by: ids.actor }])
     expect((await pool.query('SELECT status, role FROM client_users WHERE id=$1', [ids.otherUser])).rows[0]).toEqual({ status: 'active', role: 'viewer' })
     expect((await pool.query('SELECT metadata FROM page_studio_audit_events')).rows[0].metadata).toEqual({ previousRole: 'none', role: 'editor' })
+  })
+  it('emails only the assigned website account when the same address belongs to multiple clients', async () => {
+    const recipients = (redirect: string) => findPortalMagicLinkRecipients('same@example.com', redirect, async (sql, params) => (await pool.query(sql, params)).rows)
+    await writeInvitedSiteAccess(grant, run)
+    expect((await recipients(`/studio/sites/${ids.site}`)).map(user => user.id)).toEqual([ids.user])
+    expect(await recipients(`/studio/sites/${randomUUID()}`)).toEqual([])
+    expect(await recipients('/studio/sites/not-a-uuid')).toEqual([])
+    expect((await recipients(`/studio/sites/${ids.site}/forms?view=all`)).map(user => user.id)).toEqual([ids.user])
+    expect(await recipients('/portal')).toHaveLength(2)
+    await writeInvitedSiteAccess({ ...grant, role: 'none' }, run)
+    expect(await recipients(`/studio/sites/${ids.site}`)).toEqual([])
   })
   it('rejects another client identity even with the same email', async () => {
     await expect(writeInvitedSiteAccess({ ...grant, userId: ids.otherUser }, run)).rejects.toMatchObject({ statusCode: 404 })
