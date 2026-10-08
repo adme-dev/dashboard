@@ -42,15 +42,22 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 **8 October — application released; native acceptance in progress:**
 Production is source `008f8c8dd`, deployment `a7190881`, with native gates
 closed. The exact live `/studio` entry now matches the approved colourful preview
-style; desktop/mobile checks pass. Preview `18797d36` retains the guided signup
-and private Cloudflare email flow but needs reconciliation with current main,
-including the HTTPS customer-cookie boundary. Both test mailboxes and email
+style; desktop/mobile checks pass. Preview `5dec4699` from source `1f4e1250`
+now includes current main and the HTTPS customer-cookie boundary, retaining the
+restricted guided signup and private Cloudflare email flow. Both test mailboxes and email
 authorization are supplied; A is verified, B still needs verification, and
 workspace setup is pending for both. No new sign-in email accompanied this release.
 The approved main builder address is https://xeroflowpages.com.
+Fantasy Limo separately has no active production customer site memberships. Its
+owner authorized an invitation/editor assignment to account A; completion needs
+normal agency sign-in in the connected browser. Preserve A’s other-client portal
+identity. The agency portfolio needs a direct CMS entry with scoped access; the
+Business content shortcut is not that customer workspace.
 Studio dependency remediation #120 passed Linux/Windows CI and is merged.
 Native Forms draft #119 includes it; combined Linux CI passed, while Windows
-exposed two operator test-harness portability defects now being corrected.
+exposed two operator test-harness portability defects, now corrected in
+published `eb91ff25`. Fresh CI remains incomplete: Windows hit a file-open error
+in the unchanged icon generator; Linux is still running.
 See the [current release and activation checkpoint](2026-10-08-page-studio-release-and-activation.md)
 for exact source, provider and account evidence. Older dated entries below are
 historical and their pending-mailbox/integration statements are superseded here.
