@@ -23,6 +23,14 @@ work on current Dashboard main, not hosted acceptance or customer activation.
   failures are sanitized and never retried. No real answers or field defaults are
   passed to inference. This module requires explicit trusted adapters; it is not
   exposed as an endpoint and does not bypass native preview's zero allowance.
+- The model adapter now connects to the existing AI SDK provider factories through
+  a required Cloudflare Gateway route. It accepts an operator-owned enable-list,
+  admits production text models in the shared registry, verifies configured
+  credentials and refuses direct-provider fallback. Initial support is Anthropic
+  and Groq; Workers AI remains unavailable here until a Gateway-backed adapter is
+  connected. Each call has a 45-second abort signal, 8,000 output-token limit, no
+  tools and zero SDK retries. The actual SDK is tested against a retryable 503 to
+  verify a single attempt. Configuration checks are not a paid availability probe.
 
 Local tests cover manual changes during generation/hash, site/audience/form/revision
 changes, optional-field JSON transport equivalence, unsafe output and image identity.
@@ -35,7 +43,9 @@ merge tags and defined fallbacks are not implemented by this contract slice.
    The orchestration and failure tests are implemented locally; route adapters and
    their end-to-end authority/media proof remain required before exposure.
 2. Connect the enabled model catalogue and existing Cloudflare AI Gateway execution
-   and credit conventions. Check availability before charging, reserve atomically,
+   and credit conventions to the routes/UI. The Gateway model adapter exists;
+   operator feature enablement, live usage/cost reporting and durable allowance
+   adapters are still required. Check availability before charging, reserve atomically,
    preserve unknown outcomes without replay, and expose real usage information.
    Never issue a synthetic editor session just to call the existing usage API.
 3. Add the adjacent conversation and proposal preview/Apply/Discard controls to the
@@ -63,3 +73,8 @@ The immutable native preview policy in `customerSites.ts` currently requires
 authorize charged native inference. Preserve that denial; a new reviewed policy
 or supported paid entitlement is required before native generation can be enabled.
 This does not prevent local implementation or the non-AI hosted Forms matrix.
+
+SDK retry/deadline settings were checked against the installed AI SDK 6 declarations
+and the [official generateText reference](https://ai-sdk.dev/docs/reference/ai-sdk-core/generate-text).
+This disables SDK retries only; operator-controlled Gateway retry/fallback policies
+must also be verified before hosted generation acceptance.

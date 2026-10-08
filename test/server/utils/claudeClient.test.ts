@@ -3,8 +3,8 @@ import { z } from 'zod'
 
 const mockRecordAiInvocation = vi.fn()
 const mockParse = vi.fn()
-const mockCreateAnthropic = vi.fn(() => vi.fn())
-const mockCreateGroq = vi.fn(() => vi.fn())
+const mockCreateAnthropic = vi.fn((..._args: unknown[]) => vi.fn())
+const mockCreateGroq = vi.fn((..._args: unknown[]) => vi.fn())
 const mockGetCachedCfBinding = vi.fn()
 let runtimeConfig: Record<string, unknown>
 
@@ -62,6 +62,23 @@ afterEach(() => {
 })
 
 describe('AI Gateway provider authentication', () => {
+  it('requires provider credentials and a genuine Cloudflare Gateway for gated text generation', async () => {
+    const { resolveGatewayTextModel } = await import('~~/server/utils/claudeClient')
+    vi.stubEnv('GROQ_API_KEY', '')
+    vi.stubEnv('AI_GATEWAY_URL', '')
+    expect(resolveGatewayTextModel('groq/openai/gpt-oss-120b')).toBeNull()
+    runtimeConfig.aiGatewayUrl = 'https://gateway.ai.cloudflare.com/v1/account/default'
+    expect(resolveGatewayTextModel('groq/openai/gpt-oss-120b')).not.toBeNull()
+    delete runtimeConfig.groqApiKey
+    expect(resolveGatewayTextModel('groq/openai/gpt-oss-120b')).toBeNull()
+    runtimeConfig.groqApiKey = 'key'
+    for (const url of ['http://gateway.ai.cloudflare.com/v1/account/default', 'https://example.test/v1/account/default', 'https://gateway.ai.cloudflare.com/v1/account/default?redirect=x']) {
+      runtimeConfig.aiGatewayUrl = url
+      expect(resolveGatewayTextModel('groq/openai/gpt-oss-120b')).toBeNull()
+    }
+    expect(resolveGatewayTextModel('workersai/@cf/example')).toBeNull()
+  })
+
   it('reports direct transport when resolving a provider model without a Gateway URL', async () => {
     runtimeConfig = { groqApiKey: 'test-groq-key' }
 
