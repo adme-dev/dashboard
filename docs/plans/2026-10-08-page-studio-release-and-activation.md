@@ -4,7 +4,80 @@ Completed production deployment and authenticated agency verification on 7 Octob
 This checkpoint supersedes the pending-release and rollback-only statuses in the
 earlier resumption ledger and customer CMS checklist.
 
-## Current provider/source readback — 8 October, 05:38 UTC
+## Current provider/source readback — 8 October, 07:00 UTC
+
+Dashboard main and production source are
+`008f8c8dd2357837b3586fab8fc9a5b577f8cdeb`, including PRs #639–643.
+The guarded production deployment to `agency-dashboard/main` is
+`a7190881-c08b-43b0-9016-296bc4998752`; Cloudflare reports success at
+07:00:05 UTC with the exact clean source commit. `pnpm deploy:check` verified
+source equals freshly fetched main before `pnpm deploy:production`.
+
+The live https://xeroflowpages.com/studio invitation entry now uses the same
+light layout, original colourful artwork and footer action bar as the approved
+signup preview. Local and live Chrome desktop/mobile checks passed, including
+390px without horizontal overflow. Existing email validation and portal
+sign-in authority remain intact. PR #643 full CI `37739220025`, focused lint
+and 15 existing UI regressions passed. The Worker uses 25,424,456 of
+25,468,928 raw bytes and 7,026,874 of 9,750,000 gzip bytes.
+Public QR Codes content/navigation and the app-host login guard were verified;
+a signed-in staff browser session was unavailable for authenticated QR operations.
+
+Native signup/editor/browser/preview production gates remain closed. This release
+includes the HTTPS `__Host-` customer-cookie boundary from #642. The controlled
+signup preview was refreshed from this main at source
+`1f4e12506a29c39eeb31db85e9875efacd850e8e`, deployment
+`5dec4699-f6b3-420a-8e84-3934f6f28032` (success 07:15:42 UTC). The guarded
+preview build and 50 focused tests passed; browser topic selection renders,
+including Automotive. Its two-mailbox signup restriction still expires
+10 October at 00:00 UTC. Production settings are unchanged; do not merge the
+temporary enabled-preview configuration into main.
+No new sign-in email was sent during this release, and no account/workspace
+acceptance is claimed. Normal verification for B and onboarding for both remain.
+
+Studio dependency PR #120 is merged at
+`628474ad9faab3928e6a509876f1eb844cb0f4ab` after full Linux/Windows CI passed;
+both audits report zero advisories, without audit exceptions. Native PR #119
+includes that main. Combined run `37738273132` passed Linux, including Astro
+compiler/browser checks, but Windows exposed two portability issues in the
+newly included operator test harness. Process inspection and ESM preload-path
+corrections are published at `eb91ff2573bab24c20ab64da269b35ca5a949785`
+(exact local/published tree `c2819ae5c844cec8ac6f1cd0bb3c4238c8b006a8`). All eight
+transport tests pass locally on Node 22. Fresh run `37741765473` is still running
+on Linux. Windows passed lint but failed with an OS file-open error while
+regenerating the unchanged editor icon registry, before reaching the transport
+check. A targeted Windows rerun must wait for the current run to finish; no
+Windows pass is claimed. The native integration, hosted acceptance and
+customer activation remain incomplete; no Studio worker release occurred.
+
+## Fantasy Limo customer access follow-up — 8 October
+
+The standalone invited-customer workspace is `/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`
+on the product origin. The agency Business content screen is a different entry,
+not proof that standalone access works. The agency portfolio currently lacks a
+direct Open CMS shortcut and an authorized agency-to-customer CMS handoff.
+
+Fresh production read-only evidence confirms the Fantasy site/client are active
+and its trial entitlement is current, but it has **zero active customer site
+memberships**. Neither approved test mailbox is assigned. Account A has an active
+portal identity for a different client; preserve that relationship when inviting
+it to Fantasy. The owner explicitly authorized a Fantasy CMS invitation and
+editor assignment to account A. No invitation, permission change, or email has
+yet occurred: the connected Chrome browser needs normal agency sign-in. Safari
+is signed in in the supplied screenshot but its computer-control service is
+unavailable. Do not create synthetic production sessions or repurpose another
+client's identity. Customer native production activation remains separately gated.
+The existing portal invitation endpoint does not assign a Page Studio site;
+source currently creates memberships only during site creation. Add or identify
+a supported, audited existing-site assignment path before claiming the invitation
+alone completes CMS access. Do not overwrite the existing site or create a duplicate.
+
+Fresh **staging native** evidence is distinct: A is verified and has setup draft
+revision 1, last updated 05:21:59.975 UTC; B is pending/unverified and has no setup
+draft. Neither has a workspace membership. Complete normal B verification and
+both onboarding flows before the hosted native acceptance matrix.
+
+## Historical provider/source readback — 8 October, 05:38 UTC
 
 Dashboard main is `4d2d16b0581bb3c96510d75a7d6e962000d7087d`, including
 merged sign-in email PR #637, Cloudflare transport PR #639 and signup design #640. Production remains
