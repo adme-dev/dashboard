@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import type { CustomerSetup } from '~~/shared/pageStudio/customerSignup'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, colorMode: 'light' })
 useHead({ title: 'Set up your workspace — Page Studio' })
 const api = '/api/portal/page-studio/customer'
 const draft = reactive<CustomerSetup>({ businessName: '', businessType: '', timezone: 'UTC', goals: [] })
 const revision = ref(0)
 const workspaceId = ref<string | null>(null)
 const step = ref(1)
+const topics = ['Photography', 'Design', 'Education', 'Consulting', 'Art', 'Health and wellness', 'Marketing', 'Technology', 'Retail', 'Food and hospitality', 'Trades and construction', 'Professional services', 'Community organisation']
+const topicSearch = ref('')
+const visibleTopics = computed(() => topics.filter(topic => topic.toLowerCase().includes(topicSearch.value.trim().toLowerCase())))
+const customTopic = computed(() => topicSearch.value.trim().slice(0, 100))
+const titles = ['What’s your site about?', 'Tell us about your business.', 'What should your website do?']
+const descriptions = ['Start with a topic. We’ll use it to understand your business.', 'Give your workspace a name and choose your local timezone.', 'Choose what matters to your business. You can build on this later.']
 const ready = ref(false)
 const busy = ref(false)
 const error = ref('')
@@ -61,18 +67,22 @@ async function save() {
 async function advance() {
   if (busy.value || conflict.value) return
   error.value = ''
-  if (!draft.businessName.trim() || !draft.businessType.trim()) {
-    error.value = 'Add your business name and type to continue.'
+  if (!draft.businessType.trim()) {
+    error.value = 'Choose a topic or add your own to continue.'
     return
   }
-  if (step.value === 2 && !draft.goals.length) {
+  if (step.value >= 2 && !draft.businessName.trim()) {
+    error.value = 'Add your business name to continue.'
+    return
+  }
+  if (step.value === 3 && !draft.goals.length) {
     error.value = 'Choose at least one website goal.'
     return
   }
   busy.value = true
   try {
     await save()
-    if (step.value === 1) step.value = 2
+    if (step.value < 3) step.value += 1
     else {
       workspaceId.value = (await $fetch<{ workspaceId: string }>(`${api}/complete`, { method: 'POST', body: { expectedRevision: revision.value } })).workspaceId
       await navigateTo('/studio/dashboard', { replace: true })
@@ -113,20 +123,20 @@ async function signOut() {
 </script>
 
 <template>
-  <StudioCustomerShell :title="workspaceId ? 'Your workspace is prepared.' : step === 1 ? 'Tell us about your business.' : 'What should your website do?'" :description="workspaceId ? 'Your business details and website goals are saved. Website creation is the next stage.' : 'Save your progress at any time and return using your email sign-in link.'">
+  <StudioEntryShell
+    :title="workspaceId ? 'Your workspace is prepared.' : titles[step - 1]"
+    :description="workspaceId ? 'Your business details and website goals are saved.' : descriptions[step - 1]"
+    :step="workspaceId ? undefined : step"
+    :steps="3"
+  >
     <template #header>
       <UButton
         :label="signOutLabel"
         color="neutral"
-        variant="ghost"
+        variant="link"
         :disabled="busy"
         @click="signOut"
       />
-    </template>
-    <template #eyebrow>
-      <p v-if="!workspaceId" class="mb-3 text-sm font-medium text-primary">
-        Step {{ step }} of 2 · Business setup
-      </p>
     </template>
     <UAlert
       v-if="error"
@@ -147,24 +157,76 @@ async function signOut() {
     <p v-if="!ready && busy" role="status" class="text-muted">
       Loading your setup…
     </p>
-    <UCard v-if="workspaceId">
-      <div class="flex items-start gap-3">
-        <UIcon name="i-lucide-check-check" class="mt-1 size-6 shrink-0 text-success" /><div>
-          <h2 class="font-semibold text-highlighted">
-            {{ draft.businessName }}
-          </h2><p class="mt-1 text-sm text-muted">
-            {{ draft.businessType }} · {{ draft.timezone }}
-          </p>
-        </div>
-      </div>
-      <p class="mt-5 text-sm leading-6 text-muted">
-        You’re ready for the next stage. Open your website overview to continue your setup.
+    <div v-if="workspaceId" class="space-y-5">
+      <UIcon name="i-lucide-check" class="size-8 text-highlighted" />
+      <h2 class="text-xl font-medium text-highlighted">
+        {{ draft.businessName }}
+      </h2>
+      <p class="text-muted">
+        {{ draft.businessType }}
       </p>
-      <UButton class="mt-4" to="/studio/dashboard" label="Go to website overview" />
-    </UCard>
-    <form v-else-if="ready" class="space-y-6" @submit.prevent="advance">
-      <fieldset class="space-y-5" :disabled="busy || conflict">
+      <UButton
+        to="/studio/dashboard"
+        label="Go to website overview"
+        color="neutral"
+        size="xl"
+        class="rounded-none"
+      />
+    </div>
+    <form
+      v-else-if="ready"
+      id="studio-setup-form"
+      class="space-y-6"
+      @submit.prevent="advance"
+    >
+      <fieldset class="space-y-6" :disabled="busy || conflict">
         <template v-if="step === 1">
+          <UFormField label="Website topic" :ui="{ label: 'sr-only' }" required>
+            <UInput
+              v-model="topicSearch"
+              icon="i-lucide-search"
+              placeholder="Search for your site topic"
+              :maxlength="100"
+              size="xl"
+              color="neutral"
+              variant="soft"
+              class="w-full"
+              aria-label="Search for your site topic"
+            />
+          </UFormField>
+          <div class="border-t border-default">
+            <p class="px-5 pt-5 pb-2 text-xs text-muted">
+              {{ topicSearch ? 'Matching topics' : 'Popular topics' }}
+            </p>
+            <div class="max-h-72 overflow-y-auto pb-3">
+              <UButton
+                v-for="topic in visibleTopics"
+                :key="topic"
+                :label="topic"
+                color="neutral"
+                :variant="draft.businessType === topic ? 'soft' : 'ghost'"
+                :trailing-icon="draft.businessType === topic ? 'i-lucide-check' : undefined"
+                :aria-pressed="draft.businessType === topic"
+                class="flex w-full justify-between rounded-none px-5 py-2.5 text-left text-base font-normal"
+                :disabled="busy || conflict"
+                @click="draft.businessType = topic"
+              />
+              <UButton
+                v-if="customTopic && !topics.some(topic => topic.toLowerCase() === customTopic.toLowerCase())"
+                :label="`Use “${customTopic}”`"
+                color="neutral"
+                variant="ghost"
+                class="w-full justify-start rounded-none px-5 py-3 text-left"
+                :disabled="busy || conflict"
+                @click="draft.businessType = customTopic"
+              />
+            </div>
+          </div>
+          <p v-if="draft.businessType" class="flex items-center gap-2 text-sm text-highlighted" role="status">
+            <UIcon name="i-lucide-check" class="size-4" />{{ draft.businessType }}
+          </p>
+        </template>
+        <template v-else-if="step === 2">
           <UFormField label="Business or organisation name" required>
             <UInput
               v-model="draft.businessName"
@@ -172,17 +234,9 @@ async function signOut() {
               :maxlength="160"
               placeholder="e.g. Alex Flowers"
               class="w-full"
-              size="lg"
-              required
-            />
-          </UFormField>
-          <UFormField label="What kind of business is it?" help="A few words will do, such as florist, accounting firm or community group." required>
-            <UInput
-              v-model="draft.businessType"
-              :maxlength="100"
-              placeholder="e.g. Florist"
-              class="w-full"
-              size="lg"
+              size="xl"
+              color="neutral"
+              variant="soft"
               required
             />
           </UFormField>
@@ -191,64 +245,65 @@ async function signOut() {
               v-model="draft.timezone"
               :items="timezones"
               class="w-full"
-              size="lg"
+              size="xl"
+              color="neutral"
+              variant="soft"
             />
           </UFormField>
+          <p class="text-sm text-muted">
+            Website topic: {{ draft.businessType }}
+          </p>
         </template>
         <template v-else>
-          <UCard>
-            <p class="font-medium text-highlighted">
-              {{ draft.businessName }}
-            </p><p class="mt-1 text-sm text-muted">
-              {{ draft.businessType }} · {{ draft.timezone }}
-            </p>
-          </UCard>
-          <UFormField label="Website goals" help="Choose all that apply. These guide your setup; they do not activate paid features." required>
+          <UFormField label="Website goals" help="Choose all that apply. These do not activate paid features." required>
             <UCheckboxGroup
               v-model="draft.goals"
               :items="goals"
-              class="mt-3"
-              :ui="{ fieldset: 'gap-4' }"
+              color="neutral"
+              class="mt-5"
+              :ui="{ fieldset: 'gap-6' }"
             />
           </UFormField>
         </template>
       </fieldset>
-      <p v-if="saved" class="text-sm text-success" role="status">
+      <p v-if="saved" class="text-sm text-muted" role="status">
         Progress saved. You can safely return later.
       </p>
-      <div class="space-y-3 border-t border-default pt-5">
-        <UButton
-          type="submit"
-          :label="step === 1 ? 'Save and continue' : 'Create my workspace'"
-          size="lg"
-          block
-          :loading="busy"
-          :disabled="conflict"
-        />
-        <div class="flex flex-wrap justify-between gap-3">
-          <UButton
-            v-if="step === 2"
-            label="Back to business details"
-            color="neutral"
-            variant="ghost"
-            :disabled="busy"
-            @click="step = 1"
-          />
-          <UButton
-            label="Save for later"
-            color="neutral"
-            variant="ghost"
-            :disabled="busy || conflict"
-            @click="saveForLater"
-          />
-        </div>
-      </div>
       <NuxtLink
         v-if="error && !conflict"
         to="/studio/signup"
         target="_blank"
-        class="block text-sm text-primary underline"
+        class="block text-sm text-highlighted underline"
       >Open sign-in in another tab</NuxtLink>
     </form>
-  </StudioCustomerShell>
+    <template v-if="ready && !workspaceId" #footer>
+      <div class="flex items-center gap-2">
+        <UButton
+          v-if="step > 1"
+          label="Back"
+          color="neutral"
+          variant="ghost"
+          :disabled="busy"
+          @click="step -= 1; error = ''"
+        />
+        <UButton
+          label="Save for later"
+          color="neutral"
+          variant="link"
+          :disabled="busy || conflict"
+          @click="saveForLater"
+        />
+      </div>
+      <UButton
+        form="studio-setup-form"
+        type="submit"
+        :label="step < 3 ? 'Next' : 'Create my workspace'"
+        color="neutral"
+        size="xl"
+        class="ml-auto min-h-13 rounded-none px-8"
+        :loading="busy"
+        :disabled="conflict"
+      />
+    </template>
+  </StudioEntryShell>
 </template>

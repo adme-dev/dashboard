@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CustomerSignInRequest } from '~~/shared/pageStudio/customerSignup'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, colorMode: 'light' })
 useHead({ title: 'Create your Page Studio account' })
 const api = '/api/portal/page-studio/customer'
 const { data: config, status, refresh } = await useFetch<{ enabled: boolean }>(`${api}/config`)
@@ -48,8 +48,8 @@ async function submit() {
 </script>
 
 <template>
-  <StudioCustomerShell
-    :title="sent ? 'Check your inbox' : mode === 'signup' ? 'Your website starts here.' : 'Welcome back.'"
+  <StudioEntryShell
+    :title="sent ? 'Check your inbox' : mode === 'signup' ? 'Your website starts here.' : 'Continue to Page Studio.'"
     :description="sent ? `If ${email.trim()} is eligible, a secure sign-in link is on its way.` : mode === 'signin' ? 'Sign in with your email to return to your workspace.' : 'Start with your account. Then tell us a little about your business.'"
   >
     <UAlert
@@ -90,13 +90,20 @@ async function submit() {
         @click="sent = false"
       />
     </div>
-    <form v-else-if="config?.enabled" class="space-y-5" @submit.prevent="submit">
+    <form
+      v-else-if="config?.enabled"
+      id="studio-signup-form"
+      class="space-y-6"
+      @submit.prevent="submit"
+    >
       <UFormField v-if="mode === 'signup'" label="Your name" required>
         <UInput
           v-model="name"
           autocomplete="name"
           :maxlength="100"
-          size="lg"
+          size="xl"
+          color="neutral"
+          variant="soft"
           class="w-full"
           :disabled="busy"
           required
@@ -109,7 +116,9 @@ async function submit() {
           autocomplete="email"
           :maxlength="254"
           placeholder="you@company.com"
-          size="lg"
+          size="xl"
+          color="neutral"
+          variant="soft"
           class="w-full"
           :disabled="busy"
           required
@@ -130,13 +139,6 @@ async function submit() {
         role="alert"
       />
       <UButton
-        type="submit"
-        :label="mode === 'signup' ? 'Create account with email' : 'Email me a sign-in link'"
-        size="lg"
-        block
-        :loading="busy"
-      />
-      <UButton
         :label="mode === 'signup' ? 'Already registered? Sign in' : 'New here? Create an account'"
         color="neutral"
         variant="link"
@@ -153,8 +155,22 @@ async function submit() {
       :description="error"
       role="alert"
     />
-    <p class="mt-8 border-t border-default pt-5 text-sm leading-6 text-muted">
+    <p class="mt-8 text-sm leading-6 text-muted">
       Invited by your website team? <NuxtLink to="/studio" class="text-primary underline">Use your invitation sign-in.</NuxtLink>
     </p>
-  </StudioCustomerShell>
+    <template v-if="config?.enabled && !sent" #footer>
+      <p class="text-sm text-muted">
+        A little about you. Then your website.
+      </p>
+      <UButton
+        form="studio-signup-form"
+        type="submit"
+        :label="mode === 'signup' ? 'Continue' : 'Email me a sign-in link'"
+        color="neutral"
+        size="xl"
+        class="ml-auto min-h-13 rounded-none px-7"
+        :loading="busy"
+      />
+    </template>
+  </StudioEntryShell>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, colorMode: 'light' })
 useHead({ title: 'Verify your email — Page Studio' })
 const token = ref('')
 const ready = ref(false)
@@ -27,7 +27,7 @@ async function verify() {
 </script>
 
 <template>
-  <StudioCustomerShell title="One more step." description="Confirm your email to continue to your Page Studio account.">
+  <StudioEntryShell title="Continue to Page Studio." description="Confirm your email to continue to your Page Studio account.">
     <div class="space-y-5">
       <UAlert
         v-if="error"
@@ -47,7 +47,9 @@ async function verify() {
         label="Verify email and continue"
         icon="i-lucide-arrow-right"
         trailing
-        size="lg"
+        size="xl"
+        color="neutral"
+        class="rounded-none"
         block
         :loading="busy"
         @click="verify"
@@ -61,5 +63,5 @@ async function verify() {
         :disabled="busy"
       />
     </div>
-  </StudioCustomerShell>
+  </StudioEntryShell>
 </template>
