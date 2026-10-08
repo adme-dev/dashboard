@@ -25,13 +25,15 @@ interface FetcherBinding {
 const GATEWAY_URL = 'https://transactional-email.internal/v1/send'
 const CONTROLLED_ERROR_CLASS = /^[a-z0-9_]{1,120}$/u
 
-function serviceBinding(event: H3Event): FetcherBinding | null {
+type EmailGatewayBindingName = 'TRANSACTIONAL_EMAIL' | 'PAGE_STUDIO_CUSTOMER_EMAIL'
+
+function serviceBinding(event: H3Event, bindingName: EmailGatewayBindingName): FetcherBinding | null {
   const context = event.context as Record<string, unknown>
   const cloudflare = context.cloudflare
   if (!cloudflare || typeof cloudflare !== 'object') return null
   const env = (cloudflare as Record<string, unknown>).env
   if (!env || typeof env !== 'object') return null
-  const value = (env as Record<string, unknown>).TRANSACTIONAL_EMAIL
+  const value = (env as Record<string, unknown>)[bindingName]
   if (
     !value
     || typeof value !== 'object'
@@ -41,8 +43,8 @@ function serviceBinding(event: H3Event): FetcherBinding | null {
   return value as FetcherBinding
 }
 
-export function isCloudflareEmailGatewayAvailable(event?: H3Event): boolean {
-  return !!event && serviceBinding(event) !== null
+export function isCloudflareEmailGatewayAvailable(event?: H3Event, bindingName: EmailGatewayBindingName = 'TRANSACTIONAL_EMAIL'): boolean {
+  return !!event && serviceBinding(event, bindingName) !== null
 }
 
 function unavailable(errorClass: string): CloudflareEmailGatewayResult {
@@ -93,9 +95,10 @@ function controlledResult(
 
 export async function sendViaCloudflareEmailGateway(
   event: H3Event,
-  message: CloudflareEmailGatewayMessage
+  message: CloudflareEmailGatewayMessage,
+  bindingName: EmailGatewayBindingName = 'TRANSACTIONAL_EMAIL'
 ): Promise<CloudflareEmailGatewayResult> {
-  const binding = serviceBinding(event)
+  const binding = serviceBinding(event, bindingName)
   if (!binding) return unavailable('cloudflare_email_binding_unavailable')
 
   try {
