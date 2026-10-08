@@ -3,6 +3,7 @@ import { admitFormDocument, recheckFormAuthority, type TrustedFormContext, type 
 import { PageStudioBusinessContentError } from './businessContent'
 import { PageStudioContentScopeSchema, samePageStudioContentScope } from '~~/shared/pageStudio/businessContent'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
+import { emailFieldVariable, validateEmailTemplateFieldBindings } from '~~/shared/pageStudio/emailTemplateFields'
 import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
 import { EmailTemplateRecordSchema, type EmailAudienceSchema, type EmailTemplate } from '~~/shared/pageStudio/emailTemplates'
 import { EmailTemplateProposalDraftSchema, EmailTemplateProposalRequestSchema, EmailTemplateProposalSchema, applyEmailTemplateProposal, captureEmailTemplateDraft, decodeEmailTemplateProposalOutput } from '~~/shared/pageStudio/emailTemplateProposals'
@@ -19,6 +20,7 @@ export interface EmailTemplateGenerationInput {
   template: EmailTemplate
   siteName: string
   formName: string
+  formKey: string
   fields: { id: string, name: string, type: string }[]
 }
 interface UsageOperation {
@@ -58,12 +60,14 @@ export async function generateEmailTemplateProposal(context: TrustedFormContext,
     admitFormDocument(document, before.scope)
     if (!document.studio || !context.service?.readEmailTemplateDraft) throw unavailable()
     if (document.studio.checkpointId !== edit.checkpointId) throw conflict()
-    const item = formCatalogue(document.studio.pages, document.studio.formLibrary).find(item => item.placements.some(placement => placement.pageId === edit.pageId && placement.formId === edit.formId))
+    const catalogue = formCatalogue(document.studio.pages, document.studio.formLibrary)
+    const item = catalogue.find(item => item.placements.some(placement => placement.pageId === edit.pageId && placement.formId === edit.formId))
     if (!item?.form.fields || (selected.definitionId !== undefined && item.definitionId !== selected.definitionId)) {
       throw failure('FORM_NOT_FOUND', 404, 'Choose a saved form for this template.')
     }
+    if (validateEmailTemplateFieldBindings(edit.template, catalogue, selected.definitionId).length) throw conflict()
     // Copy only schema, never submitted answers or configured field defaults.
-    const form = { siteName: document.site.name, formName: item.form.name || 'Website form', fields: item.form.fields.map(({ id, name, type }) => ({ id, name, type })) }
+    const form = { formKey: item.key, siteName: document.site.name, formName: item.form.name || 'Website form', fields: item.form.fields.map(({ id, name, type }) => ({ id, name, type })) }
     let saved: unknown
     try {
       saved = await context.service.readEmailTemplateDraft({ scope: before.scope, audience: selected.audience })
@@ -72,9 +76,11 @@ export async function generateEmailTemplateProposal(context: TrustedFormContext,
     const record = saved === null ? null : EmailTemplateRecordSchema.safeParse(saved)
     if (record && (!record.success || !samePageStudioContentScope(record.data.scope, before.scope) || record.data.audience !== selected.audience)) throw unavailable()
     if ((record?.success ? record.data.revision : 0) !== edit.expectedRevision) throw conflict()
-    return form
+    const fieldSchemas = catalogue.map(candidate => ({ key: candidate.key, form: { fields: (candidate.form.fields ?? []).map(({ id, type }) => ({ id, type })) } }))
+    return { form, fieldSchemas }
   }
-  const form = await readBase()
+  const base = await readBase()
+  const { form } = base
   const media = await context.resolveMedia(edit.template)
   await recheckFormAuthority(context, before, true)
   if (media.warnings.length) throw unavailable()
@@ -84,7 +90,7 @@ export async function generateEmailTemplateProposal(context: TrustedFormContext,
   const { operationId, modelId, prompt, ...draftEdit } = edit
   const draft = { ...draftEdit, ...selected, siteId: before.scope.siteId }
   const snapshot = await captureEmailTemplateDraft(draft)
-  const fingerprint = await collectionDigest({ purpose: 'email-template-proposal-v1', modelId, prompt, baseDigest: snapshot.digest, form })
+  const fingerprint = await collectionDigest({ purpose: 'email-template-proposal-v1', modelId, prompt, baseDigest: snapshot.digest, base })
   const operation: UsageOperation = { authority: before, operationId, fingerprint, kind: 'model' }
   const matchesReceipt = (value: unknown, state: 'reserved' | 'succeeded' | 'failed') => {
     const parsed = ReceiptSchema.safeParse(value)
@@ -94,7 +100,7 @@ export async function generateEmailTemplateProposal(context: TrustedFormContext,
   }
   // Hashing/model lookup may have yielded while another editor changed the base.
   const checkBase = async () => {
-    if (JSON.stringify(await readBase()) !== JSON.stringify(form)) throw conflict()
+    if (JSON.stringify(await readBase()) !== JSON.stringify(base)) throw conflict()
   }
   await checkBase()
   let receipt: unknown
@@ -130,6 +136,12 @@ export async function generateEmailTemplateProposal(context: TrustedFormContext,
   try {
     proposal = EmailTemplateProposalSchema.parse({ ...decodeEmailTemplateProposalOutput(raw), schemaVersion: 1, id: crypto.randomUUID(), baseDigest: snapshot.digest, modelId, operationId })
     applyEmailTemplateProposal(proposal, snapshot, draft)
+    if (validateEmailTemplateFieldBindings(proposal.template, base.fieldSchemas, selected.definitionId).length) throw conflict()
+    const offered = new Set([
+      ...(edit.template.fieldBindings ?? []).map(emailFieldVariable),
+      ...form.fields.filter(field => field.type !== 'hidden').map(field => emailFieldVariable({ formKey: form.formKey, fieldId: field.id }))
+    ])
+    if ((proposal.template.fieldBindings ?? []).some(binding => !offered.has(emailFieldVariable(binding)))) throw conflict()
   } catch {
     await settle('failed')
     throw failure('EMAIL_AI_OUTPUT_INVALID', 502, 'The generated design could not be validated. Your draft has not changed.')

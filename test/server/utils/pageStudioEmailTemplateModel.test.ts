@@ -15,7 +15,7 @@ beforeEach(() => {
   mocks.gateway.mockReturnValue({ modelId: 'text-model' })
   mocks.generate.mockResolvedValue({ text: '{"proposal":"raw"}', finishReason: 'stop' })
 })
-const input = () => ({ prompt: 'Improve this draft', audience: 'team' as const, template: starterEmailTemplate('team'), siteName: 'Business', formName: 'Contact', fields: [{ id: 'name', name: 'Name', type: 'text' }] })
+const input = () => ({ prompt: 'Improve this draft', audience: 'team' as const, template: starterEmailTemplate('team'), siteName: 'Business', formName: 'Contact', formKey: 'contact:enquiry', fields: [{ id: 'name', name: 'Name', type: 'text' }] })
 
 describe('email proposal Gateway model adapter', () => {
   it('lists only eligible configured selections without invoking or charging models', async () => {

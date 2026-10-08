@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 8 October 2026. Start here after an interruption.
+Last updated: 9 October 2026. Start here after an interruption.
 Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
 This checklist tracks the active standalone CMS work; it does not declare the
@@ -39,20 +39,36 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Current checkpoint / next action
 
-**8 October — application released; native acceptance in progress:**
-Production remains source `1ab514938`, deployment `8810de23`, with native gates
-closed. Preview `18797d36` includes the revised topic/goals/account flow and private
-Cloudflare sign-in email from XeroFlow. Both test mailboxes and email authorization
-are supplied; A is verified, B still needs verification, and workspace setup is
-pending for both. Sign-in email and Cloudflare transport PRs #637/#639 are merged;
-design #640 passed fresh CI and merged on current main. The approved main builder
-address https://xeroflowpages.com is connected and opens production Studio sign-in;
-the new signup flow remains on preview. Studio's retained 29-commit native
-Forms stack now has consolidated draft PR #119; its fresh cross-platform CI found
-a dependency-audit failure before tests. Dependency remediation is underway.
-See the [current release and activation checkpoint](2026-10-08-page-studio-release-and-activation.md)
-for exact source, provider and account evidence. Older dated entries below are
-historical and their pending-mailbox/integration statements are superseded here.
+**9 October — current sources and unfinished launch work:**
+Freshly fetched Dashboard main is `c85bf2653344ac36530e2a479d2a64cf64e58b1d`.
+The last verified production deployment is `57353fad-8401-496c-951a-71dc569da18d`
+from that source on 8 October. Invited CMS access and the light-first Studio style
+are released; QR navigation was retained. Normal mailbox sign-in to Fantasy Limo's
+independent CMS remains unverified. Confirm provider state again before release.
+
+Native PR #119 is merged at `17ac1f3dd292f5da996daac82c523174606a3265`;
+its Linux/Windows CI passed. Local work now adds default-light/dark editor appearance,
+visual page/section layouts, guarded history and page/section thumbnails plus grouped
+overview through `29be3451d20f5b25ff6ea854c6f1e9136b2be19e`. These increments
+are locally reviewed/tested and remain unpushed/undeployed to conserve Actions.
+Their local branches retain current main ancestry; they are not production artifacts.
+
+Dashboard's six local email-AI commits through `dd44d62a4` connect proposal schemas,
+Gateway models, real CMS-login allowance, API and explicit preview/Apply UI. Operator
+models remain disabled and native preview allowance remains zero. The 9 October
+[field-reference contract](2026-10-09-email-template-field-references.md) adds local
+V2 validation/rendering/storage; manual controls, coordinated worker release and
+hosted field/schema acceptance remain unfinished. See the
+[AI proposal plan](2026-10-08-email-template-ai-proposals.md) for exact boundaries.
+
+The controlled signup preview was last verified at `5dec4699` / source `1f4e1250`.
+Both real test mailboxes and sign-in authorization are supplied. A was verified;
+B verification and both workspace setups remain pending. No current native signed-in
+session is proven. Supported onboarding, exact approvals/runtime/storage installation,
+explicit Forms capability activation and the full two-account matrix remain required.
+Do not ask for mailbox identities again or mint sessions to bypass this prerequisite.
+The later source/provider receipts supersede historical pending-CI/source statements
+below. The entire customer CMS/Studio launch goal remains open.
 
 **2 October — saved template history:** implemented, independently reviewed and
 verified in the Fantasy Limo demo on desktop and mobile. Customers can browse

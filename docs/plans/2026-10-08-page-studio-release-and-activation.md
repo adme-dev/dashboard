@@ -1,5 +1,30 @@
 # Page Studio production release and activation checkpoint — 8 October 2026
 
+## 9 October source reconciliation
+
+This section supersedes older current-source statements below; dated release
+entries remain historical evidence. Fresh Dashboard main is `c85bf2653344ac36530e2a479d2a64cf64e58b1d`;
+the last verified 8 October production deployment is
+`57353fad-8401-496c-951a-71dc569da18d`. CMS light/dark design and invited access
+are released, with existing QR navigation retained. Recheck live provider state
+before a new release; no deployment occurs merely by updating this ledger.
+
+Native PR119 is merged at `17ac1f3dd292f5da996daac82c523174606a3265`, with
+successful Linux/Windows CI. Local appearance, layout-gallery, guarded history and
+thumbnail/overview increments extend it through `29be3451d20f5b25ff6ea854c6f1e9136b2be19e`.
+Dashboard email proposal/API/UI work through `dd44d62a4` and the newer local V2
+field-reference contract remain unpushed and unexposed. Native/runtime deployment,
+matching private renderer rollout and customer activation are separate required gates.
+
+Mailboxes and email authorization are already supplied. Supported current-native
+sign-in, B verification, both workspace setups and the hosted acceptance matrix
+remain pending; no real signed-in session is claimed. Native AI allowance remains
+zero. Delivery/outbox, published outcomes and the wider CMS roadmap remain open.
+See [the current checklist](customer-cms-status.md) and
+[field-reference contract](2026-10-09-email-template-field-references.md).
+
+
+
 Completed production deployment and authenticated agency verification on 7 October.
 This checkpoint supersedes the pending-release and rollback-only statuses in the
 earlier resumption ledger and customer CMS checklist.

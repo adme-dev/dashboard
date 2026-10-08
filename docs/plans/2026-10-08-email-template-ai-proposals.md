@@ -52,8 +52,13 @@ work on current Dashboard main, not hosted acceptance or customer activation.
 
 Local tests cover manual changes during generation/hash, site/audience/form/revision
 changes, optional-field JSON transport equivalence, unsafe output and image identity.
-The current supported variables remain `site.name` and `form.name`; stable field
-merge tags and defined fallbacks are not implemented by this contract slice.
+Legacy templates continue to support `site.name` and `form.name` unchanged.
+The 9 October local contract now adds version-2 stable form/field references,
+explicit literal fallbacks, current schema admission, synthetic private rendering
+and customer-owned runtime persistence. Label changes retain references; removal,
+type changes and legacy-to-shared adoption require explicit review/rebinding.
+Manual picker and hosted availability remain unfinished. See
+[the field-reference contract](2026-10-09-email-template-field-references.md).
 
 ## Remaining implementation and acceptance
 
@@ -69,8 +74,10 @@ merge tags and defined fallbacks are not implemented by this contract slice.
    fixture verified panel preview/Apply and light/dark rendering only; its routes
    were removed before building. It proves no login, provider, billing or storage
    integration. Mobile browser verification remains incomplete.
-4. Add stable field-ID variables with explicit missing-value fallbacks and schema
-   change invalidation through the shared validator, renderer and owned runtime.
+4. Connect manual field selection and fallback editing to the completed local
+   V2 contract, then verify the coordinated renderer/router/runtime release and
+   hosted schema-change/repair journey. Existing template revisions and requests
+   stay V1; do not expose V2 to older strict services.
 5. Verify provider failure, exhausted allowance, concurrent/revoked authority,
    stale drafts, unsupported models and invalid output using local battle tests,
    then the approved hosted accounts. No generation completion may be simulated.

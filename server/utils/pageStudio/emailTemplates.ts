@@ -1,4 +1,5 @@
 import { portalFormContext } from './portalFormContext'
+import { validateEmailTemplateFieldBindings } from '~~/shared/pageStudio/emailTemplateFields'
 import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
 import { admitFormDocument, recheckFormAuthority, type TrustedFormContext } from './formAuthority'
 import { PageStudioBusinessContentError } from './businessContent'
@@ -16,6 +17,21 @@ interface Dependencies {
 const invalid = (message: string) => new PageStudioBusinessContentError('EMAIL_TEMPLATE_INVALID', 400, message)
 const unavailable = () => new PageStudioBusinessContentError('EMAIL_TEMPLATE_UNAVAILABLE', 503, 'Email template storage is not connected. Your website has not changed.')
 const conflict = () => new PageStudioBusinessContentError('EMAIL_TEMPLATE_CONFLICT', 409, 'This form or its settings changed. Reload the saved version before saving again.')
+
+type FormDocument = Awaited<ReturnType<TrustedFormContext['readDocument']>>
+function fieldErrors(template: Parameters<TrustedFormContext['resolveMedia']>[0], document: FormDocument, targetFormKey?: string) {
+  if (template.schemaVersion !== 2) return []
+  if (!document.studio) return ['Form schema is unavailable']
+  return validateEmailTemplateFieldBindings(template, formCatalogue(document.studio.pages, document.studio.formLibrary), targetFormKey)
+}
+async function recheckTemplateFields(context: TrustedFormContext, before: Awaited<ReturnType<TrustedFormContext['authorize']>>, template: Parameters<TrustedFormContext['resolveMedia']>[0], checkpointId: string, writing: boolean, targetFormKey?: string) {
+  if (template.schemaVersion !== 2) return
+  await recheckFormAuthority(context, before, writing)
+  const current = await context.readDocument(before.scope)
+  await recheckFormAuthority(context, before, writing)
+  admitFormDocument(current, before.scope)
+  if (current.studio?.checkpointId !== checkpointId || fieldErrors(template, current, targetFormKey).length) throw conflict()
+}
 
 export async function operateEmailTemplate(request: ContentAuthorityRequest, audience: string, body?: unknown, deps: Dependencies = {}, definitionId?: string): Promise<EmailTemplateState> {
   return operateTrustedEmailTemplate(portalFormContext(request, deps), audience, body, definitionId)
@@ -38,6 +54,10 @@ export async function operateTrustedEmailTemplate(context: TrustedFormContext, a
   if (edit && !edit.success) throw invalid('Check the template fields and variables and try again')
   const proposed = edit?.success ? edit.data : undefined
   if (proposed && proposed.checkpointId !== document.studio.checkpointId) throw conflict()
+  if (proposed?.template) {
+    const errors = fieldErrors(proposed.template, document, definitionId)
+    if (errors.length) throw invalid(errors[0]!)
+  }
 
   await recheckFormAuthority(context, before, writing)
 
@@ -83,7 +103,11 @@ export async function operateTrustedEmailTemplate(context: TrustedFormContext, a
       const write = EmailTemplateWriteSchema.safeParse({ scope: before.scope, audience: parsedAudience.data, checkpointId: proposed.checkpointId, expectedRevision: proposed.expectedRevision, ...outgoing, actorId: before.actorId })
       if (!write.success) throw invalid(write.error.issues[0]?.message ?? 'Check your template settings')
       outgoing = { template: write.data.template, overrides: write.data.overrides ?? [] }
+      if (proposed.template) await recheckTemplateFields(context, before, proposed.template, proposed.checkpointId, true, definitionId)
       value = await service.writeEmailTemplateDraft(write.data)
+      // Revision CAS is not a schema CAS. A race may have appended a stale draft;
+      // withhold success, keep it readable for repair, and never replay the write.
+      if (proposed.template) await recheckTemplateFields(context, before, proposed.template, proposed.checkpointId, true, definitionId)
     } else {
       if (!service?.readEmailTemplateDraft) throw unavailable()
       value = await service.readEmailTemplateDraft({ scope: before.scope, audience: parsedAudience.data })
@@ -111,12 +135,17 @@ export async function previewTrustedEmailTemplate(context: TrustedFormContext, a
   const document = await context.readDocument(before.scope)
   await recheckFormAuthority(context, before, false)
   admitFormDocument(document, before.scope)
-  const form = document.studio && formCatalogue(document.studio.pages, document.studio.formLibrary).find(item => item.placements.some(placement => placement.pageId === parsed.data.pageId && placement.formId === parsed.data.formId))?.form
+  const item = document.studio && formCatalogue(document.studio.pages, document.studio.formLibrary).find(candidate => candidate.placements.some(placement => placement.pageId === parsed.data.pageId && placement.formId === parsed.data.formId))
+  const form = item?.form
   if (!form?.fields) throw new PageStudioBusinessContentError('FORM_NOT_FOUND', 404, 'Choose a saved form for the preview')
+  const errors = fieldErrors(parsed.data.template, document)
+  if (errors.length) throw invalid(errors[0]!)
   const media = await context.resolveMedia(parsed.data.template)
   await recheckFormAuthority(context, before, false)
-  const preview = await context.renderEmailPreview(parsed.data.template, { siteName: document.site.name, formName: form.name || 'Website form', fields: form.fields.map(({ id, name, type }) => ({ id, name, type })), images: media.images })
+  await recheckTemplateFields(context, before, parsed.data.template, document.studio!.checkpointId, false)
+  const preview = await context.renderEmailPreview(parsed.data.template, { ...(parsed.data.template.schemaVersion === 2 ? { formKey: item!.key } : {}), siteName: document.site.name, formName: form.name || 'Website form', fields: form.fields.map(({ id, name, type }) => ({ id, name, type })), images: media.images })
   await recheckFormAuthority(context, before, false)
+  await recheckTemplateFields(context, before, parsed.data.template, document.studio!.checkpointId, false)
   return { ...preview, warnings: media.warnings }
 }
 

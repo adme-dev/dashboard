@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { EmailFormKeySchema } from '../pageStudio/emailTemplateFields'
 import { ValidatedEmailTemplateSchema, type EmailTemplate } from '../pageStudio/emailTemplates'
 
 export const EMAIL_RENDER_VERSION = 1 as const
@@ -7,6 +8,7 @@ export type RenderEnvironment = z.infer<typeof RenderEnvironmentSchema>
 export const DocumentRenderOptionsSchema = z.object({ subjectLine: z.string().optional(), previewText: z.string().optional(), primaryColor: z.string().optional(), variables: z.record(z.string(), z.string()).optional() }).strict()
 export type DocumentRenderOptions = z.infer<typeof DocumentRenderOptionsSchema>
 export const CustomerPreviewContextSchema = z.object({
+  formKey: EmailFormKeySchema.optional(),
   siteName: z.string().max(8000), formName: z.string().max(8000),
   fields: z.array(z.object({ id: z.string().max(128), name: z.string().max(8000), type: z.string().max(128) }).strict()).max(500),
   images: z.record(z.string().uuid(), z.string().max(710_000)).optional()

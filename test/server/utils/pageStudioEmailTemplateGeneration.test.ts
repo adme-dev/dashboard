@@ -40,6 +40,44 @@ describe('authenticated email template proposal generation orchestration', () =>
     expect(s.context.service?.writeEmailTemplateDraft).not.toHaveBeenCalled()
   })
 
+  it('offers exact selected-form keys for validated field-bound designs', async () => {
+    const s = setup()
+    Object.assign(s.output.template, { schemaVersion: 2, subject: 'Hello {{field.contact:enquiry.name}}', fieldBindings: [{ formKey: 'contact:enquiry', fieldId: 'name', type: 'text', fallback: 'there' }] })
+    s.invoke.mockResolvedValue(JSON.stringify(s.output))
+    expect((await s.run()).template.schemaVersion).toBe(2)
+    expect(s.invoke).toHaveBeenCalledWith(expect.objectContaining({ formKey: 'contact:enquiry' }))
+  })
+  it.each(['unknown', 'hidden', 'unoffered-form'])('rejects %s model field bindings and settles the attempt as failed', async (scenario) => {
+    const s = setup()
+    let formKey = 'contact:enquiry'
+    let fieldId = 'name'
+    if (scenario === 'unknown') fieldId = 'missing'
+    if (scenario === 'hidden') s.document.studio.pages[0].forms[0].fields[0].type = 'hidden'
+    if (scenario === 'unoffered-form') {
+      s.document.studio.pages.push({ ...structuredClone(s.document.studio.pages[0]), id: 'other' })
+      formKey = 'other:enquiry'
+    }
+    Object.assign(s.output.template, { schemaVersion: 2, subject: `Hello {{field.${formKey}.${fieldId}}}`, fieldBindings: [{ formKey, fieldId, type: 'text', fallback: 'there' }] })
+    s.invoke.mockResolvedValue(JSON.stringify(s.output))
+    await expect(s.run()).rejects.toMatchObject({ statusCode: 502 })
+    expect(s.execution.settle).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'failed' }))
+  })
+  it('rejects a stale manually bound input before reserving paid usage', async () => {
+    const s = setup()
+    Object.assign(s.body.template, { schemaVersion: 2, subject: '{{field.contact:enquiry.missing}}', fieldBindings: [{ formKey: 'contact:enquiry', fieldId: 'missing', type: 'text', fallback: '' }] })
+    await expect(s.run()).rejects.toMatchObject({ statusCode: 409 })
+    expect(s.execution.reserve).not.toHaveBeenCalled()
+  })
+  it('withholds a proposal when another owned form schema changes during inference', async () => {
+    const s = setup()
+    s.document.studio.pages.push({ ...structuredClone(s.document.studio.pages[0]), id: 'other' })
+    s.invoke.mockImplementation(async () => {
+      s.document.studio.pages[1].forms[0].fields[0].type = 'email'
+      return JSON.stringify(s.output)
+    })
+    await expect(s.run()).rejects.toMatchObject({ statusCode: 409 })
+  })
+
   it.each(['viewer', 'foreign-document', 'stale-checkpoint', 'missing-form', 'wrong-override', 'missing-storage', 'stale-template', 'foreign-record', 'media-unavailable', 'model-unavailable', 'model-mismatch'])('rejects %s before charging or invoking', async (scenario) => {
     const s = setup()
     if (scenario === 'viewer') s.authority.canEdit = false
