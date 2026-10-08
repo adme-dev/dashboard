@@ -28,6 +28,19 @@ const message = {
 }
 
 describe('Cloudflare transactional email service client', () => {
+  it('does not use the shared portal binding when Page Studio binding is missing', async () => {
+    const fetch = vi.fn()
+    await expect(sendViaCloudflareEmailGateway(eventWithBinding(fetch), message, 'PAGE_STUDIO_CUSTOMER_EMAIL')).resolves.toMatchObject({ outcome: 'unavailable' })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it('selects the customer binding even when the shared portal binding exists', async () => {
+    const portalFetch = vi.fn()
+    const customerFetch = vi.fn().mockResolvedValue(Response.json({ outcome: 'accepted', provider: 'cloudflare_email', providerMessageId: 'cf-customer-1', errorClass: null }, { status: 202 }))
+    const event = { context: { cloudflare: { env: { TRANSACTIONAL_EMAIL: { fetch: portalFetch }, PAGE_STUDIO_CUSTOMER_EMAIL: { fetch: customerFetch } } } } } as unknown as H3Event
+    await expect(sendViaCloudflareEmailGateway(event, message, 'PAGE_STUDIO_CUSTOMER_EMAIL')).resolves.toMatchObject({ outcome: 'accepted', providerMessageId: 'cf-customer-1' })
+    expect(portalFetch).not.toHaveBeenCalled()
+    expect(await customerFetch.mock.calls[0][0].json()).toEqual(message)
+  })
   it('sends portal mail through the request-owned service binding', async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json({
       outcome: 'accepted',

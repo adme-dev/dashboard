@@ -11,7 +11,8 @@ describe('portal authentication sender policy', () => {
 
     expect(PORTAL_AUTH_SENDER_ADDRESS).toBe('notification@adme.net.au')
     expect(emailSource).toContain('address: PORTAL_AUTH_SENDER_ADDRESS')
-    expect(workerSource).toContain('from.address !== PORTAL_AUTH_SENDER_ADDRESS')
+    expect(workerSource).toContain('senderAddress = PORTAL_AUTH_SENDER_ADDRESS')
+    expect(workerSource).toContain('from.address !== senderAddress')
     expect(workerConfig).toContain(
       `allowed_sender_addresses = ["${PORTAL_AUTH_SENDER_ADDRESS}"]`
     )

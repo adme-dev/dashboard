@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import pageStudioWorker from '../../workers/page-studio-customer-email/src/index'
 import {
   createTransactionalEmailWorker
 } from '../../workers/transactional-email/src/index'
@@ -23,6 +24,17 @@ const message = {
 }
 
 describe('transactional email service Worker', () => {
+  it('isolates the Page Studio sender from the default ADME sender', async () => {
+    const send = vi.fn().mockResolvedValue({ messageId: 'cf-studio-1' })
+    const env = { EMAIL: { send } as unknown as SendEmail }
+    const studio = pageStudioWorker
+    const studioMessage = { ...message, from: { address: 'notification@xeroflow.io', name: 'Page Studio' } }
+    expect((await studio.fetch(request(studioMessage), env)).status).toBe(202)
+    expect(send.mock.calls[0][0].headers['X-XeroFlow-Origin']).toBe('page-studio-customer-auth')
+    expect((await studio.fetch(request(message), env)).status).toBe(400)
+    expect((await createTransactionalEmailWorker().fetch(request(studioMessage), env)).status).toBe(400)
+    expect(send).toHaveBeenCalledTimes(1)
+  })
   it('sends a bounded transactional message through the native binding', async () => {
     const send = vi.fn().mockResolvedValue({ messageId: 'cf-message-1' })
     const worker = createTransactionalEmailWorker()

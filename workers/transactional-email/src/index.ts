@@ -38,7 +38,7 @@ function validAddress(value: unknown): value is string {
     && EMAIL_PATTERN.test(value)
 }
 
-function validMessage(value: unknown): value is GatewayMessage {
+function validMessage(value: unknown, senderAddress: string): value is GatewayMessage {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const message = value as Record<string, unknown>
   if (!exactKeys(message, ['to', 'from', 'subject', 'text', 'html'])) return false
@@ -49,7 +49,7 @@ function validMessage(value: unknown): value is GatewayMessage {
   if (!exactKeys(from, ['address', 'name'])) return false
   if (
     !validAddress(from.address)
-    || from.address !== PORTAL_AUTH_SENDER_ADDRESS
+    || from.address !== senderAddress
   ) return false
   if (
     typeof from.name !== 'string'
@@ -84,7 +84,7 @@ function json(value: unknown, status: number): Response {
   })
 }
 
-function prepared(message: GatewayMessage): PreparedCrmTransactionalEmail {
+function prepared(message: GatewayMessage, origin: string): PreparedCrmTransactionalEmail {
   return {
     from: message.from,
     to: [{ address: message.to, name: null }],
@@ -94,12 +94,12 @@ function prepared(message: GatewayMessage): PreparedCrmTransactionalEmail {
     subject: message.subject,
     text: message.text,
     html: message.html,
-    headers: { 'X-XeroFlow-Origin': 'portal-auth' },
+    headers: { 'X-XeroFlow-Origin': origin },
     attachments: []
   }
 }
 
-export function createTransactionalEmailWorker() {
+export function createTransactionalEmailWorker(senderAddress = PORTAL_AUTH_SENDER_ADDRESS, origin = 'portal-auth') {
   return {
     async fetch(
       request: Request,
@@ -118,10 +118,10 @@ export function createTransactionalEmailWorker() {
       }
 
       const payload = await request.json().catch(() => null)
-      if (!validMessage(payload)) return json({ error: 'invalid_request' }, 400)
+      if (!validMessage(payload, senderAddress)) return json({ error: 'invalid_request' }, 400)
 
       const result = await createCloudflareTransactionalEmailProvider(env.EMAIL)
-        .send(prepared(payload))
+        .send(prepared(payload, origin))
       const status = result.outcome === 'accepted'
         ? 202
         : result.outcome === 'retryable'
