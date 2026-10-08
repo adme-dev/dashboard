@@ -45,7 +45,9 @@ closed. Preview `18797d36` includes the revised topic/goals/account flow and pri
 Cloudflare sign-in email from XeroFlow. Both test mailboxes and email authorization
 are supplied; A is verified, B still needs verification, and workspace setup is
 pending for both. Sign-in email and Cloudflare transport PRs #637/#639 are merged;
-design #640 is checking its updated main base. Studio's retained 29-commit native
+design #640 passed fresh CI and merged on current main. The approved main builder
+address https://xeroflowpages.com is connected and opens production Studio sign-in;
+the new signup flow remains on preview. Studio's retained 29-commit native
 Forms stack now has consolidated draft PR #119; its fresh cross-platform CI found
 a dependency-audit failure before tests. Dependency remediation is underway.
 See the [current release and activation checkpoint](2026-10-08-page-studio-release-and-activation.md)

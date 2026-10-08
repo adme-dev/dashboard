@@ -4,10 +4,10 @@ Completed production deployment and authenticated agency verification on 7 Octob
 This checkpoint supersedes the pending-release and rollback-only statuses in the
 earlier resumption ledger and customer CMS checklist.
 
-## Current provider/source readback — 8 October, 05:20 UTC
+## Current provider/source readback — 8 October, 05:38 UTC
 
-Dashboard main is `f6618644f3e593eb76e76057932f990c8dad4208`, including
-merged sign-in email PR #637 and Cloudflare transport PR #639. Production remains
+Dashboard main is `4d2d16b0581bb3c96510d75a7d6e962000d7087d`, including
+merged sign-in email PR #637, Cloudflare transport PR #639 and signup design #640. Production remains
 successful deployment `8810de23-fed2-42c5-b5ca-92821c460914` from
 `1ab514938f381b737c9b6e172f231dfa3c07f07b`; these later commits have not been
 released to production. Customer production activation remains pending.
@@ -31,8 +31,8 @@ Automotive, visible topic scrolling, and original colorful artwork. The deployed
 version passed 28 focused tests, lint, guarded build, desktop/mobile browser checks,
 and public QR Codes page/navigation checks. Worker raw size is 25,426,668 bytes
 of 25,468,928 (42,260 spare); gzip is 7,027,734 of 9,750,000. Both original PR CI
-runs passed. Head `2a46f62eb6efe60b411e680742ceb4577e9c5913` now includes merged
-email main and has fresh CI running; it is not yet merged.
+runs passed. Head `2a46f62eb6efe60b411e680742ceb4577e9c5913` included current
+email main and passed both fresh CI runs (37731553154 and 37731548667); #640 is merged.
 
 Fresh read-only staging account evidence: A is active/email-verified with a current
 session; B is pending/unverified. Both recorded terms acceptance. Neither has a
@@ -50,8 +50,24 @@ is required before integration. It retains #110–118 and the later form/email d
 managed runtime/storage upgrades and private activation operator. No worker release
 or customer activation follows merely from opening that draft.
 
-`xeroflowpages.com` is already configured for published-site delivery. The optional
-`app.xeroflowpages.com` account-entry proposal is unanswered; DNS/routes are unchanged.
+The owner selected **https://xeroflowpages.com** as the main builder address on
+8 October, superseding the optional `app.xeroflowpages.com` proposal. The apex is
+now attached to the existing `agency-dashboard` Pages project. Chrome verified
+HTTPS navigation from the apex to `/studio` and the production invited-customer
+sign-in screen. Cloudflare reports domain, verification and certificate validation
+all active. This domain change does not activate native signup or deploy the
+new preview design. Existing invited-customer email links still use the established
+`APP_URL` origin; native signup must use `PAGE_STUDIO_CUSTOMER_ORIGIN=https://xeroflowpages.com`
+when its separately gated production activation is ready. Keep preview's own origin.
+
+Cloudflare configuration and rollback record:
+
+- Zone `dc4c0e5eba26d3509480cfef5300b0bb`, Pages domain `ec6719b6-f4b6-46d5-8ac5-f47bbcda25f9`.
+- Proxied apex CNAME to `agency-dashboard-6cm.pages.dev`, record `76125a28fe8fbada2d89c14bb6cf509c`.
+- Redirect ruleset `756642ee4bcd474b9f2a1bd1d195ab67`, rule `444535e4c50f4744a6caf42eb9d11d76`: only GET/HEAD on exact apex `/` returns 302 to `https://xeroflowpages.com/studio`, preserving query strings.
+- No existing redirect ruleset or apex DNS record was replaced. Wildcard production and staging delivery routes and publisher routes are unchanged.
+- Rollback only these newly added apex resources; do not remove or edit wildcard delivery or publisher records. No application deployment or database mutation accompanied this change.
+
 Preserve the original Dashboard, Studio and demo workspaces. Continue in the owned
 `page-studio-resume-20261007` worktree from freshly verified current main.
 
