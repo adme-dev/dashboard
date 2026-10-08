@@ -4,26 +4,72 @@ Completed production deployment and authenticated agency verification on 7 Octob
 This checkpoint supersedes the pending-release and rollback-only statuses in the
 earlier resumption ledger and customer CMS checklist.
 
-## Current provider/source readback — 8 October
+## Current provider/source readback — 8 October, 05:38 UTC
 
-Fresh Dashboard fetch reports main `1ab514938f381b737c9b6e172f231dfa3c07f07b`.
-Cloudflare reports successful canonical production deployment
-`8810de23-fed2-42c5-b5ca-92821c460914`, created 7 October at 10:41:38 UTC,
-from that exact clean source. This subsequent launcher release includes the Page
-Studio integration and renderer recovery below; do not replace it with the older
-Page Studio artifact. Its successful provider status is not a new browser acceptance run.
+Dashboard main is `4d2d16b0581bb3c96510d75a7d6e962000d7087d`, including
+merged sign-in email PR #637, Cloudflare transport PR #639 and signup design #640. Production remains
+successful deployment `8810de23-fed2-42c5-b5ca-92821c460914` from
+`1ab514938f381b737c9b6e172f231dfa3c07f07b`; these later commits have not been
+released to production. Customer production activation remains pending.
 
-Production still binds `EMAIL_RENDERER` to `xeroflow-email-rendering-production`
-with entrypoint `EmailRenderer`; preview binds the staging service. Preview native
-browser/editor/signup/preview flags remain false. Those flags are absent in production
-and default closed. No configuration was changed during this readback.
+Current preview is successful deployment `18797d36-b78c-4102-863d-915d6a168520`,
+source `11f1a912ce7364815183945aa6edda5066457c74`, at
+https://preview.agency-dashboard-6cm.pages.dev/studio/signup. Its guarded build
+included then-current main `2e9f18cd74564037077fcf163d57d5eff4db065f`.
+This acceptance branch contains temporary signup restrictions to the two approved
+mailboxes, expiring 10 October at 00:00 UTC. Do not merge its open signup gate into
+production. Editor/browser/provisioning/Forms activation remains separate.
 
-Fresh Studio fetch confirms the clean pushed `feat/customer-form-settings-drafts`
-branch at `6adea020968da49c9a0aa46ff7665b0872b976e9`: zero commits behind, 29 ahead
-of main `50d372e1cb0bc92a661379866062dbe75a4539d0`. Preserve that pending work and
-the original Dashboard and demo workspaces. New Dashboard verification work starts
-from freshly fetched main on `test/page-studio-legacy-upgrade-20261008` in the owned
-`page-studio-resume-20261007` worktree.
+Preview sign-in email uses private Cloudflare Worker
+`xeroflow-page-studio-customer-email-staging`, sender `notification@xeroflow.io`.
+Cloudflare confirmed delivery to both approved recipients at approximately 02:09 UTC.
+The later sign-in request for account A is not additional provider delivery evidence.
+The old Resend proposal #638 is closed; no new Resend key was created.
+
+Design PR #640 contains topic -> goals -> Create your account, 14 selectable goals,
+Automotive, visible topic scrolling, and original colorful artwork. The deployed
+version passed 28 focused tests, lint, guarded build, desktop/mobile browser checks,
+and public QR Codes page/navigation checks. Worker raw size is 25,426,668 bytes
+of 25,468,928 (42,260 spare); gzip is 7,027,734 of 9,750,000. Both original PR CI
+runs passed. Head `2a46f62eb6efe60b411e680742ceb4577e9c5913` included current
+email main and passed both fresh CI runs (37731553154 and 37731548667); #640 is merged.
+
+Fresh read-only staging account evidence: A is active/email-verified with a current
+session; B is pending/unverified. Both recorded terms acceptance. Neither has a
+workspace or saved setup draft. The supplied mailbox identities and email consent
+are complete prerequisites; normal browser sign-in/onboarding and B verification
+are the next dependency. Keep addresses, sessions and sign-in links out of reports.
+
+GitHub confirms Studio main `50d372e1cb0bc92a661379866062dbe75a4539d0` and the
+clean pushed `feat/customer-form-settings-drafts` at
+`6adea020968da49c9a0aa46ff7665b0872b976e9`, zero behind/29 ahead. Consolidated draft
+[Studio PR #119](https://github.com/adme-dev/xeroflow-page-studio/pull/119) now
+ran fresh cross-platform CI; both operating systems failed the dependency audit
+before tests. The local audit reproduces nine advisories, so dependency remediation
+is required before integration. It retains #110–118 and the later form/email drafts,
+managed runtime/storage upgrades and private activation operator. No worker release
+or customer activation follows merely from opening that draft.
+
+The owner selected **https://xeroflowpages.com** as the main builder address on
+8 October, superseding the optional `app.xeroflowpages.com` proposal. The apex is
+now attached to the existing `agency-dashboard` Pages project. Chrome verified
+HTTPS navigation from the apex to `/studio` and the production invited-customer
+sign-in screen. Cloudflare reports domain, verification and certificate validation
+all active. This domain change does not activate native signup or deploy the
+new preview design. Existing invited-customer email links still use the established
+`APP_URL` origin; native signup must use `PAGE_STUDIO_CUSTOMER_ORIGIN=https://xeroflowpages.com`
+when its separately gated production activation is ready. Keep preview's own origin.
+
+Cloudflare configuration and rollback record:
+
+- Zone `dc4c0e5eba26d3509480cfef5300b0bb`, Pages domain `ec6719b6-f4b6-46d5-8ac5-f47bbcda25f9`.
+- Proxied apex CNAME to `agency-dashboard-6cm.pages.dev`, record `76125a28fe8fbada2d89c14bb6cf509c`.
+- Redirect ruleset `756642ee4bcd474b9f2a1bd1d195ab67`, rule `444535e4c50f4744a6caf42eb9d11d76`: only GET/HEAD on exact apex `/` returns 302 to `https://xeroflowpages.com/studio`, preserving query strings.
+- No existing redirect ruleset or apex DNS record was replaced. Wildcard production and staging delivery routes and publisher routes are unchanged.
+- Rollback only these newly added apex resources; do not remove or edit wildcard delivery or publisher records. No application deployment or database mutation accompanied this change.
+
+Preserve the original Dashboard, Studio and demo workspaces. Continue in the owned
+`page-studio-resume-20261007` worktree from freshly verified current main.
 
 ## Verified Page Studio release — 7 October
 
@@ -50,7 +96,7 @@ Live authenticated checks on app.xeroflow.io after deployment:
 - Fantasy Limo Business content loads saved revision 1. Existing CMS setup/custom-collection access remains unavailable; its page, API routes and businessContent utility have no diff from the prior production source. This is navigation/read verification, not new CMS activation acceptance.
 - No email was sent. No native production migration or access activation occurred.
 
-Native signup/editor/browser/preview/Forms stay unavailable by default in production. Preview browser/editor/signup/preview flags read back false, approvals []. Hosted native two-account acceptance still needs real approved identities and supported onboarding. Separate preview login remains pending; authenticated renderer browser evidence is from production.
+At the 7 October checkpoint, native signup/editor/browser/preview/Forms were closed. The later controlled preview signup and account status are recorded above. Authenticated renderer browser evidence in this section is from production and does not establish native two-account acceptance.
 
 ## Rollback and cleanup
 
@@ -81,13 +127,14 @@ isolated ownership test and the new direct-owner deletion check.
 This is a disposable local database rehearsal, not a production database migration
 or proof of every intervening schema migration.
 
-Next: supply two real user-controlled mailbox identities and authorize their signup
-messages, complete supported onboarding and legal/email verification, then execute
-the [native two-customer hosted acceptance matrix](2026-10-02-native-forms-acceptance.md)
-with fresh exact approvals and retained storage/runtime scopes. No mailbox was
-inferred, email sent, expired approval renewed or customer gate enabled. Preview
-agency sign-in also remains pending. Native production activation and migrations
-442–447 remain separate from the already-completed application release.
+Next: complete supported browser onboarding for the already-approved accounts,
+including normal email verification for B, then execute the
+[native two-customer hosted acceptance matrix](2026-10-02-native-forms-acceptance.md)
+with fresh exact approvals and retained storage/runtime scopes. No expired
+entitlement was renewed and no production customer gate was opened. Native
+production activation and migrations 442–447 remain separate from the completed
+application release. Close the temporary signup gate and operator after acceptance;
+expiry is only a backstop.
 
 AI template proposals, verified sender/reply-to, delivery/outbox, published outcomes
 and the wider CMS roadmap remain open; the renderer extraction does not establish
