@@ -1,19 +1,11 @@
 import type { H3Event } from 'h3'
-import { Resend } from 'resend'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { isCloudflareEmailGatewayAvailable } from '~~/server/utils/cloudflareEmailGateway'
 import { sendPortalAuthTransactionalEmail } from '~~/server/utils/portalAuthEmailTransport'
 import type { CustomerSignupConfig } from './customerSignupHttp'
 
-// Keep the customer sender credential independent of staff/portal email.
-function customerResendKey(event: H3Event): string {
-  const value = event.context.cloudflare?.env?.PAGE_STUDIO_CUSTOMER_RESEND_API_KEY
-    ?? process.env.PAGE_STUDIO_CUSTOMER_RESEND_API_KEY
-  return typeof value === 'string' ? value.trim() : ''
-}
-
 export function customerEmailAvailable(event: H3Event) {
-  return !!customerResendKey(event) || isCloudflareEmailGatewayAvailable(event) || isEmailConfigured(event)
+  return isCloudflareEmailGatewayAvailable(event) || isEmailConfigured(event)
 }
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' })[char]!)
 export async function sendCustomerSignInEmail(event: H3Event, config: CustomerSignupConfig, delivery: { email: string, token: string }) {
@@ -77,21 +69,10 @@ export async function sendCustomerSignInEmail(event: H3Event, config: CustomerSi
 </body>
 </html>`
   }
-  const sendWithResend = async (resend: Resend | null) => {
+  await sendPortalAuthTransactionalEmail({ event, message, resendSend: async () => {
+    const resend = getResendClient(event)
     if (!resend) throw new Error('customer_email_unavailable')
-    try {
-      const result = await resend.emails.send({ ...message, from: `Page Studio <${config.from}>` })
-      if (result.error) throw new Error('customer_email_delivery_failed')
-    } catch {
-      throw new Error('customer_email_delivery_failed')
-    }
-  }
-  const key = customerResendKey(event)
-  // An explicit product credential selects its own transport. The shared
-  // portal gateway deliberately restricts senders to the ADME domain.
-  if (key) {
-    await sendWithResend(new Resend(key))
-    return
-  }
-  await sendPortalAuthTransactionalEmail({ event, message, resendSend: () => sendWithResend(getResendClient(event)) })
+    const result = await resend.emails.send({ ...message, from: `Page Studio <${config.from}>` })
+    if (result.error) throw new Error('customer_email_delivery_failed')
+  } })
 }
