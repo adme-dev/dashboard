@@ -40,6 +40,13 @@ export const EmailTemplateProposalSchema = EmailTemplateProposalOutputSchema.ext
   operationId: z.string().min(1).max(512).regex(/^[A-Za-z0-9][A-Za-z0-9_:-]*$/)
 }).strict()
 export type EmailTemplateProposal = z.infer<typeof EmailTemplateProposalSchema>
+export const EmailTemplateAiOptionsSchema = z.discriminatedUnion('available', [
+  z.object({ available: z.literal(false), reason: z.string().min(1).max(500), models: z.array(z.never()).length(0), allowance: z.null() }).strict(),
+  z.object({ available: z.literal(true), reason: z.null(),
+    models: z.array(z.object({ id: z.string().min(1).max(200), label: z.string().min(1).max(200) }).strict()).min(1).max(16),
+    allowance: z.object({ period: z.string().regex(/^\d{4}-\d{2}-01$/), used: z.string().regex(/^\d+$/), limit: z.number().int().positive().safe(), remaining: z.number().int().nonnegative().safe() }).strict()
+  }).strict()
+])
 export interface EmailTemplateDraftSnapshot { readonly canonical: string, readonly digest: string }
 
 function parseDraft(input: unknown): EmailTemplateProposalDraft {

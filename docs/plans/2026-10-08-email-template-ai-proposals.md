@@ -21,8 +21,9 @@ work on current Dashboard main, not hosted acceptance or customer activation.
   model availability, validates reservation/settlement receipts and withholds a
   proposal after access or the saved base changes. Provider and ambiguous accounting
   failures are sanitized and never retried. No real answers or field defaults are
-  passed to inference. This module requires explicit trusted adapters; it is not
-  exposed as an endpoint and does not bypass native preview's zero allowance.
+  passed to inference. This module requires explicit trusted adapters and does not
+  bypass native preview's zero allowance. The local portal endpoint now supplies
+  the trusted adapters described below.
 - The model adapter now connects to the existing AI SDK provider factories through
   a required Cloudflare Gateway route. It accepts an operator-owned enable-list,
   admits production text models in the shared registry, verifies configured
@@ -36,7 +37,18 @@ work on current Dashboard main, not hosted acceptance or customer activation.
   public-action operations across sites/environments; concurrent requests cannot
   spend the same remaining credit. Replay never admits a second call, failures
   remain charged, and settlement rechecks login, membership and AI entitlement.
-  No editor session is created. This adapter is not yet exposed through a route.
+  No editor session is created.
+- Local portal website/shared-form GET and POST adapters now connect current CMS
+  login authority, bounded strict JSON, exact same-origin POST checks, operator
+  enablement, Gateway models and the ledger. GET returns safe model choices and
+  real remaining monthly operations without charging. Missing or invalid
+  `PAGE_STUDIO_EMAIL_AI_MODELS` (JSON array of unique model IDs) stays closed.
+- The editor now includes a Nuxt UI proposal panel with model/allowance display,
+  bounded prompt, separate rendered review, Apply and Discard. Apply requires a
+  successful preview and unchanged draft, adds an unsaved edit and uses existing
+  Undo/Save. Prompt/model/draft are captured before async work. In-flight requests
+  block navigation and reload; unfinished prompts/proposals participate in leave
+  confirmation. Native customer preview explicitly remains unavailable for AI.
 
 Local tests cover manual changes during generation/hash, site/audience/form/revision
 changes, optional-field JSON transport equivalence, unsafe output and image identity.
@@ -45,19 +57,18 @@ merge tags and defined fallbacks are not implemented by this contract slice.
 
 ## Remaining implementation and acceptance
 
-1. Connect server generation to independently resolved current Forms authority.
-   The orchestration and failure tests are implemented locally; route adapters and
-   their end-to-end authority/media proof remain required before exposure.
-2. Connect the enabled model catalogue and existing Cloudflare AI Gateway execution
-   and credit conventions to the routes/UI. The Gateway model adapter exists;
-   operator feature enablement, live usage/cost reporting and the native customer
-   allowance adapter are still required. Agency/invited CMS accounting is connected
-   internally and verified on disposable PostgreSQL. Check availability before charging, reserve atomically,
-   preserve unknown outcomes without replay, and expose real usage information.
-   Never issue a synthetic editor session just to call the existing usage API.
-3. Add the adjacent conversation and proposal preview/Apply/Discard controls to the
-   existing template editor, preserving undo, overrides and unsaved changes. Use
-   Nuxt UI v4, apply the required form-design skill, and verify real browser behaviour.
+1. Verify the connected portal routes end to end with real CMS authority, saved
+   workspace/storage, current media and an enabled paid model. Unit HTTP tests and
+   disposable database tests do not replace hosted acceptance.
+2. Configure and verify operator feature enablement and Gateway retry/fallback
+   policy. The UI reports real operation allowance, not provider-dollar pricing.
+   Native customer generation still needs a separate reviewed authority/allowance
+   adapter and policy; never manufacture an editor session or relabel customers.
+3. Complete browser acceptance with the actual template storage service. The local
+   CMS currently reports storage unavailable. A clearly labelled synthetic local
+   fixture verified panel preview/Apply and light/dark rendering only; its routes
+   were removed before building. It proves no login, provider, billing or storage
+   integration. Mobile browser verification remains incomplete.
 4. Add stable field-ID variables with explicit missing-value fallbacks and schema
    change invalidation through the shared validator, renderer and owned runtime.
 5. Verify provider failure, exhausted allowance, concurrent/revoked authority,
@@ -88,3 +99,17 @@ SDK retry/deadline settings were checked against the installed AI SDK 6 declarat
 and the [official generateText reference](https://ai-sdk.dev/docs/reference/ai-sdk-core/generate-text).
 This disables SDK retries only; operator-controlled Gateway retry/fallback policies
 must also be verified before hosted generation acceptance.
+
+## Local validation, 8 October 2026
+
+- 136 focused unit, HTTP, component, history and QR access/navigation tests passed,
+  plus 38 tests against an owned disposable PostgreSQL database.
+- Independent server/UI review passed after fixing reload during an in-flight
+  proposal. The parent regression verifies blocking and Apply/Undo restoration.
+- Production Nuxt build, worker wrapping and worker-size guard passed locally.
+  Raw worker size: 25,450,280 / 25,468,928 bytes; gzip: 7,038,742 / 9,750,000 bytes.
+  Raw headroom is only 18,648 bytes; further changes must rerun the size guard.
+- Scoped Vue typecheck has no changed-file diagnostics, but the wider generated
+  import graph still reports 851 diagnostic lines. This is not a clean repository
+  typecheck. Changed implementation/test lint passes.
+- No remote push, CI run, deployment, model enablement or production activation.
