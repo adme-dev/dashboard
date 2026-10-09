@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 9 October 2026. Start here after an interruption.
+Last updated: 10 October 2026. Start here after an interruption.
 Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
 This checklist tracks the active standalone CMS work; it does not declare the
@@ -15,127 +15,158 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ### Selected platform and Tuesday showcase
 
-Owner selected the canonical Page Studio editor at `http://127.0.0.1:4325/`
-and the standalone Nuxt CMS at `http://127.0.0.1:3045/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
-These are one product direction, accessed through XeroFlow or independently at
-`xeroflowpages.com`. The dealer CMS prototype on 5187 is a separate reference,
-not the selected deployment source. Default appearance is light, with dark mode.
+The selected platform is the canonical editor at `http://127.0.0.1:4325/`
+and standalone Nuxt CMS at `http://127.0.0.1:3045/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
+It is accessible through XeroFlow or independently through `xeroflowpages.com`.
+The 5187 prototype remains a separate reference. Default appearance is light,
+with a dark-mode option.
 
-Priority is the existing Fantasy Limo account and saved site for Tuesday
-13 October. Its normal agency Launch Studio was verified on 9 October: the hosted
-editor loads the existing saved site. No website content or publication was changed.
-Standalone access uses the existing invited `pgiurin@gmail.com` account; it must not
-be silently relabelled as a native customer or copied into a new ownership scope.
-One normal production sign-in link was requested for this site; request acceptance
-is proven, mailbox delivery/sign-in are still awaiting the user's normal login.
+Fantasy Limo retains its original saved site, account and ownership scope for
+Tuesday 13 October. Production agency Launch Studio was verified with its actual
+75-page saved editor document. The deployed editor shows the new light/dark
+controls, compact page previews and layouts gallery. Staging also verified the
+collapsed controls inside the toolbar and full-browser/canvas transitions.
+No website content, saved checkpoint, publication or public domain was changed.
+The [existing website preview](https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/)
+remains live; staging form submissions remain disabled.
 
-A local regression identified the independent editor handoff defect: `/launch`
-only admitted `app.xeroflow.io`. The native Worker fix admits one explicitly
-configured HTTPS Studio origin for invited client sessions, retaining fresh
-permission, canary, nonce and signed scope checks. The 75 scoped tests pass;
-full build/type/test gates, independent review and 1,576-file formatting pass.
-Native fix is committed at `e5467a79ae8f86efb7a0beee978cef5ca4713841`. This fix and the new editor
-appearance need release. The current hosted editor still has the older appearance.
+Standalone membership uses the existing invited `pgiurin@gmail.com` identity.
+One fresh production request was made after the sender deployment, with the
+15-minute request confirmation verified in the browser. That link has now expired.
+Mailbox delivery and the independent CMS → saved editor journey still await the user's normal sign-in. The staging
+agency login completed by the user is separate evidence. Do not silently convert
+this account to a native customer or duplicate its site ownership.
 
-The editor image is now reviewed, privately uploaded and pinned at registry digest
-`ea21f6f9178ea7982f5f06a2027a30d1e26277e8dbee1884fd800d591e0f5f5c`.
-Native PR121 passed Linux/Windows CI and merged as `c333ca7699476d1eb83823047874b4824d864b89`.
-Staging deployment succeeded at Worker version `70cc4d8a-5207-40e3-8226-81057d1d1f45`,
-container version38 at100%; normal admin launch, light/dark and collapsed toolbar
-are verified in the actual hosted editor without content saves. Production deploy
-completed at Worker version `e35d0166-a177-4e5d-8989-767478ea8b0d`; provider and Fantasy
-browser acceptance are the next checks. Source and exact rollback pairs are recorded
-in the native rollout receipt. The old asset briefly remained during staging rollout;
-reload after provider completion showed the new controls.
+### Production receipts
 
-The user explicitly confirmed Fantasy Limo should appear in xeroflowpages.com's
-CMS dashboard as well as XeroFlow. This preserves the existing site/account and
-preview; it does not change the public website address or publish new content.
-Normal independent mailbox login remains pending. Staging admin login was completed
-by the user and verified.
+- Dashboard PR649 merged to current main `c752cefc18c828b8c20b8cef4726f11fd7a582f9`.
+  Guarded production deployment `92a95ff6-2edc-4424-9c5f-4e1203e109f4` completed
+  on 9 October at 07:46:59 UTC. Cloudflare confirms exact clean source, branch
+  main and canonical production deployment in `agency-dashboard`.
+- Native PR121 merged as `c333ca7699476d1eb83823047874b4824d864b89`.
+  Production Worker `e35d0166-a177-4e5d-8989-767478ea8b0d`, deployment
+  `cf1db6ba-5c20-444b-87ef-29415305ea47`, container version 26 at 100%, uses
+  immutable image digest `ea21f6f9178ea7982f5f06a2027a30d1e26277e8dbee1884fd800d591e0f5f5c`.
+  Exact image hashes, licensing and rollback pairs are in the native release docs.
+- Agency and invited Studio magic links now use `notification@xeroflow.io` through
+  Cloudflare Email Sending. Private production/staging workers were deployed first;
+  live Pages bindings point to their respective environments. One fresh staging
+  agency request was made for the actual signed-in user's mailbox; received From
+  address and delivery are still awaiting mailbox verification.
+- Full local and CI suites passed: 15,765 tests, with 1,961 environment skips.
+  CRM 54, social 785 and deployment guards 21 passed. Sender-specific review and
+  failure/privacy checks passed. Existing repository type/lint debt is not claimed fixed.
+- The production Worker passed the unchanged size guard: raw 25,459,103/25,468,928,
+  gzip 7,042,448/9,750,000. Exact 2,940-file hashes and provider receipts remain in
+  `.verification/resume-20261008/`.
+- After deployment, normal authenticated production Fantasy Limo overview loaded
+  its unchanged saved/approved preview version `ade33ea8`. Established QR Codes
+  navigation loaded eight codes and 48 scans. No QR or site data was modified.
 
-User's new agency email screenshot showed notification@adme.net.au. The
-[auth sender correction](2026-10-09-xeroflow-auth-sender.md) now uses the verified
-notification@xeroflow.io Cloudflare sender for agency and invited Studio links.
-Its local tests/review/Worker dry runs and recovered production build pass;
-private-target and guarded Pages deployment/delivery verification remain pending.
+Working source locations remain the owned Dashboard checkout
+`/Users/paulgiurin/Documents/Projects/page-studio-resume-20261007` (owned fix
+branch `fix/studio-assigned-account-login-20261010`) and native Studio checkout
+`/private/tmp/page-studio-native-integration-20261008`. Their application source
+includes the released main commits above; this documentation update does not
+change the deployed artifacts. The unrelated dirty Dashboard root is preserved.
 
-Disk pressure cancelled the first full Docker build and later a Nuxt build. Exact
-owned private build caches and reinstallable dependencies in three inactive,
-fully merged release copies were removed; no source/worktree/customer-data cleanup
-occurred. Docker is stopped and the owned local CMS is temporarily paused for heavy
-gates. About12GiB host space was recovered; restore CMS3045 after release gates.
+### Disk recovery and current local state
 
-Immediate sequence: verify production editor/Fantasy launch; integrate the sender
-fix on current main and deploy private sender services before Pages; verify real
-existing-account sign-in and the saved CMS/editor/preview journey. Native Forms,
-email delivery and broader CMS acceptance remain separate ledger items below.
+Our Docker packaging and heavy Nuxt builds contributed to disk pressure, including
+an ENOSPC failure. Only reinstallable dependencies from three inactive, clean,
+ancestry-merged DriveAgent release copies and exact owned private Docker cache
+records were removed. No source worktree, customer database, media or Git history
+was deleted. Failed local image removal is not counted as successful cleanup.
 
-Storage/merge audit: [Projects checkout audit](../audits/2026-10-09-projects-storage-and-merge-audit.md).
-Redundant copies and unique/dirty work are identified. Disk-pressure recovery removed
-only reinstallable dependencies from three inactive merged copies and owned private
-build cache records; source worktrees and customer data remain intact.
-Fantasy Limo's [hosted website preview](https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/)
-is live and was verified in Chrome on 9 October. The staging site shows its saved
-website; form submissions are disabled. This hosted preview is separate from the
-local CMS fixture. The local server briefly started after a misunderstood request
-was stopped again after clarification; local data and source copies remain intact.
+After verified production upload, this owned Dashboard checkout's ignored `dist`
+and `.nuxt` output was removed (about 283 MB allocated). Release logs and hash receipts
+remain. Docker and CMS 3045 remain stopped to reduce pressure; restore the selected
+local CMS with its existing isolated start script and 16 GB heap when local work
+resumes. Its database and configuration are preserved. A further continuation removed only
+dependencies from four clean, merged, inactive Dashboard/Studio copies and pruned unreferenced pnpm cache entries. The store shrank
+from 9.2 GB to 5.5 GB; host free space reached about 8.9 GiB on 9 October. Local editor 4325 still
+responds normally. Latest capacity and remaining large folders are recorded in the [storage audit](../audits/2026-10-09-projects-storage-and-merge-audit.md).
 
-This is the primary current ledger. **The full launch remains open.** Local
-implementation, hosted acceptance and production release are separate statuses.
-Older dated entries below are historical evidence and must not be treated as the
-current branch or as instructions to request mailbox identities again.
+### 10 October verification and capacity checkpoint
 
-| Work | Current status | Evidence / remaining work |
-|---|---|---|
-| Invited CMS access and light-first CMS style | Released; last live verification 8 October | Production source `c85bf265`, deployment `57353fad`; independent Fantasy Limo mailbox login still needs verification. |
-| Native editor light/dark, layouts, guarded history, thumbnails and overview | Locally built, tested and reviewed; unreleased | Native branch includes current main `17ac1f3`; wider hosted editor acceptance remains pending. |
-| Collapsed thumbnail controls integrated into toolbar | Locally committed and verified | Native `d588cf286056be56638d6aa5a912263b79e98e98`; collapse/expand/focus/overview and full-browser↔canvas checks pass. |
-| Thumbnail maximum width | Locally committed and verified; unreleased | Native `6888688e8c13c36eac47601e55f02ac546c13381`; 200px cards, centred 842px tray. Browser checks, build, review and the full formatting gate pass. |
-| Saved email field picker, fallback repair and Undo/Redo | Locally committed and verified; unreleased | Dashboard `20b4ebe30`, native compatibility `1e3219b`; actual local store/private renderer checks pass. Coordinated matching service release and hosted acceptance remain required. |
-| AI email proposals | Local implementation and review complete; hosted enablement pending | Gateway/model/allowance/API/preview/Apply foundations retained. Native preview AI allowance remains zero. |
-| Two native test accounts and hosted Forms acceptance | Pending | Both approved mailboxes already supplied; B verification and both workspace setups pending. No current native signed-in browser session is proven. |
-| Sender verification, live email delivery and published outcomes | Pending | Sender/reply-to, approved outbox, delivery activation and published outcome acceptance remain open. |
-| Wider standalone CMS launch | Pending end-to-end acceptance | Collections, invitations/roles, domains, analytics/SEO and CMS→saved Studio→release journey remain tracked below. |
+Fresh fetch still shows Dashboard main `c752cefc18c828b8c20b8cef4726f11fd7a582f9`.
+Cloudflare readback confirms the same canonical production deployment and separate
+production/preview auth services. Production sender version `f8d23f26-af67-44d8-9fcb-9019223fa805`
+is at 100%, with its Email binding restricted to `notification@xeroflow.io`.
+An exact suppression lookup for `pgiurin@gmail.com` returned no entry.
 
-Current working sources:
+A read-only telemetry query for the isolated production request window found one
+sender invocation at 11:34:37.013 UTC on 9 October: outcome `ok`, response 202, matching
+sender version. This is timestamp-correlated gateway acceptance evidence; recipient
+and credentials were not inspected in logs, and it does not prove Gmail receipt.
+At this earlier checkpoint the normal independent Fantasy CMS route was signed out.
+The subsequent actual sign-in and profile-selection diagnosis are recorded below.
 
-- Dashboard: `/Users/paulgiurin/Documents/Projects/page-studio-resume-20261007`,
-  branch `feat/studio-email-field-picker-20261009`, latest application checkpoint
-  `9ac2123109468638045090beba8365c8b6410947` (later ledger-only commits do not change
-  that tested application build). Main base `c85bf265`.
-- Native Studio: `/private/tmp/page-studio-native-integration-20261008`, branch
-  `feat/email-field-capabilities-20261009`, latest completed commit
-  `e5467a79ae8f86efb7a0beee978cef5ca4713841`, including the thumbnail-width and
-  strict standalone invited-launch fixes.
-  The normal 1,576-file formatting gate completed with no fixes.
-  Main base `17ac1f3` was freshly fetched for this change.
-- Neither branch is pushed or released. Preserve parent branches/worktrees until
-  batched integration; leave the unrelated dirty Dashboard root and original demo
-  database, media and backups untouched.
+Available disk had fallen to about 5 GiB while our heavy jobs were stopped. Docker's
+supported reclamation utility completed, preserving all pre-existing images,
+containers and volumes, and reducing Docker.raw allocation by 226,099,200 bytes
+(about 216 MiB). Docker was stopped again. Free space after the operation was about
+5.37 GiB; CMS 3045 remains stopped until capacity improves. Exact utility digest,
+object-preservation checks and before/after sizes are recorded privately.
 
-Next steps, in order:
+### 10 October assigned-profile sign-in fix
 
-1. Complete the selected existing Fantasy account showcase journey and matched
-   editor release described above. Then complete normal native sign-in/verification
-   for the already-approved two mailboxes and their supported workspace setup.
-2. Install and verify the exact approved staging runtime/storage and matching
-   private renderer/router; activate scoped Forms capability through the existing
-   reviewed operator. An unapproved local runtime candidate is not an installed release.
-3. Run the hosted two-account matrix: roles/scopes, saves/reloads/conflicts,
-   template defaults/overrides/history/fields, media and saved-site editor launch.
-4. Complete sender/outbox/outcomes/webhooks and the remaining CMS acceptance items
-   below. Keep customer production activation separate from local implementation.
-5. Batch current-main integration and the required checks, deploy through the
-   guarded scripts, then verify live CMS, editor, established navigation and QR Codes.
+The user's normal sign-in reached South Morang, an older active profile with no
+websites. Read-only production PostgreSQL inspection confirmed two active profiles
+for the same mailbox: South Morang and Fantasy Limo. The existing Fantasy profile
+already has editor membership on its original saved website. No account, role,
+membership or website ownership was changed. The general Studio link selector
+previously offered both profiles because membership filtering applied only to an
+exact website redirect; the observed access denial under South Morang was correct.
 
-No GitHub Actions, push, deployment, paid model call, email delivery or customer
-production activation was used for these latest local changes. Native AI allowance
-remains zero. Re-fetch main and recheck provider state before integration/release.
+Fix `744bfbf54b4127169a393d8be077d6131908c98d` now requires an active client and
+exact active/draft website membership for general Studio root/index redirects,
+including query strings and trailing slashes. Pending invitations keep their
+expiry/cancellation checks, and exact website redirects and general client-portal
+behavior retain their existing boundaries. Token/session handling, response privacy
+and roles are unchanged. Real PostgreSQL regressions reproduced the wrong-profile
+selection before the fix and pass afterwards. Independent review found no blockers;
+scoped lint passed. Full local tests exited 0: 2,243 files and 15,827 tests passed,
+with 71 files and 1,958 environment tests skipped. Production build exited 0 with
+raw 25,459,224/25,468,928 bytes (9,704 spare) and gzip 7,042,556/9,750,000 bytes.
+The build retained at least 10,496,835,584 free bytes under the 8 GiB stop guard.
+These are local verification receipts; PR/CI/production release still follow.
 
-Detailed evidence: [email field picker](2026-10-09-email-template-field-references.md),
-[AI proposals](2026-10-08-email-template-ai-proposals.md), and
-[release/activation ledger](2026-10-08-page-studio-release-and-activation.md).
+The unrelated browser context was signed out through the normal UI and one fresh
+normal link was requested for the exact Fantasy website. The user's correct-profile
+CMS → Open Studio journey remains pending. Request acceptance and the earlier
+South Morang login do not establish standalone Fantasy acceptance.
+
+Twenty old local Studio image copies were removed only after each exact immutable
+Cloudflare registry manifest returned 200 and matched both header and body SHA-256.
+Current image `ea21f6f9` and rollback images `a63aa0d1`/`c8383987`, other images,
+containers and volumes remain; the remote registry was unchanged. Docker.raw
+allocation fell from 17,112,764,416 to 11,337,895,936 bytes (about 5.4 GiB).
+Docker was stopped again; CMS 3045 remains stopped during heavy release work.
+Private cleanup, registry proofs and terminal logs remain under
+`.verification/resume-20261008/`. No credential was persisted in those receipts.
+
+### Remaining work
+
+| Work | Current status |
+|---|---|
+| Invited standalone Fantasy CMS access | Access foundations released; wrong-profile selector fix locally verified, release and correct-profile CMS → editor acceptance pending |
+| Editor light/dark, layouts, history, thumbnails, overview and collapsed toolbar | Released; actual saved Fantasy editor and staging controls verified |
+| Saved email field picker, fallback repair and Undo/Redo | Released; local integration/store/private renderer verified, hosted customer acceptance pending |
+| Magic-link sender correction | Released; matching production gateway invocation returned 202 Accepted, received From address and mailbox access pending |
+| AI email proposals | Local implementation/review complete; hosted enablement pending, native preview allowance remains zero |
+| Two native accounts and hosted Forms | Pending verification/workspace setup and separately approved runtime activation; Forms flags remain unset |
+| Sender/outbox/outcomes and wider CMS launch | Pending hosted roles, saves/conflicts, collections, domains, analytics/SEO and delivery acceptance |
+
+This remains the primary ledger. **The full platform launch is open.** Existing
+invited access is separate from native customer activation. The assigned-profile
+fix requires its reviewed PR, required CI and guarded current-main release. Fetch current main before merge and deployment. Keep mailbox/browser
+acceptance separate from source and provider release evidence.
+
+Detailed evidence: [field picker](2026-10-09-email-template-field-references.md),
+[AI proposals](2026-10-08-email-template-ai-proposals.md),
+[auth sender](2026-10-09-xeroflow-auth-sender.md), and
+[release ledger](2026-10-08-page-studio-release-and-activation.md).
 
 ## Completed and verified locally
 
@@ -166,7 +197,10 @@ Detailed evidence: [email field picker](2026-10-09-email-template-field-referenc
 
 ## Current checkpoint / next action
 
-**9 October — current sources and unfinished launch work:**
+The entries below are historical implementation checkpoints. The running ledger
+above contains the current source, production receipts and remaining acceptance work.
+
+**Historical early 9 October snapshot — sources and unfinished launch work:**
 Freshly fetched Dashboard main is `c85bf2653344ac36530e2a479d2a64cf64e58b1d`.
 The last verified production deployment is `57353fad-8401-496c-951a-71dc569da18d`
 from that source on 8 October. Invited CMS access and the light-first Studio style

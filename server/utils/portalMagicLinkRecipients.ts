@@ -11,7 +11,9 @@ export interface EligiblePortalUser {
 type RecipientQuery = (sql: string, params: unknown[]) => Promise<EligiblePortalUser[]>
 
 export function findPortalMagicLinkRecipients(email: string, redirect: string, query: RecipientQuery = queryRowsFresh) {
-  const websiteEntry = redirect.startsWith('/studio/sites/')
+  const studioIndexEntry = /^\/studio\/sites\/?(?:\?|$)/.test(redirect)
+  const websiteEntry = redirect.startsWith('/studio/sites/') && !studioIndexEntry
+  const studioEntry = studioIndexEntry || websiteEntry
   const siteId = websiteEntry ? redirect.match(/^\/studio\/sites\/([^/?#]+)/)?.[1] : null
   if (websiteEntry && !z.string().uuid().safeParse(siteId).success) return Promise.resolve([])
   return query(`
@@ -33,15 +35,15 @@ export function findPortalMagicLinkRecipients(email: string, redirect: string, q
         )
       )
       AND LOWER(cu.email) NOT LIKE '%@portal-access.local'
-      AND ($2::uuid IS NULL OR EXISTS (
+      AND ($3::boolean = FALSE OR EXISTS (
         SELECT 1 FROM page_studio_site_memberships membership
         JOIN page_studio_sites site ON site.id = membership.site_id
           AND site.client_id = membership.client_id AND site.tenant_id = membership.tenant_id
-        WHERE membership.site_id = $2 AND membership.user_id = cu.id
+        WHERE ($2::uuid IS NULL OR membership.site_id = $2) AND membership.user_id = cu.id
           AND membership.client_id = cu.client_id AND site.status IN ('draft', 'active')
           AND c.is_active = TRUE
       ))
     ORDER BY cu.created_at ASC
     LIMIT 10
-  `, [email, siteId ?? null])
+  `, [email, siteId ?? null, studioEntry])
 }
