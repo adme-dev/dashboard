@@ -2,7 +2,7 @@
 
 ## Result
 
-The dated/extra top-level copies measured here total approximately **27.64 GiB** (each top-level container counted once). There is genuine redundancy, but not every checkout is merged. No directories, branches, databases, archives or caches were deleted; no merge, push, deployment or GitHub Actions run was triggered. Fetches updated remote-tracking refs only.
+The dated/extra top-level copies measured here total approximately **27.64 GiB** (each top-level container counted once). There is genuine redundancy, but not every checkout is merged. At the initial audit, no directories, branches, databases, archives or caches were deleted, and no merge, push, deployment or GitHub Actions run was triggered. Fetches updated remote-tracking refs only. Later cleanup and release activity is recorded in the dated sections below.
 
 This is a point-in-time audit, not proof that every production feature behaves correctly. Commit ancestry proves history reached main. Patch equivalence is separately labelled and does not prove semantic equivalence after later rewrites. Recheck state before any cleanup.
 
@@ -201,3 +201,78 @@ and all16 shared records remain. Docker was stopped successfully, restoring its
 initial stopped state. Host free space reads about2.2GiB; additional capacity is
 needed before attempting another full Linux packaging build. No global cache
 prune, image deletion, source/worktree removal or database cleanup was performed.
+
+## Later cleanup and release capacity checkpoint
+
+The dependency-only cleanup additionally covered the inactive, clean,
+ancestry-merged `driveagent-monthly-release` and `driveagent-review-route-release`
+copies. Their source, history, configuration and data remain. A later exact-ID
+Docker cleanup removed 15 owned private records from the smaller packaging build;
+shared baseline records were preserved. Local image deletion initially failed
+with Docker metadata I/O errors and is not claimed successful. Docker remains stopped.
+
+Free space recovered to roughly 14–15 GiB before the final build. The production
+release enforced an 8 GiB stop threshold and completed with minimum 10.09 GiB free.
+After successful upload/provider readback, only the owned Dashboard's ignored,
+untracked `dist` and `.nuxt` directories were removed (approximately 96 MB +187 MB).
+Exact deployment logs, source receipts and artifact hashes remain preserved.
+The local CMS remains stopped while disk pressure is reduced; local data is intact.
+
+Current scoped sizes: Docker.raw 16 GB allocated; DriveAgent worktrees 8.9 GB,
+including shared-spec-writers 3.2 GB and mobile-lead-queue 4.1 GB. The former retains
+unique commits; the latter supports a preview. Neither was retired or dependency-pruned.
+The owned Dashboard dependencies remain 2.5 GB, and native editor dependencies 2.1 GB.
+macOS reported 17,585 MB used swap during release; this is additional memory pressure,
+not solely attributable to our processes and not treated as a deletable build artifact.
+
+## Continued dependency/cache recovery
+
+Fresh fetch confirms Dashboard main `c752cefc18c828b8c20b8cef4726f11fd7a582f9`
+and native Studio main `c333ca7699476d1eb83823047874b4824d864b89`. Four additional
+copies were rechecked: clean state, exact main ancestry, ignored/untracked dependency
+folders, and no matching process working directory, arguments or open files.
+Only `node_modules` was removed from:
+
+- `dashboard/.worktrees/dashboard-current-release-recovery`
+- `dashboard/.worktrees/page-studio-initial-staging`
+- `dashboard/.worktrees/studio-astro-publishing`
+- `dashboard/.worktrees/studio-ai-reference-fix`
+
+The last two are native Studio repositories despite their parent folder name;
+their ancestry was checked against native main, not Dashboard main. Checkouts,
+Git metadata, environment/configuration, databases, `.wrangler`, verification
+receipts and other local artifacts remain. Source state remained clean afterwards.
+Exact heads, gates and dependency sizes are in the two private continuation receipts.
+
+The pinned Dashboard pnpm 10.17.1 `store prune` completed successfully after checking
+that no package installation/mutation was running. It reported 95 global virtual
+store packages, 78,609 files (3.69 GB) and 1,707 package entries removed. Store allocated
+size fell from 9.2 GB to 5.5 GB. This removes unreferenced cache entries, not source or
+customer data; future installs can download them again. Documentation:
+https://pnpm.io/cli/store . Shared package files mean folder/cache sizes do not equal
+physical space recovered. Actual free space was 7.7 GiB at the start and 8.9 GiB after
+this continuation, with other machine activity ongoing. Local editor 4325 still
+returns HTTP 200; Docker and local CMS 3045 remain stopped.
+
+## 10 October Docker allocation recovery
+
+Capacity was about 5 GiB at resumption, with the selected CMS and Docker stopped.
+A supported Docker reclamation operation briefly started the engine, verified
+that no existing container was running, pulled the vendor utility from Docker's
+published instructions, and ran its pinned registry digest with `--rm`. A 3 GiB
+stop guard bounded the operation. No image, container or volume deletion, disk-image
+resize, database change or build was performed.
+
+The utility completed successfully. Readback confirmed every pre-existing image,
+container and volume remained. Docker was returned to its original stopped state.
+Docker.raw allocated bytes fell from 17,338,925,056 to 17,112,825,856: 226,099,200 bytes
+(about 216 MiB) reclaimed. Host free bytes changed from 5,569,085,440 to 5,764,214,784;
+other host activity means this is not a pure attribution measurement. Capacity is
+still insufficient for restarting heavy development/build work.
+
+Exact utility digest, object IDs, minimum free space and terminal outcomes are in
+`.verification/resume-20261008/docker-reclaim-20261010.json`; command output is in
+the matching ignored log. The operation follows the vendor's disk-reclamation
+instructions: https://docs.docker.com/desktop/troubleshoot-and-support/faqs/macfaqs/ .
+It is separate from the earlier failed local image-deletion attempt, which remains
+recorded as unsuccessful. Source and customer data remain preserved.

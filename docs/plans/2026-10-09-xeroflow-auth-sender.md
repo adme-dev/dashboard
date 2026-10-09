@@ -43,3 +43,48 @@ Source, customer data, databases, image receipts and the uploaded immutable edit
 artifact remain preserved. Local image removal initially failed with Docker metadata
 I/O errors and is not recorded as successful. Free host space recovered to about
 12 GiB; Docker remains stopped. Restore the selected local CMS after heavy gates.
+
+## Completed production release
+
+PR649 merged as `c752cefc18c828b8c20b8cef4726f11fd7a582f9` after CI passed
+15,765 tests (1,961 skipped), CRM 54, social 785 and deployment guards 21.
+Guarded production deployment `92a95ff6-2edc-4424-9c5f-4e1203e109f4` completed
+07:46:59 UTC on 9 October. Cloudflare confirms current main, exact clean source,
+canonical production, and `AGENCY_AUTH_EMAIL=xeroflow-agency-auth-email`;
+preview separately points to `xeroflow-agency-auth-email-staging`.
+
+Private staging Worker version `23e4a1be-efa2-4985-9104-07bec8f53c9d` and
+production version `f8d23f26-af67-44d8-9fcb-9019223fa805` were deployed before
+the Pages callers. Both have no public targets. Production raw/gzip guards passed
+at 25,459,103 and 7,042,448 bytes. Exact source, deployment and hashes remain in
+`.verification/resume-20261008/production-release-receipt-20261009.json`.
+
+One fresh normal staging agency request was made for `paul@adme.net.au`, the
+actual recipient in the user's screenshot. Public request acceptance does not
+prove delivery; received From address remains pending mailbox verification.
+The existing invited Fantasy account's independent sign-in also remains pending.
+No repeated email request, credential extraction or fabricated session was used.
+
+A single fresh normal production Page Studio request for `pgiurin@gmail.com` was
+made after the sender deployment. The latest frontend shows Check your inbox and
+15-minute expiry. A screenshot is preserved privately as
+`studio-fresh-production-link-20261009.png`. This proves request acceptance only;
+received From address and independent Fantasy dashboard access await the user.
+
+## 10 October provider verification
+
+Canonical Pages deployment remains `92a95ff6-2edc-4424-9c5f-4e1203e109f4` from
+clean main `c752cefc18c828b8c20b8cef4726f11fd7a582f9`. Readback confirms the separate
+production and staging auth-service bindings. Production Worker version
+`f8d23f26-af67-44d8-9fcb-9019223fa805` still serves 100% and permits only
+`notification@xeroflow.io` through its Email binding. An exact account suppression
+lookup for `pgiurin@gmail.com` returned no entry.
+
+A dry, read-only Worker telemetry query covering 9 October 11:33–11:36 UTC found one
+matching sender invocation at 11:34:37.013 UTC, outcome `ok`, response 202 and the
+expected version. The sign-in request screenshot was saved at 11:35:11.169 UTC.
+This correlation establishes a successful gateway invocation in the request window;
+no recipient or credential payload was read from logs. It does not establish
+Gmail delivery, the received From header or independent CMS login. Yesterday's link
+is expired; the normal site route still shows sign-in, and the mailbox result is
+pending. No new mail was requested on 10 October.
