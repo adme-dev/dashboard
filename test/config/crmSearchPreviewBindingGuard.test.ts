@@ -426,8 +426,17 @@ describe('CRM search preview binding isolation', () => {
     expect(previewBindings).not.toContain('xeroflow-page-studio-management-production')
     expect(previewBindings).toContain('[[env.preview.services]]\nbinding = "PAGE_STUDIO_CUSTOMER_EMAIL"\nservice = "xeroflow-page-studio-customer-email-staging"')
     expect(previewBindings).not.toContain('xeroflow-page-studio-customer-email-production')
-    expect(previewBindings.match(/\[\[env\.preview\.services\]\]/gu)).toHaveLength(6)
-    expect(previewBindings.match(/^service = /gmu)).toHaveLength(6)
+    // Auth email adds one private service per environment. Preview cannot
+    // borrow production's sender Worker or the general transactional mailer.
+    expect(previewBindings).toContain('[[env.preview.services]]\nbinding = "AGENCY_AUTH_EMAIL"\nservice = "xeroflow-agency-auth-email-staging"')
+    expect(previewBindings).not.toMatch(/^service = "xeroflow-agency-auth-email"$/mu)
+    const productionBindings = config.slice(
+      config.indexOf('[env.production]'), config.indexOf('[env.production.vars]')
+    )
+    expect(productionBindings).toContain('[[env.production.services]]\nbinding = "AGENCY_AUTH_EMAIL"\nservice = "xeroflow-agency-auth-email"')
+    expect(productionBindings).not.toContain('xeroflow-agency-auth-email-staging')
+    expect(previewBindings.match(/\[\[env\.preview\.services\]\]/gu)).toHaveLength(7)
+    expect(previewBindings.match(/^service = /gmu)).toHaveLength(7)
     expect(previewBindings).not.toMatch(/agency-files|durable_objects/u)
   })
 })

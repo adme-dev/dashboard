@@ -44,10 +44,26 @@ const API_INVENTORY = {
   // no new route registers a God mode bypass.
   // Invited CMS membership adds GET and PUT. Both require selected-tenant
   // PAGE_STUDIO_EDIT plus a fresh active agency-admin check; no God mode bypass.
-  totalRouteFiles: 2232,
-  mutationRouteFiles: 1214,
+  // Email templates add four portal AI routes (two POSTs), two portal field
+  // GETs and two native-customer field GETs. Delegated current login, site,
+  // role and model/allowance checks remain independent of God mode. Native
+  // field reads retain the customer Forms feature flag and session adapter;
+  // this inventory does not authorize or activate that runtime.
+  totalRouteFiles: 2240,
+  mutationRouteFiles: 1216,
   explicitlyGuardedMutationFiles: 400,
   guardedMutationFilesWithTransactionCall: 47
+} as const
+
+const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
+  'server/api/portal/page-studio/customer/sites/[siteId]/email-templates/[audience]/fields.get.ts': 'customerFormsHandler(event, \'template-fields\', \'GET\')',
+  'server/api/portal/page-studio/customer/sites/[siteId]/forms/[definitionId]/email-templates/[audience]/fields.get.ts': 'customerFormsHandler(event, \'template-fields\', \'GET\')',
+  'server/api/portal/page-studio/sites/[siteId]/email-templates/[audience]/ai.get.ts': 'defineEventHandler(handleEmailTemplateAi)',
+  'server/api/portal/page-studio/sites/[siteId]/email-templates/[audience]/ai.post.ts': 'defineEventHandler(handleEmailTemplateAi)',
+  'server/api/portal/page-studio/sites/[siteId]/email-templates/[audience]/fields.get.ts': 'handleEmailTemplate(event, \'FIELDS\')',
+  'server/api/portal/page-studio/sites/[siteId]/forms/[definitionId]/email-templates/[audience]/ai.get.ts': 'defineEventHandler(handleEmailTemplateAi)',
+  'server/api/portal/page-studio/sites/[siteId]/forms/[definitionId]/email-templates/[audience]/ai.post.ts': 'defineEventHandler(handleEmailTemplateAi)',
+  'server/api/portal/page-studio/sites/[siteId]/forms/[definitionId]/email-templates/[audience]/fields.get.ts': 'handleEmailTemplate(event, \'FIELDS\')'
 } as const
 
 const DEFERRED_MUTATION_FAMILIES = [{
@@ -84,11 +100,19 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2232,
-      mutationRouteFiles: 1214,
+      totalRouteFiles: 2240,
+      mutationRouteFiles: 1216,
       explicitlyGuardedMutationFiles: 400,
       guardedMutationFilesWithTransactionCall: 47
     })
+  })
+
+  it('pins the added email-template routes to their separate native authority adapters', () => {
+    const routes = listApiFiles().filter(file => /\/email-templates\/\[audience\]\/(?:ai|fields)\.(?:get|post)\.ts$/.test(file)).sort()
+    expect(routes).toEqual(Object.keys(EMAIL_TEMPLATE_ROUTE_ADDITIONS).sort())
+    for (const [file, handler] of Object.entries(EMAIL_TEMPLATE_ROUTE_ADDITIONS)) {
+      expect(readFileSync(file, 'utf8')).toContain(handler)
+    }
   })
 
   it('classifies each reviewed read route by exact method, gate, scope, and terminal strategy', () => {

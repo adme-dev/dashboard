@@ -241,13 +241,24 @@ describe('God mode gate inventory', () => {
     // role comparisons and an operator-configured sign-in origin. No bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/invitedAccess.ts\tWHERE id = $1 AND is_active = TRUE AND user_role IN (\'owner\', \'admin\') FOR SHARE`, [input.actorId])\tidentity_tenant_hard_boundary')
     expect(inventory.rows).toContain('server/utils/pageStudio/invitedOrigin.ts\t?? process.env.PAGE_STUDIO_INVITED_ORIGIN\tunrelated_configuration')
-    expect(inventory.rows).toHaveLength(1600)
+    // Auth diagnostics remove the obsolete Resend process-env row. Provider
+    // key extraction removes two dot-access rows; the shared bracket-access
+    // helper remains a provider boundary outside this lexical pattern. The
+    // fail-closed Gateway resolver adds one runtime-configuration row. Neither
+    // change adds an identity or application-governance bypass.
+    const providerSource = readFileSync('server/utils/claudeClient.ts', 'utf8')
+    const providerKeyLine = 'return runtimeConfigValue(cfg, `${provider}ApiKey`) || getCachedCfBinding(envKey) || process.env[envKey]'
+    expect(providerSource).toContain('const envKey = provider === \'anthropic\' ? \'ANTHROPIC_API_KEY\' : \'GROQ_API_KEY\'')
+    expect(providerSource).toContain(providerKeyLine)
+    expect(classifyGate('server/utils/claudeClient.ts', providerKeyLine)).toBe('provider_infrastructure_availability')
+    expect(readFileSync('server/utils/email.ts', 'utf8')).toContain('return isCloudflareEmailGatewayAvailable(event, \'AGENCY_AUTH_EMAIL\')')
+    expect(inventory.rows).toHaveLength(1598)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 124,
-      provider_infrastructure_availability: 228,
+      provider_infrastructure_availability: 225,
       application_governance_bypass: 1622,
       ordinary_user_behavior: 192,
-      unrelated_configuration: 433
+      unrelated_configuration: 434
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -262,7 +273,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('06f6d4013d4d6f10ab1a29a7049b0084c7883051096041122cd4182139fb61fe')
+    expect(inventory.digest).toBe('fa6981d142d1631a72052ec779461b982bc11c1e8521ed0043aa29ca55e75675')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
