@@ -6,6 +6,8 @@ import { assertPageStudioAiAllowanceAvailable } from '~~/server/utils/pageStudio
 import { updatePageStudioAiUsage } from '~~/server/utils/pageStudio/aiUsage'
 import type { PageStudioControlQueryClient } from '~~/server/utils/pageStudio/controlStore'
 import type { PageStudioSessionClaims } from '~~/server/utils/pageStudio/sessions'
+import { createPortalEmailTemplateUsage, readPortalEmailTemplateAllowance } from '~~/server/utils/pageStudio/emailTemplateUsage'
+import type { ContentAuthorityRequest } from '~~/server/utils/pageStudio/businessContent'
 
 vi.mock('~~/server/utils/db', () => ({
   transactionWithoutRetry: () => { throw new Error('Use the disposable transaction') },
@@ -78,6 +80,7 @@ describe.runIf(Boolean(databaseUrl))('native AI monthly usage on disposable Post
     await observer.query('INSERT INTO agency_clients VALUES($1,TRUE)', [clientId])
     await observer.query('INSERT INTO custom_roles VALUES($1,\'owner\',TRUE,FALSE)', [roleId])
     await observer.query('INSERT INTO role_permission_groups VALUES($1,\'PAGE_STUDIO_EDIT\')', [roleId])
+    await observer.query('INSERT INTO role_permission_groups VALUES($1,\'PAGE_STUDIO_VIEW\')', [roleId])
     const entitlementId = (await observer.query(`INSERT INTO page_studio_entitlements(tenant_id,client_id,monthly_ai_operation_limit)
       VALUES('usage-tenant',$1,2) RETURNING id`, [clientId])).rows[0].id
     async function session(route: string) {
@@ -87,7 +90,7 @@ describe.runIf(Boolean(databaseUrl))('native AI monthly usage on disposable Post
       const value: PageStudioSessionClaims = { tenantId: 'usage-tenant', clientId, siteId, userId, role: 'agency', nonce: randomUUID(),
         issuedAt: now - 10, expiresAt: now + 600, capabilities: ['model:invoke', 'workspace:checkpoint'] }
       await observer.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
-        VALUES('agency',$1,$2,NOW()-INTERVAL '1 hour',NOW()+INTERVAL '1 day')`, [hash, userId])
+        VALUES('agency',$1,$2,date_trunc('milliseconds',NOW())-INTERVAL '1 hour',date_trunc('milliseconds',NOW())+INTERVAL '1 day')`, [hash, userId])
       await observer.query(`INSERT INTO page_studio_sessions(nonce,tenant_id,client_id,site_id,user_id,role,capabilities,issued_at,expires_at,login_session_hash)
         VALUES($1,$2,$3,$4,$5,$6,$7,to_timestamp($8),to_timestamp($9),$10)`,
       [value.nonce, value.tenantId, clientId, siteId, userId, value.role, JSON.stringify(value.capabilities), value.issuedAt, value.expiresAt, hash])
@@ -322,5 +325,96 @@ describe.runIf(Boolean(databaseUrl))('native AI monthly usage on disposable Post
   it('fails closed before SQL when the native environment is not configured for usage', async () => {
     await expect(run(request, claims, 'preview')).rejects.toMatchObject({ code: 'AI_USAGE_UNAVAILABLE', statusCode: 503 })
     expect(await rows()).toHaveLength(0)
+  })
+
+  async function emailUsage(session = claims, invited = false) {
+    const row = (await observer.query(`SELECT login.* FROM page_studio_sessions child JOIN page_studio_login_sessions login
+      ON login.token_hash=child.login_session_hash WHERE child.nonce=$1`, [session.nonce])).rows[0]
+    let actor: ContentAuthorityRequest['actor'] = { role: 'agency', actorId: session.userId, tenantId: session.tenantId, canEdit: true }
+    let login = { role: 'agency' as 'agency' | 'client', userId: session.userId, tokenHash: row.token_hash, issuedAt: row.issued_at, expiresAt: row.expires_at }
+    if (invited) {
+      const userId = randomUUID(), tokenHash = randomUUID().replaceAll('-', '').repeat(2)
+      await observer.query('INSERT INTO client_users VALUES($1,$2,\'active\',\'admin\')', [userId, session.clientId])
+      await observer.query('INSERT INTO client_sessions VALUES($1,$2,date_trunc(\'milliseconds\',clock_timestamp())+INTERVAL \'1 day\')', [tokenHash, userId])
+      const current = (await observer.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+        SELECT 'client',token_hash,client_user_id::text,date_trunc('milliseconds',clock_timestamp()),expires_at FROM client_sessions WHERE token_hash=$1 RETURNING *`, [tokenHash])).rows[0]
+      await observer.query('INSERT INTO page_studio_site_memberships(tenant_id,client_id,site_id,user_id,role) VALUES($1,$2,$3,$4,\'editor\')', [session.tenantId, session.clientId, session.siteId, userId])
+      actor = { role: 'client', actorId: userId, clientId: session.clientId }
+      login = { role: 'client', userId, tokenHash, issuedAt: current.issued_at, expiresAt: current.expires_at }
+    }
+    const scope = { tenantId: session.tenantId, clientId: session.clientId, businessId: session.clientId, siteId: session.siteId, environment: 'staging' as const }
+    const authority = { scope, actorId: actor.actorId, canEdit: true, authorityKey: JSON.stringify([actor.role, actor.actorId, actor.role === 'client' ? actor.clientId : null, scope.businessId, scope.clientId, scope.tenantId]) }
+    const principal: ContentAuthorityRequest = { actor, login, siteId: session.siteId, env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ROUTER: {} } }
+    const db = await connect()
+    const adapter = createPortalEmailTemplateUsage(principal, { runTransaction: transactionFor(db) })
+    const operation = { authority, operationId: 'email:proposal:1', fingerprint: 'b'.repeat(64), kind: 'model' as const }
+    return { adapter, operation, principal, dependencies: { runTransaction: transactionFor(db) } }
+  }
+
+  it('reports real remaining allowance without creating a charge, including exhausted budgets', async () => {
+    await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1')
+    const { adapter, operation, principal, dependencies } = await emailUsage(claims, true)
+    expect(await readPortalEmailTemplateAllowance(principal, operation.authority, dependencies)).toMatchObject({ used: '0', limit: 1, remaining: 1 })
+    expect(await rows()).toHaveLength(0)
+    await adapter.reserve(operation)
+    expect(await readPortalEmailTemplateAllowance(principal, operation.authority, dependencies)).toMatchObject({ used: '1', limit: 1, remaining: 0 })
+    expect(await rows()).toHaveLength(1)
+    await observer.query('UPDATE page_studio_site_memberships SET role=\'viewer\' WHERE user_id=$1', [principal.actor.actorId])
+    await expect(readPortalEmailTemplateAllowance(principal, operation.authority, dependencies)).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('rejects a changed allowance authority key or site before reading the budget', async () => {
+    const { operation, principal, dependencies } = await emailUsage()
+    await expect(readPortalEmailTemplateAllowance(principal, { ...operation.authority, authorityKey: 'changed' }, dependencies)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(readPortalEmailTemplateAllowance(principal, { ...operation.authority, scope: { ...operation.authority.scope, siteId: other.siteId } }, dependencies)).rejects.toMatchObject({ statusCode: 403 })
+    expect(await rows()).toHaveLength(0)
+  })
+
+  it.each([false, true])('charges ordinary CMS generation once without creating editor sessions (invited=%s)', async (invited) => {
+    const { adapter, operation } = await emailUsage(claims, invited)
+    const before = (await observer.query('SELECT count(*) FROM page_studio_sessions')).rows[0].count
+    expect(await adapter.reserve(operation)).toMatchObject({ admitted: true, charged: true })
+    expect(await adapter.reserve(operation)).toMatchObject({ admitted: false, charged: true })
+    expect(await adapter.settle({ ...operation, outcome: 'failed' })).toMatchObject({ admitted: false, state: 'failed', charged: true })
+    expect(await adapter.reserve(operation)).toMatchObject({ admitted: false, state: 'failed' })
+    expect((await observer.query('SELECT count(*) FROM page_studio_sessions')).rows[0].count).toBe(before)
+    expect(await rows()).toHaveLength(1)
+  })
+
+  it('shares one atomic allowance between email generation and editor operations across sites', async () => {
+    await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1')
+    const { adapter, operation } = await emailUsage()
+    const results = await Promise.allSettled([adapter.reserve(operation), run({ ...request, operationId: 'other' }, other)])
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.find(result => result.status === 'rejected')).toMatchObject({ reason: { statusCode: 429 } })
+    expect(await rows()).toHaveLength(1)
+  })
+
+  it.each(['revoked-login', 'viewer', 'wrong-actor', 'wrong-scope', 'zero-budget'])('rejects email generation with %s before any charge', async (condition) => {
+    const { adapter, operation, principal } = await emailUsage(claims, true)
+    if (condition === 'revoked-login') await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp() WHERE token_hash=$1', [principal.login.tokenHash])
+    if (condition === 'viewer') await observer.query('UPDATE page_studio_site_memberships SET role=\'viewer\' WHERE user_id=$1', [principal.actor.actorId])
+    if (condition === 'wrong-actor') operation.authority.actorId = randomUUID()
+    if (condition === 'wrong-scope') operation.authority.scope.siteId = other.siteId
+    if (condition === 'zero-budget') await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=0')
+    await expect(adapter.reserve(operation)).rejects.toMatchObject({ statusCode: 403 })
+    expect(await rows()).toHaveLength(0)
+  })
+
+  it('rechecks ordinary login on settlement and retains the previous charge after revocation', async () => {
+    const { adapter, operation, principal } = await emailUsage(claims, true)
+    await adapter.reserve(operation)
+    await observer.query('UPDATE client_sessions SET expires_at=clock_timestamp()-INTERVAL \'1 second\' WHERE token_hash=$1', [principal.login.tokenHash])
+    await expect(adapter.settle({ ...operation, outcome: 'succeeded' })).rejects.toMatchObject({ statusCode: 403 })
+    expect(await rows()).toMatchObject([{ state: 'reserved' }])
+  })
+
+  it('denies email replay and settlement after AI entitlement is removed', async () => {
+    const { adapter, operation } = await emailUsage()
+    await adapter.reserve(operation)
+    await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=0')
+    await expect(adapter.reserve(operation)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(adapter.settle({ ...operation, outcome: 'succeeded' })).rejects.toMatchObject({ statusCode: 403 })
+    expect(await rows()).toMatchObject([{ state: 'reserved' }])
   })
 })

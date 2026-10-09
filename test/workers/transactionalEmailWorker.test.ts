@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import agencyAuthWorker from '../../workers/agency-auth-email/src/index'
 import pageStudioWorker from '../../workers/page-studio-customer-email/src/index'
 import {
   createTransactionalEmailWorker
@@ -24,6 +25,17 @@ const message = {
 }
 
 describe('transactional email service Worker', () => {
+  it('admits the fixed agency sign-in identity and rejects an ADME sender', async () => {
+    const send = vi.fn().mockResolvedValue({ messageId: 'cf-agency-auth-1' })
+    const env = { EMAIL: { send } as unknown as SendEmail }
+    const authMessage = { ...message, from: { address: 'notification@xeroflow.io', name: 'XeroFlow Agency' } }
+    expect((await agencyAuthWorker.fetch(request(authMessage), env)).status).toBe(202)
+    expect(send.mock.calls[0][0].from).toEqual({ email: 'notification@xeroflow.io', name: 'XeroFlow Agency' })
+    expect(send.mock.calls[0][0].headers['X-XeroFlow-Origin']).toBe('agency-auth')
+    expect((await agencyAuthWorker.fetch(request(message), env)).status).toBe(400)
+    expect(send).toHaveBeenCalledOnce()
+  })
+
   it('isolates the Page Studio sender from the default ADME sender', async () => {
     const send = vi.fn().mockResolvedValue({ messageId: 'cf-studio-1' })
     const env = { EMAIL: { send } as unknown as SendEmail }

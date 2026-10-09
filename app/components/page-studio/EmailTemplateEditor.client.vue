@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import PageStudioEmailTemplateFields from './EmailTemplateFields.client.vue'
+import PageStudioEmailTemplateAi from './EmailTemplateAi.client.vue'
+import { EmailTemplateProposalDraftSchema } from '~~/shared/pageStudio/emailTemplateProposals'
 import PageStudioEmailTemplateHistory from './EmailTemplateHistory.client.vue'
 import { formSiteApi, type FormApiAudience } from '~/utils/pageStudioFormApi'
 import { ValidatedEmailTemplateSchema, effectiveEmailTemplate, starterEmailTemplate, socialPlatforms, type EmailTemplate, type EmailTemplateBlock, type EmailTemplateState, type EmailTemplateHistoricalVersion, type EmailAudience, type EmailImage, emailTemplateImages } from '~~/shared/pageStudio/emailTemplates'
@@ -54,6 +57,9 @@ const { data, pending, error, refresh } = useFetch<EmailTemplateState>(url, { ge
 const template = ref<EmailTemplate>(starterEmailTemplate(props.audience))
 const baseline = ref('')
 const saving = ref(false)
+const aiDirty = ref(false)
+const aiBusy = ref(false)
+const hasUnsavedChanges = computed(() => dirty.value || aiDirty.value)
 const uncertain = ref(false)
 const saveError = ref('')
 const savedNotice = ref('')
@@ -68,8 +74,8 @@ function finishLeave(value: boolean) {
   leaveOpen.value = false
 }
 onBeforeRouteLeave(async () => {
-  if (saving.value) return false
-  if (!dirty.value) return true
+  if (saving.value || aiBusy.value) return false
+  if (!hasUnsavedChanges.value) return true
   leaveOpen.value = true
   return await new Promise<boolean>((resolve) => {
     decideLeave = resolve
@@ -79,7 +85,7 @@ watch(leaveOpen, (open) => {
   if (!open) finishLeave(false)
 })
 const dirty = computed(() => ready.value && snapshot() !== baseline.value)
-const canSave = computed(() => ready.value && editable.value && (dirty.value || (!props.definitionId && !data.value?.record)) && !saving.value && !uncertain.value)
+const canSave = computed(() => ready.value && editable.value && (dirty.value || (!props.definitionId && !data.value?.record)) && !saving.value && !aiBusy.value && !uncertain.value)
 const previewForm = ref(props.forms[0]?.key ?? '__none__')
 const device = ref('desktop')
 const panel = ref('content')
@@ -144,6 +150,19 @@ const previewInput = computed(() => {
     ? { template: parsed.data, pageId: form.pageId, formId: form.formId }
     : null
 })
+const aiDraft = computed(() => {
+  if (!previewInput.value) return null
+  const parsed = EmailTemplateProposalDraftSchema.safeParse({ ...previewInput.value, siteId: props.siteId,
+    apiAudience: props.apiAudience ?? 'portal', audience: props.audience, definitionId: props.definitionId,
+    checkpointId: props.checkpointId, expectedRevision: expectedRevision.value, customised: customised.value })
+  return parsed.success ? parsed.data : null
+})
+function applyAiTemplate(value: EmailTemplate) {
+  if (!editable.value || saving.value || uncertain.value || (props.definitionId && !customised.value)) return
+  setEditableTemplate(value)
+  restoredRevision.value = null
+  openBlock.value = template.value.blocks[0]?.id
+}
 const { preview, status: previewStatus, error: previewError, refresh: showPreview } = useEmailTemplatePreview(
   () => previewInput.value,
   (body, signal) => $fetch(`${websiteUrl}/preview`, { method: 'POST', body, signal })
@@ -152,6 +171,14 @@ watch(() => props.forms, (forms) => {
   if (!forms.some(form => form.key === previewForm.value)) previewForm.value = forms[0]?.key ?? '__none__'
 })
 const insertionTarget = ref('subject')
+const selectedPreview = computed(() => props.forms.find(item => item.key === previewForm.value))
+const fieldQuery = computed(() => ({ pageId: selectedPreview.value?.pageId ?? '__none__', formId: selectedPreview.value?.formId ?? '__none__' }))
+const { data: fieldOptions, pending: fieldOptionsPending } = useFetch(`${url}/fields`, { query: fieldQuery })
+function applyFieldEdit(value: EmailTemplate) {
+  if (!editable.value || saving.value || uncertain.value || aiBusy.value) return
+  template.value = value
+}
+
 const history = ref<string[]>([])
 const future = ref<string[]>([])
 let recording = true
@@ -235,7 +262,7 @@ watch(data, (value) => {
 watch(dirty, (value) => {
   if (value) savedNotice.value = ''
 }, { immediate: true })
-watch([dirty, saving], ([hasEdits, inFlight]) => {
+watch([hasUnsavedChanges, saving], ([hasEdits, inFlight]) => {
   unsavedFormSettings.value = hasEdits || inFlight
   emit('dirty', hasEdits || inFlight)
 }, { immediate: true, flush: 'sync' })
@@ -276,6 +303,8 @@ async function save() {
   }
 }
 async function discardAndReload() {
+  if (saving.value || aiBusy.value) return
+  aiDirty.value = false
   saving.value = true
   ready.value = false
   try {
@@ -375,6 +404,16 @@ async function discardAndReload() {
       <p v-else class="text-sm text-muted">
         Used by {{ inheritedCount }} of {{ forms.length }} forms. Custom form templates keep their own design.
       </p>
+      <PageStudioEmailTemplateAi
+        :url="url"
+        :website-url="websiteUrl"
+        :draft="aiDraft"
+        :can-edit="editable && !saving && !uncertain && (!definitionId || customised)"
+        :native="apiAudience === 'customer'"
+        @apply="applyAiTemplate"
+        @dirty="aiDirty = $event"
+        @busy="aiBusy = $event"
+      />
       <div class="grid min-w-0 grid-cols-1 items-start gap-6" :class="!definitionId || customised ? '@3xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.3fr)]' : ''">
         <div v-if="!definitionId || customised" class="min-w-0 rounded-xl border border-default bg-default">
           <UTabs
@@ -508,6 +547,19 @@ async function discardAndReload() {
                         @click="insertVariable('{{form.name}}')"
                       />
                     </div>
+                    <PageStudioEmailTemplateFields
+                      :template="template"
+                      :site-id="siteId"
+                      :api-audience="apiAudience ?? 'portal'"
+                      :options="fieldOptions"
+                      :form-key="selectedPreview?.key ?? '__none__'"
+                      :checkpoint-id="checkpointId"
+                      :target="insertionTarget"
+                      :forms="forms"
+                      :loading="fieldOptionsPending"
+                      :disabled="!editable || saving || uncertain || aiBusy"
+                      @change="applyFieldEdit"
+                    />
                   </div>
                 </template>
               </UAccordion>
@@ -762,13 +814,13 @@ async function discardAndReload() {
         {{ savedNotice }}
       </p>
       <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
-        <span v-if="dirty">Unsaved changes. Save before closing this tab.</span><span v-else-if="data?.record">Saved draft · Revision {{ data.record.revision }}</span><span v-else>Starting design · Not saved yet</span>
+        <span v-if="hasUnsavedChanges">Unsaved changes. Save before closing this tab.</span><span v-else-if="data?.record">Saved draft · Revision {{ data.record.revision }}</span><span v-else>Starting design · Not saved yet</span>
         <UButton
           label="Discard edits and reload"
           color="neutral"
           variant="ghost"
           size="xs"
-          :disabled="saving"
+          :disabled="saving || aiBusy"
           @click="discardAndReload"
         />
       </div>

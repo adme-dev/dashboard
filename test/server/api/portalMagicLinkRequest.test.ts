@@ -46,6 +46,7 @@ vi.mock('~~/server/utils/appUrl', () => ({
 
 vi.mock('~~/server/utils/email', () => ({
   isEmailConfigured: () => true,
+  isMagicLinkEmailConfigured: () => true,
   sendClientPortalMagicLinkEmail: (...args: unknown[]) => mockSendEmail(...args)
 }))
 
@@ -155,6 +156,7 @@ describe('client portal magic-link request', () => {
       headers: { 'host': 'attacker.example', 'x-forwarded-host': 'attacker.example' },
       context: { cloudflare: { env: { PAGE_STUDIO_INVITED_ORIGIN: 'https://xeroflowpages.com' } } }
     })
+    expect(mockSendEmail.mock.calls[0][0].studio).toBe(true)
     const link = new URL(mockSendEmail.mock.calls[0][0].magicLinkUrl)
     expect(link.origin).toBe('https://xeroflowpages.com')
     expect(link.pathname).toBe('/studio/verify')

@@ -242,15 +242,18 @@ function gatewayAuthHeaders(gatewayUrl: string | undefined, cfg: ReturnType<type
   return bearer ? { 'cf-aig-authorization': `Bearer ${bearer}` } : undefined
 }
 
+function providerApiKey(provider: 'anthropic' | 'groq', cfg: ReturnType<typeof useRuntimeConfig>) {
+  const envKey = provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'GROQ_API_KEY'
+  return runtimeConfigValue(cfg, `${provider}ApiKey`) || getCachedCfBinding(envKey) || process.env[envKey]
+}
+
 function getAnthropicProviderWithTransport() {
   const cfg = useRuntimeConfig()
   const baseURL = gatewayBase('anthropic')
   const headers = gatewayAuthHeaders(baseURL, cfg)
   return {
     provider: createAnthropic({
-      apiKey: runtimeConfigValue(cfg, 'anthropicApiKey')
-        || getCachedCfBinding('ANTHROPIC_API_KEY')
-        || process.env.ANTHROPIC_API_KEY,
+      apiKey: providerApiKey('anthropic', cfg),
       baseURL,
       ...(headers ? { headers } : {})
     }),
@@ -268,9 +271,7 @@ function getGroqProviderWithTransport() {
   const headers = gatewayAuthHeaders(baseURL, cfg)
   return {
     provider: createGroq({
-      apiKey: runtimeConfigValue(cfg, 'groqApiKey')
-        || getCachedCfBinding('GROQ_API_KEY')
-        || process.env.GROQ_API_KEY,
+      apiKey: providerApiKey('groq', cfg),
       baseURL,
       ...(headers ? { headers } : {})
     }),
@@ -321,4 +322,22 @@ export function resolveModelWithTransport(spec: string, opts?: { aiBinding?: unk
 /** Backwards-compatible model-only resolver for callers that do not record transport telemetry. */
 export function resolveModel(spec: string, opts?: { aiBinding?: unknown }): LanguageModel {
   return resolveModelWithTransport(spec, opts).model
+}
+
+/** Opt-in fail-closed resolver for features requiring Gateway accounting.
+ * Existing callers retain their explicit direct/Workers AI transport behaviour. */
+export function resolveGatewayTextModel(spec: string): LanguageModel | null {
+  const provider = spec.startsWith('anthropic/') ? 'anthropic' : spec.startsWith('groq/') ? 'groq' : null
+  if (!provider || !spec.slice(provider.length + 1).trim()) return null
+  const cfg = useRuntimeConfig()
+  const key = providerApiKey(provider, cfg)
+  if (typeof key !== 'string' || !key.trim()) return null
+  try {
+    const url = new URL(gatewayBase(provider) ?? '')
+    if (url.protocol !== 'https:' || url.hostname !== 'gateway.ai.cloudflare.com'
+      || url.username || url.password || url.port || url.search || url.hash
+      || !/^\/v1\/[^/]+\/[^/]+\/(anthropic|groq)$/.test(url.pathname)) return null
+  } catch { return null }
+  const resolved = resolveModelWithTransport(spec)
+  return resolved.gatewayUsed ? resolved.model : null
 }

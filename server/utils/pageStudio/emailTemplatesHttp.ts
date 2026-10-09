@@ -2,12 +2,13 @@ import { createError, getQuery, getRouterParam, setHeader, type H3Event } from '
 import { resolvePageStudioHttpActor } from './httpActor'
 import { preparePageStudioContentLogin } from './contentNativeLogin'
 import { readPageStudioJson } from './boundedJson'
+import { readEmailTemplateFieldOptions } from './emailTemplateFieldSupport'
 import { pageStudioHttpError } from './http'
 import { operateEmailTemplate, previewTrustedEmailTemplate, listTrustedEmailTemplateHistory, readTrustedEmailTemplateRevision } from './emailTemplates'
 import { portalFormContext } from './portalFormContext'
 import { EmailTemplateHistoryQuerySchema, EmailTemplateRevisionParamSchema } from '~~/shared/pageStudio/emailTemplates'
 
-export async function handleEmailTemplate(event: H3Event, method: 'GET' | 'PUT' | 'PREVIEW' | 'HISTORY' | 'HISTORY_VERSION') {
+export async function handleEmailTemplate(event: H3Event, method: 'GET' | 'PUT' | 'PREVIEW' | 'HISTORY' | 'HISTORY_VERSION' | 'FIELDS') {
   setHeader(event, 'cache-control', 'private, no-store')
   try {
     const history = method === 'HISTORY' || method === 'HISTORY_VERSION'
@@ -19,6 +20,7 @@ export async function handleEmailTemplate(event: H3Event, method: 'GET' | 'PUT' 
     const body = method === 'PUT' || method === 'PREVIEW' ? await readPageStudioJson(event, 300_000, ['Templates must be JSON', 'Template is too large', 'Template is required', 'Invalid template', 'Invalid template JSON']) : undefined
     const request = { actor, login, siteId: getRouterParam(event, 'siteId') ?? '', env: event.context.cloudflare?.env ?? {} }
     const audience = getRouterParam(event, 'audience') ?? ''
+    if (method === 'FIELDS') return await readEmailTemplateFieldOptions(portalFormContext(request), audience, getQuery(event), getRouterParam(event, 'definitionId'))
     if (history) {
       const context = portalFormContext(request)
       const definitionId = getRouterParam(event, 'definitionId')

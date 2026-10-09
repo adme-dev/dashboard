@@ -17,6 +17,16 @@ export async function assertPageStudioAiAllowanceAvailable(
   db: PageStudioControlQueryClient,
   scope: { tenantId: string, clientId: string, entitlementId: string }
 ) {
+  const allowance = await readPageStudioAiAllowance(db, scope)
+  if (allowance.remaining === 0) throw new PageStudioAiUsageError('AI_USAGE_EXHAUSTED', 429, 'The monthly AI allowance has been reached')
+  return { period: allowance.period }
+}
+
+/** Caller holds the same scope/authority locks as a reservation. Does not charge. */
+export async function readPageStudioAiAllowance(
+  db: PageStudioControlQueryClient,
+  scope: { tenantId: string, clientId: string, entitlementId: string }
+) {
   const budget = (await db.query<{ monthly_ai_operation_limit: number, period: string }>(`SELECT monthly_ai_operation_limit,
     date_trunc('month', clock_timestamp() AT TIME ZONE 'UTC')::date::text AS period
     FROM page_studio_entitlements WHERE tenant_id=$1 AND client_id=$2 AND id=$3 FOR SHARE`,
@@ -31,8 +41,7 @@ export async function assertPageStudioAiAllowanceAvailable(
     (SELECT count(*) FROM page_studio_ai_usage WHERE tenant_id=$1 AND client_id=$2 AND period_start=$3::date)
     + (SELECT count(*) FROM page_studio_public_action_invocations WHERE tenant_id=$1 AND client_id=$2 AND period_start=$3::date)
     )::text AS used`, [scope.tenantId, scope.clientId, budget.period])).rows[0]
-  if (!used || !/^\d+$/.test(used.used) || BigInt(used.used) >= BigInt(budget.monthly_ai_operation_limit)) {
-    throw new PageStudioAiUsageError('AI_USAGE_EXHAUSTED', 429, 'The monthly AI allowance has been reached')
-  }
-  return { period: budget.period }
+  if (!used || !/^\d+$/.test(used.used)) throw new PageStudioAiUsageError('AI_USAGE_UNAVAILABLE', 503, 'AI allowance is unavailable')
+  const remaining = BigInt(budget.monthly_ai_operation_limit) - BigInt(used.used)
+  return { period: budget.period, limit: budget.monthly_ai_operation_limit, used: used.used, remaining: remaining > 0n ? Number(remaining) : 0 }
 }

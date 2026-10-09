@@ -1,5 +1,84 @@
 # Page Studio production release and activation checkpoint — 8 October 2026
 
+
+Current task status and next steps live in the
+[running CMS/Studio ledger](customer-cms-status.md#running-ledger--9-october-2026).
+This file retains release/source/provider evidence. Historical entries below do
+not authorize deploying an older branch or treating local checks as hosted acceptance.
+
+Latest local updates: email field picker and compatibility are committed at
+Dashboard `20b4ebe30` / native `1e3219b`; collapsed navigation is committed at
+native `d588cf286`. Dashboard application checkpoint is `9ac212310`; later ledger-only commits
+do not change that tested build.
+The 200px thumbnail cap is committed at native
+`6888688e8c13c36eac47601e55f02ac546c13381`: local browser/build/review and final
+1,576-file formatting checks pass. All remain unpushed and undeployed.
+
+Local Dashboard build passes at raw 25,458,639/25,468,928 bytes and gzip
+7,041,769/9,750,000. The scoped type graph retains the same 205 existing error
+identities; repository typechecking is not clean. Native build/types/tests and the
+prior full formatting gates pass. The new thumbnail sizing browser regression
+passes in light/dark mode and retains horizontal overflow in narrow containers.
+
+No Actions, deployment, email delivery, paid inference or customer activation was
+performed for these updates. Hosted signup/Forms/editor acceptance and coordinated
+private renderer/router/retained runtime rollout remain required. The new runtime
+candidate is still unapproved/uninstalled; native preview AI allowance remains zero.
+
+## 9 October selected platform and existing-account showcase
+
+The owner selected the canonical native editor (local4325) and standalone Nuxt CMS
+(local3045), using xeroflowpages.com with optional XeroFlow dashboard entry. The
+running ledger now prioritises the existing Fantasy Limo invited-account journey
+for Tuesday13October. Agency launch into the original saved hosted site is verified;
+normal standalone mailbox sign-in remains awaiting the user.
+
+The standalone launch-origin defect has a locally verified native Worker fix.
+75 targeted tests, full28-task build,44-task types,40-task package test run,36
+security tests,48 action-runtime tests and8 operator transport tests pass. Review
+approves the exact HTTPS invited-client entry and preserved signed/fresh authority.
+The original production image/routes/resources remain unchanged. Worker dry-run
+passes with only the explicit new invited origin. Full formatting passes1,576files
+in320seconds with no fixes; native commit is `e5467a79ae8f86efb7a0beee978cef5ca4713841`.
+A local Docker Linux image build was cancelled after host disk exhaustion; no image
+was uploaded or deployed. Fresh main fetches passed after initial space recovery.
+The cancelled build's14 private cache records were removed by exactID, preserving
+shared cache; Docker is stopped. Host free space is about2.2GiB. Packaging/rollout
+and the real invited mailbox journey remain pending.
+
+Read-only production inventory on9October confirms Sandbox Worker version
+`79919892-c8dc-4266-9571-89e451e53366`, deployment
+`c8df6ea3-3c71-4af9-a10e-7eea7f270c27`, container application
+`a033a7df-cee9-46f3-a0ed-9d7b93b6f25a` version25, image
+`a63aa0d1692a0f9cbe630f01c931fe8a16e4eca60b1ccd02872864129f45b060`.
+All three configured custom domains match the complete provider service inventory.
+No rollout, source push or Actions were performed by this verification.
+
+## 9 October source reconciliation
+
+This section supersedes older current-source statements below; dated release
+entries remain historical evidence. Fresh Dashboard main is `c85bf2653344ac36530e2a479d2a64cf64e58b1d`;
+the last verified 8 October production deployment is
+`57353fad-8401-496c-951a-71dc569da18d`. CMS light/dark design and invited access
+are released, with existing QR navigation retained. Recheck live provider state
+before a new release; no deployment occurs merely by updating this ledger.
+
+Native PR119 is merged at `17ac1f3dd292f5da996daac82c523174606a3265`, with
+successful Linux/Windows CI. Local appearance, layout-gallery, guarded history and
+thumbnail/overview increments extend it through `29be3451d20f5b25ff6ea854c6f1e9136b2be19e`.
+Dashboard email proposal/API/UI work through `dd44d62a4` and the newer local V2
+field-reference contract remain unpushed and unexposed. Native/runtime deployment,
+matching private renderer rollout and customer activation are separate required gates.
+
+Mailboxes and email authorization are already supplied. Supported current-native
+sign-in, B verification, both workspace setups and the hosted acceptance matrix
+remain pending; no real signed-in session is claimed. Native AI allowance remains
+zero. Delivery/outbox, published outcomes and the wider CMS roadmap remain open.
+See [the current checklist](customer-cms-status.md) and
+[field-reference contract](2026-10-09-email-template-field-references.md).
+
+
+
 Completed production deployment and authenticated agency verification on 7 October.
 This checkpoint supersedes the pending-release and rollback-only statuses in the
 earlier resumption ledger and customer CMS checklist.

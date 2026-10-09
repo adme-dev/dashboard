@@ -25,7 +25,7 @@ interface FetcherBinding {
 const GATEWAY_URL = 'https://transactional-email.internal/v1/send'
 const CONTROLLED_ERROR_CLASS = /^[a-z0-9_]{1,120}$/u
 
-type EmailGatewayBindingName = 'TRANSACTIONAL_EMAIL' | 'PAGE_STUDIO_CUSTOMER_EMAIL'
+type EmailGatewayBindingName = 'TRANSACTIONAL_EMAIL' | 'PAGE_STUDIO_CUSTOMER_EMAIL' | 'AGENCY_AUTH_EMAIL'
 
 function serviceBinding(event: H3Event, bindingName: EmailGatewayBindingName): FetcherBinding | null {
   const context = event.context as Record<string, unknown>

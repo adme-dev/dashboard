@@ -3,15 +3,19 @@ import { createRenderBudget } from '../../../shared/emailRendering/bounds'
 import { ValidatedEmailTemplateSchema, type EmailTemplate, type EmailImage } from '../../../shared/pageStudio/emailTemplates'
 import { renderFlyhubDocumentToHtml } from './render/flyhub-html-renderer'
 import { escapeHtml } from './render/blocks/helpers'
+import { emailTemplateFieldVariables } from '../../../shared/pageStudio/emailTemplateFields'
+import type { CustomerPreviewContext } from '../../../shared/emailRendering/contract'
 import type { FlyhubDocument } from './render/blocks/types'
 
 /** Safe adapter into the existing EDM renderer. No raw markup, remote images,
  * arbitrary style objects, answer interpolation into URLs, or agency state. */
-export function renderCustomerEmailPreview(input: EmailTemplate, context: { siteName: string, formName: string, fields: Array<{ id: string, name: string, type: string }>, images?: Record<string, string> }) {
+export function renderCustomerEmailPreview(input: EmailTemplate, context: CustomerPreviewContext) {
   const budget = createRenderBudget()
   const template = ValidatedEmailTemplateSchema.parse(input)
-  const values: Record<string, string> = { 'site.name': context.siteName, 'form.name': context.formName }
-  const resolve = (value: string) => boundedReplace(value, /\{\{(site.name|form.name)\}\}/g, (_, variable: string) => values[variable] ?? '', budget)
+  if (template.schemaVersion === 2 && !context.formKey) throw new Error('Field-bound previews require current form identity')
+  const fieldValues = template.schemaVersion === 2 ? emailTemplateFieldVariables(template, { formKey: context.formKey, fields: context.fields, answers: Object.fromEntries(context.fields.filter(field => field.type !== 'hidden').map(field => [field.id, 'Example answer'])) }) : {}
+  const values: Record<string, string> = { 'site.name': context.siteName, 'form.name': context.formName, ...fieldValues }
+  const resolve = (value: string) => boundedReplace(value, /\{\{([^{}]+)\}\}/g, (_, variable: string) => values[variable] ?? '', budget)
   // Bound and strip header controls even if a saved site/form name contains them.
   const header = (value: string) => resolve(value).replace(/[\r\n\t]/g, ' ').slice(0, 998)
   const doc: FlyhubDocument = { root: { type: 'EmailLayout', data: { props: { backdropColor: template.backgroundColor, canvasColor: template.canvasColor, textColor: template.textColor, fontFamily: template.fontFamily, borderRadius: 12 }, childrenIds: [] } } }

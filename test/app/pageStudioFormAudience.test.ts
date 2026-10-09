@@ -8,6 +8,7 @@ import Template from '~~/app/components/page-studio/EmailTemplateEditor.client.v
 import SavedHistory from '~~/app/components/page-studio/EmailTemplateHistory.client.vue'
 import Media from '~~/app/components/page-studio/EmailMediaPicker.client.vue'
 import { useEmailTemplatePreview } from '~~/app/composables/useEmailTemplatePreview'
+import { useEmailTemplateProposal } from '~~/app/composables/useEmailTemplateProposal'
 import type { FormApiAudience } from '~~/app/utils/pageStudioFormApi'
 import { defaultFormOutcomes } from '~~/shared/pageStudio/formOutcomes'
 import { starterEmailTemplate } from '~~/shared/pageStudio/emailTemplates'
@@ -15,6 +16,8 @@ import { starterEmailTemplate } from '~~/shared/pageStudio/emailTemplates'
 let app: App, host: HTMLElement
 const readValues = new Map<string, unknown>()
 const reads: string[] = [], mutate = vi.fn(), guards: Array<() => Promise<boolean>> = []
+const readRequests: Array<{ url: string, query: unknown }> = []
+const templateReads = () => reads.filter(url => /\/email-templates\/(team|customer)$/.test(url))
 const props = reactive({ siteId: 'owned', apiAudience: 'customer' as FormApiAudience | undefined, canEdit: true, assets: [{ id: 'photo', mediaType: 'image/png', previewAvailable: true, size: 100, altText: 'Logo', fileName: 'logo.png' }], checkpointId: 'saved', pages: [{ id: 'page', title: 'Home', route: '/', visibility: 'public', seo: {}, forms: [{ id: 'placement', name: 'Enquiry', fields: [{ id: 'name', name: 'Name', type: 'text' }] }] }], formLibrary: { schemaVersion: 1, definitions: [{ id: 'shared', revision: 1, form: { id: 'placement', name: 'Enquiry', fields: [{ id: 'name', name: 'Name', type: 'text' }] }, placements: [{ pageId: 'page', formId: 'placement', fieldIds: { name: 'name' } }] }] }, reloadWorkspace: vi.fn().mockResolvedValue(undefined) })
 async function flush() {
   for (let i = 0; i < 15; i++) {
@@ -43,7 +46,7 @@ async function mount(component: Component = Workspace, componentProps: Record<st
   app.component('PageStudioFormOutcomeInput', { props: ['modelValue'], emits: ['update:modelValue'], template: '<button @click="$emit(\'update:modelValue\', {type: \'message\', message: \'Changed draft\'})">Change outcome</button>' })
   for (const name of ['UFormField', 'USkeleton', 'UBadge', 'UIcon', 'UPagination', 'PageStudioFormOutcomePreview', 'PageStudioEmailImageFields']) app.component(name, { template: '<div><slot/></div>' })
   app.component('USelect', { props: ['modelValue', 'items', 'disabled'], emits: ['update:modelValue'], template: '<select :value="modelValue" :disabled="disabled" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="item in items" :value="item.value">{{ item.label }}</option></select>' })
-  app.component('UAccordion', { template: '<div/>' })
+  app.component('UAccordion', { props: ['items'], data: () => ({ open: false }), template: '<div><button @click="open = !open">{{ items[0].label }}</button><slot v-if="open" :name="items[0].slot"/></div>' })
   app.component('UTabs', { props: ['items'], emits: ['update:modelValue'], template: '<div><button v-for="item in items" @click="$emit(\'update:modelValue\', item.value)">{{ item.label }}</button></div>' })
   app.mount(host)
   await flush()
@@ -53,20 +56,37 @@ beforeEach(() => {
   vi.resetAllMocks()
   readValues.clear()
   reads.length = 0
+  readRequests.length = 0
   guards.length = 0
   props.siteId = 'owned'
   props.apiAudience = 'customer'
   props.canEdit = true
-  vi.stubGlobal('useFetch', (url: string) => {
-    reads.push(url)
-    const value = readValues.get(url) ?? (url.endsWith('/settings') ? { canEdit: true, record: { settings: defaultFormOutcomes(), revision: 1 } } : { canEdit: true, record: null })
-    return { data: ref(value), pending: ref(false), error: ref(null), refresh: vi.fn().mockResolvedValue(undefined) }
+  vi.stubGlobal('useFetch', (url: string, options: { immediate?: boolean, query?: { value: unknown }, transform?: (value: unknown) => unknown } = {}) => {
+    const data = ref<unknown>(), pending = ref(false), error = ref(null), status = ref('idle')
+    const read = () => {
+      reads.push(url)
+      readRequests.push({ url, query: options.query?.value })
+      const value = readValues.get(url) ?? (url.endsWith('/fields')
+        ? { available: false, reason: 'Saved field insertion is unavailable for this fixture.' }
+        : url.endsWith('/ai')
+          ? { available: false, reason: 'AI design is unavailable for this fixture.', models: [], allowance: null }
+          : url.endsWith('/settings') ? { canEdit: true, record: { settings: defaultFormOutcomes(), revision: 1 } } : { canEdit: true, record: null })
+      data.value = options.transform ? options.transform(value) : value
+      status.value = 'success'
+    }
+    // Nuxt registers lazy reads at setup, but only requests data on refresh.
+    // Keep that distinction so opening an editor never pretends to fetch AI options.
+    if (options.immediate !== false) read()
+    const refresh = vi.fn(async () => {
+      read()
+    })
+    return { data, pending, error, status, refresh }
   })
   vi.stubGlobal('useState', () => ref(false))
   vi.stubGlobal('onBeforeRouteLeave', (guard: () => Promise<boolean>) => {
     guards.push(guard)
   })
-  for (const [name, fn] of Object.entries({ ref, computed, watch, onBeforeUnmount, onScopeDispose, useEmailTemplatePreview, $fetch: mutate })) vi.stubGlobal(name, fn)
+  for (const [name, fn] of Object.entries({ ref, computed, watch, onBeforeUnmount, onScopeDispose, useEmailTemplatePreview, useEmailTemplateProposal, $fetch: mutate })) vi.stubGlobal(name, fn)
   mutate.mockResolvedValue({ canEdit: true, record: null, html: '<p>Preview</p>', subject: 'Preview', preheader: '' })
 })
 afterEach(() => {
@@ -119,6 +139,66 @@ describe('shared Forms API audience', () => {
     subject.dispatchEvent(new Event('input'))
     await flush()
   }
+  it.each(['portal', 'customer'])('keeps AI options lazy and respects the %s availability boundary', async (apiAudience) => {
+    const base = `/api/portal/page-studio/${apiAudience === 'customer' ? 'customer/' : ''}sites/owned/email-templates/team`
+    await mount(Template, { ...editorProps(), apiAudience })
+    expect(reads).not.toContain(`${base}/ai`)
+    expect(mutate).not.toHaveBeenCalled()
+    await click('AI design')
+    if (apiAudience === 'customer') {
+      expect(reads).not.toContain(`${base}/ai`)
+      expect(host.textContent).toContain('AI email design is not available in this preview')
+    } else {
+      expect(reads.at(-1)).toBe(`${base}/ai`)
+      expect(host.textContent).toContain('AI design is unavailable for this fixture.')
+    }
+    expect(button('Generate proposal')).toBeUndefined()
+    expect(mutate).not.toHaveBeenCalled()
+    expect(button('Save template draft').disabled).toBe(false)
+  })
+  it.each(['portal', 'customer'])('inserts an admitted saved field as an unsaved edit, then saves and reloads through the %s API', async (apiAudience) => {
+    const url = `/api/portal/page-studio/${apiAudience === 'customer' ? 'customer/' : ''}sites/owned/email-templates/team`
+    const initial = { canEdit: true, record: { revision: 4, template: starterEmailTemplate('team'), overrides: [] } }
+    readValues.set(url, initial)
+    readValues.set(`${url}/fields`, { available: true, siteId: 'owned', apiAudience, checkpointId: 'saved', formKey: 'shared', fields: [{ fieldId: 'name', label: 'Name', type: 'text' }] })
+    await mount(Template, { ...editorProps(), apiAudience })
+    expect(readRequests.at(-1)).toEqual({ url: `${url}/fields`, query: { pageId: 'page', formId: 'placement' } })
+    await click('Personalise with website details')
+    const picker = host.querySelector('[aria-label="Form field text"]')!
+    const field = picker.querySelector('select')!
+    field.value = 'name'
+    field.dispatchEvent(new Event('change'))
+    await flush()
+    const fallback = picker.querySelector('input')!
+    fallback.value = 'there'
+    fallback.dispatchEvent(new Event('input'))
+    await flush()
+    expect(button('Save template draft').disabled).toBe(true)
+    await click('Insert field')
+    expect(host.querySelector('input')?.value).toContain('{{field.shared.name}}')
+    expect(button('Save template draft').disabled).toBe(false)
+    expect(mutate).not.toHaveBeenCalled()
+    const leave = guards.at(-1)!()
+    await flush()
+    await click('Keep editing')
+    expect(await leave).toBe(false)
+    mutate.mockImplementationOnce(async (target, options) => {
+      expect(target).toBe(url)
+      const saved = { canEdit: true, record: { revision: 5, template: options.body.template, overrides: [] } }
+      readValues.set(url, saved)
+      return saved
+    })
+    await click('Save template draft')
+    expect(mutate.mock.calls.at(-1)).toEqual([url, expect.objectContaining({ method: 'PUT', body: expect.objectContaining({ checkpointId: 'saved', expectedRevision: 4,
+      template: expect.objectContaining({ schemaVersion: 2, subject: expect.stringContaining('{{field.shared.name}}'), fieldBindings: [{ formKey: 'shared', fieldId: 'name', type: 'text', fallback: 'there' }] }) }) })])
+    await editSubject('Discard this local edit')
+    await click('Discard edits and reload')
+    expect(props.reloadWorkspace).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('input')?.value).toContain('{{field.shared.name}}')
+    expect(picker.querySelectorAll('input')[1]?.value).toBe('there')
+    expect(button('Save template draft').disabled).toBe(true)
+    expect(mutate).toHaveBeenCalledTimes(1)
+  })
   it.each(['portal', 'customer'])('browses and pages %s history lazily without changing edits, then explicitly restores an unsaved legacy draft', async (apiAudience) => {
     const { url, historical } = historyFixture(apiAudience)
     await mount(Template, { ...editorProps(), apiAudience })
@@ -425,7 +505,8 @@ describe('shared Forms API audience', () => {
     for (const label of ['Team template', 'Customer template']) {
       await click(label)
       const audience = label === 'Team template' ? 'team' : 'customer'
-      expect(reads.at(-1)).toBe(`/api/portal/page-studio/customer/sites/owned/forms/shared/email-templates/${audience}`)
+      expect(templateReads().at(-1)).toBe(`/api/portal/page-studio/customer/sites/owned/forms/shared/email-templates/${audience}`)
+      expect(readRequests.at(-1)).toEqual({ url: `/api/portal/page-studio/customer/sites/owned/forms/shared/email-templates/${audience}/fields`, query: { pageId: 'page', formId: 'placement' } })
       await vi.advanceTimersByTimeAsync(450)
       await flush()
       expect(mutate.mock.calls.at(-1)![0]).toBe(`/api/portal/page-studio/customer/sites/owned/email-templates/${audience}/preview`)
@@ -435,7 +516,7 @@ describe('shared Forms API audience', () => {
     expect(reads.at(-1)).toBe('/api/portal/page-studio/customer/sites/owned/forms/recipients')
     for (const label of ['Team template', 'Customer template']) {
       await click(label)
-      expect(reads.at(-1)).toBe(`/api/portal/page-studio/customer/sites/owned/email-templates/${label === 'Team template' ? 'team' : 'customer'}`)
+      expect(templateReads().at(-1)).toBe(`/api/portal/page-studio/customer/sites/owned/email-templates/${label === 'Team template' ? 'team' : 'customer'}`)
     }
     await click('Details')
     await click('Choose logo')
@@ -524,7 +605,7 @@ describe('shared Forms API audience', () => {
     expect(button('View enquiries')).toBeTruthy()
     await click('Website email defaults')
     await click('Team template')
-    expect(reads.at(-1)).toBe('/api/portal/page-studio/sites/owned/email-templates/team')
+    expect(templateReads().at(-1)).toBe('/api/portal/page-studio/sites/owned/email-templates/team')
   })
   it('remounts secret draft state on site changes and cancels stale previews', async () => {
     await mount()
@@ -537,7 +618,7 @@ describe('shared Forms API audience', () => {
     await vi.advanceTimersByTimeAsync(450)
     props.siteId = 'other'
     await flush()
-    expect(reads.at(-1)).toBe('/api/portal/page-studio/customer/sites/other/email-templates/team')
+    expect(templateReads().at(-1)).toBe('/api/portal/page-studio/customer/sites/other/email-templates/team')
     finish({ html: '<p>OLD PRIVATE PREVIEW</p>', subject: 'Old secret', preheader: '' })
     await flush()
     expect(host.querySelector('iframe')?.getAttribute('srcdoc') ?? '').not.toContain('OLD PRIVATE PREVIEW')

@@ -5,6 +5,7 @@ import { getAppUrl } from '~~/server/utils/appUrl'
 import { pageStudioInvitedOrigin } from '~~/server/utils/pageStudio/invitedOrigin'
 import {
   isEmailConfigured,
+  isMagicLinkEmailConfigured,
   sendClientPortalMagicLinkEmail
 } from '~~/server/utils/email'
 import { isCloudflareEmailGatewayAvailable } from '~~/server/utils/cloudflareEmailGateway'
@@ -72,7 +73,11 @@ export default defineEventHandler(async (event) => {
     20
   )
 
-  if (!isEmailConfigured(event) && !isCloudflareEmailGatewayAvailable(event)) {
+  const studio = redirect.startsWith('/studio/sites')
+  const emailReady = studio
+    ? isMagicLinkEmailConfigured(event)
+    : isEmailConfigured(event) || isCloudflareEmailGatewayAvailable(event)
+  if (!emailReady) {
     throw createError({
       statusCode: 503,
       statusMessage: 'Sign-in email is temporarily unavailable. Please contact your account manager.'
@@ -130,6 +135,7 @@ export default defineEventHandler(async (event) => {
         clientName: delivery.client_name,
         magicLinkUrl: delivery.magicLinkUrl,
         expiresInMinutes: 15,
+        studio,
         event
       })
     } catch {

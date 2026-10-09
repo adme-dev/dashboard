@@ -17,6 +17,7 @@ function setup() {
   mocks.context.mockReturnValue(context)
   const app = createApp(), router = createRouter()
   for (const prefix of ['/sites/:siteId/templates/:audience', '/sites/:siteId/forms/:definitionId/templates/:audience']) {
+    router.use(prefix + '/fields', eventHandler(event => handleEmailTemplate(event, 'FIELDS')))
     router.use(prefix + '/history', eventHandler(event => handleEmailTemplate(event, 'HISTORY')))
     router.use(prefix + '/history/:revision', eventHandler(event => handleEmailTemplate(event, 'HISTORY_VERSION')))
   }
@@ -49,4 +50,23 @@ describe('portal template history HTTP adapter', () => {
     s.service.readEmailTemplateDraft.mockResolvedValue(null)
     expect((await s.handle(new Request('https://portal.test/sites/site_one/templates/team/history/2'))).status).toBe(404)
   })
+})
+
+it('field options require current portal authority, exact queries and compatible services without writing', async () => {
+  const s = setup()
+  s.context.readDocument.mockResolvedValue({ id: scope.siteId, site: { id: scope.siteId, clientId: scope.clientId }, studio: { checkpointId: 'checkpoint', pages: [{ id: 'home', forms: [{ id: 'contact', name: 'Contact', fields: [{ id: 'name', name: 'Name', type: 'text' }] }] }] } } as never)
+  s.service.readEmailTemplateDraft.mockResolvedValue({ scope, contractVersion: 2 } as never)
+  Object.assign(s.context, { renderEmailPreview: vi.fn().mockResolvedValue({ subject: 'Field support check', sample: true }) })
+  const base = 'https://portal.test/sites/site_one/templates/team/fields'
+  const response = await s.handle(new Request(base + '?pageId=home&formId=contact'))
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({ available: true, siteId: 'site_one', apiAudience: 'portal' })
+  expect(response.headers.get('cache-control')).toBe('private, no-store')
+  for (const query of ['pageId=home&formId=contact&scope=foreign', 'pageId=home&pageId=other&formId=contact', 'pageId=foreign&formId=contact']) {
+    expect((await s.handle(new Request(base + '?' + query))).status).toBe(query.includes('pageId=foreign') ? 404 : 400)
+  }
+  s.service.readEmailTemplateDraft.mockRejectedValue(new Error('Older codec'))
+  const old = await s.handle(new Request(base + '?pageId=home&formId=contact'))
+  expect(old.status).toBe(200)
+  expect(await old.json()).toMatchObject({ available: false })
 })

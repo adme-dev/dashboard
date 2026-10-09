@@ -222,6 +222,9 @@ service = "agency-workflows"
 binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-production"
 [[env.production.services]]
+binding = "AGENCY_AUTH_EMAIL"
+service = "xeroflow-agency-auth-email"
+[[env.production.services]]
 binding = "TRANSACTIONAL_EMAIL"
 service = "xeroflow-transactional-email"
 [[env.production.services]]
@@ -335,6 +338,10 @@ mode = "smart"
 
 # Page Studio staging services remain isolated from production. No top-level
 # bindings or production mutable resources are inherited by this environment.
+[[env.preview.services]]
+binding = "AGENCY_AUTH_EMAIL"
+service = "xeroflow-agency-auth-email-staging"
+
 [[env.preview.services]]
 binding = "PAGE_STUDIO_CUSTOMER_EMAIL"
 service = "xeroflow-page-studio-customer-email-staging"

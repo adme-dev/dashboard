@@ -1,0 +1,22 @@
+name = "xeroflow-agency-auth-email-staging"
+main = "src/index.ts"
+account_id = "a5b299b3ad15c1b5b895dc66f9357b17"
+compatibility_date = "2026-10-09"
+workers_dev = false
+preview_urls = false
+
+[observability]
+enabled = true
+
+[[send_email]]
+name = "EMAIL"
+allowed_sender_addresses = ["notification@xeroflow.io"]
+
+[env.production]
+name = "xeroflow-agency-auth-email"
+workers_dev = false
+preview_urls = false
+
+[[env.production.send_email]]
+name = "EMAIL"
+allowed_sender_addresses = ["notification@xeroflow.io"]

@@ -27,6 +27,10 @@ export interface TrustedFormContext {
   service: FormDraftService | undefined
   resolveMedia: (template: EmailTemplate) => Promise<{ images: Record<string, string>, warnings: string[] }>
 }
+/** Copy only authority values; adapters may also carry non-cloneable RPC services. */
+export function snapshotTrustedFormAuthority(authority: TrustedFormAuthority): TrustedFormAuthority {
+  return { scope: { ...authority.scope }, actorId: authority.actorId, authorityKey: authority.authorityKey, canEdit: authority.canEdit }
+}
 export function sameTrustedFormAuthority(a: TrustedFormAuthority, b: TrustedFormAuthority) {
   return samePageStudioContentScope(a.scope, b.scope) && a.actorId === b.actorId && a.authorityKey === b.authorityKey
 }

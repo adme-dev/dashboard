@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 8 October 2026. Start here after an interruption.
+Last updated: 9 October 2026. Start here after an interruption.
 Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
 This checklist tracks the active standalone CMS work; it does not declare the
@@ -9,6 +9,133 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Fantasy Limo demo](2026-10-01-fantasy-limo-demo.md),
 [standalone style guide](../design/standalone-cms-style-guide.md),
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
+
+
+## Running ledger — 9 October 2026
+
+### Selected platform and Tuesday showcase
+
+Owner selected the canonical Page Studio editor at `http://127.0.0.1:4325/`
+and the standalone Nuxt CMS at `http://127.0.0.1:3045/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
+These are one product direction, accessed through XeroFlow or independently at
+`xeroflowpages.com`. The dealer CMS prototype on 5187 is a separate reference,
+not the selected deployment source. Default appearance is light, with dark mode.
+
+Priority is the existing Fantasy Limo account and saved site for Tuesday
+13 October. Its normal agency Launch Studio was verified on 9 October: the hosted
+editor loads the existing saved site. No website content or publication was changed.
+Standalone access uses the existing invited `pgiurin@gmail.com` account; it must not
+be silently relabelled as a native customer or copied into a new ownership scope.
+One normal production sign-in link was requested for this site; request acceptance
+is proven, mailbox delivery/sign-in are still awaiting the user's normal login.
+
+A local regression identified the independent editor handoff defect: `/launch`
+only admitted `app.xeroflow.io`. The native Worker fix admits one explicitly
+configured HTTPS Studio origin for invited client sessions, retaining fresh
+permission, canary, nonce and signed scope checks. The 75 scoped tests pass;
+full build/type/test gates, independent review and 1,576-file formatting pass.
+Native fix is committed at `e5467a79ae8f86efb7a0beee978cef5ca4713841`. This fix and the new editor
+appearance need release. The current hosted editor still has the older appearance.
+
+The editor image is now reviewed, privately uploaded and pinned at registry digest
+`ea21f6f9178ea7982f5f06a2027a30d1e26277e8dbee1884fd800d591e0f5f5c`.
+Native PR121 passed Linux/Windows CI and merged as `c333ca7699476d1eb83823047874b4824d864b89`.
+Staging deployment succeeded at Worker version `70cc4d8a-5207-40e3-8226-81057d1d1f45`,
+container version38 at100%; normal admin launch, light/dark and collapsed toolbar
+are verified in the actual hosted editor without content saves. Production deploy
+completed at Worker version `e35d0166-a177-4e5d-8989-767478ea8b0d`; provider and Fantasy
+browser acceptance are the next checks. Source and exact rollback pairs are recorded
+in the native rollout receipt. The old asset briefly remained during staging rollout;
+reload after provider completion showed the new controls.
+
+The user explicitly confirmed Fantasy Limo should appear in xeroflowpages.com's
+CMS dashboard as well as XeroFlow. This preserves the existing site/account and
+preview; it does not change the public website address or publish new content.
+Normal independent mailbox login remains pending. Staging admin login was completed
+by the user and verified.
+
+User's new agency email screenshot showed notification@adme.net.au. The
+[auth sender correction](2026-10-09-xeroflow-auth-sender.md) now uses the verified
+notification@xeroflow.io Cloudflare sender for agency and invited Studio links.
+Its local tests/review/Worker dry runs and recovered production build pass;
+private-target and guarded Pages deployment/delivery verification remain pending.
+
+Disk pressure cancelled the first full Docker build and later a Nuxt build. Exact
+owned private build caches and reinstallable dependencies in three inactive,
+fully merged release copies were removed; no source/worktree/customer-data cleanup
+occurred. Docker is stopped and the owned local CMS is temporarily paused for heavy
+gates. About12GiB host space was recovered; restore CMS3045 after release gates.
+
+Immediate sequence: verify production editor/Fantasy launch; integrate the sender
+fix on current main and deploy private sender services before Pages; verify real
+existing-account sign-in and the saved CMS/editor/preview journey. Native Forms,
+email delivery and broader CMS acceptance remain separate ledger items below.
+
+Storage/merge audit: [Projects checkout audit](../audits/2026-10-09-projects-storage-and-merge-audit.md).
+Redundant copies and unique/dirty work are identified. Disk-pressure recovery removed
+only reinstallable dependencies from three inactive merged copies and owned private
+build cache records; source worktrees and customer data remain intact.
+Fantasy Limo's [hosted website preview](https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/)
+is live and was verified in Chrome on 9 October. The staging site shows its saved
+website; form submissions are disabled. This hosted preview is separate from the
+local CMS fixture. The local server briefly started after a misunderstood request
+was stopped again after clarification; local data and source copies remain intact.
+
+This is the primary current ledger. **The full launch remains open.** Local
+implementation, hosted acceptance and production release are separate statuses.
+Older dated entries below are historical evidence and must not be treated as the
+current branch or as instructions to request mailbox identities again.
+
+| Work | Current status | Evidence / remaining work |
+|---|---|---|
+| Invited CMS access and light-first CMS style | Released; last live verification 8 October | Production source `c85bf265`, deployment `57353fad`; independent Fantasy Limo mailbox login still needs verification. |
+| Native editor light/dark, layouts, guarded history, thumbnails and overview | Locally built, tested and reviewed; unreleased | Native branch includes current main `17ac1f3`; wider hosted editor acceptance remains pending. |
+| Collapsed thumbnail controls integrated into toolbar | Locally committed and verified | Native `d588cf286056be56638d6aa5a912263b79e98e98`; collapse/expand/focus/overview and full-browser↔canvas checks pass. |
+| Thumbnail maximum width | Locally committed and verified; unreleased | Native `6888688e8c13c36eac47601e55f02ac546c13381`; 200px cards, centred 842px tray. Browser checks, build, review and the full formatting gate pass. |
+| Saved email field picker, fallback repair and Undo/Redo | Locally committed and verified; unreleased | Dashboard `20b4ebe30`, native compatibility `1e3219b`; actual local store/private renderer checks pass. Coordinated matching service release and hosted acceptance remain required. |
+| AI email proposals | Local implementation and review complete; hosted enablement pending | Gateway/model/allowance/API/preview/Apply foundations retained. Native preview AI allowance remains zero. |
+| Two native test accounts and hosted Forms acceptance | Pending | Both approved mailboxes already supplied; B verification and both workspace setups pending. No current native signed-in browser session is proven. |
+| Sender verification, live email delivery and published outcomes | Pending | Sender/reply-to, approved outbox, delivery activation and published outcome acceptance remain open. |
+| Wider standalone CMS launch | Pending end-to-end acceptance | Collections, invitations/roles, domains, analytics/SEO and CMS→saved Studio→release journey remain tracked below. |
+
+Current working sources:
+
+- Dashboard: `/Users/paulgiurin/Documents/Projects/page-studio-resume-20261007`,
+  branch `feat/studio-email-field-picker-20261009`, latest application checkpoint
+  `9ac2123109468638045090beba8365c8b6410947` (later ledger-only commits do not change
+  that tested application build). Main base `c85bf265`.
+- Native Studio: `/private/tmp/page-studio-native-integration-20261008`, branch
+  `feat/email-field-capabilities-20261009`, latest completed commit
+  `e5467a79ae8f86efb7a0beee978cef5ca4713841`, including the thumbnail-width and
+  strict standalone invited-launch fixes.
+  The normal 1,576-file formatting gate completed with no fixes.
+  Main base `17ac1f3` was freshly fetched for this change.
+- Neither branch is pushed or released. Preserve parent branches/worktrees until
+  batched integration; leave the unrelated dirty Dashboard root and original demo
+  database, media and backups untouched.
+
+Next steps, in order:
+
+1. Complete the selected existing Fantasy account showcase journey and matched
+   editor release described above. Then complete normal native sign-in/verification
+   for the already-approved two mailboxes and their supported workspace setup.
+2. Install and verify the exact approved staging runtime/storage and matching
+   private renderer/router; activate scoped Forms capability through the existing
+   reviewed operator. An unapproved local runtime candidate is not an installed release.
+3. Run the hosted two-account matrix: roles/scopes, saves/reloads/conflicts,
+   template defaults/overrides/history/fields, media and saved-site editor launch.
+4. Complete sender/outbox/outcomes/webhooks and the remaining CMS acceptance items
+   below. Keep customer production activation separate from local implementation.
+5. Batch current-main integration and the required checks, deploy through the
+   guarded scripts, then verify live CMS, editor, established navigation and QR Codes.
+
+No GitHub Actions, push, deployment, paid model call, email delivery or customer
+production activation was used for these latest local changes. Native AI allowance
+remains zero. Re-fetch main and recheck provider state before integration/release.
+
+Detailed evidence: [email field picker](2026-10-09-email-template-field-references.md),
+[AI proposals](2026-10-08-email-template-ai-proposals.md), and
+[release/activation ledger](2026-10-08-page-studio-release-and-activation.md).
 
 ## Completed and verified locally
 
@@ -39,20 +166,38 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Current checkpoint / next action
 
-**8 October — application released; native acceptance in progress:**
-Production remains source `1ab514938`, deployment `8810de23`, with native gates
-closed. Preview `18797d36` includes the revised topic/goals/account flow and private
-Cloudflare sign-in email from XeroFlow. Both test mailboxes and email authorization
-are supplied; A is verified, B still needs verification, and workspace setup is
-pending for both. Sign-in email and Cloudflare transport PRs #637/#639 are merged;
-design #640 passed fresh CI and merged on current main. The approved main builder
-address https://xeroflowpages.com is connected and opens production Studio sign-in;
-the new signup flow remains on preview. Studio's retained 29-commit native
-Forms stack now has consolidated draft PR #119; its fresh cross-platform CI found
-a dependency-audit failure before tests. Dependency remediation is underway.
-See the [current release and activation checkpoint](2026-10-08-page-studio-release-and-activation.md)
-for exact source, provider and account evidence. Older dated entries below are
-historical and their pending-mailbox/integration statements are superseded here.
+**9 October — current sources and unfinished launch work:**
+Freshly fetched Dashboard main is `c85bf2653344ac36530e2a479d2a64cf64e58b1d`.
+The last verified production deployment is `57353fad-8401-496c-951a-71dc569da18d`
+from that source on 8 October. Invited CMS access and the light-first Studio style
+are released; QR navigation was retained. Normal mailbox sign-in to Fantasy Limo's
+independent CMS remains unverified. Confirm provider state again before release.
+
+Native PR #119 is merged at `17ac1f3dd292f5da996daac82c523174606a3265`;
+its Linux/Windows CI passed. Local work now adds default-light/dark editor appearance,
+visual page/section layouts, guarded history and page/section thumbnails plus grouped
+overview, with the collapsed-toolbar correction through `d588cf286`. The latest
+200px thumbnail cap is committed at `6888688e8`, with local browser/build/review
+and final formatting checks passed. These increments
+are locally reviewed/tested and remain unpushed/undeployed to conserve Actions.
+Their local branches retain current main ancestry; they are not production artifacts.
+
+Dashboard's six local email-AI commits through `dd44d62a4` connect proposal schemas,
+Gateway models, real CMS-login allowance, API and explicit preview/Apply UI. Operator
+models remain disabled and native preview allowance remains zero. The 9 October
+[field-reference contract](2026-10-09-email-template-field-references.md) adds local
+V2 validation/rendering/storage and the locally verified manual picker. Coordinated
+worker release and hosted field/schema acceptance remain unfinished. See the
+[AI proposal plan](2026-10-08-email-template-ai-proposals.md) for exact boundaries.
+
+The controlled signup preview was last verified at `5dec4699` / source `1f4e1250`.
+Both real test mailboxes and sign-in authorization are supplied. A was verified;
+B verification and both workspace setups remain pending. No current native signed-in
+session is proven. Supported onboarding, exact approvals/runtime/storage installation,
+explicit Forms capability activation and the full two-account matrix remain required.
+Do not ask for mailbox identities again or mint sessions to bypass this prerequisite.
+The later source/provider receipts supersede historical pending-CI/source statements
+below. The entire customer CMS/Studio launch goal remains open.
 
 **2 October — saved template history:** implemented, independently reviewed and
 verified in the Fantasy Limo demo on desktop and mobile. Customers can browse
@@ -78,7 +223,7 @@ and the native unavailable state pass in Chrome. Customer activation stays close
 The private operator and its final bounded-file-read fix are reviewed, committed
 and pushed. The final build passes, with no new type diagnostics.
 
-Next: two real customer test mailboxes, supported signup/approval, exact staging
+**Historical 2 October next step, now superseded:** supported signup/approval, exact staging
 setup/activation and the hosted acceptance matrix. No hosted native acceptance or
 production enablement is claimed. See the [connection receipt](2026-10-02-native-forms-ui-release.md),
 [integration plan](2026-10-02-native-forms-acceptance.md), and earlier
@@ -157,9 +302,12 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
 - [x] Extract private email rendering before adding backend features; released and
       verified with 59,992 raw bytes remaining at the Page Studio production build.
       Recheck capacity on current main before subsequent backend additions.
-- [ ] AI template proposals through the existing gateway/credit conventions;
-      validate output and require Apply; preserve manual edits.
-- [ ] Verified sender/reply-to and customer email-field selection.
+- [x] Local AI proposal implementation through the gateway/credit conventions,
+      validated output and explicit Apply preserving manual edits.
+- [ ] Hosted AI proposal/Apply acceptance and enablement under approved allowance.
+- [x] Local saved-field template picker, explicit fallback repair and Undo/Redo.
+- [ ] Hosted field/schema acceptance and verified sender/reply-to, including
+      selection of the customer email field for actual delivery.
 - [ ] Approved notification outbox: idempotency, suppression, bounded retries,
       redacted delivery history, explicit test sends and delivery activation.
 - [ ] Publish approved outcome revisions; redirect only after durable acceptance.
@@ -182,7 +330,10 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
 These wider items may have foundations elsewhere; unchecked means not accepted
 end-to-end in this standalone demo, not necessarily zero code exists.
 
-## Resume information
+## Historical resume information — 2 October
+
+Use the current working sources in the running ledger above. These paths and
+commits are preserved as historical evidence, not current release bases.
 
 - Dashboard: `/Users/paulgiurin/Documents/Projects/customer-cms-development`
   (`dashboard/.worktrees/customer-cms` is a symlink).
