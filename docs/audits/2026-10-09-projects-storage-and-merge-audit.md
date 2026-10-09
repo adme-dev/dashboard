@@ -175,3 +175,29 @@ are dependencies only of the separately preserved local demo. The unnecessarily
 restarted local server was stopped again (owned session `62682`, exit 0); its data,
 media and pre-existing PostgreSQL process remain intact. This supersedes the prior
 follow-up's statement that port 3044 should be kept running.
+
+
+## Disk-pressure recovery during local packaging — 9 October
+
+The new local Page Studio Linux image build exhausted host free space and was
+cancelled (terminal exit130), without uploading or deploying an image. Source,
+customer data and all worktree registrations remain intact. Docker was stopped
+through its supported CLI; a scoped cache-recovery inspection follows separately.
+
+For immediate recovery, `driveagent-model-guide-release` was rechecked: clean
+working state, HEAD ancestor of its current local main, ignored/untracked dependency
+directory and no open files in that directory. Only its `node_modules` was removed
+(819MB allocated before removal; about566MB additional host space observed).
+The folder, Git history, configuration, data and release evidence were preserved.
+Dependencies can be restored from its lockfile if needed. This supersedes the
+initial statement that no caches/dependencies were removed; no source retirement
+or other checkout cleanup is claimed.
+
+Scoped Docker recovery is complete. The initial regex-filter cleanup reported0B
+and left the selected records present; it is not counted as successful removal.
+Exact-ID cleanup then removed all14 private reclaimable cache records created
+at04:27UTC by this cancelled build. Readback confirms zero selected records remain
+and all16 shared records remain. Docker was stopped successfully, restoring its
+initial stopped state. Host free space reads about2.2GiB; additional capacity is
+needed before attempting another full Linux packaging build. No global cache
+prune, image deletion, source/worktree removal or database cleanup was performed.

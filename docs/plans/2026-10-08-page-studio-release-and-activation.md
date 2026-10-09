@@ -38,7 +38,13 @@ The standalone launch-origin defect has a locally verified native Worker fix.
 security tests,48 action-runtime tests and8 operator transport tests pass. Review
 approves the exact HTTPS invited-client entry and preserved signed/fresh authority.
 The original production image/routes/resources remain unchanged. Worker dry-run
-passes with only the explicit new invited origin. Final full formatting is pending.
+passes with only the explicit new invited origin. Full formatting passes1,576files
+in320seconds with no fixes; native commit is `e5467a79ae8f86efb7a0beee978cef5ca4713841`.
+A local Docker Linux image build was cancelled after host disk exhaustion; no image
+was uploaded or deployed. Fresh main fetches passed after initial space recovery.
+The cancelled build's14 private cache records were removed by exactID, preserving
+shared cache; Docker is stopped. Host free space is about2.2GiB. Packaging/rollout
+and the real invited mailbox journey remain pending.
 
 Read-only production inventory on9October confirms Sandbox Worker version
 `79919892-c8dc-4266-9571-89e451e53366`, deployment

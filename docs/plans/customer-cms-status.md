@@ -33,17 +33,27 @@ A local regression identified the independent editor handoff defect: `/launch`
 only admitted `app.xeroflow.io`. The native Worker fix admits one explicitly
 configured HTTPS Studio origin for invited client sessions, retaining fresh
 permission, canary, nonce and signed scope checks. The 75 scoped tests pass;
-full build/type/test gates and independent review pass; final formatting/commit
-is in progress. This fix and the new editor
+full build/type/test gates, independent review and1,576-file formatting pass.
+Native fix is committed at `e5467a79ae8f86efb7a0beee978cef5ca4713841`. This fix and the new editor
 appearance need release. The current hosted editor still has the older appearance.
 
-Immediate sequence: finish this launch review/local gates; reconcile current main
+A local Linux editor-image build was cancelled when host storage filled. No image
+was pushed or deployed. Its own14 private cache records were removed, shared records
+were preserved and Docker was stopped. About2.2GiB host space remains; more capacity
+is needed before another full Linux packaging build. Only
+ignored dependencies in the inactive, clean, ancestry-merged model-guide release
+copy were removed, preserving its source/data. Remote main fetches succeeded after
+recovery: Dashboard0behind/14ahead, native0behind/11ahead.
+
+Immediate sequence: recover adequate build space; reconcile current main
 and prepare the matching editor image/Worker release; verify the actual existing
 account CMS → saved editor → hosted preview journey. New native two-account Forms,
 email delivery and broader CMS acceptance remain separate ledger items below.
 
 Storage/merge audit: [Projects checkout audit](../audits/2026-10-09-projects-storage-and-merge-audit.md).
-Redundant copies and unique/dirty work are identified; no cleanup has been performed.
+Redundant copies and unique/dirty work are identified. Disk-pressure recovery removed
+only reinstallable dependencies from one inactive merged copy and the cancelled
+image build's own private cache; source worktrees and customer data remain intact.
 Fantasy Limo's [hosted website preview](https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/)
 is live and was verified in Chrome on 9 October. The staging site shows its saved
 website; form submissions are disabled. This hosted preview is separate from the
@@ -75,7 +85,8 @@ Current working sources:
   that tested application build). Main base `c85bf265`.
 - Native Studio: `/private/tmp/page-studio-native-integration-20261008`, branch
   `feat/email-field-capabilities-20261009`, latest completed commit
-  `6888688e8c13c36eac47601e55f02ac546c13381`, including the thumbnail-width fix.
+  `e5467a79ae8f86efb7a0beee978cef5ca4713841`, including the thumbnail-width and
+  strict standalone invited-launch fixes.
   The normal 1,576-file formatting gate completed with no fixes.
   Main base `17ac1f3` was freshly fetched for this change.
 - Neither branch is pushed or released. Preserve parent branches/worktrees until
