@@ -87,4 +87,22 @@ This correlation establishes a successful gateway invocation in the request wind
 no recipient or credential payload was read from logs. It does not establish
 Gmail delivery, the received From header or independent CMS login. Yesterday's link
 is expired; the normal site route still shows sign-in, and the mailbox result is
-pending. No new mail was requested on 10 October.
+pending at that earlier checkpoint. The subsequent normal request is recorded below.
+
+## 10 October profile-selection diagnosis
+
+The user's later normal login reached an older South Morang profile with no
+websites. Read-only PostgreSQL inspection confirmed that the same mailbox also
+has its existing Fantasy Limo profile and editor membership on the original site.
+General Studio login selected both active profiles; only exact site redirects
+previously required membership. Fix `744bfbf54` applies exact active/draft website
+membership and active-client filtering to general Studio redirects as well.
+Existing sender services, token/session handling, roles and public response privacy
+remain unchanged. Full local tests and the production build exited 0; release
+checks and correct-profile browser acceptance are tracked in the customer CMS ledger.
+
+After signing out the unrelated context through normal UI, one fresh normal
+site-scoped Fantasy link was requested. This is request acceptance evidence;
+correct-profile CMS → Open Studio acceptance and received From inspection remain
+pending. No additional mail, synthetic session or membership change was performed
+by the CLI release workflow.

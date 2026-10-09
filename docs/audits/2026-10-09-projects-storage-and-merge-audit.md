@@ -276,3 +276,32 @@ the matching ignored log. The operation follows the vendor's disk-reclamation
 instructions: https://docs.docker.com/desktop/troubleshoot-and-support/faqs/macfaqs/ .
 It is separate from the earlier failed local image-deletion attempt, which remains
 recorded as unsuccessful. Source and customer data remain preserved.
+
+## 10 October verified legacy image cleanup and login-build capacity
+
+After the earlier reclamation utility, twenty old local Studio image copies were
+verified against their exact immutable Cloudflare registry references before local
+removal. Every manifest returned HTTP 200; Docker-Content-Digest and the SHA-256 of
+the response body both matched the local digest. Pull credentials remained in
+memory/stdin with terminal echo disabled and were not saved or logged. The remote
+registry was read only and retains the immutable backups.
+
+Exact local removal completed for all twenty copies. Current production image
+`ea21f6f9178ea7982f5f06a2027a30d1e26277e8dbee1884fd800d591e0f5f5c` and rollback
+images `a63aa0d1`/`c8383987`, other images, containers and volumes were preserved.
+Docker.raw allocation changed from 17,112,764,416 to 11,337,895,936 bytes: about
+5.4 GiB reclaimed. Host free bytes changed from 5,983,944,704 to 11,722,653,696,
+with other host activity ongoing. Docker returned to its original stopped state.
+This successful operation is separate from the earlier failed image removal.
+
+Proofs are in `.verification/resume-20261008/docker-legacy-studio-cleanup-20261010.json`
+and `studio-registry-immutable-backup-checks-20261010.json`. No source, worktree,
+Git history, customer database/media or configuration was removed.
+
+The assigned-profile Studio login fix then completed its full local tests (exit 0,
+15,827 passed/1,958 skipped) and unchanged 16 GB production build (exit 0). Build
+minimum free space was 10,496,835,584 bytes under the 8 GiB stop guard. Raw/gzip
+sizes were 25,459,224 and 7,042,556 bytes, within the unchanged guards. Exact logs
+and terminal receipts use `studio-assigned-login-*-20261010` in the same ignored
+verification directory. CMS 3045 and Docker remain stopped during release; the
+selected local CMS can resume after heavy gates and another capacity check.

@@ -64,8 +64,8 @@ this account to a native customer or duplicate its site ownership.
   navigation loaded eight codes and 48 scans. No QR or site data was modified.
 
 Working source locations remain the owned Dashboard checkout
-`/Users/paulgiurin/Documents/Projects/page-studio-resume-20261007` (local receipt
-branch `docs/studio-production-receipt-20261009`) and native Studio checkout
+`/Users/paulgiurin/Documents/Projects/page-studio-resume-20261007` (owned fix
+branch `fix/studio-assigned-account-login-20261010`) and native Studio checkout
 `/private/tmp/page-studio-native-integration-20261008`. Their application source
 includes the released main commits above; this documentation update does not
 change the deployed artifacts. The unrelated dirty Dashboard root is preserved.
@@ -99,9 +99,8 @@ A read-only telemetry query for the isolated production request window found one
 sender invocation at 11:34:37.013 UTC on 9 October: outcome `ok`, response 202, matching
 sender version. This is timestamp-correlated gateway acceptance evidence; recipient
 and credentials were not inspected in logs, and it does not prove Gmail receipt.
-The normal independent Fantasy CMS route is still signed out. The mailbox result
-is pending; no additional email request, synthetic session or permission change
-was made during this continuation.
+At this earlier checkpoint the normal independent Fantasy CMS route was signed out.
+The subsequent actual sign-in and profile-selection diagnosis are recorded below.
 
 Available disk had fallen to about 5 GiB while our heavy jobs were stopped. Docker's
 supported reclamation utility completed, preserving all pre-existing images,
@@ -110,11 +109,48 @@ containers and volumes, and reducing Docker.raw allocation by 226,099,200 bytes
 5.37 GiB; CMS 3045 remains stopped until capacity improves. Exact utility digest,
 object-preservation checks and before/after sizes are recorded privately.
 
+### 10 October assigned-profile sign-in fix
+
+The user's normal sign-in reached South Morang, an older active profile with no
+websites. Read-only production PostgreSQL inspection confirmed two active profiles
+for the same mailbox: South Morang and Fantasy Limo. The existing Fantasy profile
+already has editor membership on its original saved website. No account, role,
+membership or website ownership was changed. The general Studio link selector
+previously offered both profiles because membership filtering applied only to an
+exact website redirect; the observed access denial under South Morang was correct.
+
+Fix `744bfbf54b4127169a393d8be077d6131908c98d` now requires an active client and
+exact active/draft website membership for general Studio root/index redirects,
+including query strings and trailing slashes. Pending invitations keep their
+expiry/cancellation checks, and exact website redirects and general client-portal
+behavior retain their existing boundaries. Token/session handling, response privacy
+and roles are unchanged. Real PostgreSQL regressions reproduced the wrong-profile
+selection before the fix and pass afterwards. Independent review found no blockers;
+scoped lint passed. Full local tests exited 0: 2,243 files and 15,827 tests passed,
+with 71 files and 1,958 environment tests skipped. Production build exited 0 with
+raw 25,459,224/25,468,928 bytes (9,704 spare) and gzip 7,042,556/9,750,000 bytes.
+The build retained at least 10,496,835,584 free bytes under the 8 GiB stop guard.
+These are local verification receipts; PR/CI/production release still follow.
+
+The unrelated browser context was signed out through the normal UI and one fresh
+normal link was requested for the exact Fantasy website. The user's correct-profile
+CMS → Open Studio journey remains pending. Request acceptance and the earlier
+South Morang login do not establish standalone Fantasy acceptance.
+
+Twenty old local Studio image copies were removed only after each exact immutable
+Cloudflare registry manifest returned 200 and matched both header and body SHA-256.
+Current image `ea21f6f9` and rollback images `a63aa0d1`/`c8383987`, other images,
+containers and volumes remain; the remote registry was unchanged. Docker.raw
+allocation fell from 17,112,764,416 to 11,337,895,936 bytes (about 5.4 GiB).
+Docker was stopped again; CMS 3045 remains stopped during heavy release work.
+Private cleanup, registry proofs and terminal logs remain under
+`.verification/resume-20261008/`. No credential was persisted in those receipts.
+
 ### Remaining work
 
 | Work | Current status |
 |---|---|
-| Invited standalone Fantasy CMS access | Released; real mailbox login and independent CMS → editor acceptance pending |
+| Invited standalone Fantasy CMS access | Access foundations released; wrong-profile selector fix locally verified, release and correct-profile CMS → editor acceptance pending |
 | Editor light/dark, layouts, history, thumbnails, overview and collapsed toolbar | Released; actual saved Fantasy editor and staging controls verified |
 | Saved email field picker, fallback repair and Undo/Redo | Released; local integration/store/private renderer verified, hosted customer acceptance pending |
 | Magic-link sender correction | Released; matching production gateway invocation returned 202 Accepted, received From address and mailbox access pending |
@@ -123,10 +159,9 @@ object-preservation checks and before/after sizes are recorded privately.
 | Sender/outbox/outcomes and wider CMS launch | Pending hosted roles, saves/conflicts, collections, domains, analytics/SEO and delivery acceptance |
 
 This remains the primary ledger. **The full platform launch is open.** Existing
-invited access is separate from native customer activation. Do not repeat source
-integration or deployment merely to resume these pending mailbox checks. Fetch
-current main before new source changes. No further GitHub Actions are required
-for this receipt update.
+invited access is separate from native customer activation. The assigned-profile
+fix requires its reviewed PR, required CI and guarded current-main release. Fetch current main before merge and deployment. Keep mailbox/browser
+acceptance separate from source and provider release evidence.
 
 Detailed evidence: [field picker](2026-10-09-email-template-field-references.md),
 [AI proposals](2026-10-08-email-template-ai-proposals.md),
