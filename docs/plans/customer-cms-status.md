@@ -13,6 +13,9 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Running ledger — 9 October 2026
 
+Storage/merge audit: [Projects checkout audit](../audits/2026-10-09-projects-storage-and-merge-audit.md).
+Redundant copies and unique/dirty work are identified; no cleanup has been performed.
+
 This is the primary current ledger. **The full launch remains open.** Local
 implementation, hosted acceptance and production release are separate statuses.
 Older dated entries below are historical evidence and must not be treated as the
