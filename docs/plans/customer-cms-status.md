@@ -33,27 +33,48 @@ A local regression identified the independent editor handoff defect: `/launch`
 only admitted `app.xeroflow.io`. The native Worker fix admits one explicitly
 configured HTTPS Studio origin for invited client sessions, retaining fresh
 permission, canary, nonce and signed scope checks. The 75 scoped tests pass;
-full build/type/test gates, independent review and1,576-file formatting pass.
+full build/type/test gates, independent review and 1,576-file formatting pass.
 Native fix is committed at `e5467a79ae8f86efb7a0beee978cef5ca4713841`. This fix and the new editor
 appearance need release. The current hosted editor still has the older appearance.
 
-A local Linux editor-image build was cancelled when host storage filled. No image
-was pushed or deployed. Its own14 private cache records were removed, shared records
-were preserved and Docker was stopped. About2.2GiB host space remains; more capacity
-is needed before another full Linux packaging build. Only
-ignored dependencies in the inactive, clean, ancestry-merged model-guide release
-copy were removed, preserving its source/data. Remote main fetches succeeded after
-recovery: Dashboard0behind/14ahead, native0behind/11ahead.
+The editor image is now reviewed, privately uploaded and pinned at registry digest
+`ea21f6f9178ea7982f5f06a2027a30d1e26277e8dbee1884fd800d591e0f5f5c`.
+Native PR121 passed Linux/Windows CI and merged as `c333ca7699476d1eb83823047874b4824d864b89`.
+Staging deployment succeeded at Worker version `70cc4d8a-5207-40e3-8226-81057d1d1f45`,
+container version38 at100%; normal admin launch, light/dark and collapsed toolbar
+are verified in the actual hosted editor without content saves. Production deploy
+completed at Worker version `e35d0166-a177-4e5d-8989-767478ea8b0d`; provider and Fantasy
+browser acceptance are the next checks. Source and exact rollback pairs are recorded
+in the native rollout receipt. The old asset briefly remained during staging rollout;
+reload after provider completion showed the new controls.
 
-Immediate sequence: recover adequate build space; reconcile current main
-and prepare the matching editor image/Worker release; verify the actual existing
-account CMS → saved editor → hosted preview journey. New native two-account Forms,
+The user explicitly confirmed Fantasy Limo should appear in xeroflowpages.com's
+CMS dashboard as well as XeroFlow. This preserves the existing site/account and
+preview; it does not change the public website address or publish new content.
+Normal independent mailbox login remains pending. Staging admin login was completed
+by the user and verified.
+
+User's new agency email screenshot showed notification@adme.net.au. The
+[auth sender correction](2026-10-09-xeroflow-auth-sender.md) now uses the verified
+notification@xeroflow.io Cloudflare sender for agency and invited Studio links.
+Its local tests/review/Worker dry runs and recovered production build pass;
+private-target and guarded Pages deployment/delivery verification remain pending.
+
+Disk pressure cancelled the first full Docker build and later a Nuxt build. Exact
+owned private build caches and reinstallable dependencies in three inactive,
+fully merged release copies were removed; no source/worktree/customer-data cleanup
+occurred. Docker is stopped and the owned local CMS is temporarily paused for heavy
+gates. About12GiB host space was recovered; restore CMS3045 after release gates.
+
+Immediate sequence: verify production editor/Fantasy launch; integrate the sender
+fix on current main and deploy private sender services before Pages; verify real
+existing-account sign-in and the saved CMS/editor/preview journey. Native Forms,
 email delivery and broader CMS acceptance remain separate ledger items below.
 
 Storage/merge audit: [Projects checkout audit](../audits/2026-10-09-projects-storage-and-merge-audit.md).
 Redundant copies and unique/dirty work are identified. Disk-pressure recovery removed
-only reinstallable dependencies from one inactive merged copy and the cancelled
-image build's own private cache; source worktrees and customer data remain intact.
+only reinstallable dependencies from three inactive merged copies and owned private
+build cache records; source worktrees and customer data remain intact.
 Fantasy Limo's [hosted website preview](https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/)
 is live and was verified in Chrome on 9 October. The staging site shows its saved
 website; form submissions are disabled. This hosted preview is separate from the

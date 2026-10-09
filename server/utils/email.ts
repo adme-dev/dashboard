@@ -7,7 +7,8 @@ import { Resend } from 'resend'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getCachedCfBinding } from '~~/server/utils/cfBindings'
 import { suppressMemberNotificationEmail } from '~~/server/utils/notificationDelivery'
-import { isCloudflareEmailGatewayAvailable } from '~~/server/utils/cloudflareEmailGateway'
+import { isCloudflareEmailGatewayAvailable, sendViaCloudflareEmailGateway } from '~~/server/utils/cloudflareEmailGateway'
+import { AGENCY_AUTH_SENDER_ADDRESS } from '~~/server/utils/agencyAuthEmailPolicy'
 import { sendPortalAuthTransactionalEmail } from '~~/server/utils/portalAuthEmailTransport'
 import { PORTAL_AUTH_SENDER_ADDRESS } from '~~/server/utils/portalAuthEmailPolicy'
 
@@ -75,6 +76,10 @@ export function isEmailConfigured(event?: H3Event): boolean {
   return !!resolveApiKey(event)
 }
 
+export function isMagicLinkEmailConfigured(event?: H3Event): boolean {
+  return isCloudflareEmailGatewayAvailable(event, 'AGENCY_AUTH_EMAIL')
+}
+
 export function getResendClient(event?: H3Event): Resend | null {
   const apiKey = resolveApiKey(event)
 
@@ -138,8 +143,11 @@ function renderEmailTemplate(options: {
   ctaUrl?: string
   footerHtml?: string
   recipientEmail?: string
+  appName?: string
 }): { html: string, text: string } {
-  const { appName, appUrl } = getEmailConfig()
+  const config = getEmailConfig()
+  const appName = options.appName || config.appName
+  const appUrl = config.appUrl
   const monogram = logoMonogram(appName)
   const safeAppName = escapeHtml(appName)
 
@@ -268,26 +276,19 @@ export interface MagicLinkEmailData {
  * Send magic link email
  */
 export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void> {
-  const client = getResendClient(data.event)
   const { appName } = getEmailConfig(data.event)
 
-  if (!client) {
-    console.error('[Email] Cannot send magic link — Resend client not configured. Recipient:', data.to)
-    if (import.meta.dev) {
-      console.log('[Email] Dev fallback — magic link URL:', data.magicLinkUrl)
-      return
-    }
-    throw new Error('Email service not configured')
+  if (!data.event || !isMagicLinkEmailConfigured(data.event)) {
+    throw new Error('Magic-link email service is not configured')
   }
 
-  try {
-    const safeName = escapeHtml(data.name.split(' ')[0])
+  const safeName = escapeHtml(data.name.split(' ')[0] ?? '')
 
-    await client.emails.send({
-      from: getFromHeader(data.event),
-      to: data.to,
-      subject: `Your sign-in link for ${appName}`,
-      html: `<!DOCTYPE html>
+  const result = await sendViaCloudflareEmailGateway(data.event, {
+    from: { address: AGENCY_AUTH_SENDER_ADDRESS, name: appName },
+    to: data.to,
+    subject: `Your sign-in link for ${appName}`,
+    html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only"></head>
 <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#111111;">
@@ -349,13 +350,11 @@ export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void
   </div>
 </body>
 </html>`,
-      text: `Hi ${data.name},\n\nSign in to ${appName}: ${data.magicLinkUrl}\n\nThis link is valid for one hour.\n\nIf you didn't request this, you can safely ignore this email.`
-    })
+    text: `Hi ${data.name},\n\nSign in to ${appName}: ${data.magicLinkUrl}\n\nThis link is valid for one hour.\n\nIf you didn't request this, you can safely ignore this email.`
+  }, 'AGENCY_AUTH_EMAIL')
 
-    console.log('[Email] Magic link sent to', data.to)
-  } catch (error) {
-    console.error('[Email] Failed to send magic link:', error)
-    throw error
+  if (result.outcome !== 'accepted') {
+    throw new Error('Magic-link email could not be sent')
   }
 }
 
@@ -365,12 +364,37 @@ export interface ClientPortalMagicLinkEmailData {
   clientName: string
   magicLinkUrl: string
   expiresInMinutes: number
+  studio?: boolean
   event?: H3Event
 }
 
 export async function sendClientPortalMagicLinkEmail(
   data: ClientPortalMagicLinkEmailData
 ): Promise<void> {
+  if (data.studio) {
+    if (!data.event || !isMagicLinkEmailConfigured(data.event)) {
+      throw new Error('Magic-link email service is not configured')
+    }
+    const appName = 'XeroFlow Page Studio'
+    const { html, text } = renderEmailTemplate({
+      appName,
+      title: 'Continue to Page Studio',
+      greeting: `Hi ${escapeHtml(data.name)},`,
+      bodyHtml: `<p>Your website is ready for your next idea. Use the secure link to return to ${escapeHtml(data.clientName)}.</p><p>This link can be used once and expires in ${data.expiresInMinutes} minutes.</p>`,
+      ctaText: 'Continue to Page Studio',
+      ctaUrl: data.magicLinkUrl,
+      recipientEmail: data.to
+    })
+    const result = await sendViaCloudflareEmailGateway(data.event, {
+      to: data.to,
+      from: { address: AGENCY_AUTH_SENDER_ADDRESS, name: appName },
+      subject: 'Continue to Page Studio',
+      html,
+      text
+    }, 'AGENCY_AUTH_EMAIL')
+    if (result.outcome !== 'accepted') throw new Error('Magic-link email could not be sent')
+    return
+  }
   const client = getResendClient(data.event)
   if (!data.event) throw new Error('Portal email request context unavailable')
   if (!client && !isCloudflareEmailGatewayAvailable(data.event)) {

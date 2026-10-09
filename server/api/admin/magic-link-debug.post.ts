@@ -8,8 +8,9 @@
 
 import { readBody, createError } from 'h3'
 import { getUserByEmail, generateMagicLink, requireRole } from '../../utils/auth'
+import { AGENCY_AUTH_SENDER_ADDRESS } from '~~/server/utils/agencyAuthEmailPolicy'
 import { getAppUrl } from '../../utils/appUrl'
-import { sendMagicLinkEmail, isEmailConfigured } from '../../utils/email'
+import { sendMagicLinkEmail, isMagicLinkEmailConfigured } from '../../utils/email'
 
 export default defineEventHandler(async (event) => {
   // In production, require admin role
@@ -35,10 +36,9 @@ export default defineEventHandler(async (event) => {
     env: {
       nodeEnv: process.env.NODE_ENV,
       appUrl: config.public.appUrl,
-      emailConfigured: isEmailConfigured(event),
-      hasResendKeyInCfBindings: !!cfEnv?.RESEND_API_KEY,
-      hasResendKeyInConfig: !!config.resendApiKey,
-      hasResendKeyInProcessEnv: !!process.env.RESEND_API_KEY,
+      emailConfigured: isMagicLinkEmailConfigured(event),
+      authEmailProvider: 'cloudflare_email',
+      authEmailFrom: AGENCY_AUTH_SENDER_ADDRESS,
       emailFromCfBindings: cfEnv?.EMAIL_FROM || '(not set)',
       emailFromConfig: config.emailFrom || '(not set)',
       emailFromProcessEnv: process.env.EMAIL_FROM || '(not set)',
