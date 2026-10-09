@@ -141,3 +141,18 @@ The following 16 nested checkouts have no working changes and either proven main
   - `https://github.com/adme-dev/promotion-knoxgwmhaval.git`: `f8a464b8b38dd1ad5ad2df489dce77f8d1aa2496`
 
 Raw local metadata remains in `/tmp/projects-*-audit*.json` and `/tmp/projects-audit-*.json` for follow-up. Refresh merge/dirty/process evidence immediately before cleanup; the report remains useful even after those temporary files expire.
+
+## Preview follow-up — 9 October
+
+At the user's request, the preserved Fantasy Limo demo was restarted through its
+existing `customer-cms-demo/start.sh`. The local server now listens on
+`127.0.0.1:3044`, running from `customer-cms-development`. Chrome verified the
+CMS overview with 75 saved pages, 109 media assets and four forms. No sign-in
+bypass or website-content save was used. Production was not changed.
+
+Local preview: http://127.0.0.1:3044/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2
+
+`customer-cms-development` is now an active server dependency, in addition to the
+restart-script dependency found during the audit. Do not remove its dependencies
+or checkout while this preview is running. The original demo/private/media/backups
+remain preserved; this is the saved local demo, not native hosted acceptance.

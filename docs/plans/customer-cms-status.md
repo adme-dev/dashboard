@@ -15,6 +15,10 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 Storage/merge audit: [Projects checkout audit](../audits/2026-10-09-projects-storage-and-merge-audit.md).
 Redundant copies and unique/dirty work are identified; no cleanup has been performed.
+The preserved [Fantasy Limo local demo](http://127.0.0.1:3044/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2)
+was restarted and opened on 9 October at the user's request. Its overview is verified;
+keep the older CMS dependency checkouts while the demo runs. This does not establish
+native hosted acceptance or change production.
 
 This is the primary current ledger. **The full launch remains open.** Local
 implementation, hosted acceptance and production release are separate statuses.
