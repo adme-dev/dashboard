@@ -73,6 +73,51 @@ describe.runIf(Boolean(url))('invited CMS grants on PostgreSQL', () => {
     await writeInvitedSiteAccess({ ...grant, role: 'none' }, run)
     expect(await recipients(`/studio/sites/${ids.site}`)).toEqual([])
   })
+  it('excludes unrelated client profiles from the general Studio sign-in', async () => {
+    const recipients = (redirect: string) => findPortalMagicLinkRecipients('same@example.com', redirect, async (sql, params) => (await pool.query(sql, params)).rows)
+    await writeInvitedSiteAccess(grant, run)
+
+    expect((await recipients('/studio/sites')).map(user => user.id)).toEqual([ids.user])
+    expect((await recipients('/studio/sites?view=current')).map(user => user.id)).toEqual([ids.user])
+    expect((await recipients('/studio/sites/')).map(user => user.id)).toEqual([ids.user])
+    expect(await recipients('/portal')).toHaveLength(2)
+
+    await writeInvitedSiteAccess({ ...grant, role: 'none' }, run)
+    expect(await recipients('/studio/sites')).toEqual([])
+  })
+  it('keeps assigned client profiles separate for a shared Studio email address', async () => {
+    const recipients = () => findPortalMagicLinkRecipients('same@example.com', '/studio/sites', async (sql, params) => (await pool.query(sql, params)).rows)
+    await writeInvitedSiteAccess(grant, run)
+    const otherSite = randomUUID()
+    const entitlement = (await pool.query('INSERT INTO page_studio_entitlements (tenant_id, client_id) VALUES (\'agency-a\', $1) RETURNING id', [ids.otherClient])).rows[0].id
+    await pool.query(`INSERT INTO page_studio_sites (id, tenant_id, client_id, entitlement_id, name, route, starter_version)
+      VALUES ($1, 'agency-a', $2, $3, 'Other website', 'other-website', 'v1')`, [otherSite, ids.otherClient, entitlement])
+    await writeInvitedSiteAccess({ ...scope, siteId: otherSite, userId: ids.otherUser, role: 'viewer' }, run)
+
+    const eligible = await recipients()
+    expect(eligible).toHaveLength(2)
+    expect(eligible.map(user => user.id).sort()).toEqual([ids.user, ids.otherUser].sort())
+    expect((await pool.query('SELECT id, status FROM client_users ORDER BY id')).rows).toEqual([
+      { id: ids.user, status: 'pending' },
+      { id: ids.otherUser, status: 'active' }
+    ].sort((a, b) => a.id.localeCompare(b.id)))
+  })
+  it('does not send general Studio links for unavailable assigned websites', async () => {
+    const recipients = () => findPortalMagicLinkRecipients('same@example.com', '/studio/sites', async (sql, params) => (await pool.query(sql, params)).rows)
+    await writeInvitedSiteAccess(grant, run)
+    await pool.query('UPDATE page_studio_sites SET status=\'archived\' WHERE id=$1', [ids.site])
+    expect(await recipients()).toEqual([])
+    await pool.query('UPDATE page_studio_sites SET status=\'active\' WHERE id=$1', [ids.site])
+    await pool.query('UPDATE agency_clients SET is_active=FALSE WHERE id=$1', [ids.client])
+    expect(await recipients()).toEqual([])
+  })
+  it.each(['expired', 'cancelled'])('does not send general Studio links for a pending profile whose invitation is %s', async (state) => {
+    await writeInvitedSiteAccess(grant, run)
+    if (state === 'expired') await pool.query('UPDATE client_invitations SET expires_at=NOW() - INTERVAL \'1 minute\'')
+    else await pool.query('UPDATE client_invitations SET status=\'cancelled\'')
+
+    expect(await findPortalMagicLinkRecipients('same@example.com', '/studio/sites', async (sql, params) => (await pool.query(sql, params)).rows)).toEqual([])
+  })
   it('rejects another client identity even with the same email', async () => {
     await expect(writeInvitedSiteAccess({ ...grant, userId: ids.otherUser }, run)).rejects.toMatchObject({ statusCode: 404 })
     expect((await pool.query('SELECT * FROM page_studio_site_memberships')).rows).toHaveLength(0)
