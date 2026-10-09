@@ -13,6 +13,35 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Running ledger — 9 October 2026
 
+### Selected platform and Tuesday showcase
+
+Owner selected the canonical Page Studio editor at `http://127.0.0.1:4325/`
+and the standalone Nuxt CMS at `http://127.0.0.1:3045/studio/sites/c34f6347-cc63-4ed7-9a5a-da165ebefed2`.
+These are one product direction, accessed through XeroFlow or independently at
+`xeroflowpages.com`. The dealer CMS prototype on 5187 is a separate reference,
+not the selected deployment source. Default appearance is light, with dark mode.
+
+Priority is the existing Fantasy Limo account and saved site for Tuesday
+13 October. Its normal agency Launch Studio was verified on 9 October: the hosted
+editor loads the existing saved site. No website content or publication was changed.
+Standalone access uses the existing invited `pgiurin@gmail.com` account; it must not
+be silently relabelled as a native customer or copied into a new ownership scope.
+One normal production sign-in link was requested for this site; request acceptance
+is proven, mailbox delivery/sign-in are still awaiting the user's normal login.
+
+A local regression identified the independent editor handoff defect: `/launch`
+only admitted `app.xeroflow.io`. The native Worker fix admits one explicitly
+configured HTTPS Studio origin for invited client sessions, retaining fresh
+permission, canary, nonce and signed scope checks. The 75 scoped tests pass;
+full build/type/test gates and independent review pass; final formatting/commit
+is in progress. This fix and the new editor
+appearance need release. The current hosted editor still has the older appearance.
+
+Immediate sequence: finish this launch review/local gates; reconcile current main
+and prepare the matching editor image/Worker release; verify the actual existing
+account CMS → saved editor → hosted preview journey. New native two-account Forms,
+email delivery and broader CMS acceptance remain separate ledger items below.
+
 Storage/merge audit: [Projects checkout audit](../audits/2026-10-09-projects-storage-and-merge-audit.md).
 Redundant copies and unique/dirty work are identified; no cleanup has been performed.
 Fantasy Limo's [hosted website preview](https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/)
@@ -55,8 +84,9 @@ Current working sources:
 
 Next steps, in order:
 
-1. Complete normal native sign-in/verification for the already-approved two
-   mailboxes, then their supported workspace setup.
+1. Complete the selected existing Fantasy account showcase journey and matched
+   editor release described above. Then complete normal native sign-in/verification
+   for the already-approved two mailboxes and their supported workspace setup.
 2. Install and verify the exact approved staging runtime/storage and matching
    private renderer/router; activate scoped Forms capability through the existing
    reviewed operator. An unapproved local runtime candidate is not an installed release.

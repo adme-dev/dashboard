@@ -25,6 +25,29 @@ performed for these updates. Hosted signup/Forms/editor acceptance and coordinat
 private renderer/router/retained runtime rollout remain required. The new runtime
 candidate is still unapproved/uninstalled; native preview AI allowance remains zero.
 
+## 9 October selected platform and existing-account showcase
+
+The owner selected the canonical native editor (local4325) and standalone Nuxt CMS
+(local3045), using xeroflowpages.com with optional XeroFlow dashboard entry. The
+running ledger now prioritises the existing Fantasy Limo invited-account journey
+for Tuesday13October. Agency launch into the original saved hosted site is verified;
+normal standalone mailbox sign-in remains awaiting the user.
+
+The standalone launch-origin defect has a locally verified native Worker fix.
+75 targeted tests, full28-task build,44-task types,40-task package test run,36
+security tests,48 action-runtime tests and8 operator transport tests pass. Review
+approves the exact HTTPS invited-client entry and preserved signed/fresh authority.
+The original production image/routes/resources remain unchanged. Worker dry-run
+passes with only the explicit new invited origin. Final full formatting is pending.
+
+Read-only production inventory on9October confirms Sandbox Worker version
+`79919892-c8dc-4266-9571-89e451e53366`, deployment
+`c8df6ea3-3c71-4af9-a10e-7eea7f270c27`, container application
+`a033a7df-cee9-46f3-a0ed-9d7b93b6f25a` version25, image
+`a63aa0d1692a0f9cbe630f01c931fe8a16e4eca60b1ccd02872864129f45b060`.
+All three configured custom domains match the complete provider service inventory.
+No rollout, source push or Actions were performed by this verification.
+
 ## 9 October source reconciliation
 
 This section supersedes older current-source statements below; dated release
