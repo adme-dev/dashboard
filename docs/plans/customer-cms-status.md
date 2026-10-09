@@ -11,7 +11,7 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
 
 
-## Running ledger — 9 October 2026
+## Running ledger — 10 October 2026
 
 ### Selected platform and Tuesday showcase
 
@@ -31,15 +31,51 @@ The [existing website preview](https://preview-c34f6347cc634ed79a5ada165ebefed2.
 remains live; staging form submissions remain disabled.
 
 Standalone membership uses the existing invited `pgiurin@gmail.com` identity.
-One fresh production request was made after the sender deployment, with the
-15-minute request confirmation verified in the browser. That link has now expired.
-Mailbox delivery and the independent CMS → saved editor journey still await the user's normal sign-in. The staging
-agency login completed by the user is separate evidence. Do not silently convert
-this account to a native customer or duplicate its site ownership.
+The earlier sender-deployment link expired. After the assigned-profile fix reached
+production, one fresh normal general Studio request showed Check your inbox. The
+correct Fantasy profile login and independent CMS → saved editor journey still
+await the user. Earlier South Morang and staging agency sign-ins are separate
+evidence. Do not silently convert this account to a native customer or duplicate
+its site ownership.
 
-### Production receipts
+### Current production release — 10 October
 
-- Dashboard PR649 merged to current main `c752cefc18c828b8c20b8cef4726f11fd7a582f9`.
+PR [650](https://github.com/adme-dev/dashboard/pull/650) merged the exact tested
+head `6bea965737eb913046cea4e61c41581e2084493a` after
+[CI 37998551876](https://github.com/adme-dev/dashboard/actions/runs/37998551876)
+passed all 29 steps, including PostgreSQL access regressions, the production build,
+the full suite, social regressions and deployment guards. Fresh main was checked
+before merge and the owned checkout was fast-forwarded to actual merged main
+`cade35ed255efde69e7a2ba7593751556347adb2`.
+
+`pnpm deploy:check` and guarded `pnpm deploy:production` exited 0. The latter rebuilt
+that exact clean source through the immutable `agency-dashboard` wrapper. Canonical
+production deployment `a130ffbb-bc9b-4fb3-a3f5-15c2ebe502dc` completed on 9 October
+at 22:41:28.277 UTC (10 October local time). Cloudflare confirms production/main,
+the matched source, unchanged domains, separate production/staging auth services
+and both customer Forms gates unset. Raw 25,459,217/25,468,928 bytes (9,711 spare)
+and gzip 7,042,528/9,750,000 bytes passed the unchanged size guards. The production
+rebuild retained at least 10,140,901,376 free bytes under the 8 GiB stop guard.
+Exact 2,943-file hashes, terminal outcomes and filtered provider readbacks remain
+in `.verification/resume-20261008/studio-login-production-release-receipt-20261010.json`
+and its related receipts.
+
+The merge automatically triggered ordinary
+[main CI 38000214379](https://github.com/adme-dev/dashboard/actions/runs/38000214379).
+It also completed successfully on exact merged source `cade35ed2`; all 29 CI steps
+passed, including the full suite and final social/deployment guards.
+No extra CI dispatch, source push or deployment was made for this local receipt.
+
+Normal authenticated production QR Codes navigation was rechecked after release:
+eight codes and 48 scans remain. The hosted Fantasy website preview still returns
+200; no site content or publication changed. One fresh normal general Studio link
+was requested after the fix was live and Check your inbox was verified. The
+correct-profile production login → CMS → Open Studio acceptance still awaits the
+user; request acceptance and local preview checks do not establish that journey.
+
+### Earlier production receipts — 9 October
+
+- Dashboard PR649 merged to then-current main `c752cefc18c828b8c20b8cef4726f11fd7a582f9`.
   Guarded production deployment `92a95ff6-2edc-4424-9c5f-4e1203e109f4` completed
   on 9 October at 07:46:59 UTC. Cloudflare confirms exact clean source, branch
   main and canonical production deployment in `agency-dashboard`.
@@ -64,11 +100,16 @@ this account to a native customer or duplicate its site ownership.
   navigation loaded eight codes and 48 scans. No QR or site data was modified.
 
 Working source locations remain the owned Dashboard checkout
-`/Users/paulgiurin/Documents/Projects/page-studio-resume-20261007` (owned fix
-branch `fix/studio-assigned-account-login-20261010`) and native Studio checkout
+`/Users/paulgiurin/Documents/Projects/page-studio-resume-20261007` (local documentation
+branch `docs/studio-login-release-receipt-20261010`) and native Studio checkout
 `/private/tmp/page-studio-native-integration-20261008`. Their application source
-includes the released main commits above; this documentation update does not
-change the deployed artifacts. The unrelated dirty Dashboard root is preserved.
+includes the released main commits above. The documentation receipt is local and
+separate from deployed application source `cade35ed2`; it does not change artifacts.
+The unrelated dirty Dashboard root is preserved. Completed fix branch
+`fix/studio-assigned-account-login-20261010` was retired locally and remotely only
+after fresh proof that its remote head remained `6bea965737` and both remote/local
+heads were ancestors of current main `cade35ed2`. The remote deletion used an
+explicit expected-head lease; the active worktree, server, data and receipts remain.
 
 ### Disk recovery and current local state
 
@@ -80,16 +121,17 @@ was deleted. Failed local image removal is not counted as successful cleanup.
 
 After verified production upload, this owned Dashboard checkout's ignored `dist`
 and `.nuxt` output was removed (about 283 MB allocated). Release logs and hash receipts
-remain. Docker and CMS 3045 remain stopped to reduce pressure; restore the selected
-local CMS with its existing isolated start script and 16 GB heap when local work
-resumes. Its database and configuration are preserved. A further continuation removed only
+remain. At that earlier checkpoint Docker and CMS 3045 were stopped. The selected CMS
+was subsequently restored as recorded below; Docker remains stopped. Its database
+and configuration are preserved. A further continuation removed only
 dependencies from four clean, merged, inactive Dashboard/Studio copies and pruned unreferenced pnpm cache entries. The store shrank
 from 9.2 GB to 5.5 GB; host free space reached about 8.9 GiB on 9 October. Local editor 4325 still
 responds normally. Latest capacity and remaining large folders are recorded in the [storage audit](../audits/2026-10-09-projects-storage-and-merge-audit.md).
 
 ### 10 October verification and capacity checkpoint
 
-Fresh fetch still shows Dashboard main `c752cefc18c828b8c20b8cef4726f11fd7a582f9`.
+At this earlier checkpoint fresh fetch showed Dashboard main
+`c752cefc18c828b8c20b8cef4726f11fd7a582f9`.
 Cloudflare readback confirms the same canonical production deployment and separate
 production/preview auth services. Production sender version `f8d23f26-af67-44d8-9fcb-9019223fa805`
 is at 100%, with its Email binding restricted to `notification@xeroflow.io`.
@@ -130,7 +172,8 @@ scoped lint passed. Full local tests exited 0: 2,243 files and 15,827 tests pass
 with 71 files and 1,958 environment tests skipped. Production build exited 0 with
 raw 25,459,224/25,468,928 bytes (9,704 spare) and gzip 7,042,556/9,750,000 bytes.
 The build retained at least 10,496,835,584 free bytes under the 8 GiB stop guard.
-These are local verification receipts; PR/CI/production release still follow.
+These local verification receipts preceded the completed PR/CI/production release
+recorded above.
 
 The unrelated browser context was signed out through the normal UI and one fresh
 normal link was requested for the exact Fantasy website. The user's correct-profile
@@ -146,11 +189,32 @@ Docker was stopped again; CMS 3045 remains stopped during heavy release work.
 Private cleanup, registry proofs and terminal logs remain under
 `.verification/resume-20261008/`. No credential was persisted in those receipts.
 
+### Local CMS restoration and current capacity
+
+After successful deployment, only the owned ignored/untracked `dist` directory was
+removed, with all 2,943 artifact hashes checked against preserved release evidence.
+This recovered 94,883,840 allocated bytes; `.nuxt` was kept for startup. Source,
+Git history, private data/configuration/media and all release receipts remain.
+
+The selected isolated CMS was restored on loopback port 3045 with unchanged
+`.verification/local-first-20261008/start.mjs`, Node 24.18.0, pinned PATH and the
+16 GB heap. Its development-only and exact loopback/database guards remain intact.
+The new process group is monitored against an 8 GiB free-disk stop floor.
+Normal browser navigation using the existing local session verified Fantasy Limo,
+75 saved pages, 109 media assets and four forms. Open Studio is disabled in this
+local preview as expected. This is local acceptance, separate from production.
+
+The restore retained at least 10,320,990,208 free bytes. At this documentation
+checkpoint host free space was about 9.8 GiB; Docker remained stopped and CMS 3045
+was ready. Exact PID/session, current capacity, log and resume/owned-stop commands
+are preserved privately in `studio-local-cms-handoff-20261010.json` and the live
+`studio-local-cms-restore-20261010.json` receipt. The owned worktree remains active.
+
 ### Remaining work
 
 | Work | Current status |
 |---|---|
-| Invited standalone Fantasy CMS access | Access foundations released; wrong-profile selector fix locally verified, release and correct-profile CMS → editor acceptance pending |
+| Invited standalone Fantasy CMS access | Assigned-profile selector fix released; correct-profile production CMS → editor acceptance pending |
 | Editor light/dark, layouts, history, thumbnails, overview and collapsed toolbar | Released; actual saved Fantasy editor and staging controls verified |
 | Saved email field picker, fallback repair and Undo/Redo | Released; local integration/store/private renderer verified, hosted customer acceptance pending |
 | Magic-link sender correction | Released; matching production gateway invocation returned 202 Accepted, received From address and mailbox access pending |
@@ -160,8 +224,9 @@ Private cleanup, registry proofs and terminal logs remain under
 
 This remains the primary ledger. **The full platform launch is open.** Existing
 invited access is separate from native customer activation. The assigned-profile
-fix requires its reviewed PR, required CI and guarded current-main release. Fetch current main before merge and deployment. Keep mailbox/browser
-acceptance separate from source and provider release evidence.
+fix is released after reviewed PR, CI and a guarded current-main rebuild. Fetch
+current main before any new work or release. Keep mailbox/browser acceptance
+separate from source and provider release evidence.
 
 Detailed evidence: [field picker](2026-10-09-email-template-field-references.md),
 [AI proposals](2026-10-08-email-template-ai-proposals.md),
