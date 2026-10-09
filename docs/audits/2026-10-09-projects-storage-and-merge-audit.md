@@ -156,3 +156,22 @@ Local preview: http://127.0.0.1:3044/studio/sites/c34f6347-cc63-4ed7-9a5a-da165e
 restart-script dependency found during the audit. Do not remove its dependencies
 or checkout while this preview is running. The original demo/private/media/backups
 remain preserved; this is the saved local demo, not native hosted acceptance.
+
+## Hosted preview clarification — 9 October
+
+The user clarified they wanted Fantasy Limo's hosted **website** preview, not the
+local CMS fixture. Its exact Open staging link was read from the signed-in agency
+publishing workspace and opened successfully:
+
+https://preview-c34f6347cc634ed79a5ada165ebefed2.xeroflow.io/
+
+The staging panel identifies live approved version `ade33ea8`, published
+28 September at 22:23. Chrome displayed Home – Fantasy Limo, the Make an entrance
+homepage, fleet/occasion/service-area links and the staging notice that form
+submissions are disabled. No release, publish or preview-build action was invoked.
+
+The hosted website does not depend on the local CMS checkout copies. Those copies
+are dependencies only of the separately preserved local demo. The unnecessarily
+restarted local server was stopped again (owned session `62682`, exit 0); its data,
+media and pre-existing PostgreSQL process remain intact. This supersedes the prior
+follow-up's statement that port 3044 should be kept running.
