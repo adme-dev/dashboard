@@ -2,6 +2,7 @@
 
 Last updated: 10 October 2026. Start here after an interruption.
 Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
+Latest bounded CMS rollout: [Fantasy Limo runtime and activation receipt](2026-10-10-fantasy-cms-runtime-release.md).
 Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
 This checklist tracks the active standalone CMS work; it does not declare the
 entire platform or hosted rollout complete. Detailed decisions and acceptance:
@@ -12,6 +13,14 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 
 ## Running ledger — 10 October 2026
+
+Latest outcome: Fantasy Limo retains indefinite active access. The reviewed
+private runtime is released from merged native main `4401438`; its guarded CMS
+activation is complete and the agency page shows Ready. Fresh invited dashboard
+and editor readbacks preserve 75 pages, 109 media assets and eight form placements. Existing editor
+permissions are unchanged; the editor-only preparation warning and hosted
+custom-record/field-picker acceptance remain open. See the paired runtime receipt
+for service versions, checks, rollback evidence and remaining launch gates.
 
 ### Selected platform and Tuesday showcase
 
@@ -61,7 +70,11 @@ build, deployment or GitHub Actions run was needed. Screenshots and execution ev
 `fantasy-hosted-cms-active-20261010.png`, and the `access-renewal/` operation/test
 scripts. The earlier bounded renewal proposal is superseded, not executed.
 
-### Live showcase checks — 10 October, after ongoing access
+### Earlier showcase checks — 10 October, after ongoing access
+
+These initial checks preceded the bounded runtime release and activation recorded
+below. Their setup failures are superseded by the final installed receipts;
+separate Forms/customer launch gates remain open.
 
 Normal invited Gmail mailbox evidence confirms the received sender is
 `notification@xeroflow.io`, display name XeroFlow Page Studio, with Inbox placement.
@@ -106,20 +119,110 @@ or runtime pin was changed, no upload/deploy occurred, and setup was not replaye
 Original storage connection remains successful; collection installation is not
 claimed complete.
 
-The next change is bounded: add an explicit legacy CMS runtime configuration for
+The approved increment adds an explicit legacy CMS runtime configuration for
 only the exact existing Fantasy production scope, retaining default/other-site
 pins and staging behavior. Native customer production admission stays closed.
 Local scope-denial/compatibility tests, independent review and the exact approved
-artifact/rollback evidence must precede the private runtime release. No product
-code for this change has been written yet. The brainstorming skill requires
-approval of the short in-chat design before implementation; that design is now
-presented to the user. This is a new bounded configuration design, distinct from
-the previously approved broad launch goal and completed operational corrections.
+artifact/rollback evidence must precede the private runtime release. The user approved the bounded design. Native implementation is committed as
+`f6fc07e5c709e19cd82f7cf43da90db058494b99` on freshly based
+`fix/fantasy-cms-runtime-opt-in-20261010`; [PR122](https://github.com/adme-dev/xeroflow-page-studio/pull/122)
+was opened and later merged as recorded below. Sixteen new selector checks first failed meaningfully before the fix;
+41 focused selector/executor checks now pass. Valid unlisted scopes retain their
+previous legacy configuration. The actual candidate artifact passed 36 private
+RPC checks. Full local build, 44-task types, 40-task package tests plus security,
+action/operator checks and 1,580-file lint passed; dependency audit is clean.
+Independent source/migration review approved. The mandatory commit hook also
+passed with the pinned Node24/pnpm11.9 toolchain.
+
+The exact artifact is the prior validated `6cb34fd9...` candidate (911,081 bytes),
+not the transient `c9465259...` build produced before package outputs refreshed.
+Original production bytes `2dd87c86...` were downloaded and hash-verified for
+rollback. A private exact-scope configuration is validated; default pins and
+native customer/Form-drafts production gates remain unchanged. Matching executor,
+coordinator and router dry runs pass. Production platform migrations 9–13 were
+needed because the coordinator then retained 1–8; the new local SQLite compatibility
+check proves original active/disabled route rows and worker identities survive.
+Wrangler's D1 request is rejected with provider 7403 despite whoami reporting
+D1/Worker write scopes. The connected Cloudflare API's read-only D1 query succeeds
+and is the available D1 path. No credential is created or privilege expanded.
+
+One batched source push opened PR122. Normal full CI
+[38037838313](https://github.com/adme-dev/xeroflow-page-studio/actions/runs/38037838313)
+runs lint before types/tests/build. Linux completed successfully. Windows passed
+lint/types but the unchanged Forms transport test failed during a five-second
+PowerShell/CIM process-inspection call (`spawnSync powershell.exe ETIMEDOUT`),
+with seven other transport tests passing. No new-code assertion failed. One
+failed-job-only Windows rerun failed on the same process-inspection timeout.
+A reviewed test-only fix now budgets 20 seconds for PowerShell inspection and
+40 seconds for its enclosing Windows allocation test; production initialization
+remains 30 seconds, with real process discovery/termination assertions intact.
+All eight local transport cases pass. Commit `e6351995fa9efa26211295f8931bca4eba49c412`
+passed the mandatory 1,580-file hook and was pushed once. Updated CI
+[38041737528](https://github.com/adme-dev/xeroflow-page-studio/actions/runs/38041737528)
+finished: Linux full verification passes; Windows transport now passed in 16 seconds,
+then its package suite reports nine unchanged workspace tests timed out at five seconds
+(71 other sandbox files / 932 cases pass). Isolated workspace 94 cases passed locally in 2.26 seconds.
+Sandbox Vitest lacks the existing CMS suite's CI/Windows file-worker bound;
+review approved matching that bound without extending assertion or production
+deadlines. Full bounded sandbox verification passes locally: 72 files / 941 tests in 48.35 seconds.
+The only source delta is sandbox Vitest worker scheduling; no assertion timeout,
+production deadline or in-test concurrency is changed. Mandatory 1,580-file hook passes with no fixes. Scheduling commit
+`2c9791287311dbc0dca56de20ec4c930a6ba64e0` was pushed once; updated
+[CI 38044971266](https://github.com/adme-dev/xeroflow-page-studio/actions/runs/38044971266)
+passed on both platforms. There have been three source pushes total and one failed-job-only
+retry; normal policy/secret jobs also run automatically. No manual compiler
+publication, Docker rebuild or additional blind retry was started. Runner contention
+is the supported inference; exact CPU/crypto bottleneck is not proven. No blind
+retry or production change occurred before the final successful CI gate.
+Earlier commentary inferred the wrong CI step order and is superseded by these
+actual step readbacks. All four local gates and policy/secret scans passed.
+Final CI 38044971266 passes Linux in 32m48s and Windows in 37m20s, with all policy/secret
+checks passing. PR122 merged at 11:05:54 UTC as `4401438d6766baef4adde0c76741ebc30ab1781c`;
+clean detached source equals fresh origin/main. Approved 6cb runtime was uploaded
+and its 911,081-byte readback hash matches. Existing platform migrations 9–13
+were applied in order with tracking; original database/worker/route rows are
+unchanged. Effective-worker readback matches routed originals; an existing
+unrouted acceptance worker remains retained but excluded by the view.
+Private matching services are released from 4401438: executor version
+`cd0aa33b-bc2e-4822-a4ba-3fa80fac3972`, deployment
+`111cf7ba-ae5d-48ca-8f15-43a40e7d9818`; coordinator version
+`23ef0df2-424c-4e26-815b-683a0e04e166`, deployment
+`7044e59f-3f2b-46aa-a999-3e9de8c3ca8f`; router version
+`47da7327-e2f7-49de-b3d7-c2c185ee171c`, deployment
+`c0839552-fac7-4bb8-a3fd-38fc4e28e5d7`. Provider source, original bindings/secrets,
+compatibility dates and default pins match retained evidence. Only Fantasy
+exact-scope opt-in is added. No editor container/public website deployment.
+Guarded agency preparation now confirms collections, workflows and CMS storage
+installed on original customer D1; custom-collection controls appear. Guarded activation
+started once, froze the saved checkpoint, acknowledged its one business-content
+item and completed. The agency UI now shows Ready with all five steps checked.
+Fresh hosted pgi sign-in readback retains 75 pages, 109 media assets and eight form placements in light
+mode, and a fresh Open Page Studio handoff loads the same 75 pages, waiting for
+changes. No content edit, model call, email send or publication occurred.
+The existing editor account can read business/custom collections, but its
+preparation panel still shows a permission warning because that panel requires
+admin setup authority. This is a remaining presentation issue; no role/membership
+was elevated. Production Form-drafts operation/runtime/capability tables remain
+empty and their separate activation gate remains closed. Hosted custom-record
+save/field-picker acceptance and full native customer launch are not claimed.
+The completed native feature branch is retired locally and remotely; the owned
+worktree stays detached at merged 4401438 for the selected local editor. Both local
+worktrees, dev servers, original customer data and private release receipts are
+preserved. The paired release receipt contains exact evidence and limitations.
+Preserve the existing authenticated agency setup request; do not replace it.
+The local CMS 3045 guard stopped its server when free space dropped below 8 GiB.
+After free space recovered to about 22 GiB, the same documented 8 GiB guard restored
+it (PID 31702, monitor 31692, tool session 93385); HTTP 200 and normal local browser
+75 pages / 109 assets / four shared forms were verified. No local data/login was replaced.
+Native 4325 and the hosted CMS/editor
+remain separate surfaces. Current native receipts live under
+`.verification/fantasy-cms-runtime-20261010/` in the owned native worktree.
 
 Evidence: `.verification/resume-20261008/fantasy-hosted-showcase-checks-20261010.json`
 and `fantasy-cms-capability-proposal-20261010.json`.
-Fresh fetch confirms Dashboard main `cade35ed2` and native main `c333ca76` remain
-current. These checks used no email send, model call, build, deploy or Actions run.
+The earlier showcase-only fetch confirmed Dashboard main `cade35ed2` and native
+main `c333ca76`. Those initial browser checks used no email send, model call, build,
+deploy or Actions run. The later bounded native release is recorded above.
 
 ### Current production release — 10 October
 
@@ -304,7 +407,8 @@ are preserved privately in `studio-local-cms-handoff-20261010.json` and the live
 | Magic-link sender correction | Invited email received in Gmail Inbox from notification@xeroflow.io and normal login verified; separate agency mailbox appearance remains pending |
 | AI email proposals | Local implementation/review complete; hosted enablement pending, native preview allowance remains zero |
 | Two native accounts and hosted Forms | Pending verification/workspace setup and separately approved runtime activation; Forms flags remain unset |
-| Sender/outbox/outcomes and wider CMS launch | Pages/SEO reads, media previews and history verified; Exact demo CMS capability corrected; collection setup is held by missing reviewed production runtime configuration; scoped runtime design awaiting approval; Forms storage remains unconnected |
+| Fantasy Limo legacy CMS runtime and activation | Released from native main 4401438; original database retained; all five agency preparation steps Ready; invited collection reads and fresh 75-page editor open verified. Editor-only preparation warning remains a presentation issue |
+| Sender/outbox/outcomes and wider CMS launch | Pages/SEO reads, media previews and history verified; hosted custom-record saves/field picker, native Forms activation and actual proposal/email delivery remain open |
 
 This remains the primary ledger. **The full platform launch is open.** Existing
 invited access is separate from native customer activation. The assigned-profile
@@ -498,7 +602,9 @@ Coordinator migrations 0011–0013 are now applied before the new private worker
 - [ ] Converge the legacy enquiry inbox onto customer-owned submission storage.
 - [ ] Inquiry assignments/notes, export, retention and operational metrics.
 - [ ] Customer-facing reuse/new-form controls and explicit detach/undo.
-- [ ] Managed hosted schema/runtime upgrades and safe adoption rollout.
+- [x] Original Fantasy Limo legacy runtime release and agency CMS activation;
+      five preparation steps Ready, original database and saved 75-page editor retained.
+- [ ] Broader native customer/Form-drafts runtime upgrades and adoption acceptance.
 
 ## Wider CMS journey still requiring acceptance
 
