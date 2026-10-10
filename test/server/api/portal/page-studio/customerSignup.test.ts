@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import { createApp, toNodeListener, defineEventHandler } from 'h3'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   request: vi.fn(), verify: vi.fn(), me: vi.fn(), logout: vi.fn(), setup: vi.fn(), save: vi.fn(), complete: vi.fn(), send: vi.fn(), limit: vi.fn()
@@ -12,7 +13,7 @@ vi.mock('~~/server/utils/rateLimit', () => ({ checkAndConsume: mocks.limit }))
 describe('standalone signup HTTP boundaries', () => {
   let server: Server
   let base: string
-  let config: Record<string, string>
+  let config: Record<string, unknown>
   let api: typeof import('~~/server/utils/pageStudio/customerSignupHttp')
   const call = (route: string, body?: unknown, extra: Record<string, string> = {}) => fetch(`${base}/${route}`, {
     method: body === undefined ? 'GET' : 'POST', headers: { 'origin': 'https://studio.example.test', 'content-type': 'application/json', ...extra },
@@ -41,6 +42,7 @@ describe('standalone signup HTTP boundaries', () => {
   afterAll(async () => {
     if (server) await new Promise<void>(resolve => server.close(() => resolve()))
   })
+  afterEach(() => vi.unstubAllEnvs())
   it('is disabled by default and exposes no private configuration', async () => {
     delete config.PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED
     expect(await (await call('config')).json()).toEqual({ enabled: false })
@@ -80,6 +82,75 @@ describe('standalone signup HTTP boundaries', () => {
     const response = await call('request', { mode: 'signin', email: 'owner@example.test' })
     expect(response.status).toBe(429)
     expect(response.headers.get('retry-after')).toBeTruthy()
+    expect(mocks.request).not.toHaveBeenCalled()
+  })
+  const scopeSignup = () => {
+    config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = JSON.stringify([
+      createHash('sha256').update('owner@example.test').digest('hex')
+    ])
+    config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = new Date(Date.now() + 3600_000).toISOString()
+  }
+  it.each(['signup', 'signin'])('withholds unapproved %s requests before account or email effects', async (mode) => {
+    scopeSignup()
+    const body = { mode, email: 'other@example.test', ...(mode === 'signup' ? { name: 'Other', acceptedTerms: true } : {}) }
+    const response = await call('request', body)
+    expect(response.status).toBe(200)
+    const denied = await response.json()
+    expect(mocks.request).not.toHaveBeenCalled()
+    expect(mocks.send).not.toHaveBeenCalled()
+    const accepted = await call('request', { ...body, email: ' OWNER@EXAMPLE.TEST ' })
+    expect(accepted.status).toBe(200)
+    expect(await accepted.json()).toEqual(denied)
+    expect(mocks.request).toHaveBeenCalledTimes(1)
+    expect(mocks.send).toHaveBeenCalledTimes(1)
+  })
+  it.each(['missing hashes', 'missing expiry', 'empty', 'malformed', 'oversized', 'invalid expiry', 'expired'])('closes incomplete or invalid acceptance scope: %s', async (kind) => {
+    scopeSignup()
+    if (kind === 'missing hashes') delete config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES
+    if (kind === 'missing expiry') delete config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT
+    if (kind === 'empty') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = '[]'
+    if (kind === 'malformed') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = '["not-a-digest"]'
+    if (kind === 'oversized') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = `["${'a'.repeat(64)}"${' '.repeat(1025)}]`
+    if (kind === 'invalid expiry') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = 'tomorrow'
+    if (kind === 'expired') config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = new Date(Date.now() - 1).toISOString()
+    expect(await (await call('config')).json()).toEqual({ enabled: false })
+    expect((await call('request', { mode: 'signin', email: 'owner@example.test' })).status).toBe(503)
+    expect((await call('verify', { token: 'A'.repeat(64) })).status).toBe(503)
+    expect(mocks.request).not.toHaveBeenCalled()
+    expect(mocks.verify).not.toHaveBeenCalled()
+    expect(mocks.send).not.toHaveBeenCalled()
+  })
+  it.each(['', '  \n ', null, undefined, false, 0])('closes explicitly configured invalid scope values: %s', async (value) => {
+    config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = value
+    config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = value
+    expect(await (await call('config')).json()).toEqual({ enabled: false })
+    expect((await call('request', { mode: 'signin', email: 'owner@example.test' })).status).toBe(503)
+    expect((await call('verify', { token: 'A'.repeat(64) })).status).toBe(503)
+    for (const route of ['me', 'setup']) expect((await call(route)).status).toBe(503)
+    expect(mocks.request).not.toHaveBeenCalled()
+    expect(mocks.verify).not.toHaveBeenCalled()
+    expect(mocks.send).not.toHaveBeenCalled()
+    expect(mocks.me).not.toHaveBeenCalled()
+    expect(mocks.setup).not.toHaveBeenCalled()
+  })
+  it('does not replace invalid provider scope values with valid process defaults', async () => {
+    scopeSignup()
+    vi.stubEnv('PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES', config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES as string)
+    vi.stubEnv('PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT', config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT as string)
+    config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = null
+    config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = undefined
+    expect(await (await call('config')).json()).toEqual({ enabled: false })
+    expect((await call('request', { mode: 'signin', email: 'owner@example.test' })).status).toBe(503)
+    expect(mocks.request).not.toHaveBeenCalled()
+  })
+  it('honors a valid process scope when provider scope keys are truly absent', async () => {
+    scopeSignup()
+    vi.stubEnv('PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES', config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES as string)
+    vi.stubEnv('PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT', config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT as string)
+    delete config.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES
+    delete config.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT
+    expect(await (await call('config')).json()).toEqual({ enabled: true })
+    expect((await call('request', { mode: 'signin', email: 'other@example.test' })).status).toBe(200)
     expect(mocks.request).not.toHaveBeenCalled()
   })
   it('sets a dedicated secure host-only HttpOnly cookie and returns only a fixed destination', async () => {

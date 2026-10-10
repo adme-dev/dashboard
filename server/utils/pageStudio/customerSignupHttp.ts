@@ -6,7 +6,7 @@ import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { customerEmailAvailable, sendCustomerSignInEmail } from './customerSignupEmail'
 import { requestCustomerSignIn, verifyCustomerSignIn, readCustomerSession, revokeCustomerSession, readCustomerSetup, saveCustomerSetup, completeCustomerSetup } from './customerSignup'
 
-export interface CustomerSignupConfig { origin: string, termsVersion: string, from: string }
+export interface CustomerSignupConfig { origin: string, termsVersion: string, from: string, emailHashes?: string[] }
 function cookieName(config: CustomerSignupConfig) {
   // Published sibling sites must not be able to supply a parent-domain session cookie.
   // The unprefixed name is only used by the validated development HTTP loopback origin.
@@ -15,6 +15,12 @@ function cookieName(config: CustomerSignupConfig) {
 function setting(event: H3Event, key: string): string {
   const value = event.context.cloudflare?.env?.[key] ?? process.env[key]
   return typeof value === 'string' ? value.trim() : ''
+}
+function acceptanceSetting(event: H3Event, key: string) {
+  const env = event.context.cloudflare?.env
+  const source = env && Object.hasOwn(env, key) ? env : process.env
+  const value = source[key]
+  return { present: Object.hasOwn(source, key), value: typeof value === 'string' ? value.trim() : '' }
 }
 export function customerSignupConfig(event: H3Event): CustomerSignupConfig {
   if (setting(event, 'PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED') !== 'true') throw createError({ statusCode: 404 })
@@ -31,7 +37,21 @@ export function customerSignupConfig(event: H3Event): CustomerSignupConfig {
   const termsVersion = setting(event, 'PAGE_STUDIO_CUSTOMER_TERMS_VERSION')
   const from = setting(event, 'PAGE_STUDIO_CUSTOMER_EMAIL_FROM')
   if (!termsVersion || termsVersion.length > 100 || !z.string().email().safeParse(from).success) throw unavailable()
-  return { origin: url.origin, termsVersion, from }
+  // Optional paired acceptance scope. Partial, malformed or expired scopes close
+  // native signup/session endpoints; absent configuration keeps the normal gate.
+  const hashSetting = acceptanceSetting(event, 'PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES')
+  const expirySetting = acceptanceSetting(event, 'PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT')
+  const hashes = hashSetting.value
+  const expiresAt = expirySetting.value
+  let emailHashes: string[] | undefined
+  if (hashSetting.present || expirySetting.present) {
+    if (!hashSetting.present || !expirySetting.present || !hashes || hashes.length > 1024 || !z.string().datetime().safeParse(expiresAt).success
+      || Date.parse(expiresAt) <= Date.now()) throw unavailable()
+    try {
+      emailHashes = z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(10).parse(JSON.parse(hashes))
+    } catch { throw unavailable() }
+  }
+  return { origin: url.origin, termsVersion, from, emailHashes }
 }
 function guard(event: H3Event, method: 'GET' | 'POST' | 'PUT') {
   const config = customerSignupConfig(event)
@@ -77,6 +97,8 @@ export async function customerRequestHandler(event: H3Event) {
   const input = await body(event, CustomerSignInRequest)
   await ipLimit(event, 'request', 20)
   await limit(event, `email:${await digestPortalSessionToken(input.email)}`, 5)
+  const response = { success: true, message: 'If this account is eligible, a sign-in link is on its way.' }
+  if (config.emailHashes && !config.emailHashes.includes(await digestPortalSessionToken(input.email))) return response
   if (!customerEmailAvailable(event)) throw createError({ statusCode: 503, statusMessage: 'Sign-in email is temporarily unavailable.' })
   const delivery = await requestCustomerSignIn(input, config.termsVersion)
   if (delivery) {
@@ -87,7 +109,7 @@ export async function customerRequestHandler(event: H3Event) {
       console.error('[Studio signup] Sign-in email delivery failed')
     }
   }
-  return { success: true, message: 'If this account is eligible, a sign-in link is on its way.' }
+  return response
 }
 export async function customerVerifyHandler(event: H3Event) {
   const config = guard(event, 'POST')
