@@ -211,7 +211,7 @@ const categories = [
       { title: 'Audio Studio', slug: 'audio-studio', icon: 'i-lucide-mic', description: 'Generate owned AI voiceover and music that run legally across radio, TikTok and Meta — no clearance, no takedowns. Drops straight into Banner Studio audio layers.' },
       { title: 'Video Studio', slug: 'video-studio', icon: 'i-lucide-clapperboard', description: 'Assemble social video in the browser — footage, stills, overlays from Banner Studio, AI clips, voiceover and music on one docked timeline, then render Reels, Square and YouTube cuts in a single pass.' },
       { title: 'Media Studio Editor', slug: 'media-studio-editor', icon: 'i-lucide-film', description: 'Browser-based multitrack audio editor — drag, trim, slice, and layer clips on a pixel-accurate timeline with undo/redo, autosave, and named version snapshots.' },
-      { title: 'AI Video Generation', slug: 'ai-video-generation', icon: 'i-lucide-video', description: 'Animate an approved product still into motion or generate short B-roll from a prompt — owned, brand-safe clips with per-client budget caps that drop straight into your video timeline.' }
+      { title: 'AI Video Generation', slug: 'ai-video-generation', icon: 'i-lucide-video', description: 'Create Seedance 2.5 clips with native audio from an approved still or a scene prompt — 4–30 seconds of owned video with budget caps, ready for your timeline.' }
     ]
   },
   {

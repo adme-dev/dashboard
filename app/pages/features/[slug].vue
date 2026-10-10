@@ -819,15 +819,15 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-rocket',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Turn an approved product still into motion, or generate short B-roll from a prompt — owned, brand-safe video clips that drop straight into your media library and video timeline.',
+    description: 'Create Seedance 2.5 video with native audio from an approved still or a scene prompt — 4–30 second clips that drop straight into your media library and video timeline.',
     details: [
       {
         title: 'Image-To-Video From An Approved Still',
         content: 'Start from a real photo — a car on the forecourt, a product on the shelf — and animate it into a clean, on-brand motion clip: a slow parallax, a subtle reveal, a push-in. Because the motion is generated from your own approved still rather than dreamt up from scratch, the product on screen is the actual product, not an AI hallucination of it. Every image-to-video job is gated to source assets that have been approved and are owned by that client or the agency.'
       },
       {
-        title: 'Text-To-Video B-Roll',
-        content: 'Describe a scene — "aerial over a coastal highway at golden hour" — and get short B-roll clips for backgrounds, transitions, and establishing shots, without a stock-footage subscription or a shoot. B-roll generation is kept on a separate track from product imagery, so brand-critical visuals always come from an approved source while filler footage stays fast and flexible.'
+        title: 'Seedance 2.5 With Native Audio',
+        content: 'Describe a non-vehicle scene and generate 4–30 seconds of video with synchronised speech, sound effects, and atmosphere using Seedance 2.5. Choose 480p or 720p output in landscape, portrait, or square formats. Vehicle visuals continue to require an approved source image, while text prompts can create characters, backgrounds, and other non-vehicle scenes.'
       },
       {
         title: 'Brand And Budget Guardrails Built In',
@@ -1946,7 +1946,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Capability-Driven Creative Samples',
-        content: 'The connector inspects the governed model catalogue and lists approved project source assets before planning a sample. Seedance 2.0 keeps vehicle video tied to an approved start image and can add native audio; Vidu Q3 can land on an approved offer-card end frame; Recraft is restricted to non-vehicle statics; and Pruna upscales only approved source assets. Missing-source and unsupported-parameter responses are structured so the assistant can recover instead of guessing.'
+        content: 'The connector inspects the governed model catalogue and lists approved project source assets before planning a sample. Seedance 2.5 generates native audio and keeps vehicle video tied to an approved start image, while non-vehicle clips can start from text; Vidu Q3 can land on an approved offer-card end frame; Recraft is restricted to non-vehicle statics; and Pruna upscales only approved source assets. Missing-source and unsupported-parameter responses are structured so the assistant can recover instead of guessing.'
       },
       {
         title: 'Vision Evidence Before Human Sign-Off',
