@@ -22,6 +22,32 @@ permissions are unchanged; the editor-only preparation warning and hosted
 custom-record/field-picker acceptance remain open. See the paired runtime receipt
 for service versions, checks, rollback evidence and remaining launch gates.
 
+### Editor preparation warning — local fix, release pending
+
+The hosted invited account can read website content but lacks admin setup
+permission. Its first portal adoption-status GET returns 403 and the preparation
+panel incorrectly presents that as a website setup failure. The frontend now
+omits this admin-only panel for a denied initial portal status read, matching the
+connection panel. It does not infer Ready, widen API permissions or change roles.
+Agency errors, 401/503/malformed statuses, attempted writes and later denied
+refreshes remain visible; site/audience resets discard old response effects.
+
+Tests-first reproduced two failures. The fix passes 33 focused UI/endpoint tests,
+scoped lint and independent review. Full local suite: 15,821 passed / 1,971 environment
+skips. Typecheck retains the recorded 934-error baseline with no diagnostics in
+either edited file. Normal local CMS rendering verifies that independent
+connection/content errors remain visible while the denied preparation panel is
+omitted. Local production build and deployment guards pass: raw 25,459,220 bytes
+(9,708 spare), gzip 7,042,553 bytes, minimum free disk 26,141,478,912 bytes under
+the unchanged 8 GiB stop guard. One batched source push follows these local gates;
+no production deployment for this fix yet. The local CMS was restored with the
+same data/configuration and guarded startup after the build.
+
+Earlier local documentation receipts were reconciled onto freshly fetched main
+in this short-lived branch. Their entire pre-fix tree matches the retained docs
+branch; no old product source is brought forward. This lets the updated ledger
+travel with the single reviewed source push rather than another Actions run.
+
 ### Selected platform and Tuesday showcase
 
 The selected platform is the canonical editor at `http://127.0.0.1:4325/`

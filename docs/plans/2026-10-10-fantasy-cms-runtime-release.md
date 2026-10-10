@@ -120,4 +120,5 @@ Browser proof in the owned Dashboard worktree:
 Both selected local worktrees/servers and their existing data are preserved.
 The native worktree is detached at merged main. Dashboard product source and its
 production deployment were not changed by this increment. This documentation is
-retained locally without an additional Actions-triggering documentation push.
+initially retained locally without an additional Actions-triggering documentation
+push. The running ledger records its later reconciliation onto fresh main.

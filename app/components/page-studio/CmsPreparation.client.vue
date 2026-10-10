@@ -40,7 +40,9 @@ const Adoption = z.object({
 const stage = ref(0),
   busy = ref(false),
   needsRefresh = ref(true),
-  failure = ref('')
+  failure = ref(''),
+  statusAccessDenied = ref(false),
+  attemptedSetup = ref(false)
 const setup = ref<z.infer<typeof Setup> | null>(null)
 const adoption = ref<z.infer<typeof Adoption> | null>(null)
 const connection = ref('')
@@ -168,12 +170,18 @@ async function refresh() {
     base = endpoint.value
   busy.value = true
   failure.value = ''
+  statusAccessDenied.value = false
   try {
     await readStatus(base, turn)
     if (turn === epoch) needsRefresh.value = false
   } catch (error) {
     if (turn === epoch) {
       failure.value = errorMessage(error)
+      const value = error as { statusCode?: number, status?: number }
+      // Like the connection panel, omit admin-only setup for portal readers.
+      // Keep write failures visible; a denied read does not establish readiness.
+      statusAccessDenied.value = props.audience === 'portal'
+        && !attemptedSetup.value && (value?.statusCode ?? value?.status) === 403
       needsRefresh.value = true
     }
   } finally {
@@ -219,6 +227,7 @@ function nextRequest(): { path: string, body: Record<string, unknown> } {
 }
 async function advance() {
   if (!canAdvance.value) return
+  attemptedSetup.value = true
   const turn = epoch,
     base = endpoint.value
   busy.value = true
@@ -253,6 +262,8 @@ function reset() {
   needsRefresh.value = true
   failure.value = ''
   stage.value = 0
+  statusAccessDenied.value = false
+  attemptedSetup.value = false
   setup.value = null
   adoption.value = null
   recovery = null
@@ -271,7 +282,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <UCard class="mb-6" aria-label="Prepare website CMS">
+  <UCard v-if="!statusAccessDenied" class="mb-6" aria-label="Prepare website CMS">
     <template #header>
       <div class="flex flex-wrap items-center justify-between gap-3">
         <h2 class="text-base font-semibold text-highlighted">

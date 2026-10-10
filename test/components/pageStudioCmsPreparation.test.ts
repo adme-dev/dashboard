@@ -159,6 +159,51 @@ it('leaves denied or reconciliation-required setup read-only', async () => {
   expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true)
   expect(button(host, 'Prepare collections').disabled).toBe(true)
 })
+it('omits admin preparation for a portal reader denied setup status without claiming readiness', async () => {
+  fetch.mockRejectedValueOnce(Object.assign(new Error('Setup authority denied'), { statusCode: 403 }))
+  const { host } = await mount('portal')
+  expect(host.textContent).not.toContain('Prepare your website CMS')
+  expect(host.textContent).not.toContain('Setup needs attention')
+  expect(host.textContent).not.toContain('CMS is ready')
+  expect(host.querySelectorAll('button')).toHaveLength(0)
+  expect(fetch).toHaveBeenCalledOnce()
+  expect(fetch.mock.calls[0]?.[1].method).toBe('GET')
+})
+it.each(['agency', 'portal'])('keeps a denied %s preparation write visible and never retries it', async (audience) => {
+  const { host } = await mount(audience)
+  fetch.mockRejectedValueOnce(Object.assign(new Error('Setup authority denied'), { statusCode: 403 }))
+  button(host, 'Prepare collections').click()
+  await flush()
+  expect(host.textContent).toContain('Setup needs attention')
+  expect(host.textContent).toContain('This sign-in cannot prepare this website')
+  expect(fetch.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1)
+  expect(button(host, 'Prepare collections').disabled).toBe(true)
+  // A later denied status must not hide the uncertain write's operator panel.
+  fetch.mockRejectedValueOnce(Object.assign(new Error('Setup authority denied'), { statusCode: 403 }))
+  button(host, 'Refresh status').click()
+  await flush()
+  expect(host.textContent).toContain('Setup needs attention')
+  expect(fetch.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1)
+})
+it.each([['agency', 403], ['portal', 401], ['portal', 503]])(
+  'retains %s status failure %s as an actionable error', async (audience, statusCode) => {
+    fetch.mockRejectedValueOnce(Object.assign(new Error('Status unavailable'), { statusCode }))
+    const { host } = await mount(String(audience))
+    expect(host.textContent).toContain('Setup needs attention')
+    expect(host.textContent).not.toContain('CMS is ready')
+    expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true)
+  }
+)
+it('rechecks preparation permission when a portal reader switches sites', async () => {
+  fetch.mockRejectedValueOnce(Object.assign(new Error('Setup authority denied'), { statusCode: 403 }))
+  const { host, props } = await mount('portal')
+  expect(host.textContent).not.toContain('Prepare your website CMS')
+  props.siteId = '50000000-0000-4000-8000-000000000902'
+  await flush()
+  expect(host.textContent).toContain('Prepare your website CMS')
+  expect(button(host, 'Prepare collections').disabled).toBe(false)
+  expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true)
+})
 it('resumes frozen adoption without hitting the ordinary content read fence', async () => {
   fetch.mockImplementation(async (path: string) => {
     if (path.endsWith('cms-adoption'))
