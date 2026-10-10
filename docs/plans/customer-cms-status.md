@@ -31,12 +31,35 @@ The [existing website preview](https://preview-c34f6347cc634ed79a5ada165ebefed2.
 remains live; staging form submissions remain disabled.
 
 Standalone membership uses the existing invited `pgiurin@gmail.com` identity.
-The earlier sender-deployment link expired. After the assigned-profile fix reached
-production, one fresh normal general Studio request showed Check your inbox. The
-correct Fantasy profile login and independent CMS → saved editor journey still
-await the user. Earlier South Morang and staging agency sign-ins are separate
-evidence. Do not silently convert this account to a native customer or duplicate
-its site ownership.
+The user completed normal production mailbox sign-in on 10 October at
+06:49:31 UTC. The independent My sites page now shows the correct Fantasy Limo
+profile and its exact existing website. Manage website returned 404 / Website
+not available. A read-only database inspection isolated the cause: the original
+trial entitlement expired at 05:44:06.576 UTC on 10 October (16:44 Melbourne),
+before this login. Site/client/user remain active, the original editor membership
+is intact, and live sessions exist. No session token or credential was inspected.
+
+The user explicitly authorized removing the trial / indefinite access. The
+original entitlement was changed transactionally from `trial` with an expired
+end date to `active` with `effective_until = NULL`. Seven isolated localhost
+PostgreSQL checks passed and independent review found no Critical/Important
+blockers before execution. The transaction used exact entitlement/client/tenant,
+site/editor membership and original-expiry guards. Every other entitlement field
+was compared before commit. Exact site and membership row hashes are unchanged.
+An append-only billing access audit records the user instruction and before/after
+terms without impersonating an agency actor. No financial subscription or charge,
+role grant, customer migration, content change or publication was created.
+
+The existing normal production session now opens the hosted Fantasy Limo CMS:
+75 saved pages, 109 media assets and eight forms on pages. The Open Page Studio
+button launched the invited editor in a new tab. The saved Fantasy homepage,
+existing fleet/occasion/navigation content, original page routes and the
+thumbnail count 1–4 of 75 were verified in the actual editor. Save status remained
+waiting for changes; no editing, AI call or publication was performed. No source
+build, deployment or GitHub Actions run was needed. Screenshots and execution evidence:
+`.verification/resume-20261008/fantasy-ongoing-access-receipt-20261010.json`,
+`fantasy-hosted-cms-active-20261010.png`, and the `access-renewal/` operation/test
+scripts. The earlier bounded renewal proposal is superseded, not executed.
 
 ### Current production release — 10 October
 
@@ -70,8 +93,9 @@ Normal authenticated production QR Codes navigation was rechecked after release:
 eight codes and 48 scans remain. The hosted Fantasy website preview still returns
 200; no site content or publication changed. One fresh normal general Studio link
 was requested after the fix was live and Check your inbox was verified. The
-correct-profile production login → CMS → Open Studio acceptance still awaits the
-user; request acceptance and local preview checks do not establish that journey.
+correct-profile production login and hosted CMS are now verified after the
+user-authorized ongoing access change. The invited editor saved-content
+journey is also verified with the existing homepage and 75-page document.
 
 ### Earlier production receipts — 9 October
 
@@ -214,7 +238,7 @@ are preserved privately in `studio-local-cms-handoff-20261010.json` and the live
 
 | Work | Current status |
 |---|---|
-| Invited standalone Fantasy CMS access | Assigned-profile selector fix released; correct-profile production CMS → editor acceptance pending |
+| Invited standalone Fantasy CMS access | Verified: normal correct-profile mailbox login → hosted CMS → original saved 75-page editor; existing entitlement active with no expiry by user instruction |
 | Editor light/dark, layouts, history, thumbnails, overview and collapsed toolbar | Released; actual saved Fantasy editor and staging controls verified |
 | Saved email field picker, fallback repair and Undo/Redo | Released; local integration/store/private renderer verified, hosted customer acceptance pending |
 | Magic-link sender correction | Released; matching production gateway invocation returned 202 Accepted, received From address and mailbox access pending |
