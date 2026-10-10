@@ -71,9 +71,9 @@ made after the sender deployment. The latest frontend shows Check your inbox and
 `studio-fresh-production-link-20261009.png`. This proves request acceptance only;
 received From address and independent Fantasy dashboard access await the user.
 
-## 10 October provider verification
+## Earlier 10 October provider verification checkpoint
 
-Canonical Pages deployment remains `92a95ff6-2edc-4424-9c5f-4e1203e109f4` from
+At this earlier checkpoint, canonical Pages deployment was `92a95ff6-2edc-4424-9c5f-4e1203e109f4` from
 clean main `c752cefc18c828b8c20b8cef4726f11fd7a582f9`. Readback confirms the separate
 production and staging auth-service bindings. Production Worker version
 `f8d23f26-af67-44d8-9fcb-9019223fa805` still serves 100% and permits only
@@ -89,7 +89,7 @@ Gmail delivery, the received From header or independent CMS login. Yesterday's l
 is expired; the normal site route still shows sign-in, and the mailbox result is
 pending at that earlier checkpoint. The subsequent normal request is recorded below.
 
-## 10 October profile-selection diagnosis
+## Earlier 10 October profile-selection diagnosis checkpoint
 
 The user's later normal login reached an older South Morang profile with no
 websites. Read-only PostgreSQL inspection confirmed that the same mailbox also
@@ -106,3 +106,16 @@ site-scoped Fantasy link was requested. This is request acceptance evidence;
 correct-profile CMS → Open Studio acceptance and received From inspection remain
 pending. No additional mail, synthetic session or membership change was performed
 by the CLI release workflow.
+
+## 10 October received invited mailbox acceptance
+
+The normal pgiurin@gmail.com mailbox thread shows the latest received Continue to
+Page Studio message from `notification@xeroflow.io`, display name XeroFlow Page
+Studio, in Gmail Inbox. Sender proof is cropped to the received header; no sign-in
+credential was extracted or persisted. The user completed normal sign-in and the
+correct Fantasy profile is verified. After the explicitly authorized removal of
+the original trial expiry, the hosted CMS and original 75-page editor open through
+that session. The independent invited mailbox/From/login acceptance is complete.
+Separate agency mailbox appearance is still unverified. No new email request was
+made for this read-only check. Private evidence: `studio-received-sender-20261010.png`
+and `fantasy-hosted-showcase-checks-20261010.json` in the current verification folder.

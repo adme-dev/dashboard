@@ -61,6 +61,66 @@ build, deployment or GitHub Actions run was needed. Screenshots and execution ev
 `fantasy-hosted-cms-active-20261010.png`, and the `access-renewal/` operation/test
 scripts. The earlier bounded renewal proposal is superseded, not executed.
 
+### Live showcase checks — 10 October, after ongoing access
+
+Normal invited Gmail mailbox evidence confirms the received sender is
+`notification@xeroflow.io`, display name XeroFlow Page Studio, with Inbox placement.
+A cropped sender-header screenshot excludes the visible thread's earlier sign-in
+URL. This closes invited mailbox delivery/From acceptance; separate agency mailbox
+appearance is not inferred from it.
+
+The hosted invited CMS and editor both switch light/dark and were restored to light.
+Pages search `/contact` returns one of 75 saved pages and opens its actual SEO/form
+details. All 18 first-page media thumbnails load; the library reports 109 assets,
+and media details open. Saved draft history loads without restoring or writing.
+Full-browser edit and return to canvas work. Collapsed thumbnails integrate into
+one toolbar with Pages/Sections/Overview/Show, with no separate collapsed shelf.
+Save status remains waiting for changes. Temporary DOM diagnostic timeouts during
+mode transitions resolved on subsequent observations; no failed transition is
+misreported as a completed action without visible verification.
+
+Hosted Forms settings return 503 `FORM_SETTINGS_UNAVAILABLE`: storage is not
+connected. Agency CMS preparation returns 403 `COLLECTION_ACCESS_DENIED`.
+Read-only inspection and the actual collection policy identify the internal demo
+plan's missing `builder.collectionSchemas` flag; `portal_creation_enabled` is false.
+Both business-content/enquiries modules and the one-site capacity are otherwise
+present. This is distinct from the fixed sign-in and now-active entitlement.
+Within the existing full standalone CMS/showcase goal, the exact original internal
+demo plan now enables the entitlement flags for collection schemas and invited
+collection-record access; effective access still awaits runtime configuration
+and completed storage preparation.
+Twelve isolated localhost PostgreSQL checks passed and independent review approved
+the guarded transaction. Original site and membership hashes, all usage limits,
+roles, enabled modules and active/no-expiry terms are preserved. An append-only
+access audit records the feature change; no charge or extra site capacity is added.
+Native customer production activation remains separate and unchanged.
+
+Normal agency readback now succeeds: existing content storage is connected,
+collection preparation is pending and canConfigure is true. The existing guarded
+Prepare collections action was invoked once through the actual agency sign-in.
+It returned 503 `COLLECTION_SETUP_PENDING`: a reviewed website runtime must be
+configured. Provider readback confirms production executor has its original
+`2dd87c86...` runtime pin/date and no collection/workflow/CMS transition policies;
+the staged configuration has explicit reviewed upgrade policies. No private Worker
+or runtime pin was changed, no upload/deploy occurred, and setup was not replayed.
+Original storage connection remains successful; collection installation is not
+claimed complete.
+
+The next change is bounded: add an explicit legacy CMS runtime configuration for
+only the exact existing Fantasy production scope, retaining default/other-site
+pins and staging behavior. Native customer production admission stays closed.
+Local scope-denial/compatibility tests, independent review and the exact approved
+artifact/rollback evidence must precede the private runtime release. No product
+code for this change has been written yet. The brainstorming skill requires
+approval of the short in-chat design before implementation; that design is now
+presented to the user. This is a new bounded configuration design, distinct from
+the previously approved broad launch goal and completed operational corrections.
+
+Evidence: `.verification/resume-20261008/fantasy-hosted-showcase-checks-20261010.json`
+and `fantasy-cms-capability-proposal-20261010.json`.
+Fresh fetch confirms Dashboard main `cade35ed2` and native main `c333ca76` remain
+current. These checks used no email send, model call, build, deploy or Actions run.
+
 ### Current production release — 10 October
 
 PR [650](https://github.com/adme-dev/dashboard/pull/650) merged the exact tested
@@ -239,12 +299,12 @@ are preserved privately in `studio-local-cms-handoff-20261010.json` and the live
 | Work | Current status |
 |---|---|
 | Invited standalone Fantasy CMS access | Verified: normal correct-profile mailbox login → hosted CMS → original saved 75-page editor; existing entitlement active with no expiry by user instruction |
-| Editor light/dark, layouts, history, thumbnails, overview and collapsed toolbar | Released; actual saved Fantasy editor and staging controls verified |
+| Editor light/dark, layouts, history, thumbnails, overview and collapsed toolbar | Released; invited production light/dark, full-browser/canvas and collapsed toolbar verified; 75 saved pages retained |
 | Saved email field picker, fallback repair and Undo/Redo | Released; local integration/store/private renderer verified, hosted customer acceptance pending |
-| Magic-link sender correction | Released; matching production gateway invocation returned 202 Accepted, received From address and mailbox access pending |
+| Magic-link sender correction | Invited email received in Gmail Inbox from notification@xeroflow.io and normal login verified; separate agency mailbox appearance remains pending |
 | AI email proposals | Local implementation/review complete; hosted enablement pending, native preview allowance remains zero |
 | Two native accounts and hosted Forms | Pending verification/workspace setup and separately approved runtime activation; Forms flags remain unset |
-| Sender/outbox/outcomes and wider CMS launch | Pending hosted roles, saves/conflicts, collections, domains, analytics/SEO and delivery acceptance |
+| Sender/outbox/outcomes and wider CMS launch | Pages/SEO reads, media previews and history verified; Exact demo CMS capability corrected; collection setup is held by missing reviewed production runtime configuration; scoped runtime design awaiting approval; Forms storage remains unconnected |
 
 This remains the primary ledger. **The full platform launch is open.** Existing
 invited access is separate from native customer activation. The assigned-profile
