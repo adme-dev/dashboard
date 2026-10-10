@@ -305,3 +305,29 @@ sizes were 25,459,224 and 7,042,556 bytes, within the unchanged guards. Exact lo
 and terminal receipts use `studio-assigned-login-*-20261010` in the same ignored
 verification directory. CMS 3045 and Docker remain stopped during release; the
 selected local CMS can resume after heavy gates and another capacity check.
+
+## 10 October production completion and selected local CMS restoration
+
+The assigned-profile fix was merged as Dashboard main
+`cade35ed255efde69e7a2ba7593751556347adb2` after PR650 CI37998551876 passed. The
+immutable production wrapper rebuilt exact clean merged main and deployed canonical
+Pages artifact `a130ffbb-bc9b-4fb3-a3f5-15c2ebe502dc` to `agency-dashboard`.
+Minimum free space during that rebuild was 10,140,901,376 bytes, above the unchanged
+8 GiB stop floor. All source/deployment and 2,943 artifact-file hash receipts remain.
+
+Only this owned checkout's ignored/untracked `dist` output was removed after every
+Worker hash was checked against the preserved receipt. Allocated bytes removed:
+94,883,840. `.nuxt` remained for local startup. Free bytes before/after removal were
+10,253,651,968 and 10,350,514,176; host activity prevents pure attribution.
+No source checkout, Git history, configuration, customer data/media or release
+receipt was removed.
+
+The approved isolated CMS was restored on `127.0.0.1:3045` with Node24.18.0 and
+unchanged 16 GB heap, original local data and development/loopback database guards.
+Its owned process group remains monitored against the 8 GiB stop floor; restore
+minimum was 10,320,990,208 bytes. Browser navigation with the existing local session
+verified 75 Fantasy Limo pages, 109 media assets and four forms; local Open Studio
+is disabled as expected. Docker remains stopped. Exact cleanup and running-server
+receipts are `studio-login-dist-cleanup-20261010.json`,
+`studio-local-cms-handoff-20261010.json` and `studio-local-cms-restore-20261010.json`
+in `.verification/resume-20261008/`. Preserve this active worktree/server and data.
