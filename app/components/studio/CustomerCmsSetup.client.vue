@@ -3,7 +3,7 @@ import type { CustomerCmsSetupStatus, CustomerCmsSetupRequest } from '~~/shared/
 
 const emit = defineEmits<{ changed: [] }>()
 const api = '/api/portal/page-studio/customer/cms-setup'
-const { data, error, refresh } = useFetch<CustomerCmsSetupStatus>(api, { server: false, timeout: 30000 })
+const { data, error, refresh } = useFetch<CustomerCmsSetupStatus>(api, { server: false, timeout: 300000 })
 const busy = ref(false), message = ref('')
 const labels = { 'collection': 'Content collections', 'workflow': 'Content tools', 'collection-staging': 'Draft storage', 'form-runtime': 'Form tools', 'form-drafts': 'Form draft storage' }
 async function run(body: CustomerCmsSetupRequest) {
