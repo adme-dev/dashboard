@@ -1,13 +1,10 @@
 import { z } from 'zod'
+import { CmsAdoptionControlRequestSchema as CustomerCmsAdoptionRequestSchema } from './cmsAdoptionControl'
 import { CustomerSchemaUpgradeRequestSchema, CustomerSchemaUpgradeStatusSchema } from './customerSchemaUpgrade'
 
+export { CmsAdoptionControlRequestSchema as CustomerCmsAdoptionRequestSchema } from './cmsAdoptionControl'
+
 const id = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
-export const CustomerCmsAdoptionRequestSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('status') }).strict(),
-  z.object({ action: z.literal('start') }).strict(),
-  z.object({ action: z.literal('advance'), adoptionId: id, expectedProgressDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
-  z.object({ action: z.literal('recover'), adoptionId: id, recoveryId: id, expectedRecoveryId: id.nullable() }).strict()
-])
 export const CustomerCmsSetupRequestSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('resume') }).strict(),
   z.object({ operation: z.literal('schema'), request: CustomerSchemaUpgradeRequestSchema }).strict(),
