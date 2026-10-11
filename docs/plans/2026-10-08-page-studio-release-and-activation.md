@@ -944,3 +944,100 @@ Original Fantasy production remains unchanged; no source push or Actions.
 A's inaccessible genuine incognito session, A's remaining prerequisites/adoption/
 capability, hosted Forms/browser/role/isolation acceptance and separate reviewed
 production reconciliation remain outstanding. No platform-complete claim.
+
+
+### 11 October 12:35 UTC: account A browser access restored
+
+The next resume reached the existing Chrome incognito window through native
+accessibility controls. It shows Page Studio acceptance A at the same preview
+origin. No extension permissions, cookies or identities were copied or changed.
+The reviewed preview was reloaded and its normal Resume content setup was used.
+Original collection/content tools were recovered; draft storage preparation began
+through the UI, retaining operation 513e6353-49b9-478c-a186-216e0a6de664.
+Read-only D1 at 12:38 UTC shows Reserved with a live lease, so no retry is issued.
+
+Fresh origin/main remains Dashboard a78a11945f13c520d3258df9e249b99d46b21b07 and
+Native 4401438d6766baef4adde0c76741ebc30ab1781c; both owned branches are clean.
+Free disk is about 11.85 GiB. No build, deployment, push or Actions this resume.
+A's remaining prerequisites/adoption/capability and the hosted acceptance matrix
+remain pending; earlier unreachable-window statements are historical.
+
+
+Account A progression: draft-storage operation 513e6353-49b9-478c-a186-216e0a6de664
+is Ready, then Forms runtime 9d142df6-8623-49d6-9609-4b41811bb808 is Ready with
+lease cleared. Final schema operation 15d35545-c07e-4283-b72b-90662cb43ce9 is
+Reserved, live lease until 12:54:56.931 UTC; its normal UI request remains pending.
+No operation was restarted or phase/receipt changed manually.
+
+The four local Forms authority/default discovery/HTTP/media suites pass 78 tests
+against the existing loopback-only PostgreSQL fixture, using disposable schemas.
+Independent source/config review allows preview-only Forms after A/B physical
+capability proof; editor/browser launch can remain false. The Forms flag is
+environment-wide and CRUD does not consult setup approvals; current native
+ownership, immutable policy/entitlement, capability/runtime/D1 checks remain.
+Read-only staging Neon finds exactly two unexpired native site policies, A/B with
+one owner each and the original 12 October 13:27:09 UTC expiry. No flag changed
+yet. Template preview/fields/history additionally require existing private renderer
+and matching runtime methods, so hosted acceptance must check those separately.
+
+
+At 12:52 UTC, exact scoped D1 confirms A's original Forms schema operation
+15d35545-c07e-4283-b72b-90662cb43ce9 Installed, lease null. The 12:36:05–12:51:05
+setup child expired before the frontend's final confirmation; its normal UI shows
+Resume content setup. That supported action was used, preserving the installed
+operation, content and original approval expiry. Retained recovery is next; no
+new schema operation or forced readiness was issued.
+
+
+Independent hosted-acceptance review identified specific unsupported controls:
+native workspace membership viewer/revoke/restore is not exposed; agency members
+routes manage legacy memberships. Native logout is supported session revocation
+only. No per-capability disable/revoke RPC is exposed; disabled local SQLite
+fixtures use irreversible tombstones, so they cannot establish hosted withdrawal.
+These hosted cases remain pending; no native rows or capabilities are edited
+manually. Bounded image-free Forms testing is possible after verifying no media
+references. Preview project readback confirms no MEDIA_BUCKET, only staging
+checkpoint R2; the staging EMAIL_RENDERER is present. Dedicated staging media
+storage is required before media acceptance; production agency-files is not bound.
+
+
+### 12 October 00:03 Melbourne / 11 October 13:03 UTC: A managed CMS Ready
+
+The normal A dashboard completed all five retained recoveries under the genuine
+12:52:14–13:07:14 UTC child; exact staging Neon readback confirms runtime/schema
+heads revision1, active and unrevoked. Managed adoption
+adoption_3b48b5fc-f726-46b8-9605-846f2a29be14 imported one content item, done true,
+then activated through the normal dashboard. All six rows show Ready, unpublished.
+Proof: .verification/resume-20261008/native-a-managed-cms-ready-20261012.png.
+
+Fresh independent source review approves one exact A-only private capability
+activation after Installed/readback, current grants, managed adoption and matching
+route proof. New evidence digest
+b45e6daa1018564a7d01691001c048ef916d9114c06419243dbc8428aacdd50c
+binds corrected operator3e1b133891b79ad732d6b74dd44ed440a70e4df0f490f5ec0bbd87b518fcafd6
+to the original A scope/D1/schema operation and unchanged original approval expiry.
+Offline validation passes. One controlled operator inspect/activate/readback began
+13:03:26 UTC; no success inferred until final report. Original Fantasy production
+remains unchanged; no push, Actions or deployment this resume.
+
+
+### 12 October 00:06 Melbourne / 11 October 13:06 UTC: A capability confirmed
+
+The exact A-only corrected operator reports Confirmed and exit0. Independent D1
+readback confirms Active at 13:06:41.295 UTC, identity
+0f38722801816d471705432b278292b1626259b19a2eab71ec90ed04807e9518,
+runtime6cb34fd939e71028567270190fb6d02c59011b2cdc1c4b0497effb3f702367f5.
+Route proof7ad79414f65dbb717ce877271372cb331aff4f305ef7992ac2a4952e4c8aca3b
+is identical before/after, and source/review match the fresh A review. Final
+manifesteb3f37b21e2af65a47abd46a3c7a9e0e042ae68a13ab9e250a81e5f162ddd386.
+B's active identity58869acfe41d4eb2708f2963490a67af84f6b4d0cb74036f9c126ee554c62241
+is unchanged. Final report preserved native private evidence; neither success
+requires extending the normal child or original approval expiry.
+
+Both physical capability gates now pass. Following independent source/config
+review and 78 actual local PostgreSQL/HTTP/media tests, only
+PAGE_STUDIO_CUSTOMER_FORMS_ENABLED is set true in preview vars for bounded
+image-free native draft acceptance. Editor/browser remain false, production
+configuration unchanged. This is a draft feature gate, not email delivery or
+publication. Provider readback shows staging content router/checkpoints/renderer;
+no production media bucket is introduced. Guarded preview deployment pending.

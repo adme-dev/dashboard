@@ -41,8 +41,20 @@ f15b98caf572134ec8903a3e3eef6c2640efe17b. Fresh recovery and the single correcte
 activation attempt passed. B's Forms capability is independently confirmed Active
 at 10:03:27.849 UTC, identity
 58869acfe41d4eb2708f2963490a67af84f6b4d0cb74036f9c126ee554c62241.
-The operator confirms the original route proof remains identical. A's genuine incognito window remains unreachable; the
-user's access clarification is pending.
+The operator confirms the original route proof remains identical. On the next
+resume, native Chrome access succeeded and A's existing incognito account was
+reached. Its original collection/content tools were explicitly recovered. Draft storage
+and Forms runtime are Ready; the original final Forms schema is Installed with
+lease clear. The setup child expired before UI confirmation; normal explicit resume and
+retained recovery passed. A now shows all six rows Ready with managed adoption. Its exact private Forms
+capability is confirmed Active at 13:06:41.295 UTC, identity
+0f38722801816d471705432b278292b1626259b19a2eab71ec90ed04807e9518.
+Both retained CMS route proofs remain unchanged. Preview-only Forms is being
+enabled for the reviewed hosted acceptance; editor/browser launch stay closed. The four Forms authority/HTTP/media suites pass
+78 tests against disposable local PostgreSQL schemas. Independent source review
+finds no blocker to preview-only Forms after both physical capabilities are
+confirmed; the setting is environment-wide, so currently eligible native policies
+were checked and are exactly A/B, with the unchanged original expiry. The earlier browser-access blocker is resolved.
 
 A bounded native fix for the costly Forms schema verification selects a ten-minute
 staging lease, preserving production's five minutes and every authority/runtime
@@ -68,13 +80,13 @@ creates real headroom: the current preview raw bundle is 25,467,623/25,468,928 b
 (1,305 spare), gzip 7,044,559/9,750,000. The guard is unchanged. Source/provider
 receipts and limitations are in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
 
-Remaining: finish A prerequisites and managed adoption for A;
-activate A's exact private Forms capability after physical readback; run
-hosted Forms/browser/isolation/role acceptance; reconcile approved production
+Remaining: run hosted Forms/browser/isolation acceptance; native viewer/membership
+revocation and per-capability withdrawal have no supported hosted controls yet; reconcile approved production
 changes separately. Slow guarded provider verification remains a hosted acceptance
 limitation. Approvals cover only A/B, expire at the original
-2026-10-12T13:27:09Z deadline and cannot be silently extended. Editor/browser/Forms
-flags remain closed, and AI allowance is zero. This is not a completed platform
+2026-10-12T13:27:09Z deadline and cannot be silently extended. Editor/browser
+flags remain closed; preview Forms is prepared for the reviewed rollout, pending
+verified deployment. AI allowance is zero. This is not a completed platform
 launch or production customer activation. Original Fantasy data, account,
 publication and domain are preserved.
 
