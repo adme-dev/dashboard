@@ -778,3 +778,9 @@ Source `5de9b2d06` also stopped before upload: the compiler expanded the shared 
 
 
 Source `295476d20` stopped before upload at raw 25,468,933 / 25,468,928 (five over). The shared adoption projection saved 36 compiled bytes. The compiler-expanded action boolean is reverted to the original reviewed and full-suite-tested comparisons, preserving the recovery fix and projection dedup. The original full-suite-tested logic and both strict parsers remain unchanged. No upload, guard relaxation or production change occurred.
+
+
+Source `25ed17b11` also stopped before upload at raw 25,469,106 / 25,468,928 (178 over), demonstrating that tiny source reductions did not provide reliable compiled headroom. Local 3045 was restored and returned HTTP 200; no upload or budget change occurred. Four upgrade identity modules now reuse the existing collectionDigest rather than duplicate canonical JSON and SHA-256 implementation. Each strict schema still parses first. Independent review confirms byte-identical canonical JSON, UTF-8 SHA-256 and lowercase hex output, unchanged pins/exports, and no dependency cycle. Changed-file lint passes; the full local suite is being rerun before commit/release.
+
+
+Upgrade identity consolidation final validation: all 16,238 tests passed across 2,257 files (59 files/1,653 conditional tests skipped), including independent native identity fixtures and ordering parity. Full suite elapsed 214.67 seconds. Independent review and lint passed. No new type diagnostics claim or budget adjustment.

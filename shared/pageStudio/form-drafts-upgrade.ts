@@ -1,4 +1,4 @@
-import { collectionCanonical } from './collectionApi'
+import { collectionDigest } from './collectionApi'
 import { z } from 'zod'
 import { CollectionStagingUpgradeOperationSchema } from './collection-staging-upgrade'
 
@@ -30,9 +30,5 @@ export const FormDraftsUpgradeDatabaseSchema = FormDraftsRuntimeDatabaseSchema.e
 export type FormDraftsUpgradeOperation = z.infer<typeof FormDraftsUpgradeOperationSchema>
 export type FormDraftsRuntimeRequest = z.infer<typeof FormDraftsRuntimeRequestSchema>
 
-async function identity(request: unknown) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(collectionCanonical(request)))
-  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
-}
-export const formDraftsUpgradeIdentity = (input: unknown) => identity(FormDraftsUpgradeOperationSchema.parse(input))
-export const formDraftsRuntimeIdentity = (input: unknown) => identity(FormDraftsRuntimeRequestSchema.parse(input))
+export const formDraftsUpgradeIdentity = (input: unknown) => collectionDigest(FormDraftsUpgradeOperationSchema.parse(input))
+export const formDraftsRuntimeIdentity = (input: unknown) => collectionDigest(FormDraftsRuntimeRequestSchema.parse(input))
