@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 11 October 2026. Start here after an interruption.
+Last updated: 12 October 2026. Start here after an interruption.
 Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Latest bounded CMS rollout: [Fantasy Limo runtime and activation receipt](2026-10-10-fantasy-cms-runtime-release.md).
 Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
@@ -12,98 +12,100 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
 
 
-## Running ledger — 11 October 2026
+## Running ledger — 12 October 2026
 
-Latest outcome: the Cloudflare provisioning credential is repaired and both real
-native acceptance previews are fully provisioned. The staging-only setup bridge,
-retained recovery fix and readback timeout fix are live at clean Dashboard source
-`f015cfd2b69d48f0e9c54334ef81c77b9aa2ca53`, preview deployment
-`2f27de15-1355-41f6-b6ad-0494a585e880` (11 October 13:57 UTC).
-Both accounts have collection/content tools installed. B has all five prerequisites
-installed and completed genuine hosted managed adoption at about 09:23 UTC,
-through freeze, import, readiness and activation in the normal dashboard. Its
-workspace remains unpublished and editor access remains closed. Screenshot:
-`.verification/resume-20261008/native-b-managed-cms-ready-final-20261011.png`.
+Both genuine native test accounts are fully provisioned. Each has all five CMS
+prerequisites installed, managed content adoption complete, and its private Forms
+capability independently confirmed Active. No phase, receipt, lease or approval
+expiry was manually changed. The Cloudflare provisioning credential is working.
 
-The first B-only private Forms activation attempt returned uncertain/readback-
-unavailable. A read-only follow-up inspection succeeded, but the exact scoped D1
-query confirms no B capability record exists. Runtime/schema states, base snapshot
-and digest pins agree. No mutation was replayed. Source review confirms activation
-requires the runtime and schema recovery grants, not a new managed adoption.
-A second attempt under freshly verified authority exposed a separate local tool
-bug: the private provider terminates activation after 30 seconds. No B capability
-was created. A regression-tested local transport fix allows only the exact
-activation call to wait up to 15 minutes; read-only/init/disposal deadlines remain
-30 seconds, with all server authority, leases and approval expiry unchanged.
-Independent review, 6,150 full native tests, build/typecheck and full lint pass.
-The corrected operator is committed locally at
-f15b98caf572134ec8903a3e3eef6c2640efe17b. Fresh recovery and the single corrected
-activation attempt passed. B's Forms capability is independently confirmed Active
-at 10:03:27.849 UTC, identity
-58869acfe41d4eb2708f2963490a67af84f6b4d0cb74036f9c126ee554c62241.
-The operator confirms the original route proof remains identical. On the next
-resume, native Chrome access succeeded and A's existing incognito account was
-reached. Its original collection/content tools were explicitly recovered. Draft storage
-and Forms runtime are Ready; the original final Forms schema is Installed with
-lease clear. The setup child expired before UI confirmation; normal explicit resume and
-retained recovery passed. A now shows all six rows Ready with managed adoption. Its exact private Forms
-capability is confirmed Active at 13:06:41.295 UTC, identity
-0f38722801816d471705432b278292b1626259b19a2eab71ec90ed04807e9518.
-Both retained CMS route proofs remain unchanged. Preview-only Forms is live
-for reviewed hosted acceptance; editor/browser launch are live for separately reviewed bounded preview
-acceptance after exact routing and guest-denial checks. Genuine B Open Studio
-reaches a Chrome-generated blocked page; owner handshake/editor UI remains
-unverified and requires user takeover. Native Chrome access also dropped; the
-Mac/window clarification is pending. B's genuine
-native Forms workspace loads; its recipient draft saved revision1/HTTP200 and
-reload confirms the saved revision. Team/Customer templates also independently
-saved and reloaded revision1 with distinct subjects, no emails sent. A newer
-Team draft2 remained after the old UI draft1 was rejected with409, one request,
-explicit reload; Customer/recipients remain1. B→A read/write both403 with B data
-unchanged. A→B read403 was observed; the initial test harness stopped on A's
-null default record. Its corrected write check ran but native window access
-failed before result observation, so that write case is still pending. First workspace load was unavailable, then explicit
-refresh returned the correct owned site; this limitation is not claimed fixed.
-The starter checkpoints contain no forms, so per-form tests need supported editor
-insertion. Shared-form browser creation and native hosted role/withdrawal controls
-remain separate gaps. The four Forms authority/HTTP/media suites pass
-78 tests against disposable local PostgreSQL schemas. Independent source review
-finds no blocker to preview-only Forms after both physical capabilities are
-confirmed; the setting is environment-wide, so currently eligible native policies
-were checked and are exactly A/B, with the unchanged original expiry. The earlier browser-access blocker is resolved.
+The bounded preview is live at Dashboard source
+`f015cfd2b69d48f0e9c54334ef81c77b9aa2ca53`, deployment
+`2f27de15-1355-41f6-b6ad-0494a585e880` (11 October 13:57 UTC; 12 October 00:57
+Melbourne). Forms, editor and browser flags are enabled only for this reviewed
+preview acceptance. Current eligible native policies are exactly A/B, one owner
+each, with the original `2026-10-12T13:27:09Z` expiry. AI allowance remains zero;
+neither publication nor email delivery is enabled.
 
-A bounded native fix for the costly Forms schema verification selects a ten-minute
-staging lease, preserving production's five minutes and every authority/runtime
-pin/database-clock/compare-and-swap fence. All 6,147 native tests pass (four existing
-conditional skips), build 28 and typecheck 44 plus security types pass, full lint
-passes 1,580 files. Independent code/config review passes; the staging-only executor release is verified at version
-`b5cbb7be-92ae-4f19-9449-6adc590864de` (07:03 UTC). The customer runtime is unchanged.
-No schema phase, receipt, lease or approval expiry has been manually changed.
+The next action needs user takeover: the genuine B **Open Studio** handoff reaches
+Chrome's `ERR_BLOCKED_BY_CLIENT` page for `studio-staging.xeroflow.io`. No editor
+child was created, so signing compatibility and editor UI are still unverified.
+Go back to Page Studio and click Open Studio manually, keep the Mac unlocked, and
+report when the editor opens. Native Chrome access also dropped during A's reverse
+write check. Neither a browser block nor certificate protection was bypassed.
+Proof: `.verification/resume-20261008/native-studio-chrome-block-20261012.png`.
 
-Fantasy Limo's original production CMS remains Ready with indefinite active access,
-75 pages and 109 media assets. Its invited-user warning fix is already merged and
-released in Dashboard main `a78a11945f13c520d3258df9e249b99d46b21b07`, production
-deployment `7f98f789-d152-4d2d-90d7-dec3c8f24798`. Production is unchanged this turn.
-The selected local builder on 4325 remains running; local CMS 3045 is restored
-and verified HTTP 200. No pushes or GitHub Actions were triggered.
+### Hosted results established
 
-Dashboard validation: 16,268 source tests pass, with 60 files/1,658 conditional
-tests skipped; the five built Worker checks omitted from that source run then
-passed against the rebuilt artifact. All 35 focused response/UI tests pass. Changed-file lint and independent review pass. The last typecheck records
-934 existing diagnostics; no new global-clean typecheck claim is made. Several
-local size-guard failures stopped before upload. Shared canonical identity hashing
-creates real headroom: the current preview raw bundle is 25,467,559/25,468,928 bytes
-(1,369 spare), gzip 7,044,545/9,750,000. The guard is unchanged. Source/provider
-receipts and limitations are in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
+- B recipient draft saved and reloaded revision 1 with the approved test mailbox.
+- Team and Customer templates independently saved and reloaded revision 1 with
+  different subjects. These are image-free drafts; no emails were sent.
+- A newer Team draft saved revision 2. The old UI draft attempted one save and
+  received HTTP 409, preserving unsaved edits. Explicit reload confirmed the newer
+  subject and revision 2; Customer and recipients stayed at revision 1.
+- B's read and write attempts against A's recipients returned HTTP 403; B's own
+  settings and revision stayed unchanged.
+- A's foreign read returned HTTP 403. The first test harness stopped on its null
+  unsaved default record before writing. A corrected write used its real owned
+  checkpoint, but native window access failed before observing the result; that
+  write case remains pending.
+- B's first Forms workspace load showed unavailable. Explicit read-only refresh
+  returned HTTP 200 with its correct owned checkpoint and pages. This first-load
+  limitation is recorded, not claimed fixed.
+- Exactly two staging editor domains were attached after empty global hostname
+  and DNS checks. All five previous domains remain. Certificates report Active;
+  native Chrome guest requests return `TOKEN_INVALID / Unauthenticated` JSON.
+- Existing agency QR Codes navigation loads its eight codes and 48 scans.
 
-Remaining: run hosted Forms/browser/isolation acceptance; native viewer/membership
-revocation and per-capability withdrawal have no supported hosted controls yet; reconcile approved production
-changes separately. Slow guarded provider verification remains a hosted acceptance
-limitation. Approvals cover only A/B, expire at the original
-2026-10-12T13:27:09Z deadline and cannot be silently extended. Editor/browser/Forms
-flags are live only for the reviewed bounded preview acceptance. AI allowance is zero. This is not a completed platform
-launch or production customer activation. Original Fantasy data, account,
-publication and domain are preserved.
+### Local checks and release boundaries
+
+The response-merging fix passed 35 focused tests and independent review. The full
+Dashboard source suite passed 16,268 tests, with 60 files/1,658 conditional tests
+skipped. The five rebuilt Worker boundary checks then passed, including against
+the final editor preview artifact. Typecheck retains exactly 934 existing
+diagnostics; no globally clean typecheck is claimed.
+
+This resume also passed 78 Forms authority/HTTP/media tests and 95 native editor
+handoff/session/launch tests against disposable local PostgreSQL schemas, plus
+108 native customer workspace tests. Native full validation for the preceding
+operator fix passed 6,150 tests, four existing conditional skips, build 28 and
+typecheck 44 plus security types. Independent source/config reviews approved the
+bounded rollout. The final native route receipt committed as `e93e359` after its
+full hook checked 1,581 files with no fixes.
+
+The staging-only schema lease fix keeps production's five minutes and all fresh
+authority/runtime pin/database-clock/CAS fences. It is verified at executor version
+`b5cbb7be-92ae-4f19-9449-6adc590864de`; customer runtime bytes remain unchanged.
+The local operator timeout fix is committed at
+`f15b98caf572134ec8903a3e3eef6c2640efe17b`. It changes only the exact activation
+transport ceiling; initialization, reads and disposal stay bounded at 30 seconds,
+with no automatic mutation replay or server authority extension.
+
+Current preview bundle: raw 25,467,559/25,468,928 bytes (1,369 spare), gzip
+7,044,545/9,750,000. Size/disk guards are unchanged. Builder 4325 stayed running;
+owned CMS 3045 was paused only for shared builds and restored with the identical
+startup script. Both return HTTP 200; latest free disk is about 11.27 GiB.
+No source pushes or GitHub Actions were triggered.
+
+### Production and remaining work
+
+Fantasy Limo's original production CMS remains Ready with indefinite active
+access, 75 pages and 109 media assets. Dashboard production is unchanged at main
+`a78a11945f13c520d3258df9e249b99d46b21b07`, deployment
+`7f98f789-d152-4d2d-90d7-dec3c8f24798`. Original account, data, publication and
+domain are preserved for Tuesday's showcase.
+
+Remaining: genuine owner editor handshakes, manual form insertion, per-form
+settings, shared forms/default overrides, the remaining isolation and session
+revocation cases, and separate production reconciliation. Starter checkpoints
+contain no forms. Browser shared-definition creation currently lacks the required
+typed creation intent. Native hosted viewer/member revocation and per-capability
+withdrawal controls are not exposed. Media acceptance needs a dedicated staging
+media binding; production storage is not borrowed. These cases remain explicit
+gaps and do not count as completed hosted acceptance or a platform launch.
+
+Detailed provider receipts and historical checkpoints are in the
+[release ledger](2026-10-08-page-studio-release-and-activation.md).
 
 ### Editor preparation warning — historical local verification (released 10 October)
 
