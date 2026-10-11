@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { transaction } from '~~/server/utils/db'
 import { CustomerSchemaUpgradeRequestSchema, CustomerSchemaUpgradeStatusSchema } from '~~/shared/pageStudio/customerSchemaUpgrade'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
-import { CustomerEditorClaimsSchema, type CustomerEditorClaims } from './customerEditorToken'
+import { CustomerEditorClaimsSchema, customerSchemaPreparationCapability, type CustomerEditorClaims } from './customerEditorToken'
 import { assertCustomerEditorSessionAuthority } from './customerEditorSessions'
 import { formDraftsRuntimeContract, formDraftsUpgradeContract, collectionUpgradeContract, workflowUpgradeContract, collectionStagingUpgradeContract, type SchemaUpgradeContract } from './schemaUpgradeContract'
 import { requirePageStudioProvisioningRuntime } from './provisioningBinding'
@@ -53,12 +53,12 @@ async function recovery(db: PageStudioQueryClient, contract: SchemaUpgradeContra
 }
 async function admission(db: PageStudioQueryClient, contract: SchemaUpgradeContract, saved: Retained) {
   const head = await recovery(db, contract, saved)
-  await assertCustomerEditorSessionAuthority(head?.claims ?? saved.claims, 'workspace:create', db)
+  await assertCustomerEditorSessionAuthority(head?.claims ?? saved.claims, customerSchemaPreparationCapability(head?.claims ?? saved.claims), db)
   // Authority may have waited for site locks while another recovery committed.
   if (!same(await recovery(db, contract, saved), head)) throw conflict()
   const current = await retained(db, contract, saved.intent.scope)
   if (!current || !same(current, saved)) throw denied()
-  await assertCustomerEditorSessionAuthority(head?.claims ?? saved.claims, 'workspace:create', db)
+  await assertCustomerEditorSessionAuthority(head?.claims ?? saved.claims, customerSchemaPreparationCapability(head?.claims ?? saved.claims), db)
   return head
 }
 
@@ -81,7 +81,7 @@ export async function coordinateCustomerSchemaUpgrade(input: unknown, tokenClaim
   if (!parsed.success) throw createError({ statusCode: 400 })
   const request = parsed.data, claims = CustomerEditorClaimsSchema.parse(tokenClaims), contract = contracts[request.kind]
   const run = dependencies.runTransaction ?? transaction, scope = scopeOf(claims)
-  const authorize = (db: PageStudioQueryClient) => assertCustomerEditorSessionAuthority(claims, 'workspace:create', db)
+  const authorize = (db: PageStudioQueryClient) => assertCustomerEditorSessionAuthority(claims, customerSchemaPreparationCapability(claims), db)
   const initial = await run(async (db) => {
     await authorize(db)
     const saved = await retained(db, contract, scope)

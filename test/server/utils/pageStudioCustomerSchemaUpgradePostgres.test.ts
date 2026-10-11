@@ -13,7 +13,7 @@ const migration = (name: string) => readFileSync(new URL(`../../../server/databa
 const ownershipMigration = '444_page_studio_customer_site_ownership.sql'
 const ids = { owner: randomUUID(), other: randomUUID(), client: randomUUID(), staff: randomUUID() }
 
-describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on PostgreSQL', () => {
+describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native customer CMS prerequisites on PostgreSQL (%s)', (purpose) => {
   const schema = `customer_prereq_${randomUUID().replaceAll('-', '')}`
   let db: pg.Client
   let workspaces: typeof import('~~/server/utils/pageStudio/customerWorkspaces')
@@ -60,6 +60,7 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
     await db.query(migration('446_page_studio_customer_editor_handoffs.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
+    await db.query(migration('448_page_studio_customer_cms_setup.sql'))
     await db.query(migration('404_page_studio_documents.sql'))
     await db.query(migration('422_page_studio_cms_visibility.sql'))
     await db.query(migration('425_page_studio_cms_authoring_scope.sql'))
@@ -103,6 +104,13 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
   const issuer = config.dashboardOrigin
   const ticket = async (sessionToken = token) => {
     const api = await import('~~/server/utils/pageStudio/customerEditorHandoff')
+    if (purpose === 'cms-setup') {
+      await db.query(`INSERT INTO page_studio_customer_cms_setup_approvals
+        (workspace_id,site_id,identity_id,tenant_id,business_id,approved_by,preview_policy,expires_at)
+        SELECT workspace_id,site_id,$1,tenant_id,business_id,(preview_policy->>'approvedBy')::uuid,preview_policy,(preview_policy->>'expiresAt')::timestamptz
+        FROM page_studio_customer_site_requests ON CONFLICT(site_id) DO NOTHING`, [ids.owner])
+      return api.issueCustomerCmsSetupHandoff(sessionToken, config, { runTransaction })
+    }
     return api.issueCustomerEditorHandoff(sessionToken, config, { runTransaction })
   }
   const exchange = async (value: string, signOverride?: (claims: unknown) => Promise<string>) => {
@@ -372,6 +380,11 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
     await db.query('INSERT INTO page_studio_customer_sessions(token_hash,account_id,expires_at) VALUES($1,$2,clock_timestamp()+INTERVAL \'1 day\')', [hash(otherToken), otherAccount])
     await db.query('UPDATE page_studio_workspace_memberships SET identity_id=$1 WHERE workspace_id=$2', [ids.other, first.claims.workspaceId])
     await db.query('UPDATE page_studio_customer_setup_drafts SET identity_id=$1 WHERE identity_id=$2', [ids.other, ids.owner])
+    if (purpose === 'cms-setup') {
+      await expect(session(otherToken)).rejects.toMatchObject({ statusCode: 403 })
+      expect(worker.calls).toHaveLength(1)
+      return
+    }
     const next = await session(otherToken)
     await expect(coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, next.claims, worker)).rejects.toMatchObject({ statusCode: 403 })
     expect(worker.calls).toHaveLength(1)

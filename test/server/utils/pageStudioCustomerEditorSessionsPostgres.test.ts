@@ -58,6 +58,7 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     await db.query(migration('446_page_studio_customer_editor_handoffs.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
+    await db.query(migration('448_page_studio_customer_cms_setup.sql'))
     await db.query('CREATE TABLE page_studio_cms_scopes (scope_key TEXT, tenant_id TEXT, client_id UUID, site_id UUID, state TEXT)')
     workspaces = await import('~~/server/utils/pageStudio/customerWorkspaces')
   })

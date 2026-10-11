@@ -83,7 +83,7 @@ export async function coordinateCmsAdoption(
   principal: Principal,
   deps: Dependencies = {}
 ) {
-  if (principal.source === 'customer-session' && principal.capability !== 'workspace:create')
+  if (principal.source === 'customer-session' && !['workspace:create', 'cms:adopt'].includes(principal.capability))
     throw new PageStudioBusinessContentError('CMS_ADOPTION_AUTHORITY_DENIED', 403, 'Customer content setup is not available.')
   const parsed = CmsAdoptionControlRequestSchema.safeParse(raw)
   if (!parsed.success)

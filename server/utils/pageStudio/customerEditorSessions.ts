@@ -2,16 +2,19 @@ import { createError, type H3Event } from 'h3'
 import { transaction } from '~~/server/utils/db'
 import { redeemCustomerEditorHandoff } from './customerEditorHandoff'
 import { readCustomerProvisioningPreviewAuthority, readCustomerSessionIdentityFromHash } from './customerProvisioning'
-import { CustomerEditorClaimsSchema, CustomerEditorCapabilitySchema, CUSTOMER_EDITOR_MAX_SECONDS, signCustomerEditorToken,
+import { CustomerEditorClaimsSchema, CustomerEditorCapabilitySchema, CUSTOMER_EDITOR_MAX_SECONDS, CUSTOMER_CMS_SETUP_MAX_SECONDS, customerSessionCapabilities, customerSessionHasPurpose, signCustomerEditorToken,
   type CustomerEditorClaims } from './customerEditorToken'
 import { resolvePageStudioSessionEnvironment } from './sessions'
 import { PageStudioCheckpointCommitSchema } from './controlSchemas'
 import { commitPageStudioCheckpoint, getLatestPageStudioCheckpoint } from './controlStore'
 import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
 
+import { assertCustomerCmsSetupApproval } from './customerCmsSetupAuthority'
+
 const denied = () => createError({ statusCode: 403, statusMessage: 'Customer editor access is not available.' })
 interface Dependencies { runTransaction?: RunPageStudioTransaction }
 interface AuthorityReceipt {
+  purpose: 'editor' | 'cms-setup'
   handoff_id: string
   login_session_hash: string
   identity_id: string
@@ -43,16 +46,20 @@ export async function assertCustomerEditorSessionAuthority(input: unknown, capab
   if (!receipt || receipt.identity_id !== claims.userId || receipt.workspace_id !== claims.workspaceId
     || receipt.site_id !== claims.siteId || receipt.business_id !== claims.clientId || receipt.tenant_id !== claims.tenantId
     || receipt.editor_origin !== claims.editorOrigin || `${receipt.dashboard_origin}/studio/dashboard` !== claims.returnUrl) throw denied()
+  if (!customerSessionHasPurpose(claims.capabilities, receipt.purpose)
+    || (receipt.purpose === 'cms-setup' && claims.expiresAt - claims.issuedAt > CUSTOMER_CMS_SETUP_MAX_SECONDS)) throw denied()
   const identityId = await readCustomerSessionIdentityFromHash(db, receipt.login_session_hash)
   if (identityId !== claims.userId) throw denied()
   const owned = await readCustomerProvisioningPreviewAuthority(db, claims.siteId, identityId)
   if (owned.workspaceId !== claims.workspaceId || owned.scope.businessId !== claims.clientId || owned.scope.tenantId !== claims.tenantId) throw denied()
+  if (receipt.purpose === 'cms-setup') await assertCustomerCmsSetupApproval(db, owned, identityId)
   // Lock child last. Recheck time-based parent/membership authority after any wait.
   const child = (await db.query(`SELECT nonce FROM page_studio_customer_editor_sessions
     WHERE nonce = $1 AND claims = $2::jsonb AND revoked_at IS NULL AND expires_at > clock_timestamp() FOR SHARE`, args)).rows[0]
   if (!child) throw denied()
   await readCustomerSessionIdentityFromHash(db, receipt.login_session_hash)
   await readCustomerProvisioningPreviewAuthority(db, claims.siteId, identityId)
+  if (receipt.purpose === 'cms-setup') await assertCustomerCmsSetupApproval(db, owned, identityId)
   const active = (await db.query(`SELECT nonce FROM page_studio_customer_editor_sessions
     WHERE nonce = $1 AND revoked_at IS NULL AND expires_at > clock_timestamp()`, [claims.nonce])).rows[0]
   if (!active) throw denied()
@@ -68,25 +75,30 @@ export async function exchangeCustomerEditorSession(ticket: unknown, configurati
   const sign = dependencies.signToken ?? (claims => signCustomerEditorToken(claims, environment!.privateKey, environment!.issuer))
   return (dependencies.runTransaction ?? transaction)(async (db) => {
     const context = await redeemCustomerEditorHandoff(ticket, configuration, { runTransaction: callback => callback(db) })
+    const handoff = (await db.query<{ purpose: string }>('SELECT purpose FROM page_studio_customer_editor_handoffs WHERE id=$1', [context.handoffId])).rows[0]
+    const capabilities = customerSessionCapabilities(handoff?.purpose)
+    const setup = handoff?.purpose === 'cms-setup'
+    const owned = await readCustomerProvisioningPreviewAuthority(db, context.scope.siteId, context.identityId)
+    const setupApproval = setup ? await assertCustomerCmsSetupApproval(db, owned, context.identityId) : null
     const parent = (await db.query<{ issued: number, expires: number, editor_origin: string }>(`SELECT
       floor(extract(epoch FROM clock_timestamp()))::int AS issued,
-      floor(extract(epoch FROM LEAST(native.expires_at, entitlement.effective_until,
+      floor(extract(epoch FROM LEAST(native.expires_at, entitlement.effective_until, $3::timestamptz,
         clock_timestamp() + $2 * INTERVAL '1 second')))::int AS expires, handoff.editor_origin
       FROM page_studio_customer_editor_handoffs handoff
       JOIN page_studio_customer_sessions native ON native.token_hash = handoff.login_session_hash
       JOIN page_studio_sites site ON site.id = handoff.site_id
       JOIN page_studio_entitlements entitlement ON entitlement.id = site.entitlement_id
-      WHERE handoff.id = $1`, [context.handoffId, CUSTOMER_EDITOR_MAX_SECONDS])).rows[0]
+      WHERE handoff.id = $1`, [context.handoffId, setup ? CUSTOMER_CMS_SETUP_MAX_SECONDS : CUSTOMER_EDITOR_MAX_SECONDS, setupApproval?.expires_at ?? owned.policy.expiresAt])).rows[0]
     if (!parent) throw denied()
     const claims = parseClaims({ role: 'customer', environment: 'staging', nonce: crypto.randomUUID(), userId: context.identityId,
       workspaceId: context.workspaceId, clientId: context.scope.clientId, siteId: context.scope.siteId, tenantId: context.scope.tenantId,
-      issuedAt: parent.issued, expiresAt: parent.expires, capabilities: [...CustomerEditorCapabilitySchema.options],
+      issuedAt: parent.issued, expiresAt: parent.expires, capabilities,
       editorOrigin: parent.editor_origin, returnUrl: context.returnUrl })
     await db.query(`INSERT INTO page_studio_customer_editor_sessions (nonce, handoff_id, claims, issued_at, expires_at)
       VALUES ($1, $2, $3::jsonb, to_timestamp($4), to_timestamp($5))`,
     [claims.nonce, context.handoffId, JSON.stringify(claims), claims.issuedAt, claims.expiresAt])
     const token = await sign(claims)
-    await assertCustomerEditorSessionAuthority(claims, 'workspace:create', db)
+    await assertCustomerEditorSessionAuthority(claims, setup ? 'cms:prepare' : 'workspace:create', db)
     await db.query(`INSERT INTO page_studio_audit_events
       (tenant_id, client_id, site_id, actor_id, actor_role, action, resource_type, resource_id)
       VALUES ($1, $2, $3, $4, 'customer', 'customer.session_issued', 'customer_editor_session', $5)`,

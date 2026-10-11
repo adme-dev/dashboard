@@ -49,8 +49,11 @@ const API_INVENTORY = {
   // role and model/allowance checks remain independent of God mode. Native
   // field reads retain the customer Forms feature flag and session adapter;
   // this inventory does not authorize or activate that runtime.
-  totalRouteFiles: 2240,
-  mutationRouteFiles: 1216,
+  // Restricted native CMS setup adds GET/POST through genuine native cookies,
+  // immutable setup purpose, staging approval and exact-origin mutation gates.
+  // Neither registers a God mode bypass or accepts caller scope.
+  totalRouteFiles: 2242,
+  mutationRouteFiles: 1217,
   explicitlyGuardedMutationFiles: 400,
   guardedMutationFilesWithTransactionCall: 47
 } as const
@@ -100,8 +103,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2240,
-      mutationRouteFiles: 1216,
+      totalRouteFiles: 2242,
+      mutationRouteFiles: 1217,
       explicitlyGuardedMutationFiles: 400,
       guardedMutationFilesWithTransactionCall: 47
     })
