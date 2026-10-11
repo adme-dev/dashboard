@@ -19,8 +19,8 @@ real native acceptance previews are fully provisioned. A restricted, staging-onl
 CMS setup bridge is deployed at preview source `c2b01db4d836dd32e420906ae375bc6769d8296e`,
 deployment `e8138e1b-878a-4383-b8d4-2266a2497c42`. Genuine mailbox sessions remain
 separate; both received genuine setup-only controls. Collection and content tools are
-installed on both. B is exercising explicit short-session recovery for its next
-storage step; A's incognito window is currently unreachable through native
+installed on both. B has three storage prerequisites installed and the reviewed Forms runtime ready,
+with explicit short-session recovery retained for continuation; A's incognito window is currently unreachable through native
 window control. The user's async access clarification is pending.
 This is not native Forms/editor/publication acceptance or a production activation.
 

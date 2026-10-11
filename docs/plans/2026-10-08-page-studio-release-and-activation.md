@@ -733,3 +733,30 @@ recorded review time 04:10:44 UTC and original 12 October expiry. Offline operat
 dry-run passes, source digest 5117a2def1acbfb159baf33e4b6e80ef154537754f8a4e98dfb983268284c57e.
 No online inspection or capability activation yet; all five prerequisites and
 managed adoption must still be proven. No native production or Forms flag change.
+
+
+### Progress UI released; B Forms runtime ready — 11 October 2026
+
+Progress-control release succeeds: exact clean source
+6166664a6f2445db5fa30d126b6d612b027e4ba7, deployment
+aff55c85-bb1b-4c89-8b08-e704d778b494, created 05:04:16.497534 UTC,
+successful 05:04:26.253197 UTC. Raw 25,468,828 / 25,468,928 (100 spare),
+gzip 7,044,667; unchanged guard; minimum free disk 14,347,554,816 bytes.
+Local CMS is restored and /studio returns 200; native builder remains 200.
+No GitHub push/Actions or production change.
+
+B's collection-staging original operation 8aad0a21... is now installed after
+explicit recovery; its actual browser shows the first three steps Ready.
+One normal Form tools start retains runtime operation
+d65dbbc1-3016-4604-84dd-08469fc10712; coordinator readback shows runtime ready,
+lease cleared. Draft schema, managed adoption and private capability activation
+remain outstanding. Session expiry correctly returns Resume content setup;
+B has again explicitly resumed and is recovering installed steps, not replacing
+resources or silently extending the original child/approval deadlines.
+
+An isolated in-app browser was attempted as an additional A fallback; it is
+unavailable in this environment. The connected Kimi default-session listing
+has no A tab. Native app/window access is still unavailable and the user's async
+window clarification has no response yet. No account impersonation or token
+extraction was used as a workaround. Existing A collection/workflow installation
+and its genuine prior session proof remain retained.
