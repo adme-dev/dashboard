@@ -760,3 +760,12 @@ has no A tab. Native app/window access is still unavailable and the user's async
 window clarification has no response yet. No account impersonation or token
 extraction was used as a workaround. Existing A collection/workflow installation
 and its genuine prior session proof remain retained.
+
+
+### 11 October: retained setup recovery after Forms runtime installation
+
+Hosted account B installed the first four prerequisites. The final Form draft schema operation remained reserved when its fifteen-minute setup child expired; its lease ended at 05:37:18 UTC. No operation state, receipt, intent or expiry was edited manually. Account A remains at two installed prerequisites while its genuine incognito browser session cannot be reached.
+
+A deterministic recovery defect caused warnings after the Forms successor was installed: recovery replayed the ancestor runtime executor instead of reading its retained completion. Recovery now updates authority and reads status only. Pending work still needs an explicit same-request resume. Original runtime pins, strict receipt validation, compare-and-swap recovery heads and final authority checks remain enforced.
+
+Validation: four regression cases failed before the fix; 125 focused PostgreSQL/HTTP tests then passed. Full local suite: 16,238 tests passed across 2,257 files; 1,653 conditional tests and 59 files skipped. Changed-file lint and diff checks pass. Independent source review reported no findings. The known 934 Dashboard type diagnostics are unchanged from the preceding release baseline; no new typecheck claim is made. Staging preview release is pending; production remains unchanged. No pushes or GitHub Actions were triggered.

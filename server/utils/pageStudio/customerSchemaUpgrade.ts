@@ -146,9 +146,12 @@ export async function coordinateCustomerSchemaUpgrade(input: unknown, tokenClaim
     return { saved, head, reconciliation: false }
   })
   if (prepared.reconciliation) return result('reconciliation', prepared.saved, prepared.head?.recoveryId)
-  const raw = await invoke(request.action === 'status' ? contract.statusMethod : contract.executeMethod, prepared.saved.intent)
+  // Recovery changes authority only. Reading retained completion avoids replaying
+  // an ancestor runtime after a Forms successor is installed. Pending work still
+  // requires an explicit same-request start/resume through the guarded executor.
+  const raw = await invoke(request.action === 'start' ? contract.executeMethod : contract.statusMethod, prepared.saved.intent)
   const receipt = contract.receiptSchema
-  const state = request.action === 'status'
+  const state = request.action !== 'start'
     ? (raw === null
         ? { status: 'pending' }
         : (() => {

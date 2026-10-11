@@ -876,3 +876,12 @@ post-render authority checks and campaign draft-status races pass. Production
 customer access remains closed. Independent review findings on allocation bounds
 and exact customer image limits are fixed and covered by regression tests; hosted
 browser acceptance remains pending. Preview deployment `6e4f2650-22a7-4103-9a8c-c64f0f91888f` uses clean source `383091cd9` and the verified private staging binding. Draft PR #632 is open; production is unchanged. [Evidence and limitations](2026-10-07-page-studio-resume.md).
+
+
+### 11 October: retained setup recovery after Forms runtime installation
+
+Hosted account B installed the first four prerequisites. The final Form draft schema operation remained reserved when its fifteen-minute setup child expired; its lease ended at 05:37:18 UTC. No operation state, receipt, intent or expiry was edited manually. Account A remains at two installed prerequisites while its genuine incognito browser session cannot be reached.
+
+A deterministic recovery defect caused warnings after the Forms successor was installed: recovery replayed the ancestor runtime executor instead of reading its retained completion. Recovery now updates authority and reads status only. Pending work still needs an explicit same-request resume. Original runtime pins, strict receipt validation, compare-and-swap recovery heads and final authority checks remain enforced.
+
+Validation: four regression cases failed before the fix; 125 focused PostgreSQL/HTTP tests then passed. Full local suite: 16,238 tests passed across 2,257 files; 1,653 conditional tests and 59 files skipped. Changed-file lint and diff checks pass. Independent source review reported no findings. The known 934 Dashboard type diagnostics are unchanged from the preceding release baseline; no new typecheck claim is made. Staging preview release is pending; production remains unchanged. No pushes or GitHub Actions were triggered.

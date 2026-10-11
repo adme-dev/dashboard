@@ -154,6 +154,44 @@ describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native custo
   const coordinate = async (input: unknown, claims: unknown, worker: ReturnType<typeof binding>) =>
     (await api()).coordinateCustomerSchemaUpgrade(input, claims, { runTransaction, binding: worker.value })
 
+  it.each(['collection', 'workflow'])('recovers installed %s authority without executing an ancestor runtime', async (kind) => {
+    const first = await session(), worker = binding(), requestId = randomUUID()
+    await coordinate({ action: 'start', kind, requestId }, first.claims, worker)
+    const intent = structuredClone(worker.calls[0])
+    const contract = (await contracts()).find(value => value.kind === kind)!
+    const prefix = kind === 'collection' ? 'CollectionUpgrade' : 'WorkflowUpgrade'
+    worker.value[`read${prefix}Operation`] = async () => ({ state: 'installed', leaseUntil: null, receipt: contract.expectedReceipt(intent) })
+    const execute = vi.fn(async () => {
+      throw new Error('Forms successor must not be downgraded')
+    })
+    worker.value[`execute${prefix}`] = execute
+    const next = await session()
+    expect(await coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, next.claims, worker)).toMatchObject({ status: 'installed', requestId })
+    expect(execute).not.toHaveBeenCalled()
+    expect(worker.calls).toEqual([intent])
+  })
+  it('recovers reserved authority without running work, then resumes the exact original request explicitly', async () => {
+    const first = await session(), worker = binding(), kind = 'collection', requestId = randomUUID()
+    await coordinate({ action: 'start', kind, requestId }, first.claims, worker)
+    const intent = structuredClone(worker.calls[0]), next = await session()
+    worker.value.readCollectionUpgradeOperation = async () => ({ state: 'reserved', leaseUntil: null, receipt: null })
+    expect(await coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, next.claims, worker)).toMatchObject({ status: 'reserved', requestId })
+    expect(worker.calls).toEqual([intent])
+    expect(await coordinate({ action: 'start', kind, requestId }, next.claims, worker)).toMatchObject({ status: 'installed', requestId })
+    expect(worker.calls).toEqual([intent, intent])
+  })
+  it.each(['receipt', 'revocation'])('withholds recovered installed status after %s fails during readback', async (reason) => {
+    const first = await session(), worker = binding(), kind = 'collection', requestId = randomUUID()
+    await coordinate({ action: 'start', kind, requestId }, first.claims, worker)
+    const intent = worker.calls[0], contract = (await contracts()).find(value => value.kind === kind)!, next = await session()
+    worker.value.readCollectionUpgradeOperation = async () => {
+      if (reason === 'revocation') await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+      const receipt = contract.expectedReceipt(intent)
+      return { state: 'installed', leaseUntil: null, receipt: reason === 'receipt' ? { ...receipt, databaseId: randomUUID() } : receipt }
+    }
+    await expect(coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, next.claims, worker)).rejects.toMatchObject({ statusCode: reason === 'receipt' ? 503 : 403 })
+    expect(worker.calls).toHaveLength(1)
+  })
   it('returns retained form-runtime running status only after fresh native authority', async () => {
     const { claims } = await session(), worker = binding(), requestId = randomUUID()
     worker.value.executeFormDraftsRuntime = async (intent) => {
@@ -249,7 +287,9 @@ describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native custo
     expect(await coordinate({ action: 'status', kind }, second.claims, worker)).toMatchObject({ status: 'reconciliation', canConfigure: false })
     await expect(coordinate({ action: 'start', kind, requestId }, second.claims, worker)).rejects.toMatchObject({ statusCode: 409 })
     const recoveryId = randomUUID()
-    expect(await coordinate({ action: 'recover', kind, requestId: recoveryId, expectedRecoveryId: null }, second.claims, worker)).toMatchObject({ recoveryId, status: 'installed' })
+    expect(await coordinate({ action: 'recover', kind, requestId: recoveryId, expectedRecoveryId: null }, second.claims, worker)).toMatchObject({ recoveryId, status: 'pending' })
+    expect(worker.calls).toHaveLength(1)
+    await coordinate({ action: 'start', kind, requestId }, second.claims, worker)
     expect(worker.calls.at(-1)).toEqual(original)
     await coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: recoveryId }, third.claims, worker)
     await expect(coordinate({ action: 'recover', kind, requestId: recoveryId, expectedRecoveryId: null }, second.claims, worker)).rejects.toMatchObject({ statusCode: 409 })
@@ -411,12 +451,12 @@ describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native custo
     await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp() WHERE nonce=$1', [first.claims.nonce])
     const runtimeRecovery = randomUUID()
     await coordinate({ action: 'recover', kind: 'form-runtime', requestId: runtimeRecovery, expectedRecoveryId: null }, second.claims, worker)
-    expect(worker.calls.at(-1)).toEqual(runtimeIntent)
+    expect(worker.calls).toEqual([runtimeIntent, formIntent])
     expect(await coordinate({ action: 'status', kind: 'form-drafts' }, second.claims, worker)).toMatchObject({ status: 'reconciliation', recoveryId: null })
     await expect((await api()).authorizeCustomerSchemaUpgrade(forms, formIntent, 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
     const formRecovery = randomUUID()
     await coordinate({ action: 'recover', kind: 'form-drafts', requestId: formRecovery, expectedRecoveryId: null }, second.claims, worker)
-    expect(worker.calls.at(-1)).toEqual(formIntent)
+    expect(worker.calls).toEqual([runtimeIntent, formIntent])
     expect(await coordinate({ action: 'status', kind: 'form-runtime' }, second.claims, worker)).toMatchObject({ recoveryId: runtimeRecovery })
     expect(await coordinate({ action: 'status', kind: 'form-drafts' }, second.claims, worker)).toMatchObject({ recoveryId: formRecovery })
     await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id)
