@@ -687,3 +687,49 @@ and shows the new controls. One collection start retains request
 readback shows the reserved active lease through 04:37:55.428 UTC. Do not blind
 replay; observe supported status first. A's separate incognito setup session is
 being verified. Native CMS/Forms completion remains pending these real operations.
+
+
+### Real setup and short-session recovery — 11 October 2026
+
+Both accounts received genuine setup-only sessions through their own native login:
+B 04:31:40–04:46:40 UTC; A 04:34:48–04:49:48 UTC. Actual persisted purpose is
+cms-setup and exact capabilities are cms:prepare/cms:adopt. Both collection
+operations are installed; both workflow/content-tool operations are installed.
+A retains collection operation 32ecfc94-df2e-416e-a924-00574c574e71 and workflow
+799ddbc5-82b2-476f-9528-9409bbf2b0ad. B retains collection c75625a7... and workflow
+e59fd2bf-c92d-43ee-927a-56e884d52809. B collection-staging operation
+8aad0a21-b783-44f3-94f3-e95d4b0694a2 crossed the setup-child deadline and remains
+reserved after its lease; no receipt/phase was edited and no blind replay occurred.
+
+The supported runtime transition created separate 7afd... successor Workers:
+B ps-content-83a050a94cab45ed9e71d675965eb183, A
+ps-content-3a6e98581cb44f5fae2fe69974c229c6. Generation state is ready; Cloudflare
+metadata independently verifies 2026-08-18 compatibility and each exact original
+CONTENT_DB binding. Initial bootstrap Workers are retained unchanged. Do not
+confuse the upgrade receipt's database resource name with a Worker script name.
+
+B's GET detected child expiry and returned Resume content setup. One explicit
+resume issued a fresh restricted child. Explicit collection recovery retained
+its original request/operation and appended recovery 9db814b3-ef8f-43c7-ba2a-b1e5c8277d1b,
+revision 1 at 04:53:22.436 UTC; collection now reads Ready. Workflow recovery is
+in progress. Original intent/actor provenance and all resource identities remain.
+
+Client-only progress improvement is reviewed/linted and committed ad81d3a99:
+show Preparing, allow 300-second client waiting (backend leases/15-minute child
+unchanged), keep global refresh read-only, and retain explicit same-request Resume
+step after fresh status. A review caught and removed a readonly-only branch that
+would strand expired operations. It is not deployed yet; hosted source remains c2b... .
+
+Native Chrome app/window control stopped finding its window at about 04:46 UTC.
+Reset/reconnect/exact app-id attempts failed; regular connected Chrome B still
+works. Kimi WebBridge health is connected and its supported find-tab reaches B,
+but not the private A incognito window. No new extension permissions, cookies,
+credentials or identities were created to bypass this. A window access remains
+pending the user's async clarification; independent B work continues.
+
+Prepared the approved A/B-only Forms activation manifest with evidence digest
+1b62e1a77f657efb76d0da46c09f3dd7a04fadec9757603c6eecd158625071e3,
+recorded review time 04:10:44 UTC and original 12 October expiry. Offline operator
+dry-run passes, source digest 5117a2def1acbfb159baf33e4b6e80ef154537754f8a4e98dfb983268284c57e.
+No online inspection or capability activation yet; all five prerequisites and
+managed adoption must still be proven. No native production or Forms flag change.

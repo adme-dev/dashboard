@@ -18,8 +18,10 @@ Latest outcome: the Cloudflare provisioning credential is repaired, and both
 real native acceptance previews are fully provisioned. A restricted, staging-only
 CMS setup bridge is deployed at preview source `c2b01db4d836dd32e420906ae375bc6769d8296e`,
 deployment `e8138e1b-878a-4383-b8d4-2266a2497c42`. Genuine mailbox sessions remain
-separate; B received setup-only controls and its first collection migration is
-running under the retained operation. A's setup session is being verified.
+separate; both received genuine setup-only controls. Collection and content tools are
+installed on both. B is exercising explicit short-session recovery for its next
+storage step; A's incognito window is currently unreachable through native
+window control. The user's async access clarification is pending.
 This is not native Forms/editor/publication acceptance or a production activation.
 
 Fantasy Limo's original production CMS remains Ready with indefinite active access,
