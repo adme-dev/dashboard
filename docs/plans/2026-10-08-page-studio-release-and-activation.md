@@ -775,3 +775,6 @@ The recovery-fix staging release at source `e14080753` stopped before upload: ra
 
 
 Source `5de9b2d06` also stopped before upload: the compiler expanded the shared action check, leaving raw size 25,468,969 / 25,468,928 (41 over). No budget adjustment or upload occurred. The next simplification shares the duplicate six-field adoption status projection; GET and POST retain their exact original schema parsers and final authority checks. All 23 setup PostgreSQL/HTTP tests and lint passed. Local 3045 was restored again.
+
+
+Source `295476d20` stopped before upload at raw 25,468,933 / 25,468,928 (five over). The shared adoption projection saved 36 compiled bytes. The compiler-expanded action boolean is reverted to the original reviewed and full-suite-tested comparisons, preserving the recovery fix and projection dedup. The original full-suite-tested logic and both strict parsers remain unchanged. No upload, guard relaxation or production change occurred.

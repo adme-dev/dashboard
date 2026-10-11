@@ -149,10 +149,9 @@ export async function coordinateCustomerSchemaUpgrade(input: unknown, tokenClaim
   // Recovery changes authority only. Reading retained completion avoids replaying
   // an ancestor runtime after a Forms successor is installed. Pending work still
   // requires an explicit same-request start/resume through the guarded executor.
-  const executing = request.action === 'start'
-  const raw = await invoke(executing ? contract.executeMethod : contract.statusMethod, prepared.saved.intent)
+  const raw = await invoke(request.action === 'start' ? contract.executeMethod : contract.statusMethod, prepared.saved.intent)
   const receipt = contract.receiptSchema
-  const state = !executing
+  const state = request.action !== 'start'
     ? (raw === null
         ? { status: 'pending' }
         : (() => {
