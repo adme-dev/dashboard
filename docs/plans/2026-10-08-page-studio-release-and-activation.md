@@ -2,7 +2,7 @@
 
 
 Current task status and next steps live in the
-[running CMS/Studio ledger](customer-cms-status.md#running-ledger--11-october-2026).
+[running CMS/Studio ledger](customer-cms-status.md#running-ledger--12-october-2026).
 This file retains release/source/provider evidence. Historical entries below do
 not authorize deploying an older branch or treating local checks as hosted acceptance.
 
@@ -827,7 +827,7 @@ B refreshed its genuine dashboard to resume under this release; final supported 
 
 ### 11 October: B schema complete and verified-response UI correction
 
-Read-only D1 at 07:17:25 UTC confirms B's exact original draft schema operation `1c1f8a96-4c92-4565-9784-d45aef2fc0d5` is installed, lease cleared. The released staging claim was independently observed as ten minutes (13:39:39.805–23:39:39.805 UTC); original child/approval expiries were not extended. All five backend prerequisites are now complete for B. Managed adoption and Forms capability remain pending; A remains at two prerequisites with an unreachable incognito window.
+Read-only D1 at 07:17:25 UTC confirms B's exact original draft schema operation `1c1f8a96-4c92-4565-9784-d45aef2fc0d5` is installed, lease cleared. The released staging claim was independently observed as ten minutes; original child/approval expiries were not extended. All five backend prerequisites are now complete for B. Managed adoption and Forms capability remain pending; A remains at two prerequisites with an unreachable incognito window.
 
 The UI discarded each successful guarded response and repeated expensive full status verification, often exhausting its setup session. A client-only strict merger now validates kind/original request/recovery head/adoption ID/progress digest, updates only the returned operation, and prevents older reads, replaced snapshots or unmounted pages from merging results. Confirmation belongs to one step and exact snapshot; uncertainty, malformed/mismatched responses or refresh invalidate it and require successful readback. Client transport waits up to 900 seconds; every backend expiry/fence remains unchanged. No readiness, capability or editor access is inferred.
 
@@ -1060,7 +1060,7 @@ Actual signed-in production QR Codes navigation loads eightcodes/48scans, with
 existing client websites/navigation present; readonly proof saved privately.
 Native B overview now offers Manage forms, after its genuine parent session
 remained active and the15minute setup child expired. The first website load showed
-unavailable; an explicit read-only refresh returned200 with the correct owned
+unavailable; an explicit read-only refresh returned 200 with the correct owned
 site/checkpoint, three saved pages and zeroassets/forms. This is a recorded
 first-load limitation, not claimed fixed. B Website email defaults loaded; normal
 recipient save returnedHTTP200 revision1, approvedtestmailbox, activationdraft_only,
@@ -1158,3 +1158,122 @@ e93e359; Dashboard ledger update is retained separately from liveappf015.
 Chrome block screenshot .verification/resume-20261008/native-studio-chrome-block-20261012.png
 is the concrete takeover surface. Keep the existing expiry; do not silently extend
 test policies or replace genuine sessions to get past the blocked browser.
+
+
+## 12 October — measured editor timeout correction released to staging
+
+A genuine A launch at 11 October 18:56 UTC exchanged its one-use ticket, created
+an editor child, confirmed managed content and allocated the correct sandbox.
+It returned HTTP 503 during filesystem hydration at the ordinary 60-second
+operation deadline. Browser server time: 65,477 ms; Worker trace: 64,646 ms. All
+53 authority calls returned 200 (38,412 ms total); no editor startup was reached.
+
+Tests reproduced the failure before implementation. Trusted staging `open-editor`
+now receives 300 seconds, shared by its internal deadline and timer/validator.
+Every other action and default/production path retains 60 seconds. Fresh authority,
+managed-state, expiry and typed I/O checks remain intact; no cache, retry, caller
+budget, additional AI, publication, email delivery or expiry extension was added.
+The test policy still expires at `2026-10-12T13:27:09Z`.
+
+Native source `c0f99311dd6fba696fb8c66f4bd19e20ebd7e1c5` passed 126 focused tests,
+6,159 full-command tests (four existing conditional skips), build 28, types 44 plus
+security, lint 1,581 files and the normal commit hook. Independent implementation
+and supplemental review found no blockers. Two outdated strict route expectations
+were corrected to include only the previously approved exact A/B domains.
+Fresh main `4401438d6766baef4adde0c76741ebc30ab1781c` is included.
+
+Guarded Worker-only dry run: 2,568.07 KiB raw / 489.93 KiB gzip. Deployment used
+original staging config with containers-rollout none, keep-vars and strict checks.
+Only `xeroflow-page-studio-sandbox-staging` in account
+`a5b299b3ad15c1b5b895dc66f9357b17` changed. Live version
+`9c3e9be7-9a62-4653-bb96-4e4e1abc9f4f`, deployment
+`412b14dc-e4c8-4782-a71b-c30bb0e0d858`, 100% at 11 October 20:12:42 UTC.
+Before/after exact readback: all settings/bindings unchanged; container application
+`a0329e66-ac29-49de-b757-943ac7d3299c` remains version 38 with the same pinned image.
+Production settings and deployment `cf1db6ba-5c20-444b-87ef-29415305ea47` unchanged.
+Prior staging version `70cc4d8a-5207-40e3-8226-81057d1d1f45` is the rollback target.
+Safe readback receipt: Native `.verification/staging-editor-budget-readback-20261012.json`.
+
+Both local apps (4325 and 3045) still return 200. Disk remains about 15 GiB free.
+No push, GitHub Actions, dependency installation, container build or production
+update occurred. The normal native Mac window remains inaccessible, but the
+Chrome extension reached genuine B's native dashboard through `/studio/signup`
+(existing native session; no new email). One normal Open Studio click created a
+B editor child at 20:15:19 UTC, expiring at 00:15:19 UTC, unrevoked. Current managed
+adoption/checkpoint/authority calls return 200. The launch is still in progress;
+no editor success or completion is claimed yet.
+
+
+### Follow-up: native runtime activation ordering
+
+The genuine B launch returned 200 after 117,957 ms, followed by scoped session
+handoff 303. Thus the timeout correction is hosted-verified. The editor root still
+returned 410 after its existing one-shot recovery. Safe SDK warning identifies
+`runtime-mismatch`, with healthy/running container and port 4174. Pinned SDK 0.12.7
+RPC startup invokes containers 0.3.7 startup even warm; its onStart replaces the
+runtime identity, invalidating an earlier exposed-port activation.
+
+The reviewed native-only correction refreshes the same exact editor exposure
+following awaited editor health and browser-enabled page preparation's last SDK
+operation. Every fresh authorization, deadline, session-expiry and origin check
+remains. No direct runtime/DO state edit, global SDK override, stale bypass or
+additional retry is introduced. Browser-disabled prepare retains its previous
+behavior and 60-second limit.
+
+Source `3b9a18a54e0a91f7dcbec9ba1888f1701bbf541d` passed 134 focused checks,
+6,167 full tests (four existing conditional skips), build, types, modified-file
+lint and normal hook (all 1,581 files, no fixes). Independent implementation
+review reran 131 checks and found no blockers. Worker-only dry run: 2,568.39 KiB
+raw / 489.99 KiB gzip. Exact reviewed current main is included.
+
+Staging-only version `80e3b463-cfb2-431a-8550-854114b991a3`, deployment
+`3c60610b-3742-40c7-85c1-e6d5f0a90e7d`, 100% at 11 October 20:50:49 UTC.
+Readback confirms all settings/bindings unchanged, the same container version 38
+and pinned image, and unchanged production settings/deployment. Safe receipt:
+Native `.verification/staging-editor-activation-readback-20261012.json`.
+The immediate prior staging version `9c3e9be7-9a62-4653-bb96-4e4e1abc9f4f`
+is this correction's rollback target. A fresh normal B owner handoff is underway;
+no editor UI completion is claimed yet. No push or GitHub Actions.
+
+
+### Hosted native editor and scope acceptance completed
+
+B's fresh owner launch returned 200 in 83,659 ms, followed by scoped session
+handoff 303. Root pages, overlay script, persistence script and fonts returned 200.
+No previous stale-runtime failure was observed on that verified launch. The light
+editor rendered its own website; full-browser edit, dark/light switching and the
+integrated collapsed thumbnail toolbar worked (light restored).
+
+A real inline heading edit to "Technology that works for your team" showed Saved,
+created a durable checkpoint (201, 51,386 ms), and survived a full browser reload.
+Unauthenticated browser fetch returned 401. B was then signed out through the real
+native UI; a credentialed request with the prior editor cookie returned 403. The
+revoked test editor tab was closed, stopping its expected socket reconnect denials.
+No form/template email, AI operation or publishing action occurred.
+
+One ordinary sign-in email was requested for the approved pgiurin@gmail.com owner.
+Its visible sender was notification@xeroflow.io. The exact preview origin and
+`/studio/signup/verify` target were validated privately, and the genuine one-use
+flow completed without printing/persisting tokens, cookies or credential URLs.
+The mailbox was returned to its inbox.
+
+A's own workspace/recipient reads returned 200. Foreign B recipient GET and one
+valid-shaped PUT both returned 403; A's own nullable recipient record remained
+unchanged at revision 0. This closes the earlier reverse-write observation gap.
+A then used normal Open Studio: launch 200 in 59,835 ms, scoped handoff 303, and its
+own desktop and mobile previews rendered. A child issued 21:14:03 UTC, expires
+01:14:03 UTC, unrevoked. No prior expiration or policy expiry was changed.
+
+Evidence in Dashboard `.verification/resume-20261008/`:
+`native-b-editor-ready-20261012.png`,
+`native-b-editor-saved-reloaded-light-20261012.png`,
+`native-a-to-b-scope-denial-20261012.json`,
+`native-a-editor-desktop-mobile-ready-20261012.png`.
+The current A owner editor is retained as the browser deliverable.
+
+Remaining gates are explicit: real shared-form creation/durable fixture and form
+specific drafts; supported hosted viewer/membership/capability cases; staging media
+storage; and save latency close to the preserved 60-second limit. Native dashboard
+progress cards also do not consistently reflect the verified completed receipts.
+The original production Fantasy Limo remains untouched with indefinite access.
+Both local servers remain available. No pushes/GitHub Actions for this work.
