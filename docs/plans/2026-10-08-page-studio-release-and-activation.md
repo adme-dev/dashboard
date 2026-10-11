@@ -772,3 +772,6 @@ Validation: four regression cases failed before the fix; 125 focused PostgreSQL/
 
 
 The recovery-fix staging release at source `e14080753` stopped before upload: raw Worker size 25,468,934 / 25,468,928 bytes (six over). Production and the preceding preview artifact remain unchanged. The repeated start-action comparison was factored into one boolean without changing behavior; all 102 PostgreSQL coordinator tests and changed-file lint passed afterward. The size limit is unchanged. Local 3045 was restored and returned HTTP 200.
+
+
+Source `5de9b2d06` also stopped before upload: the compiler expanded the shared action check, leaving raw size 25,468,969 / 25,468,928 (41 over). No budget adjustment or upload occurred. The next simplification shares the duplicate six-field adoption status projection; GET and POST retain their exact original schema parsers and final authority checks. All 23 setup PostgreSQL/HTTP tests and lint passed. Local 3045 was restored again.

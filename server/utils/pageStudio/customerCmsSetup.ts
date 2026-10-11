@@ -25,6 +25,9 @@ const denied = () => createError({ statusCode: 403, statusMessage: 'Customer CMS
 const resume = () => createError({ statusCode: 409, statusMessage: 'Resume CMS setup before continuing.' })
 const same = (a: unknown, b: unknown) => collectionCanonical(a) === collectionCanonical(b)
 const kinds = ['collection', 'workflow', 'collection-staging', 'form-runtime', 'form-drafts'] as const
+function adoptionStatus({ phase, adoptionId, progress, recoveryId, recoveryRequired, progressDigest }: Awaited<ReturnType<typeof coordinateCmsAdoption>>) {
+  return { phase, adoptionId, progress, recoveryId, recoveryRequired, progressDigest }
+}
 function configuration(options: CustomerCmsSetupOptions) {
   if (options.env.PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED !== 'true'
     || options.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== 'staging'
@@ -133,11 +136,9 @@ export async function readCustomerCmsSetup(token: string, options: CustomerCmsSe
   const prerequisites = []
   for (const kind of kinds) prerequisites.push(await coordinateCustomerSchemaUpgrade({ action: 'status', kind }, claims, options))
   const value = await coordinateCmsAdoption({ action: 'status' }, { source: 'customer-session', claims, env: options.env, capability: 'cms:adopt' }, options)
-  const { phase, adoptionId, progress, recoveryId, recoveryRequired, progressDigest } = value
   // Final native check after all provider observations. No provider details or child tokens leave Dashboard.
   await (options.runTransaction ?? transactionWithoutRetry)(db => assertCustomerEditorSessionAuthority(claims, 'cms:prepare', db))
-  return CustomerCmsSetupStatusSchema.parse({ resumeRequired: false, prerequisites,
-    adoption: { phase, adoptionId, progress, recoveryId, recoveryRequired, progressDigest } })
+  return CustomerCmsSetupStatusSchema.parse({ resumeRequired: false, prerequisites, adoption: adoptionStatus(value) })
 }
 export async function mutateCustomerCmsSetup(token: string, input: unknown, options: CustomerCmsSetupOptions) {
   const request = CustomerCmsSetupRequestSchema.parse(input)
@@ -146,6 +147,5 @@ export async function mutateCustomerCmsSetup(token: string, input: unknown, opti
   if (request.operation === 'resume') return { resumed: true }
   if (request.operation === 'schema') return coordinateCustomerSchemaUpgrade(request.request, claims, options)
   const value = await coordinateCmsAdoption(request.request, { source: 'customer-session', claims, env: options.env, capability: 'cms:adopt' }, options)
-  const { phase, adoptionId, progress, recoveryId, recoveryRequired, progressDigest } = value
-  return CustomerCmsAdoptionStatusSchema.parse({ phase, adoptionId, progress, recoveryId, recoveryRequired, progressDigest })
+  return CustomerCmsAdoptionStatusSchema.parse(adoptionStatus(value))
 }
