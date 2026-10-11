@@ -23,7 +23,7 @@ Both accounts have collection/content tools installed. B has all five prerequisi
 installed and completed genuine hosted managed adoption at about 09:23 UTC,
 through freeze, import, readiness and activation in the normal dashboard. Its
 workspace remains unpublished and editor access remains closed. Screenshot:
-`.verification/resume-20261008/native-b-managed-cms-ready-20261011.png`.
+`.verification/resume-20261008/native-b-managed-cms-ready-final-20261011.png`.
 
 The first B-only private Forms activation attempt returned uncertain/readback-
 unavailable. A read-only follow-up inspection succeeded, but the exact scoped D1
@@ -35,8 +35,13 @@ bug: the private provider terminates activation after 30 seconds. No B capabilit
 was created. A regression-tested local transport fix allows only the exact
 activation call to wait up to 15 minutes; read-only/init/disposal deadlines remain
 30 seconds, with all server authority, leases and approval expiry unchanged.
-Independent review and full native tests/build/typecheck pass; lint is pending.
-The corrected operator needs fresh setup recovery before one controlled attempt. A's genuine incognito window remains unreachable; the
+Independent review, 6,150 full native tests, build/typecheck and full lint pass.
+The corrected operator is committed locally at
+f15b98caf572134ec8903a3e3eef6c2640efe17b. Fresh recovery and the single corrected
+activation attempt passed. B's Forms capability is independently confirmed Active
+at 10:03:27.849 UTC, identity
+58869acfe41d4eb2708f2963490a67af84f6b4d0cb74036f9c126ee554c62241.
+The operator confirms the original route proof remains identical. A's genuine incognito window remains unreachable; the
 user's access clarification is pending.
 
 A bounded native fix for the costly Forms schema verification selects a ten-minute
@@ -64,7 +69,7 @@ creates real headroom: the current preview raw bundle is 25,467,623/25,468,928 b
 receipts and limitations are in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
 
 Remaining: finish A prerequisites and managed adoption for A;
-activate the exact private Forms capability only after physical readback; run
+activate A's exact private Forms capability after physical readback; run
 hosted Forms/browser/isolation/role acceptance; reconcile approved production
 changes separately. Slow guarded provider verification remains a hosted acceptance
 limitation. Approvals cover only A/B, expire at the original

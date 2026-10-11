@@ -900,3 +900,47 @@ a separate fresh review record binds that digest and preserves B's exact scope
 and original 12 October 13:27:09 UTC approval expiry. Read-only inspection with
 those new bytes succeeds with the unchanged route digest. No activation replay
 has occurred with the corrected tool yet.
+
+
+### 11 October 10:00 UTC: corrected operator final checks and controlled attempt
+
+Full lint passes 1,581 files in 605 seconds; mandatory pre-commit Biome hook passes
+1,581 files in 561 seconds, no fixes. Native local commit
+`f15b98caf572134ec8903a3e3eef6c2640efe17b` retains only the activation transport fix,
+three regression tests and corrected runbook. Source/operator digest remains
+`3e1b133891b79ad732d6b74dd44ed440a70e4df0f490f5ec0bbd87b518fcafd6`.
+Final review evidence digest
+`cc0f31960d4c3f3ca4a9457587cfb2c1ddebd0cc72cbed3f158fadd9e6cfd20e`
+binds that source, completed checks, original B scope and unchanged deadline.
+Offline final-manifest validation passes. No Cloudflare code deployment or Actions.
+
+The normal B dashboard resumed its real 15-minute setup child at 09:52:33 UTC,
+expiry 10:07:33 UTC. All five installed operations were reconciled in order,
+with final schema Ready observed at 10:00 UTC. Read-only Neon confirms both Forms
+recovery grants active and unrevoked. The corrected operator began one controlled
+inspect/activate/readback attempt at 10:00:14 UTC. Its separate final report is
+retained; success is not inferred while the call is pending. Managed CMS remains
+Ready and unpublished; editor/browser and broader Forms flags remain closed.
+
+
+### 11 October 10:03 UTC: B Forms capability confirmed
+
+The single corrected-tool attempt exited zero and reported confirmed. Independent
+exact-scoped D1 readback confirms Active, created 10:03:27.849 UTC, identity
+`58869acfe41d4eb2708f2963490a67af84f6b4d0cb74036f9c126ee554c62241`,
+runtime digest `6cb34fd939e71028567270190fb6d02c59011b2cdc1c4b0497effb3f702367f5`.
+Operator final manifest digest
+`f24b3c31a4b9b112003c3760072dfe5c8e959815dc738afa4eb6a2b5499f7732`,
+source/review digests match the completed reviewed record. Route proof digest
+`1e8da62f69aa900413e533d6a02a38ce8ab610811c2fab575ee68e8db33f7adb`
+is identical before/after: only the capability changed. Final redacted receipt:
+native `.verification/native-two-account-20261011/form-drafts-activation-b-online-final-20261011.json`.
+
+Normal dashboard all six setup rows remain Ready and unpublished. Final screenshot:
+`.verification/resume-20261008/native-b-managed-cms-ready-final-20261011.png`.
+B browser is retained for subsequent hosted acceptance. Local 4325/3045 return
+HTTP 200. Current free disk is about 8.74 GiB, so no further build is started.
+Original Fantasy production remains unchanged; no source push or Actions.
+A's inaccessible genuine incognito session, A's remaining prerequisites/adoption/
+capability, hosted Forms/browser/role/isolation acceptance and separate reviewed
+production reconciliation remain outstanding. No platform-complete claim.
