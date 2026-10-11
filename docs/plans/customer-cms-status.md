@@ -913,3 +913,8 @@ Hosted recovery on the verified preview: B explicitly resumed a genuine setup ch
 
 
 B's final schema recovery returned HTTP 200, reserved status, retained request `be381daf-1166-425f-abf5-09fd9c3e7568`, new recovery head `68589030-c5f7-4bda-8fed-a392bf61a8bd`. No execution occurred during recovery. The subsequent full status GET exceeded its existing 30-second browser deadline and was aborted (CDP Network.loadingFailed net::ERR_ABORTED); the setup action POST itself succeeded. The client GET timeout now matches POST at 300 seconds so slow provider readback can finish. This changes neither fifteen-minute child expiry nor original review/preview deadlines, backend fences or leases. Independent source review, lint and diff checks pass. Another guarded staging release is pending; all production and native identities remain unchanged.
+
+
+### 11 October 06:20 UTC: setup readback timeout release
+
+Guarded preview deploy succeeded from clean source `b10c53c4f7a848d7ecaa560baf4714bcbdeb213c` on current main `a78a11945f13c520d3258df9e249b99d46b21b07`. Cloudflare readback verifies `a8f5d60d-e35f-42fa-838d-1a89a414d087`, created 06:19:52.179691 UTC, successful 06:20:02.122399. Raw size 25,467,699 / 25,468,928 (1,229 spare), gzip 7,044,633. Minimum disk 10,187,137,024 bytes, unchanged 8 GiB stop floor. Local 3045 restored; native 4325 remained running. B reloaded the verified preview. GET and POST now both wait up to 300 seconds without changing authority expiry. Hosted readback and schema execution remain pending. No production changes, pushes or Actions.
