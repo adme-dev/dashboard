@@ -14,38 +14,49 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 
 ## Running ledger — 11 October 2026
 
-Latest outcome: the Cloudflare provisioning credential is repaired, and both
-real native acceptance previews are fully provisioned. A restricted, staging-only
-CMS setup bridge is deployed at preview source `c2b01db4d836dd32e420906ae375bc6769d8296e`,
-deployment `e8138e1b-878a-4383-b8d4-2266a2497c42`. Genuine mailbox sessions remain
-separate; both received genuine setup-only controls. Collection and content tools are
-installed on both. B has three storage prerequisites installed and the reviewed Forms runtime ready,
-with explicit short-session recovery retained for continuation; A's incognito window is currently unreachable through native
-window control. The user's async access clarification is pending.
-This is not native Forms/editor/publication acceptance or a production activation.
+Latest outcome: the Cloudflare provisioning credential is repaired and both real
+native acceptance previews are fully provisioned. The staging-only setup bridge,
+retained recovery fix and readback timeout fix are live at clean Dashboard source
+`b10c53c4f7a848d7ecaa560baf4714bcbdeb213c`, preview deployment
+`a8f5d60d-e35f-42fa-838d-1a89a414d087` (11 October 06:20 UTC).
+Both accounts have collection/content tools installed. B has all four earlier
+prerequisites Ready; its final Forms schema physically has the exact original
+marker, but its coordinator operation remains reserved after a five-minute lease
+expired. Physical schema alone is not completion. A's genuine incognito window
+is unreachable; the user's async access clarification remains pending.
+
+A bounded native fix for the costly Forms schema verification selects a ten-minute
+staging lease, preserving production's five minutes and every authority/runtime
+pin/database-clock/compare-and-swap fence. All 6,147 native tests pass (four existing
+conditional skips), build 28 and typecheck 44 plus security types pass, full lint
+passes 1,580 files. Independent code/config review passes; the commit hook and
+staging-only executor release are pending. The customer runtime is unchanged.
+No schema phase, receipt, lease or approval expiry has been manually changed.
 
 Fantasy Limo's original production CMS remains Ready with indefinite active access,
-75 pages and 109 media assets. The denied invited-user preparation warning fix is
-already merged/released in Dashboard main `a78a119...`, production deployment
-`7f98f789-d152-4d2d-90d7-dec3c8f24798`; it is not a current release blocker.
-The selected local builder on 4325 remains running; the local CMS on 3045 was
-restored after the guarded staging build. No GitHub Actions were triggered.
+75 pages and 109 media assets. Its invited-user warning fix is already merged and
+released in Dashboard main `a78a11945f13c520d3258df9e249b99d46b21b07`, production
+deployment `7f98f789-d152-4d2d-90d7-dec3c8f24798`. Production is unchanged this turn.
+The selected local builder on 4325 remains running; local CMS 3045 is restored
+and verified HTTP 200. No pushes or GitHub Actions were triggered.
 
-Current checks: 16,228 tests pass; existing 934 type diagnostics unchanged; changed
-source lint and independent review pass. First build stopped before upload at
-410 bytes over budget. Shared adoption DTO refactor passes 69 focused checks and
-review; the final build meets the unchanged raw safety budget with 76 bytes spare
-and gzip 7,044,688 bytes. Do not relax that guard; further server features require
-additional extraction. Exact source/runtime/config receipts and scope limits are
-in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
+Dashboard validation: 16,238 tests pass, with 59 files/1,653 conditional tests
+skipped. Changed-file lint and independent review pass. The last typecheck records
+934 existing diagnostics; no new global-clean typecheck claim is made. Several
+local size-guard failures stopped before upload. Shared canonical identity hashing
+creates real headroom: the current preview raw bundle is 25,467,699/25,468,928 bytes
+(1,229 spare), gzip 7,044,633/9,750,000. The guard is unchanged. Source/provider
+receipts and limitations are in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
 
-Remaining: complete five supported prerequisites and managed adoption for A/B;
+Remaining: finish supported final schema completion and managed adoption for A/B;
 activate the exact private Forms capability only after physical readback; run
 hosted Forms/browser/isolation/role acceptance; reconcile approved production
-changes separately. Setup approvals cover only A/B, expire at the original
+changes separately. Slow guarded provider verification remains a hosted acceptance
+limitation. Approvals cover only A/B, expire at the original
 2026-10-12T13:27:09Z deadline and cannot be silently extended. Editor/browser/Forms
-flags remain closed. AI allowance stays zero. The original Fantasy website,
-accounts, publication and domain remain unchanged.
+flags remain closed, and AI allowance is zero. This is not a completed platform
+launch or production customer activation. Original Fantasy data, account,
+publication and domain are preserved.
 
 ### Editor preparation warning — historical local verification (released 10 October)
 
@@ -918,3 +929,13 @@ B's final schema recovery returned HTTP 200, reserved status, retained request `
 ### 11 October 06:20 UTC: setup readback timeout release
 
 Guarded preview deploy succeeded from clean source `b10c53c4f7a848d7ecaa560baf4714bcbdeb213c` on current main `a78a11945f13c520d3258df9e249b99d46b21b07`. Cloudflare readback verifies `a8f5d60d-e35f-42fa-838d-1a89a414d087`, created 06:19:52.179691 UTC, successful 06:20:02.122399. Raw size 25,467,699 / 25,468,928 (1,229 spare), gzip 7,044,633. Minimum disk 10,187,137,024 bytes, unchanged 8 GiB stop floor. Local 3045 restored; native 4325 remained running. B reloaded the verified preview. GET and POST now both wait up to 300 seconds without changing authority expiry. Hosted readback and schema execution remain pending. No production changes, pushes or Actions.
+
+
+Long status GET on the timeout-fixed preview returned HTTP 200 and exposed the normal Resume step control. B selected it once; the client performed its fresh status preflight before attempting the same original schema operation. The previous setup child expired during that attempt and the dashboard correctly returned Resume content setup. D1 remains reserved with original operation `1c1f8a96-4c92-4565-9784-d45aef2fc0d5` and retained lease until 06:29:47.294 UTC. A new genuine setup child was resumed at about 06:26 UTC; completed-operation recovery is underway. No lease/expiry/phase edits or premature duplicate execution.
+
+
+### 11 October: bounded native Forms schema verification fix
+
+The last five-minute schema lease expired with B still reserved. Target D1's exact original operation marker and reviewed source/target digests exist, but coordinator completion remains withheld. Source review identifies 14 leased fences for existing-schema readback, each performing nine native callbacks and nine Cloudflare management reads. A tested native change selects a ten-minute staging lease from the validated environment; production remains five minutes. All authority, predecessor, runtime pin, token, database-clock and completion CAS fences remain unchanged, as do setup child and approval expiries.
+
+Native tests-first staging case failed before change; 36 focused checks then passed. Full suite: 6,147 pass, four existing conditional Astro skips; build 28 and typecheck 44 plus security types pass. Tenant artifact remains exact reviewed 6cb digest/911,081 bytes. Independent source and concrete deployment-config reviews pass. Full native lint and staging executor release are pending. The derived config omits all vars and inherits current live configuration, avoiding replacement of A/B controlled scopes by older committed settings. No production change, pushed commits or GitHub Actions. Broader hosted acceptance remains incomplete; A's incognito window remains unreachable.

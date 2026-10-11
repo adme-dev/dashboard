@@ -2,9 +2,11 @@
 
 
 Current task status and next steps live in the
-[running CMS/Studio ledger](customer-cms-status.md#running-ledger--9-october-2026).
+[running CMS/Studio ledger](customer-cms-status.md#running-ledger--11-october-2026).
 This file retains release/source/provider evidence. Historical entries below do
 not authorize deploying an older branch or treating local checks as hosted acceptance.
+
+## Historical checkpoint — 8 October 2026
 
 Latest local updates: email field picker and compatibility are committed at
 Dashboard `20b4ebe30` / native `1e3219b`; collapsed navigation is committed at
@@ -802,3 +804,13 @@ B's final schema recovery returned HTTP 200, reserved status, retained request `
 ### 11 October 06:20 UTC: setup readback timeout release
 
 Guarded preview deploy succeeded from clean source `b10c53c4f7a848d7ecaa560baf4714bcbdeb213c` on current main `a78a11945f13c520d3258df9e249b99d46b21b07`. Cloudflare readback verifies `a8f5d60d-e35f-42fa-838d-1a89a414d087`, created 06:19:52.179691 UTC, successful 06:20:02.122399. Raw size 25,467,699 / 25,468,928 (1,229 spare), gzip 7,044,633. Minimum disk 10,187,137,024 bytes, unchanged 8 GiB stop floor. Local 3045 restored; native 4325 remained running. B reloaded the verified preview. GET and POST now both wait up to 300 seconds without changing authority expiry. Hosted readback and schema execution remain pending. No production changes, pushes or Actions.
+
+
+Long status GET on the timeout-fixed preview returned HTTP 200 and exposed the normal Resume step control. B selected it once; the client performed its fresh status preflight before attempting the same original schema operation. The previous setup child expired during that attempt and the dashboard correctly returned Resume content setup. D1 remains reserved with original operation `1c1f8a96-4c92-4565-9784-d45aef2fc0d5` and retained lease until 06:29:47.294 UTC. A new genuine setup child was resumed at about 06:26 UTC; completed-operation recovery is underway. No lease/expiry/phase edits or premature duplicate execution.
+
+
+### 11 October: bounded native Forms schema verification fix
+
+The last five-minute schema lease expired with B still reserved. Target D1's exact original operation marker and reviewed source/target digests exist, but coordinator completion remains withheld. Source review identifies 14 leased fences for existing-schema readback, each performing nine native callbacks and nine Cloudflare management reads. A tested native change selects a ten-minute staging lease from the validated environment; production remains five minutes. All authority, predecessor, runtime pin, token, database-clock and completion CAS fences remain unchanged, as do setup child and approval expiries.
+
+Native tests-first staging case failed before change; 36 focused checks then passed. Full suite: 6,147 pass, four existing conditional Astro skips; build 28 and typecheck 44 plus security types pass. Tenant artifact remains exact reviewed 6cb digest/911,081 bytes. Independent source and concrete deployment-config reviews pass. Full native lint and staging executor release are pending. The derived config omits all vars and inherits current live configuration, avoiding replacement of A/B controlled scopes by older committed settings. No production change, pushed commits or GitHub Actions. Broader hosted acceptance remains incomplete; A's incognito window remains unreachable.
