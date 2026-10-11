@@ -11,6 +11,27 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [standalone style guide](../design/standalone-cms-style-guide.md),
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
 
+## Next work — visual feedback, 12 October 2026
+
+The [visual feedback decisions and priority plan](2026-10-12-page-studio-visual-feedback.md)
+preserves Paul's original PRD and selects a narrow first slice: get bounded,
+sanitised selected-element text through the genuine hosted AI contract, with the
+same context visible before Send and tested exact targeting. Source inspection
+found separate local, controlled-manifest and hosted paths; enriching the local
+picker alone would not reach the hosted agent. Existing source discovery should
+be extended rather than rebuilt.
+
+Implementation has not started. Next steps: concrete hosted admission plan,
+Fantasy targeting fixtures/baseline, text capture and compatibility/privacy/parity
+tests. Then prove selection cycling with a covered-element fixture. Screenshot
+capture needs a hosted feasibility spike; pinned comments, client brand guidance,
+annotation and design-system sharing follow their recorded dependencies.
+
+Preserve the Tuesday Fantasy showcase and the completed production release.
+Existing shared-form/authority/media and editor load/save performance work remains
+open. This documentation does not activate native production signup or change
+feature flags, storage, accounts or deployments.
+
 
 ## Running ledger — 12 October 2026
 
