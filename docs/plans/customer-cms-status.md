@@ -19,18 +19,18 @@ native acceptance previews are fully provisioned. The staging-only setup bridge,
 retained recovery fix and readback timeout fix are live at clean Dashboard source
 `b10c53c4f7a848d7ecaa560baf4714bcbdeb213c`, preview deployment
 `a8f5d60d-e35f-42fa-838d-1a89a414d087` (11 October 06:20 UTC).
-Both accounts have collection/content tools installed. B has all four earlier
-prerequisites Ready; its final Forms schema physically has the exact original
-marker, but its coordinator operation remains reserved after a five-minute lease
-expired. Physical schema alone is not completion. A's genuine incognito window
+Both accounts have collection/content tools installed. B now has all five backend prerequisites complete: the exact original final
+Forms schema operation is installed and its lease cleared (07:17 UTC). The
+client still repeats expensive verification; a tested strict response-merging
+fix is awaiting its guarded release. A's genuine incognito window
 is unreachable; the user's async access clarification remains pending.
 
 A bounded native fix for the costly Forms schema verification selects a ten-minute
 staging lease, preserving production's five minutes and every authority/runtime
 pin/database-clock/compare-and-swap fence. All 6,147 native tests pass (four existing
 conditional skips), build 28 and typecheck 44 plus security types pass, full lint
-passes 1,580 files. Independent code/config review passes; the commit hook and
-staging-only executor release are pending. The customer runtime is unchanged.
+passes 1,580 files. Independent code/config review passes; the staging-only executor release is verified at version
+`b5cbb7be-92ae-4f19-9449-6adc590864de` (07:03 UTC). The customer runtime is unchanged.
 No schema phase, receipt, lease or approval expiry has been manually changed.
 
 Fantasy Limo's original production CMS remains Ready with indefinite active access,
@@ -48,7 +48,7 @@ creates real headroom: the current preview raw bundle is 25,467,699/25,468,928 b
 (1,229 spare), gzip 7,044,633/9,750,000. The guard is unchanged. Source/provider
 receipts and limitations are in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
 
-Remaining: finish supported final schema completion and managed adoption for A/B;
+Remaining: finish A prerequisites and managed adoption for A/B;
 activate the exact private Forms capability only after physical readback; run
 hosted Forms/browser/isolation/role acceptance; reconcile approved production
 changes separately. Slow guarded provider verification remains a hosted acceptance
@@ -939,3 +939,21 @@ Long status GET on the timeout-fixed preview returned HTTP 200 and exposed the n
 The last five-minute schema lease expired with B still reserved. Target D1's exact original operation marker and reviewed source/target digests exist, but coordinator completion remains withheld. Source review identifies 14 leased fences for existing-schema readback, each performing nine native callbacks and nine Cloudflare management reads. A tested native change selects a ten-minute staging lease from the validated environment; production remains five minutes. All authority, predecessor, runtime pin, token, database-clock and completion CAS fences remain unchanged, as do setup child and approval expiries.
 
 Native tests-first staging case failed before change; 36 focused checks then passed. Full suite: 6,147 pass, four existing conditional Astro skips; build 28 and typecheck 44 plus security types pass. Tenant artifact remains exact reviewed 6cb digest/911,081 bytes. Independent source and concrete deployment-config reviews pass. Full native lint and staging executor release are pending. The derived config omits all vars and inherits current live configuration, avoiding replacement of A/B controlled scopes by older committed settings. No production change, pushed commits or GitHub Actions. Broader hosted acceptance remains incomplete; A's incognito window remains unreachable.
+
+
+### 11 October 07:03 UTC: verified staging Forms schema lease release
+
+Native clean source `f7182581b9e4672bc3c3b7a445e14b337e04defa` contains fresh main `4401438d6766baef4adde0c76741ebc30ab1781c`. Full lint and required commit hook both pass 1,580 files without fixes. Guarded staging executor deploy succeeded: `a8549573-edcc-43b6-8cdc-7fb4d4cd5371` at 07:03:04.127535 UTC, version `b5cbb7be-92ae-4f19-9449-6adc590864de`, 100%. Every binding and actual plaintext/JSON variable compares identically before/after, and the PROVISIONING_API_TOKEN secret entry remains (no value read/copied). Only deployment annotations changed. Production executor remains `111cf7ba-ae5d-48ca-8f15-43a40e7d9818` / `cd0aa33b-bc2e-4822-a4ba-3fa80fac3972`, unchanged.
+
+Wrangler dry-run caught scratch tsconfig path resolution before upload. Final ignored config sits beside the original and differs ONLY by omitting vars/enabling keep_vars; dry-run 1,924.55 KiB/330.36 KiB gzip. It preserves the controlled A/B config rather than overwriting it with committed older scopes. Exact target/current-source guards and independent concrete config review pass. Minimum deploy disk 10,910,769,152 bytes above the unchanged 8 GiB floor.
+
+B refreshed its genuine dashboard to resume under this release; final supported schema completion/adoption remains pending. A's isolated window remains unreachable. No production release, pushes or Actions.
+
+
+### 11 October: B schema complete and verified-response UI correction
+
+Read-only D1 at 07:17:25 UTC confirms B's exact original draft schema operation `1c1f8a96-4c92-4565-9784-d45aef2fc0d5` is installed, lease cleared. The released staging claim was independently observed as ten minutes (13:39:39.805–23:39:39.805 UTC); original child/approval expiries were not extended. All five backend prerequisites are now complete for B. Managed adoption and Forms capability remain pending; A remains at two prerequisites with an unreachable incognito window.
+
+The UI discarded each successful guarded response and repeated expensive full status verification, often exhausting its setup session. A client-only strict merger now validates kind/original request/recovery head/adoption ID/progress digest, updates only the returned operation, and prevents older reads, replaced snapshots or unmounted pages from merging results. Confirmation belongs to one step and exact snapshot; uncertainty, malformed/mismatched responses or refresh invalidate it and require successful readback. Client transport waits up to 900 seconds; every backend expiry/fence remains unchanged. No readiness, capability or editor access is inferred.
+
+Tests-first: seven component regressions failed; three additional review findings (settled concurrent GET error and two adoption-start head cases) failed before correction. Final focused 35 tests pass, lint/diff and independent source review pass. Final full suite 16,268 pass across 2,258 files, 60 files/1,658 conditional tests skipped. Five additional skips are the built Worker boundary tests after removing only owned rebuildable dist output to free 91 MB; they must run on the rebuilt artifact before release. Typecheck has exactly 934 diagnostics/498 normalized identities, no new or removed identities versus the preceding baseline. It is not globally clean. Local 3045 restored after checks, native 4325 untouched. No pushes/Actions; client release pending.

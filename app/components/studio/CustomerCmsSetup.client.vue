@@ -1,49 +1,82 @@
 <script setup lang="ts">
 import type { CustomerCmsSetupStatus, CustomerCmsSetupRequest } from '~~/shared/pageStudio/customerCmsSetup'
+import { mergeCustomerCmsSetupResponse } from '~/utils/pageStudioCmsSetupResponse'
 
 const emit = defineEmits<{ changed: [] }>()
 const api = '/api/portal/page-studio/customer/cms-setup'
-const { data, error, refresh } = useFetch<CustomerCmsSetupStatus>(api, { server: false, timeout: 300000 })
+const { data, error, refresh, status } = useFetch<CustomerCmsSetupStatus>(api, { server: false, timeout: 900000, watch: false })
 const busy = ref(false), message = ref('')
+const uncertain = ref(false)
+const working = computed(() => busy.value || status.value === 'pending')
+let active = true
+let confirmedStep: { snapshot: CustomerCmsSetupStatus, kind: string } | null = null
+onBeforeUnmount(() => {
+  active = false
+  confirmedStep = null
+})
 const labels = { 'collection': 'Content collections', 'workflow': 'Content tools', 'collection-staging': 'Draft storage', 'form-runtime': 'Form tools', 'form-drafts': 'Form draft storage' }
+async function readback() {
+  confirmedStep = null
+  uncertain.value = true
+  try {
+    await refresh({ dedupe: 'defer' })
+    if (active && !error.value && status.value === 'success' && data.value) uncertain.value = false
+  } catch {
+    if (active) message.value = 'Setup could not refresh. Refresh before continuing.'
+  }
+}
 async function run(body: CustomerCmsSetupRequest) {
-  if (busy.value || error.value) return
+  if (working.value || error.value || uncertain.value || !active) return
+  const before = data.value
+  let refreshRequired = true
   busy.value = true
+  confirmedStep = null
   message.value = ''
   try {
-    await $fetch(api, { method: 'POST', body, timeout: 300000 })
+    const raw = await $fetch(api, { method: 'POST', body, timeout: 900000 })
+    if (!active) return
+    if (!before || data.value !== before || error.value || status.value !== 'success') throw new Error('Setup snapshot changed')
+    const next = mergeCustomerCmsSetupResponse(before, body, raw)
+    if (next) {
+      data.value = next
+      refreshRequired = false
+      if (body.operation === 'schema') confirmedStep = { snapshot: data.value, kind: body.request.kind }
+    }
   } catch {
-    message.value = 'We could not confirm that step. Refresh its status before trying again.'
+    uncertain.value = true
+    if (active) message.value = 'We could not confirm that step. Refresh its status before trying again.'
   } finally {
-    await refresh()
+    if (active && refreshRequired) await readback()
     busy.value = false
-    emit('changed')
+    if (active) emit('changed')
   }
 }
 async function reload() {
-  if (!busy.value) {
-    await refresh()
-    message.value = ''
-  }
+  if (working.value || !active) return
+  busy.value = true
+  try {
+    await readback()
+    if (active && !uncertain.value) message.value = ''
+  } finally { busy.value = false }
 }
 const adoption = computed(() => data.value?.adoption)
 async function prepare(kind: keyof typeof labels) {
-  if (busy.value || error.value) return
+  if (working.value || error.value || uncertain.value || !active) return
   let current = data.value?.prerequisites.find(row => row.kind === kind)
   if (!current) return
-  if (['reserved', 'running'].includes(current.status)) {
-    // Refresh retained identity before an explicit same-request resume. The
-    // coordinator alone decides whether its lease allows work; never infer it
-    // from a browser timeout or strand an expired retained operation.
-    await refresh()
+  if (['reserved', 'running'].includes(current.status) && !(confirmedStep?.snapshot === data.value && confirmedStep.kind === kind)) {
+    // Only this step's guarded response can avoid a duplicate read. Refresh
+    // after uncertainty or any snapshot replacement; backend leases decide work.
+    await readback()
     current = data.value?.prerequisites.find(row => row.kind === kind)
-    if (error.value || !current || current.status === 'installed' || current.status === 'disabled') return
+    if (error.value || uncertain.value || !active || !current || current.status === 'installed' || current.status === 'disabled') return
   }
   run({ operation: 'schema', request: current.status === 'reconciliation'
     ? { action: 'recover', kind, requestId: crypto.randomUUID(), expectedRecoveryId: current.recoveryId }
     : { action: 'start', kind, requestId: current.requestId ?? crypto.randomUUID() } })
 }
 function adopt() {
+  if (working.value || error.value || uncertain.value || !active) return
   const value = adoption.value
   if (!value) return
   if (value.recoveryRequired && value.adoptionId) run({ operation: 'adoption', request: { action: 'recover', adoptionId: value.adoptionId, recoveryId: crypto.randomUUID(), expectedRecoveryId: value.recoveryId } })
@@ -68,7 +101,7 @@ function adopt() {
         icon="i-lucide-refresh-cw"
         color="neutral"
         variant="ghost"
-        :disabled="busy"
+        :disabled="working"
         @click="reload"
       />
     </div>
@@ -84,7 +117,7 @@ function adopt() {
       class="mt-4"
       label="Resume content setup"
       :loading="busy"
-      :disabled="Boolean(error)"
+      :disabled="working || uncertain || Boolean(error)"
       @click="run({ operation: 'resume' })"
     />
     <ol v-else-if="data" class="mt-5 space-y-3">
@@ -96,7 +129,7 @@ function adopt() {
           color="neutral"
           variant="outline"
           :loading="busy"
-          :disabled="Boolean(error) || (!step.canConfigure && step.status !== 'reconciliation') || data.prerequisites.slice(0, index).some(row => row.status !== 'installed')"
+          :disabled="working || uncertain || Boolean(error) || (!step.canConfigure && step.status !== 'reconciliation') || data.prerequisites.slice(0, index).some(row => row.status !== 'installed')"
           @click="prepare(step.kind)"
         />
       </li>
@@ -108,7 +141,7 @@ function adopt() {
           color="neutral"
           variant="outline"
           :loading="busy"
-          :disabled="Boolean(error) || data.prerequisites.some(row => row.status !== 'installed')"
+          :disabled="working || uncertain || Boolean(error) || data.prerequisites.some(row => row.status !== 'installed')"
           @click="adopt"
         />
       </li>
