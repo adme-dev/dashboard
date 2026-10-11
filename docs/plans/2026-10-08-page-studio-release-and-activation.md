@@ -1277,3 +1277,83 @@ storage; and save latency close to the preserved 60-second limit. Native dashboa
 progress cards also do not consistently reflect the verified completed receipts.
 The original production Fantasy Limo remains untouched with indefinite access.
 Both local servers remain available. No pushes/GitHub Actions for this work.
+
+
+### 12 October: user-authorized merge and production release
+
+The user explicitly instructed merge and production deployment. Dashboard PR
+https://github.com/adme-dev/dashboard/pull/652 merged to
+`b47394ab2d730f8411eab89d3d35807700566ab4`; Native PR
+https://github.com/adme-dev/xeroflow-page-studio/pull/123 merged to
+`f678ba8dd61fdd5e67523b826c138c51dd80540b`. Both integration trees are identical
+to the reviewed, locally tested candidates. Both included freshly fetched main;
+normal PR merges used `[skip ci]` after checking neither repository requires CI
+statuses. No workflows were disabled, fabricated or bypassed. Actions readback
+shows no runs for either feature head or merge commit.
+
+Production database migrations 442–448 ran in order on the verified Neon default
+branch `br-small-hall-a4qtwjgo`, with five-second lock and sixty-second statement
+limits. Migration 444 backfilled 104 legacy owners and replaced the existing
+client foreign keys while retaining UUID scopes and ON DELETE RESTRICT. All 12
+site rows and 12 entitlement rows compare unchanged before/after. Both replacement
+foreign keys are valid. Native identities, accounts, workspaces, site requests
+and setup approvals remain empty. Fantasy retains its original tenant/client/site,
+active internal-fantasy-limo-development entitlement and null expiry.
+
+Native production Worker releases from f678ba8:
+
+| Target | Version | Deployment |
+| --- | --- | --- |
+| xeroflow-page-studio-sandbox | 83a5fae0-e8e3-4cb2-82ca-2dc476c1b5ce | c71cdb30-633f-4ea4-8981-d61cc9755540 |
+| xeroflow-provisioning-production | 60069269-a76f-4408-a405-938df41b4642 | 5eebf4ef-6dd2-4973-a738-1e875c0d269d |
+| xeroflow-provisioning-executor-production | e027b1b8-eba5-4322-b350-f116bbc90c53 | 13a6c179-3828-4c30-831d-10960a3b3839 |
+
+All three have 100% deployment readback and identical live bindings, plaintext
+vars, secret names/types, compatibility dates and flags. Reviewed derived configs
+omit stale declared vars and retain live vars. Sandbox used containers-rollout=none:
+application `a033a7df-cee9-46f3-a0ed-9d7b93b6f25a` stays version 26, image ea21,
+namespace 7a62943866fe48d09196d391bc8d4090 and max 10. No tenant runtime artifact,
+customer Worker, container or router was replaced. Rollback versions are Sandbox
+e35d0166-a177-4e5d-8989-767478ea8b0d, scheduler 23ef0df2-424c-4e26-815b-683a0e04e166,
+executor cd0aa33b-bc2e-4822-a4ba-3fa80fac3972. The production Pages rollback is
+7f98f789-d152-4d2d-90d7-dec3c8f24798/source a78a11945.
+
+Fresh native security 36 tests and both dependency audits pass with no known
+vulnerabilities. Existing full source validation remains 6,167 Native and 16,268
+Dashboard tests, plus artifact checks and approved independent cumulative review.
+Dashboard type checking retains the documented existing 934 diagnostics/498
+normalized identities; it is not globally clean.
+
+Native production signup/customer editor activation remains gated. Staging
+shared-form intent/fixture, hosted viewer/membership/capability cases, dedicated
+media storage, progress-card accuracy and near-limit save latency remain separate
+outstanding work. No staging identities, grants or policies were copied into
+production. The merged feature branches were retired locally and remotely after verification; owned
+worktrees remain temporarily because they serve the requested local demos and
+contain release evidence/dependencies, not as future release bases.
+
+Dashboard production deployment `10c5455a-a93d-4bb7-b8ec-99e1be63f170` succeeded
+at 11 October 22:32:28 UTC (12 October 09:32 Melbourne), from clean merged source b47394ab2.
+Cloudflare canonical readback confirms main and the exact source SHA, identical production environment
+configuration and domain bindings including xeroflowpages.com. Raw Worker 25,467,487
+/ 25,468,928 bytes (1,441 spare); gzip 7,044,487/9,750,000. Minimum free disk
+11,764,830,208 bytes, above unchanged 8 GiB stop floor. Fresh 21 deployment guard tests and
+all five rebuilt Worker boundary tests pass. Local CMS 3045 was restored and returns 200;
+native 4325 remained running and returns 200. Live browser verification confirms Fantasy Limo’s original standalone account
+renders in light mode, switches to dark mode and returns to light. Overview
+retains 75 pages, 109 media assets and 8 forms. Agency CMS shows all five setup
+steps Ready. QR Codes navigation renders 8 codes / 48 scans. The public preview
+and /studio each return 200. Production native signup gates and configuration
+remain unchanged. Evidence: production-fantasy-overview-20261012.png,
+production-fantasy-cms-light-20261012.png, production-fantasy-cms-dark-20261012.png
+and production-qr-navigation-20261012.png in .verification/resume-20261008/.
+
+The normal production Open Page Studio action completed its genuine handoff to
+Fantasy’s existing 4e275d editor hostname. The production editor shell and
+light-mode toolbars load. Both Desktop and iPhone previews subsequently render
+Fantasy’s own Make an entrance page, fleet and services. Document, overlay, hook,
+persistence and observed image requests return 200. The initial cold frames were
+slow and briefly blank; cold-load latency remains a performance follow-up.
+No content edit, publish, email or AI operation was performed in production.
+The working editor and Fantasy dashboard remain open for the owner. Screenshot:
+production-fantasy-editor-20261012.png.
