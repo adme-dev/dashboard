@@ -1041,3 +1041,72 @@ image-free native draft acceptance. Editor/browser remain false, production
 configuration unchanged. This is a draft feature gate, not email delivery or
 publication. Provider readback shows staging content router/checkpoints/renderer;
 no production media bucket is introduced. Guarded preview deployment pending.
+
+
+### 12 October 00:14 Melbourne / 11 October 13:14 UTC: Forms preview live
+
+Guarded pnpm deploy:preview from clean f0afdc1ea8603ec0293f1ae383a5787d4e6ae685
+includes current maina78a11945f13c520d3258df9e249b99d46b21b07. Provider readback
+confirms preview608a72a1-f376-423c-a046-afeae0b7db63 created13:14:01.945274,
+success13:14:14.751406 UTC; alias preview.agency-dashboard-6cm.pages.dev.
+Raw25,467,363/25,468,928 (1,565 spare), gzip7,044,401; unchanged guards.
+Minimum disk15,889,436,672 bytes, above8GiB floor. Owned3045 paused only during
+shared build and restored monitor96182/child96192 with the identical startup
+script digest. LOCAL_STUDIO_READY confirmed;4325 was not stopped. Five rebuilt
+Worker boundary tests pass. No push or Actions. Production remains exact
+7f98f789-d152-4d2d-90d7-dec3c8f24798/sourcea78.
+
+Actual signed-in production QR Codes navigation loads eightcodes/48scans, with
+existing client websites/navigation present; readonly proof saved privately.
+Native B overview now offers Manage forms, after its genuine parent session
+remained active and the15minute setup child expired. The first website load showed
+unavailable; an explicit read-only refresh returned200 with the correct owned
+site/checkpoint, three saved pages and zeroassets/forms. This is a recorded
+first-load limitation, not claimed fixed. B Website email defaults loaded; normal
+recipient save returnedHTTP200 revision1, approvedtestmailbox, activationdraft_only,
+noemails sent. Reload verification is pending.
+
+Both starter manifests have no form placements. Per-form settings/sharedform
+acceptance must use supported editor creation, never a fabricated checkpoint.
+Source review conditionally approves owner-only A/B editor flags after exact
+liveSandbox metadata/routing/container and eligible-policy inventory checks.
+Shared-definition browser saves currently omit required typed creationintent and
+are rejected; that is a separate implementation gap. No editor/browserflag changed.
+
+
+### 12 October: bounded editor routing and draft acceptance progression
+
+B recipient revision1 survives explicit reload. Team and Customer templates saved
+independently at revision1/HTTP200 using image-free starting designs; each reloaded
+its distinct test subject, and Customer save did not overwrite Team. Saved status
+reports draft_only/noemails. Screenshots retained in ignored acceptance evidence.
+Stale revision and per-form tests are still pending.
+
+A/B derived editor hostnames were globally absent as Worker domains and DNS
+records. After independent source/config review, only these exact two custom
+domains were attached to existing Sandbox staging service in zone8e38cbf3910d291dd218710296661073.
+A domain3dc8f3ce782662ce4e0cf7095d5ea8c8d69b2189; Bdomain6456a8dcc517ed3bbc741c6de274f8ac4ee367c1.
+Provider readback confirms exact service/zone, enabledtrue/previewsfalse and all
+five prior domainIDs preserved. Both generated certificate packs Active. Native
+Chrome guest requests reach TOKEN_INVALID/Unauthenticated JSON on both, without
+certificate-check bypass or cookie/token copying. Browser extension's first
+navigation was blockedbyclient; supported native Chrome succeeded. No claim of a
+plaintext key comparison: session key/issuer values are opaque secret_text.
+Genuine owner exchange remains the cryptographic test and is failclosed.
+
+Actual staging Sandbox flags/origins/bindings/container match the reviewed pin;
+containerappa0329e66-ac29-49de-b757-943ac7d3299c/imageea21f6f9178ea7982f5f06a2027a30d1e26277e8dbee1884fd800d591e0f5f5c/max10.
+No worker-code/container release for domain attachments. Source config mirrors
+only the two staging routes; independent parsed comparisons preserve every other
+field. 108 native workspace tests and 95 Dashboard token/handoff/session/launch
+tests pass, including real disposable local PostgreSQL.
+
+The proposed Dashboard diff is only preview editor/browserfalse→true and corrected
+comment, plus ledger. Independent final actual-diff review approves it after
+bounded routing/denial/local tests. The two eligible native preview policies still
+carry the original12Oct13:27:09Z expiry; noproduction/AI/publication change. Commit
+and guarded preview release pending; the live flags remain false until readback.
+
+An address-bar GET of B's recipients from A redirected to the agency login page.
+This is not counted as definitive native cross-account403 or write isolation; a
+normal native request-context check is still needed. No B draft mutation occurred.
