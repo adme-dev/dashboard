@@ -17,8 +17,8 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 Latest outcome: the Cloudflare provisioning credential is repaired and both real
 native acceptance previews are fully provisioned. The staging-only setup bridge,
 retained recovery fix and readback timeout fix are live at clean Dashboard source
-`f0afdc1ea8603ec0293f1ae383a5787d4e6ae685`, preview deployment
-`608a72a1-f376-423c-a046-afeae0b7db63` (11 October 13:14 UTC).
+`f015cfd2b69d48f0e9c54334ef81c77b9aa2ca53`, preview deployment
+`2f27de15-1355-41f6-b6ad-0494a585e880` (11 October 13:57 UTC).
 Both accounts have collection/content tools installed. B has all five prerequisites
 installed and completed genuine hosted managed adoption at about 09:23 UTC,
 through freeze, import, readiness and activation in the normal dashboard. Its
@@ -50,12 +50,19 @@ retained recovery passed. A now shows all six rows Ready with managed adoption. 
 capability is confirmed Active at 13:06:41.295 UTC, identity
 0f38722801816d471705432b278292b1626259b19a2eab71ec90ed04807e9518.
 Both retained CMS route proofs remain unchanged. Preview-only Forms is live
-for reviewed hosted acceptance; editor/browser launch are being prepared for a separately reviewed preview
-rollout after exact routing and guest-denial checks; live flags stay closed until
-verified deployment. B's genuine
+for reviewed hosted acceptance; editor/browser launch are live for separately reviewed bounded preview
+acceptance after exact routing and guest-denial checks. Genuine B Open Studio
+reaches a Chrome-generated blocked page; owner handshake/editor UI remains
+unverified and requires user takeover. Native Chrome access also dropped; the
+Mac/window clarification is pending. B's genuine
 native Forms workspace loads; its recipient draft saved revision1/HTTP200 and
 reload confirms the saved revision. Team/Customer templates also independently
-saved and reloaded revision1 with distinct subjects, no emails sent. First workspace load was unavailable, then explicit
+saved and reloaded revision1 with distinct subjects, no emails sent. A newer
+Team draft2 remained after the old UI draft1 was rejected with409, one request,
+explicit reload; Customer/recipients remain1. B→A read/write both403 with B data
+unchanged. A→B read403 was observed; the initial test harness stopped on A's
+null default record. Its corrected write check ran but native window access
+failed before result observation, so that write case is still pending. First workspace load was unavailable, then explicit
 refresh returned the correct owned site; this limitation is not claimed fixed.
 The starter checkpoints contain no forms, so per-form tests need supported editor
 insertion. Shared-form browser creation and native hosted role/withdrawal controls
@@ -85,16 +92,16 @@ tests skipped; the five built Worker checks omitted from that source run then
 passed against the rebuilt artifact. All 35 focused response/UI tests pass. Changed-file lint and independent review pass. The last typecheck records
 934 existing diagnostics; no new global-clean typecheck claim is made. Several
 local size-guard failures stopped before upload. Shared canonical identity hashing
-creates real headroom: the current preview raw bundle is 25,467,363/25,468,928 bytes
-(1,565 spare), gzip 7,044,401/9,750,000. The guard is unchanged. Source/provider
+creates real headroom: the current preview raw bundle is 25,467,559/25,468,928 bytes
+(1,369 spare), gzip 7,044,545/9,750,000. The guard is unchanged. Source/provider
 receipts and limitations are in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
 
 Remaining: run hosted Forms/browser/isolation acceptance; native viewer/membership
 revocation and per-capability withdrawal have no supported hosted controls yet; reconcile approved production
 changes separately. Slow guarded provider verification remains a hosted acceptance
 limitation. Approvals cover only A/B, expire at the original
-2026-10-12T13:27:09Z deadline and cannot be silently extended. Editor/browser
-flags remain closed; preview Forms is live for the reviewed bounded acceptance. AI allowance is zero. This is not a completed platform
+2026-10-12T13:27:09Z deadline and cannot be silently extended. Editor/browser/Forms
+flags are live only for the reviewed bounded preview acceptance. AI allowance is zero. This is not a completed platform
 launch or production customer activation. Original Fantasy data, account,
 publication and domain are preserved.
 

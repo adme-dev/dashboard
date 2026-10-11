@@ -1110,3 +1110,51 @@ and guarded preview release pending; the live flags remain false until readback.
 An address-bar GET of B's recipients from A redirected to the agency login page.
 This is not counted as definitive native cross-account403 or write isolation; a
 normal native request-context check is still needed. No B draft mutation occurred.
+
+
+### 12 October 00:57 Melbourne / 11 October 13:57 UTC: editor preview released
+
+Cleanf015cfd2b69d48f0e9c54334ef81c77b9aa2ca53 includes freshmaina78 and passes
+target/sourceguards. Guardedpnpmdeploy:preview succeeds; providerreadback confirms
+2f27de15-1355-41f6-b6ad-0494a585e880, created13:57:20.384054 UTC, success
+13:57:31.214982. Raw25,467,559/25,468,928 (1,369 spare), gzip7,044,545.
+Minimumdisk11,831,705,600 above unchanged8GiBfloor. Owned3045 restored
+monitor98759/child98769, identicalstartupdigest; LOCAL_STUDIO_READY confirmed.
+4325 preserved. Native route receipt committed e93e359 after full hook1,581files
+408seconds/no fixes. No pushes/Actions; originalFantasy production unchanged.
+
+Actual B dashboard offers Open Studio; its genuine click performs the supported
+one-use POST handoff without ticketURL/storage/extraction. Chrome displays
+'studio-staging.xeroflow.io is blocked / ERR_BLOCKED_BY_CLIENT'. No browser block
+or certificate protection was bypassed. Owner handshake/editorUI is not counted
+complete. User takeover requested: return to PageStudio and clickOpenStudio
+manually, keepMacunlocked, reportwheneditoropens. NativeChrome AX also dropped
+withcgWindowNotFound; existing Mac/incognito clarification remains pending.
+
+Hosted draft checks: B recipient1 persists; Team/Customer independent1. A second
+legitimate B Team write saved2; oldUI1 attempted once, received409, preservededits
+with explicitdiscard/reload. Readback confirmsnewTeam2/newsubject, Customer1,
+recipient1 unchanged. Proofscreenshots/redactedreadback retained. No email sent.
+
+Actual B→A native GET and PUT recipients both403 in its own browser context,
+B settings/revision unchanged. A→B nativeGET403 shown in isolatedDevTools;
+initialharness then stoppedonnullunsavedA record beforePUT. CorrectedPUT used
+A's real ownedcheckpoint from normalwebsiteGET, but nativewindow access was lost
+beforeobservation; do not count thatwritecase aspass. Addressbarnavigationredirect
+is historical and not substituted for nativeAPIproof. No cookies/claims/roles
+were copied or fabricated.
+
+Per-formsettings, manualeditorfixture, shared-form/default-override journey,
+mediaacceptance, supported-sessionlogout, viewer/memberrevocation/capwithdrawal
+gaps and finalproductionpromotion remainpending. Chromehandoff is a concrete
+external blocker to the next owner/editor checks. No completionclaim.
+
+
+Final bounded readback before user takeover: native editor-child query for B
+returns no editor-purpose sessions, so no successful signing exchange is inferred.
+The five rebuilt Worker boundary tests pass against the final editor preview
+artifact. Both local4325/3045 returnHTTP200; disk11.27GiB. Native source clean
+e93e359; Dashboard ledger update is retained separately from liveappf015.
+Chrome block screenshot .verification/resume-20261008/native-studio-chrome-block-20261012.png
+is the concrete takeover surface. Keep the existing expiry; do not silently extend
+test policies or replace genuine sessions to get past the blocked browser.
