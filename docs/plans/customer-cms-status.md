@@ -900,3 +900,10 @@ Source `25ed17b11` also stopped before upload at raw 25,469,106 / 25,468,928 (17
 
 
 Upgrade identity consolidation final validation: all 16,238 tests passed across 2,257 files (59 files/1,653 conditional tests skipped), including independent native identity fixtures and ordering parity. Full suite elapsed 214.67 seconds. Independent review and lint passed. No new type diagnostics claim or budget adjustment.
+
+
+### 11 October 06:09 UTC: verified recovery-fix staging release
+
+Clean source `55d2d8db80cb237fbfe9da49d5200c4abf1225ae` includes freshly fetched main `a78a11945f13c520d3258df9e249b99d46b21b07`. Guarded `pnpm deploy:preview` succeeded; Cloudflare readback confirms deployment `79119437-9ce0-4200-bd6b-b262d5d0c9f2`, created 06:09:47.154201 UTC, successful at 06:09:56.914986. Preview alias is https://preview.agency-dashboard-6cm.pages.dev. Raw Worker size 25,467,543 / 25,468,928 (1,385 remaining); gzip 7,044,518 / 9,750,000. Minimum free disk 10,432,270,336 bytes, above unchanged 8 GiB stop floor. Local 3045 was restored and verified HTTP 200; native 4325 was not stopped.
+
+Production Cloudflare readback remains deployment `7f98f789-d152-4d2d-90d7-dec3c8f24798`, source current main `a78a11945f13c520d3258df9e249b99d46b21b07`, success. No pushes/Actions or production changes occurred. Account B refreshed the actual preview and explicitly resumed its genuine setup through the dashboard. Hosted recovery and final draft-storage acceptance are now being verified; A's isolated window is still unavailable.
