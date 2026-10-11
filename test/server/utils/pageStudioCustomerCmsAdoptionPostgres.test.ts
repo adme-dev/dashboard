@@ -60,6 +60,7 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS adoption on PostgreSQL
     await db.query(migration('446_page_studio_customer_editor_handoffs.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
+    await db.query(migration('448_page_studio_customer_cms_setup.sql'))
     await db.query(migration('404_page_studio_documents.sql'))
     await db.query(migration('422_page_studio_cms_visibility.sql'))
     await db.query(migration('425_page_studio_cms_authoring_scope.sql'))
@@ -208,6 +209,38 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS adoption on PostgreSQL
     const options = { configuration: config, env: f.principal.env, runTransaction }
     return { ...f, ready: () => api.readCustomerEditorAvailability(token, options), launch: () => api.launchCustomerEditor(token, options) }
   }
+  const restricted = async (f: Awaited<ReturnType<typeof setupAdoption>>) => {
+    await db.query(`INSERT INTO page_studio_customer_cms_setup_approvals
+      (workspace_id,site_id,identity_id,tenant_id,business_id,approved_by,preview_policy,expires_at)
+      SELECT workspace_id,site_id,$1,tenant_id,business_id,(preview_policy->>'approvedBy')::uuid,preview_policy,(preview_policy->>'expiresAt')::timestamptz
+      FROM page_studio_customer_site_requests ON CONFLICT(site_id) DO NOTHING`, [ids.owner])
+    const { issueCustomerCmsSetupHandoff } = await import('~~/server/utils/pageStudio/customerEditorHandoff')
+    const result = await exchange((await issueCustomerCmsSetupHandoff(token, config, { runTransaction })).token)
+    const { verifyCustomerEditorToken } = await import('~~/server/utils/pageStudio/customerEditorToken')
+    return { ...f.principal, claims: await verifyCustomerEditorToken(result.token, publicPem, issuer), capability: 'cms:adopt' as const }
+  }
+  it('prepares and activates managed content using real setup-only claims', async () => {
+    const f = await setupAdoption(), principal = await restricted(f)
+    const call = (input: unknown) => f.call(input, principal as never)
+    let current = await call({ action: 'start' })
+    for (let i = 0; i < 3; i++)current = await call({ action: 'advance', adoptionId: current.adoptionId, expectedProgressDigest: current.progressDigest })
+    expect(current.phase).toBe('managed')
+    const { withCmsCommitAuthority } = await import('~~/server/utils/pageStudio/cmsCommitAuthority')
+    await expect(withCmsCommitAuthority({ scope: f.scope, principal, mutation: 'customer-checkpoint' }, async () => true, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('withholds setup adoption after approval withdrawal during awaited storage reads', async () => {
+    const f = await setupAdoption(), principal = await restricted(f)
+    await f.call({ action: 'start' }, principal as never)
+    const current = await f.call({ action: 'status' }, principal as never)
+    const original = f.router.freezeManagedCms
+    f.router.freezeManagedCms.mockImplementationOnce(async (request) => {
+      const result = await original(request)
+      await db.query('UPDATE page_studio_customer_cms_setup_approvals SET enabled=FALSE')
+      return result
+    })
+    await expect(f.call({ action: 'advance', adoptionId: current.adoptionId, expectedProgressDigest: current.progressDigest }, principal as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect((await db.query('SELECT state FROM page_studio_cms_scopes')).rows[0].state).toBe('freezing')
+  })
   it('offers the managed draft without issuing tickets and launches after a legitimate later save', async () => {
     const f = await launchFixture()
     const before = (await db.query('SELECT count(*) FROM page_studio_customer_editor_handoffs')).rows[0].count

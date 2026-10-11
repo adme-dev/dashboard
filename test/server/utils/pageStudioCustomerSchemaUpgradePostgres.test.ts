@@ -13,7 +13,7 @@ const migration = (name: string) => readFileSync(new URL(`../../../server/databa
 const ownershipMigration = '444_page_studio_customer_site_ownership.sql'
 const ids = { owner: randomUUID(), other: randomUUID(), client: randomUUID(), staff: randomUUID() }
 
-describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on PostgreSQL', () => {
+describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native customer CMS prerequisites on PostgreSQL (%s)', (purpose) => {
   const schema = `customer_prereq_${randomUUID().replaceAll('-', '')}`
   let db: pg.Client
   let workspaces: typeof import('~~/server/utils/pageStudio/customerWorkspaces')
@@ -60,6 +60,7 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
     await db.query(migration('446_page_studio_customer_editor_handoffs.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
+    await db.query(migration('448_page_studio_customer_cms_setup.sql'))
     await db.query(migration('404_page_studio_documents.sql'))
     await db.query(migration('422_page_studio_cms_visibility.sql'))
     await db.query(migration('425_page_studio_cms_authoring_scope.sql'))
@@ -103,6 +104,13 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
   const issuer = config.dashboardOrigin
   const ticket = async (sessionToken = token) => {
     const api = await import('~~/server/utils/pageStudio/customerEditorHandoff')
+    if (purpose === 'cms-setup') {
+      await db.query(`INSERT INTO page_studio_customer_cms_setup_approvals
+        (workspace_id,site_id,identity_id,tenant_id,business_id,approved_by,preview_policy,expires_at)
+        SELECT workspace_id,site_id,$1,tenant_id,business_id,(preview_policy->>'approvedBy')::uuid,preview_policy,(preview_policy->>'expiresAt')::timestamptz
+        FROM page_studio_customer_site_requests ON CONFLICT(site_id) DO NOTHING`, [ids.owner])
+      return api.issueCustomerCmsSetupHandoff(sessionToken, config, { runTransaction })
+    }
     return api.issueCustomerEditorHandoff(sessionToken, config, { runTransaction })
   }
   const exchange = async (value: string, signOverride?: (claims: unknown) => Promise<string>) => {
@@ -146,6 +154,44 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
   const coordinate = async (input: unknown, claims: unknown, worker: ReturnType<typeof binding>) =>
     (await api()).coordinateCustomerSchemaUpgrade(input, claims, { runTransaction, binding: worker.value })
 
+  it.each(['collection', 'workflow'])('recovers installed %s authority without executing an ancestor runtime', async (kind) => {
+    const first = await session(), worker = binding(), requestId = randomUUID()
+    await coordinate({ action: 'start', kind, requestId }, first.claims, worker)
+    const intent = structuredClone(worker.calls[0])
+    const contract = (await contracts()).find(value => value.kind === kind)!
+    const prefix = kind === 'collection' ? 'CollectionUpgrade' : 'WorkflowUpgrade'
+    worker.value[`read${prefix}Operation`] = async () => ({ state: 'installed', leaseUntil: null, receipt: contract.expectedReceipt(intent) })
+    const execute = vi.fn(async () => {
+      throw new Error('Forms successor must not be downgraded')
+    })
+    worker.value[`execute${prefix}`] = execute
+    const next = await session()
+    expect(await coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, next.claims, worker)).toMatchObject({ status: 'installed', requestId })
+    expect(execute).not.toHaveBeenCalled()
+    expect(worker.calls).toEqual([intent])
+  })
+  it('recovers reserved authority without running work, then resumes the exact original request explicitly', async () => {
+    const first = await session(), worker = binding(), kind = 'collection', requestId = randomUUID()
+    await coordinate({ action: 'start', kind, requestId }, first.claims, worker)
+    const intent = structuredClone(worker.calls[0]), next = await session()
+    worker.value.readCollectionUpgradeOperation = async () => ({ state: 'reserved', leaseUntil: null, receipt: null })
+    expect(await coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, next.claims, worker)).toMatchObject({ status: 'reserved', requestId })
+    expect(worker.calls).toEqual([intent])
+    expect(await coordinate({ action: 'start', kind, requestId }, next.claims, worker)).toMatchObject({ status: 'installed', requestId })
+    expect(worker.calls).toEqual([intent, intent])
+  })
+  it.each(['receipt', 'revocation'])('withholds recovered installed status after %s fails during readback', async (reason) => {
+    const first = await session(), worker = binding(), kind = 'collection', requestId = randomUUID()
+    await coordinate({ action: 'start', kind, requestId }, first.claims, worker)
+    const intent = worker.calls[0], contract = (await contracts()).find(value => value.kind === kind)!, next = await session()
+    worker.value.readCollectionUpgradeOperation = async () => {
+      if (reason === 'revocation') await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+      const receipt = contract.expectedReceipt(intent)
+      return { state: 'installed', leaseUntil: null, receipt: reason === 'receipt' ? { ...receipt, databaseId: randomUUID() } : receipt }
+    }
+    await expect(coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, next.claims, worker)).rejects.toMatchObject({ statusCode: reason === 'receipt' ? 503 : 403 })
+    expect(worker.calls).toHaveLength(1)
+  })
   it('returns retained form-runtime running status only after fresh native authority', async () => {
     const { claims } = await session(), worker = binding(), requestId = randomUUID()
     worker.value.executeFormDraftsRuntime = async (intent) => {
@@ -241,7 +287,9 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
     expect(await coordinate({ action: 'status', kind }, second.claims, worker)).toMatchObject({ status: 'reconciliation', canConfigure: false })
     await expect(coordinate({ action: 'start', kind, requestId }, second.claims, worker)).rejects.toMatchObject({ statusCode: 409 })
     const recoveryId = randomUUID()
-    expect(await coordinate({ action: 'recover', kind, requestId: recoveryId, expectedRecoveryId: null }, second.claims, worker)).toMatchObject({ recoveryId, status: 'installed' })
+    expect(await coordinate({ action: 'recover', kind, requestId: recoveryId, expectedRecoveryId: null }, second.claims, worker)).toMatchObject({ recoveryId, status: 'pending' })
+    expect(worker.calls).toHaveLength(1)
+    await coordinate({ action: 'start', kind, requestId }, second.claims, worker)
     expect(worker.calls.at(-1)).toEqual(original)
     await coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: recoveryId }, third.claims, worker)
     await expect(coordinate({ action: 'recover', kind, requestId: recoveryId, expectedRecoveryId: null }, second.claims, worker)).rejects.toMatchObject({ statusCode: 409 })
@@ -372,6 +420,11 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
     await db.query('INSERT INTO page_studio_customer_sessions(token_hash,account_id,expires_at) VALUES($1,$2,clock_timestamp()+INTERVAL \'1 day\')', [hash(otherToken), otherAccount])
     await db.query('UPDATE page_studio_workspace_memberships SET identity_id=$1 WHERE workspace_id=$2', [ids.other, first.claims.workspaceId])
     await db.query('UPDATE page_studio_customer_setup_drafts SET identity_id=$1 WHERE identity_id=$2', [ids.other, ids.owner])
+    if (purpose === 'cms-setup') {
+      await expect(session(otherToken)).rejects.toMatchObject({ statusCode: 403 })
+      expect(worker.calls).toHaveLength(1)
+      return
+    }
     const next = await session(otherToken)
     await expect(coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, next.claims, worker)).rejects.toMatchObject({ statusCode: 403 })
     expect(worker.calls).toHaveLength(1)
@@ -398,12 +451,12 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS prerequisites on Postg
     await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp() WHERE nonce=$1', [first.claims.nonce])
     const runtimeRecovery = randomUUID()
     await coordinate({ action: 'recover', kind: 'form-runtime', requestId: runtimeRecovery, expectedRecoveryId: null }, second.claims, worker)
-    expect(worker.calls.at(-1)).toEqual(runtimeIntent)
+    expect(worker.calls).toEqual([runtimeIntent, formIntent])
     expect(await coordinate({ action: 'status', kind: 'form-drafts' }, second.claims, worker)).toMatchObject({ status: 'reconciliation', recoveryId: null })
     await expect((await api()).authorizeCustomerSchemaUpgrade(forms, formIntent, 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
     const formRecovery = randomUUID()
     await coordinate({ action: 'recover', kind: 'form-drafts', requestId: formRecovery, expectedRecoveryId: null }, second.claims, worker)
-    expect(worker.calls.at(-1)).toEqual(formIntent)
+    expect(worker.calls).toEqual([runtimeIntent, formIntent])
     expect(await coordinate({ action: 'status', kind: 'form-runtime' }, second.claims, worker)).toMatchObject({ recoveryId: runtimeRecovery })
     expect(await coordinate({ action: 'status', kind: 'form-drafts' }, second.claims, worker)).toMatchObject({ recoveryId: formRecovery })
     await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id)

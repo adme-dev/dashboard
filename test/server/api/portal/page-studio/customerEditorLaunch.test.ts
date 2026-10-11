@@ -2,9 +2,10 @@ import { createServer, type Server } from 'node:http'
 import { createApp, toNodeListener, defineEventHandler } from 'h3'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ launch: vi.fn(), ready: vi.fn(), limit: vi.fn(), dashboard: vi.fn() }))
+const mocks = vi.hoisted(() => ({ launch: vi.fn(), ready: vi.fn(), limit: vi.fn(), dashboard: vi.fn(), cmsAvailable: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/customerEditorLaunch', () => ({ launchCustomerEditor: mocks.launch, readCustomerEditorAvailability: mocks.ready }))
 vi.mock('~~/server/utils/pageStudio/customerDashboard', async original => ({ ...await original<object>(), readCustomerDashboard: mocks.dashboard }))
+vi.mock('~~/server/utils/pageStudio/customerCmsSetup', () => ({ customerCmsSetupAvailable: mocks.cmsAvailable }))
 vi.mock('~~/server/utils/rateLimit', () => ({ checkAndConsume: mocks.limit }))
 describe('native customer editor launch HTTP', () => {
   let server: Server, base: string, config: Record<string, unknown>
@@ -79,6 +80,16 @@ describe('native customer editor launch HTTP', () => {
     expect(response.status).toBe(statusCode)
     expect(await response.text()).not.toContain('verification-pending')
     expect(mocks.launch).not.toHaveBeenCalled()
+  })
+  it('withholds the earlier dashboard after CMS availability loses native authority with editor closed', async () => {
+    config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED = 'false'
+    config.PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED = 'true'
+    config.PAGE_STUDIO_PROVISIONER = { readProvisioning: vi.fn() }
+    mocks.cmsAvailable.mockRejectedValueOnce(Object.assign(new Error('native owner revoked during check'), { statusCode: 403 }))
+    const response = await call({}, {}, '/dashboard', 'GET')
+    expect(response.status).toBe(403)
+    expect(await response.text()).not.toContain('verification-pending')
+    expect(mocks.ready).not.toHaveBeenCalled()
   })
   it('rate limits before dispatch and redacts readiness failures', async () => {
     mocks.limit.mockResolvedValueOnce({ allowed: false, resetAt: new Date(Date.now() + 10000) })

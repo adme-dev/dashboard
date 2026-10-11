@@ -5,8 +5,22 @@ import { createError } from 'h3'
 export const CUSTOMER_EDITOR_TOKEN_TYPE = 'XEROFLOW-PAGE-STUDIO-CUSTOMER-SESSION'
 export const CUSTOMER_EDITOR_AUDIENCE = 'xeroflow-page-studio-customer'
 export const CUSTOMER_EDITOR_MAX_SECONDS = 4 * 60 * 60
-export const CustomerEditorCapabilitySchema = z.enum(['workspace:create', 'workspace:reconnect', 'workspace:checkpoint',
-  'workspace:preview', 'workspace:terminate', 'workspace:status'])
+export const CUSTOMER_EDITOR_CAPABILITIES = ['workspace:create', 'workspace:reconnect', 'workspace:checkpoint',
+  'workspace:preview', 'workspace:terminate', 'workspace:status'] as const
+export const CUSTOMER_CMS_SETUP_CAPABILITIES = ['cms:prepare', 'cms:adopt'] as const
+export const CUSTOMER_CMS_SETUP_MAX_SECONDS = 15 * 60
+export const CustomerEditorCapabilitySchema = z.enum([...CUSTOMER_EDITOR_CAPABILITIES, ...CUSTOMER_CMS_SETUP_CAPABILITIES])
+export function customerSessionCapabilities(purpose: unknown) {
+  if (purpose === 'editor') return [...CUSTOMER_EDITOR_CAPABILITIES]
+  if (purpose === 'cms-setup') return [...CUSTOMER_CMS_SETUP_CAPABILITIES]
+  throw createError({ statusCode: 403, statusMessage: 'Customer session purpose is not available.' })
+}
+export function customerSessionHasPurpose(capabilities: readonly string[], purpose: unknown) {
+  const expected = customerSessionCapabilities(purpose)
+  return capabilities.length === expected.length && expected.every(value => capabilities.includes(value))
+}
+export const customerSchemaPreparationCapability = (claims: CustomerEditorClaims) =>
+  customerSessionHasPurpose(claims.capabilities, 'cms-setup') ? 'cms:prepare' as const : 'workspace:create' as const
 export const CustomerEditorOriginSchema = z.string().max(2048).refine((value) => {
   try {
     const url = new URL(value)

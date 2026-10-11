@@ -60,6 +60,7 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
     await db.query(migration('446_page_studio_customer_editor_handoffs.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
+    await db.query(migration('448_page_studio_customer_cms_setup.sql'))
     await db.query(migration('404_page_studio_documents.sql'))
     await db.query(migration('422_page_studio_cms_visibility.sql'))
     await db.query(migration('425_page_studio_cms_authoring_scope.sql'))

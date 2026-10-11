@@ -1,3 +1,4 @@
+import { collectionDigest } from './collectionApi'
 import { z } from 'zod'
 import { WorkflowUpgradeOperationSchema } from './workflow-upgrade'
 
@@ -18,17 +19,6 @@ export const CollectionStagingUpgradeDatabaseSchema = CollectionStagingUpgradeOp
   name: true,
   scope: true
 })
-function canonical(value: unknown): string {
-  if (!value || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
-  const object = value as Record<string, unknown>
-  return `{${Object.keys(object)
-    .sort()
-    .map(key => `${JSON.stringify(key)}:${canonical(object[key])}`)
-    .join(',')}}`
-}
 export async function collectionStagingUpgradeIdentity(input: unknown) {
-  const request = CollectionStagingUpgradeOperationSchema.parse(input)
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical(request)))
-  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  return collectionDigest(CollectionStagingUpgradeOperationSchema.parse(input))
 }

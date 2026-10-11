@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 10 October 2026. Start here after an interruption.
+Last updated: 12 October 2026. Start here after an interruption.
 Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Latest bounded CMS rollout: [Fantasy Limo runtime and activation receipt](2026-10-10-fantasy-cms-runtime-release.md).
 Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
@@ -12,20 +12,168 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
 
 
-## Running ledger — 10 October 2026
+## Running ledger — 12 October 2026
 
-Latest outcome: Fantasy Limo retains indefinite active access. The reviewed
-private runtime is released from merged native main `4401438`; its guarded CMS
-activation is complete and the agency page shows Ready. Fresh invited dashboard
-and editor readbacks preserve 75 pages, 109 media assets and eight form placements. Existing editor
-permissions are unchanged; the editor-only preparation warning and hosted
-custom-record/field-picker acceptance remain open. See the paired runtime receipt
-for service versions, checks, rollback evidence and remaining launch gates.
+Both genuine native test accounts are fully provisioned. Each has all five CMS
+prerequisites installed, managed content adoption complete, and its private Forms
+capability independently confirmed Active. No phase, receipt, lease or approval
+expiry was manually changed. The Cloudflare provisioning credential is working.
 
-### Editor preparation warning — local fix, release pending
+The bounded preview is live at Dashboard source
+`f015cfd2b69d48f0e9c54334ef81c77b9aa2ca53`, deployment
+`2f27de15-1355-41f6-b6ad-0494a585e880` (11 October 13:57 UTC; 12 October 00:57
+Melbourne). Forms, editor and browser flags are enabled only for this reviewed
+preview acceptance. Current eligible native policies are exactly A/B, one owner
+each, with the original `2026-10-12T13:27:09Z` expiry. AI allowance remains zero;
+neither publication nor email delivery is enabled.
 
-The hosted invited account can read website content but lacks admin setup
-permission. Its first portal adoption-status GET returns 403 and the preparation
+The earlier 18:56 UTC A **Open Studio** launch progressed beyond the previous
+browser block. It created an editor-purpose child, exchanged the one-use ticket, confirmed
+current authority and managed content, and allocated A's own sandbox. The launch
+then returned HTTP 503 during filesystem hydration at the 60-second operation
+limit. Browser server time was 65,477 ms; Worker trace time was 64,646 ms. All 53
+control-plane authorization calls succeeded (HTTP 200), totaling 38,412 ms. This is
+now a measured staging lifecycle timeout, rather than an unresolved credential
+request. The earlier B browser-block screenshot remains historical evidence only.
+
+A bounded correction is deployed: only trusted staging `open-editor`
+receives a fixed 300-second limit. Production, default and all other actions keep
+60 seconds. Every fresh authority, session expiry, managed-state and I/O check is
+preserved. Independent review, 126 focused checks and the full 6,159-test command
+passed (four existing conditional skips), as did build, types, lint and normal
+commit hooks. Native source `c0f99311dd6fba696fb8c66f4bd19e20ebd7e1c5` contains
+fresh main `4401438d6766baef4adde0c76741ebc30ab1781c`. Only staging Sandbox Worker
+was released as version `9c3e9be7-9a62-4653-bb96-4e4e1abc9f4f`, deployment
+`412b14dc-e4c8-4782-a71b-c30bb0e0d858` (11 October 20:12:42 UTC). Exact before/after
+readback confirms all settings/bindings and container version 38/image unchanged;
+production settings and deployment are unchanged. A fresh genuine B owner launch
+returned HTTP 200 in 117,957 ms and the scoped session POST returned 303. Its native
+editor child was created at 20:15:19 UTC and expires at 00:15:19 UTC. No new email
+was needed. The following editor root returned HTTP 410 `STALE_PREVIEW_URL` after
+existing recovery; safe SDK logs identify `runtime-mismatch` with a healthy,
+running container. Screenshot: `native-b-runtime-mismatch-20261012.png`.
+
+The second deployed correction refreshes the exact editor port after native startup
+and warm page preparation. SDK RPC setup replaces its runtime identity even when
+warm, so a previous port activation becomes stale. Both refreshes retain fresh
+authority/expiry checks, exact-origin validation and existing fail-closed recovery.
+No global SDK override or retry was added. Independent review, 134 focused checks,
+6,167 full-command tests (four existing skips), build and types passed; modified
+files pass lint and the normal hook checked all 1,581 files with no fixes.
+Native source `3b9a18a54e0a91f7dcbec9ba1888f1701bbf541d` was released only to
+staging as version `80e3b463-cfb2-431a-8550-854114b991a3`, deployment
+`3c60610b-3742-40c7-85c1-e6d5f0a90e7d` (11 October 20:50:49 UTC). Settings,
+bindings, seven routes and container version/image are unchanged; production
+settings and deployment are unchanged. B's genuine launch returned HTTP 200 in
+83,659 ms; its scoped session handoff returned 303. Editor pages, overlay script
+and font requests returned 200 without the previous stale-runtime failure.
+
+B's native editor rendered in light mode. A real heading edit ("Technology that
+works for your team") reached a durable checkpoint (HTTP 201, 51,386 ms), showed
+Saved, and survived a full browser reload. Full-browser editing and light/dark
+switching worked; light was restored. Collapsed thumbnails are integrated into the
+bottom toolbar. Unauthenticated browser fetch returned 401. Screenshots are in
+`.verification/resume-20261008/native-b-editor-ready-20261012.png` and
+`native-b-editor-saved-reloaded-light-20261012.png`.
+
+B was then signed out through the normal native UI. A credentialed request using
+its previous editor session returned 403, confirming current parent revocation.
+A normal approved sign-in message was requested for pgiurin@gmail.com, delivered
+from notification@xeroflow.io, and consumed through the genuine browser flow.
+No tokens/cookies or secret URLs were recorded. A's own workspace/recipient reads
+returned 200; its foreign B read and one valid-shaped foreign write returned 403;
+A's own recipient state remained unchanged (revision 0/null record). Proof:
+`native-a-to-b-scope-denial-20261012.json`. A's genuine editor launch then returned
+HTTP 200 in 59,835 ms, followed by scoped session handoff 303. Both desktop and
+mobile frames rendered A's own limousine starter in the light editor. A's child
+was issued at 21:14:03 UTC, expires at 01:14:03 UTC, and is unrevoked. This is fresh
+normal issuance; no older session expiration was changed. The active A editor was
+left open for review. Screenshot: `native-a-editor-desktop-mobile-ready-20261012.png`.
+
+Production release remains gated on the outstanding acceptance cases and measured
+performance: a 51-second save is close to the preserved 60-second operation limit.
+No form/template email was sent, no publishing occurred, and no pushes or GitHub
+Actions ran. Original Fantasy Limo and its indefinite access remain unchanged.
+
+### Hosted results established
+
+- B recipient draft saved and reloaded revision 1 with the approved test mailbox.
+- Team and Customer templates independently saved and reloaded revision 1 with
+  different subjects. These are image-free drafts; no emails were sent.
+- A newer Team draft saved revision 2. The old UI draft attempted one save and
+  received HTTP 409, preserving unsaved edits. Explicit reload confirmed the newer
+  subject and revision 2; Customer and recipients stayed at revision 1.
+- B's read and write attempts against A's recipients returned HTTP 403; B's own
+  settings and revision stayed unchanged.
+- A's foreign read returned HTTP 403. The first test harness stopped on its null
+  unsaved default record before writing. A corrected write used its real owned
+  checkpoint, but native window access failed before observing the result; that
+  write case is now completed by the genuine A sign-in above.
+- B's first Forms workspace load showed unavailable. Explicit read-only refresh
+  returned HTTP 200 with its correct owned checkpoint and pages. This first-load
+  limitation is recorded, not claimed fixed.
+- Exactly two staging editor domains were attached after empty global hostname
+  and DNS checks. All five previous domains remain. Certificates report Active;
+  native Chrome guest requests return `TOKEN_INVALID / Unauthenticated` JSON.
+- Existing agency QR Codes navigation loads its eight codes and 48 scans.
+
+### Local checks and release boundaries
+
+The response-merging fix passed 35 focused tests and independent review. The full
+Dashboard source suite passed 16,268 tests, with 60 files/1,658 conditional tests
+skipped. The five rebuilt Worker boundary checks then passed, including against
+the final editor preview artifact. Typecheck retains exactly 934 existing
+diagnostics; no globally clean typecheck is claimed.
+
+This resume also passed 78 Forms authority/HTTP/media tests and 95 native editor
+handoff/session/launch tests against disposable local PostgreSQL schemas, plus
+108 native customer workspace tests. Native full validation for the preceding
+operator fix passed 6,150 tests, four existing conditional skips, build 28 and
+typecheck 44 plus security types. Independent source/config reviews approved the
+bounded rollout. The final native route receipt committed as `e93e359` after its
+full hook checked 1,581 files with no fixes.
+
+The staging-only schema lease fix keeps production's five minutes and all fresh
+authority/runtime pin/database-clock/CAS fences. It is verified at executor version
+`b5cbb7be-92ae-4f19-9449-6adc590864de`; customer runtime bytes remain unchanged.
+The local operator timeout fix is committed at
+`f15b98caf572134ec8903a3e3eef6c2640efe17b`. It changes only the exact activation
+transport ceiling; initialization, reads and disposal stay bounded at 30 seconds,
+with no automatic mutation replay or server authority extension.
+
+Current preview bundle: raw 25,467,559/25,468,928 bytes (1,369 spare), gzip
+7,044,545/9,750,000. Size/disk guards are unchanged. Builder 4325 stayed running;
+owned CMS 3045 was paused only for shared builds and restored with the identical
+startup script. Both return HTTP 200; latest free disk is about 11.27 GiB.
+No source pushes or GitHub Actions were triggered.
+
+### Production and remaining work
+
+Fantasy Limo's original production CMS remains Ready with indefinite active
+access, 75 pages and 109 media assets. Dashboard production is unchanged at main
+`a78a11945f13c520d3258df9e249b99d46b21b07`, deployment
+`7f98f789-d152-4d2d-90d7-dec3c8f24798`. Original account, data, publication and
+domain are preserved for Tuesday's showcase.
+
+Remaining: manual form insertion, per-form settings, shared forms/default
+overrides, supported viewer/membership and capability-withdrawal cases, staging
+media storage, progress-card accuracy, save latency and separate production
+reconciliation. Both genuine owner handshakes, bidirectional foreign recipient
+read/write denial and normal logout revocation are verified. Starter checkpoints
+contain no forms. Browser shared-definition creation currently lacks the required
+typed creation intent. Native hosted viewer/member revocation and per-capability
+withdrawal controls are not exposed. Media acceptance needs a dedicated staging
+media binding; production storage is not borrowed. These cases remain explicit
+gaps and do not count as completed hosted acceptance or a platform launch.
+
+Detailed provider receipts and historical checkpoints are in the
+[release ledger](2026-10-08-page-studio-release-and-activation.md).
+
+### Editor preparation warning — historical local verification (released 10 October)
+
+The following records the pre-release 10 October verification; the release above
+supersedes its pending wording. The hosted invited account can read website content
+but lacks admin setup permission. Its first portal adoption-status GET returns 403 and the preparation
 panel incorrectly presents that as a website setup failure. The frontend now
 omits this admin-only panel for a denied initial portal status read, matching the
 connection panel. It does not infer Ready, widen API permissions or change roles.
@@ -432,9 +580,9 @@ are preserved privately in `studio-local-cms-handoff-20261010.json` and the live
 | Saved email field picker, fallback repair and Undo/Redo | Released; local integration/store/private renderer verified, hosted customer acceptance pending |
 | Magic-link sender correction | Invited email received in Gmail Inbox from notification@xeroflow.io and normal login verified; separate agency mailbox appearance remains pending |
 | AI email proposals | Local implementation/review complete; hosted enablement pending, native preview allowance remains zero |
-| Two native accounts and hosted Forms | Pending verification/workspace setup and separately approved runtime activation; Forms flags remain unset |
+| Two native accounts and hosted Forms | Both genuine owners provisioned; all five prerequisites and managed adoption complete; private Forms Active; bounded preview flags enabled. Owner launches, B save/reload, cross-account denials and logout verified. Per-form/shared fixtures and remaining role/capability checks are open |
 | Fantasy Limo legacy CMS runtime and activation | Released from native main 4401438; original database retained; all five agency preparation steps Ready; invited collection reads and fresh 75-page editor open verified. Editor-only preparation warning remains a presentation issue |
-| Sender/outbox/outcomes and wider CMS launch | Pages/SEO reads, media previews and history verified; hosted custom-record saves/field picker, native Forms activation and actual proposal/email delivery remain open |
+| Sender/outbox/outcomes and wider CMS launch | Pages/SEO reads, media previews and history verified; native Forms activation and default draft persistence/conflict checks verified. Hosted custom-record saves/field picker, per-form/shared fixtures and actual proposal/email delivery remain open |
 
 This remains the primary ledger. **The full platform launch is open.** Existing
 invited access is separate from native customer activation. The assigned-profile
@@ -850,3 +998,87 @@ post-render authority checks and campaign draft-status races pass. Production
 customer access remains closed. Independent review findings on allocation bounds
 and exact customer image limits are fixed and covered by regression tests; hosted
 browser acceptance remains pending. Preview deployment `6e4f2650-22a7-4103-9a8c-c64f0f91888f` uses clean source `383091cd9` and the verified private staging binding. Draft PR #632 is open; production is unchanged. [Evidence and limitations](2026-10-07-page-studio-resume.md).
+
+
+### 11 October: retained setup recovery after Forms runtime installation
+
+Hosted account B installed the first four prerequisites. The final Form draft schema operation remained reserved when its fifteen-minute setup child expired; its lease ended at 05:37:18 UTC. No operation state, receipt, intent or expiry was edited manually. Account A remains at two installed prerequisites while its genuine incognito browser session cannot be reached.
+
+A deterministic recovery defect caused warnings after the Forms successor was installed: recovery replayed the ancestor runtime executor instead of reading its retained completion. Recovery now updates authority and reads status only. Pending work still needs an explicit same-request resume. Original runtime pins, strict receipt validation, compare-and-swap recovery heads and final authority checks remain enforced.
+
+Validation: four regression cases failed before the fix; 125 focused PostgreSQL/HTTP tests then passed. Full local suite: 16,238 tests passed across 2,257 files; 1,653 conditional tests and 59 files skipped. Changed-file lint and diff checks pass. Independent source review reported no findings. The known 934 Dashboard type diagnostics are unchanged from the preceding release baseline; no new typecheck claim is made. Staging preview release is pending; production remains unchanged. No pushes or GitHub Actions were triggered.
+
+
+The recovery-fix staging release at source `e14080753` stopped before upload: raw Worker size 25,468,934 / 25,468,928 bytes (six over). Production and the preceding preview artifact remain unchanged. The repeated start-action comparison was factored into one boolean without changing behavior; all 102 PostgreSQL coordinator tests and changed-file lint passed afterward. The size limit is unchanged. Local 3045 was restored and returned HTTP 200.
+
+
+Source `5de9b2d06` also stopped before upload: the compiler expanded the shared action check, leaving raw size 25,468,969 / 25,468,928 (41 over). No budget adjustment or upload occurred. The next simplification shares the duplicate six-field adoption status projection; GET and POST retain their exact original schema parsers and final authority checks. All 23 setup PostgreSQL/HTTP tests and lint passed. Local 3045 was restored again.
+
+
+Source `295476d20` stopped before upload at raw 25,468,933 / 25,468,928 (five over). The shared adoption projection saved 36 compiled bytes. The compiler-expanded action boolean is reverted to the original reviewed and full-suite-tested comparisons, preserving the recovery fix and projection dedup. The original full-suite-tested logic and both strict parsers remain unchanged. No upload, guard relaxation or production change occurred.
+
+
+Source `25ed17b11` also stopped before upload at raw 25,469,106 / 25,468,928 (178 over), demonstrating that tiny source reductions did not provide reliable compiled headroom. Local 3045 was restored and returned HTTP 200; no upload or budget change occurred. Four upgrade identity modules now reuse the existing collectionDigest rather than duplicate canonical JSON and SHA-256 implementation. Each strict schema still parses first. Independent review confirms byte-identical canonical JSON, UTF-8 SHA-256 and lowercase hex output, unchanged pins/exports, and no dependency cycle. Changed-file lint passes; the full local suite is being rerun before commit/release.
+
+
+Upgrade identity consolidation final validation: all 16,238 tests passed across 2,257 files (59 files/1,653 conditional tests skipped), including independent native identity fixtures and ordering parity. Full suite elapsed 214.67 seconds. Independent review and lint passed. No new type diagnostics claim or budget adjustment.
+
+
+### 11 October 06:09 UTC: verified recovery-fix staging release
+
+Clean source `55d2d8db80cb237fbfe9da49d5200c4abf1225ae` includes freshly fetched main `a78a11945f13c520d3258df9e249b99d46b21b07`. Guarded `pnpm deploy:preview` succeeded; Cloudflare readback confirms deployment `79119437-9ce0-4200-bd6b-b262d5d0c9f2`, created 06:09:47.154201 UTC, successful at 06:09:56.914986. Preview alias is https://preview.agency-dashboard-6cm.pages.dev. Raw Worker size 25,467,543 / 25,468,928 (1,385 remaining); gzip 7,044,518 / 9,750,000. Minimum free disk 10,432,270,336 bytes, above unchanged 8 GiB stop floor. Local 3045 was restored and verified HTTP 200; native 4325 was not stopped.
+
+Production Cloudflare readback remains deployment `7f98f789-d152-4d2d-90d7-dec3c8f24798`, source current main `a78a11945f13c520d3258df9e249b99d46b21b07`, success. No pushes/Actions or production changes occurred. Account B refreshed the actual preview and explicitly resumed its genuine setup through the dashboard. Hosted recovery and final draft-storage acceptance are now being verified; A's isolated window is still unavailable.
+
+
+Hosted recovery on the verified preview: B explicitly resumed a genuine setup child, then recovered collection, workflow, collection-staging and Forms runtime in order. All four now show Ready without the ancestor-runtime warning. Read-only D1 confirms Forms runtime ready with no lease and the original draft schema operation still reserved; its earlier lease was expired. The pending schema authority was recovered explicitly; normal same-request resume is the next step. No expiry, intent, phase or receipt was manually edited.
+
+
+B's final schema recovery returned HTTP 200, reserved status, retained request `be381daf-1166-425f-abf5-09fd9c3e7568`, new recovery head `68589030-c5f7-4bda-8fed-a392bf61a8bd`. No execution occurred during recovery. The subsequent full status GET exceeded its existing 30-second browser deadline and was aborted (CDP Network.loadingFailed net::ERR_ABORTED); the setup action POST itself succeeded. The client GET timeout now matches POST at 300 seconds so slow provider readback can finish. This changes neither fifteen-minute child expiry nor original review/preview deadlines, backend fences or leases. Independent source review, lint and diff checks pass. Another guarded staging release is pending; all production and native identities remain unchanged.
+
+
+### 11 October 06:20 UTC: setup readback timeout release
+
+Guarded preview deploy succeeded from clean source `b10c53c4f7a848d7ecaa560baf4714bcbdeb213c` on current main `a78a11945f13c520d3258df9e249b99d46b21b07`. Cloudflare readback verifies `a8f5d60d-e35f-42fa-838d-1a89a414d087`, created 06:19:52.179691 UTC, successful 06:20:02.122399. Raw size 25,467,699 / 25,468,928 (1,229 spare), gzip 7,044,633. Minimum disk 10,187,137,024 bytes, unchanged 8 GiB stop floor. Local 3045 restored; native 4325 remained running. B reloaded the verified preview. GET and POST now both wait up to 300 seconds without changing authority expiry. Hosted readback and schema execution remain pending. No production changes, pushes or Actions.
+
+
+Long status GET on the timeout-fixed preview returned HTTP 200 and exposed the normal Resume step control. B selected it once; the client performed its fresh status preflight before attempting the same original schema operation. The previous setup child expired during that attempt and the dashboard correctly returned Resume content setup. D1 remains reserved with original operation `1c1f8a96-4c92-4565-9784-d45aef2fc0d5` and retained lease until 06:29:47.294 UTC. A new genuine setup child was resumed at about 06:26 UTC; completed-operation recovery is underway. No lease/expiry/phase edits or premature duplicate execution.
+
+
+### 11 October: bounded native Forms schema verification fix
+
+The last five-minute schema lease expired with B still reserved. Target D1's exact original operation marker and reviewed source/target digests exist, but coordinator completion remains withheld. Source review identifies 14 leased fences for existing-schema readback, each performing nine native callbacks and nine Cloudflare management reads. A tested native change selects a ten-minute staging lease from the validated environment; production remains five minutes. All authority, predecessor, runtime pin, token, database-clock and completion CAS fences remain unchanged, as do setup child and approval expiries.
+
+Native tests-first staging case failed before change; 36 focused checks then passed. Full suite: 6,147 pass, four existing conditional Astro skips; build 28 and typecheck 44 plus security types pass. Tenant artifact remains exact reviewed 6cb digest/911,081 bytes. Independent source and concrete deployment-config reviews pass. Full native lint and staging executor release are pending. The derived config omits all vars and inherits current live configuration, avoiding replacement of A/B controlled scopes by older committed settings. No production change, pushed commits or GitHub Actions. Broader hosted acceptance remains incomplete; A's incognito window remains unreachable.
+
+
+### 11 October 07:03 UTC: verified staging Forms schema lease release
+
+Native clean source `f7182581b9e4672bc3c3b7a445e14b337e04defa` contains fresh main `4401438d6766baef4adde0c76741ebc30ab1781c`. Full lint and required commit hook both pass 1,580 files without fixes. Guarded staging executor deploy succeeded: `a8549573-edcc-43b6-8cdc-7fb4d4cd5371` at 07:03:04.127535 UTC, version `b5cbb7be-92ae-4f19-9449-6adc590864de`, 100%. Every binding and actual plaintext/JSON variable compares identically before/after, and the PROVISIONING_API_TOKEN secret entry remains (no value read/copied). Only deployment annotations changed. Production executor remains `111cf7ba-ae5d-48ca-8f15-43a40e7d9818` / `cd0aa33b-bc2e-4822-a4ba-3fa80fac3972`, unchanged.
+
+Wrangler dry-run caught scratch tsconfig path resolution before upload. Final ignored config sits beside the original and differs ONLY by omitting vars/enabling keep_vars; dry-run 1,924.55 KiB/330.36 KiB gzip. It preserves the controlled A/B config rather than overwriting it with committed older scopes. Exact target/current-source guards and independent concrete config review pass. Minimum deploy disk 10,910,769,152 bytes above the unchanged 8 GiB floor.
+
+B refreshed its genuine dashboard to resume under this release; final supported schema completion/adoption remains pending. A's isolated window remains unreachable. No production release, pushes or Actions.
+
+
+### 11 October: B schema complete and verified-response UI correction
+
+Read-only D1 at 07:17:25 UTC confirms B's exact original draft schema operation `1c1f8a96-4c92-4565-9784-d45aef2fc0d5` is installed, lease cleared. The released staging claim was independently observed as ten minutes; original child/approval expiries were not extended. All five backend prerequisites are now complete for B. Managed adoption and Forms capability remain pending; A remains at two prerequisites with an unreachable incognito window.
+
+The UI discarded each successful guarded response and repeated expensive full status verification, often exhausting its setup session. A client-only strict merger now validates kind/original request/recovery head/adoption ID/progress digest, updates only the returned operation, and prevents older reads, replaced snapshots or unmounted pages from merging results. Confirmation belongs to one step and exact snapshot; uncertainty, malformed/mismatched responses or refresh invalidate it and require successful readback. Client transport waits up to 900 seconds; every backend expiry/fence remains unchanged. No readiness, capability or editor access is inferred.
+
+Tests-first: seven component regressions failed; three additional review findings (settled concurrent GET error and two adoption-start head cases) failed before correction. Final focused 35 tests pass, lint/diff and independent source review pass. Final full suite 16,268 pass across 2,258 files, 60 files/1,658 conditional tests skipped. Five additional skips are the built Worker boundary tests after removing only owned rebuildable dist output to free 91 MB; they must run on the rebuilt artifact before release. Typecheck has exactly 934 diagnostics/498 normalized identities, no new or removed identities versus the preceding baseline. It is not globally clean. Local 3045 restored after checks, native 4325 untouched. No pushes/Actions; client release pending.
+
+
+### 11 October: confirmed-response build checks and disk recovery
+
+Clean Dashboard source `07be3478a85f54d4a044c2aba5891d2b7951e237` passed the local build under the unchanged disk/size guards: raw 25,467,459/25,468,928 (1,469 spare), gzip 7,044,453. Five rebuilt Worker boundary tests pass, completing the artifact checks omitted during the source suite. Full source suite 16,268 pass plus these five artifact checks; 35 focused UI/projection regressions pass. Type diagnostics exactly match 934/498 identities with no new or removed errors. Independent review is clear after three regression-first corrections.
+
+Free space after repeated local builds was about 8.5 GiB, below the next deployment build's 9.5 GiB start floor. No guard was lowered. Worktree source, configuration, data, dependencies and evidence were preserved. pnpm cache status identified a modified Nuxt UI package; its cached index and 566 referenced files were preserved in a private local 543,572-byte archive. The supported pnpm store prune removed 221,543 cache files/4,336 unused packages and restored about 14 GiB free. Installed dependency directories and all worktrees remained intact. See https://pnpm.io/cli/store for the supported cache semantics. No broad process termination or project deletion.
+
+Fresh origin/main remains `a78a11945f13c520d3258df9e249b99d46b21b07`, included in the reviewed candidate. deploy:check passes for agency-dashboard; guarded pnpm deploy:preview is now running. Native 4325 stays running; owned 3045 is paused only for shared Nuxt build output and will be restored. No Actions/pushes or production changes. Hosted B managed adoption and A browser access remain outstanding.
+
+
+### 11 October 09:09 UTC: confirmed-response preview released
+
+Guarded pnpm deploy:preview from clean source `07be3478a85f54d4a044c2aba5891d2b7951e237`, latest included main `a78a11945f13c520d3258df9e249b99d46b21b07`, succeeded. Cloudflare readback verifies preview deployment `1204a008-d7dd-4f28-a9b0-0ef03852a69e`, created 09:09:39.242697 UTC, success 09:09:52.404. Raw size 25,467,623/25,468,928 (1,305 spare), gzip 7,044,559; minimum disk 14,017,150,976 bytes under unchanged 8 GiB floor. Local CMS 3045 was restored immediately; native 4325 preserved. B reloaded the actual preview to recheck managed adoption. No production change, pushes or Actions. All five B backend prerequisites remain installed; A access and hosted Forms/isolation/editor acceptance remain incomplete.

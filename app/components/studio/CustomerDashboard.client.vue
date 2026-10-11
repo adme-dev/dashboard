@@ -214,6 +214,7 @@ async function signOut() {
             variant="outline"
           />
         </div>
+        <StudioCustomerCmsSetup v-if="data.canPrepareCms && !loadError" @changed="load" />
         <div v-if="canManageForms" class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-6 py-5 sm:px-8">
           <div>
             <h3 class="text-sm font-medium text-highlighted">

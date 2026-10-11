@@ -1,3 +1,4 @@
+import { collectionDigest } from './collectionApi'
 import { z } from 'zod'
 import { ContentAttachmentRequestSchema } from './content-attachment'
 
@@ -18,14 +19,6 @@ export const CollectionUpgradeOperationSchema = z.object({
 export type CollectionUpgradeOperation = z.infer<typeof CollectionUpgradeOperationSchema>
 export const CollectionUpgradeDatabaseSchema = CollectionUpgradeOperationSchema.pick({ accountId: true, databaseId: true, name: true, scope: true })
 
-function canonical(value: unknown): string {
-  if (!value || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
-  const object = value as Record<string, unknown>
-  return `{${Object.keys(object).sort().map(key => `${JSON.stringify(key)}:${canonical(object[key])}`).join(',')}}`
-}
 export async function collectionUpgradeIdentity(input: unknown) {
-  const request = CollectionUpgradeOperationSchema.parse(input)
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical(request)))
-  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  return collectionDigest(CollectionUpgradeOperationSchema.parse(input))
 }

@@ -20,7 +20,7 @@ import {
 
 type Mutation = 'customer-adoption' | 'customer-checkpoint' | 'business-content' | 'collection-record' | 'collection-schema' | 'action-execution' | 'image-billing' | 'email-generation'
 type Principal
-  = | { source: 'customer-session', claims: import('./customerEditorToken').CustomerEditorClaims, env: Record<string, unknown>, capability: 'workspace:checkpoint' | 'workspace:create' }
+  = | { source: 'customer-session', claims: import('./customerEditorToken').CustomerEditorClaims, env: Record<string, unknown>, capability: 'workspace:checkpoint' | 'workspace:create' | 'cms:adopt' }
     | { source: 'native-login', request: ContentAuthorityRequest }
     | {
       source: 'studio-session'
@@ -234,7 +234,9 @@ export async function withCmsCommitAuthority<T>(
   try {
     if (input.principal.source === 'customer-session') {
       const principal = input.principal
-      const capability = input.mutation === 'customer-adoption' ? 'workspace:create' : 'workspace:checkpoint'
+      const capability = input.mutation === 'customer-adoption'
+        ? (principal.capability === 'cms:adopt' ? 'cms:adopt' : 'workspace:create')
+        : 'workspace:checkpoint'
       if (!['customer-checkpoint', 'customer-adoption'].includes(input.mutation) || principal.capability !== capability
         || principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== 'staging' || scope.environment !== 'staging') throw denied()
       const { assertCustomerEditorSessionAuthority } = await import('./customerEditorSessions')

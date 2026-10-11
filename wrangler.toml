@@ -392,16 +392,20 @@ service = "xeroflow-page-studio-management-staging"
 
 [env.preview.vars]
 PAGE_STUDIO_INVITED_ORIGIN = "https://preview.agency-dashboard-6cm.pages.dev"
-# Temporary staging acceptance only; two synthetic workspace approvals expire 2026-10-02.
-PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "false"
+# Temporary two-mailbox staging acceptance; reviewed Forms/editor tests only.
+PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = "[\"4f36db1c1351562c55e99db985892ed17678bde2b89cddad965423398b39d02a\",\"c1964aec4e25e7848a739ecf7085a280c3ccabfbd18fba65d098078f905433af\"]"
+PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = "2026-10-12T13:27:09Z"
 PAGE_STUDIO_CUSTOMER_ORIGIN = "https://preview.agency-dashboard-6cm.pages.dev"
-PAGE_STUDIO_CUSTOMER_TERMS_VERSION = "synthetic-hosted-acceptance-20261001"
-PAGE_STUDIO_CUSTOMER_EMAIL_FROM = "notification@adme.net.au"
-PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED = "false"
+PAGE_STUDIO_CUSTOMER_TERMS_VERSION = "2026-08-02"
+PAGE_STUDIO_CUSTOMER_EMAIL_FROM = "notification@xeroflow.io"
+PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED = "true"
 PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN = "https://studio-staging.xeroflow.io"
-PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED = "false"
-PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED = "false"
-PAGE_STUDIO_CUSTOMER_PREVIEW_APPROVALS = "[]"
+PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_FORMS_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_PREVIEW_APPROVALS = "[{\"workspaceId\":\"4d3f12be-e2c1-49a2-95c6-abfd4385cbc7\",\"starterVersion\":\"limousine-v1\",\"policy\":{\"approvalId\":\"3d3f18d9-58cb-4d7a-82da-ac281a61b5e7\",\"approvedBy\":\"2233bb7c-d92d-4daa-af1a-baefce32ad0e\",\"expiresAt\":\"2026-10-12T13:27:09Z\",\"pagesPerSiteLimit\":10,\"storageBytesLimit\":104857600,\"monthlyBuildLimit\":10,\"monthlyTrafficBytesLimit\":104857600}},{\"workspaceId\":\"0122922b-2e1f-4492-988a-f85e8e8dc025\",\"starterVersion\":\"it-goods-v1\",\"policy\":{\"approvalId\":\"1e6ca20b-4c26-4905-bff4-d31a08602f3f\",\"approvedBy\":\"2233bb7c-d92d-4daa-af1a-baefce32ad0e\",\"expiresAt\":\"2026-10-12T13:27:09Z\",\"pagesPerSiteLimit\":10,\"storageBytesLimit\":104857600,\"monthlyBuildLimit\":10,\"monthlyTrafficBytesLimit\":104857600}}]"
 PAGE_STUDIO_CMS_OBJECT_TRANSPORT = "placed-fetch"
 # Required by native CMS graph verification, including collection-only candidates.
 # Match the verified Studio runtime identity; this does not enable action forms.
