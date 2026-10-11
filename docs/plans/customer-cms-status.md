@@ -17,12 +17,12 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 Latest outcome: the Cloudflare provisioning credential is repaired and both real
 native acceptance previews are fully provisioned. The staging-only setup bridge,
 retained recovery fix and readback timeout fix are live at clean Dashboard source
-`b10c53c4f7a848d7ecaa560baf4714bcbdeb213c`, preview deployment
-`a8f5d60d-e35f-42fa-838d-1a89a414d087` (11 October 06:20 UTC).
+`07be3478a85f54d4a044c2aba5891d2b7951e237`, preview deployment
+`1204a008-d7dd-4f28-a9b0-0ef03852a69e` (11 October 09:09 UTC).
 Both accounts have collection/content tools installed. B now has all five backend prerequisites complete: the exact original final
 Forms schema operation is installed and its lease cleared (07:17 UTC). The
-client still repeats expensive verification; a tested strict response-merging
-fix is awaiting its guarded release. A's genuine incognito window
+client still repeats expensive verification; the strict response-merging fix is released and genuine hosted recovery
+is being checked. A's genuine incognito window
 is unreachable; the user's async access clarification remains pending.
 
 A bounded native fix for the costly Forms schema verification selects a ten-minute
@@ -44,8 +44,8 @@ Dashboard validation: 16,238 tests pass, with 59 files/1,653 conditional tests
 skipped. Changed-file lint and independent review pass. The last typecheck records
 934 existing diagnostics; no new global-clean typecheck claim is made. Several
 local size-guard failures stopped before upload. Shared canonical identity hashing
-creates real headroom: the current preview raw bundle is 25,467,699/25,468,928 bytes
-(1,229 spare), gzip 7,044,633/9,750,000. The guard is unchanged. Source/provider
+creates real headroom: the current preview raw bundle is 25,467,623/25,468,928 bytes
+(1,305 spare), gzip 7,044,559/9,750,000. The guard is unchanged. Source/provider
 receipts and limitations are in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
 
 Remaining: finish A prerequisites and managed adoption for A/B;
@@ -957,3 +957,17 @@ Read-only D1 at 07:17:25 UTC confirms B's exact original draft schema operation 
 The UI discarded each successful guarded response and repeated expensive full status verification, often exhausting its setup session. A client-only strict merger now validates kind/original request/recovery head/adoption ID/progress digest, updates only the returned operation, and prevents older reads, replaced snapshots or unmounted pages from merging results. Confirmation belongs to one step and exact snapshot; uncertainty, malformed/mismatched responses or refresh invalidate it and require successful readback. Client transport waits up to 900 seconds; every backend expiry/fence remains unchanged. No readiness, capability or editor access is inferred.
 
 Tests-first: seven component regressions failed; three additional review findings (settled concurrent GET error and two adoption-start head cases) failed before correction. Final focused 35 tests pass, lint/diff and independent source review pass. Final full suite 16,268 pass across 2,258 files, 60 files/1,658 conditional tests skipped. Five additional skips are the built Worker boundary tests after removing only owned rebuildable dist output to free 91 MB; they must run on the rebuilt artifact before release. Typecheck has exactly 934 diagnostics/498 normalized identities, no new or removed identities versus the preceding baseline. It is not globally clean. Local 3045 restored after checks, native 4325 untouched. No pushes/Actions; client release pending.
+
+
+### 11 October: confirmed-response build checks and disk recovery
+
+Clean Dashboard source `07be3478a85f54d4a044c2aba5891d2b7951e237` passed the local build under the unchanged disk/size guards: raw 25,467,459/25,468,928 (1,469 spare), gzip 7,044,453. Five rebuilt Worker boundary tests pass, completing the artifact checks omitted during the source suite. Full source suite 16,268 pass plus these five artifact checks; 35 focused UI/projection regressions pass. Type diagnostics exactly match 934/498 identities with no new or removed errors. Independent review is clear after three regression-first corrections.
+
+Free space after repeated local builds was about 8.5 GiB, below the next deployment build's 9.5 GiB start floor. No guard was lowered. Worktree source, configuration, data, dependencies and evidence were preserved. pnpm cache status identified a modified Nuxt UI package; its cached index and 566 referenced files were preserved in a private local 543,572-byte archive. The supported pnpm store prune removed 221,543 cache files/4,336 unused packages and restored about 14 GiB free. Installed dependency directories and all worktrees remained intact. See https://pnpm.io/cli/store for the supported cache semantics. No broad process termination or project deletion.
+
+Fresh origin/main remains `a78a11945f13c520d3258df9e249b99d46b21b07`, included in the reviewed candidate. deploy:check passes for agency-dashboard; guarded pnpm deploy:preview is now running. Native 4325 stays running; owned 3045 is paused only for shared Nuxt build output and will be restored. No Actions/pushes or production changes. Hosted B managed adoption and A browser access remain outstanding.
+
+
+### 11 October 09:09 UTC: confirmed-response preview released
+
+Guarded pnpm deploy:preview from clean source `07be3478a85f54d4a044c2aba5891d2b7951e237`, latest included main `a78a11945f13c520d3258df9e249b99d46b21b07`, succeeded. Cloudflare readback verifies preview deployment `1204a008-d7dd-4f28-a9b0-0ef03852a69e`, created 09:09:39.242697 UTC, success 09:09:52.404. Raw size 25,467,623/25,468,928 (1,305 spare), gzip 7,044,559; minimum disk 14,017,150,976 bytes under unchanged 8 GiB floor. Local CMS 3045 was restored immediately; native 4325 preserved. B reloaded the actual preview to recheck managed adoption. No production change, pushes or Actions. All five B backend prerequisites remain installed; A access and hosted Forms/isolation/editor acceptance remain incomplete.
