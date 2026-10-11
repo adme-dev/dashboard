@@ -11,7 +11,7 @@ async function run(body: CustomerCmsSetupRequest) {
   busy.value = true
   message.value = ''
   try {
-    await $fetch(api, { method: 'POST', body, timeout: 60000 })
+    await $fetch(api, { method: 'POST', body, timeout: 300000 })
   } catch {
     message.value = 'We could not confirm that step. Refresh its status before trying again.'
   } finally {
@@ -27,9 +27,18 @@ async function reload() {
   }
 }
 const adoption = computed(() => data.value?.adoption)
-function prepare(kind: keyof typeof labels) {
-  const current = data.value?.prerequisites.find(row => row.kind === kind)
+async function prepare(kind: keyof typeof labels) {
+  if (busy.value || error.value) return
+  let current = data.value?.prerequisites.find(row => row.kind === kind)
   if (!current) return
+  if (['reserved', 'running'].includes(current.status)) {
+    // Refresh retained identity before an explicit same-request resume. The
+    // coordinator alone decides whether its lease allows work; never infer it
+    // from a browser timeout or strand an expired retained operation.
+    await refresh()
+    current = data.value?.prerequisites.find(row => row.kind === kind)
+    if (error.value || !current || current.status === 'installed' || current.status === 'disabled') return
+  }
   run({ operation: 'schema', request: current.status === 'reconciliation'
     ? { action: 'recover', kind, requestId: crypto.randomUUID(), expectedRecoveryId: current.recoveryId }
     : { action: 'start', kind, requestId: current.requestId ?? crypto.randomUUID() } })
@@ -80,10 +89,10 @@ function adopt() {
     />
     <ol v-else-if="data" class="mt-5 space-y-3">
       <li v-for="(step, index) in data.prerequisites" :key="step.kind" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default px-4 py-3 text-sm">
-        <span>{{ labels[step.kind] }}<span v-if="step.status === 'installed'" class="ml-2 text-success">Ready</span></span>
+        <span>{{ labels[step.kind] }}<span v-if="step.status === 'installed'" class="ml-2 text-success">Ready</span><span v-else-if="['reserved', 'running'].includes(step.status)" class="ml-2 text-muted">Preparing</span></span>
         <UButton
           v-if="step.status !== 'installed'"
-          :label="step.status === 'reconciliation' ? 'Recover this step' : 'Prepare'"
+          :label="step.status === 'reconciliation' ? 'Recover this step' : ['reserved', 'running'].includes(step.status) ? 'Resume step' : 'Prepare'"
           color="neutral"
           variant="outline"
           :loading="busy"
