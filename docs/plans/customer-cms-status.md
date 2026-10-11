@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 10 October 2026. Start here after an interruption.
+Last updated: 11 October 2026. Start here after an interruption.
 Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Latest bounded CMS rollout: [Fantasy Limo runtime and activation receipt](2026-10-10-fantasy-cms-runtime-release.md).
 Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
@@ -12,20 +12,44 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
 
 
-## Running ledger — 10 October 2026
+## Running ledger — 11 October 2026
 
-Latest outcome: Fantasy Limo retains indefinite active access. The reviewed
-private runtime is released from merged native main `4401438`; its guarded CMS
-activation is complete and the agency page shows Ready. Fresh invited dashboard
-and editor readbacks preserve 75 pages, 109 media assets and eight form placements. Existing editor
-permissions are unchanged; the editor-only preparation warning and hosted
-custom-record/field-picker acceptance remain open. See the paired runtime receipt
-for service versions, checks, rollback evidence and remaining launch gates.
+Latest outcome: the Cloudflare provisioning credential is repaired, and both
+real native acceptance previews are fully provisioned. A restricted, staging-only
+CMS setup bridge is deployed at preview source `c2b01db4d836dd32e420906ae375bc6769d8296e`,
+deployment `e8138e1b-878a-4383-b8d4-2266a2497c42`. Genuine mailbox sessions remain
+separate; B received setup-only controls and its first collection migration is
+running under the retained operation. A's setup session is being verified.
+This is not native Forms/editor/publication acceptance or a production activation.
 
-### Editor preparation warning — local fix, release pending
+Fantasy Limo's original production CMS remains Ready with indefinite active access,
+75 pages and 109 media assets. The denied invited-user preparation warning fix is
+already merged/released in Dashboard main `a78a119...`, production deployment
+`7f98f789-d152-4d2d-90d7-dec3c8f24798`; it is not a current release blocker.
+The selected local builder on 4325 remains running; the local CMS on 3045 was
+restored after the guarded staging build. No GitHub Actions were triggered.
 
-The hosted invited account can read website content but lacks admin setup
-permission. Its first portal adoption-status GET returns 403 and the preparation
+Current checks: 16,228 tests pass; existing 934 type diagnostics unchanged; changed
+source lint and independent review pass. First build stopped before upload at
+410 bytes over budget. Shared adoption DTO refactor passes 69 focused checks and
+review; the final build meets the unchanged raw safety budget with 76 bytes spare
+and gzip 7,044,688 bytes. Do not relax that guard; further server features require
+additional extraction. Exact source/runtime/config receipts and scope limits are
+in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
+
+Remaining: complete five supported prerequisites and managed adoption for A/B;
+activate the exact private Forms capability only after physical readback; run
+hosted Forms/browser/isolation/role acceptance; reconcile approved production
+changes separately. Setup approvals cover only A/B, expire at the original
+2026-10-12T13:27:09Z deadline and cannot be silently extended. Editor/browser/Forms
+flags remain closed. AI allowance stays zero. The original Fantasy website,
+accounts, publication and domain remain unchanged.
+
+### Editor preparation warning — historical local verification (released 10 October)
+
+The following records the pre-release 10 October verification; the release above
+supersedes its pending wording. The hosted invited account can read website content
+but lacks admin setup permission. Its first portal adoption-status GET returns 403 and the preparation
 panel incorrectly presents that as a website setup failure. The frontend now
 omits this admin-only panel for a denied initial portal status read, matching the
 connection panel. It does not infer Ready, widen API permissions or change roles.

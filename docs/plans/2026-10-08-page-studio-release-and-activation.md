@@ -654,3 +654,36 @@ CUSTOMER_FORM_DRAFTS_RUNTIME_CONFIG (A/B only) changed. This prepares installati
 it does not prove installed CMS, activate Forms, publish or authorize production.
 Private runtime source/config/readback receipt lives in Native
 `.verification/native-two-account-20261011/runtime-artifact-and-scope-release-receipt.json`.
+
+
+### Restricted native setup staging release — 11 October 2026
+
+First guarded release attempt stopped before upload: raw 25,469,338 bytes,
+410 over the unchanged 25,468,928 safety budget. The duplicated adoption DTO was
+consolidated into a shared client/server contract with both old export names
+retained. Exact validation/strictness and authority behavior remain unchanged.
+69 focused PostgreSQL/adoption/setup/HTTP checks and independent review pass.
+Refactor source `c2b01db4d836dd32e420906ae375bc6769d8296e` includes current main
+`a78a11945f13c520d3258df9e249b99d46b21b07` and isolated preview-only acceptance
+configuration. All unmerged branch work remains owned and accounted for.
+
+Guarded `pnpm deploy:preview` succeeds. Raw 25,468,852 / 25,468,928 (76 remaining),
+gzip 7,044,688 / 9,750,000; minimum free disk 15,867,355,136 bytes, stop floor 8 GiB.
+Deployment `e8138e1b-878a-4383-b8d4-2266a2497c42`, created 04:29:55.845718 UTC,
+successful 04:30:06.281970 UTC, clean exact source c2b01db4..., preview alias.
+Provider readback confirms stage Hyperdrive 3865..., provisioner staging, setup
+flag true, editor/browser false, Forms absent/closed, notification@xeroflow.io and
+unchanged signup expiry. Production is still deployment 7f98f789... / main a78... .
+No push or GitHub Actions. Local CMS restored with the same guarded startup.
+
+After successful release, inserted exactly two audited staging setup approvals
+from unchanged native owner/site tuples and original preview policy, without
+renewing expiry: A `4d709a17-3409-47ae-9943-8383af457a29`, B
+`cb115243-0f00-4ac7-afb5-373320b414f0`, both expire 2026-10-12T13:27:09Z.
+B's normal existing browser session received the setup-only child at 04:31:40 UTC
+and shows the new controls. One collection start retains request
+`9c2b6f32-a3c5-4593-96e6-61fddfefa5fd`, operation
+`c75625a7-e0e3-44c4-b5b7-0045ddac950b`. Browser timeout did not change that identity:
+readback shows the reserved active lease through 04:37:55.428 UTC. Do not blind
+replay; observe supported status first. A's separate incognito setup session is
+being verified. Native CMS/Forms completion remains pending these real operations.
