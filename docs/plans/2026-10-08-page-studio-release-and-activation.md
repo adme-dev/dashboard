@@ -218,3 +218,439 @@ expiry is only a backstop.
 AI template proposals, verified sender/reply-to, delivery/outbox, published outcomes
 and the wider CMS roadmap remain open; the renderer extraction does not establish
 capacity or acceptance for those additions.
+
+## Controlled native acceptance refresh — 11 October
+
+Resumed from freshly fetched current main `a78a11945f13c520d3258df9e249b99d46b21b07`
+in the existing owned worktree; no additional checkout or source copy was created.
+The current preview is closed and retains stale signup sender/terms settings.
+The previous two-mailbox acceptance window has expired.
+
+The temporary preview candidate restores the already-approved two-mailbox SHA-256
+scope, with expiry `2026-10-12T13:27:09Z`, published terms version `2026-08-02`,
+and sender `notification@xeroflow.io`. Both hashes were locally checked against
+the supplied test mailboxes. Production signup and all editor/preview-creation/Forms
+gates remain unchanged and closed. This temporary configuration must not be merged
+into production and must be closed after acceptance; expiry is a backstop.
+
+Only the optional acceptance guard and its regressions were reconciled from the
+older branch. Current main's secure `__Host-studio_customer_session` protection
+is retained. Review found an explicit-blank configuration fail-open edge: six
+regressions failed before the correction. Explicit invalid provider values now
+override process defaults and fail closed. Truly absent optional scope retains
+the existing normal gate. Independent follow-up review approved the correction.
+Focused HTTP/email/CMS/intake/deployment-boundary checks: **71 passed**; scoped ESLint
+passed. Full suite: **15,843 passed /1,966 conditional skips**. Typecheck exits 2
+with exactly the same 934 normalized diagnostic identities as the prior current-main
+baseline, with no edited-file diagnostics. Local build passed: raw **25,459,611 /25,468,928**
+(9,317 bytes spare), gzip **7,042,541 /9,750,000**. Disk guard minimum
+22,829,207,552 bytes; unchanged 8 GiB stop floor. Guard implementation is isolated
+in commit `568df8cb1`; temporary preview configuration is a separate commit. No preview deployment,
+email send, native workspace creation, capability activation or production change
+has occurred for this refresh yet.
+
+Next: finish local checks and guarded preview release, then supported email login
+and onboarding for A/B, fresh exact workspace approvals and the hosted native
+acceptance matrix. Retain the successful Fantasy legacy CMS release and both
+selected local development servers.
+
+### Preview refresh released
+
+Guarded `pnpm deploy:preview` completed successfully from clean source
+`eb64756fed64df8a0365211c94111cc41abdc854`, including current main
+`a78a11945f13c520d3258df9e249b99d46b21b07`. Deployment
+`6532b482-5531-4d4c-8b42-09a81a4b739c` serves the preview alias. Final release
+build raw 25,459,635/25,468,928 (9,293 spare), gzip 7,042,577/9,750,000.
+The disk guard minimum was 22,738,579,456 bytes with unchanged 8 GiB floor.
+
+Provider readback matches exact source and the five expected preview variable
+changes only. Production deployment `7f98f789-d152-4d2d-90d7-dec3c8f24798`,
+production configuration, domains, preview bindings, editor/Forms gates and empty
+workspace approval list are unchanged. Both local servers return HTTP 200 after
+restoring the original CMS command/environment. No GitHub push or Actions run
+was required.
+
+Fresh browser shows native signup enabled in default light mode and includes
+Automotive. A normal sign-in request for A returns the generic Link requested
+state. Delivery and native onboarding were pending at this release-readback
+checkpoint; account A verification follows below.
+The connected business mailbox contains no matching B verification message,
+and B is not one of the currently signed-in Gmail accounts. No account role,
+workspace or editing capability had changed at that checkpoint.
+
+### Account A hosted onboarding verified
+
+The authorized mailbox received the native sign-in email from
+`notification@xeroflow.io`, linking to the exact preview native verification page.
+Normal UI verification and three-step onboarding completed. Separate staging
+workspace `4d3f12be-e2c1-49a2-95c6-abfd4385cbc7` was derived from the fresh
+authenticated setup response, revision 4. It is named Page Studio acceptance A,
+Automotive, Australia/Melbourne, with Receive enquiries and leads selected.
+This did not move or modify Fantasy Limo's original account/site.
+
+The native dashboard displays the saved workspace, Not published, and closed
+preview admission. Both theme controls were exercised and light mode restored.
+A fresh normal status refresh returns 200 for dashboard and availability; returning
+to onboarding reads setup 200 and redirects to the saved dashboard. Private receipt
+and light/dark screenshots contain no session cookies or sign-in tokens.
+
+Account B verification, its separate workspace, exact staging approvals/runtime
+installation and the two-account hosted acceptance matrix remain outstanding.
+Production customer activation remains closed.
+
+### Account B concrete handoff
+
+A was signed out normally after saving its independent workspace. B's native
+signup form is prepared in the retained browser tab with Technology and one
+enquiry goal selected, test name and the already-approved B address filled.
+The Account terms checkbox is unchecked and the email request was not submitted.
+The current UI requires accepting Terms of Service and acknowledging Privacy
+Policy to resend verification for a pending account; ordinary signin intentionally
+withholds mail for pending accounts. Browser policy requires action-time confirmation
+for that terms acceptance. Prior signup consent is retained as history, not a
+substitute for the current browser confirmation step.
+
+The connected Gmail accounts do not include B; the business mailbox's exact B
+verification search returned no match. Alternate Kimi connection health succeeds
+but has no mailbox tab in the checked task session. Normal B email verification
+remains necessary; no session, portal cookie or authority was fabricated.
+The retained screenshot shows the exact unchecked form for review. No B email was
+sent during this refresh. Do not activate preview/editor/Forms capabilities until
+both fresh exact account/workspace scopes and approvals are verified.
+
+### Account B terms and verification request submitted — 11 October
+
+The user confirmed the exact prepared Terms of Service/Privacy acknowledgment
+and verification resend. The normal browser form was submitted once and reached
+Link requested for B. Read-only Neon checks targeted project
+`square-tooth-23821574`, non-primary staging branch `br-long-mountain-a4f73v10`,
+database `neondb`. B remains pending with no identity or workspace; terms version
+`2026-08-02` was accepted at `2026-10-10T20:53:04.509Z`. The fresh unconsumed
+challenge expires at `2026-10-10T21:08:04.519Z` (11 October 08:08 Melbourne).
+No token/hash/session was retrieved or fabricated. Cloudflare's exact-address
+suppression query returned an empty list; this does not prove delivery.
+
+The existing ADME Gmail session now requires normal Google reauthentication.
+The Workspace account was selected and the browser is retained at “Use your
+passkey to confirm it’s really you.” Device authentication requires the user;
+it was not bypassed. Alternate Kimi is connected, but neither its session-tab
+nor active-foreground lookup found a Gmail mailbox. The mailbox location/forward
+for B is requested; no recipient was changed and no forwarding rule was created.
+
+A read-only scope audit confirms A's native identity is active, workspace
+`4d3f12be-e2c1-49a2-95c6-abfd4385cbc7` is active with an unrevoked owner
+membership and no legacy client binding. B has no native identity, setup draft,
+workspace or membership. Exact metadata is retained privately in the scope
+readback receipt, without credentials.
+
+Both owned source worktrees were verified; Dashboard origin/main remains
+`a78a11945f13c520d3258df9e249b99d46b21b07`, and native Studio remains clean
+at `4401438d6766baef4adde0c76741ebc30ab1781c`. No code change, deployment,
+GitHub push/Actions run, production migration or capability activation accompanied
+this verification step. Next: open B's received native email and complete normal
+verification/onboarding; then derive its exact scope and continue staging approvals
+and the two-account hosted matrix. Do not substitute database/session manipulation
+for verified-mailbox ownership.
+
+### Both real native accounts onboarded — 11 October
+
+The mailbox question is resolved: B has its own already-signed-in Apple Mail
+inbox. Google reauthentication was unnecessary for that mailbox. The received
+11:53 message was found in B's Spam folder; the later 12:11 normal sign-in message
+was received in its Inbox. No sender or recipient was changed. Cloudflare's
+private customer-email gateway returned 202 for the first fresh request.
+
+The earlier verification tab showed a consumed/expired-link response. Read-only
+staging metadata nevertheless confirmed B had been verified; a fresh normal
+signin completed successfully in the connected Chrome session (verify HTTP 200).
+Browser onboarding then saved Page Studio acceptance B, Technology,
+Australia/Melbourne, with enquiry goal, in independent workspace
+`0122922b-2e1f-4492-988a-f85e8e8dc025`, setup revision 1. Its saved dashboard is
+visible in light mode and remains Not published with preview admission closed.
+No auth cookie or bearer token was copied into artifacts or reports; received
+email links were used only for the normal app sign-in flow.
+
+Fresh metadata confirms both A and B are active verified native identities with
+distinct active owner workspaces and no legacy client bindings. A remains unchanged
+at workspace `4d3f12be-e2c1-49a2-95c6-abfd4385cbc7`, revision 4. Both workspaces
+have zero existing site-request and business-owner receipts. Original Fantasy
+Limo's production site, storage and memberships are unaffected.
+
+The native two-account signup/onboarding prerequisite is now complete. Proposed
+(not applied) staging preview approvals cover only these two workspaces, supported
+limousine/IT starters, one unpublished site each, 10 pages, 100 MiB storage and
+traffic, 10 builds, no AI/custom domains/publication, and expiry matching the
+existing acceptance window. Approver is the user's active staging staff identity.
+Independent scope review approved the proposal subject to zero prior receipts
+(verified) and actual staged generation-2/native recovery support (verified by the private
+version-1 coordinator/executor handshake).
+Editor/browser/Forms and all production gates remain closed. No new deployment
+or GitHub Actions run accompanied onboarding.
+
+Next: finish the private read-only staged support probe, then guarded preview
+creation for the exact two fresh approvals, derive distinct site/storage scopes,
+review/install immutable runtime bytes and CMS/Form prerequisites, and run the
+remaining hosted API/browser/isolation matrix before customer production activation.
+
+### Controlled preview-creation configuration prepared
+
+Both proposed workspaces have zero site-request/business-owner receipts. The private
+read-only coordinator/executor recovery handshake returned exactly `{version:1}`.
+The pinned-Node child disposed successfully, exited 0 before deadline, and its owned
+process group was contained. Independent review approved the probe after a real
+local descendant-cleanup regression was fixed; normal and timeout fixtures both
+leave no descendant. Remote session teardown is explicitly not proven by this result.
+
+The preview-only configuration now contains only the reviewed two approvals array
+and enables preview creation. Each has a new approval identity; no original expired
+policy or entitlement was edited. Production vars and closed editor/browser/Forms
+gates are preserved. Focused native dashboard/signup/deployment/TOML checks: 64
+passed. No new application code was added; the full 15,843-test source verification
+and matching 934-diagnostic baseline remain applicable. Guarded release is pending
+at this preparation checkpoint.
+
+### Two-workspace preview configuration released; credential blocker
+
+Guarded `pnpm deploy:preview` passed from clean current-main-based source
+`49bada09ecf69e90aa37c77239bbf66e0995825b` (main `a78a11945...`). Preview
+deployment `e8b299a6-65a9-41f4-8953-d8b860b489cb` serves the alias. Final raw
+25,459,883/25,468,928 (9,045 spare), gzip 7,042,759/9,750,000. Disk guard minimum
+12,344,098,816 bytes, above unchanged 8 GiB floor. Owned CMS command/environment
+was restored; both selected local servers return HTTP 200. No GitHub Actions push
+or run was required.
+
+Provider comparison proves only preview creation enabled and the exact two
+approvals changed. Production deployment/configuration/domains and all preview
+bindings are unchanged. Editor/browser/Forms gates remain closed.
+
+B's normal dashboard showed Create preview. The action was executed once through
+the authenticated UI. It retained independent draft site
+`9f855643-0b79-4eae-8b7a-5b8399b1a6de`, business
+`9be901e3-bbda-4f9e-a790-db177c7df333`, tenant
+`studio-customer-9be901e3-bbda-4f9e-a790-db177c7df333`, IT starter, and original
+request `page-studio-9f855643-0b79-4eae-8b7a-5b8399b1a6de-1`.
+
+Coordinator readback shows generation 2, phase failed, attempts 0, error
+`Cloudflare D1 request failed (401)`, and database/site/contentBinding resources
+all null. This is an actual provisioning credential failure, not signup failure
+or completed website preparation. Source inspection confirms the executor uses
+its `PROVISIONING_API_TOKEN` for the D1 management API. No resource creation replay,
+manual phase/receipt alteration, capability activation or publication occurred.
+
+The Cloudflare connection cannot read/manage user or account token metadata
+(both token-management endpoints return 9109 Unauthorized). Targeted checks of
+standard owned/canonical env files found no existing provisioning credential to
+restore. The secret's value was neither read nor copied. Credential recovery now
+requires the user to enter a valid provisioning API token directly into Cloudflare
+Worker `xeroflow-provisioning-executor-staging`, secret `PROVISIONING_API_TOKEN`,
+under the already-established account. A Chrome handoff tab points to that exact
+Worker's settings but requires Cloudflare sign-in. The older authenticated Safari
+window became unavailable during inspection; no credential was entered.
+
+B's dashboard is retained at Resume setup, which preserves the same site and
+progress. Fix/verify the existing staging credential first, then use that supported
+recovery action with fresh readback. A preview creation remains pending until the
+shared provisioning credential works. Preserve this site's immutable approval and
+request identities; do not renew expired policy by editing dates. Wider native
+installation/API/browser/isolation acceptance and production activation are still
+outstanding. Both real native account onboarding flows are complete.
+
+### Credential recovery follow-up — 11 October 2026
+
+On the user's request to finish autonomously, checked the existing Cloudflare
+connection and recovered the signed-in Safari dashboard. The connection identifies
+as `paul@adme.net.au`; the permission-groups endpoint also returns 9109 Unauthorized.
+The exact staging executor still has an encrypted `PROVISIONING_API_TOKEN` binding.
+Its existing value is not viewable. No token value was read or copied, and no
+replacement token was created through another identity or broader credential.
+
+Safari now displays the empty replacement field for that secret in
+`xeroflow-provisioning-executor-staging`. No value was entered and neither Save
+version nor Deploy was submitted. Cloudflare labels the Worker's environment
+"Production", but the selected service itself is the staging executor; this is
+not the customer production executor. Screenshot:
+`.verification/resume-20261008/native-staging-secret-handoff-20261011.png`.
+
+The browser-control policy requires user handoff for entering, confirming and
+submitting a changed authentication credential. The API connection cannot manage
+tokens, so that final credential step remains external. B's authenticated
+dashboard was retained for supported recovery once the credential is restored.
+No provisioning retry, customer resource creation, GitHub push, Actions run or
+production deployment occurred during this follow-up. Resume by verifying the
+credential repair, then recovering B's existing request before creating A's preview
+and continuing the remaining native acceptance checks.
+
+Credential handoff clarification: inspected executor API adapters and current
+official Cloudflare documentation. Provisioning uses D1 management/query APIs
+and Workers for Platforms script upload/read APIs. The replacement therefore
+needs account D1 Edit and Workers Scripts Edit, limited to account
+`a5b299b3ad15c1b5b895dc66f9357b17`; no DNS or token-management grant is requested.
+Prepared a user-token template URL with only `d1:edit` and
+`workers_scripts:edit`, the exact account ID and descriptive staging name.
+Cloudflare documents template URLs as form prefill only, not credential creation.
+The template has not been verified in the authenticated UI: Safari twice reported
+an app-control interruption after fresh state inspection. No token was created,
+secret entered, credential deployed or provisioning recovery attempted.
+
+References checked 11 October 2026:
+- https://developers.cloudflare.com/d1/tutorials/import-to-d1-with-rest-api/
+- https://developers.cloudflare.com/api/resources/workers_for_platforms/subresources/dispatch/subresources/namespaces/subresources/scripts/methods/update/
+- https://developers.cloudflare.com/fundamentals/api/how-to/account-owned-token-template/
+
+MCP authorization follow-up: on the user's request to open permission granting,
+inspected the configured `cloudflare` server and its live OAuth discovery metadata.
+The configured endpoint is `https://mcp.cloudflare.com/mcp`. Its 384 advertised
+scopes do not include user or account API-token management. A CLI login was
+started to inspect the offered authorization request and cancelled before any
+browser approval or callback. No new grant was installed. Reconnecting this OAuth
+connection cannot be represented as a proven token-management fix. Opened the
+documented provisioning-token template instead for the user to complete the
+credential handoff, with the original two required permissions and exact account.
+The connected Chrome profile requires Cloudflare sign-in. Its saved-profile
+button is Continue as `paul@adme.net.au` using Google; the login page also requires
+agreement to Cloudflare terms, so this step was left to the user. The tab was
+brought forward and retained. Proof:
+`.verification/resume-20261008/native-cloudflare-token-login-handoff-20261011.png`.
+
+User reported sign-in done. Verified the authenticated token form, then opened
+its non-mutating summary: Page Studio staging provisioning, only account D1 Edit
+and Workers Scripts Edit, exact Paul account. Create Token remains unsubmitted.
+Prepared a second authenticated Chrome tab at the staging executor's existing
+secret editor with the Value field empty; Save version and Deploy remain
+unsubmitted. Both credential tabs and B's saved dashboard are retained. No token
+value was read, copied or recorded. Proof files:
+`native-cloudflare-token-summary-20261011.png` and
+`native-cloudflare-secret-empty-20261011.png` under the ignored verification folder.
+The credential handoff is now reduced to Create Token, copy its value into the
+prepared secret field, and Deploy. Provisioning recovery remains pending that save.
+
+### Credential repaired; real preview provisioning — 11 October 2026
+
+The user entered and deployed the replacement credential. Provider readback proves
+staging executor version `0c7e766e-c188-4626-ba85-d2dfcf639a6f` at 100%, deployment
+`d04d162e-5e3c-4231-83ae-87ddd93c7564`, 02:42:35 UTC. Code ETag, bindings and runtime
+settings match the prior version; only deployment-source metadata differs. The
+token value was not copied into any receipt or report.
+
+B's supported recovery created D1 `66e70089-1e23-45f7-9a6c-c742b15d48e5` and Worker
+`ps-content-7657cd49dce048dc8dd10dd444f979f1`, physically verified with the exact
+D1 binding. Its first recovered attempt hit the five-minute metadata time budget.
+After terminal readback and resource verification, one supported recovery reused
+those resources; automatic continuation completed the final checkpoint at
+02:59:02.393 UTC. Original site/request identities were preserved. B's normal UI
+now shows Awaiting verification, with website/content preparation complete.
+This is provisioning completion, not editor, Forms or publication acceptance.
+Private receipt/proof: `native-b-provisioning-complete-20261011.json` and `.png`.
+
+A signed in normally using its fresh received email in an isolated incognito
+window, retaining B's original session. Create preview was submitted once for
+workspace `4d3f12be-e2c1-49a2-95c6-abfd4385cbc7`. It retained business
+`9294ff87-ba4f-488f-986d-2a7fa1779615`, site
+`eb967d29-a734-4d66-9b06-45399ee5e3ed`, request
+`page-studio-eb967d29-a734-4d66-9b06-45399ee5e3ed-1`, D1
+`3ea4ed5b-0b3d-406d-98c7-966c281faec6`, and Worker
+`ps-content-1fb6c35dc461401a9d73ae9b297078d0`. The first attempt stopped at
+03:08:19.383 UTC with the same metadata budget error; physical resources are
+verified and retained. No further creation request or manual phase edit occurred.
+
+A bounded timing fix is being prepared locally on Native branch
+`fix/staging-provisioning-budget-20261011`, based on fresh main `4401438d...`.
+Only staging receives a fixed ten-minute claim; production retains five, and
+authority, ownership, expiry fencing, the fifteen-minute invocation cap and
+thirty-second reserve are unchanged. Tests-first failures were observed; 34
+coordinator tests pass independently. Full build/typecheck/lint and 6,143 tests
+pass, with four existing conditional skips. Minimum QA disk headroom was
+18,650,771,456 bytes. The existing staging-only dry run passes. The native commit hook passed; source commit is
+`528b8ac1c711c3b99e40d3cf646d30b84ba80fd9`. No GitHub push/Actions occurred.
+Source receipt: Native `docs/verification/2026-10-11-staging-provisioning-budget.md`.
+
+Exact A/B CMS and separate Forms runtime proposals are prepared and reviewed,
+preserving both old CMS scopes/pins. Offline source validation accepts the intended
+scopes and denies old Forms scopes, foreign sites and production. They have not
+been applied. Native Forms requires a separate exact-artifact staging review,
+R2 source/target hash verification, five supported prerequisites and explicit
+private capability activation before hosted API/browser/isolation acceptance.
+Original Fantasy Limo production CMS remains unchanged; both selected local
+servers returned 200. Editor/browser/Forms gates remain closed.
+
+
+### Staging budget released; both previews complete — 11 October 2026
+
+Deployed only `xeroflow-provisioning-staging` at 03:32:03.730 UTC:
+version `e13871e2-d63d-407e-8d3a-3b1c942a6659`, deployment
+`7c0e498e-c733-420e-a588-2e98c12e6df2`, 100%, exact source `528b8ac1...`.
+Bindings/settings match the reviewed baseline. Production coordinator remained
+at version `23ef0df2-424c-4e26-815b-683a0e04e166`, deployment
+`7044e59f-3f2b-46aa-a999-3e9de8c3ca8f`.
+
+One supported A recovery acquired the actual ten-minute claim at 03:35:25.626 UTC
+and completed at 03:42:24.548 UTC, attempts 1, error null, lease cleared. All
+previously verified physical resources and request identities were retained.
+Both A and B provisioning jobs are now complete. Private A readback/proof:
+`native-a-provisioning-complete-20261011.json` and `.png`.
+
+The next blocker is an implementation gap: native CMS prerequisites and adoption
+require a child editor session, while editor admission requires managed CMS
+readiness. No existing supported pre-CMS native producer exists. Do not fabricate
+claims, sessions or receipts, or weaken editor launch. A fresh read-only review
+approved a Dashboard-only setup-purpose design: persisted immutable handoff
+purpose, exact `cms:prepare`/`cms:adopt` capabilities, short fixed lifetime,
+current native owner/parent/approval authority, exact staging A/B scope gate,
+completed provisioner proof, explicit POST issuance/recovery, and no GET minting.
+Old editor JWT shape/six capabilities and checkpoint/portal behavior must remain
+unchanged. Implementation, SQL integration tests, source review and staging
+release are outstanding. Capability activation remains a separate later step.
+
+The exact Forms artifact `6cb34fd939e71028567270190fb6d02c59011b2cdc1c4b0497effb3f702367f5`
+(911081 bytes, compatibility 2026-08-18) received separate read-only approval
+for staging artifact upload, controlled A/B installation and hosted acceptance;
+not production or broad scope. Actual staging R2 readback verified existing
+6f21... and 7afd... artifacts. The 6cb... object is absent and must be uploaded
+then independently read back before use. Runtime proposals remain unapplied.
+
+### Restricted native setup implemented locally — 11 October 2026
+
+Fresh Dashboard branch `feat/native-cms-setup-20261011` starts at current main
+`a78a11945f13c520d3258df9e249b99d46b21b07`; the still-needed signup guard was
+reconciled as `9a0538c4f`. Temporary acceptance configuration remains separate.
+The implemented Dashboard-only bridge uses genuine persisted setup handoffs,
+exact `cms:prepare`/`cms:adopt` grants, a fifteen-minute maximum, strict native
+cookie/origin adapters, completed coordinator observations, fresh native owner
+checks and deterministic child reuse. Existing editor JWT shape/six capabilities,
+four-hour maximum and editor readiness remain unchanged. Setup claims/tokens do
+not leave Dashboard. GET/status cannot issue children or advance mutations.
+
+Additive migration 448 was executed atomically against explicit non-primary Neon
+branch `br-long-mountain-a4f73v10` in `square-tooth-23821574`, database `neondb`.
+Its staging-only full-tuple approval table remains empty. Original preview policy
+and deadline are immutable; insertion/withdrawal are audited, renewal/re-enabling
+and deletion are refused. No production migration or setup approval was applied.
+
+Fresh source review found and corrected two issues: withdrawal tombstone retention
+and native access revalidation after setup availability failure. Final independent
+source review has no remaining high/important findings. Genuine restricted claims
+are now exercised through retained schema original/recovery callbacks and full
+managed adoption/final commit fences, including approval withdrawal after awaited
+storage reads. Concurrent native resume reuses one child; expiry and wrong scope
+are denied. The current editor/portal behavior is covered alongside these changes.
+
+Local full suite initially passed 16,227 tests with one mechanical route-count
+failure after adding GET/POST. Corrected inventory counts are 2242 total routes,
+1217 mutations; no God mode bypass is introduced. Focused inventory/HTTP checks
+pass 26 tests. Final full suite passes: 2,257 files, 16,228 tests, 59 skipped files / 1,653
+conditional skipped tests. Typecheck finishes with exactly the
+existing 934 diagnostics, zero new/removed normalized errors. Changed-file lint
+passes. Build and guarded preview release remain pending. No GitHub push/Actions.
+
+Exact reviewed 6cb... Forms artifact was uploaded to the staging R2 content-runtime
+key; independent remote readback matches SHA-256 and 911081 bytes. Controlled
+runtime configuration was then applied to only the staging executor, preserving
+both old CMS scopes/pins and every other binding/setting (secret inherited).
+Version `f09a23d7-5419-458a-adf2-4650db6e1a75`, deployment
+`4d5a3966-af6b-4cda-b478-2323944c5c83`, 04:14:39.266519 UTC, 100%.
+Code ETag remains `375779008d19209f42bdf0a63d6791cd21140412701ca87ebf28cb76f08e482c`.
+Only CUSTOMER_CMS_RUNTIME_CONFIG (adds A/B to two old scopes) and separate
+CUSTOMER_FORM_DRAFTS_RUNTIME_CONFIG (A/B only) changed. This prepares installation;
+it does not prove installed CMS, activate Forms, publish or authorize production.
+Private runtime source/config/readback receipt lives in Native
+`.verification/native-two-account-20261011/runtime-artifact-and-scope-release-receipt.json`.
