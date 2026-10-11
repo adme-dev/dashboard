@@ -846,3 +846,57 @@ Fresh origin/main remains `a78a11945f13c520d3258df9e249b99d46b21b07`, included i
 ### 11 October 09:09 UTC: confirmed-response preview released
 
 Guarded pnpm deploy:preview from clean source `07be3478a85f54d4a044c2aba5891d2b7951e237`, latest included main `a78a11945f13c520d3258df9e249b99d46b21b07`, succeeded. Cloudflare readback verifies preview deployment `1204a008-d7dd-4f28-a9b0-0ef03852a69e`, created 09:09:39.242697 UTC, success 09:09:52.404. Raw size 25,467,623/25,468,928 (1,305 spare), gzip 7,044,559; minimum disk 14,017,150,976 bytes under unchanged 8 GiB floor. Local CMS 3045 was restored immediately; native 4325 preserved. B reloaded the actual preview to recheck managed adoption. No production change, pushes or Actions. All five B backend prerequisites remain installed; A access and hosted Forms/isolation/editor acceptance remain incomplete.
+
+
+### 11 October 09:23 UTC: B managed CMS completed; Forms capability pending
+
+The genuine developer account completed all five prerequisites and managed CMS
+adoption through the normal hosted UI: adoption
+`adoption_f304b55b-5aec-4f00-810e-b7ed2a3693dc`, one import item, done true, then
+explicit managed activation. All six setup rows show Ready; the site remains
+unpublished and awaits editor verification. Proof screenshot is
+`.verification/resume-20261008/native-b-managed-cms-ready-20261011.png`.
+
+The first exact B-only private Forms operator attempt returned uncertain,
+readback-unavailable; its report is preserved separately. The read-only follow-up
+inspection succeeded with route digest
+`1e8da62f69aa900413e533d6a02a38ce8ab610811c2fab575ee68e8db33f7adb`.
+Exact scoped D1 readback proves no B capability row persisted. Forms runtime is
+Ready, schema Installed, leases clear, stored/current base equal, and intent,
+effective Worker and request pin all use
+`6cb34fd939e71028567270190fb6d02c59011b2cdc1c4b0497effb3f702367f5`.
+No structural mismatch or manual provider edit was inferred or made.
+
+Independent source review confirms private activation reauthorizes the runtime
+and schema latest recovery grants; it does not require managed adoption recovery.
+The old setup child had expired. At 09:36:48 UTC, the genuine dashboard resumed
+its ordinary 15-minute setup child, expiring at 09:51:48 UTC. Read-only staging
+Neon readback confirms both latest Forms recovery heads use that active child and
+are unrevoked. The original approval deadline remains unchanged. The installed
+schema verification is still running before any controlled retry. No production
+changes, source pushes or Actions occurred.
+
+
+### 11 October: private operator transport defect reproduced locally
+
+B final recovery passed at 09:42 UTC under an active 09:36:48–09:51:48 setup
+child. The second exact activation attempt still returned uncertain/readback-
+unavailable after about 30 seconds, and exact scoped D1 again found no B
+capability. This disproves expired authority as the explanation for that attempt.
+Source inspection identified the local provider's 30,000 ms IPC deadline, which
+terminates its owned child during the expensive server verification.
+
+Two regression tests failed before the fix; three provider tests now pass, as do
+29 focused activation tests. Only the exact activateFormDraftsCapability transport
+gets a 900,000 ms ceiling; initialization, route reads and disposal remain 30,000.
+No server budget, authority, expiry, retry or deployment changed. Full native
+validation passes 6,094 Vitest plus 48 action-runtime and eight transport tests
+(6,150 total; four existing conditional skips), 28 build and 44 typecheck tasks,
+plus security typecheck. Independent source review has no important findings.
+The runbook now states the actual bounded transport behavior. Full lint/hook is
+pending. New operator source digest is
+`3e1b133891b79ad732d6b74dd44ed440a70e4df0f490f5ec0bbd87b518fcafd6`;
+a separate fresh review record binds that digest and preserves B's exact scope
+and original 12 October 13:27:09 UTC approval expiry. Read-only inspection with
+those new bytes succeeds with the unchanged route digest. No activation replay
+has occurred with the corrected tool yet.

@@ -19,11 +19,25 @@ native acceptance previews are fully provisioned. The staging-only setup bridge,
 retained recovery fix and readback timeout fix are live at clean Dashboard source
 `07be3478a85f54d4a044c2aba5891d2b7951e237`, preview deployment
 `1204a008-d7dd-4f28-a9b0-0ef03852a69e` (11 October 09:09 UTC).
-Both accounts have collection/content tools installed. B now has all five backend prerequisites complete: the exact original final
-Forms schema operation is installed and its lease cleared (07:17 UTC). The
-client still repeats expensive verification; the strict response-merging fix is released and genuine hosted recovery
-is being checked. A's genuine incognito window
-is unreachable; the user's async access clarification remains pending.
+Both accounts have collection/content tools installed. B has all five prerequisites
+installed and completed genuine hosted managed adoption at about 09:23 UTC,
+through freeze, import, readiness and activation in the normal dashboard. Its
+workspace remains unpublished and editor access remains closed. Screenshot:
+`.verification/resume-20261008/native-b-managed-cms-ready-20261011.png`.
+
+The first B-only private Forms activation attempt returned uncertain/readback-
+unavailable. A read-only follow-up inspection succeeded, but the exact scoped D1
+query confirms no B capability record exists. Runtime/schema states, base snapshot
+and digest pins agree. No mutation was replayed. Source review confirms activation
+requires the runtime and schema recovery grants, not a new managed adoption.
+A second attempt under freshly verified authority exposed a separate local tool
+bug: the private provider terminates activation after 30 seconds. No B capability
+was created. A regression-tested local transport fix allows only the exact
+activation call to wait up to 15 minutes; read-only/init/disposal deadlines remain
+30 seconds, with all server authority, leases and approval expiry unchanged.
+Independent review and full native tests/build/typecheck pass; lint is pending.
+The corrected operator needs fresh setup recovery before one controlled attempt. A's genuine incognito window remains unreachable; the
+user's access clarification is pending.
 
 A bounded native fix for the costly Forms schema verification selects a ten-minute
 staging lease, preserving production's five minutes and every authority/runtime
@@ -40,15 +54,16 @@ deployment `7f98f789-d152-4d2d-90d7-dec3c8f24798`. Production is unchanged this 
 The selected local builder on 4325 remains running; local CMS 3045 is restored
 and verified HTTP 200. No pushes or GitHub Actions were triggered.
 
-Dashboard validation: 16,238 tests pass, with 59 files/1,653 conditional tests
-skipped. Changed-file lint and independent review pass. The last typecheck records
+Dashboard validation: 16,268 source tests pass, with 60 files/1,658 conditional
+tests skipped; the five built Worker checks omitted from that source run then
+passed against the rebuilt artifact. All 35 focused response/UI tests pass. Changed-file lint and independent review pass. The last typecheck records
 934 existing diagnostics; no new global-clean typecheck claim is made. Several
 local size-guard failures stopped before upload. Shared canonical identity hashing
 creates real headroom: the current preview raw bundle is 25,467,623/25,468,928 bytes
 (1,305 spare), gzip 7,044,559/9,750,000. The guard is unchanged. Source/provider
 receipts and limitations are in the [release ledger](2026-10-08-page-studio-release-and-activation.md).
 
-Remaining: finish A prerequisites and managed adoption for A/B;
+Remaining: finish A prerequisites and managed adoption for A;
 activate the exact private Forms capability only after physical readback; run
 hosted Forms/browser/isolation/role acceptance; reconcile approved production
 changes separately. Slow guarded provider verification remains a hosted acceptance
