@@ -4,6 +4,7 @@
 // from requireClientAuth — NEVER caller input). Mirrors socialInbox/portal.ts. Returns the same
 // per-post row shape the agency dashboard uses, so the pure aggregate.ts functions apply unchanged.
 import type { PostMetricRow } from '~~/server/utils/socialReporting/aggregate'
+import { POST_METRIC_TOTALS_SQL, ACCOUNT_METRIC_TOTALS_SQL } from '~~/server/utils/socialReporting/metricSql'
 
 export interface PortalReportDb {
   queryRows<T = any>(sql: string, params?: any[]): Promise<T[]>
@@ -17,16 +18,7 @@ export async function portalPeriodPostRows(
   if (platform) params.push(platform)
   return db.queryRows<PostMetricRow>(
     `SELECT p.id AS post_id, MAX(m.platform) AS platform, p.published_at, p.content, p.platform_results,
-            COALESCE(SUM(m.impressions),0)::int AS impressions,
-            COALESCE(SUM(m.reach),0)::int AS reach,
-            COALESCE(SUM(m.engagements),0)::int AS engagements,
-            COALESCE(SUM(m.clicks),0)::int AS clicks,
-            COALESCE(SUM(m.likes),0)::int AS likes,
-            COALESCE(SUM(m.comments_count),0)::int AS comments_count,
-            COALESCE(SUM(m.shares),0)::int AS shares,
-            COALESCE(SUM(m.saves),0)::int AS saves,
-            COALESCE(SUM(m.video_views),0)::int AS video_views,
-            COALESCE(SUM(m.reactions),0)::int AS reactions
+            ${POST_METRIC_TOTALS_SQL}
        FROM social_posts p
        LEFT JOIN social_post_metrics m ON m.post_id = p.id${platform ? ' AND m.platform = $4' : ''}
       WHERE p.client_id = $1
@@ -46,7 +38,7 @@ export async function portalAccountGrowth(
   if (platform) params.push(platform)
   return db.queryRows(
     `SELECT platform, snapshot_date,
-            SUM(followers)::int AS followers, SUM(reach)::int AS reach, SUM(impressions)::int AS impressions
+            ${ACCOUNT_METRIC_TOTALS_SQL}
        FROM social_account_metrics
       WHERE client_id = $1 AND snapshot_date >= $2::date AND snapshot_date <= $3::date
         ${platform ? 'AND platform = $4' : ''}

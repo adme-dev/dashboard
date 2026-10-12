@@ -1,4 +1,4 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const from = (q.from as string) || new Date(Date.now() - 30 * 864e5).toISOString()
   const to = (q.to as string) || new Date(Date.now() + 60 * 864e5).toISOString()
 
-  return await queryRows(
+  return await queryRowsFresh(
     `SELECT id, content, status, platforms, scheduled_at, published_at,
             (media_urls)[1] AS thumbnail
        FROM social_posts

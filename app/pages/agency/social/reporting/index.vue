@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSocialMetric as fmtNum, formatSocialRate as fmtRate } from '~/utils/socialReportingFormat'
 import { useSocialReporting, type ReportKpi } from '~/composables/useSocialReporting'
 import { SOCIAL_PLATFORM_FILTER_OPTIONS } from '~~/app/utils/socialReportScheduleForm'
 
@@ -36,15 +37,14 @@ const kpiCards = computed(() => {
   const k = overview.value?.kpis
   if (!k) return []
   return [
-    { label: 'Posts', kpi: k.posts, fmt: (v: number) => String(v) },
+    { label: 'Posts', kpi: k.posts, fmt: fmtNum },
     { label: 'Impressions', kpi: k.impressions, fmt: fmtNum },
     { label: 'Reach', kpi: k.reach, fmt: fmtNum },
     { label: 'Engagements', kpi: k.engagements, fmt: fmtNum },
-    { label: 'Eng. rate', kpi: k.engagementRate, fmt: (v: number) => `${v}%` },
+    { label: 'Eng. rate', kpi: k.engagementRate, fmt: fmtRate },
     { label: 'Link clicks', kpi: k.clicks, fmt: fmtNum },
   ]
 })
-function fmtNum(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n) }
 function deltaColor(d: number | null) { return d == null ? 'neutral' : d > 0 ? 'success' : d < 0 ? 'error' : 'neutral' }
 function deltaLabel(d: number | null) { return d == null ? '—' : `${d > 0 ? '+' : ''}${d}%` }
 
@@ -115,7 +115,7 @@ onMounted(load)
                 <div class="h-full bg-primary/70" :style="{ width: `${(c.posts / maxCadence) * 100}%` }" />
               </div>
               <span class="w-8 text-right tabular-nums">{{ c.posts }}</span>
-              <span class="w-20 text-right text-muted">~{{ c.avgEngagements }} eng</span>
+              <span class="w-20 text-right text-muted">{{ c.avgEngagements == null ? '—' : `~${fmtNum(c.avgEngagements)}` }} eng</span>
             </div>
           </div>
         </div>
@@ -139,15 +139,15 @@ onMounted(load)
         <div v-if="overview.bestContent.length" class="space-y-2">
           <div v-for="b in overview.bestContent" :key="b.postId" class="flex items-center gap-3 text-sm border-b border-default last:border-0 pb-2 last:pb-0">
             <p class="flex-1 min-w-0 truncate">{{ b.content || '(no caption)' }}</p>
-            <span class="text-muted shrink-0 tabular-nums">{{ b.engagements }} eng</span>
-            <UBadge color="primary" variant="subtle" size="xs">{{ b.engagementRate }}%</UBadge>
+            <span class="text-muted shrink-0 tabular-nums">{{ fmtNum(b.engagements) }} eng</span>
+            <UBadge color="primary" variant="subtle" size="xs">{{ fmtRate(b.engagementRate) }}</UBadge>
             <UButton v-if="b.permalink" :to="b.permalink" target="_blank" icon="i-lucide-external-link" variant="ghost" size="xs" />
           </div>
         </div>
         <p v-else class="text-sm text-muted">No published posts with metrics in this period.</p>
       </div>
 
-      <p class="text-xs text-muted">{{ posts.length }} posts in range · metrics collected by the daily sync.</p>
+      <p class="text-xs text-muted">{{ posts.length }} posts in range · metrics collected by the daily sync. — means unavailable or incomplete provider data.</p>
     </template>
     <div v-else class="text-sm text-muted">Select a client to view reporting.</div>
   </div>

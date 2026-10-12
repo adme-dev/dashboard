@@ -1,3 +1,4 @@
+import { POST_METRIC_TOTALS_SQL } from '~~/server/utils/socialReporting/metricSql'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 
@@ -28,15 +29,7 @@ export default defineEventHandler(async (event) => {
 
   const rows = await queryRows<any>(
     `SELECT p.id AS post_id, p.published_at, p.content, p.platforms, p.platform_results,
-            COALESCE(SUM(m.impressions),0)::int AS impressions,
-            COALESCE(SUM(m.reach),0)::int AS reach,
-            COALESCE(SUM(m.engagements),0)::int AS engagements,
-            COALESCE(SUM(m.clicks),0)::int AS clicks,
-            COALESCE(SUM(m.likes),0)::int AS likes,
-            COALESCE(SUM(m.comments_count),0)::int AS comments_count,
-            COALESCE(SUM(m.shares),0)::int AS shares,
-            COALESCE(SUM(m.saves),0)::int AS saves,
-            COALESCE(SUM(m.video_views),0)::int AS video_views,
+            ${POST_METRIC_TOTALS_SQL},
             COALESCE((SELECT jsonb_object_agg(f.event_type, f.event_count)
                         FROM (SELECT event_type, COUNT(*)::int AS event_count
                                 FROM social_news_feedback_events

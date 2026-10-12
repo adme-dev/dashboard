@@ -1,7 +1,7 @@
 /**
  * Facebook Pages Provider
  *
- * Posts content to Facebook Pages using the Meta Graph API v20.0.
+ * Posts content to Facebook Pages using the Meta Graph API v25.0.
  * Supports text posts, photo posts (single & carousel), video/Reels, link posts, and comments.
  *
  * Reference: https://developers.facebook.com/docs/pages-api/posts
@@ -297,7 +297,7 @@ async function throwFacebookInboxError(res: Response, surface: string): Promise<
 
 // ── Provider implementation ────────────────────────────────────
 
-/** Facebook Pages social media provider using Meta Graph API v20.0 */
+/** Facebook Pages social media provider using Meta Graph API v25.0 */
 export const facebookProvider: SocialPostProvider = {
   identifier: 'facebook',
   name: 'Facebook',
@@ -633,33 +633,56 @@ facebookProvider.reply = async ({ accountId, accessToken, conversationId, conten
 }
 
 // --- Slice 3 reporting: organic metrics collection ---
-// ⚠️ Insight metric names follow Graph v20 docs; verify live before relying on prod numbers.
+// Graph v25 read probes (2026-10-12) accept post_clicks and page_views_total.
+// Deprecated impressions/reach/video metrics are deliberately not requested. The newer
+// media-view metrics are not interchangeable with those historical definitions.
+async function fetchFacebookMetrics(path: string, accessToken: string): Promise<JsonObject | undefined> {
+  try {
+    const response = await fetchWithTimeout(`${GRAPH_API_BASE}/${path}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    const body = readObject(await response.json())
+    if (!response.ok || !body || body.error) return undefined
+    return body
+  } catch {
+    // Never propagate fetch URLs, tokens, or raw provider messages to cron logs.
+    return undefined
+  }
+}
+
+function hasMetric(metric: PostMetric | AccountMetric): boolean {
+  return Object.values(metric).some(value => typeof value === 'number' && Number.isFinite(value))
+}
+
 facebookProvider.fetchPostMetrics = async ({ accessToken, posts }: FetchPostMetricsParams): Promise<PostMetric[]> => {
   const out: PostMetric[] = []
   for (const p of posts) {
-    try {
-      const tok = encodeURIComponent(accessToken)
-      const insRes = await fetch(`${GRAPH_API_BASE}/${p.platformPostId}/insights?metric=post_impressions,post_impressions_unique,post_clicks,post_video_views,post_reactions_by_type_total&access_token=${tok}`)
-      const ins: JsonObject = await insRes.json().catch(() => ({}))
-      // comments/shares aren't insight metrics — read them off the post object.
-      const fldRes = await fetch(`${GRAPH_API_BASE}/${p.platformPostId}?fields=comments.summary(true).limit(0),shares&access_token=${tok}`)
-      const fld: JsonObject = await fldRes.json().catch(() => ({}))
-      const comments = readObject(fld.comments)
-      const commentSummary = readObject(comments?.summary)
-      const shares = readObject(fld.shares)
-      out.push(mapFbPostInsights(p.postId, p.platformPostId, ins, {
-        comments: readNumber(commentSummary?.total_count), shares: readNumber(shares?.count)
-      }))
-    } catch { /* skip this post; others still collect */ }
+    const id = encodeURIComponent(p.platformPostId)
+    const [ins, fields] = await Promise.all([
+      fetchFacebookMetrics(`${id}/insights?metric=post_clicks`, accessToken),
+      fetchFacebookMetrics(`${id}?fields=likes.summary(true).limit(0),reactions.summary(true).limit(0),comments.summary(true).limit(0),shares`, accessToken),
+    ])
+    const summaryCount = (field: unknown) => readNumber(readObject(readObject(field)?.summary)?.total_count)
+    const metric = mapFbPostInsights(p.postId, p.platformPostId, ins, {
+      likes: summaryCount(fields?.likes),
+      reactions: summaryCount(fields?.reactions),
+      comments: summaryCount(fields?.comments),
+      shares: readNumber(readObject(fields?.shares)?.count),
+    })
+    // Omitted posts are counted as failures by the collector; successful posts still persist.
+    if (hasMetric(metric)) out.push(metric)
   }
+  if (posts.length && !out.length) throw new Error('Facebook post metrics unavailable')
   return out
 }
 
 facebookProvider.fetchAccountMetrics = async ({ accountId, accessToken }: FetchAccountMetricsParams): Promise<AccountMetric> => {
-  const tok = encodeURIComponent(accessToken)
-  const insRes = await fetch(`${GRAPH_API_BASE}/${accountId}/insights?metric=page_impressions,page_impressions_unique,page_views_total&period=day&access_token=${tok}`)
-  const ins: JsonObject = await insRes.json().catch(() => ({}))
-  const pageRes = await fetch(`${GRAPH_API_BASE}/${accountId}?fields=fan_count&access_token=${tok}`)
-  const page: JsonObject = await pageRes.json().catch(() => ({}))
-  return mapFbAccountInsights(ins, readNumber(page.fan_count))
+  const id = encodeURIComponent(accountId)
+  const [ins, page] = await Promise.all([
+    fetchFacebookMetrics(`${id}/insights?metric=page_views_total&period=day`, accessToken),
+    fetchFacebookMetrics(`${id}?fields=followers_count`, accessToken),
+  ])
+  const metric = mapFbAccountInsights(ins, readNumber(page?.followers_count))
+  if (!hasMetric(metric)) throw new Error('Facebook account metrics unavailable')
+  return metric
 }

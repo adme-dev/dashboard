@@ -31,6 +31,14 @@ describe('portalPeriodPostRows', () => {
     expect(sql).toMatch(/\$4 = ANY\(p\.platforms\)/)
     expect(params).toContain('instagram')
   })
+  it('retains NULL when any platform snapshot is unavailable rather than summing a partial total', async () => {
+    const db = rec()
+    await portalPeriodPostRows(db as any, 'c1', 'a', 'b', null)
+    const sql = db.calls[0].sql
+    expect(sql).toContain('CASE WHEN COUNT(m.impressions) = COUNT(*) THEN SUM(m.impressions)::int ELSE NULL END AS impressions')
+    expect(sql).not.toMatch(/COALESCE\(SUM\(m\./)
+    expect(sql.match(/AS reactions/g)).toHaveLength(1)
+  })
 })
 
 describe('portalAccountGrowth', () => {
@@ -42,5 +50,6 @@ describe('portalAccountGrowth', () => {
     expect(sql).toMatch(/client_id = \$1/)
     expect(sql).toMatch(/GROUP BY platform, snapshot_date/i)
     expect(params[0]).toBe('client-3')
+    expect(sql).toContain('CASE WHEN COUNT(reach) = COUNT(*) THEN SUM(reach)::int ELSE NULL END AS reach')
   })
 })

@@ -15,11 +15,23 @@ export default {
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'x-cron-secret': env.CRON_SECRET },
+      signal: AbortSignal.timeout(240_000),
     })
-    const text = await resp.text()
+    if (!resp.ok) throw new Error(`social-metrics-cron: HTTP ${resp.status}`)
+    const result = await resp.json() as {
+      ok?: boolean
+      accountsSynced?: number
+      postsSynced?: number
+      health?: { status?: string }
+    }
+    if (result.ok !== true || !['healthy', 'warning'].includes(result.health?.status ?? '')) {
+      throw new Error(`social-metrics-cron: collector ${result.health?.status === 'critical' ? 'critical' : 'invalid response'}`)
+    }
     console.log('social-metrics-cron.run', {
       status: resp.status,
-      body: text.slice(0, 200),
+      health: result.health.status,
+      accountsSynced: result.accountsSynced,
+      postsSynced: result.postsSynced,
     })
   },
 }

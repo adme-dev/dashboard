@@ -7,7 +7,7 @@ vi.mock('~~/server/utils/ai/resolvedGroq', () => ({
   generateModelRoutedGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
-const { generateReportSummary } = await import('~~/server/utils/socialReporting/aiSummary')
+const { generateReportSummary, buildSummaryPrompt } = await import('~~/server/utils/socialReporting/aiSummary')
 
 const kpis = {
   posts: { value: 12, deltaPct: 20 },
@@ -19,6 +19,13 @@ const kpis = {
 }
 
 describe('generateReportSummary', () => {
+  it('marks unavailable metrics explicitly and prohibits interpreting them as declines', () => {
+    const prompt = buildSummaryPrompt('Acme', 'October', { ...kpis, reach: { value: null, deltaPct: null }, engagementRate: { value: null, deltaPct: null } })
+    expect(prompt).toContain('Reach: unavailable')
+    expect(prompt).toContain('Engagement rate: unavailable')
+    expect(prompt).toContain('Do not interpret unavailable metrics as zero or a decline')
+    expect(prompt).not.toContain('null%')
+  })
   beforeEach(() => {
     mockGenerateGroqInsight.mockReset()
     mockGenerateGroqInsight.mockResolvedValue('  Engagement improved across the period.  ')

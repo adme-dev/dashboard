@@ -38,6 +38,8 @@ vi.mock('~~/server/utils/permissions', () => ({ PERMISSIONS: { CREATIVE: ['owner
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...a: unknown[]) => mockQueryOne(...a),
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
+  queryOneFresh: (...a: unknown[]) => mockQueryOne(...a),
+  queryRowsFresh: (...a: unknown[]) => mockQueryRows(...a),
   execute: (...a: unknown[]) => mockExecute(...a)
 }))
 vi.mock('~~/server/utils/socialPublishing', () => ({ publishPost: (...a: unknown[]) => mockPublishPost(...a) }))
@@ -144,6 +146,16 @@ describe('dispatcher cron — idempotent claim', () => {
     expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at = $5::timestamptz')
     expect(mockQueryOne.mock.calls[0][1]).toEqual(['P1', null, ['scheduled'], 3, '2026-07-02T00:00:00.000Z'])
     expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('last_error'), [['a1'], 'C1'])
+  })
+
+  it('claims a scheduled UUID client using the database UUID type', async () => {
+    // PostgreSQL resolves the optional parameter's type from its first cast.
+    // Production EXPLAIN rejected the previous text cast with SQLSTATE 42883.
+    const res = await cronH(evt)
+    expect(res.processed).toBe(1)
+    const claim = mockQueryOne.mock.calls.find(call => String(call[0]).includes('UPDATE social_posts'))!
+    expect(claim[0]).toMatch(/\$2::uuid IS NULL OR client_id=\$2/)
+    expect(claim[0]).not.toContain('$2::text')
   })
 
   it('starts publishing workflows for due posts when workflow-primary cutover is enabled', async () => {

@@ -2,13 +2,13 @@
 // Data composable for the Slice 3 organic reporting dashboard.
 import type { Ref } from 'vue'
 
-export interface ReportKpi { value: number; deltaPct: number | null }
+export interface ReportKpi { value: number | null; deltaPct: number | null }
 export interface ReportOverview {
   range: { from: string; to: string }
   kpis: { posts: ReportKpi; impressions: ReportKpi; reach: ReportKpi; engagements: ReportKpi; clicks: ReportKpi; engagementRate: ReportKpi }
-  cadence: Array<{ weekday: number; posts: number; avgEngagements: number }>
-  bestContent: Array<{ postId: string; content: string; permalink: string | null; engagements: number; reach: number; engagementRate: number }>
-  accountGrowth: Array<{ platform: string; snapshot_date: string; followers: number; reach: number; impressions: number }>
+  cadence: Array<{ weekday: number; posts: number; avgEngagements: number | null }>
+  bestContent: Array<{ postId: string; content: string; permalink: string | null; engagements: number | null; reach: number | null; engagementRate: number | null }>
+  accountGrowth: Array<{ platform: string; snapshot_date: string; followers: number | null; reach: number | null; impressions: number | null }>
 }
 
 export function useSocialReporting(clientId: Ref<string | null>) {

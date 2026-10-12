@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSocialMetric as fmtNum, formatSocialRate as fmtRate } from '~/utils/socialReportingFormat'
 import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
 import { useSocialReporting, type ReportKpi } from '~/composables/useSocialReporting'
 import { SOCIAL_PLATFORM_FILTER_OPTIONS } from '~~/app/utils/socialReportScheduleForm'
@@ -23,7 +24,7 @@ const {
 
 interface WorkflowOverview {
   counts: { published: number; scheduled: number; failed: number; drafts: number }
-  metrics: { impressions: number; engagements: number; clicks: number }
+  metrics: { impressions: number | null; engagements: number | null; clicks: number | null }
 }
 
 const workflow = ref<WorkflowOverview | null>(null)
@@ -88,7 +89,7 @@ const kpiCards = computed(() => {
     { label: 'Impressions', kpi: k.impressions, icon: 'i-lucide-eye', format: fmtNum },
     { label: 'Reach', kpi: k.reach, icon: 'i-lucide-users', format: fmtNum },
     { label: 'Engagements', kpi: k.engagements, icon: 'i-lucide-heart', format: fmtNum },
-    { label: 'Eng. rate', kpi: k.engagementRate, icon: 'i-lucide-activity', format: (value: number) => `${value}%` },
+    { label: 'Eng. rate', kpi: k.engagementRate, icon: 'i-lucide-activity', format: fmtRate },
     { label: 'Link clicks', kpi: k.clicks, icon: 'i-lucide-mouse-pointer-click', format: fmtNum },
   ]
 })
@@ -96,12 +97,6 @@ const kpiCards = computed(() => {
 const maxCadence = computed(() => Math.max(1, ...(overview.value?.cadence ?? []).map(item => item.posts)))
 const latestGrowth = computed(() => [...(overview.value?.accountGrowth ?? [])].slice(-6).reverse())
 const isLoading = computed(() => loading.value || workflowLoading.value)
-
-function fmtNum(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
-  return value.toLocaleString()
-}
 
 function deltaColor(delta: number | null) {
   if (delta == null || delta === 0) return 'neutral'
@@ -113,7 +108,7 @@ function deltaLabel(delta: number | null) {
   return `${delta > 0 ? '+' : ''}${delta}%`
 }
 
-function kpiValue(kpi: ReportKpi, format: (value: number) => string) {
+function kpiValue(kpi: ReportKpi, format: (value: number | null) => string) {
   return format(kpi.value)
 }
 </script>
@@ -160,6 +155,7 @@ function kpiValue(kpi: ReportKpi, format: (value: number) => string) {
       <div v-if="isLoading" class="mt-4 text-sm text-muted">Loading analytics...</div>
 
       <template v-else-if="overview">
+        <p class="mt-4 text-xs text-muted">— means unavailable or incomplete provider data.</p>
         <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-6">
           <div v-for="card in kpiCards" :key="card.label" class="rounded-lg border border-default p-4 bg-default">
             <div class="flex items-center gap-2 text-xs text-muted uppercase tracking-wide">
@@ -213,7 +209,7 @@ function kpiValue(kpi: ReportKpi, format: (value: number) => string) {
                     <span>{{ fmtNum(post.reach) }} reach</span>
                   </div>
                 </div>
-                <UBadge color="primary" variant="subtle" size="sm">{{ post.engagementRate }}%</UBadge>
+                <UBadge color="primary" variant="subtle" size="sm">{{ fmtRate(post.engagementRate) }}</UBadge>
                 <UButton v-if="post.permalink" :to="post.permalink" target="_blank" icon="i-lucide-external-link" color="neutral" variant="ghost" size="xs" />
               </div>
             </div>
@@ -245,15 +241,15 @@ function kpiValue(kpi: ReportKpi, format: (value: number) => string) {
               <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <div class="text-muted">Followers</div>
-                  <div class="font-semibold tabular-nums">{{ fmtNum(row.followers || 0) }}</div>
+                  <div class="font-semibold tabular-nums">{{ fmtNum(row.followers) }}</div>
                 </div>
                 <div>
                   <div class="text-muted">Reach</div>
-                  <div class="font-semibold tabular-nums">{{ fmtNum(row.reach || 0) }}</div>
+                  <div class="font-semibold tabular-nums">{{ fmtNum(row.reach) }}</div>
                 </div>
                 <div>
                   <div class="text-muted">Impr.</div>
-                  <div class="font-semibold tabular-nums">{{ fmtNum(row.impressions || 0) }}</div>
+                  <div class="font-semibold tabular-nums">{{ fmtNum(row.impressions) }}</div>
                 </div>
               </div>
             </div>

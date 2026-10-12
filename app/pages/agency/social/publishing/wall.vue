@@ -104,7 +104,7 @@ function fmtDate(value: string | null) {
 }
 
 function formatNumber(value: number | null | undefined) {
-  return new Intl.NumberFormat().format(value || 0)
+  return value == null ? '—' : new Intl.NumberFormat().format(value)
 }
 
 function platformResultLinks(post: SocialWallPost) {
@@ -308,7 +308,7 @@ function resolvePreview(post: SocialWallPost) {
             </div>
             <div class="rounded-md bg-elevated p-2">
               <div class="font-semibold">
-                {{ formatNumber(post.metrics.likes || post.metrics.reactions) }}
+                {{ formatNumber(post.metrics.likes ?? post.metrics.reactions) }}
               </div>
               <div class="text-muted">
                 Likes

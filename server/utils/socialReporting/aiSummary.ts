@@ -4,7 +4,7 @@
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
-interface Kpi { value: number; deltaPct: number | null }
+interface Kpi { value: number | null; deltaPct: number | null }
 interface OverviewKpis {
   posts: Kpi; impressions: Kpi; reach: Kpi; engagements: Kpi; clicks: Kpi; engagementRate: Kpi
 }
@@ -17,16 +17,18 @@ interface SummaryTelemetryOptions {
 
 /** Build the prompt (pure — testable without calling Groq). */
 export function buildSummaryPrompt(clientName: string, periodLabel: string, k: OverviewKpis): string {
+  const value = (kpi: Kpi, suffix = '') => kpi.value == null ? 'unavailable' : `${kpi.value}${suffix}`
   const d = (kpi: Kpi) => kpi.deltaPct == null ? 'no prior baseline' : `${kpi.deltaPct >= 0 ? '+' : ''}${kpi.deltaPct}% vs prior`
   return [
     `Write a 2-3 sentence plain-English summary of ${clientName}'s organic social performance for ${periodLabel}.`,
     `Be specific and lead with what changed. Metrics:`,
-    `- Posts: ${k.posts.value} (${d(k.posts)})`,
-    `- Impressions: ${k.impressions.value} (${d(k.impressions)})`,
-    `- Reach: ${k.reach.value} (${d(k.reach)})`,
-    `- Engagements: ${k.engagements.value} (${d(k.engagements)})`,
-    `- Engagement rate: ${k.engagementRate.value}% (${d(k.engagementRate)})`,
-    `- Link clicks: ${k.clicks.value} (${d(k.clicks)})`,
+    `- Posts: ${value(k.posts)} (${d(k.posts)})`,
+    `- Impressions: ${value(k.impressions)} (${d(k.impressions)})`,
+    `- Reach: ${value(k.reach)} (${d(k.reach)})`,
+    `- Engagements: ${value(k.engagements)} (${d(k.engagements)})`,
+    `- Engagement rate: ${value(k.engagementRate, '%')} (${d(k.engagementRate)})`,
+    `- Link clicks: ${value(k.clicks)} (${d(k.clicks)})`,
+    `Do not interpret unavailable metrics as zero or a decline. Only compare metrics with a known baseline.`,
     `Do not invent numbers beyond these. No preamble.`,
   ].join('\n')
 }

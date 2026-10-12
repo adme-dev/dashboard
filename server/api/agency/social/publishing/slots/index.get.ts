@@ -10,10 +10,10 @@ export default defineEventHandler(async (event) => {
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
   await requireSocialClientAccess(event, clientId)
   return await queryRows(
-    `SELECT id, client_id, name, platforms, day_of_week, time_of_day, timezone, capacity, enabled
+    `SELECT id, client_id, name, platforms, day_of_week, time_of_day, timezone, capacity, enabled, metadata
        FROM social_slot_schedules
       WHERE client_id = $1
       ORDER BY day_of_week, time_of_day`,
-    [clientId],
+    [clientId]
   )
 })

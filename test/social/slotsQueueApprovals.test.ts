@@ -42,6 +42,7 @@ vi.mock('~~/server/utils/permissions', () => ({ PERMISSIONS: { CREATIVE: ['owner
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
   queryOne: (...a: unknown[]) => mockQueryOne(...a),
+  queryOneFresh: (...a: unknown[]) => mockQueryOne(...a),
   execute: (...a: unknown[]) => mockExecute(...a),
   transaction: (...a: unknown[]) => mockTransaction(...a)
 }))
@@ -142,7 +143,7 @@ describe('approval workflow', () => {
   it('request-approval notifies managers (excluding the requester)', async () => {
     const event: TestEvent = { params: { id: 'P1' } }
     mockQueryOne
-      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1' })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
       .mockResolvedValueOnce({ id: 'P1', content: 'hi', client_id: 'C1' })
     mockQueryRows.mockResolvedValueOnce([{ id: 'U1' }, { id: 'MGR' }]) // U1 is requester, excluded
     await requestApprovalH(event)
@@ -156,7 +157,7 @@ describe('approval workflow', () => {
   it('approve sets approved + notifies requester', async () => {
     const event: TestEvent = { params: { id: 'P1' } }
     mockQueryOne
-      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1' })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
       .mockResolvedValueOnce({ id: 'P1', content: 'hi', approval_requested_by: 'REQ' })
     await approveH(event)
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(event, 'C1')
@@ -187,7 +188,7 @@ describe('approval workflow', () => {
     const scheduledAt = new Date(Date.now() + 86_400_000).toISOString()
     const event: TestEvent = { params: { id: 'P1' } }
     mockQueryOne
-      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1' })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
       .mockResolvedValueOnce({
         id: 'P1',
         content: 'hi',
@@ -260,7 +261,7 @@ describe('approval workflow', () => {
   it('reject sets draft + reason + notifies requester', async () => {
     const event: TestEvent = { params: { id: 'P1' }, body: { reason: 'fix the copy' } }
     mockQueryOne
-      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1' })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
       .mockResolvedValueOnce({ id: 'P1', content: 'hi', approval_requested_by: 'REQ' })
     await rejectH(event)
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(event, 'C1')

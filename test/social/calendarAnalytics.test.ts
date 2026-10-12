@@ -14,7 +14,9 @@ const mockRequireSocialClientAccess = vi.fn()
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: (...a: unknown[]) => mockRequireAuth(...a) }))
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
+  queryRowsFresh: (...a: unknown[]) => mockQueryRows(...a),
   queryOne: (...a: unknown[]) => mockQueryOne(...a),
+  queryOneFresh: (...a: unknown[]) => mockQueryOne(...a),
 }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({
   requireSocialClientAccess: (...a: unknown[]) => mockRequireSocialClientAccess(...a),
@@ -48,11 +50,11 @@ describe('calendar.get', () => {
 })
 
 describe('analytics/overview.get', () => {
-  it('returns zeroed cards when nothing exists', async () => {
+  it('returns zero workflow counts and unavailable metrics when nothing exists', async () => {
     const res = await overviewH({ query: { clientId: 'C1' } } as any)
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.anything(), 'C1')
     expect(res.counts).toEqual({ published: 0, scheduled: 0, failed: 0, drafts: 0 })
-    expect(res.metrics).toEqual({ impressions: 0, engagements: 0, clicks: 0 })
+    expect(res.metrics).toEqual({ impressions: null, engagements: null, clicks: null })
   })
   it('passes through aggregated counts + metrics', async () => {
     mockQueryOne

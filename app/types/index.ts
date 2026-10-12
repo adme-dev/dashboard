@@ -2161,6 +2161,7 @@ export interface SocialSlot {
   time_of_day: string
   timezone: string
   capacity: number
+  metadata?: { contentKind?: 'general' | 'news' | 'sponsor', [key: string]: unknown }
   enabled: boolean
 }
 
@@ -2313,16 +2314,16 @@ export interface SocialWallAccount {
 }
 
 export interface SocialWallMetric {
-  impressions: number
-  engagements: number
-  clicks: number
-  reach: number
-  likes: number
-  comments_count: number
-  shares: number
-  saves: number
-  video_views: number
-  reactions: number
+  impressions: number | null
+  engagements: number | null
+  clicks: number | null
+  reach: number | null
+  likes: number | null
+  comments_count: number | null
+  shares: number | null
+  saves: number | null
+  video_views: number | null
+  reactions: number | null
 }
 
 export interface SocialWallEngagement {

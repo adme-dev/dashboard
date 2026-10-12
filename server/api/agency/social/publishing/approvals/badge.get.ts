@@ -1,4 +1,4 @@
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
 import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
 
 /**
@@ -16,6 +16,6 @@ export default defineEventHandler(async (event) => {
     params.push(clientId)
     sql += ` AND client_id = $${params.length}`
   }
-  const row = await queryOne<{ count: number }>(sql, params)
+  const row = await queryOneFresh<{ count: number }>(sql, params)
   return { count: row?.count ?? 0 }
 })

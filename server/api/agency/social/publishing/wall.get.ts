@@ -1,3 +1,4 @@
+import { POST_METRIC_TOTALS_SQL } from '~~/server/utils/socialReporting/metricSql'
 import { queryRows } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
@@ -29,16 +30,16 @@ export default defineEventHandler(async (event) => {
           'latest_activity_at', engagement.latest_activity_at
         ) AS engagement,
         jsonb_build_object(
-          'impressions', COALESCE(metrics.impressions, 0),
-          'engagements', COALESCE(metrics.engagements, 0),
-          'clicks', COALESCE(metrics.clicks, 0),
-          'reach', COALESCE(metrics.reach, 0),
-          'likes', COALESCE(metrics.likes, 0),
-          'comments_count', COALESCE(metrics.comments_count, 0),
-          'shares', COALESCE(metrics.shares, 0),
-          'saves', COALESCE(metrics.saves, 0),
-          'video_views', COALESCE(metrics.video_views, 0),
-          'reactions', COALESCE(metrics.reactions, 0)
+          'impressions', metrics.impressions,
+          'engagements', metrics.engagements,
+          'clicks', metrics.clicks,
+          'reach', metrics.reach,
+          'likes', metrics.likes,
+          'comments_count', metrics.comments_count,
+          'shares', metrics.shares,
+          'saves', metrics.saves,
+          'video_views', metrics.video_views,
+          'reactions', metrics.reactions
         ) AS metrics,
         COALESCE(metrics.by_platform, '{}'::jsonb) AS metrics_by_platform
        FROM social_posts p
@@ -69,29 +70,20 @@ export default defineEventHandler(async (event) => {
        ) engagement ON TRUE
        LEFT JOIN LATERAL (
          SELECT
-           COALESCE(SUM(m.impressions), 0)::int AS impressions,
-           COALESCE(SUM(m.engagements), 0)::int AS engagements,
-           COALESCE(SUM(m.clicks), 0)::int AS clicks,
-           COALESCE(SUM(m.reach), 0)::int AS reach,
-           COALESCE(SUM(m.likes), 0)::int AS likes,
-           COALESCE(SUM(m.comments_count), 0)::int AS comments_count,
-           COALESCE(SUM(m.shares), 0)::int AS shares,
-           COALESCE(SUM(m.saves), 0)::int AS saves,
-           COALESCE(SUM(m.video_views), 0)::int AS video_views,
-           COALESCE(SUM(m.reactions), 0)::int AS reactions,
+           ${POST_METRIC_TOTALS_SQL},
            jsonb_object_agg(
              m.platform,
              jsonb_build_object(
-               'impressions', COALESCE(m.impressions, 0),
-               'engagements', COALESCE(m.engagements, 0),
-               'clicks', COALESCE(m.clicks, 0),
-               'reach', COALESCE(m.reach, 0),
-               'likes', COALESCE(m.likes, 0),
-               'comments_count', COALESCE(m.comments_count, 0),
-               'shares', COALESCE(m.shares, 0),
-               'saves', COALESCE(m.saves, 0),
-               'video_views', COALESCE(m.video_views, 0),
-               'reactions', COALESCE(m.reactions, 0)
+               'impressions', m.impressions,
+               'engagements', m.engagements,
+               'clicks', m.clicks,
+               'reach', m.reach,
+               'likes', m.likes,
+               'comments_count', m.comments_count,
+               'shares', m.shares,
+               'saves', m.saves,
+               'video_views', m.video_views,
+               'reactions', m.reactions
              )
            ) FILTER (WHERE m.platform IS NOT NULL) AS by_platform
          FROM social_post_metrics m

@@ -1,4 +1,5 @@
-import { defineEventHandler, getHeader, createError } from 'h3'
+import { requireSocialCronAuth } from '~~/server/utils/socialPublishing/cronAuth'
+import { defineEventHandler } from 'h3'
 import { queryRows, execute } from '~~/server/utils/db'
 import { getProvider } from '~~/server/utils/social-providers/registry'
 import { upsertPostMetric, upsertAccountMetric } from '~~/server/utils/socialReporting/store'
@@ -30,10 +31,7 @@ interface MetricsSyncHealth {
 }
 
 export default defineEventHandler(async (event) => {
-  const secret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && secret !== process.env.CRON_SECRET) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  requireSocialCronAuth(event)
 
   const today = new Date().toISOString().slice(0, 10)
   const accounts = await queryRows<MetricSyncAccount>(
@@ -83,16 +81,20 @@ export default defineEventHandler(async (event) => {
 
     // Per-post metrics.
     if (provider.fetchPostMetrics && targets.length) {
+      const pending = new Set(targets.map(target => JSON.stringify([target.postId, target.platformPostId])))
       try {
         const metrics = await provider.fetchPostMetrics({ accountId: acct.platform_account_id, accessToken: acct.access_token, posts: targets })
         for (const metric of metrics) {
+          const key = JSON.stringify([metric.postId, metric.platformPostId])
+          if (!pending.has(key)) continue
           await upsertPostMetric({ execute }, acct.platform, metric)
+          pending.delete(key)
           postsSynced++
         }
       } catch (e: unknown) {
-        postFailures++
         console.error('social-metrics: post fetch failed', { accountId: acct.id, platform: acct.platform, error: errorMessage(e) })
       }
+      postFailures += pending.size
     }
   }
 
