@@ -1,7 +1,51 @@
-import { expect, it } from 'vitest'
-import { compactSqlSource } from '../../scripts/compact-worker-static-data.mjs'
+import { afterEach, expect, it } from 'vitest'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { compactSqlSource, compactRouteSqlDirectory } from '../../scripts/compact-worker-static-data.mjs'
+import { compactDeployedWorkerModules } from '../../scripts/compact-worker-module.mjs'
+
+const directories: string[] = []
+afterEach(async () => {
+  await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true })))
+})
 
 const sql = `SELECT wallet.balance, wallet.reserved, 'Text 🚘\\n' AS note\nFROM page_studio_image_wallets wallet\nWHERE wallet.client_id=$1 AND wallet.environment=$2\n${'AND wallet.balance >= 0\n'.repeat(100)}FOR UPDATE`
+it('losslessly compacts nested server route SQL before minification without scanning client chunks or maps', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'worker-route-sql-'))
+  directories.push(directory)
+  const route = path.join(directory, 'chunks/routes/api/social/report.get.mjs')
+  const client = path.join(directory, 'chunks/build/client.mjs')
+  await mkdir(path.dirname(route), { recursive: true })
+  await mkdir(path.dirname(client), { recursive: true })
+  const source = `export function run(db, args) { return db.query(${JSON.stringify(sql)}, args); }`
+  await Promise.all([writeFile(route, source), writeFile(client, source), writeFile(`${route}.map`, source)])
+
+  const result = await compactRouteSqlDirectory(directory)
+  expect(result.changedFiles).toBe(1)
+  expect(result.literals).toBe(1)
+  expect(result.savedBytes).toBeGreaterThan(1000)
+  expect(await readFile(client, 'utf8')).toBe(source)
+  expect(await readFile(`${route}.map`, 'utf8')).toBe(source)
+  expect(await compactRouteSqlDirectory(directory)).toEqual({ changedFiles: 0, literals: 0, savedBytes: 0 })
+
+  await compactDeployedWorkerModules(path.join(directory, 'chunks/routes'))
+  const module = await import(pathToFileURL(route).href)
+  const args = ['client-a', 'production']
+  expect(module.run.name).toBe('run')
+  expect(module.run({ query(text: string, values: unknown[]) {
+    expect(text).toBe(sql)
+    expect(values).toBe(args)
+    return 'ok'
+  } }, args)).toBe('ok')
+})
+
+it('leaves a Worker without split server routes unchanged', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'worker-no-route-sql-'))
+  directories.push(directory)
+  expect(await compactRouteSqlDirectory(directory)).toEqual({ changedFiles: 0, literals: 0, savedBytes: 0 })
+})
 it('preserves exact SQL, parameter identity and order, and caches only static query text', async () => {
   const source = `export async function run(db, args) { return db.query(${JSON.stringify(sql)}, args); }`
   const result = compactSqlSource(source)
