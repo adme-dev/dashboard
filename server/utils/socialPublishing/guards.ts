@@ -1,3 +1,4 @@
+import { isNewsroomOwned } from '~~/server/utils/newsroomSocialSource'
 import { createError, type H3Event } from 'h3'
 import { queryOneFresh, queryRows } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
@@ -35,6 +36,7 @@ const CONTROLLED_SOCIAL_POST_FIELDS = new Set([
 ])
 
 export interface SocialPostClientRef {
+  created_by?: string | null
   id: string
   client_id: string
   platforms?: string[] | null
@@ -211,12 +213,15 @@ export function assertNoControlledSocialPostFields(body: Record<string, unknown>
 export async function requireSocialPostClientAccess(event: H3Event, postId: string): Promise<SocialPostClientRef> {
   const row = await queryOneFresh<SocialPostClientRef>(
     `SELECT id, client_id, platforms, account_ids, status, approval_requested_at,
-            client_approval_status, metadata
+            client_approval_status, metadata, created_by
        FROM social_posts WHERE id = $1`,
     [postId]
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
   await requireSocialClientAccess(event, row.client_id)
+  if (isNewsroomOwned(row) && !['GET', 'HEAD'].includes(event.method ?? '')) {
+    throw createError({ statusCode: 409, statusMessage: 'Manage this approved post in the DriveAgent newsroom' })
+  }
   return row
 }
 
