@@ -13,6 +13,8 @@ Recovered only the needed publishing changes onto freshly fetched main `124fa5bb
 - Applied migration 449 transactionally.
 - Retained all published history and existing posting slots.
 
+Replenishment checks the published source every 15 minutes, admits stories published within 72 hours, creates at most five drafts per run, and retains import receipts to prevent duplicates. Before automatic dispatch, the source identity, URL, publication state and age are checked again. This blocks withdrawn or obsolete articles; it does not regenerate queued captions or media after editorial corrections. A corrected queued story still requires editorial review.
+
 ## Metrics behavior
 
 Graph v25 live probes confirmed Page follower fields, `page_views_total`, post reaction/comment summaries and `post_clicks`. Empty insights are unavailable, not zero. Retired impressions/reach/video metrics are not relabelled as media views. Nulls survive database writes, aggregate totals, comparisons, UI, PDFs and AI summaries. Verified zeroes remain zero. Failed/partial collection makes the Worker fail visibly.
@@ -34,6 +36,12 @@ Each renewal has nine immutable approved creative records referencing the same a
 ## Website measurement
 
 The separate website change adds an independent Meta permission and dormant News-only Pixel configuration, with GPC/DNT and private/sensitive-route exclusions. Existing analytics permission is not marketing permission. A dedicated News dataset is required; another customer's Pixel must never be reused. The Meta create form is prepared in the ADME Advertising - Additional portfolio, pending the owner's acceptance of Meta Business Tools Terms. No dataset, token or CAPI activation is claimed yet. Newsletter events are not mapped to sales leads.
+
+Tagged landing URLs (including UTM and Facebook click-ID queries) remain outside the existing website tracking privacy contract. The readiness change must not be presented as complete campaign attribution. Browser PageView is not currently promoted to server-side CAPI delivery; server conversion mapping and deduplication require separate verified activation evidence.
+
+## OEM collection investigation
+
+The owner's additional OEM freshness request is tracked separately from Facebook publishing. The public OEM page aggregates Engagr group feeds backed by MotorStack's `oem-variants` news API. The existing daily content schedule ran, but browser-based manufacturer collection failed to launch Chromium in its root container and then republished old archives as successful. Missing official items were confirmed for Mazda, Subaru and Ford; Nissan's latest official article remained 8 October. An isolated repair is in progress in the current MotorStack source. A refreshed website cache alone is not evidence of successful manufacturer collection.
 
 ## Verification and release record
 
