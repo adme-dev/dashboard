@@ -59,4 +59,11 @@ describe('buildReportHtml', () => {
   it('escapeReportHtml handles all the dangerous chars', () => {
     expect(escapeReportHtml(`<>&"'`)).toBe('&lt;&gt;&amp;&quot;&#39;')
   })
+  it('prints unavailable metrics as an em dash instead of zero or null percent', () => {
+    const html = buildReportHtml({ ...data, kpis: { ...data.kpis, reach: { value: null, deltaPct: null }, engagementRate: { value: null, deltaPct: null } }, bestContent: [{ content: 'Unknown', engagements: null, engagementRate: null }] })
+    expect(html).toContain('<div class="lbl">Reach</div><div class="val">—</div>')
+    expect(html).toContain('<div class="lbl">Eng. rate</div><div class="val">—</div>')
+    expect(html).toContain('<td class="num">—</td><td class="num">—</td>')
+    expect(html).not.toContain('null%')
+  })
 })

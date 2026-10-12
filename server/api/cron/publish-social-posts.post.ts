@@ -1,5 +1,6 @@
-import { defineEventHandler, getHeader, createError } from 'h3'
-import { queryRows, queryOne } from '~~/server/utils/db'
+import { requireSocialCronAuth } from '~~/server/utils/socialPublishing/cronAuth'
+import { defineEventHandler } from 'h3'
+import { queryRowsFresh, queryOneFresh } from '~~/server/utils/db'
 import { startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/client'
 import { claimAndPublishSocialPost } from '~~/server/utils/socialPublishing/dispatch'
 
@@ -31,12 +32,9 @@ interface DispatchHealth {
  * ticks can never double-publish a post.
  */
 export default defineEventHandler(async (event) => {
-  const secret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && secret !== process.env.CRON_SECRET) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  requireSocialCronAuth(event)
 
-  const due = await queryRows<DuePostRow>(
+  const due = await queryRowsFresh<DuePostRow>(
     `SELECT id, client_id, scheduled_at::text
        FROM social_posts
       WHERE scheduled_at <= NOW() AND status = 'scheduled' AND publish_attempts < 3
@@ -75,7 +73,7 @@ export default defineEventHandler(async (event) => {
     results.push({ id: post.id, status: dispatch.status ?? 'failed' })
   }
 
-  const health = dispatchHealth(await queryOne<DispatchHealthRow>(
+  const health = dispatchHealth(await queryOneFresh<DispatchHealthRow>(
     `SELECT
         COUNT(*) FILTER (
           WHERE scheduled_at <= NOW()

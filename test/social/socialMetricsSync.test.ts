@@ -116,4 +116,18 @@ describe('social metrics sync target extraction', () => {
     expect(mockConsoleWarn).toHaveBeenCalledWith('social-metrics.health', res.health)
     expect(mockConsoleError).toHaveBeenCalledTimes(2)
   })
+
+  it('reports omitted post snapshots as failures instead of a healthy empty sync', async () => {
+    mockFetchPostMetrics.mockResolvedValueOnce([])
+    const res = await handler(event({ headers: { 'x-cron-secret': 'test-secret' } }))
+    expect(res.health).toMatchObject({ status: 'critical', postsSynced: 0, postFailures: 1 })
+    expect(mockUpsertPostMetric).not.toHaveBeenCalled()
+  })
+
+  it('ignores returned snapshots for another account target', async () => {
+    mockFetchPostMetrics.mockResolvedValueOnce([{ postId: 'P1', platformPostId: 'post_page_1', impressions: 10 }])
+    const res = await handler(event({ headers: { 'x-cron-secret': 'test-secret' } }))
+    expect(res.health).toMatchObject({ status: 'critical', postsSynced: 0, postFailures: 1 })
+    expect(mockUpsertPostMetric).not.toHaveBeenCalled()
+  })
 })

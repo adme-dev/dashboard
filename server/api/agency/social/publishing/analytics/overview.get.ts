@@ -20,11 +20,11 @@ export default defineEventHandler(async (event) => {
     [clientId],
   )
 
-  const metrics = await queryOne<{ impressions: number; engagements: number; clicks: number }>(
+  const metrics = await queryOne<{ impressions: number | null; engagements: number | null; clicks: number | null }>(
     `SELECT
-        COALESCE(SUM(m.impressions),0)::int AS impressions,
-        COALESCE(SUM(m.engagements),0)::int AS engagements,
-        COALESCE(SUM(m.clicks),0)::int AS clicks
+        CASE WHEN COUNT(m.impressions) = COUNT(*) THEN SUM(m.impressions)::int ELSE NULL END AS impressions,
+        CASE WHEN COUNT(m.engagements) = COUNT(*) THEN SUM(m.engagements)::int ELSE NULL END AS engagements,
+        CASE WHEN COUNT(m.clicks) = COUNT(*) THEN SUM(m.clicks)::int ELSE NULL END AS clicks
        FROM social_post_metrics m
        JOIN social_posts p ON p.id = m.post_id
       WHERE p.client_id = $1`,
@@ -33,6 +33,6 @@ export default defineEventHandler(async (event) => {
 
   return {
     counts: counts ?? { published: 0, scheduled: 0, failed: 0, drafts: 0 },
-    metrics: metrics ?? { impressions: 0, engagements: 0, clicks: 0 },
+    metrics: metrics ?? { impressions: null, engagements: null, clicks: null },
   }
 })

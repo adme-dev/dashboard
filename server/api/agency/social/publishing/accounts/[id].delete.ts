@@ -30,6 +30,11 @@ export default defineEventHandler(async (event) => {
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
 
   const result = await executeGodModeSocialPublishingAccountDisconnect<SocialAccountDisconnectResult>(event, async (db) => {
+    // Match news configuration/replenishment lock order before account FK actions.
+    const scope = (await db.query('SELECT client_id FROM social_accounts WHERE id=$1', [id])).rows[0] as { client_id: string } | undefined
+    if (!scope) throw createError({ statusCode: 404, statusMessage: 'Account not found' })
+    await requireSocialClientAccess(event, scope.client_id)
+    await db.query('SELECT pg_advisory_xact_lock(hashtextextended(\'news-autopost:\' || $1::text, 0))', [scope.client_id])
     const locked = await db.query(
       `SELECT client_id, platform, platform_account_id, access_token, metadata
          FROM social_accounts
@@ -39,7 +44,7 @@ export default defineEventHandler(async (event) => {
     )
     const current = locked.rows[0] as SocialAccountDisconnectRow | undefined
     if (!current) throw createError({ statusCode: 404, statusMessage: 'Account not found' })
-    await requireSocialClientAccess(event, current.client_id)
+    if (current.client_id !== scope.client_id) throw createError({ statusCode: 409, statusMessage: 'Account client changed; retry disconnection' })
 
     await recordSocialPublishingAudit({
       clientId: current.client_id,

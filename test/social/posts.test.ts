@@ -31,7 +31,9 @@ vi.mock('~~/server/utils/auth', () => ({
 vi.mock('~~/server/utils/permissions', () => ({ PERMISSIONS: { CREATIVE: ['owner'] } }))
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
+  queryRowsFresh: (...a: unknown[]) => mockQueryRows(...a),
   queryOne: (...a: unknown[]) => mockQueryOne(...a),
+  queryOneFresh: (...a: unknown[]) => mockQueryOne(...a),
   execute: (...a: unknown[]) => mockExecute(...a)
 }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSocialMetric as fmtNum, formatSocialRate as fmtRate } from '~/utils/socialReportingFormat'
 import { usePortalSocialReporting } from '~/composables/usePortalSocialReporting'
 
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
@@ -32,15 +33,14 @@ const kpiCards = computed(() => {
   const k = overview.value?.kpis
   if (!k) return []
   return [
-    { label: 'Posts', kpi: k.posts, fmt: (v: number) => String(v) },
+    { label: 'Posts', kpi: k.posts, fmt: fmtNum },
     { label: 'Impressions', kpi: k.impressions, fmt: fmtNum },
     { label: 'Reach', kpi: k.reach, fmt: fmtNum },
     { label: 'Engagements', kpi: k.engagements, fmt: fmtNum },
-    { label: 'Eng. rate', kpi: k.engagementRate, fmt: (v: number) => `${v}%` },
+    { label: 'Eng. rate', kpi: k.engagementRate, fmt: fmtRate },
     { label: 'Link clicks', kpi: k.clicks, fmt: fmtNum },
   ]
 })
-function fmtNum(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n) }
 function deltaColor(d: number | null) { return d == null ? 'neutral' : d > 0 ? 'success' : d < 0 ? 'error' : 'neutral' }
 function deltaLabel(d: number | null) { return d == null ? '—' : `${d > 0 ? '+' : ''}${d}%` }
 const maxCadence = computed(() => Math.max(1, ...(overview.value?.cadence ?? []).map(c => c.posts)))
@@ -65,6 +65,7 @@ onMounted(load)
 
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <template v-else-if="overview">
+      <p class="text-xs text-muted">— means unavailable or incomplete provider data.</p>
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <div v-for="c in kpiCards" :key="c.label" class="rounded-lg border border-default bg-default p-4">
           <div class="text-xs text-muted">{{ c.label }}</div>
@@ -102,8 +103,8 @@ onMounted(load)
         <div v-if="overview.bestContent.length" class="space-y-2">
           <div v-for="b in overview.bestContent" :key="b.postId" class="flex items-center gap-3 text-sm border-b border-default last:border-0 pb-2 last:pb-0">
             <p class="flex-1 min-w-0 truncate">{{ b.content || '(no caption)' }}</p>
-            <span class="text-muted shrink-0 tabular-nums">{{ b.engagements }} eng</span>
-            <UBadge color="primary" variant="subtle" size="xs">{{ b.engagementRate }}%</UBadge>
+            <span class="text-muted shrink-0 tabular-nums">{{ fmtNum(b.engagements) }} eng</span>
+            <UBadge color="primary" variant="subtle" size="xs">{{ fmtRate(b.engagementRate) }}</UBadge>
             <UButton v-if="b.permalink" :to="b.permalink" target="_blank" icon="i-lucide-external-link" variant="ghost" size="xs" />
           </div>
         </div>

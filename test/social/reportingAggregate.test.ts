@@ -26,6 +26,11 @@ describe('engagementRate', () => {
     expect(engagementRate(50, 0, 2000)).toBe(2.5)
     expect(engagementRate(50, 0, 0)).toBe(0)
   })
+  it('does not calculate a rate from unavailable measurements', () => {
+    expect(engagementRate(null, 100, 100)).toBeNull()
+    expect(engagementRate(0, null, null)).toBeNull()
+    expect(engagementRate(0, 100, null)).toBe(0)
+  })
 })
 
 describe('rollupPostMetrics', () => {
@@ -35,6 +40,16 @@ describe('rollupPostMetrics', () => {
     expect(t.engagements).toBe(15)
     expect(t.comments).toBe(5)
     expect(t.posts).toBe(2)
+  })
+  it('keeps totals unavailable when any included post lacks the metric', () => {
+    const totals = rollupPostMetrics([row({ impressions: null, likes: 0 }), row({ impressions: 100, likes: 2 })])
+    expect(totals.impressions).toBeNull()
+    expect(totals.likes).toBe(2)
+    expect(totals.posts).toBe(2)
+  })
+  it('keeps an empty period distinct from measured zeroes', () => {
+    expect(rollupPostMetrics([])).toMatchObject({ posts: 0, impressions: null, engagements: null })
+    expect(rollupPostMetrics([row({})])).toMatchObject({ posts: 1, impressions: 0, engagements: 0 })
   })
 })
 
@@ -62,6 +77,13 @@ describe('cadenceByWeekday', () => {
     expect(c[1]).toEqual({ weekday: 1, posts: 2, avgEngagements: 15 })
     expect(c[0]).toEqual({ weekday: 0, posts: 0, avgEngagements: 0 })
   })
+  it('does not lower average engagement by treating missing values as zero', () => {
+    const cadence = cadenceByWeekday([
+      row({ published_at: '2026-06-01T10:00:00Z', engagements: null }),
+      row({ published_at: '2026-06-01T12:00:00Z', engagements: 20 }),
+    ])
+    expect(cadence[1]).toEqual({ weekday: 1, posts: 2, avgEngagements: null })
+  })
 })
 
 describe('buildOverview', () => {
@@ -74,6 +96,14 @@ describe('buildOverview', () => {
     expect(ov.posts).toEqual({ value: 1, deltaPct: 0 })
     expect(ov.engagementRate.value).toBe(20) // 20/100
     expect(ov.engagementRate.deltaPct).toBe(100) // 20% vs 10%
+  })
+  it('does not claim a drop when current or prior provider data is unavailable', () => {
+    const overview = buildOverview([row({ impressions: null, engagements: null, reach: null })], [row({ impressions: 100, engagements: 20, reach: 50 })])
+    expect(overview.impressions).toEqual({ value: null, deltaPct: null })
+    expect(overview.engagementRate).toEqual({ value: null, deltaPct: null })
+    expect(socialPctDelta(100, null)).toBeNull()
+    expect(socialPctDelta(null, 100)).toBeNull()
+    expect(socialPctDelta(0, 100)).toBe(-100)
   })
 })
 

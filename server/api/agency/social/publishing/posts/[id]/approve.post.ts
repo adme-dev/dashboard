@@ -24,6 +24,9 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const existing = await requireSocialPostClientAccess(event, id)
+  if (existing.status !== 'draft') {
+    throw createError({ statusCode: 409, statusMessage: 'Only draft posts can be approved' })
+  }
   if (existing.metadata?.source === 'mcp_news' && existing.client_approval_status !== 'approved') {
     throw createError({ statusCode: 409, statusMessage: 'Client approval is required before internal approval' })
   }
@@ -37,11 +40,11 @@ export default defineEventHandler(async (event) => {
             approved_by = $2,
             approved_at = NOW(),
             rejection_reason = NULL, updated_at = NOW()
-      WHERE id = $1 AND client_id = $3
+      WHERE id = $1 AND client_id = $3 AND status = 'draft'
       RETURNING id, content, approval_requested_by, status, scheduled_at`,
     [id, user.id, existing.client_id]
   )
-  if (!post) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
+  if (!post) throw createError({ statusCode: 409, statusMessage: 'Post changed state before approval' })
   await recordSocialPublishingAudit({
     clientId: existing.client_id,
     postId: id,

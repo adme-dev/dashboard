@@ -1,4 +1,4 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
 
 /**
@@ -17,5 +17,5 @@ export default defineEventHandler(async (event) => {
     sql += ` AND client_id = $${params.length}`
   }
   sql += ` ORDER BY approval_requested_at ASC`
-  return await queryRows(sql, params)
+  return await queryRowsFresh(sql, params)
 })

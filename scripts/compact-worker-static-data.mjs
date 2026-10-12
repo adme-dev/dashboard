@@ -141,3 +141,33 @@ export async function compactNitroSqlModule(workerDirectory) {
   if (result.code !== source) await writeFile(file, result.code)
   return { literals: result.literals, savedBytes: Buffer.byteLength(source) - Buffer.byteLength(result.code) }
 }
+
+/** SQL also lives in split server route modules; the exact partition varies
+ * between Nuxt/Vite releases. Reuse the same lossless literal encoder there,
+ * before minification, without scanning client chunks or source maps. */
+export async function compactRouteSqlDirectory(workerDirectory) {
+  const result = { changedFiles: 0, literals: 0, savedBytes: 0 }
+  const visit = async directory => {
+    let entries
+    try {
+      entries = await readdir(directory, { withFileTypes: true })
+    } catch (error) {
+      if (error.code === 'ENOENT') return
+      throw error
+    }
+    for (const entry of entries) {
+      const file = path.join(directory, entry.name)
+      if (entry.isDirectory()) await visit(file)
+      if (!entry.isFile() || !entry.name.endsWith('.mjs')) continue
+      const source = await readFile(file, 'utf8')
+      const compacted = compactSqlSource(source)
+      if (compacted.code === source) continue
+      await writeFile(file, compacted.code)
+      result.changedFiles++
+      result.literals += compacted.literals
+      result.savedBytes += Buffer.byteLength(source) - Buffer.byteLength(compacted.code)
+    }
+  }
+  await visit(path.join(workerDirectory, 'chunks', 'routes'))
+  return result
+}

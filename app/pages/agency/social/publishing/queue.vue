@@ -18,7 +18,9 @@ const filling = ref(false)
 async function load() {
   if (!clientId.value) return
   loading.value = true
-  try { queue.value = await api.getQueue(clientId.value) } finally { loading.value = false }
+  try {
+    queue.value = await api.getQueue(clientId.value)
+  } finally { loading.value = false }
 }
 watch(clientId, load, { immediate: true })
 
@@ -27,9 +29,9 @@ async function persist(prev: SocialPost[]) {
   try {
     await api.reorderQueue(clientId.value, queue.value.map(p => p.id))
     toast.add({ title: 'Queue order saved', color: 'success' })
-  } catch (e: any) {
+  } catch (e: unknown) {
     queue.value = prev // rollback to the pre-reorder order
-    toast.add({ title: 'Could not save order', description: e?.data?.statusMessage, color: 'error' })
+    toast.add({ title: 'Could not save order', description: (e as { data?: { statusMessage?: string } }).data?.statusMessage, color: 'error' })
   }
 }
 function move(i: number, dir: -1 | 1) {
@@ -75,8 +77,8 @@ async function fillFromDrafts() {
       color: count ? 'success' : 'neutral',
     })
     if (count) await load()
-  } catch (e: any) {
-    toast.add({ title: 'Could not fill from drafts', description: e?.data?.statusMessage, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not fill from drafts', description: (e as { data?: { statusMessage?: string } }).data?.statusMessage, color: 'error' })
   } finally {
     filling.value = false
   }
@@ -96,6 +98,8 @@ async function fillFromDrafts() {
         Fill from drafts
       </UButton>
     </template>
+
+    <SocialPublishingNewsAutopost v-if="clientId" :key="clientId" :client-id="clientId" />
 
     <SocialPublishingSlotManager v-if="clientId" :client-id="clientId" />
 

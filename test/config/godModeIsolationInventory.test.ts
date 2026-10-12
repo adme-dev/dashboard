@@ -52,10 +52,13 @@ const API_INVENTORY = {
   // Restricted native CMS setup adds GET/POST through genuine native cookies,
   // immutable setup purpose, staging approval and exact-origin mutation gates.
   // Neither registers a God mode bypass or accepts caller scope.
-  totalRouteFiles: 2242,
-  mutationRouteFiles: 1217,
-  explicitlyGuardedMutationFiles: 400,
-  guardedMutationFilesWithTransactionCall: 47
+  // News auto-posting adds three client-scoped agency routes (POST/GET/PUT)
+  // and one machine-secret POST. POST/PUT use native role gates; PUT retains
+  // account/client validation and a transaction. No mutation bypass is registered.
+  totalRouteFiles: 2246,
+  mutationRouteFiles: 1220,
+  explicitlyGuardedMutationFiles: 402,
+  guardedMutationFilesWithTransactionCall: 48
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -103,11 +106,24 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2242,
-      mutationRouteFiles: 1217,
-      explicitlyGuardedMutationFiles: 400,
-      guardedMutationFilesWithTransactionCall: 47
+      totalRouteFiles: 2246,
+      mutationRouteFiles: 1220,
+      explicitlyGuardedMutationFiles: 402,
+      guardedMutationFilesWithTransactionCall: 48
     })
+  })
+
+  it('pins news auto-posting to independent client scope and machine-secret authority', () => {
+    const directory = 'server/api/agency/social/publishing/news-autopost/'
+    const sources = ['index.get.ts', 'index.put.ts', 'check.post.ts']
+      .map(file => readFileSync(directory + file, 'utf8'))
+    for (const source of sources) expect(source).toContain('await requireSocialClientAccess(event,')
+    expect(sources[1]).toContain('await requireRole(event, PERMISSIONS.MANAGEMENT)')
+    expect(sources[1]).toContain('return transaction(async (db) =>')
+    expect(sources[1]).toContain('WHERE id=$1 AND client_id=$2')
+    expect(sources[2]).toContain('await requireRole(event, PERMISSIONS.CREATIVE)')
+    expect(readFileSync('server/api/cron/replenish-social-news.post.ts', 'utf8'))
+      .toContain('requireSocialCronAuth(event)')
   })
 
   it('pins the added email-template routes to their separate native authority adapters', () => {
