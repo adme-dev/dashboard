@@ -108,6 +108,8 @@ const BANNER_ASSET_CAPABILITY_PATH = /^\/api\/public\/banner-assets\/v1\.[A-Za-z
 // Keep this exact-match allowlist narrow: Workflow mutation routes still use
 // the normal staff-session boundary.
 const selfAuthenticatingRoutes = new Set([
+  // Fixed-client newsroom delivery verifies x-newsroom-secret in its handler.
+  '/api/internal/newsroom/social',
   '/api/agency/workflows/readiness',
   '/api/agency/workflows/status',
   '/api/agency/social/publishing/workflows/readiness'

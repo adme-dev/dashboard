@@ -72,6 +72,12 @@ describe('auth middleware internal bearer endpoints', () => {
     expect(validateSession).not.toHaveBeenCalled()
   })
 
+  it('lets only the exact newsroom social route reach its secret guard', async () => {
+    await expect(handler(fakeEvent('/api/internal/newsroom/social'))).resolves.toBeUndefined()
+    await expect(handler(fakeEvent('/api/internal/newsroom/social/admin'))).rejects.toMatchObject({ statusCode: 401 })
+    await expect(handler(fakeEvent('/api/internal/newsroom/other'))).rejects.toMatchObject({ statusCode: 401 })
+  })
+
   it('does not broaden the signed lead bypass to sibling internal routes', async () => {
     await expect(handler(fakeEvent('/api/internal/leads-private/admin'))).rejects.toMatchObject({
       statusCode: 401,

@@ -55,8 +55,9 @@ const API_INVENTORY = {
   // News auto-posting adds three client-scoped agency routes (POST/GET/PUT)
   // and one machine-secret POST. POST/PUT use native role gates; PUT retains
   // account/client validation and a transaction. No mutation bypass is registered.
-  totalRouteFiles: 2246,
-  mutationRouteFiles: 1220,
+  // Newsroom handoff adds one fixed-target machine-secret POST, without a God mode bypass.
+  totalRouteFiles: 2247,
+  mutationRouteFiles: 1221,
   explicitlyGuardedMutationFiles: 402,
   guardedMutationFilesWithTransactionCall: 48
 } as const
@@ -106,8 +107,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2246,
-      mutationRouteFiles: 1220,
+      totalRouteFiles: 2247,
+      mutationRouteFiles: 1221,
       explicitlyGuardedMutationFiles: 402,
       guardedMutationFilesWithTransactionCall: 48
     })

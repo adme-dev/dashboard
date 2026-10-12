@@ -1,3 +1,4 @@
+import { verifyNewsroomSource } from '~~/server/utils/newsroomSocialSource'
 import { verifyAutomaticNewsSource } from '~~/server/utils/socialNewsAutopostSource'
 import { execute, queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { publishPost, type PublishableAccount, type PublishablePost, type PublishOutcome } from '~~/server/utils/socialPublishing'
@@ -24,13 +25,15 @@ export interface ClaimAndPublishSocialPostResult {
   status?: PublishOutcome['status']
   platformResults?: PublishOutcome['platformResults']
   skipped?: boolean
-  reason?: 'not_claimed' | 'source_unavailable' | 'story_withdrawn'
+  reason?: 'not_claimed' | 'source_unavailable' | 'story_withdrawn' | 'newsroom_approval_invalid'
   currentStatus?: string | null
   accountsCount?: number
   targets?: string[]
 }
 
 interface SocialPostDispatchRow extends PublishablePost {
+  created_by?: string | null
+  scheduled_at?: string | null
   metadata?: Record<string, unknown>
   client_id: string
   status: string
@@ -91,6 +94,12 @@ export async function claimAndPublishSocialPost(
     return skipped
   }
 
+  if (await verifyNewsroomSource(claimed) !== 'ready') {
+    await execute(`UPDATE social_posts SET status='failed', updated_at=NOW(),
+      metadata=jsonb_set(metadata,'{newsroomHold}',to_jsonb('Newsroom article or approved copy changed; delivery held'::text))
+      WHERE id=$1 AND client_id=$2 AND status='publishing'`, [claimed.id, claimed.client_id])
+    return { ok: true, skipped: true, postId: claimed.id, clientId: claimed.client_id, reason: 'newsroom_approval_invalid' }
+  }
   const sourceStatus = await verifyAutomaticNewsSource(claimed)
   if (sourceStatus !== 'ready') {
     await transaction(async (db) => {
