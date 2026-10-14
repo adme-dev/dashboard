@@ -9,7 +9,20 @@ const owner = 'opaque-owner'
 const item = { id: 'b'.repeat(32), hostname: host, custom_metadata: { page_studio_owner: owner } }
 const list = (result: unknown[], info = { page: 1, total_pages: 1 }) => ({ success: true, result, result_info: { per_page: 5, count: result.length, ...info } })
 describe('bounded custom hostname provider', () => {
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+  it('logs only a bounded failure stage and status without provider or request data', async () => {
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ success: false, errors: [{ message: 'private-provider-token' }] }, { status: 403 }))
+    await expect(cloudflareDomainProvider(config, fetcher)!.find(host)).rejects.toMatchObject({ code: 'DOMAIN_PROVIDER_FAILED' })
+    expect(log).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: 'page_studio_domain_provider_failure', operation: 'find', stage: 'http', status: 403 }))
+    expect(log.mock.calls.flat().join()).not.toMatch(/private-provider-token|client\.example|synthetic-only/)
+  })
+  it('distinguishes transport failures without exposing exception messages', async () => {
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fetcher = vi.fn().mockRejectedValue(new Error('private-provider-token'))
+    await expect(cloudflareDomainProvider(config, fetcher)!.find(host)).rejects.toMatchObject({ code: 'DOMAIN_PROVIDER_FAILED' })
+    expect(log).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: 'page_studio_domain_provider_failure', operation: 'find', stage: 'transport', status: null }))
+  })
   it('retains the native global fetch receiver when using the default provider transport', async () => {
     vi.stubGlobal('fetch', function (this: unknown) {
       if (this !== globalThis) throw new Error('Illegal invocation')

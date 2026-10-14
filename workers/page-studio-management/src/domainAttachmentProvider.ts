@@ -59,14 +59,17 @@ export function cloudflareDomainProvider(config: DomainProviderConfig, fetcher: 
   if (!/^[a-f0-9]{32}$/i.test(config.zoneId))
     throw domainFailure('DOMAIN_PROVIDER_UNAVAILABLE', 503)
   async function request(path: string, init?: RequestInit, requiredStatus?: number) {
-    let response: Response
+    let response: Response | undefined
+    let stage: 'transport' | 'http' | 'body' | 'json' | 'envelope' = 'transport'
     try {
       response = await fetcher(`https://api.cloudflare.com/client/v4/zones/${config.zoneId}/custom_hostnames${path}`, {
         ...init, redirect: 'manual', signal: AbortSignal.timeout(10000),
         headers: { 'authorization': `Bearer ${config.apiToken}`, 'content-type': 'application/json' }
       })
+      stage = 'http'
       if (!response.ok || !response.body || (requiredStatus !== undefined && response.status !== requiredStatus))
         throw domainFailure('DOMAIN_PROVIDER_FAILED', 502)
+      stage = 'body'
       const reader = response.body.getReader()
       const chunks: Uint8Array[] = []
       let size = 0
@@ -89,11 +92,18 @@ export function cloudflareDomainProvider(config: DomainProviderConfig, fetcher: 
         bytes.set(chunk, offset)
         offset += chunk.byteLength
       }
+      stage = 'json'
       const payload = JSON.parse(new TextDecoder().decode(bytes))
+      stage = 'envelope'
       if (payload?.success !== true || !('result' in payload))
         throw domainFailure('DOMAIN_PROVIDER_FAILED', 502)
       return payload
     } catch {
+      // Operational evidence only: never log tokens, hostnames, provider bodies,
+      // exception messages, request URLs or ownership validation challenges.
+      console.warn(JSON.stringify({ event: 'page_studio_domain_provider_failure',
+        operation: init?.method === 'POST' ? 'create' : path.startsWith('?') ? 'find' : 'get',
+        stage, status: response?.status ?? null }))
       throw domainFailure('DOMAIN_PROVIDER_FAILED', 502)
     }
   }
