@@ -100,3 +100,28 @@ preview/build approvals retain their expired timestamps; this does not renew
 their grants, change customer roles or enable production signup. Close this
 window when hosted acceptance finishes. Configuration alone does not prove
 email delivery, account creation or customer publishing.
+
+## Hosted preview readback and expired-capacity fix
+
+Guarded preview deployment `51dbd832-48ed-410a-8445-5aa01efe03f9` serves source
+`c5a61cc0acdc667979adbc92e8d44150492a8ab9` at the stable preview alias. Cloudflare
+readback confirms production remains `630ec0a3-4db8-4b4c-98a8-bcd635314be1` from
+main `6b82be128`. Migration 452 is also applied to the isolated staging branch;
+all four constraints validated and retained release/pointer digests unchanged.
+All four existing customer previews return HTTP 200 with no-store responses.
+
+The hosted native dashboard exposed a 403 when optional CMS availability reused
+expired preview authority. Availability now independently rechecks the current
+native login and workspace owner before returning false. CMS setup reads and
+mutations still require the full unexpired preview authority. Real PostgreSQL
+regressions reproduce both expired capacity and no-preview failures before the
+fix, and cover four native access withdrawals. The targeted group passes 31
+tests; independent source review found no blocking issues. This follow-up is
+not yet included in the preview deployment above.
+
+A normal sign-in email was requested for the first supplied mailbox through the
+UI. Inbox delivery and completion of the link remain unverified. The original
+two native preview policies and entitlements are expired and have not been
+extended or replaced. Fresh hosted CMS/editor acceptance therefore still needs
+a supported, reviewed test-site lifecycle; changing the signup window does not
+authorize an expired site.

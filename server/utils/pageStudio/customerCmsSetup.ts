@@ -4,6 +4,7 @@ import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { CustomerCmsSetupRequestSchema, CustomerCmsSetupStatusSchema, CustomerCmsAdoptionStatusSchema } from '~~/shared/pageStudio/customerCmsSetup'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
 import { readCustomerSession, readCustomerSetup } from './customerSignup'
+import { resolveCustomerWorkspaceAccess } from './customerWorkspaces'
 import { readCustomerSessionIdentityFromHash, readCustomerProvisioningPreviewAuthority, verifyCustomerProvisioningAuthority } from './customerProvisioning'
 import { PageStudioProvisioningJobSchema, readPageStudioProvisioning, type PageStudioProvisionerBinding } from './provisioningBinding'
 import { assertCustomerCmsSetupApproval } from './customerCmsSetupAuthority'
@@ -102,9 +103,20 @@ export async function customerCmsSetupAvailable(token: string, options: Customer
     await run(db => context(db, token))
     return true
   } catch {
-    // A missing setup approval may hide this feature, but must never mask a
-    // revoked native parent or owner and return an earlier dashboard projection.
-    await run(db => ownerContext(db, token))
+    // Expired preview capacity or a missing setup approval hides this feature.
+    // Recheck the native owner independently: reusing ownerContext here would
+    // make an unavailable preview suppress the entire authenticated overview.
+    // Actual setup reads/mutations still require the full preview authority.
+    await run(async (db) => {
+      const transaction: RunPageStudioTransaction = work => work(db)
+      const user = await readCustomerSession(token, transaction)
+      const setup = await readCustomerSetup(token, transaction)
+      if (setup.workspaceId) {
+        const access = await resolveCustomerWorkspaceAccess({ identityId: user.identityId, workspaceId: setup.workspaceId }, transaction)
+        if (access.role !== 'owner' || access.legacyBinding) throw denied()
+      }
+      await readCustomerSession(token, transaction)
+    })
     return false
   }
 }
