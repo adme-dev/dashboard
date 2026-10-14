@@ -28,7 +28,7 @@ export const DomainAggregateRecordSchema = z.object({
   status: status.optional(), environment: z.literal('production').optional(), failureSummary: text.nullable(),
   verifiedAt: z.string().datetime().nullable(), activatedAt: z.string().datetime().nullable(), updatedAt: z.string().datetime()
 }).strict()
-export const DomainVerificationSchema = z.object({ id: z.string().uuid(), certificateValidation: DomainCertificateSchema, cloudflareHostnameId: z.string().regex(/^[a-f0-9]{32}$/i).nullable(), dnsStatus: status, hostnameStatus: status, lifecycleState: status, ownershipValidation: DomainInstructionsSchema, tlsStatus: status }).strict()
+export const DomainVerificationSchema = z.object({ id: z.string().uuid(), certificateValidation: DomainCertificateSchema, cloudflareHostnameId: z.union([z.uuid(), z.string().regex(/^[a-f0-9]{32}$/i)]).nullable(), dnsStatus: status, hostnameStatus: status, lifecycleState: status, ownershipValidation: DomainInstructionsSchema, tlsStatus: status }).strict()
 export const DomainListSchema = z.object({ siteId: z.string().uuid(), canManage: z.boolean(), managementBlocker: z.enum(['plan', 'role']).optional(), providerReady: z.boolean().optional(), domains: z.array(DomainRecordSchema).max(200) }).strict()
 export const DomainIdentitySchema = z.object({ id: z.string().uuid() }).strict()
 export const DomainErrorStatuses: Record<string, number> = {

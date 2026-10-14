@@ -12,6 +12,7 @@ const url = process.env.PAGE_STUDIO_DOMAINS_DATABASE_TEST_URL
 const ids = { client: randomUUID(), otherClient: randomUUID(), site: randomUUID(), site2: randomUUID(), otherSite: randomUUID(), entitlement: randomUUID(), otherEntitlement: randomUUID(), staff: randomUUID(), role: randomUUID() }
 const portalId = randomUUID()
 const config = { apiToken: 'local-only', zoneId: 'a'.repeat(32), cnameTarget: 'sites.example.com' }
+const standardConfig = { ...config, identityMode: 'standard' as const }
 const input = { kind: 'agency' as const, actorId: ids.staff, tenantId: 'domain-test', siteId: ids.site, hostname: 'customer.example.com' }
 const other = { ...input, siteId: ids.otherSite }
 const providerRows = new Map<string, DomainHostname>()
@@ -47,6 +48,9 @@ describe.runIf(Boolean(url))('durable domain attachment on disposable PostgreSQL
     const migration = readFileSync('server/database/migrations/419_page_studio_domain_operations.sql', 'utf8')
     await execute(migration)
     await execute(migration) // Additive migration is repeatable.
+    const identityMigration = readFileSync('server/database/migrations/450_page_studio_domain_identity_mode.sql', 'utf8')
+    await execute(identityMigration)
+    await execute(identityMigration)
     tx = async (callback) => {
       const client = await pool.connect()
       try {
@@ -95,6 +99,92 @@ describe.runIf(Boolean(url))('durable domain attachment on disposable PostgreSQL
     }
   })
   const portal = () => ({ ...input, kind: 'portal' as const, actorId: portalId, clientId: ids.client })
+  const standardService = () => domainAttachmentService(standardConfig, { transaction: tx, provider })
+  const standardCreate = () => {
+    provider.create.mockImplementation(async (hostname: string) => {
+      const row = { id: randomUUID(), hostname, status: 'active', ssl: { status: 'active' } }
+      providerRows.set(hostname, row)
+      return row
+    })
+  }
+  it('persists metadata identity for existing default-mode operations', async () => {
+    await service().prepare(input)
+    expect((await execute('SELECT identity_mode FROM page_studio_domain_operations')).rows[0]).toEqual({ identity_mode: 'metadata' })
+  })
+  it('commits standard identity before creation and attaches an exact UUID GET without metadata', async () => {
+    standardCreate()
+    const create = provider.create.getMockImplementation()!
+    provider.create.mockImplementation(async (hostname, owner, identityMode) => {
+      expect((await execute('SELECT identity_mode,state FROM page_studio_domain_operations')).rows[0]).toEqual({ identity_mode: 'standard', state: 'creating' })
+      expect(identityMode).toBe('standard')
+      return create(hostname, owner, identityMode)
+    })
+    const attached = await standardService().prepare(input)
+    expect(attached.operation).toMatchObject({ identity_mode: 'standard', state: 'attached' })
+    expect(attached.current.cloudflare_hostname_id).toBe(attached.provider?.id)
+    expect(attached.provider).not.toHaveProperty('custom_metadata')
+    expect(provider.get).toHaveBeenCalledExactlyOnceWith(attached.provider?.id)
+  })
+  it('rejects a substituted initial GET ID for a standard create receipt', async () => {
+    standardCreate()
+    provider.get.mockImplementationOnce(async () => ({ ...providerRows.get(input.hostname), id: randomUUID() }))
+    await expect(standardService().prepare(input)).rejects.toMatchObject({ code: 'DOMAIN_PROVIDER_MISMATCH' })
+    expect((await execute('SELECT cloudflare_hostname_id FROM page_studio_domains')).rows[0].cloudflare_hostname_id).toBeNull()
+    expect((await execute('SELECT state,identity_mode FROM page_studio_domain_operations')).rows[0]).toEqual({ state: 'creating', identity_mode: 'standard' })
+    expect(provider.get).toHaveBeenCalledOnce()
+    expect(provider.create).toHaveBeenCalledOnce()
+  })
+  it('keeps attached standard verification pinned when configuration returns to metadata', async () => {
+    standardCreate()
+    const first = await standardService().prepare(input)
+    const retried = await service().prepare(input)
+    expect(retried.current.cloudflare_hostname_id).toBe(first.current.cloudflare_hostname_id)
+    expect(retried.operation).toMatchObject({ identity_mode: 'standard', state: 'attached' })
+    await expect(service().saveVerification(input, retried, state)).resolves.toBeUndefined()
+    expect(provider.create).toHaveBeenCalledOnce()
+  })
+  it('does not weaken a metadata attachment when configuration switches to standard', async () => {
+    const first = await service().prepare(input)
+    provider.get.mockResolvedValueOnce({ ...first.provider, custom_metadata: undefined })
+    await expect(standardService().prepare(input)).rejects.toMatchObject({ code: 'DOMAIN_PROVIDER_MISMATCH' })
+    expect((await execute('SELECT identity_mode FROM page_studio_domain_operations')).rows[0]).toEqual({ identity_mode: 'metadata' })
+    expect(provider.create).toHaveBeenCalledOnce()
+  })
+  it('retains the reservation identity mode when provider configuration changes before creation', async () => {
+    await domainAttachmentService(standardConfig, { transaction: tx, provider: null }).prepare(input)
+    standardCreate()
+    const result = await service().prepare(input)
+    expect(result.operation).toMatchObject({ identity_mode: 'standard', state: 'attached' })
+    expect(provider.create).toHaveBeenCalledWith(input.hostname, expect.any(String), 'standard')
+  })
+  it.each(['standard', 'metadata'] as const)('never searches, adopts or recreates a lost standard response under %s configuration', async (identityMode) => {
+    const create = provider.create.getMockImplementation()!
+    provider.create.mockImplementationOnce(async (hostname, owner) => {
+      // Even a subsequently discoverable matching owner marker cannot establish
+      // identity for a standard attempt whose direct creation receipt was lost.
+      await create(hostname, owner)
+      throw new Error('standard create response lost')
+    })
+    await expect(standardService().prepare(input)).rejects.toThrow('standard create response lost')
+    const receipt = (await execute('SELECT state,identity_mode,attempt_id FROM page_studio_domain_operations')).rows[0]
+    expect(receipt).toMatchObject({ state: 'creating', identity_mode: 'standard', attempt_id: expect.any(String) })
+    provider.find.mockClear()
+    provider.get.mockClear()
+    const retry = domainAttachmentService({ ...config, identityMode }, { transaction: tx, provider })
+    await expect(retry.prepare(input)).rejects.toMatchObject({ code: 'DOMAIN_RECONCILIATION_REQUIRED' })
+    expect(provider.find).not.toHaveBeenCalled()
+    expect(provider.get).not.toHaveBeenCalled()
+    expect(provider.create).toHaveBeenCalledOnce()
+    expect((await execute('SELECT state,identity_mode,attempt_id FROM page_studio_domain_operations')).rows[0]).toEqual(receipt)
+    expect((await execute('SELECT cloudflare_hostname_id FROM page_studio_domains')).rows[0].cloudflare_hostname_id).toBeNull()
+  })
+  it('never adopts a preexisting standard provider hostname', async () => {
+    providerRows.set(input.hostname, { id: randomUUID(), hostname: input.hostname })
+    await expect(standardService().prepare(input)).rejects.toMatchObject({ code: 'DOMAIN_PROVIDER_MISMATCH' })
+    expect(provider.create).not.toHaveBeenCalled()
+    expect(provider.get).not.toHaveBeenCalled()
+    expect((await execute('SELECT state,identity_mode FROM page_studio_domain_operations')).rows[0]).toEqual({ state: 'reserved', identity_mode: 'standard' })
+  })
   const rpcEnv = { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging', HYPERDRIVE_FRESH: { connectionString: 'injected-local-only' } }
   const rpcInput = () => ({ actor: { kind: 'portal', actorId: portalId, clientId: ids.client }, expectedEnvironment: 'staging', siteId: ids.site })
   it('executes actual portal RPC reserve/list/retry against isolated PostgreSQL without provider configuration', async () => {
@@ -382,15 +472,14 @@ describe.runIf(Boolean(url))('durable domain attachment on disposable PostgreSQL
     expect(provider.get).not.toHaveBeenCalled()
     expect(provider.create).not.toHaveBeenCalled()
   })
-  it('keeps a legacy retained provider ID read-only and cannot add an opaque owner retroactively', async () => {
+  it('fails closed for a legacy provider ID without operation zone provenance', async () => {
     const legacy = { id: 'b'.repeat(32), hostname: input.hostname, status: 'pending' }
     providerRows.set(input.hostname, legacy)
     await execute('INSERT INTO page_studio_domains(tenant_id,client_id,site_id,normalized_hostname,created_by,cloudflare_hostname_id) VALUES ($1,$2,$3,$4,$5,$6)', [input.tenantId, ids.client, ids.site, input.hostname, ids.staff, legacy.id])
-    const result = await service().prepare(input)
-    expect(result.provider?.id).toBe(legacy.id)
-    expect(result.operation).toBeNull()
+    await expect(service().prepare(input)).rejects.toMatchObject({ code: 'DOMAIN_RECONCILIATION_REQUIRED' })
     expect(provider.create).not.toHaveBeenCalled()
     expect(provider.find).not.toHaveBeenCalled()
+    expect(provider.get).not.toHaveBeenCalled()
   })
   it('preserves JSON keys and refuses verification after revocation or detach', async () => {
     const first = await service().prepare(input)

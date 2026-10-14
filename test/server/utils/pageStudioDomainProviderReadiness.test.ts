@@ -3,6 +3,9 @@ import { domainProviderConfigured } from '../../../workers/page-studio-managemen
 
 const env = { PAGE_STUDIO_CLOUDFLARE_API_TOKEN: 'test', PAGE_STUDIO_CLOUDFLARE_ZONE_ID: 'a'.repeat(32), PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET: 'sites.example.com' }
 describe('domain provider configuration readiness', () => {
+  it('keeps domain reads available when the identity policy is misconfigured', () => {
+    expect(domainProviderConfigured({ ...env, PAGE_STUDIO_DOMAIN_IDENTITY_MODE: 'typo' })).toBe(false)
+  })
   it('uses the same normalized target as domain attachment', () => {
     expect(domainProviderConfigured({ ...env, PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET: ' SITES.EXAMPLE.COM. ' })).toBe(true)
   })

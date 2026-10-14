@@ -223,7 +223,18 @@ export async function resolvePageStudioReleaseHost(
        AND pointer.environment IN ('staging', 'production')
        AND (
          (pointer.environment = 'staging' AND site.status IN ('draft', 'active'))
-         OR (pointer.environment = 'production' AND site.status = 'active')
+         OR (pointer.environment = 'production' AND site.status = 'active' AND EXISTS (
+           SELECT 1 FROM page_studio_domains domain
+           WHERE domain.tenant_id = pointer.tenant_id
+             AND domain.client_id = pointer.client_id
+             AND domain.site_id = pointer.site_id
+             AND domain.normalized_hostname = pointer.normalized_hostname
+             AND domain.lifecycle_state IN ('verified', 'active')
+             AND domain.hostname_status = 'active'
+             AND domain.tls_status = 'active'
+             AND domain.dns_status = 'active'
+             AND domain.verified_at IS NOT NULL
+         ))
        )
        AND entitlement.status IN ('trial', 'active')
        AND entitlement.effective_from <= NOW()

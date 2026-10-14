@@ -524,6 +524,12 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
       expect(activated).toEqual({ ...expected, environment: 'production', releaseId: activated.releaseId })
       expect(await activatePageStudioRelease(input, { runTransaction })).toEqual(activated)
       expect(await getPageStudioReleasePointer(scope, activated.releaseId, { queryOne })).toEqual(activated)
+      // An approved artifact alone must not make an unverified hostname public.
+      expect(await resolvePageStudioReleaseHost(input.hostname, { queryOne })).toBeNull()
+      await db.query(`INSERT INTO page_studio_domains
+        (tenant_id,client_id,site_id,normalized_hostname,lifecycle_state,hostname_status,tls_status,dns_status,verified_at)
+        VALUES($1,$2,$3,$4,'verified','active','active','active',NOW())`,
+      [scope.tenantId, scope.clientId, scope.siteId, input.hostname])
       expect(await resolvePageStudioReleaseHost(input.hostname, { queryOne })).toEqual({ hostname: input.hostname, release: activated })
       await rollbackPageStudioRelease({ ...activateInput(), expectedActiveReleaseId: activated.releaseId, targetReleaseId: legacyReleaseId, idempotencyKey: 'astro-to-legacy' }, { runTransaction })
       expect(await rollbackPageStudioRelease({ ...activateInput(), expectedActiveReleaseId: legacyReleaseId, targetReleaseId: activated.releaseId, idempotencyKey: 'legacy-to-astro' }, { runTransaction })).toEqual(activated)
