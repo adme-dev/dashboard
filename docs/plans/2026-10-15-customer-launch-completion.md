@@ -86,3 +86,17 @@ is expired; Cloudflare still shows its login page.
   existing previews. Customer production activation remains separately gated.
 - Public documentation/marketing only when the corresponding customer-facing
   functionality is actually available.
+
+## Preview acceptance window and final checks
+
+The full serial suite passed: 2,270 test files and 16,122 tests, with 76 files and
+2,144 tests skipped. The production build passed its raw/gzip Worker budgets.
+Typecheck remains unsuccessful with 943 repository diagnostics; none identified
+in the changed publication source. This is not a clean repository typecheck.
+
+A new preview-only native sign-in window is restricted to the two user-supplied
+mailbox hashes and expires 15 October 2026 at 10:30 UTC. Original workspace
+preview/build approvals retain their expired timestamps; this does not renew
+their grants, change customer roles or enable production signup. Close this
+window when hosted acceptance finishes. Configuration alone does not prove
+email delivery, account creation or customer publishing.
