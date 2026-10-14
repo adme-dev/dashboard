@@ -8,7 +8,7 @@ export async function listAgencyPageStudioReleases(tenantId: string) {
            client.name AS "clientName", site.name AS "siteName",
            release.environment, release.normalized_hostname AS hostname,
            release.build_id AS "buildId", build.state AS "buildState",
-           publisher.name AS "publishedBy", release.published_at AS "publishedAt",
+           COALESCE(publisher.name, client_publisher.name) AS "publishedBy", release.published_at AS "publishedAt",
            release.published_at AS "createdAt",
            (pointer.active_release_id = release.id) AS active,
            CASE WHEN pointer.active_release_id = release.id THEN 'active' ELSE 'historical' END AS status
@@ -30,6 +30,8 @@ export async function listAgencyPageStudioReleases(tenantId: string) {
      AND pointer.environment = release.environment
      AND pointer.normalized_hostname = release.normalized_hostname
     LEFT JOIN team_members publisher ON publisher.id = release.published_by
+    LEFT JOIN client_users client_publisher ON client_publisher.id = release.published_by_client_user_id
+      AND client_publisher.client_id = release.client_id
     WHERE release.tenant_id = $1
     ORDER BY release.published_at DESC
     LIMIT $2

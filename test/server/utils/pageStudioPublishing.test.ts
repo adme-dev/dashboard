@@ -265,6 +265,7 @@ describe('Page Studio atomic release activation', () => {
         return [{
           ...buildRow,
           actor_id: actorId,
+          actor_role: 'service',
           environment: 'staging',
           normalized_hostname: hostname,
           release_id: releaseId
@@ -289,6 +290,7 @@ describe('Page Studio atomic release activation', () => {
         return [{
           ...buildRow,
           actor_id: actorId,
+          actor_role: 'service',
           environment: 'production',
           normalized_hostname: hostname,
           release_id: releaseId
@@ -408,6 +410,7 @@ describe('Page Studio atomic release rollback', () => {
         return [{
           ...buildRow,
           actor_id: actorId,
+          actor_role: 'service',
           environment: 'staging',
           normalized_hostname: hostname,
           previous_release_id: rollback().expectedActiveReleaseId,
@@ -431,6 +434,7 @@ describe('Page Studio atomic release rollback', () => {
         return [{
           ...buildRow,
           actor_id: actorId,
+          actor_role: 'service',
           environment: 'production',
           normalized_hostname: hostname,
           previous_release_id: rollback().expectedActiveReleaseId,

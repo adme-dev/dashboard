@@ -115,7 +115,7 @@ describe.runIf(Boolean(databaseUrl))(
         '421_page_studio_ai_usage.sql', '427_page_studio_public_action_invocations.sql', '428_page_studio_client_staging.sql',
         '430_page_studio_astro_build_identity.sql', '431_page_studio_astro_release_receipt.sql',
         '433_page_studio_runtime_delivery.sql', '434_page_studio_runtime_draft_isolation.sql',
-        '435_page_studio_runtime_features.sql'
+        '435_page_studio_runtime_features.sql', '452_page_studio_client_publishers.sql'
       ]) {
         await observer.query(
           readFileSync(
