@@ -29,7 +29,7 @@ export const DomainAggregateRecordSchema = z.object({
   verifiedAt: z.string().datetime().nullable(), activatedAt: z.string().datetime().nullable(), updatedAt: z.string().datetime()
 }).strict()
 export const DomainVerificationSchema = z.object({ id: z.string().uuid(), certificateValidation: DomainCertificateSchema, cloudflareHostnameId: z.string().regex(/^[a-f0-9]{32}$/i).nullable(), dnsStatus: status, hostnameStatus: status, lifecycleState: status, ownershipValidation: DomainInstructionsSchema, tlsStatus: status }).strict()
-export const DomainListSchema = z.object({ siteId: z.string().uuid(), canManage: z.boolean(), domains: z.array(DomainRecordSchema).max(200) }).strict()
+export const DomainListSchema = z.object({ siteId: z.string().uuid(), canManage: z.boolean(), managementBlocker: z.enum(['plan', 'role']).optional(), providerReady: z.boolean().optional(), domains: z.array(DomainRecordSchema).max(200) }).strict()
 export const DomainIdentitySchema = z.object({ id: z.string().uuid() }).strict()
 export const DomainErrorStatuses: Record<string, number> = {
   DOMAIN_INVALID: 400, DOMAIN_ACCESS_DENIED: 403, DOMAIN_NOT_FOUND: 404,

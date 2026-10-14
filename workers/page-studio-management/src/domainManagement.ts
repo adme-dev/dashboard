@@ -4,7 +4,7 @@ import type { DomainActor, DomainDatabase, DomainTransaction } from './domainAtt
 import { domainFailure, PageStudioDomainAttachmentError } from './domainAttachmentProvider'
 import { requirePortalDomainAuthority } from './portalDomainAuthority'
 import { readPortalDomainConfiguration, projectPortalDomain } from './portalDomains'
-import { attachPageStudioDomain, refreshPageStudioDomain } from './domainConfiguration'
+import { attachPageStudioDomain, refreshPageStudioDomain, domainProviderConfigured } from './domainConfiguration'
 import { listAgencyPageStudioDomains, listPortalPageStudioDomains } from './domainAggregate'
 
 export async function agencyAuthority(db: DomainDatabase, actorId: string, permission: 'PAGE_STUDIO_VIEW' | 'PAGE_STUDIO_DOMAINS' | 'PAGE_STUDIO_APPROVE') {
@@ -28,7 +28,10 @@ export async function executeDomainManagement(request: DomainManagementRequest, 
     })
   }
   if (request.operation === 'list') {
-    if (actor.kind === 'portal') return DomainListSchema.parse(await readPortalDomainConfiguration({ ...actor, siteId: request.siteId }, transaction))
+    if (actor.kind === 'portal') {
+      const value = await readPortalDomainConfiguration({ ...actor, siteId: request.siteId }, transaction)
+      return DomainListSchema.parse({ ...value, providerReady: domainProviderConfigured(env) })
+    }
     return transaction(async (db) => {
       const canManage = await agencyAuthority(db, actor.actorId, 'PAGE_STUDIO_VIEW')
       const site = await db.query(`SELECT site.id FROM page_studio_sites site

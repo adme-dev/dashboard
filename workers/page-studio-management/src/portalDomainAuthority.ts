@@ -13,6 +13,7 @@ export interface PortalDomainScope {
   clientId: string
   customDomainLimit: number
   canManage: boolean
+  managementBlocker?: 'plan' | 'role'
 }
 /** The selected client and exact membership determine the tenant, never a request body. */
 export async function requirePortalDomainAuthority(db: DomainDatabase, input: PortalDomainActor, writing: boolean): Promise<PortalDomainScope> {
@@ -35,11 +36,11 @@ export async function requirePortalDomainAuthority(db: DomainDatabase, input: Po
      AND site.status IN ('draft','active') AND entitlement.status IN ('trial','active')
      AND entitlement.effective_from <= clock_timestamp()
      AND (entitlement.effective_until IS NULL OR entitlement.effective_until > clock_timestamp())
-     AND entitlement.custom_domain_limit > 0
     FOR SHARE OF site, client, portal_user, membership, entitlement
   `, [input.clientId, input.siteId, input.actorId, input.tenantId ?? null])
   const row = result.rows[0]
-  if (result.rows.length !== 1 || !row || row.clientId !== input.clientId || (writing && row.canManage !== true))
+  if (result.rows.length !== 1 || !row || row.clientId !== input.clientId || (writing && (row.canManage !== true || row.customDomainLimit < 1)))
     throw domainFailure('DOMAIN_ACCESS_DENIED', 403)
-  return row
+  return { ...row, canManage: row.canManage && row.customDomainLimit > 0,
+    managementBlocker: row.customDomainLimit < 1 ? 'plan' : row.canManage ? undefined : 'role' }
 }

@@ -18,9 +18,11 @@ const hostname = ref('')
 const saving = ref(false)
 const refreshingId = ref<string | null>(null)
 const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/domains`)
-const { data, status, error, refresh } = await useFetch<{ domains: DomainRecord[], siteId?: string, canManage?: boolean }>(endpoint)
+const { data, status, error, refresh } = await useFetch<{ domains: DomainRecord[], siteId?: string, canManage?: boolean, managementBlocker?: 'plan' | 'role', providerReady?: boolean }>(endpoint)
 const domains = computed(() => data.value?.siteId !== props.siteId ? [] : data.value?.domains ?? [])
-const canManage = computed(() => !error.value && status.value !== 'pending' && data.value?.siteId === props.siteId && data.value.canManage === true)
+const providerUnavailable = computed(() => data.value?.siteId === props.siteId && data.value.providerReady === false)
+const planRequired = computed(() => data.value?.siteId === props.siteId && data.value.managementBlocker === 'plan')
+const canManage = computed(() => !providerUnavailable.value && !error.value && status.value === 'success' && data.value?.siteId === props.siteId && data.value.canManage === true)
 
 function validationRecords(domain: DomainRecord) {
   const records: Array<{ purpose: string, name: string, value: string }> = []
@@ -82,7 +84,8 @@ async function verify(domain: DomainRecord) {
 </script>
 
 <template>
-  <div class="space-y-4 pt-5">
+  <div class="space-y-6 pt-5">
+    <PageStudioDomainSetupGuide />
     <UAlert
       color="warning"
       variant="subtle"
@@ -91,11 +94,25 @@ async function verify(domain: DomainRecord) {
       description="Add the verification records at your existing DNS provider. Keep your current MX and email TXT records. Website activation requires verified ownership, an active HTTPS certificate and DNS pointing to XeroFlow."
     />
     <UAlert
-      v-if="status !== 'pending' && !error && !canManage"
+      v-if="status !== 'pending' && !error && planRequired"
+      color="warning"
+      variant="subtle"
+      title="Custom domains are not included in this website’s current access"
+      description="Ask your account administrator to enable custom-domain capacity. You can explore the setup paths above; your existing website stays unchanged."
+    />
+    <UAlert
+      v-else-if="status !== 'pending' && !error && data?.canManage !== true"
       color="neutral"
       variant="subtle"
       title="You can view domain settings"
       :description="audience === 'portal' ? 'A website editor with administrator or manager access can connect a domain and check verification.' : 'Website editing permission is required to connect a domain or check verification.'"
+    />
+    <UAlert
+      v-if="!error && providerUnavailable"
+      color="warning"
+      variant="subtle"
+      title="Website connection service needs setup"
+      description="Your website team must configure the platform’s Cloudflare connection before domains can be attached. Keep your current website DNS until that setup is ready."
     />
     <p class="max-w-3xl text-sm text-muted">
       Connecting and verifying a domain does not publish your website. Your agency manages publication and website cutover separately.
@@ -122,7 +139,21 @@ async function verify(domain: DomainRecord) {
       <div v-if="status === 'pending'" class="space-y-3" aria-busy="true">
         <USkeleton class="h-24" /><USkeleton class="h-24" />
       </div>
-      <UAlert v-else-if="error" color="error" title="Unable to load domains" />
+      <UAlert
+        v-else-if="error"
+        color="error"
+        title="Domain settings could not be loaded"
+        description="Your domain and DNS have not been changed. Retry, or ask your account administrator to check your website access."
+      >
+        <template #actions>
+          <UButton
+            label="Retry domain settings"
+            color="neutral"
+            variant="outline"
+            @click="refresh()"
+          />
+        </template>
+      </UAlert>
       <div v-else-if="domains.length" class="divide-y divide-default">
         <article v-for="domain in domains" :key="domain.id" class="py-5 first:pt-0 last:pb-0">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -198,7 +229,7 @@ async function verify(domain: DomainRecord) {
                   </div>
                 </dl>
                 <p class="mt-2 text-muted">
-                  For a root domain, check your DNS provider’s supported setup before changing records.
+                  Use a subdomain such as www with a publicly visible CNAME. On Cloudflare, choose DNS only and turn off optional CNAME flattening for this record. Proxied or flattened records cannot pass this DNS check. Ask your website team about root-domain routing before changing the root domain.
                 </p>
               </div>
               <p v-if="domain.failureSummary" class="mt-2 text-sm text-error">
