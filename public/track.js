@@ -1935,6 +1935,7 @@
     }
 
     function onFocusIn(e) {
+      if (!isPublicTrackingPage()) return
       var el = e.target
       if (!el || !el.form) return
       var formKey = getFormKey(el.form)
@@ -1952,6 +1953,7 @@
     }
 
     function onFocusOut(e) {
+      if (!isPublicTrackingPage()) return
       var el = e.target
       if (!el || !el.form || !el._engagrFocusStart) return
       var formKey = getFormKey(el.form)
@@ -1965,6 +1967,7 @@
     }
 
     function onSubmit(e) {
+      if (!isPublicTrackingPage()) return
       var form = e.target
       if (!form || form.tagName !== 'FORM') return
       var formKey = getFormKey(form)

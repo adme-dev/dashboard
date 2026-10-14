@@ -153,6 +153,25 @@ describe('public/track.js transport', () => {
     expect(event.referrer).toBeNull()
   })
 
+  it('does not retain private form fields for an abandonment event on a later public page', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+    window.history.pushState({}, '', '/customer/private-account')
+    const form = document.createElement('form')
+    form.id = 'private-account-form'
+    form.innerHTML = '<input name="private_account_field">'
+    document.body.appendChild(form)
+    const input = form.querySelector('input')!
+    input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    form.remove()
+    window.history.pushState({}, '', '/vehicles')
+    requests = []
+    window.dispatchEvent(new Event('beforeunload'))
+    const payloads = requests.map(request => JSON.parse(request.body))
+    expect(JSON.stringify(payloads)).not.toContain('private_account')
+  })
+
   it('rejects a private page URL supplied as an event override', () => {
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })
