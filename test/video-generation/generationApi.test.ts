@@ -201,6 +201,36 @@ describe('POST /agency/video/generation/jobs', () => {
     expect(res.job.id).toBe('job-1')
   })
 
+  it('queues a five-second Seedance 2.5 text clip with audio provenance and a reserved budget', async () => {
+    mockLoadTenantPolicy.mockResolvedValueOnce({ enabled: true, monthlyCapCents: 1000 })
+    mockLoadSourceAssets.mockResolvedValueOnce([])
+    mockResolveSourceAssetUrls.mockResolvedValueOnce([])
+    const res = await createH({ body: {
+      ...allowedBody, modelId: 'aigateway/seedance-25-t2v', mode: 'text-to-video',
+      subjectType: 'non_vehicle', sourceAssetIds: [], prompt: 'Robo offers a toilet paper roll with a deadpan nod.',
+    }, context: {} } as any)
+    expect(res.job.id).toBe('job-1')
+    expect(mockReserve).toHaveBeenCalledWith(expect.objectContaining({
+      modelId: 'aigateway/seedance-25-t2v', estimatedCostCents: 120, durationSeconds: 5,
+    }), expect.objectContaining({ enabled: true }))
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      modelId: 'bytedance/seedance-2.5', metadata: expect.objectContaining({ supportsNativeAudio: true }),
+    }))
+    expect(mockEnqueue).toHaveBeenCalledOnce()
+  })
+
+  it('rejects Seedance 2.5 prompt and resolution limits before budget reservation', async () => {
+    for (const settings of [{ prompt: 'x'.repeat(2001) }, { resolution: '1080p' }]) {
+      await expect(createH({ body: {
+        ...allowedBody, modelId: 'aigateway/seedance-25-t2v', mode: 'text-to-video',
+        subjectType: 'non_vehicle', sourceAssetIds: [], prompt: 'A cheerful robot', ...settings,
+      }, context: {} } as any)).rejects.toMatchObject({ statusCode: 400 })
+    }
+    expect(mockLoadTenantPolicy).not.toHaveBeenCalled()
+    expect(mockReserve).not.toHaveBeenCalled()
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
   it('rejects model requests with unsupported mode or generation settings before budget work', async () => {
     await expect(createH({
       body: { ...allowedBody, mode: 'text-to-video', prompt: 'abstract color field', sourceAssetIds: [] },
