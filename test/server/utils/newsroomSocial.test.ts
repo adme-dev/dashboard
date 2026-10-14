@@ -150,7 +150,7 @@ describe('newsroom dispatch preflight', () => {
     row.metadata!.signature = signNewsroomPost(row, config().secret)
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: input.articleId, status: 'published', slug: 'a-story', updatedAt: input.articleUpdatedAt })))
     expect(await verifyNewsroomSource(row, config(), fetcher)).toBe('ready')
-    expect(fetcher).toHaveBeenCalledWith('https://driveagent.news/api/news/articles/a-story', expect.objectContaining({ redirect: 'error' }))
+    expect(fetcher).toHaveBeenCalledWith('https://driveagent.news/api/news/articles/a-story', expect.objectContaining({ redirect: 'manual' }))
   })
   it.each([{ status: 'retracted' }, { updatedAt: '2026-10-14T01:00:00Z' }, { id: 'other' }])('blocks changed or withdrawn source %j', async (patch) => {
     const row: NewsroomPost = post()
@@ -176,5 +176,18 @@ describe('newsroom dispatch preflight', () => {
     const row: NewsroomPost = post()
     row.metadata!.signature = signNewsroomPost(row, config().secret)
     expect(await verifyNewsroomSource(row, config(), vi.fn().mockRejectedValue(new Error('timeout')))).toBe('blocked')
+  })
+  it('requires restoring the exact signed metadata before recovering a zero-attempt hold', async () => {
+    const row: NewsroomPost = post()
+    row.metadata!.signature = signNewsroomPost(row, config().secret)
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ id: input.articleId, slug: 'a-story', status: 'published', updatedAt: input.articleUpdatedAt }))
+    row.metadata!.newsroomHold = 'Newsroom article or approved copy changed; delivery held'
+    expect(await verifyNewsroomSource(row, config(), fetcher)).toBe('blocked')
+    expect(fetcher).not.toHaveBeenCalled()
+    delete row.metadata!.newsroomHold
+    expect(await verifyNewsroomSource(row, config(), fetcher)).toBe('ready')
+    row.content = 'Unapproved replacement'
+    expect(await verifyNewsroomSource(row, config(), fetcher)).toBe('blocked')
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 })

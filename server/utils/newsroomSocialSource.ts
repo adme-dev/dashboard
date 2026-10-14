@@ -85,7 +85,8 @@ export async function verifyNewsroomSource(post: NewsroomPost, config?: Newsroom
     if (!link || link !== post.link_url) return 'blocked'
     const slug = new URL(link).pathname.slice('/news/'.length)
     const response = await fetchImpl(`${DRIVEAGENT_NEWS_ORIGIN}/api/news/articles/${slug}`, {
-      redirect: 'error', signal: AbortSignal.timeout(10_000), headers: { 'accept': 'application/json', 'cache-control': 'no-cache' }, cache: 'no-store'
+      // Workers supports manual/follow, not error. Reject 3xx through response.ok below.
+      redirect: 'manual', signal: AbortSignal.timeout(10_000), headers: { 'accept': 'application/json', 'cache-control': 'no-cache' }, cache: 'no-store'
     })
     if (!response.ok) return 'blocked'
     const text = await response.text()
