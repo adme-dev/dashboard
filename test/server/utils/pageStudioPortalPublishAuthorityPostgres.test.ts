@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { withPageStudioPublishAuthority, type PageStudioPublishPrincipal } from '~~/server/utils/pageStudio/publishAuthority'
+import { withPortalPageStudioReleaseAuthority } from '~~/server/utils/pageStudio/portalReleaseAuthority'
 import type { PageStudioPublishingQueryClient } from '~~/server/utils/pageStudio/publishing'
 
 const databaseUrl = process.env.PAGE_STUDIO_CMS_DATABASE_TEST_URL
@@ -36,7 +37,9 @@ describe.runIf(Boolean(databaseUrl))('Portal publication authority on PostgreSQL
     db = new pg.Client({ connectionString: databaseUrl })
     await db.connect()
     await db.query(`
-      CREATE TEMP TABLE page_studio_sites(id uuid PRIMARY KEY, tenant_id text, client_id uuid, entitlement_id uuid, status text);
+      CREATE TEMP TABLE page_studio_sites(id uuid PRIMARY KEY, tenant_id text, client_id uuid, entitlement_id uuid, status text, delivery_mode text DEFAULT 'static');
+      CREATE TEMP TABLE page_studio_domains(tenant_id text,client_id uuid,site_id uuid,normalized_hostname text,
+        lifecycle_state text,hostname_status text,tls_status text,dns_status text,verified_at timestamptz);
       CREATE TEMP TABLE agency_clients(id uuid PRIMARY KEY, is_active boolean);
       CREATE TEMP TABLE page_studio_entitlements(id uuid PRIMARY KEY, tenant_id text, client_id uuid,
         status text, effective_from timestamptz, effective_until timestamptz, custom_domain_limit integer);
@@ -53,13 +56,13 @@ describe.runIf(Boolean(databaseUrl))('Portal publication authority on PostgreSQL
   })
   beforeEach(async () => {
     await db.query(`TRUNCATE page_studio_sites, agency_clients, page_studio_entitlements, client_users,
-      client_sessions, page_studio_login_sessions, page_studio_site_memberships, publication_effects`)
+      client_sessions, page_studio_login_sessions, page_studio_site_memberships, publication_effects, page_studio_domains`)
     principal = { actorId, tenantId: scope.tenantId, login: { role: 'client', userId: actorId,
       tokenHash: 'a'.repeat(64), issuedAt: new Date(Date.now() - 60_000), expiresAt: new Date(Date.now() + 60_000) } }
     await db.query(`INSERT INTO agency_clients VALUES($1,TRUE)`, [scope.clientId])
     await db.query(`INSERT INTO page_studio_entitlements VALUES($1,$2,$3,'active',NOW()-INTERVAL '1 day',NULL,1)`,
       [entitlementId, scope.tenantId, scope.clientId])
-    await db.query(`INSERT INTO page_studio_sites VALUES($1,$2,$3,$4,'draft')`,
+    await db.query(`INSERT INTO page_studio_sites(id,tenant_id,client_id,entitlement_id,status) VALUES($1,$2,$3,$4,'draft')`,
       [scope.siteId, scope.tenantId, scope.clientId, entitlementId])
     await db.query(`INSERT INTO client_users VALUES($1,$2,'active','admin')`, [actorId, scope.clientId])
     await db.query(`INSERT INTO client_sessions VALUES($1,$2,$3)`, [principal.login.tokenHash, actorId, principal.login.expiresAt])
@@ -67,6 +70,8 @@ describe.runIf(Boolean(databaseUrl))('Portal publication authority on PostgreSQL
       [principal.login.tokenHash, actorId, principal.login.issuedAt, principal.login.expiresAt])
     await db.query(`INSERT INTO page_studio_site_memberships VALUES($1,$2,$3,$4,'editor')`,
       [scope.tenantId, scope.clientId, scope.siteId, actorId])
+    await db.query(`INSERT INTO page_studio_domains VALUES($1,$2,$3,'www.customer.example','verified','active','active','active',NOW())`,
+      [scope.tenantId, scope.clientId, scope.siteId])
   })
 
   it.each(['admin', 'manager'])('admits an active %s with exact site editor membership and domain allowance', async (role) => {
@@ -120,5 +125,45 @@ describe.runIf(Boolean(databaseUrl))('Portal publication authority on PostgreSQL
   it('does not substitute another site or tenant for the requested scope', async () => {
     await expect(authorize(undefined, principal, { ...scope, siteId: randomUUID() })).rejects.toMatchObject({ code: 'PUBLISH_AUTHORITY_DENIED' })
     await expect(authorize(undefined, principal, { ...scope, tenantId: 'foreign' })).rejects.toMatchObject({ code: 'PUBLISH_AUTHORITY_DENIED' })
+  })
+
+  const release = (work = async () => 'release', hostname = 'www.customer.example') =>
+    withPortalPageStudioReleaseAuthority(scope, principal, hostname, work, { runTransaction })
+  it('admits a verified static site on the exact customer hostname', async () => {
+    await expect(release()).resolves.toBe('release')
+  })
+  const domainWithdrawals = [
+    'UPDATE page_studio_domains SET lifecycle_state=\'detached\'',
+    'UPDATE page_studio_domains SET hostname_status=\'pending\'',
+    'UPDATE page_studio_domains SET tls_status=\'pending\'',
+    'UPDATE page_studio_domains SET dns_status=\'pending\'',
+    'UPDATE page_studio_domains SET verified_at=NULL',
+    'UPDATE page_studio_domains SET tenant_id=\'foreign\'',
+    `UPDATE page_studio_domains SET client_id='${randomUUID()}'`,
+    `UPDATE page_studio_domains SET site_id='${randomUUID()}'`,
+    'UPDATE page_studio_sites SET delivery_mode=\'runtime\''
+  ]
+  it.each(domainWithdrawals)('denies a domain or delivery mismatch before release: %s', async (sql) => {
+    await db.query(sql)
+    let called = false
+    await expect(release(async () => {
+      called = true
+      return 'release'
+    })).rejects.toMatchObject({ code: 'RELEASE_DOMAIN_NOT_READY' })
+    expect(called).toBe(false)
+  })
+  it.each(domainWithdrawals)('rolls back if domain readiness changes inside publication: %s', async (sql) => {
+    let called = false
+    await expect(release(async () => {
+      called = true
+      await db.query('INSERT INTO publication_effects VALUES(1)')
+      await db.query(sql)
+      return 'release'
+    })).rejects.toMatchObject({ code: 'RELEASE_DOMAIN_NOT_READY' })
+    expect(called).toBe(true)
+    expect((await db.query('SELECT * FROM publication_effects')).rows).toEqual([])
+  })
+  it('does not admit another hostname just because the customer has a verified domain', async () => {
+    await expect(release(undefined, 'www.other.example')).rejects.toMatchObject({ code: 'RELEASE_DOMAIN_NOT_READY' })
   })
 })

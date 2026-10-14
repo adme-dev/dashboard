@@ -32,9 +32,8 @@ binding intentionally retains its first timestamp. This avoids rejecting an
 otherwise valid returning publisher. Revoked bindings remain denied.
 
 This boundary does not accept standalone native customer identities; their
-session/workspace model remains separate. It does not yet expose a portal publish
-endpoint. Client actor attribution, approved artifact promotion/rollback routes,
-launch UI and hosted acceptance remain required before enabling self-service.
+session/workspace model remains separate. Launch UI, production artifacts and
+hosted acceptance remain required before enabling self-service.
 
 Validation: both admin/manager admission tests failed before implementation;
 41 real PostgreSQL portal authority cases pass after implementation, including
@@ -43,10 +42,41 @@ Astro, runtime route and portal preparation group passes 135 tests. Changed-file
 lint passes. No new migration, deployment, customer publication or test email has
 occurred at this checkpoint.
 
+## Portal release integration
+
+Migration 452 adds separate client publisher/updater references alongside the
+existing staff references. Constraints prevent a row from carrying both kinds.
+Publication and rollback audits retain the real actor kind, and idempotency cannot
+be reused across staff/client actors even when UUIDs match. Historical service
+audit rows remain replayable by the original agency publisher. Agency release
+history displays client publisher names within the same client scope.
+
+The additive migration was applied to the configured database on 14 October at
+22:03:37 UTC. Before/after snapshots verified all sites, entitlements, retained
+release fields and live pointers unchanged. The new constraints are validated.
+The application has not been deployed with these changes.
+
+The portal now has local production-only static activation and rollback handlers.
+They require an authenticated same-origin JSON request, strict input, an explicit
+expected live release and an idempotency key. Ownership and actor identity come
+from the original authenticated session. The selected domain must belong to the
+exact site and have verified ownership, DNS and HTTPS. Access/domain checks run
+before artifact reads and again inside the publication transaction. Remote
+artifact verification runs outside database locks. Only retained approved
+production Astro artifacts are accepted; runtime and feature release activation
+remain separate and fail closed here.
+
+The combined agency/static/runtime/portal test group passed 361 cases with one
+existing conditional skip. A further rollback actor-kind regression was added
+during review. Full-suite and final typecheck results are recorded separately;
+the existing repository typecheck is not clean. No customer release was activated
+and no test email was sent. Browser readback confirms the preview signup window
+is expired; Cloudflare still shows its login page.
+
 ## Remaining work (preserved)
 
-- Client actor attribution and publish/rollback integration, with scoped audits
-  and immutable approved build checks.
+- Customer-facing launch controls and native-customer publication integration;
+  invited portal backend integration is implemented locally.
 - Production compiler registration and approved artifacts for imported sites.
 - Cloudflare service credential repair and isolated end-to-end DNS/TLS proof.
 - Hosted form insertion, per-form/shared settings, template/media and delivery

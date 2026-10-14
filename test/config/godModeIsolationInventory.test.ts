@@ -56,8 +56,10 @@ const API_INVENTORY = {
   // and one machine-secret POST. POST/PUT use native role gates; PUT retains
   // account/client validation and a transaction. No mutation bypass is registered.
   // Newsroom handoff adds one fixed-target machine-secret POST, without a God mode bypass.
-  totalRouteFiles: 2247,
-  mutationRouteFiles: 1221,
+  // Invited portal publishing adds two production-only POSTs with original-login,
+  // exact-site membership, domain and approval checks; no God mode bypass.
+  totalRouteFiles: 2249,
+  mutationRouteFiles: 1223,
   explicitlyGuardedMutationFiles: 402,
   guardedMutationFilesWithTransactionCall: 48
 } as const
@@ -107,8 +109,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2247,
-      mutationRouteFiles: 1221,
+      totalRouteFiles: 2249,
+      mutationRouteFiles: 1223,
       explicitlyGuardedMutationFiles: 402,
       guardedMutationFilesWithTransactionCall: 48
     })
