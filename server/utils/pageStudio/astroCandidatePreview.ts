@@ -69,19 +69,21 @@ export async function registerAstroCandidatePreview(
       return { hostname, release: { ...build, environment: 'preview' as const, releaseId: existing.release_id } }
     }
     if (!await isCurrentAstroSource(db, { scope: input.scope, versionId: input.versionId, checkpointId: checkpoint.id, digest: build.versionDigest })) throw invalid()
+    const staffActor = principal.login.role === 'agency' ? principal.actorId : null
+    const clientActor = principal.login.role === 'client' ? principal.actorId : null
     const release = (await db.query<{ id: string }>(`INSERT INTO page_studio_releases
-      (tenant_id,client_id,site_id,build_id,environment,normalized_hostname,published_by,idempotency_key)
-      VALUES($1,$2,$3,$4,'preview',$5,$6,$7) RETURNING id`,
-    [...params, hostname, principal.actorId, `astro-preview:${context.identityDigest}:${hostname}`])).rows[0]
+      (tenant_id,client_id,site_id,build_id,environment,normalized_hostname,published_by,idempotency_key,published_by_client_user_id)
+      VALUES($1,$2,$3,$4,'preview',$5,$6,$7,$8) RETURNING id`,
+    [...params, hostname, staffActor, `astro-preview:${context.identityDigest}:${hostname}`, clientActor])).rows[0]
     if (!release) throw conflict()
     await db.query(`INSERT INTO page_studio_release_pointers
-      (tenant_id,client_id,site_id,environment,normalized_hostname,active_release_id,updated_by)
-      VALUES($1,$2,$3,'preview',$4,$5,$6)`, [...params.slice(0, 3), hostname, release.id, principal.actorId])
+      (tenant_id,client_id,site_id,environment,normalized_hostname,active_release_id,updated_by,updated_by_client_user_id)
+      VALUES($1,$2,$3,'preview',$4,$5,$6,$7)`, [...params.slice(0, 3), hostname, release.id, staffActor, clientActor])
     await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,
       resource_type,resource_id,idempotency_key,metadata)
-      VALUES($1,$2,$3,$4,'agency','release.preview_registered','release',$5,$6,$7::jsonb)`,
+      VALUES($1,$2,$3,$4,$8,'release.preview_registered','release',$5,$6,$7::jsonb)`,
     [...params.slice(0, 3), principal.actorId, release.id, `astro-preview:${release.id}`,
-      JSON.stringify({ buildId: build.buildId, hostname, environment: input.environment, manifestDigest: build.manifestDigest })])
+      JSON.stringify({ buildId: build.buildId, hostname, environment: input.environment, manifestDigest: build.manifestDigest }), principal.login.role])
     return { hostname, release: { ...build, environment: 'preview' as const, releaseId: release.id } }
   }, dependencies)
 }

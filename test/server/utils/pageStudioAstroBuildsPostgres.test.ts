@@ -11,7 +11,7 @@ import { reserveAstroReleaseBuild } from '~~/server/utils/pageStudio/astroBuilds
 import { buildApprovedPageStudioVersion, readApprovedBuildAuthority, persistSuccessfulBuild, type PageStudioBuildQueryClient } from '~~/server/utils/pageStudio/builds'
 import { activatePageStudioRelease, rollbackPageStudioRelease, getPageStudioBuildPointer, getPageStudioReleasePointer } from '~~/server/utils/pageStudio/publishing'
 import { authorizePageStudioPreview, resolvePageStudioReleaseHost } from '~~/server/utils/pageStudio/delivery'
-import { signPageStudioSessionToken } from '~~/server/utils/pageStudio/sessions'
+import { issuePageStudioSession, signPageStudioSessionToken } from '~~/server/utils/pageStudio/sessions'
 import { withPageStudioPublishAuthority, type PageStudioPublishPrincipal } from '~~/server/utils/pageStudio/publishAuthority'
 
 const databaseUrl = process.env.PAGE_STUDIO_CMS_DATABASE_TEST_URL
@@ -59,7 +59,7 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
       CREATE TABLE client_sessions(token_hash TEXT PRIMARY KEY,client_user_id UUID,expires_at TIMESTAMPTZ);
       CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));`)
-    for (const name of ['402_page_studio_control_plane.sql', '403_page_studio_sessions.sql', '413_page_studio_release_metadata.sql', '414_page_studio_atomic_release_metadata.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql', '430_page_studio_astro_build_identity.sql', '431_page_studio_astro_release_receipt.sql', '432_page_studio_astro_approval.sql', '433_page_studio_runtime_delivery.sql', '435_page_studio_runtime_features.sql', '452_page_studio_client_publishers.sql']) await db.query(migration(name))
+    for (const name of ['402_page_studio_control_plane.sql', '403_page_studio_sessions.sql', '413_page_studio_release_metadata.sql', '414_page_studio_atomic_release_metadata.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql', '430_page_studio_astro_build_identity.sql', '431_page_studio_astro_release_receipt.sql', '432_page_studio_astro_approval.sql', '433_page_studio_runtime_delivery.sql', '435_page_studio_runtime_features.sql', '436_page_studio_editing_session_duration.sql', '452_page_studio_client_publishers.sql']) await db.query(migration(name))
     await db.query('INSERT INTO team_members(id) VALUES($1)', [actorId])
     const clientId = randomUUID()
     await db.query('INSERT INTO agency_clients VALUES($1,TRUE)', [clientId])
@@ -156,6 +156,80 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
     const preview = (buildId: string, verifyBuild = async (pointer: unknown) => pointer) => registerAstroCandidatePreview({
       scope, versionId, buildId, environment: 'production', previewHostname: 'review.example.invalid'
     }, principal, { runTransaction, queryOne: async (sql, params) => (await db.query(sql, params)).rows[0] ?? null, verifyBuild })
+
+    describe('portal customer candidate review', () => {
+      beforeEach(async () => {
+        const customerId = randomUUID()
+        principal = { actorId: customerId, tenantId: scope.tenantId, login: {
+          ...principal.login, role: 'client', userId: customerId, tokenHash: 'b'.repeat(64)
+        } }
+        await db.query('INSERT INTO client_users VALUES($1,$2,\'active\',\'manager\')', [customerId, scope.clientId])
+        await db.query('INSERT INTO client_sessions VALUES($1,$2,$3)', [principal.login.tokenHash, customerId, principal.login.expiresAt])
+        await db.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+          VALUES('client',$1,$2,$3,$4)`, [principal.login.tokenHash, customerId, principal.login.issuedAt, principal.login.expiresAt])
+        await db.query(`INSERT INTO page_studio_site_memberships(tenant_id,client_id,site_id,user_id,role)
+          VALUES($1,$2,$3,$4,'editor')`, [...Object.values(scope), customerId])
+        await db.query('UPDATE page_studio_entitlements SET custom_domain_limit=1')
+      })
+
+      it('attributes successful builds to the customer who requested them', async () => {
+        await coordinate()
+        expect((await db.query('SELECT actor_id,actor_role FROM page_studio_audit_events WHERE action=\'build.succeeded\'')).rows)
+          .toEqual([{ actor_id: principal.actorId, actor_role: 'client' }])
+      })
+
+      it('records the customer preview creator without using a staff foreign key, including retries', async () => {
+        const build = await coordinate(), candidate = await preview(build.buildId)
+        expect(await preview(build.buildId)).toEqual(candidate)
+        expect((await db.query('SELECT published_by,published_by_client_user_id FROM page_studio_releases WHERE environment=\'preview\'')).rows)
+          .toEqual([{ published_by: null, published_by_client_user_id: principal.actorId }])
+        expect((await db.query('SELECT updated_by,updated_by_client_user_id FROM page_studio_release_pointers WHERE environment=\'preview\'')).rows)
+          .toEqual([{ updated_by: null, updated_by_client_user_id: principal.actorId }])
+        expect((await db.query('SELECT actor_id,actor_role FROM page_studio_audit_events WHERE action=\'release.preview_registered\'')).rows)
+          .toEqual([{ actor_id: principal.actorId, actor_role: 'client' }])
+      })
+
+      it('keeps ordinary editor preview available without business publishing or domain capacity', async () => {
+        const build = await coordinate(), candidate = await preview(build.buildId)
+        await db.query('UPDATE client_users SET role=\'viewer\'')
+        await db.query('UPDATE page_studio_entitlements SET custom_domain_limit=0')
+        const keys = generateKeyPairSync('ec', { namedCurve: 'P-256' }), issuer = 'https://agency.example.invalid'
+        const session = await issuePageStudioSession({ actorRole: 'client', actorId: principal.actorId,
+          clientId: scope.clientId, siteId: scope.siteId }, { runTransaction, loginSession: principal.login,
+          signToken: claims => signPageStudioSessionToken(claims, keys.privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(), issuer) })
+        expect(session.capabilities).toContain('workspace:preview')
+        expect(session.capabilities).toContain('workspace:checkpoint')
+        expect(await authorizePageStudioPreview({ hostname: candidate.hostname, token: session.token }, { issuer,
+          publicKey: keys.publicKey.export({ format: 'pem', type: 'spki' }).toString(),
+          queryOne: async (sql, params) => (await db.query(sql, params)).rows[0] ?? null })).toEqual(candidate)
+      })
+
+      it.each(['logout', 'business role', 'membership', 'domain capacity', 'entitlement', 'inactive client'])('withdraws an issued customer review grant after loss of %s', async (revocation) => {
+        // Staff may prepare the retained artifact; the customer receives their own review grant.
+        const customerPrincipal = principal
+        principal = { actorId, tenantId: scope.tenantId, login: { ...customerPrincipal.login, role: 'agency', userId: actorId, tokenHash: 'a'.repeat(64) } }
+        const build = await coordinate(), candidate = await preview(build.buildId)
+        principal = customerPrincipal
+        const keys = generateKeyPairSync('ec', { namedCurve: 'P-256' }), issuer = 'https://agency.example.invalid'
+        const session = await issueAstroCandidateSession(scope, principal, { runTransaction,
+          signToken: claims => signPageStudioSessionToken(claims, keys.privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(), issuer) })
+        const read = () => authorizePageStudioPreview({ hostname: candidate.hostname, token: session.token }, { issuer,
+          publicKey: keys.publicKey.export({ format: 'pem', type: 'spki' }).toString(),
+          queryOne: async (sql, params) => (await db.query(sql, params)).rows[0] ?? null })
+        expect((await db.query('SELECT role,capabilities FROM page_studio_sessions WHERE nonce=$1', [session.sessionId])).rows[0])
+          .toEqual({ role: 'client', capabilities: ['workspace:preview'] })
+        expect((await db.query('SELECT actor_role FROM page_studio_audit_events WHERE action=\'session.issued\'')).rows)
+          .toEqual([{ actor_role: 'client' }])
+        expect(await read()).toEqual(candidate)
+        if (revocation === 'logout') await db.query('DELETE FROM client_sessions')
+        if (revocation === 'business role') await db.query('UPDATE client_users SET role=\'viewer\'')
+        if (revocation === 'membership') await db.query('DELETE FROM page_studio_site_memberships')
+        if (revocation === 'domain capacity') await db.query('UPDATE page_studio_entitlements SET custom_domain_limit=0')
+        if (revocation === 'entitlement') await db.query('UPDATE page_studio_entitlements SET effective_until=NOW()-INTERVAL \'1 second\'')
+        if (revocation === 'inactive client') await db.query('UPDATE agency_clients SET is_active=FALSE')
+        expect(await read()).toBeNull()
+      })
+    })
 
     it('rejects first completion when a new checkpoint arrives during artifact verification', async () => {
       const retained = await reserve()

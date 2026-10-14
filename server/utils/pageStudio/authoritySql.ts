@@ -20,7 +20,7 @@ export function pageStudioAuthorityOwnerJoin(agency: boolean, source: AuthorityS
       AND ${permission}.permission_group = '${requiredPermission === 'PAGE_STUDIO_PUBLISH' ? 'PAGE_STUDIO_PUBLISH' : 'PAGE_STUDIO_EDIT'}'`
   }
   return `JOIN client_users owner ON ${ownerId} AND owner.client_id = site.client_id
-      AND owner.status = 'active' ${source === 'provisioning' ? 'AND owner.role IN (\'admin\', \'manager\')' : ''}
+      AND owner.status = 'active' ${source === 'provisioning' || requiredPermission === 'PAGE_STUDIO_PUBLISH' ? 'AND owner.role IN (\'admin\', \'manager\')' : ''}
     JOIN client_sessions native_session ON native_session.token_hash = login.token_hash
       AND native_session.client_user_id = owner.id AND native_session.expires_at > ${time}
     JOIN page_studio_site_memberships membership ON membership.tenant_id = site.tenant_id

@@ -318,7 +318,7 @@ async function verifyPreviewClaims(token: string, dependencies: AuthorizePageStu
   // Publisher review grants have only preview capability. Editor sessions keep
   // their existing edit authority; neither grant survives its native login or
   // role/permission/client/entitlement being revoked.
-  const permission = claims.role === 'agency' && claims.capabilities.length === 1
+  const permission = claims.capabilities.length === 1
     ? 'PAGE_STUDIO_PUBLISH'
     : 'PAGE_STUDIO_EDIT'
 
@@ -361,6 +361,7 @@ export async function authorizePageStudioPreview(
        AND login.revoked_at IS NULL AND login.issued_at<=NOW() AND login.expires_at>NOW()
      ${pageStudioAuthorityOwnerJoin(claims.role === 'agency', 'session', 'NOW()', permission)}
      ${pageStudioEditorEntitlementJoin('NOW()')}
+     ${claims.role === 'client' && permission === 'PAGE_STUDIO_PUBLISH' ? 'AND entitlement.custom_domain_limit > 0' : ''}
      JOIN page_studio_release_pointers pointer
        ON pointer.tenant_id = session.tenant_id
       AND pointer.client_id = session.client_id
@@ -478,6 +479,7 @@ export async function authorizePageStudioRuntimeDraftPreview(
        AND login.revoked_at IS NULL AND login.issued_at<=NOW() AND login.expires_at>NOW()
      ${pageStudioAuthorityOwnerJoin(claims.role === 'agency', 'session', 'NOW()', permission)}
      ${pageStudioEditorEntitlementJoin('NOW()')}
+     ${claims.role === 'client' && permission === 'PAGE_STUDIO_PUBLISH' ? 'AND entitlement.custom_domain_limit > 0' : ''}
      JOIN page_studio_checkpoints checkpoint
        ON checkpoint.tenant_id = site.tenant_id
       AND checkpoint.client_id = site.client_id

@@ -89,9 +89,9 @@ export async function completeAstroReleaseBuild(input: {
     [scope.tenantId, scope.clientId, scope.siteId, receipt.buildId, receipt.artifactPrefix, receipt.manifestKey,
       receipt.manifestDigest, receipt.validationKey, JSON.stringify(receipt), releaseMetadata])
     await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,
-      resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,'agency','build.succeeded','build',$5,$6,$7::jsonb)`,
+      resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,$8,'build.succeeded','build',$5,$6,$7::jsonb)`,
     [scope.tenantId, scope.clientId, scope.siteId, principal.actorId, receipt.buildId, `build:succeeded:${receipt.buildId}`,
-      JSON.stringify({ approvalId: authority.approval_id, versionDigest: authority.digest, renderer: 'astro', identityDigest: reservation.identityDigest })])
+      JSON.stringify({ approvalId: authority.approval_id, versionDigest: authority.digest, renderer: 'astro', identityDigest: reservation.identityDigest }), principal.login.role])
     return pointer
   }, dependencies)
 }

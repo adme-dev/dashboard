@@ -152,3 +152,27 @@ connection withdrawing membership between the unlocked initial read and final
 authority check. Withdrawal completes without waiting for the inspection, and
 the final check denies access. Management Worker strict typecheck and dry build
 passed. Independent review findings were corrected before commit.
+
+## Customer approved-build review attribution
+
+Candidate preparation now preserves invited customer identity in build-completion
+and preview-registration audits, release/pointer client foreign keys and signed
+review grants. Staff attribution remains unchanged. Repeated registration returns
+the retained preview without rewriting its original creator.
+
+Preview-only customer grants recheck the original portal login, active business,
+admin/manager role, exact editor membership, active entitlement and positive
+domain capacity on every read. Ordinary editor grants retain edit-only authority;
+a real PostgreSQL regression confirms they still work without publishing capacity.
+This supports the future portal candidate endpoint; it does not yet expose that
+endpoint, add launch controls, support standalone native identities or activate
+any customer website.
+
+Validation: the new tests first reproduced eight failures (incorrect audit role,
+staff-only foreign key and incorrectly labelled grants). Attribution fixes then
+left two demonstrated revocation failures for withdrawn role/domain capacity.
+The completed candidate PostgreSQL suite passes 83 tests; the session-authority
+PostgreSQL suite passes 74 tests, and the adjacent delivery/session/HTTP/portal
+regression group passes 98 tests. Changed-file lint and independent review pass.
+All database testing uses a disposable localhost instance. No migration change
+or production mutation is part of this slice. Hosted acceptance remains pending.
