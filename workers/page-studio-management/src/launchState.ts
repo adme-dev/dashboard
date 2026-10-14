@@ -60,9 +60,12 @@ const stateSql = `
 export async function readPageStudioLaunchState(input: {
   tenantId: string
   siteId: string
+  clientId?: string
   bucket?: PageStudioCheckpointBucket
 }, queryOneFresh: InspectionQuery): Promise<PageStudioLaunchState> {
-  const row = await queryOneFresh<LaunchRow>(stateSql, [input.tenantId, input.siteId])
+  const sql = input.clientId ? `${stateSql} AND site.client_id = $3` : stateSql
+  const params = input.clientId ? [input.tenantId, input.siteId, input.clientId] : [input.tenantId, input.siteId]
+  const row = await queryOneFresh<LaunchRow>(sql, params)
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Website not found' })
   const content: PageStudioLaunchState['content'] = {
     status: row.checkpoint_id ? 'unavailable' : 'required', publicPages: null, publicForms: null, requiresSealedFeatures: null
@@ -85,7 +88,7 @@ export async function readPageStudioLaunchState(input: {
       content.status = 'unavailable'
     }
   }
-  const latest = await queryOneFresh<LaunchRow>(stateSql, [input.tenantId, input.siteId])
+  const latest = await queryOneFresh<LaunchRow>(sql, params)
   if (!latest || JSON.stringify(latest) !== JSON.stringify(row)) {
     throw createError({ statusCode: 409, statusMessage: 'Website state changed. Refresh before continuing.' })
   }

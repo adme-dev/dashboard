@@ -1,3 +1,4 @@
+import { requirePortalDomainAuthority } from '../../../workers/page-studio-management/src/portalDomainAuthority'
 import { handleDomainManagement } from '../../../workers/page-studio-management/src/domainManagement'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -87,6 +88,16 @@ describe.runIf(Boolean(url))('durable domain attachment on disposable PostgreSQL
       providerRows.set(host, row)
       return row
     })
+  })
+  it('rechecks revoked access without blocking its withdrawal during an inspection read', async () => {
+    const actor = { actorId: portalId, clientId: ids.client, siteId: ids.site }
+    await expect(tx(async (db) => {
+      await requirePortalDomainAuthority(db, actor, false, { lock: false })
+      // A separate connection models access withdrawal while checkpoint storage is read.
+      await execute('DELETE FROM page_studio_site_memberships WHERE user_id=$1 AND site_id=$2', [portalId, ids.site])
+      await requirePortalDomainAuthority(db, actor, false)
+    })).rejects.toMatchObject({ code: 'DOMAIN_ACCESS_DENIED', statusCode: 403 })
+    expect((await execute('SELECT * FROM page_studio_site_memberships WHERE user_id=$1 AND site_id=$2', [portalId, ids.site])).rowCount).toBe(0)
   })
   afterAll(async () => {
     if (!pool)

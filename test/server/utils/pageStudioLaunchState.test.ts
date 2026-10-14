@@ -81,3 +81,10 @@ describe('site launch state', () => {
     expect(JSON.stringify(result)).not.toContain('Private storage diagnostic')
   })
 })
+
+it('binds customer launch reads to client as well as tenant and site', async () => {
+  vi.clearAllMocks()
+  mocks.query.mockResolvedValue(null)
+  await expect(readPageStudioLaunchState({ ...scope, clientId: 'client_one' })).rejects.toMatchObject({ statusCode: 404 })
+  expect(mocks.query).toHaveBeenCalledWith(expect.stringContaining('site.client_id = $3'), ['tenant_one', 'site_one', 'client_one'])
+})

@@ -125,3 +125,30 @@ two native preview policies and entitlements are expired and have not been
 extended or replaced. Fresh hosted CMS/editor acceptance therefore still needs
 a supported, reviewed test-site lifecycle; changing the signup window does not
 authorize an expired site.
+
+## Customer launch-status summary
+
+The invited customer website workspace now has a read-only launch summary above
+its domain controls. It separates saved visitor pages, current-version approval,
+and recorded production publications. A retained publication pointer is not
+presented as proof that DNS, HTTPS or the public website is reachable. Storage
+failure reports approval as unknown; a failed refresh hides retained success.
+
+The new portal HTTP endpoint accepts only the selected site ID and derives the
+actor/client from authenticated portal access. The management Worker resolves
+the tenant from current exact site membership. Checkpoint queries include client
+scope, and access is checked again before returning the result. The initial
+read does not hold authority row locks over object storage; the final read does.
+Mutation authority retains locking regardless of the new read option. No publish,
+role, quota, domain or account mutation is performed by this summary.
+
+Deployment requires the matching management Worker first, then the dashboard.
+It remains in preview verification until signed-in browser acceptance succeeds;
+this does not complete customer publishing or the provider credential repair.
+
+Validation: 103 focused inspection, HTTP, UI, domain and workspace tests passed,
+plus 62 disposable PostgreSQL domain tests. The latter includes a real separate
+connection withdrawing membership between the unlocked initial read and final
+authority check. Withdrawal completes without waiting for the inspection, and
+the final check denies access. Management Worker strict typecheck and dry build
+passed. Independent review findings were corrected before commit.

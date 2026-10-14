@@ -1,6 +1,7 @@
 import { PageStudioInspectionRequest, MAX_INSPECTION_BYTES } from '../../../shared/pageStudio/inspectionContract'
 import type { PageStudioCheckpointBucket } from '../../../shared/pageStudio/checkpointReader'
 import { listAgencyPageStudioReviews } from './reviews'
+import { requirePortalDomainAuthority } from './portalDomainAuthority'
 import { agencyAuthority } from './domainManagement'
 import { readPageStudioLaunchState } from './launchState'
 import { readPageStudioVersionComparison } from './versionComparison'
@@ -16,6 +17,15 @@ export async function handleInspection(input: unknown, env: Record<string, unkno
     || !(env.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket | undefined)?.get) return { ok: false as const, statusCode: 503 }
   try {
     const value = await transaction(async (db) => {
+      if (request.operation === 'portal-launch') {
+        const scope = await requirePortalDomainAuthority(db, request, false, { lock: false })
+        const query: InspectionQuery = async <T>(sql: string, params: unknown[]) => (await db.query<T>(sql, params)).rows[0] ?? null
+        const value = await readPageStudioLaunchState({ ...request, tenantId: scope.tenantId,
+          bucket: env.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket }, query)
+        // Storage reads are asynchronous; do not return data after access changes.
+        await requirePortalDomainAuthority(db, { ...request, tenantId: scope.tenantId }, false)
+        return value
+      }
       await agencyAuthority(db, request.actorId, request.operation === 'launch' ? 'PAGE_STUDIO_VIEW' : 'PAGE_STUDIO_APPROVE')
       if (request.operation === 'reviews') return { tenantId: request.tenantId, reviews: await listAgencyPageStudioReviews(request.tenantId, db) }
       const query: InspectionQuery = async <T>(sql: string, params: unknown[]) => (await db.query<T>(sql, params)).rows[0] ?? null
