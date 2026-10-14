@@ -2,7 +2,7 @@ import { getCookie, deleteCookie, sendRedirect } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { exchangeGoogleCode } from '~~/server/utils/googleAdsClient'
-import { getGoogleUserInfo, GA4_SCOPE } from '~~/server/utils/ga4Client'
+import { getGoogleUserInfo, getGa4GrantedScopes } from '~~/server/utils/ga4Client'
 import { GA4_CALLBACK_PATH, buildGoogleOAuthRedirectUri, resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 
 /**
@@ -62,7 +62,7 @@ export default eventHandler(async (event) => {
         tokens.access_token,
         tokens.refresh_token || null,
         expiresAt,
-        GA4_SCOPE.split(' '),
+        getGa4GrantedScopes(tokens.scope),
         'active',
         JSON.stringify({ email: identity.email }),
         user.id

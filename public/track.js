@@ -599,8 +599,21 @@
     return parts[2] + '.' + parts[3]
   }
 
+  // A tag installed on a public SPA remains loaded after private navigation.
+  // Gate every collection path, including form identity and overridden URLs.
+  function isPublicTrackingPage(url) {
+    try {
+      var page = new URL(url || window.location.href, window.location.href)
+      return !/^\/(?:api|admin|customer|builder|preview|crm|sign-in|sign-up|auth|widgets|chat|_nuxt|wp-admin|wp-login\.php)(?:\/|$)/i.test(decodeURIComponent(page.pathname))
+    } catch (e) {
+      return false
+    }
+  }
+
   // Send event to server
   function track(eventName, eventData, options) {
+    if (!isPublicTrackingPage()) return
+    if (options && options.pageUrl && !isPublicTrackingPage(options.pageUrl)) return
     var hasAnonIdOverride = options && Object.prototype.hasOwnProperty.call(options, 'anonId')
     var hasSessionIdOverride = options && Object.prototype.hasOwnProperty.call(options, 'sessionId')
     var clientId = hasAnonIdOverride ? options.anonId : getClientId()
@@ -621,7 +634,9 @@
       event_name: eventName,
       event_data: eventData || {},
       page_url: hasPageUrlOverride ? options.pageUrl : window.location.href,
-      referrer: hasReferrerOverride ? options.referrer : (document.referrer || null),
+      referrer: isPublicTrackingPage(hasReferrerOverride ? options.referrer : document.referrer)
+        ? (hasReferrerOverride ? options.referrer : (document.referrer || null))
+        : null,
       utm_source: utmParams.utm_source,
       utm_medium: utmParams.utm_medium,
       utm_campaign: utmParams.utm_campaign,
@@ -1015,6 +1030,7 @@
 
   // Auto-track page views
   function trackPageView() {
+    if (!isPublicTrackingPage()) return
     var data = {
       title: document.title,
       path: window.location.pathname,
@@ -1315,6 +1331,7 @@
   // must forward result.fields unchanged to its existing authenticated CRM
   // webhook; this function deliberately does not receive form PII or secrets.
   function captureLeadContext(options) {
+    if (!isPublicTrackingPage()) return null
     var opts = options || {}
     var consent = getConsent()
     if (!WRITE_KEY || !isEventAllowed('form_submit', consent)) return null
@@ -1428,6 +1445,7 @@
   }
 
   function sendLeadSubmissionIntent(form, eventId, identity) {
+    if (!isPublicTrackingPage()) return
     if (!WRITE_KEY) return
     var consent = getConsent()
     if (consent && consent.updatedAt !== null && consent.updatedAt !== undefined && !consent.tracking) return
@@ -1579,6 +1597,7 @@
 
   function setupFormTracking() {
     function onTrackedFormSubmit(e) {
+      if (!isPublicTrackingPage()) return
       var form = e.target
       if (form.tagName !== 'FORM') return
       var eventId = resolveEventId()

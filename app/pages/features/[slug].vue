@@ -3111,7 +3111,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Signal vs ground truth',
-        content: 'GA4 key events show on-site conversion signal — form starts, submissions, and the events you have configured. Your captured leads show what actually landed in the inbox. We show both side by side so nothing hides: when GA4 reports conversions but the lead inbox is quiet, the gap is visible immediately rather than buried in a separate tool.'
+        content: 'Reporting connections request read-only Google access. Staff can explicitly authorize analytics editing for key-event setup when needed. GA4 key events show on-site conversion signal — form starts, submissions, and the events you have configured. Your captured leads show what actually landed in the inbox. We show both side by side so nothing hides: when GA4 reports conversions but the lead inbox is quiet, the gap is visible immediately rather than buried in a separate tool.'
       },
       {
         title: 'Always current',
