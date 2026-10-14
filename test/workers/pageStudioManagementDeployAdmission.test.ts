@@ -28,7 +28,9 @@ const config = (environment: string) => ({
     ...(environment === 'production'
       ? {
           PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID: 'a5b299b3ad15c1b5b895dc66f9357b17',
-          PAGE_STUDIO_CLOUDFLARE_ZONE_ID: '8e38cbf3910d291dd218710296661073'
+          PAGE_STUDIO_CLOUDFLARE_ZONE_ID: '8e38cbf3910d291dd218710296661073',
+          PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET: 'sites.xeroflow.io',
+          PAGE_STUDIO_DOMAIN_IDENTITY_MODE: 'standard'
         }
       : {}) },
   ...(environment === 'production' ? { services: [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' }] } : {}),
