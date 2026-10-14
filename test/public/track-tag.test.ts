@@ -26,6 +26,8 @@ describe('public/track.js transport', () => {
   let fetchSpy: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    ;(window as any).xf?.destroy?.()
+    window.history.pushState = NATIVE_PUSH_STATE
     document.head.innerHTML = ''
     document.body.innerHTML = ''
     window.history.replaceState({}, '', '/')
@@ -120,6 +122,62 @@ describe('public/track.js transport', () => {
     expect((window as any).xf).toBeTruthy()
     expect(typeof (window as any).xf.track).toBe('function')
     expect((window as any).engagrTrack).toBeUndefined()
+  })
+
+  it.each(['/admin', '/customer/garage', '/builder/home', '/sign-in', '/widgets/embed'])(
+    'does not collect events or form identity after SPA navigation to %s', (path) => {
+      loadTag()
+      ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+      requests = []
+      window.history.pushState({}, '', path)
+      ;(window as any).xf.track('page_view')
+      expect((window as any).xf.captureLeadContext({ formId: 'private-form' })).toBeNull()
+      const form = document.createElement('form')
+      form.setAttribute('data-zeroflow-lead', 'true')
+      form.innerHTML = '<input type="email" name="email" value="private@example.test">'
+      document.body.appendChild(form)
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+      expect(requests).toHaveLength(0)
+    }
+  )
+
+  it('resumes public SPA tracking without leaking the previous private URL', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+    window.history.pushState({}, '', '/customer/private-account')
+    requests = []
+    window.history.pushState({}, '', '/vehicles')
+    expect(requests).toHaveLength(1)
+    const event = JSON.parse(requests[0].body).events[0]
+    expect(event.page_url).toContain('/vehicles')
+    expect(event.referrer).toBeNull()
+  })
+
+  it('does not retain private form fields for an abandonment event on a later public page', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+    window.history.pushState({}, '', '/customer/private-account')
+    const form = document.createElement('form')
+    form.id = 'private-account-form'
+    form.innerHTML = '<input name="private_account_field">'
+    document.body.appendChild(form)
+    const input = form.querySelector('input')!
+    input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    form.remove()
+    window.history.pushState({}, '', '/vehicles')
+    requests = []
+    window.dispatchEvent(new Event('beforeunload'))
+    const payloads = requests.map(request => JSON.parse(request.body))
+    expect(JSON.stringify(payloads)).not.toContain('private_account')
+  })
+
+  it('rejects a private page URL supplied as an event override', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+    ;(window as any).xf.track('page_view', {}, { pageUrl: 'https://dealer.test/customer/account' })
+    expect(requests).toHaveLength(0)
   })
 
   it('drops events when no write key is set', () => {

@@ -1,4 +1,4 @@
-import { setCookie } from 'h3'
+import { setCookie, sendRedirect } from 'h3'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getGa4AuthUrl } from '~~/server/utils/ga4Client'
@@ -6,10 +6,20 @@ import { GA4_CALLBACK_PATH, buildGoogleOAuthRedirectUri, resolveGoogleOAuthRunti
 
 /**
  * GET /api/agency/social/ga4/connect
- * Returns a Google OAuth URL scoped for GA4 (analytics.readonly + openid email).
+ * Returns a read-only Google OAuth URL. Explicit purpose=key_events requests edit access.
+ * redirect=1 starts consent directly for staff following a setup link.
  */
 export default eventHandler(async (event) => {
   await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
+
+  const query = getQuery(event)
+  const purpose = query.purpose ?? 'reporting'
+  if (purpose !== 'reporting' && purpose !== 'key_events') {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid GA4 connection purpose' })
+  }
+  if (query.redirect !== undefined && query.redirect !== '1') {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid GA4 redirect option' })
+  }
 
   const config = resolveGoogleOAuthRuntimeConfig(event)
   if (!config.googleClientId || !config.googleClientSecret) {
@@ -27,5 +37,8 @@ export default eventHandler(async (event) => {
 
   const redirectUri = buildGoogleOAuthRedirectUri(event, config.ga4RedirectUri, GA4_CALLBACK_PATH)
 
-  return { url: getGa4AuthUrl(config.googleClientId, redirectUri, state) }
+  const url = getGa4AuthUrl(config.googleClientId, redirectUri, state, {
+    manageKeyEvents: purpose === 'key_events'
+  })
+  return query.redirect === '1' ? sendRedirect(event, url, 302) : { url }
 })

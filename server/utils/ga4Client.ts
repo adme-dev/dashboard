@@ -1,7 +1,7 @@
 // server/utils/ga4Client.ts
 /**
  * GA4 Data API + Admin API client.
- * - getGa4AuthUrl: OAuth consent URL (analytics.readonly + openid email).
+ * - getGa4AuthUrl: OAuth consent URL (read-only by default; optional key-event edit grant).
  * - listGa4Properties: Admin API accountSummaries for the property picker.
  * - ga4RunReport / parseGa4Report: daily channel metrics via Data API runReport.
  * Token exchange/refresh reuse exchangeGoogleCode/refreshGoogleToken from
@@ -61,12 +61,22 @@ interface AccountSummariesResponse {
   }>
 }
 
-export function getGa4AuthUrl(clientId: string, redirectUri: string, state: string): string {
+/** Store only the scopes Google actually returned; older responses retain read-only access. */
+export function getGa4GrantedScopes(scope?: string): string[] {
+  return [...new Set((scope?.trim() || GA4_SCOPE).split(/\s+/))]
+}
+
+export function getGa4AuthUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+  options: { manageKeyEvents?: boolean } = {}
+): string {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     state,
-    scope: GA4_SCOPE,
+    scope: options.manageKeyEvents ? `${GA4_SCOPE} https://www.googleapis.com/auth/analytics.edit` : GA4_SCOPE,
     response_type: 'code',
     access_type: 'offline',
     prompt: 'consent'
