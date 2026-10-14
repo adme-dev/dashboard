@@ -206,5 +206,35 @@ refreshes. Native-customer identities still require their own session adapter.
 The first repository typecheck reports 943 diagnostics, including the existing
 preview-permission literal widening in delivery.ts. That changed helper now has
 an explicit closed permission type. Delivery/runtime/candidate follow-up tests
-pass 39 cases. The follow-up repository typecheck is running; do not infer a
-clean result from the focused tests or publish this as hosted acceptance.
+pass 39 cases. The follow-up repository typecheck completed with 939 diagnostics, none in the
+candidate adapter or delivery helper. The repository typecheck is not clean.
+This is not hosted acceptance.
+
+
+## Invited customer approved-preview controls
+
+The customer launch summary now offers preparation/opening only when current
+management authority, static delivery, known unsealed saved content, current
+approval, active access and a selectable production compiler are all present.
+The management service returns capability from its final authority read; missing
+compiler/signing/hostname/checkpoint-storage configuration is unavailable rather than an actionable
+button that always fails.
+
+The UI pins site/version/checkpoint/digest, refreshes before dispatch and after
+completion, rejects mismatched build/release identities and retains credentials
+only in component memory. Synchronous invalidation discards a response even when
+access disappears and returns during the request. Retries reuse the preparation
+key, concurrent clicks do not dispatch twice, and opening is a separate user
+click through the existing POST-only preview opener. Expired credentials are
+discarded. No hostname activation is part of these controls.
+
+108 focused HTTP, inspection, capability and UI checks pass (including 22 UI
+cases); changed-source lint and management strict typecheck pass. Independent
+review found no blockers. The newest repository typecheck also completed with
+939 diagnostics and none in changed source. CI 38653369464 for earlier source21a691e16 completed
+successfully; this result does not validate the later endpoint/UI commits.
+Authenticated browser acceptance remains pending: the native mailbox tab is
+still at Check your inbox with its old expired link, and Cloudflare remains at
+its terms-bearing sign-in page. Neither action was repeated or bypassed.
+The production compiler registry and native-customer adapter remain separate
+unfinished work. Existing preview and production deployments remain unchanged.

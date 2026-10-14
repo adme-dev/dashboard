@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { openPageStudioCandidatePreview } from '~~/app/utils/pageStudioCandidatePreview'
 import type { PageStudioLaunchState } from '~~/shared/pageStudio/launchReadiness'
 
 const props = defineProps<{ siteId: string }>()
@@ -6,6 +8,82 @@ const { data, error, status, refresh } = await useFetch<PageStudioLaunchState>(
   () => `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/launch-state`
 )
 const state = computed(() => !error.value && data.value?.siteId === props.siteId ? data.value : null)
+
+interface CandidateResponse {
+  build: {
+    buildId: string
+    versionDigest: string
+    manifestDigest: string
+    scope: { siteId: string }
+    astro: { context: { identity: { environment: string, source: { kind: string, versionId: string, checkpoint: { id: string, digest: string } } } } }
+  }
+  preview: { hostname: string, release: { buildId: string, versionDigest: string, manifestDigest: string, scope: { siteId: string } } }
+  session: { token: string, expiresAt: number }
+}
+const preparing = ref(false)
+const prepared = ref<CandidateResponse | null>(null)
+const previewError = ref('')
+const previewPin = computed(() => {
+  const value = state.value
+  return value?.candidateReview === true && value.canManagePublication === true && value.deliveryMode === 'static'
+    && value.content.status === 'ready' && value.content.requiresSealedFeatures === false && value.plan?.status === 'ready'
+    && value.approvedVersionId && value.checkpointId && value.digest
+    ? JSON.stringify([value.siteId, value.approvedVersionId, value.checkpointId, value.digest])
+    : null
+})
+let revision = 0
+let requestKey: string | null = null
+function invalidatePreview() {
+  revision++
+  prepared.value = null
+  requestKey = null
+  previewError.value = ''
+}
+watch(previewPin, invalidatePreview, { flush: 'sync' })
+onBeforeUnmount(invalidatePreview)
+
+async function preparePreview() {
+  if (!previewPin.value || preparing.value) return
+  const pin = previewPin.value
+  const captured = { siteId: props.siteId, versionId: state.value!.approvedVersionId!, checkpointId: state.value!.checkpointId!, digest: state.value!.digest! }
+  const attempt = revision
+  const stillCurrent = () => revision === attempt && previewPin.value === pin
+  requestKey ??= crypto.randomUUID()
+  const key = requestKey
+  preparing.value = true
+  prepared.value = null
+  previewError.value = ''
+  try {
+    await refresh()
+    if (!stillCurrent()) return
+    const response = await $fetch<CandidateResponse>(`/api/portal/page-studio/sites/${encodeURIComponent(captured.siteId)}/versions/${encodeURIComponent(captured.versionId)}/candidate`, {
+      method: 'POST', headers: { 'idempotency-key': key }, body: { environment: 'production' }
+    })
+    if (!stillCurrent()) return
+    const build = response?.build, release = response?.preview?.release, identity = build?.astro?.context?.identity, source = identity?.source
+    if (!build?.buildId || !build.manifestDigest || build.scope?.siteId !== captured.siteId || build.versionDigest !== captured.digest
+      || identity?.environment !== 'production' || source?.kind !== 'approved-version' || source.versionId !== captured.versionId
+      || source.checkpoint?.id !== captured.checkpointId || source.checkpoint.digest !== captured.digest
+      || release?.buildId !== build.buildId || release.manifestDigest !== build.manifestDigest || release.versionDigest !== captured.digest
+      || release.scope?.siteId !== captured.siteId || !response.preview.hostname || !response.session?.token
+      || !Number.isFinite(response.session.expiresAt) || response.session.expiresAt <= Date.now() / 1000) throw new Error('Invalid candidate')
+    await refresh()
+    if (stillCurrent()) prepared.value = response
+  } catch {
+    if (stillCurrent()) previewError.value = 'The approved preview could not be prepared. Refresh your status and try again.'
+  } finally {
+    preparing.value = false
+  }
+}
+function openPreview() {
+  if (!previewPin.value || !prepared.value) return
+  try {
+    openPageStudioCandidatePreview(prepared.value.preview.hostname, prepared.value.session)
+  } catch (failure) {
+    prepared.value = null
+    previewError.value = failure instanceof Error ? failure.message : 'Prepare the preview again.'
+  }
+}
 </script>
 
 <template>
@@ -83,6 +161,44 @@ const state = computed(() => !error.value && data.value?.siteId === props.siteId
           </dd>
         </div>
       </dl>
+      <div v-if="previewPin" class="space-y-3 rounded-lg border border-default bg-elevated p-4">
+        <h3 class="font-medium text-highlighted">
+          Review your approved website
+        </h3>
+        <p class="max-w-2xl text-sm leading-6 text-muted">
+          Prepare a private preview of the approved version. Preview access lasts five minutes. Your live website stays unchanged.
+        </p>
+        <div class="flex flex-wrap gap-3">
+          <UButton
+            label="Prepare approved preview"
+            icon="i-lucide-eye"
+            :loading="preparing"
+            :disabled="preparing || status === 'pending'"
+            @click="preparePreview"
+          />
+          <UButton
+            v-if="prepared"
+            label="Open approved preview"
+            icon="i-lucide-external-link"
+            color="neutral"
+            variant="outline"
+            :disabled="status === 'pending'"
+            @click="openPreview"
+          />
+        </div>
+        <p v-if="preparing" role="status" class="text-sm text-muted">
+          Preparing your website preview. This can take a moment.
+        </p>
+        <p v-else-if="prepared" role="status" class="text-sm text-muted">
+          Your approved preview is ready to open in a new tab.
+        </p>
+        <UAlert
+          v-if="previewError"
+          color="warning"
+          title="Preview unavailable"
+          :description="previewError"
+        />
+      </div>
       <p v-if="state.content.publicForms" class="text-sm leading-6 text-muted">
         Your saved pages include enquiry forms. Confirm a test enquiry and notification delivery before launch.
       </p>

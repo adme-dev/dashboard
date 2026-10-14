@@ -75,12 +75,21 @@ describe('private checkpoint inspection', () => {
 const portal = () => ({ actorId, siteId, clientId: '10000000-0000-4000-8000-000000000004', env: client().env })
 describe('customer launch inspection', () => {
   it('derives tenant from exact client membership and rechecks before returning', async () => {
-    expect(await readPortalPageStudioLaunchState(portal())).toEqual(state)
+    expect(await readPortalPageStudioLaunchState(portal())).toEqual({ ...state, canManagePublication: false })
     expect(mocks.authority).not.toHaveBeenCalled()
     expect(mocks.portal).toHaveBeenCalledTimes(2)
     expect(mocks.portal).toHaveBeenNthCalledWith(1, expect.anything(), expect.objectContaining({ actorId, siteId, clientId: portal().clientId }), false, { lock: false })
     expect(mocks.portal).toHaveBeenNthCalledWith(2, expect.anything(), expect.objectContaining({ tenantId: 'resolved_tenant' }), false)
     expect(mocks.launch).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'resolved_tenant', clientId: portal().clientId, siteId }), expect.any(Function))
+  })
+  it('uses final current management authority rather than the initial capability', async () => {
+    mocks.portal.mockResolvedValueOnce({ tenantId: 'resolved_tenant', clientId: portal().clientId, canManage: true })
+      .mockResolvedValueOnce({ tenantId: 'resolved_tenant', clientId: portal().clientId, canManage: false })
+    expect(await readPortalPageStudioLaunchState(portal())).toMatchObject({ canManagePublication: false })
+  })
+  it('reports management access from the final scoped authority check', async () => {
+    mocks.portal.mockResolvedValue({ tenantId: 'resolved_tenant', clientId: portal().clientId, canManage: true })
+    expect(await readPortalPageStudioLaunchState(portal())).toMatchObject({ canManagePublication: true })
   })
   it('never reads content when portal membership is absent', async () => {
     mocks.portal.mockRejectedValue({ statusCode: 403 })

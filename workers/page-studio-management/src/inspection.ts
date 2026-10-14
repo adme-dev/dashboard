@@ -23,8 +23,8 @@ export async function handleInspection(input: unknown, env: Record<string, unkno
         const value = await readPageStudioLaunchState({ ...request, tenantId: scope.tenantId,
           bucket: env.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket }, query)
         // Storage reads are asynchronous; do not return data after access changes.
-        await requirePortalDomainAuthority(db, { ...request, tenantId: scope.tenantId }, false)
-        return value
+        const current = await requirePortalDomainAuthority(db, { ...request, tenantId: scope.tenantId }, false)
+        return { ...value, canManagePublication: current.canManage === true }
       }
       await agencyAuthority(db, request.actorId, request.operation === 'launch' ? 'PAGE_STUDIO_VIEW' : 'PAGE_STUDIO_APPROVE')
       if (request.operation === 'reviews') return { tenantId: request.tenantId, reviews: await listAgencyPageStudioReviews(request.tenantId, db) }

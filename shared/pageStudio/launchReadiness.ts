@@ -1,5 +1,7 @@
 export interface PageStudioLaunchState {
   candidateReview?: boolean
+  canManagePublication?: boolean
+  deliveryMode?: 'static' | 'runtime' | null
   siteId: string
   siteName: string
   siteStatus: string

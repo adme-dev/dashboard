@@ -9,6 +9,7 @@ interface LaunchRow {
   client_id: string
   name: string
   status: string
+  delivery_mode: 'static' | 'runtime'
   checkpoint_id: string | null
   checkpoint_digest: string | null
   object_key: string | null
@@ -27,7 +28,7 @@ interface LaunchRow {
 // One scoped, uncached snapshot. A historical review or release is not evidence
 // that the currently saved checkpoint is approved or that access remains active.
 const stateSql = `
-  SELECT site.id, site.tenant_id, site.client_id, site.name, site.status,
+  SELECT site.id, site.tenant_id, site.client_id, site.name, site.status, site.delivery_mode,
     site.current_checkpoint_id AS checkpoint_id, checkpoint.digest AS checkpoint_digest, checkpoint.object_key,
     version.id AS version_id, version.checkpoint_id AS version_checkpoint_id,
     version.digest AS version_digest, version.status AS version_status,
@@ -100,6 +101,7 @@ export async function readPageStudioLaunchState(input: {
     && row.review_decision === 'approved' && row.review_digest === row.checkpoint_digest
   return {
     siteId: row.id, siteName: row.name, siteStatus: row.status,
+    deliveryMode: ['static', 'runtime'].includes(row.delivery_mode) ? row.delivery_mode : null,
     checkpointId: row.checkpoint_id, digest: row.checkpoint_digest,
     approvedVersionId: approved ? row.version_id : null,
     activeReleases: row.active_releases,
