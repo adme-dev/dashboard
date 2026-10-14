@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cloudflareDomainProvider, verifyDomainHostname } from '../../../workers/page-studio-management/src/domainAttachmentProvider'
 
 const config = { apiToken: 'synthetic-only', zoneId: 'a'.repeat(32), cnameTarget: 'sites.example.com' }
+const standardConfig = { ...config, identityMode: 'standard' as const }
+const providerUuid = '63821560-dcbb-41bd-b0ac-310145f95b15'
 const host = 'client.example.com'
 const owner = 'opaque-owner'
 const item = { id: 'b'.repeat(32), hostname: host, custom_metadata: { page_studio_owner: owner } }
@@ -40,6 +42,49 @@ describe('bounded custom hostname provider', () => {
     expect(await cloudflareDomainProvider(config, fetcher)!.create(host, owner)).toEqual(item)
     expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual({ hostname: host, ssl: { method: 'txt', type: 'dv' }, custom_metadata: { page_studio_owner: owner } })
     expect(fetcher).toHaveBeenCalledOnce()
+  })
+  it('creates a standard hostname without enterprise custom metadata using an HTTP 201 receipt', async () => {
+    const created = { id: item.id, hostname: host }
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ success: true, result: created }, { status: 201 }))
+    await expect(cloudflareDomainProvider(standardConfig, fetcher)!.create(host, owner, 'standard')).resolves.toEqual(created)
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual({ hostname: host, ssl: { method: 'txt', type: 'dv' } })
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+  it.each([200, 202])('refuses standard creation HTTP %s even with a matching hostname and owner marker', async (status) => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ success: true, result: item }, { status }))
+    await expect(cloudflareDomainProvider(standardConfig, fetcher)!.create(host, owner, 'standard')).rejects.toMatchObject({ code: 'DOMAIN_PROVIDER_FAILED' })
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+  it.each([{ id: '../foreign', hostname: host }, { id: item.id, hostname: 'foreign.example.com' }])('rejects a substituted standard creation receipt', async (created) => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ success: true, result: created }, { status: 201 }))
+    await expect(cloudflareDomainProvider(standardConfig, fetcher)!.create(host, owner, 'standard')).rejects.toMatchObject({ code: 'DOMAIN_PROVIDER_MISMATCH' })
+  })
+  it('accepts provider UUIDs in standard creation, exact-ID GET and identity verification', async () => {
+    const created = { id: providerUuid, hostname: host }
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(Response.json({ success: true, result: created }, { status: 201 }))
+      .mockResolvedValueOnce(Response.json({ success: true, result: created }))
+    const provider = cloudflareDomainProvider(standardConfig, fetcher)!
+    await expect(provider.create(host, owner, 'standard')).resolves.toEqual(created)
+    await expect(provider.get(providerUuid)).resolves.toEqual(created)
+    expect(fetcher.mock.calls[1]![0]).toBe(`https://api.cloudflare.com/client/v4/zones/${config.zoneId}/custom_hostnames/${providerUuid}`)
+    expect(verifyDomainHostname(created, host, undefined, providerUuid)).toEqual(created)
+  })
+  it.each(['../foreign', `${providerUuid}/other`, '63821560-dcbb-41bd-b0ac-not-an-id'])('rejects malformed retained provider IDs before GET: %s', async (id) => {
+    const fetcher = vi.fn()
+    await expect(cloudflareDomainProvider(config, fetcher)!.get(id)).rejects.toMatchObject({ code: 'DOMAIN_PROVIDER_MISMATCH' })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+  it('uses the pinned metadata creation mode after configuration switches to standard', async () => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ success: true, result: item }))
+    await expect(cloudflareDomainProvider(standardConfig, fetcher)!.create(host, owner, 'metadata')).resolves.toEqual(item)
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body).custom_metadata).toEqual({ page_studio_owner: owner })
+  })
+  it('uses the pinned standard creation mode after configuration switches to metadata', async () => {
+    const created = { id: item.id, hostname: host }
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ success: true, result: created }, { status: 201 }))
+    await expect(cloudflareDomainProvider(config, fetcher)!.create(host, owner, 'standard')).resolves.toEqual(created)
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body)).not.toHaveProperty('custom_metadata')
   })
   it.each([{ ...item, id: '../foreign' }, { ...item, custom_metadata: {} }, { ...item, hostname: 'other.example.com' }])('rejects substituted identity/metadata', (candidate) => {
     expect(() => verifyDomainHostname(candidate, host, owner, item.id)).toThrow()

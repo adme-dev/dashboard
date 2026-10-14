@@ -24,6 +24,16 @@ const providerUnavailable = computed(() => data.value?.siteId === props.siteId &
 const planRequired = computed(() => data.value?.siteId === props.siteId && data.value.managementBlocker === 'plan')
 const canManage = computed(() => !providerUnavailable.value && !error.value && status.value === 'success' && data.value?.siteId === props.siteId && data.value.canManage === true)
 
+async function copyDns(value: unknown) {
+  if (typeof value !== 'string' || !value) return
+  try {
+    await navigator.clipboard.writeText(value)
+    toast.add({ title: 'Copied to clipboard', color: 'success' })
+  } catch {
+    toast.add({ title: 'Select and copy the value below', description: 'Your browser did not allow clipboard access.', color: 'warning' })
+  }
+}
+
 function validationRecords(domain: DomainRecord) {
   const records: Array<{ purpose: string, name: string, value: string }> = []
   const ownership = domain.ownershipValidation
@@ -186,6 +196,16 @@ async function verify(domain: DomainRecord) {
                       </dt><dd class="break-all font-mono text-highlighted">
                         {{ record.name }}
                       </dd>
+                      <UButton
+                        class="mt-1"
+                        size="xs"
+                        color="neutral"
+                        variant="ghost"
+                        icon="i-lucide-copy"
+                        label="Copy name"
+                        :aria-label="`Copy ${record.purpose} record name`"
+                        @click="copyDns(record.name)"
+                      />
                     </div>
                     <div>
                       <dt class="text-muted">
@@ -193,6 +213,16 @@ async function verify(domain: DomainRecord) {
                       </dt><dd class="break-all font-mono text-highlighted">
                         {{ record.value }}
                       </dd>
+                      <UButton
+                        class="mt-1"
+                        size="xs"
+                        color="neutral"
+                        variant="ghost"
+                        icon="i-lucide-copy"
+                        label="Copy value"
+                        :aria-label="`Copy ${record.purpose} record value`"
+                        @click="copyDns(record.value)"
+                      />
                     </div>
                   </dl>
                 </div>
@@ -219,6 +249,16 @@ async function verify(domain: DomainRecord) {
                     </dt><dd class="break-all font-mono">
                       {{ domain.hostname }}
                     </dd>
+                    <UButton
+                      class="mt-1"
+                      size="xs"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-copy"
+                      label="Copy name"
+                      aria-label="Copy website CNAME name"
+                      @click="copyDns(domain.hostname)"
+                    />
                   </div>
                   <div>
                     <dt class="text-muted">
@@ -226,8 +266,21 @@ async function verify(domain: DomainRecord) {
                     </dt><dd class="break-all font-mono">
                       {{ domain.ownershipValidation.cnameTarget }}
                     </dd>
+                    <UButton
+                      class="mt-1"
+                      size="xs"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-copy"
+                      label="Copy target"
+                      aria-label="Copy website CNAME target"
+                      @click="copyDns(domain.ownershipValidation.cnameTarget)"
+                    />
                   </div>
                 </dl>
+                <p class="mt-3 text-muted">
+                  Choose Auto for TTL, or 300 seconds if your provider requires a number. Names above are complete DNS names; if your provider adds your domain automatically, enter only the part before it (for example, www).
+                </p>
                 <p class="mt-2 text-muted">
                   Use a subdomain such as www with a publicly visible CNAME. On Cloudflare, choose DNS only and turn off optional CNAME flattening for this record. Proxied or flattened records cannot pass this DNS check. Ask your website team about root-domain routing before changing the root domain.
                 </p>

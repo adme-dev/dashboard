@@ -11,7 +11,12 @@ export interface DomainProviderConfig {
   apiToken: string
   zoneId: string
   cnameTarget: string
+  identityMode?: DomainIdentityMode
 }
+export const DomainIdentityModeSchema = z.enum(['metadata', 'standard'])
+export type DomainIdentityMode = z.infer<typeof DomainIdentityModeSchema>
+// Cloudflare custom hostnames use UUIDs; retain legacy compact identifiers.
+export const DomainProviderIdSchema = z.union([z.uuid(), z.string().regex(/^[a-f0-9]{32}$/i)])
 export interface DomainHostname {
   id: string
   hostname: string
@@ -24,14 +29,14 @@ export interface DomainHostname {
   }
 }
 export interface DomainProvider {
-  create(hostname: string, owner: string): Promise<DomainHostname>
+  create(hostname: string, owner: string, identityMode?: DomainIdentityMode): Promise<DomainHostname>
   find(hostname: string): Promise<DomainHostname | null>
   get(id: string): Promise<DomainHostname>
 }
 export const Hostname = z.string().trim().toLowerCase().max(253)
   .regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/)
 const ProviderHostname = z.object({
-  id: z.string().regex(/^[a-f0-9]{32}$/i), hostname: Hostname,
+  id: DomainProviderIdSchema, hostname: Hostname,
   custom_metadata: z.record(z.string(), z.unknown()).optional(),
   status: z.string().max(80).optional(), ownership_verification: z.record(z.string(), z.unknown()).optional(),
   ssl: z.object({ status: z.string().max(80).optional(), validation_records: z.array(z.record(z.string(), z.unknown())).max(20).optional() }).optional()
@@ -53,14 +58,14 @@ export function cloudflareDomainProvider(config: DomainProviderConfig, fetcher: 
     return null
   if (!/^[a-f0-9]{32}$/i.test(config.zoneId))
     throw domainFailure('DOMAIN_PROVIDER_UNAVAILABLE', 503)
-  async function request(path: string, init?: RequestInit) {
+  async function request(path: string, init?: RequestInit, requiredStatus?: number) {
     let response: Response
     try {
       response = await fetcher(`https://api.cloudflare.com/client/v4/zones/${config.zoneId}/custom_hostnames${path}`, {
         ...init, redirect: 'manual', signal: AbortSignal.timeout(10000),
         headers: { 'authorization': `Bearer ${config.apiToken}`, 'content-type': 'application/json' }
       })
-      if (!response.ok || !response.body)
+      if (!response.ok || !response.body || (requiredStatus !== undefined && response.status !== requiredStatus))
         throw domainFailure('DOMAIN_PROVIDER_FAILED', 502)
       const reader = response.body.getReader()
       const chunks: Uint8Array[] = []
@@ -93,13 +98,15 @@ export function cloudflareDomainProvider(config: DomainProviderConfig, fetcher: 
     }
   }
   return {
-    async create(hostname, owner) {
+    async create(hostname, owner, identityMode = config.identityMode ?? 'metadata') {
       requireDomainCnameTarget(config.cnameTarget)
-      const payload = await request('', { method: 'POST', body: JSON.stringify({ hostname: Hostname.parse(hostname), ssl: { method: 'txt', type: 'dv' }, custom_metadata: { page_studio_owner: owner } }) })
-      return verifyDomainHostname(payload.result, hostname, owner)
+      const mode = DomainIdentityModeSchema.parse(identityMode)
+      const payload = await request('', { method: 'POST', body: JSON.stringify({ hostname: Hostname.parse(hostname), ssl: { method: 'txt', type: 'dv' },
+        ...(mode === 'metadata' ? { custom_metadata: { page_studio_owner: owner } } : {}) }) }, mode === 'standard' ? 201 : undefined)
+      return verifyDomainHostname(payload.result, hostname, mode === 'metadata' ? owner : undefined)
     },
     async get(id) {
-      if (!/^[a-f0-9]{32}$/i.test(id))
+      if (!DomainProviderIdSchema.safeParse(id).success)
         throw domainFailure('DOMAIN_PROVIDER_MISMATCH', 502)
       return (await request(`/${id}`)).result as DomainHostname
     },

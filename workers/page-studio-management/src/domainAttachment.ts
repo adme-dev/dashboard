@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { requirePortalDomainAuthority } from './portalDomainAuthority'
-import { cloudflareDomainProvider, domainFailure, Hostname, requireDomainCnameTarget, verifyDomainHostname, type DomainHostname, type DomainProvider, type DomainProviderConfig } from './domainAttachmentProvider'
+import { cloudflareDomainProvider, domainFailure, DomainIdentityModeSchema, Hostname, requireDomainCnameTarget, verifyDomainHostname, type DomainHostname, type DomainIdentityMode, type DomainProvider, type DomainProviderConfig } from './domainAttachmentProvider'
 
 export interface DomainDatabase {
   query<T = Record<string, unknown>>(sql: string, values?: unknown[]): Promise<{
@@ -31,6 +31,7 @@ interface Operation {
   id: string
   domain_id: string
   owner_token: string
+  identity_mode: DomainIdentityMode
   zone_id: string | null
   state: 'reserved' | 'creating' | 'attached'
   attempt_id: string | null
@@ -68,6 +69,7 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
     }
   }
   const provider = dependencies.provider === undefined ? cloudflareDomainProvider(config) : dependencies.provider
+  const identityMode = DomainIdentityModeSchema.parse(config.identityMode ?? 'metadata')
   async function authority(db: DomainDatabase, input: DomainActor): Promise<Scope> {
     if (!Actor.safeParse(input).success)
       throw domainFailure('DOMAIN_ACCESS_DENIED', 403)
@@ -155,7 +157,7 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
           VALUES ($1,$2,$3,$4,$7,'domain.attached','domain',$5,$6::jsonb)`, [input.tenantId, scope.clientId, input.siteId, input.actorId, row.id, JSON.stringify({ hostname, providerConfigured: false }), input.kind === 'agency' ? 'agency' : 'client'])
       }
       if (!row.cloudflare_hostname_id && row.ownership_validation?.providerConfigured === false) {
-        await db.query(`INSERT INTO page_studio_domain_operations (tenant_id,client_id,site_id,domain_id) VALUES ($1,$2,$3,$4) ON CONFLICT(domain_id) DO NOTHING`, [input.tenantId, scope.clientId, input.siteId, row.id])
+        await db.query(`INSERT INTO page_studio_domain_operations (tenant_id,client_id,site_id,domain_id,identity_mode) VALUES ($1,$2,$3,$4,$5) ON CONFLICT(domain_id) DO NOTHING`, [input.tenantId, scope.clientId, input.siteId, row.id, identityMode])
       }
       return { scope, ...await read(db, input, hostname) }
     })
@@ -166,7 +168,11 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
   }, value: unknown, providerId?: string) {
     if (row.operation?.zone_id && row.operation.zone_id !== config.zoneId)
       throw domainFailure('DOMAIN_PROVIDER_MISMATCH', 502)
-    return verifyDomainHostname(value, row.current.normalized_hostname, row.operation?.owner_token, providerId ?? row.current.cloudflare_hostname_id ?? undefined)
+    if (!row.operation || !DomainIdentityModeSchema.safeParse(row.operation.identity_mode).success)
+      throw domainFailure()
+    return verifyDomainHostname(value, row.current.normalized_hostname,
+      row.operation.identity_mode === 'metadata' ? row.operation.owner_token : undefined,
+      providerId ?? row.current.cloudflare_hostname_id ?? undefined)
   }
   async function receipt(input: DomainActor, before: {
     current: DomainRow
@@ -174,7 +180,8 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
   }, value: DomainHostname) {
     return locked(input, before.current.normalized_hostname, async (db, scope) => {
       const row = await read(db, input, before.current.normalized_hostname)
-      if (row.current.id !== before.current.id || row.operation?.id !== before.operation?.id || row.operation?.attempt_id !== before.operation?.attempt_id)
+      if (row.current.id !== before.current.id || row.operation?.id !== before.operation?.id || row.operation?.attempt_id !== before.operation?.attempt_id
+        || row.operation?.identity_mode !== before.operation?.identity_mode || row.operation?.zone_id !== before.operation?.zone_id)
         throw domainFailure('DOMAIN_CHANGED', 409)
       const result = identity(row, value)
       let operation = row.operation
@@ -216,10 +223,13 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
     if (row.operation?.zone_id && row.operation.zone_id !== config.zoneId)
       throw domainFailure('DOMAIN_PROVIDER_MISMATCH', 502)
     if (row.current.cloudflare_hostname_id) {
+      if (!row.operation?.zone_id) throw domainFailure()
       const value = await provider.get(row.current.cloudflare_hostname_id)
       return receipt(input, row, identity(row, value))
     }
     if (!row.operation)
+      throw domainFailure()
+    if (row.operation.identity_mode === 'standard' && row.operation.state !== 'reserved')
       throw domainFailure()
     if (row.operation.state === 'reserved')
       requireDomainCnameTarget(config.cnameTarget)
@@ -236,7 +246,8 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
       throw domainFailure('DOMAIN_PROVIDER_MISMATCH', 502)
     const claimed = await locked(input, hostname, async (db) => {
       const latest = await read(db, input, hostname)
-      if (latest.current.id !== row.current.id || latest.operation?.id !== row.operation?.id || latest.operation?.state !== 'reserved')
+      if (latest.current.id !== row.current.id || latest.operation?.id !== row.operation?.id || latest.operation?.state !== 'reserved'
+        || latest.operation?.identity_mode !== row.operation?.identity_mode)
         throw domainFailure('DOMAIN_CHANGED', 409)
       const updated = await db.query<Operation>(`UPDATE page_studio_domain_operations SET state='creating',zone_id=$2,attempt_id=gen_random_uuid(),create_started_at=NOW(),updated_at=NOW()
         WHERE id=$1 AND state='reserved' RETURNING *`, [latest.operation.id, config.zoneId])
@@ -247,9 +258,10 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
     row = { ...row, ...claimed }
     // The create receipt was committed before admission to the provider call.
     const admitted = await current(input, hostname, row.current.id)
-    if (admitted.operation?.attempt_id !== row.operation?.attempt_id || admitted.operation?.state !== 'creating')
+    if (admitted.operation?.attempt_id !== row.operation?.attempt_id || admitted.operation?.state !== 'creating'
+      || admitted.operation?.identity_mode !== row.operation?.identity_mode || admitted.operation?.zone_id !== row.operation?.zone_id)
       throw domainFailure('DOMAIN_CHANGED', 409)
-    const created = identity(row, await provider.create(hostname, row.operation!.owner_token))
+    const created = identity(row, await provider.create(hostname, row.operation!.owner_token, row.operation!.identity_mode))
     await current(input, hostname, row.current.id)
     return receipt(input, row, identity(row, await provider.get(created.id), created.id))
   }
@@ -264,7 +276,8 @@ export function domainAttachmentService(config: DomainProviderConfig, dependenci
     return locked(input, attachment.current.normalized_hostname, async (db, scope) => {
       const row = await read(db, input, attachment.current.normalized_hostname)
       if (row.current.id !== attachment.current.id || row.current.cloudflare_hostname_id !== attachment.current.cloudflare_hostname_id
-        || row.operation?.id !== attachment.operation?.id || row.operation?.attempt_id !== attachment.operation?.attempt_id)
+        || row.operation?.id !== attachment.operation?.id || row.operation?.attempt_id !== attachment.operation?.attempt_id
+        || row.operation?.identity_mode !== attachment.operation?.identity_mode || row.operation?.zone_id !== attachment.operation?.zone_id)
         throw domainFailure('DOMAIN_CHANGED', 409)
       if (attachment.provider)
         identity(row, attachment.provider)

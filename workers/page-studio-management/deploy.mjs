@@ -17,7 +17,7 @@ export function validateManagementTarget(config, environment) {
   assert.deepEqual(config.routes, [])
   assert.deepEqual(config.triggers, { crons: [] })
   assert.equal(config.vars.PAGE_STUDIO_RELEASE_ENVIRONMENT, environment)
-  const allowedVars = ['PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID', 'PAGE_STUDIO_CLOUDFLARE_ZONE_ID', 'PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET']
+  const allowedVars = ['PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID', 'PAGE_STUDIO_CLOUDFLARE_ZONE_ID', 'PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET', 'PAGE_STUDIO_DOMAIN_IDENTITY_MODE']
   assert(Object.keys(config.vars).every(key => allowedVars.includes(key)), 'Unreviewed Worker variable')
   for (const [key, value] of Object.entries(config.vars)) {
     assert.equal(typeof value, 'string', `Invalid variable ${key}`)
@@ -28,6 +28,8 @@ export function validateManagementTarget(config, environment) {
   if (environment === 'production') assert.equal(config.vars.PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID, config.account_id)
   else assert.equal(config.vars.PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID, undefined)
   if (environment === 'production') assert.equal(config.vars.PAGE_STUDIO_CLOUDFLARE_ZONE_ID, '8e38cbf3910d291dd218710296661073')
+  if (config.vars.PAGE_STUDIO_DOMAIN_IDENTITY_MODE !== undefined) assert(['metadata', 'standard'].includes(config.vars.PAGE_STUDIO_DOMAIN_IDENTITY_MODE), 'Invalid domain identity policy')
+  if (environment === 'production') assert.equal(config.vars.PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET, 'sites.xeroflow.io')
   assert.deepEqual(config.hyperdrive, [{ binding: 'HYPERDRIVE_FRESH', id: environment === 'staging' ? '3865ea5568234fc7b0e9e3e595a30286' : '90228af3e2cc461bbc09accc3b47bd9f' }])
   assert.deepEqual(config.r2_buckets, [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` }])
   assert.deepEqual(config.observability, { enabled: true, head_sampling_rate: 0.1 })

@@ -1,5 +1,5 @@
 import { domainAttachmentService, type DomainActor, type DomainTransaction } from './domainAttachment'
-import { Hostname } from './domainAttachmentProvider'
+import { DomainIdentityModeSchema, Hostname } from './domainAttachmentProvider'
 
 interface CloudflareCustomHostname {
   id: string
@@ -19,14 +19,19 @@ function cloudflareConfig(env: Record<string, unknown>) {
   return {
     apiToken: value('PAGE_STUDIO_CLOUDFLARE_API_TOKEN'),
     cnameTarget,
+    identityMode: DomainIdentityModeSchema.parse(value('PAGE_STUDIO_DOMAIN_IDENTITY_MODE') || 'metadata'),
     zoneId: value('PAGE_STUDIO_CLOUDFLARE_ZONE_ID')
   }
 }
 
 /** Configuration readiness only; DNS and certificate health are checked per domain. */
 export function domainProviderConfigured(env: Record<string, unknown>) {
-  const config = cloudflareConfig(env)
-  return Boolean(config.apiToken && config.cnameTarget && /^[a-f0-9]{32}$/i.test(config.zoneId))
+  try {
+    const config = cloudflareConfig(env)
+    return Boolean(config.apiToken && config.cnameTarget && /^[a-f0-9]{32}$/i.test(config.zoneId))
+  } catch {
+    return false
+  }
 }
 
 function domainState(hostname: CloudflareCustomHostname | null, dnsVerified = false) {
