@@ -55,7 +55,9 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
     await db.query(`CREATE SCHEMA "${schema}"`)
     await db.query(`SET search_path TO "${schema}", pg_catalog`)
     await db.query(`CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN DEFAULT TRUE,user_role TEXT,custom_role_id UUID,sessions_invalidated_at TIMESTAMPTZ); CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN);
-      CREATE TABLE client_users(id UUID PRIMARY KEY); CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
+      CREATE TABLE client_users(id UUID PRIMARY KEY,client_id UUID,status TEXT,role TEXT);
+      CREATE TABLE client_sessions(token_hash TEXT PRIMARY KEY,client_user_id UUID,expires_at TIMESTAMPTZ);
+      CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));`)
     for (const name of ['402_page_studio_control_plane.sql', '403_page_studio_sessions.sql', '413_page_studio_release_metadata.sql', '414_page_studio_atomic_release_metadata.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql', '430_page_studio_astro_build_identity.sql', '431_page_studio_astro_release_receipt.sql', '432_page_studio_astro_approval.sql', '433_page_studio_runtime_delivery.sql', '435_page_studio_runtime_features.sql']) await db.query(migration(name))
     await db.query('INSERT INTO team_members(id) VALUES($1)', [actorId])
@@ -380,7 +382,7 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
       expect((await db.query('SELECT name FROM page_studio_sites')).rows[0].name).toBe('Astro fixture')
       expect((await db.query('SELECT status FROM page_studio_entitlements')).rows[0].status).toBe('active')
     })
-    it('rejects a foreign tenant or a client login without running work', async () => {
+    it('rejects a foreign tenant or an agency login relabelled as a client without running work', async () => {
       for (const candidate of [{ ...principal, tenantId: 'foreign' }, { ...principal, login: { ...principal.login, role: 'client' as const } }]) {
         await expect(withPageStudioPublishAuthority(scope, candidate, async () => {
           throw new Error('Must not run')
