@@ -149,6 +149,7 @@ async function openStudio() {
         </nav>
         <div class="min-w-0 space-y-8 py-6 md:pl-8">
           <template v-if="section === 'overview'">
+            <PageStudioStagingWorkspace :key="siteId" :site-id="siteId" audience="portal" />
             <div>
               <h2 class="text-xl font-medium tracking-tight text-highlighted">
                 Website overview
