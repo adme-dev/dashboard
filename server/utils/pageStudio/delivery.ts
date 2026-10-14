@@ -318,7 +318,7 @@ async function verifyPreviewClaims(token: string, dependencies: AuthorizePageStu
   // Publisher review grants have only preview capability. Editor sessions keep
   // their existing edit authority; neither grant survives its native login or
   // role/permission/client/entitlement being revoked.
-  const permission = claims.capabilities.length === 1
+  const permission: 'PAGE_STUDIO_PUBLISH' | 'PAGE_STUDIO_EDIT' = claims.capabilities.length === 1
     ? 'PAGE_STUDIO_PUBLISH'
     : 'PAGE_STUDIO_EDIT'
 

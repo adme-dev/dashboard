@@ -176,3 +176,35 @@ PostgreSQL suite passes 74 tests, and the adjacent delivery/session/HTTP/portal
 regression group passes 98 tests. Changed-file lint and independent review pass.
 All database testing uses a disposable localhost instance. No migration change
 or production mutation is part of this slice. Hosted acceptance remains pending.
+
+## Invited customer candidate HTTP adapter
+
+The portal now has a production-only `versions/:versionId/candidate` POST. It
+requires the original customer login, same-origin JSON, bounded observed bytes,
+strict path/body/query/header values and a fresh scoped publisher check before
+compiler configuration or artifacts are inspected. The server selects tenant,
+client, compiler and review hostname. It can prepare only an already approved
+static version. It cannot activate a hostname or request a runtime release.
+
+Every reservation/completion/registration/session transaction uses the same
+publisher and static-delivery wrapper. Static mode is checked before and after
+SQL under the site lock, including after remote work. Review caught the initial
+preflight-only race; regressions now simulate a runtime switch during build,
+preview registration and session issue. No preview credential is returned.
+
+The real-H3 boundary and adjacent agency/portal/inventory group pass 65 tests.
+Request limits are exercised without a Content-Length header. Independent
+follow-up review found no remaining blockers. The route inventory is now 2,251
+files / 1,224 mutation files; the new route registers no God-mode bypass. This
+adapter is not yet a customer-facing launch control or a native-customer adapter.
+
+Next UI integration should use current portal domain `canManage`/site readiness,
+exact approved checkpoint/version/digest and the existing credential-safe preview
+opener. Retained responses must be discarded on site/source changes or failed
+refreshes. Native-customer identities still require their own session adapter.
+
+The first repository typecheck reports 943 diagnostics, including the existing
+preview-permission literal widening in delivery.ts. That changed helper now has
+an explicit closed permission type. Delivery/runtime/candidate follow-up tests
+pass 39 cases. The follow-up repository typecheck is running; do not infer a
+clean result from the focused tests or publish this as hosted acceptance.
