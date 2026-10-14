@@ -2,12 +2,12 @@ import type { DomainActor, DomainDatabase, DomainTransaction } from './domainAtt
 import { Hostname } from './domainAttachmentProvider'
 import { requirePortalDomainAuthority, type PortalDomainActor } from './portalDomainAuthority'
 
-async function scoped<T>(actor: PortalDomainActor, writing: boolean, run: (db: DomainDatabase, actor: Extract<DomainActor, { kind: 'portal' }>, canManage: boolean) => Promise<T>, transaction: DomainTransaction) {
+async function scoped<T>(actor: PortalDomainActor, writing: boolean, run: (db: DomainDatabase, actor: Extract<DomainActor, { kind: 'portal' }>, canManage: boolean, managementBlocker?: 'plan' | 'role') => Promise<T>, transaction: DomainTransaction) {
   return transaction(async (db) => {
     await db.query('SET LOCAL statement_timeout = \'15s\'')
     await db.query('SET LOCAL lock_timeout = \'5s\'')
     const scope = await requirePortalDomainAuthority(db, actor, writing)
-    return run(db, { ...actor, kind: 'portal', tenantId: scope.tenantId }, scope.canManage)
+    return run(db, { ...actor, kind: 'portal', tenantId: scope.tenantId }, scope.canManage, scope.managementBlocker)
   })
 }
 const text = (value: unknown, max = 4096) => typeof value === 'string' && value.length <= max ? value : undefined
@@ -27,10 +27,10 @@ export function projectPortalDomain(row: Record<string, unknown>) {
   }
 }
 export async function readPortalDomainConfiguration(actor: PortalDomainActor, transaction: DomainTransaction) {
-  return scoped(actor, false, async (db, scopedActor, canManage) => {
+  return scoped(actor, false, async (db, scopedActor, canManage, managementBlocker) => {
     const result = await db.query(`SELECT id,normalized_hostname,lifecycle_state,hostname_status,dns_status,tls_status,ownership_validation,certificate_validation
       FROM page_studio_domains WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND lifecycle_state <> 'detached'
       ORDER BY created_at DESC LIMIT 200`, [scopedActor.tenantId, scopedActor.clientId, scopedActor.siteId])
-    return { siteId: scopedActor.siteId, canManage, domains: result.rows.map(projectPortalDomain) }
+    return { siteId: scopedActor.siteId, canManage, managementBlocker, domains: result.rows.map(projectPortalDomain) }
   }, transaction)
 }

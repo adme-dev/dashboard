@@ -108,6 +108,12 @@ describe.runIf(Boolean(url))('durable domain attachment on disposable PostgreSQL
     expect((await execute('SELECT COUNT(*)::int AS count FROM page_studio_domain_operations')).rows[0].count).toBe(1)
     expect(provider.create).not.toHaveBeenCalled()
   })
+  it('returns setup access for zero-capacity customers without permitting attachment', async () => {
+    await execute('UPDATE page_studio_entitlements SET custom_domain_limit=0 WHERE id=$1', [ids.entitlement])
+    expect(await handleDomainManagement({ ...rpcInput(), operation: 'list' }, rpcEnv, tx)).toMatchObject({ ok: true, value: { canManage: false, managementBlocker: 'plan', providerReady: false, domains: [] } })
+    expect(await handleDomainManagement({ ...rpcInput(), operation: 'attach', hostname: input.hostname }, rpcEnv, tx)).toMatchObject({ ok: false, error: { code: 'DOMAIN_ACCESS_DENIED' } })
+    expect(provider.create).not.toHaveBeenCalled()
+  })
   it('rechecks portal permissions inside the real RPC after account revocation', async () => {
     await execute('UPDATE client_users SET status=\'inactive\'')
     expect(await handleDomainManagement({ ...rpcInput(), operation: 'attach', hostname: input.hostname }, rpcEnv, tx)).toMatchObject({ ok: false, error: { code: 'DOMAIN_ACCESS_DENIED', statusCode: 403 } })

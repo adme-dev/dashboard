@@ -8,7 +8,7 @@ const domain = {
   ownershipValidation: { type: 'txt', name: '_cf-custom-hostname.www.customer.example', value: 'ownership-value', cnameTarget: 'sites.platform.example' },
   certificateValidation: [{ txt_name: '_acme-challenge.www.customer.example', txt_value: 'certificate-value' }]
 }
-const data = ref<{ domains: typeof domain[], siteId?: string, canManage?: boolean }>({ domains: [domain], siteId: 'site', canManage: true })
+const data = ref<{ domains: typeof domain[], siteId?: string, canManage?: boolean, managementBlocker?: 'plan' | 'role', providerReady?: boolean }>({ domains: [domain], siteId: 'site', canManage: true })
 const fetchStatus = ref('success')
 const fetchError = ref<unknown>(null)
 const mutate = vi.fn()
@@ -16,6 +16,7 @@ const toast = vi.fn()
 const refresh = vi.fn()
 let app: ReturnType<typeof createApp> | undefined
 const stubs = {
+  PageStudioDomainSetupGuide: { template: '<section>Domain setup options</section>' },
   UCard: { template: '<section><slot name="header"/><slot/></section>' },
   UAlert: { props: ['title', 'description'], template: '<aside>{{ title }} {{ description }}</aside>' },
   UBadge: { props: ['label'], template: '<span>{{ label }}</span>' },
@@ -56,6 +57,20 @@ afterEach(() => {
 })
 
 describe('customer domain instructions', () => {
+  it('explains plan capacity instead of presenting an inaccessible domain screen', async () => {
+    data.value = { siteId: 'site', domains: [], canManage: false, managementBlocker: 'plan', providerReady: false }
+    const host = await mount('portal')
+    expect(host.textContent).toContain('Custom domains are not included')
+    expect(host.textContent).toContain('Website connection service needs setup')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Connect domain')
+    expect(mutate).not.toHaveBeenCalled()
+  })
+  it('does not offer mutation when the platform provider is unconfigured', async () => {
+    data.value = { siteId: 'site', domains: [], canManage: true, providerReady: false }
+    const host = await mount('portal')
+    expect(host.textContent).toContain('Website connection service needs setup')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Connect domain')
+  })
   it('renders portal instructions without mutation controls for a viewer', async () => {
     data.value = { domains: [domain], siteId: 'site', canManage: false }
     const host = await mount('portal')
@@ -74,7 +89,7 @@ describe('customer domain instructions', () => {
     expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Verify DNS and TLS')
     expect(mutate).not.toHaveBeenCalled()
   })
-  it.each(['pending', 'error'])('denies agency editing while the fresh request is %s', async (status) => {
+  it.each(['idle', 'pending', 'error'])('denies agency editing while the fresh request is %s', async (status) => {
     fetchStatus.value = status
     if (status === 'error') fetchError.value = new Error('unavailable')
     const host = await mount('agency')

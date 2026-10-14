@@ -23,6 +23,12 @@ function cloudflareConfig(env: Record<string, unknown>) {
   }
 }
 
+/** Configuration readiness only; DNS and certificate health are checked per domain. */
+export function domainProviderConfigured(env: Record<string, unknown>) {
+  const config = cloudflareConfig(env)
+  return Boolean(config.apiToken && config.cnameTarget && /^[a-f0-9]{32}$/i.test(config.zoneId))
+}
+
 function domainState(hostname: CloudflareCustomHostname | null, dnsVerified = false) {
   const hostnameStatus = hostname?.status ?? 'pending'
   const tlsStatus = hostname?.ssl?.status ?? 'pending'

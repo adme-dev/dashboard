@@ -32,7 +32,8 @@ const sections = [
   { value: 'pages', label: 'Pages & SEO', icon: 'i-lucide-files' },
   { value: 'media', label: 'Media library', icon: 'i-lucide-images' },
   { value: 'forms', label: 'Forms', icon: 'i-lucide-list-checks' },
-  { value: 'enquiries', label: 'Enquiries', icon: 'i-lucide-inbox' }
+  { value: 'enquiries', label: 'Enquiries', icon: 'i-lucide-inbox' },
+  { value: 'domains', label: 'Domains & Launch', icon: 'i-lucide-globe' }
 ]
 const stats = computed(() => [
   { label: 'Saved pages', value: pages.value.length, section: 'pages', icon: 'i-lucide-files' },
@@ -253,6 +254,9 @@ async function openStudio() {
               @dirty="formDirty = $event"
               @reload="refresh()"
             />
+          </template>
+          <template v-else-if="section === 'domains'">
+            <PageStudioDomainsWorkspace :key="siteId" :site-id="siteId" audience="portal" />
           </template>
           <template v-else-if="section === 'enquiries'">
             <div v-if="enquiryFilter" class="flex flex-wrap items-center justify-between gap-3">
