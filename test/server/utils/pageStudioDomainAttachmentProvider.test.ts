@@ -9,7 +9,10 @@ const owner = 'opaque-owner'
 const item = { id: 'b'.repeat(32), hostname: host, custom_metadata: { page_studio_owner: owner } }
 const list = (result: unknown[], info = { page: 1, total_pages: 1 }) => ({ success: true, result, result_info: { per_page: 5, count: result.length, ...info } })
 describe('bounded custom hostname provider', () => {
-  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
   it('logs only a bounded failure stage and status without provider or request data', async () => {
     const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fetcher = vi.fn().mockResolvedValue(Response.json({ success: false, errors: [{ message: 'private-provider-token' }] }, { status: 403 }))
