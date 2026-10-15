@@ -579,3 +579,46 @@ was stopped and the build completed normally. Final artifact size is 25,458,617
 raw bytes (10,311 bytes below the immutable safety budget) and 7,156,432 gzip
 bytes. Future server additions need explicit size checks; the budget was not
 relaxed. This artifact has not been deployed.
+
+### 15 October — current-plan authoring authority foundation
+
+`withCustomerProductionAuthoringAuthority` now provides a SQL-only boundary for
+the next native editor increment. It derives business/workspace/site scope from
+the immutable creation receipt and requires the original active, verified native
+login, current owner membership and exact active non-preview platform entitlement
+with publishing and business-content access. Parent locks precede site locks;
+NOWAIT refuses in-flight access changes. Authority is checked again after locking
+and after the SQL callback. The deadline is the earliest login, membership or plan
+expiry. Replacing a plan or login cannot renew an existing authorization.
+
+This helper is deliberately not wired into editor launch or session routes yet.
+It grants neither CMS provisioning/adoption nor publication. Current staging-only
+claims and storage guards remain unchanged. No public feature claim or new menu
+entry is appropriate for this internal foundation.
+
+Integration must bind configured environment, immutable handoff environment,
+exact entitlement, child claims and managed CMS storage on every operation.
+Production CMS setup must remain denied even through `workspace:create`, which
+legacy normal-editor adoption uses. Production save/reconnect must not use the
+unmanaged checkpoint fallback. Existing staging-managed sites cannot acquire a
+second production CMS scope or have storage relabelled; an explicitly authorized
+storage transition is separate. The paired Studio control client must check its
+configured environment on exchange and all later operations. Any migration must
+preserve existing staging rows and immutable triggers, use the composite
+entitlement tenant/business FK and enforce production editor purpose.
+
+Validation of the foundation: 41 real PostgreSQL tests pass, including separate
+native accounts, expired previews, revoked/replaced logins and plans, all three
+authority deadlines, rollback after clock expiry, caller mutation, and in-flight
+membership/plan/site locks. The existing 40 plan-grant tests also pass. Changed
+source lint passes; server typecheck retains 295 existing baseline diagnostics
+with none in the new helper. Independent security review found no blockers.
+Only disposable local fixtures were changed; no customer entitlement, email,
+DNS record, saved CMS content or production configuration was modified.
+The default regression run passes 16,316 tests (2,366 conditional skips at
+collection, including the database-only authoring cases). The final expanded
+41-case database suite was executed separately after adding the review cases.
+The preceding operator UI commit `a55051c5d` also passed hosted CI run
+`38678874038`; that run does not contain this new authoring helper.
+The production build passes: 25,458,421 raw worker bytes, 10,507 bytes below the
+unchanged safety budget; gzip 7,156,266 bytes. No deployment was performed.
