@@ -400,3 +400,28 @@ as a separate statement, without changing migration SQL.
 No native candidate HTTP endpoint or launch control is supplied by this increment.
 No customer preview grant was issued externally, website activated or application
 deployed. Migration 455 must precede deployment of this native review path.
+
+
+## Native candidate HTTP preparation
+
+The native customer candidate POST now connects the production Astro build,
+immutable review address and exact-release native review credential. It requires
+the configured native entry, host-only original login cookie, exact origin, strict
+site/version IDs and idempotency header, an empty query and a bounded 2 KiB JSON
+body containing only production environment. Scope, compiler, preview suffix,
+private signing configuration and release identity remain server-derived.
+
+Current native static authority is checked before resolving compiler services.
+Signing configuration is validated before charging or compiling a build. Each
+build, registration and grant helper rechecks original authority after remote
+work. A denied phase returns no credential. The route never activates a live
+pointer. Native candidate controls and native launch-status reads are still needed.
+
+The new HTTP suite passes 28 cases with the production error mapper. Combined
+native/portal/agency candidate, native publication and route inventory tests pass
+102 cases. Changed-source lint and independent review pass; server typecheck
+remains 295 existing diagnostics, none in new source. Inventory is now 2,254 routes
+and 1,227 mutations; this endpoint adds no God-mode bypass. Previous source
+eeb534a9ff4aedcd6a88a5395cea6b6b8366d7fc passed CI38662047393 including the
+production Worker build and full suite. No deployment or customer activation is
+included in this HTTP increment.
