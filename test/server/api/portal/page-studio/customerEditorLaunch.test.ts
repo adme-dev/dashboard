@@ -48,7 +48,17 @@ describe('native customer editor launch HTTP', () => {
     expect(result.headers.get('cache-control')).toBe('private, no-store')
     expect(result.headers.get('referrer-policy')).toBe('no-referrer')
     expect(await result.json()).toMatchObject({ token: 'b'.repeat(64), editorOrigin: 'https://editor.example.test' })
-    expect(mocks.launch).toHaveBeenCalledWith('a'.repeat(64), expect.objectContaining({ configuration: { enabled: true, dashboardOrigin: 'https://customers.example.test', editorOrigin: 'https://editor.example.test' } }))
+    expect(mocks.launch).toHaveBeenCalledWith('a'.repeat(64), expect.objectContaining({ configuration: { enabled: true, environment: 'staging', dashboardOrigin: 'https://customers.example.test', editorOrigin: 'https://editor.example.test' } }))
+  })
+  it('requires separate production opt-in and passes the same environment to storage and handoff', async () => {
+    config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'production'
+    expect((await call()).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED = 'true'
+    expect((await call()).status).toBe(200)
+    expect(mocks.launch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      configuration: expect.objectContaining({ environment: 'production' }),
+      env: expect.objectContaining({ PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' })
+    }))
   })
   it('rejects wrong origin, portal-only cookies, caller scope and GET', async () => {
     expect((await call({}, { origin: 'https://foreign.test' })).status).toBe(403)

@@ -59,6 +59,7 @@ describe.runIf(Boolean(databaseUrl))('native CMS setup admission on PostgreSQL',
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
+    await db.query(migration('456_page_studio_customer_editor_environment.sql'))
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
     await db.query('CREATE TABLE page_studio_cms_scopes (scope_key TEXT, tenant_id TEXT, client_id UUID, site_id UUID, state TEXT)')
     workspaces = await import('~~/server/utils/pageStudio/customerWorkspaces')

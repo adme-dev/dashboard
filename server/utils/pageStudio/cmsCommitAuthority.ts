@@ -238,7 +238,9 @@ export async function withCmsCommitAuthority<T>(
         ? (principal.capability === 'cms:adopt' ? 'cms:adopt' : 'workspace:create')
         : 'workspace:checkpoint'
       if (!['customer-checkpoint', 'customer-adoption'].includes(input.mutation) || principal.capability !== capability
-        || principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== 'staging' || scope.environment !== 'staging') throw denied()
+        || principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== scope.environment
+        || principal.claims.environment !== scope.environment
+        || (scope.environment === 'production' && input.mutation !== 'customer-checkpoint')) throw denied()
       const { assertCustomerEditorSessionAuthority } = await import('./customerEditorSessions')
       return await run(async (db) => {
         await db.query('SET LOCAL lock_timeout=\'3s\'')

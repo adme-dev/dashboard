@@ -622,3 +622,51 @@ The preceding operator UI commit `a55051c5d` also passed hosted CI run
 `38678874038`; that run does not contain this new authoring helper.
 The production build passes: 25,458,421 raw worker bytes, 10,507 bytes below the
 unchanged safety budget; gzip 7,156,266 bytes. No deployment was performed.
+
+### 15 October — bind native editor sessions to production authority and storage
+
+The paired editor integration now binds the configured environment, immutable
+handoff, exact production entitlement, signed child session and managed CMS
+scope. Migration 456 preserves existing staging receipts and sessions; generated
+child environment is checked against the handoff through a composite FK. The
+immutable trigger excludes that derived column because PostgreSQL populates it
+after BEFORE triggers; immutable claims still prevent any environment change,
+and revocation remains one-way.
+
+Production sessions cannot perform CMS setup/adoption, including via the legacy
+`workspace:create` path. Production saves require the managed graph coordinator;
+there is no unmanaged checkpoint fallback. Reconnect reads and editor launches
+check the exact target and checkpoint bytes between fresh native SQL snapshots.
+Staging and production scopes cannot coexist for one site or be silently relabelled.
+
+The central editor verifies the configured environment on every signed operation.
+Its production lifecycle checks readiness through the verified latest-checkpoint
+boundary, while staging retains the existing adoption status check. Both services
+require `PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED=true` for production
+entrypoints, alongside their existing editor/browser gates. No deployment binding
+has been enabled. Production-managed storage establishment/transition, hosted
+acceptance and customer activation remain outstanding; this is not a release or
+an assertion that existing preview customers can open production content.
+
+Validation so far: 316 targeted Dashboard tests across native sessions, handoffs,
+CMS saves/adoption/setup, schema preparation and HTTP gates pass. This includes
+migration of populated staging rows and production setup denial with otherwise
+valid `workspace:create` authority. Paired Studio token and control-client suites
+pass (50 and 227 tests); a real control-client/lifecycle test covers production
+open/read/save, missing managed content and revoked access. The latter reproduced
+and fixed an integration regression caught by independent review. Broader gates
+and migration application are recorded below when complete. No new public feature
+claim is made for this gated internal integration.
+
+Final local gates: default regression 16,322 passed / 2,409 conditional skips;
+the database/HTTP group was separately executed with 316 passing tests. Changed
+source ESLint passes. Server typecheck retains the same 295 baseline diagnostics,
+none in modified editor/authority files. Independent review approved both sides
+after the production lifecycle fix; real workerd staging/production isolation
+and browser-cookie coverage also passes locally (mocked control-plane responses).
+Migration 456 was applied to the configured database on 15 October and its four
+new authority constraints verified. The disposable PostgreSQL server was stopped.
+The production build passes at 25,463,561 raw worker bytes (5,367 remaining under
+the unchanged budget), gzip 7,158,189 bytes. Current-main ancestry and the guarded
+agency-dashboard deployment target pass. No deployment or customer activation
+was performed. Further server additions require explicit size verification.

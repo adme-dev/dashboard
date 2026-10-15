@@ -1,19 +1,20 @@
 import { createError, type H3Event } from 'h3'
 import { transaction } from '~~/server/utils/db'
 import { redeemCustomerEditorHandoff } from './customerEditorHandoff'
-import { readCustomerProvisioningPreviewAuthority, readCustomerSessionIdentityFromHash } from './customerProvisioning'
+import { readCustomerEditorAuthority, type CustomerEditorAuthorityReceipt } from './customerEditorAuthority'
 import { CustomerEditorClaimsSchema, CustomerEditorCapabilitySchema, CUSTOMER_EDITOR_MAX_SECONDS, CUSTOMER_CMS_SETUP_MAX_SECONDS, customerSessionCapabilities, customerSessionHasPurpose, signCustomerEditorToken,
   type CustomerEditorClaims } from './customerEditorToken'
+import { assertSoleCmsAuthoringScope } from './cmsGraphCoordinator'
+import { lockCmsContext, cmsEqual } from './cmsVisibility'
+import { withVerifiedCustomerEditorStorage } from './customerEditorStorage'
 import { resolvePageStudioSessionEnvironment } from './sessions'
 import { PageStudioCheckpointCommitSchema } from './controlSchemas'
 import { commitPageStudioCheckpoint, getLatestPageStudioCheckpoint } from './controlStore'
 import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
 
-import { assertCustomerCmsSetupApproval } from './customerCmsSetupAuthority'
-
 const denied = () => createError({ statusCode: 403, statusMessage: 'Customer editor access is not available.' })
 interface Dependencies { runTransaction?: RunPageStudioTransaction }
-interface AuthorityReceipt {
+interface AuthorityReceipt extends CustomerEditorAuthorityReceipt {
   purpose: 'editor' | 'cms-setup'
   handoff_id: string
   login_session_hash: string
@@ -43,23 +44,18 @@ export async function assertCustomerEditorSessionAuthority(input: unknown, capab
     WHERE session.nonce = $1 AND session.claims = $2::jsonb AND session.revoked_at IS NULL
       AND session.issued_at <= clock_timestamp() AND session.expires_at > clock_timestamp()
       AND handoff.consumed_at IS NOT NULL`, args)).rows[0]
-  if (!receipt || receipt.identity_id !== claims.userId || receipt.workspace_id !== claims.workspaceId
+  if (!receipt || receipt.environment !== claims.environment || receipt.identity_id !== claims.userId || receipt.workspace_id !== claims.workspaceId
     || receipt.site_id !== claims.siteId || receipt.business_id !== claims.clientId || receipt.tenant_id !== claims.tenantId
     || receipt.editor_origin !== claims.editorOrigin || `${receipt.dashboard_origin}/studio/dashboard` !== claims.returnUrl) throw denied()
   if (!customerSessionHasPurpose(claims.capabilities, receipt.purpose)
     || (receipt.purpose === 'cms-setup' && claims.expiresAt - claims.issuedAt > CUSTOMER_CMS_SETUP_MAX_SECONDS)) throw denied()
-  const identityId = await readCustomerSessionIdentityFromHash(db, receipt.login_session_hash)
-  if (identityId !== claims.userId) throw denied()
-  const owned = await readCustomerProvisioningPreviewAuthority(db, claims.siteId, identityId)
-  if (owned.workspaceId !== claims.workspaceId || owned.scope.businessId !== claims.clientId || owned.scope.tenantId !== claims.tenantId) throw denied()
-  if (receipt.purpose === 'cms-setup') await assertCustomerCmsSetupApproval(db, owned, identityId)
+  const { identityId, owned } = await readCustomerEditorAuthority(db, receipt)
+  if (identityId !== claims.userId || owned.workspaceId !== claims.workspaceId || owned.scope.businessId !== claims.clientId || owned.scope.tenantId !== claims.tenantId) throw denied()
   // Lock child last. Recheck time-based parent/membership authority after any wait.
   const child = (await db.query(`SELECT nonce FROM page_studio_customer_editor_sessions
     WHERE nonce = $1 AND claims = $2::jsonb AND revoked_at IS NULL AND expires_at > clock_timestamp() FOR SHARE`, args)).rows[0]
   if (!child) throw denied()
-  await readCustomerSessionIdentityFromHash(db, receipt.login_session_hash)
-  await readCustomerProvisioningPreviewAuthority(db, claims.siteId, identityId)
-  if (receipt.purpose === 'cms-setup') await assertCustomerCmsSetupApproval(db, owned, identityId)
+  await readCustomerEditorAuthority(db, receipt)
   const active = (await db.query(`SELECT nonce FROM page_studio_customer_editor_sessions
     WHERE nonce = $1 AND revoked_at IS NULL AND expires_at > clock_timestamp()`, [claims.nonce])).rows[0]
   if (!active) throw denied()
@@ -75,11 +71,11 @@ export async function exchangeCustomerEditorSession(ticket: unknown, configurati
   const sign = dependencies.signToken ?? (claims => signCustomerEditorToken(claims, environment!.privateKey, environment!.issuer))
   return (dependencies.runTransaction ?? transaction)(async (db) => {
     const context = await redeemCustomerEditorHandoff(ticket, configuration, { runTransaction: callback => callback(db) })
-    const handoff = (await db.query<{ purpose: string }>('SELECT purpose FROM page_studio_customer_editor_handoffs WHERE id=$1', [context.handoffId])).rows[0]
+    const handoff = (await db.query<AuthorityReceipt>('SELECT * FROM page_studio_customer_editor_handoffs WHERE id=$1', [context.handoffId])).rows[0]
     const capabilities = customerSessionCapabilities(handoff?.purpose)
     const setup = handoff?.purpose === 'cms-setup'
-    const owned = await readCustomerProvisioningPreviewAuthority(db, context.scope.siteId, context.identityId)
-    const setupApproval = setup ? await assertCustomerCmsSetupApproval(db, owned, context.identityId) : null
+    if (!handoff) throw denied()
+    const authority = await readCustomerEditorAuthority(db, handoff)
     // Use one instant for both bounds: separate clock reads can cross a second
     // and create an overlong session that our own authority checks reject.
     const parent = (await db.query<{ issued: number, expires: number, editor_origin: string }>(`WITH issuance AS MATERIALIZED (SELECT clock_timestamp() AS instant)
@@ -91,9 +87,9 @@ export async function exchangeCustomerEditorSession(ticket: unknown, configurati
       JOIN page_studio_customer_sessions native ON native.token_hash = handoff.login_session_hash
       JOIN page_studio_sites site ON site.id = handoff.site_id
       JOIN page_studio_entitlements entitlement ON entitlement.id = site.entitlement_id
-      WHERE handoff.id = $1`, [context.handoffId, setup ? CUSTOMER_CMS_SETUP_MAX_SECONDS : CUSTOMER_EDITOR_MAX_SECONDS, setupApproval?.expires_at ?? owned.policy.expiresAt])).rows[0]
+      WHERE handoff.id = $1`, [context.handoffId, setup ? CUSTOMER_CMS_SETUP_MAX_SECONDS : CUSTOMER_EDITOR_MAX_SECONDS, authority.expiresAt])).rows[0]
     if (!parent) throw denied()
-    const claims = parseClaims({ role: 'customer', environment: 'staging', nonce: crypto.randomUUID(), userId: context.identityId,
+    const claims = parseClaims({ role: 'customer', environment: context.scope.environment, nonce: crypto.randomUUID(), userId: context.identityId,
       workspaceId: context.workspaceId, clientId: context.scope.clientId, siteId: context.scope.siteId, tenantId: context.scope.tenantId,
       issuedAt: parent.issued, expiresAt: parent.expires, capabilities,
       editorOrigin: parent.editor_origin, returnUrl: context.returnUrl })
@@ -126,7 +122,7 @@ export async function commitCustomerEditorCheckpoint(input: unknown, tokenClaims
     [claims.tenantId, claims.clientId, claims.siteId])).rows.length > 0
   })
   if (managed) {
-    if (dependencies.env?.PAGE_STUDIO_CONTENT_ENVIRONMENT !== 'staging')
+    if (dependencies.env?.PAGE_STUDIO_CONTENT_ENVIRONMENT !== claims.environment)
       throw createError({ statusCode: 409, statusMessage: 'Customer CMS authoring is not configured.' })
     const { coordinateCmsGraphCheckpoint } = await import('./cmsGraphCoordinator')
     const receipt = await coordinateCmsGraphCheckpoint(parsed.data, { source: 'customer-session', claims,
@@ -134,6 +130,7 @@ export async function commitCustomerEditorCheckpoint(input: unknown, tokenClaims
     return { acknowledged: receipt.acknowledged, checkpointId: receipt.checkpointId,
       currentCheckpointId: receipt.currentCheckpointId, isCurrent: receipt.isCurrent }
   }
+  if (claims.environment === 'production') throw denied()
   return (dependencies.runTransaction ?? transaction)(async (db) => {
     const authority = await assertCustomerEditorSessionAuthority(claims, 'workspace:checkpoint', db)
     return commitPageStudioCheckpoint(parsed.data, { runTransaction: callback => callback(db),
@@ -141,8 +138,23 @@ export async function commitCustomerEditorCheckpoint(input: unknown, tokenClaims
       customerEditor: { sessionId: claims.nonce, userId: claims.userId, workspaceId: claims.workspaceId, handoffId: authority.handoffId } })
   })
 }
-export async function readCustomerEditorCheckpoint(input: unknown, dependencies: Dependencies = {}) {
+export async function readCustomerEditorCheckpoint(input: unknown, dependencies: Dependencies & { env?: Record<string, unknown> } = {}) {
   const claims = parseClaims(input)
+  if (claims.environment === 'production') {
+    if (dependencies.env?.PAGE_STUDIO_CONTENT_ENVIRONMENT !== claims.environment) throw denied()
+    return withVerifiedCustomerEditorStorage(async (db) => {
+      const { owned } = await assertCustomerEditorSessionAuthority(claims, 'workspace:reconnect', db)
+      const scope = owned.scope
+      await assertSoleCmsAuthoringScope(db, scope)
+      const context = await lockCmsContext(db, scope)
+      const latest = await getLatestPageStudioCheckpoint(claims, { queryOne: async <T>(sql: string, params?: unknown[]) => (await db.query<T>(sql, params)).rows[0] ?? null })
+      if (!latest || !cmsEqual({ id: latest.checkpointId, digest: latest.digest }, context.application.manifest.checkpoint)) throw denied()
+      await assertCustomerEditorSessionAuthority(claims, 'workspace:reconnect', db)
+      return { scope, context, checkpoint: { id: latest.checkpointId, digest: latest.digest, object_key: latest.objectKey } }
+    }, { env: dependencies.env, runTransaction: dependencies.runTransaction ?? transaction }, async (_db, snapshot) => ({
+      checkpointId: snapshot.checkpoint.id, digest: snapshot.checkpoint.digest, objectKey: snapshot.checkpoint.object_key
+    }))
+  }
   return (dependencies.runTransaction ?? transaction)(async (db) => {
     await assertCustomerEditorSessionAuthority(claims, 'workspace:reconnect', db)
     const checkpoint = await getLatestPageStudioCheckpoint(claims, { queryOne: async <T>(sql: string, params?: unknown[]) => (await db.query<T>(sql, params)).rows[0] ?? null })
