@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
-import type { RunPageStudioTransaction } from './sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
 
 const Id = z.string().uuid()
 const Count = z.number().int().nonnegative().max(2147483647)
@@ -18,7 +18,16 @@ const Receipt = z.object({ id: Id, workspaceId: Id, siteId: Id, planKey: z.strin
 const denied = () => createError({ statusCode: 403, statusMessage: 'Current platform plan administration is required' })
 const conflict = () => createError({ statusCode: 409, statusMessage: 'The preview or plan request has changed. Review its current state.' })
 
-/** Trusted operator prerequisite, deliberately not exposed as a customer route.
+/** Platform-wide authority, independent of selected accounting tenant. Never
+ * treat workspace assistance or a customer session as plan administration. */
+export async function requireCustomerPlanOperator(db: PageStudioQueryClient, actorId: string) {
+  if (!Id.safeParse(actorId).success) throw denied()
+  const staff = await db.query(`SELECT id FROM team_members WHERE id=$1
+    AND is_active=TRUE AND user_role IN ('owner','admin') AND custom_role_id IS NULL FOR SHARE NOWAIT`, [actorId])
+  if (staff.rows.length !== 1) throw denied()
+}
+
+/** Platform operator transaction, never exposed as a customer self-grant route.
  * The caller must authenticate the staff actor. We independently require a
  * current built-in platform owner/admin here. No payment, DNS, publication,
  * policy renewal or production editor session is created by this operation.
@@ -34,11 +43,7 @@ export async function grantCustomerPublishingPlan(input: { actorId: string, body
   const request = parsed.data, actorId = input.actorId
   try {
     return await (dependencies.runTransaction ?? transactionWithoutRetry)(async (db) => {
-      // Fail closed for custom roles until a specific native billing authority
-      // exists. Workspace assistance grants are never authority to grant a plan.
-      const staff = await db.query(`SELECT id FROM team_members WHERE id=$1
-        AND is_active=TRUE AND user_role IN ('owner','admin') AND custom_role_id IS NULL FOR SHARE NOWAIT`, [actorId])
-      if (staff.rows.length !== 1) throw denied()
+      await requireCustomerPlanOperator(db, actorId)
       const workspace = await db.query(`SELECT id FROM page_studio_customer_workspaces
         WHERE id=$1 AND status='active' FOR NO KEY UPDATE NOWAIT`, [request.workspaceId])
       if (workspace.rows.length !== 1) throw denied()

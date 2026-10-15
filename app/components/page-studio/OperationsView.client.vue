@@ -11,6 +11,9 @@ const configuration = {
   subscriptions: { title: 'Page Studio subscriptions', description: 'Client entitlements and current site and custom-domain consumption.', icon: 'i-lucide-gauge', empty: 'No Page Studio entitlements have been provisioned.' }
 } as const
 
+const { user } = useAuth()
+const canManageCustomerPlans = computed(() => Boolean(user.value && ['owner', 'admin'].includes(user.value.role) && !user.value.custom_role_id))
+
 const config = computed(() => configuration[props.section])
 const endpoint = computed(() => `/api/${props.audience}/page-studio/${props.section}`)
 const { data, pending, error, refresh } = await useFetch<Record<string, Array<Record<string, unknown>>>>(endpoint)
@@ -84,6 +87,13 @@ const rows = computed(() => records.value.map((record) => {
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
+          <UButton
+            v-if="audience === 'agency' && section === 'subscriptions' && canManageCustomerPlans"
+            label="Customer plans"
+            to="/agency/page-studio/customer-plans"
+            color="neutral"
+            variant="outline"
+          />
           <PageStudioEntitlementGrant v-if="audience === 'agency' && section === 'subscriptions'" @granted="refresh()" />
           <UButton
             label="Refresh"

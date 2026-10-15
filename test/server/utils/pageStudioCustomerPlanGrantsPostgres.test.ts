@@ -76,6 +76,54 @@ describe.runIf(Boolean(databaseUrl))('native preview to publishing plan grants',
     await db.end()
   })
 
+  it('lists native plan targets without customer emails or caller-selected business scope', async () => {
+    const { listCustomerPlanTargets } = await import('~~/server/utils/pageStudio/customerPlanTargets')
+    const result = await listCustomerPlanTargets(actorId, {}, { runTransaction })
+    expect(result.nextCursor).toBeNull()
+    expect(result.targets).toEqual([expect.objectContaining({ workspaceId: fixture.workspaceId, workspaceName: 'Plan test',
+      siteId: fixture.site.id, siteName: 'Plan preview', entitlementId: body.expectedEntitlementId,
+      planKey: 'customer_preview_v1', eligible: true, limits: expect.objectContaining({ pagesPerSiteLimit: 5, domainLimit: 0 }) })])
+    expect(JSON.stringify(result)).not.toContain('owner@example.test')
+    await grant()
+    const next = await listCustomerPlanTargets(actorId, {}, { runTransaction })
+    expect(next.targets[0]).toMatchObject({ eligible: false, planKey: 'studio_business' })
+  })
+  it('paginates 51 native workspaces without omissions or overlap', async () => {
+    const { listCustomerPlanTargets } = await import('~~/server/utils/pageStudio/customerPlanTargets')
+    const { createCustomerWorkspace } = await import('~~/server/utils/pageStudio/customerWorkspaces')
+    const { createCustomerPreviewSite } = await import('~~/server/utils/pageStudio/customerSites')
+    const identityId = (await db.query('SELECT created_by FROM page_studio_customer_workspaces WHERE id=$1', [fixture.workspaceId])).rows[0].created_by
+    const expected = [fixture.workspaceId]
+    for (let index = 0; index < 50; index++) {
+      const { workspace } = await createCustomerWorkspace({ identityId, requestId: randomUUID(), name: `Page ${index}` }, runTransaction)
+      await createCustomerPreviewSite({ workspaceId: workspace.id, identityId, requestId: randomUUID(),
+        name: `Site ${index}`, route: `page-${index}`, starterVersion: 'floristry-v1' }, { runTransaction,
+        previewPolicy: { approvalId: randomUUID(), approvedBy: actorId, expiresAt: new Date(Date.now() + 86400_000).toISOString(),
+          pagesPerSiteLimit: 5, storageBytesLimit: 10000, monthlyBuildLimit: 10, monthlyTrafficBytesLimit: 10000 } })
+      expected.push(workspace.id)
+    }
+    const first = await listCustomerPlanTargets(actorId, {}, { runTransaction })
+    expect(first.targets).toHaveLength(50)
+    expect(first.nextCursor).toBe(first.targets[49]!.workspaceId)
+    const second = await listCustomerPlanTargets(actorId, { after: first.nextCursor }, { runTransaction })
+    expect(second.targets).toHaveLength(1)
+    expect(second.nextCursor).toBeNull()
+    const actual = [...first.targets, ...second.targets].map(row => row.workspaceId)
+    expect(actual).toEqual(expected.sort())
+    expect(new Set(actual).size).toBe(51)
+  })
+  it('rejects plan reads by an ordinary staff member', async () => {
+    const { listCustomerPlanTargets } = await import('~~/server/utils/pageStudio/customerPlanTargets')
+    await db.query('UPDATE team_members SET user_role=\'project_manager\'')
+    await expect(listCustomerPlanTargets(actorId, {}, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('validates the native plan list cursor and refuses scope selectors', async () => {
+    const { listCustomerPlanTargets } = await import('~~/server/utils/pageStudio/customerPlanTargets')
+    for (const query of [{ after: 'bad-id' }, { tenantId: fixture.tenantId }, { limit: 100000 }]) {
+      await expect(listCustomerPlanTargets(actorId, query, { runTransaction })).rejects.toMatchObject({ statusCode: 400 })
+    }
+    expect((await listCustomerPlanTargets(actorId, { after: fixture.workspaceId }, { runTransaction })).targets).toEqual([])
+  })
   it('grants a separate plan, preserves the original policy and enables the real native publishing authority', async () => {
     const before = await state()
     const result = await grant()

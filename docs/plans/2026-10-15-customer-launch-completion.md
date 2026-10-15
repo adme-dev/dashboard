@@ -527,3 +527,55 @@ editor/version authoring and customer launch journey remain outstanding. No
 customer plan, production access, DNS or release pointer has been changed.
 Public marketing pages remain unchanged because this prerequisite has no usable
 customer-facing feature to advertise yet.
+
+## Native customer plan operator screen
+
+The next increment exposes the initial grant through
+`/agency/page-studio/customer-plans`, linked from agency Subscriptions for built-in
+platform owners and administrators. A bounded native workspace list shows the
+current site/entitlement and uses 50-row keyset pagination. It excludes legacy
+client bindings and does not expose customer email addresses or login material.
+GET and POST authenticate agency staff and independently recheck current built-in
+platform authority in the database. POST requires same-origin bounded JSON; the
+actor and business scope cannot be chosen by the browser.
+
+The Nuxt UI dialog requires a plan reference, approval reason, explicit access
+period and numerical allowances before a separate review and grant action.
+Uncertain responses retain the reviewed payload and request ID. Definite input
+rejections allow correction; access changes, conflicting targets and mismatched
+receipts require a refresh. The original preview approval remains immutable.
+This is initial operator-assisted access management, not customer self-grant,
+renewal, billing, production editor admission or website publication.
+
+Validation: 77 focused checks pass, including 40 real PostgreSQL cases, a real
+51-workspace pagination boundary, 13 HTTP boundary tests, nine component tests
+and permission inventories. The complete default suite passes 16,316 tests with
+2,329 conditional skips; the database cases above were run separately against
+disposable local PostgreSQL 17. Real Nuxt UI in Chrome passes at 320, 390 and
+1280px, including the Subscriptions link, keyboard review and one exact-scope
+synthetic grant. Screenshots were inspected. The reusable local-only browser
+script is `scripts/verify-customer-plan-operator-browser.mjs`; it mocks accounts
+and APIs and is not hosted customer acceptance.
+
+Changed-source lint passes. Server and app typechecks retain the same 295 and
+643 baseline diagnostics respectively, with none in this increment's files.
+Independent final review found no blockers. Public feature copy describes this
+operator workflow as in release validation; no new top-level navigation category
+is needed. No customer plan, account, DNS record, email or publication changed.
+
+The next authoring gap is concrete: `customerEditorLaunch`,
+`customerEditorHandoff` and `customerEditorSessions` still rely on the immutable
+preview authority, and launch verifies staging storage only. A valid publishing
+plan does not renew that preview policy. Production authoring needs its own
+current-plan/session authority across issuance, redemption, refresh and saves,
+plus exact storage/environment verification and revocation tests. The signed
+customer editor token currently permits staging only, so this requires matching
+Dashboard and central-editor contracts rather than a launch-handler change alone. Simply
+removing the preview expiry check would be an authorization regression.
+
+The production build and deployment-target/source guards pass. The local build
+initially refused to run alongside the owned Nuxt development server; that server
+was stopped and the build completed normally. Final artifact size is 25,458,617
+raw bytes (10,311 bytes below the immutable safety budget) and 7,156,432 gzip
+bytes. Future server additions need explicit size checks; the budget was not
+relaxed. This artifact has not been deployed.
