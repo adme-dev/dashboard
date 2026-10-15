@@ -300,3 +300,34 @@ Independent review and changed-source lint pass. Server typecheck still reports
 295 repository diagnostics, none in changed source. No customer HTTP publication
 route is enabled by this increment, and no customer website was activated.
 Native candidate/build/session adapters and launch controls remain outstanding.
+
+## Native static publication HTTP adapter
+
+Native accounts now have production-only activation and rollback POST handlers.
+They use the configured native entry point, host-only native session cookie,
+exact-origin mutation guard, strict IDs/query/body/idempotency validation and an
+observed 2 KiB JSON limit. Business, workspace, site and actor identity are derived
+from the original session. Request bodies cannot supply authority or storage.
+
+The adapter checks current native publication access and exact verified hostname
+before inspecting artifacts or delivery configuration. Remote artifact verification
+runs outside SQL locks. Each activation/rollback transaction rechecks the original
+account, plan, static delivery and domain DNS/HTTPS status before and after SQL.
+Domain rows are held with NOWAIT locks, so concurrent withdrawal fails promptly.
+Only retained approved production Astro artifacts are accepted. Existing pointer
+concurrency, source freshness, feature seals and actor-specific idempotency remain
+in the publishing coordinator.
+
+Tests first reproduced the missing HTTP routes and 17 missing domain-boundary
+cases. The completed native HTTP/PostgreSQL group passes 103 tests; the HTTP suite
+uses the real production error mapper. Adjacent portal/inventory checks pass 40
+cases, and publishing coordinator/endpoint regressions pass 29. Source lint and
+independent review pass. Server typecheck remains at 295 repository diagnostics,
+none in the changed adapter source. The route inventory is now 2,253 files / 1,226
+mutations; neither new route registers a God-mode bypass.
+
+This backend increment does not supply a native candidate builder, customer launch
+controls or a plan-management flow. No customer grant, domain or live pointer was
+changed, and no website was activated. Public marketing copy remains unchanged
+until the native customer journey is usable and verified. Migration 453 from the
+preceding increment must be present before this adapter is deployed.

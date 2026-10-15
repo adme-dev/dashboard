@@ -62,8 +62,10 @@ const API_INVENTORY = {
   // It exposes no God mode bypass and performs no publication or domain mutation.
   // Invited customer candidate POST uses original-login publishing authority,
   // scoped approval and configured compiler bindings; no God mode bypass.
-  totalRouteFiles: 2251,
-  mutationRouteFiles: 1224,
+  // Native customer publication adds two POSTs using the native host-only cookie,
+  // current owner/manager entitlement and verified-domain checks; no God mode bypass.
+  totalRouteFiles: 2253,
+  mutationRouteFiles: 1226,
   explicitlyGuardedMutationFiles: 402,
   guardedMutationFilesWithTransactionCall: 48
 } as const
@@ -113,8 +115,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2251,
-      mutationRouteFiles: 1224,
+      totalRouteFiles: 2253,
+      mutationRouteFiles: 1226,
       explicitlyGuardedMutationFiles: 402,
       guardedMutationFilesWithTransactionCall: 48
     })

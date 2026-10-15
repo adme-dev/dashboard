@@ -64,6 +64,7 @@ describe.runIf(Boolean(databaseUrl))('native customer publishing authority on di
     `)
     for (const name of ['402_page_studio_control_plane.sql', '442_page_studio_customer_workspaces.sql',
       '443_page_studio_customer_signup.sql', '444_page_studio_customer_site_ownership.sql']) await db.query(migration(name))
+    await db.query('ALTER TABLE page_studio_sites ADD COLUMN delivery_mode TEXT NOT NULL DEFAULT \'static\'')
     await db.query('CREATE TABLE publication_effects (id INTEGER)')
     signup = await import('~~/server/utils/pageStudio/customerSignup')
     workspaces = await import('~~/server/utils/pageStudio/customerWorkspaces')
@@ -84,6 +85,10 @@ describe.runIf(Boolean(databaseUrl))('native customer publishing authority on di
         storageBytesLimit: 104857600, monthlyBuildLimit: 10, monthlyTrafficBytesLimit: 1073741824 }
     })
     await db.query(`INSERT INTO page_studio_workspace_memberships (workspace_id, identity_id, role) VALUES ($1, $2, 'editor')`, [fixture.workspaceId, member.identityId])
+    await db.query(`INSERT INTO page_studio_domains
+      (tenant_id,client_id,site_id,normalized_hostname,lifecycle_state,hostname_status,tls_status,dns_status,verified_at)
+      VALUES($1,$2,$3,'www.customer.example','verified','active','active','active',clock_timestamp())`,
+    [fixture.tenantId, fixture.businessId, fixture.site.id])
   })
   afterAll(async () => {
     if (!db) return
@@ -210,6 +215,64 @@ describe.runIf(Boolean(databaseUrl))('native customer publishing authority on di
     try {
       await db.query('UPDATE page_studio_workspace_memberships SET role=\'viewer\' WHERE identity_id=$1', [owner.identityId])
       await expect(authorize(prepared)).rejects.toMatchObject({ code: 'PUBLISH_AUTHORITY_BUSY', statusCode: 503 })
+    } finally { await db.query('ROLLBACK') }
+  })
+
+  const release = async (prepared: Awaited<ReturnType<typeof prepare>>, work = async (_db: pg.Client) => 'release', hostname = 'www.customer.example') => {
+    const { withCustomerReleaseAuthority } = await import('~~/server/utils/pageStudio/customerReleaseAuthority')
+    return withCustomerReleaseAuthority(prepared.scope, prepared.principal, hostname, work, { runTransaction })
+  }
+  it('admits a native publisher only on its exact verified static hostname', async () => {
+    await enablePlan()
+    const prepared = await prepare()
+    await expect(release(prepared)).resolves.toBe('release')
+    await expect(release(prepared, undefined, 'www.foreign.example')).rejects.toMatchObject({ code: 'RELEASE_DOMAIN_NOT_READY' })
+    await expect(release(prepared, undefined, 'https://www.customer.example')).rejects.toMatchObject({ code: 'PUBLISH_AUTHORITY_DENIED' })
+  })
+  const domainWithdrawals = [
+    'UPDATE page_studio_domains SET lifecycle_state=\'detached\'',
+    'UPDATE page_studio_domains SET hostname_status=\'pending\'',
+    'UPDATE page_studio_domains SET tls_status=\'pending\'',
+    'UPDATE page_studio_domains SET dns_status=\'pending\'',
+    'UPDATE page_studio_domains SET verified_at=NULL',
+    'UPDATE page_studio_sites SET delivery_mode=\'runtime\'',
+    'DELETE FROM page_studio_domains'
+  ]
+  it.each(domainWithdrawals)('does not begin publication when domain/delivery changes: %s', async (sql) => {
+    await enablePlan()
+    const prepared = await prepare()
+    await db.query(sql)
+    let called = false
+    await expect(release(prepared, async () => {
+      called = true
+      return 'release'
+    }))
+      .rejects.toMatchObject({ code: 'RELEASE_DOMAIN_NOT_READY' })
+    expect(called).toBe(false)
+  })
+  it.each(domainWithdrawals)('rolls back publication when domain/delivery changes in SQL: %s', async (sql) => {
+    await enablePlan()
+    const prepared = await prepare()
+    await expect(release(prepared, async (client) => {
+      await client.query('INSERT INTO publication_effects VALUES(1)')
+      await client.query(sql)
+      return 'release'
+    })).rejects.toMatchObject({ code: 'RELEASE_DOMAIN_NOT_READY' })
+    expect((await db.query('SELECT * FROM publication_effects')).rows).toEqual([])
+  })
+  it('does not retain native access merely because the domain is verified', async () => {
+    await enablePlan()
+    const prepared = await prepare()
+    await signup.revokeCustomerSession(owner.sessionToken, runTransaction)
+    await expect(release(prepared)).rejects.toMatchObject({ code: 'PUBLISH_AUTHORITY_DENIED' })
+  })
+  it('refuses an in-flight domain withdrawal without waiting on stale readiness', async () => {
+    await enablePlan()
+    const prepared = await prepare()
+    await db.query('BEGIN')
+    try {
+      await db.query('UPDATE page_studio_domains SET lifecycle_state=\'detached\'')
+      await expect(release(prepared)).rejects.toMatchObject({ code: 'PUBLISH_AUTHORITY_BUSY', statusCode: 503 })
     } finally { await db.query('ROLLBACK') }
   })
 })
