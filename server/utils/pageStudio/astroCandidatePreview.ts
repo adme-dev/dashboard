@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { isCurrentAstroSource } from './astroBuilds'
 import { PageStudioHostnameSchema } from './delivery'
 import { readApprovedBuildAuthority } from './builds'
-import { withPageStudioPublishAuthority, type PageStudioPublishPrincipal } from './publishAuthority'
+import { withAstroPublishAuthority, astroPublisherActor, type AstroPublishPrincipal } from './astroPublishAuthority'
 import { getPageStudioBuildPointer, type PageStudioBuildPointer } from './publishing'
 import { PageStudioPublishingError } from './publishingError'
 
@@ -11,7 +11,7 @@ const Request = z.object({
   versionId: z.uuid(), buildId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/),
   environment: z.enum(['staging', 'production']), previewHostname: PageStudioHostnameSchema
 }).strict()
-type Dependencies = NonNullable<Parameters<typeof withPageStudioPublishAuthority>[3]>
+type Dependencies = NonNullable<Parameters<typeof withAstroPublishAuthority>[3]>
   & NonNullable<Parameters<typeof getPageStudioBuildPointer>[2]>
   & { verifyBuild(pointer: PageStudioBuildPointer): Promise<unknown> }
 const invalid = () => new PageStudioPublishingError('BUILD_NOT_PUBLISHABLE', 422, 'The approved Astro candidate is unavailable for review')
@@ -23,7 +23,7 @@ const conflict = () => new PageStudioPublishingError('RELEASE_POINTER_CONFLICT',
  * Artifact verification precedes a fresh SQL-only publishing authority check. */
 export async function registerAstroCandidatePreview(
   raw: unknown,
-  originalPrincipal: PageStudioPublishPrincipal,
+  originalPrincipal: AstroPublishPrincipal,
   dependencies: Dependencies
 ) {
   const input = Request.parse(raw), principal = structuredClone(originalPrincipal)
@@ -36,7 +36,7 @@ export async function registerAstroCandidatePreview(
   // Full SHA-256 identity in one DNS label, without truncating or relabelling it.
   const hostname = PageStudioHostnameSchema.parse(`build-${BigInt(`0x${context.identityDigest}`).toString(36).padStart(50, '0')}.${input.previewHostname}`)
   await dependencies.verifyBuild(structuredClone(build))
-  return withPageStudioPublishAuthority(input.scope, principal, async (db) => {
+  return withAstroPublishAuthority(input.scope, principal, async (db) => {
     const approved = await readApprovedBuildAuthority(db, { tenantId: input.scope.tenantId, siteId: input.scope.siteId, versionId: input.versionId })
     const params = [input.scope.tenantId, input.scope.clientId, input.scope.siteId, build.buildId]
     const retained = (await db.query<{ astro_approval_id: string, checkpoint_id: string, checkpoint_digest: string }>(
@@ -69,21 +69,23 @@ export async function registerAstroCandidatePreview(
       return { hostname, release: { ...build, environment: 'preview' as const, releaseId: existing.release_id } }
     }
     if (!await isCurrentAstroSource(db, { scope: input.scope, versionId: input.versionId, checkpointId: checkpoint.id, digest: build.versionDigest })) throw invalid()
-    const staffActor = principal.login.role === 'agency' ? principal.actorId : null
-    const clientActor = principal.login.role === 'client' ? principal.actorId : null
+    const actor = astroPublisherActor(principal)
+    const staffActor = actor.role === 'agency' ? actor.id : null
+    const clientActor = actor.role === 'client' ? actor.id : null
+    const customerActor = actor.role === 'customer' ? actor.id : null
     const release = (await db.query<{ id: string }>(`INSERT INTO page_studio_releases
-      (tenant_id,client_id,site_id,build_id,environment,normalized_hostname,published_by,idempotency_key,published_by_client_user_id)
-      VALUES($1,$2,$3,$4,'preview',$5,$6,$7,$8) RETURNING id`,
-    [...params, hostname, staffActor, `astro-preview:${context.identityDigest}:${hostname}`, clientActor])).rows[0]
+      (tenant_id,client_id,site_id,build_id,environment,normalized_hostname,published_by,idempotency_key,published_by_client_user_id,published_by_customer_identity_id)
+      VALUES($1,$2,$3,$4,'preview',$5,$6,$7,$8,$9) RETURNING id`,
+    [...params, hostname, staffActor, `astro-preview:${context.identityDigest}:${hostname}`, clientActor, customerActor])).rows[0]
     if (!release) throw conflict()
     await db.query(`INSERT INTO page_studio_release_pointers
-      (tenant_id,client_id,site_id,environment,normalized_hostname,active_release_id,updated_by,updated_by_client_user_id)
-      VALUES($1,$2,$3,'preview',$4,$5,$6,$7)`, [...params.slice(0, 3), hostname, release.id, staffActor, clientActor])
+      (tenant_id,client_id,site_id,environment,normalized_hostname,active_release_id,updated_by,updated_by_client_user_id,updated_by_customer_identity_id)
+      VALUES($1,$2,$3,'preview',$4,$5,$6,$7,$8)`, [...params.slice(0, 3), hostname, release.id, staffActor, clientActor, customerActor])
     await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,
       resource_type,resource_id,idempotency_key,metadata)
       VALUES($1,$2,$3,$4,$8,'release.preview_registered','release',$5,$6,$7::jsonb)`,
-    [...params.slice(0, 3), principal.actorId, release.id, `astro-preview:${release.id}`,
-      JSON.stringify({ buildId: build.buildId, hostname, environment: input.environment, manifestDigest: build.manifestDigest }), principal.login.role])
+    [...params.slice(0, 3), actor.id, release.id, `astro-preview:${release.id}`,
+      JSON.stringify({ buildId: build.buildId, hostname, environment: input.environment, manifestDigest: build.manifestDigest }), actor.role])
     return { hostname, release: { ...build, environment: 'preview' as const, releaseId: release.id } }
   }, dependencies)
 }

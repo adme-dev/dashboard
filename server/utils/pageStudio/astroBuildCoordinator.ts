@@ -3,7 +3,7 @@ import { verifyAstroCompilerBuildIdentity, type AstroCompilerBuildIdentity, type
 import { reserveAstroReleaseBuild } from './astroBuilds'
 import { completeAstroReleaseBuild } from './astroCompletion'
 import { PageStudioBuildError, readApprovedBuildAuthority, type PageStudioBuildWorker } from './builds'
-import { withPageStudioPublishAuthority, type PageStudioPublishPrincipal } from './publishAuthority'
+import { withAstroPublishAuthority, type AstroPublishPrincipal } from './astroPublishAuthority'
 import type { PageStudioBuildPointer, PageStudioPublishingScope } from './publishing'
 import type { loadApprovedPageStudioReleaseCheckpoint } from './releaseCheckpoint'
 
@@ -18,7 +18,7 @@ export interface AstroBuildServices {
   buildAstroApproved(input: { context: AstroCompilerBuildIdentity, request: BuildRequest }): Promise<unknown>
   verifyBuild(pointer: PageStudioBuildPointer): Promise<unknown>
 }
-type Dependencies = NonNullable<Parameters<typeof withPageStudioPublishAuthority>[3]> & { recoverCandidate?: boolean }
+type Dependencies = NonNullable<Parameters<typeof withAstroPublishAuthority>[3]> & { recoverCandidate?: boolean }
 
 /** Reserve once, dispatch through the retained private generation, verify bytes,
  * then complete under fresh authority. Completed retries skip source storage
@@ -26,12 +26,12 @@ type Dependencies = NonNullable<Parameters<typeof withPageStudioPublishAuthority
  * available for durable compiler recovery; it never persists a legacy failure. */
 export async function coordinateApprovedAstroBuild(
   raw: unknown,
-  originalPrincipal: PageStudioPublishPrincipal,
+  originalPrincipal: AstroPublishPrincipal,
   services: AstroBuildServices,
   dependencies: Dependencies = {}
 ): Promise<PageStudioBuildPointer> {
   const input = Request.parse(raw), principal = structuredClone(originalPrincipal)
-  const reservation = await withPageStudioPublishAuthority(input.scope, principal, async (db) => {
+  const reservation = await withAstroPublishAuthority(input.scope, principal, async (db) => {
     const approved = await readApprovedBuildAuthority(db, { tenantId: input.scope.tenantId, siteId: input.scope.siteId, versionId: input.versionId })
     // Review is resumable across dialogs, browser reloads and users. Resolve the
     // retained operation under the same site lock; reservation still verifies

@@ -331,3 +331,35 @@ controls or a plan-management flow. No customer grant, domain or live pointer wa
 changed, and no website was activated. Public marketing copy remains unchanged
 until the native customer journey is usable and verified. Migration 453 from the
 preceding increment must be present before this adapter is deployed.
+
+
+## Native Astro build and candidate registration
+
+Build reservation, completion and candidate registration now dispatch to the
+original native account authority without translating it into an agency or
+invited portal identity. Native static delivery is checked before and after the
+SQL callback. Candidate releases and pointers record the native customer identity;
+idempotent retries preserve the original creator and reuse the completed build.
+
+Real PostgreSQL tests exposed the old quota function's agency-client-only join.
+Migration 454 resolves the immutable business owner and permits native release
+builds only for active workspaces and active publishing plans with positive site
+and domain capacity. Existing legacy admission, monthly serialization and retry
+accounting are preserved. Native staging admission remains excluded.
+
+Migration 454 was applied on 15 October at 00:46:59 UTC to isolated staging and
+00:47:14 UTC to the configured database. Transactional full-row digests verified
+sites, entitlements, releases, pointers, build admissions, builds and staging
+deployments unchanged. Function owner, ACL and search path were preserved; both
+installed function bodies have digest 243b28fea47ffca74b8199e4aa5e60e2.
+
+Verification: 100 Astro PostgreSQL cases, 53 staging PostgreSQL cases and 71 HTTP
+regressions pass. Changed-source lint and independent end-to-end review pass.
+Server typecheck remains at 295 existing diagnostics, none in changed source.
+The preceding source 60dc71c20729bb7721023297db433726932f82cc passed CI run
+38660291554, including the production Worker build and full suite.
+
+The native fixture uses genuine native sign-in/workspace services and a legitimate
+staff-approved version. Native version authoring, candidate HTTP/session delivery
+and launch controls remain outstanding. This slice does not activate any site or
+change grants. Marketing claims remain deferred until the customer journey works.
