@@ -238,3 +238,38 @@ still at Check your inbox with its old expired link, and Cloudflare remains at
 its terms-bearing sign-in page. Neither action was repeated or bypassed.
 The production compiler registry and native-customer adapter remain separate
 unfinished work. Existing preview and production deployments remain unchanged.
+
+
+## Native customer publication authority prerequisite
+
+The native-session adapter derives the exact site/business/workspace and actor
+from a verified login token. A SQL-only publication boundary retains that original
+session hash and account/identity throughout an operation, checks current access
+before and after its callback, and refuses concurrent authority changes rather
+than waiting on stale state. Owner/manager membership is required. The native
+business owner must match the site, without a legacy agency binding.
+
+Publication additionally requires an active, non-preview entitlement with positive
+site/domain capacity and the JSON boolean `publishingEnabled: true`. This is an
+explicit trusted plan capability; missing metadata, a string value, cancelled or
+expired plans and the immutable `customer_preview_v1` plan are denied. The adapter
+never writes entitlements or upgrades existing preview accounts. The next plan
+management integration must assign this capability through an authorized audited
+flow rather than modifying test receipts.
+
+This is an internal prerequisite, not a customer-facing launch feature. Native
+actor attribution in release/pointer persistence, HTTP and coordinator adapters,
+exact artifact/domain checks and customer controls remain required. No new route,
+production grant, migration or deployment is introduced. Marketing pages remain
+unchanged until the native feature is usable. The original invited portal and
+agency authority contracts are unchanged.
+
+
+Validation: 51 new PostgreSQL cases first failed with the missing adapter and then
+passed. The combined native signup/workspace/form/publication and invited portal
+group passed 192 tests. An additional natural session-expiry rollback regression
+brings the native publication suite to 52 passing cases. Changed-source lint and
+independent review pass. Server TypeScript reports 295 repository diagnostics,
+none in the new adapter; this is not a clean repository typecheck. CI now includes
+the new PostgreSQL suite. All fixture users, plans and effects were confined to a
+disposable localhost database; no real customer's entitlement was changed.
