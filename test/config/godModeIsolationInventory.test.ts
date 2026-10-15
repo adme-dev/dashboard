@@ -26,6 +26,7 @@ const API_INVENTORY = {
   // it adds one POST without any God mode bypass or user-role gate.
   // Astro candidate POST delegates native publish permission, scoped site and
   // fresh login authority; it adds one mutation without a God mode bypass.
+  // Native launch-status GET derives account/workspace scope and rechecks the original login; no bypass.
   // QR client picker adds one GET. Logo upload delegates to requireQrAccess,
   // which is outside this lexical inline-role pattern, so the inline count
   // falls by one. It retains authentication and the QR mutation audit wrapper.
@@ -66,7 +67,7 @@ const API_INVENTORY = {
   // current owner/manager entitlement and verified-domain checks; no God mode bypass.
   // Native candidate POST retains its original native login and approved production
   // build, with an exact-release review grant. No God mode bypass.
-  totalRouteFiles: 2254,
+  totalRouteFiles: 2255,
   mutationRouteFiles: 1227,
   explicitlyGuardedMutationFiles: 402,
   guardedMutationFilesWithTransactionCall: 48
@@ -117,7 +118,7 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2254,
+      totalRouteFiles: 2255,
       mutationRouteFiles: 1227,
       explicitlyGuardedMutationFiles: 402,
       guardedMutationFilesWithTransactionCall: 48

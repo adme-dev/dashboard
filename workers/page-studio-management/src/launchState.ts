@@ -40,10 +40,15 @@ const stateSql = `
       FROM page_studio_release_pointers pointer
       WHERE pointer.tenant_id = site.tenant_id AND pointer.client_id = site.client_id
         AND pointer.site_id = site.id AND pointer.environment = 'production'), '[]'::jsonb) AS active_releases,
-    (client.is_active = TRUE AND entitlement.status IN ('trial', 'active') AND entitlement.effective_from <= clock_timestamp()
+    ((client.is_active = TRUE OR (owner.agency_client_id IS NULL AND workspace.status='active'
+        AND entitlement.status='active' AND entitlement.plan_key<>'customer_preview_v1'
+        AND entitlement.active_site_limit>0 AND entitlement.custom_domain_limit>0
+        AND entitlement.plan_metadata->'publishingEnabled'='true'::jsonb)) AND entitlement.status IN ('trial', 'active') AND entitlement.effective_from <= clock_timestamp()
       AND (entitlement.effective_until IS NULL OR entitlement.effective_until > clock_timestamp())) AS plan_current
   FROM page_studio_sites site
-  JOIN agency_clients client ON client.id = site.client_id
+  JOIN page_studio_business_owners owner ON owner.id = site.client_id
+  LEFT JOIN agency_clients client ON client.id = owner.agency_client_id
+  LEFT JOIN page_studio_customer_workspaces workspace ON workspace.id = owner.workspace_id
   LEFT JOIN page_studio_checkpoints checkpoint ON checkpoint.tenant_id = site.tenant_id
     AND checkpoint.client_id = site.client_id AND checkpoint.site_id = site.id AND checkpoint.id = site.current_checkpoint_id
   LEFT JOIN page_studio_versions version ON version.tenant_id = site.tenant_id
@@ -93,8 +98,11 @@ export async function readPageStudioLaunchState(input: {
   if (!latest || JSON.stringify(latest) !== JSON.stringify(row)) {
     throw createError({ statusCode: 409, statusMessage: 'Website state changed. Refresh before continuing.' })
   }
-  const accessible = ['draft', 'active'].includes(row.status) && row.plan_current === true
-  const approved = accessible && content.status === 'ready' && Boolean(row.version_id)
+  const currentSite = ['draft', 'active'].includes(row.status)
+  const accessible = currentSite && row.plan_current === true
+  // Approval belongs to the saved version. Expired access prevents publication,
+  // but must not tell the customer that an unchanged approved draft lost review.
+  const approved = currentSite && content.status === 'ready' && Boolean(row.version_id)
     && ['approved', 'published'].includes(row.version_status ?? '')
     && row.version_checkpoint_id === row.checkpoint_id
     && row.version_digest === row.checkpoint_digest

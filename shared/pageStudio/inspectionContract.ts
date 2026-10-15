@@ -1,7 +1,9 @@
 import { z } from 'zod'
+import { CustomerInspectionActor } from './customerInspectionAuthority'
 
 const identity = { actorId: z.string().uuid(), tenantId: z.string().min(1).max(128), expectedEnvironment: z.enum(['staging', 'production']) }
 export const PageStudioInspectionRequest = z.discriminatedUnion('operation', [
+  CustomerInspectionActor.extend({ workspaceId: z.string().uuid(), expectedEnvironment: z.enum(['staging', 'production']), operation: z.literal('customer-launch') }).strict(),
   z.object({ actorId: z.string().uuid(), clientId: z.string().uuid(), siteId: z.string().uuid(),
     expectedEnvironment: z.enum(['staging', 'production']), operation: z.literal('portal-launch') }).strict(),
   z.object({ ...identity, operation: z.literal('reviews') }).strict(),

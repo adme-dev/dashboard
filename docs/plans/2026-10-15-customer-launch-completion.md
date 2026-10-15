@@ -436,3 +436,25 @@ expiry caps and fresh authorization. Deterministic PostgreSQL regressions fail
 on the old query and pass on the fix. The complete customer workspace database
 group passes 392 tests across 11 files. Changed-file lint and independent review
 pass. No access policy, grant, deployment or customer activation changed.
+
+## Native customer launch inspection
+
+A separate native launch-status endpoint now checks the original customer login
+before and after inspection and compiler availability work. The management
+worker independently derives the immutable business owner from current native
+identity, account and workspace membership. Its read authority permits expired
+or preview-only plans to inspect status without granting publishing capacity;
+only current owner/manager publishing authority permits preparation. Portal and
+agency identity paths remain separate. Native status SQL no longer requires an
+agency-client row. The endpoint returns no login hashes, credentials or authored
+content, accepts no caller-selected tenant/business, and disables response caching.
+
+Independent review found that the prior launch reader conflated plan expiry with
+loss of version approval. A reproduction test failed, then the reader was fixed:
+approval now describes the exact saved version while plan readiness and publishing
+permission remain independent gates. Changed worker strict typecheck passes;
+server typecheck remains 295 repository diagnostics, none in changed source.
+Native and legacy HTTP/transport/status tests and real PostgreSQL ownership tests
+pass. The route inventory is 2,255 reads/mutations total, with 1,227 mutations;
+no God-mode bypass was introduced. No application deployment or activation is
+included in this increment.

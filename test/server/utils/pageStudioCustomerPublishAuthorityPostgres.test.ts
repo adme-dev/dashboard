@@ -97,6 +97,65 @@ describe.runIf(Boolean(databaseUrl))('native customer publishing authority on di
     await db.end()
   })
 
+  const inspect = async (token = owner.sessionToken, changes: Record<string, string> = {}) => {
+    const user = await signup.readCustomerSession(token, runTransaction)
+    const { requireCustomerInspectionAuthority } = await import('~~/shared/pageStudio/customerInspectionAuthority')
+    return runTransaction(db => requireCustomerInspectionAuthority(db, {
+      actorId: user.identityId, accountId: user.accountId, siteId: fixture.site.id,
+      workspaceId: fixture.workspaceId, ...changes
+    }))
+  }
+  it('allows native preview owners to read status without granting publication', async () => {
+    expect(await inspect()).toMatchObject({ tenantId: fixture.tenantId, clientId: fixture.businessId,
+      workspaceId: fixture.workspaceId, canManagePublication: false })
+    expect((await db.query('SELECT count(*) FROM agency_clients')).rows[0].count).toBe('0')
+    expect((await db.query('SELECT custom_domain_limit FROM page_studio_entitlements')).rows[0].custom_domain_limit).toBe(0)
+  })
+  it.each(['owner', 'manager', 'editor', 'viewer'])('reads native %s status with role-specific publication capability', async (value) => {
+    await enablePlan()
+    await role(value)
+    expect(await inspect(member.sessionToken)).toMatchObject({ canManagePublication: ['owner', 'manager'].includes(value) })
+  })
+  it.each(['actorId', 'accountId', 'siteId', 'workspaceId'])('refuses foreign %s for native launch inspection', async (field) => {
+    await expect(inspect(owner.sessionToken, { [field]: randomUUID() })).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('reads expired plan status without granting publication', async () => {
+    await enablePlan()
+    await db.query('UPDATE page_studio_entitlements SET effective_until=clock_timestamp()-interval \'1 second\'')
+    expect(await inspect()).toMatchObject({ canManagePublication: false })
+  })
+  it.each([
+    'UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()',
+    'UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()-interval \'1 second\'',
+    'UPDATE page_studio_customer_workspaces SET status=\'suspended\'',
+    'UPDATE page_studio_sites SET status=\'suspended\''
+  ])('denies native status after access withdrawal: %s', async (sql) => {
+    await db.query(sql)
+    await expect(inspect()).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('rechecks the original login for native status even when another login is valid', async () => {
+    const { readCustomerLaunchContext } = await import('~~/server/utils/pageStudio/customerLaunchContext')
+    const initial = await readCustomerLaunchContext(owner.sessionToken, fixture.site.id, runTransaction)
+    expect(initial.actor).toMatchObject({ actorId: owner.identityId, workspaceId: fixture.workspaceId })
+    await signup.revokeCustomerSession(owner.sessionToken, runTransaction)
+    const replacement = await login('owner@example.test', 'signin')
+    await expect(readCustomerLaunchContext(owner.sessionToken, fixture.site.id, runTransaction)).rejects.toMatchObject({ statusCode: 401 })
+    await expect(readCustomerLaunchContext(replacement.sessionToken, fixture.site.id, runTransaction)).resolves.toMatchObject({ actor: initial.actor })
+  })
+
+  it('loads native launch state without an agency-client row and reflects the publishing plan', async () => {
+    const { readPageStudioLaunchState } = await import('~~/workers/page-studio-management/src/launchState')
+    const scope = { siteId: fixture.site.id, tenantId: fixture.tenantId, clientId: fixture.businessId }
+    const read = () => runTransaction(client => readPageStudioLaunchState(scope,
+      async <T>(sql: string, params: unknown[]) => (await client.query<T>(sql, params)).rows[0] ?? null))
+    expect(await read()).toMatchObject({ siteId: fixture.site.id, plan: { status: 'required' }, content: { status: 'required' } })
+    await enablePlan()
+    expect(await read()).toMatchObject({ siteId: fixture.site.id, plan: { status: 'ready' }, activeReleases: [] })
+    await db.query('UPDATE page_studio_entitlements SET plan_metadata=\'{"publishingEnabled":"true"}\'::jsonb')
+    expect(await read()).toMatchObject({ plan: { status: 'required' } })
+  })
+
   it('denies the unchanged preview plan without creating publishing capacity', async () => {
     await expect(prepare()).rejects.toMatchObject({ code: 'PUBLISH_AUTHORITY_DENIED' })
     expect((await db.query('SELECT custom_domain_limit, plan_metadata FROM page_studio_entitlements')).rows[0])

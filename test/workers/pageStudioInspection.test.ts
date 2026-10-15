@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { handleInspection } from '../../workers/page-studio-management/src/inspection'
-import { readPageStudioLaunchState, readPageStudioVersionComparison, listAgencyPageStudioReviews, readPortalPageStudioLaunchState } from '../../server/utils/pageStudio/inspectionClient'
+import { readPageStudioLaunchState, readPageStudioVersionComparison, listAgencyPageStudioReviews, readPortalPageStudioLaunchState, readCustomerPageStudioLaunchState } from '../../server/utils/pageStudio/inspectionClient'
 
-const mocks = vi.hoisted(() => ({ authority: vi.fn(), launch: vi.fn(), comparison: vi.fn(), reviews: vi.fn(), portal: vi.fn() }))
+const mocks = vi.hoisted(() => ({ authority: vi.fn(), launch: vi.fn(), comparison: vi.fn(), reviews: vi.fn(), portal: vi.fn(), customer: vi.fn() }))
+vi.mock('../../shared/pageStudio/customerInspectionAuthority', async original => ({ ...await original<object>(), requireCustomerInspectionAuthority: mocks.customer }))
 vi.mock('../../workers/page-studio-management/src/reviews', () => ({ listAgencyPageStudioReviews: mocks.reviews }))
 vi.mock('../../workers/page-studio-management/src/domainManagement', () => ({ agencyAuthority: mocks.authority }))
 vi.mock('../../workers/page-studio-management/src/portalDomainAuthority', () => ({ requirePortalDomainAuthority: mocks.portal }))
@@ -109,5 +110,33 @@ describe('customer launch inspection', () => {
   it('rejects a cross-client transport response', async () => {
     service.mockImplementation(value => ({ ok: true, payload: new TextEncoder().encode(JSON.stringify({ request: { ...value, clientId: 'foreign' }, value: state })) }))
     await expect(readPortalPageStudioLaunchState(portal())).rejects.toMatchObject({ statusCode: 503 })
+  })
+})
+
+const customer = () => ({ actorId, siteId, accountId: versionId, workspaceId: '10000000-0000-4000-8000-000000000005', env: client().env })
+describe('native account launch inspection', () => {
+  beforeEach(() => mocks.customer.mockResolvedValue({ tenantId: 'native', clientId: versionId, canManagePublication: true }))
+  it('rechecks native workspace membership without using portal or agency identity', async () => {
+    expect(await readCustomerPageStudioLaunchState(customer())).toEqual({ ...state, canManagePublication: true })
+    expect(mocks.customer).toHaveBeenCalledTimes(2)
+    expect(mocks.portal).not.toHaveBeenCalled()
+    expect(mocks.authority).not.toHaveBeenCalled()
+    expect(mocks.launch).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'native', clientId: versionId, siteId }), expect.any(Function))
+  })
+  it('withholds content on native revocation during storage inspection', async () => {
+    mocks.customer.mockResolvedValueOnce({ tenantId: 'native', clientId: versionId }).mockRejectedValueOnce({ statusCode: 403 })
+    await expect(readCustomerPageStudioLaunchState(customer())).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('uses the final native publishing capability', async () => {
+    mocks.customer.mockResolvedValueOnce({ tenantId: 'native', clientId: versionId, canManagePublication: true })
+      .mockResolvedValueOnce({ tenantId: 'native', clientId: versionId, canManagePublication: false })
+    expect(await readCustomerPageStudioLaunchState(customer())).toMatchObject({ canManagePublication: false })
+  })
+  it('does not accept client-selected tenant scope or credentials', async () => {
+    const { env: _env, ...actor } = customer()
+    for (const extra of [{ tenantId: 'foreign' }, { clientId: versionId }, { token: 'secret' }]) {
+      expect(await handleInspection({ ...actor, ...extra, operation: 'customer-launch', expectedEnvironment: 'staging' }, env, transaction)).toEqual({ ok: false, statusCode: 400 })
+    }
+    expect(transaction).not.toHaveBeenCalled()
   })
 })

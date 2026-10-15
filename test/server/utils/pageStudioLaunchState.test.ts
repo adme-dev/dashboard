@@ -68,11 +68,11 @@ describe('site launch state', () => {
     mocks.query.mockResolvedValueOnce(row()).mockResolvedValue({ ...row(), active_releases: [] })
     await expect(readPageStudioLaunchState(scope)).rejects.toMatchObject({ statusCode: 409 })
   })
-  it('does not present expired or suspended access as ready', async () => {
+  it('keeps saved approval separate from expired publishing access', async () => {
     mocks.query.mockResolvedValue({ ...row(), plan_current: false, plan_status: 'cancelled' })
     const result = await readPageStudioLaunchState(scope)
     expect(result.plan.status).toBe('required')
-    expect(result.approvedVersionId).toBeNull()
+    expect(result.approvedVersionId).toBe('version_current')
   })
   it('keeps malformed or unavailable checkpoints distinct from no saved content', async () => {
     mocks.checkpoint.mockRejectedValue(new Error('Private storage diagnostic'))
