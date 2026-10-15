@@ -363,3 +363,40 @@ The native fixture uses genuine native sign-in/workspace services and a legitima
 staff-approved version. Native version authoring, candidate HTTP/session delivery
 and launch controls remain outstanding. This slice does not activate any site or
 change grants. Marketing claims remain deferred until the customer journey works.
+
+
+## Native private review credentials and delivery
+
+Native release review now has a separate ES256 token type, audience and ledger.
+Claims bind one production build's private hostname/release, exact workspace,
+identity and site, and expire within five minutes or the original login expiry.
+They carry no editor capability or login hash. Editor, portal and runtime-draft
+verifiers reject this credential. The existing delivery worker forwards it through
+its private authorization boundary and can exchange it for its host-only cookie.
+
+Issuance signs outside SQL and then rechecks native account/plan/static delivery,
+exact retained release and exact approval before persisting the grant and audit.
+Delivery rechecks the original native login and stored claim equality on every
+request. Shared site/version locks permit overlapping document/image reads while
+publication callers retain exclusive locks. Revocation contention fails promptly;
+withdrawn roles, plans, login, approval or grant deny access.
+
+Independent review found two issues before commit: exclusive publication locks
+would reject parallel image requests, and a same-digest replacement approval was
+not compared with the build's retained approval. Reproduction tests failed, both
+were corrected, and the final token/PostgreSQL group passes 126 cases, including
+actual overlapping two-connection reads. Adjacent native authority, delivery,
+runtime delivery and HTTP regressions pass 142 cases. Lint and independent review
+pass; server typecheck remains 295 repository diagnostics, none in changed source.
+
+Migration 455 was applied to isolated staging at 00:59:34 UTC and the configured
+database at 00:59:46 UTC on 15 October. Six foreign keys validate and both new
+ledgers contain zero grants. Transactional digests verified existing sites,
+entitlements, releases, pointers, native sessions/accounts/identities/workspaces
+and memberships unchanged. The staging tool initially rejected grouped CREATE
+statements in a prepared statement; the transaction was retried with each CREATE
+as a separate statement, without changing migration SQL.
+
+No native candidate HTTP endpoint or launch control is supplied by this increment.
+No customer preview grant was issued externally, website activated or application
+deployed. Migration 455 must precede deployment of this native review path.

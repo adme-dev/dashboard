@@ -1,3 +1,6 @@
+import { decodeProtectedHeader } from 'jose'
+import { CUSTOMER_PREVIEW_TOKEN_TYPE, verifyCustomerPreviewToken } from './customerPreviewToken'
+import { authorizeCustomerPreviewSession } from './customerPreviewSession'
 import type { H3Event } from 'h3'
 import { z } from 'zod'
 import { verifyNativeAstroRuntimeRelease, type AstroCompilerReleaseReceipt } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
@@ -277,6 +280,7 @@ export async function resolvePageStudioReleaseHost(
 }
 
 interface AuthorizePageStudioPreviewDependencies {
+  runTransaction?: NonNullable<Parameters<typeof authorizeCustomerPreviewSession>[2]>['runTransaction']
   currentDate?: Date
   event?: H3Event
   issuer?: string
@@ -336,6 +340,24 @@ export async function authorizePageStudioPreview(
       401,
       'Page Studio preview credential is invalid'
     )
+  }
+  // Untrusted type selects the verifier only; signature, audience, issuer and
+  // exact native claims are verified before accessing its separate grant ledger.
+  let nativeReview = false
+  try {
+    nativeReview = decodeProtectedHeader(parsed.data.token).typ === CUSTOMER_PREVIEW_TOKEN_TYPE
+  } catch { /* Standard verifier rejects malformed tokens. */ }
+  if (nativeReview) {
+    const environment = dependencies.publicKey && dependencies.issuer
+      ? { publicKey: dependencies.publicKey, issuer: dependencies.issuer }
+      : resolvePageStudioPreviewVerificationEnvironment(dependencies.event)
+    let claims
+    try {
+      claims = await verifyCustomerPreviewToken(parsed.data.token, environment.publicKey, environment.issuer, dependencies.currentDate)
+    } catch (error) {
+      throw new PageStudioDeliveryError('PREVIEW_TOKEN_INVALID', 401, 'Page Studio preview credential is invalid', { cause: error })
+    }
+    return authorizeCustomerPreviewSession(claims, parsed.data.hostname, { runTransaction: dependencies.runTransaction })
   }
   const { claims, permission } = await verifyPreviewClaims(parsed.data.token, dependencies)
 

@@ -24,6 +24,20 @@ export async function withCustomerPublishAuthority<T>(
   scopeInput: PageStudioPublishingScope, principalInput: CustomerPublishPrincipal,
   work: (db: PageStudioPublishingQueryClient) => Promise<T>, dependencies: Dependencies = {}
 ): Promise<T> {
+  return withCustomerAuthority(scopeInput, principalInput, work, dependencies, 'write')
+}
+
+/** Review delivery uses compatible read locks so concurrent document/assets
+ * do not contend with each other. Publishing callers retain exclusive locks. */
+export function withCustomerPreviewAuthority<T>(
+  scope: PageStudioPublishingScope, principal: CustomerPublishPrincipal,
+  work: (db: PageStudioPublishingQueryClient) => Promise<T>, dependencies: Dependencies = {}
+): Promise<T> {
+  return withCustomerAuthority(scope, principal, work, dependencies, 'read')
+}
+
+async function withCustomerAuthority<T>(scopeInput: PageStudioPublishingScope, principalInput: CustomerPublishPrincipal,
+  work: (db: PageStudioPublishingQueryClient) => Promise<T>, dependencies: Dependencies, mode: 'read' | 'write'): Promise<T> {
   const scope = Scope.safeParse(scopeInput), principal = Principal.safeParse(principalInput)
   if (!scope.success || !principal.success) throw denied()
   // Copy primitives before awaiting: callbacks cannot substitute later authority.
@@ -66,7 +80,7 @@ export async function withCustomerPublishAuthority<T>(
       // NOWAIT refuses an in-flight revocation rather than waiting on stale data.
       await check()
       if ((await db.query(`SELECT id FROM page_studio_sites
-        WHERE tenant_id=$1 AND client_id=$2 AND id=$3 FOR NO KEY UPDATE NOWAIT`, params.slice(0, 3))).rows.length !== 1) throw denied()
+        WHERE tenant_id=$1 AND client_id=$2 AND id=$3 ${mode === 'read' ? 'FOR SHARE' : 'FOR NO KEY UPDATE'} NOWAIT`, params.slice(0, 3))).rows.length !== 1) throw denied()
       await check()
       const result = await work(db)
       await check()

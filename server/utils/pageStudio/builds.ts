@@ -117,7 +117,7 @@ const defaultRunTransaction: RunTransaction = callback =>
 
 const ZERO_DIGEST = '0'.repeat(64)
 
-function authoritySql(lock: boolean): string {
+function authoritySql(lock: boolean | 'share'): string {
   return `SELECT version.digest,
                  version.status AS version_status,
                  site.client_id::text,
@@ -141,7 +141,7 @@ function authoritySql(lock: boolean): string {
             LIMIT 1
           ) latest_review ON TRUE
           WHERE version.tenant_id = $1 AND version.site_id = $2 AND version.id = $3
-          ${lock ? 'FOR UPDATE OF version, site' : ''}`
+          ${lock === 'share' ? 'FOR SHARE OF version, site NOWAIT' : lock ? 'FOR UPDATE OF version, site' : ''}`
 }
 
 function assertApprovedAuthority(row: BuildAuthorityRow | null): BuildAuthorityRow {
@@ -163,6 +163,11 @@ function assertApprovedAuthority(row: BuildAuthorityRow | null): BuildAuthorityR
 /** SQL-only approved-version read for native feature seal composition. */
 export async function readApprovedBuildAuthority(db: PageStudioBuildQueryClient, input: { tenantId: string, siteId: string, versionId: string }) {
   return assertApprovedAuthority((await db.query<BuildAuthorityRow>(authoritySql(true), [input.tenantId, input.siteId, input.versionId])).rows[0] ?? null)
+}
+
+/** Compatible approval locks for concurrent private preview reads. */
+export async function readApprovedPreviewAuthority(db: PageStudioBuildQueryClient, input: { tenantId: string, siteId: string, versionId: string }) {
+  return assertApprovedAuthority((await db.query<BuildAuthorityRow>(authoritySql('share'), [input.tenantId, input.siteId, input.versionId])).rows[0] ?? null)
 }
 
 function expectedMetadata(scope: { tenantId: string, clientId: string, siteId: string }, digest: string) {
