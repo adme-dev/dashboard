@@ -228,6 +228,34 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS adoption on PostgreSQL
     const { withCmsCommitAuthority } = await import('~~/server/utils/pageStudio/cmsCommitAuthority')
     await expect(withCmsCommitAuthority({ scope: f.scope, principal, mutation: 'customer-checkpoint' }, async () => true, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
   })
+  it.each(['editor', 'cms-setup'] as const)('keeps %s lifetime bounded when the issuance query crosses a clock second', async (purpose) => {
+    await db.query(`INSERT INTO page_studio_customer_cms_setup_approvals
+      (workspace_id,site_id,identity_id,tenant_id,business_id,approved_by,preview_policy,expires_at)
+      SELECT workspace_id,site_id,$1,tenant_id,business_id,(preview_policy->>'approvedBy')::uuid,preview_policy,(preview_policy->>'expiresAt')::timestamptz
+      FROM page_studio_customer_site_requests`, [ids.owner])
+    const handoffs = await import('~~/server/utils/pageStudio/customerEditorHandoff')
+    const handoff = await (purpose === 'editor' ? handoffs.issueCustomerEditorHandoff : handoffs.issueCustomerCmsSetupHandoff)(token, config, { runTransaction })
+    const sessions = await import('~~/server/utils/pageStudio/customerEditorSessions')
+    const jwt = await import('~~/server/utils/pageStudio/customerEditorToken')
+    const result = await sessions.exchangeCustomerEditorSession(handoff.token, config, {
+      signToken: claims => jwt.signCustomerEditorToken(claims, privatePem, issuer),
+      runTransaction: callback => runTransaction(async (client) => {
+        // Deterministic clock crossing, confined to this transaction's issuance
+        // query. All parent/child authority checks still use the real DB clock.
+        await client.query(`CREATE TEMP TABLE issuance_clock(tick integer, base timestamptz) ON COMMIT DROP;
+          INSERT INTO issuance_clock VALUES (0, date_trunc('second', clock_timestamp()) - interval '10 seconds');
+          CREATE FUNCTION pg_temp.next_issuance_time() RETURNS timestamptz LANGUAGE plpgsql VOLATILE AS $$
+          DECLARE result timestamptz;
+          BEGIN UPDATE issuance_clock SET tick=tick+1 RETURNING base + tick * interval '1 second' INTO result;
+          RETURN result; END $$`)
+        return callback({ query: (sql: string, params?: unknown[]) => client.query(
+          sql.includes('AS issued') ? sql.replaceAll('clock_timestamp()', 'pg_temp.next_issuance_time()') : sql, params)
+        })
+      })
+    })
+    const claims = await jwt.verifyCustomerEditorToken(result.token, publicPem, issuer)
+    expect(claims.expiresAt - claims.issuedAt).toBe(purpose === 'editor' ? jwt.CUSTOMER_EDITOR_MAX_SECONDS : jwt.CUSTOMER_CMS_SETUP_MAX_SECONDS)
+  })
   it('withholds setup adoption after approval withdrawal during awaited storage reads', async () => {
     const f = await setupAdoption(), principal = await restricted(f)
     await f.call({ action: 'start' }, principal as never)

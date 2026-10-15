@@ -80,11 +80,14 @@ export async function exchangeCustomerEditorSession(ticket: unknown, configurati
     const setup = handoff?.purpose === 'cms-setup'
     const owned = await readCustomerProvisioningPreviewAuthority(db, context.scope.siteId, context.identityId)
     const setupApproval = setup ? await assertCustomerCmsSetupApproval(db, owned, context.identityId) : null
-    const parent = (await db.query<{ issued: number, expires: number, editor_origin: string }>(`SELECT
-      floor(extract(epoch FROM clock_timestamp()))::int AS issued,
+    // Use one instant for both bounds: separate clock reads can cross a second
+    // and create an overlong session that our own authority checks reject.
+    const parent = (await db.query<{ issued: number, expires: number, editor_origin: string }>(`WITH issuance AS MATERIALIZED (SELECT clock_timestamp() AS instant)
+      SELECT floor(extract(epoch FROM issuance.instant))::int AS issued,
       floor(extract(epoch FROM LEAST(native.expires_at, entitlement.effective_until, $3::timestamptz,
-        clock_timestamp() + $2 * INTERVAL '1 second')))::int AS expires, handoff.editor_origin
+        issuance.instant + $2 * INTERVAL '1 second')))::int AS expires, handoff.editor_origin
       FROM page_studio_customer_editor_handoffs handoff
+      CROSS JOIN issuance
       JOIN page_studio_customer_sessions native ON native.token_hash = handoff.login_session_hash
       JOIN page_studio_sites site ON site.id = handoff.site_id
       JOIN page_studio_entitlements entitlement ON entitlement.id = site.entitlement_id

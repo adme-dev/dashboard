@@ -425,3 +425,14 @@ and 1,227 mutations; this endpoint adds no God-mode bypass. Previous source
 eeb534a9ff4aedcd6a88a5395cea6b6b8366d7fc passed CI38662047393 including the
 production Worker build and full suite. No deployment or customer activation is
 included in this HTTP increment.
+
+## Native editor issuance clock boundary
+
+CI38663594876 failed one CMS adoption test on source 179373279. The issuance
+query independently read the clock for issue and expiry times; crossing a second
+could produce a token one second over its maximum lifetime. Both editor and CMS
+setup paths now use one materialized issuance instant while retaining parent
+expiry caps and fresh authorization. Deterministic PostgreSQL regressions fail
+on the old query and pass on the fix. The complete customer workspace database
+group passes 392 tests across 11 files. Changed-file lint and independent review
+pass. No access policy, grant, deployment or customer activation changed.
