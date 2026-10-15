@@ -12,16 +12,36 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
-  let available = true, failed = false, writes = 0, posts = 0, stale = false
+  let available = true, failed = false, writes = 0, posts = 0, stale = false, previews = 0, inspections = 0
+  const siteId = '10000000-0000-4000-8000-000000000001'
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname
     if (path.endsWith('/customer/dashboard')) {
       return route.fulfill(stale
         ? { status: 503, json: { statusCode: 503 } }
         : { json: {
-            businessName: 'Customer Flowers', businessType: 'Florist', timezone: 'Australia/Melbourne',
+            siteId, businessName: 'Customer Flowers', businessType: 'Florist', timezone: 'Australia/Melbourne',
             stage: 5, state: 'verification-pending', canCreate: false, canRetry: false, canOpenStudio: available
           } })
+    }
+    if (path === `/api/portal/page-studio/customer/sites/${siteId}/launch-state`) {
+      inspections++
+      return route.fulfill({ json: { siteId, siteName: 'Customer Flowers', siteStatus: 'draft',
+        deliveryMode: 'static', candidateReview: true, canManagePublication: true, checkpointId: 'saved-checkpoint',
+        digest: 'source-digest', approvedVersionId: 'approved-version', activeReleases: [],
+        content: { status: 'ready', publicPages: 3, publicForms: 0, requiresSealedFeatures: false },
+        plan: { status: 'ready', key: 'business' }, observedAt: new Date().toISOString() } })
+    }
+    if (path === `/api/portal/page-studio/customer/sites/${siteId}/versions/approved-version/candidate`) {
+      previews++
+      assert.equal(route.request().method(), 'POST')
+      assert(route.request().headers()['idempotency-key'])
+      assert.deepEqual(route.request().postDataJSON(), { environment: 'production' })
+      const release = { buildId: 'build', versionDigest: 'source-digest', manifestDigest: 'manifest', scope: { siteId } }
+      return route.fulfill({ json: { build: { ...release, astro: { context: { identity: {
+        environment: 'production', source: { kind: 'approved-version', versionId: 'approved-version',
+          checkpoint: { id: 'saved-checkpoint', digest: 'source-digest' } } } } } },
+      preview: { hostname: 'private-preview.example.test', release }, session: { token: 'synthetic-review-credential', expiresAt: Date.now() / 1000 + 300 } } })
     }
     if (path.endsWith('/customer/editor')) {
       writes++
@@ -49,7 +69,14 @@ try {
   assert(response.headers()['content-security-policy'].includes(editor), 'Native editor missing from actual CSP')
   await page.getByRole('heading', { name: 'Continue editing your website' }).waitFor()
   assert.equal(writes, 0)
-  await page.getByText('Not published', { exact: true }).waitFor()
+  await page.getByText('Website overview', { exact: true }).waitFor()
+  await page.getByRole('heading', { name: 'Your website launch' }).waitFor()
+  await page.getByRole('button', { name: 'Prepare approved preview', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await page.getByRole('button', { name: 'Open approved preview', exact: true }).waitFor()
+  assert.equal(previews, 1)
+  assert(inspections >= 3)
+  assert(!(await page.locator('body').innerText()).includes('synthetic-review-credential'))
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 900 })
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
@@ -62,19 +89,20 @@ try {
   await page.getByText('We could not open Studio.', { exact: false }).waitFor()
   assert(!(await page.locator('body').innerText()).includes('private storage detail'))
   assert.equal(posts, 0)
+  assert.equal(await page.getByRole('button', { name: 'Open approved preview', exact: true }).count(), 0)
   stale = true
-  await page.getByRole('button', { name: 'Refresh status' }).click()
+  await page.getByRole('button', { name: 'Refresh status', exact: true }).first().click()
   await page.getByText('Status could not refresh', { exact: true }).waitFor()
   const staleAction = page.getByRole('button', { name: 'Open Studio', exact: true })
   assert(await staleAction.count() === 0 || await staleAction.isDisabled())
   stale = false
   available = false
-  await page.getByRole('button', { name: 'Refresh status' }).click()
+  await page.getByRole('button', { name: 'Refresh status', exact: true }).first().click()
   await page.getByRole('heading', { name: 'Awaiting verification' }).waitFor()
   assert.equal(await page.getByRole('button', { name: 'Open Studio', exact: true }).count(), 0)
   available = true
   failed = false
-  await page.getByRole('button', { name: 'Refresh status' }).click()
+  await page.getByRole('button', { name: 'Refresh status', exact: true }).first().click()
   await page.getByRole('button', { name: 'Open Studio', exact: true }).focus()
   await page.keyboard.press('Enter')
   await page.getByRole('heading', { name: 'Studio transport received' }).waitFor()
@@ -83,5 +111,5 @@ try {
   assert.equal(page.url(), `${editor}/customer/launch`)
   assert.deepEqual(errors, [])
   console.log(JSON.stringify({ widths: [1280, 390, 320], actualCsp: true, keyboardPost: true, redactedFailure: true, staleDisabled: true,
-    unavailableHidden: true, writes, posts, mode: 'real Nuxt UI and Chrome with synthetic API/editor transport; not hosted acceptance' }))
+    unavailableHidden: true, nativeLaunchStatus: true, nativePreviewPrepared: previews, inspections, writes, posts, mode: 'real Nuxt UI and Chrome with synthetic API/editor transport; not hosted acceptance' }))
 } finally { await browser.close() }

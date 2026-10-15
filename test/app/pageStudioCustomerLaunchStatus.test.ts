@@ -17,9 +17,9 @@ beforeEach(() => {
   vi.stubGlobal('useFetch', () => ({ data: state, error, status, refresh }))
 })
 afterEach(() => vi.unstubAllGlobals())
-async function mount() {
+async function mount(audience = ref<'portal' | 'customer'>('portal')) {
   const host = document.createElement('div')
-  const app = createApp({ render: () => h(Suspense, null, { default: () => h(LaunchStatus, { siteId: 'site-a' }) }) })
+  const app = createApp({ render: () => h(Suspense, null, { default: () => h(LaunchStatus, { siteId: 'site-a', audience: audience.value }) }) })
   app.component('UButton', defineComponent({ props: ['label'], setup: (props, { attrs }) => () => h('button', attrs, props.label) }))
   app.component('UAlert', defineComponent({ props: ['title', 'description'], setup: props => () => h('div', `${props.title} ${props.description}`) }))
   app.component('UBadge', defineComponent({ props: ['label'], setup: props => () => h('span', props.label) }))
@@ -243,5 +243,50 @@ it.each(['site', 'version', 'checkpoint', 'digest', 'environment', 'release-site
     await settle()
     expect(button(host, 'Open approved preview')).toBeUndefined()
     expect(host.textContent).toContain('Preview unavailable')
+  } finally { app.unmount() }
+})
+
+it('prepares native previews through the native endpoint only', async () => {
+  ready()
+  const read = vi.fn(() => ({ data: state, error, status, refresh }))
+  vi.stubGlobal('useFetch', read)
+  request.mockResolvedValue(response())
+  const { app, host } = await mount(ref('customer'))
+  try {
+    expect(read.mock.calls[0]![0]()).toBe('/api/portal/page-studio/customer/sites/site-a/launch-state')
+    button(host, 'Prepare approved preview')!.click()
+    await settle()
+    expect(request).toHaveBeenCalledWith('/api/portal/page-studio/customer/sites/site-a/versions/version/candidate', expect.anything())
+    expect(host.textContent).not.toContain('readiness below')
+    expect(button(host, 'Open approved preview')).toBeDefined()
+  } finally { app.unmount() }
+})
+it('discards a prepared native credential if the account adapter changes', async () => {
+  ready()
+  request.mockResolvedValue(response())
+  const audience = ref<'portal' | 'customer'>('customer')
+  const { app, host } = await mount(audience)
+  try {
+    button(host, 'Prepare approved preview')!.click()
+    await settle()
+    audience.value = 'portal'
+    await settle()
+    expect(button(host, 'Open approved preview')).toBeUndefined()
+    expect(button(host, 'Prepare approved preview')).toBeUndefined()
+    audience.value = 'customer'
+    await settle()
+    expect(button(host, 'Open approved preview')).toBeUndefined()
+  } finally { app.unmount() }
+})
+
+it('shows retained approval and required publishing access separately for an expired plan', async () => {
+  ready()
+  state.value!.canManagePublication = false
+  state.value!.plan = { status: 'required', key: 'expired' }
+  const { app, host } = await mount(ref('customer'))
+  try {
+    expect(host.textContent).toContain('Current version approved')
+    expect(host.textContent).toContain('A current publishing plan')
+    expect(button(host, 'Prepare approved preview')).toBeUndefined()
   } finally { app.unmount() }
 })

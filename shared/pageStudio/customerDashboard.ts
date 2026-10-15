@@ -5,6 +5,7 @@ export const CustomerProvisioningRecoverySchema = z.object({
 }).strict()
 
 export interface CustomerDashboard {
+  siteId?: string
   businessName: string
   businessType: string
   timezone: string

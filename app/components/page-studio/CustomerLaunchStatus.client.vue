@@ -3,11 +3,15 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { openPageStudioCandidatePreview } from '~~/app/utils/pageStudioCandidatePreview'
 import type { PageStudioLaunchState } from '~~/shared/pageStudio/launchReadiness'
 
-const props = defineProps<{ siteId: string }>()
+const props = defineProps<{ siteId: string, audience?: 'portal' | 'customer' }>()
+// Account adapters are fixed for a mounted panel. Remount when changing account
+// type so a retained fetch/credential can never cross authentication surfaces.
+const audience = props.audience ?? 'portal'
+const api = audience === 'customer' ? '/api/portal/page-studio/customer' : '/api/portal/page-studio'
 const { data, error, status, refresh } = await useFetch<PageStudioLaunchState>(
-  () => `/api/portal/page-studio/sites/${encodeURIComponent(props.siteId)}/launch-state`
+  () => `${api}/sites/${encodeURIComponent(props.siteId)}/launch-state`
 )
-const state = computed(() => !error.value && data.value?.siteId === props.siteId ? data.value : null)
+const state = computed(() => (props.audience ?? 'portal') === audience && !error.value && data.value?.siteId === props.siteId ? data.value : null)
 
 interface CandidateResponse {
   build: {
@@ -56,7 +60,7 @@ async function preparePreview() {
   try {
     await refresh()
     if (!stillCurrent()) return
-    const response = await $fetch<CandidateResponse>(`/api/portal/page-studio/sites/${encodeURIComponent(captured.siteId)}/versions/${encodeURIComponent(captured.versionId)}/candidate`, {
+    const response = await $fetch<CandidateResponse>(`${api}/sites/${encodeURIComponent(captured.siteId)}/versions/${encodeURIComponent(captured.versionId)}/candidate`, {
       method: 'POST', headers: { 'idempotency-key': key }, body: { environment: 'production' }
     })
     if (!stillCurrent()) return
@@ -94,7 +98,7 @@ function openPreview() {
           Your website launch
         </h2>
         <p class="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Check your saved content and publication before connecting your domain below.
+          {{ audience === 'customer' ? 'Check your saved content, approval and recorded publication.' : 'Check your saved content and publication before connecting your domain below.' }}
         </p>
       </div>
       <UButton
@@ -153,11 +157,19 @@ function openPreview() {
                 />
                 {{ release.hostname }}
               </p>
-              <p>A publication is recorded for these domains. Check domain and HTTPS readiness below. Saved changes may still need publishing.</p>
+              <p>A publication is recorded for these domains. {{ audience === 'customer' ? 'Domain and HTTPS readiness must also be verified before launch.' : 'Check domain and HTTPS readiness below.' }} Saved changes may still need publishing.</p>
             </template>
             <p v-else>
               No publication recorded. Approval and domain verification do not publish the website.
             </p>
+          </dd>
+        </div>
+        <div v-if="audience === 'customer'" class="grid gap-2 py-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
+          <dt class="font-medium text-highlighted">
+            Publishing access
+          </dt>
+          <dd class="text-sm leading-6 text-muted">
+            {{ state.canManagePublication ? 'Your account can prepare an approved website for publishing.' : 'A current publishing plan and owner or manager access are required. Contact support if you need access.' }}
           </dd>
         </div>
       </dl>

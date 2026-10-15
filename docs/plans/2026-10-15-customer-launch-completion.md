@@ -458,3 +458,30 @@ Native and legacy HTTP/transport/status tests and real PostgreSQL ownership test
 pass. The route inventory is 2,255 reads/mutations total, with 1,227 mutations;
 no God-mode bypass was introduced. No application deployment or activation is
 included in this increment.
+
+## Native customer dashboard launch controls
+
+The native dashboard exposes its authenticated bound site ID and mounts the
+existing launch panel through a fixed native-account adapter. Its publication
+status is read from the service, replacing the unconditional “Not published”
+badge. The setup checklist reports actual Studio availability rather than a
+permanently pending preview-verification item. Prepared credentials are discarded
+on scope, adapter, status or dashboard-access changes and on unmount. Native
+copy does not refer customers to a domain panel that is absent from this page.
+Public feature descriptions retain release-validation wording.
+
+The final UI, endpoint, inspection and inventory group passes 114 tests; the
+provisioning suite passes 55 and native publication/inspection PostgreSQL suite
+passes 85. Real local Nuxt and Chrome checks pass at 320/390/1280px, including
+keyboard preparation, stale-access removal, original editor POST transport and
+no page errors. Screenshots were inspected. These browser results use synthetic
+API/editor responses and are not hosted native-account acceptance.
+
+Independent review passes after the approval/plan separation correction. Lint
+passes and the management Worker dry build is 886.88 KiB raw / 149.90 KiB gzip.
+The full frontend typecheck exceeded Node's default 4 GiB heap; with 12 GiB it
+completed with 643 repository diagnostics, none on changed UI lines. Two existing
+provisioning-scope diagnostics are in unchanged lines of customerDashboard.ts.
+Server typecheck reports 295 diagnostics. No deployment or customer production
+activation is included. Hosted account login, compiler configuration/provenance,
+provider domain access and the remaining acceptance matrix are still outstanding.
