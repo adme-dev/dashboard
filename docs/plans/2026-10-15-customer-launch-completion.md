@@ -485,3 +485,45 @@ provisioning-scope diagnostics are in unchanged lines of customerDashboard.ts.
 Server typecheck reports 295 diagnostics. No deployment or customer production
 activation is included. Hosted account login, compiler configuration/provenance,
 provider domain access and the remaining acceptance matrix are still outstanding.
+
+## Native plan transition prerequisite
+
+The native publishing checks now have a supported **internal operator** grant
+transaction for the initial one-site preview-to-publishing-plan transition.
+`grantCustomerPublishingPlan` requires a current active built-in platform
+owner/admin with no custom role, an active native workspace, its immutable
+business/site receipt, the expected current entitlement and a draft site.
+Customer payloads cannot supply a tenant, business, actor or publishing flag.
+There is no new HTTP route or customer-facing plan control in this increment;
+any caller must authenticate the operator before invoking the transaction.
+
+The transaction cancels the old preview entitlement, creates a separate active
+plan, changes only the site's entitlement reference and records both entitlement
+snapshots plus approved terms in the existing append-only site audit. It never
+rewrites the original preview policy or expiry. Capacity reductions, duplicate
+requests with different terms, foreign scopes and changes from an already active
+plan are refused. Exact retries return historical receipts without reactivating
+cancelled access. Locks protect current staff/workspace/plan/site authority, and
+an expiry check before commit rolls back a grant that expires during approval.
+No payment, DNS change, publication, preview renewal or editor session is created.
+
+Verification: the new PostgreSQL suite passes 36 cases using real native sign-in,
+workspace and preview creation. It demonstrates admission by the actual native
+publication authority after a legitimate grant, with no agency-client row.
+Adjacent native publication/site/provisioning suites pass 170 cases. Cases include
+concurrent competing grants and revocations, audit failure rollback, expiry during
+audit insertion, append-only evidence and preservation of the original receipt.
+CI explicitly runs the new database suite. Independent review found no blockers;
+its requested staff-revocation and expiry-crossing tests were added and passed.
+Changed-source lint passes. Server type checking still reports the same 295
+pre-existing diagnostics, none in the added source. The full suite passed 16,293
+cases with 2,325 conditional skips; its sole failure was the frozen permission
+inventory needing the new staff gate. That gate is now explicitly classified as
+an identity boundary (no bypass), and all eight inventory checks pass on rerun.
+
+This is not completion of customer plan management or hosted acceptance. The
+operator HTTP/UI workflow, usage-aware later plan changes, native production
+editor/version authoring and customer launch journey remain outstanding. No
+customer plan, production access, DNS or release pointer has been changed.
+Public marketing pages remain unchanged because this prerequisite has no usable
+customer-facing feature to advertise yet.
