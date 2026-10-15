@@ -38,9 +38,11 @@ type RunTransaction = <T>(
   callback: (db: PageStudioPublishingQueryClient) => Promise<T>
 ) => Promise<T>
 
+export type PageStudioPublishingActorRole = 'agency' | 'client' | 'customer'
+
 export interface PageStudioActivateReleaseInput {
   actorId: string
-  actorRole?: 'agency' | 'client'
+  actorRole?: PageStudioPublishingActorRole
   buildId: string
   environment: 'staging' | 'production'
   expectedActiveReleaseId: string | null
@@ -51,7 +53,7 @@ export interface PageStudioActivateReleaseInput {
 
 export interface PageStudioRollbackReleaseInput {
   actorId: string
-  actorRole?: 'agency' | 'client'
+  actorRole?: PageStudioPublishingActorRole
   environment: 'staging' | 'production'
   expectedActiveReleaseId: string
   hostname: string
@@ -220,19 +222,20 @@ export function nullableActorUuid(actorId: string): string | null {
     : null
 }
 
-function publishingActorMatches(retained: string, requested: 'agency' | 'client' = 'agency') {
+function publishingActorMatches(retained: string, requested: PageStudioPublishingActorRole = 'agency') {
   // Historical agency calls were audited as service actions. They cannot be
   // replayed by a client whose UUID happens to equal a staff actor's UUID.
   return retained === requested || (retained === 'service' && requested === 'agency')
 }
 
-function publishingActor(input: { actorId: string, actorRole?: 'agency' | 'client' }) {
+function publishingActor(input: { actorId: string, actorRole?: PageStudioPublishingActorRole }) {
   const role = input.actorRole ?? 'agency'
   const id = nullableActorUuid(input.actorId)
-  if (!['agency', 'client'].includes(role) || (role === 'client' && !id)) {
+  if (!['agency', 'client', 'customer'].includes(role) || (role !== 'agency' && !id)) {
     throw publishingError('PUBLISH_AUTHORITY_DENIED', 403, 'Current publishing access is required')
   }
-  return { role, staffId: role === 'agency' ? id : null, clientId: role === 'client' ? id : null }
+  return { role, staffId: role === 'agency' ? id : null, clientId: role === 'client' ? id : null,
+    customerIdentityId: role === 'customer' ? id : null }
 }
 
 async function findExistingActivation(
@@ -448,8 +451,8 @@ export async function activatePageStudioRelease(
     const created = await db.query<{ release_id: string }>(
       `INSERT INTO page_studio_releases (
          tenant_id, client_id, site_id, build_id, environment,
-         normalized_hostname, published_by, superseded_release_id, idempotency_key, published_by_client_user_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8::uuid, $9, $10::uuid)
+         normalized_hostname, published_by, superseded_release_id, idempotency_key, published_by_client_user_id, published_by_customer_identity_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8::uuid, $9, $10::uuid, $11::uuid)
        RETURNING id AS release_id`,
       [
         input.scope.tenantId,
@@ -461,7 +464,8 @@ export async function activatePageStudioRelease(
         actor.staffId,
         activeReleaseId,
         input.idempotencyKey,
-        actor.clientId
+        actor.clientId,
+        actor.customerIdentityId
       ]
     )
     const releaseId = created.rows[0]?.release_id
@@ -474,6 +478,7 @@ export async function activatePageStudioRelease(
              pointer_version = pointer_version + 1,
              updated_by = $7::uuid,
              updated_by_client_user_id = $8::uuid,
+             updated_by_customer_identity_id = $9::uuid,
              updated_at = NOW()
          WHERE tenant_id = $1
            AND client_id = $2
@@ -488,15 +493,16 @@ export async function activatePageStudioRelease(
           input.hostname,
           releaseId,
           actor.staffId,
-          actor.clientId
+          actor.clientId,
+          actor.customerIdentityId
         ]
       )
     } else {
       await db.query(
         `INSERT INTO page_studio_release_pointers (
            tenant_id, client_id, site_id, environment, normalized_hostname,
-           active_release_id, updated_by, updated_by_client_user_id
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8::uuid)`,
+           active_release_id, updated_by, updated_by_client_user_id, updated_by_customer_identity_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8::uuid, $9::uuid)`,
         [
           input.scope.tenantId,
           input.scope.clientId,
@@ -505,7 +511,8 @@ export async function activatePageStudioRelease(
           input.hostname,
           releaseId,
           actor.staffId,
-          actor.clientId
+          actor.clientId,
+          actor.customerIdentityId
         ]
       )
     }
@@ -703,6 +710,7 @@ export async function rollbackPageStudioRelease(
            pointer_version = pointer_version + 1,
            updated_by = $7::uuid,
            updated_by_client_user_id = $8::uuid,
+           updated_by_customer_identity_id = $9::uuid,
            updated_at = NOW()
        WHERE tenant_id = $1
          AND client_id = $2
@@ -717,7 +725,8 @@ export async function rollbackPageStudioRelease(
         input.hostname,
         input.targetReleaseId,
         actor.staffId,
-        actor.clientId
+        actor.clientId,
+        actor.customerIdentityId
       ]
     )
     await db.query(

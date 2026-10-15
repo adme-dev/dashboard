@@ -98,7 +98,7 @@ describe.runIf(Boolean(databaseUrl))(
       await observer.query(`CREATE TYPE user_role AS ENUM ('owner','admin','member','viewer','guest');
       CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN,user_role user_role,custom_role_id UUID,sessions_invalidated_at TIMESTAMPTZ);
       CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN);
-      CREATE TABLE client_users(id UUID PRIMARY KEY,client_id UUID,status TEXT,role TEXT);
+      CREATE TABLE page_studio_customer_identities(id UUID PRIMARY KEY); CREATE TABLE client_users(id UUID PRIMARY KEY,client_id UUID,status TEXT,role TEXT);
       CREATE TABLE client_sessions(token_hash TEXT PRIMARY KEY,client_user_id UUID,expires_at TIMESTAMPTZ);
       CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));
@@ -115,7 +115,7 @@ describe.runIf(Boolean(databaseUrl))(
         '421_page_studio_ai_usage.sql', '427_page_studio_public_action_invocations.sql', '428_page_studio_client_staging.sql',
         '430_page_studio_astro_build_identity.sql', '431_page_studio_astro_release_receipt.sql',
         '433_page_studio_runtime_delivery.sql', '434_page_studio_runtime_draft_isolation.sql',
-        '435_page_studio_runtime_features.sql', '452_page_studio_client_publishers.sql'
+        '435_page_studio_runtime_features.sql', '452_page_studio_client_publishers.sql', '453_page_studio_native_publishers.sql'
       ]) {
         await observer.query(
           readFileSync(

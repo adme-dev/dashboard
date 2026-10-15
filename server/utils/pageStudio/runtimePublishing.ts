@@ -193,7 +193,7 @@ export async function activatePageStudioRuntimeRelease(
       await db.query(
         `UPDATE page_studio_release_pointers
          SET active_release_id = $6, pointer_version = pointer_version + 1, updated_by = $7::uuid,
-             updated_by_client_user_id = NULL, updated_at = NOW()
+             updated_by_client_user_id = NULL, updated_by_customer_identity_id = NULL, updated_at = NOW()
          WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3 AND environment = $4 AND normalized_hostname = $5`,
         [scope.tenantId, scope.clientId, scope.siteId, input.environment, input.hostname, releaseId, actorUuid]
       )
@@ -298,7 +298,7 @@ export async function rollbackPageStudioRuntimeRelease(
     await db.query(
       `UPDATE page_studio_release_pointers
        SET active_release_id = $6, pointer_version = pointer_version + 1, updated_by = $7::uuid,
-           updated_by_client_user_id = NULL, updated_at = NOW()
+           updated_by_client_user_id = NULL, updated_by_customer_identity_id = NULL, updated_at = NOW()
        WHERE tenant_id = $1 AND client_id = $2 AND site_id = $3 AND environment = $4 AND normalized_hostname = $5`,
       [scope.tenantId, scope.clientId, scope.siteId, input.environment, input.hostname, input.targetReleaseId, actorUuid]
     )

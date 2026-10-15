@@ -273,3 +273,30 @@ independent review pass. Server TypeScript reports 295 repository diagnostics,
 none in the new adapter; this is not a clean repository typecheck. CI now includes
 the new PostgreSQL suite. All fixture users, plans and effects were confined to a
 disposable localhost database; no real customer's entitlement was changed.
+
+
+## Native publisher release attribution
+
+Static activation and rollback now retain a separate native identity foreign key
+and `customer` audit role. Idempotent retries require the original actor kind as
+well as actor ID; a matching UUID from a portal or staff account cannot replay a
+native customer's request. Pointer updates clear attribution for the previous
+actor kind, including a later staff runtime activation or rollback. Existing
+staff and invited portal behavior remains covered by the regression suite.
+
+Migration 453 adds two nullable identity references and two exclusivity checks.
+It was applied to the configured database and the isolated staging branch on
+15 October at 00:18 UTC. Transactional before/after digests verified sites,
+entitlements, retained releases and live pointers unchanged. All four added
+constraints are validated. Initial verification attempts rolled back before
+commit: the preservation query incorrectly assumed a pointer `id` column, then
+its constraint-name filter missed PostgreSQL's truncated generated FK name.
+The corrected checks use the composite pointer key and referenced table.
+
+The real PostgreSQL release/Astro/runtime/feature group passes 259 cases with one
+existing conditional skip; a further staff runtime takeover regression passes in
+the 15-case runtime suite. Adjacent publishing/HTTP checks pass 46 cases.
+Independent review and changed-source lint pass. Server typecheck still reports
+295 repository diagnostics, none in changed source. No customer HTTP publication
+route is enabled by this increment, and no customer website was activated.
+Native candidate/build/session adapters and launch controls remain outstanding.
