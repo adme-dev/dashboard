@@ -16,16 +16,17 @@ const views: Record<CustomerDashboard['state'], { title: string, description: st
   'available': { title: 'Create your first website preview', description: 'We’ll prepare your website using your saved business details. You can return to this overview to check progress.', icon: 'i-lucide-panels-top-left' },
   'preparing': { title: 'Creating your preview', description: 'Your setup is saved. Refresh to check progress; closing this tab will not create a second website.', icon: 'i-lucide-loader-circle' },
   'verification-pending': { title: 'Awaiting verification', description: 'Your website has been prepared. It needs a final check before editing can open. Check launch status for publication details.', icon: 'i-lucide-list-checks' },
+  'editor-ready': { title: 'Continue editing your website', description: 'Open Studio to edit your saved draft. Your changes stay private until a separate publishing step.', icon: 'i-lucide-panels-top-left' },
   'needs-attention': { title: 'Your setup needs attention', description: 'We’ve kept your existing setup. Contact support so we can check it and help you continue.', icon: 'i-lucide-life-buoy' },
   'unavailable': { title: 'Status is temporarily unavailable', description: 'We could not check your website. Refresh the status in a moment. Your saved setup will be kept.', icon: 'i-lucide-cloud-off' }
 }
 const view = computed(() => data.value?.canOpenStudio
-  ? { title: 'Continue editing your website', description: 'Open Studio to edit your saved draft. Your changes stay private until a separate publishing step.', icon: 'i-lucide-panels-top-left' }
+  ? views['editor-ready']
   : data.value ? views[data.value.state] : null)
 const steps = computed(() => [
   { label: 'Business details saved', done: true },
-  { label: 'Website prepared', done: (data.value?.stage ?? 0) >= 3 },
-  { label: 'Content added', done: (data.value?.stage ?? 0) >= 4 },
+  { label: 'Website prepared', done: data.value?.canOpenStudio === true || (data.value?.stage ?? 0) >= 3 },
+  { label: 'Content added', done: data.value?.canOpenStudio === true || (data.value?.stage ?? 0) >= 4 },
   { label: 'Studio available', done: data.value?.canOpenStudio === true }
 ])
 async function load() {

@@ -56,6 +56,8 @@ describe('customer website overview', () => {
     expect(host.textContent).toContain('Continue editing your website')
     expect(host.textContent).not.toContain('Not published')
     expect(host.textContent).toContain('Studio available: complete')
+    expect(host.textContent).toContain('Website prepared: complete')
+    expect(host.textContent).toContain('Content added: complete')
     expect(mutate).not.toHaveBeenCalled()
     let resolve!: (value: unknown) => void
     mutate.mockImplementationOnce(() => new Promise((done) => {

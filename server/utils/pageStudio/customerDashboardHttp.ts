@@ -38,7 +38,13 @@ export async function customerDashboardHandler(event: H3Event) {
     const dashboard = await readCustomerDashboard(token, options(event))
     const editor = customerEditorLaunchOptions(event)
     const cms = customerCmsSetupOptions(event)
-    return { ...dashboard, canPrepareCms: cms ? await customerCmsSetupAvailable(token, cms) : false, canOpenStudio: editor ? await readCustomerEditorAvailability(token, editor) : false }
+    const canPrepareCms = cms ? await customerCmsSetupAvailable(token, cms) : false
+    const canOpenStudio = editor ? await readCustomerEditorAvailability(token, editor) : false
+    // Current native authority plus verified managed content supersedes the
+    // historical preview job. This proves editing readiness, not publication.
+    if (canOpenStudio) return { ...dashboard, state: 'editor-ready', stage: 5,
+      canOpenStudio, canPrepareCms: false, canCreate: false, canRetry: false, recovery: undefined }
+    return { ...dashboard, canPrepareCms, canOpenStudio }
   } catch (error) { safeError(error) }
 }
 export async function customerPreviewHandler(event: H3Event) {

@@ -670,3 +670,34 @@ The production build passes at 25,463,561 raw worker bytes (5,367 remaining unde
 the unchanged budget), gzip 7,158,189 bytes. Current-main ancestry and the guarded
 agency-dashboard deployment target pass. No deployment or customer activation
 was performed. Further server additions require explicit size verification.
+
+### 15 October — verified dashboard readiness and preview schema parity
+
+The overview now reports `editor-ready` only after the existing native authority
+and managed target/checkpoint verification succeeds. This supersedes an obsolete
+preview-job status after a plan upgrade, completes the setup indicators and
+removes stale creation/recovery/CMS-preparation actions. Failed readiness retains
+the original status; native access loss still prevents returning the earlier
+private overview. Editor readiness makes no assertion about publication.
+
+Five reproductions failed before the fix. The targeted HTTP/component suite now
+passes 37 tests, and the broader customer UI/HTTP regression passes 120 tests in
+eight files. Changed-file ESLint and independent review pass. Production build
+passes at 25,463,503 raw bytes (5,425 remaining), gzip 7,158,215 bytes. No budget
+was raised and no deployment was performed.
+
+Migration 456 was also applied to the verified, non-primary `staging/page-studio`
+Neon branch `br-long-mountain-a4f73v10`. All four new authority constraints are
+validated. Before/after digests match for sites, entitlements, releases, release
+pointers, CMS scopes and the original fields of existing editor handoffs/sessions.
+The private receipt is `page-studio-migration-456-staging-20261015.json` outside
+this repository. This does not establish or migrate production content storage.
+
+Dashboard CI 38684212308 passed for the preceding paired integration at 4aa3fbb32.
+Studio CI 38681176744 passed on both Linux and Windows for d316347; only after it
+completed was 695ec7a pushed. Its new CI is 38685422751. The separate secret scan
+flagged the synthetic production compatibility JWT: the private key was discarded,
+the retained public key and historical token are test-only. An exact fingerprint
+exception, matching the existing staging-fixture policy, was reviewed separately;
+pinned Gitleaks 8.24.3 reproduced one finding before and zero after. New hosted
+acceptance and production storage transition remain outstanding.
