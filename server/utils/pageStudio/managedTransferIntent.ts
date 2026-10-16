@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createError } from 'h3'
 import { z } from 'zod'
+import { transactionWithoutRetry } from '~~/server/utils/db'
 import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { ReleaseSha256Schema } from '~~/shared/pageStudio/cmsManaged'
 import { assertSoleCmsAuthoringScope } from './cmsGraphCoordinator'
@@ -130,5 +131,46 @@ export async function reserveManagedTransferIntent(input: unknown, dependencies:
       throw error
     }
     return receipt({ operation_id: request.operationId, request, intent, intent_digest: intentDigest })
+  }, dependencies)
+}
+
+export const ManagedTransferReferenceSchema = z.object({
+  operationId: z.string().uuid(), intentDigest: ReleaseSha256Schema
+}).strict()
+
+/** Private SQL-only phase boundary. Resolve the retained original logins, never
+ * accept a replacement owner/operator from a resource request. No remote I/O
+ * belongs in work; callers leave this transaction before invoking providers.
+ */
+export async function withReservedManagedTransfer<T>(input: unknown,
+  work: (db: PageStudioQueryClient, intent: StoredIntent['intent']) => Promise<T>,
+  dependencies: Dependencies = {}
+): Promise<T> {
+  const parsed = ManagedTransferReferenceSchema.safeParse(input)
+  if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid managed transfer reference' })
+  const denied = () => createError({ statusCode: 403, statusMessage: 'The retained managed transfer is unavailable' })
+  // This short initial read obtains private immutable authority inputs. Its
+  // contents cannot authorize anything until the independent native checks.
+  const run = dependencies.runTransaction ?? transactionWithoutRetry
+  const row = await run(async db => (await db.query<StoredIntent>(
+    'SELECT operation_id,request,intent,intent_digest FROM page_studio_managed_transfer_intents WHERE operation_id=$1',
+    [parsed.data.operationId])).rows[0])
+  if (!row || row.intent_digest !== parsed.data.intentDigest || await collectionDigest(row.intent) !== row.intent_digest) throw denied()
+  const original = Request.safeParse(row.request)
+  if (!original.success || original.data.operationId !== parsed.data.operationId
+    || row.intent.operationId !== parsed.data.operationId || row.intent.formatVersion !== 1
+    || row.intent.sourceDigest !== original.data.expectedSourceDigest
+    || row.intent.destination.environment !== 'production'
+    || row.intent.destination.requestKey !== `transfer_${parsed.data.operationId}`) throw denied()
+  return withManagedTransferAuthority(original.data.authority, async (db, authority) => {
+    const current = async () => {
+      const source = await captureSource(db, authority)
+      if (!equal(authority, row.intent.authority) || !equal(source, row.intent.source)
+        || await collectionDigest({ authority, source }) !== row.intent.sourceDigest) throw conflict()
+    }
+    await current()
+    const result = await work(db, structuredClone(row.intent))
+    await current()
+    return result
   }, dependencies)
 }

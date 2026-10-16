@@ -216,6 +216,7 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
     beforeAll(async () => {
       const path = 'server/database/migrations/457_page_studio_managed_transfer_intents.sql'
       await db.query(readFileSync(path, 'utf8'))
+      await db.query(readFileSync('server/database/migrations/458_page_studio_managed_transfer_resources.sql', 'utf8'))
     })
     beforeEach(async () => {
       const scope = { tenantId: expected.tenantId, clientId: expected.businessId, businessId: expected.businessId, siteId: input.siteId, environment: 'staging' }
@@ -330,6 +331,133 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
         FROM generate_series(2,1001) AS version`, [key, generation, pin('content'), expected.identityId])
       await expect(reviewManagedTransferSource(input, { runTransaction })).rejects.toMatchObject({ statusCode: 413 })
       expect((await db.query('SELECT * FROM page_studio_managed_transfer_intents')).rows).toEqual([])
+    })
+
+    describe('resource-only transfer preparation', () => {
+      const artifacts = { policyVersion: 'content-attachment-v1', runtimeDigest: 'd'.repeat(64), schemaDigest: 'e'.repeat(64) }
+      async function prepared() {
+        const value = await request()
+        const receipt = await reserve(value)
+        return { operationId: value.operationId, intentDigest: receipt.intentDigest }
+      }
+      async function prepare(value: unknown, selectedArtifacts: unknown = artifacts) {
+        const module = await import('~~/server/utils/pageStudio/managedTransferResources')
+        return module.prepareManagedTransferResources(value, { artifacts: selectedArtifacts, runTransaction })
+      }
+      async function admission(value: unknown) {
+        const module = await import('~~/server/utils/pageStudio/managedTransferResources')
+        return module.authorizeManagedTransferResources(value, { runTransaction })
+      }
+      it('retains the exact production resource request independently of source design and replays lost acknowledgements', async () => {
+        const value = await prepared()
+        const before = (await db.query('SELECT current_checkpoint_id,status FROM page_studio_sites')).rows
+        const first = await prepare(value)
+        expect(await prepare(value)).toEqual(first)
+        expect(first).toMatchObject({ ...value, state: 'resources-reserved', resourceIdentity: expect.stringMatching(/^cms_attach_[a-f0-9]{64}$/) })
+        expect(JSON.stringify(first)).not.toContain(input.ownerLoginSessionHash)
+        expect(JSON.stringify(first)).not.toContain(operatorHash)
+        const saved = (await db.query('SELECT * FROM page_studio_managed_transfer_resources')).rows
+        expect(saved).toHaveLength(1)
+        const resourceRequest = saved[0].request
+        expect(resourceRequest).toMatchObject({ ...artifacts, operationId: `transfer_${value.operationId}`,
+          scope: { siteId: input.siteId, environment: 'production' }, anchor: { checkpointId: 'checkpoint_a', digest: 'c'.repeat(64) },
+          actor: { kind: 'agency-user', userId: actorId, loginSessionHash: operatorHash } })
+        expect(await admission({ ...value, resourceRequest })).toEqual(resourceRequest)
+        expect((await db.query('SELECT current_checkpoint_id,status FROM page_studio_sites')).rows).toEqual(before)
+        expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+        await expect(db.query('UPDATE page_studio_managed_transfer_resources SET request=\'{}\'')).rejects.toThrow(/immutable/i)
+        await expect(db.query('DELETE FROM page_studio_managed_transfer_resources')).rejects.toThrow(/immutable/i)
+      })
+      it('requires a saved transfer and exact reviewed intent digest', async () => {
+        await expect(prepare({ operationId: randomUUID(), intentDigest: '0'.repeat(64) })).rejects.toMatchObject({ statusCode: 403 })
+        const value = await prepared()
+        await expect(prepare({ ...value, intentDigest: '0'.repeat(64) })).rejects.toMatchObject({ statusCode: 403 })
+        await expect(prepare({ ...value, destination: { databaseId: randomUUID() } })).rejects.toMatchObject({ statusCode: 400 })
+      })
+      it('refuses artifact changes instead of silently installing a new runtime on retry', async () => {
+        const value = await prepared()
+        await prepare(value)
+        await expect(prepare(value, { ...artifacts, runtimeDigest: '0'.repeat(64) })).rejects.toMatchObject({ statusCode: 409 })
+        await expect(prepare(value, { ...artifacts, policyVersion: 'unreviewed' })).rejects.toMatchObject({ statusCode: 503 })
+      })
+      it.each([
+        'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+        'UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()',
+        'UPDATE page_studio_workspace_memberships SET role=\'manager\'',
+        'UPDATE page_studio_entitlements SET storage_bytes_limit=storage_bytes_limit+1 WHERE status=\'active\'',
+        'UPDATE page_studio_cms_scopes SET current_content_id=NULL',
+        'DELETE FROM page_studio_cms_record_heads',
+        'UPDATE page_studio_sites SET current_checkpoint_id=NULL'
+      ])('rechecks original authority and source before every resource effect: %s', async (sql) => {
+        const value = await prepared()
+        await prepare(value)
+        const resourceRequest = (await db.query('SELECT request FROM page_studio_managed_transfer_resources')).rows[0].request
+        await db.query(sql)
+        await expect(admission({ ...value, resourceRequest })).rejects.toMatchObject({ statusCode: expect.any(Number) })
+        await expect(prepare(value)).rejects.toMatchObject({ statusCode: expect.any(Number) })
+      })
+      it.each(['scope', 'actor', 'anchor', 'runtimeDigest', 'operationId'])('refuses substituted resource %s', async (field) => {
+        const value = await prepared()
+        await prepare(value)
+        const resourceRequest = (await db.query('SELECT request FROM page_studio_managed_transfer_resources')).rows[0].request
+        const substitutions = { scope: { ...resourceRequest.scope, environment: 'staging' }, actor: { ...resourceRequest.actor, userId: randomUUID() },
+          anchor: { ...resourceRequest.anchor, digest: '0'.repeat(64) }, runtimeDigest: '0'.repeat(64), operationId: `transfer_${randomUUID()}` }
+        await expect(admission({ ...value, resourceRequest: { ...resourceRequest, [field]: substitutions[field as keyof typeof substitutions] } })).rejects.toMatchObject({ statusCode: 403 })
+      })
+      it('does not substitute a fresh owner login after the original was revoked', async () => {
+        const value = await prepared()
+        await prepare(value)
+        const resourceRequest = (await db.query('SELECT request FROM page_studio_managed_transfer_resources')).rows[0].request
+        await db.query(`INSERT INTO page_studio_customer_sessions(token_hash,account_id,expires_at)
+          SELECT $1,account_id,expires_at FROM page_studio_customer_sessions`, ['b'.repeat(64)])
+        await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp() WHERE token_hash=$1', [input.ownerLoginSessionHash])
+        await expect(admission({ ...value, resourceRequest })).rejects.toMatchObject({ statusCode: 403 })
+      })
+      it('rolls back resource reservation if source selection changes in the native transaction', async () => {
+        const value = await prepared()
+        const module = await import('~~/server/utils/pageStudio/managedTransferResources')
+        const changed = <T>(work: (client: pg.Client) => Promise<T>) => runTransaction(async (tx) => {
+          const query = tx.query.bind(tx)
+          const wrapped = { query: async (sql: string, params?: unknown[]) => {
+            const result = await query(sql, params)
+            if (sql.includes('INSERT INTO page_studio_managed_transfer_resources')) {
+              await query('UPDATE page_studio_cms_scopes SET current_content_id=NULL')
+            }
+            return result
+          } }
+          return work(wrapped as pg.Client)
+        })
+        await expect(module.prepareManagedTransferResources(value, { artifacts, runTransaction: changed })).rejects.toMatchObject({ statusCode: 409 })
+        expect((await db.query('SELECT * FROM page_studio_managed_transfer_resources')).rows).toEqual([])
+        expect((await db.query('SELECT current_content_id FROM page_studio_cms_scopes')).rows[0].current_content_id).toBe(contentObject)
+      })
+      it('rechecks original authority after resolving the immutable intent', async () => {
+        const value = await prepared()
+        const module = await import('~~/server/utils/pageStudio/managedTransferResources')
+        let reads = 0
+        const changed = async <T>(work: (client: pg.Client) => Promise<T>) => {
+          const result = await runTransaction(work)
+          if (++reads === 1) await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+          return result
+        }
+        await expect(module.prepareManagedTransferResources(value, { artifacts, runTransaction: changed })).rejects.toMatchObject({ statusCode: 403 })
+        expect((await db.query('SELECT * FROM page_studio_managed_transfer_resources')).rows).toEqual([])
+      })
+      it('serializes competing reviewed runtime preparations without replacing the winner', async () => {
+        const value = await prepared()
+        const results = await Promise.allSettled([prepare(value), prepare(value, { ...artifacts, runtimeDigest: '0'.repeat(64) })])
+        expect(results.filter(item => item.status === 'fulfilled')).toHaveLength(1)
+        const loser = results.find(item => item.status === 'rejected') as PromiseRejectedResult
+        expect([409, 503]).toContain(loser.reason.statusCode)
+        expect((await db.query('SELECT count(*) FROM page_studio_managed_transfer_resources')).rows[0].count).toBe('1')
+      })
+      it('does not admit a resource request before it has been retained', async () => {
+        const value = await prepared()
+        await expect(admission({ ...value, resourceRequest: { ...artifacts, version: 1, mode: 'attach-existing-content', operationId: `transfer_${value.operationId}`,
+          actor: { kind: 'agency-user', userId: actorId, loginSessionHash: operatorHash },
+          anchor: { checkpointId: 'checkpoint_a', digest: 'c'.repeat(64) },
+          scope: { tenantId: expected.tenantId, clientId: expected.businessId, businessId: expected.businessId, siteId: input.siteId, environment: 'production' } } })).rejects.toMatchObject({ statusCode: 403 })
+      })
     })
   })
 })

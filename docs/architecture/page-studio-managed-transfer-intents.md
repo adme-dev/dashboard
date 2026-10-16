@@ -35,7 +35,7 @@ Migration 457 adds only `page_studio_managed_transfer_intents`. Composite foreig
 keys bind the existing site, source scope and entitlement. The operation,
 destination generation and per-site reservation are unique, and an immutable
 trigger prevents updates or deletion. Original login hashes stay inside this
-private intent table; the review and reservation responses contain none. No
+private coordinator tables; the review and reservation responses contain none. No
 general-purpose audit payload receives credentials. There is no change to an
 existing scope, selected checkpoint, preview, published release or domain.
 
@@ -66,3 +66,29 @@ checks revocation, expiry, rollback, concurrent authority edits, competing
 requests, immutable retry identity, changed source/plan/history, metadata bounds
 and credential-free receipts. Only the default production database adapter is
 replaced, and it throws if an injected disposable transaction is omitted.
+
+## Resource-only preparation
+
+`prepareManagedTransferResources` retains one immutable production resource request
+under an existing transfer intent. It uses the original operator login, original
+checkpoint anchor and server-reviewed `content-attachment-v1` artifacts. The
+request can feed the existing resource-only attachment setup; it must never be
+sent through normal provisioning completion, which seeds a replacement design.
+Migration 458 stores this private request separately. The returned progress
+receipt contains no login hashes. Retries cannot substitute artifacts or scopes.
+
+`authorizeManagedTransferResources` is a private executor boundary. It resolves
+the original native owner and operator from the immutable intent, rechecks their
+current authority and the complete captured native source, and requires the exact
+retained resource request. Use it before and after each remote operation. No
+transaction is held across provider I/O, and a successful check is not a permanent
+capability. Ordinary attachment admission is unchanged.
+
+The private `/internal/page-studio/managed-transfers/resources/authorize` route
+requires machine authentication and a trusted production provisioning binding
+before reading input. It never uses ordinary attachment authority. It is not a
+customer endpoint, and no hosted executor calls it yet. The resource request is
+not a provider ownership receipt. Wiring allocation, exact physical
+resource binding, source fencing, explicit interrupted-operation recovery and the
+final graph selection remains outstanding. No customer route or authoring
+selection changes as a result of preparation.
