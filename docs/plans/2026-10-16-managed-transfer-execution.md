@@ -215,3 +215,55 @@ Verification: the combined native PostgreSQL suite passes 322 tests, and the add
 Migrations 466, 467 and 469 were applied to the configured database with zero rows in the new tables, both expected triggers per table, and unchanged fingerprints for sites, release pointers and resource bindings. Receipts are in `.verification/managed-transfer/{copy-graph,forms-history,forms-history-verification}-migration-receipt.json`. No customer activation occurred. Migration 468 is unused; terminal selection is reserved as 471 after copy verification 470.
 
 Actual copy/history orchestration, final atomic selection, retained old-live authority, recovery UI and hosted acceptance remain outstanding. The exact prepared-runtime policy is intentionally unconfigured until artifact digests are reviewed. The latest a113 CI build and database groups passed; one unrelated governance UI test timed out, passed all 16 cases on isolated rerun, and the failed CI job is rerunning. No production deployment or DNS change is claimed.
+
+
+### 2026-10-16: verified native terminal handoff and current authoring origins
+
+The working native terminal implementation passes 400 real PostgreSQL tests
+(381 original authority/copy/terminal tests plus19 schema adversarial tests).
+It independently re-inspects actual copy and Forms history outside SQL locks,
+compares original source clocks/heads under current original transfer authority,
+and atomically records completion, retains the source, selects destination objects,
+application and checkpoint. Lost acknowledgements recover the immutable receipt;
+DB failure rolls back all native selection. Public release pointers are untouched.
+
+Migration470 SHA256 d913a9cf8b821eb139b55fc218dcbfa4756158ae84af22651e3df1bc8f6a2739
+was applied at2026-10-16T12:16:37.957Z with0rows/2triggers.
+Migration471 SHA256 c441a6006f209f2f655e2d6ce3d6db327266f9bebffe02760a75f91c33728d0e
+was applied at2026-10-16T12:19:13.140Z with0rows/4triggers. Fingerprints prove existing
+sites, release pointers, bindings and CMS content unchanged. Neither migration
+performs a transfer, customer activation or DNS change.
+
+Current completion provenance has an explicit reader for normal current-owner
+editing, separate from original-principal transfer recovery. Editor launch accepts
+verified adoption or transfer origins. Production Forms stays behind its explicit
+flag and checks current owner/plan/origin; availability reads actual private Forms
+storage so a missing grant or disabled selector is not reported as ready. Existing
+staging behavior is preserved. Retained-source publication uses the original live
+seal/history and current ownership, while ordinary editors remain managed-only.
+
+Independent review found no remaining blocking findings in bounded470/471,
+completion read/finalizer and retained publication work. Whole Worker typecheck
+passes; server types retain their existing295 diagnostic baseline in focused
+agent checks. Later connection/runtime/recovery work is still uncommitted and must
+pass combined exact-source CI and hosted acceptance. Dashboard97e2b565 CI is green;
+Studio e39839d failed for a missing committed planner export target, repaired in
+reviewed d57f2bf with normal hooks. No release is claimed.
+
+### 17 October final integration checkpoint
+
+- Combined native authority, completion migration, current origin and destination
+  authoring: 451 PostgreSQL tests pass in 178.65 seconds.
+- Customer progress/recovery/inspection-only regressions: 114 tests pass, including
+  five real PostgreSQL current-identity and plan cases. Saved transfers suppress
+  historical staging setup/resume actions; publication remains separate.
+- Completed-transfer private coordinator: 59 focused tests pass; Pages dependency
+  audit excludes full proof/SQL/finalizer code.
+- Current source retention permits an authorized current owner after original
+  import login expiry, while rejecting changed ownership, plan or immutable
+  completion. Six real PostgreSQL cases and nine wire/endpoint cases pass.
+- Full private copy/runtime group: 15 tests pass, including actual workerd RPC,
+  D1/R2 source fencing, inspect and resume. Authoring group: 34 tests pass.
+  First measured form save is 140 operations against unchanged 256 limit.
+- Scoped Dashboard lint and diff checks pass. Exact combined commit CI, maximum
+  closure stress, hosted acceptance and release remain outstanding.

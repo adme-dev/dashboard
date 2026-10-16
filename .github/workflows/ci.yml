@@ -167,14 +167,14 @@ jobs:
       - name: Page Studio Astro reservations and historical release compatibility
         run: |
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_cms_activation_astro_ci'
-          pnpm exec vitest run test/server/utils/pageStudioAstroBuildsPostgres.test.ts test/server/utils/pageStudioReleaseFeatureSealsPostgres.test.ts test/shared/pageStudioBuilderGraphVerifier.test.ts test/server/utils/pageStudioRuntimePublishingPostgres.test.ts test/server/utils/pageStudioStagingStorePostgres.test.ts test/server/utils/pageStudioCheckpointStagingAuthorityPostgres.test.ts
+          pnpm exec vitest run test/server/utils/pageStudioAstroBuildsPostgres.test.ts test/server/utils/pageStudioReleaseFeatureSealsPostgres.test.ts test/server/utils/pageStudioPublishedSiteOwnerPostgres.test.ts test/shared/pageStudioBuilderGraphVerifier.test.ts test/server/utils/pageStudioRuntimePublishingPostgres.test.ts test/server/utils/pageStudioStagingStorePostgres.test.ts test/server/utils/pageStudioCheckpointStagingAuthorityPostgres.test.ts
         timeout-minutes: 5
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_activation_astro_ci
 
       - name: Page Studio managed production authoring and transfer authority
-        run: pnpm exec vitest run test/server/utils/pageStudioCustomerAuthoringAuthorityPostgres.test.ts test/server/utils/pageStudioCustomerProductionEditorPostgres.test.ts test/server/utils/pageStudioManagedTransferAuthorityPostgres.test.ts --maxWorkers=1
-        timeout-minutes: 5
+        run: pnpm exec vitest run test/server/utils/pageStudioCustomerAuthoringAuthorityPostgres.test.ts test/server/utils/pageStudioCustomerProductionEditorPostgres.test.ts test/server/utils/pageStudioManagedTransferAuthorityPostgres.test.ts test/server/utils/pageStudioManagedTransferCompletionMigrationPostgres.test.ts test/server/utils/pageStudioManagedCmsOriginPostgres.test.ts test/server/utils/pageStudioManagedTransferDestinationAuthoringPostgres.test.ts test/server/utils/pageStudioCustomerManagedTransferPostgres.test.ts --maxWorkers=1
+        timeout-minutes: 8
         env:
           PAGE_STUDIO_WORKSPACE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_activation_astro_ci
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_activation_astro_ci

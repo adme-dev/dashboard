@@ -16,6 +16,8 @@ const views: Record<CustomerDashboard['state'], { title: string, description: st
   'available': { title: 'Create your first website preview', description: 'We’ll prepare your website using your saved business details. You can return to this overview to check progress.', icon: 'i-lucide-panels-top-left' },
   'preparing': { title: 'Creating your preview', description: 'Your setup is saved. Refresh to check progress; closing this tab will not create a second website.', icon: 'i-lucide-loader-circle' },
   'verification-pending': { title: 'Awaiting verification', description: 'Your website has been prepared. It needs a final check before editing can open. Check launch status for publication details.', icon: 'i-lucide-list-checks' },
+  'transfer-pending': { title: 'Your website transfer is in progress', description: 'Your saved transfer stage is shown below. Refresh to check progress, or contact support if it needs attention.', icon: 'i-lucide-copy-check' },
+  'connection-pending': { title: 'Your website transfer is saved', description: 'The transfer is complete. Check the connection details below to finish connecting Studio. Publishing remains a separate step.', icon: 'i-lucide-plug' },
   'editor-ready': { title: 'Continue editing your website', description: 'Open Studio to edit your saved draft. Your changes stay private until a separate publishing step.', icon: 'i-lucide-panels-top-left' },
   'needs-attention': { title: 'Your setup needs attention', description: 'We’ve kept your existing setup. Contact support so we can check it and help you continue.', icon: 'i-lucide-life-buoy' },
   'unavailable': { title: 'Status is temporarily unavailable', description: 'We could not check your website. Refresh the status in a moment. Your saved setup will be kept.', icon: 'i-lucide-cloud-off' }
@@ -216,7 +218,12 @@ async function signOut() {
           />
         </div>
         <div v-if="data.siteId && !loadError && !busy" class="px-6 pt-6 sm:px-8">
-          <PageStudioCustomerLaunchStatus :key="`customer-${data.siteId}`" :site-id="data.siteId" audience="customer" />
+          <PageStudioCustomerLaunchStatus
+            :key="`customer-${data.siteId}`"
+            :site-id="data.siteId"
+            audience="customer"
+            @changed="load"
+          />
         </div>
         <StudioCustomerCmsSetup v-if="data.canPrepareCms && !loadError" @changed="load" />
         <div v-if="canManageForms" class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-6 py-5 sm:px-8">

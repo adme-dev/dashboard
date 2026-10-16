@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { openPageStudioCandidatePreview } from '~~/app/utils/pageStudioCandidatePreview'
+import TransferProgress from './CustomerTransferProgress.client.vue'
 import type { PageStudioLaunchState } from '~~/shared/pageStudio/launchReadiness'
 
+const emit = defineEmits<{ changed: [] }>()
 const props = defineProps<{ siteId: string, audience?: 'portal' | 'customer' }>()
 // Account adapters are fixed for a mounted panel. Remount when changing account
 // type so a retained fetch/credential can never cross authentication surfaces.
@@ -12,6 +14,43 @@ const { data, error, status, refresh } = await useFetch<PageStudioLaunchState>(
   () => `${api}/sites/${encodeURIComponent(props.siteId)}/launch-state`
 )
 const state = computed(() => (props.audience ?? 'portal') === audience && !error.value && data.value?.siteId === props.siteId ? data.value : null)
+
+const transferBusy = ref(false)
+const transferError = ref('')
+let transferRevision = 0
+watch(() => [props.siteId, props.audience], () => {
+  transferRevision++
+  transferError.value = ''
+}, { flush: 'sync' })
+onBeforeUnmount(() => {
+  transferRevision++
+})
+const transfer = computed(() => audience === 'customer' && state.value?.managedTransfer?.siteId === props.siteId ? state.value.managedTransfer : null)
+function permitted(action: 'retry-connection' | 'retry-retention') {
+  return transfer.value?.completed === true && status.value !== 'pending'
+    && (action === 'retry-connection' ? transfer.value.canRetryConnection : transfer.value.canRetryRetention)
+}
+async function recoverTransfer(action: 'retry-connection' | 'retry-retention') {
+  if (transferBusy.value || !permitted(action)) return
+  const siteId = props.siteId
+  const attempt = transferRevision
+  const stillCurrent = () => attempt === transferRevision && siteId === props.siteId
+  transferBusy.value = true
+  transferError.value = ''
+  try {
+    await refresh()
+    if (!stillCurrent() || !permitted(action)) return
+    await $fetch(`${api}/sites/${encodeURIComponent(siteId)}/transfer-recovery`, { method: 'POST', body: { action } })
+  } catch {
+    if (stillCurrent()) transferError.value = 'We could not confirm the last request. Refresh your status before trying again. Your saved website has been kept.'
+  } finally {
+    if (stillCurrent()) {
+      await refresh()
+      if (stillCurrent()) emit('changed')
+    }
+    transferBusy.value = false
+  }
+}
 
 interface CandidateResponse {
   build: {
@@ -125,6 +164,13 @@ function openPreview() {
       <USkeleton class="h-14 w-full" /><USkeleton class="h-14 w-full" />
     </div>
     <template v-else>
+      <TransferProgress
+        v-if="transfer"
+        :progress="transfer"
+        :busy="transferBusy || status === 'pending'"
+        :error="transferError"
+        @recover="recoverTransfer"
+      />
       <dl class="divide-y divide-default border-t border-default">
         <div class="grid gap-2 py-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
           <dt class="font-medium text-highlighted">

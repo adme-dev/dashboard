@@ -8,7 +8,7 @@ import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { issueCustomerEditorHandoff, parseCustomerEditorHandoffConfiguration } from './customerEditorHandoff'
 import { assertSoleCmsAuthoringScope } from './cmsGraphCoordinator'
 import { lockCmsContext, cmsEqual } from './cmsVisibility'
-import { readManagedCmsAdoptionReceipt } from './cmsAdoption'
+import { readManagedCmsOrigin } from './managedCmsOrigin'
 import { withVerifiedCustomerEditorStorage } from './customerEditorStorage'
 import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
 
@@ -34,7 +34,7 @@ async function snapshot(db: PageStudioQueryClient, token: string, environment: '
   const scope = owned.scope
   await assertSoleCmsAuthoringScope(db, scope)
   const context = await lockCmsContext(db, scope)
-  const receipt = await readManagedCmsAdoptionReceipt(db, scope)
+  const receipt = await readManagedCmsOrigin(db, scope)
   const rows = (await db.query(`SELECT cp.id,cp.digest,cp.object_key FROM page_studio_sites site
     JOIN page_studio_checkpoints cp ON cp.tenant_id=site.tenant_id AND cp.client_id=site.client_id AND cp.site_id=site.id AND cp.id=site.current_checkpoint_id
     WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3`, [scope.tenantId, scope.clientId, scope.siteId])).rows

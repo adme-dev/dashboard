@@ -205,7 +205,7 @@ async function currentObject(
  * inserts metadata only; it does not grant graph approval or update any pointer. */
 export async function insertVerifiedCmsObjects(
   db: PageStudioControlQueryClient,
-  context: Awaited<ReturnType<typeof lockCmsContext>>,
+  context: { state: Pick<Awaited<ReturnType<typeof lockCmsContext>>['state'], 'target' | 'freeze_digest' | 'scope_key' | 'active_generation'> },
   proof: VerifiedPreparation,
   commitId: string
 ) {

@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const managed = vi.hoisted(() => ({ origin: vi.fn(), sole: vi.fn(), context: vi.fn() }))
+vi.mock('~~/server/utils/pageStudio/managedCmsOrigin', () => ({ readManagedCmsOrigin: managed.origin }))
+vi.mock('~~/server/utils/pageStudio/cmsGraphCoordinator', async original => ({ ...await original<object>(), assertSoleCmsAuthoringScope: managed.sole }))
+vi.mock('~~/server/utils/pageStudio/cmsVisibility', async original => ({ ...await original<object>(), lockCmsContext: managed.context }))
+
 vi.mock('~~/server/utils/db', () => ({ transactionWithoutRetry: vi.fn(), transaction: vi.fn() }))
 const databaseUrl = process.env.PAGE_STUDIO_WORKSPACE_TEST_URL
 if (databaseUrl && !['localhost', '127.0.0.1'].includes(new URL(databaseUrl).hostname)) throw new Error('Disposable localhost database required')
@@ -78,6 +83,50 @@ describe.runIf(Boolean(databaseUrl))('native production authoring authority', ()
     if (!db) return
     await db.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
     await db.end()
+  })
+
+  describe('production customer Forms authority', () => {
+    const forms = async (changes = {}) => {
+      const { resolveCustomerFormAuthority } = await import('~~/server/utils/pageStudio/customerFormAuthority')
+      return resolveCustomerFormAuthority({ sessionToken, siteId: fixture.site.id, environment: 'production', writing: true, ...changes }, { runTransaction })
+    }
+    beforeEach(() => {
+      managed.origin.mockReset().mockResolvedValue({ kind: 'transfer', receipt: { operationId: randomUUID(), digest: 'a'.repeat(64) } })
+      managed.sole.mockReset().mockResolvedValue(undefined)
+      managed.context.mockReset().mockResolvedValue({})
+    })
+    it('uses the current native owner and paid plan without the preview approver', async () => {
+      await db.query('UPDATE team_members SET is_active=FALSE')
+      expect(await forms()).toMatchObject({ workspaceId: fixture.workspaceId, canEdit: true, scope: { siteId: fixture.site.id, environment: 'production' } })
+      expect(managed.origin).toHaveBeenCalledOnce()
+      expect(managed.sole).toHaveBeenCalledOnce()
+      expect(managed.context).toHaveBeenCalledOnce()
+    })
+    it.each([
+      'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+      'UPDATE page_studio_customer_accounts SET status=\'suspended\'',
+      'UPDATE page_studio_workspace_memberships SET role=\'editor\'',
+      'UPDATE page_studio_entitlements SET status=\'cancelled\' WHERE status=\'active\''
+    ])('rejects withdrawn current authority before managed origin: %s', async (sql) => {
+      await db.query(sql)
+      await expect(forms()).rejects.toMatchObject({ statusCode: 403 })
+      expect(managed.origin).not.toHaveBeenCalled()
+    })
+    it('does not admit an incomplete managed destination', async () => {
+      managed.origin.mockRejectedValue(new Error('No completed destination'))
+      await expect(forms()).rejects.toThrow('No completed destination')
+    })
+    it('rechecks native authority after managed origin validation', async () => {
+      managed.origin.mockImplementation(async (tx: pg.Client) => {
+        await tx.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+        return { kind: 'transfer', receipt: { digest: 'a'.repeat(64) } }
+      })
+      await expect(forms()).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it('rejects browser-selected entitlement and scope fields', async () => {
+      await expect(forms({ entitlementId: planId })).rejects.toMatchObject({ statusCode: 400 })
+      expect(managed.origin).not.toHaveBeenCalled()
+    })
   })
 
   it('derives exact native ownership under the current non-preview plan', async () => {

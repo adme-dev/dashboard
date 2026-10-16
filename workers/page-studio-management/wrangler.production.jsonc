@@ -55,6 +55,10 @@
     {
       "binding": "PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER",
       "service": "xeroflow-content-router-staging"
+    },
+    {
+      "binding": "PAGE_STUDIO_PROVISIONER",
+      "service": "xeroflow-provisioning-production"
     }
   ],
   "tsconfig": "tsconfig.json"

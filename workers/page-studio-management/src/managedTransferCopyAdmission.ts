@@ -14,7 +14,7 @@ function configured(env: Record<string, unknown>) {
     throw createError({ statusCode: 503, statusMessage: 'Production transfer admission is unavailable' })
   }
 }
-async function retained(db: PageStudioQueryClient, intent: Intent, current: Awaited<ReturnType<typeof state>>) {
+export async function retainedManagedTransferCopyGraph(db: PageStudioQueryClient, intent: Intent, current: Awaited<ReturnType<typeof state>>) {
   const row = (await db.query<{ intent_digest: string, request: unknown, request_json: string, request_digest: string, destination_proof_digest: string }>(
     `SELECT intent_digest,request,request_json,request_digest,destination_proof_digest FROM page_studio_managed_transfer_copy_graph_requests WHERE operation_id=$1`, [intent.operationId])).rows[0]
   if (!row) return null
@@ -28,7 +28,7 @@ async function retained(db: PageStudioQueryClient, intent: Intent, current: Awai
 export async function readManagedTransferCopyGraph(input: unknown, dependencies: Dependencies) {
   const reference = Reference.parse(input)
   configured(dependencies.env)
-  return withReservedManagedTransfer(reference, async (db, intent) => retained(db, intent, await state(db, intent, dependencies.env)), dependencies)
+  return withReservedManagedTransfer(reference, async (db, intent) => retainedManagedTransferCopyGraph(db, intent, await state(db, intent, dependencies.env)), dependencies)
 }
 
 /** Save exact original copy/graph admission, with read-only discovery outside
@@ -39,7 +39,7 @@ export async function prepareManagedTransferCopyGraph(input: unknown, dependenci
   const discover = createTransferCopyReaders(dependencies.env)
   const before = await withReservedManagedTransfer(reference, async (db, intent) => {
     const current = await state(db, intent, dependencies.env)
-    return { intent, ...current, saved: await retained(db, intent, current) }
+    return { intent, ...current, saved: await retainedManagedTransferCopyGraph(db, intent, current) }
   }, dependencies)
   if (before.saved) return structuredClone(before.saved)
   const discovered = await discover(before.intent)
@@ -47,7 +47,7 @@ export async function prepareManagedTransferCopyGraph(input: unknown, dependenci
   return withReservedManagedTransfer(reference, async (db, intent) => {
     const current = await state(db, intent, dependencies.env)
     if (canonical(current.execution) !== canonical(before.execution) || canonical(current.proof) !== canonical(before.proof)) throw conflict()
-    const saved = await retained(db, intent, current)
+    const saved = await retainedManagedTransferCopyGraph(db, intent, current)
     if (saved) return structuredClone(saved)
     const json = canonical(proposed)
     await db.query(`INSERT INTO page_studio_managed_transfer_copy_graph_requests

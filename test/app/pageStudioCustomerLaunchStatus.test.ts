@@ -290,3 +290,89 @@ it('shows retained approval and required publishing access separately for an exp
     expect(button(host, 'Prepare approved preview')).toBeUndefined()
   } finally { app.unmount() }
 })
+
+function completedTransfer() {
+  return { siteId: 'site-a', stage: 'completed' as const, completed: true as const, editorConnection: 'pending' as const, sourceRetention: 'pending' as const, canRetryConnection: true, canRetryRetention: true }
+}
+it('shows completed transfer separately from editor connection, source retention and publication', async () => {
+  state.value!.managedTransfer = completedTransfer()
+  const { app, host } = await mount(ref('customer'))
+  try {
+    expect(host.textContent).toContain('Website transfer completed')
+    expect(host.textContent).toContain('Editor connection pending')
+    expect(host.textContent).toContain('Previous website protection pending')
+    expect(host.textContent).toContain('No publication recorded')
+    expect(button(host, 'Retry editor connection')).toBeDefined()
+    expect(request).not.toHaveBeenCalled()
+  } finally { app.unmount() }
+})
+it('retries only the explicit current-site connection action then refreshes status', async () => {
+  state.value!.managedTransfer = completedTransfer()
+  request.mockResolvedValue({})
+  const { app, host } = await mount(ref('customer'))
+  try {
+    button(host, 'Retry editor connection')!.click()
+    button(host, 'Retry editor connection')!.click()
+    await settle()
+    expect(request).toHaveBeenCalledOnce()
+    expect(request).toHaveBeenCalledWith('/api/portal/page-studio/customer/sites/site-a/transfer-recovery', { method: 'POST', body: { action: 'retry-connection' } })
+    expect(refresh).toHaveBeenCalledTimes(2)
+  } finally { app.unmount() }
+})
+it('does not hide pending source protection when the editor is connected', async () => {
+  state.value!.managedTransfer = { ...completedTransfer(), editorConnection: 'ready', canRetryConnection: false }
+  const { app, host } = await mount(ref('customer'))
+  try {
+    expect(host.textContent).toContain('Editor connected')
+    expect(host.textContent).toContain('Previous website protection pending')
+    expect(button(host, 'Retry editor connection')).toBeUndefined()
+    expect(button(host, 'Retry previous website protection')).toBeDefined()
+  } finally { app.unmount() }
+})
+it('never exposes customer transfer controls to the portal audience', async () => {
+  state.value!.managedTransfer = completedTransfer()
+  const { app, host } = await mount()
+  try {
+    expect(host.textContent).not.toContain('Website transfer completed')
+    expect(button(host, 'Retry editor connection')).toBeUndefined()
+  } finally { app.unmount() }
+})
+it('withholds a retry if the refreshed connection action is no longer permitted', async () => {
+  state.value!.managedTransfer = completedTransfer()
+  refresh.mockImplementation(() => {
+    state.value!.managedTransfer = { ...completedTransfer(), canRetryConnection: false }
+  })
+  const { app, host } = await mount(ref('customer'))
+  try {
+    button(host, 'Retry editor connection')!.click()
+    await settle()
+    expect(request).not.toHaveBeenCalled()
+  } finally { app.unmount() }
+})
+it('does not automatically retry an uncertain recovery and shows a safe error', async () => {
+  state.value!.managedTransfer = completedTransfer()
+  request.mockRejectedValue(new Error('secret provider payload'))
+  const { app, host } = await mount(ref('customer'))
+  try {
+    button(host, 'Retry previous website protection')!.click()
+    await settle()
+    expect(request).toHaveBeenCalledOnce()
+    expect(host.textContent).toContain('could not confirm')
+    expect(host.textContent).not.toContain('secret provider')
+  } finally { app.unmount() }
+})
+
+it('does not dispatch a connection action after the panel unmounts during refresh', async () => {
+  state.value!.managedTransfer = completedTransfer()
+  let done!: () => void
+  refresh.mockImplementationOnce(() => new Promise<void>((resolve) => {
+    done = resolve
+  }))
+  const { app, host } = await mount(ref('customer'))
+  button(host, 'Retry editor connection')!.click()
+  await settle()
+  app.unmount()
+  done()
+  await settle()
+  expect(request).not.toHaveBeenCalled()
+})

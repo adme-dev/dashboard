@@ -1,4 +1,7 @@
+import type { CustomerManagedTransfer } from './customerManagedTransfer'
+
 export interface PageStudioLaunchState {
+  managedTransfer?: CustomerManagedTransfer | null
   candidateReview?: boolean
   canManagePublication?: boolean
   deliveryMode?: 'static' | 'runtime' | null

@@ -75,6 +75,17 @@ describe('customer website overview', () => {
     expect(localStorage.length + sessionStorage.length).toBe(0)
     submit.mockRestore()
   })
+  it('keeps completed transfer distinct from an editor that has not connected', async () => {
+    read.mockResolvedValue({ ...value, siteId: 'saved-site', state: 'connection-pending', stage: 5,
+      canCreate: false, canRetry: false, canPrepareCms: false, canOpenStudio: false })
+    await mount()
+    expect(host.textContent).toContain('Your website transfer is saved')
+    expect(host.textContent).toContain('Publishing remains a separate step')
+    expect(button('Open Studio')).toBeUndefined()
+    expect(button('Create website preview')).toBeUndefined()
+    expect(host.querySelector('[data-launch-status]')?.getAttribute('data-site')).toBe('saved-site')
+    expect(mutate).not.toHaveBeenCalled()
+  })
   it('hides unavailable editing and refuses stale status or a failed launch', async () => {
     read.mockResolvedValue({ ...value, state: 'verification-pending', canCreate: false, canOpenStudio: false })
     await mount()

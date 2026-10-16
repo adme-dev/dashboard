@@ -1,3 +1,4 @@
+import { lockCmsContext, readCmsConsumerSnapshot } from '~~/server/utils/pageStudio/cmsVisibility'
 import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
 import { readPublishedRuntimeFeatureForms } from '~~/server/utils/pageStudio/publishedRuntimeFeatureForms'
 import { rollbackRuntimeFeature } from '~~/server/utils/pageStudio/runtimeFeatureRollback'
@@ -922,8 +923,9 @@ describe.runIf(Boolean(databaseUrl))(
       expect((await observer.query('SELECT * FROM page_studio_release_pointers')).rows).toEqual(pointers)
     })
 
-    it('projects ordinary public runtime forms without borrowing the publisher login', async () => {
+    it.each([false, true])('projects ordinary public runtime forms without borrowing the publisher login, retained=%s', async (retained) => {
       const f = await publishedRuntime()
+      if (retained) await retainPublishedSource(true)
       await observer.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
       const result = await readPublishedRuntimeFeatureForms(f.publishedInput, request.env, f.deps)
       expect(result.release.releaseId).toBe(f.release.releaseId)
@@ -1109,8 +1111,9 @@ describe.runIf(Boolean(databaseUrl))(
       expect(f.fetch).not.toHaveBeenCalled()
       expect((await observer.query('SELECT * FROM page_studio_public_action_invocations')).rows).toHaveLength(0)
     })
-    async function publicEffects(commands: unknown[] = [{ type: 'create', collectionId: 'fleet', recordId: 'new_enquiry', expectedRevision: 0, values: { title: 'New enquiry' } }]) {
+    async function publicEffects(commands: unknown[] = [{ type: 'create', collectionId: 'fleet', recordId: 'new_enquiry', expectedRevision: 0, values: { title: 'New enquiry' } }], retainBeforeAdmission = false) {
       const f = await publishedAction()
+      if (retainBeforeAdmission) await retainPublishedSource(true)
       const claim = await admitPublishedFormAction(f.body, request.env, { ...f.deps, fetch: f.fetch })
       const execution = claim.admission.execution
       f.texts.set(await builderActionResultKey(execution), collectionCanonical({ formatVersion: 1, execution, result: { status: 'ok', json: collectionCanonical({ version: 1, commands, result: { privateOutput: 'must not reach visitor' } }) } }))
@@ -1141,6 +1144,93 @@ describe.runIf(Boolean(databaseUrl))(
       request.env.PAGE_STUDIO_CONTENT_ROUTER = router
       return { ...f, claim, operations, prepare, readObjects, router, original }
     }
+    // Seeds only the terminal reader contract. The transfer suite separately
+    // exercises migration 471 and the real atomic final-selection transaction.
+    async function retainPublishedSource(newerDraft = false) {
+      const key = JSON.stringify([scope.tenantId, scope.clientId, scope.businessId, scope.siteId, scope.environment])
+      await observer.query(`ALTER TABLE page_studio_cms_scopes DROP CONSTRAINT page_studio_cms_scopes_state_check;
+        ALTER TABLE page_studio_cms_scopes ADD CONSTRAINT page_studio_cms_scopes_state_check CHECK(state IN ('legacy','freezing','importing','managed','blocked','retained'));
+        ALTER TABLE page_studio_cms_scopes ADD COLUMN retained_by_transfer_id UUID, ADD COLUMN transfer_id UUID;
+        CREATE TABLE page_studio_managed_transfer_completions(operation_id UUID PRIMARY KEY,intent_digest TEXT,source_scope_key TEXT,source_generation UUID,
+          destination_scope_key TEXT,destination_generation UUID,copy_proof_digest TEXT,history_receipt_digest TEXT,receipt JSONB,receipt_json TEXT,receipt_digest TEXT,audit_id UUID)`)
+      let state = (await observer.query('SELECT * FROM page_studio_cms_scopes WHERE scope_key=$1', [key])).rows[0]
+      let application = (await observer.query('SELECT * FROM page_studio_application_versions WHERE scope_key=$1 AND id=$2', [key, state.current_application_id])).rows[0]
+      const checkpoint = async (id: string, digest: string) => observer.query(`INSERT INTO page_studio_checkpoints(id,tenant_id,client_id,site_id,digest,object_key,etag,created_at) VALUES($1,$2,$3,$4,$5,$6,'retained-fixture',clock_timestamp())`, [id, scope.tenantId, scope.clientId, scope.siteId, digest, `fixture/${id}`])
+      if (newerDraft) {
+        const next = { ...application.manifest, applicationId: randomUUID(), previousApplicationId: application.id, checkpoint: { id: randomUUID(), digest: 'd'.repeat(64) } }
+        await checkpoint(next.checkpoint.id, next.checkpoint.digest)
+        await observer.query(`INSERT INTO page_studio_application_versions(scope_key,generation,id,digest,manifest,previous_application_id,adoption_id) VALUES($1,$2,$3,$4,$5,$6,'adoption_a')`, [key, state.active_generation, next.applicationId, await collectionDigest(next), next, application.id])
+        await observer.query(`INSERT INTO page_studio_cms_application_schemas(scope_key,generation,application_id,collection_id,object_id) SELECT scope_key,generation,$2,collection_id,object_id FROM page_studio_cms_application_schemas WHERE scope_key=$1 AND application_id=$3`, [key, next.applicationId, application.id])
+        await observer.query('UPDATE page_studio_cms_scopes SET current_application_id=$2 WHERE scope_key=$1', [key, next.applicationId])
+        state = (await observer.query('SELECT * FROM page_studio_cms_scopes WHERE scope_key=$1', [key])).rows[0]
+        application = (await observer.query('SELECT * FROM page_studio_application_versions WHERE scope_key=$1 AND id=$2', [key, state.current_application_id])).rows[0]
+      }
+      const operationId = randomUUID(), destinationScope = { ...scope, environment: 'production' as const }
+      const destinationKey = JSON.stringify([scope.tenantId, scope.clientId, scope.businessId, scope.siteId, 'production'])
+      const destinationTarget = { ...state.target, databaseId: randomUUID(), name: `ps-content-${'e'.repeat(32)}`, routeId: 'retained_destination' }
+      const destinationManifest = { formatVersion: 1, scope: destinationScope, generation: randomUUID(), applicationId: randomUUID(), previousApplicationId: null,
+        checkpoint: { id: randomUUID(), digest: 'b'.repeat(64) }, components: [], actions: [], schemas: [] }
+      await checkpoint(destinationManifest.checkpoint.id, destinationManifest.checkpoint.digest)
+      await observer.query(`UPDATE page_studio_cms_scopes SET state='retained',retained_by_transfer_id=$2 WHERE scope_key=$1`, [key, operationId])
+      await observer.query(`INSERT INTO page_studio_cms_scopes(scope_key,tenant_id,client_id,business_id,site_id,environment,state,adoption_id,active_generation,target,freeze_digest,transfer_id) VALUES($1,$2,$3,$3,$4,'production','legacy','fixture_destination',$5,$6,$7,$8)`, [destinationKey, scope.tenantId, scope.clientId, scope.siteId, destinationManifest.generation, destinationTarget, 'c'.repeat(64), operationId])
+      await observer.query(`INSERT INTO page_studio_application_versions(scope_key,generation,id,digest,manifest,adoption_id) VALUES($1,$2,$3,$4,$5,'fixture_destination')`, [destinationKey, destinationManifest.generation, destinationManifest.applicationId, await collectionDigest(destinationManifest), destinationManifest])
+      await observer.query(`UPDATE page_studio_cms_scopes SET state='managed',current_application_id=$2 WHERE scope_key=$1`, [destinationKey, destinationManifest.applicationId])
+      await observer.query('UPDATE page_studio_sites SET current_checkpoint_id=$1', [destinationManifest.checkpoint.id])
+      const body = { formatVersion: 1, operationId, intentDigest: '1'.repeat(64), copyProofDigest: '2'.repeat(64), historyReceiptDigest: '3'.repeat(64), auditId: randomUUID(), completedAt: new Date().toISOString(),
+        source: { scope, generation: state.active_generation, target: state.target, freezeDigest: state.freeze_digest, application: { id: application.id, digest: application.digest }, checkpoint: application.manifest.checkpoint, contentId: state.current_content_id },
+        destination: { scope: destinationScope, generation: destinationManifest.generation, target: destinationTarget, freezeDigest: 'c'.repeat(64), application: { id: destinationManifest.applicationId, digest: await collectionDigest(destinationManifest) }, checkpoint: destinationManifest.checkpoint, contentId: null } }
+      const receipt = { ...body, digest: await collectionDigest(body) }
+      await observer.query(`INSERT INTO page_studio_managed_transfer_completions VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [operationId, body.intentDigest, key, state.active_generation, destinationKey, destinationManifest.generation, body.copyProofDigest, body.historyReceiptDigest, receipt, collectionCanonical(receipt), receipt.digest, body.auditId])
+      return { key, destinationKey, receipt }
+    }
+    it.each([false, true])('keeps old published forms on their original retained source, newer draft=%s', async (newerDraft) => {
+      const f = await publicEffects(), retained = await retainPublishedSource(newerDraft)
+      const result = await completePublishedFormAction(f.body, request.env, f.deps)
+      expect(result.state).toBe('received')
+      const heads = (await observer.query('SELECT scope_key,generation FROM page_studio_cms_record_heads')).rows
+      expect(heads).toEqual([{ scope_key: retained.key, generation: retained.receipt.source.generation }])
+      expect([...f.operations.values()][0]!.request.scope).toEqual(scope)
+      expect((await recoverPublishedFormAction(await recoveryBody(f.body), request.env, f.deps)).duplicate).toBe(true)
+      await expect(f.deps.runTransaction(db => lockCmsContext(db, scope))).rejects.toThrow()
+      await expect(f.deps.runTransaction(db => readCmsConsumerSnapshot(db, scope))).rejects.toThrow()
+    })
+    it('admits a fresh public form after the source becomes retained', async () => {
+      const f = await publicEffects(undefined, true)
+      const result = await completePublishedFormAction(f.body, request.env, f.deps)
+      expect(result.state).toBe('received')
+      expect([...f.operations.values()][0]!.request.scope).toEqual(scope)
+      expect((await observer.query('SELECT scope_key FROM page_studio_cms_record_heads')).rows).toEqual([{ scope_key: JSON.stringify([scope.tenantId, scope.clientId, scope.businessId, scope.siteId, scope.environment]) }])
+    })
+    it.each(['activation', 'destination-link'])('rechecks retained public form authority after storage preparation: %s', async (mode) => {
+      const f = await publicEffects(), retained = await retainPublishedSource()
+      const prepare = f.prepare.getMockImplementation()!
+      f.prepare.mockImplementation(async (raw) => {
+        const result = await prepare(raw)
+        if (mode === 'activation') await observer.query(`UPDATE page_studio_release_feature_activations SET state='revoked',revoked_at=clock_timestamp()`)
+        else await observer.query('UPDATE page_studio_cms_scopes SET transfer_id=$1 WHERE scope_key=$2', [randomUUID(), retained.destinationKey])
+        return result
+      })
+      await expect(completePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow()
+      expect(f.prepare).toHaveBeenCalledTimes(1)
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+    })
+    it.each(['missing-receipt', 'receipt-hash', 'receipt-json', 'source-link', 'destination-link', 'destination-target', 'retained-generation', 'activation', 'epoch', 'plan'] as const)('fails closed for retained public forms with changed %s', async (mode) => {
+      const f = await publicEffects(), retained = await retainPublishedSource()
+      if (mode === 'missing-receipt') await observer.query('DELETE FROM page_studio_managed_transfer_completions')
+      if (mode === 'receipt-hash') await observer.query(`UPDATE page_studio_managed_transfer_completions SET receipt_digest=$1`, ['0'.repeat(64)])
+      if (mode === 'receipt-json') await observer.query(`UPDATE page_studio_managed_transfer_completions SET receipt_json='{}'`)
+      if (mode === 'source-link') await observer.query('UPDATE page_studio_cms_scopes SET retained_by_transfer_id=$1 WHERE scope_key=$2', [randomUUID(), retained.key])
+      if (mode === 'destination-link') await observer.query('UPDATE page_studio_cms_scopes SET transfer_id=$1 WHERE scope_key=$2', [randomUUID(), retained.destinationKey])
+      if (mode === 'destination-target') await observer.query(`UPDATE page_studio_cms_scopes SET target=jsonb_set(target,'{databaseId}',to_jsonb($1::text)) WHERE scope_key=$2`, [randomUUID(), retained.destinationKey])
+      if (mode === 'retained-generation') await observer.query('UPDATE page_studio_managed_transfer_completions SET source_generation=$1', [randomUUID()])
+      if (mode === 'activation') await observer.query(`UPDATE page_studio_release_feature_activations SET state='revoked',revoked_at=clock_timestamp()`)
+      if (mode === 'epoch') await observer.query('UPDATE page_studio_release_pointers SET pointer_version=pointer_version+2')
+      if (mode === 'plan') await observer.query(`UPDATE page_studio_entitlements SET status='suspended'`)
+      await expect(completePublishedFormAction(f.body, request.env, f.deps)).rejects.toThrow()
+      expect(f.prepare).not.toHaveBeenCalled()
+      expect((await observer.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(0)
+    })
+
     async function recoveryBody(body: Awaited<ReturnType<typeof publishedAction>>['body']) {
       const { fields, turnstileToken: _token, ...identity } = body
       return { ...identity, clientAddress: '192.0.2.20', fieldsDigest: await collectionDigest(fields) }
@@ -1674,7 +1764,7 @@ describe.runIf(Boolean(databaseUrl))(
       } else await expect(result).rejects.toThrow()
     })
 
-    for (const delivery of ['static', 'runtime'] as const) it.each(['current', 'revoked-during-read', 'record-head-removed', 'wrong-page', 'draft', 'hidden', 'archived', 'corrupt-bundle', 'oversize-stream'] as const)(`${delivery} projects sealed public page and current native record heads: %s`, async (mode) => {
+    for (const delivery of ['static', 'runtime'] as const) it.each(['current', 'retained', 'retained-newer-draft', 'revoked-during-read', 'record-head-removed', 'wrong-page', 'draft', 'hidden', 'archived', 'corrupt-bundle', 'oversize-stream'] as const)(`${delivery} projects sealed public page and current native record heads: %s`, async (mode) => {
       const runtime = delivery === 'runtime' ? await publishedRuntime() : null
       const f = runtime ?? await approvedBuild(true)
       const build = runtime ? null : await coordinateSealedFeatureBuild(f.input, f.principal, f.services, f.deps)
@@ -1708,8 +1798,9 @@ describe.runIf(Boolean(databaseUrl))(
             } }) }
           : await originalGet(key))
       }
+      if (mode === 'retained' || mode === 'retained-newer-draft') await retainPublishedSource(mode === 'retained-newer-draft')
       const result = (delivery === 'runtime' ? readPublishedRuntimeFeaturePage : readPublishedFeaturePage)(input, request.env, f.deps)
-      if (mode !== 'current') await expect(result).rejects.toThrow()
+      if (!['current', 'retained', 'retained-newer-draft'].includes(mode)) await expect(result).rejects.toThrow()
       else {
         const page = await result
         expect(page.contentScope.environment).toBe('staging')

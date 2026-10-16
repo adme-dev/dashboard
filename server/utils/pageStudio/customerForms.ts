@@ -6,6 +6,7 @@ import { readCustomerSession, readCustomerSetup } from './customerSignup'
 import { resolveCustomerWorkspaceAccess } from './customerWorkspaces'
 import { getPageStudioDocument } from './documents'
 import { admitFormDocument, recheckFormAuthority, sameTrustedFormAuthority, type FormDraftService, type TrustedFormAuthority, type TrustedFormContext } from './formAuthority'
+import { operateTrustedFormRecipients } from './formRecipients'
 import { readScopedMedia } from './standaloneMedia'
 import { resolveScopedEmailTemplateMedia } from './emailTemplateMedia'
 import { safePageStudioAssetSummary } from './standaloneWorkspace'
@@ -13,7 +14,7 @@ import type { PageStudioContentScope } from '~~/shared/pageStudio/businessConten
 import type { StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 import type { RunPageStudioTransaction } from './sites'
 
-export interface CustomerFormsInput { sessionToken: string, siteId: string, environment: 'staging' }
+export interface CustomerFormsInput { sessionToken: string, siteId: string, environment: 'staging' | 'production' }
 interface ScopedAsset extends Record<string, unknown> { tenantId: string, clientId: string, siteId: string }
 export interface CustomerFormsDependencies {
   authority?: typeof resolveCustomerFormAuthority
@@ -24,7 +25,7 @@ export interface CustomerFormsDependencies {
 }
 const denied = () => createError({ statusCode: 403, statusMessage: 'Customer form access is not available.' })
 export function customerTrustedAuthority(current: CustomerFormAuthority): TrustedFormAuthority {
-  return { scope: current.scope, actorId: current.actor.userId, authorityKey: JSON.stringify([current.actor.kind, current.actor.userId, current.actor.accountId, current.workspaceId]), canEdit: current.canEdit }
+  return { scope: current.scope, actorId: current.actor.userId, authorityKey: JSON.stringify([current.actor.kind, current.actor.userId, current.actor.accountId, current.workspaceId, ...(current.authoringIdentity ? [current.authoringIdentity] : [])]), canEdit: current.canEdit }
 }
 export function createCustomerFormContext(input: CustomerFormsInput, env: Record<string, unknown>, deps: CustomerFormsDependencies = {}): TrustedFormContext {
   const context: TrustedFormContext = {
@@ -59,7 +60,7 @@ export async function readCustomerFormsWorkspace(context: TrustedFormContext, de
 }
 /** Default navigation is owner + completed setup only; ordinary site CRUD does
  * not call this reader and is decided independently by current membership. */
-export async function discoverCustomerDefaultSite(sessionToken: string, deps: CustomerFormsDependencies = {}): Promise<CustomerFormAuthority> {
+export async function discoverCustomerDefaultSite(sessionToken: string, deps: CustomerFormsDependencies = {}, environment: CustomerFormsInput['environment'] = 'staging'): Promise<CustomerFormAuthority> {
   const snapshot = await (deps.runTransaction ?? transaction)(async (db) => {
     const run: RunPageStudioTransaction = fn => fn(db)
     const user = await readCustomerSession(sessionToken, run)
@@ -74,15 +75,16 @@ export async function discoverCustomerDefaultSite(sessionToken: string, deps: Cu
     if (receipts.rows.length !== 1) throw denied()
     return { user, receipt: receipts.rows[0]! }
   })
-  const current = await (deps.authority ?? resolveCustomerFormAuthority)({ sessionToken, siteId: snapshot.receipt.site_id, environment: 'staging', writing: false }, { runTransaction: deps.runTransaction })
+  const current = await (deps.authority ?? resolveCustomerFormAuthority)({ sessionToken, siteId: snapshot.receipt.site_id, environment, writing: false }, { runTransaction: deps.runTransaction })
   if (current.workspaceId !== snapshot.receipt.workspace_id || current.actor.kind !== 'customer-user' || current.actor.userId !== snapshot.user.identityId || current.actor.accountId !== snapshot.user.accountId
-    || current.scope.siteId !== snapshot.receipt.site_id || current.scope.clientId !== snapshot.receipt.business_id || current.scope.businessId !== snapshot.receipt.business_id || current.scope.tenantId !== snapshot.receipt.tenant_id || current.scope.environment !== 'staging') throw denied()
+    || current.scope.siteId !== snapshot.receipt.site_id || current.scope.clientId !== snapshot.receipt.business_id || current.scope.businessId !== snapshot.receipt.business_id || current.scope.tenantId !== snapshot.receipt.tenant_id || current.scope.environment !== environment) throw denied()
   return current
 }
 export async function readCustomerDefaultWebsite(sessionToken: string, env: Record<string, unknown>, deps: CustomerFormsDependencies = {}) {
   const discover = deps.discover ?? discoverCustomerDefaultSite
-  const before = await discover(sessionToken, deps)
-  const context = createCustomerFormContext({ sessionToken, siteId: before.scope.siteId, environment: 'staging' }, env, deps)
+  const environment = env.PAGE_STUDIO_CONTENT_ENVIRONMENT === 'production' ? 'production' : 'staging'
+  const before = await discover(sessionToken, deps, environment)
+  const context = createCustomerFormContext({ sessionToken, siteId: before.scope.siteId, environment }, env, deps)
   const authorize = context.authorize
   context.authorize = async (writing) => {
     const current = await authorize(writing)
@@ -90,14 +92,33 @@ export async function readCustomerDefaultWebsite(sessionToken: string, env: Reco
     return current
   }
   const workspace = await readCustomerFormsWorkspace(context, deps)
-  const after = await discover(sessionToken, deps)
+  const after = await discover(sessionToken, deps, environment)
   if (!sameTrustedFormAuthority(customerTrustedAuthority(before), customerTrustedAuthority(after))) throw denied()
   return { ...workspace, canEdit: after.canEdit }
 }
-export async function readCustomerFormsAvailability(sessionToken: string, deps: CustomerFormsDependencies = {}) {
+export async function readCustomerFormsAvailability(sessionToken: string, deps: CustomerFormsDependencies = {}, environment: CustomerFormsInput['environment'] = 'staging', env: Record<string, unknown> = {}) {
   const discover = deps.discover ?? discoverCustomerDefaultSite
-  const before = await discover(sessionToken, deps)
-  const after = await discover(sessionToken, deps)
+  const before = await discover(sessionToken, deps, environment)
+  if (environment === 'production') {
+    const context = createCustomerFormContext({ sessionToken, siteId: before.scope.siteId, environment }, env, deps)
+    const authorize = context.authorize
+    context.authorize = async (writing) => {
+      const current = await authorize(writing)
+      if (!sameTrustedFormAuthority(customerTrustedAuthority(before), current)) throw denied()
+      return current
+    }
+    // A native completion alone is not a working Forms connection. This read
+    // traverses the private selector's current Forms grant and actual storage,
+    // including document/scope and native authority checks on either side.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        operateTrustedFormRecipients(context),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(denied()), 8000) })
+      ])
+    } finally { if (timer) clearTimeout(timer) }
+  }
+  const after = await discover(sessionToken, deps, environment)
   if (!sameTrustedFormAuthority(customerTrustedAuthority(before), customerTrustedAuthority(after))) throw denied()
   return { available: true, siteId: after.scope.siteId }
 }

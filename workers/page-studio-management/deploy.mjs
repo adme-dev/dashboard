@@ -38,7 +38,8 @@ export function validateManagementTarget(config, environment) {
   assert.deepEqual(config.services, environment === 'production'
     ? [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' },
         { binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-production' },
-        { binding: 'PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }]
+        { binding: 'PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' },
+        { binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-production' }]
     : [{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }])
   assert.equal(config.vars.PAGE_STUDIO_CMS_OBJECT_TRANSPORT, environment === 'staging' ? 'placed-fetch' : undefined)
   assert.equal(config.vars.PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT, environment === 'production' ? 'placed-fetch' : undefined)

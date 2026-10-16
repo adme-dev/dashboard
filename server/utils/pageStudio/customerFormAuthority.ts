@@ -2,6 +2,10 @@ import { createError } from 'h3'
 import { z } from 'zod'
 import { transaction } from '~~/server/utils/db'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
+import { withCustomerProductionAuthoringAuthority } from './customerAuthoringAuthority'
+import { assertSoleCmsAuthoringScope } from './cmsGraphCoordinator'
+import { lockCmsContext } from './cmsVisibility'
+import { readManagedCmsOrigin } from './managedCmsOrigin'
 import { readCustomerSession } from './customerSignup'
 import { CustomerPreviewPolicySchema, readApprovedCustomerPreviewSite } from './customerSites'
 import type { RunPageStudioTransaction } from './sites'
@@ -9,15 +13,16 @@ import type { RunPageStudioTransaction } from './sites'
 const Request = z.object({
   sessionToken: z.string().regex(/^[A-Za-z0-9_-]{64}$/),
   siteId: z.string().uuid(),
-  environment: z.literal('staging'),
+  environment: z.enum(['staging', 'production']),
   writing: z.boolean()
 }).strict()
 type CustomerFormRole = 'owner' | 'manager' | 'editor' | 'viewer'
 export interface CustomerFormAuthority {
   workspaceId: string
-  scope: { businessId: string, clientId: string, tenantId: string, siteId: string, environment: 'staging' }
+  scope: { businessId: string, clientId: string, tenantId: string, siteId: string, environment: 'staging' | 'production' }
   actor: { kind: 'customer-user', userId: string, accountId: string }
   canEdit: boolean
+  authoringIdentity?: string
 }
 interface Ownership {
   workspace_id: string
@@ -39,6 +44,20 @@ export async function resolveCustomerFormAuthority(input: unknown, dependencies:
   const request = parsed.data
   const loginHash = await digestPortalSessionToken(request.sessionToken)
   return (dependencies.runTransaction ?? transaction)(async (db) => {
+    if (request.environment === 'production') {
+      // Discover only the current plan identifier here. The shared production
+      // authority independently locks and validates its complete ownership chain.
+      const site = (await db.query<{ entitlement_id: string }>('SELECT entitlement_id FROM page_studio_sites WHERE id=$1', [request.siteId])).rows[0]
+      if (!site) throw denied()
+      return withCustomerProductionAuthoringAuthority({ loginSessionHash: loginHash, siteId: request.siteId, entitlementId: site.entitlement_id }, async (tx, current) => {
+        await assertSoleCmsAuthoringScope(tx, current.scope)
+        await lockCmsContext(tx, current.scope)
+        const origin = await readManagedCmsOrigin(tx, current.scope)
+        return { workspaceId: current.workspaceId, scope: current.scope,
+          authoringIdentity: JSON.stringify([current.entitlementId, origin.kind, origin.receipt.digest]),
+          actor: { kind: 'customer-user' as const, userId: current.identityId, accountId: current.accountId }, canEdit: true }
+      }, { runTransaction: callback => callback(db) })
+    }
     // Match native signup lock order: account, identity, session, then ownership.
     const user = await readCustomerSession(request.sessionToken, callback => callback(db))
     const row = (await db.query<Ownership>(`

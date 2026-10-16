@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 16 October 2026. Start here after an interruption.
+Last updated: 17 October 2026. Start here after an interruption.
 Current upgrade: [managed transfer execution](2026-10-16-managed-transfer-execution.md).
 Earlier release: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Latest bounded CMS rollout: [Fantasy Limo runtime and activation receipt](2026-10-10-fantasy-cms-runtime-release.md).
@@ -21,26 +21,46 @@ verification are committed on the current launch branch. CMS mutation code has
 moved to the private management Worker to meet the unchanged Pages bundle budget.
 The management Worker must be released before Pages starts using its new RPC.
 
-Dashboard source `a1c816cbc6a04275ef117692217d7006366d147e` passed
-[CI38882232393](https://github.com/adme-dev/dashboard/actions/runs/38882232393):
-16,326 full-suite tests, dedicated PostgreSQL stages and production build all pass.
-The measured raw Worker is 25,438,217 / 25,468,928 bytes (30,711 remaining);
-gzip is 7,155,844 / 9,750,000 bytes. No release job ran on this feature branch.
+Dashboard `97e2b565a53063c62235e2451bdd5d5430c0a016` passed
+[CI38892637334](https://github.com/adme-dev/dashboard/actions/runs/38892637334).
+The preceding abdd50ed build passed 16,390 main-suite tests, dedicated PostgreSQL
+stages and production build; its raw Worker was 25,446,325 /25,468,928 bytes.
+Only 22,603 bytes remain, so new heavy transfer verification stays in the private
+management Worker. No feature-branch deployment job ran.
 
-The following native destination execution coordinator passed 301 focused tests
-(296 PostgreSQL plus five HTTP), independent review, cross-repository full-proof
-parity and scoped lint. Migration465 was applied on 16 October with both admission
-and immutable triggers, zero new rows and unchanged sites/release pointers/resource
-bindings. It stores only independently inspected historical evidence; it does not
-select a destination or launch a customer. Server typecheck retains its known295
-diagnostics with no new affected-module failures. Paired Studio runtime work remains
-in progress. This note is not a deployment receipt.
+The combined native handoff now passes 451 real PostgreSQL tests: original
+transfer authority, terminal schema, current CMS origin and destination authoring.
+It inspects copy/history outside database locks, then atomically retains the
+source and selects the exact verified destination. Interrupted responses recover
+the same completion. Current-owner authoring and source-retention recovery remain
+valid after old import sessions expire, and reject revoked ownership or plans.
+The completion coordinator has 59 focused tests including real PostgreSQL and
+workerd transport. Existing live-publication compatibility is covered separately.
+These working-tree changes still require their combined commit CI.
 
-Still outstanding: prepared destination execution and its own physical freeze,
-end-to-end graph/history copying, final native authoring selection with retained
-live-release authority, customer progress/recovery, hosted two-account acceptance,
-and the final reviewed release. Existing local tests and pushed code do not prove
-these hosted outcomes. Production activation remains separately gated.
+Migrations470 and471 are applied: zero new evidence/completion rows, expected
+immutable/deferred triggers present, existing sites/release pointers/bindings and
+(for471) CMS scopes/objects/applications unchanged. No site was transferred or
+activated by these schema changes. Receipts are in
+`.verification/managed-transfer/{copy-verification,completion}-migration-receipt.json`.
+
+Studio e39839d CI exposed a missing committed protocol planner file. Fix d57f2bf
+includes that reviewed planner and its tests; its exact-commit CI is pending.
+The later source-retention and destination Forms runtime work passes actual RPC
+checks locally. The complete private authoring flow saves all four draft types,
+reads and reconnects, and remains valid after the old operator is revoked. The
+first write now uses 140 counted operations, below the unchanged 256 limit
+(previously 388). Full private copy RPC also passes with actual D1/R2 and source
+fencing. Final closure stress checks and observer review are still in progress.
+
+Customer progress and explicit recovery controls pass the final 114-test group,
+including five current native authority PostgreSQL cases. Inspection-only customers retain status visibility without
+mutation permission; completed transfers suppress obsolete staging controls.
+Still outstanding: finish runtime stress checks and physical-observer review,
+commit both repositories, pass exact-source CI and artifact budgets, then complete
+hosted two-account acceptance and guarded release.
+Existing local tests and pushed code do not prove these hosted outcomes.
+Production activation remains separately gated.
 
 A fresh read-only Chrome check of Fantasea's live account shows the four domain
 setup paths, but custom-domain capacity is not enabled and no custom domains are

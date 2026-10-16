@@ -1,7 +1,8 @@
 import { createApp, createRouter, toWebHandler, createError, eventHandler } from 'h3'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), available: vi.fn() }))
+const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), available: vi.fn(), transfer: vi.fn() }))
+vi.mock('~~/server/utils/pageStudio/customerManagedTransfer', () => ({ readCustomerManagedTransfer: mocks.transfer }))
 vi.mock('~~/server/utils/pageStudio/customerLaunchContext', () => ({ readCustomerLaunchContext: mocks.context }))
 vi.mock('~~/server/utils/pageStudio/inspectionClient', () => ({ readCustomerPageStudioLaunchState: mocks.read }))
 vi.mock('~~/server/utils/pageStudio/candidateAvailability', () => ({ productionCandidateAvailable: mocks.available }))
@@ -20,6 +21,7 @@ async function request(path = siteId, query = '', cookie = `__Host-studio_custom
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.transfer.mockResolvedValue(null)
   vi.stubGlobal('eventHandler', eventHandler)
   mocks.context.mockResolvedValue({ actor, scope })
   mocks.read.mockResolvedValue({ siteId, deliveryMode: 'static', canManagePublication: true, content: { requiresSealedFeatures: false } })
@@ -67,4 +69,15 @@ it.each([
 it('keeps unavailable status separate from unpublished status', async () => {
   mocks.read.mockRejectedValue(createError({ statusCode: 503 }))
   expect((await request()).status).toBe(503)
+})
+
+it.each(['viewer', 'withdrawn-plan'])('preserves existing inspection-only publication status for %s', async () => {
+  mocks.context.mockResolvedValue({ actor, scope: { ...scope, canManagePublication: false } })
+  mocks.read.mockResolvedValue({ siteId, deliveryMode: 'static', canManagePublication: false, approvedVersionId: 'saved-approved-version', activeReleases: [{ hostname: 'saved.example.test' }], content: { status: 'ready', requiresSealedFeatures: false } })
+  mocks.transfer.mockResolvedValue({ siteId, completed: true, stage: 'completed', editorConnection: 'unavailable', sourceRetention: 'unavailable', canRetryConnection: false, canRetryRetention: false })
+  const response = await request()
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({ approvedVersionId: 'saved-approved-version', activeReleases: [{ hostname: 'saved.example.test' }], canManagePublication: false, candidateReview: false,
+    managedTransfer: { completed: true, canRetryConnection: false, canRetryRetention: false } })
+  expect(mocks.available).not.toHaveBeenCalled()
 })

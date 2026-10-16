@@ -1135,6 +1135,322 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
                   const module = await import('~~/workers/page-studio-management/src/managedTransferCopyAdmission')
                   return { ...c, admission: module, execution, proof, read, env, options: { ...c.options, env } }
                 }
+                describe('private copy graph inspection coordinator', () => {
+                  beforeAll(async () => {
+                    await db.query(readFileSync('server/database/migrations/470_page_studio_managed_transfer_copy_graph_verifications.sql', 'utf8'))
+                  })
+                  async function copyContextSetup() {
+                    const c = await copySetup()
+                    await c.admission.prepareManagedTransferCopyGraph(c.value, c.options)
+                    const scope = sourceFreeze.request.scope, target = sourceFreeze.request.target
+                    const sourcePolicy = { version: 1, kind: 'managed-draft-transfer', accountId: target.accountId,
+                      namespace: 'xeroflow-page-studio-dispatch-staging', from: { compatibilityDate: '2026-08-18', digest: target.runtimeDigest },
+                      to: { compatibilityDate: '2026-08-18', digest: '9'.repeat(64) } }
+                    const predecessor = { accountId: target.accountId, databaseId: target.databaseId, scope,
+                      namespace: sourcePolicy.namespace, scriptName: `ps-content-${'5'.repeat(32)}`, ownerTag: `ps-owner-${'6'.repeat(32)}`,
+                      runtimeDigest: target.runtimeDigest, compatibilityDate: sourcePolicy.from.compatibilityDate, setupDigest: '7'.repeat(64) }
+                    const formReceipt = { operationId: 'forms_a', collectionOperationId: 'collection_a', workflowOperationId: 'workflow_a', stagingOperationId: 'staging_a',
+                      scope, accountId: target.accountId, databaseId: target.databaseId, name: target.name,
+                      sourceDigest: '863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e', targetDigest: 'c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2' }
+                    const { prepareManagedTransferExecution } = await import('~~/server/utils/pageStudio/managedTransferExecution')
+                    await prepareManagedTransferExecution(c.value, { runTransaction, env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+                      MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify(sourcePolicy), PAGE_STUDIO_PROVISIONER: { discoverManagedTransferExecution: async () => ({
+                        formatVersion: 1, ...c.value, sourceScope: scope, sourceTarget: target, freezeDigest: sourceFreeze.digest, predecessor, freeze: sourceFreeze, formReceipt }) } } })
+                    const { prepareManagedTransferSourceDrafts } = await import('~~/server/utils/pageStudio/managedTransferSourceDrafts')
+                    await prepareManagedTransferSourceDrafts(c.value, { runTransaction, env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+                      PAGE_STUDIO_PROVISIONER: { inspectManagedTransferExecution: async () => ({ ...c.value, state: 'ready', identity: '1'.repeat(64) }) } } })
+                    const coordinator = await import('~~/workers/page-studio-management/src/managedTransferCopyCoordinator')
+                    return { ...c, coordinator }
+                  }
+                  describe('atomic terminal authoring handoff', () => {
+                    beforeAll(async () => {
+                      for (const name of ['467_page_studio_managed_transfer_forms_history_requests.sql', '469_page_studio_managed_transfer_forms_history_verifications.sql', '471_page_studio_managed_transfer_completions.sql']) {
+                        await db.query(readFileSync(`server/database/migrations/${name}`, 'utf8'))
+                      }
+                    })
+                    async function terminalSetup() {
+                      const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                      const { managedTransferCopyGraphReady } = await import('../../helpers/pageStudio/managedTransferCopyGraph')
+                      const ready = await managedTransferCopyGraphReady(context)
+                      const fenceBody = { state: 'frozen', request: context.sourceRequest.fenceIntent, identityDigest: await collectionDigest(context.sourceRequest.fenceIntent) }
+                      const fence = { ...fenceBody, digest: await collectionDigest(fenceBody) }
+                      const { formsHistoryFixture } = await import('../../helpers/pageStudio/formsHistory')
+                      const history = await formsHistoryFixture(context.sourceRequest.fenceIntent.scope, fence.digest)
+                      const inspectCopy = vi.fn(async () => structuredClone(ready))
+                      const service = { inspectManagedTransferCopyGraph: inspectCopy,
+                        readManagedTransferSourceDraftsFence: async () => fence, readManagedTransferSourceDraftsHistory: async () => history,
+                        inspectManagedTransferFormsHistory: vi.fn() }
+                      const options = { ...c.options, env: { ...c.env, PAGE_STUDIO_PROVISIONER: service } }
+                      await c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, options)
+                      const forms = await import('~~/server/utils/pageStudio/managedTransferFormsHistory')
+                      const request = await forms.prepareManagedTransferFormsHistory(c.value, options)
+                      const receipt = (await db.query('SELECT expected_receipt FROM page_studio_managed_transfer_forms_history_requests WHERE operation_id=$1', [c.value.operationId])).rows[0].expected_receipt
+                      service.inspectManagedTransferFormsHistory.mockImplementation(async () => ({ ...c.value, requestDigest: await collectionDigest(request), state: 'ready', receipt: structuredClone(receipt) }))
+                      const { coordinateManagedTransferFormsHistory } = await import('~~/server/utils/pageStudio/managedTransferFormsHistoryCoordinator')
+                      await coordinateManagedTransferFormsHistory({ ...c.value, action: 'verify' }, options)
+                      inspectCopy.mockClear()
+                      service.inspectManagedTransferFormsHistory.mockClear()
+                      const module = await import('~~/workers/page-studio-management/src/managedTransferCompletion')
+                      return { ...c, context, ready, service, options, terminal: module }
+                    }
+                    it('independently inspects both stores then switches all native metadata in one transaction', async () => {
+                      const c = await terminalSetup()
+                      const receipt = await c.terminal.completeManagedTransfer(c.value, c.options)
+                      expect(receipt.operationId).toBe(c.value.operationId)
+                      expect(c.service.inspectManagedTransferCopyGraph).toHaveBeenCalledTimes(1)
+                      expect(c.service.inspectManagedTransferFormsHistory).toHaveBeenCalledTimes(1)
+                      expect((await db.query('SELECT state,environment,adoption_id,transfer_id,retained_by_transfer_id FROM page_studio_cms_scopes ORDER BY environment')).rows).toEqual([
+                        { state: 'managed', environment: 'production', adoption_id: null, transfer_id: c.value.operationId, retained_by_transfer_id: null },
+                        { state: 'retained', environment: 'staging', adoption_id: 'adoption_a', transfer_id: null, retained_by_transfer_id: c.value.operationId }
+                      ])
+                      expect((await db.query('SELECT current_checkpoint_id,current_release_id FROM page_studio_sites')).rows[0]).toEqual({ current_checkpoint_id: receipt.destination.checkpoint.id, current_release_id: null })
+                      expect((await db.query('SELECT count(*) FROM page_studio_cms_objects WHERE transfer_id=$1', [c.value.operationId])).rows[0].count).toBe(String(c.ready.proof.destinationObjects.length))
+                      const { lockCmsContext } = await import('~~/server/utils/pageStudio/cmsVisibility')
+                      expect((await runTransaction(tx => lockCmsContext(tx, receipt.destination.scope))).application.id).toBe(receipt.destination.application.id)
+                      await expect(runTransaction(tx => lockCmsContext(tx, receipt.source.scope))).rejects.toThrow()
+                    })
+                    it('recovers the identical committed result without recopying or inspecting again', async () => {
+                      const c = await terminalSetup(), receipt = await c.terminal.completeManagedTransfer(c.value, c.options)
+                      c.service.inspectManagedTransferCopyGraph.mockRejectedValue(new Error('Must not retry remote work'))
+                      c.service.inspectManagedTransferFormsHistory.mockRejectedValue(new Error('Must not retry remote work'))
+                      expect(await c.terminal.completeManagedTransfer(c.value, c.options)).toEqual(receipt)
+                      expect((await db.query('SELECT count(*) FROM page_studio_managed_transfer_completions')).rows[0].count).toBe('1')
+                    })
+                    it.each(['owner', 'operator', 'plan', 'source-head'])('rejects late %s changes before selection and releases locks during inspection', async (field) => {
+                      const c = await terminalSetup(), original = c.service.inspectManagedTransferFormsHistory.getMockImplementation()!
+                      c.service.inspectManagedTransferFormsHistory.mockImplementation(async () => {
+                        await db.query('BEGIN')
+                        try {
+                          await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                        } finally {
+                          await db.query('ROLLBACK')
+                        }
+                        await db.query(field === 'owner'
+                          ? 'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()'
+                          : field === 'operator'
+                            ? 'UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()'
+                            : field === 'plan' ? 'UPDATE page_studio_entitlements SET plan_metadata=\'{}\'' : 'UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+                        return original()
+                      })
+                      await expect(c.terminal.completeManagedTransfer(c.value, c.options)).rejects.toThrow()
+                      expect((await db.query('SELECT state FROM page_studio_cms_scopes')).rows).toEqual([{ state: 'managed' }])
+                      expect((await db.query('SELECT * FROM page_studio_managed_transfer_completions')).rows).toEqual([])
+                    })
+                    it.each(['copy', 'history'])('rejects changed fresh %s bytes despite retained verification', async (field) => {
+                      const c = await terminalSetup()
+                      if (field === 'copy') {
+                        const corrupt = structuredClone(c.ready)
+                        corrupt.proof.destinationObjects[0].body = {}
+                        const { digest: _, ...body } = corrupt.proof
+                        corrupt.proof.digest = await collectionDigest(body)
+                        c.service.inspectManagedTransferCopyGraph.mockResolvedValue(corrupt)
+                      } else c.service.inspectManagedTransferFormsHistory.mockResolvedValue({ ...c.value, state: 'pending', requestDigest: 'f'.repeat(64) })
+                      await expect(c.terminal.completeManagedTransfer(c.value, c.options)).rejects.toThrow()
+                      expect((await db.query('SELECT * FROM page_studio_managed_transfer_completions')).rows).toEqual([])
+                    })
+                    it('rolls back all transferred metadata on a late native write failure', async () => {
+                      const c = await terminalSetup()
+                      await db.query(`CREATE FUNCTION reject_terminal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'terminal fault'; END $$;
+                        CREATE TRIGGER terminal_fault BEFORE INSERT ON page_studio_managed_transfer_completions FOR EACH ROW EXECUTE FUNCTION reject_terminal()`)
+                      try {
+                        await expect(c.terminal.completeManagedTransfer(c.value, c.options)).rejects.toThrow('terminal fault')
+                        expect((await db.query('SELECT state FROM page_studio_cms_scopes')).rows).toEqual([{ state: 'managed' }])
+                        expect((await db.query('SELECT count(*) FROM page_studio_cms_objects WHERE transfer_id IS NOT NULL')).rows[0].count).toBe('0')
+                      } finally { await db.query('DROP TRIGGER terminal_fault ON page_studio_managed_transfer_completions; DROP FUNCTION reject_terminal()') }
+                    })
+                    it('authorizes source retention only after the exact terminal commit', async () => {
+                      const c = await terminalSetup()
+                      const module = await import('~~/workers/page-studio-management/src/managedTransferSourceRetention')
+                      await expect(module.readManagedTransferSourceRetention(c.value, c.options)).rejects.toThrow()
+                      const completion = await c.terminal.completeManagedTransfer(c.value, c.options)
+                      const request = await module.readManagedTransferSourceRetention(c.value, c.options)
+                      expect(request.completion).toEqual(completion)
+                      expect(request.sourceRequest).toEqual(c.context.sourceRequest)
+                      for (const action of ['read', 'retain']) expect(await module.authorizeManagedTransferSourceRetention({ action, request }, c.options)).toEqual({ action, request })
+                      await expect(c.coordinator.authorizeManagedTransferCopyGraph({ ...c.value, action: 'inspect', requestDigest: await collectionDigest(c.context.admission), contextDigest: await collectionDigest(c.context) }, c.options)).rejects.toThrow()
+                    })
+                    it.each(['source', 'receipt', 'owner'])('rejects substituted terminal retention %s', async (field) => {
+                      const c = await terminalSetup()
+                      await c.terminal.completeManagedTransfer(c.value, c.options)
+                      const module = await import('~~/workers/page-studio-management/src/managedTransferSourceRetention')
+                      const request = await module.readManagedTransferSourceRetention(c.value, c.options)
+                      if (field === 'source') request.sourceRequest.executionIdentity = 'f'.repeat(64)
+                      if (field === 'receipt') {
+                        request.completion.auditId = randomUUID()
+                        const { digest: _, ...body } = request.completion
+                        request.completion.digest = await collectionDigest(body)
+                      }
+                      if (field === 'owner') await db.query('UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()')
+                      await expect(module.authorizeManagedTransferSourceRetention({ action: 'retain', request }, c.options)).rejects.toThrow()
+                    })
+                    it('permits exact source retention after original owner and operator sessions expire', async () => {
+                      const c = await terminalSetup()
+                      await c.terminal.completeManagedTransfer(c.value, c.options)
+                      await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+                      await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+                      const module = await import('~~/workers/page-studio-management/src/managedTransferSourceRetention')
+                      const request = await module.readManagedTransferSourceRetention(c.value, c.options)
+                      expect(await module.authorizeManagedTransferSourceRetention({ action: 'retain', request }, c.options)).toEqual({ action: 'retain', request })
+                      await expect(module.readManagedTransferSourceRetention({ ...c.value, intentDigest: 'f'.repeat(64) }, c.options)).rejects.toThrow()
+                      await db.query('UPDATE page_studio_entitlements SET plan_metadata=jsonb_set(plan_metadata,\'{publishingEnabled}\',\'false\')')
+                      await expect(module.readManagedTransferSourceRetention(c.value, c.options)).rejects.toThrow()
+                    })
+                    it('recovers an uncertain source-retention acknowledgement by read without repeating mutation', async () => {
+                      const c = await terminalSetup()
+                      await c.terminal.completeManagedTransfer(c.value, c.options)
+                      const module = await import('~~/workers/page-studio-management/src/managedTransferSourceRetention')
+                      const request = await module.readManagedTransferSourceRetention(c.value, c.options)
+                      const body = { state: 'retained', request: request.sourceRequest.fenceIntent, identityDigest: await collectionDigest(request.sourceRequest.fenceIntent) }
+                      const receipt = { ...body, digest: await collectionDigest(body) }
+                      const retain = vi.fn(async () => {
+                          throw new Error('response lost')
+                        }), read = vi.fn(async () => receipt)
+                      const options = { ...c.options, env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: { retainManagedTransferSourceDrafts: retain, readManagedTransferSourceRetention: read } } }
+                      await expect(module.coordinateManagedTransferSourceRetention({ ...c.value, action: 'retain' }, options)).rejects.toThrow()
+                      expect(await module.coordinateManagedTransferSourceRetention({ ...c.value, action: 'status' }, options)).toEqual({ operationId: c.value.operationId, state: 'retained' })
+                      expect(retain).toHaveBeenCalledTimes(1)
+                    })
+                    it('recovery still requires original current owner authority', async () => {
+                      const c = await terminalSetup()
+                      await c.terminal.completeManagedTransfer(c.value, c.options)
+                      await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+                      await expect(c.terminal.completeManagedTransfer(c.value, c.options)).rejects.toMatchObject({ statusCode: 403 })
+                    })
+                  })
+                  it('derives a detached exact context without changing original selection', async () => {
+                    const c = await copyContextSetup()
+                    const context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    expect(context.admission.copy.transferId).toBe(c.value.operationId)
+                    expect(context.sourceRequest.executionIdentity).toBe('1'.repeat(64))
+                    expect(context.destinationProof).toEqual(c.proof.proof)
+                    expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+                  })
+                  it('authorizes only the exact small retained context reference', async () => {
+                    const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    const wire = { ...c.value, action: 'inspect', requestDigest: await collectionDigest(context.admission), contextDigest: await collectionDigest(context) }
+                    expect(await c.coordinator.authorizeManagedTransferCopyGraph(wire, c.options)).toEqual(wire)
+                    await expect(c.coordinator.authorizeManagedTransferCopyGraph({ ...wire, contextDigest: 'f'.repeat(64) }, c.options)).rejects.toThrow()
+                    await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+                    await expect(c.coordinator.authorizeManagedTransferCopyGraph(wire, c.options)).rejects.toMatchObject({ statusCode: 403 })
+                  })
+                  it('retains only explicit full inspected proof and replays the same immutable result', async () => {
+                    const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    const { managedTransferCopyGraphReady } = await import('../../helpers/pageStudio/managedTransferCopyGraph')
+                    const ready = await managedTransferCopyGraphReady(context)
+                    const inspect = vi.fn(async () => ready)
+                    const options = { ...c.options, env: { ...c.env, PAGE_STUDIO_PROVISIONER: { inspectManagedTransferCopyGraph: inspect } } }
+                    const first = await c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, options)
+                    expect(first).toEqual({ operationId: c.value.operationId, state: 'verified', proofDigest: ready.proof.digest })
+                    expect(await c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, options)).toEqual(first)
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_verifications')).rows).toHaveLength(1)
+                    const { withReservedManagedTransfer } = await import('~~/server/utils/pageStudio/managedTransferIntent')
+                    const saved = await withReservedManagedTransfer(c.value, (tx, intent) => c.coordinator.readVerifiedCopyGraph(tx, intent, c.env), { runTransaction })
+                    expect(saved).toMatchObject({ request: context.admission, context, proof: ready.proof, proofDigest: ready.proof.digest })
+                    await expect(db.query('DELETE FROM page_studio_managed_transfer_copy_graph_verifications')).rejects.toThrow(/immutable/i)
+                  })
+                  it.each(['body', 'mapping', 'graph', 'freeze', 'context'])('rejects rehashed substituted physical %s proof', async (field) => {
+                    const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    const { managedTransferCopyGraphReady } = await import('../../helpers/pageStudio/managedTransferCopyGraph')
+                    const ready = await managedTransferCopyGraphReady(context)
+                    if (field === 'body') ready.proof.destinationObjects[0].body = {}
+                    if (field === 'mapping') ready.proof.copyReceipt.objects[0].destination.sha256 = 'f'.repeat(64)
+                    if (field === 'graph') ready.proof.graphReceipt.graph.base.application.manifest.applicationId = randomUUID()
+                    if (field === 'freeze') ready.proof.copyReceipt.freeze.digest = 'f'.repeat(64)
+                    if (field === 'context') ready.proof.contextDigest = 'f'.repeat(64)
+                    for (const object of [ready.proof.copyReceipt, ready.proof.graphReceipt, ready.proof]) {
+                      const { digest: _, ...body } = object
+                      object.digest = await collectionDigest(body)
+                    }
+                    await expect(c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, { ...c.options,
+                      env: { ...c.env, PAGE_STUDIO_PROVISIONER: { inspectManagedTransferCopyGraph: async () => ready } } })).rejects.toMatchObject({ statusCode: 409 })
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_verifications')).rows).toEqual([])
+                  })
+                  it.each(['owner', 'operator', 'head'])('rejects late %s revocation and holds no SQL locks across remote inspection', async (field) => {
+                    const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    const { managedTransferCopyGraphReady } = await import('../../helpers/pageStudio/managedTransferCopyGraph')
+                    const ready = await managedTransferCopyGraphReady(context)
+                    const inspect = async () => {
+                      await db.query('BEGIN')
+                      try {
+                        await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                      } finally {
+                        await db.query('ROLLBACK')
+                      }
+                      await db.query(field === 'head' ? 'UPDATE page_studio_sites SET current_checkpoint_id=NULL' : `UPDATE ${field === 'owner' ? 'page_studio_customer_sessions' : 'page_studio_login_sessions'} SET revoked_at=clock_timestamp()`)
+                      return ready
+                    }
+                    await expect(c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, { ...c.options,
+                      env: { ...c.env, PAGE_STUDIO_PROVISIONER: { inspectManagedTransferCopyGraph: inspect } } })).rejects.toThrow()
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_verifications')).rows).toEqual([])
+                  })
+                  it('captures RPC function and receiver and detaches outbound context', async () => {
+                    const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    const { managedTransferCopyGraphReady } = await import('../../helpers/pageStudio/managedTransferCopyGraph')
+                    const ready = await managedTransferCopyGraphReady(context)
+                    const service = { inspectManagedTransferCopyGraph: async function (input: typeof context) {
+                      expect(this).toBe(service)
+                      input.admission.copy.transferId = randomUUID()
+                      return ready
+                    } }
+                    Object.assign(service.inspectManagedTransferCopyGraph, { bind: () => {
+                      throw new Error('Remote bind')
+                    }, call: () => {
+                      throw new Error('Remote call')
+                    } })
+                    expect(await c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, { ...c.options, env: { ...c.env, PAGE_STUDIO_PROVISIONER: service } }))
+                      .toMatchObject({ state: 'verified' })
+                    expect(await c.coordinator.readManagedTransferCopyContext(c.value, c.options)).toEqual(context)
+                  })
+                  it('never retains verification from preparation or status even with a ready response', async () => {
+                    const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    const { managedTransferCopyGraphReady } = await import('../../helpers/pageStudio/managedTransferCopyGraph')
+                    const ready = await managedTransferCopyGraphReady(context)
+                    const prepare = vi.fn(async () => ready), read = vi.fn(async () => ready)
+                    const options = { ...c.options, env: { ...c.env, PAGE_STUDIO_PROVISIONER: { prepareManagedTransferCopyGraph: prepare, readManagedTransferCopyGraph: read } } }
+                    for (const action of ['start', 'resume', 'status']) expect(await c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action }, options)).toMatchObject({ state: 'ready' })
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_verifications')).rows).toEqual([])
+                    expect(prepare).toHaveBeenCalledTimes(2)
+                    expect(read).toHaveBeenCalledTimes(1)
+                  })
+                  it('withholds proof after a lost acknowledgement until explicit verification succeeds', async () => {
+                    const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    const { managedTransferCopyGraphReady } = await import('../../helpers/pageStudio/managedTransferCopyGraph')
+                    const ready = await managedTransferCopyGraphReady(context), inspect = vi.fn().mockRejectedValueOnce(new Error('Lost acknowledgement')).mockResolvedValue(ready)
+                    const options = { ...c.options, env: { ...c.env, PAGE_STUDIO_PROVISIONER: { inspectManagedTransferCopyGraph: inspect } } }
+                    await expect(c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, options)).rejects.toThrow('Lost acknowledgement')
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_verifications')).rows).toEqual([])
+                    expect(await c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, options)).toMatchObject({ state: 'verified' })
+                  })
+                  it('serializes exact concurrent verifications and rejects replacement observations', async () => {
+                    const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    const { managedTransferCopyGraphReady } = await import('../../helpers/pageStudio/managedTransferCopyGraph')
+                    const ready = await managedTransferCopyGraphReady(context)
+                    const options = { ...c.options, env: { ...c.env, PAGE_STUDIO_PROVISIONER: { inspectManagedTransferCopyGraph: async () => ready } } }
+                    const results = await Promise.allSettled([c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, options), c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, options)])
+                    expect(results.some(r => r.status === 'fulfilled')).toBe(true)
+                    for (const result of results) if (result.status === 'rejected') expect(result.reason).toMatchObject({ statusCode: 503 })
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_verifications')).rows).toHaveLength(1)
+                    ready.proof.graphReceipt.checkpoint.etag = 'replaced-physical-etag'
+                    for (const object of [ready.proof.graphReceipt, ready.proof]) {
+                      const { digest: _, ...body } = object
+                      object.digest = await collectionDigest(body)
+                    }
+                    await expect(c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, options)).rejects.toMatchObject({ statusCode: 409 })
+                  })
+                  it('rejects wrong environment, missing service and changed reviewed policy', async () => {
+                    const c = await copyContextSetup()
+                    await expect(c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'verify' }, c.options)).rejects.toMatchObject({ statusCode: 503 })
+                    await expect(c.coordinator.readManagedTransferCopyContext(c.value, { ...c.options, env: { ...c.env, PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging' } })).rejects.toMatchObject({ statusCode: 503 })
+                    await expect(c.coordinator.readManagedTransferCopyContext(c.value, { ...c.options, env: { ...c.env, MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: '{}' } })).rejects.toThrow()
+                  })
+                  it('status never invokes preparation or retains a proof', async () => {
+                    const c = await copyContextSetup(), context = await c.coordinator.readManagedTransferCopyContext(c.value, c.options)
+                    const read = vi.fn(async () => ({ ...c.value, requestDigest: await collectionDigest(context.admission), contextDigest: await collectionDigest(context), state: 'pending' }))
+                    const result = await c.coordinator.coordinateManagedTransferCopyGraph({ ...c.value, action: 'status' }, { ...c.options, env: { ...c.env, PAGE_STUDIO_PROVISIONER: { readManagedTransferCopyGraph: read } } })
+                    expect(result).toEqual({ operationId: c.value.operationId, state: 'pending' })
+                    expect(read).toHaveBeenCalledTimes(1)
+                  })
+                })
                 it('retains exact native closure and deterministic graph ids without changing authoring selection', async () => {
                   const c = await copySetup()
                   const first = await c.admission.prepareManagedTransferCopyGraph(c.value, c.options)
