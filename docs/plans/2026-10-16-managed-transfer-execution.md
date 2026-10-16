@@ -121,3 +121,40 @@ Studio's new source integration has independently reported six passing real
 workerd RPC tests, including 1,000 draft rows totalling 8,300,000 payload bytes.
 This is local runtime evidence with a trusted dispatch adapter, not hosted
 Workers-for-Platforms budget acceptance. Independent review is in progress.
+
+
+## Destination catalogue admission and independent verification
+
+The native coordinator retains a destination catalogue request derived solely
+from the original transfer, resource request and independently bound physical
+baseline. Its four deterministic phases are collection, workflow, staging and
+Forms. The native plan reconstructs every own receipt and digest; a remote
+rehashed substitute is rejected. Private status/start/resume/verify calls retain
+original login, owner, plan and source-head checks before and after remote work.
+Only an explicit independent inspection can save immutable verification evidence.
+That evidence is a historical prerequisite, not destination selection or activation.
+
+Migrations 462 and 463 were reviewed and applied to the configured database.
+Both new tables are empty with immutable triggers; existing sites, pointers and
+resource bindings were unchanged. Receipts are retained locally under
+`.verification/managed-transfer/`. Independent protocol review found no blocking
+findings. The combined native group passes 48 PostgreSQL and five HTTP tests,
+including lost acknowledgements, exact resume, concurrent verification, forged
+retained evidence and original-owner revocation.
+
+## Private CMS management extraction
+
+CMS mutation implementation now runs in the private management Worker; Pages
+retains read helpers and strict request/receipt facades. Independent comparison
+confirmed all 40 moved function bodies retain equivalent emitted JavaScript.
+Each invocation owns its database context, and transaction clients expire when
+that transaction ends. Production control has explicit staging storage bindings
+for existing staging customer drafts. No retries or local fallback were added.
+
+Verification: 137 real PostgreSQL tests, 51 Worker/transport tests, 179 existing
+navigation/deployment guards, and a 105-test rerun of affected default suites
+passed. The server typecheck retains exactly its 295 baseline diagnostics with
+no added or removed diagnostic identities. A normal local build passed the
+unchanged raw bundle limit by 43,295 bytes before final test/import cleanup and
+the catalogue endpoint; exact-commit CI must verify the final artifact. The
+management Worker must deploy before Pages. No hosted deployment is asserted.

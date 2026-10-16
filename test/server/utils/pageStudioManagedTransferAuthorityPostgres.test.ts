@@ -223,6 +223,8 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
       await db.query(readFileSync('server/database/migrations/459_page_studio_managed_transfer_resource_bindings.sql', 'utf8'))
       await db.query(readFileSync('server/database/migrations/460_page_studio_managed_transfer_executions.sql', 'utf8'))
       await db.query(readFileSync('server/database/migrations/461_page_studio_managed_transfer_source_drafts.sql', 'utf8'))
+      await db.query(readFileSync('server/database/migrations/462_page_studio_managed_transfer_destination_catalogues.sql', 'utf8'))
+      await db.query(readFileSync('server/database/migrations/463_page_studio_managed_transfer_catalogue_verifications.sql', 'utf8'))
       // Load the real coordinators as fixture setup, outside operation deadlines.
       await import('~~/server/utils/pageStudio/managedTransferIntent')
       await import('~~/server/utils/pageStudio/managedTransferResources')
@@ -496,6 +498,308 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
           const module = await import('~~/server/utils/pageStudio/managedTransferResources')
           return module.bindManagedTransferResources(value, { inspect, provider, runTransaction: transaction })
         }
+        describe('destination catalogue authority', () => {
+          async function catalogueSetup(bound = true) {
+            const c = await candidate()
+            if (bound) await bind(c.value, c.inspect)
+            const module = await import('~~/server/utils/pageStudio/managedTransferDestinationCatalogue')
+            const options = { runTransaction, env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production' } }
+            return { ...c, module, options }
+          }
+          describe('destination catalogue coordinator', () => {
+            type Request = Awaited<ReturnType<typeof import('~~/server/utils/pageStudio/managedTransferDestinationCatalogue')['prepareManagedTransferDestinationCatalogue']>>
+            // Independent wire fixture. No production plan builder is used to
+            // generate the expected phase identities or canonical plan hash.
+            async function ready(request: Request) {
+              const scope = request.resourceRequest.resourceRequest.scope, physical = request.baseline.database
+              const base = { accountId: physical.accountId, databaseId: physical.databaseId, name: physical.name, scope }
+              const id = `transfer_${request.operationId}`
+              const phases = ['collection', 'workflow', 'staging', 'forms'] as const
+              const intents = {
+                collection: { ...base, operationId: `${id}_collection` },
+                workflow: { ...base, operationId: `${id}_workflow`, collectionOperationId: `${id}_collection` },
+                staging: { ...base, operationId: `${id}_staging`, collectionOperationId: `${id}_collection`, workflowOperationId: `${id}_workflow` },
+                forms: { ...base, operationId: `${id}_forms`, collectionOperationId: `${id}_collection`, workflowOperationId: `${id}_workflow`, stagingOperationId: `${id}_staging` }
+              }
+              const digests = ['012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a', '0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee',
+                '60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae', '863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e', 'c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2']
+              const receipts = Object.fromEntries(phases.map((kind, i) => [kind, { ...intents[kind], sourceDigest: digests[i], targetDigest: digests[i + 1] }]))
+              const receiptDigests = Object.fromEntries(await Promise.all(phases.map(async kind => [kind, await collectionDigest(receipts[kind])])))
+              const requestDigest = await collectionDigest(request)
+              const planDigest = await collectionDigest({ formatVersion: 1, requestDigest,
+                phases: phases.map((kind, ordinal) => ({ kind, ordinal, intent: intents[kind], receipt: receipts[kind], receiptDigest: receiptDigests[kind] })) })
+              const body = { formatVersion: 1, operationId: request.operationId, intentDigest: request.intentDigest,
+                requestDigest, baselineDigest: await collectionDigest(request.baseline), planDigest, receipts, receiptDigests }
+              return { operationId: request.operationId, intentDigest: request.intentDigest, requestDigest, planDigest,
+                state: 'ready', completedPhases: [...phases], receipt: { ...body, digest: await collectionDigest(body) } }
+            }
+            async function coordinate(c: Awaited<ReturnType<typeof catalogueSetup>>, action: string, methods: Record<string, unknown> = {}) {
+              const { coordinateManagedTransferDestinationCatalogue } = await import('~~/server/utils/pageStudio/managedTransferDestinationCatalogueCoordinator')
+              return coordinateManagedTransferDestinationCatalogue({ ...c.value, action }, {
+                ...c.options, env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: methods }
+              })
+            }
+            it('status does not reserve or call remote methods, and resume requires original admission', async () => {
+              const c = await catalogueSetup()
+              expect(await coordinate(c, 'status')).toEqual({ operationId: c.value.operationId, state: 'not-started' })
+              await expect(coordinate(c, 'resume')).rejects.toMatchObject({ statusCode: 409 })
+              expect((await db.query('SELECT * FROM page_studio_managed_transfer_destination_catalogues')).rows).toEqual([])
+            })
+            it.each(['start', 'resume', 'status', 'verify'])('runs %s outside native locks and retains evidence only on verify', async (action) => {
+              const c = await catalogueSetup()
+              if (action !== 'start') await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+              const method = action === 'status' ? 'readManagedTransferDestinationCatalogue' : action === 'verify' ? 'inspectManagedTransferDestinationCatalogue' : 'prepareManagedTransferDestinationCatalogue'
+              let proof: Awaited<ReturnType<typeof ready>> | undefined
+              const methods = { trusted: true, [method]: async function (this: { trusted: boolean }, request: Request, mode?: string) {
+                expect(this.trusted).toBe(true)
+                expect(mode).toBe(['start', 'resume'].includes(action) ? action : undefined)
+                expect(request).toEqual((await db.query('SELECT request FROM page_studio_managed_transfer_destination_catalogues')).rows[0].request)
+                await db.query('BEGIN')
+                try {
+                  await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                } finally { await db.query('ROLLBACK') }
+                proof = await ready(request)
+                return proof
+              } }
+              expect(await coordinate(c, action, methods)).toEqual({ operationId: c.value.operationId, state: action === 'verify' ? 'catalogue-verified' : 'ready' })
+              const saved = (await db.query('SELECT receipt,receipt_digest FROM page_studio_managed_transfer_catalogue_verifications')).rows
+              expect(saved).toEqual(action === 'verify' ? [{ receipt: proof!.receipt, receipt_digest: proof!.receipt.digest }] : [])
+              expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+              if (action === 'verify') {
+                expect(await coordinate(c, action, methods)).toEqual({ operationId: c.value.operationId, state: 'catalogue-verified' })
+                await expect(db.query('DELETE FROM page_studio_managed_transfer_catalogue_verifications')).rejects.toThrow(/immutable/i)
+              }
+            })
+            it.each(['operation', 'plan', 'request', 'prefix', 'missing', 'extra', 'receipt', 'predecessor', 'scope'])('rejects substituted %s evidence before retention', async (field) => {
+              const c = await catalogueSetup()
+              await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+              await expect(coordinate(c, 'verify', { inspectManagedTransferDestinationCatalogue: async (request: Request) => {
+                const proof = await ready(request)
+                if (field === 'operation') proof.operationId = randomUUID()
+                if (field === 'plan') proof.planDigest = '0'.repeat(64)
+                if (field === 'request') proof.requestDigest = '0'.repeat(64)
+                if (field === 'prefix') proof.completedPhases.reverse()
+                if (field === 'missing') proof.completedPhases.pop()
+                if (field === 'extra') return { ...proof, secret: 'untrusted' }
+                if (field === 'receipt') proof.receipt.digest = '0'.repeat(64)
+                if (field === 'predecessor' || field === 'scope') {
+                  const receipt = proof.receipt.receipts.forms as Record<string, unknown>
+                  if (field === 'predecessor') receipt.stagingOperationId = 'source_staging'
+                  else receipt.scope = { ...request.baseline.worker.scope, environment: 'staging' }
+                  proof.receipt.receiptDigests.forms = await collectionDigest(receipt)
+                  const { digest: _, ...body } = proof.receipt
+                  proof.receipt.digest = await collectionDigest(body)
+                }
+                return proof
+              } })).rejects.toMatchObject({ statusCode: 409 })
+              expect((await db.query('SELECT * FROM page_studio_managed_transfer_catalogue_verifications')).rows).toEqual([])
+            })
+            it.each(['owner', 'source'])('rechecks original %s after the physical inspection before retaining proof', async (field) => {
+              const c = await catalogueSetup()
+              await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+              await expect(coordinate(c, 'verify', { inspectManagedTransferDestinationCatalogue: async (request: Request) => {
+                const proof = await ready(request)
+                await db.query(field === 'owner' ? 'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()' : 'DELETE FROM page_studio_cms_record_heads')
+                return proof
+              } })).rejects.toMatchObject({ statusCode: field === 'owner' ? 403 : 409 })
+              expect((await db.query('SELECT * FROM page_studio_managed_transfer_catalogue_verifications')).rows).toEqual([])
+            })
+            it('rejects a coherently rehashed proof for a remote-mutated request', async () => {
+              const c = await catalogueSetup()
+              const original = await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+              await expect(coordinate(c, 'verify', { inspectManagedTransferDestinationCatalogue: async (request: Request) => {
+                request.baseline.worker.etag = 'remote-substitution'
+                return ready(request)
+              } })).rejects.toMatchObject({ statusCode: 409 })
+              expect((await db.query('SELECT request FROM page_studio_managed_transfer_destination_catalogues')).rows).toEqual([{ request: original }])
+            })
+            it('preserves admission after a lost start acknowledgement and resumes exactly', async () => {
+              const c = await catalogueSetup()
+              let original: Request | undefined
+              await expect(coordinate(c, 'start', { prepareManagedTransferDestinationCatalogue: async (request: Request) => {
+                original = structuredClone(request)
+                throw new Error('lost acknowledgement')
+              } })).rejects.toThrow('lost acknowledgement')
+              expect((await db.query('SELECT request FROM page_studio_managed_transfer_destination_catalogues')).rows).toEqual([{ request: original }])
+              expect(await coordinate(c, 'resume', { prepareManagedTransferDestinationCatalogue: async (request: Request, mode: string) => {
+                expect(request).toEqual(original)
+                expect(mode).toBe('resume')
+                return ready(request)
+              } })).toEqual({ operationId: c.value.operationId, state: 'ready' })
+              expect((await db.query('SELECT * FROM page_studio_managed_transfer_catalogue_verifications')).rows).toEqual([])
+            })
+            it('retains one exact verification under concurrent retries', async () => {
+              const c = await catalogueSetup()
+              await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+              const methods = { inspectManagedTransferDestinationCatalogue: ready }
+              const concurrent = await Promise.allSettled([coordinate(c, 'verify', methods), coordinate(c, 'verify', methods)])
+              for (const result of concurrent) {
+                if (result.status === 'rejected') {
+                  // The original authority uses NOWAIT; a contending request
+                  // must retry its unchanged identity, never reserve another.
+                  expect(result.reason).toMatchObject({ statusCode: 503 })
+                  expect(await coordinate(c, 'verify', methods)).toMatchObject({ state: 'catalogue-verified' })
+                } else expect(result.value).toMatchObject({ state: 'catalogue-verified' })
+              }
+              expect((await db.query('SELECT * FROM page_studio_managed_transfer_catalogue_verifications')).rows).toHaveLength(1)
+            })
+            it('rejects corrupted retained verification evidence even after a fresh valid inspection', async () => {
+              const c = await catalogueSetup()
+              const methods = { inspectManagedTransferDestinationCatalogue: ready }
+              await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+              await coordinate(c, 'verify', methods)
+              await db.query('ALTER TABLE page_studio_managed_transfer_catalogue_verifications DISABLE TRIGGER USER')
+              try {
+                await db.query('UPDATE page_studio_managed_transfer_catalogue_verifications SET receipt=receipt || $1::jsonb', [JSON.stringify({ baselineDigest: '0'.repeat(64) })])
+              } finally { await db.query('ALTER TABLE page_studio_managed_transfer_catalogue_verifications ENABLE TRIGGER USER') }
+              await expect(coordinate(c, 'verify', methods)).rejects.toMatchObject({ statusCode: 409 })
+            })
+            it('does not treat an existing verification as authority after owner revocation', async () => {
+              const c = await catalogueSetup()
+              const inspect = vi.fn(ready)
+              const methods = { inspectManagedTransferDestinationCatalogue: inspect }
+              await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+              await coordinate(c, 'verify', methods)
+              inspect.mockClear()
+              await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+              await expect(coordinate(c, 'verify', methods)).rejects.toMatchObject({ statusCode: 403 })
+              expect(inspect).not.toHaveBeenCalled()
+            })
+            it('withholds verification for an incomplete inspected catalogue without installing it', async () => {
+              const c = await catalogueSetup()
+              await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+              const methods = { inspectManagedTransferDestinationCatalogue: async (request: Request) => {
+                const { receipt: _, ...proof } = await ready(request)
+                return { ...proof, state: 'resume-required', completedPhases: ['collection'] }
+              }, prepareManagedTransferDestinationCatalogue: vi.fn() }
+              expect(await coordinate(c, 'verify', methods)).toEqual({ operationId: c.value.operationId, state: 'resume-required' })
+              expect(methods.prepareManagedTransferDestinationCatalogue).not.toHaveBeenCalled()
+              expect((await db.query('SELECT * FROM page_studio_managed_transfer_catalogue_verifications')).rows).toEqual([])
+            })
+          })
+          it('derives and retains the exact production baseline without selecting it or making provider calls', async () => {
+            const c = await catalogueSetup()
+            const resourceRequest = (await db.query('SELECT request FROM page_studio_managed_transfer_resources')).rows[0].request
+            const expected = { formatVersion: 1, ...c.value, resourceRequest: { ...c.value, resourceRequest }, baseline: c.physical }
+            const original = await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+            expect(original).toEqual(expected)
+            expect(await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)).toEqual(expected)
+            expect((await db.query('SELECT request,request_digest FROM page_studio_managed_transfer_destination_catalogues')).rows)
+              .toEqual([{ request: expected, request_digest: await collectionDigest(expected) }])
+            expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+            expect(c.inspect).toHaveBeenCalledTimes(1)
+            for (const action of ['prepare', 'read']) {
+              expect(await c.module.authorizeManagedTransferDestinationCatalogue({ action, request: original }, { runTransaction })).toEqual({ action, request: expected })
+            }
+            original.baseline.worker.etag = 'caller mutation'
+            expect(await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)).toEqual(expected)
+            await expect(db.query('DELETE FROM page_studio_managed_transfer_destination_catalogues')).rejects.toThrow(/immutable/i)
+            await expect(db.query('UPDATE page_studio_managed_transfer_destination_catalogues SET request=\'{}\'::jsonb')).rejects.toThrow(/immutable/i)
+          })
+          it('requires a verified binding and refuses caller-selected baseline or resource request', async () => {
+            const c = await catalogueSetup(false)
+            await expect(c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+            for (const extra of [{ baseline: c.physical }, { resourceRequest: {} }]) {
+              await expect(c.module.prepareManagedTransferDestinationCatalogue({ ...c.value, ...extra }, c.options)).rejects.toMatchObject({ statusCode: 400 })
+            }
+          })
+          it.each(['staging', 'preview', undefined])('refuses reservation outside production (%s)', async (environment) => {
+            const c = await catalogueSetup()
+            await expect(c.module.prepareManagedTransferDestinationCatalogue(c.value, { ...c.options, env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: environment } })).rejects.toMatchObject({ statusCode: 503 })
+          })
+          it('requires saved catalogue admission and rejects terminal or installation-specific callback actions', async () => {
+            const c = await catalogueSetup()
+            const resourceRequest = (await db.query('SELECT request FROM page_studio_managed_transfer_resources')).rows[0].request
+            const request = { formatVersion: 1, ...c.value, resourceRequest: { ...c.value, resourceRequest }, baseline: c.physical }
+            await expect(c.module.authorizeManagedTransferDestinationCatalogue({ action: 'read', request }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+            await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+            for (const action of ['activate', 'cancel', 'retain', 'forms']) {
+              await expect(c.module.authorizeManagedTransferDestinationCatalogue({ action, request }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+            }
+          })
+          it.each(['operation', 'intent', 'target', 'etag', 'resource', 'scope', 'actor'])('rejects substituted callback %s', async (field) => {
+            const c = await catalogueSetup()
+            const request = await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+            if (field === 'operation') request.operationId = randomUUID()
+            if (field === 'intent') request.resourceRequest.intentDigest = '0'.repeat(64)
+            if (field === 'target') request.baseline.database.databaseId = randomUUID()
+            if (field === 'etag') request.baseline.worker.etag = 'new-generation'
+            if (field === 'resource') request.baseline.resourceIdentity = `cms_attach_${'0'.repeat(64)}`
+            if (field === 'scope') request.resourceRequest.resourceRequest.scope.environment = 'staging' as 'production'
+            if (field === 'actor') request.resourceRequest.resourceRequest.actor.userId = randomUUID()
+            await expect(c.module.authorizeManagedTransferDestinationCatalogue({ action: 'prepare', request }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+          })
+          it.each([
+            'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+            'UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()',
+            'UPDATE page_studio_workspace_memberships SET role=\'manager\'',
+            'UPDATE page_studio_entitlements SET storage_bytes_limit=storage_bytes_limit+1 WHERE status=\'active\'',
+            'UPDATE page_studio_cms_scopes SET current_content_id=NULL',
+            'DELETE FROM page_studio_cms_record_heads',
+            'UPDATE page_studio_sites SET current_checkpoint_id=NULL'
+          ])('rechecks original owner/operator/plan/source on each callback: %s', async (sql) => {
+            const c = await catalogueSetup()
+            const request = await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+            await db.query(sql)
+            await expect(c.module.authorizeManagedTransferDestinationCatalogue({ action: 'prepare', request }, { runTransaction })).rejects.toMatchObject({ statusCode: expect.any(Number) })
+            await expect(c.module.authorizeManagedTransferDestinationCatalogue({ action: 'read', request }, { runTransaction })).rejects.toMatchObject({ statusCode: expect.any(Number) })
+          })
+          it.each(['catalogue', 'resource', 'binding'])('rejects corrupt retained %s hashes on every callback', async (kind) => {
+            const c = await catalogueSetup()
+            const request = await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+            const table = kind === 'catalogue' ? 'page_studio_managed_transfer_destination_catalogues' : kind === 'resource' ? 'page_studio_managed_transfer_resources' : 'page_studio_managed_transfer_resource_bindings'
+            const digest = kind === 'binding' ? 'binding_digest' : 'request_digest'
+            let reads = 0
+            const corrupt = <T>(work: (tx: pg.Client) => Promise<T>) => runTransaction(async (tx) => {
+              if (++reads === 1) return work(tx)
+              await tx.query(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
+              await tx.query(`UPDATE ${table} SET ${digest}=$1`, ['0'.repeat(64)])
+              return work(tx)
+            })
+            await expect(c.module.authorizeManagedTransferDestinationCatalogue({ action: 'read', request }, { runTransaction: corrupt })).rejects.toMatchObject({ statusCode: expect.any(Number) })
+          })
+          it('rejects a coherently rehashed changed binding rather than replacing retained authority', async () => {
+            const c = await catalogueSetup()
+            const request = await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+            let reads = 0
+            const corrupt = <T>(work: (tx: pg.Client) => Promise<T>) => runTransaction(async (tx) => {
+              if (++reads === 1) return work(tx)
+              const binding = (await tx.query('SELECT binding FROM page_studio_managed_transfer_resource_bindings')).rows[0].binding
+              binding.physical.worker.etag = 'substituted-version'
+              await tx.query('ALTER TABLE page_studio_managed_transfer_resource_bindings DISABLE TRIGGER USER')
+              await tx.query('UPDATE page_studio_managed_transfer_resource_bindings SET binding=$1,binding_digest=$2', [binding, await collectionDigest(binding)])
+              return work(tx)
+            })
+            await expect(c.module.authorizeManagedTransferDestinationCatalogue({ action: 'prepare', request }, { runTransaction: corrupt })).rejects.toMatchObject({ statusCode: 409 })
+            expect(await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)).toEqual(request)
+          })
+          it('serializes concurrent admission and preserves exact retries after a lost response', async () => {
+            const c = await catalogueSetup()
+            const results = await Promise.allSettled([
+              c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options),
+              c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+            ])
+            expect(results.some(r => r.status === 'fulfilled')).toBe(true)
+            for (const result of results) if (result.status === 'rejected') expect(result.reason).toMatchObject({ statusCode: 503 })
+            const exact = await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+            for (const result of results) if (result.status === 'fulfilled') expect(result.value).toEqual(exact)
+            expect((await db.query('SELECT request FROM page_studio_managed_transfer_destination_catalogues')).rows).toEqual([{ request: exact }])
+          })
+          it('rolls back admission when original source heads change inside the transaction', async () => {
+            const c = await catalogueSetup()
+            const changed = <T>(work: (tx: pg.Client) => Promise<T>) => runTransaction(async (tx) => {
+              const query = tx.query.bind(tx)
+              const wrapped = { query: async (sql: string, params?: unknown[]) => {
+                const result = await query(sql, params)
+                if (sql.includes('INSERT INTO page_studio_managed_transfer_destination_catalogues')) await query('DELETE FROM page_studio_cms_record_heads')
+                return result
+              } }
+              return work(wrapped as pg.Client)
+            })
+            await expect(c.module.prepareManagedTransferDestinationCatalogue(c.value, { ...c.options, runTransaction: changed })).rejects.toMatchObject({ statusCode: 409 })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_destination_catalogues')).rows).toEqual([])
+          })
+        })
         describe('native execution workflow', () => {
           const policy = { version: 1, kind: 'managed-draft-transfer', accountId: 'a'.repeat(32),
             namespace: 'xeroflow-page-studio-dispatch-staging',
