@@ -1,3 +1,4 @@
+import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
 import { readPublishedRuntimeFeatureForms } from '~~/server/utils/pageStudio/publishedRuntimeFeatureForms'
 import { rollbackRuntimeFeature } from '~~/server/utils/pageStudio/runtimeFeatureRollback'
 import { readPublishedRuntimeFeatureSnapshot } from '~~/server/utils/pageStudio/publishedRuntimeFeatureAuthority'
@@ -443,6 +444,7 @@ describe.runIf(Boolean(databaseUrl))(
           inTransaction = false
         }
       }
+      attachCmsManagement(request.env, runTransaction)
       return {
         manifest: f.nextCheckpoint.manifest,
         input,
