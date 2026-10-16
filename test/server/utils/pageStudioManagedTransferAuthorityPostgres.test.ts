@@ -559,6 +559,226 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
                   MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: JSON.stringify(policy) } }
                 return { ...c, catalogue, proof, module, options }
               }
+              describe('prepared destination execution coordinator', () => {
+                beforeAll(async () => {
+                  await db.query(readFileSync('server/database/migrations/465_page_studio_managed_transfer_destination_execution_verifications.sql', 'utf8'))
+                })
+                type ExecutionRequest = Awaited<ReturnType<typeof import('~~/server/utils/pageStudio/managedTransferDestinationExecution')['prepareManagedTransferDestinationExecution']>>
+                async function executionReady(request: ExecutionRequest) {
+                  const freezeBody = { state: 'frozen', request: structuredClone(request.freezeRequest), createdAt: '2026-10-16T00:00:00.000Z' }
+                  const freeze = { ...freezeBody, digest: await collectionDigest(freezeBody) }
+                  const { etag: _etag, ...predecessor } = request.catalogueRequest.baseline.worker
+                  const catalogue = request.catalogueReceipt
+                  const route = { activationId: request.catalogueRequest.baseline.preparationId,
+                    formDrafts: { digest: catalogue.receiptDigests.forms, receipt: catalogue.receipts.forms },
+                    namespace: predecessor.namespace, receipts: { collection: catalogue.receipts.collection, workflow: catalogue.receipts.workflow, staging: catalogue.receipts.staging },
+                    scope: request.freezeRequest.scope, scriptName: predecessor.scriptName, target: request.freezeRequest.target }
+                  const schemaBody = { formatVersion: 1, kind: 'draft-history-import', operationId: `transfer_${request.operationId}_destination_import`,
+                    nativeIntentDigest: request.intentDigest, predecessor: catalogue.receipts.forms,
+                    schemaDigest: '65fbb83440cd62ebc9165006a6a25daa414212181209c06e7be771a624434680' }
+                  const executionBody = { formatVersion: 1, freeze, originalRouteDigest: await collectionDigest(route), owner: structuredClone(request.successor),
+                    policy: structuredClone(request.policy), predecessor, schemaReceipt: { ...schemaBody, digest: await collectionDigest(schemaBody) }, workerReceipt: { etag: 'actual-successor-etag' } }
+                  const identity = await collectionDigest(executionBody)
+                  const proofBody = { formatVersion: 1, operationId: request.operationId, intentDigest: request.intentDigest,
+                    requestDigest: await collectionDigest(request), catalogueReceiptDigest: catalogue.digest,
+                    envelope: { kind: 'managed-execution', route, execution: { ...executionBody, identity } } }
+                  return { operationId: request.operationId, intentDigest: request.intentDigest, requestDigest: proofBody.requestDigest,
+                    state: 'ready', identity, proof: { ...proofBody, digest: await collectionDigest(proofBody) } }
+                }
+                async function executionCoordinate(c: Awaited<ReturnType<typeof setup>>, action: string, methods: Record<string, unknown> = {}, transaction = runTransaction) {
+                  const { coordinateManagedTransferDestinationExecution } = await import('~~/server/utils/pageStudio/managedTransferDestinationExecutionCoordinator')
+                  return coordinateManagedTransferDestinationExecution({ ...c.value, action }, { ...c.options, runTransaction: transaction,
+                    env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: methods } })
+                }
+                async function verificationRows() {
+                  return (await db.query('SELECT * FROM page_studio_managed_transfer_destination_execution_verifications')).rows
+                }
+                it('uses the captured callable without invoking remote bind or call properties', async () => {
+                  const c = await setup()
+                  const method = Object.assign(executionReady, {
+                    bind: () => { throw new Error('Remote bind is not local') },
+                    call: () => { throw new Error('Remote call is not local') }
+                  })
+                  expect(await executionCoordinate(c, 'start', { prepareManagedTransferDestinationExecution: method })).toEqual({ operationId: c.value.operationId, state: 'ready' })
+                })
+                it('rejects a missing inspection result without retaining evidence', async () => {
+                  const c = await setup()
+                  await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  await expect(executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: async () => null })).rejects.toMatchObject({ statusCode: 409 })
+                  expect(await verificationRows()).toEqual([])
+                })
+                it('serializes concurrent explicit verification and returns the exact original proof on retry', async () => {
+                  const c = await setup()
+                  await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const methods = { inspectManagedTransferDestinationExecution: executionReady }
+                  const attempts = await Promise.allSettled([executionCoordinate(c, 'verify', methods), executionCoordinate(c, 'verify', methods)])
+                  expect(attempts.some(result => result.status === 'fulfilled')).toBe(true)
+                  for (const result of attempts) if (result.status === 'rejected') expect(result.reason).toMatchObject({ statusCode: 503 })
+                  const rows = await verificationRows()
+                  expect(rows).toHaveLength(1)
+                  expect(await executionCoordinate(c, 'verify', methods)).toEqual({ operationId: c.value.operationId, state: 'execution-verified' })
+                  expect(await verificationRows()).toEqual(rows)
+                })
+                it('rejects corrupt retained proof even on read-only status', async () => {
+                  const c = await setup()
+                  await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  await executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: executionReady })
+                  await db.query('ALTER TABLE page_studio_managed_transfer_destination_execution_verifications DISABLE TRIGGER USER')
+                  try {
+                    await db.query('UPDATE page_studio_managed_transfer_destination_execution_verifications SET proof_json=\' \' || proof_json')
+                  } finally { await db.query('ALTER TABLE page_studio_managed_transfer_destination_execution_verifications ENABLE TRIGGER USER') }
+                  await expect(executionCoordinate(c, 'status', { readManagedTransferDestinationExecution: executionReady })).rejects.toMatchObject({ statusCode: 409 })
+                })
+                it('rejects SQL proof admission detached from its original request digest', async () => {
+                  const c = await setup()
+                  const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const observed = await executionReady(request)
+                  observed.proof.requestDigest = '0'.repeat(64)
+                  const { digest: _, ...body } = observed.proof
+                  observed.proof.digest = await collectionDigest(body)
+                  const json = JSON.stringify(observed.proof)
+                  await expect(db.query(`INSERT INTO page_studio_managed_transfer_destination_execution_verifications
+                    (operation_id,intent_digest,request_digest,execution_identity,proof,proof_json,proof_digest)
+                    VALUES($1,$2,$3,$4,$5::jsonb,$5,$6)`, [c.value.operationId, c.value.intentDigest, observed.proof.requestDigest,
+                    observed.identity, json, observed.proof.digest])).rejects.toThrow(/does not match retained request/i)
+                })
+                it('status does not reserve and resume/verify cannot invent original admission', async () => {
+                  const c = await setup()
+                  expect(await executionCoordinate(c, 'status')).toEqual({ operationId: c.value.operationId, state: 'not-started' })
+                  for (const action of ['resume', 'verify']) await expect(executionCoordinate(c, action)).rejects.toMatchObject({ statusCode: 409 })
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_destination_executions')).rows).toEqual([])
+                })
+                it.each(['status', 'start', 'resume', 'verify'])('performs %s outside native locks and only explicit inspect retains proof', async (action) => {
+                  const c = await setup()
+                  if (action !== 'start') await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const method = action === 'status' ? 'readManagedTransferDestinationExecution' : action === 'verify' ? 'inspectManagedTransferDestinationExecution' : 'prepareManagedTransferDestinationExecution'
+                  let proof: Awaited<ReturnType<typeof executionReady>> | undefined
+                  const methods = { trusted: true, [method]: async function (this: { trusted: boolean }, request: ExecutionRequest, mode?: string) {
+                    expect(this.trusted).toBe(true)
+                    expect(mode).toBe(['start', 'resume'].includes(action) ? action : undefined)
+                    expect(request).toEqual((await db.query('SELECT request FROM page_studio_managed_transfer_destination_executions')).rows[0].request)
+                    await db.query('BEGIN')
+                    try {
+                      await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                    } finally { await db.query('ROLLBACK') }
+                    proof = await executionReady(request)
+                    return proof
+                  } }
+                  expect(await executionCoordinate(c, action, methods)).toEqual({ operationId: c.value.operationId, state: action === 'verify' ? 'execution-verified' : 'ready' })
+                  const rows = await verificationRows()
+                  expect(rows).toHaveLength(action === 'verify' ? 1 : 0)
+                  if (action === 'verify') {
+                    expect(rows[0]).toMatchObject({ proof: proof!.proof, proof_digest: proof!.proof.digest, execution_identity: proof!.identity })
+                    expect(await executionCoordinate(c, action, methods)).toEqual({ operationId: c.value.operationId, state: 'execution-verified' })
+                    await expect(db.query('DELETE FROM page_studio_managed_transfer_destination_execution_verifications')).rejects.toThrow(/immutable/i)
+                    await expect(db.query('UPDATE page_studio_managed_transfer_destination_execution_verifications SET proof_digest=$1', ['0'.repeat(64)])).rejects.toThrow(/immutable/i)
+                  }
+                  expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+                  expect((await db.query('SELECT current_checkpoint_id,status FROM page_studio_sites')).rows).toEqual([{ current_checkpoint_id: 'checkpoint_a', status: 'draft' }])
+                })
+                it.each(['pending', 'resume-required', 'upload-uncertain', 'disabled'])('never turns %s into native verification', async (state) => {
+                  const c = await setup()
+                  const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const observed = { ...c.value, requestDigest: await collectionDigest(request), state }
+                  expect(await executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: async () => observed })).toEqual({ operationId: c.value.operationId, state })
+                  expect(await verificationRows()).toEqual([])
+                })
+                it.each(['request', 'freeze-request', 'freeze-digest', 'route', 'import-operation', 'import-layout', 'owner', 'identity', 'proof-digest', 'extra'])('rejects substituted or rehashed %s evidence', async (field) => {
+                  const c = await setup(), request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const observed = await executionReady(request), proof = observed.proof, execution = proof.envelope.execution
+                  if (field === 'request') observed.requestDigest = '0'.repeat(64)
+                  if (field === 'freeze-request') execution.freeze.request.adoptionId = 'transfer_other_destination'
+                  if (field === 'freeze-digest') execution.freeze.digest = '0'.repeat(64)
+                  if (field === 'route') proof.envelope.route.target.runtimeDigest = request.successor.runtimeDigest
+                  if (field === 'import-operation') execution.schemaReceipt.operationId = 'transfer_other_destination_import'
+                  if (field === 'import-layout') execution.schemaReceipt.schemaDigest = '0'.repeat(64)
+                  if (field === 'owner') execution.owner.scriptName = `ps-content-${'0'.repeat(32)}`
+                  if (field === 'extra') Object.assign(proof.envelope.route, { capability: 'browser-picked' })
+                  // Rehash nested layers to prove admission checks semantics, not only hashes.
+                  if (field !== 'freeze-digest') {
+                    const { digest: _, ...body } = execution.freeze
+                    execution.freeze.digest = await collectionDigest(body)
+                  }
+                  const { digest: _schema, ...schemaBody } = execution.schemaReceipt
+                  execution.schemaReceipt.digest = await collectionDigest(schemaBody)
+                  execution.originalRouteDigest = await collectionDigest(proof.envelope.route)
+                  const { identity: _, ...executionBody } = execution
+                  observed.identity = execution.identity = field === 'identity' ? '0'.repeat(64) : await collectionDigest(executionBody)
+                  const { digest: _proof, ...proofBody } = proof
+                  proof.digest = field === 'proof-digest' ? '0'.repeat(64) : await collectionDigest(proofBody)
+                  await expect(executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: async () => observed })).rejects.toMatchObject({ statusCode: 409 })
+                  expect(await verificationRows()).toEqual([])
+                })
+                it('detaches the original request from hostile RPC argument mutation', async () => {
+                  const c = await setup()
+                  expect(await executionCoordinate(c, 'start', { prepareManagedTransferDestinationExecution: async (request: ExecutionRequest) => {
+                    const observed = await executionReady(request)
+                    request.successor.scriptName = `ps-content-${'0'.repeat(32)}`
+                    return observed
+                  } })).toEqual({ operationId: c.value.operationId, state: 'ready' })
+                  expect(await verificationRows()).toEqual([])
+                })
+                it('retains the exact admission across a lost RPC response', async () => {
+                  const c = await setup()
+                  let original: ExecutionRequest | undefined
+                  await expect(executionCoordinate(c, 'start', { prepareManagedTransferDestinationExecution: async (request: ExecutionRequest) => {
+                    original = request
+                    throw new Error('Lost remote acknowledgement')
+                  } })).rejects.toThrow('Lost remote acknowledgement')
+                  expect(await executionCoordinate(c, 'resume', { prepareManagedTransferDestinationExecution: async (request: ExecutionRequest) => {
+                    expect(request).toEqual(original)
+                    return executionReady(request)
+                  } })).toEqual({ operationId: c.value.operationId, state: 'ready' })
+                })
+                it.each(['UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+                  'UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()', 'DELETE FROM page_studio_cms_record_heads'])('rejects late authority/source change: %s', async (sql) => {
+                  const c = await setup()
+                  await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  await expect(executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: async (request: ExecutionRequest) => {
+                    const observed = await executionReady(request)
+                    await db.query(sql)
+                    return observed
+                  } })).rejects.toMatchObject({ statusCode: expect.any(Number) })
+                  expect(await verificationRows()).toEqual([])
+                })
+                it('rejects original session revocation even after prior verified evidence', async () => {
+                  const c = await setup()
+                  await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const remote = vi.fn(executionReady)
+                  await executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: remote })
+                  await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+                  await expect(executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: remote })).rejects.toMatchObject({ statusCode: 403 })
+                  expect(remote).toHaveBeenCalledTimes(1)
+                })
+                it('rejects a rehashed alternate actual etag after retaining original proof', async () => {
+                  const c = await setup()
+                  const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const observed = await executionReady(request)
+                  await executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: async () => observed })
+                  observed.proof.envelope.execution.workerReceipt.etag = 'different-successor-etag'
+                  const { identity: _, ...executionBody } = observed.proof.envelope.execution
+                  observed.identity = observed.proof.envelope.execution.identity = await collectionDigest(executionBody)
+                  const { digest: __, ...proofBody } = observed.proof
+                  observed.proof.digest = await collectionDigest(proofBody)
+                  await expect(executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: async () => observed })).rejects.toMatchObject({ statusCode: 409 })
+                  expect(await verificationRows()).toHaveLength(1)
+                })
+                it('rolls back evidence if original source changes during native retention', async () => {
+                  const c = await setup()
+                  await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const changed = <T>(work: (tx: pg.Client) => Promise<T>) => runTransaction(async (tx) => {
+                    const query = tx.query.bind(tx)
+                    const wrapped = { query: async (sql: string, params?: unknown[]) => {
+                      const result = await query(sql, params)
+                      if (sql.includes('INSERT INTO page_studio_managed_transfer_destination_execution_verifications')) await query('DELETE FROM page_studio_cms_record_heads')
+                      return result
+                    } }
+                    return work(wrapped as pg.Client)
+                  })
+                  await expect(executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: executionReady }, changed)).rejects.toMatchObject({ statusCode: 409 })
+                  expect(await verificationRows()).toEqual([])
+                })
+              })
               it('retains one deterministic destination request with its own unexecuted freeze', async () => {
                 const c = await setup()
                 const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)

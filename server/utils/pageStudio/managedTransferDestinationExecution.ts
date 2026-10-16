@@ -109,3 +109,9 @@ export async function authorizeManagedTransferDestinationExecution(input: unknow
     return auth
   }, dependencies)
 }
+
+/** Caller holds original transfer authority. Resolve current reviewed policy,
+ * historical catalogue and the exact retained request without reserving it. */
+export async function retainedManagedTransferDestinationExecution(db: PageStudioQueryClient, intent: Intent, env: Record<string, unknown>) {
+  return retainedRequest(db, await expectedRequest(db, intent, configuration(env)))
+}

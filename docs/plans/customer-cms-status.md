@@ -21,12 +21,20 @@ verification are committed on the current launch branch. CMS mutation code has
 moved to the private management Worker to meet the unchanged Pages bundle budget.
 The management Worker must be released before Pages starts using its new RPC.
 
-Dashboard source `893b531607a0bc8bbf04fa0b917edf1171846d4e` is pushed. Its CI found a missing private-service connection in a publication test fixture.
-The two-line correction `ae30b6744` passes all 413 release-compatibility tests;
-[replacement CI](https://github.com/adme-dev/dashboard/actions/runs/38881426673)
-is running. This note is not a deployment receipt. Migrations 457–464 are additive and applied.
-The latest migration verification found empty new tables, immutable triggers and
-unchanged existing sites, release pointers and physical resource bindings.
+Dashboard source `a1c816cbc6a04275ef117692217d7006366d147e` passed
+[CI38882232393](https://github.com/adme-dev/dashboard/actions/runs/38882232393):
+16,326 full-suite tests, dedicated PostgreSQL stages and production build all pass.
+The measured raw Worker is 25,438,217 / 25,468,928 bytes (30,711 remaining);
+gzip is 7,155,844 / 9,750,000 bytes. No release job ran on this feature branch.
+
+The following native destination execution coordinator passed 301 focused tests
+(296 PostgreSQL plus five HTTP), independent review, cross-repository full-proof
+parity and scoped lint. Migration465 was applied on 16 October with both admission
+and immutable triggers, zero new rows and unchanged sites/release pointers/resource
+bindings. It stores only independently inspected historical evidence; it does not
+select a destination or launch a customer. Server typecheck retains its known295
+diagnostics with no new affected-module failures. Paired Studio runtime work remains
+in progress. This note is not a deployment receipt.
 
 Still outstanding: prepared destination execution and its own physical freeze,
 end-to-end graph/history copying, final native authoring selection with retained
