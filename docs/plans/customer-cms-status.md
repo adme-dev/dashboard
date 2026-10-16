@@ -1,7 +1,8 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 12 October 2026. Start here after an interruption.
-Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
+Last updated: 16 October 2026. Start here after an interruption.
+Current upgrade: [managed transfer execution](2026-10-16-managed-transfer-execution.md).
+Earlier release: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Latest bounded CMS rollout: [Fantasy Limo runtime and activation receipt](2026-10-10-fantasy-cms-runtime-release.md).
 Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
 This checklist tracks the active standalone CMS work; it does not declare the
@@ -10,6 +11,36 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Fantasy Limo demo](2026-10-01-fantasy-limo-demo.md),
 [standalone style guide](../design/standalone-cms-style-guide.md),
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
+
+## Active upgrade — 16 October 2026
+
+The active work is safe transfer of managed staging websites into production
+authoring. Native original-account authority, immutable resource/execution
+requests, source draft fencing, destination catalogue admission and independent
+verification are committed on the current launch branch. CMS mutation code has
+moved to the private management Worker to meet the unchanged Pages bundle budget.
+The management Worker must be released before Pages starts using its new RPC.
+
+Dashboard source `893b531607a0bc8bbf04fa0b917edf1171846d4e` is pushed. Its CI found a missing private-service connection in a publication test fixture.
+The two-line correction `ae30b6744` passes all 413 release-compatibility tests;
+[replacement CI](https://github.com/adme-dev/dashboard/actions/runs/38881426673)
+is running. This note is not a deployment receipt. Migrations 457–464 are additive and applied.
+The latest migration verification found empty new tables, immutable triggers and
+unchanged existing sites, release pointers and physical resource bindings.
+
+Still outstanding: prepared destination execution and its own physical freeze,
+end-to-end graph/history copying, final native authoring selection with retained
+live-release authority, customer progress/recovery, hosted two-account acceptance,
+and the final reviewed release. Existing local tests and pushed code do not prove
+these hosted outcomes. Production activation remains separately gated.
+
+A fresh read-only Chrome check of Fantasea's live account shows the four domain
+setup paths, but custom-domain capacity is not enabled and no custom domains are
+connected. The separate Cloudflare credential handoff has no verified completion
+receipt. Do not infer domain readiness from the presence of the setup UI.
+
+The historical acceptance and visual-feedback work below remains recorded. It
+must not be mistaken for completion of this current transfer/release upgrade.
 
 ## Next work — visual feedback, 12 October 2026
 

@@ -539,6 +539,164 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
                 ...c.options, env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: methods }
               })
             }
+            describe('prepared destination execution authority', () => {
+              const policy = { version: 1, kind: 'managed-draft-import', accountId: 'a'.repeat(32),
+                namespace: 'xeroflow-page-studio-dispatch-production',
+                from: { compatibilityDate: '2026-08-18', digest: 'd'.repeat(64) },
+                to: { compatibilityDate: '2026-08-18', digest: '8'.repeat(64) } }
+              beforeAll(async () => {
+                // Only the disposable test schema receives this unapplied migration.
+                const file = 'server/database/migrations/464_page_studio_managed_transfer_destination_executions.sql'
+                await db.query(readFileSync(file, 'utf8'))
+              })
+              async function setup(verified = true) {
+                const c = await catalogueSetup()
+                const catalogue = await c.module.prepareManagedTransferDestinationCatalogue(c.value, c.options)
+                const proof = await ready(catalogue)
+                if (verified) await coordinate(c, 'verify', { inspectManagedTransferDestinationCatalogue: async () => proof })
+                const module = await import('~~/server/utils/pageStudio/managedTransferDestinationExecution')
+                const options = { runTransaction, env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+                  MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: JSON.stringify(policy) } }
+                return { ...c, catalogue, proof, module, options }
+              }
+              it('retains one deterministic destination request with its own unexecuted freeze', async () => {
+                const c = await setup()
+                const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                expect(request).toMatchObject({ formatVersion: 1, ...c.value, catalogueRequest: c.catalogue, catalogueReceipt: c.proof.receipt,
+                  policy: { kind: 'managed-draft-import', formReceiptDigest: c.proof.receipt.receiptDigests.forms },
+                  freezeRequest: { adoptionId: `transfer_${c.value.operationId}_destination`, scope: c.catalogue.resourceRequest.resourceRequest.scope,
+                    actor: c.catalogue.resourceRequest.resourceRequest.actor, target: { databaseId: c.physical.database.databaseId,
+                      routeId: c.physical.preparationId, runtimeDigest: c.physical.worker.runtimeDigest } } })
+                expect(request).not.toHaveProperty('freeze')
+                expect(request).not.toHaveProperty('state')
+                expect(request.successor.scriptName).not.toBe(c.physical.worker.scriptName)
+                expect(request.successor.ownerTag).not.toBe(c.physical.worker.ownerTag)
+                expect(request.successor.runtimeDigest).toBe(policy.to.digest)
+                expect(request.freezeRequest.target.databaseId).not.toBe(sourceFreeze.request.target.databaseId)
+                const { etag: _etag, ...predecessor } = c.physical.worker
+                const identity = await collectionDigest({ ...c.value, catalogueRequestDigest: c.proof.requestDigest,
+                  catalogueReceiptDigest: c.proof.receipt.digest, predecessor, policy: request.policy })
+                expect(request.successor.scriptName).toBe(`ps-content-${identity.slice(0, 32)}`)
+                expect(request.successor.ownerTag).toBe(`ps-owner-${(await collectionDigest({ identity, purpose: 'owner' })).slice(0, 32)}`)
+                expect(await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)).toEqual(request)
+                for (const action of ['prepare', 'read']) {
+                  expect(await c.module.authorizeManagedTransferDestinationExecution({ action, request }, c.options)).toEqual({ action, request })
+                }
+                const rows = (await db.query('SELECT request,request_json,request_digest FROM page_studio_managed_transfer_destination_executions')).rows
+                const { collectionCanonical } = await import('~~/shared/pageStudio/collectionApi')
+                expect(rows).toEqual([{ request, request_json: collectionCanonical(request), request_digest: await collectionDigest(request) }])
+                expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+                expect((await db.query('SELECT current_checkpoint_id,status FROM page_studio_sites')).rows).toEqual([{ current_checkpoint_id: 'checkpoint_a', status: 'draft' }])
+              })
+              it('requires independently retained catalogue verification before reserving execution', async () => {
+                const c = await setup(false)
+                await expect(c.module.prepareManagedTransferDestinationExecution(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+                expect((await db.query('SELECT * FROM page_studio_managed_transfer_destination_executions')).rows).toEqual([])
+              })
+              it.each(['staging', undefined, 'preview'])('refuses untrusted release environment %s', async (environment) => {
+                const c = await setup()
+                await expect(c.module.prepareManagedTransferDestinationExecution(c.value, { ...c.options, env: { ...c.options.env, PAGE_STUDIO_PROVISIONING_ENVIRONMENT: environment } })).rejects.toMatchObject({ statusCode: 503 })
+              })
+              it.each(['account', 'namespace', 'runtime', 'compatibility', 'same-runtime'])('rejects policy %s mismatch before saving', async (field) => {
+                const c = await setup(), changed = structuredClone(policy)
+                if (field === 'account') changed.accountId = 'b'.repeat(32)
+                if (field === 'namespace') changed.namespace = 'xeroflow-page-studio-dispatch-staging'
+                if (field === 'runtime') changed.from.digest = '0'.repeat(64)
+                if (field === 'compatibility') changed.from.compatibilityDate = '2026-07-15'
+                if (field === 'same-runtime') changed.to.digest = changed.from.digest
+                await expect(c.module.prepareManagedTransferDestinationExecution(c.value, { ...c.options,
+                  env: { ...c.options.env, MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: JSON.stringify(changed) } })).rejects.toMatchObject({ statusCode: expect.any(Number) })
+                expect((await db.query('SELECT * FROM page_studio_managed_transfer_destination_executions')).rows).toEqual([])
+              })
+              it('does not replace a retained request when the reviewed policy changes', async () => {
+                const c = await setup()
+                const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                const changed = { ...c.options, env: { ...c.options.env, MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: JSON.stringify({ ...policy, to: { ...policy.to, digest: '9'.repeat(64) } }) } }
+                await expect(c.module.prepareManagedTransferDestinationExecution(c.value, changed)).rejects.toMatchObject({ statusCode: 409 })
+                await expect(c.module.authorizeManagedTransferDestinationExecution({ action: 'read', request }, changed)).rejects.toMatchObject({ statusCode: 409 })
+                expect(await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)).toEqual(request)
+                await expect(db.query('UPDATE page_studio_managed_transfer_destination_executions SET request_digest=$1', ['0'.repeat(64)])).rejects.toThrow(/immutable/i)
+                await expect(db.query('DELETE FROM page_studio_managed_transfer_destination_executions')).rejects.toThrow(/immutable/i)
+              })
+              it.each(['source-freeze', 'actor', 'script', 'catalogue', 'action', 'extra'])('rejects substituted callback %s', async (field) => {
+                const c = await setup()
+                const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                const callback: Record<string, unknown> = { action: 'prepare', request }
+                if (field === 'source-freeze') request.freezeRequest = sourceFreeze.request
+                if (field === 'actor') request.freezeRequest.actor.userId = randomUUID()
+                if (field === 'script') request.successor.scriptName = `ps-content-${'0'.repeat(32)}`
+                if (field === 'catalogue') request.catalogueReceipt.digest = '0'.repeat(64)
+                if (field === 'action') callback.action = 'activate'
+                if (field === 'extra') callback.freeze = sourceFreeze
+                await expect(c.module.authorizeManagedTransferDestinationExecution(callback, c.options)).rejects.toMatchObject({ statusCode: 403 })
+              })
+              it.each([
+                'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+                'UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()',
+                'UPDATE page_studio_workspace_memberships SET role=\'manager\'',
+                'UPDATE page_studio_entitlements SET storage_bytes_limit=storage_bytes_limit+1 WHERE status=\'active\'',
+                'DELETE FROM page_studio_cms_record_heads'
+              ])('rechecks original source authority on every prepared callback: %s', async (sql) => {
+                const c = await setup()
+                const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                await db.query(sql)
+                for (const action of ['prepare', 'read']) await expect(c.module.authorizeManagedTransferDestinationExecution({ action, request }, c.options)).rejects.toMatchObject({ statusCode: expect.any(Number) })
+              })
+              it('rejects a corrupt historical catalogue verification instead of trusting its ready label', async () => {
+                const c = await setup()
+                await db.query('ALTER TABLE page_studio_managed_transfer_catalogue_verifications DISABLE TRIGGER USER')
+                try {
+                  await db.query('UPDATE page_studio_managed_transfer_catalogue_verifications SET receipt_digest=$1,receipt=jsonb_set(receipt,\'{digest}\',to_jsonb($1::text))', ['0'.repeat(64)])
+                } finally {
+                  await db.query('ALTER TABLE page_studio_managed_transfer_catalogue_verifications ENABLE TRIGGER USER')
+                }
+                await expect(c.module.prepareManagedTransferDestinationExecution(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+              })
+              it.each(['request_digest', 'request_json'])('rejects corrupted retained %s on callback', async (field) => {
+                const c = await setup()
+                const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                await db.query('ALTER TABLE page_studio_managed_transfer_destination_executions DISABLE TRIGGER USER')
+                try {
+                  if (field === 'request_digest') await db.query('UPDATE page_studio_managed_transfer_destination_executions SET request_digest=$1', ['0'.repeat(64)])
+                  else await db.query('UPDATE page_studio_managed_transfer_destination_executions SET request_json=\' \' || request_json')
+                } finally { await db.query('ALTER TABLE page_studio_managed_transfer_destination_executions ENABLE TRIGGER USER') }
+                await expect(c.module.authorizeManagedTransferDestinationExecution({ action: 'read', request }, c.options)).rejects.toMatchObject({ statusCode: 403 })
+              })
+              it('requires a saved execution before admitting a valid independently derived request', async () => {
+                const c = await setup()
+                const { planManagedTransferDestinationExecution } = await import('~~/shared/pageStudio/managed-transfer-destination-execution')
+                const request = await planManagedTransferDestinationExecution(c.catalogue, c.proof.receipt,
+                  { version: policy.version, kind: policy.kind, from: policy.from, to: policy.to, formReceiptDigest: c.proof.receipt.receiptDigests.forms })
+                await expect(c.module.authorizeManagedTransferDestinationExecution({ action: 'prepare', request }, c.options)).rejects.toMatchObject({ statusCode: 403 })
+                expect((await db.query('SELECT * FROM page_studio_managed_transfer_destination_executions')).rows).toEqual([])
+              })
+              it('serializes competing reservations and returns the same immutable request on retry', async () => {
+                const c = await setup()
+                const results = await Promise.allSettled([c.module.prepareManagedTransferDestinationExecution(c.value, c.options),
+                  c.module.prepareManagedTransferDestinationExecution(c.value, c.options)])
+                expect(results.some(r => r.status === 'fulfilled')).toBe(true)
+                for (const result of results) if (result.status === 'rejected') expect(result.reason).toMatchObject({ statusCode: 503 })
+                const request = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                for (const result of results) if (result.status === 'fulfilled') expect(result.value).toEqual(request)
+                request.successor.scriptName = `ps-content-${'0'.repeat(32)}`
+                expect((await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)).successor.scriptName).not.toBe(request.successor.scriptName)
+                expect((await db.query('SELECT count(*) FROM page_studio_managed_transfer_destination_executions')).rows[0].count).toBe('1')
+              })
+              it('rolls back prepared admission when the source changes before commit', async () => {
+                const c = await setup()
+                const changed = <T>(work: (tx: pg.Client) => Promise<T>) => runTransaction(async (tx) => {
+                  const query = tx.query.bind(tx)
+                  const wrapped = { query: async (sql: string, params?: unknown[]) => {
+                    const result = await query(sql, params)
+                    if (sql.includes('INSERT INTO page_studio_managed_transfer_destination_executions')) await query('DELETE FROM page_studio_cms_record_heads')
+                    return result
+                  } }
+                  return work(wrapped as pg.Client)
+                })
+                await expect(c.module.prepareManagedTransferDestinationExecution(c.value, { ...c.options, runTransaction: changed })).rejects.toMatchObject({ statusCode: 409 })
+                expect((await db.query('SELECT * FROM page_studio_managed_transfer_destination_executions')).rows).toEqual([])
+              })
+            })
             it('status does not reserve or call remote methods, and resume requires original admission', async () => {
               const c = await catalogueSetup()
               expect(await coordinate(c, 'status')).toEqual({ operationId: c.value.operationId, state: 'not-started' })

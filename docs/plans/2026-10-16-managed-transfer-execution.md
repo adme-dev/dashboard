@@ -158,3 +158,27 @@ no added or removed diagnostic identities. A normal local build passed the
 unchanged raw bundle limit by 43,295 bytes before final test/import cleanup and
 the catalogue endpoint; exact-commit CI must verify the final artifact. The
 management Worker must deploy before Pages. No hosted deployment is asserted.
+
+
+## Prepared destination execution admission
+
+Native authority now retains a deterministic destination runtime request derived
+from its immutable, verified catalogue. The reviewed runtime policy, successor
+script/owner, original production resource identity and own freeze request are
+saved before remote effects. Every callback rechecks the same original account,
+operator, source heads, resource proofs, catalogue and configured runtime policy.
+A freeze request is not a physical freeze receipt, and historical catalogue proof
+is not treated as current provider state.
+
+Migration 464 is applied with zero requests and one immutable trigger; existing
+sites, release pointers and bindings remain unchanged. The full native transfer
+PostgreSQL plus new endpoint group passes 269 tests, including 28 new authority
+and five endpoint cases. Independent review, changed-file lint and diff checks
+pass. Server typecheck has exactly the same 295 baseline diagnostics. Paired
+Studio implementation and cross-planner parity still require completion.
+
+CI on893b53160 exposed a missed private-service connection in the database-only
+publication fixture. The two-line fixture correction ae30b6744 uses the actual
+private handler and real SQL. Its full six-suite release compatibility group
+passes 413 tests (one conditional skip), preserving the original publication and
+remote-I/O assertions. No production code or test expectations were relaxed.
