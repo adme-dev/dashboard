@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { z } from 'zod'
+import type { CmsFreezeReceiptSchema } from '~~/shared/pageStudio/cmsManaged'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
 
 vi.mock('~~/server/utils/db', () => ({
@@ -211,13 +213,15 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
 
   describe('durable native transfer intent', () => {
     let key: string, generation: string, schemaObject: string, contentObject: string, recordObject: string
+    let sourceFreeze: z.infer<typeof CmsFreezeReceiptSchema>
     const pin = (kind: string, version = 1) => ({ kind, collectionId: kind === 'content' ? '' : 'products', recordId: kind === 'record' ? 'first' : '',
-      version, bytes: 30, freezeDigest: 'f'.repeat(64), operationId: 'adoption_a', origin: 'legacy', sha256: 'a'.repeat(64) })
+      version, bytes: 30, freezeDigest: sourceFreeze.digest, operationId: 'adoption_a', origin: 'legacy', sha256: 'a'.repeat(64) })
     beforeAll(async () => {
       const path = 'server/database/migrations/457_page_studio_managed_transfer_intents.sql'
       await db.query(readFileSync(path, 'utf8'))
       await db.query(readFileSync('server/database/migrations/458_page_studio_managed_transfer_resources.sql', 'utf8'))
       await db.query(readFileSync('server/database/migrations/459_page_studio_managed_transfer_resource_bindings.sql', 'utf8'))
+      await db.query(readFileSync('server/database/migrations/460_page_studio_managed_transfer_executions.sql', 'utf8'))
       // Load the real coordinators as fixture setup, outside operation deadlines.
       await import('~~/server/utils/pageStudio/managedTransferIntent')
       await import('~~/server/utils/pageStudio/managedTransferResources')
@@ -236,10 +240,14 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
         VALUES('checkpoint_a',$1,$2,$3,$4,$5,'fixture',clock_timestamp())`, [scope.tenantId, scope.clientId, scope.siteId, 'c'.repeat(64),
         `tenants/${scope.tenantId}/clients/${scope.clientId}/sites/${scope.siteId}/checkpoints/checkpoint_a.json`])
       await db.query('UPDATE page_studio_sites SET current_checkpoint_id=\'checkpoint_a\' WHERE id=$1', [input.siteId])
+      const target = { accountId: 'a'.repeat(32), databaseId: randomUUID(), name: `ps-content-${'b'.repeat(32)}`, routeId: 'route_a', runtimeDigest: 'a'.repeat(64),
+        collectionReceiptDigest: 'b'.repeat(64), workflowReceiptDigest: 'c'.repeat(64), stagingReceiptDigest: 'd'.repeat(64) }
+      const freezeBody = { createdAt: '2026-10-15T00:00:00.000Z', state: 'frozen' as const, request: { formatVersion: 1 as const, adoptionId: 'adoption_a',
+        actor: { kind: 'agency-user' as const, userId: actorId, loginSessionHash: operatorHash }, scope, target } }
+      sourceFreeze = { ...freezeBody, digest: await collectionDigest(freezeBody) }
       await db.query(`INSERT INTO page_studio_cms_scopes(scope_key,tenant_id,client_id,business_id,site_id,environment,state,adoption_id,active_generation,target,freeze_digest)
         VALUES($1,$2,$3,$3,$4,'staging','legacy','adoption_a',$5,$6,$7)`, [key, scope.tenantId, scope.clientId, scope.siteId, generation,
-        { accountId: 'a'.repeat(32), databaseId: randomUUID(), name: `ps-content-${'b'.repeat(32)}`, routeId: 'route_a', runtimeDigest: 'a'.repeat(64),
-          collectionReceiptDigest: 'b'.repeat(64), workflowReceiptDigest: 'c'.repeat(64), stagingReceiptDigest: 'd'.repeat(64) }, 'f'.repeat(64)])
+        target, sourceFreeze.digest])
       await db.query(`INSERT INTO page_studio_application_versions(scope_key,generation,id,digest,manifest,adoption_id)
         VALUES($1,$2,$3,$4,$5,'adoption_a')`, [key, generation, applicationId, await collectionDigest(manifest), manifest])
       for (const [kind, id] of [['schema', schemaObject], ['content', contentObject], ['record', recordObject]]) {
@@ -487,6 +495,194 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
           const module = await import('~~/server/utils/pageStudio/managedTransferResources')
           return module.bindManagedTransferResources(value, { inspect, provider, runTransaction: transaction })
         }
+        describe('native execution workflow', () => {
+          const policy = { version: 1, kind: 'managed-draft-transfer', accountId: 'a'.repeat(32),
+            namespace: 'xeroflow-page-studio-dispatch-staging',
+            from: { compatibilityDate: '2026-08-18', digest: 'a'.repeat(64) },
+            to: { compatibilityDate: '2026-08-18', digest: '9'.repeat(64) } }
+          async function setup(bound = true) {
+            const c = await candidate()
+            if (bound) await bind(c.value, c.inspect)
+            const scope = (await db.query('SELECT intent FROM page_studio_managed_transfer_intents')).rows[0].intent.authority.source
+            const target = (await db.query('SELECT target FROM page_studio_cms_scopes')).rows[0].target
+            const context = { formatVersion: 1, ...c.value, sourceScope: scope, sourceTarget: target, freezeDigest: sourceFreeze.digest }
+            const predecessor = { accountId: target.accountId, databaseId: target.databaseId, scope,
+              namespace: policy.namespace, scriptName: `ps-content-${'5'.repeat(32)}`, ownerTag: `ps-owner-${'6'.repeat(32)}`,
+              runtimeDigest: target.runtimeDigest, compatibilityDate: policy.from.compatibilityDate, setupDigest: '7'.repeat(64) }
+            const formReceipt = { operationId: 'forms_a', collectionOperationId: 'collection_a', workflowOperationId: 'workflow_a', stagingOperationId: 'staging_a',
+              scope, accountId: target.accountId, databaseId: target.databaseId, name: target.name,
+              sourceDigest: '863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e',
+              targetDigest: 'c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2' }
+            const discovery = { ...context, predecessor, freeze: sourceFreeze, formReceipt }
+            const service = { discoverManagedTransferExecution: vi.fn(async () => structuredClone(discovery)) }
+            const module = await import('~~/server/utils/pageStudio/managedTransferExecution')
+            const options = { runTransaction, env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+              PAGE_STUDIO_PROVISIONER: service, MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify(policy) } }
+            return { ...c, context, discovery, service, module, options }
+          }
+          describe('execution coordinator', () => {
+            async function control(c: Awaited<ReturnType<typeof setup>>, action: string, methods: Record<string, unknown> = {}) {
+              return c.module.coordinateManagedTransferExecution({ ...c.value, action }, { ...c.options,
+                env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: { ...c.service, ...methods } } })
+            }
+            it('status never reserves and resume requires the original retained request', async () => {
+              const c = await setup()
+              expect(await control(c, 'status')).toEqual({ operationId: c.value.operationId, state: 'not-started' })
+              await expect(control(c, 'resume')).rejects.toMatchObject({ statusCode: 409 })
+              expect(c.service.discoverManagedTransferExecution).not.toHaveBeenCalled()
+            })
+            it.each(['start', 'resume', 'status', 'verify'])('coordinates %s without holding native locks or leaking private identity', async (action) => {
+              const c = await setup()
+              if (action !== 'start') await c.module.prepareManagedTransferExecution(c.value, c.options)
+              const key = action === 'status' ? 'readManagedTransferExecution' : action === 'verify' ? 'inspectManagedTransferExecution' : 'prepareManagedTransferExecution'
+              const methods = { marker: 'trusted', [key]: async function (this: { marker: string }, request: unknown, mode?: string) {
+                expect(this.marker).toBe('trusted')
+                expect(mode).toBe(['start', 'resume'].includes(action) ? action : undefined)
+                expect(request).toEqual((await db.query('SELECT request FROM page_studio_managed_transfer_executions')).rows[0].request)
+                await db.query('BEGIN')
+                try {
+                  await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                } finally {
+                  await db.query('ROLLBACK')
+                }
+                return { ...c.value, state: 'ready', identity: '1'.repeat(64) }
+              } }
+              expect(await control(c, action, methods)).toEqual({ operationId: c.value.operationId, state: 'ready' })
+              expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+            })
+            it.each(['operation', 'extra', 'identity', 'not-started'])('rejects substituted %s progress', async (field) => {
+              const c = await setup()
+              await c.module.prepareManagedTransferExecution(c.value, c.options)
+              const progress = { ...c.value, state: 'ready', identity: '1'.repeat(64) }
+              if (field === 'operation') progress.operationId = randomUUID()
+              if (field === 'identity') delete (progress as { identity?: string }).identity
+              if (field === 'not-started') progress.state = 'not-started'
+              await expect(control(c, 'status', { readManagedTransferExecution: async () => field === 'extra' ? { ...progress, secret: 'untrusted' } : progress })).rejects.toMatchObject({ statusCode: 409 })
+            })
+            it.each(['owner', 'source'])('rechecks original %s after executor returns', async (field) => {
+              const c = await setup()
+              await c.module.prepareManagedTransferExecution(c.value, c.options)
+              await expect(control(c, 'resume', { prepareManagedTransferExecution: async () => {
+                await db.query(field === 'owner' ? 'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()' : 'DELETE FROM page_studio_cms_record_heads')
+                return { ...c.value, state: 'ready', identity: '1'.repeat(64) }
+              } })).rejects.toMatchObject({ statusCode: field === 'owner' ? 403 : 409 })
+            })
+            it('does not accept an adapter mutation of the retained expected request', async () => {
+              const c = await setup()
+              await c.module.prepareManagedTransferExecution(c.value, c.options)
+              await expect(control(c, 'status', { readManagedTransferExecution: async (request: { operationId: string }) => {
+                request.operationId = randomUUID()
+                return { ...c.value, operationId: request.operationId, state: 'pending', identity: '1'.repeat(64) }
+              } })).rejects.toMatchObject({ statusCode: 409 })
+            })
+          })
+          it('reads only retained native context and requires a verified resource binding', async () => {
+            const c = await setup(false)
+            await expect(c.module.readManagedTransferExecutionContext(c.value, { runTransaction })).rejects.toMatchObject({ statusCode: 409 })
+            await bind(c.value, c.inspect)
+            expect(await c.module.readManagedTransferExecutionContext(c.value, { runTransaction })).toEqual(c.context)
+            expect(c.service.discoverManagedTransferExecution).not.toHaveBeenCalled()
+          })
+          it('reserves exact source execution before remote effects and authorizes only that immutable request', async () => {
+            const c = await setup()
+            const first = await c.module.prepareManagedTransferExecution(c.value, c.options)
+            expect(first).toEqual({ operationId: c.value.operationId, state: 'execution-reserved' })
+            const rows = (await db.query('SELECT * FROM page_studio_managed_transfer_executions')).rows
+            expect(rows).toHaveLength(1)
+            const saved = rows[0].request
+            expect(saved).toMatchObject({ ...c.value, sourceScope: c.context.sourceScope, sourceTarget: c.context.sourceTarget,
+              freeze: sourceFreeze, predecessor: c.discovery.predecessor, policy: { version: 1, kind: policy.kind, from: policy.from, to: policy.to } })
+            expect(saved.successor.scriptName).not.toBe(saved.predecessor.scriptName)
+            expect(saved.successor.runtimeDigest).toBe(policy.to.digest)
+            expect(await c.module.authorizeManagedTransferExecution(saved, { runTransaction })).toEqual(saved)
+            expect(await c.module.prepareManagedTransferExecution(c.value, c.options)).toEqual(first)
+            expect(c.service.discoverManagedTransferExecution).toHaveBeenCalledTimes(1)
+            await expect(db.query('UPDATE page_studio_managed_transfer_executions SET request=\'{}\'')).rejects.toThrow(/immutable/i)
+            await expect(db.query('DELETE FROM page_studio_managed_transfer_executions')).rejects.toThrow(/immutable/i)
+            expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+          })
+          it.each(['owner', 'source'])('rejects %s drift across discovery without retaining a request', async (change) => {
+            const c = await setup()
+            c.service.discoverManagedTransferExecution.mockImplementation(async () => {
+              await db.query(change === 'owner' ? 'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()' : 'DELETE FROM page_studio_cms_record_heads')
+              return c.discovery
+            })
+            await expect(c.module.prepareManagedTransferExecution(c.value, c.options)).rejects.toMatchObject({ statusCode: change === 'owner' ? 403 : 409 })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_executions')).rows).toEqual([])
+          })
+          it.each(['target', 'scope', 'freeze', 'runtime', 'extra'])('rejects substituted %s discovery', async (field) => {
+            const c = await setup()
+            const changed = structuredClone(c.discovery)
+            if (field === 'target') changed.sourceTarget.databaseId = randomUUID()
+            if (field === 'scope') changed.sourceScope.siteId = randomUUID()
+            if (field === 'freeze') changed.freeze.digest = '0'.repeat(64)
+            if (field === 'runtime') changed.predecessor.runtimeDigest = '0'.repeat(64)
+            c.service.discoverManagedTransferExecution.mockResolvedValue(field === 'extra' ? { ...changed, untrusted: true } : changed)
+            await expect(c.module.prepareManagedTransferExecution(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_executions')).rows).toEqual([])
+          })
+          it('releases native SQL locks across discovery and retains the bound service receiver', async () => {
+            const c = await setup()
+            c.service.discoverManagedTransferExecution = async function () {
+              expect(this).toBe(c.service)
+              await db.query('BEGIN')
+              try {
+                await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+              } finally {
+                await db.query('ROLLBACK')
+              }
+              return c.discovery
+            } as never
+            await expect(c.module.prepareManagedTransferExecution(c.value, c.options)).resolves.toMatchObject({ state: 'execution-reserved' })
+          })
+          it('denies substituted execution requests and original owner revocation after reservation', async () => {
+            const c = await setup()
+            await c.module.prepareManagedTransferExecution(c.value, c.options)
+            const saved = (await db.query('SELECT request FROM page_studio_managed_transfer_executions')).rows[0].request
+            await expect(c.module.authorizeManagedTransferExecution({ ...saved, successor: { ...saved.successor, scriptName: `ps-content-${'0'.repeat(32)}` } }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+            await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+            await expect(c.module.authorizeManagedTransferExecution(saved, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+          })
+          it.each(['staging', 'preview', undefined])('rejects %s coordinator configuration before source discovery', async (environment) => {
+            const c = await setup()
+            c.options.env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = environment as never
+            await expect(c.module.prepareManagedTransferExecution(c.value, c.options)).rejects.toMatchObject({ statusCode: 503 })
+            expect(c.service.discoverManagedTransferExecution).not.toHaveBeenCalled()
+          })
+          it.each(['request', 'binding'])('rejects corrupted retained %s digest before authorization', async (field) => {
+            const c = await setup()
+            await c.module.prepareManagedTransferExecution(c.value, c.options)
+            const saved = (await db.query('SELECT request FROM page_studio_managed_transfer_executions')).rows[0].request
+            const corrupt = <T>(work: (client: pg.Client) => Promise<T>) => runTransaction(async (tx) => {
+              const query = tx.query.bind(tx)
+              return work({ query: async (sql: string, params?: unknown[]) => {
+                const result = await query(sql, params)
+                if (field === 'request' && sql.includes('SELECT request,request_digest FROM page_studio_managed_transfer_executions')) result.rows[0].request_digest = '0'.repeat(64)
+                if (field === 'binding' && sql.includes('SELECT binding,binding_digest FROM page_studio_managed_transfer_resource_bindings')) result.rows[0].binding_digest = '0'.repeat(64)
+                return result
+              } } as pg.Client)
+            })
+            await expect(c.module.authorizeManagedTransferExecution(saved, { runTransaction: corrupt })).rejects.toMatchObject({ statusCode: field === 'request' ? 403 : 409 })
+          })
+          it('concurrent reservations retain one exact request and allow a safe retry', async () => {
+            const c = await setup()
+            const results = await Promise.allSettled([
+              c.module.prepareManagedTransferExecution(c.value, c.options),
+              c.module.prepareManagedTransferExecution(c.value, c.options)
+            ])
+            expect(results.some(result => result.status === 'fulfilled')).toBe(true)
+            const saved = (await db.query('SELECT request FROM page_studio_managed_transfer_executions')).rows
+            expect(saved).toHaveLength(1)
+            expect(await c.module.prepareManagedTransferExecution(c.value, c.options)).toEqual({ operationId: c.value.operationId, state: 'execution-reserved' })
+            expect((await db.query('SELECT request FROM page_studio_managed_transfer_executions')).rows).toEqual(saved)
+          })
+          it('keeps reviewed runtime configuration stable on retry', async () => {
+            const c = await setup()
+            await c.module.prepareManagedTransferExecution(c.value, c.options)
+            c.options.env.MANAGED_TRANSFER_EXECUTION_POLICY = JSON.stringify({ ...policy, to: { ...policy.to, digest: '8'.repeat(64) } })
+            await expect(c.module.prepareManagedTransferExecution(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+          })
+        })
         describe('native resource workflow', () => {
           async function control(value: unknown, action: string, binding: Record<string, unknown> = {}, environment = 'production') {
             const module = await import('~~/server/utils/pageStudio/managedTransferResources')

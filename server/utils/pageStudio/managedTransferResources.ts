@@ -153,7 +153,7 @@ const Progress = z.union([
   ManagedTransferReferenceSchema.extend({ state: z.literal('prepared'), preparationId: z.string().uuid(),
     proofDigest: z.string().regex(/^[a-f0-9]{64}$/), resourceIdentity: z.string().regex(/^cms_attach_[a-f0-9]{64}$/) }).strict()
 ])
-const Binding = ManagedTransferReferenceSchema.extend({ version: z.literal(1), destinationGeneration: z.string().uuid(),
+export const ManagedTransferResourceBindingSchema = ManagedTransferReferenceSchema.extend({ version: z.literal(1), destinationGeneration: z.string().uuid(),
   resourceRequestDigest: z.string().regex(/^[a-f0-9]{64}$/), physical: ManagedTransferPhysicalResourcesSchema }).strict()
 
 /** Native resource phase, private until the complete transfer workflow is ready.
@@ -186,7 +186,7 @@ export async function coordinateManagedTransferResources(input: unknown, depende
     const retained = (await db.query<{ binding: unknown, binding_digest: string }>(
       'SELECT binding,binding_digest FROM page_studio_managed_transfer_resource_bindings WHERE operation_id=$1', [reference.operationId])).rows[0]
     if (retained) {
-      const binding = Binding.safeParse(retained.binding)
+      const binding = ManagedTransferResourceBindingSchema.safeParse(retained.binding)
       if (!row || !binding.success || await collectionDigest(binding.data) !== retained.binding_digest
         || binding.data.operationId !== reference.operationId || binding.data.intentDigest !== reference.intentDigest
         || binding.data.destinationGeneration !== intent.destination.generation
