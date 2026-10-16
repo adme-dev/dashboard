@@ -701,3 +701,24 @@ the retained public key and historical token are test-only. An exact fingerprint
 exception, matching the existing staging-fixture policy, was reviewed separately;
 pinned Gitleaks 8.24.3 reproduced one finding before and zero after. New hosted
 acceptance and production storage transition remain outstanding.
+
+### 16 October — native transfer resource reservation and release size
+
+The original native owner, exact publishing plan and original platform operator
+are retained in an immutable transfer intent. Every private executor admission
+rechecks those principals and the accepted source graph. A separate immutable
+production resource request preserves the existing checkpoint as a read anchor;
+ordinary attachment authority is unchanged. Migrations 457 and 458 were applied
+and verified without allocating customer resources or changing authoring selection.
+The paired Studio resource-only executor is still under full verification. Physical
+resource binding, graph selection, recovery UI and hosted acceptance remain open.
+
+Dashboard CI at `63280d089` rejected the raw Worker artifact by 2,826 bytes. An
+initial shared-SQL extraction passed functional checks but worsened the build
+size and was reverted before commit. The replacement extends the existing
+lossless static SQL encoder to complete `const` initializer literals. Mutable,
+dynamic and tagged initializers remain excluded; query contents and execution
+order are preserved. Its new regression failed before implementation, then the
+60-test compaction/dispatcher group and independent review passed. Full artifact
+measurement is pending; the immutable size ceiling has not changed. No deployment
+or customer activation is claimed by these source-level checks.
