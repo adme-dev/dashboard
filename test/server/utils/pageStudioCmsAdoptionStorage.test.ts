@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
-import { createCmsAdoptionStorage } from '~~/server/utils/pageStudio/cmsAdoptionStorage'
+import { createCmsAdoptionStorage } from '~~/workers/page-studio-management/src/cms/adoptionStorage'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
 import { CmsAdoptionIntentSchema, contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
 

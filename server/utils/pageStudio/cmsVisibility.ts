@@ -11,7 +11,7 @@ import {
   CmsStorageTargetSchema,
   contentScopeKey
 } from '~~/shared/pageStudio/cmsManaged'
-import type { PageStudioControlQueryClient } from './controlStore'
+import type { PageStudioControlQueryClient } from '~~/shared/pageStudio/controlTypes'
 
 export const cmsUnavailable = () => new Error('Accepted CMS state unavailable or stale')
 export const cmsEqual = (a: unknown, b: unknown) =>

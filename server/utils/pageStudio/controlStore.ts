@@ -1,7 +1,10 @@
+import type { PageStudioControlScope, PageStudioControlQueryClient, PageStudioCheckpointInput, PageStudioCheckpointCommitInput } from '~~/shared/pageStudio/controlTypes'
 import { editorCheckpointStagingOrigin, type CheckpointStagingOrigin } from './checkpointStagingOrigin'
 import { queryOneFresh, transaction } from '~~/server/utils/db'
 import { assertPageStudioSessionAuthority, PageStudioSessionAuthorityError } from './sessionAuthority'
 import { authorizePageStudioSession, type PageStudioSessionClaims } from './sessions'
+
+export type { PageStudioControlScope, PageStudioControlQueryClient, PageStudioCheckpointInput, PageStudioCheckpointCommitInput } from '~~/shared/pageStudio/controlTypes'
 
 /** Audit provenance only. It does not confer native-client staging authority. */
 export interface CustomerProvisioningCheckpointOrigin {
@@ -26,16 +29,6 @@ interface CheckpointDependencies {
   stagingOrigin?: (db: PageStudioControlQueryClient) => Promise<CheckpointStagingOrigin | null>
   customerProvisioning?: CustomerProvisioningCheckpointOrigin
   customerEditor?: CustomerEditorCheckpointOrigin
-}
-
-export interface PageStudioControlScope {
-  tenantId: string
-  clientId: string
-  siteId: string
-}
-
-export interface PageStudioControlQueryClient {
-  query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>
 }
 
 type RunTransaction = <T>(callback: (db: PageStudioControlQueryClient) => Promise<T>) => Promise<T>
@@ -63,21 +56,6 @@ export class PageStudioControlError extends Error {
     super(message)
     this.name = 'PageStudioControlError'
   }
-}
-
-export interface PageStudioCheckpointInput {
-  checkpointId: string
-  createdAt: string
-  digest: string
-  etag: string
-  objectKey: string
-  scope: PageStudioControlScope
-  userId: string
-}
-
-export interface PageStudioCheckpointCommitInput {
-  checkpoint: PageStudioCheckpointInput
-  expectedCheckpointId: string | null
 }
 
 export interface PageStudioCheckpointCommitReceipt {

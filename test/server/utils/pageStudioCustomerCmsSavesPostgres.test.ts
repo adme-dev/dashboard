@@ -1,3 +1,4 @@
+import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -162,6 +163,7 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
     })
     const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: environment as string, PAGE_STUDIO_CHECKPOINTS: { get },
       PAGE_STUDIO_CONTENT_ROUTER: { readManagedCmsTarget: async () => graphFixture.base.target } }
+    attachCmsManagement(env, runTransaction)
     const principal = { source: 'customer-session' as const, claims, env, capability: 'workspace:checkpoint' as const }
     const draft = async (id = `save_${randomUUID()}`) => {
       const next = structuredClone(manifest)
@@ -191,7 +193,7 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
     const f = await managed()
     if (environment !== 'production') return
     const get = f.get.getMockImplementation()!
-    f.get.mockImplementationOnce(async key => {
+    f.get.mockImplementationOnce(async (key) => {
       const result = await get(key)
       await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
       return result
@@ -242,7 +244,7 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
   })
   it.each(['scope', 'author', 'origin-environment'])('denies a foreign %s without remote storage reads', async (reason) => {
     const f = await managed(), input = await f.draft()
-    const { coordinateCmsGraphCheckpoint } = await import('~~/server/utils/pageStudio/cmsGraphCoordinator')
+    const { coordinateCmsGraphCheckpoint } = await import('~~/workers/page-studio-management/src/cms/graphMutations')
     if (reason === 'scope') input.checkpoint.scope.siteId = randomUUID()
     if (reason === 'author') input.checkpoint.userId = randomUUID()
     if (reason === 'origin-environment') f.env.PAGE_STUDIO_CONTENT_ENVIRONMENT = environment === 'staging' ? 'production' : 'staging'
@@ -261,7 +263,7 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
   it('denies production CMS setup even through valid workspace:create authority', async () => {
     const f = await managed()
     if (environment !== 'production') return
-    const { coordinateCmsAdoption } = await import('~~/server/utils/pageStudio/cmsAdoptionCoordinator')
+    const { coordinateCmsAdoption } = await import('~~/workers/page-studio-management/src/cms/adoptionCoordinator')
     const { coordinateCustomerSchemaUpgrade } = await import('~~/server/utils/pageStudio/customerSchemaUpgrade')
     await expect(coordinateCmsAdoption({ action: 'start' }, { ...f.principal, capability: 'workspace:create' }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
     await expect(coordinateCustomerSchemaUpgrade({ action: 'status', kind: 'collection' }, f.claims, { env: f.env, runTransaction })).rejects.toMatchObject({ statusCode: 403 })
@@ -269,8 +271,8 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
   })
   it('cannot use customer authority for feature, AI or history acceptance', async () => {
     const f = await managed(), input = await f.draft()
-    const api = await import('~~/server/utils/pageStudio/cmsGraphCoordinator')
-    const { coordinateCmsAdoption } = await import('~~/server/utils/pageStudio/cmsAdoptionCoordinator')
+    const api = await import('~~/workers/page-studio-management/src/cms/graphMutations')
+    const { coordinateCmsAdoption } = await import('~~/workers/page-studio-management/src/cms/adoptionCoordinator')
     await expect(coordinateCmsAdoption({ action: 'start' }, f.principal, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
     await expect(api.coordinateCmsGraphTransition({} as never, f.principal, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
     await expect(api.coordinateCmsGraphRestore({}, f.principal, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
@@ -291,7 +293,7 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
     const f = await managed(), input = await f.draft()
     await db.query(`CREATE FUNCTION fail_customer_pointer() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END $$;
       CREATE TRIGGER fail_customer_pointer BEFORE UPDATE ON page_studio_cms_scopes FOR EACH ROW EXECUTE FUNCTION fail_customer_pointer();`)
-    await expect(f.commit(input)).rejects.toThrow('injected failure')
+    await expect(f.commit(input)).rejects.toMatchObject({ statusCode: 503 })
     expect((await db.query('SELECT current_application_id FROM page_studio_cms_scopes')).rows[0].current_application_id).toBe(f.appId)
     expect((await db.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows[0].current_checkpoint_id).toBe('base_checkpoint')
     expect((await db.query('SELECT COUNT(*) FROM page_studio_application_versions')).rows[0].count).toBe('1')

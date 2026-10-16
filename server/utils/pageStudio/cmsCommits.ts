@@ -18,7 +18,7 @@ import {
   type CmsObjectPin
 } from '~~/shared/pageStudio/cmsManaged'
 import { withCmsCommitAuthority } from './cmsCommitAuthority'
-import type { PageStudioControlQueryClient } from './controlStore'
+import type { PageStudioControlQueryClient } from '~~/shared/pageStudio/controlTypes'
 import {
   cmsEqual,
   cmsUnavailable,

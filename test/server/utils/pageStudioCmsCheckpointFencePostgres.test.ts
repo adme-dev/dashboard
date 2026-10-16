@@ -8,7 +8,7 @@ import {
   registerCmsFreeze,
   importFrozenCmsPage,
   activateCmsAdoption
-} from '~~/server/utils/pageStudio/cmsAdoption'
+} from '~~/workers/page-studio-management/src/cms/adoption'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import type { ContentAuthorityRequest } from '~~/server/utils/pageStudio/businessContent'
 import type { PageStudioControlQueryClient } from '~~/server/utils/pageStudio/controlStore'

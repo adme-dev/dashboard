@@ -1,3 +1,4 @@
+import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -157,6 +158,7 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS adoption on PostgreSQL
     })
     const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CHECKPOINTS: { get },
       PAGE_STUDIO_CONTENT_ROUTER: { readManagedCmsTarget: async () => graphFixture.base.target } }
+    attachCmsManagement(env, runTransaction)
     const principal = { source: 'customer-session' as const, claims, env, capability: 'workspace:checkpoint' as const }
     const draft = async (id = `save_${randomUUID()}`) => {
       const next = structuredClone(manifest)
@@ -196,7 +198,7 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS adoption on PostgreSQL
     const principal = { ...f.principal, capability: 'workspace:create' as const,
       env: { ...f.env, PAGE_STUDIO_CONTENT_ROUTER: router } }
     const call = async (input: unknown, authority = principal) => {
-      const { coordinateCmsAdoption } = await import('~~/server/utils/pageStudio/cmsAdoptionCoordinator')
+      const { coordinateCmsAdoption } = await import('~~/workers/page-studio-management/src/cms/adoptionCoordinator')
       return coordinateCmsAdoption(input, authority, { runTransaction })
     }
     const advance = async (current: Awaited<ReturnType<typeof call>>) => call({ action: 'advance',

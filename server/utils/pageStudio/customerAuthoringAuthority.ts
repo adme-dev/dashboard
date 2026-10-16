@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
-import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 const Input = z.object({
   loginSessionHash: z.string().regex(/^[a-f0-9]{64}$/),

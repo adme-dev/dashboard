@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
-import type { PageStudioCheckpointInput } from './controlStore'
+import type { PageStudioCheckpointInput } from '~~/shared/pageStudio/controlTypes'
 
 const maximumBytes = 8 * 1024 * 1024
 const id = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)

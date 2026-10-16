@@ -5,7 +5,7 @@ import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '~~/sh
 import { parseBuilderArtifactJson } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
 import { readPlacedCmsObjects } from './cmsObjectTransport'
 import { cmsEqual } from './cmsVisibility'
-import type { CmsGraphSnapshot } from './cmsGraphCoordinator'
+import type { CmsGraphSnapshot } from './cmsGraphRead'
 import type { CmsPreparationReader } from './cmsCommits'
 
 const scopedId = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)

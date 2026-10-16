@@ -1,12 +1,13 @@
+import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
 import { readAcceptedComponentCmsData } from '~~/server/utils/pageStudio/componentCmsData'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { coordinateCmsGraphTransition, coordinateCmsGraphCheckpoint, coordinateCmsGraphRestore, lookupCmsGraphOperation } from '~~/server/utils/pageStudio/cmsGraphCoordinator'
+import { coordinateCmsGraphTransition, coordinateCmsGraphCheckpoint, coordinateCmsGraphRestore, lookupCmsGraphOperation } from '~~/workers/page-studio-management/src/cms/graphMutations'
 import { readAcceptedFormActions } from '~~/server/utils/pageStudio/formActionDiscovery'
 import { commitPageStudioCheckpoint, commitPageStudioEditorCheckpoint, acceptPageStudioAiProposal } from '~~/server/utils/pageStudio/controlStore'
-import { beginCmsAdoption } from '~~/server/utils/pageStudio/cmsAdoption'
+import { beginCmsAdoption } from '~~/workers/page-studio-management/src/cms/adoption'
 import { acceptManagedFeatureCandidate } from '~~/server/utils/pageStudio/featureCandidateApplication'
 import { CmsPreparationSchema } from '~~/shared/pageStudio/cmsManaged'
 import fixtureJson from '../../fixtures/pageStudioCmsGraph.json'
@@ -267,6 +268,7 @@ describe.runIf(Boolean(databaseUrl))('native coherent graph acceptance on dispos
         return await transaction(work)
       } finally { inTransaction = false }
     }
+    attachCmsManagement(request.env, runTransaction)
     return { input, principal: { source: 'native-login' as const, request }, deps: { runTransaction }, get, texts, key }
   }
   it('commits the verified checkpoint, version, schema, full graph and receipt together', async () => {

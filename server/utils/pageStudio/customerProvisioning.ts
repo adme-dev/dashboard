@@ -5,7 +5,7 @@ import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { CustomerPreviewPolicySchema, readApprovedCustomerPreviewSite } from './customerSites'
 import { createPageStudioProvisioningJob, dispatchPageStudioProvisioning, PageStudioProvisioningError,
   PageStudioProvisioningJobSchema, type PageStudioProvisionerBinding } from './provisioningBinding'
-import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 type Job = z.infer<typeof PageStudioProvisioningJobSchema>
 const Input = z.object({ sessionToken: z.string().regex(/^[A-Za-z0-9_-]{64}$/), siteId: z.string().uuid() }).strict()

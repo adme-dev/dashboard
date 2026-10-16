@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import type { PageStudioQueryClient } from './sites'
+import type { PageStudioQueryClient } from '~~/shared/pageStudio/controlTypes'
 import type { readCustomerProvisioningPreviewAuthority } from './customerProvisioning'
 
 /** Native owner locks must be acquired first. The empty gate fails closed. Every

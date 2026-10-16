@@ -2,7 +2,7 @@ import { createError } from 'h3'
 import { readCustomerProvisioningPreviewAuthority, readCustomerSessionIdentityFromHash } from './customerProvisioning'
 import { withCustomerProductionAuthoringAuthority } from './customerAuthoringAuthority'
 import { assertCustomerCmsSetupApproval } from './customerCmsSetupAuthority'
-import type { PageStudioQueryClient } from './sites'
+import type { PageStudioQueryClient } from '~~/shared/pageStudio/controlTypes'
 
 export interface CustomerEditorAuthorityReceipt {
   environment: 'staging' | 'production'

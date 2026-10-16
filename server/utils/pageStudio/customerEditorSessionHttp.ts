@@ -45,7 +45,7 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
     if (claims.environment !== config.environment || claims.editorOrigin !== config.editorOrigin || claims.returnUrl !== `${config.dashboardOrigin}/studio/dashboard`) throw createError({ statusCode: 403 })
     if (claims.environment === 'production' && ['cms-prerequisites', 'cms-adoption'].includes(operation)) throw createError({ statusCode: 403 })
     const contentEnv = Object.fromEntries(
-      ['PAGE_STUDIO_CONTENT_ENVIRONMENT', 'PAGE_STUDIO_CHECKPOINTS', 'PAGE_STUDIO_CONTENT_ROUTER', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT']
+      ['PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_MANAGEMENT', 'PAGE_STUDIO_CONTENT_ENVIRONMENT', 'PAGE_STUDIO_CHECKPOINTS', 'PAGE_STUDIO_CONTENT_ROUTER', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT']
         .map(name => [name, setting(event, name)])
     )
     if (operation === 'authorize') {
