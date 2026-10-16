@@ -138,11 +138,12 @@ export const ManagedTransferReferenceSchema = z.object({
   operationId: z.string().uuid(), intentDigest: ReleaseSha256Schema
 }).strict()
 
-/** Private SQL-only phase boundary. Resolve the retained original logins, never
- * accept a replacement owner/operator from a resource request. No remote I/O
- * belongs in work; callers leave this transaction before invoking providers.
+/** Original intent and principal only, including after a committed handoff.
+ * Terminal callers must separately enforce the source CAS before selection and
+ * their exact completion receipt on recovery. This is not storage admission.
+ * SQL-only: the original authority and site lock span work and final checks.
  */
-export async function withReservedManagedTransfer<T>(input: unknown,
+export async function withManagedTransferIntentAuthority<T>(input: unknown,
   work: (db: PageStudioQueryClient, intent: StoredIntent['intent']) => Promise<T>,
   dependencies: Dependencies = {}
 ): Promise<T> {
@@ -163,14 +164,29 @@ export async function withReservedManagedTransfer<T>(input: unknown,
     || row.intent.destination.environment !== 'production'
     || row.intent.destination.requestKey !== `transfer_${parsed.data.operationId}`) throw denied()
   return withManagedTransferAuthority(original.data.authority, async (db, authority) => {
-    const current = async () => {
-      const source = await captureSource(db, authority)
-      if (!equal(authority, row.intent.authority) || !equal(source, row.intent.source)
-        || await collectionDigest({ authority, source }) !== row.intent.sourceDigest) throw conflict()
-    }
-    await current()
-    const result = await work(db, structuredClone(row.intent))
-    await current()
+    if (!equal(authority, row.intent.authority)) throw conflict()
+    return work(db, structuredClone(row.intent))
+  }, dependencies)
+}
+
+/** Caller holds original intent authority. Compare all original accepted clocks,
+ * heads and graph selection immediately before a terminal native switch. */
+export async function assertManagedTransferSource(db: PageStudioQueryClient, intent: StoredIntent['intent']) {
+  const source = await captureSource(db, intent.authority)
+  if (!equal(source, intent.source)
+    || await collectionDigest({ authority: intent.authority, source }) !== intent.sourceDigest) throw conflict()
+}
+
+/** Nonterminal phases always require the exact original source both before and
+ * after work. A terminal handoff cannot silently weaken this existing boundary. */
+export async function withReservedManagedTransfer<T>(input: unknown,
+  work: (db: PageStudioQueryClient, intent: StoredIntent['intent']) => Promise<T>,
+  dependencies: Dependencies = {}
+): Promise<T> {
+  return withManagedTransferIntentAuthority(input, async (db, intent) => {
+    await assertManagedTransferSource(db, intent)
+    const result = await work(db, structuredClone(intent))
+    await assertManagedTransferSource(db, intent)
     return result
   }, dependencies)
 }

@@ -274,6 +274,61 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
       const { reserveManagedTransferIntent } = await import('~~/server/utils/pageStudio/managedTransferIntent')
       return reserveManagedTransferIntent(value, { runTransaction })
     }
+    describe('original intent authority for terminal selection', () => {
+      async function original() {
+        const value = await request(), saved = await reserve(value)
+        const module = await import('~~/server/utils/pageStudio/managedTransferIntent')
+        return { reference: { operationId: value.operationId, intentDigest: saved.intentDigest }, module }
+      }
+      it('can resolve original authority after source authoring ends without reopening nonterminal phases', async () => {
+        const c = await original()
+        await db.query('UPDATE page_studio_cms_scopes SET state=\'blocked\'')
+        const intent = await c.module.withManagedTransferIntentAuthority(c.reference, async (_tx, value) => value, { runTransaction })
+        expect(intent.operationId).toBe(c.reference.operationId)
+        expect(intent.authority.owner.identityId).toBe(expected.identityId)
+        await expect(c.module.withReservedManagedTransfer(c.reference, async () => 'invalid', { runTransaction })).rejects.toThrow()
+      })
+      it('explicitly checks the complete original source before terminal work and rolls back a changed source', async () => {
+        const c = await original()
+        await expect(c.module.withManagedTransferIntentAuthority(c.reference, async (tx, intent) => {
+          await c.module.assertManagedTransferSource(tx, intent)
+          await tx.query('DELETE FROM page_studio_cms_record_heads')
+          await tx.query('INSERT INTO transfer_effects VALUES(\'invalid\')')
+          await c.module.assertManagedTransferSource(tx, intent)
+        }, { runTransaction })).rejects.toMatchObject({ statusCode: 409 })
+        expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
+        expect((await db.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(1)
+      })
+      it.each(['owner', 'operator', 'plan'])('refuses changed original %s authority before terminal recovery', async (kind) => {
+        const c = await original(), work = vi.fn()
+        await db.query(kind === 'plan'
+          ? 'UPDATE page_studio_entitlements SET storage_bytes_limit=storage_bytes_limit+1 WHERE status=\'active\''
+          : `UPDATE ${kind === 'owner' ? 'page_studio_customer_sessions' : 'page_studio_login_sessions'} SET revoked_at=clock_timestamp()`)
+        await expect(c.module.withManagedTransferIntentAuthority(c.reference, work, { runTransaction })).rejects.toThrow()
+        expect(work).not.toHaveBeenCalled()
+      })
+      it('rolls back terminal effects if original authority is revoked inside the transaction', async () => {
+        const c = await original()
+        await expect(c.module.withManagedTransferIntentAuthority(c.reference, async (tx) => {
+          await tx.query('INSERT INTO transfer_effects VALUES(\'invalid\')')
+          await tx.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+        }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+        expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
+      })
+      it('preserves nonterminal postconditions when its consumer mutates a detached intent', async () => {
+        const c = await original()
+        await expect(c.module.withReservedManagedTransfer(c.reference, async (tx, intent) => {
+          await tx.query('DELETE FROM page_studio_cms_record_heads')
+          intent.source.recordHeads = []
+        }, { runTransaction })).rejects.toMatchObject({ statusCode: 409 })
+        expect((await db.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(1)
+      })
+      it('rejects a substituted terminal intent digest before work', async () => {
+        const c = await original(), work = vi.fn()
+        await expect(c.module.withManagedTransferIntentAuthority({ ...c.reference, intentDigest: '0'.repeat(64) }, work, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+        expect(work).not.toHaveBeenCalled()
+      })
+    })
     it('retains one immutable request and returns the same destination identity after a lost acknowledgement', async () => {
       const value = await request()
       const first = await reserve(value)
