@@ -13,7 +13,9 @@ type Operation = 'workspace' | 'asset' | 'settings' | 'recipients' | 'template' 
 export function customerFormsEnabled(event: H3Event) {
   const env = event.context.cloudflare?.env ?? {}
   return (env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED ?? process.env.PAGE_STUDIO_CUSTOMER_FORMS_ENABLED) === 'true'
-    && env.PAGE_STUDIO_CONTENT_ENVIRONMENT === 'staging'
+    && (env.PAGE_STUDIO_CONTENT_ENVIRONMENT === 'staging'
+      || (env.PAGE_STUDIO_CONTENT_ENVIRONMENT === 'production'
+        && (env.PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED ?? process.env.PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED) === 'true'))
 }
 function safeError(error: unknown): never {
   const code = (error as { statusCode?: number })?.statusCode
@@ -32,11 +34,12 @@ export async function customerFormsHandler(event: H3Event, operation: Operation,
     }
     const sessionToken = customerSessionToken(event)
     const env = event.context.cloudflare?.env ?? {}
+    const environment = env.PAGE_STUDIO_CONTENT_ENVIRONMENT === 'production' ? 'production' : 'staging'
     if (operation === 'website' || operation === 'availability') {
       if (Object.keys(getQuery(event)).length || getHeader(event, 'transfer-encoding') || Number(getHeader(event, 'content-length') ?? 0) !== 0) throw createError({ statusCode: 400 })
       if (operation === 'website') return await readCustomerDefaultWebsite(sessionToken, env, deps)
       try {
-        return await readCustomerFormsAvailability(sessionToken, deps)
+        return await readCustomerFormsAvailability(sessionToken, deps, environment, env)
       } catch {
         return { available: false, siteId: null }
       }
@@ -46,7 +49,7 @@ export async function customerFormsHandler(event: H3Event, operation: Operation,
       ? undefined
       : await readPageStudioJson(event, operation === 'settings' ? 48_000 : 300_000,
           ['Settings must be JSON', 'Settings are too large', 'Settings are required', 'Invalid settings', 'Invalid settings JSON'])
-    const context = createCustomerFormContext({ sessionToken, siteId, environment: 'staging' }, env, deps)
+    const context = createCustomerFormContext({ sessionToken, siteId, environment }, env, deps)
     if (operation === 'template-fields') return await readEmailTemplateFieldOptions(context, getRouterParam(event, 'audience') ?? '', getQuery(event), getRouterParam(event, 'definitionId'), 'customer')
     if (operation === 'template-history' || operation === 'template-history-version') {
       const query = getQuery(event)

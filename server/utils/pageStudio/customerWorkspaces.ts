@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { transaction } from '~~/server/utils/db'
-import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/server/utils/pageStudio/sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 const Id = z.string().uuid()
 const WorkspaceActor = z.object({ workspaceId: Id, identityId: Id }).strict()

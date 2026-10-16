@@ -59,6 +59,7 @@ describe.runIf(Boolean(databaseUrl))('native CMS setup admission on PostgreSQL',
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
+    await db.query(migration('456_page_studio_customer_editor_environment.sql'))
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
     await db.query('CREATE TABLE page_studio_cms_scopes (scope_key TEXT, tenant_id TEXT, client_id UUID, site_id UUID, state TEXT)')
     workspaces = await import('~~/server/utils/pageStudio/customerWorkspaces')
@@ -151,6 +152,30 @@ describe.runIf(Boolean(databaseUrl))('native CMS setup admission on PostgreSQL',
       env: { PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED: 'true', PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_PROVISIONER: { readProvisioning: vi.fn(async () => provider) } } } }
   }
   const setupApi = () => import('~~/server/utils/pageStudio/customerCmsSetup')
+  const availabilityOptions = () => ({ configuration: config, runTransaction,
+    env: { PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED: 'true', PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging' } })
+  it('hides CMS setup for an expired preview without blocking the authenticated owner overview', async () => {
+    const api = await setupApi()
+    await db.query('UPDATE page_studio_entitlements SET effective_from=clock_timestamp()-INTERVAL \'2 days\', effective_until=clock_timestamp()-INTERVAL \'1 day\'')
+    await expect(api.customerCmsSetupAvailable(token, availabilityOptions())).resolves.toBe(false)
+    await expect(api.readCustomerCmsSetup(token, availabilityOptions())).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('hides CMS setup before an owner has created a preview', async () => {
+    const api = await setupApi()
+    await db.query('UPDATE page_studio_customer_setup_drafts SET workspace_id=$1', [await workspace()])
+    await expect(api.customerCmsSetupAvailable(token, availabilityOptions())).resolves.toBe(false)
+  })
+  it.each(['owner', 'membership', 'workspace', 'parent'] as const)('still rejects withdrawn %s access when CMS setup is unavailable', async (reason) => {
+    const api = await setupApi()
+    const mutations = {
+      owner: 'UPDATE page_studio_workspace_memberships SET role=\'viewer\'',
+      membership: 'UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()',
+      workspace: 'UPDATE page_studio_customer_workspaces SET status=\'suspended\'',
+      parent: 'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()'
+    }
+    await db.query(mutations[reason])
+    await expect(api.customerCmsSetupAvailable(token, availabilityOptions())).rejects.toMatchObject({ statusCode: reason === 'parent' ? 401 : 403 })
+  })
   it('GET requires resume without minting, concurrent explicit resumes reuse exactly one setup child', async () => {
     await approve()
     const { options } = await bootstrap(), api = await setupApi()

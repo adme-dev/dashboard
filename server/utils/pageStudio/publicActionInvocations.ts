@@ -8,7 +8,8 @@ import { verifyBuilderPublishedFormInput, verifyBuilderActionResult } from '~~/s
 import { verifyCmsPreparation, insertVerifiedCmsObjects, CmsManagedCommitReceiptSchema } from './cmsCommits'
 import { ActionBytesMissingError, createActionStorage } from './actionStorage'
 import { assertPageStudioAiAllowanceAvailable } from './aiAllowance'
-import { cmsEqual, readAcceptedCmsObject } from './cmsVisibility'
+import { cmsEqual } from './cmsVisibility'
+import { readPublishedCmsSchema } from './publishedCmsVisibility'
 import { PublishedFeatureRequestSchema, publishedFeatureDenied, withPublishedActionAuthority, type PublishedFeatureSnapshot } from './publishedFeatureAuthority'
 import { readPublishedFeatureRecovery } from './publishedFeatureProjection'
 import { assertPublicFormChallenge, verifyPublicFormChallenge } from './publicFormChallenge'
@@ -69,7 +70,7 @@ async function assertCurrent(db: PageStudioControlQueryClient, snapshot: Publish
   // The sealed release selects the action. Only its required write schemas must
   // remain current; unrelated draft edits do not invalidate a published form.
   for (const pin of context.expectedSchemas) {
-    const current = await readAcceptedCmsObject(db, { scope: context.scope, kind: 'schema', collectionId: pin.collectionId })
+    const current = await readPublishedCmsSchema(db, context.scope, snapshot.context, pin.collectionId)
     if (!cmsEqual(current.pin, pin)) throw publishedFeatureDenied()
   }
 }

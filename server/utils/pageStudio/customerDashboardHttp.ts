@@ -9,6 +9,7 @@ import { CustomerPreviewApprovalSchema, readCustomerDashboard, createCustomerDas
 import { customerCmsSetupOptions } from './customerCmsSetupHttp'
 import { customerCmsSetupAvailable } from './customerCmsSetup'
 import { customerEditorLaunchOptions } from './customerEditorLaunchHttp'
+import { readCustomerManagedTransfer } from './customerManagedTransfer'
 import { readCustomerEditorAvailability } from './customerEditorLaunch'
 
 function options(event: H3Event): CustomerDashboardDependencies {
@@ -36,9 +37,20 @@ export async function customerDashboardHandler(event: H3Event) {
   const token = customerSessionToken(event)
   try {
     const dashboard = await readCustomerDashboard(token, options(event))
+    const managedTransfer = dashboard.siteId ? await readCustomerManagedTransfer(token, dashboard.siteId, { env: event.context.cloudflare?.env ?? {} }) : null
     const editor = customerEditorLaunchOptions(event)
     const cms = customerCmsSetupOptions(event)
-    return { ...dashboard, canPrepareCms: cms ? await customerCmsSetupAvailable(token, cms) : false, canOpenStudio: editor ? await readCustomerEditorAvailability(token, editor) : false }
+    const canPrepareCms = !managedTransfer && cms ? await customerCmsSetupAvailable(token, cms) : false
+    const canOpenStudio = (!managedTransfer || managedTransfer.completed) && editor ? await readCustomerEditorAvailability(token, editor) : false
+    // Current native authority plus verified managed content supersedes the
+    // historical preview job. This proves editing readiness, not publication.
+    if (managedTransfer?.completed) return { ...dashboard, managedTransfer, state: canOpenStudio ? 'editor-ready' : 'connection-pending', stage: 5,
+      canOpenStudio, canPrepareCms: false, canCreate: false, canRetry: false, recovery: undefined }
+    if (managedTransfer) return { ...dashboard, managedTransfer, state: 'transfer-pending',
+      canOpenStudio: false, canPrepareCms: false, canCreate: false, canRetry: false, recovery: undefined }
+    if (canOpenStudio) return { ...dashboard, managedTransfer, state: 'editor-ready', stage: 5,
+      canOpenStudio, canPrepareCms: false, canCreate: false, canRetry: false, recovery: undefined }
+    return { ...dashboard, managedTransfer, canPrepareCms, canOpenStudio }
   } catch (error) { safeError(error) }
 }
 export async function customerPreviewHandler(event: H3Event) {

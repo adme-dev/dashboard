@@ -51,6 +51,24 @@ const call = (path: string, body: unknown, headers: Record<string, string> = {})
     'x-page-studio-customer-session': signed, ...headers }, body: JSON.stringify(body)
 })
 describe('private native customer session endpoints', () => {
+  it('binds production routes to opt-in and rejects staging sessions or production setup', async () => {
+    const token = await signCustomerEditorToken({ ...claims, environment: 'production' }, privatePem, issuer)
+    const headers = { 'x-page-studio-customer-session': token }
+    expect((await call('authorize', { capability: 'workspace:checkpoint' }, headers)).status).toBe(403)
+    config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'production'
+    expect((await call('authorize', { capability: 'workspace:checkpoint' }, headers)).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED = 'true'
+    expect((await call('authorize', { capability: 'workspace:checkpoint' })).status).toBe(403)
+    expect((await call('authorize', { capability: 'workspace:checkpoint' }, headers)).status).toBe(200)
+    expect((await call('latest-checkpoint', {}, headers)).status).toBe(200)
+    expect(mocks.read).toHaveBeenCalledWith(expect.objectContaining({ environment: 'production' }), {
+      env: expect.objectContaining({ PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' })
+    })
+    expect((await call('cms-adoption', { action: 'start' }, headers)).status).toBe(403)
+    expect((await call('cms-prerequisites', { action: 'status', kind: 'collection' }, headers)).status).toBe(403)
+    expect(mocks.adopt).not.toHaveBeenCalled()
+    expect(mocks.upgrade).not.toHaveBeenCalled()
+  })
   it('requires machine identity in addition to the dedicated customer JWT', async () => {
     expect((await call('authorize', { capability: 'workspace:checkpoint' }, { authorization: '' })).status).toBe(401)
     expect((await call('authorize', { capability: 'workspace:checkpoint' }, { 'x-page-studio-customer-session': '' })).status).toBe(401)
@@ -78,7 +96,7 @@ describe('private native customer session endpoints', () => {
   })
   it('reads only the signed scope and prevents forbidden capabilities', async () => {
     expect((await call('latest-checkpoint', {})).status).toBe(200)
-    expect(mocks.read).toHaveBeenCalledWith(claims)
+    expect(mocks.read).toHaveBeenCalledWith(claims, { env: expect.any(Object) })
     expect((await call('latest-checkpoint', { siteId: 'foreign' })).status).toBe(400)
     expect((await call('authorize', { capability: 'source:edit' })).status).toBe(400)
   })

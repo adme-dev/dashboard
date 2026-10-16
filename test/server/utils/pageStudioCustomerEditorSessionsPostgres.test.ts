@@ -13,6 +13,7 @@ const ids = { owner: randomUUID(), other: randomUUID(), client: randomUUID(), st
 
 describe.runIf(Boolean(databaseUrl))('native customer editor sessions on PostgreSQL', () => {
   const schema = `customer_editor_${randomUUID().replaceAll('-', '')}`
+  let legacyClaimsConstraint: string
   let db: pg.Client
   let workspaces: typeof import('~~/server/utils/pageStudio/customerWorkspaces')
   const runTransaction = async <T>(callback: (client: pg.Client) => Promise<T>) => {
@@ -59,6 +60,8 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
+    legacyClaimsConstraint = (await db.query("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='page_studio_customer_editor_sessions'::regclass AND conname='page_studio_customer_editor_sessions_check2'")).rows[0].definition
+    await db.query(migration('456_page_studio_customer_editor_environment.sql'))
     await db.query('CREATE TABLE page_studio_cms_scopes (scope_key TEXT, tenant_id TEXT, client_id UUID, site_id UUID, state TEXT)')
     workspaces = await import('~~/server/utils/pageStudio/customerWorkspaces')
   })
@@ -126,6 +129,25 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     const { commitCustomerEditorCheckpoint } = await import('~~/server/utils/pageStudio/customerEditorSessions')
     return commitCustomerEditorCheckpoint(input, claims, { runTransaction })
   }
+  it('upgrades populated legacy staging receipts without changing claims or preventing revocation', async () => {
+    const { claims } = await session()
+    // Reconstruct the exact pre-456 columns/check and 447 immutable trigger in
+    // this disposable schema, retaining a real staging login/handoff/session.
+    await db.query(`ALTER TABLE page_studio_customer_editor_sessions DROP CONSTRAINT customer_editor_claims_environment;
+      ALTER TABLE page_studio_customer_editor_sessions DROP COLUMN environment CASCADE;
+      ALTER TABLE page_studio_customer_editor_handoffs DROP COLUMN environment CASCADE;
+      ALTER TABLE page_studio_customer_editor_handoffs DROP COLUMN entitlement_id CASCADE;`)
+    await db.query(`ALTER TABLE page_studio_customer_editor_sessions ADD CONSTRAINT page_studio_customer_editor_sessions_check2 ${legacyClaimsConstraint}`)
+    await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
+    const before = (await db.query('SELECT to_jsonb(s) AS child,to_jsonb(h) AS handoff FROM page_studio_customer_editor_sessions s JOIN page_studio_customer_editor_handoffs h ON h.id=s.handoff_id')).rows[0]
+    await db.query(migration('456_page_studio_customer_editor_environment.sql'))
+    const after = (await db.query("SELECT to_jsonb(s)-'environment' AS child,to_jsonb(h)-ARRAY['environment','entitlement_id'] AS handoff FROM page_studio_customer_editor_sessions s JOIN page_studio_customer_editor_handoffs h ON h.id=s.handoff_id")).rows[0]
+    expect(after).toEqual(before)
+    await expect(authorize(claims)).resolves.toBeDefined()
+    await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp()')
+    await expect(authorize(claims)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=NULL')).rejects.toThrow('immutable')
+  })
   it('exchanges once for a distinct signed native child session without leaking parent credentials', async () => {
     const handoff = await ticket()
     const result = await exchange(handoff.token)

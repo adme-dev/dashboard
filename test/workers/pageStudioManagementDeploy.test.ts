@@ -31,6 +31,21 @@ describe('private management immutable deployment target', () => {
   it('never binds infrastructure staging to customer staging resources', () => {
     expect(() => validateManagementTarget({ ...config('staging'), services: [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' }] }, 'staging')).toThrow()
   })
+  it('requires explicit production provisioning and permits only strict reviewed-policy shape', () => {
+    const current = config()
+    expect(current.vars.PAGE_STUDIO_PROVISIONING_ENVIRONMENT).toBe('production')
+    expect(current.vars.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY).toBeUndefined()
+    const policy = { version: 1, kind: 'managed-draft-import', accountId: current.account_id,
+      namespace: 'xeroflow-page-studio-dispatch-production', from: { compatibilityDate: '2026-07-15', digest: 'a'.repeat(64) },
+      to: { compatibilityDate: '2026-07-15', digest: 'b'.repeat(64) } }
+    const changed = (value: unknown) => ({ ...current, vars: { ...current.vars, MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: JSON.stringify(value) } })
+    expect(() => validateManagementTarget(changed(policy), 'production')).not.toThrow()
+    for (const value of [{ ...policy, accountId: 'b'.repeat(32) }, { ...policy, namespace: 'other' },
+      { ...policy, formReceiptDigest: 'a'.repeat(64) }, { ...policy, to: policy.from },
+      { ...policy, to: { ...policy.to, digest: '' } }]) expect(() => validateManagementTarget(changed(value), 'production')).toThrow()
+    const staging = config('staging')
+    expect(() => validateManagementTarget({ ...staging, vars: { ...staging.vars, MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: JSON.stringify(policy) } }, 'staging')).toThrow()
+  })
   it('rejects an implicit or invented environment', () => {
     expect(() => validateManagementTarget(config(), undefined)).toThrow()
     expect(() => validateManagementTarget(config(), 'preview')).toThrow()

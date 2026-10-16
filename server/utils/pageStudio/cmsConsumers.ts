@@ -28,7 +28,7 @@ import {
   contentScopeKey
 } from '~~/shared/pageStudio/cmsManaged'
 import type { ContentAuthorityRequest } from './businessContent'
-import type { PageStudioControlQueryClient } from './controlStore'
+import type { PageStudioControlQueryClient } from '~~/shared/pageStudio/controlTypes'
 import { commitManagedCms, type CmsPreparationReader } from './cmsCommits'
 import { cmsEqual, readCmsConsumerSnapshot, type AcceptedCmsObject } from './cmsVisibility'
 

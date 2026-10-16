@@ -52,6 +52,8 @@ describe.runIf(Boolean(databaseUrl))('native customer editor handoff on PostgreS
     await db.query(migration('446_page_studio_customer_editor_handoffs.sql'))
     await db.query(migration('446_page_studio_customer_editor_handoffs.sql'))
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
+    await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
+    await db.query(migration('456_page_studio_customer_editor_environment.sql'))
     workspaces = await import('~~/server/utils/pageStudio/customerWorkspaces')
   })
   beforeEach(async () => {

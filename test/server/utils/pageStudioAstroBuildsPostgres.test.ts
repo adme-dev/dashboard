@@ -11,7 +11,11 @@ import { reserveAstroReleaseBuild } from '~~/server/utils/pageStudio/astroBuilds
 import { buildApprovedPageStudioVersion, readApprovedBuildAuthority, persistSuccessfulBuild, type PageStudioBuildQueryClient } from '~~/server/utils/pageStudio/builds'
 import { activatePageStudioRelease, rollbackPageStudioRelease, getPageStudioBuildPointer, getPageStudioReleasePointer } from '~~/server/utils/pageStudio/publishing'
 import { authorizePageStudioPreview, resolvePageStudioReleaseHost } from '~~/server/utils/pageStudio/delivery'
-import { signPageStudioSessionToken } from '~~/server/utils/pageStudio/sessions'
+import { issuePageStudioSession, signPageStudioSessionToken } from '~~/server/utils/pageStudio/sessions'
+import { prepareCustomerPublishPrincipal, type CustomerPublishPrincipal } from '~~/server/utils/pageStudio/customerPublishAuthority'
+import { requestCustomerSignIn, verifyCustomerSignIn } from '~~/server/utils/pageStudio/customerSignup'
+import { createCustomerWorkspace } from '~~/server/utils/pageStudio/customerWorkspaces'
+import { createCustomerPreviewSite } from '~~/server/utils/pageStudio/customerSites'
 import { withPageStudioPublishAuthority, type PageStudioPublishPrincipal } from '~~/server/utils/pageStudio/publishAuthority'
 
 const databaseUrl = process.env.PAGE_STUDIO_CMS_DATABASE_TEST_URL
@@ -32,7 +36,7 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
   let legacyResult: { success: true, buildId: string, versionDigest: string, artifactPrefix: string, manifestKey: string, manifestDigest: string, validationKey: string }
   const actorId = '30000000-0000-4000-8000-000000000701'
   const digest = 'c'.repeat(64)
-  const checkpointId = 'checkpoint_astro'
+  let checkpointId = 'checkpoint_astro'
   async function transact<T>(client: pg.Client, work: (client: PageStudioBuildQueryClient) => Promise<T>) {
     await client.query('BEGIN')
     try {
@@ -49,15 +53,18 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
   const reserve = (change = {}, select = () => toolchain) => runTransaction(client => reserveAstroReleaseBuild(client, { ...input(), ...change }, select))
   const activateInput = () => ({ scope, actorId, buildId: legacyResult.buildId, environment: 'production' as const, hostname: 'astro-test.example.invalid', expectedActiveReleaseId: null, idempotencyKey: 'legacy-release' })
   beforeEach(async () => {
+    checkpointId = 'checkpoint_astro'
     db = new pg.Client({ connectionString: databaseUrl })
     await db.connect()
     schema = `astro_build_test_${randomUUID().replaceAll('-', '')}`
     await db.query(`CREATE SCHEMA "${schema}"`)
     await db.query(`SET search_path TO "${schema}", pg_catalog`)
     await db.query(`CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN DEFAULT TRUE,user_role TEXT,custom_role_id UUID,sessions_invalidated_at TIMESTAMPTZ); CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN);
-      CREATE TABLE client_users(id UUID PRIMARY KEY); CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
+      CREATE TABLE client_users(id UUID PRIMARY KEY,client_id UUID,status TEXT,role TEXT);
+      CREATE TABLE client_sessions(token_hash TEXT PRIMARY KEY,client_user_id UUID,expires_at TIMESTAMPTZ);
+      CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));`)
-    for (const name of ['402_page_studio_control_plane.sql', '403_page_studio_sessions.sql', '413_page_studio_release_metadata.sql', '414_page_studio_atomic_release_metadata.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql', '430_page_studio_astro_build_identity.sql', '431_page_studio_astro_release_receipt.sql', '432_page_studio_astro_approval.sql', '433_page_studio_runtime_delivery.sql', '435_page_studio_runtime_features.sql']) await db.query(migration(name))
+    for (const name of ['402_page_studio_control_plane.sql', '403_page_studio_sessions.sql', '413_page_studio_release_metadata.sql', '414_page_studio_atomic_release_metadata.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql', '430_page_studio_astro_build_identity.sql', '431_page_studio_astro_release_receipt.sql', '432_page_studio_astro_approval.sql', '433_page_studio_runtime_delivery.sql', '435_page_studio_runtime_features.sql', '436_page_studio_editing_session_duration.sql', '442_page_studio_customer_workspaces.sql', '443_page_studio_customer_signup.sql', '444_page_studio_customer_site_ownership.sql', '452_page_studio_client_publishers.sql', '453_page_studio_native_publishers.sql', '454_page_studio_native_build_admission.sql', '455_page_studio_native_preview_sessions.sql']) await db.query(migration(name))
     await db.query('INSERT INTO team_members(id) VALUES($1)', [actorId])
     const clientId = randomUUID()
     await db.query('INSERT INTO agency_clients VALUES($1,TRUE)', [clientId])
@@ -137,7 +144,7 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
     const finish = (retained: Awaited<ReturnType<typeof reserve>>, receipt = resultFor(retained), verifyBuild = async (pointer: unknown) => pointer) =>
       completeAstroReleaseBuild({ reservation: retained, receipt, principal, policyDigest: 'f'.repeat(64) }, { runTransaction, verifyBuild })
     const metadata = { defaultLocale: 'en-AU', theme: {}, navigation: {}, footer: {}, seoDefaults: {}, integrations: {} }
-    const coordinate = (overrides = {}, requestKey = 'astro-request', recoverCandidate = false) => coordinateApprovedAstroBuild({ scope, versionId, environment: 'production', idempotencyKey: requestKey }, principal, {
+    const coordinate = (overrides = {}, requestKey = 'astro-request', recoverCandidate = false, actor: PageStudioPublishPrincipal | CustomerPublishPrincipal = principal) => coordinateApprovedAstroBuild({ scope, versionId, environment: 'production', idempotencyKey: requestKey }, actor, {
       selectGeneration: async (_environment, selectedDigest) => {
         const context = await createAstroCompilerBuildIdentity({ scope, environment: 'production', source: { kind: 'approved-version', versionId, versionDigest: digest, checkpoint: { id: checkpointId, digest } }, renderInputDigest: digest, featureRecoveryDigest: null }, toolchain)
         if (selectedDigest && selectedDigest !== context.identity.toolchainDigest) throw new Error('Unknown generation')
@@ -151,9 +158,314 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
       verifyBuild: async pointer => pointer,
       ...overrides
     }, { runTransaction, recoverCandidate })
-    const preview = (buildId: string, verifyBuild = async (pointer: unknown) => pointer) => registerAstroCandidatePreview({
+    const preview = (buildId: string, verifyBuild = async (pointer: unknown) => pointer, actor: PageStudioPublishPrincipal | CustomerPublishPrincipal = principal) => registerAstroCandidatePreview({
       scope, versionId, buildId, environment: 'production', previewHostname: 'review.example.invalid'
-    }, principal, { runTransaction, queryOne: async (sql, params) => (await db.query(sql, params)).rows[0] ?? null, verifyBuild })
+    }, actor, { runTransaction, queryOne: async (sql, params) => (await db.query(sql, params)).rows[0] ?? null, verifyBuild })
+
+    describe('standalone native customer build and candidate', () => {
+      let nativePrincipal: CustomerPublishPrincipal
+      beforeEach(async () => {
+        const delivery = await requestCustomerSignIn({ mode: 'signup', email: 'native-builder@example.test', name: 'Native builder', acceptedTerms: true }, 'test-v1', runTransaction)
+        const user = await verifyCustomerSignIn(delivery!.token, runTransaction)
+        const workspace = await createCustomerWorkspace({ identityId: user.identityId, requestId: randomUUID(), name: 'Native workspace' }, runTransaction)
+        const fixture = await createCustomerPreviewSite({ workspaceId: workspace.workspace.id, identityId: user.identityId,
+          requestId: randomUUID(), name: 'Native website', route: 'native-site', starterVersion: 'floristry-v1' }, {
+          runTransaction, previewPolicy: { approvalId: randomUUID(), approvedBy: actorId,
+            expiresAt: new Date(Date.now() + 86400_000).toISOString(), pagesPerSiteLimit: 5,
+            storageBytesLimit: 104857600, monthlyBuildLimit: 10, monthlyTrafficBytesLimit: 1073741824 }
+        })
+        scope = { tenantId: fixture.tenantId, clientId: fixture.businessId, siteId: fixture.site.id }
+        // Test-only publish plan; the immutable preview receipt remains unchanged.
+        await db.query(`UPDATE page_studio_entitlements SET status='active', plan_key='studio_business',
+          custom_domain_limit=1, plan_metadata='{"publishingEnabled":true}'::jsonb WHERE client_id=$1`, [scope.clientId])
+        nativePrincipal = (await prepareCustomerPublishPrincipal(user.sessionToken, scope.siteId, { runTransaction })).principal
+        checkpointId = 'checkpoint_native'
+        await db.query(`INSERT INTO page_studio_checkpoints(id,tenant_id,client_id,site_id,digest,object_key,etag,created_at)
+          VALUES($1,$2,$3,$4,$5,'checkpoints/native','native',NOW())`, [checkpointId, ...Object.values(scope), digest])
+        versionId = (await db.query(`INSERT INTO page_studio_versions(tenant_id,client_id,site_id,checkpoint_id,digest,author_id,author_role,summary,status,idempotency_key)
+          VALUES($1,$2,$3,$4,$5,$6,'agency','Staff-approved native website','approved','native-version') RETURNING id`,
+        [...Object.values(scope), checkpointId, digest, actorId])).rows[0].id
+        await db.query('UPDATE page_studio_sites SET current_version_id=$1,current_checkpoint_id=$2 WHERE id=$3', [versionId, checkpointId, scope.siteId])
+        await db.query(`INSERT INTO page_studio_reviews(tenant_id,client_id,site_id,version_id,version_digest,decision,reviewer_id)
+          VALUES($1,$2,$3,$4,$5,'approved',$6)`, [...Object.values(scope), versionId, digest, actorId])
+      })
+      const build = (overrides = {}) => coordinate(overrides, 'native-request', true, nativePrincipal)
+      const review = (id: string, verify = async (pointer: unknown) => pointer) => preview(id, verify, nativePrincipal)
+      describe('native private review sessions', () => {
+        const keys = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+        const issuer = 'https://studio.example.invalid'
+        const privateKey = keys.privateKey.export({ format: 'pem', type: 'pkcs8' }).toString()
+        const publicKey = keys.publicKey.export({ format: 'pem', type: 'spki' }).toString()
+        const issue = async (duringSign?: () => Promise<unknown>) => {
+          const { issueCustomerPreviewSession } = await import('~~/server/utils/pageStudio/customerPreviewSession')
+          const { signCustomerPreviewToken } = await import('~~/server/utils/pageStudio/customerPreviewToken')
+          const candidate = await review((await build()).buildId)
+          const session = await issueCustomerPreviewSession({ scope, hostname: candidate.hostname, releaseId: candidate.release.releaseId }, nativePrincipal,
+            { runTransaction, signToken: async (claims) => {
+              await duringSign?.()
+              return signCustomerPreviewToken(claims, privateKey, issuer)
+            } })
+          return { candidate, session }
+        }
+        const read = (hostname: string, token: string) => authorizePageStudioPreview({ hostname, token }, { issuer, publicKey, runTransaction })
+        it('opens exactly its retained build through delivery without issuing an editor grant', async () => {
+          const { candidate, session } = await issue()
+          expect(await read(candidate.hostname, session.token)).toEqual(candidate)
+          expect(session.expiresAt - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(300)
+          expect((await db.query('SELECT count(*)::int AS n FROM page_studio_sessions WHERE role=\'client\'')).rows[0].n).toBe(0)
+          expect(JSON.stringify(session)).not.toContain(nativePrincipal.tokenHash)
+          expect(await read('build-other.review.example.invalid', session.token)).toBeNull()
+          expect((await db.query('SELECT actor_role FROM page_studio_audit_events WHERE action=\'customer.preview_session_issued\'')).rows)
+            .toEqual([{ actor_role: 'customer' }])
+        })
+        it.each([
+          'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+          'UPDATE page_studio_customer_accounts SET status=\'suspended\'',
+          'UPDATE page_studio_workspace_memberships SET role=\'viewer\'',
+          'UPDATE page_studio_entitlements SET custom_domain_limit=0',
+          'UPDATE page_studio_customer_preview_sessions SET revoked_at=clock_timestamp()',
+          'UPDATE page_studio_versions SET status=\'draft\'',
+          'UPDATE page_studio_sites SET delivery_mode=\'runtime\'',
+          'DELETE FROM page_studio_release_pointers WHERE environment=\'preview\''
+        ])('withdraws private review after %s', async (sql) => {
+          const { candidate, session } = await issue()
+          expect(await read(candidate.hostname, session.token)).toEqual(candidate)
+          await db.query(sql)
+          expect(await read(candidate.hostname, session.token)).toBeNull()
+        })
+        it('rechecks the original native login after signing and persists no denied grant', async () => {
+          await expect(issue(() => db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')))
+            .rejects.toMatchObject({ code: 'PUBLISH_AUTHORITY_DENIED' })
+          expect((await db.query('SELECT count(*)::int AS n FROM page_studio_customer_preview_sessions')).rows[0].n).toBe(0)
+        })
+        it('refuses a new approval for the same version until its candidate is rebuilt', async () => {
+          const { candidate, session } = await issue()
+          await db.query(`INSERT INTO page_studio_reviews(tenant_id,client_id,site_id,version_id,version_digest,decision,reviewer_id,decided_at)
+            VALUES($1,$2,$3,$4,$5,'approved',$6,clock_timestamp()+interval '1 second')`, [...Object.values(scope), versionId, digest, actorId])
+          expect(await read(candidate.hostname, session.token)).toBeNull()
+        })
+        it('refuses correctly signed claims that differ from the stored grant', async () => {
+          const { candidate, session } = await issue()
+          const { verifyCustomerPreviewToken, signCustomerPreviewToken } = await import('~~/server/utils/pageStudio/customerPreviewToken')
+          const claims = await verifyCustomerPreviewToken(session.token, publicKey, issuer)
+          for (const change of [{ userId: randomUUID() }, { workspaceId: randomUUID() }, { clientId: randomUUID() },
+            { siteId: randomUUID() }, { releaseId: randomUUID() }, { nonce: randomUUID() }, { expiresAt: claims.expiresAt - 1 }]) {
+            const forged = await signCustomerPreviewToken({ ...claims, ...change }, privateKey, issuer)
+            expect(await read(candidate.hostname, forged)).toBeNull()
+          }
+        })
+        it('serves overlapping private preview reads without exclusive publication locks', async () => {
+          const { candidate, session } = await issue()
+          let ready!: () => void, release!: () => void
+          const held = new Promise<void>((resolve) => {
+            ready = resolve
+          })
+          const resume = new Promise<void>((resolve) => {
+            release = resolve
+          })
+          const first = authorizePageStudioPreview({ hostname: candidate.hostname, token: session.token }, { issuer, publicKey,
+            runTransaction: work => runTransaction(async (client) => {
+              const result = await work(client)
+              ready()
+              await resume
+              return result
+            }) })
+          // Surface a first-reader failure instead of waiting forever for its gate.
+          await Promise.race([held, first.then(() => undefined)])
+          const other = new pg.Client({ connectionString: databaseUrl })
+          await other.connect()
+          try {
+            await other.query(`SET search_path TO "${schema}", pg_catalog`)
+            const second = await authorizePageStudioPreview({ hostname: candidate.hostname, token: session.token }, { issuer, publicKey,
+              runTransaction: work => transact(other, async (client) => {
+                await client.query('SET LOCAL statement_timeout=\'1s\'')
+                return work(client)
+              }) })
+            expect(second).toEqual(candidate)
+          } finally {
+            release()
+            await first
+            await other.end()
+          }
+          expect(await first).toEqual(candidate)
+        })
+        it('fails promptly while the original login or child grant is being revoked', async () => {
+          const { candidate, session } = await issue()
+          const other = new pg.Client({ connectionString: databaseUrl })
+          await other.connect()
+          try {
+            await other.query(`SET search_path TO "${schema}", pg_catalog`)
+            for (const table of ['page_studio_customer_sessions', 'page_studio_customer_preview_sessions']) {
+              await other.query('BEGIN')
+              await other.query(`UPDATE ${table} SET revoked_at=clock_timestamp()`)
+              await expect(read(candidate.hostname, session.token)).rejects.toMatchObject({ code: 'PUBLISH_AUTHORITY_BUSY', statusCode: 503 })
+              await other.query('ROLLBACK')
+            }
+          } finally {
+            await other.query('ROLLBACK')
+            await other.end()
+          }
+          expect(await read(candidate.hostname, session.token)).toEqual(candidate)
+        })
+        it('caps the grant at the original login expiry', async () => {
+          await db.query('UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp()+interval \'60 seconds\'')
+          const { session } = await issue()
+          expect(session.expiresAt - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(60)
+        })
+      })
+      it('builds and registers a retained candidate with separate native attribution, including retries', async () => {
+        const result = await build(), candidate = await review(result.buildId)
+        expect(await build({ buildAstroApproved: async () => {
+          throw new Error('Must reuse completed build')
+        } })).toEqual(result)
+        expect(await review(result.buildId)).toEqual(candidate)
+        expect((await db.query('SELECT actor_id,actor_role FROM page_studio_audit_events WHERE action=\'build.succeeded\'')).rows)
+          .toEqual([{ actor_id: nativePrincipal.identityId, actor_role: 'customer' }])
+        expect((await db.query(`SELECT published_by,published_by_client_user_id,published_by_customer_identity_id
+          FROM page_studio_releases WHERE environment='preview'`)).rows)
+          .toEqual([{ published_by: null, published_by_client_user_id: null, published_by_customer_identity_id: nativePrincipal.identityId }])
+        expect((await db.query(`SELECT updated_by,updated_by_client_user_id,updated_by_customer_identity_id
+          FROM page_studio_release_pointers WHERE environment='preview'`)).rows)
+          .toEqual([{ updated_by: null, updated_by_client_user_id: null, updated_by_customer_identity_id: nativePrincipal.identityId }])
+        expect((await db.query('SELECT actor_id,actor_role FROM page_studio_audit_events WHERE action=\'release.preview_registered\'')).rows)
+          .toEqual([{ actor_id: nativePrincipal.identityId, actor_role: 'customer' }])
+        expect((await db.query('SELECT id FROM agency_clients WHERE id=$1', [scope.clientId])).rows).toEqual([])
+      })
+      const withdrawals = [
+        'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+        'UPDATE page_studio_workspace_memberships SET role=\'viewer\'',
+        'UPDATE page_studio_entitlements SET custom_domain_limit=0',
+        'UPDATE page_studio_sites SET delivery_mode=\'runtime\''
+      ]
+      it.each(withdrawals)('denies native build before compiler work after %s', async (sql) => {
+        await db.query(sql)
+        let dispatched = false
+        await expect(build({ selectGeneration: async () => {
+          dispatched = true
+          throw new Error('Should not select')
+        } })).rejects.toThrow()
+        expect(dispatched).toBe(false)
+        expect((await db.query('SELECT id FROM page_studio_builds WHERE renderer=\'astro\'')).rows).toEqual([])
+      })
+      it.each(withdrawals)('does not complete a native build after %s during remote verification', async (sql) => {
+        await expect(build({ verifyBuild: async (pointer: unknown) => {
+          await db.query(sql)
+          return pointer
+        } })).rejects.toThrow()
+        expect((await db.query('SELECT state FROM page_studio_builds WHERE renderer=\'astro\'')).rows).toEqual([{ state: 'pending' }])
+        expect((await db.query('SELECT id FROM page_studio_audit_events WHERE action=\'build.succeeded\'')).rows).toEqual([])
+      })
+      it.each(withdrawals)('does not register a candidate after %s during remote verification', async (sql) => {
+        const result = await build()
+        await expect(review(result.buildId, async (pointer) => {
+          await db.query(sql)
+          return pointer
+        })).rejects.toThrow()
+        expect((await db.query('SELECT id FROM page_studio_releases WHERE environment=\'preview\'')).rows).toEqual([])
+      })
+      it('enforces native monthly quota and charges a retained retry only once', async () => {
+        await db.query('UPDATE page_studio_entitlements SET monthly_build_limit=1 WHERE client_id=$1', [scope.clientId])
+        await build()
+        await build()
+        expect((await db.query('SELECT count(*)::int AS count FROM page_studio_build_admissions WHERE client_id=$1', [scope.clientId])).rows[0].count).toBe(1)
+        await expect(runTransaction(client => client.query('SELECT admit_page_studio_build($1,$2,$3,\'release\',\'second_build\')', Object.values(scope))))
+          .rejects.toThrow('STUDIO_BUILD_LIMIT')
+      })
+      it('refuses native zero quota before dispatch and preserves the empty ledger', async () => {
+        await db.query('UPDATE page_studio_entitlements SET monthly_build_limit=0 WHERE client_id=$1', [scope.clientId])
+        await expect(build()).rejects.toMatchObject({ code: 'BUILD_LIMIT_REACHED' })
+        expect((await db.query('SELECT resource_id FROM page_studio_build_admissions WHERE client_id=$1', [scope.clientId])).rows).toEqual([])
+      })
+      it('does not grant native staging admission or preserve admission through plan withdrawal', async () => {
+        await expect(runTransaction(client => client.query('SELECT admit_page_studio_build($1,$2,$3,\'staging\',\'snapshot\')', Object.values(scope))))
+          .rejects.toThrow('STUDIO_BUILD_ACCESS')
+        const result = await build()
+        await db.query('UPDATE page_studio_entitlements SET plan_metadata=\'{}\'::jsonb WHERE client_id=$1', [scope.clientId])
+        await expect(runTransaction(client => client.query('SELECT admit_page_studio_build($1,$2,$3,\'release\',$4)', [...Object.values(scope), result.buildId])))
+          .rejects.toThrow('STUDIO_BUILD_ACCESS')
+      })
+      it('rejects source changes during native verification', async () => {
+        await expect(build({ verifyBuild: async (pointer: unknown) => {
+          await advanceSource()
+          return pointer
+        } }))
+          .rejects.toMatchObject({ code: 'BUILD_NOT_APPROVED' })
+      })
+    })
+
+    describe('portal customer candidate review', () => {
+      beforeEach(async () => {
+        const customerId = randomUUID()
+        principal = { actorId: customerId, tenantId: scope.tenantId, login: {
+          ...principal.login, role: 'client', userId: customerId, tokenHash: 'b'.repeat(64)
+        } }
+        await db.query('INSERT INTO client_users VALUES($1,$2,\'active\',\'manager\')', [customerId, scope.clientId])
+        await db.query('INSERT INTO client_sessions VALUES($1,$2,$3)', [principal.login.tokenHash, customerId, principal.login.expiresAt])
+        await db.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+          VALUES('client',$1,$2,$3,$4)`, [principal.login.tokenHash, customerId, principal.login.issuedAt, principal.login.expiresAt])
+        await db.query(`INSERT INTO page_studio_site_memberships(tenant_id,client_id,site_id,user_id,role)
+          VALUES($1,$2,$3,$4,'editor')`, [...Object.values(scope), customerId])
+        await db.query('UPDATE page_studio_entitlements SET custom_domain_limit=1')
+      })
+
+      it('attributes successful builds to the customer who requested them', async () => {
+        await coordinate()
+        expect((await db.query('SELECT actor_id,actor_role FROM page_studio_audit_events WHERE action=\'build.succeeded\'')).rows)
+          .toEqual([{ actor_id: principal.actorId, actor_role: 'client' }])
+      })
+
+      it('records the customer preview creator without using a staff foreign key, including retries', async () => {
+        const build = await coordinate(), candidate = await preview(build.buildId)
+        expect(await preview(build.buildId)).toEqual(candidate)
+        expect((await db.query('SELECT published_by,published_by_client_user_id FROM page_studio_releases WHERE environment=\'preview\'')).rows)
+          .toEqual([{ published_by: null, published_by_client_user_id: principal.actorId }])
+        expect((await db.query('SELECT updated_by,updated_by_client_user_id FROM page_studio_release_pointers WHERE environment=\'preview\'')).rows)
+          .toEqual([{ updated_by: null, updated_by_client_user_id: principal.actorId }])
+        expect((await db.query('SELECT actor_id,actor_role FROM page_studio_audit_events WHERE action=\'release.preview_registered\'')).rows)
+          .toEqual([{ actor_id: principal.actorId, actor_role: 'client' }])
+      })
+
+      it('keeps ordinary editor preview available without business publishing or domain capacity', async () => {
+        const build = await coordinate(), candidate = await preview(build.buildId)
+        await db.query('UPDATE client_users SET role=\'viewer\'')
+        await db.query('UPDATE page_studio_entitlements SET custom_domain_limit=0')
+        const keys = generateKeyPairSync('ec', { namedCurve: 'P-256' }), issuer = 'https://agency.example.invalid'
+        const session = await issuePageStudioSession({ actorRole: 'client', actorId: principal.actorId,
+          clientId: scope.clientId, siteId: scope.siteId }, { runTransaction, loginSession: principal.login,
+          signToken: claims => signPageStudioSessionToken(claims, keys.privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(), issuer) })
+        expect(session.capabilities).toContain('workspace:preview')
+        expect(session.capabilities).toContain('workspace:checkpoint')
+        expect(await authorizePageStudioPreview({ hostname: candidate.hostname, token: session.token }, { issuer,
+          publicKey: keys.publicKey.export({ format: 'pem', type: 'spki' }).toString(),
+          queryOne: async (sql, params) => (await db.query(sql, params)).rows[0] ?? null })).toEqual(candidate)
+      })
+
+      it.each(['logout', 'business role', 'membership', 'domain capacity', 'entitlement', 'inactive client'])('withdraws an issued customer review grant after loss of %s', async (revocation) => {
+        // Staff may prepare the retained artifact; the customer receives their own review grant.
+        const customerPrincipal = principal
+        principal = { actorId, tenantId: scope.tenantId, login: { ...customerPrincipal.login, role: 'agency', userId: actorId, tokenHash: 'a'.repeat(64) } }
+        const build = await coordinate(), candidate = await preview(build.buildId)
+        principal = customerPrincipal
+        const keys = generateKeyPairSync('ec', { namedCurve: 'P-256' }), issuer = 'https://agency.example.invalid'
+        const session = await issueAstroCandidateSession(scope, principal, { runTransaction,
+          signToken: claims => signPageStudioSessionToken(claims, keys.privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(), issuer) })
+        const read = () => authorizePageStudioPreview({ hostname: candidate.hostname, token: session.token }, { issuer,
+          publicKey: keys.publicKey.export({ format: 'pem', type: 'spki' }).toString(),
+          queryOne: async (sql, params) => (await db.query(sql, params)).rows[0] ?? null })
+        expect((await db.query('SELECT role,capabilities FROM page_studio_sessions WHERE nonce=$1', [session.sessionId])).rows[0])
+          .toEqual({ role: 'client', capabilities: ['workspace:preview'] })
+        expect((await db.query('SELECT actor_role FROM page_studio_audit_events WHERE action=\'session.issued\'')).rows)
+          .toEqual([{ actor_role: 'client' }])
+        expect(await read()).toEqual(candidate)
+        if (revocation === 'logout') await db.query('DELETE FROM client_sessions')
+        if (revocation === 'business role') await db.query('UPDATE client_users SET role=\'viewer\'')
+        if (revocation === 'membership') await db.query('DELETE FROM page_studio_site_memberships')
+        if (revocation === 'domain capacity') await db.query('UPDATE page_studio_entitlements SET custom_domain_limit=0')
+        if (revocation === 'entitlement') await db.query('UPDATE page_studio_entitlements SET effective_until=NOW()-INTERVAL \'1 second\'')
+        if (revocation === 'inactive client') await db.query('UPDATE agency_clients SET is_active=FALSE')
+        expect(await read()).toBeNull()
+      })
+    })
 
     it('rejects first completion when a new checkpoint arrives during artifact verification', async () => {
       const retained = await reserve()
@@ -380,7 +692,7 @@ describe.runIf(Boolean(databaseUrl))('Astro release identity migration and admis
       expect((await db.query('SELECT name FROM page_studio_sites')).rows[0].name).toBe('Astro fixture')
       expect((await db.query('SELECT status FROM page_studio_entitlements')).rows[0].status).toBe('active')
     })
-    it('rejects a foreign tenant or a client login without running work', async () => {
+    it('rejects a foreign tenant or an agency login relabelled as a client without running work', async () => {
       for (const candidate of [{ ...principal, tenantId: 'foreign' }, { ...principal, login: { ...principal.login, role: 'client' as const } }]) {
         await expect(withPageStudioPublishAuthority(scope, candidate, async () => {
           throw new Error('Must not run')

@@ -2,8 +2,9 @@ import { createServer, type Server } from 'node:http'
 import { createApp, toNodeListener, defineEventHandler } from 'h3'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ read: vi.fn(), create: vi.fn(), recover: vi.fn(), limit: vi.fn() }))
+const mocks = vi.hoisted(() => ({ read: vi.fn(), create: vi.fn(), recover: vi.fn(), limit: vi.fn(), transfer: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/customerDashboard', async original => ({ ...await original<object>(), readCustomerDashboard: mocks.read, createCustomerDashboardPreview: mocks.create, recoverCustomerDashboardPreview: mocks.recover }))
+vi.mock('~~/server/utils/pageStudio/customerManagedTransfer', () => ({ readCustomerManagedTransfer: mocks.transfer }))
 vi.mock('~~/server/utils/rateLimit', () => ({ checkAndConsume: mocks.limit }))
 
 describe('customer dashboard HTTP boundary', () => {
@@ -30,6 +31,7 @@ describe('customer dashboard HTTP boundary', () => {
       PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED: 'true', PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging',
       PAGE_STUDIO_PROVISIONER: { readProvisioning: vi.fn(), createProvisioning: vi.fn() } }
     mocks.limit.mockResolvedValue({ allowed: true })
+    mocks.transfer.mockResolvedValue(null)
     mocks.read.mockResolvedValue({ state: 'approval-pending', canCreate: false })
     mocks.create.mockResolvedValue({ state: 'preparing', canCreate: false })
   })
@@ -81,6 +83,39 @@ describe('customer dashboard HTTP boundary', () => {
     mocks.limit.mockResolvedValueOnce({ allowed: false, resetAt: new Date(Date.now() + 10000) })
     expect((await call({})).status).toBe(429)
     expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
+  it('suppresses obsolete preview actions for completed transfer even while editor rollout is disabled', async () => {
+    const siteId = 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020'
+    config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'production'
+    config.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'production'
+    mocks.read.mockResolvedValue({ siteId, state: 'recovery-required', stage: 2, canCreate: true, canRetry: true, recovery: { expectedJobDigest: 'private' } })
+    const managedTransfer = { siteId, completed: true, stage: 'completed', editorConnection: 'unavailable', sourceRetention: 'unavailable', canRetryConnection: false, canRetryRetention: false }
+    mocks.transfer.mockResolvedValue(managedTransfer)
+    const response = await call()
+    expect(response.status).toBe(200)
+    const result = await response.json()
+    expect(result).toMatchObject({ siteId, managedTransfer, state: 'connection-pending', stage: 5,
+      canCreate: false, canRetry: false, canPrepareCms: false, canOpenStudio: false })
+    expect(result).not.toHaveProperty('recovery')
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.recover).not.toHaveBeenCalled()
+  })
+  it('does not offer old preview resume or creation while a managed transfer is incomplete', async () => {
+    const siteId = 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020'
+    mocks.read.mockResolvedValue({ siteId, state: 'recovery-required', stage: 2, canCreate: true, canRetry: true, recovery: { expectedJobDigest: 'private' } })
+    mocks.transfer.mockResolvedValue({ siteId, completed: false, stage: 'copying-content', canRetryConnection: false, canRetryRetention: false })
+    const response = await call()
+    expect(response.status).toBe(200)
+    const result = await response.json()
+    expect(result).toMatchObject({ state: 'transfer-pending', canCreate: false, canRetry: false, canPrepareCms: false, canOpenStudio: false })
+    expect(result).not.toHaveProperty('recovery')
+  })
+  it('withholds dashboard state when the current transfer owner changes', async () => {
+    mocks.read.mockResolvedValue({ siteId: 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020', state: 'recovery-required', canRetry: true })
+    mocks.transfer.mockRejectedValue(Object.assign(new Error('private changed owner'), { statusCode: 403 }))
+    const response = await call()
+    expect(response.status).toBe(403)
+    expect(await response.text()).not.toContain('recovery-required')
   })
   it('never leaks provider errors or changes a failed mutation into success', async () => {
     mocks.create.mockRejectedValueOnce(new Error('private worker token'))

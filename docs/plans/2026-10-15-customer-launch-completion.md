@@ -1,0 +1,781 @@
+# Customer launch completion — 15 October 2026
+
+Continues the domain launch ledger and the customer CMS status checklist. This is
+an implementation checkpoint, not evidence that customer self-service is live.
+
+## Recovered baseline
+
+Fresh branch starts at main `6b82be128f29101324f4d3db7930ec30f45d1d7d`.
+Cloudflare readback identifies this same source on production Pages deployment
+`630ec0a3-4db8-4b4c-98a8-bcd635314be1`. The original Dashboard working tree is
+unrelated and remains untouched. The earlier temporary domain checkout no longer
+exists; its merged history remains on main.
+
+The user supplied two test mailboxes for hosted account/form acceptance. Keep
+their addresses in the private acceptance record; do not infer other recipients.
+The Cloudflare browser still requires sign-in. The last verified domain-provider
+failure is HTTP 403; credential repair and the retained test-hostname verification
+remain outstanding.
+
+## Publication boundary
+
+The existing agency publication transaction is extended for invited portal
+clients. It requires an active admin/manager account in the site's business,
+editor membership for the exact tenant/client/site, a current original portal
+session and login binding, and an active entitlement with domain capacity.
+Checks run before and after publication SQL. A change during the operation rolls
+back its effects. No role, allowance or membership is granted by this work.
+
+Portal login preparation reads the retained binding after registration: repeated
+login resolution gives a new in-memory issuance timestamp, while the original
+binding intentionally retains its first timestamp. This avoids rejecting an
+otherwise valid returning publisher. Revoked bindings remain denied.
+
+This boundary does not accept standalone native customer identities; their
+session/workspace model remains separate. Launch UI, production artifacts and
+hosted acceptance remain required before enabling self-service.
+
+Validation: both admin/manager admission tests failed before implementation;
+41 real PostgreSQL portal authority cases pass after implementation, including
+access withdrawal before and during a transaction. The full selected agency,
+Astro, runtime route and portal preparation group passes 135 tests. Changed-file
+lint passes. No new migration, deployment, customer publication or test email has
+occurred at this checkpoint.
+
+## Portal release integration
+
+Migration 452 adds separate client publisher/updater references alongside the
+existing staff references. Constraints prevent a row from carrying both kinds.
+Publication and rollback audits retain the real actor kind, and idempotency cannot
+be reused across staff/client actors even when UUIDs match. Historical service
+audit rows remain replayable by the original agency publisher. Agency release
+history displays client publisher names within the same client scope.
+
+The additive migration was applied to the configured database on 14 October at
+22:03:37 UTC. Before/after snapshots verified all sites, entitlements, retained
+release fields and live pointers unchanged. The new constraints are validated.
+The application has not been deployed with these changes.
+
+The portal now has local production-only static activation and rollback handlers.
+They require an authenticated same-origin JSON request, strict input, an explicit
+expected live release and an idempotency key. Ownership and actor identity come
+from the original authenticated session. The selected domain must belong to the
+exact site and have verified ownership, DNS and HTTPS. Access/domain checks run
+before artifact reads and again inside the publication transaction. Remote
+artifact verification runs outside database locks. Only retained approved
+production Astro artifacts are accepted; runtime and feature release activation
+remain separate and fail closed here.
+
+The combined agency/static/runtime/portal test group passed 361 cases with one
+existing conditional skip. A further rollback actor-kind regression was added
+during review. Full-suite and final typecheck results are recorded separately;
+the existing repository typecheck is not clean. No customer release was activated
+and no test email was sent. Browser readback confirms the preview signup window
+is expired; Cloudflare still shows its login page.
+
+## Remaining work (preserved)
+
+- Customer-facing launch controls and native-customer publication integration;
+  invited portal backend integration is implemented locally.
+- Production compiler registration and approved artifacts for imported sites.
+- Cloudflare service credential repair and isolated end-to-end DNS/TLS proof.
+- Hosted form insertion, per-form/shared settings, template/media and delivery
+  acceptance; viewer/membership/capability withdrawal tests.
+- Native progress-card accuracy and editor/save performance.
+- Current-main release and live verification, including QR Codes and all four
+  existing previews. Customer production activation remains separately gated.
+- Public documentation/marketing only when the corresponding customer-facing
+  functionality is actually available.
+
+## Preview acceptance window and final checks
+
+The full serial suite passed: 2,270 test files and 16,122 tests, with 76 files and
+2,144 tests skipped. The production build passed its raw/gzip Worker budgets.
+Typecheck remains unsuccessful with 943 repository diagnostics; none identified
+in the changed publication source. This is not a clean repository typecheck.
+
+A new preview-only native sign-in window is restricted to the two user-supplied
+mailbox hashes and expires 15 October 2026 at 10:30 UTC. Original workspace
+preview/build approvals retain their expired timestamps; this does not renew
+their grants, change customer roles or enable production signup. Close this
+window when hosted acceptance finishes. Configuration alone does not prove
+email delivery, account creation or customer publishing.
+
+## Hosted preview readback and expired-capacity fix
+
+Guarded preview deployment `51dbd832-48ed-410a-8445-5aa01efe03f9` serves source
+`c5a61cc0acdc667979adbc92e8d44150492a8ab9` at the stable preview alias. Cloudflare
+readback confirms production remains `630ec0a3-4db8-4b4c-98a8-bcd635314be1` from
+main `6b82be128`. Migration 452 is also applied to the isolated staging branch;
+all four constraints validated and retained release/pointer digests unchanged.
+All four existing customer previews return HTTP 200 with no-store responses.
+
+The hosted native dashboard exposed a 403 when optional CMS availability reused
+expired preview authority. Availability now independently rechecks the current
+native login and workspace owner before returning false. CMS setup reads and
+mutations still require the full unexpired preview authority. Real PostgreSQL
+regressions reproduce both expired capacity and no-preview failures before the
+fix, and cover four native access withdrawals. The targeted group passes 31
+tests; independent source review found no blocking issues. This follow-up is
+not yet included in the preview deployment above.
+
+A normal sign-in email was requested for the first supplied mailbox through the
+UI. Inbox delivery and completion of the link remain unverified. The original
+two native preview policies and entitlements are expired and have not been
+extended or replaced. Fresh hosted CMS/editor acceptance therefore still needs
+a supported, reviewed test-site lifecycle; changing the signup window does not
+authorize an expired site.
+
+## Customer launch-status summary
+
+The invited customer website workspace now has a read-only launch summary above
+its domain controls. It separates saved visitor pages, current-version approval,
+and recorded production publications. A retained publication pointer is not
+presented as proof that DNS, HTTPS or the public website is reachable. Storage
+failure reports approval as unknown; a failed refresh hides retained success.
+
+The new portal HTTP endpoint accepts only the selected site ID and derives the
+actor/client from authenticated portal access. The management Worker resolves
+the tenant from current exact site membership. Checkpoint queries include client
+scope, and access is checked again before returning the result. The initial
+read does not hold authority row locks over object storage; the final read does.
+Mutation authority retains locking regardless of the new read option. No publish,
+role, quota, domain or account mutation is performed by this summary.
+
+Deployment requires the matching management Worker first, then the dashboard.
+It remains in preview verification until signed-in browser acceptance succeeds;
+this does not complete customer publishing or the provider credential repair.
+
+Validation: 103 focused inspection, HTTP, UI, domain and workspace tests passed,
+plus 62 disposable PostgreSQL domain tests. The latter includes a real separate
+connection withdrawing membership between the unlocked initial read and final
+authority check. Withdrawal completes without waiting for the inspection, and
+the final check denies access. Management Worker strict typecheck and dry build
+passed. Independent review findings were corrected before commit.
+
+## Customer approved-build review attribution
+
+Candidate preparation now preserves invited customer identity in build-completion
+and preview-registration audits, release/pointer client foreign keys and signed
+review grants. Staff attribution remains unchanged. Repeated registration returns
+the retained preview without rewriting its original creator.
+
+Preview-only customer grants recheck the original portal login, active business,
+admin/manager role, exact editor membership, active entitlement and positive
+domain capacity on every read. Ordinary editor grants retain edit-only authority;
+a real PostgreSQL regression confirms they still work without publishing capacity.
+This supports the future portal candidate endpoint; it does not yet expose that
+endpoint, add launch controls, support standalone native identities or activate
+any customer website.
+
+Validation: the new tests first reproduced eight failures (incorrect audit role,
+staff-only foreign key and incorrectly labelled grants). Attribution fixes then
+left two demonstrated revocation failures for withdrawn role/domain capacity.
+The completed candidate PostgreSQL suite passes 83 tests; the session-authority
+PostgreSQL suite passes 74 tests, and the adjacent delivery/session/HTTP/portal
+regression group passes 98 tests. Changed-file lint and independent review pass.
+All database testing uses a disposable localhost instance. No migration change
+or production mutation is part of this slice. Hosted acceptance remains pending.
+
+## Invited customer candidate HTTP adapter
+
+The portal now has a production-only `versions/:versionId/candidate` POST. It
+requires the original customer login, same-origin JSON, bounded observed bytes,
+strict path/body/query/header values and a fresh scoped publisher check before
+compiler configuration or artifacts are inspected. The server selects tenant,
+client, compiler and review hostname. It can prepare only an already approved
+static version. It cannot activate a hostname or request a runtime release.
+
+Every reservation/completion/registration/session transaction uses the same
+publisher and static-delivery wrapper. Static mode is checked before and after
+SQL under the site lock, including after remote work. Review caught the initial
+preflight-only race; regressions now simulate a runtime switch during build,
+preview registration and session issue. No preview credential is returned.
+
+The real-H3 boundary and adjacent agency/portal/inventory group pass 65 tests.
+Request limits are exercised without a Content-Length header. Independent
+follow-up review found no remaining blockers. The route inventory is now 2,251
+files / 1,224 mutation files; the new route registers no God-mode bypass. This
+adapter is not yet a customer-facing launch control or a native-customer adapter.
+
+Next UI integration should use current portal domain `canManage`/site readiness,
+exact approved checkpoint/version/digest and the existing credential-safe preview
+opener. Retained responses must be discarded on site/source changes or failed
+refreshes. Native-customer identities still require their own session adapter.
+
+The first repository typecheck reports 943 diagnostics, including the existing
+preview-permission literal widening in delivery.ts. That changed helper now has
+an explicit closed permission type. Delivery/runtime/candidate follow-up tests
+pass 39 cases. The follow-up repository typecheck completed with 939 diagnostics, none in the
+candidate adapter or delivery helper. The repository typecheck is not clean.
+This is not hosted acceptance.
+
+
+## Invited customer approved-preview controls
+
+The customer launch summary now offers preparation/opening only when current
+management authority, static delivery, known unsealed saved content, current
+approval, active access and a selectable production compiler are all present.
+The management service returns capability from its final authority read; missing
+compiler/signing/hostname/checkpoint-storage configuration is unavailable rather than an actionable
+button that always fails.
+
+The UI pins site/version/checkpoint/digest, refreshes before dispatch and after
+completion, rejects mismatched build/release identities and retains credentials
+only in component memory. Synchronous invalidation discards a response even when
+access disappears and returns during the request. Retries reuse the preparation
+key, concurrent clicks do not dispatch twice, and opening is a separate user
+click through the existing POST-only preview opener. Expired credentials are
+discarded. No hostname activation is part of these controls.
+
+108 focused HTTP, inspection, capability and UI checks pass (including 22 UI
+cases); changed-source lint and management strict typecheck pass. Independent
+review found no blockers. The newest repository typecheck also completed with
+939 diagnostics and none in changed source. CI 38653369464 for earlier source21a691e16 completed
+successfully; this result does not validate the later endpoint/UI commits.
+Authenticated browser acceptance remains pending: the native mailbox tab is
+still at Check your inbox with its old expired link, and Cloudflare remains at
+its terms-bearing sign-in page. Neither action was repeated or bypassed.
+The production compiler registry and native-customer adapter remain separate
+unfinished work. Existing preview and production deployments remain unchanged.
+
+
+## Native customer publication authority prerequisite
+
+The native-session adapter derives the exact site/business/workspace and actor
+from a verified login token. A SQL-only publication boundary retains that original
+session hash and account/identity throughout an operation, checks current access
+before and after its callback, and refuses concurrent authority changes rather
+than waiting on stale state. Owner/manager membership is required. The native
+business owner must match the site, without a legacy agency binding.
+
+Publication additionally requires an active, non-preview entitlement with positive
+site/domain capacity and the JSON boolean `publishingEnabled: true`. This is an
+explicit trusted plan capability; missing metadata, a string value, cancelled or
+expired plans and the immutable `customer_preview_v1` plan are denied. The adapter
+never writes entitlements or upgrades existing preview accounts. The next plan
+management integration must assign this capability through an authorized audited
+flow rather than modifying test receipts.
+
+This is an internal prerequisite, not a customer-facing launch feature. Native
+actor attribution in release/pointer persistence, HTTP and coordinator adapters,
+exact artifact/domain checks and customer controls remain required. No new route,
+production grant, migration or deployment is introduced. Marketing pages remain
+unchanged until the native feature is usable. The original invited portal and
+agency authority contracts are unchanged.
+
+
+Validation: 51 new PostgreSQL cases first failed with the missing adapter and then
+passed. The combined native signup/workspace/form/publication and invited portal
+group passed 192 tests. An additional natural session-expiry rollback regression
+brings the native publication suite to 52 passing cases. Changed-source lint and
+independent review pass. Server TypeScript reports 295 repository diagnostics,
+none in the new adapter; this is not a clean repository typecheck. CI now includes
+the new PostgreSQL suite. All fixture users, plans and effects were confined to a
+disposable localhost database; no real customer's entitlement was changed.
+
+
+## Native publisher release attribution
+
+Static activation and rollback now retain a separate native identity foreign key
+and `customer` audit role. Idempotent retries require the original actor kind as
+well as actor ID; a matching UUID from a portal or staff account cannot replay a
+native customer's request. Pointer updates clear attribution for the previous
+actor kind, including a later staff runtime activation or rollback. Existing
+staff and invited portal behavior remains covered by the regression suite.
+
+Migration 453 adds two nullable identity references and two exclusivity checks.
+It was applied to the configured database and the isolated staging branch on
+15 October at 00:18 UTC. Transactional before/after digests verified sites,
+entitlements, retained releases and live pointers unchanged. All four added
+constraints are validated. Initial verification attempts rolled back before
+commit: the preservation query incorrectly assumed a pointer `id` column, then
+its constraint-name filter missed PostgreSQL's truncated generated FK name.
+The corrected checks use the composite pointer key and referenced table.
+
+The real PostgreSQL release/Astro/runtime/feature group passes 259 cases with one
+existing conditional skip; a further staff runtime takeover regression passes in
+the 15-case runtime suite. Adjacent publishing/HTTP checks pass 46 cases.
+Independent review and changed-source lint pass. Server typecheck still reports
+295 repository diagnostics, none in changed source. No customer HTTP publication
+route is enabled by this increment, and no customer website was activated.
+Native candidate/build/session adapters and launch controls remain outstanding.
+
+## Native static publication HTTP adapter
+
+Native accounts now have production-only activation and rollback POST handlers.
+They use the configured native entry point, host-only native session cookie,
+exact-origin mutation guard, strict IDs/query/body/idempotency validation and an
+observed 2 KiB JSON limit. Business, workspace, site and actor identity are derived
+from the original session. Request bodies cannot supply authority or storage.
+
+The adapter checks current native publication access and exact verified hostname
+before inspecting artifacts or delivery configuration. Remote artifact verification
+runs outside SQL locks. Each activation/rollback transaction rechecks the original
+account, plan, static delivery and domain DNS/HTTPS status before and after SQL.
+Domain rows are held with NOWAIT locks, so concurrent withdrawal fails promptly.
+Only retained approved production Astro artifacts are accepted. Existing pointer
+concurrency, source freshness, feature seals and actor-specific idempotency remain
+in the publishing coordinator.
+
+Tests first reproduced the missing HTTP routes and 17 missing domain-boundary
+cases. The completed native HTTP/PostgreSQL group passes 103 tests; the HTTP suite
+uses the real production error mapper. Adjacent portal/inventory checks pass 40
+cases, and publishing coordinator/endpoint regressions pass 29. Source lint and
+independent review pass. Server typecheck remains at 295 repository diagnostics,
+none in the changed adapter source. The route inventory is now 2,253 files / 1,226
+mutations; neither new route registers a God-mode bypass.
+
+This backend increment does not supply a native candidate builder, customer launch
+controls or a plan-management flow. No customer grant, domain or live pointer was
+changed, and no website was activated. Public marketing copy remains unchanged
+until the native customer journey is usable and verified. Migration 453 from the
+preceding increment must be present before this adapter is deployed.
+
+
+## Native Astro build and candidate registration
+
+Build reservation, completion and candidate registration now dispatch to the
+original native account authority without translating it into an agency or
+invited portal identity. Native static delivery is checked before and after the
+SQL callback. Candidate releases and pointers record the native customer identity;
+idempotent retries preserve the original creator and reuse the completed build.
+
+Real PostgreSQL tests exposed the old quota function's agency-client-only join.
+Migration 454 resolves the immutable business owner and permits native release
+builds only for active workspaces and active publishing plans with positive site
+and domain capacity. Existing legacy admission, monthly serialization and retry
+accounting are preserved. Native staging admission remains excluded.
+
+Migration 454 was applied on 15 October at 00:46:59 UTC to isolated staging and
+00:47:14 UTC to the configured database. Transactional full-row digests verified
+sites, entitlements, releases, pointers, build admissions, builds and staging
+deployments unchanged. Function owner, ACL and search path were preserved; both
+installed function bodies have digest 243b28fea47ffca74b8199e4aa5e60e2.
+
+Verification: 100 Astro PostgreSQL cases, 53 staging PostgreSQL cases and 71 HTTP
+regressions pass. Changed-source lint and independent end-to-end review pass.
+Server typecheck remains at 295 existing diagnostics, none in changed source.
+The preceding source 60dc71c20729bb7721023297db433726932f82cc passed CI run
+38660291554, including the production Worker build and full suite.
+
+The native fixture uses genuine native sign-in/workspace services and a legitimate
+staff-approved version. Native version authoring, candidate HTTP/session delivery
+and launch controls remain outstanding. This slice does not activate any site or
+change grants. Marketing claims remain deferred until the customer journey works.
+
+
+## Native private review credentials and delivery
+
+Native release review now has a separate ES256 token type, audience and ledger.
+Claims bind one production build's private hostname/release, exact workspace,
+identity and site, and expire within five minutes or the original login expiry.
+They carry no editor capability or login hash. Editor, portal and runtime-draft
+verifiers reject this credential. The existing delivery worker forwards it through
+its private authorization boundary and can exchange it for its host-only cookie.
+
+Issuance signs outside SQL and then rechecks native account/plan/static delivery,
+exact retained release and exact approval before persisting the grant and audit.
+Delivery rechecks the original native login and stored claim equality on every
+request. Shared site/version locks permit overlapping document/image reads while
+publication callers retain exclusive locks. Revocation contention fails promptly;
+withdrawn roles, plans, login, approval or grant deny access.
+
+Independent review found two issues before commit: exclusive publication locks
+would reject parallel image requests, and a same-digest replacement approval was
+not compared with the build's retained approval. Reproduction tests failed, both
+were corrected, and the final token/PostgreSQL group passes 126 cases, including
+actual overlapping two-connection reads. Adjacent native authority, delivery,
+runtime delivery and HTTP regressions pass 142 cases. Lint and independent review
+pass; server typecheck remains 295 repository diagnostics, none in changed source.
+
+Migration 455 was applied to isolated staging at 00:59:34 UTC and the configured
+database at 00:59:46 UTC on 15 October. Six foreign keys validate and both new
+ledgers contain zero grants. Transactional digests verified existing sites,
+entitlements, releases, pointers, native sessions/accounts/identities/workspaces
+and memberships unchanged. The staging tool initially rejected grouped CREATE
+statements in a prepared statement; the transaction was retried with each CREATE
+as a separate statement, without changing migration SQL.
+
+No native candidate HTTP endpoint or launch control is supplied by this increment.
+No customer preview grant was issued externally, website activated or application
+deployed. Migration 455 must precede deployment of this native review path.
+
+
+## Native candidate HTTP preparation
+
+The native customer candidate POST now connects the production Astro build,
+immutable review address and exact-release native review credential. It requires
+the configured native entry, host-only original login cookie, exact origin, strict
+site/version IDs and idempotency header, an empty query and a bounded 2 KiB JSON
+body containing only production environment. Scope, compiler, preview suffix,
+private signing configuration and release identity remain server-derived.
+
+Current native static authority is checked before resolving compiler services.
+Signing configuration is validated before charging or compiling a build. Each
+build, registration and grant helper rechecks original authority after remote
+work. A denied phase returns no credential. The route never activates a live
+pointer. Native candidate controls and native launch-status reads are still needed.
+
+The new HTTP suite passes 28 cases with the production error mapper. Combined
+native/portal/agency candidate, native publication and route inventory tests pass
+102 cases. Changed-source lint and independent review pass; server typecheck
+remains 295 existing diagnostics, none in new source. Inventory is now 2,254 routes
+and 1,227 mutations; this endpoint adds no God-mode bypass. Previous source
+eeb534a9ff4aedcd6a88a5395cea6b6b8366d7fc passed CI38662047393 including the
+production Worker build and full suite. No deployment or customer activation is
+included in this HTTP increment.
+
+## Native editor issuance clock boundary
+
+CI38663594876 failed one CMS adoption test on source 179373279. The issuance
+query independently read the clock for issue and expiry times; crossing a second
+could produce a token one second over its maximum lifetime. Both editor and CMS
+setup paths now use one materialized issuance instant while retaining parent
+expiry caps and fresh authorization. Deterministic PostgreSQL regressions fail
+on the old query and pass on the fix. The complete customer workspace database
+group passes 392 tests across 11 files. Changed-file lint and independent review
+pass. No access policy, grant, deployment or customer activation changed.
+
+## Native customer launch inspection
+
+A separate native launch-status endpoint now checks the original customer login
+before and after inspection and compiler availability work. The management
+worker independently derives the immutable business owner from current native
+identity, account and workspace membership. Its read authority permits expired
+or preview-only plans to inspect status without granting publishing capacity;
+only current owner/manager publishing authority permits preparation. Portal and
+agency identity paths remain separate. Native status SQL no longer requires an
+agency-client row. The endpoint returns no login hashes, credentials or authored
+content, accepts no caller-selected tenant/business, and disables response caching.
+
+Independent review found that the prior launch reader conflated plan expiry with
+loss of version approval. A reproduction test failed, then the reader was fixed:
+approval now describes the exact saved version while plan readiness and publishing
+permission remain independent gates. Changed worker strict typecheck passes;
+server typecheck remains 295 repository diagnostics, none in changed source.
+Native and legacy HTTP/transport/status tests and real PostgreSQL ownership tests
+pass. The route inventory is 2,255 reads/mutations total, with 1,227 mutations;
+no God-mode bypass was introduced. No application deployment or activation is
+included in this increment.
+
+## Native customer dashboard launch controls
+
+The native dashboard exposes its authenticated bound site ID and mounts the
+existing launch panel through a fixed native-account adapter. Its publication
+status is read from the service, replacing the unconditional “Not published”
+badge. The setup checklist reports actual Studio availability rather than a
+permanently pending preview-verification item. Prepared credentials are discarded
+on scope, adapter, status or dashboard-access changes and on unmount. Native
+copy does not refer customers to a domain panel that is absent from this page.
+Public feature descriptions retain release-validation wording.
+
+The final UI, endpoint, inspection and inventory group passes 114 tests; the
+provisioning suite passes 55 and native publication/inspection PostgreSQL suite
+passes 85. Real local Nuxt and Chrome checks pass at 320/390/1280px, including
+keyboard preparation, stale-access removal, original editor POST transport and
+no page errors. Screenshots were inspected. These browser results use synthetic
+API/editor responses and are not hosted native-account acceptance.
+
+Independent review passes after the approval/plan separation correction. Lint
+passes and the management Worker dry build is 886.88 KiB raw / 149.90 KiB gzip.
+The full frontend typecheck exceeded Node's default 4 GiB heap; with 12 GiB it
+completed with 643 repository diagnostics, none on changed UI lines. Two existing
+provisioning-scope diagnostics are in unchanged lines of customerDashboard.ts.
+Server typecheck reports 295 diagnostics. No deployment or customer production
+activation is included. Hosted account login, compiler configuration/provenance,
+provider domain access and the remaining acceptance matrix are still outstanding.
+
+## Native plan transition prerequisite
+
+The native publishing checks now have a supported **internal operator** grant
+transaction for the initial one-site preview-to-publishing-plan transition.
+`grantCustomerPublishingPlan` requires a current active built-in platform
+owner/admin with no custom role, an active native workspace, its immutable
+business/site receipt, the expected current entitlement and a draft site.
+Customer payloads cannot supply a tenant, business, actor or publishing flag.
+There is no new HTTP route or customer-facing plan control in this increment;
+any caller must authenticate the operator before invoking the transaction.
+
+The transaction cancels the old preview entitlement, creates a separate active
+plan, changes only the site's entitlement reference and records both entitlement
+snapshots plus approved terms in the existing append-only site audit. It never
+rewrites the original preview policy or expiry. Capacity reductions, duplicate
+requests with different terms, foreign scopes and changes from an already active
+plan are refused. Exact retries return historical receipts without reactivating
+cancelled access. Locks protect current staff/workspace/plan/site authority, and
+an expiry check before commit rolls back a grant that expires during approval.
+No payment, DNS change, publication, preview renewal or editor session is created.
+
+Verification: the new PostgreSQL suite passes 36 cases using real native sign-in,
+workspace and preview creation. It demonstrates admission by the actual native
+publication authority after a legitimate grant, with no agency-client row.
+Adjacent native publication/site/provisioning suites pass 170 cases. Cases include
+concurrent competing grants and revocations, audit failure rollback, expiry during
+audit insertion, append-only evidence and preservation of the original receipt.
+CI explicitly runs the new database suite. Independent review found no blockers;
+its requested staff-revocation and expiry-crossing tests were added and passed.
+Changed-source lint passes. Server type checking still reports the same 295
+pre-existing diagnostics, none in the added source. The full suite passed 16,293
+cases with 2,325 conditional skips; its sole failure was the frozen permission
+inventory needing the new staff gate. That gate is now explicitly classified as
+an identity boundary (no bypass), and all eight inventory checks pass on rerun.
+
+This is not completion of customer plan management or hosted acceptance. The
+operator HTTP/UI workflow, usage-aware later plan changes, native production
+editor/version authoring and customer launch journey remain outstanding. No
+customer plan, production access, DNS or release pointer has been changed.
+Public marketing pages remain unchanged because this prerequisite has no usable
+customer-facing feature to advertise yet.
+
+## Native customer plan operator screen
+
+The next increment exposes the initial grant through
+`/agency/page-studio/customer-plans`, linked from agency Subscriptions for built-in
+platform owners and administrators. A bounded native workspace list shows the
+current site/entitlement and uses 50-row keyset pagination. It excludes legacy
+client bindings and does not expose customer email addresses or login material.
+GET and POST authenticate agency staff and independently recheck current built-in
+platform authority in the database. POST requires same-origin bounded JSON; the
+actor and business scope cannot be chosen by the browser.
+
+The Nuxt UI dialog requires a plan reference, approval reason, explicit access
+period and numerical allowances before a separate review and grant action.
+Uncertain responses retain the reviewed payload and request ID. Definite input
+rejections allow correction; access changes, conflicting targets and mismatched
+receipts require a refresh. The original preview approval remains immutable.
+This is initial operator-assisted access management, not customer self-grant,
+renewal, billing, production editor admission or website publication.
+
+Validation: 77 focused checks pass, including 40 real PostgreSQL cases, a real
+51-workspace pagination boundary, 13 HTTP boundary tests, nine component tests
+and permission inventories. The complete default suite passes 16,316 tests with
+2,329 conditional skips; the database cases above were run separately against
+disposable local PostgreSQL 17. Real Nuxt UI in Chrome passes at 320, 390 and
+1280px, including the Subscriptions link, keyboard review and one exact-scope
+synthetic grant. Screenshots were inspected. The reusable local-only browser
+script is `scripts/verify-customer-plan-operator-browser.mjs`; it mocks accounts
+and APIs and is not hosted customer acceptance.
+
+Changed-source lint passes. Server and app typechecks retain the same 295 and
+643 baseline diagnostics respectively, with none in this increment's files.
+Independent final review found no blockers. Public feature copy describes this
+operator workflow as in release validation; no new top-level navigation category
+is needed. No customer plan, account, DNS record, email or publication changed.
+
+The next authoring gap is concrete: `customerEditorLaunch`,
+`customerEditorHandoff` and `customerEditorSessions` still rely on the immutable
+preview authority, and launch verifies staging storage only. A valid publishing
+plan does not renew that preview policy. Production authoring needs its own
+current-plan/session authority across issuance, redemption, refresh and saves,
+plus exact storage/environment verification and revocation tests. The signed
+customer editor token currently permits staging only, so this requires matching
+Dashboard and central-editor contracts rather than a launch-handler change alone. Simply
+removing the preview expiry check would be an authorization regression.
+
+The production build and deployment-target/source guards pass. The local build
+initially refused to run alongside the owned Nuxt development server; that server
+was stopped and the build completed normally. Final artifact size is 25,458,617
+raw bytes (10,311 bytes below the immutable safety budget) and 7,156,432 gzip
+bytes. Future server additions need explicit size checks; the budget was not
+relaxed. This artifact has not been deployed.
+
+### 15 October — current-plan authoring authority foundation
+
+`withCustomerProductionAuthoringAuthority` now provides a SQL-only boundary for
+the next native editor increment. It derives business/workspace/site scope from
+the immutable creation receipt and requires the original active, verified native
+login, current owner membership and exact active non-preview platform entitlement
+with publishing and business-content access. Parent locks precede site locks;
+NOWAIT refuses in-flight access changes. Authority is checked again after locking
+and after the SQL callback. The deadline is the earliest login, membership or plan
+expiry. Replacing a plan or login cannot renew an existing authorization.
+
+This helper is deliberately not wired into editor launch or session routes yet.
+It grants neither CMS provisioning/adoption nor publication. Current staging-only
+claims and storage guards remain unchanged. No public feature claim or new menu
+entry is appropriate for this internal foundation.
+
+Integration must bind configured environment, immutable handoff environment,
+exact entitlement, child claims and managed CMS storage on every operation.
+Production CMS setup must remain denied even through `workspace:create`, which
+legacy normal-editor adoption uses. Production save/reconnect must not use the
+unmanaged checkpoint fallback. Existing staging-managed sites cannot acquire a
+second production CMS scope or have storage relabelled; an explicitly authorized
+storage transition is separate. The paired Studio control client must check its
+configured environment on exchange and all later operations. Any migration must
+preserve existing staging rows and immutable triggers, use the composite
+entitlement tenant/business FK and enforce production editor purpose.
+
+Validation of the foundation: 41 real PostgreSQL tests pass, including separate
+native accounts, expired previews, revoked/replaced logins and plans, all three
+authority deadlines, rollback after clock expiry, caller mutation, and in-flight
+membership/plan/site locks. The existing 40 plan-grant tests also pass. Changed
+source lint passes; server typecheck retains 295 existing baseline diagnostics
+with none in the new helper. Independent security review found no blockers.
+Only disposable local fixtures were changed; no customer entitlement, email,
+DNS record, saved CMS content or production configuration was modified.
+The default regression run passes 16,316 tests (2,366 conditional skips at
+collection, including the database-only authoring cases). The final expanded
+41-case database suite was executed separately after adding the review cases.
+The preceding operator UI commit `a55051c5d` also passed hosted CI run
+`38678874038`; that run does not contain this new authoring helper.
+The production build passes: 25,458,421 raw worker bytes, 10,507 bytes below the
+unchanged safety budget; gzip 7,156,266 bytes. No deployment was performed.
+
+### 15 October — bind native editor sessions to production authority and storage
+
+The paired editor integration now binds the configured environment, immutable
+handoff, exact production entitlement, signed child session and managed CMS
+scope. Migration 456 preserves existing staging receipts and sessions; generated
+child environment is checked against the handoff through a composite FK. The
+immutable trigger excludes that derived column because PostgreSQL populates it
+after BEFORE triggers; immutable claims still prevent any environment change,
+and revocation remains one-way.
+
+Production sessions cannot perform CMS setup/adoption, including via the legacy
+`workspace:create` path. Production saves require the managed graph coordinator;
+there is no unmanaged checkpoint fallback. Reconnect reads and editor launches
+check the exact target and checkpoint bytes between fresh native SQL snapshots.
+Staging and production scopes cannot coexist for one site or be silently relabelled.
+
+The central editor verifies the configured environment on every signed operation.
+Its production lifecycle checks readiness through the verified latest-checkpoint
+boundary, while staging retains the existing adoption status check. Both services
+require `PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED=true` for production
+entrypoints, alongside their existing editor/browser gates. No deployment binding
+has been enabled. Production-managed storage establishment/transition, hosted
+acceptance and customer activation remain outstanding; this is not a release or
+an assertion that existing preview customers can open production content.
+
+Validation so far: 316 targeted Dashboard tests across native sessions, handoffs,
+CMS saves/adoption/setup, schema preparation and HTTP gates pass. This includes
+migration of populated staging rows and production setup denial with otherwise
+valid `workspace:create` authority. Paired Studio token and control-client suites
+pass (50 and 227 tests); a real control-client/lifecycle test covers production
+open/read/save, missing managed content and revoked access. The latter reproduced
+and fixed an integration regression caught by independent review. Broader gates
+and migration application are recorded below when complete. No new public feature
+claim is made for this gated internal integration.
+
+Final local gates: default regression 16,322 passed / 2,409 conditional skips;
+the database/HTTP group was separately executed with 316 passing tests. Changed
+source ESLint passes. Server typecheck retains the same 295 baseline diagnostics,
+none in modified editor/authority files. Independent review approved both sides
+after the production lifecycle fix; real workerd staging/production isolation
+and browser-cookie coverage also passes locally (mocked control-plane responses).
+Migration 456 was applied to the configured database on 15 October and its four
+new authority constraints verified. The disposable PostgreSQL server was stopped.
+The production build passes at 25,463,561 raw worker bytes (5,367 remaining under
+the unchanged budget), gzip 7,158,189 bytes. Current-main ancestry and the guarded
+agency-dashboard deployment target pass. No deployment or customer activation
+was performed. Further server additions require explicit size verification.
+
+### 15 October — verified dashboard readiness and preview schema parity
+
+The overview now reports `editor-ready` only after the existing native authority
+and managed target/checkpoint verification succeeds. This supersedes an obsolete
+preview-job status after a plan upgrade, completes the setup indicators and
+removes stale creation/recovery/CMS-preparation actions. Failed readiness retains
+the original status; native access loss still prevents returning the earlier
+private overview. Editor readiness makes no assertion about publication.
+
+Five reproductions failed before the fix. The targeted HTTP/component suite now
+passes 37 tests, and the broader customer UI/HTTP regression passes 120 tests in
+eight files. Changed-file ESLint and independent review pass. Production build
+passes at 25,463,503 raw bytes (5,425 remaining), gzip 7,158,215 bytes. No budget
+was raised and no deployment was performed.
+
+Migration 456 was also applied to the verified, non-primary `staging/page-studio`
+Neon branch `br-long-mountain-a4f73v10`. All four new authority constraints are
+validated. Before/after digests match for sites, entitlements, releases, release
+pointers, CMS scopes and the original fields of existing editor handoffs/sessions.
+The private receipt is `page-studio-migration-456-staging-20261015.json` outside
+this repository. This does not establish or migrate production content storage.
+
+Dashboard CI 38684212308 passed for the preceding paired integration at 4aa3fbb32.
+Studio CI 38681176744 passed on both Linux and Windows for d316347; only after it
+completed was 695ec7a pushed. Its new CI is 38685422751. The separate secret scan
+flagged the synthetic production compatibility JWT: the private key was discarded,
+the retained public key and historical token are test-only. An exact fingerprint
+exception, matching the existing staging-fixture policy, was reviewed separately;
+pinned Gitleaks 8.24.3 reproduced one finding before and zero after. New hosted
+acceptance and production storage transition remain outstanding.
+
+### 16 October — native transfer resource reservation and release size
+
+The original native owner, exact publishing plan and original platform operator
+are retained in an immutable transfer intent. Every private executor admission
+rechecks those principals and the accepted source graph. A separate immutable
+production resource request preserves the existing checkpoint as a read anchor;
+ordinary attachment authority is unchanged. Migrations 457 and 458 were applied
+and verified without allocating customer resources or changing authoring selection.
+The paired Studio resource-only executor is still under full verification. Physical
+resource binding, graph selection, recovery UI and hosted acceptance remain open.
+
+Dashboard CI at `63280d089` rejected the raw Worker artifact by 2,826 bytes. An
+initial shared-SQL extraction passed functional checks but worsened the build
+size and was reverted before commit. The replacement extends the existing
+lossless static SQL encoder to complete `const` initializer literals. Mutable,
+dynamic and tagged initializers remain excluded; query contents and execution
+order are preserved. Its new regression failed before implementation, then the
+60-test compaction/dispatcher group and independent review passed. Full artifact
+measurement is pending; the immutable size ceiling has not changed. No deployment
+or customer activation is claimed by these source-level checks.
+
+### 16 October — private physical resource binding
+
+`bindManagedTransferResources` resolves the saved resource request under the
+original native transfer authority, performs trusted provider inspection outside
+SQL locks, and rechecks the same owner/operator/plan and every captured source
+head before retaining a binding. Strict detached evidence binds the production
+scope, reviewed account/runtime/schema, original preparation and exact database
+and Worker identity. Reusing the source database is rejected. Retrying the same
+proof returns the immutable binding; changed evidence cannot replace it.
+
+Migration 459 adds a private immutable table with unique physical database and
+Worker identities. It was applied to the configured database with zero bindings
+and its immutable trigger verified. This is not an authoring selection, route
+activation or publication. The Studio physical-inspection adapter, final graph
+selection, retained release authority and hosted customer acceptance remain
+outstanding. No browser endpoint accepts provider evidence.
+
+Twenty-one new real PostgreSQL cases pass, including a second-connection check
+that provider I/O holds no native site lock, substituted resources, source edits,
+revoked original sessions, exact replay and rollback after a late head change.
+The expected missing-function failure was observed first. Cold filtered test runs
+initially timed out during fixture imports; moving those imports into fixture
+setup produced the intended failure without increasing any test deadline.
+Independent review found no blocking issue in this bounded increment; broader
+regression and exact-commit CI results remain recorded in the release ledger.
+
+### Native resource workflow — 16 October
+
+The private native coordinator now connects status, explicit start/resume and
+explicit verification to the production provisioner binding. It resolves the
+original request from immutable native storage and retains it before the first
+remote effect. A lost response leaves that same request available for inspection
+and explicit recovery. No native SQL transaction spans a remote call.
+
+Status never allocates, resumes or invokes physical inspection. Prepared provider
+status does not create a native binding. Explicit verification uses independent
+physical inspection and the existing authority-checked immutable binding phase.
+A retained `resources-bound` result describes saved evidence, not current provider
+health, completed graph transfer, a selected editor or a published website.
+
+The coordinator captures its trusted method/receiver and configuration before
+awaits, strictly parses detached remote progress, and rechecks original owner,
+operator, plan and source heads afterward. It rejects substituted operation,
+resource identity and extra response fields; private hashes and provider details
+are omitted from progress results. No browser route accepts a resource request or
+physical proof.
+
+Twenty initial real PostgreSQL workflow cases were observed failing before the
+coordinator existed, then passed. Seven more RPC lock-release and post-call
+revocation/source-change cases bring the new workflow coverage to 27 cases. The
+complete transfer/endpoint PostgreSQL group passes 136 tests. Changed-source
+ESLint passes; server typecheck retains 295 existing diagnostics, none in the
+coordinator. Full-suite and exact-commit CI receipts are recorded in the active
+ledger. Independent review found no actionable defect in this bounded increment. The native source fence/copy phases, final graph
+selection, retained published authority, customer progress UI and hosted
+acceptance remain unfinished.

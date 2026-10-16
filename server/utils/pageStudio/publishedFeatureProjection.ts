@@ -5,7 +5,8 @@ import { CollectionDefinitionSchema } from '~~/shared/pageStudio/collectionDefin
 import { CollectionRecordSchema, collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { projectBuilderActionRecord, verifyBuilderComponentDataBindings, verifyBuilderReleaseRecovery, type BuilderGraphJson } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
 import { createCmsGraphStorage } from './cmsGraphStorage'
-import { cmsEqual, readCmsConsumerSnapshot, type AcceptedCmsObject } from './cmsVisibility'
+import { cmsEqual, type AcceptedCmsObject } from './cmsVisibility'
+import { readPublishedCmsConsumerSnapshot } from './publishedCmsVisibility'
 import { readPublishedFeatureSnapshot, withPublishedFeatureAuthority, publishedFeatureDenied, type PublishedFeatureSnapshot } from './publishedFeatureAuthority'
 import type { PageStudioControlQueryClient } from './controlStore'
 import type { CmsGraphDependencies } from './cmsGraphCoordinator'
@@ -112,13 +113,13 @@ export async function projectPublishedFeaturePage<Release>(
   const limits = new Map<string, number>()
   for (const component of components) for (const binding of component.bindings) limits.set(binding.collection.id, Math.max(limits.get(binding.collection.id) ?? 0, binding.limit))
   const capture = () => withAuthority(async (db) => {
-    const current = await readCmsConsumerSnapshot(db, snapshot.contentScope)
+    const current = await readPublishedCmsConsumerSnapshot(db, snapshot.contentScope, snapshot.context)
     if (!cmsEqual(current.context, snapshot.context)) throw publishedFeatureDenied()
     const schemas = current.schemas.filter(schema => limits.has(schema.pin.collectionId))
     if (schemas.length !== limits.size) throw publishedFeatureDenied()
     const groups = []
     for (const [collectionId, limit] of limits) {
-      const records = await readCmsConsumerSnapshot(db, snapshot.contentScope, { kind: 'record', collectionId, limit, includeArchived: false })
+      const records = await readPublishedCmsConsumerSnapshot(db, snapshot.contentScope, snapshot.context, { kind: 'record', collectionId, limit, includeArchived: false })
       if (!cmsEqual(records.context, current.context) || !cmsEqual(records.schemas, current.schemas)) throw publishedFeatureDenied()
       groups.push({ collectionId, objects: records.objects.slice(0, limit) })
     }

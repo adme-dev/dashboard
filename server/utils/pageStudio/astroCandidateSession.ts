@@ -15,7 +15,7 @@ export async function issueAstroCandidateSession(
 ): Promise<IssuedPageStudioSession> {
   const scope = structuredClone(scopeInput), principal = structuredClone(principalInput)
   const issuedAt = Math.floor(Date.now() / 1000)
-  const claims: PageStudioSessionClaims = { ...scope, userId: principal.actorId, role: 'agency', nonce: crypto.randomUUID(),
+  const claims: PageStudioSessionClaims = { ...scope, userId: principal.actorId, role: principal.login.role, nonce: crypto.randomUUID(),
     issuedAt, expiresAt: Math.min(issuedAt + 300, Math.floor(principal.login.expiresAt.getTime() / 1000)), capabilities: ['workspace:preview'] }
   const token = await dependencies.signToken(structuredClone(claims))
   return withPageStudioPublishAuthority(scope, principal, async (db) => {
@@ -24,13 +24,13 @@ export async function issueAstroCandidateSession(
     }
     await db.query(`INSERT INTO page_studio_sessions(nonce,tenant_id,client_id,site_id,user_id,role,
       capabilities,issued_at,expires_at,login_session_hash)
-      VALUES($1,$2,$3,$4,$5,'agency',$6::jsonb,to_timestamp($7),to_timestamp($8),$9)`,
+      VALUES($1,$2,$3,$4,$5,$10,$6::jsonb,to_timestamp($7),to_timestamp($8),$9)`,
     [claims.nonce, scope.tenantId, scope.clientId, scope.siteId, principal.actorId, JSON.stringify(claims.capabilities),
-      claims.issuedAt, claims.expiresAt, principal.login.tokenHash])
+      claims.issuedAt, claims.expiresAt, principal.login.tokenHash, claims.role])
     await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,
-      resource_type,resource_id,metadata) VALUES($1,$2,$3,$4,'agency','session.issued','session',$5,$6::jsonb)`,
+      resource_type,resource_id,metadata) VALUES($1,$2,$3,$4,$7,'session.issued','session',$5,$6::jsonb)`,
     [scope.tenantId, scope.clientId, scope.siteId, principal.actorId, claims.nonce,
-      JSON.stringify({ capabilities: claims.capabilities, expiresAt: claims.expiresAt })])
+      JSON.stringify({ capabilities: claims.capabilities, expiresAt: claims.expiresAt }), claims.role])
     return { token, sessionId: claims.nonce, capabilities: claims.capabilities, expiresAt: claims.expiresAt }
   }, dependencies)
 }

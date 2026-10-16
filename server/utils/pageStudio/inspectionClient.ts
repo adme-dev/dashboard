@@ -7,7 +7,9 @@ interface AgencyInput { tenantId: string, actorId: string, env?: Record<string, 
 interface Input extends AgencyInput { siteId: string }
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 const unavailable = () => createError({ statusCode: 503, statusMessage: 'Website inspection is unavailable. Try again.' })
-async function inspect(input: AgencyInput & { siteId?: string, operation: 'launch' | 'comparison' | 'reviews', versionId?: string, releaseId?: string }) {
+interface PortalInput { actorId: string, clientId: string, siteId: string, env?: Record<string, unknown> }
+interface CustomerInput { actorId: string, accountId: string, workspaceId: string, siteId: string, env?: Record<string, unknown> }
+async function inspect(input: (AgencyInput & { siteId?: string, operation: 'launch' | 'comparison' | 'reviews', versionId?: string, releaseId?: string }) | (PortalInput & { operation: 'portal-launch' }) | (CustomerInput & { operation: 'customer-launch' })) {
   const { env, ...scope } = input
   const request = PageStudioInspectionRequest.safeParse(Object.fromEntries(
     Object.entries({ ...scope, expectedEnvironment: env?.PAGE_STUDIO_RELEASE_ENVIRONMENT }).filter(([, value]) => value !== undefined)
@@ -37,7 +39,15 @@ async function inspect(input: AgencyInput & { siteId?: string, operation: 'launc
   return parsed.value
 }
 export async function readPageStudioLaunchState(input: Input): Promise<PageStudioLaunchState> {
-  const value = await inspect({ ...input, operation: 'launch' })
+  return validateLaunchState(await inspect({ ...input, operation: 'launch' }))
+}
+export async function readPortalPageStudioLaunchState(input: PortalInput): Promise<PageStudioLaunchState> {
+  return validateLaunchState(await inspect({ ...input, operation: 'portal-launch' }))
+}
+export async function readCustomerPageStudioLaunchState(input: CustomerInput): Promise<PageStudioLaunchState> {
+  return validateLaunchState(await inspect({ ...input, operation: 'customer-launch' }))
+}
+function validateLaunchState(value: Record<string, unknown>): PageStudioLaunchState {
   if (!record(value.content) || !['ready', 'required', 'unavailable'].includes(String(value.content.status))
     || !record(value.plan) || !['ready', 'required'].includes(String(value.plan.status)) || !Array.isArray(value.activeReleases)
     || !(value.approvedVersionId === null || typeof value.approvedVersionId === 'string')) throw unavailable()

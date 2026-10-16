@@ -5,10 +5,11 @@ import { verifyPageStudioSessionToken } from '~~/server/utils/pageStudio/session
 
 const issuer = 'https://dashboard.example.test'
 const now = Math.floor(Date.now() / 1000)
-const claims = { role: 'customer' as const, environment: 'staging' as const, nonce: crypto.randomUUID(),
+const baseClaims = { role: 'customer' as const, environment: 'staging' as const, nonce: crypto.randomUUID(),
   userId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), siteId: crypto.randomUUID(), clientId: crypto.randomUUID(),
   tenantId: 'studio-customer-test', issuedAt: now, expiresAt: now + 120, capabilities: ['workspace:checkpoint' as const],
   editorOrigin: 'https://studio.example.test', returnUrl: `${issuer}/studio/dashboard` }
+const claims = baseClaims
 let privatePem: string, publicPem: string
 let keys: Awaited<ReturnType<typeof generateKeyPair>>
 beforeAll(async () => {
@@ -17,15 +18,19 @@ beforeAll(async () => {
   publicPem = await exportSPKI(keys.publicKey)
 })
 describe('native customer editor JWT contract', () => {
-  it('round trips distinct customer claims and is rejected by the legacy verifier', async () => {
+  it.each(['staging', 'production'] as const)('round trips %s customer claims and is rejected by the legacy verifier', async (environment) => {
+    const claims = { ...baseClaims, environment }
     const token = await signCustomerEditorToken(claims, privatePem, issuer)
     expect(await verifyCustomerEditorToken(token, publicPem, issuer)).toEqual(claims)
     await expect(verifyPageStudioSessionToken(token, publicPem, issuer)).rejects.toMatchObject({ statusCode: 401 })
   })
+  it.each(['cms:prepare', 'cms:adopt', 'cms:status'])('rejects production setup capability %s', capability => {
+    expect(CustomerEditorClaimsSchema.safeParse({ ...claims, environment: 'production', capabilities: [capability] }).success).toBe(false)
+  })
   it.each(['source:edit', 'model:invoke', 'publish', 'workspace:unknown'])('rejects forbidden capability %s', (capability) => {
     expect(CustomerEditorClaimsSchema.safeParse({ ...claims, capabilities: [capability] }).success).toBe(false)
   })
-  it.each([{ role: 'agency' }, { environment: 'production' }, { returnUrl: 'https://foreign.example.test/anything' },
+  it.each([{ role: 'agency' }, { environment: 'preview' }, { returnUrl: 'https://foreign.example.test/anything' },
     { editorOrigin: 'https://studio.example.test/path' }, { capabilities: ['workspace:checkpoint', 'workspace:checkpoint'] },
     { expiresAt: now + 14401 }, { expiresAt: now }, { userId: 'staff-id' }, { unknown: 'field' }])('rejects invalid claims %j', (change) => {
     expect(CustomerEditorClaimsSchema.safeParse({ ...claims, ...change }).success).toBe(false)

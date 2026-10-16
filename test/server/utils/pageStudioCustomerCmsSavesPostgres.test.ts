@@ -1,3 +1,4 @@
+import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -13,7 +14,7 @@ const migration = (name: string) => readFileSync(new URL(`../../../server/databa
 const ownershipMigration = '444_page_studio_customer_site_ownership.sql'
 const ids = { owner: randomUUID(), other: randomUUID(), client: randomUUID(), staff: randomUUID() }
 
-describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on PostgreSQL', () => {
+describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('native customer %s managed CMS saves on PostgreSQL', (environment) => {
   const schema = `customer_cms_${randomUUID().replaceAll('-', '')}`
   let db: pg.Client
   let workspaces: typeof import('~~/server/utils/pageStudio/customerWorkspaces')
@@ -46,7 +47,7 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
     await db.query(`
       CREATE TABLE agency_clients (id UUID PRIMARY KEY, is_active BOOLEAN NOT NULL);
       CREATE TABLE client_users (id UUID PRIMARY KEY, client_id UUID REFERENCES agency_clients(id), status TEXT, role TEXT);
-      CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN NOT NULL);
+      CREATE TABLE team_members (id UUID PRIMARY KEY, is_active BOOLEAN NOT NULL, user_role TEXT DEFAULT 'owner', custom_role_id UUID);
       CREATE TABLE custom_roles (id UUID PRIMARY KEY, slug TEXT);
       CREATE TABLE role_permission_groups (role_id UUID, permission_group TEXT, UNIQUE (role_id, permission_group));
     `)
@@ -61,6 +62,7 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
+    await db.query(migration('456_page_studio_customer_editor_environment.sql'))
     await db.query(migration('404_page_studio_documents.sql'))
     await db.query(migration('422_page_studio_cms_visibility.sql'))
     await db.query(migration('425_page_studio_cms_authoring_scope.sql'))
@@ -70,7 +72,7 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
     await db.query('DROP FUNCTION IF EXISTS fail_customer_pointer() CASCADE')
     await db.query(`TRUNCATE agency_clients, team_members, page_studio_customer_identities CASCADE`)
     await db.query('INSERT INTO agency_clients VALUES ($1, TRUE)', [ids.client])
-    await db.query('INSERT INTO team_members VALUES ($1, TRUE)', [ids.staff])
+    await db.query('INSERT INTO team_members (id,is_active) VALUES ($1, TRUE)', [ids.staff])
     await db.query(`INSERT INTO page_studio_customer_identities (id, issuer, subject, verified_at)
       VALUES ($1::uuid, 'studio', $1::uuid::text, NOW()), ($2::uuid, 'studio', $2::uuid::text, NOW())`, [ids.owner, ids.other])
     native.transaction.mockImplementation(runTransaction)
@@ -97,9 +99,17 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
       name: 'Customer Flowers', route: 'flowers', starterVersion: 'floristry-v1' }, { runTransaction,
       previewPolicy: { approvalId: randomUUID(), approvedBy: ids.staff, expiresAt: new Date(Date.now() + 86400_000).toISOString(),
         pagesPerSiteLimit: 5, storageBytesLimit: 104857600, monthlyBuildLimit: 10, monthlyTrafficBytesLimit: 1073741824 } })
+    if (environment === 'production') {
+      const { grantCustomerPublishingPlan } = await import('~~/server/utils/pageStudio/customerPlanGrants')
+      await grantCustomerPublishingPlan({ actorId: ids.staff, body: { requestId: randomUUID(), workspaceId: wid,
+        expectedEntitlementId: (await db.query('SELECT entitlement_id FROM page_studio_sites')).rows[0].entitlement_id,
+        planKey: 'studio_business', pagesPerSiteLimit: 10, storageBytesLimit: 104857600, domainLimit: 2,
+        aiOperationLimit: 0, buildLimit: 20, trafficBytesLimit: 1073741824,
+        effectiveUntil: null, reason: 'Fixture production authoring approval' } }, { runTransaction })
+    }
     await db.query('INSERT INTO page_studio_customer_setup_drafts (identity_id, workspace_id, draft) VALUES ($1, $2, $3::jsonb)', [ids.owner, wid, JSON.stringify({ businessName: 'Customer Flowers', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] })])
   })
-  const config = { enabled: true, dashboardOrigin: 'https://customers.example.test', editorOrigin: 'https://studio.example.test' }
+  const config = { enabled: true, environment, dashboardOrigin: 'https://customers.example.test', editorOrigin: 'https://studio.example.test' }
   const issuer = config.dashboardOrigin
   const ticket = async () => {
     const api = await import('~~/server/utils/pageStudio/customerEditorHandoff')
@@ -123,7 +133,7 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
   })
   const managed = async () => {
     const { claims } = await session()
-    const scope = { tenantId: claims.tenantId, clientId: claims.clientId, businessId: claims.clientId, siteId: claims.siteId, environment: 'staging' as const }
+    const scope = { tenantId: claims.tenantId, clientId: claims.clientId, businessId: claims.clientId, siteId: claims.siteId, environment }
     const key = JSON.stringify(Object.values(scope))
     const generation = randomUUID(), appId = randomUUID()
     const artifact = JSON.parse(graphFixture.artifactBytes[0]!)
@@ -139,7 +149,7 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
       VALUES('base_checkpoint',$1,$2,$3,$4,$5,'base',clock_timestamp())`, [scope.tenantId, scope.clientId, scope.siteId, baseDigest, objectKey('base_checkpoint')])
     await db.query('UPDATE page_studio_sites SET current_checkpoint_id=\'base_checkpoint\' WHERE id=$1', [scope.siteId])
     await db.query(`INSERT INTO page_studio_cms_scopes(scope_key,tenant_id,client_id,business_id,site_id,environment,state,adoption_id,active_generation,target,freeze_digest)
-      VALUES($1,$2,$3,$4,$5,'staging','legacy','fixture_adoption',$6,$7,$8)`, [key, scope.tenantId, scope.clientId, scope.businessId, scope.siteId, generation, graphFixture.base.target, 'b'.repeat(64)])
+      VALUES($1,$2,$3,$4,$5,$9,'legacy','fixture_adoption',$6,$7,$8)`, [key, scope.tenantId, scope.clientId, scope.businessId, scope.siteId, generation, graphFixture.base.target, 'b'.repeat(64), environment])
     await db.query(`INSERT INTO page_studio_application_versions(scope_key,generation,id,digest,manifest,adoption_id)
       VALUES($1,$2,$3,$4,$5,'fixture_adoption')`, [key, generation, appId, await collectionDigest(application), application])
     await db.query('UPDATE page_studio_cms_scopes SET state=\'managed\',current_application_id=$2 WHERE scope_key=$1', [key, appId])
@@ -151,8 +161,9 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
       if (!raw) return null
       return { body: new Response(raw).body!, size: new TextEncoder().encode(raw).byteLength }
     })
-    const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CHECKPOINTS: { get },
+    const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: environment as string, PAGE_STUDIO_CHECKPOINTS: { get },
       PAGE_STUDIO_CONTENT_ROUTER: { readManagedCmsTarget: async () => graphFixture.base.target } }
+    attachCmsManagement(env, runTransaction)
     const principal = { source: 'customer-session' as const, claims, env, capability: 'workspace:checkpoint' as const }
     const draft = async (id = `save_${randomUUID()}`) => {
       const next = structuredClone(manifest)
@@ -167,6 +178,29 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
     }
     return { claims, scope, key, appId, pin, principal, env, texts, get, draft, commit }
   }
+  it('verifies managed bytes and target when reconnecting to production content', async () => {
+    const f = await managed()
+    const { readCustomerEditorCheckpoint } = await import('~~/server/utils/pageStudio/customerEditorSessions')
+    const read = () => readCustomerEditorCheckpoint(f.claims, { runTransaction, env: f.env })
+    expect(await read()).toMatchObject({ checkpointId: 'base_checkpoint' })
+    if (environment === 'production') {
+      expect(f.get).toHaveBeenCalled()
+      f.texts.clear()
+      await expect(read()).rejects.toThrow()
+    }
+  })
+  it('denies production reconnect if native access is revoked during the storage read', async () => {
+    const f = await managed()
+    if (environment !== 'production') return
+    const get = f.get.getMockImplementation()!
+    f.get.mockImplementationOnce(async (key) => {
+      const result = await get(key)
+      await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+      return result
+    })
+    const { readCustomerEditorCheckpoint } = await import('~~/server/utils/pageStudio/customerEditorSessions')
+    await expect(readCustomerEditorCheckpoint(f.claims, { runTransaction, env: f.env })).rejects.toThrow()
+  })
   it('atomically saves pages and the managed application with customer provenance', async () => {
     const f = await managed(), input = await f.draft()
     expect(await f.commit(input)).toMatchObject({ acknowledged: true, checkpointId: input.checkpoint.checkpointId, isCurrent: true })
@@ -210,17 +244,35 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
   })
   it.each(['scope', 'author', 'origin-environment'])('denies a foreign %s without remote storage reads', async (reason) => {
     const f = await managed(), input = await f.draft()
-    const { coordinateCmsGraphCheckpoint } = await import('~~/server/utils/pageStudio/cmsGraphCoordinator')
+    const { coordinateCmsGraphCheckpoint } = await import('~~/workers/page-studio-management/src/cms/graphMutations')
     if (reason === 'scope') input.checkpoint.scope.siteId = randomUUID()
     if (reason === 'author') input.checkpoint.userId = randomUUID()
-    if (reason === 'origin-environment') f.env.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'production'
+    if (reason === 'origin-environment') f.env.PAGE_STUDIO_CONTENT_ENVIRONMENT = environment === 'staging' ? 'production' : 'staging'
     await expect(coordinateCmsGraphCheckpoint(input, f.principal, { runTransaction })).rejects.toThrow()
+    expect(f.get).not.toHaveBeenCalled()
+  })
+  it('requires managed production content for reads and saves with no metadata fallback', async () => {
+    if (environment !== 'production') return
+    const { claims } = await session()
+    const api = await import('~~/server/utils/pageStudio/customerEditorSessions')
+    const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: environment }
+    await expect(api.commitCustomerEditorCheckpoint({ checkpoint: checkpoint(claims), expectedCheckpointId: null }, claims, { runTransaction, env })).rejects.toMatchObject({ statusCode: 403 })
+    await expect(api.readCustomerEditorCheckpoint(claims, { runTransaction, env })).rejects.toThrow()
+    expect((await db.query('SELECT COUNT(*) FROM page_studio_checkpoints')).rows[0].count).toBe('0')
+  })
+  it('denies production CMS setup even through valid workspace:create authority', async () => {
+    const f = await managed()
+    if (environment !== 'production') return
+    const { coordinateCmsAdoption } = await import('~~/workers/page-studio-management/src/cms/adoptionCoordinator')
+    const { coordinateCustomerSchemaUpgrade } = await import('~~/server/utils/pageStudio/customerSchemaUpgrade')
+    await expect(coordinateCmsAdoption({ action: 'start' }, { ...f.principal, capability: 'workspace:create' }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    await expect(coordinateCustomerSchemaUpgrade({ action: 'status', kind: 'collection' }, f.claims, { env: f.env, runTransaction })).rejects.toMatchObject({ statusCode: 403 })
     expect(f.get).not.toHaveBeenCalled()
   })
   it('cannot use customer authority for feature, AI or history acceptance', async () => {
     const f = await managed(), input = await f.draft()
-    const api = await import('~~/server/utils/pageStudio/cmsGraphCoordinator')
-    const { coordinateCmsAdoption } = await import('~~/server/utils/pageStudio/cmsAdoptionCoordinator')
+    const api = await import('~~/workers/page-studio-management/src/cms/graphMutations')
+    const { coordinateCmsAdoption } = await import('~~/workers/page-studio-management/src/cms/adoptionCoordinator')
     await expect(coordinateCmsAdoption({ action: 'start' }, f.principal, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
     await expect(api.coordinateCmsGraphTransition({} as never, f.principal, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
     await expect(api.coordinateCmsGraphRestore({}, f.principal, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
@@ -241,7 +293,7 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
     const f = await managed(), input = await f.draft()
     await db.query(`CREATE FUNCTION fail_customer_pointer() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END $$;
       CREATE TRIGGER fail_customer_pointer BEFORE UPDATE ON page_studio_cms_scopes FOR EACH ROW EXECUTE FUNCTION fail_customer_pointer();`)
-    await expect(f.commit(input)).rejects.toThrow('injected failure')
+    await expect(f.commit(input)).rejects.toMatchObject({ statusCode: 503 })
     expect((await db.query('SELECT current_application_id FROM page_studio_cms_scopes')).rows[0].current_application_id).toBe(f.appId)
     expect((await db.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows[0].current_checkpoint_id).toBe('base_checkpoint')
     expect((await db.query('SELECT COUNT(*) FROM page_studio_application_versions')).rows[0].count).toBe('1')
@@ -251,7 +303,10 @@ describe.runIf(Boolean(databaseUrl))('native customer managed CMS saves on Postg
     const f = await managed(), a = await f.draft(), b = await f.draft()
     const results = await Promise.allSettled([f.commit(a), f.commit(b)])
     expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
-    expect(results.find(result => result.status === 'rejected')).toMatchObject({ reason: { statusCode: 409 } })
+    const rejected = results.find(result => result.status === 'rejected') as PromiseRejectedResult
+    expect(environment === 'production' ? [409, 503] : [409]).toContain(rejected.reason.statusCode)
+    const loser = results[0]!.status === 'rejected' ? a : b
+    await expect(f.commit(loser)).rejects.toMatchObject({ statusCode: 409 })
     const saved = (await db.query(`SELECT site.current_checkpoint_id, app.manifest FROM page_studio_sites site
       JOIN page_studio_cms_scopes cms ON cms.site_id=site.id JOIN page_studio_application_versions app ON app.id=cms.current_application_id`)).rows[0]
     expect(saved.manifest.checkpoint.id).toBe(saved.current_checkpoint_id)

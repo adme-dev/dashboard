@@ -6,7 +6,7 @@ const { readPageStudioLaunchState: read } = await import('~~/workers/page-studio
 const readPageStudioLaunchState = (input: Parameters<typeof read>[0]) => read(input, mocks.query)
 
 const row = () => ({
-  id: 'site_one', tenant_id: 'tenant_one', client_id: 'client_one', name: 'Example', status: 'active',
+  id: 'site_one', tenant_id: 'tenant_one', client_id: 'client_one', name: 'Example', status: 'active', delivery_mode: 'static',
   checkpoint_id: 'checkpoint_current', checkpoint_digest: 'digest_current', object_key: 'scoped_object',
   version_id: 'version_current', version_checkpoint_id: 'checkpoint_current', version_digest: 'digest_current',
   version_status: 'approved', review_decision: 'approved', review_digest: 'digest_current',
@@ -28,7 +28,7 @@ describe('site launch state', () => {
   })
   it('reports the exact saved and approved version with scoped public form counts', async () => {
     const result = await readPageStudioLaunchState(scope)
-    expect(result).toMatchObject({ siteId: 'site_one', checkpointId: 'checkpoint_current', digest: 'digest_current',
+    expect(result).toMatchObject({ deliveryMode: 'static', siteId: 'site_one', checkpointId: 'checkpoint_current', digest: 'digest_current',
       approvedVersionId: 'version_current', content: { status: 'ready', publicPages: 1, publicForms: 1, requiresSealedFeatures: false },
       plan: { status: 'ready', key: 'trial' }, activeReleases: row().active_releases })
     expect(mocks.checkpoint).toHaveBeenCalledWith(expect.objectContaining({
@@ -68,11 +68,11 @@ describe('site launch state', () => {
     mocks.query.mockResolvedValueOnce(row()).mockResolvedValue({ ...row(), active_releases: [] })
     await expect(readPageStudioLaunchState(scope)).rejects.toMatchObject({ statusCode: 409 })
   })
-  it('does not present expired or suspended access as ready', async () => {
+  it('keeps saved approval separate from expired publishing access', async () => {
     mocks.query.mockResolvedValue({ ...row(), plan_current: false, plan_status: 'cancelled' })
     const result = await readPageStudioLaunchState(scope)
     expect(result.plan.status).toBe('required')
-    expect(result.approvedVersionId).toBeNull()
+    expect(result.approvedVersionId).toBe('version_current')
   })
   it('keeps malformed or unavailable checkpoints distinct from no saved content', async () => {
     mocks.checkpoint.mockRejectedValue(new Error('Private storage diagnostic'))
@@ -80,4 +80,11 @@ describe('site launch state', () => {
     expect(result.content.status).toBe('unavailable')
     expect(JSON.stringify(result)).not.toContain('Private storage diagnostic')
   })
+})
+
+it('binds customer launch reads to client as well as tenant and site', async () => {
+  vi.clearAllMocks()
+  mocks.query.mockResolvedValue(null)
+  await expect(readPageStudioLaunchState({ ...scope, clientId: 'client_one' })).rejects.toMatchObject({ statusCode: 404 })
+  expect(mocks.query).toHaveBeenCalledWith(expect.stringContaining('site.client_id = $3'), ['tenant_one', 'site_one', 'client_one'])
 })

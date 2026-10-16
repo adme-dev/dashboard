@@ -1,0 +1,1187 @@
+{
+  "intent": {
+    "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+    "authority": {
+      "source": {
+        "businessId": "00000000-0000-4000-8000-000000000101",
+        "clientId": "00000000-0000-4000-8000-000000000101",
+        "environment": "staging",
+        "siteId": "00000000-0000-4000-8000-000000000102",
+        "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+      },
+      "destination": {
+        "businessId": "00000000-0000-4000-8000-000000000101",
+        "clientId": "00000000-0000-4000-8000-000000000101",
+        "environment": "production",
+        "siteId": "00000000-0000-4000-8000-000000000102",
+        "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+      }
+    },
+    "source": {
+      "context": {
+        "state": {
+          "active_generation": "00000000-0000-4000-8000-000000000105",
+          "target": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "databaseId": "00000000-0000-4000-8000-000000000103",
+            "name": "ps-content-99999999999999999999999999999999",
+            "routeId": "00000000-0000-4000-8000-000000000104",
+            "runtimeDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+            "collectionReceiptDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+            "workflowReceiptDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+            "stagingReceiptDigest": "3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          "freeze_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "current_content_id": null
+        },
+        "application": {
+          "id": "00000000-0000-4000-8000-000000000106",
+          "digest": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      },
+      "checkpoint": {
+        "id": "source_checkpoint",
+        "digest": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    },
+    "destination": {
+      "generation": "00000000-0000-4000-8000-000000000107"
+    }
+  },
+  "grant": {
+    "completionDigest": "6fb1641ad4a2fb4bcf2d7bc974174b9e8a0a43e0e4a3af05a7eb6c872e044768",
+    "digest": "bbcdfee931d09e5641e19ef6851692ea4bd7afbe50e0b60443a04f96982fa0bb",
+    "executionIdentity": "559d64c2f4de7dedaa82dc59852064b80fb1ede42814f6c2b67280625753cc5b",
+    "formatVersion": 1,
+    "formsReceiptDigest": "e45a0bb030707996580179ead4dddfee6a2625ad3075cf24483e2217b6ec229e",
+    "freezeDigest": "9a90e113ac0082ba756a5353e92c11d1cfb9fdf40484d5c0cc9fd0d9c93c1a16",
+    "generation": "00000000-0000-4000-8000-000000000107",
+    "historyReceiptDigest": "9a21df8d4b7ef9533d86d28677bf70dc1d4d2fa0178daa0da9b9c792455aab72",
+    "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+    "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+    "runtimeDigest": "7777777777777777777777777777777777777777777777777777777777777777",
+    "scope": {
+      "businessId": "00000000-0000-4000-8000-000000000101",
+      "clientId": "00000000-0000-4000-8000-000000000101",
+      "environment": "production",
+      "siteId": "00000000-0000-4000-8000-000000000102",
+      "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+    },
+    "target": {
+      "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+      "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+      "name": "ps-content-dddddddddddddddddddddddddddddddd",
+      "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+      "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+      "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+    },
+    "workerEtag": "actual-successor-etag"
+  },
+  "request": {
+    "completionReceipt": {
+      "auditId": "00000000-0000-4000-8000-000000000109",
+      "completedAt": "2026-10-16T00:00:00.000Z",
+      "copyProofDigest": "6666666666666666666666666666666666666666666666666666666666666666",
+      "destination": {
+        "application": {
+          "digest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "id": "00000000-0000-4000-8000-000000000108"
+        },
+        "checkpoint": {
+          "digest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "id": "destination_checkpoint"
+        },
+        "contentId": null,
+        "freezeDigest": "9a90e113ac0082ba756a5353e92c11d1cfb9fdf40484d5c0cc9fd0d9c93c1a16",
+        "generation": "00000000-0000-4000-8000-000000000107",
+        "scope": {
+          "businessId": "00000000-0000-4000-8000-000000000101",
+          "clientId": "00000000-0000-4000-8000-000000000101",
+          "environment": "production",
+          "siteId": "00000000-0000-4000-8000-000000000102",
+          "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+        },
+        "target": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+          "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+          "name": "ps-content-dddddddddddddddddddddddddddddddd",
+          "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+          "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+          "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+        }
+      },
+      "digest": "6fb1641ad4a2fb4bcf2d7bc974174b9e8a0a43e0e4a3af05a7eb6c872e044768",
+      "formatVersion": 1,
+      "historyReceiptDigest": "9a21df8d4b7ef9533d86d28677bf70dc1d4d2fa0178daa0da9b9c792455aab72",
+      "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+      "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+      "source": {
+        "application": {
+          "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "id": "00000000-0000-4000-8000-000000000106"
+        },
+        "checkpoint": {
+          "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "id": "source_checkpoint"
+        },
+        "contentId": null,
+        "freezeDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+        "generation": "00000000-0000-4000-8000-000000000105",
+        "scope": {
+          "businessId": "00000000-0000-4000-8000-000000000101",
+          "clientId": "00000000-0000-4000-8000-000000000101",
+          "environment": "staging",
+          "siteId": "00000000-0000-4000-8000-000000000102",
+          "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+        },
+        "target": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "collectionReceiptDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "databaseId": "00000000-0000-4000-8000-000000000103",
+          "name": "ps-content-99999999999999999999999999999999",
+          "routeId": "00000000-0000-4000-8000-000000000104",
+          "runtimeDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "stagingReceiptDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "workflowReceiptDigest": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      }
+    },
+    "destinationProof": {
+      "catalogueReceiptDigest": "f1ec1b2ec2a6e5cdc4c7280fd0692d17200195a2e06fa75871eacaf03943510e",
+      "digest": "6066cc1c4845f1de3c5a3c75c5858ad5ce3c4a8554f4e1cd4c8cdc53d5a1daa5",
+      "envelope": {
+        "execution": {
+          "formatVersion": 1,
+          "freeze": {
+            "createdAt": "2026-10-16T00:00:00.000Z",
+            "request": {
+              "actor": {
+                "kind": "agency-user",
+                "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "userId": "33333333-3333-4333-8333-333333333333"
+              },
+              "adoptionId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_destination",
+              "formatVersion": 1,
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "target": {
+                "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+                "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+                "name": "ps-content-dddddddddddddddddddddddddddddddd",
+                "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+                "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+                "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+              }
+            },
+            "state": "frozen",
+            "digest": "9a90e113ac0082ba756a5353e92c11d1cfb9fdf40484d5c0cc9fd0d9c93c1a16"
+          },
+          "identity": "559d64c2f4de7dedaa82dc59852064b80fb1ede42814f6c2b67280625753cc5b",
+          "originalRouteDigest": "35b54d3c489c595dfd20628ccb5ea88b09e8c65218bb87babe51261a451937d3",
+          "owner": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "compatibilityDate": "2026-10-15",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "namespace": "xeroflow-page-studio-dispatch-production",
+            "ownerTag": "ps-owner-f4de34f5d72600f3df9cdb4806cd11cd",
+            "runtimeDigest": "7777777777777777777777777777777777777777777777777777777777777777",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "scriptName": "ps-content-b9debe6373663ec13fd77b8501475af2",
+            "setupDigest": "54c581e478f12b01dab4f653b304fa34a1bd31d6d6897a841e22316c6b096a27"
+          },
+          "policy": {
+            "formReceiptDigest": "e45a0bb030707996580179ead4dddfee6a2625ad3075cf24483e2217b6ec229e",
+            "from": {
+              "compatibilityDate": "2026-08-18",
+              "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "kind": "managed-draft-import",
+            "to": {
+              "compatibilityDate": "2026-10-15",
+              "digest": "7777777777777777777777777777777777777777777777777777777777777777"
+            },
+            "version": 1
+          },
+          "predecessor": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "compatibilityDate": "2026-08-18",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "namespace": "xeroflow-page-studio-dispatch-production",
+            "ownerTag": "ps-owner-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "scriptName": "ps-content-dddddddddddddddddddddddddddddddd",
+            "setupDigest": "54c581e478f12b01dab4f653b304fa34a1bd31d6d6897a841e22316c6b096a27"
+          },
+          "schemaReceipt": {
+            "digest": "f68b188ab69e0d248996a0ad035af9c0da515695a4fba1bdebbcf94b3ff104a8",
+            "formatVersion": 1,
+            "kind": "draft-history-import",
+            "nativeIntentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_destination_import",
+            "predecessor": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_forms",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+              "stagingOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+              "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+              "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+            },
+            "schemaDigest": "65fbb83440cd62ebc9165006a6a25daa414212181209c06e7be771a624434680"
+          },
+          "workerReceipt": {
+            "etag": "actual-successor-etag"
+          }
+        },
+        "kind": "managed-execution",
+        "route": {
+          "activationId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+          "formDrafts": {
+            "digest": "e45a0bb030707996580179ead4dddfee6a2625ad3075cf24483e2217b6ec229e",
+            "receipt": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_forms",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+              "stagingOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+              "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+              "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+            }
+          },
+          "namespace": "xeroflow-page-studio-dispatch-production",
+          "receipts": {
+            "collection": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "sourceDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+              "targetDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee"
+            },
+            "staging": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "sourceDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae",
+              "targetDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+              "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow"
+            },
+            "workflow": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "sourceDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee",
+              "targetDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae"
+            }
+          },
+          "scope": {
+            "businessId": "00000000-0000-4000-8000-000000000101",
+            "clientId": "00000000-0000-4000-8000-000000000101",
+            "environment": "production",
+            "siteId": "00000000-0000-4000-8000-000000000102",
+            "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+          },
+          "scriptName": "ps-content-dddddddddddddddddddddddddddddddd",
+          "target": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+            "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+            "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+          }
+        }
+      },
+      "formatVersion": 1,
+      "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+      "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+      "requestDigest": "807d373cb8c16fd900b64170786943534c28a9bee82e0831d7c17f15372c2f99"
+    },
+    "destinationRequest": {
+      "catalogueReceipt": {
+        "baselineDigest": "90adeba85dce652470d335594f709834d1f0e7e8aeba1446875152aeb5fcbc5d",
+        "digest": "f1ec1b2ec2a6e5cdc4c7280fd0692d17200195a2e06fa75871eacaf03943510e",
+        "formatVersion": 1,
+        "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+        "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+        "planDigest": "1b3beaf900d7a3b3d604c05510d5344ba0c33b475629a98be38ca912787ffc33",
+        "receiptDigests": {
+          "collection": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+          "forms": "e45a0bb030707996580179ead4dddfee6a2625ad3075cf24483e2217b6ec229e",
+          "staging": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+          "workflow": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+        },
+        "receipts": {
+          "collection": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "sourceDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+            "targetDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee"
+          },
+          "forms": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_forms",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+            "stagingOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+            "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+            "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+          },
+          "staging": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "sourceDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae",
+            "targetDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+            "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow"
+          },
+          "workflow": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "sourceDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee",
+            "targetDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae"
+          }
+        },
+        "requestDigest": "c605695b5c79b454a5d9768ae3ae3bb321c064dcdc89b26c4d5ba04042ea36fe"
+      },
+      "catalogueRequest": {
+        "baseline": {
+          "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+          "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+          "database": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "schemaDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "preparationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "preparationId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+          "resourceIdentity": "cms_attach_2dfe68f5a20e4c4277358b30ad92001c7e2ae362b47f98bf963f07def45eeb87",
+          "version": 1,
+          "worker": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "compatibilityDate": "2026-08-18",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "etag": "original",
+            "namespace": "xeroflow-page-studio-dispatch-production",
+            "ownerTag": "ps-owner-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "scriptName": "ps-content-dddddddddddddddddddddddddddddddd",
+            "setupDigest": "54c581e478f12b01dab4f653b304fa34a1bd31d6d6897a841e22316c6b096a27"
+          }
+        },
+        "formatVersion": 1,
+        "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+        "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+        "resourceRequest": {
+          "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+          "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+          "resourceRequest": {
+            "actor": {
+              "kind": "agency-user",
+              "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "userId": "33333333-3333-4333-8333-333333333333"
+            },
+            "anchor": {
+              "checkpointId": "imported_head",
+              "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "mode": "attach-existing-content",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3",
+            "policyVersion": "content-attachment-v1",
+            "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "schemaDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "version": 1
+          }
+        }
+      },
+      "formatVersion": 1,
+      "freezeRequest": {
+        "actor": {
+          "kind": "agency-user",
+          "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "userId": "33333333-3333-4333-8333-333333333333"
+        },
+        "adoptionId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_destination",
+        "formatVersion": 1,
+        "scope": {
+          "businessId": "00000000-0000-4000-8000-000000000101",
+          "clientId": "00000000-0000-4000-8000-000000000101",
+          "environment": "production",
+          "siteId": "00000000-0000-4000-8000-000000000102",
+          "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+        },
+        "target": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+          "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+          "name": "ps-content-dddddddddddddddddddddddddddddddd",
+          "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+          "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+          "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+        }
+      },
+      "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+      "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+      "policy": {
+        "formReceiptDigest": "e45a0bb030707996580179ead4dddfee6a2625ad3075cf24483e2217b6ec229e",
+        "from": {
+          "compatibilityDate": "2026-08-18",
+          "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "kind": "managed-draft-import",
+        "to": {
+          "compatibilityDate": "2026-10-15",
+          "digest": "7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        "version": 1
+      },
+      "successor": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "compatibilityDate": "2026-10-15",
+        "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+        "namespace": "xeroflow-page-studio-dispatch-production",
+        "ownerTag": "ps-owner-f4de34f5d72600f3df9cdb4806cd11cd",
+        "runtimeDigest": "7777777777777777777777777777777777777777777777777777777777777777",
+        "scope": {
+          "businessId": "00000000-0000-4000-8000-000000000101",
+          "clientId": "00000000-0000-4000-8000-000000000101",
+          "environment": "production",
+          "siteId": "00000000-0000-4000-8000-000000000102",
+          "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+        },
+        "scriptName": "ps-content-b9debe6373663ec13fd77b8501475af2",
+        "setupDigest": "54c581e478f12b01dab4f653b304fa34a1bd31d6d6897a841e22316c6b096a27"
+      }
+    },
+    "formatVersion": 1,
+    "historyReceiptDigest": "9a21df8d4b7ef9533d86d28677bf70dc1d4d2fa0178daa0da9b9c792455aab72",
+    "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+    "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+    "historyReceipt": {
+      "destination": {
+        "scope": {
+          "businessId": "00000000-0000-4000-8000-000000000101",
+          "clientId": "00000000-0000-4000-8000-000000000101",
+          "environment": "production",
+          "siteId": "00000000-0000-4000-8000-000000000102",
+          "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+        },
+        "target": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+          "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+          "name": "ps-content-dddddddddddddddddddddddddddddddd",
+          "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+          "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+          "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+        }
+      },
+      "formatVersion": 1,
+      "nativeIntentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+      "planDigest": "3f664196feef5d825b3088476512c1d3a09d6f8f23b4b2e522bb3ae6ffbb6637",
+      "source": {
+        "scope": {
+          "businessId": "00000000-0000-4000-8000-000000000101",
+          "clientId": "00000000-0000-4000-8000-000000000101",
+          "environment": "staging",
+          "siteId": "00000000-0000-4000-8000-000000000102",
+          "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+        },
+        "target": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "collectionReceiptDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "databaseId": "00000000-0000-4000-8000-000000000103",
+          "name": "ps-content-99999999999999999999999999999999",
+          "routeId": "00000000-0000-4000-8000-000000000104",
+          "runtimeDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "stagingReceiptDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "workflowReceiptDigest": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "fenceDigest": "39abb968090166b6e2301ff8a4bf6e7c10779c91163eb860544120d38cd75268",
+        "historyDigest": "f35348ec2a08af25dcce477d902094c4c1b96f0c1c690dc4862bbbcd73fc0ab7"
+      },
+      "transferId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+      "destinationHistoryDigest": "f35348ec2a08af25dcce477d902094c4c1b96f0c1c690dc4862bbbcd73fc0ab7",
+      "importIdentityDigest": "f8bf50311a8c50f02c5d950a52013c518edc1c313de2017cae9f45908d2ad589",
+      "digest": "9a21df8d4b7ef9533d86d28677bf70dc1d4d2fa0178daa0da9b9c792455aab72"
+    }
+  },
+  "historyRequest": {
+    "formatVersion": 1,
+    "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+    "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+    "sourceRequest": {
+      "formatVersion": 1,
+      "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+      "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+      "executionIdentity": "1111111111111111111111111111111111111111111111111111111111111111",
+      "fenceIntent": {
+        "formatVersion": 1,
+        "transferId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+        "nativeIntentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+        "scope": {
+          "businessId": "00000000-0000-4000-8000-000000000101",
+          "clientId": "00000000-0000-4000-8000-000000000101",
+          "environment": "staging",
+          "siteId": "00000000-0000-4000-8000-000000000102",
+          "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+        },
+        "target": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "databaseId": "00000000-0000-4000-8000-000000000103",
+          "name": "ps-content-99999999999999999999999999999999",
+          "routeId": "00000000-0000-4000-8000-000000000104",
+          "runtimeDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "collectionReceiptDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "workflowReceiptDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "stagingReceiptDigest": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      }
+    },
+    "destinationRequest": {
+      "catalogueReceipt": {
+        "baselineDigest": "90adeba85dce652470d335594f709834d1f0e7e8aeba1446875152aeb5fcbc5d",
+        "digest": "f1ec1b2ec2a6e5cdc4c7280fd0692d17200195a2e06fa75871eacaf03943510e",
+        "formatVersion": 1,
+        "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+        "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+        "planDigest": "1b3beaf900d7a3b3d604c05510d5344ba0c33b475629a98be38ca912787ffc33",
+        "receiptDigests": {
+          "collection": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+          "forms": "e45a0bb030707996580179ead4dddfee6a2625ad3075cf24483e2217b6ec229e",
+          "staging": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+          "workflow": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+        },
+        "receipts": {
+          "collection": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "sourceDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+            "targetDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee"
+          },
+          "forms": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_forms",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+            "stagingOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+            "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+            "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+          },
+          "staging": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "sourceDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae",
+            "targetDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+            "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow"
+          },
+          "workflow": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "sourceDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee",
+            "targetDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae"
+          }
+        },
+        "requestDigest": "c605695b5c79b454a5d9768ae3ae3bb321c064dcdc89b26c4d5ba04042ea36fe"
+      },
+      "catalogueRequest": {
+        "baseline": {
+          "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+          "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+          "database": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "schemaDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "preparationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "preparationId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+          "resourceIdentity": "cms_attach_2dfe68f5a20e4c4277358b30ad92001c7e2ae362b47f98bf963f07def45eeb87",
+          "version": 1,
+          "worker": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "compatibilityDate": "2026-08-18",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "etag": "original",
+            "namespace": "xeroflow-page-studio-dispatch-production",
+            "ownerTag": "ps-owner-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "scriptName": "ps-content-dddddddddddddddddddddddddddddddd",
+            "setupDigest": "54c581e478f12b01dab4f653b304fa34a1bd31d6d6897a841e22316c6b096a27"
+          }
+        },
+        "formatVersion": 1,
+        "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+        "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+        "resourceRequest": {
+          "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+          "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+          "resourceRequest": {
+            "actor": {
+              "kind": "agency-user",
+              "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "userId": "33333333-3333-4333-8333-333333333333"
+            },
+            "anchor": {
+              "checkpointId": "imported_head",
+              "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "mode": "attach-existing-content",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3",
+            "policyVersion": "content-attachment-v1",
+            "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "schemaDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "version": 1
+          }
+        }
+      },
+      "formatVersion": 1,
+      "freezeRequest": {
+        "actor": {
+          "kind": "agency-user",
+          "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "userId": "33333333-3333-4333-8333-333333333333"
+        },
+        "adoptionId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_destination",
+        "formatVersion": 1,
+        "scope": {
+          "businessId": "00000000-0000-4000-8000-000000000101",
+          "clientId": "00000000-0000-4000-8000-000000000101",
+          "environment": "production",
+          "siteId": "00000000-0000-4000-8000-000000000102",
+          "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+        },
+        "target": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+          "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+          "name": "ps-content-dddddddddddddddddddddddddddddddd",
+          "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+          "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+          "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+        }
+      },
+      "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+      "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+      "policy": {
+        "formReceiptDigest": "e45a0bb030707996580179ead4dddfee6a2625ad3075cf24483e2217b6ec229e",
+        "from": {
+          "compatibilityDate": "2026-08-18",
+          "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "kind": "managed-draft-import",
+        "to": {
+          "compatibilityDate": "2026-10-15",
+          "digest": "7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        "version": 1
+      },
+      "successor": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "compatibilityDate": "2026-10-15",
+        "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+        "namespace": "xeroflow-page-studio-dispatch-production",
+        "ownerTag": "ps-owner-f4de34f5d72600f3df9cdb4806cd11cd",
+        "runtimeDigest": "7777777777777777777777777777777777777777777777777777777777777777",
+        "scope": {
+          "businessId": "00000000-0000-4000-8000-000000000101",
+          "clientId": "00000000-0000-4000-8000-000000000101",
+          "environment": "production",
+          "siteId": "00000000-0000-4000-8000-000000000102",
+          "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+        },
+        "scriptName": "ps-content-b9debe6373663ec13fd77b8501475af2",
+        "setupDigest": "54c581e478f12b01dab4f653b304fa34a1bd31d6d6897a841e22316c6b096a27"
+      }
+    },
+    "destinationProof": {
+      "catalogueReceiptDigest": "f1ec1b2ec2a6e5cdc4c7280fd0692d17200195a2e06fa75871eacaf03943510e",
+      "digest": "6066cc1c4845f1de3c5a3c75c5858ad5ce3c4a8554f4e1cd4c8cdc53d5a1daa5",
+      "envelope": {
+        "execution": {
+          "formatVersion": 1,
+          "freeze": {
+            "createdAt": "2026-10-16T00:00:00.000Z",
+            "request": {
+              "actor": {
+                "kind": "agency-user",
+                "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "userId": "33333333-3333-4333-8333-333333333333"
+              },
+              "adoptionId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_destination",
+              "formatVersion": 1,
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "target": {
+                "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+                "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+                "name": "ps-content-dddddddddddddddddddddddddddddddd",
+                "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+                "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+                "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+              }
+            },
+            "state": "frozen",
+            "digest": "9a90e113ac0082ba756a5353e92c11d1cfb9fdf40484d5c0cc9fd0d9c93c1a16"
+          },
+          "identity": "559d64c2f4de7dedaa82dc59852064b80fb1ede42814f6c2b67280625753cc5b",
+          "originalRouteDigest": "35b54d3c489c595dfd20628ccb5ea88b09e8c65218bb87babe51261a451937d3",
+          "owner": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "compatibilityDate": "2026-10-15",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "namespace": "xeroflow-page-studio-dispatch-production",
+            "ownerTag": "ps-owner-f4de34f5d72600f3df9cdb4806cd11cd",
+            "runtimeDigest": "7777777777777777777777777777777777777777777777777777777777777777",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "scriptName": "ps-content-b9debe6373663ec13fd77b8501475af2",
+            "setupDigest": "54c581e478f12b01dab4f653b304fa34a1bd31d6d6897a841e22316c6b096a27"
+          },
+          "policy": {
+            "formReceiptDigest": "e45a0bb030707996580179ead4dddfee6a2625ad3075cf24483e2217b6ec229e",
+            "from": {
+              "compatibilityDate": "2026-08-18",
+              "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "kind": "managed-draft-import",
+            "to": {
+              "compatibilityDate": "2026-10-15",
+              "digest": "7777777777777777777777777777777777777777777777777777777777777777"
+            },
+            "version": 1
+          },
+          "predecessor": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "compatibilityDate": "2026-08-18",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "namespace": "xeroflow-page-studio-dispatch-production",
+            "ownerTag": "ps-owner-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "scope": {
+              "businessId": "00000000-0000-4000-8000-000000000101",
+              "clientId": "00000000-0000-4000-8000-000000000101",
+              "environment": "production",
+              "siteId": "00000000-0000-4000-8000-000000000102",
+              "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+            },
+            "scriptName": "ps-content-dddddddddddddddddddddddddddddddd",
+            "setupDigest": "54c581e478f12b01dab4f653b304fa34a1bd31d6d6897a841e22316c6b096a27"
+          },
+          "schemaReceipt": {
+            "digest": "f68b188ab69e0d248996a0ad035af9c0da515695a4fba1bdebbcf94b3ff104a8",
+            "formatVersion": 1,
+            "kind": "draft-history-import",
+            "nativeIntentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+            "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_destination_import",
+            "predecessor": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_forms",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+              "stagingOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+              "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+              "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+            },
+            "schemaDigest": "65fbb83440cd62ebc9165006a6a25daa414212181209c06e7be771a624434680"
+          },
+          "workerReceipt": {
+            "etag": "actual-successor-etag"
+          }
+        },
+        "kind": "managed-execution",
+        "route": {
+          "activationId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+          "formDrafts": {
+            "digest": "e45a0bb030707996580179ead4dddfee6a2625ad3075cf24483e2217b6ec229e",
+            "receipt": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_forms",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+              "stagingOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+              "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+              "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+            }
+          },
+          "namespace": "xeroflow-page-studio-dispatch-production",
+          "receipts": {
+            "collection": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "sourceDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+              "targetDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee"
+            },
+            "staging": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_staging",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "sourceDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae",
+              "targetDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+              "workflowOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow"
+            },
+            "workflow": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_collection",
+              "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+              "name": "ps-content-dddddddddddddddddddddddddddddddd",
+              "operationId": "transfer_304ee5e6-fdd6-4904-a508-a20926ad53f3_workflow",
+              "scope": {
+                "businessId": "00000000-0000-4000-8000-000000000101",
+                "clientId": "00000000-0000-4000-8000-000000000101",
+                "environment": "production",
+                "siteId": "00000000-0000-4000-8000-000000000102",
+                "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+              },
+              "sourceDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee",
+              "targetDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae"
+            }
+          },
+          "scope": {
+            "businessId": "00000000-0000-4000-8000-000000000101",
+            "clientId": "00000000-0000-4000-8000-000000000101",
+            "environment": "production",
+            "siteId": "00000000-0000-4000-8000-000000000102",
+            "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+          },
+          "scriptName": "ps-content-dddddddddddddddddddddddddddddddd",
+          "target": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+            "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+            "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+          }
+        }
+      },
+      "formatVersion": 1,
+      "intentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+      "operationId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+      "requestDigest": "807d373cb8c16fd900b64170786943534c28a9bee82e0831d7c17f15372c2f99"
+    },
+    "importRequest": {
+      "intent": {
+        "formatVersion": 1,
+        "transferId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+        "nativeIntentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+        "source": {
+          "scope": {
+            "businessId": "00000000-0000-4000-8000-000000000101",
+            "clientId": "00000000-0000-4000-8000-000000000101",
+            "environment": "staging",
+            "siteId": "00000000-0000-4000-8000-000000000102",
+            "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+          },
+          "target": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "databaseId": "00000000-0000-4000-8000-000000000103",
+            "name": "ps-content-99999999999999999999999999999999",
+            "routeId": "00000000-0000-4000-8000-000000000104",
+            "runtimeDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+            "collectionReceiptDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+            "workflowReceiptDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+            "stagingReceiptDigest": "3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          "fenceDigest": "39abb968090166b6e2301ff8a4bf6e7c10779c91163eb860544120d38cd75268"
+        },
+        "destination": {
+          "scope": {
+            "businessId": "00000000-0000-4000-8000-000000000101",
+            "clientId": "00000000-0000-4000-8000-000000000101",
+            "environment": "production",
+            "siteId": "00000000-0000-4000-8000-000000000102",
+            "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+          },
+          "target": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+            "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+            "name": "ps-content-dddddddddddddddddddddddddddddddd",
+            "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+            "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+            "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+          }
+        }
+      },
+      "historyDigest": "f35348ec2a08af25dcce477d902094c4c1b96f0c1c690dc4862bbbcd73fc0ab7",
+      "planDigest": "3f664196feef5d825b3088476512c1d3a09d6f8f23b4b2e522bb3ae6ffbb6637"
+    }
+  },
+  "historyReceipt": {
+    "destination": {
+      "scope": {
+        "businessId": "00000000-0000-4000-8000-000000000101",
+        "clientId": "00000000-0000-4000-8000-000000000101",
+        "environment": "production",
+        "siteId": "00000000-0000-4000-8000-000000000102",
+        "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+      },
+      "target": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "collectionReceiptDigest": "298b2b9a3afc46ac823f9533a06b0b03dd959731d6cfb72b9aea55b7f2e1fb2e",
+        "databaseId": "c8722cd5-3527-4a6d-9ac3-26f0f428daef",
+        "name": "ps-content-dddddddddddddddddddddddddddddddd",
+        "routeId": "b9794c43-9bef-42aa-954f-9f0c8b346398",
+        "runtimeDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "stagingReceiptDigest": "b542fad2a4d89db280e2af31c526ec89fdd7bdfda4aacc30b30c8a14ea28c2d5",
+        "workflowReceiptDigest": "fd08a452627d6bb924296fa8cf576d11d0a03fb92f4933aba55d7cf1b0c16277"
+      }
+    },
+    "formatVersion": 1,
+    "nativeIntentDigest": "25810578ef6a72f7ded9e583fee971aa6c707ebbb6a51e654fefb5b71148a363",
+    "planDigest": "3f664196feef5d825b3088476512c1d3a09d6f8f23b4b2e522bb3ae6ffbb6637",
+    "source": {
+      "scope": {
+        "businessId": "00000000-0000-4000-8000-000000000101",
+        "clientId": "00000000-0000-4000-8000-000000000101",
+        "environment": "staging",
+        "siteId": "00000000-0000-4000-8000-000000000102",
+        "tenantId": "studio-customer-00000000-0000-4000-8000-000000000101"
+      },
+      "target": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "collectionReceiptDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+        "databaseId": "00000000-0000-4000-8000-000000000103",
+        "name": "ps-content-99999999999999999999999999999999",
+        "routeId": "00000000-0000-4000-8000-000000000104",
+        "runtimeDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+        "stagingReceiptDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+        "workflowReceiptDigest": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "fenceDigest": "39abb968090166b6e2301ff8a4bf6e7c10779c91163eb860544120d38cd75268",
+      "historyDigest": "f35348ec2a08af25dcce477d902094c4c1b96f0c1c690dc4862bbbcd73fc0ab7"
+    },
+    "transferId": "304ee5e6-fdd6-4904-a508-a20926ad53f3",
+    "destinationHistoryDigest": "f35348ec2a08af25dcce477d902094c4c1b96f0c1c690dc4862bbbcd73fc0ab7",
+    "importIdentityDigest": "f8bf50311a8c50f02c5d950a52013c518edc1c313de2017cae9f45908d2ad589",
+    "digest": "9a21df8d4b7ef9533d86d28677bf70dc1d4d2fa0178daa0da9b9c792455aab72"
+  }
+}

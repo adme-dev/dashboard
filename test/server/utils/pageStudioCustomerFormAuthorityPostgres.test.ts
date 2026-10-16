@@ -143,7 +143,7 @@ describe.runIf(Boolean(databaseUrl))('current native customer form authority on 
     await expect(authorize(false, owner.sessionToken, { siteId })).rejects.toMatchObject({ statusCode: 403 })
   })
   it.each(['sessionToken', 'siteId', 'environment', 'writing', 'workspaceId', 'identityId', 'businessId', 'tenantId', 'clientId', 'policy'])('rejects invalid or caller-supplied %s', async (key) => {
-    const replacements: Record<string, unknown> = { sessionToken: 'portal-token', siteId: 'invalid', environment: 'production', writing: 'true' }
+    const replacements: Record<string, unknown> = { sessionToken: 'portal-token', siteId: 'invalid', environment: 'preview', writing: 'true' }
     await expect(authorize(false, owner.sessionToken, { [key]: replacements[key] ?? randomUUID() })).rejects.toMatchObject({ statusCode: 400 })
   })
   it.each([

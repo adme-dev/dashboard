@@ -167,6 +167,12 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
     return { runTransaction, enabled: true, binding, approval: { workspaceId: fixture.workspaceId, starterVersion: 'floristry-v1', policy } }
   }
 
+  it('exposes the bound site for launch inspection even when preview provisioning is disabled', async () => {
+    const options = await dashboardSetup()
+    const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
+    expect(await readCustomerDashboard(token, { ...options, enabled: false })).toMatchObject({ siteId: fixture.siteId, state: 'unavailable' })
+  })
+
   it.each(['entitlement', 'approver'])('does not offer resume for a pre-intent preview with revoked %s', async (reason) => {
     const options = await dashboardSetup()
     if (reason === 'entitlement') await db.query('UPDATE page_studio_entitlements SET effective_until = NOW() - INTERVAL \'1 second\'')
@@ -221,8 +227,8 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
     options.binding.readProvisioning.mockResolvedValue({ ...job, phase: 'complete', resources: { database: 'secret-db', site: 'private-site', contentBinding: 'private-binding' } })
     const { readCustomerDashboard } = await import('~~/server/utils/pageStudio/customerDashboard')
     const result = await readCustomerDashboard(token, options)
-    expect(result).toMatchObject({ state: 'verification-pending', canCreate: false, canRetry: false })
-    for (const secret of ['secret-db', 'private-site', 'private-binding', hash(token), ids.owner, fixture.siteId, 'launchUrl']) expect(JSON.stringify(result)).not.toContain(secret)
+    expect(result).toMatchObject({ siteId: fixture.siteId, state: 'verification-pending', canCreate: false, canRetry: false })
+    for (const secret of ['secret-db', 'private-site', 'private-binding', hash(token), ids.owner, 'launchUrl']) expect(JSON.stringify(result)).not.toContain(secret)
   })
 
   it('denies a revoked session and suppresses access lost during the provider read', async () => {
@@ -291,8 +297,8 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
     await db.query('UPDATE page_studio_customer_sessions SET revoked_at = NOW() WHERE token_hash = $1', [hash(token)])
     const { readCustomerDashboard, recoverCustomerDashboardPreview } = await import('~~/server/utils/pageStudio/customerDashboard')
     const before = await readCustomerDashboard(next, options)
-    expect(before.state).toBe('recovery-required')
-    for (const secret of [hash(token), hash(next), fixture.siteId, job.requestKey]) expect(JSON.stringify(before)).not.toContain(secret)
+    expect(before).toMatchObject({ siteId: fixture.siteId, state: 'recovery-required' })
+    for (const secret of [hash(token), hash(next), job.requestKey]) expect(JSON.stringify(before)).not.toContain(secret)
     const body = { ...before.recovery!, recoveryId: randomUUID() }
     expect(await recoverCustomerDashboardPreview(next, body, options)).toMatchObject({ state: 'preparing' })
     await recoverCustomerDashboardPreview(next, body, options)

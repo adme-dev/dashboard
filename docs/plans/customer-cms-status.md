@@ -1,7 +1,8 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 12 October 2026. Start here after an interruption.
-Current: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
+Last updated: 17 October 2026. Start here after an interruption.
+Current upgrade: [managed transfer execution](2026-10-16-managed-transfer-execution.md).
+Earlier release: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Latest bounded CMS rollout: [Fantasy Limo runtime and activation receipt](2026-10-10-fantasy-cms-runtime-release.md).
 Earlier evidence: [7 October reconciliation](2026-10-07-page-studio-resume.md).
 This checklist tracks the active standalone CMS work; it does not declare the
@@ -10,6 +11,64 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Fantasy Limo demo](2026-10-01-fantasy-limo-demo.md),
 [standalone style guide](../design/standalone-cms-style-guide.md),
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
+
+## Active upgrade — 16 October 2026
+
+The active work is safe transfer of managed staging websites into production
+authoring. Native original-account authority, immutable resource/execution
+requests, source draft fencing, destination catalogue admission and independent
+verification are committed on the current launch branch. CMS mutation code has
+moved to the private management Worker to meet the unchanged Pages bundle budget.
+The management Worker must be released before Pages starts using its new RPC.
+
+Dashboard `97e2b565a53063c62235e2451bdd5d5430c0a016` passed
+[CI38892637334](https://github.com/adme-dev/dashboard/actions/runs/38892637334).
+The preceding abdd50ed build passed 16,390 main-suite tests, dedicated PostgreSQL
+stages and production build; its raw Worker was 25,446,325 /25,468,928 bytes.
+Only 22,603 bytes remain, so new heavy transfer verification stays in the private
+management Worker. No feature-branch deployment job ran.
+
+The combined native handoff now passes 451 real PostgreSQL tests: original
+transfer authority, terminal schema, current CMS origin and destination authoring.
+It inspects copy/history outside database locks, then atomically retains the
+source and selects the exact verified destination. Interrupted responses recover
+the same completion. Current-owner authoring and source-retention recovery remain
+valid after old import sessions expire, and reject revoked ownership or plans.
+The completion coordinator has 59 focused tests including real PostgreSQL and
+workerd transport. Existing live-publication compatibility is covered separately.
+These working-tree changes still require their combined commit CI.
+
+Migrations470 and471 are applied: zero new evidence/completion rows, expected
+immutable/deferred triggers present, existing sites/release pointers/bindings and
+(for471) CMS scopes/objects/applications unchanged. No site was transferred or
+activated by these schema changes. Receipts are in
+`.verification/managed-transfer/{copy-verification,completion}-migration-receipt.json`.
+
+Studio e39839d CI exposed a missing committed protocol planner file. Fix d57f2bf
+includes that reviewed planner and its tests; its exact-commit CI is pending.
+The later source-retention and destination Forms runtime work passes actual RPC
+checks locally. The complete private authoring flow saves all four draft types,
+reads and reconnects, and remains valid after the old operator is revoked. The
+first write now uses 140 counted operations, below the unchanged 256 limit
+(previously 388). Full private copy RPC also passes with actual D1/R2 and source
+fencing. Final closure stress checks and observer review are still in progress.
+
+Customer progress and explicit recovery controls pass the final 114-test group,
+including five current native authority PostgreSQL cases. Inspection-only customers retain status visibility without
+mutation permission; completed transfers suppress obsolete staging controls.
+Still outstanding: finish runtime stress checks and physical-observer review,
+commit both repositories, pass exact-source CI and artifact budgets, then complete
+hosted two-account acceptance and guarded release.
+Existing local tests and pushed code do not prove these hosted outcomes.
+Production activation remains separately gated.
+
+A fresh read-only Chrome check of Fantasea's live account shows the four domain
+setup paths, but custom-domain capacity is not enabled and no custom domains are
+connected. The separate Cloudflare credential handoff has no verified completion
+receipt. Do not infer domain readiness from the presence of the setup UI.
+
+The historical acceptance and visual-feedback work below remains recorded. It
+must not be mistaken for completion of this current transfer/release upgrade.
 
 ## Next work — visual feedback, 12 October 2026
 
@@ -1185,3 +1244,14 @@ slow and briefly blank; cold-load latency remains a performance follow-up.
 No content edit, publish, email or AI operation was performed in production.
 The working editor and Fantasy dashboard remain open for the owner. Screenshot:
 production-fantasy-editor-20261012.png.
+
+
+### 2026-10-16: immutable copy and complete Forms history admission
+
+The private management Worker now derives the exact source dependency closure and retains deterministic destination graph identities. All required current records, historical schema dependencies and checkpoint content dependencies are included; unsupported sizes fail before copying. The large generated graph verifier stays outside the Pages bundle. The native Forms history path independently validates every typed revision, retains its expected destination receipt, and records verification only after a distinct read-only inspection.
+
+Verification: the combined native PostgreSQL suite passes 322 tests, and the additional history coordinator passes 19 tests. Copy planning, Worker boundaries, generated verifier and deployment configuration pass 104 focused tests. Forms planner and HTTP checks pass 23 tests, with native/Studio parity at 0, 10 and 1,000 history rows. Worker typecheck, dry-run build and changed-file lint pass. Server types retain the existing 295-diagnostic baseline. Independent review found no blocking findings.
+
+Migrations 466, 467 and 469 were applied to the configured database with zero rows in the new tables, both expected triggers per table, and unchanged fingerprints for sites, release pointers and resource bindings. Receipts are in `.verification/managed-transfer/{copy-graph,forms-history,forms-history-verification}-migration-receipt.json`. No customer activation occurred. Migration 468 is unused; terminal selection is reserved as 471 after copy verification 470.
+
+Actual copy/history orchestration, final atomic selection, retained old-live authority, recovery UI and hosted acceptance remain outstanding. The exact prepared-runtime policy is intentionally unconfigured until artifact digests are reviewed. The latest a113 CI build and database groups passed; one unrelated governance UI test timed out, passed all 16 cases on isolated rerun, and the failed CI job is rerunning. No production deployment or DNS change is claimed.

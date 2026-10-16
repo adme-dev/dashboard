@@ -1,45 +1,18 @@
+import type { PageStudioSessionQueryClient } from '~~/shared/pageStudio/controlTypes'
 import { importPKCS8, importSPKI, jwtVerify, SignJWT } from 'jose'
 import type { H3Event } from 'h3'
-import { z } from 'zod'
 
 import { transaction } from '~~/server/utils/db'
 import { bindPageStudioLoginSession, resolvePageStudioLoginSession, type PageStudioLoginSession } from './loginSessions'
+import { PageStudioSessionClaimsSchema, type PageStudioSessionClaims, type PageStudioSessionCapability } from '~~/shared/pageStudio/sessionClaims'
+
+export type { PageStudioSessionQueryClient, PageStudioSessionQueryOne } from '~~/shared/pageStudio/controlTypes'
 
 export const PAGE_STUDIO_SESSION_TOKEN_TYPE = 'XEROFLOW-PAGE-STUDIO-SESSION'
 export const PAGE_STUDIO_SESSION_AUDIENCE = 'xeroflow-page-studio'
 export const MAX_PAGE_STUDIO_SESSION_LIFETIME_SECONDS = 4 * 60 * 60
 
-export const PageStudioSessionCapabilitySchema = z.enum([
-  'workspace:create',
-  'workspace:reconnect',
-  'workspace:checkpoint',
-  'workspace:preview',
-  'workspace:terminate',
-  'workspace:status',
-  'source:edit',
-  'model:invoke'
-])
-
-export type PageStudioSessionCapability = z.infer<typeof PageStudioSessionCapabilitySchema>
-
-const ScopedIdSchema = z.string()
-  .min(1)
-  .max(128)
-  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
-
-export const PageStudioSessionClaimsSchema = z.object({
-  capabilities: z.array(PageStudioSessionCapabilitySchema).min(1).max(16),
-  clientId: ScopedIdSchema,
-  expiresAt: z.number().int().positive(),
-  issuedAt: z.number().int().positive(),
-  nonce: ScopedIdSchema.min(16),
-  role: z.enum(['agency', 'client']),
-  siteId: ScopedIdSchema,
-  tenantId: ScopedIdSchema,
-  userId: ScopedIdSchema
-})
-
-export type PageStudioSessionClaims = z.infer<typeof PageStudioSessionClaimsSchema>
+export { PageStudioSessionCapabilitySchema, PageStudioSessionClaimsSchema, type PageStudioSessionCapability, type PageStudioSessionClaims } from '~~/shared/pageStudio/sessionClaims'
 
 export class PageStudioSessionError extends Error {
   constructor(
@@ -59,13 +32,6 @@ export class PageStudioSessionError extends Error {
     super(message, options)
     this.name = 'PageStudioSessionError'
   }
-}
-
-export interface PageStudioSessionQueryClient {
-  query<T = Record<string, unknown>>(
-    sql: string,
-    params?: unknown[]
-  ): Promise<{ rows: T[] }>
 }
 
 type RunPageStudioSessionTransaction = <T>(
@@ -116,11 +82,6 @@ export interface PageStudioSessionAuthorizationInput {
   }
   requiredCapabilities?: PageStudioSessionCapability[]
 }
-
-export type PageStudioSessionQueryOne = <T = Record<string, unknown>>(
-  sql: string,
-  params?: unknown[]
-) => Promise<T | null>
 
 interface IssuePageStudioSessionDependencies {
   loginSession?: PageStudioLoginSession

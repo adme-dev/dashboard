@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { PageStudioControlQueryClient } from './controlStore'
-import type { PageStudioSessionClaims } from './sessions'
+import type { PageStudioControlQueryClient } from '~~/shared/pageStudio/controlTypes'
+import type { PageStudioSessionClaims } from '~~/shared/pageStudio/sessionClaims'
 
 import { CheckpointStagingOriginSchema, type CheckpointStagingOrigin } from '~~/shared/pageStudio/checkpointStagingOrigin'
 

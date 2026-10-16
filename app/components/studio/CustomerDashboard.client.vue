@@ -15,18 +15,21 @@ const views: Record<CustomerDashboard['state'], { title: string, description: st
   'approval-pending': { title: 'Your workspace is saved', description: 'Preview creation is not available for this workspace yet. Your business details are saved; contact support to arrange access.', icon: 'i-lucide-calendar-clock' },
   'available': { title: 'Create your first website preview', description: 'We’ll prepare your website using your saved business details. You can return to this overview to check progress.', icon: 'i-lucide-panels-top-left' },
   'preparing': { title: 'Creating your preview', description: 'Your setup is saved. Refresh to check progress; closing this tab will not create a second website.', icon: 'i-lucide-loader-circle' },
-  'verification-pending': { title: 'Awaiting verification', description: 'Your website has been prepared. It needs a final check before editing can open. Nothing has been published.', icon: 'i-lucide-list-checks' },
+  'verification-pending': { title: 'Awaiting verification', description: 'Your website has been prepared. It needs a final check before editing can open. Check launch status for publication details.', icon: 'i-lucide-list-checks' },
+  'transfer-pending': { title: 'Your website transfer is in progress', description: 'Your saved transfer stage is shown below. Refresh to check progress, or contact support if it needs attention.', icon: 'i-lucide-copy-check' },
+  'connection-pending': { title: 'Your website transfer is saved', description: 'The transfer is complete. Check the connection details below to finish connecting Studio. Publishing remains a separate step.', icon: 'i-lucide-plug' },
+  'editor-ready': { title: 'Continue editing your website', description: 'Open Studio to edit your saved draft. Your changes stay private until a separate publishing step.', icon: 'i-lucide-panels-top-left' },
   'needs-attention': { title: 'Your setup needs attention', description: 'We’ve kept your existing setup. Contact support so we can check it and help you continue.', icon: 'i-lucide-life-buoy' },
   'unavailable': { title: 'Status is temporarily unavailable', description: 'We could not check your website. Refresh the status in a moment. Your saved setup will be kept.', icon: 'i-lucide-cloud-off' }
 }
 const view = computed(() => data.value?.canOpenStudio
-  ? { title: 'Continue editing your website', description: 'Open Studio to edit your saved draft. Your changes stay private until a separate publishing step.', icon: 'i-lucide-panels-top-left' }
+  ? views['editor-ready']
   : data.value ? views[data.value.state] : null)
 const steps = computed(() => [
   { label: 'Business details saved', done: true },
-  { label: 'Website prepared', done: (data.value?.stage ?? 0) >= 3 },
-  { label: 'Content added', done: (data.value?.stage ?? 0) >= 4 },
-  { label: 'Preview verified', done: false }
+  { label: 'Website prepared', done: data.value?.canOpenStudio === true || (data.value?.stage ?? 0) >= 3 },
+  { label: 'Content added', done: data.value?.canOpenStudio === true || (data.value?.stage ?? 0) >= 4 },
+  { label: 'Studio available', done: data.value?.canOpenStudio === true }
 ])
 async function load() {
   if (busy.value) return
@@ -113,7 +116,7 @@ async function signOut() {
       </div>
     </template>
     <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-      <UBadge color="neutral" variant="subtle" label="Not published" />
+      <UBadge color="neutral" variant="subtle" label="Website overview" />
       <UButton
         label="Refresh status"
         icon="i-lucide-refresh-cw"
@@ -212,6 +215,14 @@ async function signOut() {
             label="Contact support"
             color="neutral"
             variant="outline"
+          />
+        </div>
+        <div v-if="data.siteId && !loadError && !busy" class="px-6 pt-6 sm:px-8">
+          <PageStudioCustomerLaunchStatus
+            :key="`customer-${data.siteId}`"
+            :site-id="data.siteId"
+            audience="customer"
+            @changed="load"
           />
         </div>
         <StudioCustomerCmsSetup v-if="data.canPrepareCms && !loadError" @changed="load" />

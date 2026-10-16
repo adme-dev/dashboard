@@ -1,3 +1,4 @@
+import type { PageStudioLoginSession } from '~~/shared/pageStudio/controlTypes'
 import type { H3Event } from 'h3'
 import { createError, getCookie, getHeader } from 'h3'
 import { verifyJwt } from '~~/server/utils/auth'
@@ -5,14 +6,9 @@ import { transaction } from '~~/server/utils/db'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import type { PageStudioSessionQueryClient } from './sessions'
 
+export type { PageStudioLoginSession } from '~~/shared/pageStudio/controlTypes'
+
 type Role = 'agency' | 'client'
-export interface PageStudioLoginSession {
-  role: Role
-  tokenHash: string
-  userId: string
-  issuedAt: Date
-  expiresAt: Date
-}
 
 function loginToken(event: H3Event, role: Role): string | undefined {
   const cookie = role === 'agency'

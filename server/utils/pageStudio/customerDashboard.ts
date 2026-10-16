@@ -35,6 +35,7 @@ async function context(token: string, options: CustomerDashboardDependencies) {
     const access = await resolveCustomerWorkspaceAccess({ identityId: user.identityId, workspaceId: setup.workspaceId }, run)
     if (access.role !== 'owner' || access.legacyBinding) throw denied()
     const receipt = (await db.query<{ site_id: string }>('SELECT site_id FROM page_studio_customer_site_requests WHERE workspace_id = $1', [setup.workspaceId])).rows[0] ?? null
+    if (receipt) base.siteId = receipt.site_id
     const intent = receipt ? (await db.query<{ job: unknown }>('SELECT job FROM page_studio_customer_provisioning_intents WHERE site_id = $1', [receipt.site_id])).rows[0] ?? null : null
     const candidate = options.approval ?? options.approvals?.find(item => item.workspaceId === setup.workspaceId)
     const parsed = CustomerPreviewApprovalSchema.safeParse(candidate)

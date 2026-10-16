@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -32,6 +33,8 @@ describe.runIf(Boolean(databaseUrl))('Page Studio publication lifecycle on dispo
     }
   }
   const activate = (overrides = {}) => activatePageStudioRelease({ ...input, ...overrides }, { runTransaction })
+  const migration = readFileSync(new URL('../../../server/database/migrations/452_page_studio_client_publishers.sql', import.meta.url), 'utf8')
+  const nativeMigration = readFileSync(new URL('../../../server/database/migrations/453_page_studio_native_publishers.sql', import.meta.url), 'utf8')
   async function snapshot() {
     const site = (await client.query('SELECT status, current_release_id FROM page_studio_sites')).rows[0]
     const version = (await client.query('SELECT status FROM page_studio_versions')).rows[0]
@@ -47,6 +50,8 @@ describe.runIf(Boolean(databaseUrl))('Page Studio publication lifecycle on dispo
     await client.connect()
     // Connection-private tables model the columns used by the real publishing SQL.
     await client.query(`
+      CREATE TEMP TABLE page_studio_customer_identities(id uuid PRIMARY KEY);
+      CREATE TEMP TABLE client_users(id uuid PRIMARY KEY);
       CREATE TEMP TABLE page_studio_sites (tenant_id text, client_id uuid, id uuid PRIMARY KEY,
         status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','suspended','archived')),
         current_release_id uuid, updated_at timestamptz);
@@ -71,13 +76,17 @@ describe.runIf(Boolean(databaseUrl))('Page Studio publication lifecycle on dispo
         actor_id text, actor_role text, action text, resource_type text, resource_id text,
         idempotency_key text, metadata jsonb);
     `)
+    await client.query(migration)
+    await client.query(nativeMigration)
   })
   afterAll(async () => {
     await client?.end()
   })
   beforeEach(async () => {
     await client.query(`TRUNCATE page_studio_sites, page_studio_versions, page_studio_builds,
-      page_studio_reviews, page_studio_releases, page_studio_release_pointers, page_studio_audit_events`)
+      page_studio_reviews, page_studio_releases, page_studio_release_pointers, page_studio_audit_events, client_users, page_studio_customer_identities`)
+    await client.query('INSERT INTO client_users VALUES($1)', [input.actorId])
+    await client.query('INSERT INTO page_studio_customer_identities VALUES($1)', [input.actorId])
     await client.query('INSERT INTO page_studio_sites (tenant_id,client_id,id) VALUES ($1,$2,$3)', Object.values(scope))
     await client.query(`INSERT INTO page_studio_versions (tenant_id,client_id,site_id,id,digest,status)
       VALUES ($1,$2,$3,$4,$5,'approved')`, [...Object.values(scope), versionId, digest])
@@ -153,5 +162,130 @@ describe.runIf(Boolean(databaseUrl))('Page Studio publication lifecycle on dispo
       ...input, idempotencyKey: 'rollback', expectedActiveReleaseId: second.releaseId, targetReleaseId: first.releaseId
     }, { runTransaction })).rejects.toMatchObject({ code: 'SITE_NOT_PUBLISHABLE' })
     expect(await snapshot()).toEqual(before)
+  })
+
+  it('attributes portal activation and rollback to the client instead of a staff foreign key', async () => {
+    const first = await activate({ actorRole: 'client' })
+    const second = await activate({ actorRole: 'client', idempotencyKey: 'second', expectedActiveReleaseId: first.releaseId })
+    await rollbackPageStudioRelease({ ...input, actorRole: 'client', idempotencyKey: 'rollback-client',
+      expectedActiveReleaseId: second.releaseId, targetReleaseId: first.releaseId }, { runTransaction })
+    expect((await client.query('SELECT published_by,published_by_client_user_id FROM page_studio_releases')).rows)
+      .toEqual(Array(2).fill({ published_by: null, published_by_client_user_id: input.actorId }))
+    expect((await client.query('SELECT updated_by,updated_by_client_user_id FROM page_studio_release_pointers')).rows)
+      .toEqual([{ updated_by: null, updated_by_client_user_id: input.actorId }])
+    expect((await client.query('SELECT actor_id,actor_role FROM page_studio_audit_events')).rows)
+      .toEqual(Array(3).fill({ actor_id: input.actorId, actor_role: 'client' }))
+  })
+
+  it('clears the previous client pointer attribution when an agency publisher takes over', async () => {
+    const first = await activate({ actorRole: 'client' })
+    await activate({ idempotencyKey: 'staff-publish', expectedActiveReleaseId: first.releaseId })
+    expect((await client.query('SELECT updated_by,updated_by_client_user_id FROM page_studio_release_pointers')).rows)
+      .toEqual([{ updated_by: input.actorId, updated_by_client_user_id: null }])
+  })
+
+  it('does not reuse an activation key across actor kinds even when UUIDs match', async () => {
+    await activate({ actorRole: 'client' })
+    await expect(activate()).rejects.toMatchObject({ code: 'RELEASE_IDEMPOTENCY_CONFLICT' })
+    expect((await snapshot()).counts.releases).toBe(1)
+  })
+
+  it('preserves historical service-attributed agency activation replays', async () => {
+    const first = await activate()
+    await client.query('UPDATE page_studio_audit_events SET actor_role=\'service\'')
+    expect((await activate()).releaseId).toBe(first.releaseId)
+    await expect(activate({ actorRole: 'client' })).rejects.toMatchObject({ code: 'RELEASE_IDEMPOTENCY_CONFLICT' })
+  })
+
+  it('does not reuse a client rollback key as a staff action with the same UUID', async () => {
+    const first = await activate({ actorRole: 'client' })
+    const second = await activate({ actorRole: 'client', idempotencyKey: 'second', expectedActiveReleaseId: first.releaseId })
+    const rollback = { ...input, idempotencyKey: 'rollback-client', expectedActiveReleaseId: second.releaseId, targetReleaseId: first.releaseId }
+    await rollbackPageStudioRelease({ ...rollback, actorRole: 'client' }, { runTransaction })
+    const before = await snapshot()
+    await expect(rollbackPageStudioRelease(rollback, { runTransaction }))
+      .rejects.toMatchObject({ code: 'RELEASE_IDEMPOTENCY_CONFLICT' })
+    expect(await snapshot()).toEqual(before)
+  })
+
+  it('reruns the additive migration without changing retained releases or pointer attribution', async () => {
+    await activate()
+    const before = await snapshot()
+    await client.query(migration)
+    await client.query(nativeMigration)
+    expect(await snapshot()).toEqual(before)
+    expect((await client.query('SELECT published_by,published_by_client_user_id FROM page_studio_releases')).rows)
+      .toEqual([{ published_by: input.actorId, published_by_client_user_id: null }])
+  })
+
+  it('enforces separate staff/client attribution and valid client foreign keys', async () => {
+    await activate()
+    await expect(client.query('UPDATE page_studio_releases SET published_by_client_user_id=$1', [input.actorId]))
+      .rejects.toMatchObject({ code: '23514' })
+    await expect(client.query('UPDATE page_studio_release_pointers SET updated_by_client_user_id=$1', [input.actorId]))
+      .rejects.toMatchObject({ code: '23514' })
+    await expect(client.query('UPDATE page_studio_releases SET published_by=NULL,published_by_client_user_id=$1', [randomUUID()]))
+      .rejects.toMatchObject({ code: '23503' })
+  })
+
+  it('attributes native activation, republish and rollback to the customer identity', async () => {
+    const first = await activate({ actorRole: 'customer' })
+    const second = await activate({ actorRole: 'customer', idempotencyKey: 'native-second', expectedActiveReleaseId: first.releaseId })
+    await rollbackPageStudioRelease({ ...input, actorRole: 'customer', idempotencyKey: 'native-rollback',
+      expectedActiveReleaseId: second.releaseId, targetReleaseId: first.releaseId }, { runTransaction })
+    expect((await client.query('SELECT published_by,published_by_client_user_id,published_by_customer_identity_id FROM page_studio_releases')).rows)
+      .toEqual(Array(2).fill({ published_by: null, published_by_client_user_id: null, published_by_customer_identity_id: input.actorId }))
+    expect((await client.query('SELECT updated_by,updated_by_client_user_id,updated_by_customer_identity_id FROM page_studio_release_pointers')).rows)
+      .toEqual([{ updated_by: null, updated_by_client_user_id: null, updated_by_customer_identity_id: input.actorId }])
+    expect((await client.query('SELECT actor_id,actor_role FROM page_studio_audit_events')).rows)
+      .toEqual(Array(3).fill({ actor_id: input.actorId, actor_role: 'customer' }))
+  })
+
+  it.each(['agency', 'client'] as const)('does not reuse native activation or rollback keys as %s even when UUIDs match', async (role) => {
+    const first = await activate({ actorRole: 'customer' })
+    expect((await activate({ actorRole: 'customer' })).releaseId).toBe(first.releaseId)
+    await expect(activate({ actorRole: role })).rejects.toMatchObject({ code: 'RELEASE_IDEMPOTENCY_CONFLICT' })
+    const second = await activate({ actorRole: 'customer', idempotencyKey: 'native-second', expectedActiveReleaseId: first.releaseId })
+    const rollback = { ...input, idempotencyKey: 'native-rollback', expectedActiveReleaseId: second.releaseId, targetReleaseId: first.releaseId }
+    await rollbackPageStudioRelease({ ...rollback, actorRole: 'customer' }, { runTransaction })
+    expect((await rollbackPageStudioRelease({ ...rollback, actorRole: 'customer' }, { runTransaction })).releaseId).toBe(first.releaseId)
+    await expect(rollbackPageStudioRelease({ ...rollback, actorRole: role }, { runTransaction }))
+      .rejects.toMatchObject({ code: 'RELEASE_IDEMPOTENCY_CONFLICT' })
+  })
+
+  it.each(['agency', 'client'] as const)('replaces native pointer attribution cleanly when a %s publisher takes over', async (role) => {
+    const first = await activate({ actorRole: 'customer' })
+    await activate({ actorRole: role, idempotencyKey: 'other-kind', expectedActiveReleaseId: first.releaseId })
+    expect((await client.query('SELECT updated_by,updated_by_client_user_id,updated_by_customer_identity_id FROM page_studio_release_pointers')).rows)
+      .toEqual([{ updated_by: role === 'agency' ? input.actorId : null,
+        updated_by_client_user_id: role === 'client' ? input.actorId : null, updated_by_customer_identity_id: null }])
+  })
+
+  it('enforces exclusive native attribution and the native identity foreign key', async () => {
+    await activate({ actorRole: 'customer' })
+    await expect(client.query('UPDATE page_studio_releases SET published_by=$1', [input.actorId])).rejects.toMatchObject({ code: '23514' })
+    await expect(client.query('UPDATE page_studio_releases SET published_by_client_user_id=$1', [input.actorId])).rejects.toMatchObject({ code: '23514' })
+    await expect(client.query('UPDATE page_studio_release_pointers SET updated_by=$1', [input.actorId])).rejects.toMatchObject({ code: '23514' })
+    await expect(client.query('UPDATE page_studio_release_pointers SET updated_by_client_user_id=$1', [input.actorId])).rejects.toMatchObject({ code: '23514' })
+    await expect(client.query('UPDATE page_studio_releases SET published_by_customer_identity_id=$1', [randomUUID()])).rejects.toMatchObject({ code: '23503' })
+    await expect(client.query('UPDATE page_studio_release_pointers SET updated_by_customer_identity_id=$1', [randomUUID()])).rejects.toMatchObject({ code: '23503' })
+  })
+  it('reapplies the native migration without changing complete retained release and pointer records', async () => {
+    await activate({ actorRole: 'customer' })
+    const releases = (await client.query('SELECT * FROM page_studio_releases ORDER BY id')).rows
+    const pointers = (await client.query('SELECT * FROM page_studio_release_pointers ORDER BY normalized_hostname')).rows
+    await client.query(nativeMigration)
+    expect((await client.query('SELECT * FROM page_studio_releases ORDER BY id')).rows).toEqual(releases)
+    expect((await client.query('SELECT * FROM page_studio_release_pointers ORDER BY normalized_hostname')).rows).toEqual(pointers)
+  })
+  it('preserves the live release and audit identity when a native identity is deleted', async () => {
+    const release = await activate({ actorRole: 'customer' })
+    await client.query('DELETE FROM page_studio_customer_identities WHERE id=$1', [input.actorId])
+    expect((await client.query('SELECT active_release_id, updated_by_customer_identity_id FROM page_studio_release_pointers')).rows)
+      .toEqual([{ active_release_id: release.releaseId, updated_by_customer_identity_id: null }])
+    expect((await client.query('SELECT published_by_customer_identity_id FROM page_studio_releases')).rows)
+      .toEqual([{ published_by_customer_identity_id: null }])
+    expect((await client.query('SELECT actor_id,actor_role FROM page_studio_audit_events')).rows)
+      .toEqual([{ actor_id: input.actorId, actor_role: 'customer' }])
   })
 })

@@ -8,10 +8,13 @@ import { launchCustomerEditor, type CustomerEditorLaunchOptions } from './custom
 export function customerEditorBrowserConfiguration(event: H3Event) {
   const bindings = event.context?.cloudflare?.env ?? {}
   const setting = (key: string) => Object.prototype.hasOwnProperty.call(bindings, key) ? bindings[key] : process.env[key]
+  const environment = setting('PAGE_STUDIO_CONTENT_ENVIRONMENT')
   if (setting('PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED') !== 'true' || setting('PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED') !== 'true'
-    || setting('PAGE_STUDIO_PROVISIONING_ENVIRONMENT') !== 'staging' || setting('PAGE_STUDIO_CONTENT_ENVIRONMENT') !== 'staging') return null
+    || (environment === 'production'
+      ? setting('PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED') !== 'true'
+      : environment !== 'staging' || setting('PAGE_STUDIO_PROVISIONING_ENVIRONMENT') !== 'staging')) return null
   try {
-    return parseCustomerEditorHandoffConfiguration({ enabled: true,
+    return parseCustomerEditorHandoffConfiguration({ enabled: true, environment,
       dashboardOrigin: setting('PAGE_STUDIO_CUSTOMER_ORIGIN'), editorOrigin: setting('PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN') })
   } catch { return null }
 }
@@ -19,7 +22,7 @@ export function customerEditorLaunchOptions(event: H3Event): CustomerEditorLaunc
   const configuration = customerEditorBrowserConfiguration(event)
   if (!configuration) return null
   const bindings = event.context?.cloudflare?.env ?? {}
-  const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CHECKPOINTS: bindings.PAGE_STUDIO_CHECKPOINTS,
+  const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: configuration.environment, PAGE_STUDIO_CHECKPOINTS: bindings.PAGE_STUDIO_CHECKPOINTS,
     PAGE_STUDIO_CONTENT_ROUTER: bindings.PAGE_STUDIO_CONTENT_ROUTER }
   if (typeof env.PAGE_STUDIO_CHECKPOINTS?.get !== 'function' || typeof env.PAGE_STUDIO_CONTENT_ROUTER?.readManagedCmsTarget !== 'function') return null
   return { configuration, env }

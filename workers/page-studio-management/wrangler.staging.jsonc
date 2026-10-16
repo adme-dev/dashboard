@@ -15,7 +15,9 @@
     "head_sampling_rate": 0.1
   },
   "vars": {
-    "PAGE_STUDIO_RELEASE_ENVIRONMENT": "staging"
+    "PAGE_STUDIO_RELEASE_ENVIRONMENT": "staging",
+    "PAGE_STUDIO_CMS_OBJECT_TRANSPORT": "placed-fetch",
+    "PAGE_STUDIO_ACTION_RUNTIME_DIGEST": "c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e"
   },
   "hyperdrive": [
     {
@@ -30,6 +32,13 @@
     {
       "binding": "PAGE_STUDIO_CHECKPOINTS",
       "bucket_name": "xeroflow-page-studio-checkpoints-staging"
+    }
+  ],
+  "tsconfig": "tsconfig.json",
+  "services": [
+    {
+      "binding": "PAGE_STUDIO_CONTENT_ROUTER",
+      "service": "xeroflow-content-router-staging"
     }
   ]
 }

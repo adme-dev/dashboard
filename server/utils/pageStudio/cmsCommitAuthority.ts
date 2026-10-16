@@ -6,12 +6,12 @@ import {
   type ContentAuthorityRequest
 } from './businessContent'
 import { authorizePageStudioCollections } from './collections'
-import type { PageStudioControlQueryClient } from './controlStore'
+import type { PageStudioControlQueryClient } from '~~/shared/pageStudio/controlTypes'
 import { assertPageStudioSessionAuthority } from './sessionAuthority'
 import {
   PageStudioSessionClaimsSchema,
   type PageStudioSessionClaims
-} from './sessions'
+} from '~~/shared/pageStudio/sessionClaims'
 import {
   PageStudioContentScopeSchema,
   samePageStudioContentScope,
@@ -238,8 +238,10 @@ export async function withCmsCommitAuthority<T>(
         ? (principal.capability === 'cms:adopt' ? 'cms:adopt' : 'workspace:create')
         : 'workspace:checkpoint'
       if (!['customer-checkpoint', 'customer-adoption'].includes(input.mutation) || principal.capability !== capability
-        || principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== 'staging' || scope.environment !== 'staging') throw denied()
-      const { assertCustomerEditorSessionAuthority } = await import('./customerEditorSessions')
+        || principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== scope.environment
+        || principal.claims.environment !== scope.environment
+        || (scope.environment === 'production' && input.mutation !== 'customer-checkpoint')) throw denied()
+      const { assertCustomerEditorSessionAuthority } = await import('./customerEditorSessionAuthority')
       return await run(async (db) => {
         await db.query('SET LOCAL lock_timeout=\'3s\'')
         const recheck = async () => {

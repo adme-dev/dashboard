@@ -11,6 +11,7 @@ describe('private Page Studio management deployment configuration', () => {
     expect(config.name).toBe(`xeroflow-page-studio-management-${environment}`)
     expect(config.account_id).toBe('a5b299b3ad15c1b5b895dc66f9357b17')
     expect(config.main).toBe('src/index.ts')
+    expect(config.tsconfig).toBe('tsconfig.json')
     expect(config.compatibility_date).toBe('2026-07-15')
     expect(config.compatibility_flags).toEqual(['nodejs_compat'])
     expect(config.workers_dev).toBe(false)
@@ -21,15 +22,22 @@ describe('private Page Studio management deployment configuration', () => {
     expect(config.vars).toEqual({ PAGE_STUDIO_RELEASE_ENVIRONMENT: environment,
       ...(environment === 'production'
         ? {
+            PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
             PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID: 'a5b299b3ad15c1b5b895dc66f9357b17',
             PAGE_STUDIO_CLOUDFLARE_ZONE_ID: '8e38cbf3910d291dd218710296661073',
             PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET: 'sites.xeroflow.io',
-            PAGE_STUDIO_DOMAIN_IDENTITY_MODE: 'standard'
+            PAGE_STUDIO_DOMAIN_IDENTITY_MODE: 'standard',
+            PAGE_STUDIO_CMS_STAGING_ACTION_RUNTIME_DIGEST: 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e',
+            PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT: 'placed-fetch'
           }
-        : {}) })
+        : { PAGE_STUDIO_CMS_OBJECT_TRANSPORT: 'placed-fetch', PAGE_STUDIO_ACTION_RUNTIME_DIGEST: 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e' }) })
     expect(config.hyperdrive).toEqual([{ binding: 'HYPERDRIVE_FRESH', id }])
     expect(config.services).toEqual(environment === 'production'
-      ? [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' }]
-      : undefined)
+      ? [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' },
+          { binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-production' },
+          { binding: 'PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }]
+      : [{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }])
+    expect(config.r2_buckets).toEqual([{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` },
+      ...(environment === 'production' ? [{ binding: 'PAGE_STUDIO_CMS_STAGING_CHECKPOINTS', bucket_name: 'xeroflow-page-studio-checkpoints-staging' }] : [])])
   })
 })

@@ -258,9 +258,16 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain('server/api/agency/social/publishing/news-autopost/check.post.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass')
     expect(inventory.rows).toContain('server/api/agency/social/publishing/news-autopost/index.put.ts\tconst user = await requireRole(event, PERMISSIONS.MANAGEMENT)\tapplication_governance_bypass')
     expect(inventory.rows).toContain('server/utils/socialPublishing/cronAuth.ts\t: process.env.CRON_SECRET\tprovider_infrastructure_availability')
-    expect(inventory.rows).toHaveLength(1599)
+    // Native plan grants add one fresh staff identity boundary. No governance
+    // bypass, customer route or workspace assistance authority is introduced.
+    expect(inventory.rows).toContain('server/utils/pageStudio/customerPlanGrants.ts\tAND is_active=TRUE AND user_role IN (\'owner\',\'admin\') AND custom_role_id IS NULL FOR SHARE NOWAIT`, [actorId])\tidentity_tenant_hard_boundary')
+    // Managed transfer separately requires the original platform operator and
+    // native customer owner. This staff role check is an identity boundary,
+    // never an application-governance bypass.
+    expect(inventory.rows).toContain('server/utils/pageStudio/managedTransferAuthority.ts\tAND staff.is_active=TRUE AND staff.user_role IN (\'owner\',\'admin\') AND staff.custom_role_id IS NULL\tidentity_tenant_hard_boundary')
+    expect(inventory.rows).toHaveLength(1601)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 124,
+      identity_tenant_hard_boundary: 126,
       provider_infrastructure_availability: 224,
       application_governance_bypass: 1624,
       ordinary_user_behavior: 192,
@@ -279,7 +286,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('49dfc261180bdb9bd2552810daf5c5cff008f0e7cb9d93a63f38ecad613c9a0d')
+    expect(inventory.digest).toBe('fcee009eb2e82368c8b790f9f7496dd5b3ee7e6e146ca1a6d4081a115adf28de')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

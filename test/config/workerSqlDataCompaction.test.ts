@@ -64,6 +64,36 @@ it('preserves exact SQL, parameter identity and order, and caches only static qu
   expect(await module.run(db, args)).toBe(2)
   expect(compactSqlSource(result.code).code).toBe(result.code)
 })
+it('losslessly compacts static SQL constants without moving their initialization or changing exports', async () => {
+  const source = `export const query = ${JSON.stringify(sql)};
+export function run(db, args) {
+  const nested = ${JSON.stringify(sql + '\nAND note = $$Text \' \\n 🚘$$')};
+  return [db.query(query, args), db.query(nested, args)];
+}`
+  const result = compactSqlSource(source)
+  expect(result.literals).toBe(2)
+  expect(Buffer.byteLength(result.code)).toBeLessThan(Buffer.byteLength(source))
+  const module = await import(`data:text/javascript;base64,${Buffer.from(result.code).toString('base64')}`)
+  expect(module.query).toBe(sql)
+  const args = ['customer-a']
+  const seen: string[] = []
+  module.run({ query(text: string, values: unknown[]) {
+    expect(values).toBe(args)
+    seen.push(text)
+  } }, args)
+  expect(seen).toEqual([sql, sql + '\nAND note = $$Text \' \\n 🚘$$'])
+  expect(compactSqlSource(result.code).code).toBe(result.code)
+})
+it('leaves mutable SQL declarations and dynamic or tagged constant initializers alone', () => {
+  const cases = [
+    `export let query = ${JSON.stringify(sql)}`,
+    `export var query = ${JSON.stringify(sql)}`,
+    'export const query = `SELECT ' + 'x'.repeat(1200) + ' FROM ${table}`',
+    'export const query = sql`' + sql.replaceAll('`', '\\`') + '`',
+    `export const query = ${JSON.stringify(sql + '\uD800')}`
+  ]
+  for (const source of cases) expect(compactSqlSource(source)).toEqual({ code: source, literals: 0 })
+})
 it('does not rewrite executable code, templates with interpolation, tags, keys or non-SQL', () => {
   const cases = [
     `export const key = { ${JSON.stringify(sql)}: 1 }`,

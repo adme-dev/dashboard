@@ -4,17 +4,15 @@ import { createError } from 'h3'
 import { transaction } from '~~/server/utils/db'
 import { digestPortalSessionToken, generatePortalMagicLinkToken } from '~~/server/utils/portalSession'
 import { readCustomerSession, readCustomerSetup } from './customerSignup'
-import { readCustomerProvisioningPreviewAuthority, readCustomerSessionIdentityFromHash } from './customerProvisioning'
+import { readCustomerEditorAuthority, type CustomerEditorAuthorityReceipt } from './customerEditorAuthority'
 import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
 
-import { assertCustomerCmsSetupApproval } from './customerCmsSetupAuthority'
-
-const Configuration = z.object({ enabled: z.literal(true), dashboardOrigin: Origin, editorOrigin: Origin }).strict()
+const Configuration = z.object({ enabled: z.literal(true), environment: z.enum(['staging', 'production']).default('staging'), dashboardOrigin: Origin, editorOrigin: Origin }).strict()
   .refine(value => value.dashboardOrigin !== value.editorOrigin)
 const Token = z.string().regex(/^[A-Za-z0-9_-]{64}$/)
 const denied = () => createError({ statusCode: 403, statusMessage: 'Customer editor handoff is not available.' })
 interface Dependencies { runTransaction?: RunPageStudioTransaction }
-interface Receipt {
+interface Receipt extends CustomerEditorAuthorityReceipt {
   id: string
   token_hash: string
   login_session_hash: string
@@ -45,6 +43,7 @@ async function audit(db: PageStudioQueryClient, receipt: Receipt, action: string
 async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown, dependencies: Dependencies, purpose: 'editor' | 'cms-setup') {
   const config = parseCustomerEditorHandoffConfiguration(trustedConfiguration)
   if (!Token.safeParse(sessionToken).success) throw denied()
+  if (config.environment === 'production' && purpose !== 'editor') throw denied()
   const token = generatePortalMagicLinkToken()
   const tokenHash = await digestPortalSessionToken(token)
   const loginHash = await digestPortalSessionToken(sessionToken as string)
@@ -53,26 +52,28 @@ async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown
     const user = await readCustomerSession(sessionToken, run)
     const setup = await readCustomerSetup(sessionToken, run)
     if (!setup.workspaceId) throw denied()
-    const site = (await db.query<{ site_id: string }>('SELECT site_id FROM page_studio_customer_site_requests WHERE workspace_id = $1', [setup.workspaceId])).rows[0]
+    const site = (await db.query<{ site_id: string, entitlement_id: string }>(`SELECT receipt.site_id,site.entitlement_id
+      FROM page_studio_customer_site_requests receipt JOIN page_studio_sites site ON site.id=receipt.site_id
+      WHERE receipt.workspace_id=$1`, [setup.workspaceId])).rows[0]
     if (!site) throw denied()
-    const owned = await readCustomerProvisioningPreviewAuthority(db, site.site_id, user.identityId)
-    if (owned.workspaceId !== setup.workspaceId) throw denied()
-    // Site/entitlement acquisition may wait beyond membership expiry. Recheck
-    // with all authority locks held before recording a successful issuance.
-    await readCustomerProvisioningPreviewAuthority(db, site.site_id, user.identityId)
-    if (purpose === 'cms-setup') await assertCustomerCmsSetupApproval(db, owned, user.identityId)
+    const authorityReceipt = { environment: config.environment, entitlement_id: config.environment === 'production' ? site.entitlement_id : null,
+      site_id: site.site_id, login_session_hash: loginHash, purpose }
+    const authority = await readCustomerEditorAuthority(db, authorityReceipt)
+    const { owned } = authority
+    if (authority.identityId !== user.identityId || owned.workspaceId !== setup.workspaceId) throw denied()
+    await readCustomerEditorAuthority(db, authorityReceipt)
     // Use one database-clock value and clamp the ticket to both native authority deadlines.
     const receipt = (await db.query<Receipt>(`WITH clock AS (SELECT clock_timestamp() AS issued)
       INSERT INTO page_studio_customer_editor_handoffs
         (token_hash, login_session_hash, identity_id, workspace_id, site_id, tenant_id, business_id,
-         dashboard_origin, editor_origin, issued_at, expires_at, purpose)
+         dashboard_origin, editor_origin, issued_at, expires_at, purpose, environment, entitlement_id)
       SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, clock.issued,
-        LEAST(clock.issued + INTERVAL '2 minutes', session.expires_at, $10::timestamptz), $11
+        LEAST(clock.issued + INTERVAL '2 minutes', session.expires_at, $10::timestamptz), $11, $12, $13
       FROM page_studio_customer_sessions session CROSS JOIN clock
       WHERE session.token_hash = $2 AND session.revoked_at IS NULL AND session.expires_at > clock.issued
         AND $10::timestamptz > clock.issued
-      RETURNING *`, [tokenHash, loginHash, user.identityId, owned.workspaceId, owned.site.id, owned.scope.tenantId,
-      owned.scope.businessId, config.dashboardOrigin, config.editorOrigin, owned.policy.expiresAt, purpose])).rows[0]
+      RETURNING *`, [tokenHash, loginHash, user.identityId, owned.workspaceId, site.site_id, owned.scope.tenantId,
+      owned.scope.businessId, config.dashboardOrigin, config.editorOrigin, authority.expiresAt, purpose, config.environment, authorityReceipt.entitlement_id])).rows[0]
     if (!receipt) throw denied()
     await audit(db, receipt, 'customer.handoff_issued')
     return { token, expiresAt: new Date(receipt.expires_at).toISOString(), editorOrigin: config.editorOrigin }
@@ -93,21 +94,15 @@ export async function redeemCustomerEditorHandoff(token: unknown, trustedConfigu
     // Read immutable routing data first; acquire native authority locks before the ticket lock.
     const receipt = (await db.query<Receipt>(`SELECT * FROM page_studio_customer_editor_handoffs
       WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > clock_timestamp()
-        AND dashboard_origin = $2 AND editor_origin = $3`, [hash, config.dashboardOrigin, config.editorOrigin])).rows[0]
+        AND dashboard_origin = $2 AND editor_origin = $3 AND environment=$4`, [hash, config.dashboardOrigin, config.editorOrigin, config.environment])).rows[0]
     if (!receipt) throw denied()
-    const identityId = await readCustomerSessionIdentityFromHash(db, receipt.login_session_hash)
-    if (identityId !== receipt.identity_id) throw denied()
-    const owned = await readCustomerProvisioningPreviewAuthority(db, receipt.site_id, identityId)
-    if (owned.workspaceId !== receipt.workspace_id || owned.scope.businessId !== receipt.business_id
+    const { identityId, owned } = await readCustomerEditorAuthority(db, receipt)
+    if (identityId !== receipt.identity_id || owned.workspaceId !== receipt.workspace_id || owned.scope.businessId !== receipt.business_id
       || owned.scope.tenantId !== receipt.tenant_id) throw denied()
-    if (receipt.purpose === 'cms-setup') await assertCustomerCmsSetupApproval(db, owned, identityId)
-    else if (receipt.purpose !== 'editor') throw denied()
     // A lock wait must not extend membership/native/package deadlines. Lock the
     // ticket last, then recheck the already-locked authority with a fresh clock.
     await db.query('SELECT id FROM page_studio_customer_editor_handoffs WHERE token_hash = $1 FOR UPDATE', [hash])
-    await readCustomerSessionIdentityFromHash(db, receipt.login_session_hash)
-    await readCustomerProvisioningPreviewAuthority(db, receipt.site_id, identityId)
-    if (receipt.purpose === 'cms-setup') await assertCustomerCmsSetupApproval(db, owned, identityId)
+    await readCustomerEditorAuthority(db, receipt)
     const consumed = (await db.query(`UPDATE page_studio_customer_editor_handoffs SET consumed_at = clock_timestamp()
       WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > clock_timestamp() RETURNING id`, [hash])).rows[0]
     if (!consumed) throw denied()
