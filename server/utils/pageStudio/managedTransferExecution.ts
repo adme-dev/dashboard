@@ -1,3 +1,4 @@
+import { capturePageStudioRpcMethod } from './privateRpc'
 import { createError } from 'h3'
 import { z } from 'zod'
 import { collectionCanonical as canonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
@@ -36,6 +37,10 @@ async function retained(db: PageStudioQueryClient, expected: z.infer<typeof Cont
   await match(parsed.data, expected)
   return parsed.data
 }
+/** Internal transaction helper; caller must hold original transfer authority. */
+export async function retainedManagedTransferExecution(db: PageStudioQueryClient, intent: Intent) {
+  return retained(db, await context(db, intent))
+}
 async function match(request: z.infer<typeof Request>, expected: z.infer<typeof Context>) {
   if (request.operationId !== expected.operationId || request.intentDigest !== expected.intentDigest
     || canonical(request.sourceScope) !== canonical(expected.sourceScope) || canonical(request.sourceTarget) !== canonical(expected.sourceTarget)
@@ -65,7 +70,7 @@ export async function prepareManagedTransferExecution(input: unknown, dependenci
   }
   const options = { runTransaction: dependencies.runTransaction }, reference = parsed.data
   const service = dependencies.env.PAGE_STUDIO_PROVISIONER as { discoverManagedTransferExecution?: (input: unknown) => Promise<unknown> } | undefined
-  const discover = service?.discoverManagedTransferExecution?.bind(service)
+  const discover = capturePageStudioRpcMethod(service, 'discoverManagedTransferExecution')
   const inspect = async (db: PageStudioQueryClient, intent: Intent) => {
     const source = await context(db, intent)
     const saved = await retained(db, source)
@@ -130,8 +135,7 @@ export async function coordinateManagedTransferExecution(input: unknown, depende
   const options = { runTransaction: dependencies.runTransaction }
   const service = dependencies.env.PAGE_STUDIO_PROVISIONER as Record<string, (...args: unknown[]) => Promise<unknown>> | undefined
   const methods = { status: 'readManagedTransferExecution', verify: 'inspectManagedTransferExecution', start: 'prepareManagedTransferExecution', resume: 'prepareManagedTransferExecution' }
-  const method = service?.[methods[action]]
-  const remote = typeof method === 'function' ? method.bind(service) : null
+  const remote = capturePageStudioRpcMethod(service, methods[action])
   const read = () => withReservedManagedTransfer(reference, async (db, intent) => retained(db, await context(db, intent)), options)
   let original = await read()
   const result = (state: string) => ({ operationId: reference.operationId, state })

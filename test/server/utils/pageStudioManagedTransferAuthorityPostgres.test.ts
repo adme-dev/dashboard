@@ -222,6 +222,7 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
       await db.query(readFileSync('server/database/migrations/458_page_studio_managed_transfer_resources.sql', 'utf8'))
       await db.query(readFileSync('server/database/migrations/459_page_studio_managed_transfer_resource_bindings.sql', 'utf8'))
       await db.query(readFileSync('server/database/migrations/460_page_studio_managed_transfer_executions.sql', 'utf8'))
+      await db.query(readFileSync('server/database/migrations/461_page_studio_managed_transfer_source_drafts.sql', 'utf8'))
       // Load the real coordinators as fixture setup, outside operation deadlines.
       await import('~~/server/utils/pageStudio/managedTransferIntent')
       await import('~~/server/utils/pageStudio/managedTransferResources')
@@ -520,6 +521,166 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
               PAGE_STUDIO_PROVISIONER: service, MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify(policy) } }
             return { ...c, context, discovery, service, module, options }
           }
+          describe('source draft fence authority', () => {
+            async function sourceSetup(progress: Record<string, unknown> = {}) {
+              const c = await setup()
+              await c.module.prepareManagedTransferExecution(c.value, c.options)
+              const module = await import('~~/server/utils/pageStudio/managedTransferSourceDrafts')
+              const inspect = vi.fn(async () => ({ ...c.value, state: 'ready', identity: '1'.repeat(64), ...progress }))
+              const options = { ...c.options, env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: { inspectManagedTransferExecution: inspect } } }
+              return { ...c, module, inspect, options }
+            }
+            describe('source fence coordinator', () => {
+              async function coordinate(c: Awaited<ReturnType<typeof sourceSetup>>, action: string, method: (value: unknown) => Promise<unknown>) {
+                return c.module.coordinateManagedTransferSourceDrafts({ ...c.value, action }, { ...c.options,
+                  env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: { ...c.options.env.PAGE_STUDIO_PROVISIONER,
+                    freezeManagedTransferSourceDrafts: method, readManagedTransferSourceDraftsFence: method } } })
+              }
+              async function receipt(request: { fenceIntent: unknown }) {
+                const body = { identityDigest: await collectionDigest(request.fenceIntent), request: request.fenceIntent, state: 'frozen' }
+                return { ...body, digest: await collectionDigest(body) }
+              }
+              it('status does not reserve or freeze and resume requires a retained request', async () => {
+                const c = await sourceSetup(), unexpected = vi.fn()
+                expect(await coordinate(c, 'status', unexpected)).toEqual({ operationId: c.value.operationId, state: 'not-started' })
+                await expect(coordinate(c, 'resume', unexpected)).rejects.toMatchObject({ statusCode: 409 })
+                expect(unexpected).not.toHaveBeenCalled()
+                expect(c.inspect).not.toHaveBeenCalled()
+              })
+              it('reports a retained but absent fence without repeating preparation', async () => {
+                const c = await sourceSetup()
+                const original = await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+                const read = vi.fn(async () => null)
+                expect(await coordinate(c, 'status', read)).toEqual({ operationId: c.value.operationId, state: 'not-frozen' })
+                expect(read).toHaveBeenCalledExactlyOnceWith(original)
+                expect(c.inspect).toHaveBeenCalledTimes(1)
+                expect((await db.query('SELECT request FROM page_studio_managed_transfer_source_drafts')).rows).toEqual([{ request: original }])
+              })
+              it('rejects a coherently hashed proof made from a mutated RPC request', async () => {
+                const c = await sourceSetup()
+                const original = await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+                await expect(coordinate(c, 'resume', async (request) => {
+                  const supplied = request as { fenceIntent: { transferId: string } }
+                  supplied.fenceIntent.transferId = randomUUID()
+                  return receipt(supplied)
+                })).rejects.toMatchObject({ statusCode: 409 })
+                expect((await db.query('SELECT request FROM page_studio_managed_transfer_source_drafts')).rows).toEqual([{ request: original }])
+              })
+              it.each(['start', 'resume', 'status'])('coordinates %s with full fence proof and no native locks across RPC', async (action) => {
+                const c = await sourceSetup()
+                if (action !== 'start') await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+                expect(await coordinate(c, action, async (request) => {
+                  await db.query('BEGIN')
+                  try {
+                    await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                  } finally {
+                    await db.query('ROLLBACK')
+                  }
+                  return receipt(request as { fenceIntent: unknown })
+                })).toEqual({ operationId: c.value.operationId, state: 'frozen' })
+              })
+              it.each(['digest', 'identity', 'request', 'extra', 'retained', 'cancelled'])('rejects invalid %s fence proof', async (field) => {
+                const c = await sourceSetup()
+                await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+                await expect(coordinate(c, 'status', async (request) => {
+                  const proof = await receipt(request as { fenceIntent: unknown })
+                  if (field === 'digest') proof.digest = '0'.repeat(64)
+                  if (field === 'identity') proof.identityDigest = '0'.repeat(64)
+                  if (field === 'request') proof.request = { ...proof.request as object, transferId: randomUUID() }
+                  if (['retained', 'cancelled'].includes(field)) proof.state = field
+                  return field === 'extra' ? { ...proof, secret: true } : proof
+                })).rejects.toMatchObject({ statusCode: 409 })
+              })
+              it('rechecks original owner after a source fence acknowledgement', async () => {
+                const c = await sourceSetup()
+                await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+                await expect(coordinate(c, 'resume', async (request) => {
+                  await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+                  return receipt(request as { fenceIntent: unknown })
+                })).rejects.toMatchObject({ statusCode: 403 })
+              })
+              it('keeps the retained request after a lost response for an explicit resume', async () => {
+                const c = await sourceSetup()
+                await expect(coordinate(c, 'start', async () => {
+                  throw new Error('Lost response')
+                })).rejects.toThrow('Lost response')
+                expect((await db.query('SELECT request FROM page_studio_managed_transfer_source_drafts')).rows).toHaveLength(1)
+                expect(await coordinate(c, 'resume', request => receipt(request as { fenceIntent: unknown }))).toEqual({ operationId: c.value.operationId, state: 'frozen' })
+              })
+            })
+            it('retains a verified source fence identity and grants only freeze/read', async () => {
+              const c = await sourceSetup()
+              const request = await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+              expect(request).toEqual({ formatVersion: 1, ...c.value, executionIdentity: '1'.repeat(64), fenceIntent: {
+                formatVersion: 1, nativeIntentDigest: c.value.intentDigest, transferId: c.value.operationId,
+                scope: c.context.sourceScope, target: c.context.sourceTarget
+              } })
+              for (const action of ['freeze', 'read']) {
+                expect(await c.module.authorizeManagedTransferSourceDrafts({ action, request }, { runTransaction })).toEqual({ action, request })
+              }
+              for (const action of ['cancel', 'retain']) {
+                await expect(c.module.authorizeManagedTransferSourceDrafts({ action, request }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+              }
+              expect(await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)).toEqual(request)
+              expect(c.inspect).toHaveBeenCalledTimes(2)
+              await expect(db.query('DELETE FROM page_studio_managed_transfer_source_drafts')).rejects.toThrow(/immutable/i)
+              await expect(db.query('UPDATE page_studio_managed_transfer_source_drafts SET request=\'{}\'')).rejects.toThrow(/immutable/i)
+              expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+            })
+            it.each(['pending', 'disabled', 'resume-required', 'not-started'])('denies %s source execution', async (state) => {
+              const c = await sourceSetup({ state })
+              await expect(c.module.prepareManagedTransferSourceDrafts(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+              expect((await db.query('SELECT * FROM page_studio_managed_transfer_source_drafts')).rows).toEqual([])
+            })
+            it.each(['operation', 'identity', 'extra'])('denies substituted %s source inspection', async (field) => {
+              const c = await sourceSetup(field === 'operation' ? { operationId: randomUUID() } : field === 'identity' ? { identity: undefined } : { unexpected: true })
+              await expect(c.module.prepareManagedTransferSourceDrafts(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+            })
+            it.each(['owner', 'source'])('rechecks %s after inspection outside native locks', async (field) => {
+              const c = await sourceSetup()
+              c.inspect.mockImplementationOnce(async () => {
+                await db.query('BEGIN')
+                try {
+                  await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                } finally {
+                  await db.query('ROLLBACK')
+                }
+                await db.query(field === 'owner' ? 'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()' : 'DELETE FROM page_studio_cms_record_heads')
+                return { ...c.value, state: 'ready', identity: '1'.repeat(64) }
+              })
+              await expect(c.module.prepareManagedTransferSourceDrafts(c.value, c.options)).rejects.toMatchObject({ statusCode: field === 'owner' ? 403 : 409 })
+              expect((await db.query('SELECT * FROM page_studio_managed_transfer_source_drafts')).rows).toEqual([])
+            })
+            it('rejects changed ready identity on retry without replacing the original fence', async () => {
+              const c = await sourceSetup()
+              const original = await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+              c.inspect.mockResolvedValueOnce({ ...c.value, state: 'ready', identity: '2'.repeat(64) })
+              await expect(c.module.prepareManagedTransferSourceDrafts(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+              expect((await db.query('SELECT request FROM page_studio_managed_transfer_source_drafts')).rows).toEqual([{ request: original }])
+            })
+            it('serializes competing preparations to a single exact fence identity', async () => {
+              const c = await sourceSetup()
+              const results = await Promise.allSettled([
+                c.module.prepareManagedTransferSourceDrafts(c.value, c.options),
+                c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+              ])
+              for (const result of results) {
+                if (result.status === 'rejected') expect(result.reason).toMatchObject({ statusCode: 503 })
+              }
+              const original = await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+              for (const result of results) {
+                if (result.status === 'fulfilled') expect(result.value).toEqual(original)
+              }
+              expect((await db.query('SELECT request FROM page_studio_managed_transfer_source_drafts')).rows).toEqual([{ request: original }])
+            })
+            it('denies a substituted retained request and later owner revocation', async () => {
+              const c = await sourceSetup()
+              const request = await c.module.prepareManagedTransferSourceDrafts(c.value, c.options)
+              await expect(c.module.authorizeManagedTransferSourceDrafts({ action: 'read', request: { ...request, executionIdentity: '2'.repeat(64) } }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+              await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+              await expect(c.module.authorizeManagedTransferSourceDrafts({ action: 'freeze', request }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+            })
+          })
           describe('execution coordinator', () => {
             async function control(c: Awaited<ReturnType<typeof setup>>, action: string, methods: Record<string, unknown> = {}) {
               return c.module.coordinateManagedTransferExecution({ ...c.value, action }, { ...c.options,

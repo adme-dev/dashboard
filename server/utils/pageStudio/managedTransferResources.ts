@@ -1,3 +1,4 @@
+import { capturePageStudioRpcMethod } from './privateRpc'
 import { createError } from 'h3'
 import { z } from 'zod'
 import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
@@ -178,8 +179,7 @@ export async function coordinateManagedTransferResources(input: unknown, depende
     ? 'readManagedTransferResources'
     : action === 'verify' ? 'inspectManagedTransferResources' : 'prepareManagedTransferResources'
   // Capture the trusted binding method before any awaited SQL or remote work.
-  const method = service?.[name]
-  const remote = typeof method === 'function' ? method.bind(service) : null
+  const remote = capturePageStudioRpcMethod(service, name)
   const read = () => withReservedManagedTransfer(reference, async (db, intent) => {
     const row = (await db.query<Row>('SELECT intent_digest,request,request_digest,identity FROM page_studio_managed_transfer_resources WHERE operation_id=$1', [reference.operationId])).rows[0]
     const request = row ? await check(row, reference.intentDigest) : null
