@@ -217,6 +217,10 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
       const path = 'server/database/migrations/457_page_studio_managed_transfer_intents.sql'
       await db.query(readFileSync(path, 'utf8'))
       await db.query(readFileSync('server/database/migrations/458_page_studio_managed_transfer_resources.sql', 'utf8'))
+      await db.query(readFileSync('server/database/migrations/459_page_studio_managed_transfer_resource_bindings.sql', 'utf8'))
+      // Load the real coordinators as fixture setup, outside operation deadlines.
+      await import('~~/server/utils/pageStudio/managedTransferIntent')
+      await import('~~/server/utils/pageStudio/managedTransferResources')
     })
     beforeEach(async () => {
       const scope = { tenantId: expected.tenantId, clientId: expected.businessId, businessId: expected.businessId, siteId: input.siteId, environment: 'staging' }
@@ -450,6 +454,122 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
         const loser = results.find(item => item.status === 'rejected') as PromiseRejectedResult
         expect([409, 503]).toContain(loser.reason.statusCode)
         expect((await db.query('SELECT count(*) FROM page_studio_managed_transfer_resources')).rows[0].count).toBe('1')
+      })
+      describe('physical resource binding', () => {
+        const provider = { accountId: 'a'.repeat(32), compatibilityDate: '2026-08-18' }
+        async function candidate() {
+          const value = await prepared()
+          const reservation = await prepare(value)
+          const resourceRequest = (await db.query('SELECT request FROM page_studio_managed_transfer_resources')).rows[0].request
+          const databaseId = randomUUID()
+          const physical = { version: 1, ...value, resourceIdentity: reservation.resourceIdentity,
+            preparationId: randomUUID(), preparationDigest: '1'.repeat(64),
+            database: { accountId: provider.accountId, databaseId, name: `ps-content-${'3'.repeat(32)}`, schemaDigest: artifacts.schemaDigest },
+            worker: { accountId: provider.accountId, databaseId, scope: resourceRequest.scope,
+              namespace: 'xeroflow-page-studio-dispatch-production', scriptName: `ps-content-${'4'.repeat(32)}`,
+              ownerTag: `ps-owner-${'5'.repeat(32)}`, compatibilityDate: provider.compatibilityDate,
+              runtimeDigest: artifacts.runtimeDigest, setupDigest: await collectionDigest({ attachmentIdentity: reservation.resourceIdentity, mode: resourceRequest.mode }), etag: 'verified-etag' } }
+          const inspect = vi.fn(async (request: unknown) => {
+            expect(request).toEqual({ ...value, resourceRequest })
+            // This independent connection would fail if provider I/O ran under
+            // the native site lock. It also models a source edit during I/O.
+            await db.query('BEGIN')
+            try {
+              await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+            } finally {
+              await db.query('ROLLBACK')
+            }
+            return structuredClone(physical)
+          })
+          return { value, physical, inspect }
+        }
+        async function bind(value: unknown, inspect: (request: unknown) => Promise<unknown>, transaction = runTransaction) {
+          const module = await import('~~/server/utils/pageStudio/managedTransferResources')
+          return module.bindManagedTransferResources(value, { inspect, provider, runTransaction: transaction })
+        }
+        it('retains exact independent physical evidence without switching authoring and replays lost acknowledgements', async () => {
+          const c = await candidate()
+          const before = (await db.query('SELECT environment,state,target,current_application_id FROM page_studio_cms_scopes')).rows
+          const first = await bind(c.value, c.inspect)
+          expect(first).toMatchObject({ ...c.value, state: 'resources-bound', bindingDigest: expect.stringMatching(/^[a-f0-9]{64}$/) })
+          expect(await bind(c.value, c.inspect)).toEqual(first)
+          expect(c.inspect).toHaveBeenCalledTimes(2)
+          const rows = (await db.query('SELECT * FROM page_studio_managed_transfer_resource_bindings')).rows
+          expect(rows).toHaveLength(1)
+          expect(rows[0].binding.physical).toEqual(c.physical)
+          expect(rows[0].binding.destinationGeneration).toBe((await db.query('SELECT destination_generation FROM page_studio_managed_transfer_intents')).rows[0].destination_generation)
+          expect(rows[0].binding_digest).toBe(await collectionDigest(rows[0].binding))
+          expect(JSON.stringify(first)).not.toContain('etag')
+          expect((await db.query('SELECT environment,state,target,current_application_id FROM page_studio_cms_scopes')).rows).toEqual(before)
+          await expect(db.query('UPDATE page_studio_managed_transfer_resource_bindings SET binding=\'{}\'')).rejects.toThrow(/immutable/i)
+          await expect(db.query('DELETE FROM page_studio_managed_transfer_resource_bindings')).rejects.toThrow(/immutable/i)
+        })
+        it('cannot inspect unreserved resources or accept browser-provided evidence', async () => {
+          const value = await prepared()
+          const inspect = vi.fn(async () => ({}))
+          await expect(bind(value, inspect)).rejects.toMatchObject({ statusCode: 403 })
+          await expect(bind({ ...value, physical: {} }, inspect)).rejects.toMatchObject({ statusCode: 400 })
+          expect(inspect).not.toHaveBeenCalled()
+        })
+        it.each(['operation', 'intent', 'identity', 'account', 'database', 'schema', 'runtime', 'scope', 'namespace', 'compatibility', 'setup', 'source-database', 'extra'])(
+          'refuses substituted physical %s', async (field) => {
+            const c = await candidate()
+            const proof = structuredClone(c.physical)
+            if (field === 'operation') proof.operationId = randomUUID()
+            if (field === 'intent') proof.intentDigest = '0'.repeat(64)
+            if (field === 'identity') proof.resourceIdentity = `cms_attach_${'0'.repeat(64)}`
+            if (field === 'account') proof.worker.accountId = '0'.repeat(32)
+            if (field === 'database') proof.worker.databaseId = randomUUID()
+            if (field === 'schema') proof.database.schemaDigest = '0'.repeat(64)
+            if (field === 'runtime') proof.worker.runtimeDigest = '0'.repeat(64)
+            if (field === 'scope') proof.worker.scope.siteId = randomUUID()
+            if (field === 'namespace') proof.worker.namespace = 'xeroflow-page-studio-dispatch-staging'
+            if (field === 'compatibility') proof.worker.compatibilityDate = '2026-01-01'
+            if (field === 'setup') proof.worker.setupDigest = '0'.repeat(64)
+            if (field === 'source-database') {
+              const target = (await db.query('SELECT target FROM page_studio_cms_scopes')).rows[0].target
+              proof.database.databaseId = target.databaseId
+              proof.worker.databaseId = target.databaseId
+            }
+            await expect(bind(c.value, async () => field === 'extra' ? { ...proof, secret: 'unexpected' } : proof)).rejects.toMatchObject({ statusCode: 409 })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_resource_bindings')).rows).toEqual([])
+          })
+        it.each([
+          'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+          'UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()',
+          'UPDATE page_studio_cms_scopes SET current_content_id=NULL',
+          'DELETE FROM page_studio_cms_record_heads'
+        ])('rechecks original authority and source after provider inspection: %s', async (sql) => {
+          const c = await candidate()
+          await expect(bind(c.value, async () => {
+            await db.query(sql)
+            return c.physical
+          })).rejects.toMatchObject({ statusCode: expect.any(Number) })
+          expect((await db.query('SELECT * FROM page_studio_managed_transfer_resource_bindings')).rows).toEqual([])
+        })
+        it('does not replace a retained target on retry', async () => {
+          const c = await candidate()
+          const first = await bind(c.value, c.inspect)
+          const changed = structuredClone(c.physical)
+          changed.database.databaseId = randomUUID()
+          changed.worker.databaseId = changed.database.databaseId
+          await expect(bind(c.value, async () => changed)).rejects.toMatchObject({ statusCode: 409 })
+          expect(await bind(c.value, c.inspect)).toEqual(first)
+        })
+        it('rolls back binding if a selected head changes during the final native transaction', async () => {
+          const c = await candidate()
+          const changed = <T>(work: (client: pg.Client) => Promise<T>) => runTransaction(async (tx) => {
+            const query = tx.query.bind(tx)
+            return work({ query: async (sql: string, params?: unknown[]) => {
+              const result = await query(sql, params)
+              if (sql.includes('INSERT INTO page_studio_managed_transfer_resource_bindings')) await query('DELETE FROM page_studio_cms_record_heads')
+              return result
+            } } as pg.Client)
+          })
+          await expect(bind(c.value, c.inspect, changed)).rejects.toMatchObject({ statusCode: 409 })
+          expect((await db.query('SELECT * FROM page_studio_managed_transfer_resource_bindings')).rows).toEqual([])
+          expect((await db.query('SELECT * FROM page_studio_cms_record_heads')).rows).toHaveLength(1)
+        })
       })
       it('does not admit a resource request before it has been retained', async () => {
         const value = await prepared()

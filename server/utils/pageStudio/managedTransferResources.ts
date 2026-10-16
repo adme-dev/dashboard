@@ -1,9 +1,10 @@
 import { createError } from 'h3'
 import { z } from 'zod'
-import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
+import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { ContentAttachmentRequestSchema, contentAttachmentIdentity, requireMatchingContentAttachmentRequest, type ContentAttachmentRequest } from '~~/shared/pageStudio/content-attachment'
 import { ManagedTransferReferenceSchema, withReservedManagedTransfer } from './managedTransferIntent'
-import type { RunPageStudioTransaction } from './sites'
+import { ManagedTransferPhysicalResourcesSchema, ManagedTransferProviderSchema } from './managedTransferResourceProof'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
 
 const Artifacts = ContentAttachmentRequestSchema.pick({ runtimeDigest: true, schemaDigest: true }).extend({
   policyVersion: z.literal('content-attachment-v1')
@@ -81,4 +82,67 @@ export async function authorizeManagedTransferResources(input: unknown, dependen
     if (!row) throw denied()
     return check(row, reference.intentDigest, resourceRequest)
   }, dependencies)
+}
+
+/** Private two-phase binding. Resolve the original request under native authority,
+ * leave SQL locks before provider inspection, then recheck that same authority
+ * and every source head before retaining immutable evidence. No route, editor,
+ * release pointer or customer-visible state is selected here.
+ */
+export async function bindManagedTransferResources(input: unknown, dependencies: Dependencies & {
+  provider: unknown
+  inspect: (request: z.infer<typeof Execution>) => Promise<unknown>
+}) {
+  const options = { ...dependencies }
+  const parsed = ManagedTransferReferenceSchema.safeParse(input)
+  if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid managed transfer reference' })
+  const provider = ManagedTransferProviderSchema.safeParse(options.provider)
+  if (!provider.success) throw createError({ statusCode: 503, statusMessage: 'Reviewed transfer provider configuration is unavailable' })
+  const reference = parsed.data
+  const resolve = async (db: PageStudioQueryClient) => {
+    const row = (await db.query<Row>('SELECT intent_digest,request,request_digest,identity FROM page_studio_managed_transfer_resources WHERE operation_id=$1', [reference.operationId])).rows[0]
+    if (!row) throw denied()
+    return { row, request: await check(row, reference.intentDigest) }
+  }
+  const original = await withReservedManagedTransfer(reference, resolve, options)
+  // Parse immediately to detach the provider's object before any further await.
+  const observed = ManagedTransferPhysicalResourcesSchema.safeParse(await options.inspect({ ...reference, resourceRequest: structuredClone(original.request) }))
+  if (!observed.success) throw conflict()
+  const physical = observed.data
+  return withReservedManagedTransfer(reference, async (db, intent) => {
+    const current = await resolve(db)
+    await check(current.row, reference.intentDigest, original.request)
+    const { database, worker } = physical
+    if (physical.operationId !== reference.operationId || physical.intentDigest !== reference.intentDigest
+      || physical.resourceIdentity !== current.row.identity
+      || database.accountId !== provider.data.accountId || worker.accountId !== provider.data.accountId
+      || database.databaseId !== worker.databaseId
+      || database.schemaDigest !== current.request.schemaDigest || worker.runtimeDigest !== current.request.runtimeDigest
+      || worker.compatibilityDate !== provider.data.compatibilityDate
+      || collectionCanonical(worker.scope) !== collectionCanonical(intent.authority.destination)
+      || collectionCanonical(worker.scope) !== collectionCanonical(current.request.scope)
+      || worker.setupDigest !== await collectionDigest({ attachmentIdentity: current.row.identity, mode: current.request.mode })
+      || (database.accountId === intent.source.context.state.target.accountId && database.databaseId === intent.source.context.state.target.databaseId)) throw conflict()
+    const binding = { version: 1, ...reference, destinationGeneration: intent.destination.generation,
+      resourceRequestDigest: current.row.request_digest, physical }
+    const bindingDigest = await collectionDigest(binding)
+    const existing = (await db.query<{ binding: unknown, binding_digest: string }>(
+      'SELECT binding,binding_digest FROM page_studio_managed_transfer_resource_bindings WHERE operation_id=$1', [reference.operationId])).rows[0]
+    if (existing) {
+      if (existing.binding_digest !== bindingDigest || collectionCanonical(existing.binding) !== collectionCanonical(binding)
+        || await collectionDigest(existing.binding) !== existing.binding_digest) throw conflict()
+    } else {
+      try {
+        await db.query(`INSERT INTO page_studio_managed_transfer_resource_bindings
+          (operation_id,intent_digest,destination_generation,account_id,database_id,namespace,script_name,binding,binding_digest)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)`,
+        [reference.operationId, reference.intentDigest, intent.destination.generation, database.accountId, database.databaseId,
+          worker.namespace, worker.scriptName, JSON.stringify(binding), bindingDigest])
+      } catch (error) {
+        if ((error as { code?: string })?.code === '23505') throw conflict()
+        throw error
+      }
+    }
+    return { ...reference, state: 'resources-bound' as const, bindingDigest }
+  }, options)
 }

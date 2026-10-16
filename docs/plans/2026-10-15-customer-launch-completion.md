@@ -722,3 +722,29 @@ order are preserved. Its new regression failed before implementation, then the
 60-test compaction/dispatcher group and independent review passed. Full artifact
 measurement is pending; the immutable size ceiling has not changed. No deployment
 or customer activation is claimed by these source-level checks.
+
+### 16 October — private physical resource binding
+
+`bindManagedTransferResources` resolves the saved resource request under the
+original native transfer authority, performs trusted provider inspection outside
+SQL locks, and rechecks the same owner/operator/plan and every captured source
+head before retaining a binding. Strict detached evidence binds the production
+scope, reviewed account/runtime/schema, original preparation and exact database
+and Worker identity. Reusing the source database is rejected. Retrying the same
+proof returns the immutable binding; changed evidence cannot replace it.
+
+Migration 459 adds a private immutable table with unique physical database and
+Worker identities. It was applied to the configured database with zero bindings
+and its immutable trigger verified. This is not an authoring selection, route
+activation or publication. The Studio physical-inspection adapter, final graph
+selection, retained release authority and hosted customer acceptance remain
+outstanding. No browser endpoint accepts provider evidence.
+
+Twenty-one new real PostgreSQL cases pass, including a second-connection check
+that provider I/O holds no native site lock, substituted resources, source edits,
+revoked original sessions, exact replay and rollback after a late head change.
+The expected missing-function failure was observed first. Cold filtered test runs
+initially timed out during fixture imports; moving those imports into fixture
+setup produced the intended failure without increasing any test deadline.
+Independent review found no blocking issue in this bounded increment; broader
+regression and exact-commit CI results remain recorded in the release ledger.
