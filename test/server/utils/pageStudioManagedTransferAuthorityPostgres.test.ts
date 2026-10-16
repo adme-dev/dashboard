@@ -4,7 +4,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
 import type { CmsFreezeReceiptSchema } from '~~/shared/pageStudio/cmsManaged'
-import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
+import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
 
 vi.mock('~~/server/utils/db', () => ({
   transactionWithoutRetry: () => { throw new Error('Use disposable transaction') },
@@ -559,32 +559,32 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
                   MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: JSON.stringify(policy) } }
                 return { ...c, catalogue, proof, module, options }
               }
+              type ExecutionRequest = Awaited<ReturnType<typeof import('~~/server/utils/pageStudio/managedTransferDestinationExecution')['prepareManagedTransferDestinationExecution']>>
+              async function executionReady(request: ExecutionRequest) {
+                const freezeBody = { state: 'frozen', request: structuredClone(request.freezeRequest), createdAt: '2026-10-16T00:00:00.000Z' }
+                const freeze = { ...freezeBody, digest: await collectionDigest(freezeBody) }
+                const { etag: _etag, ...predecessor } = request.catalogueRequest.baseline.worker
+                const catalogue = request.catalogueReceipt
+                const route = { activationId: request.catalogueRequest.baseline.preparationId,
+                  formDrafts: { digest: catalogue.receiptDigests.forms, receipt: catalogue.receipts.forms },
+                  namespace: predecessor.namespace, receipts: { collection: catalogue.receipts.collection, workflow: catalogue.receipts.workflow, staging: catalogue.receipts.staging },
+                  scope: request.freezeRequest.scope, scriptName: predecessor.scriptName, target: request.freezeRequest.target }
+                const schemaBody = { formatVersion: 1, kind: 'draft-history-import', operationId: `transfer_${request.operationId}_destination_import`,
+                  nativeIntentDigest: request.intentDigest, predecessor: catalogue.receipts.forms,
+                  schemaDigest: '65fbb83440cd62ebc9165006a6a25daa414212181209c06e7be771a624434680' }
+                const executionBody = { formatVersion: 1, freeze, originalRouteDigest: await collectionDigest(route), owner: structuredClone(request.successor),
+                  policy: structuredClone(request.policy), predecessor, schemaReceipt: { ...schemaBody, digest: await collectionDigest(schemaBody) }, workerReceipt: { etag: 'actual-successor-etag' } }
+                const identity = await collectionDigest(executionBody)
+                const proofBody = { formatVersion: 1, operationId: request.operationId, intentDigest: request.intentDigest,
+                  requestDigest: await collectionDigest(request), catalogueReceiptDigest: catalogue.digest,
+                  envelope: { kind: 'managed-execution', route, execution: { ...executionBody, identity } } }
+                return { operationId: request.operationId, intentDigest: request.intentDigest, requestDigest: proofBody.requestDigest,
+                  state: 'ready', identity, proof: { ...proofBody, digest: await collectionDigest(proofBody) } }
+              }
               describe('prepared destination execution coordinator', () => {
                 beforeAll(async () => {
                   await db.query(readFileSync('server/database/migrations/465_page_studio_managed_transfer_destination_execution_verifications.sql', 'utf8'))
                 })
-                type ExecutionRequest = Awaited<ReturnType<typeof import('~~/server/utils/pageStudio/managedTransferDestinationExecution')['prepareManagedTransferDestinationExecution']>>
-                async function executionReady(request: ExecutionRequest) {
-                  const freezeBody = { state: 'frozen', request: structuredClone(request.freezeRequest), createdAt: '2026-10-16T00:00:00.000Z' }
-                  const freeze = { ...freezeBody, digest: await collectionDigest(freezeBody) }
-                  const { etag: _etag, ...predecessor } = request.catalogueRequest.baseline.worker
-                  const catalogue = request.catalogueReceipt
-                  const route = { activationId: request.catalogueRequest.baseline.preparationId,
-                    formDrafts: { digest: catalogue.receiptDigests.forms, receipt: catalogue.receipts.forms },
-                    namespace: predecessor.namespace, receipts: { collection: catalogue.receipts.collection, workflow: catalogue.receipts.workflow, staging: catalogue.receipts.staging },
-                    scope: request.freezeRequest.scope, scriptName: predecessor.scriptName, target: request.freezeRequest.target }
-                  const schemaBody = { formatVersion: 1, kind: 'draft-history-import', operationId: `transfer_${request.operationId}_destination_import`,
-                    nativeIntentDigest: request.intentDigest, predecessor: catalogue.receipts.forms,
-                    schemaDigest: '65fbb83440cd62ebc9165006a6a25daa414212181209c06e7be771a624434680' }
-                  const executionBody = { formatVersion: 1, freeze, originalRouteDigest: await collectionDigest(route), owner: structuredClone(request.successor),
-                    policy: structuredClone(request.policy), predecessor, schemaReceipt: { ...schemaBody, digest: await collectionDigest(schemaBody) }, workerReceipt: { etag: 'actual-successor-etag' } }
-                  const identity = await collectionDigest(executionBody)
-                  const proofBody = { formatVersion: 1, operationId: request.operationId, intentDigest: request.intentDigest,
-                    requestDigest: await collectionDigest(request), catalogueReceiptDigest: catalogue.digest,
-                    envelope: { kind: 'managed-execution', route, execution: { ...executionBody, identity } } }
-                  return { operationId: request.operationId, intentDigest: request.intentDigest, requestDigest: proofBody.requestDigest,
-                    state: 'ready', identity, proof: { ...proofBody, digest: await collectionDigest(proofBody) } }
-                }
                 async function executionCoordinate(c: Awaited<ReturnType<typeof setup>>, action: string, methods: Record<string, unknown> = {}, transaction = runTransaction) {
                   const { coordinateManagedTransferDestinationExecution } = await import('~~/server/utils/pageStudio/managedTransferDestinationExecutionCoordinator')
                   return coordinateManagedTransferDestinationExecution({ ...c.value, action }, { ...c.options, runTransaction: transaction,
@@ -777,6 +777,401 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
                   })
                   await expect(executionCoordinate(c, 'verify', { inspectManagedTransferDestinationExecution: executionReady }, changed)).rejects.toMatchObject({ statusCode: 409 })
                   expect(await verificationRows()).toEqual([])
+                })
+              })
+              describe('immutable Forms history admission', () => {
+                beforeAll(async () => {
+                  await db.query(readFileSync('server/database/migrations/465_page_studio_managed_transfer_destination_execution_verifications.sql', 'utf8'))
+                })
+                async function historySetup(verified = true) {
+                  const c = await setup()
+                  const execution = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const observed = await executionReady(execution)
+                  if (verified) {
+                    const { coordinateManagedTransferDestinationExecution } = await import('~~/server/utils/pageStudio/managedTransferDestinationExecutionCoordinator')
+                    await coordinateManagedTransferDestinationExecution({ ...c.value, action: 'verify' }, { ...c.options,
+                      env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: { inspectManagedTransferDestinationExecution: async () => observed } } })
+                  }
+                  const scope = sourceFreeze.request.scope, target = sourceFreeze.request.target
+                  const sourcePolicy = { version: 1, kind: 'managed-draft-transfer', accountId: target.accountId,
+                    namespace: 'xeroflow-page-studio-dispatch-staging', from: { compatibilityDate: '2026-08-18', digest: target.runtimeDigest },
+                    to: { compatibilityDate: '2026-08-18', digest: '9'.repeat(64) } }
+                  const predecessor = { accountId: target.accountId, databaseId: target.databaseId, scope,
+                    namespace: sourcePolicy.namespace, scriptName: `ps-content-${'5'.repeat(32)}`, ownerTag: `ps-owner-${'6'.repeat(32)}`,
+                    runtimeDigest: target.runtimeDigest, compatibilityDate: sourcePolicy.from.compatibilityDate, setupDigest: '7'.repeat(64) }
+                  const formReceipt = { operationId: 'forms_a', collectionOperationId: 'collection_a', workflowOperationId: 'workflow_a', stagingOperationId: 'staging_a',
+                    scope, accountId: target.accountId, databaseId: target.databaseId, name: target.name,
+                    sourceDigest: '863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e', targetDigest: 'c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2' }
+                  const { prepareManagedTransferExecution } = await import('~~/server/utils/pageStudio/managedTransferExecution')
+                  await prepareManagedTransferExecution(c.value, { runTransaction, env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+                    MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify(sourcePolicy), PAGE_STUDIO_PROVISIONER: { discoverManagedTransferExecution: async () => ({
+                      formatVersion: 1, ...c.value, sourceScope: scope, sourceTarget: target, freezeDigest: sourceFreeze.digest, predecessor, freeze: sourceFreeze, formReceipt }) } } })
+                  const { prepareManagedTransferSourceDrafts } = await import('~~/server/utils/pageStudio/managedTransferSourceDrafts')
+                  const sourceRequest = await prepareManagedTransferSourceDrafts(c.value, { runTransaction, env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+                    PAGE_STUDIO_PROVISIONER: { inspectManagedTransferExecution: async () => ({ ...c.value, state: 'ready', identity: '1'.repeat(64) }) } } })
+                  const fenceBody = { state: 'frozen', request: sourceRequest.fenceIntent, identityDigest: await collectionDigest(sourceRequest.fenceIntent) }
+                  const fence = { ...fenceBody, digest: await collectionDigest(fenceBody) }
+                  const { formsHistoryFixture } = await import('../../helpers/pageStudio/formsHistory')
+                  const history = await formsHistoryFixture(scope, fence.digest)
+                  const readFence = vi.fn(async () => structuredClone(fence)), readHistory = vi.fn(async () => structuredClone(history))
+                  const options = { ...c.options, env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: {
+                    readManagedTransferSourceDraftsFence: readFence, readManagedTransferSourceDraftsHistory: readHistory } } }
+                  const module = await import('~~/server/utils/pageStudio/managedTransferFormsHistory')
+                  await db.query(readFileSync('server/database/migrations/467_page_studio_managed_transfer_forms_history_requests.sql', 'utf8'))
+                  return { ...c, module, options, sourceRequest, execution, observed, fence, history, readFence, readHistory }
+                }
+                describe('Forms history coordinator', () => {
+                  beforeAll(async () => {
+                    await db.query(readFileSync('server/database/migrations/467_page_studio_managed_transfer_forms_history_requests.sql', 'utf8'))
+                  })
+                  async function preparedHistory() {
+                    const c = await historySetup()
+                    const request = await c.module.prepareManagedTransferFormsHistory(c.value, c.options)
+                    const saved = await c.module.readManagedTransferFormsHistoryAdmission(c.value, c.options)
+                    const ready = { operationId: request.operationId, intentDigest: request.intentDigest, requestDigest: await collectionDigest(request), state: 'ready', receipt: saved!.expectedReceipt }
+                    const module = await import('~~/server/utils/pageStudio/managedTransferFormsHistoryCoordinator')
+                    await db.query(readFileSync('server/database/migrations/469_page_studio_managed_transfer_forms_history_verifications.sql', 'utf8'))
+                    return { ...c, coordinator: module, request, ready }
+                  }
+                  async function coordinateHistory(c: Awaited<ReturnType<typeof preparedHistory>>, action: string, service: Record<string, unknown>) {
+                    return c.coordinator.coordinateManagedTransferFormsHistory({ ...c.value, action }, { ...c.options, env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: service } })
+                  }
+                  it('status cannot reserve and resume/verify require an original admission', async () => {
+                    const c = await historySetup(), unexpected = vi.fn()
+                    const module = await import('~~/server/utils/pageStudio/managedTransferFormsHistoryCoordinator')
+                    await db.query(readFileSync('server/database/migrations/469_page_studio_managed_transfer_forms_history_verifications.sql', 'utf8'))
+                    const options = { ...c.options, env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: { readManagedTransferFormsHistory: unexpected } } }
+                    expect(await module.coordinateManagedTransferFormsHistory({ ...c.value, action: 'status' }, options)).toEqual({ operationId: c.value.operationId, state: 'not-started' })
+                    for (const action of ['resume', 'verify']) await expect(module.coordinateManagedTransferFormsHistory({ ...c.value, action }, options)).rejects.toMatchObject({ statusCode: 409 })
+                    expect(unexpected).not.toHaveBeenCalled()
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_requests')).rows).toEqual([])
+                  })
+                  it.each(['status', 'start', 'resume'])('keeps %s ready as progress without verified retention', async (action) => {
+                    const c = await preparedHistory(), method = vi.fn(async () => c.ready)
+                    const status = await coordinateHistory(c, action, { readManagedTransferFormsHistory: method, prepareManagedTransferFormsHistory: method })
+                    expect(status).toEqual({ operationId: c.value.operationId, state: 'ready' })
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_verifications')).rows).toEqual([])
+                    if (action !== 'status') expect(method).toHaveBeenCalledWith(c.request, action)
+                  })
+                  it('uses distinct independent inspect and retains one exact immutable verified result', async () => {
+                    const c = await preparedHistory(), inspect = vi.fn(async () => structuredClone(c.ready)), unexpected = vi.fn()
+                    const service = { inspectManagedTransferFormsHistory: inspect, prepareManagedTransferFormsHistory: unexpected }
+                    expect(await coordinateHistory(c, 'verify', service)).toEqual({ operationId: c.value.operationId, state: 'verified', receiptDigest: c.ready.receipt.digest })
+                    expect(await coordinateHistory(c, 'verify', service)).toEqual({ operationId: c.value.operationId, state: 'verified', receiptDigest: c.ready.receipt.digest })
+                    expect(unexpected).not.toHaveBeenCalled()
+                    const rows = (await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_verifications')).rows
+                    expect(rows).toHaveLength(1)
+                    expect(rows[0].receipt).toEqual(c.ready.receipt)
+                    const { withReservedManagedTransfer } = await import('~~/server/utils/pageStudio/managedTransferIntent')
+                    expect(await withReservedManagedTransfer(c.value, (tx, intent) => c.coordinator.retainedManagedTransferFormsHistoryVerification(tx, intent, c.options.env), { runTransaction })).toEqual({ request: c.request, requestDigest: c.ready.requestDigest, receipt: c.ready.receipt, receiptDigest: c.ready.receipt.digest })
+                    await expect(db.query('DELETE FROM page_studio_managed_transfer_forms_history_verifications')).rejects.toThrow(/immutable/i)
+                  })
+                  it.each(['pending', 'resume-required'])('does not verify %s', async (state) => {
+                    const c = await preparedHistory()
+                    const { receipt: _, ...refs } = c.ready
+                    await expect(coordinateHistory(c, 'verify', { inspectManagedTransferFormsHistory: async () => ({ ...refs, state }) })).rejects.toMatchObject({ statusCode: 409 })
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_verifications')).rows).toEqual([])
+                  })
+                  it.each(['request', 'intent', 'digest', 'history', 'fence', 'scope', 'unknown'])('rejects changed %s proof even if rehashed', async (kind) => {
+                    const c = await preparedHistory(), response = structuredClone(c.ready)
+                    if (kind === 'request') response.requestDigest = '0'.repeat(64)
+                    if (kind === 'intent') response.intentDigest = '0'.repeat(64)
+                    if (kind === 'digest') response.receipt.digest = '0'.repeat(64)
+                    if (kind === 'history') response.receipt.destinationHistoryDigest = '0'.repeat(64)
+                    if (kind === 'fence') response.receipt.source.fenceDigest = '0'.repeat(64)
+                    if (kind === 'scope') response.receipt.destination.scope.siteId = 'other_site'
+                    if (kind !== 'digest') {
+                      const { digest: _, ...body } = response.receipt
+                      response.receipt.digest = await collectionDigest(body)
+                    }
+                    await expect(coordinateHistory(c, 'verify', { inspectManagedTransferFormsHistory: async () => kind === 'unknown' ? { ...response, provider: 'secret' } : response })).rejects.toMatchObject({ statusCode: 409 })
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_verifications')).rows).toEqual([])
+                  })
+                  it('captures real RPC and owns request/response across async validation', async () => {
+                    const c = await preparedHistory()
+                    const hostile = () => {
+                      throw new Error('Remote method property')
+                    }
+                    const inspect = Object.assign(async (request: typeof c.request) => {
+                      request.importRequest.historyDigest = '0'.repeat(64)
+                      return structuredClone(c.ready)
+                    }, { bind: hostile, call: hostile })
+                    expect(await coordinateHistory(c, 'verify', { inspectManagedTransferFormsHistory: inspect })).toMatchObject({ state: 'verified' })
+                  })
+                  it.each(['owner', 'operator', 'head'])('rechecks original %s after inspecting outside locks', async (kind) => {
+                    const c = await preparedHistory()
+                    const inspect = async () => {
+                      await db.query('BEGIN')
+                      try {
+                        await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                      } finally {
+                        await db.query('ROLLBACK')
+                      }
+                      await db.query(kind === 'head' ? 'DELETE FROM page_studio_cms_record_heads' : `UPDATE ${kind === 'owner' ? 'page_studio_customer_sessions' : 'page_studio_login_sessions'} SET revoked_at=clock_timestamp()`)
+                      return structuredClone(c.ready)
+                    }
+                    await expect(coordinateHistory(c, 'verify', { inspectManagedTransferFormsHistory: inspect })).rejects.toThrow()
+                    expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_verifications')).rows).toEqual([])
+                  })
+                  it('rejects original session revocation after a prior successful verification', async () => {
+                    const c = await preparedHistory(), inspect = vi.fn(async () => c.ready)
+                    await coordinateHistory(c, 'verify', { inspectManagedTransferFormsHistory: inspect })
+                    await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+                    await expect(coordinateHistory(c, 'verify', { inspectManagedTransferFormsHistory: inspect })).rejects.toMatchObject({ statusCode: 403 })
+                    expect(inspect).toHaveBeenCalledTimes(1)
+                  })
+                })
+                it('retains complete typed history and expected receipt without selecting or writing destination', async () => {
+                  const c = await historySetup()
+                  expect(await c.module.readManagedTransferFormsHistoryAdmission(c.value, c.options)).toBeNull()
+                  expect(c.readHistory).not.toHaveBeenCalled()
+                  const request = await c.module.prepareManagedTransferFormsHistory(c.value, c.options)
+                  expect(request.sourceRequest).toEqual(c.sourceRequest)
+                  expect(request.destinationProof).toEqual(c.observed.proof)
+                  expect(request.importRequest.historyDigest).toBe(c.history.digest)
+                  const rows = (await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_requests')).rows
+                  expect(rows).toHaveLength(1)
+                  expect(rows[0].expected_receipt.planDigest).toBe(request.importRequest.planDigest)
+                  expect(await c.module.readManagedTransferFormsHistoryAdmission(c.value, c.options)).toEqual({ request, expectedReceipt: rows[0].expected_receipt })
+                  expect(await c.module.authorizeManagedTransferFormsHistory({ action: 'prepare', request }, c.options)).toEqual({ action: 'prepare', request })
+                  expect(await c.module.prepareManagedTransferFormsHistory(c.value, c.options)).toEqual(request)
+                  expect(c.readHistory).toHaveBeenCalledTimes(1)
+                  expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+                  await expect(db.query('DELETE FROM page_studio_managed_transfer_forms_history_requests')).rejects.toThrow(/immutable/i)
+                })
+                it('requires465 independent verification before source RPC', async () => {
+                  const c = await historySetup(false)
+                  await expect(c.module.prepareManagedTransferFormsHistory(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+                  expect(c.readHistory).not.toHaveBeenCalled()
+                })
+                it.each(['fence', 'history', 'target', 'proof', 'extra'])('rejects substituted admitted %s', async (field) => {
+                  const c = await historySetup(), request = await c.module.prepareManagedTransferFormsHistory(c.value, c.options)
+                  if (field === 'fence') request.importRequest.intent.source.fenceDigest = '0'.repeat(64)
+                  if (field === 'history') request.importRequest.historyDigest = '0'.repeat(64)
+                  if (field === 'target') request.importRequest.intent.destination.target.routeId = 'other_route'
+                  if (field === 'proof') request.destinationProof.envelope.execution.workerReceipt.etag = 'other_etag'
+                  const changed = field === 'extra' ? { ...request, history: c.history } : request
+                  await expect(c.module.authorizeManagedTransferFormsHistory({ action: 'prepare', request: changed }, c.options)).rejects.toThrow()
+                })
+                it.each(['cancelled', 'hash', 'incomplete'])('rejects source %s before retaining history', async (field) => {
+                  const c = await historySetup()
+                  if (field === 'cancelled') c.readFence.mockImplementation(async () => ({ ...c.fence, state: 'cancelled' }))
+                  if (field === 'hash') c.readFence.mockImplementation(async () => ({ ...c.fence, digest: '0'.repeat(64) }))
+                  if (field === 'incomplete') c.readHistory.mockImplementation(async () => ({ ...c.history, entries: c.history.entries.slice(1) }))
+                  await expect(c.module.prepareManagedTransferFormsHistory(c.value, c.options)).rejects.toThrow()
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_requests')).rows).toEqual([])
+                })
+                it.each(['owner', 'operator', 'head'])('reads outside locks and rejects late %s revocation', async (field) => {
+                  const c = await historySetup()
+                  c.readHistory.mockImplementation(async () => {
+                    await db.query('BEGIN')
+                    try {
+                      await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                    } finally {
+                      await db.query('ROLLBACK')
+                    }
+                    await db.query(field === 'head' ? 'DELETE FROM page_studio_cms_record_heads' : `UPDATE ${field === 'owner' ? 'page_studio_customer_sessions' : 'page_studio_login_sessions'} SET revoked_at=clock_timestamp()`)
+                    return structuredClone(c.history)
+                  })
+                  await expect(c.module.prepareManagedTransferFormsHistory(c.value, c.options)).rejects.toThrow()
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_requests')).rows).toEqual([])
+                })
+                it('rechecks original authority on every callback after successful admission', async () => {
+                  const c = await historySetup(), request = await c.module.prepareManagedTransferFormsHistory(c.value, c.options)
+                  await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+                  await expect(c.module.authorizeManagedTransferFormsHistory({ action: 'read', request }, c.options)).rejects.toMatchObject({ statusCode: 403 })
+                })
+                it('rejects a changed actual fence after reading history without retaining evidence', async () => {
+                  const c = await historySetup()
+                  c.readFence.mockResolvedValueOnce(c.fence).mockResolvedValueOnce({ ...c.fence, digest: '0'.repeat(64) })
+                  await expect(c.module.prepareManagedTransferFormsHistory(c.value, c.options)).rejects.toThrow()
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_requests')).rows).toEqual([])
+                })
+                it('uses captured real RPC methods and detached requests and observations', async () => {
+                  const c = await historySetup()
+                  const hostileMethod = () => {
+                    throw new Error('Remote method property')
+                  }
+                  Object.assign(c.readFence, { bind: hostileMethod, call: hostileMethod })
+                  Object.assign(c.readHistory, { bind: hostileMethod, call: hostileMethod })
+                  const original = structuredClone(c.sourceRequest)
+                  c.readHistory.mockImplementation(async (request: unknown) => {
+                    ;(request as typeof c.sourceRequest).fenceIntent.target.routeId = 'hostile_route'
+                    return structuredClone(c.history)
+                  })
+                  const request = await c.module.prepareManagedTransferFormsHistory(c.value, c.options)
+                  expect(request.sourceRequest).toEqual(original)
+                })
+                it('rolls back an admission when source heads change inside the final native transaction', async () => {
+                  const c = await historySetup()
+                  const changed = <T>(work: (tx: pg.Client) => Promise<T>) => runTransaction(async (tx) => {
+                    const query = tx.query.bind(tx)
+                    return work({ query: async (sql: string, params?: unknown[]) => {
+                      const result = await query(sql, params)
+                      if (sql.includes('INSERT INTO page_studio_managed_transfer_forms_history_requests')) await query('DELETE FROM page_studio_cms_record_heads')
+                      return result
+                    } } as pg.Client)
+                  })
+                  await expect(c.module.prepareManagedTransferFormsHistory(c.value, { ...c.options, runTransaction: changed })).rejects.toMatchObject({ statusCode: 409 })
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_requests')).rows).toEqual([])
+                })
+                it('serializes identical attempts and retains a single exact retry request', async () => {
+                  const c = await historySetup()
+                  const results = await Promise.allSettled([c.module.prepareManagedTransferFormsHistory(c.value, c.options), c.module.prepareManagedTransferFormsHistory(c.value, c.options)])
+                  const done = results.filter(r => r.status === 'fulfilled')
+                  expect(done.length).toBeGreaterThan(0)
+                  for (const r of results) if (r.status === 'rejected') expect(r.reason).toMatchObject({ statusCode: 503 })
+                  const replay = await c.module.prepareManagedTransferFormsHistory(c.value, c.options)
+                  for (const r of done) expect(r.value).toEqual(replay)
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_forms_history_requests')).rows).toHaveLength(1)
+                })
+              })
+              describe('immutable copy and graph admission', () => {
+                beforeAll(async () => {
+                  await db.query(readFileSync('server/database/migrations/465_page_studio_managed_transfer_destination_execution_verifications.sql', 'utf8'))
+                  await db.query(readFileSync('server/database/migrations/466_page_studio_managed_transfer_copy_graph_requests.sql', 'utf8'))
+                })
+                async function copySetup(verified = true) {
+                  // Replace placeholder bytes in this disposable fixture before any transfer reservation.
+                  const scope = sourceFreeze.request.scope
+                  const definition = { formatVersion: 1, id: 'products', label: 'Products', scope, version: 1, displayFieldId: 'name',
+                    fields: [{ id: 'name', label: 'Name', type: 'text', required: true, visibility: 'public' }] }
+                  const bodies = { schema: definition, content: { schemaVersion: 1, scope, collections: [] },
+                    record: { collectionId: 'products', id: 'first', revision: 1, schemaVersion: 1, scope, archived: false, values: { name: 'Stretch' } } }
+                  const manifest = structuredClone(JSON.parse(readFileSync('shared/pageStudio/generated/builderGraphFixtures.json', 'utf8'))[0].input.base.checkpoint.manifest)
+                  manifest.id = scope.siteId
+                  delete manifest.builderLibrary
+                  const digest = await collectionDigest(manifest)
+                  for (const table of ['page_studio_cms_objects', 'page_studio_application_versions', 'page_studio_checkpoints']) await db.query(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
+                  try {
+                    for (const [kind, body] of Object.entries(bodies)) {
+                      const current = (await db.query('SELECT storage_pin FROM page_studio_cms_objects WHERE kind=$1', [kind])).rows[0].storage_pin
+                      const { collectionCanonical } = await import('~~/shared/pageStudio/collectionApi')
+                      await db.query('UPDATE page_studio_cms_objects SET storage_pin=$1 WHERE kind=$2', [{ ...current,
+                        bytes: new TextEncoder().encode(collectionCanonical(body)).byteLength, sha256: await collectionDigest(body) }, kind])
+                    }
+                    const app = (await db.query('SELECT manifest FROM page_studio_application_versions')).rows[0].manifest
+                    app.checkpoint.digest = digest
+                    await db.query('UPDATE page_studio_application_versions SET manifest=$1,digest=$2', [app, await collectionDigest(app)])
+                    await db.query('UPDATE page_studio_checkpoints SET digest=$1', [digest])
+                  } finally {
+                    for (const table of ['page_studio_cms_objects', 'page_studio_application_versions', 'page_studio_checkpoints']) await db.query(`ALTER TABLE ${table} ENABLE TRIGGER USER`)
+                  }
+                  const c = await setup()
+                  const execution = await c.module.prepareManagedTransferDestinationExecution(c.value, c.options)
+                  const proof = await executionReady(execution)
+                  if (verified) {
+                    const { coordinateManagedTransferDestinationExecution } = await import('~~/server/utils/pageStudio/managedTransferDestinationExecutionCoordinator')
+                    await coordinateManagedTransferDestinationExecution({ ...c.value, action: 'verify' }, { ...c.options,
+                      env: { ...c.options.env, PAGE_STUDIO_PROVISIONER: { inspectManagedTransferDestinationExecution: async () => proof } } })
+                  }
+                  const rows = (await db.query('SELECT * FROM page_studio_cms_objects')).rows
+                  const schemaPin = rows.find(row => row.kind === 'schema').storage_pin
+                  const read = vi.fn(async ({ pins }: { pins: unknown[] }) => pins.map((pin) => {
+                    const row = rows.find(row => collectionCanonical(row.storage_pin) === collectionCanonical(pin))
+                    if (!row) throw new Error('No exact fixture pin')
+                    return { pin: row.storage_pin, body: bodies[row.kind as keyof typeof bodies], schema: row.kind === 'record' ? schemaPin : null,
+                      actorId: row.actor_id, createdAt: row.created_at.toISOString(), head: true }
+                  }))
+                  const env = { ...c.options.env, PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production',
+                    PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER: { readManagedCmsTarget: async () => sourceFreeze.request.target, readManagedCmsObjectsAtTarget: read },
+                    PAGE_STUDIO_CMS_STAGING_CHECKPOINTS: { get: vi.fn(async () => ({ body: new Response(JSON.stringify({ schemaVersion: 1,
+                      checkpointId: 'checkpoint_a', digest, manifest, scope: { tenantId: scope.tenantId, clientId: scope.clientId, siteId: scope.siteId } })).body! })) } }
+                  const module = await import('~~/workers/page-studio-management/src/managedTransferCopyAdmission')
+                  return { ...c, admission: module, execution, proof, read, env, options: { ...c.options, env } }
+                }
+                it('retains exact native closure and deterministic graph ids without changing authoring selection', async () => {
+                  const c = await copySetup()
+                  const first = await c.admission.prepareManagedTransferCopyGraph(c.value, c.options)
+                  expect(first.copy.destination.freezeReceipt).toEqual(c.proof.proof.envelope.execution.freeze)
+                  expect(first.copy.transferId).toBe(c.value.operationId)
+                  expect(first.copy.source.objects).toHaveLength(3)
+                  expect(first.objectIds).toHaveLength(3)
+                  expect(first.destinationGraph.schemaObjects).toHaveLength(1)
+                  expect(first.destinationGraph.generation).not.toBe(generation)
+                  const reads = c.read.mock.calls.length
+                  expect(await c.admission.prepareManagedTransferCopyGraph(c.value, c.options)).toEqual(first)
+                  expect(c.read).toHaveBeenCalledTimes(reads)
+                  expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+                  expect((await db.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows).toEqual([{ current_checkpoint_id: 'checkpoint_a' }])
+                  await expect(db.query('DELETE FROM page_studio_managed_transfer_copy_graph_requests')).rejects.toThrow(/immutable/i)
+                })
+                it('requires retained465 verification before reading source bytes', async () => {
+                  const c = await copySetup(false)
+                  await expect(c.admission.prepareManagedTransferCopyGraph(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+                  expect(c.read).not.toHaveBeenCalled()
+                })
+                it('keeps source reads outside SQL locks and rechecks late owner revocation', async () => {
+                  const c = await copySetup(), original = c.read.getMockImplementation()!
+                  c.read.mockImplementation(async (input) => {
+                    await db.query('BEGIN')
+                    try {
+                      await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                    } finally {
+                      await db.query('ROLLBACK')
+                    }
+                    await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+                    return original(input)
+                  })
+                  await expect(c.admission.prepareManagedTransferCopyGraph(c.value, c.options)).rejects.toMatchObject({ statusCode: 403 })
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_requests')).rows).toEqual([])
+                })
+                it('rejects corrupt source body and missing trusted staging bindings before admission', async () => {
+                  const c = await copySetup()
+                  const original = c.read.getMockImplementation()!
+                  c.read.mockImplementation(async (input) => {
+                    const rows = await original(input)
+                    rows[0]!.body = {}
+                    return rows
+                  })
+                  await expect(c.admission.prepareManagedTransferCopyGraph(c.value, c.options)).rejects.toThrow()
+                  await expect(c.admission.prepareManagedTransferCopyGraph(c.value, { ...c.options, env: { ...c.env, PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER: undefined } })).rejects.toMatchObject({ statusCode: 503 })
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_requests')).rows).toEqual([])
+                })
+                it('retains one winner after concurrent discoveries and replays a lost acknowledgement', async () => {
+                  const c = await copySetup()
+                  const outcomes = await Promise.allSettled([
+                    c.admission.prepareManagedTransferCopyGraph(c.value, c.options),
+                    c.admission.prepareManagedTransferCopyGraph(c.value, c.options)
+                  ])
+                  const completed = outcomes.filter(outcome => outcome.status === 'fulfilled')
+                  expect(completed.length).toBeGreaterThan(0)
+                  for (const outcome of outcomes) if (outcome.status === 'rejected') expect(outcome.reason).toMatchObject({ statusCode: 503 })
+                  const a = completed[0]!.value
+                  for (const outcome of completed) expect(outcome.value).toEqual(a)
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_requests')).rows).toHaveLength(1)
+                  expect(await c.admission.readManagedTransferCopyGraph(c.value, c.options)).toEqual(a)
+                })
+                it('rejects a changed original head after discovery without saving a new request', async () => {
+                  const c = await copySetup(), original = c.read.getMockImplementation()!
+                  c.read.mockImplementation(async (input) => {
+                    const result = await original(input)
+                    await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+                    return result
+                  })
+                  await expect(c.admission.prepareManagedTransferCopyGraph(c.value, c.options)).rejects.toThrow()
+                  expect((await db.query('SELECT * FROM page_studio_managed_transfer_copy_graph_requests')).rows).toEqual([])
+                })
+                it('rejects rehashed stored substitution against the original immutable plan', async () => {
+                  const c = await copySetup()
+                  const request = await c.admission.prepareManagedTransferCopyGraph(c.value, c.options)
+                  request.objectIds[0]!.destinationObjectId = randomUUID()
+                  const json = collectionCanonical(request)
+                  await db.query('ALTER TABLE page_studio_managed_transfer_copy_graph_requests DISABLE TRIGGER USER')
+                  try {
+                    await db.query('UPDATE page_studio_managed_transfer_copy_graph_requests SET request=$1::jsonb,request_json=$2,request_digest=$3', [json, json, await collectionDigest(request)])
+                  } finally {
+                    await db.query('ALTER TABLE page_studio_managed_transfer_copy_graph_requests ENABLE TRIGGER USER')
+                  }
+                  await expect(c.admission.readManagedTransferCopyGraph(c.value, c.options)).rejects.toMatchObject({ statusCode: 409 })
+                })
+                it('read-only status neither discovers nor admits and saved requests remain authority checked', async () => {
+                  const c = await copySetup()
+                  expect(await c.admission.readManagedTransferCopyGraph(c.value, c.options)).toBeNull()
+                  expect(c.read).not.toHaveBeenCalled()
+                  await c.admission.prepareManagedTransferCopyGraph(c.value, c.options)
+                  await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+                  await expect(c.admission.readManagedTransferCopyGraph(c.value, c.options)).rejects.toMatchObject({ statusCode: 403 })
                 })
               })
               it('retains one deterministic destination request with its own unexecuted freeze', async () => {

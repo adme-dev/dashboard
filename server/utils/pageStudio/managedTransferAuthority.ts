@@ -2,7 +2,7 @@ import { createError } from 'h3'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
-import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 const Id = z.string().uuid()
 const Hash = z.string().regex(/^[a-f0-9]{64}$/)

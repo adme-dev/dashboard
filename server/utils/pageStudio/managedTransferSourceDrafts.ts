@@ -5,7 +5,7 @@ import { ManagedTransferExecutionStatusSchema } from '~~/shared/pageStudio/manag
 import { ManagedTransferSourceDraftsRequestSchema as Request, ManagedTransferSourceDraftsAuthorizationSchema as Authorization, ManagedTransferSourceDraftsFenceReceiptSchema as Receipt } from '~~/shared/pageStudio/managed-transfer-source-drafts'
 import { ManagedTransferReferenceSchema as Reference, withReservedManagedTransfer } from './managedTransferIntent'
 import { retainedManagedTransferExecution } from './managedTransferExecution'
-import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 import { z } from 'zod'
 
 type Intent = Parameters<Parameters<typeof withReservedManagedTransfer>[1]>[1]
@@ -13,7 +13,7 @@ type Dependencies = { runTransaction?: RunPageStudioTransaction }
 const denied = () => createError({ statusCode: 403, statusMessage: 'Managed source draft access denied' })
 const conflict = () => createError({ statusCode: 409, statusMessage: 'Managed source draft transfer changed' })
 const unavailable = () => createError({ statusCode: 503, statusMessage: 'Managed source draft transfer is unavailable' })
-async function state(db: PageStudioQueryClient, intent: Intent) {
+export async function retainedManagedTransferSourceDrafts(db: PageStudioQueryClient, intent: Intent) {
   const execution = await retainedManagedTransferExecution(db, intent)
   if (!execution) throw conflict()
   const row = (await db.query<{ request: unknown, request_digest: string }>(
@@ -40,7 +40,7 @@ export async function prepareManagedTransferSourceDrafts(input: unknown, depende
   const service = dependencies.env.PAGE_STUDIO_PROVISIONER as { inspectManagedTransferExecution?: (input: unknown) => Promise<unknown> } | undefined
   const inspect = capturePageStudioRpcMethod(service, 'inspectManagedTransferExecution')
   if (!inspect) throw unavailable()
-  const before = await withReservedManagedTransfer(reference, state, options)
+  const before = await withReservedManagedTransfer(reference, retainedManagedTransferSourceDrafts, options)
   const observed = ManagedTransferExecutionStatusSchema.safeParse(await inspect(structuredClone(before.execution)))
   if (!observed.success || observed.data.operationId !== reference.operationId || observed.data.intentDigest !== reference.intentDigest
     || observed.data.state !== 'ready' || !observed.data.identity) throw conflict()
@@ -48,7 +48,7 @@ export async function prepareManagedTransferSourceDrafts(input: unknown, depende
     fenceIntent: { formatVersion: 1, nativeIntentDigest: reference.intentDigest, transferId: reference.operationId,
       scope: before.execution.sourceScope, target: before.execution.sourceTarget } })
   return withReservedManagedTransfer(reference, async (db, intent) => {
-    const current = await state(db, intent)
+    const current = await retainedManagedTransferSourceDrafts(db, intent)
     if (canonical(before.execution) !== canonical(current.execution)
       || (current.saved && canonical(current.saved) !== canonical(request))) throw conflict()
     if (!current.saved) {
@@ -67,7 +67,7 @@ export async function authorizeManagedTransferSourceDrafts(input: unknown, depen
   if (!parsed.success) throw denied()
   const auth = parsed.data, { operationId, intentDigest } = auth.request
   return withReservedManagedTransfer({ operationId, intentDigest }, async (db, intent) => {
-    const current = await state(db, intent)
+    const current = await retainedManagedTransferSourceDrafts(db, intent)
     if (!current.saved || canonical(current.saved) !== canonical(auth.request)) throw denied()
     return auth
   }, dependencies)
@@ -83,7 +83,7 @@ export async function coordinateManagedTransferSourceDrafts(input: unknown, depe
   const { action, ...reference } = parsed.data, options = { runTransaction: dependencies.runTransaction }
   const service = dependencies.env.PAGE_STUDIO_PROVISIONER as Record<string, (value: unknown) => Promise<unknown>> | undefined
   const remote = capturePageStudioRpcMethod(service, action === 'status' ? 'readManagedTransferSourceDraftsFence' : 'freezeManagedTransferSourceDrafts')
-  const read = () => withReservedManagedTransfer(reference, async (db, intent) => (await state(db, intent)).saved, options)
+  const read = () => withReservedManagedTransfer(reference, async (db, intent) => (await retainedManagedTransferSourceDrafts(db, intent)).saved, options)
   const result = (state: string) => ({ operationId: reference.operationId, state })
   let original = await read()
   if (!original && action === 'status') return result('not-started')

@@ -5,7 +5,7 @@ import { ManagedTransferDestinationCatalogueStatusSchema as Status, planManagedT
 import { ManagedTransferReferenceSchema as Reference, withReservedManagedTransfer } from './managedTransferIntent'
 import { prepareManagedTransferDestinationCatalogue, retainedManagedTransferDestinationCatalogue } from './managedTransferDestinationCatalogue'
 import { capturePageStudioRpcMethod } from './privateRpc'
-import type { RunPageStudioTransaction } from './sites'
+import type { RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 const conflict = () => createError({ statusCode: 409, statusMessage: 'Managed destination catalogue evidence changed' })
 const unavailable = () => createError({ statusCode: 503, statusMessage: 'Managed destination catalogue preparation is unavailable' })

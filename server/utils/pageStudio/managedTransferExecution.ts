@@ -6,7 +6,7 @@ import { ManagedTransferExecutionContextSchema as Context, ManagedTransferExecut
   ManagedTransferExecutionRequestSchema as Request, ManagedTransferExecutionStatusSchema as Progress, ManagedTransferExecutionPolicySchema } from '~~/shared/pageStudio/managed-transfer-execution'
 import { ManagedTransferReferenceSchema as Reference, withReservedManagedTransfer } from './managedTransferIntent'
 import { ManagedTransferResourceBindingSchema } from './managedTransferResources'
-import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 type Dependencies = { runTransaction?: RunPageStudioTransaction }
 type Intent = Parameters<Parameters<typeof withReservedManagedTransfer>[1]>[1]

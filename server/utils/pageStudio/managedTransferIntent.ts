@@ -4,10 +4,10 @@ import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { ReleaseSha256Schema } from '~~/shared/pageStudio/cmsManaged'
-import { assertSoleCmsAuthoringScope } from './cmsGraphCoordinator'
+import { assertSoleCmsAuthoringScope } from './cmsGraphRead'
 import { decodeCmsObject, lockCmsContext } from './cmsVisibility'
 import { ManagedTransferAuthorityInputSchema, withManagedTransferAuthority, type ManagedTransferAuthority } from './managedTransferAuthority'
-import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 const Request = z.object({
   operationId: z.string().uuid(), authority: ManagedTransferAuthorityInputSchema, expectedSourceDigest: ReleaseSha256Schema

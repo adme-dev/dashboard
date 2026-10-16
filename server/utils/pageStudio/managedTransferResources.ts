@@ -5,7 +5,7 @@ import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/coll
 import { ContentAttachmentRequestSchema, contentAttachmentIdentity, requireMatchingContentAttachmentRequest, type ContentAttachmentRequest } from '~~/shared/pageStudio/content-attachment'
 import { ManagedTransferReferenceSchema, withReservedManagedTransfer } from './managedTransferIntent'
 import { ManagedTransferPhysicalResourcesSchema, ManagedTransferProviderSchema } from './managedTransferResourceProof'
-import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 const Artifacts = ContentAttachmentRequestSchema.pick({ runtimeDigest: true, schemaDigest: true }).extend({
   policyVersion: z.literal('content-attachment-v1')

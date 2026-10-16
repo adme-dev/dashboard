@@ -5,7 +5,7 @@ import { ManagedTransferDestinationCatalogueAuthorizationSchema as Authorization
   requireMatchingManagedTransferDestinationCatalogueRequest as matchingRequest } from '~~/shared/pageStudio/managed-transfer-destination-catalogue'
 import { ManagedTransferReferenceSchema as Reference, withReservedManagedTransfer } from './managedTransferIntent'
 import { ManagedTransferResourceBindingSchema } from './managedTransferResources'
-import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 type Intent = Parameters<Parameters<typeof withReservedManagedTransfer>[1]>[1]
 type Dependencies = { runTransaction?: RunPageStudioTransaction }

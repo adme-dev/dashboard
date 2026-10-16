@@ -1,3 +1,4 @@
+import { handleManagedTransferCopyManagement } from './managedTransferCopyManagement'
 import { handleCmsManagement } from './cmsManagement'
 import { handleInspection } from './inspection'
 import { WorkerEntrypoint } from 'cloudflare:workers'
@@ -27,6 +28,10 @@ const Request = z.discriminatedUnion('operation', [
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch() { return new Response('Not found', { status: 404 }) }
+  async managedTransferCopyGraph(input: unknown) {
+    return handleManagedTransferCopyManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
   async cmsAuthoring(input: unknown) {
     return handleCmsManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }

@@ -204,3 +204,14 @@ Applied2026-10-16T10:06:13.476Z with0rows and2triggers; sites, release pointers 
 resource bindings unchanged. Private receipt:
 `.verification/managed-transfer/destination-execution-verification-migration-receipt.json`.
 No transfer, customer activation, DNS change or deployment occurred.
+
+
+### 2026-10-16: immutable copy and complete Forms history admission
+
+The private management Worker now derives the exact source dependency closure and retains deterministic destination graph identities. All required current records, historical schema dependencies and checkpoint content dependencies are included; unsupported sizes fail before copying. The large generated graph verifier stays outside the Pages bundle. The native Forms history path independently validates every typed revision, retains its expected destination receipt, and records verification only after a distinct read-only inspection.
+
+Verification: the combined native PostgreSQL suite passes 322 tests, and the additional history coordinator passes 19 tests. Copy planning, Worker boundaries, generated verifier and deployment configuration pass 104 focused tests. Forms planner and HTTP checks pass 23 tests, with native/Studio parity at 0, 10 and 1,000 history rows. Worker typecheck, dry-run build and changed-file lint pass. Server types retain the existing 295-diagnostic baseline. Independent review found no blocking findings.
+
+Migrations 466, 467 and 469 were applied to the configured database with zero rows in the new tables, both expected triggers per table, and unchanged fingerprints for sites, release pointers and resource bindings. Receipts are in `.verification/managed-transfer/{copy-graph,forms-history,forms-history-verification}-migration-receipt.json`. No customer activation occurred. Migration 468 is unused; terminal selection is reserved as 471 after copy verification 470.
+
+Actual copy/history orchestration, final atomic selection, retained old-live authority, recovery UI and hosted acceptance remain outstanding. The exact prepared-runtime policy is intentionally unconfigured until artifact digests are reviewed. The latest a113 CI build and database groups passed; one unrelated governance UI test timed out, passed all 16 cases on isolated rerun, and the failed CI job is rerunning. No production deployment or DNS change is claimed.
