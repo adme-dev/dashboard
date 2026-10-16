@@ -146,3 +146,78 @@ export async function bindManagedTransferResources(input: unknown, dependencies:
     return { ...reference, state: 'resources-bound' as const, bindingDigest }
   }, options)
 }
+
+const Control = ManagedTransferReferenceSchema.extend({ action: z.enum(['status', 'start', 'resume', 'verify']) }).strict()
+const Progress = z.union([
+  ManagedTransferReferenceSchema.extend({ state: z.enum(['not-started', 'preparing', 'resume-required', 'disabled']) }).strict(),
+  ManagedTransferReferenceSchema.extend({ state: z.literal('prepared'), preparationId: z.string().uuid(),
+    proofDigest: z.string().regex(/^[a-f0-9]{64}$/), resourceIdentity: z.string().regex(/^cms_attach_[a-f0-9]{64}$/) }).strict()
+])
+const Binding = ManagedTransferReferenceSchema.extend({ version: z.literal(1), destinationGeneration: z.string().uuid(),
+  resourceRequestDigest: z.string().regex(/^[a-f0-9]{64}$/), physical: ManagedTransferPhysicalResourcesSchema }).strict()
+
+/** Native resource phase, private until the complete transfer workflow is ready.
+ * Status reads never reserve, allocate, inspect or resume. Prepared means private
+ * provider preparation; only explicit verification retains a native binding.
+ * That binding is not an authoring switch, current physical health or publication.
+ */
+export async function coordinateManagedTransferResources(input: unknown, dependencies: Dependencies & {
+  env: Record<string, unknown>
+  artifacts: unknown
+  provider: unknown
+}) {
+  const parsed = Control.safeParse(input)
+  if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid managed transfer resource action' })
+  const { action, ...reference } = parsed.data
+  const unavailable = () => createError({ statusCode: 503, statusMessage: 'Production transfer resources are unavailable' })
+  if (dependencies.env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT !== 'production') throw unavailable()
+  const options = { runTransaction: dependencies.runTransaction }
+  const artifacts = structuredClone(dependencies.artifacts), provider = structuredClone(dependencies.provider)
+  const service = dependencies.env.PAGE_STUDIO_PROVISIONER as Record<string, (...args: unknown[]) => Promise<unknown>> | undefined
+  const name = action === 'status'
+    ? 'readManagedTransferResources'
+    : action === 'verify' ? 'inspectManagedTransferResources' : 'prepareManagedTransferResources'
+  // Capture the trusted binding method before any awaited SQL or remote work.
+  const method = service?.[name]
+  const remote = typeof method === 'function' ? method.bind(service) : null
+  const read = () => withReservedManagedTransfer(reference, async (db, intent) => {
+    const row = (await db.query<Row>('SELECT intent_digest,request,request_digest,identity FROM page_studio_managed_transfer_resources WHERE operation_id=$1', [reference.operationId])).rows[0]
+    const request = row ? await check(row, reference.intentDigest) : null
+    const retained = (await db.query<{ binding: unknown, binding_digest: string }>(
+      'SELECT binding,binding_digest FROM page_studio_managed_transfer_resource_bindings WHERE operation_id=$1', [reference.operationId])).rows[0]
+    if (retained) {
+      const binding = Binding.safeParse(retained.binding)
+      if (!row || !binding.success || await collectionDigest(binding.data) !== retained.binding_digest
+        || binding.data.operationId !== reference.operationId || binding.data.intentDigest !== reference.intentDigest
+        || binding.data.destinationGeneration !== intent.destination.generation
+        || binding.data.resourceRequestDigest !== row.request_digest || binding.data.physical.resourceIdentity !== row.identity) throw conflict()
+    }
+    return { request, identity: row?.identity, bound: Boolean(retained) }
+  }, options)
+  const result = (state: string) => ({ operationId: reference.operationId, state })
+  let original = await read()
+  if (original.bound && action !== 'verify') return result('resources-bound')
+  if (!original.request && action === 'status') return result('not-started')
+  if (!original.request && action !== 'start') throw conflict()
+  if (!remote) throw unavailable()
+  if (action === 'verify') {
+    await bindManagedTransferResources(reference, { ...options, provider, inspect: remote })
+    return result('resources-bound')
+  }
+  if (action === 'start') {
+    await prepareManagedTransferResources(reference, { ...options, artifacts })
+    original = await read()
+    if (original.bound) return result('resources-bound')
+  }
+  if (!original.request) throw conflict()
+  // No native SQL transaction is held across this service-binding call. The
+  // executor independently rechecks admission around its provider operations.
+  const request = { ...reference, resourceRequest: structuredClone(original.request) }
+  const observed = await (action === 'status' ? remote(request) : remote(request, action))
+  const progress = Progress.safeParse(observed)
+  if (!progress.success || progress.data.operationId !== reference.operationId || progress.data.intentDigest !== reference.intentDigest
+    || (progress.data.state === 'prepared' && progress.data.resourceIdentity !== original.identity)) throw conflict()
+  const current = await read()
+  if (collectionCanonical(current.request) !== collectionCanonical(original.request)) throw conflict()
+  return result(current.bound ? 'resources-bound' : progress.data.state)
+}

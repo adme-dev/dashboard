@@ -748,3 +748,34 @@ initially timed out during fixture imports; moving those imports into fixture
 setup produced the intended failure without increasing any test deadline.
 Independent review found no blocking issue in this bounded increment; broader
 regression and exact-commit CI results remain recorded in the release ledger.
+
+### Native resource workflow — 16 October
+
+The private native coordinator now connects status, explicit start/resume and
+explicit verification to the production provisioner binding. It resolves the
+original request from immutable native storage and retains it before the first
+remote effect. A lost response leaves that same request available for inspection
+and explicit recovery. No native SQL transaction spans a remote call.
+
+Status never allocates, resumes or invokes physical inspection. Prepared provider
+status does not create a native binding. Explicit verification uses independent
+physical inspection and the existing authority-checked immutable binding phase.
+A retained `resources-bound` result describes saved evidence, not current provider
+health, completed graph transfer, a selected editor or a published website.
+
+The coordinator captures its trusted method/receiver and configuration before
+awaits, strictly parses detached remote progress, and rechecks original owner,
+operator, plan and source heads afterward. It rejects substituted operation,
+resource identity and extra response fields; private hashes and provider details
+are omitted from progress results. No browser route accepts a resource request or
+physical proof.
+
+Twenty initial real PostgreSQL workflow cases were observed failing before the
+coordinator existed, then passed. Seven more RPC lock-release and post-call
+revocation/source-change cases bring the new workflow coverage to 27 cases. The
+complete transfer/endpoint PostgreSQL group passes 136 tests. Changed-source
+ESLint passes; server typecheck retains 295 existing diagnostics, none in the
+coordinator. Full-suite and exact-commit CI receipts are recorded in the active
+ledger. Independent review found no actionable defect in this bounded increment. The native source fence/copy phases, final graph
+selection, retained published authority, customer progress UI and hosted
+acceptance remain unfinished.

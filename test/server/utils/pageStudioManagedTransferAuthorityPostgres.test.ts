@@ -487,6 +487,146 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
           const module = await import('~~/server/utils/pageStudio/managedTransferResources')
           return module.bindManagedTransferResources(value, { inspect, provider, runTransaction: transaction })
         }
+        describe('native resource workflow', () => {
+          async function control(value: unknown, action: string, binding: Record<string, unknown> = {}, environment = 'production') {
+            const module = await import('~~/server/utils/pageStudio/managedTransferResources')
+            return module.coordinateManagedTransferResources({ ...(value as object), action }, {
+              runTransaction, artifacts, provider,
+              env: { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: environment, PAGE_STUDIO_PROVISIONER: binding }
+            })
+          }
+          it('reads an unstarted operation without reserving or contacting the provisioner', async () => {
+            const value = await prepared()
+            const unexpected = vi.fn(async () => {
+              throw new Error('Status must not start work')
+            })
+            expect(await control(value, 'status', { prepareManagedTransferResources: unexpected })).toEqual({ operationId: value.operationId, state: 'not-started' })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_resources')).rows).toEqual([])
+            expect(unexpected).not.toHaveBeenCalled()
+          })
+          it('starts from the saved request, keeps prepared status private, and binds only after explicit inspection', async () => {
+            const c = await candidate()
+            const before = (await db.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows
+            const binding = {
+              prepareManagedTransferResources: async (request: unknown, action: string) => {
+                expect(action).toBe('start')
+                await admission(request)
+                return { ...c.value, state: 'prepared', resourceIdentity: c.physical.resourceIdentity,
+                  preparationId: c.physical.preparationId, proofDigest: c.physical.preparationDigest }
+              },
+              inspectManagedTransferResources: c.inspect
+            }
+            expect(await control(c.value, 'start', binding)).toEqual({ operationId: c.value.operationId, state: 'prepared' })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_resource_bindings')).rows).toEqual([])
+            expect(await control(c.value, 'verify', binding)).toEqual({ operationId: c.value.operationId, state: 'resources-bound' })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_resource_bindings')).rows).toHaveLength(1)
+            expect((await db.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows).toEqual(before)
+            expect((await db.query('SELECT environment,state FROM page_studio_cms_scopes')).rows).toEqual([{ environment: 'staging', state: 'managed' }])
+          })
+          it('retains the original request across an unknown remote outcome and resumes explicitly', async () => {
+            const value = await prepared()
+            let original: unknown
+            const binding = {
+              prepareManagedTransferResources: async (request: unknown, action: string) => {
+                await admission(request)
+                if (action === 'start') {
+                  original = structuredClone(request)
+                  throw new Error('Lost response')
+                }
+                expect(request).toEqual(original)
+                return { ...value, state: 'preparing' }
+              },
+              readManagedTransferResources: async (request: unknown) => {
+                expect(request).toEqual(original)
+                return { ...value, state: 'resume-required' }
+              }
+            }
+            await expect(control(value, 'start', binding)).rejects.toThrow('Lost response')
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_resources')).rows).toHaveLength(1)
+            expect(await control(value, 'status', binding)).toEqual({ operationId: value.operationId, state: 'resume-required' })
+            expect(await control(value, 'resume', binding)).toEqual({ operationId: value.operationId, state: 'preparing' })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_resource_bindings')).rows).toEqual([])
+          })
+          it('never recreates or resumes an already bound resource on start or status', async () => {
+            const c = await candidate()
+            await bind(c.value, c.inspect)
+            for (const action of ['status', 'start', 'resume']) {
+              expect(await control(c.value, action)).toEqual({ operationId: c.value.operationId, state: 'resources-bound' })
+            }
+          })
+          it.each(['status', 'start', 'resume', 'verify'])('denies %s outside production before any remote work', async (action) => {
+            const value = await prepared()
+            await expect(control(value, action, {}, 'staging')).rejects.toMatchObject({ statusCode: 503 })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_resources')).rows).toEqual([])
+          })
+          it('refuses resume without a retained resource request', async () => {
+            const value = await prepared()
+            await expect(control(value, 'resume')).rejects.toMatchObject({ statusCode: 409 })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_resources')).rows).toEqual([])
+          })
+          it.each(['status', 'start', 'resume', 'verify'])('rechecks original owner before %s reaches the provisioner', async (action) => {
+            const c = await candidate()
+            const remote = vi.fn(async () => {
+              throw new Error('No remote work after revocation')
+            })
+            await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+            await expect(control(c.value, action, { prepareManagedTransferResources: remote, readManagedTransferResources: remote, inspectManagedTransferResources: remote })).rejects.toMatchObject({ statusCode: 403 })
+            expect(remote).not.toHaveBeenCalled()
+          })
+          it.each(['status', 'start', 'resume'].flatMap(action => ['owner', 'source'].map(change => [action, change])))('rejects %s after %s changes during RPC', async (action, change) => {
+            const c = await candidate()
+            const remote = async () => {
+              await db.query(change === 'owner' ? 'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()' : 'UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+              return { ...c.value, state: 'preparing' }
+            }
+            await expect(control(c.value, action, { readManagedTransferResources: remote, prepareManagedTransferResources: remote })).rejects.toMatchObject({ statusCode: change === 'owner' ? 403 : 409 })
+          })
+          it.each(['identity', 'operation', 'extra'])('rejects substituted %s in remote progress without retaining a binding', async (field) => {
+            const c = await candidate()
+            const result = { ...c.value, state: 'prepared', resourceIdentity: c.physical.resourceIdentity,
+              preparationId: c.physical.preparationId, proofDigest: c.physical.preparationDigest }
+            if (field === 'identity') result.resourceIdentity = `cms_attach_${'0'.repeat(64)}`
+            if (field === 'operation') result.operationId = randomUUID()
+            const binding = { readManagedTransferResources: async () => field === 'extra' ? { ...result, secret: 'must-not-leak' } : result }
+            await expect(control(c.value, 'status', binding)).rejects.toMatchObject({ statusCode: 409 })
+            expect((await db.query('SELECT * FROM page_studio_managed_transfer_resource_bindings')).rows).toEqual([])
+          })
+          it.each(['status', 'start', 'resume'])('releases native SQL locks before %s RPC and preserves its receiver', async (action) => {
+            const c = await candidate()
+            const binding = {
+              marker: 'trusted-service',
+              async call(this: { marker: string }) {
+                expect(this.marker).toBe('trusted-service')
+                await db.query('BEGIN')
+                try {
+                  await db.query('SELECT id FROM page_studio_sites FOR UPDATE NOWAIT')
+                } finally {
+                  await db.query('ROLLBACK')
+                }
+                return { ...c.value, state: 'preparing' }
+              },
+              readManagedTransferResources: undefined as unknown,
+              prepareManagedTransferResources: undefined as unknown
+            }
+            binding.readManagedTransferResources = binding.call
+            binding.prepareManagedTransferResources = binding.call
+            expect(await control(c.value, action, binding)).toEqual({ operationId: c.value.operationId, state: 'preparing' })
+          })
+          it('captures the expected request before an RPC adapter can mutate it', async () => {
+            const c = await candidate()
+            const binding = { readManagedTransferResources: async (request: { operationId: string, intentDigest: string }) => {
+              request.operationId = randomUUID()
+              return { ...request, state: 'preparing' }
+            } }
+            await expect(control(c.value, 'status', binding)).rejects.toMatchObject({ statusCode: 409 })
+          })
+          it('requires the distinct inspector and rejects browser-provided resource evidence', async () => {
+            const c = await candidate()
+            await expect(control(c.value, 'verify')).rejects.toMatchObject({ statusCode: 503 })
+            await expect(control({ ...c.value, physical: c.physical }, 'verify', { inspectManagedTransferResources: c.inspect })).rejects.toMatchObject({ statusCode: 400 })
+            expect(c.inspect).not.toHaveBeenCalled()
+          })
+        })
         it('retains exact independent physical evidence without switching authoring and replays lost acknowledgements', async () => {
           const c = await candidate()
           const before = (await db.query('SELECT environment,state,target,current_application_id FROM page_studio_cms_scopes')).rows
