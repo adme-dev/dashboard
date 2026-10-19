@@ -69,8 +69,10 @@ const API_INVENTORY = {
   // build, with an exact-release review grant. No God mode bypass.
   // Native plan GET/POST authenticate staff and recheck built-in platform authority
   // in the transaction. No customer self-grant or God mode bypass is registered.
-  totalRouteFiles: 2257,
-  mutationRouteFiles: 1228,
+  // Native transfer recovery adds one origin/session-guarded POST. Current owner,
+  // exact site and retained transfer authority remain required; no God mode bypass.
+  totalRouteFiles: 2258,
+  mutationRouteFiles: 1229,
   explicitlyGuardedMutationFiles: 402,
   guardedMutationFilesWithTransactionCall: 48
 } as const
@@ -120,8 +122,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2257,
-      mutationRouteFiles: 1228,
+      totalRouteFiles: 2258,
+      mutationRouteFiles: 1229,
       explicitlyGuardedMutationFiles: 402,
       guardedMutationFilesWithTransactionCall: 48
     })

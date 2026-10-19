@@ -40,7 +40,8 @@ const config = (environment: string) => ({
   services: environment === 'production'
     ? [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' },
         { binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-production' },
-        { binding: 'PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }]
+        { binding: 'PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' },
+        { binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-production' }]
     : [{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }],
   observability: { enabled: true, head_sampling_rate: 0.1 },
   r2_buckets: [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` },
@@ -98,6 +99,17 @@ describe('private management deployment admission', () => {
   ])('rejects malformed or ambiguous arguments before reading files or executing commands: %j', (args) => {
     expect(() => main(args)).toThrow()
     expect(mocks.read).not.toHaveBeenCalled()
+    expect(mocks.exec).not.toHaveBeenCalled()
+  })
+
+  it.each(['missing', 'staging-target'])('rejects a %s production provisioner before Git or deployment', (variant) => {
+    const candidate = config('production')
+    candidate.services = candidate.services.filter(service => service.binding !== 'PAGE_STUDIO_PROVISIONER')
+    if (variant === 'staging-target') {
+      candidate.services.push({ binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-staging' })
+    }
+    mocks.read.mockReturnValue(JSON.stringify(candidate))
+    expect(() => main(['production'])).toThrow()
     expect(mocks.exec).not.toHaveBeenCalled()
   })
 

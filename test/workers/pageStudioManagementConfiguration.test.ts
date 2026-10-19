@@ -35,7 +35,8 @@ describe('private Page Studio management deployment configuration', () => {
     expect(config.services).toEqual(environment === 'production'
       ? [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' },
           { binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-production' },
-          { binding: 'PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }]
+          { binding: 'PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' },
+          { binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-production' }]
       : [{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }])
     expect(config.r2_buckets).toEqual([{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` },
       ...(environment === 'production' ? [{ binding: 'PAGE_STUDIO_CMS_STAGING_CHECKPOINTS', bucket_name: 'xeroflow-page-studio-checkpoints-staging' }] : [])])
