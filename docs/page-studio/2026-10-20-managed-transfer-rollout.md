@@ -1,8 +1,8 @@
 # Managed transfer rollout — 20 October 2026
 
-This receipt distinguishes the deployed private backend from the remaining
-customer acceptance and Pages release. No customer transfer, publication, DNS
-change or Pi activation occurred during this rollout.
+This receipt records the verified private backend and Pages release. Customer
+transfer acceptance and Pi activation remain outstanding. No customer transfer,
+publication, DNS change or Pi activation occurred during this rollout.
 
 ## Source and CI
 
@@ -57,7 +57,7 @@ is 1,101,341 bytes, compatibility date 2026-08-18. The production private key
 readback matches its full digest and byte count. Old objects and tenant pins were
 not changed. The private publication review does not approve customer activation.
 
-## Browser verification and remaining release
+## Pages release and browser verification
 
 The signed-in legacy customer dashboard lists all four sites. Fantasea management
 still shows 5 pages, 15 assets and its existing saved preview. A normal Chrome button
@@ -78,13 +78,37 @@ The test now exercises the management Worker's HTTP ingress with
 and required 404. It also checks the response body, unchanged RPC count and zero
 outbound calls. RPC authorization checks still use the actual service binding.
 This follows the existing runtime-test pattern and avoids using Miniflare's
-service-binding proxy to test HTTP ingress. Two focused runtime files (five tests)
-and scoped lint pass locally. The Linux CI result is required before calling the
-transport failure resolved; its precise socket-level cause is not proven locally.
-Release completion, provider source/deployment readback and post-release checks
-remain required. Signed-in agency QR navigation and all four customer previews
-render before the Pages release. The preceding Pages
-production deployment is `630ec0a3-4db8-4b4c-98a8-bcd635314be1`.
+service-binding proxy to test HTTP ingress. Five destination-authoring files
+(12 tests), the adjacent HTTP suite (4 tests) and scoped lint pass locally.
+[PR #667](https://github.com/adme-dev/dashboard/pull/667) merged as
+`36d5981fdad3b1c747e36623751ff58d295da85d`, with a tree identical to tested head
+`aca52c0db9bca65283ddb037fd9c3d366f245f09`. Its
+[PR CI39328937020](https://github.com/adme-dev/dashboard/actions/runs/39328937020)
+passed all stages, including 16,579 main-suite tests plus the separately run 54
+endpoint tests. The exact merge's
+[main CI39331996775](https://github.com/adme-dev/dashboard/actions/runs/39331996775)
+passed too. The socket-level cause was not reproduced locally; the corrected
+HTTP boundary has now passed the full Linux suite.
+
+The replacement guarded release is
+[CI39332068668](https://github.com/adme-dev/dashboard/actions/runs/39332068668),
+from exact main `36d5981fdad3b1c747e36623751ff58d295da85d`. All CI and deployment
+jobs succeeded. Cloudflare independently reports production deployment
+`08f4bb08-2f0b-4eaf-8ef9-f9f96497e265` at
+https://08f4bb08.agency-dashboard-6cm.pages.dev, with that exact source commit,
+branch main and a clean source tree. Production Page Studio/CRM variables,
+service bindings and Hyperdrive bindings match the pre-release baseline.
+The previous Pages deployment is `630ec0a3-4db8-4b4c-98a8-bcd635314be1`.
+
+Post-release browser checks confirm the signed-in customer dashboard lists all
+four sites. Fantasea, Yarra Valley, Mornington and Fantasy Limo previews render
+their expected headings and loaded images, with zero broken completed images.
+The signed-in agency QR Codes page renders its existing entries and New QR code
+control. A native Chrome click on Fantasea's Open Page Studio launches the editor
+and renders its saved desktop/mobile layouts and Pages controls. No content or
+publication was changed by these checks. Verification waits for SPA hydration
+and normalizes intentional heading line breaks; those harness corrections do
+not change the application.
 
 Production Pi remains version `e70edf12-e793-47dd-926d-a7d419ca8c92`, deployment
 `55bbb328-8f3b-42a2-b087-521e39eae5dd`, with admission disabled and no canary sites.
@@ -100,7 +124,10 @@ Studio private receipts are under the owned worktree's
 staging/production deployment receipts, schema snapshots, immutable runtime
 publication receipt and deployment logs. Dashboard receipts are under
 `.verification/release-20261020/`, including management before/after settings,
-Pages baseline and Pi readback. Keep these with the archived preflight manifest.
+Pages baseline/readback, final CI log, browser/editor receipts and refreshed Pi
+readback. Keep these with the archived preflight manifest. The next consent-flow
+slices are recorded privately in `operator-handoff-next.md`; they are a plan, not
+implemented or accepted functionality.
 
 Rollback uses the recorded prior service versions and compatible code. Preserve
 all additive tables, immutable preparations and native transfer history; do not
