@@ -36,5 +36,10 @@ it('uses actual captured service method and Worker-only strict proof validation 
   expect(await invoke({ action: 'read', request: fixture.request })).toEqual({ ok: false, statusCode: 503 })
   expect(await (await caller.fetch('https://caller/count')).json()).toBe(2)
   expect(outbound).toBe(0)
-  expect((await (await runtime.getWorker('management')).fetch('https://management/authorize', { method: 'POST', body: JSON.stringify({ action: 'read', request: fixture.request }) })).status).toBe(404)
+  // Exercise HTTP ingress directly; getWorker().fetch() uses the service-binding proxy.
+  const response = await runtime.dispatchFetch('https://management/authorize', { method: 'POST', body: JSON.stringify({ action: 'read', request: fixture.request }) })
+  expect(response.status).toBe(404)
+  expect(await response.text()).toBe('Not found')
+  expect(await (await caller.fetch('https://caller/count')).json()).toBe(2)
+  expect(outbound).toBe(0)
 })

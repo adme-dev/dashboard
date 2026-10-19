@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 19 October 2026. Start here after an interruption.
+Last updated: 20 October 2026. Start here after an interruption.
 Current upgrade: [managed transfer execution](2026-10-16-managed-transfer-execution.md).
 Earlier release: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Latest bounded CMS rollout: [Fantasy Limo runtime and activation receipt](2026-10-10-fantasy-cms-runtime-release.md).
@@ -12,7 +12,30 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [standalone style guide](../design/standalone-cms-style-guide.md),
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
 
-## Current private transport checkpoint — 19 October 2026
+## Current rollout checkpoint — 20 October 2026
+
+Dashboard PR #664 and Studio PR #129 are merged. The reviewed trees passed CI in
+both repositories, including Studio's separate Linux and Windows copy stress
+jobs. The three private staging services and three private production services
+are now deployed from Studio main `0fe8df57cdbae26b81945c8f573af7931ceec8f9`.
+The private management Worker is deployed from Dashboard main
+`24f555f62b39891ff019efdffe2de03b30d4477e`. Independent provider readback confirms
+their versions and preserved existing settings. The exact successor runtime was
+uploaded to its private immutable key and independently downloaded and hashed.
+Production migrations 0014–0018 preserve all original registry rows, schema,
+ownership and routing. No tenant runtime was globally repinned.
+
+The guarded Pages release CI39318355504 failed twice at one Miniflare HTTP
+transport check, before upload. The HTTP-ingress harness fix is locally verified
+and awaiting Linux CI. Pages remains on its preceding deployment. Hosted
+transfer/operator consent, two-account acceptance and customer/Pi activation
+remain outstanding. Production Pi readback still shows
+disabled admission and an empty canary list. See the
+[rollout receipt](../page-studio/2026-10-20-managed-transfer-rollout.md) before
+continuing; do not repeat completed deployments or reuse the old drift baseline
+as if its deployment IDs were still current.
+
+## Historical private transport checkpoint — 19 October 2026
 
 The management service now has a private `managedTransferPreparation` entry point
 for source review/reservation, resources, source execution/fencing, destination
