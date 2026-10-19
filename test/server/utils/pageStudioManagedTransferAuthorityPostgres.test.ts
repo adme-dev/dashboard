@@ -875,6 +875,20 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
                   await db.query(readFileSync('server/database/migrations/467_page_studio_managed_transfer_forms_history_requests.sql', 'utf8'))
                   return { ...c, module, options, sourceRequest, execution, observed, fence, history, readFence, readHistory }
                 }
+                it('private preparation transport starts Forms history through both source read bindings', async () => {
+                  const c = await historySetup()
+                  const { handleManagedTransferPreparation } = await import('~~/workers/page-studio-management/src/managedTransferPreparation')
+                  const prepare = vi.fn(async (request: unknown) => {
+                    const saved = await c.module.readManagedTransferFormsHistoryAdmission(c.value, c.options)
+                    return { ...c.value, requestDigest: await collectionDigest(request), state: 'ready', receipt: saved!.expectedReceipt }
+                  })
+                  const env = { ...c.options.env, PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production',
+                    PAGE_STUDIO_PROVISIONER: { ...c.options.env.PAGE_STUDIO_PROVISIONER, prepareManagedTransferFormsHistory: prepare } }
+                  expect(await handleManagedTransferPreparation({ ...c.value, phase: 'forms-history', action: 'start', expectedEnvironment: 'production' }, env, runTransaction))
+                    .toMatchObject({ ok: true, value: { operationId: c.value.operationId, state: 'ready' } })
+                  expect(c.readHistory).toHaveBeenCalledTimes(1)
+                  expect(prepare).toHaveBeenCalledTimes(1)
+                })
                 describe('Forms history coordinator', () => {
                   beforeAll(async () => {
                     await db.query(readFileSync('server/database/migrations/467_page_studio_managed_transfer_forms_history_requests.sql', 'utf8'))
@@ -1969,6 +1983,22 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
               PAGE_STUDIO_PROVISIONER: service, MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify(policy) } }
             return { ...c, context, discovery, service, module, options }
           }
+          it('private preparation transport preserves original authority and never advances status', async () => {
+            const c = await setup()
+            const { handleManagedTransferPreparation } = await import('~~/workers/page-studio-management/src/managedTransferPreparation')
+            const prepare = vi.fn(async () => ({ ...c.value, state: 'ready', identity: '1'.repeat(64) }))
+            const env = { ...c.options.env, PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production',
+              PAGE_STUDIO_PROVISIONER: { ...c.service, prepareManagedTransferExecution: prepare } }
+            const request = { ...c.value, phase: 'source-execution', action: 'status', expectedEnvironment: 'production' }
+            expect(await handleManagedTransferPreparation(request, env, runTransaction)).toMatchObject({ ok: true, value: { state: 'not-started' } })
+            expect(c.service.discoverManagedTransferExecution).not.toHaveBeenCalled()
+            expect(prepare).not.toHaveBeenCalled()
+            expect(await handleManagedTransferPreparation({ ...request, action: 'start' }, env, runTransaction)).toMatchObject({ ok: true, value: { state: 'ready' } })
+            expect(prepare).toHaveBeenCalledTimes(1)
+            await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+            expect(await handleManagedTransferPreparation(request, env, runTransaction)).toMatchObject({ ok: false, error: { statusCode: 403 } })
+            expect(prepare).toHaveBeenCalledTimes(1)
+          })
           describe('source draft fence authority', () => {
             async function sourceSetup(progress: Record<string, unknown> = {}) {
               const c = await setup()

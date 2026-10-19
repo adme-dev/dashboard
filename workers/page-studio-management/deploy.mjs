@@ -19,7 +19,7 @@ export function validateManagementTarget(config, environment) {
   assert.deepEqual(config.routes, [])
   assert.deepEqual(config.triggers, { crons: [] })
   assert.equal(config.vars.PAGE_STUDIO_RELEASE_ENVIRONMENT, environment)
-  const allowedVars = ['PAGE_STUDIO_PROVISIONING_ENVIRONMENT', 'MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY', 'PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID', 'PAGE_STUDIO_CLOUDFLARE_ZONE_ID', 'PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET', 'PAGE_STUDIO_DOMAIN_IDENTITY_MODE', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT', 'PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT', 'PAGE_STUDIO_ACTION_RUNTIME_DIGEST', 'PAGE_STUDIO_CMS_STAGING_ACTION_RUNTIME_DIGEST']
+  const allowedVars = ['MANAGED_TRANSFER_EXECUTION_POLICY', 'PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST', 'PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST', 'PAGE_STUDIO_PROVISIONING_ENVIRONMENT', 'MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY', 'PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID', 'PAGE_STUDIO_CLOUDFLARE_ZONE_ID', 'PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET', 'PAGE_STUDIO_DOMAIN_IDENTITY_MODE', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT', 'PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT', 'PAGE_STUDIO_ACTION_RUNTIME_DIGEST', 'PAGE_STUDIO_CMS_STAGING_ACTION_RUNTIME_DIGEST']
   assert(Object.keys(config.vars).every(key => allowedVars.includes(key)), 'Unreviewed Worker variable')
   assert.equal(config.vars.PAGE_STUDIO_PROVISIONING_ENVIRONMENT, environment === 'production' ? 'production' : undefined)
   if (config.vars.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY !== undefined) {
@@ -29,6 +29,19 @@ export function validateManagementTarget(config, environment) {
       accountId: z.literal(config.account_id), namespace: z.literal('xeroflow-page-studio-dispatch-production'),
       from: runtime, to: runtime }).strict().parse(JSON.parse(config.vars.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY))
     assert.notEqual(policy.from.digest, policy.to.digest, 'Prepared runtime must be distinct')
+  }
+  const preparationKeys = ['MANAGED_TRANSFER_EXECUTION_POLICY', 'PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST', 'PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST']
+  if (preparationKeys.some(key => config.vars[key] !== undefined)) {
+    assert.equal(environment, 'production', 'Transfer preparation is production-only')
+    const runtime = z.object({ compatibilityDate: z.iso.date(), digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
+    const source = z.object({ version: z.literal(1), kind: z.literal('managed-draft-transfer'),
+      accountId: z.literal(config.account_id), namespace: z.literal('xeroflow-page-studio-dispatch-staging'),
+      from: runtime, to: runtime }).strict().parse(JSON.parse(config.vars.MANAGED_TRANSFER_EXECUTION_POLICY))
+    const destination = JSON.parse(config.vars.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY)
+    assert.notEqual(source.from.digest, source.to.digest, 'Source successor must be distinct')
+    assert.deepEqual(source.to, destination.to, 'Transfer phases must use the same reviewed successor')
+    assert.equal(config.vars.PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST, destination.from.digest, 'Bootstrap runtime must match destination predecessor')
+    assert.match(config.vars.PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST ?? '', /^[a-f0-9]{64}$/, 'Reviewed bootstrap schema required')
   }
   for (const [key, value] of Object.entries(config.vars)) {
     assert.equal(typeof value, 'string', `Invalid variable ${key}`)

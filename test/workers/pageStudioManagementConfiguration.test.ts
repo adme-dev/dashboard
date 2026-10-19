@@ -19,10 +19,15 @@ describe('private Page Studio management deployment configuration', () => {
     expect(config.routes).toEqual([])
     expect(config.route).toBeUndefined()
     expect(config.triggers).toEqual({ crons: [] })
-    expect(config.vars).toEqual({ PAGE_STUDIO_RELEASE_ENVIRONMENT: environment,
+    const { MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: destinationPolicy, MANAGED_TRANSFER_EXECUTION_POLICY: sourcePolicy, ...vars } = config.vars
+    expect(environment === 'production' ? JSON.parse(destinationPolicy).kind : destinationPolicy).toBe(environment === 'production' ? 'managed-draft-import' : undefined)
+    expect(environment === 'production' ? JSON.parse(sourcePolicy).kind : sourcePolicy).toBe(environment === 'production' ? 'managed-draft-transfer' : undefined)
+    expect(vars).toEqual({ PAGE_STUDIO_RELEASE_ENVIRONMENT: environment,
       ...(environment === 'production'
         ? {
             PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+            PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST: '2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83',
+            PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST: '012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a',
             PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID: 'a5b299b3ad15c1b5b895dc66f9357b17',
             PAGE_STUDIO_CLOUDFLARE_ZONE_ID: '8e38cbf3910d291dd218710296661073',
             PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET: 'sites.xeroflow.io',

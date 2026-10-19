@@ -1,6 +1,6 @@
 # Customer CMS and Studio — current checklist
 
-Last updated: 17 October 2026. Start here after an interruption.
+Last updated: 19 October 2026. Start here after an interruption.
 Current upgrade: [managed transfer execution](2026-10-16-managed-transfer-execution.md).
 Earlier release: [completed release and remaining activation](2026-10-08-page-studio-release-and-activation.md).
 Latest bounded CMS rollout: [Fantasy Limo runtime and activation receipt](2026-10-10-fantasy-cms-runtime-release.md).
@@ -11,6 +11,29 @@ entire platform or hosted rollout complete. Detailed decisions and acceptance:
 [Fantasy Limo demo](2026-10-01-fantasy-limo-demo.md),
 [standalone style guide](../design/standalone-cms-style-guide.md),
 [Vehicle Marketplace email-builder reference](2026-10-01-email-builder-reference.md).
+
+## Current private transport checkpoint — 19 October 2026
+
+The management service now has a private `managedTransferPreparation` entry point
+for source review/reservation, resources, source execution/fencing, destination
+execution/catalogue and Forms history. It reuses original native owner/operator
+checks and explicit status/start/resume/verify actions. No public route or
+automatic transfer chain is added. See the
+[runtime policy and rollout order](../page-studio/2026-10-19-managed-transfer-runtime-policy.md).
+
+Local verification: 91 focused transport/configuration/deployment tests and all
+384 real PostgreSQL transfer-authority tests pass, including status without
+writes, original-session revocation and complete Forms-history preparation through
+the service wrapper. Strict Worker types, scoped lint and production dry run pass;
+fresh-context review found no actionable issues.
+
+The previous Dashboard CI39234976584 passed production build and dedicated
+PostgreSQL checks but failed one stale configuration-inventory expectation. This
+increment fixes that expectation; its replacement full CI must pass before release.
+Studio b08d3a9 passed Linux CI; Windows remained pending at this checkpoint.
+Neither this change nor the prepared configuration is a production deployment.
+Authenticated operator consent handoff, hosted transfer/two-account acceptance,
+compatible service rollout and customer/Pi activation remain outstanding.
 
 ## Active upgrade — 16 October 2026
 

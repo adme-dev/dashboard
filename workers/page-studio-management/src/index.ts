@@ -1,3 +1,4 @@
+import { handleManagedTransferPreparation } from './managedTransferPreparation'
 import { handleCompletedManagedTransferManagement, handleManagedTransferFinalization } from './completedManagedTransferManagement'
 import { handleManagedTransferSourceRetentionManagement } from './managedTransferSourceRetentionManagement'
 import { handleManagedTransferDestinationAuthoringManagement } from './managedTransferDestinationAuthoringManagement'
@@ -50,6 +51,10 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
 
   async managedTransferCopyGraphExecution(input: unknown) {
     return handleManagedTransferCopyExecutionManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async managedTransferPreparation(input: unknown) {
+    return handleManagedTransferPreparation(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }
 
   async managedTransferCopyGraph(input: unknown) {

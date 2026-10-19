@@ -32,11 +32,28 @@ were independently read back and hashed. No existing tenant is globally repinned
 5. Perform explicit transfer acceptance with the original owner/operator
    authority; verify retained published releases and unchanged domain routing.
 
-The source preparation owner separately needs `managed-draft-transfer` with
-the staging predecessor `6cb34fd939e71028567270190fb6d02c59011b2cdc1c4b0497effb3f702367f5`.
-Do not put that policy in the management Worker merely because a finalization
-adapter forwards its name: retained finalization does not prepare source execution.
-The source preparation operator transport remains a separate rollout dependency.
+The private `managedTransferPreparation` service-binding RPC now owns the early
+native phases. It declares `managed-draft-transfer` with staging predecessor
+`6cb34fd939e71028567270190fb6d02c59011b2cdc1c4b0497effb3f702367f5` and the
+same successor as the destination policy. Resource preparation uses the existing
+production bootstrap runtime and schema
+`012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a`.
+The deployment validator checks the shared successor and bootstrap consistency.
+
+The RPC accepts `expectedEnvironment: "production"` and an explicit phase:
+`review`, `reserve`, `resources`, `source-execution`, `source-drafts`,
+`destination-execution`, `destination-catalogue`, or `forms-history`.
+Review requires the original native owner/operator authority. Reservation also
+requires an operation UUID and reviewed source digest. Later phases accept only
+that operation UUID, immutable intent digest and `status`, `start`, `resume` or
+`verify` action (`source-drafts` has no verify action). Every native coordinator
+revalidates original authority, retained requests and source state.
+
+Responses expose only bounded progress, source-review metadata or immutable
+reservation identity. Failures retain safe status codes without provider/SQL
+payloads. There is no HTTP route, automatic phase chaining or uncertain-write
+retry. The entry point is not a customer launch screen: the authenticated operator
+consent handoff and hosted end-to-end acceptance remain rollout dependencies.
 
 The deployment validator continues to reject staging use, a different account or
 namespace, unknown fields and an unchanged runtime. Pi admission and customer
