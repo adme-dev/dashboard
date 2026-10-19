@@ -25,12 +25,14 @@ uploaded to its private immutable key and independently downloaded and hashed.
 Production migrations 0014–0018 preserve all original registry rows, schema,
 ownership and routing. No tenant runtime was globally repinned.
 
-The guarded Pages release CI39318355504 failed twice at one Miniflare HTTP
-transport check, before upload. The HTTP-ingress harness fix is locally verified
-and awaiting Linux CI. Pages remains on its preceding deployment. Hosted
-transfer/operator consent, two-account acceptance and customer/Pi activation
-remain outstanding. Production Pi readback still shows
-disabled admission and an empty canary list. See the
+The HTTP-ingress harness fix merged in PR #667 as `36d5981fd`. Its exact-tree
+PR CI, exact-main CI and guarded release CI39332068668 passed. Pages deployment
+`08f4bb08-2f0b-4eaf-8ef9-f9f96497e265` serves that exact commit. Provider readback
+confirms preserved bindings/settings. Post-release checks passed for the four-site
+customer dashboard, all four previews, Fantasea editor launch and agency QR Codes.
+Hosted transfer/operator consent, two-account acceptance and customer/Pi
+activation remain outstanding. Production Pi readback still shows disabled
+admission and an empty canary list. See the
 [rollout receipt](../page-studio/2026-10-20-managed-transfer-rollout.md) before
 continuing; do not repeat completed deployments or reuse the old drift baseline
 as if its deployment IDs were still current.
