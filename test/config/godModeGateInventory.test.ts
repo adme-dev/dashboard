@@ -265,11 +265,14 @@ describe('God mode gate inventory', () => {
     // native customer owner. This staff role check is an identity boundary,
     // never an application-governance bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/managedTransferAuthority.ts\tAND staff.is_active=TRUE AND staff.user_role IN (\'owner\',\'admin\') AND staff.custom_role_id IS NULL\tidentity_tenant_hard_boundary')
-    expect(inventory.rows).toHaveLength(1601)
+    // The production Forms switch adds a lexical feature-flag row. This does not
+    // register a bypass; the handler still requires its flag and native scope.
+    expect(inventory.rows).toContain('server/utils/pageStudio/customerFormsHttp.ts\t&& (env.PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED ?? process.env.PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED) === \'true\'))\tapplication_governance_bypass')
+    expect(inventory.rows).toHaveLength(1602)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 126,
       provider_infrastructure_availability: 224,
-      application_governance_bypass: 1624,
+      application_governance_bypass: 1625,
       ordinary_user_behavior: 192,
       unrelated_configuration: 434
     })
@@ -286,7 +289,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('fcee009eb2e82368c8b790f9f7496dd5b3ee7e6e146ca1a6d4081a115adf28de')
+    expect(inventory.digest).toBe('0e723a700b1208cdfefd68b2ee5743e1fb9fe0a71a5ec90dcd71e55cf8acee0c')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
