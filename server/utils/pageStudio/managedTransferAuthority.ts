@@ -1,4 +1,5 @@
 import { createError } from 'h3'
+import { requireCustomerPlanOperator } from './customerPlanGrants'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { collectionCanonical, collectionDigest } from '~~/shared/pageStudio/collectionApi'
@@ -57,12 +58,13 @@ export async function withManagedTransferAuthority<T>(
       const check = async () => {
         // Operator then native owner dependencies, then site. NOWAIT avoids
         // inversions with logout, plan approval and existing editor transactions.
+        await requireCustomerPlanOperator(db, operator.actorId)
         const operators = (await db.query<OperatorRow>(`
           SELECT login.issued_at,login.expires_at FROM page_studio_login_sessions login
           JOIN team_members staff ON staff.id::text=login.user_id
           WHERE login.role='agency' AND login.token_hash=$1 AND staff.id=$2
             AND login.revoked_at IS NULL AND login.issued_at<=clock_timestamp() AND login.expires_at>clock_timestamp()
-            AND staff.is_active=TRUE AND staff.user_role IN ('owner','admin') AND staff.custom_role_id IS NULL
+            AND staff.is_active=TRUE AND staff.user_role IN ('owner','admin')
             AND (staff.sessions_invalidated_at IS NULL OR login.issued_at>staff.sessions_invalidated_at)
           FOR SHARE OF login,staff NOWAIT`, [operator.loginSessionHash, operator.actorId])).rows
         if (operators.length !== 1) throw denied()

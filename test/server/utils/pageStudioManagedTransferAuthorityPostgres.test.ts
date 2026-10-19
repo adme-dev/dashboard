@@ -51,7 +51,7 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
     await db.query(`CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN);
       CREATE TABLE client_users(id UUID PRIMARY KEY,client_id UUID,status TEXT,role TEXT);
       CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN,user_role TEXT,custom_role_id UUID,sessions_invalidated_at TIMESTAMPTZ);
-      CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT);
+      CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));
       CREATE TABLE page_studio_sessions(nonce TEXT,role TEXT,revoked_at TIMESTAMPTZ);
       CREATE TABLE transfer_effects(value TEXT);`)
@@ -144,10 +144,44 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
     { environment: 'production' }, { tenantId: 'forged' }])('refuses substituted or caller-selected authority: %j', async (changes) => {
     await expect(transfer(changes)).rejects.toMatchObject({ statusCode: 403 })
   })
+  it.each(['owner', 'admin'])('accepts a normal assigned system %s role', async (role) => {
+    const roleId = randomUUID()
+    await db.query('INSERT INTO custom_roles(id,slug,is_system) VALUES($1,$2,TRUE)', [roleId, role])
+    await db.query('UPDATE team_members SET user_role=$1,custom_role_id=$2 WHERE id=$3', [role, roleId, actorId])
+    await expect(transfer()).resolves.toBeDefined()
+  })
+  it.each([{ slug: 'owner', system: false }, { slug: 'admin', system: true }, { slug: 'member', system: true }])(
+    'rejects a custom or mismatched assigned role: %j', async ({ slug, system }) => {
+      const roleId = randomUUID()
+      await db.query('INSERT INTO custom_roles(id,slug,is_system) VALUES($1,$2,$3)', [roleId, slug, system])
+      await db.query('UPDATE team_members SET custom_role_id=$1 WHERE id=$2', [roleId, actorId])
+      await expect(transfer()).rejects.toMatchObject({ statusCode: 403 })
+    })
   it('allows a current built-in platform admin', async () => {
     await db.query('UPDATE team_members SET user_role=\'admin\'')
     await expect(transfer()).resolves.toMatchObject({ operatorId: actorId })
   })
+  it('refuses a concurrently changing assigned system role without waiting', async () => {
+    const roleId = randomUUID()
+    await db.query('INSERT INTO custom_roles(id,slug,is_system) VALUES($1,\'owner\',TRUE)', [roleId])
+    await db.query('UPDATE team_members SET custom_role_id=$1 WHERE id=$2', [roleId, actorId])
+    await db.query('BEGIN')
+    try {
+      await db.query('SELECT id FROM custom_roles WHERE id=$1 FOR UPDATE', [roleId])
+      await expect(transfer()).rejects.toMatchObject({ statusCode: 503 })
+    } finally { await db.query('ROLLBACK') }
+  })
+  it.each(['is_system=FALSE', 'slug=\'member\''])(
+    'rolls back effects if the assigned system role changes: %s', async (change) => {
+      const roleId = randomUUID()
+      await db.query('INSERT INTO custom_roles(id,slug,is_system) VALUES($1,\'owner\',TRUE)', [roleId])
+      await db.query('UPDATE team_members SET custom_role_id=$1 WHERE id=$2', [roleId, actorId])
+      await expect(transfer({}, async (tx) => {
+        await tx.query('INSERT INTO transfer_effects VALUES(\'must roll back\')')
+        await tx.query(`UPDATE custom_roles SET ${change} WHERE id=$1`, [roleId])
+      })).rejects.toMatchObject({ statusCode: 403 })
+      expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
+    })
   it('does not silently renew a revoked owner session with a new login', async () => {
     await db.query(`INSERT INTO page_studio_customer_sessions(token_hash,account_id,expires_at)
       SELECT $1,account_id,expires_at FROM page_studio_customer_sessions`, ['b'.repeat(64)])
