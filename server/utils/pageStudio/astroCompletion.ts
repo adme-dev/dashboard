@@ -1,12 +1,12 @@
 import { verifyAstroCompilerReleaseReceipt } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
 import { isCurrentAstroSource, type reserveAstroReleaseBuild } from './astroBuilds'
 import { PageStudioBuildError, readApprovedBuildAuthority } from './builds'
-import { withPageStudioPublishAuthority, type PageStudioPublishPrincipal } from './publishAuthority'
+import { withAstroPublishAuthority, astroPublisherActor, type AstroPublishPrincipal } from './astroPublishAuthority'
 import type { PageStudioBuildPointer } from './publishing'
 import type { PageStudioReleaseMetadata } from './releaseMetadata'
 
 type Reservation = Awaited<ReturnType<typeof reserveAstroReleaseBuild>>
-type AuthorityDependencies = NonNullable<Parameters<typeof withPageStudioPublishAuthority>[3]>
+type AuthorityDependencies = NonNullable<Parameters<typeof withAstroPublishAuthority>[3]>
 interface RetainedRow {
   id: string
   build_identity: unknown
@@ -27,7 +27,7 @@ const conflict = () => new PageStudioBuildError('BUILD_CONFLICT', 409, 'The reta
 export async function completeAstroReleaseBuild(input: {
   reservation: Reservation
   receipt: unknown
-  principal: PageStudioPublishPrincipal
+  principal: AstroPublishPrincipal
   policyDigest: string
   releaseMetadata?: PageStudioReleaseMetadata
 }, dependencies: AuthorityDependencies & {
@@ -56,7 +56,7 @@ export async function completeAstroReleaseBuild(input: {
   // Both values have passed the same shared schema, so key order is normalized.
   if (JSON.stringify(verifiedReceipt) !== JSON.stringify(receipt)) throw invalid()
 
-  return withPageStudioPublishAuthority(scope, principal, async (db) => {
+  return withAstroPublishAuthority(scope, principal, async (db) => {
     const authority = await readApprovedBuildAuthority(db, { tenantId: scope.tenantId, siteId: scope.siteId, versionId: source.versionId })
     if (authority.client_id !== scope.clientId || authority.digest !== source.versionDigest || authority.approval_id !== reservation.approvalId) {
       throw new PageStudioBuildError('BUILD_NOT_APPROVED', 422, 'Page Studio approval changed during the Astro build')
@@ -88,10 +88,11 @@ export async function completeAstroReleaseBuild(input: {
       WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4`,
     [scope.tenantId, scope.clientId, scope.siteId, receipt.buildId, receipt.artifactPrefix, receipt.manifestKey,
       receipt.manifestDigest, receipt.validationKey, JSON.stringify(receipt), releaseMetadata])
+    const actor = astroPublisherActor(principal)
     await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,
-      resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,'agency','build.succeeded','build',$5,$6,$7::jsonb)`,
-    [scope.tenantId, scope.clientId, scope.siteId, principal.actorId, receipt.buildId, `build:succeeded:${receipt.buildId}`,
-      JSON.stringify({ approvalId: authority.approval_id, versionDigest: authority.digest, renderer: 'astro', identityDigest: reservation.identityDigest })])
+      resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,$8,'build.succeeded','build',$5,$6,$7::jsonb)`,
+    [scope.tenantId, scope.clientId, scope.siteId, actor.id, receipt.buildId, `build:succeeded:${receipt.buildId}`,
+      JSON.stringify({ approvalId: authority.approval_id, versionDigest: authority.digest, renderer: 'astro', identityDigest: reservation.identityDigest }), actor.role])
     return pointer
   }, dependencies)
 }

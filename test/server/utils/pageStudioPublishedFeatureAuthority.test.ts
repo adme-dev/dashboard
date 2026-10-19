@@ -3,9 +3,8 @@ import { readPublishedFeatureSnapshot, withPublishedFeatureAuthority, withPublis
 import { contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
 import golden from '../../fixtures/pageStudioCmsGraph.json'
 
-const mocks = vi.hoisted(() => ({ context: vi.fn(), sole: vi.fn() }))
-vi.mock('~~/server/utils/pageStudio/cmsVisibility', async original => ({ ...await original<object>(), lockCmsContext: mocks.context }))
-vi.mock('~~/server/utils/pageStudio/cmsGraphCoordinator', () => ({ assertSoleCmsAuthoringScope: mocks.sole }))
+const mocks = vi.hoisted(() => ({ context: vi.fn() }))
+vi.mock('~~/server/utils/pageStudio/publishedCmsContext', () => ({ lockPublishedCmsContext: mocks.context }))
 const request = { hostname: 'published.example.test', releaseId: '30000000-0000-4000-8000-000000000003', buildId: 'build_test', versionDigest: 'a'.repeat(64), manifestDigest: 'b'.repeat(64), sealDigest: 'c'.repeat(64), pageRoute: '/' }
 const scope = golden.base.scope
 let rows: Record<string, Record<string, unknown>>, sql: string[]

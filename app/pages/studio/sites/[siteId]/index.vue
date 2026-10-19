@@ -256,6 +256,7 @@ async function openStudio() {
             />
           </template>
           <template v-else-if="section === 'domains'">
+            <PageStudioCustomerLaunchStatus :key="siteId" :site-id="siteId" />
             <PageStudioDomainsWorkspace :key="siteId" :site-id="siteId" audience="portal" />
           </template>
           <template v-else-if="section === 'enquiries'">

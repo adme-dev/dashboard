@@ -11,7 +11,7 @@ import {
   loadPageStudioCheckpoint,
   type PageStudioCheckpointBucket
 } from '~~/shared/pageStudio/checkpointReader'
-import type { CmsAdoptionGraphReaders, CmsInventoryReaders } from './cmsAdoption'
+import type { CmsAdoptionGraphReaders, CmsInventoryReaders } from './adoption'
 
 /** Actual private binding/R2 adapters. These return bytes, never approval. */
 export function createCmsAdoptionStorage(

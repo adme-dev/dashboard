@@ -1,17 +1,9 @@
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 import { z } from 'zod'
 import { queryRows, transaction } from '~~/server/utils/db'
 import { createPageStudioSetupProposal } from '~~/server/utils/pageStudio/setupProposal'
 
-export interface PageStudioQueryClient {
-  query<T = Record<string, unknown>>(
-    sql: string,
-    params?: unknown[]
-  ): Promise<{ rows: T[] }>
-}
-
-export type RunPageStudioTransaction = <T>(
-  callback: (db: PageStudioQueryClient) => Promise<T>
-) => Promise<T>
+export type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 
 export class PageStudioSiteError extends Error {
   constructor(

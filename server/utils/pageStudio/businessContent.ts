@@ -2,7 +2,7 @@ import { CmsConsumerError, createCmsConsumerService, type CmsConsumerDependencie
 import { z } from 'zod'
 import { queryOneFresh } from '~~/server/utils/db'
 import { pageStudioContentAuthoritySql } from './contentAuthoritySql'
-import type { PageStudioLoginSession } from './loginSessions'
+import type { PageStudioLoginSession } from '~~/shared/pageStudio/controlTypes'
 import {
   PageStudioBusinessContentSchema,
   PageStudioContentEditSchema,

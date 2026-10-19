@@ -1,12 +1,14 @@
 import { z } from 'zod'
+import { lockPublishedSiteOwner } from './publishedSiteOwner'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { PageStudioContentScopeSchema } from '~~/shared/pageStudio/businessContent'
 import { CmsStorageTargetSchema, contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
 import { PageStudioHostnameSchema } from './delivery'
 import { requireRuntimeTarget, runtimeTargetPolicy } from './runtimeTarget'
 import { PageStudioBusinessContentError } from './businessContent'
-import { cmsEqual, lockCmsContext } from './cmsVisibility'
-import { assertSoleCmsAuthoringScope, type CmsGraphDependencies } from './cmsGraphCoordinator'
+import { cmsEqual } from './cmsVisibility'
+import { lockPublishedCmsContext, type PublishedCmsContext } from './publishedCmsContext'
+import type { CmsGraphDependencies } from './cmsGraphCoordinator'
 import { FeatureSealMarkerSchema } from './releaseFeatureBuild'
 import type { PageStudioControlQueryClient } from './controlStore'
 
@@ -33,7 +35,7 @@ export interface PublishedFeatureSnapshot {
   release: { hostname: string, releaseId: string, buildId: string, versionDigest: string, manifestDigest: string, sealDigest: string, pointerVersion: number, activationId: string }
   contentScope: z.infer<typeof PageStudioContentScopeSchema>
   seal: z.infer<typeof sealIdentity>
-  context: Awaited<ReturnType<typeof lockCmsContext>>
+  context: PublishedCmsContext
 }
 async function one(db: PageStudioControlQueryClient, sql: string, params: unknown[]) {
   const rows = (await db.query<Record<string, unknown>>(sql, params)).rows
@@ -62,13 +64,12 @@ export async function lockPublishedFeatureSite(db: PageStudioControlQueryClient,
     (effective_from <= clock_timestamp() AND (effective_until IS NULL OR effective_until > clock_timestamp())) AS effective,
     (active_site_limit>0 AND (SELECT count(*) FROM page_studio_sites counted WHERE counted.tenant_id=$2 AND counted.client_id=$3 AND counted.status<>'archived')<=active_site_limit) AS capacity
     FROM page_studio_entitlements WHERE id=$1 AND tenant_id=$2 AND client_id=$3 FOR SHARE NOWAIT`, [site.entitlement_id, scope.tenantId, scope.clientId])
-  const client = await one(db, 'SELECT id,is_active FROM agency_clients WHERE id=$1 FOR SHARE NOWAIT', [scope.clientId])
+  await lockPublishedSiteOwner(db, scope)
   const packagePolicy = policy.safeParse(entitlement.plan_metadata)
   if (
     !['trial', 'active'].includes(String(entitlement.status))
     || entitlement.effective !== true
     || entitlement.capacity !== true
-    || client.is_active !== true
     || !packagePolicy.success
     || (packagePolicy.data.allowedModules && !packagePolicy.data.allowedModules.includes('business-content'))
   ) throw publishedFeatureDenied()
@@ -131,8 +132,7 @@ async function locked(db: PageStudioControlQueryClient, request: PublishedFeatur
     || activationIdentity.request.buildId !== request.buildId
     || activationIdentity.sealDigest !== request.sealDigest
   ) throw publishedFeatureDenied()
-  await assertSoleCmsAuthoringScope(db, contentScope)
-  const context = await lockCmsContext(db, contentScope)
+  const context = await lockPublishedCmsContext(db, contentScope, identity)
   if (
     context.state.active_generation !== identity.generation
     || context.state.freeze_digest !== identity.freezeDigest

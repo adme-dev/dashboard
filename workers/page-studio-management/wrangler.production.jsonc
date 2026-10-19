@@ -16,10 +16,17 @@
   },
   "vars": {
     "PAGE_STUDIO_RELEASE_ENVIRONMENT": "production",
+    "PAGE_STUDIO_PROVISIONING_ENVIRONMENT": "production",
+    "MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY": "{\"version\":1,\"kind\":\"managed-draft-import\",\"accountId\":\"a5b299b3ad15c1b5b895dc66f9357b17\",\"namespace\":\"xeroflow-page-studio-dispatch-production\",\"from\":{\"compatibilityDate\":\"2026-09-07\",\"digest\":\"2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83\"},\"to\":{\"compatibilityDate\":\"2026-08-18\",\"digest\":\"40aa0efe85f87918c569b8388a3403af51ee8c33d741c56eeb956a702ab7105d\"}}",
     "PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID": "a5b299b3ad15c1b5b895dc66f9357b17",
     "PAGE_STUDIO_CLOUDFLARE_ZONE_ID": "8e38cbf3910d291dd218710296661073",
     "PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET": "sites.xeroflow.io",
-    "PAGE_STUDIO_DOMAIN_IDENTITY_MODE": "standard"
+    "PAGE_STUDIO_DOMAIN_IDENTITY_MODE": "standard",
+    "PAGE_STUDIO_CMS_STAGING_ACTION_RUNTIME_DIGEST": "c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e",
+    "PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT": "placed-fetch",
+    "MANAGED_TRANSFER_EXECUTION_POLICY": "{\"version\":1,\"kind\":\"managed-draft-transfer\",\"accountId\":\"a5b299b3ad15c1b5b895dc66f9357b17\",\"namespace\":\"xeroflow-page-studio-dispatch-staging\",\"from\":{\"compatibilityDate\":\"2026-08-18\",\"digest\":\"6cb34fd939e71028567270190fb6d02c59011b2cdc1c4b0497effb3f702367f5\"},\"to\":{\"compatibilityDate\":\"2026-08-18\",\"digest\":\"40aa0efe85f87918c569b8388a3403af51ee8c33d741c56eeb956a702ab7105d\"}}",
+    "PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST": "2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83",
+    "PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a"
   },
   "hyperdrive": [
     {
@@ -34,12 +41,29 @@
     {
       "binding": "PAGE_STUDIO_CHECKPOINTS",
       "bucket_name": "xeroflow-page-studio-checkpoints"
+    },
+    {
+      "binding": "PAGE_STUDIO_CMS_STAGING_CHECKPOINTS",
+      "bucket_name": "xeroflow-page-studio-checkpoints-staging"
     }
   ],
   "services": [
     {
       "binding": "PAGE_STUDIO_CLIENT_STAGING",
       "service": "xeroflow-page-studio-client-staging"
+    },
+    {
+      "binding": "PAGE_STUDIO_CONTENT_ROUTER",
+      "service": "xeroflow-content-router-production"
+    },
+    {
+      "binding": "PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER",
+      "service": "xeroflow-content-router-staging"
+    },
+    {
+      "binding": "PAGE_STUDIO_PROVISIONER",
+      "service": "xeroflow-provisioning-production"
     }
-  ]
+  ],
+  "tsconfig": "tsconfig.json"
 }

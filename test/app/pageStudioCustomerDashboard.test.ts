@@ -17,6 +17,7 @@ async function mount() {
   host = document.createElement('div')
   app = createApp(Dashboard)
   app.component('StudioCustomerShell', { props: ['title', 'description'], template: '<main><h1>{{ title }}</h1><p>{{ description }}</p><slot name="header"/><slot/></main>' })
+  app.component('PageStudioCustomerLaunchStatus', { props: ['siteId', 'audience'], template: '<section data-launch-status :data-site="siteId" :data-audience="audience">Current launch status</section>' })
   app.component('UButton', { props: ['label', 'disabled', 'loading', 'to'], template: '<button :disabled="disabled || loading">{{ label }}</button>' })
   app.component('UAlert', { props: ['title', 'description'], template: '<div role="alert">{{ title }} {{ description }}</div>' })
   app.component('UBadge', { props: ['label'], template: '<span>{{ label }}<slot/></span>' })
@@ -53,8 +54,10 @@ describe('customer website overview', () => {
     })
     await mount()
     expect(host.textContent).toContain('Continue editing your website')
-    expect(host.textContent).toContain('Not published')
-    expect(host.textContent).toContain('Preview verified: pending')
+    expect(host.textContent).not.toContain('Not published')
+    expect(host.textContent).toContain('Studio available: complete')
+    expect(host.textContent).toContain('Website prepared: complete')
+    expect(host.textContent).toContain('Content added: complete')
     expect(mutate).not.toHaveBeenCalled()
     let resolve!: (value: unknown) => void
     mutate.mockImplementationOnce(() => new Promise((done) => {
@@ -71,6 +74,17 @@ describe('customer website overview', () => {
     expect(document.querySelector('form')).toBeNull()
     expect(localStorage.length + sessionStorage.length).toBe(0)
     submit.mockRestore()
+  })
+  it('keeps completed transfer distinct from an editor that has not connected', async () => {
+    read.mockResolvedValue({ ...value, siteId: 'saved-site', state: 'connection-pending', stage: 5,
+      canCreate: false, canRetry: false, canPrepareCms: false, canOpenStudio: false })
+    await mount()
+    expect(host.textContent).toContain('Your website transfer is saved')
+    expect(host.textContent).toContain('Publishing remains a separate step')
+    expect(button('Open Studio')).toBeUndefined()
+    expect(button('Create website preview')).toBeUndefined()
+    expect(host.querySelector('[data-launch-status]')?.getAttribute('data-site')).toBe('saved-site')
+    expect(mutate).not.toHaveBeenCalled()
   })
   it('hides unavailable editing and refuses stale status or a failed launch', async () => {
     read.mockResolvedValue({ ...value, state: 'verification-pending', canCreate: false, canOpenStudio: false })
@@ -164,4 +178,19 @@ describe('customer website overview', () => {
     await flush()
     expect(navigate).toHaveBeenCalledWith('/studio/signup', { replace: true })
   })
+})
+
+it('shows the native launch panel only for a current bound website and removes it on refresh failure', async () => {
+  read.mockResolvedValue({ ...value, siteId: 'native-site', canCreate: false })
+  await mount()
+  expect(host.querySelector('[data-launch-status]')?.getAttribute('data-site')).toBe('native-site')
+  expect(host.querySelector('[data-launch-status]')?.getAttribute('data-audience')).toBe('customer')
+  read.mockRejectedValueOnce(new Error('session expired'))
+  button('Refresh status')!.click()
+  await flush()
+  expect(host.querySelector('[data-launch-status]')).toBeNull()
+})
+it('does not infer a website from forms availability or an incomplete setup', async () => {
+  await mount()
+  expect(host.querySelector('[data-launch-status]')).toBeNull()
 })

@@ -5,8 +5,9 @@ import { CmsStorageTargetSchema, contentScopeKey } from '~~/shared/pageStudio/cm
 import { verifyNativeAstroRuntimeRelease } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
 import { PageStudioHostnameSchema } from './delivery'
 import { PageStudioBusinessContentError } from './businessContent'
-import { cmsEqual, lockCmsContext } from './cmsVisibility'
-import { assertSoleCmsAuthoringScope, type CmsGraphDependencies } from './cmsGraphCoordinator'
+import { cmsEqual } from './cmsVisibility'
+import { lockPublishedCmsContext } from './publishedCmsContext'
+import type { CmsGraphDependencies } from './cmsGraphCoordinator'
 import { lockPublishedFeatureSite, publishedFeatureDenied } from './publishedFeatureAuthority'
 import type { PageStudioControlQueryClient } from './controlStore'
 
@@ -61,8 +62,7 @@ async function locked(db: PageStudioControlQueryClient, request: PublishedRuntim
     || activated.request.environment !== releaseEnvironment || activated.request.hostname !== request.hostname
     || identity.runtimeDigest !== env.PAGE_STUDIO_ACTION_RUNTIME_DIGEST
     || identity.runtimeDigest !== 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e') throw publishedFeatureDenied()
-  await assertSoleCmsAuthoringScope(db, contentScope)
-  const context = await lockCmsContext(db, contentScope)
+  const context = await lockPublishedCmsContext(db, contentScope, identity)
   if (context.state.active_generation !== identity.generation || context.state.freeze_digest !== identity.freezeDigest
     || !cmsEqual(context.state.target, identity.target)) throw publishedFeatureDenied()
   const { pageRoute: _pageRoute, ...publicRelease } = request

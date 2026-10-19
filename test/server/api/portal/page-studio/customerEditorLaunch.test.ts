@@ -41,14 +41,37 @@ describe('native customer editor launch HTTP', () => {
   })
   it('projects availability without issuing a ticket and launches only on explicit POST', async () => {
     const overview = await call({}, {}, '/dashboard', 'GET')
-    expect(await overview.json()).toMatchObject({ state: 'verification-pending', canOpenStudio: true })
+    expect(await overview.json()).toMatchObject({ state: 'editor-ready', stage: 5, canOpenStudio: true, canCreate: false, canRetry: false, canPrepareCms: false })
     expect(mocks.launch).not.toHaveBeenCalled()
     const result = await call()
     expect(result.status).toBe(200)
     expect(result.headers.get('cache-control')).toBe('private, no-store')
     expect(result.headers.get('referrer-policy')).toBe('no-referrer')
     expect(await result.json()).toMatchObject({ token: 'b'.repeat(64), editorOrigin: 'https://editor.example.test' })
-    expect(mocks.launch).toHaveBeenCalledWith('a'.repeat(64), expect.objectContaining({ configuration: { enabled: true, dashboardOrigin: 'https://customers.example.test', editorOrigin: 'https://editor.example.test' } }))
+    expect(mocks.launch).toHaveBeenCalledWith('a'.repeat(64), expect.objectContaining({ configuration: { enabled: true, environment: 'staging', dashboardOrigin: 'https://customers.example.test', editorOrigin: 'https://editor.example.test' } }))
+  })
+  it.each(['unavailable', 'needs-attention', 'recovery-required'])('replaces stale preview status %s only after production content verification', async (state) => {
+    config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'production'
+    config.PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED = 'true'
+    mocks.dashboard.mockResolvedValue({ state, stage: 0, siteId: 'saved-site', canCreate: false, canRetry: true,
+      recovery: { expectedRecoveryId: null, expectedJobDigest: 'a'.repeat(64) } })
+    const result = await (await call({}, {}, '/dashboard', 'GET')).json()
+    expect(result).toMatchObject({ state: 'editor-ready', stage: 5, siteId: 'saved-site', canOpenStudio: true,
+      canCreate: false, canRetry: false, canPrepareCms: false })
+    expect(result).not.toHaveProperty('recovery')
+    expect(mocks.launch).not.toHaveBeenCalled()
+    mocks.ready.mockResolvedValue(false)
+    expect(await (await call({}, {}, '/dashboard', 'GET')).json()).toMatchObject({ state, stage: 0, canOpenStudio: false })
+  })
+  it('requires separate production opt-in and passes the same environment to storage and handoff', async () => {
+    config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'production'
+    expect((await call()).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED = 'true'
+    expect((await call()).status).toBe(200)
+    expect(mocks.launch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      configuration: expect.objectContaining({ environment: 'production' }),
+      env: expect.objectContaining({ PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' })
+    }))
   })
   it('rejects wrong origin, portal-only cookies, caller scope and GET', async () => {
     expect((await call({}, { origin: 'https://foreign.test' })).status).toBe(403)

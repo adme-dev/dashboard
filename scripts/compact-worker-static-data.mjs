@@ -18,11 +18,11 @@ export function compactSsrMarkupSource(source) {
  * parameters and escape sequences. Dynamic/tagged templates are never encoded.
  * Medium static statements also benefit when their combined savings exceed the
  * decoder overhead; the existing whole-module size check remains authoritative. */
-export function compactSqlSource(source) {
-  return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value), 256)
+export function compactSqlSource(source, { decoderSpecifier } = {}) {
+  return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value), 256, true, decoderSpecifier)
 }
 
-function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LITERAL_CHARACTERS) {
+function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LITERAL_CHARACTERS, includeConstants = false, decoderSpecifier) {
   const unchanged = { code: source, literals: 0 }
   if (source.includes(marker)) return unchanged
   const file = ts.createSourceFile('ssr.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
@@ -36,11 +36,18 @@ function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LI
       && ((ts.isCallExpression(node.parent)
         && node.parent.expression.kind !== ts.SyntaxKind.ImportKeyword
         && node.parent.arguments.includes(node))
-      || (ts.isPropertyAssignment(node.parent) && node.parent.initializer === node))
-    && node.text.length >= minimumCharacters
-    && accepts(node.text)
+      || (ts.isPropertyAssignment(node.parent) && node.parent.initializer === node)
+      // SQL constants are immutable string data too. Keep the declaration and
+      // initializer in place; only replace the complete literal with its exact
+      // decoded value. Never fold expressions, tagged templates or mutable vars.
+      || (includeConstants && ts.isVariableDeclaration(node.parent)
+        && node.parent.initializer === node
+        && ts.isVariableDeclarationList(node.parent.parent)
+        && (node.parent.parent.flags & ts.NodeFlags.Const) !== 0))
+      && node.text.length >= minimumCharacters
+      && accepts(node.text)
     // UTF-8 replaces lone surrogates, so do not encode those JS strings.
-    && node.text.isWellFormed()) {
+      && node.text.isWellFormed()) {
       const start = node.getStart(file), end = node.getEnd()
       const encoded = compress(node.text)
       if (encoded.length + 32 < Buffer.byteLength(source.slice(start, end))) {
@@ -63,19 +70,31 @@ function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LI
   }
   // Cache only immutable, compile-time strings. No request data enters this cache.
   // Decode lazily once per string so cold routes need no up-front decompression.
-  const code = `// ${marker}
-import { brotliDecompressSync as ${prefix}Inflate } from 'node:zlib';
+  const decoder = decoderSpecifier
+    ? `import { createStaticDecoder as ${prefix}Create } from ${JSON.stringify(decoderSpecifier)};
+const ${prefix} = ${prefix}Create(${JSON.stringify(values)});`
+    : `import { brotliDecompressSync as ${prefix}Inflate } from 'node:zlib';
 import { Buffer as ${prefix}Buffer } from 'node:buffer';
 const ${prefix}Data = ${JSON.stringify(values)};
 const ${prefix}Cache = [];
 function ${prefix}(index) {
   return ${prefix}Cache[index] ??= ${prefix}Inflate(${prefix}Buffer.from(${prefix}Data[index], 'base64')).toString('utf8');
-}
-${body}`
+}`
+  const code = `// ${marker}\n${decoder}\n${body}`
   return Buffer.byteLength(code) < Buffer.byteLength(source)
     ? { code, literals: replacements.length }
     : unchanged
 }
+
+// One implementation, with a separate lazy cache per calling module. Only
+// immutable build-time strings reach it; query arguments never enter the cache.
+const SHARED_STATIC_DECODER = `import { brotliDecompressSync } from 'node:zlib';
+import { Buffer } from 'node:buffer';
+export function createStaticDecoder(data) {
+  const cache = [];
+  return index => cache[index] ??= brotliDecompressSync(Buffer.from(data[index], 'base64')).toString('utf8');
+}
+`
 
 export async function compactSsrMarkupDirectory(workerDirectory) {
   const directory = path.join(workerDirectory, 'chunks', 'build')
@@ -147,7 +166,8 @@ export async function compactNitroSqlModule(workerDirectory) {
  * before minification, without scanning client chunks or source maps. */
 export async function compactRouteSqlDirectory(workerDirectory) {
   const result = { changedFiles: 0, literals: 0, savedBytes: 0 }
-  const visit = async directory => {
+  const changes = []
+  const visit = async (directory) => {
     let entries
     try {
       entries = await readdir(directory, { withFileTypes: true })
@@ -162,12 +182,40 @@ export async function compactRouteSqlDirectory(workerDirectory) {
       const source = await readFile(file, 'utf8')
       const compacted = compactSqlSource(source)
       if (compacted.code === source) continue
-      await writeFile(file, compacted.code)
-      result.changedFiles++
-      result.literals += compacted.literals
-      result.savedBytes += Buffer.byteLength(source) - Buffer.byteLength(compacted.code)
+      changes.push({ file, source, compacted })
     }
   }
   await visit(path.join(workerDirectory, 'chunks', 'routes'))
+  if (!changes.length) return result
+
+  const decoderFile = path.join(workerDirectory, 'chunks', 'static-data-decoder.mjs')
+  let decoderExists = false
+  try {
+    if (await readFile(decoderFile, 'utf8') !== SHARED_STATIC_DECODER) {
+      throw new Error('[worker-static-data] Unexpected shared decoder module')
+    }
+    decoderExists = true
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+  const shared = changes.map(({ file, source }) => {
+    const relative = path.relative(path.dirname(file), decoderFile).split(path.sep).join('/')
+    return compactSqlSource(source, { decoderSpecifier: relative.startsWith('.') ? relative : `./${relative}` })
+  })
+  const decoderBytes = decoderExists ? 0 : Buffer.byteLength(SHARED_STATIC_DECODER)
+  const inlineBytes = changes.reduce((sum, { compacted }) => sum + Buffer.byteLength(compacted.code), 0)
+  const sharedBytes = shared.reduce((sum, compacted) => sum + Buffer.byteLength(compacted.code), decoderBytes)
+  // Include the complete helper cost. Small builds keep the standalone decoder
+  // when sharing would increase their deployment size.
+  const useShared = sharedBytes < inlineBytes
+  if (useShared && !decoderExists) await writeFile(decoderFile, SHARED_STATIC_DECODER, { flag: 'wx' })
+  for (const [index, { file, source, compacted }] of changes.entries()) {
+    const selected = useShared ? shared[index] : compacted
+    await writeFile(file, selected.code)
+    result.changedFiles++
+    result.literals += selected.literals
+    result.savedBytes += Buffer.byteLength(source) - Buffer.byteLength(selected.code)
+  }
+  if (useShared) result.savedBytes -= decoderBytes
   return result
 }

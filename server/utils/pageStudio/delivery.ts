@@ -1,3 +1,6 @@
+import { decodeProtectedHeader } from 'jose'
+import { CUSTOMER_PREVIEW_TOKEN_TYPE, verifyCustomerPreviewToken } from './customerPreviewToken'
+import { authorizeCustomerPreviewSession } from './customerPreviewSession'
 import type { H3Event } from 'h3'
 import { z } from 'zod'
 import { verifyNativeAstroRuntimeRelease, type AstroCompilerReleaseReceipt } from '~~/shared/pageStudio/generated/builderGraphVerifier.mjs'
@@ -277,6 +280,7 @@ export async function resolvePageStudioReleaseHost(
 }
 
 interface AuthorizePageStudioPreviewDependencies {
+  runTransaction?: NonNullable<Parameters<typeof authorizeCustomerPreviewSession>[2]>['runTransaction']
   currentDate?: Date
   event?: H3Event
   issuer?: string
@@ -318,7 +322,7 @@ async function verifyPreviewClaims(token: string, dependencies: AuthorizePageStu
   // Publisher review grants have only preview capability. Editor sessions keep
   // their existing edit authority; neither grant survives its native login or
   // role/permission/client/entitlement being revoked.
-  const permission = claims.role === 'agency' && claims.capabilities.length === 1
+  const permission: 'PAGE_STUDIO_PUBLISH' | 'PAGE_STUDIO_EDIT' = claims.capabilities.length === 1
     ? 'PAGE_STUDIO_PUBLISH'
     : 'PAGE_STUDIO_EDIT'
 
@@ -336,6 +340,24 @@ export async function authorizePageStudioPreview(
       401,
       'Page Studio preview credential is invalid'
     )
+  }
+  // Untrusted type selects the verifier only; signature, audience, issuer and
+  // exact native claims are verified before accessing its separate grant ledger.
+  let nativeReview = false
+  try {
+    nativeReview = decodeProtectedHeader(parsed.data.token).typ === CUSTOMER_PREVIEW_TOKEN_TYPE
+  } catch { /* Standard verifier rejects malformed tokens. */ }
+  if (nativeReview) {
+    const environment = dependencies.publicKey && dependencies.issuer
+      ? { publicKey: dependencies.publicKey, issuer: dependencies.issuer }
+      : resolvePageStudioPreviewVerificationEnvironment(dependencies.event)
+    let claims
+    try {
+      claims = await verifyCustomerPreviewToken(parsed.data.token, environment.publicKey, environment.issuer, dependencies.currentDate)
+    } catch (error) {
+      throw new PageStudioDeliveryError('PREVIEW_TOKEN_INVALID', 401, 'Page Studio preview credential is invalid', { cause: error })
+    }
+    return authorizeCustomerPreviewSession(claims, parsed.data.hostname, { runTransaction: dependencies.runTransaction })
   }
   const { claims, permission } = await verifyPreviewClaims(parsed.data.token, dependencies)
 
@@ -361,6 +383,7 @@ export async function authorizePageStudioPreview(
        AND login.revoked_at IS NULL AND login.issued_at<=NOW() AND login.expires_at>NOW()
      ${pageStudioAuthorityOwnerJoin(claims.role === 'agency', 'session', 'NOW()', permission)}
      ${pageStudioEditorEntitlementJoin('NOW()')}
+     ${claims.role === 'client' && permission === 'PAGE_STUDIO_PUBLISH' ? 'AND entitlement.custom_domain_limit > 0' : ''}
      JOIN page_studio_release_pointers pointer
        ON pointer.tenant_id = session.tenant_id
       AND pointer.client_id = session.client_id
@@ -478,6 +501,7 @@ export async function authorizePageStudioRuntimeDraftPreview(
        AND login.revoked_at IS NULL AND login.issued_at<=NOW() AND login.expires_at>NOW()
      ${pageStudioAuthorityOwnerJoin(claims.role === 'agency', 'session', 'NOW()', permission)}
      ${pageStudioEditorEntitlementJoin('NOW()')}
+     ${claims.role === 'client' && permission === 'PAGE_STUDIO_PUBLISH' ? 'AND entitlement.custom_domain_limit > 0' : ''}
      JOIN page_studio_checkpoints checkpoint
        ON checkpoint.tenant_id = site.tenant_id
       AND checkpoint.client_id = site.client_id

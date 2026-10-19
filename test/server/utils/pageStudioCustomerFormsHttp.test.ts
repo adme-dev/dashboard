@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createApp, createRouter, eventHandler, toWebHandler } from 'h3'
 import { customerFormsHandler } from '../../../server/utils/pageStudio/customerFormsHttp'
 import { starterEmailTemplate } from '../../../shared/pageStudio/emailTemplates'
-import { createCustomerFormContext, readCustomerFormsWorkspace, readCustomerDefaultWebsite } from '../../../server/utils/pageStudio/customerForms'
+import { createCustomerFormContext, readCustomerFormsWorkspace, readCustomerDefaultWebsite, readCustomerFormsAvailability } from '../../../server/utils/pageStudio/customerForms'
 
 const scope = { tenantId: '10000000-0000-4000-8000-000000000001', clientId: '10000000-0000-4000-8000-000000000002', businessId: '10000000-0000-4000-8000-000000000002', siteId: '10000000-0000-4000-8000-000000000003', environment: 'staging' as const }
 const authority = { scope, workspaceId: 'workspace_one', actor: { kind: 'customer-user' as const, userId: 'native_one', accountId: 'account_one' }, canEdit: true }
@@ -205,4 +205,103 @@ it('native field options cannot use portal cookies or disclose fields without a 
   expect((await handle(new Request(url, { headers: { cookie: 'client_session_token=' + 'b'.repeat(64) } }))).status).toBe(401)
   expect((await http({ ...config, PAGE_STUDIO_CUSTOMER_FORMS_ENABLED: 'false' }, d)(new Request(url))).status).toBe(404)
   expect(d.document).not.toHaveBeenCalled()
+})
+
+describe('explicit production customer Forms', () => {
+  const production = { ...config, PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production', PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED: 'true' }
+  const headers = { cookie: '__Host-studio_customer_session=' + input.sessionToken }
+  it('passes only the configured production scope to current authority', async () => {
+    const d = deps()
+    d.authority.mockResolvedValue({ ...authority, scope: { ...scope, environment: 'production' } })
+    const response = await http(production, d)(new Request(`https://studio.test/sites/${scope.siteId}/workspace`, { headers }))
+    expect(response.status).toBe(200)
+    expect(d.authority.mock.calls.every(([request]) => request.environment === 'production')).toBe(true)
+  })
+  it('discovers and rechecks the production default website without a browser environment override', async () => {
+    const d = deps()
+    const current = { ...authority, scope: { ...scope, environment: 'production' as const } }
+    d.authority.mockResolvedValue(current)
+    const discover = vi.fn().mockResolvedValue(current)
+    d.document.mockResolvedValue({ ...document, studio: { checkpointId: 'checkpoint_one' } } as never)
+    const readFormRecipientsDraft = vi.fn().mockResolvedValue(null)
+    const handle = http({ ...production, PAGE_STUDIO_CONTENT_ROUTER: { readFormRecipientsDraft } }, { ...d, discover })
+    expect((await handle(new Request('https://studio.test/website', { headers }))).status).toBe(200)
+    expect(discover.mock.calls.every(call => call[2] === 'production')).toBe(true)
+    expect(d.authority.mock.calls.every(([request]) => request.environment === 'production')).toBe(true)
+    const available = await handle(new Request('https://studio.test/availability', { headers }))
+    expect(await available.json()).toEqual({ available: true, siteId: scope.siteId })
+    expect(readFormRecipientsDraft).toHaveBeenCalledWith({ scope: current.scope })
+    expect((await handle(new Request('https://studio.test/website?environment=staging', { headers }))).status).toBe(400)
+  })
+  it.each([
+    { PAGE_STUDIO_CUSTOMER_FORMS_ENABLED: 'false' },
+    { PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED: 'false' },
+    { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'preview' }
+  ])('keeps production disabled for %j', async (override) => {
+    const d = deps()
+    const response = await http({ ...production, ...override }, d)(new Request(`https://studio.test/sites/${scope.siteId}/workspace`, { headers }))
+    expect(response.status).toBe(404)
+    expect(d.authority).not.toHaveBeenCalled()
+  })
+  it('withholds workspace data if current production authority is revoked during storage', async () => {
+    const d = deps()
+    d.authority.mockResolvedValue({ ...authority, scope: { ...scope, environment: 'production' } })
+    d.assets.mockImplementation(async () => {
+      d.authority.mockRejectedValue({ statusCode: 403 })
+      return []
+    })
+    const response = await http(production, d)(new Request(`https://studio.test/sites/${scope.siteId}/workspace`, { headers }))
+    expect(response.status).toBe(403)
+  })
+})
+
+it('rejects a production plan or managed-origin replacement during a form workspace read', async () => {
+  const d = deps()
+  d.authority.mockResolvedValue({ ...authority, scope: { ...scope, environment: 'production' }, authoringIdentity: 'original-plan-and-generation' })
+  d.assets.mockImplementation(async () => {
+    d.authority.mockResolvedValue({ ...authority, scope: { ...scope, environment: 'production' }, authoringIdentity: 'replacement-plan-or-generation' })
+    return []
+  })
+  await expect(readCustomerFormsWorkspace(createCustomerFormContext({ ...input, environment: 'production' }, {}, d), d)).rejects.toThrow()
+})
+
+describe('production Forms connection readiness', () => {
+  const production = { ...config, PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production', PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED: 'true' }
+  const headers = { cookie: '__Host-studio_customer_session=' + input.sessionToken }
+  const fixture = () => {
+    const d = deps()
+    const current = { ...authority, scope: { ...scope, environment: 'production' as const }, authoringIdentity: 'plan-and-generation' }
+    d.authority.mockResolvedValue(current)
+    d.document.mockResolvedValue({ ...document, studio: { checkpointId: 'checkpoint_one' } } as never)
+    return { ...d, discover: vi.fn().mockResolvedValue(current) }
+  }
+  it.each(['missing-grant', 'disabled-selector', 'missing-service'])('withholds availability for %s', async (reason) => {
+    const d = fixture()
+    const readFormRecipientsDraft = vi.fn().mockRejectedValue(new Error(reason))
+    const env = reason === 'missing-service' ? production : { ...production, PAGE_STUDIO_CONTENT_ROUTER: { readFormRecipientsDraft } }
+    const response = await http(env, d)(new Request('https://studio.test/availability', { headers }))
+    expect(await response.json()).toEqual({ available: false, siteId: null })
+    if (reason !== 'missing-service') expect(readFormRecipientsDraft).toHaveBeenCalledOnce()
+    expect(d.assets).not.toHaveBeenCalled()
+  })
+  it('withholds availability if plan identity changes while the private Forms read responds', async () => {
+    const d = fixture()
+    const readFormRecipientsDraft = vi.fn(async () => {
+      d.authority.mockResolvedValue({ ...authority, scope: { ...scope, environment: 'production' }, authoringIdentity: 'changed-plan' })
+      return null
+    })
+    const response = await http({ ...production, PAGE_STUDIO_CONTENT_ROUTER: { readFormRecipientsDraft } }, d)(new Request('https://studio.test/availability', { headers }))
+    expect(await response.json()).toEqual({ available: false, siteId: null })
+    expect(readFormRecipientsDraft).toHaveBeenCalledOnce()
+  })
+  it('bounds a stalled production Forms read without returning readiness', async () => {
+    vi.useFakeTimers()
+    try {
+      const d = fixture()
+      const env = { ...production, PAGE_STUDIO_CONTENT_ROUTER: { readFormRecipientsDraft: vi.fn(() => new Promise(() => {})) } }
+      const pending = readCustomerFormsAvailability(input.sessionToken, d, 'production', env).then(() => true, () => false)
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(await pending).toBe(false)
+    } finally { vi.useRealTimers() }
+  })
 })

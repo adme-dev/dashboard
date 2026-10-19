@@ -27,3 +27,13 @@ describe('customer domain visibility and mutation authority', () => {
     await expect(requirePortalDomainAuthority(database(value), input, false)).rejects.toMatchObject({ statusCode: 403 })
   })
 })
+
+it('can inspect without holding locks across remote storage, but cannot unlock mutation authority', async () => {
+  const db = database({ ...row, customDomainLimit: 2 })
+  await requirePortalDomainAuthority(db, input, false, { lock: false })
+  expect(db.query.mock.calls[0]![0]).not.toContain('FOR SHARE')
+  await requirePortalDomainAuthority(db, input, false)
+  expect(db.query.mock.calls[1]![0]).toContain('FOR SHARE')
+  await requirePortalDomainAuthority(db, input, true, { lock: false })
+  expect(db.query.mock.calls[2]![0]).toContain('FOR SHARE')
+})

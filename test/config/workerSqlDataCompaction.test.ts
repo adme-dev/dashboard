@@ -46,6 +46,69 @@ it('leaves a Worker without split server routes unchanged', async () => {
   directories.push(directory)
   expect(await compactRouteSqlDirectory(directory)).toEqual({ changedFiles: 0, literals: 0, savedBytes: 0 })
 })
+
+it('refuses a conflicting generated helper before rewriting any route', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'worker-decoder-collision-'))
+  directories.push(directory)
+  const file = path.join(directory, 'chunks/routes/api/test.mjs')
+  await mkdir(path.dirname(file), { recursive: true })
+  const source = `export const run = db => db.query(${JSON.stringify(sql)})`
+  await writeFile(file, source)
+  await writeFile(path.join(directory, 'chunks/static-data-decoder.mjs'), 'export const existing = true')
+  await expect(compactRouteSqlDirectory(directory)).rejects.toThrow('Unexpected shared decoder module')
+  expect(await readFile(file, 'utf8')).toBe(source)
+})
+
+it('retains an inline decoder when a separate helper would cost more bytes', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'worker-single-sql-'))
+  directories.push(directory)
+  const file = path.join(directory, 'chunks/routes/api/test.mjs')
+  await mkdir(path.dirname(file), { recursive: true })
+  const source = `export const run = db => db.query(${JSON.stringify(sql)})`
+  await writeFile(file, source)
+  const expected = compactSqlSource(source)
+  const result = await compactRouteSqlDirectory(directory)
+  expect(await readFile(file, 'utf8')).toBe(expected.code)
+  expect(result.savedBytes).toBe(Buffer.byteLength(source) - Buffer.byteLength(expected.code))
+  await expect(readFile(path.join(directory, 'chunks/static-data-decoder.mjs'))).rejects.toMatchObject({ code: 'ENOENT' })
+})
+
+it('shares one lazy decoder across route modules and counts its complete deployed size', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'worker-shared-sql-'))
+  directories.push(directory)
+  const routes = ['api/a.get.mjs', 'api/nested/b.post.mjs', 'internal/c.post.mjs']
+  let originalBytes = 0
+  let inlineBytes = 0
+  for (const [index, route] of routes.entries()) {
+    const file = path.join(directory, 'chunks/routes', route)
+    await mkdir(path.dirname(file), { recursive: true })
+    const source = `export const run = (db, args) => db.query(${JSON.stringify(sql + `\n-- route ${index}`)}, args)`
+    originalBytes += Buffer.byteLength(source)
+    inlineBytes += Buffer.byteLength(compactSqlSource(source).code)
+    await writeFile(file, source)
+  }
+  const result = await compactRouteSqlDirectory(directory)
+  const helper = path.join(directory, 'chunks/static-data-decoder.mjs')
+  let actualBytes = Buffer.byteLength(await readFile(helper, 'utf8'))
+  for (const [index, route] of routes.entries()) {
+    const file = path.join(directory, 'chunks/routes', route)
+    actualBytes += Buffer.byteLength(await readFile(file, 'utf8'))
+    const module = await import(pathToFileURL(file).href)
+    const args = ['site-a', 'staging']
+    const seen: string[] = []
+    const db = { query(text: string, values: unknown[]) {
+      expect(values).toBe(args)
+      seen.push(text)
+      return seen.length
+    } }
+    expect(module.run(db, args)).toBe(1)
+    expect(module.run(db, args)).toBe(2)
+    expect(seen).toEqual([sql + `\n-- route ${index}`, sql + `\n-- route ${index}`])
+  }
+  expect(actualBytes).toBeLessThan(inlineBytes)
+  expect(result.savedBytes).toBe(originalBytes - actualBytes)
+  expect(await compactRouteSqlDirectory(directory)).toEqual({ changedFiles: 0, literals: 0, savedBytes: 0 })
+})
 it('preserves exact SQL, parameter identity and order, and caches only static query text', async () => {
   const source = `export async function run(db, args) { return db.query(${JSON.stringify(sql)}, args); }`
   const result = compactSqlSource(source)
@@ -63,6 +126,36 @@ it('preserves exact SQL, parameter identity and order, and caches only static qu
   expect(await module.run(db, args)).toBe(1)
   expect(await module.run(db, args)).toBe(2)
   expect(compactSqlSource(result.code).code).toBe(result.code)
+})
+it('losslessly compacts static SQL constants without moving their initialization or changing exports', async () => {
+  const source = `export const query = ${JSON.stringify(sql)};
+export function run(db, args) {
+  const nested = ${JSON.stringify(sql + '\nAND note = $$Text \' \\n 🚘$$')};
+  return [db.query(query, args), db.query(nested, args)];
+}`
+  const result = compactSqlSource(source)
+  expect(result.literals).toBe(2)
+  expect(Buffer.byteLength(result.code)).toBeLessThan(Buffer.byteLength(source))
+  const module = await import(`data:text/javascript;base64,${Buffer.from(result.code).toString('base64')}`)
+  expect(module.query).toBe(sql)
+  const args = ['customer-a']
+  const seen: string[] = []
+  module.run({ query(text: string, values: unknown[]) {
+    expect(values).toBe(args)
+    seen.push(text)
+  } }, args)
+  expect(seen).toEqual([sql, sql + '\nAND note = $$Text \' \\n 🚘$$'])
+  expect(compactSqlSource(result.code).code).toBe(result.code)
+})
+it('leaves mutable SQL declarations and dynamic or tagged constant initializers alone', () => {
+  const cases = [
+    `export let query = ${JSON.stringify(sql)}`,
+    `export var query = ${JSON.stringify(sql)}`,
+    'export const query = `SELECT ' + 'x'.repeat(1200) + ' FROM ${table}`',
+    'export const query = sql`' + sql.replaceAll('`', '\\`') + '`',
+    `export const query = ${JSON.stringify(sql + '\uD800')}`
+  ]
+  for (const source of cases) expect(compactSqlSource(source)).toEqual({ code: source, literals: 0 })
 })
 it('does not rewrite executable code, templates with interpolation, tags, keys or non-SQL', () => {
   const cases = [

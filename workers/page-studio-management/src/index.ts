@@ -1,3 +1,10 @@
+import { handleManagedTransferPreparation } from './managedTransferPreparation'
+import { handleCompletedManagedTransferManagement, handleManagedTransferFinalization } from './completedManagedTransferManagement'
+import { handleManagedTransferSourceRetentionManagement } from './managedTransferSourceRetentionManagement'
+import { handleManagedTransferDestinationAuthoringManagement } from './managedTransferDestinationAuthoringManagement'
+import { handleManagedTransferCopyExecutionManagement } from './managedTransferCopyExecutionManagement'
+import { handleManagedTransferCopyManagement } from './managedTransferCopyManagement'
+import { handleCmsManagement } from './cmsManagement'
 import { handleInspection } from './inspection'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import type { ManagementStagingEnv } from '../worker-staging'
@@ -26,6 +33,38 @@ const Request = z.discriminatedUnion('operation', [
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch() { return new Response('Not found', { status: 404 }) }
+  async completedManagedTransfer(input: unknown) {
+    return handleCompletedManagedTransferManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async managedTransferFinalization(input: unknown) {
+    return handleManagedTransferFinalization(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async managedTransferSourceRetention(input: unknown) {
+    return handleManagedTransferSourceRetentionManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async managedTransferDestinationAuthoring(input: unknown) {
+    return handleManagedTransferDestinationAuthoringManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async managedTransferCopyGraphExecution(input: unknown) {
+    return handleManagedTransferCopyExecutionManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async managedTransferPreparation(input: unknown) {
+    return handleManagedTransferPreparation(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async managedTransferCopyGraph(input: unknown) {
+    return handleManagedTransferCopyManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async cmsAuthoring(input: unknown) {
+    return handleCmsManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
   async clientStaging(input: unknown) {
     return handleStagingManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }

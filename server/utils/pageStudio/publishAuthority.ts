@@ -16,13 +16,15 @@ const tenantId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/)
 const Scope = z.object({ tenantId, clientId: z.string().uuid(), siteId: z.string().uuid() })
 const Principal = z.object({
   actorId: z.string().uuid(), tenantId,
-  login: z.object({ role: z.literal('agency'), userId: z.string().uuid(), tokenHash: z.string().regex(/^[a-f0-9]{64}$/), issuedAt: z.date(), expiresAt: z.date() })
+  login: z.object({ role: z.enum(['agency', 'client']), userId: z.string().uuid(), tokenHash: z.string().regex(/^[a-f0-9]{64}$/), issuedAt: z.date(), expiresAt: z.date() })
 })
 const denied = () => new PageStudioPublishingError('PUBLISH_AUTHORITY_DENIED', 403, 'Current publishing access is required')
 
-/** SQL-only publication boundary. Capture the original native login before remote
+/** SQL-only publication boundary. Capture the original agency/portal login before remote
  * work, then use this boundary for reservation, completion and activation. Never
- * hold these locks across Worker calls or other remote operations. */
+ * hold these locks across Worker calls or other remote operations. Portal callers
+ * require both business management and site editing access, plus domain capacity.
+ * Standalone customer identities use a separate session model and are not accepted. */
 export async function withPageStudioPublishAuthority<T>(
   scopeInput: PageStudioPublishingScope,
   principalInput: PageStudioPublishPrincipal,
@@ -38,6 +40,7 @@ export async function withPageStudioPublishAuthority<T>(
   // supplied by callers. The callback cannot change the authority being checked.
   const params = [scope.tenantId, scope.clientId, scope.siteId, principal.actorId,
     principal.login.tokenHash, principal.login.issuedAt.toISOString(), principal.login.expiresAt.toISOString()]
+  const agency = principal.login.role === 'agency'
   const run: RunTransaction = dependencies.runTransaction ?? (callback => transactionWithoutRetry(db => callback(db)))
   try {
     return await run(async (db) => {
@@ -48,13 +51,14 @@ export async function withPageStudioPublishAuthority<T>(
         FOR NO KEY UPDATE NOWAIT`, params.slice(0, 3))).rows.length !== 1) throw denied()
       const check = async () => {
         const rows = (await db.query(`SELECT site.id FROM page_studio_sites site
-          JOIN page_studio_login_sessions login ON login.role='agency' AND login.token_hash=$5
+          JOIN page_studio_login_sessions login ON login.role='${agency ? 'agency' : 'client'}' AND login.token_hash=$5
             AND login.user_id=$4 AND login.issued_at=$6::timestamptz AND login.expires_at=$7::timestamptz
             AND login.revoked_at IS NULL AND login.issued_at<=clock_timestamp() AND login.expires_at>clock_timestamp()
-          ${pageStudioAuthorityOwnerJoin(true, 'history', 'clock_timestamp()', 'PAGE_STUDIO_PUBLISH')}
+          ${pageStudioAuthorityOwnerJoin(agency, 'history', 'clock_timestamp()', 'PAGE_STUDIO_PUBLISH')}
           ${pageStudioEditorEntitlementJoin('clock_timestamp()')}
           WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3 AND site.status IN ('draft','active')
-          FOR SHARE OF login,owner,staff_role,permission,client,entitlement NOWAIT`, params)).rows
+          ${agency ? '' : 'AND owner.role IN (\'admin\',\'manager\') AND entitlement.custom_domain_limit>0'}
+          FOR SHARE OF login,owner,${agency ? 'staff_role,permission' : 'native_session,membership'},client,entitlement NOWAIT`, params)).rows
         if (rows.length !== 1) throw denied()
       }
       await check()

@@ -16,10 +16,13 @@ function setting(event: H3Event, name: string): unknown {
 function configuration(event: H3Event) {
   const dashboard = CustomerEditorOriginSchema.safeParse(setting(event, 'PAGE_STUDIO_CUSTOMER_ORIGIN'))
   const editor = CustomerEditorOriginSchema.safeParse(setting(event, 'PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN'))
+  const environment = setting(event, 'PAGE_STUDIO_CONTENT_ENVIRONMENT') ?? 'staging'
   if (setting(event, 'PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED') !== 'true'
-    || setting(event, 'PAGE_STUDIO_PROVISIONING_ENVIRONMENT') !== 'staging'
+    || (environment === 'production'
+      ? setting(event, 'PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED') !== 'true'
+      : environment !== 'staging' || setting(event, 'PAGE_STUDIO_PROVISIONING_ENVIRONMENT') !== 'staging')
     || !dashboard.success || !editor.success || dashboard.data === editor.data) throw createError({ statusCode: 403 })
-  return { enabled: true as const, dashboardOrigin: dashboard.data, editorOrigin: editor.data }
+  return { enabled: true as const, environment, dashboardOrigin: dashboard.data, editorOrigin: editor.data }
 }
 async function body<T>(event: H3Event, schema: z.ZodType<T>) {
   const parsed = schema.safeParse(await readBody(event))
@@ -39,7 +42,12 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
     }
     const token = getHeader(event, 'x-page-studio-customer-session') ?? ''
     const claims = await verifyCustomerEditorToken(token, resolvePageStudioSessionPublicKey(event), resolvePageStudioSessionEnvironment(event).issuer)
-    if (claims.editorOrigin !== config.editorOrigin || claims.returnUrl !== `${config.dashboardOrigin}/studio/dashboard`) throw createError({ statusCode: 403 })
+    if (claims.environment !== config.environment || claims.editorOrigin !== config.editorOrigin || claims.returnUrl !== `${config.dashboardOrigin}/studio/dashboard`) throw createError({ statusCode: 403 })
+    if (claims.environment === 'production' && ['cms-prerequisites', 'cms-adoption'].includes(operation)) throw createError({ statusCode: 403 })
+    const contentEnv = Object.fromEntries(
+      ['PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_MANAGEMENT', 'PAGE_STUDIO_CONTENT_ENVIRONMENT', 'PAGE_STUDIO_CHECKPOINTS', 'PAGE_STUDIO_CONTENT_ROUTER', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT']
+        .map(name => [name, setting(event, name)])
+    )
     if (operation === 'authorize') {
       const input = await body(event, Authorize)
       await transaction(db => assertCustomerEditorSessionAuthority(claims, input.capability, db))
@@ -47,7 +55,7 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
     }
     if (operation === 'latest-checkpoint') {
       await body(event, Empty)
-      return { checkpoint: await readCustomerEditorCheckpoint(claims) }
+      return { checkpoint: await readCustomerEditorCheckpoint(claims, { env: contentEnv }) }
     }
     if (operation === 'cms-prerequisites') {
       const { coordinateCustomerSchemaUpgrade } = await import('./customerSchemaUpgrade')
@@ -55,10 +63,7 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
       return await coordinateCustomerSchemaUpgrade(await readBody(event), claims, { env })
     }
     if (operation === 'checkpoint' || operation === 'cms-adoption') {
-      const env = Object.fromEntries(
-        ['PAGE_STUDIO_CONTENT_ENVIRONMENT', 'PAGE_STUDIO_CHECKPOINTS', 'PAGE_STUDIO_CONTENT_ROUTER', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT']
-          .map(name => [name, setting(event, name)])
-      )
+      const env = contentEnv
       if (operation === 'checkpoint') return await commitCustomerEditorCheckpoint(await readBody(event), claims, { env })
       const { coordinateCmsAdoption } = await import('./cmsAdoptionCoordinator')
       return await coordinateCmsAdoption(await readBody(event), { source: 'customer-session', claims, env, capability: 'workspace:create' })

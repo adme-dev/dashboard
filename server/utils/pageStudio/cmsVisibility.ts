@@ -11,7 +11,7 @@ import {
   CmsStorageTargetSchema,
   contentScopeKey
 } from '~~/shared/pageStudio/cmsManaged'
-import type { PageStudioControlQueryClient } from './controlStore'
+import type { PageStudioControlQueryClient } from '~~/shared/pageStudio/controlTypes'
 
 export const cmsUnavailable = () => new Error('Accepted CMS state unavailable or stale')
 export const cmsEqual = (a: unknown, b: unknown) =>
@@ -62,11 +62,12 @@ export type AcceptedCmsObject = {
   createdAt: string
 }
 /** Internal snapshot validation. Callers still enforce native read authorization. */
-export async function decodeCmsContext(
+async function decodeContext<State extends 'managed' | 'retained'>(
   row: Record<string, unknown>,
-  scope: PageStudioContentScope
+  scope: PageStudioContentScope,
+  expectedState: State
 ) {
-  const state = scopeRow.parse(row.state),
+  const state = scopeRow.extend({ state: z.literal(expectedState) }).parse(row.state),
     application = applicationRow.parse(row.application),
     selections = z.array(selectionRow).max(128).parse(row.selections)
   const key = contentScopeKey(scope)
@@ -101,9 +102,12 @@ export async function decodeCmsContext(
     throw cmsUnavailable()
   return { state, application, selections }
 }
+export const decodeCmsContext = (row: Record<string, unknown>, scope: PageStudioContentScope) => decodeContext(row, scope, 'managed')
+/** Data validation only. Retained authorization is exclusively owned by the published resolver. */
+export const decodeRetainedCmsContext = (row: Record<string, unknown>, scope: PageStudioContentScope) => decodeContext(row, scope, 'retained')
 export function decodeCmsObject(
   value: unknown,
-  context: Awaited<ReturnType<typeof decodeCmsContext>>
+  context: { state: Pick<Awaited<ReturnType<typeof decodeCmsContext>>['state'], 'scope_key' | 'active_generation' | 'freeze_digest'> }
 ): AcceptedCmsObject {
   const row = objectRow.parse(value),
     pin = row.storage_pin
@@ -311,6 +315,28 @@ export async function listAcceptedCmsHistory(db: PageStudioControlQueryClient, i
   return await page(db, read.scope, read, read.limit, read.cursor, true, true)
 }
 
+/** SQL only: ordinary readers bind managed/current site; published readers bind an admitted context. */
+export const cmsConsumerSnapshotSql = `SELECT ${cmsContextColumns},
+    COALESCE($10::text,site.current_checkpoint_id) AS current_checkpoint_id, cp.digest AS checkpoint_digest,
+    to_jsonb(content) AS content,
+    COALESCE((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.collection_id) FROM page_studio_cms_application_schemas x JOIN page_studio_cms_objects o ON o.scope_key=x.scope_key AND o.generation=x.generation AND o.id=x.object_id WHERE x.scope_key=s.scope_key AND x.generation=s.active_generation AND x.application_id=a.id),'[]'::jsonb) AS schemas,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('object',to_jsonb(o),'schema',to_jsonb(ref)) ORDER BY o.record_id) FROM (
+      SELECT obj.* FROM page_studio_cms_objects obj WHERE obj.scope_key=s.scope_key AND obj.generation=s.active_generation AND obj.kind=$2
+      AND obj.collection_id=$3
+      AND (($4::text<>'' AND obj.record_id=$4) OR ($4::text='' AND ($2<>'record' OR obj.record_id>$6)))
+      AND (($5::bigint IS NOT NULL AND obj.logical_version=$5) OR ($5::bigint IS NULL AND (
+       (obj.kind='schema' AND EXISTS(SELECT 1 FROM page_studio_cms_application_schemas x WHERE x.scope_key=s.scope_key AND x.generation=s.active_generation AND x.application_id=a.id AND x.object_id=obj.id)) OR
+       (obj.kind='content' AND obj.id=s.current_content_id) OR
+       (obj.kind='record' AND EXISTS(SELECT 1 FROM page_studio_cms_record_heads h WHERE h.scope_key=s.scope_key AND h.generation=s.active_generation AND h.object_id=obj.id)))))
+      AND ($4::text<>'' OR $2<>'record' OR $7::boolean OR obj.archived=FALSE)
+      ORDER BY obj.record_id LIMIT $8
+    ) o LEFT JOIN page_studio_cms_objects ref ON ref.scope_key=o.scope_key AND ref.generation=o.generation AND ref.id=o.schema_object_id),'[]'::jsonb) AS objects
+    ${cmsContextFrom}
+    JOIN page_studio_sites site ON site.tenant_id=s.tenant_id AND site.client_id=s.client_id AND site.id=s.site_id
+    LEFT JOIN page_studio_checkpoints cp ON cp.tenant_id=site.tenant_id AND cp.client_id=site.client_id AND cp.site_id=site.id AND cp.id=COALESCE($10::text,site.current_checkpoint_id)
+    LEFT JOIN page_studio_cms_objects content ON content.scope_key=s.scope_key AND content.generation=s.active_generation AND content.id=s.current_content_id
+    WHERE s.scope_key=$1 AND s.state=$9`
+
 /** Bounded consumer snapshot: current graph, heads, exact history and their schema
  * references are selected together. Public cursors remain logical IDs, never pins. */
 export async function readCmsConsumerSnapshot(
@@ -343,26 +369,7 @@ export async function readCmsConsumerSnapshot(
     .parse(input.limit ?? 50)
   const rows = (
     await db.query<Record<string, unknown>>(
-      `SELECT ${cmsContextColumns},
-    site.current_checkpoint_id, cp.digest AS checkpoint_digest,
-    to_jsonb(content) AS content,
-    COALESCE((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.collection_id) FROM page_studio_cms_application_schemas x JOIN page_studio_cms_objects o ON o.scope_key=x.scope_key AND o.generation=x.generation AND o.id=x.object_id WHERE x.scope_key=s.scope_key AND x.generation=s.active_generation AND x.application_id=a.id),'[]'::jsonb) AS schemas,
-    COALESCE((SELECT jsonb_agg(jsonb_build_object('object',to_jsonb(o),'schema',to_jsonb(ref)) ORDER BY o.record_id) FROM (
-      SELECT obj.* FROM page_studio_cms_objects obj WHERE obj.scope_key=s.scope_key AND obj.generation=s.active_generation AND obj.kind=$2
-      AND obj.collection_id=$3
-      AND (($4::text<>'' AND obj.record_id=$4) OR ($4::text='' AND ($2<>'record' OR obj.record_id>$6)))
-      AND (($5::bigint IS NOT NULL AND obj.logical_version=$5) OR ($5::bigint IS NULL AND (
-       (obj.kind='schema' AND EXISTS(SELECT 1 FROM page_studio_cms_application_schemas x WHERE x.scope_key=s.scope_key AND x.generation=s.active_generation AND x.application_id=a.id AND x.object_id=obj.id)) OR
-       (obj.kind='content' AND obj.id=s.current_content_id) OR
-       (obj.kind='record' AND EXISTS(SELECT 1 FROM page_studio_cms_record_heads h WHERE h.scope_key=s.scope_key AND h.generation=s.active_generation AND h.object_id=obj.id)))))
-      AND ($4::text<>'' OR $2<>'record' OR $7::boolean OR obj.archived=FALSE)
-      ORDER BY obj.record_id LIMIT $8
-    ) o LEFT JOIN page_studio_cms_objects ref ON ref.scope_key=o.scope_key AND ref.generation=o.generation AND ref.id=o.schema_object_id),'[]'::jsonb) AS objects
-    ${cmsContextFrom}
-    JOIN page_studio_sites site ON site.tenant_id=s.tenant_id AND site.client_id=s.client_id AND site.id=s.site_id
-    LEFT JOIN page_studio_checkpoints cp ON cp.tenant_id=site.tenant_id AND cp.client_id=site.client_id AND cp.site_id=site.id AND cp.id=site.current_checkpoint_id
-    LEFT JOIN page_studio_cms_objects content ON content.scope_key=s.scope_key AND content.generation=s.active_generation AND content.id=s.current_content_id
-    WHERE s.scope_key=$1 AND s.state='managed'`,
+      cmsConsumerSnapshotSql,
       [
         contentScopeKey(scope),
         kind,
@@ -371,7 +378,9 @@ export async function readCmsConsumerSnapshot(
         input.version ?? null,
         after,
         input.includeArchived ?? false,
-        limit + 1
+        limit + 1,
+        'managed',
+        null
       ]
     )
   ).rows
@@ -383,6 +392,10 @@ export async function readCmsConsumerSnapshot(
     || row.checkpoint_digest !== context.application.manifest.checkpoint.digest
   )
     throw cmsUnavailable()
+  return decodeCmsConsumerObjects(row, context)
+}
+/** Validates selected object metadata against an already validated context. */
+export function decodeCmsConsumerObjects<Context extends { state: Pick<Awaited<ReturnType<typeof decodeCmsContext>>['state'], 'scope_key' | 'active_generation' | 'freeze_digest'>, selections: unknown[] }>(row: Record<string, unknown>, context: Context) {
   const schemas = z
     .array(z.unknown())
     .max(128)

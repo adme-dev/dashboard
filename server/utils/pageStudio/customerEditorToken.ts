@@ -19,8 +19,10 @@ export function customerSessionHasPurpose(capabilities: readonly string[], purpo
   const expected = customerSessionCapabilities(purpose)
   return capabilities.length === expected.length && expected.every(value => capabilities.includes(value))
 }
-export const customerSchemaPreparationCapability = (claims: CustomerEditorClaims) =>
-  customerSessionHasPurpose(claims.capabilities, 'cms-setup') ? 'cms:prepare' as const : 'workspace:create' as const
+export function customerSchemaPreparationCapability(claims: CustomerEditorClaims) {
+  if (claims.environment !== 'staging') throw createError({ statusCode: 403, statusMessage: 'Customer CMS setup is not available.' })
+  return customerSessionHasPurpose(claims.capabilities, 'cms-setup') ? 'cms:prepare' as const : 'workspace:create' as const
+}
 export const CustomerEditorOriginSchema = z.string().max(2048).refine((value) => {
   try {
     const url = new URL(value)
@@ -28,7 +30,7 @@ export const CustomerEditorOriginSchema = z.string().max(2048).refine((value) =>
   } catch { return false }
 })
 export const CustomerEditorClaimsSchema = z.object({
-  role: z.literal('customer'), environment: z.literal('staging'), nonce: z.string().uuid(), userId: z.string().uuid(),
+  role: z.literal('customer'), environment: z.enum(['staging', 'production']), nonce: z.string().uuid(), userId: z.string().uuid(),
   workspaceId: z.string().uuid(), clientId: z.string().uuid(), siteId: z.string().uuid(),
   tenantId: z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/),
   capabilities: z.array(CustomerEditorCapabilitySchema).min(1).max(6).refine(values => new Set(values).size === values.length),
@@ -39,7 +41,8 @@ export const CustomerEditorClaimsSchema = z.object({
       return CustomerEditorOriginSchema.safeParse(url.origin).success && value === `${url.origin}/studio/dashboard`
     } catch { return false }
   })
-}).strict().refine(value => value.expiresAt > value.issuedAt && value.expiresAt <= value.issuedAt + CUSTOMER_EDITOR_MAX_SECONDS)
+}).strict().refine(value => value.environment === 'staging' || value.capabilities.every(capability => !capability.startsWith('cms:')))
+  .refine(value => value.expiresAt > value.issuedAt && value.expiresAt <= value.issuedAt + CUSTOMER_EDITOR_MAX_SECONDS)
 export type CustomerEditorClaims = z.infer<typeof CustomerEditorClaimsSchema>
 export type CustomerEditorCapability = z.infer<typeof CustomerEditorCapabilitySchema>
 const invalid = () => createError({ statusCode: 401, statusMessage: 'Customer editor session is invalid or expired.' })

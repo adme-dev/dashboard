@@ -18,6 +18,7 @@ const config = (environment: string) => ({
   name: `xeroflow-page-studio-management-${environment}`,
   account_id: 'a5b299b3ad15c1b5b895dc66f9357b17',
   main: 'src/index.ts',
+  tsconfig: 'tsconfig.json',
   compatibility_date: '2026-07-15',
   compatibility_flags: ['nodejs_compat'],
   workers_dev: false,
@@ -27,15 +28,24 @@ const config = (environment: string) => ({
   vars: { PAGE_STUDIO_RELEASE_ENVIRONMENT: environment,
     ...(environment === 'production'
       ? {
+          PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
           PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID: 'a5b299b3ad15c1b5b895dc66f9357b17',
           PAGE_STUDIO_CLOUDFLARE_ZONE_ID: '8e38cbf3910d291dd218710296661073',
           PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET: 'sites.xeroflow.io',
-          PAGE_STUDIO_DOMAIN_IDENTITY_MODE: 'standard'
+          PAGE_STUDIO_DOMAIN_IDENTITY_MODE: 'standard',
+          PAGE_STUDIO_CMS_STAGING_ACTION_RUNTIME_DIGEST: 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e',
+          PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT: 'placed-fetch'
         }
-      : {}) },
-  ...(environment === 'production' ? { services: [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' }] } : {}),
+      : { PAGE_STUDIO_CMS_OBJECT_TRANSPORT: 'placed-fetch', PAGE_STUDIO_ACTION_RUNTIME_DIGEST: 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e' }) },
+  services: environment === 'production'
+    ? [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' },
+        { binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-production' },
+        { binding: 'PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' },
+        { binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-production' }]
+    : [{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }],
   observability: { enabled: true, head_sampling_rate: 0.1 },
-  r2_buckets: [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` }],
+  r2_buckets: [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` },
+    ...(environment === 'production' ? [{ binding: 'PAGE_STUDIO_CMS_STAGING_CHECKPOINTS', bucket_name: 'xeroflow-page-studio-checkpoints-staging' }] : [])],
   hyperdrive: [{ binding: 'HYPERDRIVE_FRESH', id: environment === 'staging' ? '3865ea5568234fc7b0e9e3e595a30286' : '90228af3e2cc461bbc09accc3b47bd9f' }]
 })
 
@@ -60,7 +70,7 @@ describe('private management deployment admission', () => {
       return JSON.stringify(config(environment))
     })
     mocks.exec.mockImplementation((command, args, options) => {
-      expect(options.cwd).toBe(root)
+      expect(options.cwd).toBe(command === 'git' ? root : `${root}workers/page-studio-management/`)
       if (command !== 'git') {
         expect(command).toBe(process.execPath)
         expect(args[0]).toBe(`${root}node_modules/wrangler/bin/wrangler.js`)
@@ -89,6 +99,17 @@ describe('private management deployment admission', () => {
   ])('rejects malformed or ambiguous arguments before reading files or executing commands: %j', (args) => {
     expect(() => main(args)).toThrow()
     expect(mocks.read).not.toHaveBeenCalled()
+    expect(mocks.exec).not.toHaveBeenCalled()
+  })
+
+  it.each(['missing', 'staging-target'])('rejects a %s production provisioner before Git or deployment', (variant) => {
+    const candidate = config('production')
+    candidate.services = candidate.services.filter(service => service.binding !== 'PAGE_STUDIO_PROVISIONER')
+    if (variant === 'staging-target') {
+      candidate.services.push({ binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-staging' })
+    }
+    mocks.read.mockReturnValue(JSON.stringify(candidate))
+    expect(() => main(['production'])).toThrow()
     expect(mocks.exec).not.toHaveBeenCalled()
   })
 
@@ -149,8 +170,8 @@ describe('private management deployment admission', () => {
     ])
     expect(wranglerCalls()).toEqual([[
       process.execPath,
-      [`${root}node_modules/wrangler/bin/wrangler.js`, 'deploy', '--config', configFile(environment), '--message', `Dashboard source ${head}`, '--tag', head],
-      { cwd: root, stdio: 'inherit' }
+      [`${root}node_modules/wrangler/bin/wrangler.js`, 'deploy', '--config', configFile(environment), '--tsconfig', `${root}workers/page-studio-management/tsconfig.json`, '--message', `Dashboard source ${head}`, '--tag', head],
+      { cwd: `${root}workers/page-studio-management/`, stdio: 'inherit' }
     ]])
     expect(mocks.exec.mock.calls.at(-1)).toEqual(wranglerCalls()[0])
     expect(console.log).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ target: `xeroflow-page-studio-management-${environment}`, environment, source: head, mode: 'deploy' }))
@@ -164,8 +185,8 @@ describe('private management deployment admission', () => {
     expect(wranglerCalls()).toHaveLength(1)
     expect(wranglerCalls()[0]?.[1]).toEqual([
       `${root}node_modules/wrangler/bin/wrangler.js`, 'deploy', '--config', configFile(environment),
-      '--message', `Dashboard source ${head}`, '--tag', head,
-      '--dry-run', '--outdir', `${root}.verification/management-worker-${environment}`
+      '--tsconfig', `${root}workers/page-studio-management/tsconfig.json`, '--message', `Dashboard source ${head}`, '--tag', head,
+      '--dry-run', '--outdir', `${root}.verification/managed-transfer/cms-management-${environment}`
     ])
   })
 

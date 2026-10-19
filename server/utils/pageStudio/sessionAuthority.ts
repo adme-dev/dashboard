@@ -2,8 +2,9 @@ import { pageStudioAuthorityOwnerJoin, pageStudioEditorEntitlementJoin } from '.
 import { queryOneFresh } from '~~/server/utils/db'
 import {
   PageStudioSessionCapabilitySchema, PageStudioSessionClaimsSchema,
-  type PageStudioSessionClaims, type PageStudioSessionQueryClient, type PageStudioSessionQueryOne
-} from '~~/server/utils/pageStudio/sessions'
+  type PageStudioSessionClaims
+} from '~~/shared/pageStudio/sessionClaims'
+import type { PageStudioSessionQueryClient, PageStudioSessionQueryOne } from '~~/shared/pageStudio/controlTypes'
 
 export class PageStudioSessionAuthorityError extends Error {
   constructor(readonly code: 'SESSION_AUTHORITY_DENIED' | 'SESSION_AUTHORITY_UNAVAILABLE', readonly statusCode: number) {

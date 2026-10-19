@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Deliberately mutable private transport fixtures test malformed bytes and authority transitions. */
-import { coordinateCmsAdoption } from '~~/server/utils/pageStudio/cmsAdoptionCoordinator'
+import { coordinateCmsAdoption } from '~~/workers/page-studio-management/src/cms/adoptionCoordinator'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'

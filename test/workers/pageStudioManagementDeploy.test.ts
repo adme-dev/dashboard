@@ -31,6 +31,38 @@ describe('private management immutable deployment target', () => {
   it('never binds infrastructure staging to customer staging resources', () => {
     expect(() => validateManagementTarget({ ...config('staging'), services: [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' }] }, 'staging')).toThrow()
   })
+  it('requires explicit production provisioning and permits only strict reviewed-policy shape', () => {
+    const current = config()
+    expect(current.vars.PAGE_STUDIO_PROVISIONING_ENVIRONMENT).toBe('production')
+    const configured = JSON.parse(current.vars.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY)
+    expect(configured).toMatchObject({ version: 1, kind: 'managed-draft-import', accountId: current.account_id,
+      namespace: 'xeroflow-page-studio-dispatch-production',
+      from: { compatibilityDate: '2026-09-07', digest: '2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83' },
+      to: { compatibilityDate: '2026-08-18', digest: '40aa0efe85f87918c569b8388a3403af51ee8c33d741c56eeb956a702ab7105d' } })
+    const policy = configured
+    const changed = (value: unknown) => ({ ...current, vars: { ...current.vars, MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: JSON.stringify(value) } })
+    expect(() => validateManagementTarget(changed(policy), 'production')).not.toThrow()
+    for (const value of [{ ...policy, accountId: 'b'.repeat(32) }, { ...policy, namespace: 'other' },
+      { ...policy, formReceiptDigest: 'a'.repeat(64) }, { ...policy, to: policy.from },
+      { ...policy, to: { ...policy.to, digest: '' } }]) expect(() => validateManagementTarget(changed(value), 'production')).toThrow()
+    const staging = config('staging')
+    expect(() => validateManagementTarget({ ...staging, vars: { ...staging.vars, MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: JSON.stringify(policy) } }, 'staging')).toThrow()
+  })
+  it('requires a complete preparation policy with one reviewed successor and matching bootstrap', () => {
+    const current = config()
+    const source = JSON.parse(current.vars.MANAGED_TRANSFER_EXECUTION_POLICY)
+    const destination = JSON.parse(current.vars.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY)
+    expect(source).toMatchObject({ kind: 'managed-draft-transfer', namespace: 'xeroflow-page-studio-dispatch-staging', to: destination.to })
+    expect(current.vars.PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST).toBe(destination.from.digest)
+    for (const change of [
+      { MANAGED_TRANSFER_EXECUTION_POLICY: undefined },
+      { PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST: undefined },
+      { PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST: '0'.repeat(64) },
+      { MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify({ ...source, to: { ...source.to, digest: '0'.repeat(64) } }) },
+      { MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify({ ...source, namespace: destination.namespace }) },
+      { MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify({ ...source, accountId: 'b'.repeat(32) }) }
+    ]) expect(() => validateManagementTarget({ ...current, vars: { ...current.vars, ...change } }, 'production')).toThrow()
+  })
   it('rejects an implicit or invented environment', () => {
     expect(() => validateManagementTarget(config(), undefined)).toThrow()
     expect(() => validateManagementTarget(config(), 'preview')).toThrow()

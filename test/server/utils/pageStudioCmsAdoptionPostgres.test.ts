@@ -8,7 +8,7 @@ import {
   registerCmsFreeze,
   importFrozenCmsPage,
   activateCmsAdoption
-} from '~~/server/utils/pageStudio/cmsAdoption'
+} from '~~/workers/page-studio-management/src/cms/adoption'
 import {
   readAcceptedCmsObject,
   listAcceptedCmsHistory

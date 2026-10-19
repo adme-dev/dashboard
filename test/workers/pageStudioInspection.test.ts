@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { handleInspection } from '../../workers/page-studio-management/src/inspection'
-import { readPageStudioLaunchState, readPageStudioVersionComparison, listAgencyPageStudioReviews } from '../../server/utils/pageStudio/inspectionClient'
+import { readPageStudioLaunchState, readPageStudioVersionComparison, listAgencyPageStudioReviews, readPortalPageStudioLaunchState, readCustomerPageStudioLaunchState } from '../../server/utils/pageStudio/inspectionClient'
 
-const mocks = vi.hoisted(() => ({ authority: vi.fn(), launch: vi.fn(), comparison: vi.fn(), reviews: vi.fn() }))
+const mocks = vi.hoisted(() => ({ authority: vi.fn(), launch: vi.fn(), comparison: vi.fn(), reviews: vi.fn(), portal: vi.fn(), customer: vi.fn() }))
+vi.mock('../../shared/pageStudio/customerInspectionAuthority', async original => ({ ...await original<object>(), requireCustomerInspectionAuthority: mocks.customer }))
 vi.mock('../../workers/page-studio-management/src/reviews', () => ({ listAgencyPageStudioReviews: mocks.reviews }))
 vi.mock('../../workers/page-studio-management/src/domainManagement', () => ({ agencyAuthority: mocks.authority }))
+vi.mock('../../workers/page-studio-management/src/portalDomainAuthority', () => ({ requirePortalDomainAuthority: mocks.portal }))
 vi.mock('../../workers/page-studio-management/src/launchState', () => ({ readPageStudioLaunchState: mocks.launch }))
 vi.mock('../../workers/page-studio-management/src/versionComparison', () => ({ readPageStudioVersionComparison: mocks.comparison }))
 const actorId = '10000000-0000-4000-8000-000000000002', siteId = '10000000-0000-4000-8000-000000000001', versionId = '10000000-0000-4000-8000-000000000003'
@@ -18,6 +20,7 @@ const client = () => ({ ...input, env: { ...env, PAGE_STUDIO_MANAGEMENT: { inspe
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.authority.mockResolvedValue(false)
+  mocks.portal.mockResolvedValue({ tenantId: 'resolved_tenant', clientId: '10000000-0000-4000-8000-000000000004', canManage: false })
   mocks.launch.mockResolvedValue(state)
   mocks.reviews.mockResolvedValue([{ versionId, siteId }])
   mocks.comparison.mockResolvedValue({ siteId, version: { id: versionId, digest: 'digest', checkpointId: 'checkpoint', current: true }, releases: [], live: null, before: null, after: { id: siteId } })
@@ -67,5 +70,73 @@ describe('private checkpoint inspection', () => {
     mocks.launch.mockRejectedValue(new Error('private database credentials'))
     await expect(readPageStudioLaunchState(client())).rejects.toMatchObject({ statusCode: 503 })
     expect(service).toHaveBeenCalledOnce()
+  })
+})
+
+const portal = () => ({ actorId, siteId, clientId: '10000000-0000-4000-8000-000000000004', env: client().env })
+describe('customer launch inspection', () => {
+  it('derives tenant from exact client membership and rechecks before returning', async () => {
+    expect(await readPortalPageStudioLaunchState(portal())).toEqual({ ...state, canManagePublication: false })
+    expect(mocks.authority).not.toHaveBeenCalled()
+    expect(mocks.portal).toHaveBeenCalledTimes(2)
+    expect(mocks.portal).toHaveBeenNthCalledWith(1, expect.anything(), expect.objectContaining({ actorId, siteId, clientId: portal().clientId }), false, { lock: false })
+    expect(mocks.portal).toHaveBeenNthCalledWith(2, expect.anything(), expect.objectContaining({ tenantId: 'resolved_tenant' }), false)
+    expect(mocks.launch).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'resolved_tenant', clientId: portal().clientId, siteId }), expect.any(Function))
+  })
+  it('uses final current management authority rather than the initial capability', async () => {
+    mocks.portal.mockResolvedValueOnce({ tenantId: 'resolved_tenant', clientId: portal().clientId, canManage: true })
+      .mockResolvedValueOnce({ tenantId: 'resolved_tenant', clientId: portal().clientId, canManage: false })
+    expect(await readPortalPageStudioLaunchState(portal())).toMatchObject({ canManagePublication: false })
+  })
+  it('reports management access from the final scoped authority check', async () => {
+    mocks.portal.mockResolvedValue({ tenantId: 'resolved_tenant', clientId: portal().clientId, canManage: true })
+    expect(await readPortalPageStudioLaunchState(portal())).toMatchObject({ canManagePublication: true })
+  })
+  it('never reads content when portal membership is absent', async () => {
+    mocks.portal.mockRejectedValue({ statusCode: 403 })
+    await expect(readPortalPageStudioLaunchState(portal())).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.launch).not.toHaveBeenCalled()
+  })
+  it('withholds the result when access is withdrawn during storage read', async () => {
+    mocks.portal.mockResolvedValueOnce({ tenantId: 'resolved_tenant', clientId: portal().clientId }).mockRejectedValueOnce({ statusCode: 403 })
+    await expect(readPortalPageStudioLaunchState(portal())).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('does not allow customers to select tenant or request staff review operations', async () => {
+    for (const extra of [{ tenantId: 'forged' }, { operation: 'comparison', versionId }, { operation: 'reviews' }]) {
+      expect(await handleInspection({ actorId, siteId, clientId: portal().clientId, operation: 'portal-launch', expectedEnvironment: 'staging', ...extra }, env, transaction)).toEqual({ ok: false, statusCode: 400 })
+    }
+    expect(transaction).not.toHaveBeenCalled()
+  })
+  it('rejects a cross-client transport response', async () => {
+    service.mockImplementation(value => ({ ok: true, payload: new TextEncoder().encode(JSON.stringify({ request: { ...value, clientId: 'foreign' }, value: state })) }))
+    await expect(readPortalPageStudioLaunchState(portal())).rejects.toMatchObject({ statusCode: 503 })
+  })
+})
+
+const customer = () => ({ actorId, siteId, accountId: versionId, workspaceId: '10000000-0000-4000-8000-000000000005', env: client().env })
+describe('native account launch inspection', () => {
+  beforeEach(() => mocks.customer.mockResolvedValue({ tenantId: 'native', clientId: versionId, canManagePublication: true }))
+  it('rechecks native workspace membership without using portal or agency identity', async () => {
+    expect(await readCustomerPageStudioLaunchState(customer())).toEqual({ ...state, canManagePublication: true })
+    expect(mocks.customer).toHaveBeenCalledTimes(2)
+    expect(mocks.portal).not.toHaveBeenCalled()
+    expect(mocks.authority).not.toHaveBeenCalled()
+    expect(mocks.launch).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'native', clientId: versionId, siteId }), expect.any(Function))
+  })
+  it('withholds content on native revocation during storage inspection', async () => {
+    mocks.customer.mockResolvedValueOnce({ tenantId: 'native', clientId: versionId }).mockRejectedValueOnce({ statusCode: 403 })
+    await expect(readCustomerPageStudioLaunchState(customer())).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('uses the final native publishing capability', async () => {
+    mocks.customer.mockResolvedValueOnce({ tenantId: 'native', clientId: versionId, canManagePublication: true })
+      .mockResolvedValueOnce({ tenantId: 'native', clientId: versionId, canManagePublication: false })
+    expect(await readCustomerPageStudioLaunchState(customer())).toMatchObject({ canManagePublication: false })
+  })
+  it('does not accept client-selected tenant scope or credentials', async () => {
+    const { env: _env, ...actor } = customer()
+    for (const extra of [{ tenantId: 'foreign' }, { clientId: versionId }, { token: 'secret' }]) {
+      expect(await handleInspection({ ...actor, ...extra, operation: 'customer-launch', expectedEnvironment: 'staging' }, env, transaction)).toEqual({ ok: false, statusCode: 400 })
+    }
+    expect(transaction).not.toHaveBeenCalled()
   })
 })

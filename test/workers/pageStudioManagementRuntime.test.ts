@@ -17,7 +17,7 @@ describe('built private management Worker RPC boundary', () => {
     directory = await mkdtemp(path.join(root, '.nuxt', 'management-runtime-test-'))
     const outfile = path.join(directory, 'worker.mjs')
     const config = JSON.parse(await readFile(path.join(root, 'workers/page-studio-management/wrangler.staging.jsonc'), 'utf8'))
-    await build({ entryPoints: [path.join(root, 'workers/page-studio-management/src/index.ts')], outfile, bundle: true, format: 'esm', platform: 'neutral', target: 'esnext', conditions: ['workerd', 'worker', 'browser'], mainFields: ['module', 'main'], external: ['node:*', 'cloudflare:*'], banner: { js: 'import { createRequire } from \'node:module\'; const require = createRequire(\'/worker.js\');' }, plugins: [{ name: 'node-compat-builtins', setup(plugin) {
+    await build({ entryPoints: [path.join(root, 'workers/page-studio-management/src/index.ts')], outfile, tsconfig: path.join(root, 'workers/page-studio-management/tsconfig.json'), bundle: true, format: 'esm', platform: 'neutral', target: 'esnext', conditions: ['workerd', 'worker', 'browser'], mainFields: ['module', 'main'], external: ['node:*', 'cloudflare:*'], banner: { js: 'import { createRequire } from \'node:module\'; const require = createRequire(\'/worker.js\');' }, plugins: [{ name: 'node-compat-builtins', setup(plugin) {
       plugin.onResolve({ filter: /^[a-z][a-z_]*(?:\/[a-z_]+)?$/ }, args => builtinModules.includes(args.path) ? { path: `node:${args.path}`, external: true } : undefined)
     } }], logLevel: 'silent' })
     const gatewayFile = path.join(directory, 'gateway.mjs')

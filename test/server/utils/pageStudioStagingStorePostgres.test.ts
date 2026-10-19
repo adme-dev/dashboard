@@ -47,7 +47,8 @@ describe.runIf(Boolean(databaseUrl))('client staging reservation on PostgreSQL',
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));`)
     await db.query(migration('402_page_studio_control_plane.sql'))
     await db.query(migration('428_page_studio_client_staging.sql'))
-    await db.query("ALTER TABLE page_studio_sites ADD COLUMN delivery_mode TEXT NOT NULL DEFAULT 'static'")
+    await db.query('ALTER TABLE page_studio_sites ADD COLUMN delivery_mode TEXT NOT NULL DEFAULT \'static\'')
+    for (const name of ['442_page_studio_customer_workspaces.sql', '444_page_studio_customer_site_ownership.sql', '454_page_studio_native_build_admission.sql']) await db.query(migration(name))
     await db.query('INSERT INTO team_members VALUES($1)', [actorId])
     const clientId = randomUUID()
     await db.query('INSERT INTO agency_clients VALUES($1,TRUE)', [clientId])
@@ -124,7 +125,7 @@ describe.runIf(Boolean(databaseUrl))('client staging reservation on PostgreSQL',
   }
   it('blocks legacy static staging writes for a runtime site before build admission', async () => {
     const actor = await portal()
-    await db.query("UPDATE page_studio_sites SET delivery_mode='runtime'")
+    await db.query('UPDATE page_studio_sites SET delivery_mode=\'runtime\'')
     expect((await transaction(() => requireStagingAuthority(db, actor, scope.siteId, false))).canManage).toBe(false)
     await expect(transaction(() => requireStagingAuthority(db, actor, scope.siteId, true))).rejects.toMatchObject({ code: 'STAGING_ACCESS_DENIED' })
     expect((await db.query('SELECT * FROM page_studio_build_admissions')).rows).toHaveLength(0)

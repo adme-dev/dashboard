@@ -16,7 +16,7 @@ if (url) {
   if (target.protocol !== 'postgresql:' || target.hostname !== '127.0.0.1' || !/^\/studio_cms_[a-z0-9_]+$/.test(target.pathname) || target.search) throw new Error('Disposable localhost studio_cms database required')
 }
 const directory = new URL('../../../server/database/migrations/', import.meta.url)
-const migrations = ['402_page_studio_control_plane', '413_page_studio_release_metadata', '414_page_studio_atomic_release_metadata', '428_page_studio_client_staging', '429_page_studio_checkpoint_staging_outbox', '430_page_studio_astro_build_identity', '431_page_studio_astro_release_receipt', '432_page_studio_astro_approval', '433_page_studio_runtime_delivery', '434_page_studio_runtime_draft_isolation', '435_page_studio_runtime_features']
+const migrations = ['402_page_studio_control_plane', '413_page_studio_release_metadata', '414_page_studio_atomic_release_metadata', '428_page_studio_client_staging', '429_page_studio_checkpoint_staging_outbox', '430_page_studio_astro_build_identity', '431_page_studio_astro_release_receipt', '432_page_studio_astro_approval', '433_page_studio_runtime_delivery', '434_page_studio_runtime_draft_isolation', '435_page_studio_runtime_features', '452_page_studio_client_publishers', '453_page_studio_native_publishers']
 const metadata = { defaultLocale: 'en-AU', footer: {}, integrations: {}, navigation: { items: [] }, seoDefaults: {}, theme: { tokens: {} } }
 const renderer = { assetsDigest: 'a'.repeat(64), codeDigest: 'b'.repeat(64), generation: 'renderer_one', name: 'astro-runtime' as const }
 
@@ -44,7 +44,7 @@ describe.runIf(Boolean(url))('runtime publication transactions on PostgreSQL', (
     await db.connect()
     schema = `runtime_publish_${randomUUID().replaceAll('-', '')}`
     await db.query(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}", pg_catalog`)
-    await db.query('CREATE TABLE team_members(id UUID PRIMARY KEY); CREATE TABLE agency_clients(id UUID PRIMARY KEY); CREATE TABLE client_users(id UUID PRIMARY KEY); CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT); CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group))')
+    await db.query('CREATE TABLE team_members(id UUID PRIMARY KEY); CREATE TABLE agency_clients(id UUID PRIMARY KEY); CREATE TABLE page_studio_customer_identities(id UUID PRIMARY KEY); CREATE TABLE client_users(id UUID PRIMARY KEY); CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT); CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group))')
     for (const name of migrations) await db.query(readFileSync(new URL(`${name}.sql`, directory), 'utf8'))
     await db.query('ALTER TABLE agency_clients ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE')
     await db.query('INSERT INTO team_members VALUES($1)', [actor])
@@ -156,6 +156,22 @@ describe.runIf(Boolean(url))('runtime publication transactions on PostgreSQL', (
     await rollbackPageStudioRuntimeRelease(input, { runTransaction, policy: { deploymentEnvironment: 'production' } })
     expect(await draft()).toEqual(before)
     expect((await state()).pointer[0].active_release_id).toBe(first.releaseId)
+  })
+
+  it('clears prior native pointer attribution on staff activation and rollback', async () => {
+    const identityId = randomUUID()
+    await db.query('INSERT INTO page_studio_customer_identities VALUES($1)', [identityId])
+    const first = await activate(await version('one'), null)
+    const markNative = () => db.query('UPDATE page_studio_release_pointers SET updated_by=NULL,updated_by_customer_identity_id=$1', [identityId])
+    const attribution = async () => (await db.query('SELECT updated_by,updated_by_client_user_id,updated_by_customer_identity_id FROM page_studio_release_pointers')).rows
+    await markNative()
+    const second = await activate(await version('two'), first.releaseId)
+    expect(await attribution()).toEqual([{ updated_by: actor, updated_by_client_user_id: null, updated_by_customer_identity_id: null }])
+    await markNative()
+    await rollbackPageStudioRuntimeRelease({ actorId: actor, environment: 'production', expectedActiveReleaseId: second.releaseId,
+      hostname, idempotencyKey: 'native-attribution-reset', retainedGenerations: [renderer.generation], scope, targetReleaseId: first.releaseId
+    }, { runTransaction, policy: { deploymentEnvironment: 'production' } })
+    expect(await attribution()).toEqual([{ updated_by: actor, updated_by_client_user_id: null, updated_by_customer_identity_id: null }])
   })
 
   it('replays an idempotent retry and rejects a reused key for another version', async () => {

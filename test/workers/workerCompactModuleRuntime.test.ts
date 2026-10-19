@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'vitest'
 import { Miniflare } from 'miniflare'
-import { compactWorkerModuleFilenames } from '../../scripts/compact-worker-module.mjs'
+import { compactDeployedWorkerModules, compactWorkerModuleFilenames } from '../../scripts/compact-worker-module.mjs'
+import { compactRouteSqlDirectory } from '../../scripts/compact-worker-static-data.mjs'
 
 it('loads compact .js static, dynamic and re-exported modules with Pages Worker-directory rules', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pages-compact-runtime-'))
@@ -36,6 +37,42 @@ it('loads compact .js static, dynamic and re-exported modules with Pages Worker-
     const response = await worker.dispatchFetch('https://worker.test/')
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ value: 40, result: 42 })
+  } finally {
+    await worker?.dispose()
+    await rm(directory, { recursive: true, force: true })
+  }
+}, 30_000)
+
+it('loads shared SQL decoders in workerd after minification and filename rewriting', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'pages-shared-sql-runtime-'))
+  let worker: Miniflare | undefined
+  try {
+    const queries = Array.from({ length: 3 }, (_, i) => `SELECT ${i}, '🚘\\n' AS label\r\nFROM sites WHERE id=$1\n${'AND active=TRUE\n'.repeat(120)}FOR UPDATE`)
+    const chunks = path.join(directory, 'chunks/routes/api/nested')
+    await mkdir(chunks, { recursive: true })
+    for (const [index, query] of queries.entries()) {
+      await writeFile(path.join(chunks, `${index}.mjs`), `export const run = args => ({ query: ${JSON.stringify(query)}, args });`)
+    }
+    await compactRouteSqlDirectory(directory)
+    expect(await readFile(path.join(directory, 'chunks/static-data-decoder.mjs'), 'utf8')).toContain('createStaticDecoder')
+    const entry = path.join(directory, 'index.js')
+    await writeFile(entry, `export default { async fetch(request) {
+      const args = [new URL(request.url).searchParams.get('site')];
+      const modules = await Promise.all([${queries.map((_, i) => `import('./chunks/routes/api/nested/${i}.mjs')`).join(',')}]);
+      return Response.json(modules.map(module => module.run(args)));
+    } }`)
+    await compactDeployedWorkerModules(path.join(directory, 'chunks'))
+    await compactWorkerModuleFilenames(directory)
+    worker = new Miniflare({
+      scriptPath: entry, modulesRoot: directory, modules: true,
+      modulesRules: [{ type: 'ESModule', include: ['**/*.js', '**/*.mjs'] }],
+      compatibilityDate: '2024-12-01', compatibilityFlags: ['nodejs_compat']
+    })
+    for (const site of ['site-a', 'site-b']) {
+      const response = await worker.dispatchFetch(`https://worker.test/?site=${site}`)
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual(queries.map(query => ({ query, args: [site] })))
+    }
   } finally {
     await worker?.dispose()
     await rm(directory, { recursive: true, force: true })
