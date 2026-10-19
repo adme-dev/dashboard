@@ -34,11 +34,52 @@ session expiries to make acceptance pass.
 
 - [x] Fresh current-main ancestry and prior preview source verified.
 - [x] Signup and deployment-guard suites: 55 tests pass across four files.
-- [ ] Guarded `pnpm deploy:preview` and provider source/config readback.
-- [ ] Approved-mailbox login and two-account isolation checks.
-- [ ] Production configuration and deployment remain unchanged on readback.
+- [x] Guarded `pnpm deploy:preview` and provider source/config readback.
+- [x] Approved account A: normal email sign-in, own dashboard and launch-state read.
+- [x] A's foreign launch-state read denied; full two-account matrix remains open.
+- [ ] Approved account B login and reciprocal isolation checks.
+- [x] Production Page Studio variables and deployment remain unchanged on readback.
 
 The first test invocation required Nuxt's generated tsconfigs; `nuxt prepare`
 resolved that setup prerequisite and the actual tests then passed. Application
 code is unchanged from the live preview. Evidence is archived under
 `Worktree Archives/2026-10-19/pi-acceptance-renewal/`.
+
+## Hosted receipt — 19 October, 04:22 UTC
+
+Preview deployment `e202f7f4-6373-4d21-8840-d98c4bd70cbb` serves clean source
+`256e8c7b150714d0690cd45ff4dae893b7ce39d4`. The guarded source check includes
+current main `6b82be128f29101324f4d3db7930ec30f45d1d7d`. Raw Worker size is
+25,451,700 / 25,468,928 bytes; gzip is 7,154,399 / 9,750,000 bytes.
+
+The first build passed, but its final Git fetch failed and prevented upload.
+An ordinary fetch succeeded and the complete guarded deployment was rerun.
+No source guard or size budget was bypassed. Provider readback confirms only
+the preview signup expiry changed among Page Studio plaintext variables.
+Production retains deployment `630ec0a3-4db8-4b4c-98a8-bcd635314be1` and all
+of its Page Studio variables. The original baseline omitted Hyperdrive bindings;
+it cannot establish their equality. The post-release receipt records the actual
+staging and production binding IDs separately.
+
+The first approved native account requested and received a normal sign-in email,
+consumed its one-use link and confirmed through the ordinary verification UI.
+Its account and dashboard return 200. Its own launch-state returns 200 and a
+foreign site's launch-state returns 403. The dashboard retains the existing
+site and reports `needs-attention`, `canPrepareCms=false`, `canOpenStudio=false`;
+the expired trial has not been renewed. This is bounded login/read isolation,
+not completed two-account editing, Forms or Pi acceptance.
+
+The second approved mailbox is not available in the connected Gmail session:
+the attempted mailbox selection resolves to another account's reauthentication
+screen. The owner has been asked to open the correct desktop inbox. No second
+sign-in email, substitute identity or database-issued credential was used.
+
+## Separate customer-plan release prerequisite
+
+PR664 already implements audited initial plan transitions and managed transfers.
+Do not duplicate that workflow or rewrite immutable preview approvals. Its exact
+head `3986dfc69200718a85b6b62aad8c0c27bc169722` failed CI38913506224 because raw
+Worker size is 25,471,854 bytes, 2,926 over the unchanged safety budget.
+This is a confirmed release blocker, not a missing implementation. The matching
+private management Worker must be released before that Pages code. None of those
+23 commits beyond the previously live preview are included in this renewal.
