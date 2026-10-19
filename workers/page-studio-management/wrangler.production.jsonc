@@ -17,6 +17,7 @@
   "vars": {
     "PAGE_STUDIO_RELEASE_ENVIRONMENT": "production",
     "PAGE_STUDIO_PROVISIONING_ENVIRONMENT": "production",
+    "MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY": "{\"version\":1,\"kind\":\"managed-draft-import\",\"accountId\":\"a5b299b3ad15c1b5b895dc66f9357b17\",\"namespace\":\"xeroflow-page-studio-dispatch-production\",\"from\":{\"compatibilityDate\":\"2026-09-07\",\"digest\":\"2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83\"},\"to\":{\"compatibilityDate\":\"2026-08-18\",\"digest\":\"40aa0efe85f87918c569b8388a3403af51ee8c33d741c56eeb956a702ab7105d\"}}",
     "PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID": "a5b299b3ad15c1b5b895dc66f9357b17",
     "PAGE_STUDIO_CLOUDFLARE_ZONE_ID": "8e38cbf3910d291dd218710296661073",
     "PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET": "sites.xeroflow.io",

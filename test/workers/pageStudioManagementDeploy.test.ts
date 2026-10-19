@@ -34,7 +34,11 @@ describe('private management immutable deployment target', () => {
   it('requires explicit production provisioning and permits only strict reviewed-policy shape', () => {
     const current = config()
     expect(current.vars.PAGE_STUDIO_PROVISIONING_ENVIRONMENT).toBe('production')
-    expect(current.vars.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY).toBeUndefined()
+    const configured = JSON.parse(current.vars.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY)
+    expect(configured).toMatchObject({ version: 1, kind: 'managed-draft-import', accountId: current.account_id,
+      namespace: 'xeroflow-page-studio-dispatch-production',
+      from: { compatibilityDate: '2026-09-07', digest: '2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83' },
+      to: { compatibilityDate: '2026-08-18', digest: '40aa0efe85f87918c569b8388a3403af51ee8c33d741c56eeb956a702ab7105d' } })
     const policy = { version: 1, kind: 'managed-draft-import', accountId: current.account_id,
       namespace: 'xeroflow-page-studio-dispatch-production', from: { compatibilityDate: '2026-07-15', digest: 'a'.repeat(64) },
       to: { compatibilityDate: '2026-07-15', digest: 'b'.repeat(64) } }
