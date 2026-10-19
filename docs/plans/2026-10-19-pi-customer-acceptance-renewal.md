@@ -86,13 +86,32 @@ This is a confirmed release blocker, not a missing implementation. The matching
 private management Worker must be released before that Pages code. None of those
 23 commits beyond the previously live preview are included in this renewal.
 
-The proposed build correction is PR666, source
+The build correction is PR666, initially verified at source
 `2d5d543d1d0988aab59a12b1759d00b73b26d9f0`. It shares the existing lazy static
 SQL decoder across route modules and preserves separate caches and exact query
 text. All 62 focused tests pass, including actual workerd execution after module
-minification/renaming. Full Linux CI39200310701 is pending; this is not a release
-or a verified final artifact-size result. Local disk pressure is avoided by using
-the existing GitHub build workflow with deployment jobs excluded for this branch.
+minification/renaming. Linux CI39200310701 built successfully:
+raw 25,448,362 / 25,468,928 bytes;
+gzip 7,149,965 / 9,750,000 bytes. Its full suite found 20 failures across four
+stale inventory/deployment fixtures in the broader customer-launch branch.
+Source review confirmed the new native recovery POST, production Forms flag and
+private production provisioner binding. Those expectations were reconciled in
+`43d6d5f3e895371b363f4b361c3d2f24d69add0d`, retaining the exact inventory fingerprint
+and adding missing/wrong-production-provisioner rejection tests. All 66 targeted
+checks and changed-file ESLint pass. Removing the single added feature-flag row
+reproduces the previous inventory fingerprint exactly.
+
+Full Linux CI39202885136 passed on that final code, including the dedicated
+PostgreSQL stages, Worker build, artifact checks and deployment guards. The
+repository-wide test stages passed 16,608 tests (54 caller tests plus 16,554 in
+the remaining suite), with 2,907 conditional tests skipped. Final raw Worker size
+is 25,448,434 / 25,468,928 bytes; gzip is 7,150,025 / 9,750,000 bytes.
+PR666 merged into the customer-launch feature branch as
+`d42479a545236e578f697e7093291c5351e79928`. Deployment jobs were skipped. This is
+not a production release or customer activation. Local disk pressure is avoided
+by using the existing GitHub build workflow with deployment jobs excluded for this branch. After preserving
+the completed preview deployment receipts, only its owned regenerable `dist/`
+and `.nuxt/` outputs were removed; source, dependencies and evidence remain.
 
 Fresh production Pi readback still reports version
 `e70edf12-e793-47dd-926d-a7d419ca8c92`, deployment
