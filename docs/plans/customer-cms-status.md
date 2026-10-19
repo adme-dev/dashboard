@@ -25,9 +25,11 @@ uploaded to its private immutable key and independently downloaded and hashed.
 Production migrations 0014–0018 preserve all original registry rows, schema,
 ownership and routing. No tenant runtime was globally repinned.
 
-The guarded Pages release is running as CI39318355504. It is not yet a verified
-Pages deployment. Hosted transfer/operator consent, two-account acceptance and
-customer/Pi activation remain outstanding. Production Pi readback still shows
+The guarded Pages release CI39318355504 failed twice at one Miniflare HTTP
+transport check, before upload. The HTTP-ingress harness fix is locally verified
+and awaiting Linux CI. Pages remains on its preceding deployment. Hosted
+transfer/operator consent, two-account acceptance and customer/Pi activation
+remain outstanding. Production Pi readback still shows
 disabled admission and an empty canary list. See the
 [rollout receipt](../page-studio/2026-10-20-managed-transfer-rollout.md) before
 continuing; do not repeat completed deployments or reuse the old drift baseline

@@ -15,7 +15,8 @@ change or Pi activation occurred during this rollout.
   Its tree is identical to tested head `747dffc94851f45ea096a1fb250d2fc759fbec76`.
   [CI39240667812](https://github.com/adme-dev/xeroflow-page-studio/actions/runs/39240667812)
   passed verification and transfer stress on both Linux and Windows. The merge
-  commit's repeated CI remains separate from that tested-tree evidence.
+  commit's [CI39310945578](https://github.com/adme-dev/xeroflow-page-studio/actions/runs/39310945578)
+  subsequently passed all four jobs as well.
 
 Both repositories were freshly fetched and matched current main before release.
 Existing settings omitted by checked-in executor configs were preserved in
@@ -66,8 +67,23 @@ native click succeeded. No content was edited during this check.
 
 The guarded ordinary Pages release was dispatched on exact main as
 [CI39318355504](https://github.com/adme-dev/dashboard/actions/runs/39318355504).
-Its completion, provider source/deployment readback, existing navigation including
-QR Codes, and post-release customer checks remain required. The preceding Pages
+Both attempts passed production build and database stages, then failed the same
+Miniflare service-proxy request with `write ECONNRESET` at destination-authoring
+runtime test line 39. Each attempt passed the other 16,578 tests. The original test
+passes locally; a single failed-job-only rerun reproduced the CI failure. Neither
+attempt reached Pages upload.
+
+The test now exercises the management Worker's HTTP ingress with
+`Miniflare.dispatchFetch`, preserving the POST method, complete request payload
+and required 404. It also checks the response body, unchanged RPC count and zero
+outbound calls. RPC authorization checks still use the actual service binding.
+This follows the existing runtime-test pattern and avoids using Miniflare's
+service-binding proxy to test HTTP ingress. Two focused runtime files (five tests)
+and scoped lint pass locally. The Linux CI result is required before calling the
+transport failure resolved; its precise socket-level cause is not proven locally.
+Release completion, provider source/deployment readback and post-release checks
+remain required. Signed-in agency QR navigation and all four customer previews
+render before the Pages release. The preceding Pages
 production deployment is `630ec0a3-4db8-4b4c-98a8-bcd635314be1`.
 
 Production Pi remains version `e70edf12-e793-47dd-926d-a7d419ca8c92`, deployment
