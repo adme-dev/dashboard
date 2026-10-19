@@ -68,6 +68,8 @@ foreign site's launch-state returns 403. The dashboard retains the existing
 site and reports `needs-attention`, `canPrepareCms=false`, `canOpenStudio=false`;
 the expired trial has not been renewed. This is bounded login/read isolation,
 not completed two-account editing, Forms or Pi acceptance.
+Normal UI sign-out then returned the browser to signup, and the same own-site
+launch-state read returned 401 with `private, no-store`.
 
 The second approved mailbox is not available in the connected Gmail session:
 the attempted mailbox selection resolves to another account's reauthentication
@@ -83,3 +85,15 @@ Worker size is 25,471,854 bytes, 2,926 over the unchanged safety budget.
 This is a confirmed release blocker, not a missing implementation. The matching
 private management Worker must be released before that Pages code. None of those
 23 commits beyond the previously live preview are included in this renewal.
+
+The proposed build correction is PR666, source
+`2d5d543d1d0988aab59a12b1759d00b73b26d9f0`. It shares the existing lazy static
+SQL decoder across route modules and preserves separate caches and exact query
+text. All 62 focused tests pass, including actual workerd execution after module
+minification/renaming. Full Linux CI39200310701 is pending; this is not a release
+or a verified final artifact-size result. Local disk pressure is avoided by using
+the existing GitHub build workflow with deployment jobs excluded for this branch.
+
+Fresh production Pi readback still reports version
+`e70edf12-e793-47dd-926d-a7d419ca8c92`, deployment
+`55bbb328-8f3b-42a2-b087-521e39eae5dd`, disabled admission and an empty site list.
