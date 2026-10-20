@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -22,29 +23,45 @@ const nativeBucket = {
   bucket_name: 'xeroflow-page-studio-checkpoints-native-preview'
 }
 
-function assertProductionPreparation(environment: Environment) {
+function assertProductionSignupScope(environment: Environment) {
   expect(environment.services).toEqual(expect.arrayContaining(nativeServices))
   expect(environment.r2_buckets).toContainEqual(nativeBucket)
   expect(environment.vars).toMatchObject({
-    PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED: 'false',
+    PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED: 'true',
+    PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT: '2026-10-22T12:00:00Z',
     PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false',
     PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://studio-customer-preview.xeroflow.io',
     PAGE_STUDIO_CUSTOMER_ORIGIN: 'https://app.xeroflow.io',
     PAGE_STUDIO_CUSTOMER_EMAIL_FROM: 'notification@xeroflow.io',
     PAGE_STUDIO_CUSTOMER_TERMS_VERSION: config.env.preview.vars.PAGE_STUDIO_CUSTOMER_TERMS_VERSION
   })
-  for (const key of ['PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES', 'PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT', 'PAGE_STUDIO_CUSTOMER_PREVIEW_APPROVALS', 'PAGE_STUDIO_STAGING_TENANT_ID']) {
+  expect(JSON.parse(environment.vars.PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES)).toEqual(
+    ['pgiurin@gmail.com', 'developer@adme.net.au'].map(email =>
+      createHash('sha256').update(email.trim().toLowerCase(), 'utf8').digest('hex'))
+  )
+  for (const key of ['PAGE_STUDIO_CUSTOMER_PREVIEW_APPROVALS', 'PAGE_STUDIO_STAGING_TENANT_ID']) {
     expect(environment.vars).not.toHaveProperty(key)
   }
 }
 
-describe('production Pages native customer preparation', () => {
-  it('prepares dormant production resources without copying staging account scopes', () => {
-    assertProductionPreparation(config.env.production)
+describe('production Pages bounded native customer signup', () => {
+  it('admits exactly two reviewed mailboxes until the fixed expiry without staging account scopes', () => {
+    assertProductionSignupScope(config.env.production)
     expect(config.env.production.vars.PAGE_STUDIO_CUSTOMER_TERMS_VERSION).toBe('2026-08-02')
     for (const environment of [config, config.env.preview]) {
       for (const service of nativeServices) expect(environment.services ?? []).not.toContainEqual(service)
       expect(environment.r2_buckets ?? []).not.toContainEqual(nativeBucket)
+    }
+  })
+
+  it('keeps native preview, editor, CMS and Forms admission closed', () => {
+    for (const key of [
+      'PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED', 'PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED',
+      'PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED', 'PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED',
+      'PAGE_STUDIO_CUSTOMER_FORMS_ENABLED', 'PAGE_STUDIO_CUSTOMER_WORKSPACE_ENABLED',
+      'PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED'
+    ]) {
+      expect(config.env.production.vars).not.toHaveProperty(key)
     }
   })
 
@@ -79,7 +96,7 @@ describe('production Pages native customer preparation', () => {
       expect(flattened.services).toEqual(source.services.filter(service => !service.binding.startsWith('CRM_SEARCH_')))
       expect(flattened.r2_buckets).toEqual(source.r2_buckets.filter(bucket => !bucket.binding.startsWith('CRM_SEARCH_')))
       expect(flattened).not.toHaveProperty('env')
-      if (branch === 'main') assertProductionPreparation(flattened)
+      if (branch === 'main') assertProductionSignupScope(flattened)
     } finally {
       await rm(repositoryRoot, { recursive: true, force: true })
     }
