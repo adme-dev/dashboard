@@ -1,4 +1,5 @@
 import { assertMethod, createError, getHeader, readBody, setHeader, setResponseStatus, type H3Event } from 'h3'
+import { readCustomerActivation } from './customerActivation'
 import { z } from 'zod'
 import { transaction } from '~~/server/utils/db'
 import { customerPreviewRuntimeEnvironment, hasCustomerPreviewRuntimeConfiguration } from './customerPreviewRuntime'
@@ -26,7 +27,7 @@ function configuration(event: H3Event, environmentHint?: 'staging' | 'production
   const dashboard = CustomerEditorOriginSchema.safeParse(selected('PAGE_STUDIO_CUSTOMER_ORIGIN'))
   const editor = CustomerEditorOriginSchema.safeParse(selected('PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN'))
   const environment = selected('PAGE_STUDIO_CONTENT_ENVIRONMENT') ?? 'staging'
-  if (setting(event, 'PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED') !== 'true'
+  if (!readCustomerActivation(original).editorEnabled
     || (environment === 'production'
       ? setting(event, 'PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED') !== 'true'
       : environment !== 'staging' || selected('PAGE_STUDIO_PROVISIONING_ENVIRONMENT') !== 'staging')

@@ -1,11 +1,12 @@
 import { createError, readBody, type H3Event } from 'h3'
+import { readCustomerActivation } from './customerActivation'
 import { z } from 'zod'
 import { CustomerProvisioningRecoverySchema } from '~~/shared/pageStudio/customerDashboard'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { guardCustomerRequest, customerSessionToken, limitCustomerRequest } from './customerSignupHttp'
 import { customerPreviewRuntimeEnvironment } from './customerPreviewRuntime'
 import { getPageStudioProvisioningRuntime } from './provisioningBinding'
-import { CustomerPreviewApprovalSchema, readCustomerDashboard, createCustomerDashboardPreview, recoverCustomerDashboardPreview, type CustomerDashboardDependencies } from './customerDashboard'
+import { readCustomerDashboard, createCustomerDashboardPreview, recoverCustomerDashboardPreview, type CustomerDashboardDependencies } from './customerDashboard'
 
 import { customerCmsSetupOptions } from './customerCmsSetupHttp'
 import { customerCmsSetupAvailable } from './customerCmsSetup'
@@ -15,17 +16,9 @@ import { readCustomerEditorAvailability } from './customerEditorLaunch'
 
 function options(event: H3Event): CustomerDashboardDependencies {
   const env = event.context.cloudflare?.env ?? {}
-  const setting = (key: string) => env[key] ?? process.env[key]
+  const activation = readCustomerActivation(env)
   const runtime = getPageStudioProvisioningRuntime(customerPreviewRuntimeEnvironment(env) ?? undefined)
-  const enabled = setting('PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED') === 'true' && runtime?.environment === 'staging'
-  try {
-    const approvals = z.array(CustomerPreviewApprovalSchema).max(100)
-      .refine(rows => new Set(rows.map(row => row.workspaceId)).size === rows.length)
-      .parse(JSON.parse(String(setting('PAGE_STUDIO_CUSTOMER_PREVIEW_APPROVALS') ?? '[]')))
-    return { enabled, binding: runtime?.binding, approvals }
-  } catch {
-    return { enabled: false }
-  }
+  return { enabled: activation.previewEnabled && runtime?.environment === 'staging', binding: runtime?.binding, approvals: activation.previewApprovals }
 }
 function safeError(error: unknown): never {
   const status = (error as { statusCode?: number })?.statusCode

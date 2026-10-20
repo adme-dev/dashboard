@@ -37,6 +37,44 @@ Each approval contains `workspaceId`, `starterVersion` (an existing supported st
 
 Approval is server-owned configuration, never customer input. The retained preview entitlement has one site, no custom domains or AI credits, and publishing disabled. Configuration changes do not rewrite an existing immutable receipt/policy. To stop new or resumed dispatch, disable the preview flag; revoke native authority where existing work must be stopped. Follow the provisioning adapter's reconciliation procedure for accepted work; do not delete receipts or replace request keys to retry.
 
+## Atomic customer activation binding
+
+Pages deployments with limited text-binding capacity can replace the five
+activation scalars with one JSON string named `PAGE_STUDIO_CUSTOMER_ACTIVATION`:
+
+```json
+{"previewEnabled":false,"previewApprovals":[],"cmsSetupEnabled":false,"browserEnabled":false,"editorEnabled":false}
+```
+
+All five fields are required, with literal JSON booleans and an approvals array.
+Approvals retain the existing strict policy schema, 100-workspace limit and
+unique workspace IDs. Malformed JSON, unknown or missing fields, wrong types,
+or invalid approvals close **all** bundle gates. No missing field is recovered
+from `process.env` or a scalar. An empty approvals array grants no preview approval.
+The four switches remain independent; browser launch needs both browser and
+editor switches, while private editor sessions need the editor switch.
+
+Before adding the bundle, remove all five scalar bindings from that environment:
+`PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED`, `PAGE_STUDIO_CUSTOMER_PREVIEW_APPROVALS`,
+`PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED`, `PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED`,
+and `PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED`. Any co-configured scalar, including
+one with an agreeing or empty value, invalidates the whole bundle. Deploy the
+bundle-aware code before changing activation configuration.
+
+A Cloudflare bundle is authoritative, including a null/empty/malformed value;
+process configuration cannot repair or override it. Local execution can use a
+process bundle when no Cloudflare bundle exists, but any Cloudflare activation
+scalar then causes a closed conflict. Without any bundle, existing scalar paths
+retain per-key process fallback and strict string `true` opt-in. In that legacy
+mode malformed approvals disable preview only, preserving existing behavior.
+
+`PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED` remains a separate guard, as does
+production editor opt-in. Runtime bindings, retained environment selection,
+exact origins, native ownership, current sessions, approval expiry and private
+machine authentication are unchanged. This binding is operator configuration;
+it neither grants customer authority nor activates Pi. This change adds no
+public product capability or marketing claim.
+
 ## Verification and limitations
 
 - Real PostgreSQL tests cover no-allocation reads, approved creation/replay, native ownership and revocation, interrupted creation, mismatched coordinator responses, and redacted status.
