@@ -31,9 +31,11 @@ async function refresh(clearMessage = true) {
   loaded.value = false
   if (clearMessage) message.value = ''
   try {
-    const value = await $fetch<unknown>(endpoint.value)
+    const response = await $fetch.raw<unknown>(endpoint.value)
     if (current !== generation || sequence !== read) return
-    saved.value = value === null ? null : accept(value)
+    if (response.status === 204 && response._data === undefined) saved.value = null
+    else if (response.status === 200) saved.value = response._data === null ? null : accept(response._data)
+    else throw new Error('Unexpected preparation response')
     loaded.value = true
     if (saved.value) keepIdentity(saved.value.requestId)
   } catch {

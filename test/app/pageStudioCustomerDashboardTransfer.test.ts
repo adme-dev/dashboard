@@ -5,7 +5,7 @@ import Dashboard from '~~/app/components/studio/CustomerDashboard.client.vue'
 import TransferRequest from '~~/app/components/studio/CustomerTransferRequest.client.vue'
 import { button, cleanup, click, control, deferred, dialog, flush, mount, otherSite, siteId } from '../components/pageStudioTransferTestSupport'
 
-const readDashboard = vi.fn(), fetch = vi.fn(), navigate = vi.fn()
+const readDashboard = vi.fn(), fetch = Object.assign(vi.fn(), { raw: vi.fn() }), navigate = vi.fn()
 const overview = (site = siteId) => ({ siteId: site, businessName: 'Flower shop', businessType: 'Florist', timezone: 'UTC', stage: 3, state: 'verification-pending', canCreate: false, canRetry: false })
 const posts = () => fetch.mock.calls.filter(([url, options]) => url.endsWith('/transfer-request') && options?.method === 'POST')
 const panel = (host: HTMLElement) => host.querySelector('[aria-labelledby="transfer-request-title"]')
@@ -25,6 +25,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   readDashboard.mockResolvedValue(overview())
   fetch.mockResolvedValue(null)
+  fetch.raw.mockImplementation(async (...args) => ({ status: 200, _data: await fetch(...args) }))
   vi.stubGlobal('useFetch', (url: string) => {
     const data = ref(), error = ref()
     return { data, error, refresh: async () => {
