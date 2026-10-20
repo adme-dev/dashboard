@@ -298,7 +298,10 @@ binding = "PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS"
 bucket_name = "xeroflow-page-studio-checkpoints-native-preview"
 
 [env.production.vars]
-PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "false"
+# Bounded ordinary signup only; close with false, never remove both scope keys.
+PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "true"
+PAGE_STUDIO_CUSTOMER_SIGNUP_EMAIL_HASHES = "[\"4f36db1c1351562c55e99db985892ed17678bde2b89cddad965423398b39d02a\",\"c1964aec4e25e7848a739ecf7085a280c3ccabfbd18fba65d098078f905433af\"]"
+PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT = "2026-10-22T12:00:00Z"
 PAGE_STUDIO_CUSTOMER_ORIGIN = "https://app.xeroflow.io"
 PAGE_STUDIO_CUSTOMER_TERMS_VERSION = "2026-08-02"
 PAGE_STUDIO_CUSTOMER_EMAIL_FROM = "notification@xeroflow.io"
