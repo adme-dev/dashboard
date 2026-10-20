@@ -1,44 +1,55 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { CustomerPlanTarget, CustomerPlanTargets } from '~~/shared/pageStudio/customerPlans'
 
 const { user } = useAuth()
-const canManage = computed(() => Boolean(user.value && ['owner', 'admin'].includes(user.value.role) && !user.value.custom_role_id))
+// The endpoint decides whether this candidate holds a built-in system role.
+const canManage = computed(() => Boolean(user.value && ['owner', 'admin'].includes(user.value.role)))
+const actorKey = computed(() => JSON.stringify(user.value))
 const selected = ref<CustomerPlanTarget | null>(null)
 const cursor = ref<string | undefined>()
 const history = ref<Array<string | undefined>>([])
-const { data, pending, error, refresh, clear } = useFetch<CustomerPlanTargets>('/api/agency/page-studio/customer-plans', {
-  server: false, immediate: false, watch: false, query: computed(() => cursor.value ? { after: cursor.value } : {})
-})
-watch(() => user.value?.id, () => {
+const data = ref<CustomerPlanTargets | null>(null), pending = ref(false), error = ref(false)
+let generation = 0
+async function reload() {
+  if (!canManage.value || pending.value) return
+  const current = generation
+  selected.value = null
+  data.value = null
+  pending.value = true
+  error.value = false
+  try {
+    const result = await $fetch<CustomerPlanTargets>('/api/agency/page-studio/customer-plans', { query: cursor.value ? { after: cursor.value } : {} })
+    if (current === generation) data.value = result
+  } catch {
+    if (current === generation) {
+      data.value = null
+      selected.value = null
+      error.value = true
+    }
+  } finally { if (current === generation) pending.value = false }
+}
+watch(actorKey, () => {
+  generation++
   selected.value = null
   cursor.value = undefined
   history.value = []
-  clear()
+  data.value = null
+  error.value = false
+  pending.value = false
+  if (canManage.value) void reload()
+}, { immediate: true, flush: 'sync' })
+onBeforeUnmount(() => {
+  generation++
 })
-watch([canManage, () => user.value?.id], async ([allowed]) => {
-  selected.value = null
-  if (allowed)
-    await refresh()
-  else
-    clear()
-}, { immediate: true })
-async function reload() {
-  if (!canManage.value || pending.value)
-    return
-  selected.value = null
-  await refresh()
-}
 async function next() {
-  if (!data.value?.nextCursor || pending.value)
-    return
+  if (!data.value?.nextCursor || pending.value) return
   history.value.push(cursor.value)
   cursor.value = data.value.nextCursor
   await reload()
 }
 async function previous() {
-  if (!history.value.length || pending.value)
-    return
+  if (!history.value.length || pending.value) return
   cursor.value = history.value.pop()
   await reload()
 }
@@ -79,6 +90,12 @@ function expiry(value: string | null) {
     </template>
     <template #body>
       <div class="mx-auto w-full max-w-6xl space-y-6">
+        <UButton
+          label="Website preparations"
+          to="/agency/page-studio/transfer-requests"
+          color="neutral"
+          variant="ghost"
+        />
         <header class="max-w-2xl space-y-2">
           <h1 class="text-2xl font-semibold tracking-tight text-highlighted">
             From preview to publishing
@@ -147,24 +164,25 @@ function expiry(value: string | null) {
               label="Previous"
               color="neutral"
               variant="outline"
-              :disabled="!history.length"
+              :disabled="pending || !history.length"
               @click="previous"
             />
             <UButton
               label="Next"
               color="neutral"
               variant="outline"
-              :disabled="!data?.nextCursor"
+              :disabled="pending || !data?.nextCursor"
               @click="next"
             />
           </div>
         </template>
         <PageStudioCustomerPlanGrant
           v-if="selected && canManage"
-          :key="`${user?.id}:${selected.workspaceId}:${selected.entitlementId}`"
+          :key="`${actorKey}:${selected.workspaceId}:${selected.entitlementId}`"
           :target="selected"
           @close="selected = null"
           @granted="reload"
+          @invalidated="reload"
         />
       </div>
     </template>

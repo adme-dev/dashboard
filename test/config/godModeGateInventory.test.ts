@@ -260,21 +260,33 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain('server/utils/socialPublishing/cronAuth.ts\t: process.env.CRON_SECRET\tprovider_infrastructure_availability')
     // Native plan grants add one fresh staff identity boundary. No governance
     // bypass, customer route or workspace assistance authority is introduced.
-    expect(inventory.rows).toContain('server/utils/pageStudio/customerPlanGrants.ts\tAND is_active=TRUE AND user_role IN (\'owner\',\'admin\') AND custom_role_id IS NULL FOR SHARE NOWAIT`, [actorId])\tidentity_tenant_hard_boundary')
+    expect(inventory.rows).toContain('server/utils/pageStudio/customerPlanGrants.ts\tFROM team_members WHERE id=$1 AND is_active=TRUE AND user_role IN (\'owner\',\'admin\') FOR SHARE NOWAIT`, [actorId])\tidentity_tenant_hard_boundary')
     // Managed transfer separately requires the original platform operator and
     // native customer owner. This staff role check is an identity boundary,
     // never an application-governance bypass.
-    expect(inventory.rows).toContain('server/utils/pageStudio/managedTransferAuthority.ts\tAND staff.is_active=TRUE AND staff.user_role IN (\'owner\',\'admin\') AND staff.custom_role_id IS NULL\tidentity_tenant_hard_boundary')
+    expect(inventory.rows).toContain('server/utils/pageStudio/managedTransferAuthority.ts\tAND staff.is_active=TRUE AND staff.user_role IN (\'owner\',\'admin\')\tidentity_tenant_hard_boundary')
     // The production Forms switch adds a lexical feature-flag row. This does not
     // register a bypass; the handler still requires its flag and native scope.
     expect(inventory.rows).toContain('server/utils/pageStudio/customerFormsHttp.ts\t&& (env.PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED ?? process.env.PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED) === \'true\'))\tapplication_governance_bypass')
-    expect(inventory.rows).toHaveLength(1602)
+    // Built-in role bindings are admitted only when their slug matches the
+    // actual staff role and the assigned role is a locked system role.
+    expect(inventory.rows).toContain('server/utils/pageStudio/customerPlanGrants.ts\tAND is_system=TRUE FOR SHARE NOWAIT`, [owner.custom_role_id, owner.user_role])\tidentity_tenant_hard_boundary')
+    const operatorSource = readFileSync('server/utils/pageStudio/customerPlanGrants.ts', 'utf8')
+    expect(operatorSource).toContain('FROM custom_roles WHERE id=$1 AND slug=$2')
+    expect(operatorSource).not.toContain('AND custom_role_id IS NULL FOR SHARE NOWAIT')
+    expect(readFileSync('server/utils/pageStudio/managedTransferAuthority.ts', 'utf8'))
+      .toContain('await requireCustomerPlanOperator(db, operator.actorId)')
+    // Bootstrap adds two public configuration reads without changing any gate
+    // classification or authorizing a God mode bypass.
+    expect(inventory.rows).toContain('server/utils/pageStudio/sessionVerificationKeyHttp.ts\t: process.env.PAGE_STUDIO_SESSION_PUBLIC_KEY\tunrelated_configuration')
+    expect(inventory.rows).toContain('server/utils/pageStudio/sessionVerificationKeyHttp.ts\t: process.env.PAGE_STUDIO_SESSION_ISSUER\tunrelated_configuration')
+    expect(inventory.rows).toHaveLength(1606)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 126,
+      identity_tenant_hard_boundary: 128,
       provider_infrastructure_availability: 224,
       application_governance_bypass: 1625,
       ordinary_user_behavior: 192,
-      unrelated_configuration: 434
+      unrelated_configuration: 436
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -289,7 +301,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('0e723a700b1208cdfefd68b2ee5743e1fb9fe0a71a5ec90dcd71e55cf8acee0c')
+    expect(inventory.digest).toBe('bd1bb351364bdb01ae8e35b3c134ea9d2940c0ff02d461006a954b455c9d77b0')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

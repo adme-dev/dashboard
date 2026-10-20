@@ -1,3 +1,5 @@
+import { handleTransferControls } from './transferControls'
+import { handleTransferWorkflow } from './transferWorkflow'
 import { handleManagedTransferPreparation } from './managedTransferPreparation'
 import { handleCompletedManagedTransferManagement, handleManagedTransferFinalization } from './completedManagedTransferManagement'
 import { handleManagedTransferSourceRetentionManagement } from './managedTransferSourceRetentionManagement'
@@ -33,6 +35,14 @@ const Request = z.discriminatedUnion('operation', [
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch() { return new Response('Not found', { status: 404 }) }
+  async transferControls(input: unknown) {
+    return handleTransferControls(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async transferWorkflow(input: unknown) {
+    return handleTransferWorkflow(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
   async completedManagedTransfer(input: unknown) {
     return handleCompletedManagedTransferManagement(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }

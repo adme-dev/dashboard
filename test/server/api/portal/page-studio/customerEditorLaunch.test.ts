@@ -2,10 +2,11 @@ import { createServer, type Server } from 'node:http'
 import { createApp, toNodeListener, defineEventHandler } from 'h3'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ launch: vi.fn(), ready: vi.fn(), limit: vi.fn(), dashboard: vi.fn(), cmsAvailable: vi.fn() }))
+const mocks = vi.hoisted(() => ({ launch: vi.fn(), ready: vi.fn(), limit: vi.fn(), dashboard: vi.fn(), cmsAvailable: vi.fn(), environment: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/customerEditorLaunch', () => ({ launchCustomerEditor: mocks.launch, readCustomerEditorAvailability: mocks.ready }))
 vi.mock('~~/server/utils/pageStudio/customerDashboard', async original => ({ ...await original<object>(), readCustomerDashboard: mocks.dashboard }))
 vi.mock('~~/server/utils/pageStudio/customerCmsSetup', () => ({ customerCmsSetupAvailable: mocks.cmsAvailable }))
+vi.mock('~~/server/utils/pageStudio/customerPreviewRouting', () => ({ readCustomerEditorEnvironment: mocks.environment }))
 vi.mock('~~/server/utils/rateLimit', () => ({ checkAndConsume: mocks.limit }))
 describe('native customer editor launch HTTP', () => {
   let server: Server, base: string, config: Record<string, unknown>
@@ -32,6 +33,7 @@ describe('native customer editor launch HTTP', () => {
       PAGE_STUDIO_CHECKPOINTS: { get: vi.fn() }, PAGE_STUDIO_CONTENT_ROUTER: { readManagedCmsTarget: vi.fn() } }
     mocks.limit.mockResolvedValue({ allowed: true })
     mocks.ready.mockResolvedValue(true)
+    mocks.environment.mockResolvedValue('production')
     mocks.dashboard.mockResolvedValue({ state: 'verification-pending', canCreate: false, canRetry: false })
     mocks.launch.mockResolvedValue({ token: 'b'.repeat(64), editorOrigin: 'https://editor.example.test', expiresAt: new Date(Date.now() + 60000).toISOString() })
   })
@@ -71,6 +73,40 @@ describe('native customer editor launch HTTP', () => {
     expect(mocks.launch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
       configuration: expect.objectContaining({ environment: 'production' }),
       env: expect.objectContaining({ PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' })
+    }))
+  })
+  it('keeps a new production signup dashboard readable before a site exists', async () => {
+    config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'production'
+    config.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'production'
+    config.PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED = 'true'
+    const response = await call({}, {}, '/dashboard', 'GET')
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ state: 'verification-pending', canOpenStudio: false })
+    expect(mocks.environment).not.toHaveBeenCalled()
+    expect(mocks.launch).not.toHaveBeenCalled()
+  })
+  it('selects isolated source from authenticated native state and preserves completed production selection', async () => {
+    config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'production'
+    config.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'production'
+    config.PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED = 'true'
+    Object.assign(config, { PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
+      PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER: { createProvisioning: vi.fn(), readProvisioning: vi.fn() },
+      PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER: { readManagedCmsTarget: vi.fn() },
+      PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS: { get: vi.fn() },
+      PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://source.example.test' })
+    mocks.environment.mockResolvedValue('staging')
+    expect((await call()).status).toBe(200)
+    expect(mocks.launch).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({
+      configuration: expect.objectContaining({ environment: 'staging', editorOrigin: 'https://source.example.test' }),
+      env: expect.objectContaining({ PAGE_STUDIO_CONTENT_ROUTER: config.PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER })
+    }))
+    delete config.PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS
+    expect((await call()).status).toBe(403)
+    mocks.environment.mockResolvedValue('production')
+    expect((await call()).status).toBe(200)
+    expect(mocks.launch).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({
+      configuration: expect.objectContaining({ environment: 'production', editorOrigin: 'https://editor.example.test' }),
+      env: expect.objectContaining({ PAGE_STUDIO_CONTENT_ROUTER: config.PAGE_STUDIO_CONTENT_ROUTER })
     }))
   })
   it('rejects wrong origin, portal-only cookies, caller scope and GET', async () => {

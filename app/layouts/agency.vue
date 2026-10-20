@@ -18,6 +18,7 @@ const showActivityHub = computed(() => !route.path.startsWith('/agency/chat'))
 
 // RBAC: permission-gated navigation
 const {
+  user,
   isReadOnly,
   canAccessClients,
   canAccessMediaBuying,
@@ -220,6 +221,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     if (hasPermission('PAGE_STUDIO_PUBLISH')) items.push({ label: 'Releases', icon: 'i-lucide-rocket', to: '/agency/page-studio/releases', onSelect: close })
     if (hasPermission('PAGE_STUDIO_DOMAINS')) items.push({ label: 'Domains & DNS', icon: 'i-lucide-globe-2', to: '/agency/page-studio/domains', onSelect: close })
     if (hasPermission('PAGE_STUDIO_SUBSCRIPTIONS')) items.push({ label: 'Subscriptions', icon: 'i-lucide-gauge', to: '/agency/page-studio/subscriptions', onSelect: close })
+    if (user.value && ['owner', 'admin'].includes(user.value.role)) items.push({ label: 'Website preparations', icon: 'i-lucide-copy-check', to: '/agency/page-studio/transfer-requests', onSelect: close })
   }
 
   // Time & Capacity — visible to all authenticated users

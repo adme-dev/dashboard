@@ -283,7 +283,27 @@ name = "RATE_LIMITER"
 class_name = "RateLimiter"
 script_name = "rate-limiter-worker"
 
+# Native customer source previews remain dormant until scoped hosted acceptance.
+[[env.production.services]]
+binding = "PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER"
+service = "xeroflow-provisioning-native-preview"
+[[env.production.services]]
+binding = "PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER"
+service = "xeroflow-content-router-native-preview"
+[[env.production.services]]
+binding = "PAGE_STUDIO_CUSTOMER_EMAIL"
+service = "xeroflow-page-studio-customer-email-production"
+[[env.production.r2_buckets]]
+binding = "PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS"
+bucket_name = "xeroflow-page-studio-checkpoints-native-preview"
+
 [env.production.vars]
+PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED = "false"
+PAGE_STUDIO_CUSTOMER_ORIGIN = "https://app.xeroflow.io"
+PAGE_STUDIO_CUSTOMER_TERMS_VERSION = "2026-08-02"
+PAGE_STUDIO_CUSTOMER_EMAIL_FROM = "notification@xeroflow.io"
+PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED = "false"
+PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN = "https://studio-customer-preview.xeroflow.io"
 PAGE_STUDIO_INVITED_ORIGIN = "https://xeroflowpages.com"
 PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
 PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"102d79c9f6e62c96365e31f9ae4a798cb58df4cafd451bdebf6e4f2a8fcb6322\",\"generation\":\"astro_runtime_5986dc6fe5cac2da5d354b0bfa611394e463f93ab42f86776caeb9853251f781\"}"

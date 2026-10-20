@@ -1,3 +1,4 @@
+import { customerPreviewRuntimeEnvironment } from '../../../server/utils/pageStudio/customerPreviewRuntime'
 import { CmsManagementRequestSchema, cmsManagementResultSchema } from '../../../shared/pageStudio/cmsManagementContract'
 import { collectionDigest } from '../../../shared/pageStudio/collectionApi'
 import { PageStudioBusinessContentError } from '../../../server/utils/pageStudio/businessContent'
@@ -19,11 +20,13 @@ export async function handleCmsManagement(raw: unknown, env: Record<string, unkn
   // Capture trusted bindings and configuration before any asynchronous work.
   const deployment = env.PAGE_STUDIO_RELEASE_ENVIRONMENT
   const stagingFromProduction = deployment === 'production' && request.contentEnvironment === 'staging'
+  const customerSource = stagingFromProduction && request.principal.source === 'customer-session'
+  const native = customerSource ? customerPreviewRuntimeEnvironment(env) : null
   const storage = {
     PAGE_STUDIO_RELEASE_ENVIRONMENT: deployment,
     PAGE_STUDIO_CONTENT_ENVIRONMENT: request.contentEnvironment,
-    PAGE_STUDIO_CONTENT_ROUTER: stagingFromProduction ? env.PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER : env.PAGE_STUDIO_CONTENT_ROUTER,
-    PAGE_STUDIO_CHECKPOINTS: stagingFromProduction ? env.PAGE_STUDIO_CMS_STAGING_CHECKPOINTS : env.PAGE_STUDIO_CHECKPOINTS,
+    PAGE_STUDIO_CONTENT_ROUTER: customerSource ? native?.PAGE_STUDIO_CONTENT_ROUTER : stagingFromProduction ? env.PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER : env.PAGE_STUDIO_CONTENT_ROUTER,
+    PAGE_STUDIO_CHECKPOINTS: customerSource ? native?.PAGE_STUDIO_CHECKPOINTS : stagingFromProduction ? env.PAGE_STUDIO_CMS_STAGING_CHECKPOINTS : env.PAGE_STUDIO_CHECKPOINTS,
     PAGE_STUDIO_CMS_OBJECT_TRANSPORT: stagingFromProduction ? env.PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT : env.PAGE_STUDIO_CMS_OBJECT_TRANSPORT,
     PAGE_STUDIO_ACTION_RUNTIME_DIGEST: stagingFromProduction ? env.PAGE_STUDIO_CMS_STAGING_ACTION_RUNTIME_DIGEST : env.PAGE_STUDIO_ACTION_RUNTIME_DIGEST
   }

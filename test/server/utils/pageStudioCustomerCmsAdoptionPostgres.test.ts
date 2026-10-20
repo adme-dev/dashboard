@@ -1,4 +1,4 @@
-import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
+import { attachCmsManagement, nativeSourceCmsEnvironment } from '../../helpers/pageStudioCmsManagement'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -156,8 +156,7 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS adoption on PostgreSQL
       if (!raw) return null
       return { body: new Response(raw).body!, size: new TextEncoder().encode(raw).byteLength }
     })
-    const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CHECKPOINTS: { get },
-      PAGE_STUDIO_CONTENT_ROUTER: { readManagedCmsTarget: async () => graphFixture.base.target } }
+    const env = nativeSourceCmsEnvironment({ readManagedCmsTarget: async () => graphFixture.base.target }, { get }, config.editorOrigin)
     attachCmsManagement(env, runTransaction)
     const principal = { source: 'customer-session' as const, claims, env, capability: 'workspace:checkpoint' as const }
     const draft = async (id = `save_${randomUUID()}`) => {

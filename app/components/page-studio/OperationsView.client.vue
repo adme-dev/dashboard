@@ -12,7 +12,7 @@ const configuration = {
 } as const
 
 const { user } = useAuth()
-const canManageCustomerPlans = computed(() => Boolean(user.value && ['owner', 'admin'].includes(user.value.role) && !user.value.custom_role_id))
+const canManageCustomerPlans = computed(() => Boolean(user.value && ['owner', 'admin'].includes(user.value.role)))
 
 const config = computed(() => configuration[props.section])
 const endpoint = computed(() => `/api/${props.audience}/page-studio/${props.section}`)

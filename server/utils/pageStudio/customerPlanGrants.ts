@@ -22,9 +22,18 @@ const conflict = () => createError({ statusCode: 409, statusMessage: 'The previe
  * treat workspace assistance or a customer session as plan administration. */
 export async function requireCustomerPlanOperator(db: PageStudioQueryClient, actorId: string) {
   if (!Id.safeParse(actorId).success) throw denied()
-  const staff = await db.query(`SELECT id FROM team_members WHERE id=$1
-    AND is_active=TRUE AND user_role IN ('owner','admin') AND custom_role_id IS NULL FOR SHARE NOWAIT`, [actorId])
+  const staff = await db.query<{ user_role: string, custom_role_id: string | null }>(`SELECT user_role,custom_role_id
+    FROM team_members WHERE id=$1 AND is_active=TRUE AND user_role IN ('owner','admin') FOR SHARE NOWAIT`, [actorId])
   if (staff.rows.length !== 1) throw denied()
+  const owner = staff.rows[0]!
+  // Normal role administration binds even built-in roles through custom_role_id.
+  // Only the matching system role qualifies; a custom role with the same name
+  // or a mismatched assignment cannot inherit platform-wide administration.
+  if (owner.custom_role_id !== null) {
+    const role = await db.query(`SELECT id FROM custom_roles WHERE id=$1 AND slug=$2
+      AND is_system=TRUE FOR SHARE NOWAIT`, [owner.custom_role_id, owner.user_role])
+    if (role.rows.length !== 1) throw denied()
+  }
 }
 
 /** Platform operator transaction, never exposed as a customer self-grant route.

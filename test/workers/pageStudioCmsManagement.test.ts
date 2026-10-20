@@ -1,3 +1,4 @@
+import { nativePreviewBindings } from '../utils/pageStudioNativePreview'
 import { describe, expect, it, vi } from 'vitest'
 import { PageStudioBusinessContentError } from '~~/server/utils/pageStudio/businessContent'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
@@ -30,6 +31,28 @@ describe('CMS management invocation boundary', () => {
     expect(principal.request.env.PAGE_STUDIO_CHECKPOINTS).toBe(f.stagingBucket)
     expect(principal.request.env.PAGE_STUDIO_RELEASE_ENVIRONMENT).toBe('production')
     expect(principal.request.login.issuedAt).toBeInstanceOf(Date)
+  })
+  it('routes native customer source to dedicated storage and leaves legacy and production unchanged', async () => {
+    const f = fixture(), bindings = nativePreviewBindings()
+    const env = { ...f.env, ...bindings, PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' }
+    const principal = { source: 'customer-session', capability: 'cms:adopt', claims: {
+      role: 'customer', environment: 'staging', nonce: id, userId: id, workspaceId: id, clientId: id, siteId: id, tenantId: 'native',
+      issuedAt: 1792195200, expiresAt: 1792195800, capabilities: ['cms:prepare', 'cms:adopt'],
+      editorOrigin: 'https://source.example.test', returnUrl: 'https://customers.example.test/studio/dashboard' } }
+    const request = { ...f.request, principal }
+    expect((await handleCmsManagement(request, env, f.run)).ok).toBe(true)
+    expect(operations.adoption.mock.lastCall![1].env.PAGE_STUDIO_CONTENT_ROUTER).toBe(bindings.PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER)
+    expect(operations.adoption.mock.lastCall![1].env.PAGE_STUDIO_CHECKPOINTS).toBe(bindings.PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS)
+    expect((await handleCmsManagement(f.request, env, f.run)).ok).toBe(true)
+    expect(operations.adoption.mock.lastCall![1].request.env.PAGE_STUDIO_CONTENT_ROUTER).toBe(f.stagingRouter)
+    const production = { ...request, contentEnvironment: 'production', principal: { ...principal, capability: 'workspace:create', claims: { ...principal.claims, environment: 'production', capabilities: ['workspace:create', 'workspace:reconnect', 'workspace:checkpoint', 'workspace:preview', 'workspace:terminate', 'workspace:status'] } } }
+    expect((await handleCmsManagement(production, env, f.run)).ok).toBe(true)
+    expect(operations.adoption.mock.lastCall![1].env.PAGE_STUDIO_CONTENT_ROUTER).toBe(f.productionRouter)
+    expect((await handleCmsManagement(request, { ...env, PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS: undefined }, f.run)).ok).toBe(false)
+    expect((await handleCmsManagement(request, f.env, f.run)).ok).toBe(false)
+    expect((await handleCmsManagement({ ...request, contentEnvironment: 'production' }, env, f.run)).ok).toBe(false)
+    operations.adoption.mockRejectedValueOnce(Object.assign(new Error('Native owner revoked'), { statusCode: 403 }))
+    expect(await handleCmsManagement(request, env, f.run)).toMatchObject({ ok: false, error: { statusCode: 403 } })
   })
   it('uses production storage only for the exact production content environment', async () => {
     const f = fixture()

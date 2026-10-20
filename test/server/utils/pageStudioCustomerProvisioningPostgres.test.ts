@@ -1,3 +1,5 @@
+import { createServer } from 'node:http'
+import { nativePreviewBindings } from '../../utils/pageStudioNativePreview'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -94,6 +96,69 @@ describe.runIf(Boolean(databaseUrl))('standalone customer provisioning authority
     return runTransaction(db => api.verifyPageStudioProvisioningJobAuthority(job, environment, { transaction: db }))
   }
 
+  it('serves real private production authorize and checkpoint callbacks under original native SQL authority', async () => {
+    const h3 = await import('h3')
+    vi.stubGlobal('eventHandler', h3.defineEventHandler)
+    vi.stubGlobal('readBody', h3.readBody)
+    vi.stubGlobal('setHeader', h3.setHeader)
+    vi.stubGlobal('getHeader', h3.getHeader)
+    const authorize = (await import('~~/server/routes/internal/page-studio/provisioning/authorize.post')).default
+    const commit = (await import('~~/server/routes/internal/page-studio/checkpoints/provisioning-commit.post')).default
+    const job = { ...await prepare(), phase: 'content-seeded' as const }
+    const binding = { createProvisioning: async () => job, readProvisioning: async () => job }
+    const env = { ...nativePreviewBindings(binding), PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production', PAGE_STUDIO_CONTROL_SECRET: 'local-private-test-secret' }
+    const app = h3.createApp().use(h3.defineEventHandler((event) => {
+      event.context.cloudflare = { env }
+      return event.path === '/authorize' ? authorize(event) : commit(event)
+    }))
+    const server = createServer(h3.toNodeListener(app))
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+    const request = { requestKey: job.requestKey, scope: job.scope }
+    const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(`${base}/${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'authorization': 'Bearer local-private-test-secret', ...headers }, body: JSON.stringify(body) })
+    try {
+      expect((await post('authorize', request, { authorization: '' })).status).toBe(401)
+      expect((await post('authorize', { ...request, actor: { kind: 'customer-user' } })).status).toBe(400)
+      expect((await post('authorize', request)).status).toBe(200)
+      const checkpointId = `setup_${'c'.repeat(64)}`
+      const payload = { provisioning: request, expectedCheckpointId: null,
+        checkpoint: { checkpointId, scope: { tenantId: job.scope.tenantId, clientId: job.scope.clientId, siteId: job.scope.siteId },
+          userId: ids.owner, createdAt: new Date().toISOString(), digest: 'd'.repeat(64), etag: 'local-etag',
+          objectKey: `tenants/${job.scope.tenantId}/clients/${job.scope.clientId}/sites/${job.scope.siteId}/checkpoints/${checkpointId}.json` } }
+      const response = await post('checkpoint', payload, { 'idempotency-key': checkpointId })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({ acknowledged: true, checkpointId })
+      await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+      expect((await post('authorize', request)).status).toBe(403)
+      expect((await post('checkpoint', payload, { 'idempotency-key': checkpointId })).status).toBe(403)
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()))
+      vi.unstubAllGlobals()
+    }
+  })
+  it('revalidates original native authority through the isolated production callback selector', async () => {
+    const { customerProvisioningCallbackRuntime } = await import('~~/server/utils/pageStudio/customerPreviewCallbacks')
+    const { authorizePageStudioProvisioning } = await import('~~/server/utils/pageStudio/provisioningAuthority')
+    const job = await prepare()
+    let retained: unknown = job
+    const binding = { createProvisioning: async () => job, readProvisioning: async () => retained }
+    const shared = { createProvisioning: vi.fn(), readProvisioning: vi.fn() }
+    const env = { ...nativePreviewBindings(binding), PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production', PAGE_STUDIO_PROVISIONER: shared }
+    const request = { requestKey: job.requestKey, scope: job.scope }
+    const selected = customerProvisioningCallbackRuntime(env, request)
+    const authorize = () => authorizePageStudioProvisioning(selected.binding, request, selected.environment)
+    expect(await authorize()).toMatchObject({ userId: ids.owner, job })
+    expect(shared.readProvisioning).not.toHaveBeenCalled()
+    retained = { ...job, actor: { ...job.actor, userId: ids.other } }
+    await expect(authorize()).rejects.toMatchObject({ statusCode: 403 })
+    retained = { ...job, actor: { ...job.actor, kind: 'agency-user' } }
+    await expect(authorize()).rejects.toMatchObject({ statusCode: 503 })
+    retained = job
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+    await expect(authorize()).rejects.toMatchObject({ statusCode: 403 })
+    expect(() => customerProvisioningCallbackRuntime({ ...env, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false' }, request)).toThrow()
+  })
   it('shares signup lock order while workspace access holds the customer identity', async () => {
     const clients = await Promise.all(Array.from({ length: 3 }, async () => {
       const client = new pg.Client({ connectionString: databaseUrl })

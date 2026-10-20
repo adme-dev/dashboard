@@ -9,6 +9,15 @@ const { data: formsAvailability, error: formsError, refresh: refreshForms } = us
 const canManageForms = computed(() => !loadError.value && !formsError.value && formsAvailability.value?.available === true && Boolean(formsAvailability.value.siteId))
 const busy = ref(false)
 const actionError = ref('')
+// Nuxt clears fetch data after refresh errors. Keep confirmed display/context so
+// a transient read failure cannot destroy a pending transfer's identity or lock.
+const overview = ref<CustomerDashboard | null>(null)
+const transferSite = ref<{ siteId: string, websiteName: string } | null>(null)
+const transferRequestId = ref<string | null>(null)
+function clearTransferContext() {
+  transferSite.value = null
+  transferRequestId.value = null
+}
 const views: Record<CustomerDashboard['state'], { title: string, description: string, icon: string }> = {
   'recovery-required': { title: 'Continue your website setup', description: 'You’re signed in again. Resume to continue your saved setup with this login. We’ll keep the same website and its progress.', icon: 'i-lucide-play' },
   'setup-required': { title: 'Finish your business setup', description: 'Save your business details before creating your website.', icon: 'i-lucide-notebook-pen' },
@@ -22,14 +31,14 @@ const views: Record<CustomerDashboard['state'], { title: string, description: st
   'needs-attention': { title: 'Your setup needs attention', description: 'We’ve kept your existing setup. Contact support so we can check it and help you continue.', icon: 'i-lucide-life-buoy' },
   'unavailable': { title: 'Status is temporarily unavailable', description: 'We could not check your website. Refresh the status in a moment. Your saved setup will be kept.', icon: 'i-lucide-cloud-off' }
 }
-const view = computed(() => data.value?.canOpenStudio
+const view = computed(() => overview.value?.canOpenStudio
   ? views['editor-ready']
-  : data.value ? views[data.value.state] : null)
+  : overview.value ? views[overview.value.state] : null)
 const steps = computed(() => [
   { label: 'Business details saved', done: true },
-  { label: 'Website prepared', done: data.value?.canOpenStudio === true || (data.value?.stage ?? 0) >= 3 },
-  { label: 'Content added', done: data.value?.canOpenStudio === true || (data.value?.stage ?? 0) >= 4 },
-  { label: 'Studio available', done: data.value?.canOpenStudio === true }
+  { label: 'Website prepared', done: overview.value?.canOpenStudio === true || (overview.value?.stage ?? 0) >= 3 },
+  { label: 'Content added', done: overview.value?.canOpenStudio === true || (overview.value?.stage ?? 0) >= 4 },
+  { label: 'Studio available', done: overview.value?.canOpenStudio === true }
 ])
 async function load() {
   if (busy.value) return
@@ -37,9 +46,21 @@ async function load() {
   try {
     formsAvailability.value = null
     await refresh()
-    if (!loadError.value && data.value) await refreshForms()
-    if (loadError.value?.statusCode === 401) await navigateTo('/studio/signup', { replace: true })
-    else if (!loadError.value && data.value?.state === 'setup-required') await navigateTo('/studio/onboarding', { replace: true })
+    if (!loadError.value && data.value) {
+      const current = data.value
+      overview.value = current
+      if (current.siteId) {
+        if (transferSite.value?.siteId !== current.siteId) transferRequestId.value = null
+        transferSite.value = { siteId: current.siteId, websiteName: current.businessName }
+      }
+      if (current.managedTransfer?.completed) clearTransferContext()
+      await refreshForms()
+    }
+    if (loadError.value?.statusCode === 401) {
+      overview.value = null
+      clearTransferContext()
+      await navigateTo('/studio/signup', { replace: true })
+    } else if (!loadError.value && data.value?.state === 'setup-required') await navigateTo('/studio/onboarding', { replace: true })
   } finally { busy.value = false }
 }
 onMounted(load)
@@ -89,6 +110,9 @@ async function signOut() {
   actionError.value = ''
   try {
     await $fetch(`${api}/logout`, { method: 'POST', body: {} })
+    data.value = null
+    overview.value = null
+    clearTransferContext()
     await navigateTo('/studio/signup')
   } catch {
     actionError.value = 'We could not sign you out. Please try again.'
@@ -97,7 +121,7 @@ async function signOut() {
 </script>
 
 <template>
-  <StudioCustomerShell wide :title="data?.businessName || 'Your website'" description="Your website overview. Pick up where you left off.">
+  <StudioCustomerShell wide :title="overview?.businessName || 'Your website'" description="Your website overview. Pick up where you left off.">
     <template #header>
       <div class="flex items-center gap-2">
         <UButton
@@ -143,7 +167,7 @@ async function signOut() {
       role="alert"
     />
     <div
-      v-if="!data && busy"
+      v-if="!overview && busy"
       class="space-y-4"
       aria-busy="true"
       aria-label="Loading your website"
@@ -154,7 +178,7 @@ async function signOut() {
         Loading your website…
       </p>
     </div>
-    <div v-else-if="data && view" class="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    <div v-else-if="overview && view" class="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <section class="overflow-hidden rounded-xl border border-default bg-elevated/40" aria-labelledby="website-status">
         <div class="border-b border-default p-6 sm:p-8">
           <div class="mb-6 flex size-12 items-center justify-center rounded-lg border border-default bg-default">
@@ -169,7 +193,7 @@ async function signOut() {
             </p>
           </div>
           <UButton
-            v-if="data.canOpenStudio"
+            v-if="overview.canOpenStudio"
             class="mt-6"
             label="Open Studio"
             icon="i-lucide-panels-top-left"
@@ -179,7 +203,7 @@ async function signOut() {
             @click="openStudio"
           />
           <UButton
-            v-else-if="data.canCreate"
+            v-else-if="overview.canCreate"
             class="mt-6"
             label="Create preview"
             icon="i-lucide-plus"
@@ -189,7 +213,7 @@ async function signOut() {
             @click="createPreview"
           />
           <UButton
-            v-else-if="data.state === 'recovery-required' && data.recovery"
+            v-else-if="overview.state === 'recovery-required' && overview.recovery"
             class="mt-6"
             label="Resume setup"
             icon="i-lucide-play"
@@ -199,7 +223,7 @@ async function signOut() {
             @click="recoverPreview"
           />
           <UButton
-            v-else-if="data.canRetry"
+            v-else-if="overview.canRetry"
             class="mt-6"
             label="Resume setup"
             icon="i-lucide-play"
@@ -209,7 +233,7 @@ async function signOut() {
             @click="createPreview"
           />
           <UButton
-            v-else-if="['needs-attention', 'approval-pending'].includes(data.state)"
+            v-else-if="['needs-attention', 'approval-pending'].includes(overview.state)"
             class="mt-6"
             to="/support"
             label="Contact support"
@@ -217,15 +241,25 @@ async function signOut() {
             variant="outline"
           />
         </div>
-        <div v-if="data.siteId && !loadError && !busy" class="px-6 pt-6 sm:px-8">
+        <div v-if="overview.siteId && !loadError && !busy" class="px-6 pt-6 sm:px-8">
           <PageStudioCustomerLaunchStatus
-            :key="`customer-${data.siteId}`"
-            :site-id="data.siteId"
+            :key="`customer-${overview.siteId}`"
+            :site-id="overview.siteId"
             audience="customer"
             @changed="load"
           />
         </div>
-        <StudioCustomerCmsSetup v-if="data.canPrepareCms && !loadError" @changed="load" />
+        <StudioCustomerTransferRequest
+          v-if="transferSite"
+          :key="transferSite.siteId"
+          v-model:pending-request-id="transferRequestId"
+          :site-id="transferSite.siteId"
+          :website-name="transferSite.websiteName"
+          :account-key="transferSite.siteId"
+          :active="!busy && !loadError && data?.siteId === transferSite.siteId"
+          @changed="load"
+        />
+        <StudioCustomerCmsSetup v-if="overview.canPrepareCms && !loadError" @changed="load" />
         <div v-if="canManageForms" class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-6 py-5 sm:px-8">
           <div>
             <h3 class="text-sm font-medium text-highlighted">
@@ -274,14 +308,14 @@ async function signOut() {
               <dt class="text-muted">
                 Business type
               </dt><dd class="mt-1 break-words">
-                {{ data.businessType }}
+                {{ overview.businessType }}
               </dd>
             </div>
             <div>
               <dt class="text-muted">
                 Timezone
               </dt><dd class="mt-1 break-words">
-                {{ data.timezone }}
+                {{ overview.timezone }}
               </dd>
             </div>
           </dl>

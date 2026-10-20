@@ -26,7 +26,9 @@
     "PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT": "placed-fetch",
     "MANAGED_TRANSFER_EXECUTION_POLICY": "{\"version\":1,\"kind\":\"managed-draft-transfer\",\"accountId\":\"a5b299b3ad15c1b5b895dc66f9357b17\",\"namespace\":\"xeroflow-page-studio-dispatch-staging\",\"from\":{\"compatibilityDate\":\"2026-08-18\",\"digest\":\"6cb34fd939e71028567270190fb6d02c59011b2cdc1c4b0497effb3f702367f5\"},\"to\":{\"compatibilityDate\":\"2026-08-18\",\"digest\":\"40aa0efe85f87918c569b8388a3403af51ee8c33d741c56eeb956a702ab7105d\"}}",
     "PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST": "2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83",
-    "PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a"
+    "PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+    "PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED": "false",
+    "PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN": "https://studio-customer-preview.xeroflow.io"
   },
   "hyperdrive": [
     {
@@ -45,6 +47,10 @@
     {
       "binding": "PAGE_STUDIO_CMS_STAGING_CHECKPOINTS",
       "bucket_name": "xeroflow-page-studio-checkpoints-staging"
+    },
+    {
+      "binding": "PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS",
+      "bucket_name": "xeroflow-page-studio-checkpoints-native-preview"
     }
   ],
   "services": [
@@ -63,6 +69,14 @@
     {
       "binding": "PAGE_STUDIO_PROVISIONER",
       "service": "xeroflow-provisioning-production"
+    },
+    {
+      "binding": "PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER",
+      "service": "xeroflow-provisioning-native-preview"
+    },
+    {
+      "binding": "PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER",
+      "service": "xeroflow-content-router-native-preview"
     }
   ],
   "tsconfig": "tsconfig.json"

@@ -45,7 +45,7 @@ describe.runIf(Boolean(databaseUrl))('native preview to publishing plan grants',
     await db.query(`CREATE TABLE agency_clients(id UUID PRIMARY KEY, is_active BOOLEAN);
       CREATE TABLE client_users(id UUID PRIMARY KEY, client_id UUID, status TEXT, role TEXT);
       CREATE TABLE team_members(id UUID PRIMARY KEY, is_active BOOLEAN, user_role TEXT, custom_role_id UUID);
-      CREATE TABLE custom_roles(id UUID PRIMARY KEY, slug TEXT);
+      CREATE TABLE custom_roles(id UUID PRIMARY KEY, slug TEXT,is_system BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID, permission_group TEXT, UNIQUE(role_id,permission_group));`)
     for (const name of ['402_page_studio_control_plane.sql', '442_page_studio_customer_workspaces.sql',
       '443_page_studio_customer_signup.sql', '444_page_studio_customer_site_ownership.sql']) await db.query(migration(name))
@@ -141,6 +141,19 @@ describe.runIf(Boolean(databaseUrl))('native preview to publishing plan grants',
     await expect(prepareCustomerPublishPrincipal(sessionToken, fixture.site.id, { runTransaction })).resolves.toMatchObject({ scope: { siteId: fixture.site.id } })
     expect((await db.query('SELECT count(*) FROM agency_clients')).rows[0].count).toBe('0')
   })
+  it.each(['owner', 'admin'])('accepts a normal assigned system %s role', async (role) => {
+    const roleId = randomUUID()
+    await db.query('INSERT INTO custom_roles(id,slug,is_system) VALUES($1,$2,TRUE)', [roleId, role])
+    await db.query('UPDATE team_members SET user_role=$1,custom_role_id=$2 WHERE id=$3', [role, roleId, actorId])
+    await expect(grant()).resolves.toBeDefined()
+  })
+  it.each([{ slug: 'owner', system: false }, { slug: 'admin', system: true }, { slug: 'member', system: true }])(
+    'rejects a custom or mismatched assigned role: %j', async ({ slug, system }) => {
+      const roleId = randomUUID()
+      await db.query('INSERT INTO custom_roles(id,slug,is_system) VALUES($1,$2,$3)', [roleId, slug, system])
+      await db.query('UPDATE team_members SET custom_role_id=$1 WHERE id=$2', [roleId, actorId])
+      await expect(grant()).rejects.toMatchObject({ statusCode: 403 })
+    })
   it('allows a current built-in platform administrator', async () => {
     await db.query('UPDATE team_members SET user_role=\'admin\'')
     await expect(grant()).resolves.toMatchObject({ replayed: false })

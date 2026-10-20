@@ -1,3 +1,4 @@
+import { customerPreviewRuntimeEnvironment, hasCustomerPreviewRuntimeConfiguration } from '~~/server/utils/pageStudio/customerPreviewRuntime'
 import { createError } from 'h3'
 import { z } from 'zod'
 import { collectionCanonical as canonical, collectionDigest, CollectionRecordSchema } from '~~/shared/pageStudio/collectionApi'
@@ -29,11 +30,14 @@ function inventory(intent: Intent) {
 
 /** Capture only configured staging readers. No browser URL or production fallback. */
 export function createTransferCopyReaders(env: Record<string, unknown>) {
-  const service = env.PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER as Record<string, unknown> | undefined
+  const dedicated = hasCustomerPreviewRuntimeConfiguration(env)
+  const native = dedicated ? customerPreviewRuntimeEnvironment(env) : null
+  if (dedicated && !native) throw createError({ statusCode: 503, statusMessage: 'Original transfer storage is unavailable' })
+  const service = (dedicated ? native?.PAGE_STUDIO_CONTENT_ROUTER : env.PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER) as Record<string, unknown> | undefined
   const target = capturePageStudioRpcMethod(service, 'readManagedCmsTarget')
   const objects = capturePageStudioRpcMethod(service, 'readManagedCmsObjectsAtTarget')
   const fetch = capturePageStudioRpcMethod(service, 'fetch')
-  const bucket = env.PAGE_STUDIO_CMS_STAGING_CHECKPOINTS as Record<string, unknown> | undefined
+  const bucket = (dedicated ? native?.PAGE_STUDIO_CHECKPOINTS : env.PAGE_STUDIO_CMS_STAGING_CHECKPOINTS) as Record<string, unknown> | undefined
   const get = capturePageStudioRpcMethod(bucket, 'get')
   const transport = env.PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT
   if (!target || !get || (transport === 'placed-fetch' ? !fetch : !objects)) throw createError({ statusCode: 503, statusMessage: 'Original transfer storage is unavailable' })

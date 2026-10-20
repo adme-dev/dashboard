@@ -63,6 +63,21 @@ describe('private management immutable deployment target', () => {
       { MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify({ ...source, accountId: 'b'.repeat(32) }) }
     ]) expect(() => validateManagementTarget({ ...current, vars: { ...current.vars, ...change } }, 'production')).toThrow()
   })
+  it('rejects native preview activation or cross-wired resources in the preparation release', () => {
+    const current = config()
+    for (const value of ['true', '', undefined]) {
+      expect(() => validateManagementTarget({ ...current, vars: { ...current.vars, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: value } }, 'production')).toThrow()
+    }
+    expect(() => validateManagementTarget({ ...current, vars: { ...current.vars, PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://studio.xeroflow.io' } }, 'production')).toThrow()
+    for (const binding of ['PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER', 'PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER']) {
+      for (const service of ['xeroflow-provisioning-staging', 'xeroflow-content-router-production']) {
+        expect(() => validateManagementTarget({ ...current, services: current.services.map((entry: { binding: string }) => entry.binding === binding ? { ...entry, service } : entry) }, 'production')).toThrow()
+      }
+    }
+    expect(() => validateManagementTarget({ ...current, r2_buckets: current.r2_buckets.map((entry: { binding: string }) => entry.binding === 'PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS' ? { ...entry, bucket_name: 'xeroflow-page-studio-checkpoints-staging' } : entry) }, 'production')).toThrow()
+    const staging = config('staging')
+    expect(() => validateManagementTarget({ ...staging, vars: { ...staging.vars, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false' } }, 'staging')).toThrow()
+  })
   it('rejects an implicit or invented environment', () => {
     expect(() => validateManagementTarget(config(), undefined)).toThrow()
     expect(() => validateManagementTarget(config(), 'preview')).toThrow()

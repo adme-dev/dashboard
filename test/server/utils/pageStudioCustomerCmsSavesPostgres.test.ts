@@ -1,4 +1,4 @@
-import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
+import { attachCmsManagement, nativeSourceCmsEnvironment } from '../../helpers/pageStudioCmsManagement'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -161,8 +161,11 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
       if (!raw) return null
       return { body: new Response(raw).body!, size: new TextEncoder().encode(raw).byteLength }
     })
-    const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: environment as string, PAGE_STUDIO_CHECKPOINTS: { get },
-      PAGE_STUDIO_CONTENT_ROUTER: { readManagedCmsTarget: async () => graphFixture.base.target } }
+    const router = { readManagedCmsTarget: async () => graphFixture.base.target }
+    const env = environment === 'staging'
+      ? nativeSourceCmsEnvironment(router, { get }, config.editorOrigin)
+      : { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+          PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production', PAGE_STUDIO_CHECKPOINTS: { get }, PAGE_STUDIO_CONTENT_ROUTER: router }
     attachCmsManagement(env, runTransaction)
     const principal = { source: 'customer-session' as const, claims, env, capability: 'workspace:checkpoint' as const }
     const draft = async (id = `save_${randomUUID()}`) => {
@@ -177,6 +180,35 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
       return commitCustomerEditorCheckpoint(input, claims, { runTransaction, env })
     }
     return { claims, scope, key, appId, pin, principal, env, texts, get, draft, commit }
+  }
+  if (environment === 'staging') {
+    it('saves native source content through dedicated bindings while shared and production storage are unavailable', async () => {
+      const f = await managed(), input = await f.draft()
+      const unavailable = () => {
+        throw new Error('Native source must not use shared or production storage')
+      }
+      const env = { ...f.env, PAGE_STUDIO_CONTENT_ROUTER: { readManagedCmsTarget: unavailable }, PAGE_STUDIO_CHECKPOINTS: { get: unavailable } }
+      attachCmsManagement(env, runTransaction)
+      const { commitCustomerEditorCheckpoint } = await import('~~/server/utils/pageStudio/customerEditorSessions')
+      expect(await commitCustomerEditorCheckpoint(input, f.claims, { runTransaction, env })).toMatchObject({ acknowledged: true, isCurrent: true })
+      expect((await db.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows[0].current_checkpoint_id).toBe(input.checkpoint.checkpointId)
+    })
+    it.each([
+      ['PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED', 'false'],
+      ['PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER', undefined],
+      ['PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER', undefined],
+      ['PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS', undefined],
+      ['PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN', undefined]
+    ] as const)('rejects incomplete native source configuration %s without falling back to available shared storage', async (key, value) => {
+      const f = await managed(), input = await f.draft()
+      const env = { ...f.env, [key]: value }
+      attachCmsManagement(env, runTransaction)
+      const { commitCustomerEditorCheckpoint } = await import('~~/server/utils/pageStudio/customerEditorSessions')
+      await expect(commitCustomerEditorCheckpoint(input, f.claims, { runTransaction, env })).rejects.toMatchObject({ statusCode: 503, code: 'CMS_MANAGEMENT_UNAVAILABLE' })
+      expect(f.get).not.toHaveBeenCalled()
+      expect((await db.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows[0].current_checkpoint_id).toBe('base_checkpoint')
+      expect((await db.query('SELECT COUNT(*) FROM page_studio_application_versions')).rows[0].count).toBe('1')
+    })
   }
   it('verifies managed bytes and target when reconnecting to production content', async () => {
     const f = await managed()

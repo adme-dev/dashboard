@@ -27,7 +27,7 @@ const Request = z.discriminatedUnion('phase', [
   z.object({ phase: z.literal('forms-history'), ...reference, action, ...environment }).strict()
 ])
 const progress = <T extends [string, ...string[]]>(states: T) => z.object({ operationId: reference.operationId, state: z.enum(states) }).strict()
-const Results = {
+export const ManagedTransferPreparationResults = {
   'review': z.object({ sourceDigest: digest, checkpointId: z.string().min(1).max(128), applicationId: z.string().uuid(), objectCount: z.number().int().min(0).max(1000) }).strict(),
   'reserve': z.object({ operationId: reference.operationId, state: z.literal('reserved'), sourceDigest: digest, intentDigest: digest, destinationGeneration: z.string().uuid() }).strict(),
   'resources': progress(['not-started', 'preparing', 'resume-required', 'disabled', 'prepared', 'resources-bound']),
@@ -85,7 +85,7 @@ export async function handleManagedTransferPreparation(raw: unknown, env: Record
         case 'forms-history': return coordinateManagedTransferFormsHistory(input, dependencies)
       }
     })
-    const checked = Results[request.phase].parse(value)
+    const checked = ManagedTransferPreparationResults[request.phase].parse(value)
     if (request.phase !== 'review' && (!('operationId' in checked) || checked.operationId !== request.operationId)) return rejected(requestDigest)
     if (request.phase === 'reserve' && (!('sourceDigest' in checked) || checked.sourceDigest !== request.expectedSourceDigest)) return rejected(requestDigest)
     return { ok: true as const, requestDigest, phase: request.phase, value: checked }

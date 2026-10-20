@@ -11,12 +11,15 @@ const emit = defineEmits<{
   ]
   granted: [
   ]
+  invalidated: [
+  ]
 }>()
 const { user } = useAuth()
 const toast = useToast()
-const actorId = user.value?.id
+const actorKey = JSON.stringify(user.value)
+const targetKey = JSON.stringify(props.target)
 const attempted = ref(false)
-const allowed = computed(() => user.value?.id === actorId && ['owner', 'admin'].includes(user.value?.role ?? '') && !user.value?.custom_role_id)
+const allowed = computed(() => JSON.stringify(user.value) === actorKey && JSON.stringify(props.target) === targetKey && ['owner', 'admin'].includes(user.value?.role ?? ''))
 const saving = ref(false), locked = ref(false), message = ref<string | null>(null)
 const timezone = getLocalTimeZone()
 const ends = shallowRef<DateValue>()
@@ -49,6 +52,7 @@ const reviewed = ref<null | {
 watch(allowed, (value) => {
   if (!value) {
     locked.value = true
+    reviewed.value = null
     message.value = 'Your access changed. Close this review and sign in again.'
   }
 })
@@ -113,6 +117,7 @@ async function save() {
       description: result.replayed ? 'Refresh to check the current plan status.' : 'The plan is recorded. Website launch and billing are separate steps.', color: 'success' })
     emit('granted')
   } catch (error: unknown) {
+    if (!allowed.value) return
     const status = Number((error as {
       statusCode?: number
       status?: number
@@ -124,8 +129,10 @@ async function save() {
       attempted.value = false
       message.value = 'Check the plan limits and access period, then review the terms again.'
     } else if ([401, 403, 409].includes(status)) {
+      reviewed.value = null
       locked.value = true
       message.value = 'Access or the current plan has changed. Refresh the customer list before trying again.'
+      emit('invalidated')
     } else
       message.value = 'The grant could not be confirmed. Retry this same request to safely check or complete it.'
   } finally {

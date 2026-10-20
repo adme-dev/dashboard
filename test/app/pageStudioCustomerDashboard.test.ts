@@ -34,7 +34,10 @@ beforeEach(() => {
       try {
         data.value = await read()
         error.value = null
-      } catch (e) { error.value = e }
+      } catch (e) {
+        error.value = e
+        data.value = undefined
+      }
     } }
   })
   for (const [name, fn] of Object.entries({ ref, computed, onMounted, definePageMeta: vi.fn(), useHead: vi.fn(), $fetch: mutate, navigateTo: navigate })) vi.stubGlobal(name, fn)
