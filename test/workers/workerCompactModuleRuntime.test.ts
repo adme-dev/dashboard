@@ -4,7 +4,7 @@ import path from 'node:path'
 import { expect, it } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { compactDeployedWorkerModules, compactWorkerModuleFilenames } from '../../scripts/compact-worker-module.mjs'
-import { compactRouteSqlDirectory } from '../../scripts/compact-worker-static-data.mjs'
+import { compactRouteSqlDirectory, compactSsrMarkupDirectory } from '../../scripts/compact-worker-static-data.mjs'
 
 it('loads compact .js static, dynamic and re-exported modules with Pages Worker-directory rules', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pages-compact-runtime-'))
@@ -43,7 +43,7 @@ it('loads compact .js static, dynamic and re-exported modules with Pages Worker-
   }
 }, 30_000)
 
-it('loads shared SQL decoders in workerd after minification and filename rewriting', async () => {
+it('loads one shared SQL and SSR decoder in workerd after minification and filename rewriting', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pages-shared-sql-runtime-'))
   let worker: Miniflare | undefined
   try {
@@ -53,13 +53,22 @@ it('loads shared SQL decoders in workerd after minification and filename rewriti
     for (const [index, query] of queries.entries()) {
       await writeFile(path.join(chunks, `${index}.mjs`), `export const run = args => ({ query: ${JSON.stringify(query)}, args });`)
     }
+    const markup = queries.map((_, i) => `<section>${i} 🚘 &amp; exact\r\n</section>`.repeat(100))
+    const build = path.join(directory, 'chunks/build')
+    await mkdir(build, { recursive: true })
+    for (const [index, html] of markup.entries()) {
+      await writeFile(path.join(build, `${index}.mjs`), `export function render(push, next) { push(${JSON.stringify(html)}); push(next()); push(${JSON.stringify(html)}); }`)
+    }
+    await compactSsrMarkupDirectory(directory)
     await compactRouteSqlDirectory(directory)
     expect(await readFile(path.join(directory, 'chunks/static-data-decoder.mjs'), 'utf8')).toContain('createStaticDecoder')
     const entry = path.join(directory, 'index.js')
     await writeFile(entry, `export default { async fetch(request) {
       const args = [new URL(request.url).searchParams.get('site')];
       const modules = await Promise.all([${queries.map((_, i) => `import('./chunks/routes/api/nested/${i}.mjs')`).join(',')}]);
-      return Response.json(modules.map(module => module.run(args)));
+      const views = await Promise.all([${queries.map((_, i) => `import('./chunks/build/${i}.mjs')`).join(',')}]);
+      const html = views.map(view => { let output = ''; view.render(text => output += text, () => args[0]); return output; });
+      return Response.json({ queries: modules.map(module => module.run(args)), html });
     } }`)
     await compactDeployedWorkerModules(path.join(directory, 'chunks'))
     await compactWorkerModuleFilenames(directory)
@@ -71,7 +80,7 @@ it('loads shared SQL decoders in workerd after minification and filename rewriti
     for (const site of ['site-a', 'site-b']) {
       const response = await worker.dispatchFetch(`https://worker.test/?site=${site}`)
       expect(response.status).toBe(200)
-      expect(await response.json()).toEqual(queries.map(query => ({ query, args: [site] })))
+      expect(await response.json()).toEqual({ queries: queries.map(query => ({ query, args: [site] })), html: markup.map(html => html + site + html) })
     }
   } finally {
     await worker?.dispose()

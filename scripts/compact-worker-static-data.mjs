@@ -10,8 +10,8 @@ const compress = value => brotliCompressSync(Buffer.from(value, 'utf8'), {
 
 /** Only build-generated call arguments and data-property values are replaced. No executable source,
  * tagged template, property key, directive or interpolated template is encoded. */
-export function compactSsrMarkupSource(source) {
-  return compactStaticSource(source, 'XEROFLOW_STATIC_SSR_DATA', value => value.includes('<') && value.includes('>'))
+export function compactSsrMarkupSource(source, { decoderSpecifier } = {}) {
+  return compactStaticSource(source, 'XEROFLOW_STATIC_SSR_DATA', value => value.includes('<') && value.includes('>'), MIN_LITERAL_CHARACTERS, false, decoderSpecifier)
 }
 
 /** SQL text is immutable data, not executed by the build. Preserve all whitespace,
@@ -105,19 +105,15 @@ export async function compactSsrMarkupDirectory(workerDirectory) {
     if (error.code === 'ENOENT') return { changedFiles: 0, literals: 0, savedBytes: 0 }
     throw error
   }
-  let changedFiles = 0, literals = 0, savedBytes = 0
+  const changes = []
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith('.mjs')) continue
     const file = path.join(directory, entry.name)
     const source = await readFile(file, 'utf8')
-    const result = compactSsrMarkupSource(source)
-    if (result.code === source) continue
-    await writeFile(file, result.code)
-    changedFiles++
-    literals += result.literals
-    savedBytes += Buffer.byteLength(source) - Buffer.byteLength(result.code)
+    const compacted = compactSsrMarkupSource(source)
+    if (compacted.code !== source) changes.push({ file, source, compacted })
   }
-  return { changedFiles, literals, savedBytes }
+  return writeCompactedStaticModules(workerDirectory, changes, compactSsrMarkupSource)
 }
 
 /** Nitro 2 emits this virtual module as one JSON default export. Retain all
@@ -165,7 +161,6 @@ export async function compactNitroSqlModule(workerDirectory) {
  * between Nuxt/Vite releases. Reuse the same lossless literal encoder there,
  * before minification, without scanning client chunks or source maps. */
 export async function compactRouteSqlDirectory(workerDirectory) {
-  const result = { changedFiles: 0, literals: 0, savedBytes: 0 }
   const changes = []
   const visit = async (directory) => {
     let entries
@@ -186,6 +181,13 @@ export async function compactRouteSqlDirectory(workerDirectory) {
     }
   }
   await visit(path.join(workerDirectory, 'chunks', 'routes'))
+  return writeCompactedStaticModules(workerDirectory, changes, compactSqlSource)
+}
+
+// SSR and SQL share the same decoder while retaining separate per-module caches.
+// Stage and validate every candidate before writing either directory.
+async function writeCompactedStaticModules(workerDirectory, changes, compactSource) {
+  const result = { changedFiles: 0, literals: 0, savedBytes: 0 }
   if (!changes.length) return result
 
   const decoderFile = path.join(workerDirectory, 'chunks', 'static-data-decoder.mjs')
@@ -200,7 +202,7 @@ export async function compactRouteSqlDirectory(workerDirectory) {
   }
   const shared = changes.map(({ file, source }) => {
     const relative = path.relative(path.dirname(file), decoderFile).split(path.sep).join('/')
-    return compactSqlSource(source, { decoderSpecifier: relative.startsWith('.') ? relative : `./${relative}` })
+    return compactSource(source, { decoderSpecifier: relative.startsWith('.') ? relative : `./${relative}` })
   })
   const decoderBytes = decoderExists ? 0 : Buffer.byteLength(SHARED_STATIC_DECODER)
   const inlineBytes = changes.reduce((sum, { compacted }) => sum + Buffer.byteLength(compacted.code), 0)

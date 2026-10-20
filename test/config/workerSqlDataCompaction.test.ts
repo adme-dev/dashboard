@@ -1,9 +1,9 @@
 import { afterEach, expect, it } from 'vitest'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { compactSqlSource, compactRouteSqlDirectory } from '../../scripts/compact-worker-static-data.mjs'
+import { compactSqlSource, compactRouteSqlDirectory, compactSsrMarkupSource, compactSsrMarkupDirectory } from '../../scripts/compact-worker-static-data.mjs'
 import { compactDeployedWorkerModules } from '../../scripts/compact-worker-module.mjs'
 
 const directories: string[] = []
@@ -206,4 +206,60 @@ it('compacts repeated short static SQL without changing executable behavior', as
     seen.push(text)
   } }, args)
   expect(seen).toEqual(queries)
+})
+
+it.each(['ssr-first', 'sql-first'])('shares one decoder across SSR and SQL with full net accounting (%s)', async (order) => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'worker-shared-static-'))
+  directories.push(directory)
+  const build = path.join(directory, 'chunks/build')
+  const routes = path.join(directory, 'chunks/routes')
+  await mkdir(build, { recursive: true })
+  await mkdir(routes, { recursive: true })
+  const originals = new Map<string, string>()
+  const markup = '<section>exact 🚘 &amp; markup\r\n</section>'.repeat(80)
+  for (let i = 0; i < 32; i++) originals.set(path.join(build, `${i}.mjs`), `export function render(push) { push(${JSON.stringify(markup + i)}); }`)
+  for (let i = 0; i < 3; i++) originals.set(path.join(routes, `${i}.mjs`), `export const run = db => db.query(${JSON.stringify(sql + i)})`)
+  for (const [file, source] of originals) await writeFile(file, source)
+  const bytes = async (root: string): Promise<number> => {
+    let total = 0
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+      const file = path.join(root, entry.name)
+      total += entry.isDirectory() ? await bytes(file) : (await readFile(file)).length
+    }
+    return total
+  }
+  const before = await bytes(directory)
+  const passes = order === 'ssr-first' ? [compactSsrMarkupDirectory, compactRouteSqlDirectory] : [compactRouteSqlDirectory, compactSsrMarkupDirectory]
+  let saved = 0
+  for (const pass of passes) saved += (await pass(directory)).savedBytes
+  expect(saved).toBe(before - await bytes(directory))
+  const helper = path.join(directory, 'chunks/static-data-decoder.mjs')
+  expect(await readFile(helper, 'utf8')).toContain('createStaticDecoder')
+  for (const file of originals.keys()) expect(await readFile(file, 'utf8')).toContain('static-data-decoder.mjs')
+  for (const pass of passes) expect(await pass(directory)).toEqual({ changedFiles: 0, literals: 0, savedBytes: 0 })
+  await compactDeployedWorkerModules(path.join(directory, 'chunks'))
+  const sharedBytes = await bytes(directory)
+  // Compare the same fixture against the prior SSR-inline pipeline, including
+  // the SQL helper once on both sides and final module minification.
+  for (const [file, source] of originals) if (file.startsWith(build + path.sep)) await writeFile(file, compactSsrMarkupSource(source).code)
+  await compactDeployedWorkerModules(build)
+  expect(await bytes(directory) - sharedBytes).toBeGreaterThan(2500)
+})
+
+it('rejects a conflicting SSR helper before any rewrite and preserves inline fallback for one module', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'worker-ssr-decoder-'))
+  directories.push(directory)
+  const file = path.join(directory, 'chunks/build/page.mjs')
+  const helper = path.join(directory, 'chunks/static-data-decoder.mjs')
+  await mkdir(path.dirname(file), { recursive: true })
+  const source = `export default push => push(${JSON.stringify('<p>markup 🚘</p>'.repeat(100))})`
+  await writeFile(file, source)
+  await writeFile(helper, 'export const conflicting = true')
+  await expect(compactSsrMarkupDirectory(directory)).rejects.toThrow('Unexpected shared decoder module')
+  expect(await readFile(file, 'utf8')).toBe(source)
+  await rm(helper)
+  const result = await compactSsrMarkupDirectory(directory)
+  expect(await readFile(file, 'utf8')).toBe(compactSsrMarkupSource(source).code)
+  expect(result.savedBytes).toBe(Buffer.byteLength(source) - Buffer.byteLength(compactSsrMarkupSource(source).code))
+  await expect(readFile(helper)).rejects.toMatchObject({ code: 'ENOENT' })
 })
