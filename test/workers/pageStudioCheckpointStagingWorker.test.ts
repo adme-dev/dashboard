@@ -63,7 +63,9 @@ describe('private checkpoint staging service boundary', () => {
       mocks.coordinate.mockRejectedValue(new Error('private credential'))
       expect(await call()).toEqual(unavailable)
       expect(log).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: 'page_studio_checkpoint_staging_failure', environment: 'staging' }))
-      expect(new Management({} as never, environment() as never).fetch().status).toBe(404)
+      const response = await new Management({} as never, environment() as never).fetch(new Request('https://public.invalid/'))
+      expect(response.status).toBe(404)
+      expect(await response.text()).toBe('Not found')
     } finally { log.mockRestore() }
   })
 })
