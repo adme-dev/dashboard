@@ -24,3 +24,11 @@ the existing mailbox allowlist and expiry settings for scoped hosted acceptance.
 The two historical preview accounts belong to the staging database; production
 tests must create accounts through ordinary email verification and setup. Never
 copy account/session rows or reuse preview entitlements as production evidence.
+
+On 20 October 2026 the private production gateway was deployed from
+`b4d39838414dd6a310b5adeafd76bec9c22db2fd`: deployment
+`33916b51-e0e1-4dd8-a09d-1a07ea362c40`, version
+`ef445a14-016a-4e90-a17c-046e04e7c6f5`. API readback verified the source tag,
+100% version selection, sender restriction and disabled public URLs. Sender DNS
+reported `ready`. This receipt covers gateway preparation; no production Pages
+binding, native signup activation or delivered customer email is claimed.
