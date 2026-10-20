@@ -73,8 +73,9 @@ const API_INVENTORY = {
   // exact site and retained transfer authority remain required; no God mode bypass.
   // Seven transfer routes add three mutations. Public verification bootstrap
   // adds one read; all retain genuine login and native authority with no bypass.
-  totalRouteFiles: 2266,
-  mutationRouteFiles: 1232,
+  // Native CMS runtime recovery adds one genuine operator-cookie POST; no God mode bypass.
+  totalRouteFiles: 2267,
+  mutationRouteFiles: 1233,
   explicitlyGuardedMutationFiles: 402,
   guardedMutationFilesWithTransactionCall: 48
 } as const
@@ -124,8 +125,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2266,
-      mutationRouteFiles: 1232,
+      totalRouteFiles: 2267,
+      mutationRouteFiles: 1233,
       explicitlyGuardedMutationFiles: 402,
       guardedMutationFilesWithTransactionCall: 48
     })
@@ -133,6 +134,7 @@ describe('God mode route isolation inventory', () => {
 
   it('pins transfer and verification bootstrap routes to native authority without a bypass', () => {
     const routes = {
+      'server/api/agency/page-studio/sites/[siteId]/cms-runtime-recovery/[requestId].post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'runtime-recovery\')',
       'server/api/agency/page-studio/transfer-requests.get.ts': 'handleTransferOperatorHttp(event, \'GET\', \'list\')',
       'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId].get.ts': 'handleTransferOperatorHttp(event, \'GET\', \'request\')',
       'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId].post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'request\')',

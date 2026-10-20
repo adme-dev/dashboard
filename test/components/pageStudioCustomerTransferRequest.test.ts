@@ -1,22 +1,57 @@
 // @vitest-environment happy-dom
 import { reactive } from 'vue'
+import { createFetch } from 'ofetch'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Request from '~~/app/components/studio/CustomerTransferRequest.client.vue'
 import { apps, button, cleanup, click, control, deferred, dialog, flush, mount, otherSite, requestId, review, siteId } from './pageStudioTransferTestSupport'
 
-const fetch = vi.fn()
+const fetch = Object.assign(vi.fn(), { raw: vi.fn() })
 const props = () => reactive({ siteId, websiteName: 'Flower shop', accountKey: 'owner-a', active: true })
 const posts = () => fetch.mock.calls.filter(([, options]) => options?.method === 'POST')
 beforeEach(() => {
   vi.resetAllMocks()
   vi.stubGlobal('$fetch', fetch)
   fetch.mockResolvedValue(null)
+  fetch.raw.mockImplementation(async (...args) => ({ status: 200, _data: await fetch(...args) }))
 })
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
 })
 describe('customer saved preparation controls', () => {
+  it('offers preparation after an actual empty 204 response without posting', async () => {
+    const transport = vi.fn<typeof globalThis.fetch>(async () => new Response(null, { status: 204 }))
+    vi.stubGlobal('$fetch', createFetch({ fetch: transport }))
+    const host = await mount(Request, props())
+    await vi.waitFor(() => expect(button(host, 'Request preparation')?.disabled).toBe(false))
+    expect(host.textContent).not.toContain('We could not check')
+    expect(transport).toHaveBeenCalledOnce()
+    expect(transport.mock.calls[0]?.[1]?.method).not.toBe('POST')
+    await click(host, 'Request preparation')
+    expect(dialog(host)?.textContent).toContain('Flower shop')
+    expect(transport).toHaveBeenCalledOnce()
+  })
+  it.each([
+    [200, ''], [200, '{}'], [200, 'not json'], [200, JSON.stringify(control({ siteId: otherSite }))],
+    [205, null], [503, null]
+  ])('keeps invalid status %s/body %s closed without posting', async (status, body) => {
+    const transport = vi.fn<typeof globalThis.fetch>(async () => new Response(body, { status, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('$fetch', createFetch({ fetch: transport, defaults: { retry: 0 } }))
+    const host = await mount(Request, props())
+    await vi.waitFor(() => expect(host.textContent).toContain('We could not check'))
+    expect(button(host, 'Request preparation')).toBeUndefined()
+    expect(button(host, 'Review approval')).toBeUndefined()
+    expect(transport).toHaveBeenCalledOnce()
+    expect(transport.mock.calls[0]?.[1]?.method).not.toBe('POST')
+  })
+  it.each([null, control()])('accepts the actual 200 JSON contract %j', async (value) => {
+    const transport = vi.fn<typeof globalThis.fetch>(async () => Response.json(value))
+    vi.stubGlobal('$fetch', createFetch({ fetch: transport }))
+    const host = await mount(Request, props())
+    await vi.waitFor(() => expect(button(host, value ? 'Cancel request' : 'Request preparation')?.disabled).toBe(false))
+    expect(host.textContent).not.toContain('We could not check')
+    expect(transport).toHaveBeenCalledOnce()
+  })
   it('reads on entry and requires confirmation before requesting preparation', async () => {
     const host = await mount(Request, props())
     expect(posts()).toHaveLength(0)

@@ -1,4 +1,6 @@
 import { createError } from 'h3'
+import { z } from 'zod'
+import { NativeRuntimeRecoveryProjection } from '~~/shared/pageStudio/nativeRuntimeRecoveryOperator'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { TransferControlsRequestSchema, TransferControlsResponseSchema } from '~~/shared/pageStudio/transferControls'
 import { TransferWorkflowRequestSchema, TransferWorkflowResponseSchema, TransferWorkflowPhases } from '~~/shared/pageStudio/transferWorkflow'
@@ -50,4 +52,16 @@ export async function callTransferWorkflow(input: unknown, env: Record<string, u
   if (value.siteId !== request.siteId || value.requestId !== request.requestId || value.revision !== request.expectedRevision
     || value.phases.length !== phases.length || value.phases.some((phase, index) => phase.phase !== phases[index])) throw unavailable()
   return value
+}
+
+/** One fixed recovery RPC under the existing genuine operator HTTP boundary. */
+export async function callNativeRuntimeRecovery(input: { siteId: string, requestId: string, reviewId?: string, action: 'prepare' | 'apply' | 'status', operator: { actorId: string, loginSessionHash: string } }, env: Record<string, unknown>) {
+  const call = capturePageStudioRpcMethod(env.PAGE_STUDIO_MANAGEMENT as Record<string, unknown> | undefined, 'nativeRuntimeRecovery')
+  if (!call || env.PAGE_STUDIO_RELEASE_ENVIRONMENT !== 'production') throw unavailable()
+  const request = { ...input, expectedControlPlaneEnvironment: 'production' }
+  const digest = await collectionDigest(request)
+  const result = z.object({ ok: z.literal(true), requestDigest: z.string(), value: NativeRuntimeRecoveryProjection }).strict().parse(await call(request))
+  if (result.requestDigest !== digest || result.value.siteId !== input.siteId || result.value.requestId !== input.requestId
+    || (input.reviewId && result.value.reviewId !== input.reviewId)) throw unavailable()
+  return result.value
 }
