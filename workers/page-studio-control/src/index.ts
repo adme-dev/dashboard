@@ -2,6 +2,8 @@ import { NativeSchemaContracts, type NativeSchemaKind } from '../../../shared/pa
 import type { z } from 'zod'
 import { authorizeNativeSchemaThroughManagement } from './nativeSchemaAuthority'
 import { readCompletionThroughManagement } from './completion'
+import { authorizeNativeRuntimeRecoveryThroughManagement } from './nativeRuntimeRecovery'
+import { NATIVE_RUNTIME_RECOVERY_AUTHORITY_PATH } from '../../../shared/pageStudio/nativeRuntimeRecoveryWire'
 
 const ALLOWED_DASHBOARD_ORIGINS = new Set([
   'https://app.xeroflow.io',
@@ -160,6 +162,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     && 'CONTENT_COMPLETION_TRANSPORT' in env && env.CONTENT_COMPLETION_TRANSPORT === 'management-rpc') {
     return readCompletionThroughManagement(request, config.dashboardOrigin,
       'PAGE_STUDIO_MANAGEMENT_COMPLETION' in env ? env.PAGE_STUDIO_MANAGEMENT_COMPLETION : undefined)
+  }
+
+  if (url.pathname === NATIVE_RUNTIME_RECOVERY_AUTHORITY_PATH) {
+    return authorizeNativeRuntimeRecoveryThroughManagement(request, config.dashboardOrigin,
+      'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+      && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env
+        ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY
+        : undefined)
   }
 
   if (request.method === 'POST' && config.dashboardOrigin === 'https://app.xeroflow.io') {

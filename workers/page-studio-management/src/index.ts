@@ -1,4 +1,6 @@
 import { handleNativeSchemaAuthorityFetch } from './nativeSchemaAuthority'
+import { handleNativeRuntimeRecoveryFetch, handleNativeRuntimeRecoveryRpc } from './nativeRuntimeRecoveryTransport'
+import { NATIVE_RUNTIME_RECOVERY_AUTHORITY_URL } from '../../../shared/pageStudio/nativeRuntimeRecoveryWire'
 import { handleTransferControls } from './transferControls'
 import { handleTransferWorkflow } from './transferWorkflow'
 import { handleManagedTransferPreparation } from './managedTransferPreparation'
@@ -36,7 +38,14 @@ const Request = z.discriminatedUnion('operation', [
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch(request: Request) {
+    if (request.url === NATIVE_RUNTIME_RECOVERY_AUTHORITY_URL) return handleNativeRuntimeRecoveryFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     return handleNativeSchemaAuthorityFetch(request, this.env,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async nativeRuntimeRecovery(input: unknown) {
+    return handleNativeRuntimeRecoveryRpc(input, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }
 

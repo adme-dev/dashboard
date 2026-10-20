@@ -169,3 +169,17 @@ export async function coordinateCustomerSchemaUpgrade(input: unknown, tokenClaim
   })
   return result(state.status, prepared.saved, currentHead?.recoveryId, 'runtimePhase' in state ? state.runtimePhase : undefined)
 }
+
+/** Private operator recovery snapshot. It reuses the exact retained native
+ * admission and recovery-head checks; no replacement child authority is created. */
+export async function readCustomerRuntimeRecoveryAuthority(db: PageStudioQueryClient, siteId: string, requestId: string) {
+  const rows = (await db.query<{ metadata: unknown }>(`SELECT metadata FROM page_studio_audit_events
+    WHERE site_id=$1 AND action='content.collection-upgrade.requested' AND resource_type='collection_upgrade'
+      AND metadata->>'requestId'=$2`, [siteId, requestId])).rows
+  if (rows.length !== 1) throw denied()
+  const candidate = z.object({ intent: collectionUpgradeContract.schema }).passthrough().parse(rows[0]!.metadata)
+  const saved = await retained(db, collectionUpgradeContract, candidate.intent.scope)
+  if (!saved || saved.requestId !== requestId || saved.intent.scope.siteId !== siteId) throw denied()
+  const head = await admission(db, collectionUpgradeContract, saved)
+  return { saved, head }
+}

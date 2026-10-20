@@ -6,7 +6,8 @@ import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { checkAndConsume } from '~~/server/utils/rateLimit'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
 import { TransferOwnerBodySchema, TransferOperatorBodySchema, TransferWorkflowBodySchema } from '~~/shared/pageStudio/transferWorkflow'
-import { callTransferControls, callTransferWorkflow } from './transferControls'
+import { NativeRuntimeRecoveryOperatorBody } from '~~/shared/pageStudio/nativeRuntimeRecoveryOperator'
+import { callNativeRuntimeRecovery, callTransferControls, callTransferWorkflow } from './transferControls'
 import { requireCustomerPlanOperator } from './customerPlanGrants'
 import { bindPageStudioLoginSession, resolvePageStudioLoginSession } from './loginSessions'
 import { guardCustomerRequest, customerSessionToken, limitCustomerRequest } from './customerSignupHttp'
@@ -76,18 +77,21 @@ export async function handleTransferOwnerHttp(event: H3Event, method: 'GET' | 'P
   } catch (error) { guarded(error) }
 }
 /** Current operator is independently checked before and after the one RPC. */
-export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' | 'POST', route: 'list' | 'request' | 'workflow') {
+export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' | 'POST', route: 'list' | 'request' | 'workflow' | 'runtime-recovery') {
   setHeader(event, 'cache-control', 'private, no-store')
   try {
     boundary(event, method)
-    if (route === 'list' && method !== 'GET') throw createError({ statusCode: 405 })
+    if ((route === 'list' && method !== 'GET') || (route === 'runtime-recovery' && method !== 'POST')) throw createError({ statusCode: 405 })
     const query = parse(route === 'list' ? ListQuery : route === 'workflow' && method === 'GET' ? StatusQuery : emptyQuery, getQuery(event))
     const identity = route === 'list' ? {} : { siteId: parse(Id, getRouterParam(event, 'siteId')), requestId: parse(Id, getRouterParam(event, 'requestId')) }
     const principal = await operator(event)
     await limitOperator(event, principal.loginSessionHash, method)
     const env = event.context.cloudflare?.env ?? {}
     let result: unknown
-    if (route === 'workflow') {
+    if (route === 'runtime-recovery') {
+      const input = await body(event, NativeRuntimeRecoveryOperatorBody)
+      result = await callNativeRuntimeRecovery({ siteId: identity.siteId!, requestId: identity.requestId!, ...input, operator: principal }, env)
+    } else if (route === 'workflow') {
       const input = method === 'GET' ? { ...query, action: 'status' } : await body(event, TransferWorkflowBodySchema)
       result = await callTransferWorkflow({ ...identity, ...input, operator: principal }, env)
     } else {
