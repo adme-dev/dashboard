@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { createApp, nextTick, ref, computed, onMounted, type App } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createFetch } from 'ofetch'
 import Dashboard from '~~/app/components/studio/CustomerDashboard.client.vue'
 
 let app: App, host: HTMLElement
@@ -13,6 +14,37 @@ async function flush() {
   }
 }
 const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === label)
+// Keep actual ofetch timeout/retry behavior; only the remote response is delayed.
+function useTimedDashboardReads() {
+  const fetch = createFetch({ fetch: async (request, options) => {
+    if (String(request).endsWith('/website/availability')) return Response.json({ available: false, siteId: null })
+    const signal = options?.signal
+    const result = await new Promise((resolve, reject) => {
+      const abort = () => reject(signal?.reason)
+      signal?.addEventListener('abort', abort, { once: true })
+      Promise.resolve(read()).then((value) => {
+        signal?.removeEventListener('abort', abort)
+        resolve(value)
+      }, (error) => {
+        signal?.removeEventListener('abort', abort)
+        reject(error)
+      })
+    })
+    return Response.json(result)
+  } })
+  vi.stubGlobal('useFetch', (url: string, options: { timeout: number, retry?: number }) => {
+    const data = ref(), error = ref()
+    return { data, error, refresh: async () => {
+      try {
+        data.value = await fetch(url, { timeout: options.timeout, retry: options.retry })
+        error.value = null
+      } catch (failure) {
+        error.value = failure
+        data.value = undefined
+      }
+    } }
+  })
+}
 async function mount() {
   host = document.createElement('div')
   app = createApp(Dashboard)
@@ -21,7 +53,7 @@ async function mount() {
   app.component('UButton', { props: ['label', 'disabled', 'loading', 'to'], template: '<button :disabled="disabled || loading">{{ label }}</button>' })
   app.component('UAlert', { props: ['title', 'description'], template: '<div role="alert">{{ title }} {{ description }}</div>' })
   app.component('UBadge', { props: ['label'], template: '<span>{{ label }}<slot/></span>' })
-  for (const name of ['UIcon', 'USkeleton', 'UCard']) app.component(name, { template: '<div><slot/></div>' })
+  for (const name of ['UIcon', 'USkeleton', 'UCard', 'StudioCustomerTransferRequest', 'StudioCustomerCmsSetup']) app.component(name, { template: '<div><slot/></div>' })
   app.mount(host)
   await flush()
 }
@@ -44,9 +76,64 @@ beforeEach(() => {
 })
 afterEach(() => {
   app?.unmount()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 describe('customer website overview', () => {
+  it('waits for a slow verified overview without offering duplicate creation', async () => {
+    vi.useFakeTimers()
+    useTimedDashboardReads()
+    read.mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve({
+      ...value, siteId: 'saved-site', state: 'verification-pending', stage: 5, canCreate: false
+    }), 31730)))
+    await mount()
+    await vi.advanceTimersByTimeAsync(10001)
+    expect(host.textContent).not.toContain('Status could not refresh')
+    expect(button('Refresh status')?.disabled).toBe(true)
+    button('Refresh status')!.click()
+    expect(button('Create preview')).toBeUndefined()
+    expect(read).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(21729)
+    await flush()
+    expect(host.textContent).toContain('Awaiting verification')
+    expect(button('Refresh status')?.disabled).toBe(false)
+    expect(button('Create preview')).toBeUndefined()
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(mutate).not.toHaveBeenCalled()
+  })
+  it('ends an overdue read without automatic retry and recovers only on explicit refresh', async () => {
+    vi.useFakeTimers()
+    useTimedDashboardReads()
+    await mount()
+    let resolveLate!: (value: unknown) => void
+    read.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveLate = resolve
+    }))
+    button('Refresh status')!.click()
+    await flush()
+    await vi.advanceTimersByTimeAsync(119999)
+    expect(host.textContent).not.toContain('Status could not refresh')
+    expect(button('Refresh status')?.disabled).toBe(true)
+    await vi.advanceTimersByTimeAsync(1)
+    await flush()
+    expect(host.textContent).toContain('Status could not refresh')
+    expect(button('Refresh status')?.disabled).toBe(false)
+    expect(button('Create preview')?.disabled).toBe(true)
+    button('Create preview')!.click()
+    resolveLate({ ...value })
+    await flush()
+    expect(host.textContent).toContain('Status could not refresh')
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(mutate).not.toHaveBeenCalled()
+    read.mockResolvedValueOnce({ ...value, siteId: 'saved-site', state: 'verification-pending', stage: 5, canCreate: false })
+    button('Refresh status')!.click()
+    await flush()
+    expect(host.textContent).not.toContain('Status could not refresh')
+    expect(host.textContent).toContain('Awaiting verification')
+    expect(button('Create preview')).toBeUndefined()
+    expect(read).toHaveBeenCalledTimes(3)
+    expect(mutate).not.toHaveBeenCalled()
+  })
   it('opens the managed draft by credential POST without URL or persistent storage', async () => {
     read.mockResolvedValue({ ...value, state: 'verification-pending', canCreate: false, canOpenStudio: true })
     const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {

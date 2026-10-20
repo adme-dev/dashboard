@@ -4,7 +4,9 @@ import type { CustomerDashboard } from '~~/shared/pageStudio/customerDashboard'
 
 useHead({ title: 'Your website — Page Studio' })
 const api = '/api/portal/page-studio/customer'
-const { data, error: loadError, refresh } = useFetch<CustomerDashboard>(`${api}/dashboard`, { server: false, immediate: false, timeout: 10000 })
+// Current authority and provider checks can outlast a short UI read deadline.
+// Keep one bounded attempt; recovery remains an explicit refresh.
+const { data, error: loadError, refresh } = useFetch<CustomerDashboard>(`${api}/dashboard`, { server: false, immediate: false, timeout: 120000, retry: 0 })
 const { data: formsAvailability, error: formsError, refresh: refreshForms } = useFetch<{ available: boolean, siteId: string | null }>(`${api}/website/availability`, { server: false, immediate: false, timeout: 10000 })
 const canManageForms = computed(() => !loadError.value && !formsError.value && formsAvailability.value?.available === true && Boolean(formsAvailability.value.siteId))
 const busy = ref(false)
