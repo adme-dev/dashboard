@@ -42,6 +42,29 @@ describe('customer dashboard HTTP boundary', () => {
   const recover = (body: unknown, headers: Record<string, string> = {}) => fetch(`${base}/recover`, {
     method: 'POST', headers: { 'origin': 'https://studio.example.test', 'cookie': `__Host-studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers }, body: JSON.stringify(body)
   })
+  it('uses only the complete activation bundle and retains independent gates', async () => {
+    delete config.PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED
+    const activation = { previewEnabled: true, previewApprovals: [], cmsSetupEnabled: true, browserEnabled: true, editorEnabled: true }
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify(activation)
+    expect((await call({})).status).toBe(200)
+    expect((await call({}, { origin: 'https://foreign.test' })).status).toBe(403)
+    expect((await call({}, { cookie: 'client_session_token=legacy' })).status).toBe(401)
+    expect((await call({ siteId: 'foreign' })).status).toBe(400)
+    config.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED = 'false'
+    expect((await call({})).status).toBe(403)
+    delete config.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...activation, previewEnabled: false })
+    expect((await call({})).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...activation, previewApprovals: [{ workspaceId: 'foreign' }] })
+    expect((await call({})).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify(activation)
+    config.PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED = 'true'
+    expect((await call({})).status).toBe(403)
+  })
+  it.each(['{', '{}', '{"editorEnabled":true}'])('rejects a present invalid bundle %s despite enabled legacy settings', async (value) => {
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = value
+    expect((await call({})).status).toBe(403)
+  })
   it('requires the current cookie, exact origin and strict recovery challenge before dispatch', async () => {
     const body = { recoveryId: '11111111-1111-4111-8111-111111111111', expectedRecoveryId: null, expectedJobDigest: 'a'.repeat(64) }
     mocks.recover.mockResolvedValue({ state: 'preparing' })

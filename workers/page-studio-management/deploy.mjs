@@ -56,7 +56,7 @@ export function validateManagementTarget(config, environment) {
         { binding: 'PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER', service: 'xeroflow-provisioning-native-preview' },
         { binding: 'PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER', service: 'xeroflow-content-router-native-preview' }]
     : [{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }])
-  assert.equal(config.vars.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED, environment === 'production' ? 'false' : undefined)
+  assert.equal(config.vars.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED, environment === 'production' ? 'true' : undefined)
   assert.equal(config.vars.PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN, environment === 'production' ? 'https://studio-customer-preview.xeroflow.io' : undefined)
   assert.equal(config.vars.PAGE_STUDIO_CMS_OBJECT_TRANSPORT, environment === 'staging' ? 'placed-fetch' : undefined)
   assert.equal(config.vars.PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT, environment === 'production' ? 'placed-fetch' : undefined)

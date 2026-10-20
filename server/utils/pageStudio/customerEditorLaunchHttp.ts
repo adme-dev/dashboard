@@ -1,4 +1,5 @@
 import { createError, readBody, setHeader, type H3Event } from 'h3'
+import { readCustomerActivation } from './customerActivation'
 import { z } from 'zod'
 import { customerPreviewRuntimeEnvironment, hasCustomerPreviewRuntimeConfiguration } from './customerPreviewRuntime'
 import { readCustomerEditorEnvironment } from './customerPreviewRouting'
@@ -9,8 +10,9 @@ import { launchCustomerEditor, type CustomerEditorLaunchOptions } from './custom
 
 export function customerEditorBrowserConfiguration(event: H3Event, bindings: Record<string, unknown> = event.context?.cloudflare?.env ?? {}) {
   const setting = (key: string) => Object.prototype.hasOwnProperty.call(bindings, key) ? bindings[key] : process.env[key]
+  const activation = readCustomerActivation(bindings)
   const environment = setting('PAGE_STUDIO_CONTENT_ENVIRONMENT')
-  if (setting('PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED') !== 'true' || setting('PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED') !== 'true'
+  if (!activation.browserEnabled || !activation.editorEnabled
     || (environment === 'production'
       ? setting('PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED') !== 'true'
       : environment !== 'staging' || setting('PAGE_STUDIO_PROVISIONING_ENVIRONMENT') !== 'staging')) return null
@@ -30,8 +32,8 @@ export function customerEditorLaunchOptions(event: H3Event, bindings: Record<str
 /** Browser input never selects its content environment. */
 export async function customerEditorRequestOptions(event: H3Event, token: string): Promise<CustomerEditorLaunchOptions | null> {
   const env = event.context?.cloudflare?.env ?? {}
-  const setting = (key: string) => Object.hasOwn(env, key) ? env[key] : process.env[key]
-  if (setting('PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED') !== 'true' || setting('PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED') !== 'true') return null
+  const activation = readCustomerActivation(env)
+  if (!activation.browserEnabled || !activation.editorEnabled) return null
   if (env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== 'production') {
     if (!hasCustomerPreviewRuntimeConfiguration(env)) return customerEditorLaunchOptions(event)
     const source = customerPreviewRuntimeEnvironment(env)

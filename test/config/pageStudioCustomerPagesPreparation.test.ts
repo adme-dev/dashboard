@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { parse } from 'smol-toml'
 import { describe, expect, it } from 'vitest'
+import { readCustomerActivation } from '../../server/utils/pageStudio/customerActivation'
 import { flattenRedirectedPagesConfig } from '../../scripts/deploy-pages.mjs'
 
 type Environment = {
@@ -29,7 +30,7 @@ function assertProductionSignupScope(environment: Environment) {
   expect(environment.vars).toMatchObject({
     PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED: 'true',
     PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT: '2026-10-22T12:00:00Z',
-    PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false',
+    PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
     PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://studio-customer-preview.xeroflow.io',
     PAGE_STUDIO_CUSTOMER_ORIGIN: 'https://app.xeroflow.io',
     PAGE_STUDIO_CUSTOMER_EMAIL_FROM: 'notification@xeroflow.io',
@@ -44,7 +45,7 @@ function assertProductionSignupScope(environment: Environment) {
   }
 }
 
-describe('production Pages bounded native customer signup', () => {
+describe('production Pages bounded native customer activation', () => {
   it('admits exactly two reviewed mailboxes until the fixed expiry without staging account scopes', () => {
     assertProductionSignupScope(config.env.production)
     expect(config.env.production.vars.PAGE_STUDIO_CUSTOMER_TERMS_VERSION).toBe('2026-08-02')
@@ -54,7 +55,30 @@ describe('production Pages bounded native customer signup', () => {
     }
   })
 
-  it('keeps native preview, editor, CMS and Forms admission closed', () => {
+  it('admits only the two genuine workspaces with the exact reviewed operator, expiry and caps', () => {
+    const activation = readCustomerActivation(config.env.production.vars)
+    expect(activation).toEqual({
+      previewEnabled: true, cmsSetupEnabled: true, browserEnabled: true, editorEnabled: true,
+      previewApprovals: [
+        '64326ad7-7354-42e6-871d-8dea401a7798',
+        'a8ca805f-751f-484a-b074-688f8a82fe41'
+      ].map(workspaceId => ({ workspaceId, starterVersion: 'limousine-v1', policy: {
+        approvalId: expect.stringMatching(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/),
+        approvedBy: '6a5d2e15-315c-4790-b64e-5e3e17001c8e',
+        expiresAt: '2026-10-22T12:00:00Z', pagesPerSiteLimit: 10, storageBytesLimit: 104857600,
+        monthlyBuildLimit: 10, monthlyTrafficBytesLimit: 104857600
+      } }))
+    })
+    expect(new Set(activation.previewApprovals.map(row => row.policy.approvalId)).size).toBe(2)
+    for (const row of activation.previewApprovals) {
+      expect(row.policy.expiresAt).toBe(config.env.production.vars.PAGE_STUDIO_CUSTOMER_SIGNUP_EXPIRES_AT)
+    }
+    for (const environment of [config, config.env.preview]) {
+      expect(environment.vars).not.toHaveProperty('PAGE_STUDIO_CUSTOMER_ACTIVATION')
+    }
+  })
+
+  it('keeps legacy scalar keys absent and production editor and Forms admission closed', () => {
     for (const key of [
       'PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED', 'PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED',
       'PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED', 'PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED',

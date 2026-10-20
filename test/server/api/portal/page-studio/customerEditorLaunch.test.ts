@@ -41,6 +41,29 @@ describe('native customer editor launch HTTP', () => {
     method, headers: { 'origin': 'https://customers.example.test', 'cookie': `__Host-studio_customer_session=${'a'.repeat(64)}`, 'content-type': 'application/json', ...headers },
     ...(method === 'GET' ? {} : { body: JSON.stringify(body) })
   })
+  it('uses only the complete activation bundle and retains independent gates', async () => {
+    delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED
+    delete config.PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED
+    const activation = { previewEnabled: true, previewApprovals: [], cmsSetupEnabled: true, browserEnabled: true, editorEnabled: true }
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify(activation)
+    expect((await call()).status).toBe(200)
+    expect((await call({}, { origin: 'https://foreign.test' })).status).toBe(403)
+    expect((await call({}, { cookie: 'client_session_token=legacy' })).status).toBe(401)
+    expect((await call({ siteId: 'foreign' })).status).toBe(400)
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...activation, browserEnabled: false })
+    expect((await call()).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...activation, editorEnabled: false })
+    expect((await call()).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...activation, previewApprovals: [{ workspaceId: 'foreign' }] })
+    expect((await call()).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify(activation)
+    config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED = 'true'
+    expect((await call()).status).toBe(403)
+  })
+  it.each(['{', '{}', '{"editorEnabled":true}'])('rejects a present invalid bundle %s despite enabled legacy settings', async (value) => {
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = value
+    expect((await call()).status).toBe(403)
+  })
   it('projects availability without issuing a ticket and launches only on explicit POST', async () => {
     const overview = await call({}, {}, '/dashboard', 'GET')
     expect(await overview.json()).toMatchObject({ state: 'editor-ready', stage: 5, canOpenStudio: true, canCreate: false, canRetry: false, canPrepareCms: false })

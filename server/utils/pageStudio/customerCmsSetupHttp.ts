@@ -1,4 +1,5 @@
 import { createError, readBody, setHeader, type H3Event } from 'h3'
+import { readCustomerActivation } from './customerActivation'
 import { customerPreviewRuntimeEnvironment } from './customerPreviewRuntime'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { CustomerCmsSetupRequestSchema } from '~~/shared/pageStudio/customerCmsSetup'
@@ -10,7 +11,7 @@ export function customerCmsSetupOptions(event: H3Event): CustomerCmsSetupOptions
   const env = customerPreviewRuntimeEnvironment(event.context.cloudflare?.env ?? {})
   if (!env) return null
   const setting = (key: string) => Object.hasOwn(env, key) ? env[key] : process.env[key]
-  if (setting('PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED') !== 'true'
+  if (!readCustomerActivation(env).cmsSetupEnabled
     || setting('PAGE_STUDIO_PROVISIONING_ENVIRONMENT') !== 'staging'
     || setting('PAGE_STUDIO_CONTENT_ENVIRONMENT') !== 'staging'
     || typeof (env.PAGE_STUDIO_PROVISIONER as { readProvisioning?: unknown } | undefined)?.readProvisioning !== 'function'

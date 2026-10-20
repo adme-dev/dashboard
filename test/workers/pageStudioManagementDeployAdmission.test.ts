@@ -29,7 +29,7 @@ const config = (environment: string) => ({
     ...(environment === 'production'
       ? {
           PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
-          PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false',
+          PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
           PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://studio-customer-preview.xeroflow.io',
           PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID: 'a5b299b3ad15c1b5b895dc66f9357b17',
           PAGE_STUDIO_CLOUDFLARE_ZONE_ID: '8e38cbf3910d291dd218710296661073',

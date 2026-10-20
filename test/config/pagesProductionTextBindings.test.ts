@@ -51,14 +51,19 @@ describe('production Pages text binding budget', () => {
     expect(await read('.github/workflows/ci.yml')).toContain('node: [24.18.0]')
   })
 
-  it('reserves binding capacity after the four generated runtime variables', () => {
+  it('fits the scoped activation in the full reviewed text-binding budget', () => {
     const declaredTextBindings = Object.keys(config.env.production.vars).length
-    expect(declaredTextBindings).toBe(46)
+    expect(declaredTextBindings).toBe(47)
     // NUXT_APP_BASE_URL, NUXT_APP_BUILD_ASSETS_DIR, NUXT_APP_CDN_URL, NITRO_PRESET.
     // Secret count is live provider state and must be recounted before release.
     const generatedTextBindings = 4
     const providerTextBindingLimit = 150
-    expect(providerTextBindingLimit - declaredTextBindings - generatedTextBindings).toBe(100)
-    expect(config.env.production.vars.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED).toBe('false')
+    const reviewedSecretBindings = 99
+    expect(declaredTextBindings + reviewedSecretBindings + generatedTextBindings).toBe(providerTextBindingLimit)
+    expect(config.env.production.vars).toHaveProperty('PAGE_STUDIO_CUSTOMER_ACTIVATION')
+    for (const suffix of ['PREVIEW_ENABLED', 'PREVIEW_APPROVALS', 'CMS_SETUP_ENABLED', 'BROWSER_ENABLED', 'EDITOR_ENABLED']) {
+      expect(config.env.production.vars).not.toHaveProperty(`PAGE_STUDIO_CUSTOMER_${suffix}`)
+    }
+    expect(config.env.production.vars.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED).toBe('true')
   })
 })

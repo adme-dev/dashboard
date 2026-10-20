@@ -26,7 +26,7 @@ describe('private Page Studio management deployment configuration', () => {
       ...(environment === 'production'
         ? {
             PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
-            PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false',
+            PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
             PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://studio-customer-preview.xeroflow.io',
             PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST: '2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83',
             PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST: '012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a',

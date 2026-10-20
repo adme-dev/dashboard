@@ -53,6 +53,21 @@ const call = (path: string, body: unknown, headers: Record<string, string> = {})
     'x-page-studio-customer-session': signed, ...headers }, body: JSON.stringify(body)
 })
 describe('private native customer session endpoints', () => {
+  it('requires a valid bundle for private sessions and retains machine authentication', async () => {
+    delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED
+    const activation = { previewEnabled: false, previewApprovals: [], cmsSetupEnabled: false, browserEnabled: false, editorEnabled: true }
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify(activation)
+    expect((await call('authorize', { capability: 'workspace:checkpoint' })).status).toBe(200)
+    expect((await call('authorize', { capability: 'workspace:checkpoint' }, { authorization: '' })).status).toBe(401)
+    expect((await call('latest-checkpoint', { siteId: 'foreign' })).status).toBe(400)
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...activation, editorEnabled: false })
+    expect((await call('authorize', { capability: 'workspace:checkpoint' })).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...activation, previewApprovals: [{ workspaceId: 'foreign' }] })
+    expect((await call('authorize', { capability: 'workspace:checkpoint' })).status).toBe(403)
+    config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED = 'true'
+    config.PAGE_STUDIO_CUSTOMER_ACTIVATION = '{}'
+    expect((await call('authorize', { capability: 'workspace:checkpoint' })).status).toBe(403)
+  })
   it('binds production routes to opt-in and rejects staging sessions or production setup', async () => {
     const token = await signCustomerEditorToken({ ...claims, environment: 'production' }, privatePem, issuer)
     const headers = { 'x-page-studio-customer-session': token }

@@ -63,9 +63,9 @@ describe('private management immutable deployment target', () => {
       { MANAGED_TRANSFER_EXECUTION_POLICY: JSON.stringify({ ...source, accountId: 'b'.repeat(32) }) }
     ]) expect(() => validateManagementTarget({ ...current, vars: { ...current.vars, ...change } }, 'production')).toThrow()
   })
-  it('rejects native preview activation or cross-wired resources in the preparation release', () => {
+  it('requires reviewed native preview activation and rejects cross-wired resources', () => {
     const current = config()
-    for (const value of ['true', '', undefined]) {
+    for (const value of ['false', '', undefined]) {
       expect(() => validateManagementTarget({ ...current, vars: { ...current.vars, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: value } }, 'production')).toThrow()
     }
     expect(() => validateManagementTarget({ ...current, vars: { ...current.vars, PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://studio.xeroflow.io' } }, 'production')).toThrow()

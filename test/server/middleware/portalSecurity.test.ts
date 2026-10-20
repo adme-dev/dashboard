@@ -1,10 +1,28 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { parse } from 'smol-toml'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent {
   path: string
 }
 
 let editorUrl: unknown = ''
+const production = (parse(readFileSync(new URL('../../../wrangler.toml', import.meta.url), 'utf8')) as unknown as {
+  env: { production: { vars: Record<string, string>, services: { binding: string }[], r2_buckets: { binding: string }[] } }
+}).env.production
+const nativeOrigin = 'https://studio-customer-preview.xeroflow.io'
+const nativeBindings = (): Record<string, unknown> => ({
+  ...production.vars,
+  ...Object.fromEntries(production.services.map(({ binding }) => [binding, {
+    createProvisioning: vi.fn(), readProvisioning: vi.fn(), readManagedCmsTarget: vi.fn()
+  }])),
+  ...Object.fromEntries(production.r2_buckets.map(({ binding }) => [binding, { get: vi.fn() }]))
+})
+function documentPolicy(env: Record<string, unknown>, path = '/studio/dashboard') {
+  vi.clearAllMocks()
+  portalSecurityMiddleware({ path, context: { cloudflare: { env } } } as never)
+  return Object.fromEntries(vi.mocked(testGlobal.setHeader).mock.calls.map(([, name, value]) => [name, value]))
+}
 
 const testGlobal = globalThis as typeof globalThis & {
   defineEventHandler: <T>(fn: T) => T
@@ -28,7 +46,9 @@ describe('portal response security middleware', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     editorUrl = ''
+    for (const key of ['ACTIVATION', 'BROWSER_ENABLED', 'EDITOR_ENABLED', 'PREVIEW_ENABLED', 'PREVIEW_APPROVALS', 'CMS_SETUP_ENABLED', 'PRODUCTION_EDITOR_ENABLED']) vi.stubEnv(`PAGE_STUDIO_CUSTOMER_${key}`, undefined)
   })
+  afterEach(() => vi.unstubAllEnvs())
 
   it.each(['/studio/signup', '/studio/dashboard', '/portal/login'])('permits only the configured native editor after navigation from %s', (path) => {
     const env = { PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED: 'true', PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED: 'true',
@@ -50,6 +70,68 @@ describe('portal response security middleware', () => {
     env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'production'
     expect(policy()).not.toContain('native-editor')
   })
+
+  it.each(['/studio', '/studio/signup', '/studio/dashboard', '/portal', '/portal/login', '/portal/projects'])(
+    'allows the checked-in production native launch after navigation from %s without production editor opt-in', (path) => {
+      const env = nativeBindings()
+      editorUrl = production.vars.NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL
+      expect(env.PAGE_STUDIO_CONTENT_ENVIRONMENT).toBe('production')
+      expect(env.PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED).toBeUndefined()
+      const headers = documentPolicy(env, path)
+      expect(headers['Content-Security-Policy'].split('; ').find(value => value.startsWith('form-action ')))
+        .toBe(`form-action 'self' https://studio.xeroflow.io ${nativeOrigin}`)
+      expect(headers['Referrer-Policy']).toBe('origin')
+      for (const binding of [...production.services, ...production.r2_buckets]) {
+        for (const method of Object.values(env[binding.binding] as Record<string, ReturnType<typeof vi.fn>>)) {
+          expect(method).not.toHaveBeenCalled()
+        }
+      }
+    }
+  )
+
+  it.each([
+    { PAGE_STUDIO_CUSTOMER_ACTIVATION: '{}' },
+    { PAGE_STUDIO_CUSTOMER_ACTIVATION: undefined },
+    ...['browserEnabled', 'editorEnabled'].map(key => ({ PAGE_STUDIO_CUSTOMER_ACTIVATION:
+      JSON.stringify({ ...JSON.parse(production.vars.PAGE_STUDIO_CUSTOMER_ACTIVATION), [key]: false }) })),
+    { PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED: 'true' },
+    { PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false' },
+    { PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: undefined },
+    { PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER: {} },
+    { PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER: { createProvisioning: vi.fn() } },
+    { PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER: {} },
+    { PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS: {} },
+    ...['http://studio-customer-preview.xeroflow.io', `${nativeOrigin}/path`, `${nativeOrigin}?q=1`,
+      'https://*.xeroflow.io', `${nativeOrigin}; form-action *`, 'https://user:pass@studio-customer-preview.xeroflow.io']
+      .map(value => ({ PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: value }))
+  ])('keeps native document admission closed for invalid or disabled configuration %#', (change) => {
+    editorUrl = production.vars.NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL
+    const headers = documentPolicy({ ...nativeBindings(), ...change })
+    expect(headers['Content-Security-Policy'].split('; ').find(value => value.startsWith('form-action ')))
+      .toBe('form-action \'self\' https://studio.xeroflow.io')
+    expect(headers['Referrer-Policy']).toBe('no-referrer')
+  })
+
+  it('gates the production editor independently while retaining the enabled native source', () => {
+    const env = { ...nativeBindings(), PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: 'https://production-editor.example.test' }
+    expect(documentPolicy(env)['Content-Security-Policy']).not.toContain('production-editor.example.test')
+    const enabled = { ...env, PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED: 'true' }
+    expect(documentPolicy(enabled)['Content-Security-Policy']).toContain(
+      `form-action 'self' https://production-editor.example.test ${nativeOrigin};`)
+    const productionOnly = documentPolicy({ ...enabled, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false' })
+    expect(productionOnly['Content-Security-Policy']).toContain('form-action \'self\' https://production-editor.example.test;')
+    expect(productionOnly['Content-Security-Policy']).not.toContain(nativeOrigin)
+    expect(productionOnly['Referrer-Policy']).toBe('origin')
+  })
+
+  it.each(['/api/portal/dashboard', '/api/client-portal/analytics/personas'])(
+    'keeps production native destinations out of API document policy at %s', (path) => {
+      const headers = documentPolicy(nativeBindings(), path)
+      expect(headers['Content-Security-Policy']).toContain('form-action \'self\';')
+      expect(headers['Content-Security-Policy']).not.toContain(nativeOrigin)
+      expect(headers['Referrer-Policy']).toBe('no-referrer')
+    }
+  )
 
   it('prevents storage and reuse of every portal API response', () => {
     const event = { path: '/api/portal/dashboard' }
