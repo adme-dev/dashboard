@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readCustomerActivation } from '~~/server/utils/pageStudio/customerActivation'
 import { customerPreviewRuntimeEnvironment } from '~~/server/utils/pageStudio/customerPreviewRuntime'
 
 const base = () => ({ PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production',
@@ -37,4 +38,16 @@ describe('fixed native source runtime selection', () => {
   it.each(['https://evil.test/path', 'http://studio-customer-preview.xeroflow.io', 'https://studio-customer-preview.xeroflow.io/?x=1'])('rejects malformed origin %s', (origin) => {
     expect(customerPreviewRuntimeEnvironment({ ...base(), ...preview(), PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: origin })).toBeNull()
   })
+})
+
+it('projects only strictly validated source activation and never masks a duplicate production origin', () => {
+  const activation = { previewEnabled: true, previewApprovals: [], cmsSetupEnabled: true, browserEnabled: true, editorEnabled: true,
+    productionEditorEnabled: true, productionEditorOrigin: 'https://studio.xeroflow.io' }
+  const env = { ...base(), ...preview(), PAGE_STUDIO_CUSTOMER_ACTIVATION: JSON.stringify(activation) }
+  const projected = customerPreviewRuntimeEnvironment(env)!
+  expect(readCustomerActivation(projected)).toEqual({ previewEnabled: true, previewApprovals: [], cmsSetupEnabled: true, browserEnabled: true, editorEnabled: true })
+  expect(projected.PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN).toBe(env.PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN)
+  expect(JSON.parse(env.PAGE_STUDIO_CUSTOMER_ACTIVATION)).toEqual(activation)
+  const conflict = customerPreviewRuntimeEnvironment({ ...env, PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: activation.productionEditorOrigin })!
+  expect(readCustomerActivation(conflict)).toMatchObject({ editorEnabled: false, previewEnabled: false })
 })

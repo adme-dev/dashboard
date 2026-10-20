@@ -14,7 +14,7 @@ import type { RunPageStudioTransaction } from './sites'
 import { assertCustomerEditorSessionAuthority, parseCustomerEditorClaims as parseClaims, type AuthorityReceipt } from './customerEditorSessionAuthority'
 
 const denied = () => createError({ statusCode: 403, statusMessage: 'Customer editor access is not available.' })
-interface Dependencies { runTransaction?: RunPageStudioTransaction }
+interface Dependencies { runTransaction?: RunPageStudioTransaction, assertWorkspace?: (workspaceId: string) => void }
 export { assertCustomerEditorSessionAuthority } from './customerEditorSessionAuthority'
 
 /** Consume, persist and sign atomically. A failed exchange can retry the SAME ticket. */
@@ -25,7 +25,7 @@ export async function exchangeCustomerEditorSession(ticket: unknown, configurati
   const environment = dependencies.signToken ? null : resolvePageStudioSessionEnvironment(dependencies.event)
   const sign = dependencies.signToken ?? (claims => signCustomerEditorToken(claims, environment!.privateKey, environment!.issuer))
   return (dependencies.runTransaction ?? transaction)(async (db) => {
-    const context = await redeemCustomerEditorHandoff(ticket, configuration, { runTransaction: callback => callback(db) })
+    const context = await redeemCustomerEditorHandoff(ticket, configuration, { runTransaction: callback => callback(db), assertWorkspace: dependencies.assertWorkspace })
     const handoff = (await db.query<AuthorityReceipt>('SELECT * FROM page_studio_customer_editor_handoffs WHERE id=$1', [context.handoffId])).rows[0]
     const capabilities = customerSessionCapabilities(handoff?.purpose)
     const setup = handoff?.purpose === 'cms-setup'
@@ -57,6 +57,7 @@ export async function exchangeCustomerEditorSession(ticket: unknown, configurati
       (tenant_id, client_id, site_id, actor_id, actor_role, action, resource_type, resource_id)
       VALUES ($1, $2, $3, $4, 'customer', 'customer.session_issued', 'customer_editor_session', $5)`,
     [claims.tenantId, claims.clientId, claims.siteId, claims.userId, claims.nonce])
+    dependencies.assertWorkspace?.(claims.workspaceId)
     return { token, sessionId: claims.nonce, expiresAt: claims.expiresAt, returnUrl: claims.returnUrl }
   })
 }
@@ -72,6 +73,7 @@ export async function commitCustomerEditorCheckpoint(input: unknown, tokenClaims
   // Discover management under native authority, then release locks before storage I/O.
   const managed = await (dependencies.runTransaction ?? transaction)(async (db) => {
     await assertCustomerEditorSessionAuthority(claims, 'workspace:checkpoint', db)
+    dependencies.assertWorkspace?.(claims.workspaceId)
     return (await db.query(`SELECT scope_key FROM page_studio_cms_scopes
       WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND state<>'legacy' LIMIT 1`,
     [claims.tenantId, claims.clientId, claims.siteId])).rows.length > 0
@@ -82,6 +84,7 @@ export async function commitCustomerEditorCheckpoint(input: unknown, tokenClaims
     const { coordinateCmsGraphCheckpoint } = await import('./cmsGraphCoordinator')
     const receipt = await coordinateCmsGraphCheckpoint(parsed.data, { source: 'customer-session', claims,
       env: dependencies.env, capability: 'workspace:checkpoint' }, dependencies)
+    dependencies.assertWorkspace?.(claims.workspaceId)
     return { acknowledged: receipt.acknowledged, checkpointId: receipt.checkpointId,
       currentCheckpointId: receipt.currentCheckpointId, isCurrent: receipt.isCurrent }
   }
@@ -105,6 +108,7 @@ export async function readCustomerEditorCheckpoint(input: unknown, dependencies:
       const latest = await getLatestPageStudioCheckpoint(claims, { queryOne: async <T>(sql: string, params?: unknown[]) => (await db.query<T>(sql, params)).rows[0] ?? null })
       if (!latest || !cmsEqual({ id: latest.checkpointId, digest: latest.digest }, context.application.manifest.checkpoint)) throw denied()
       await assertCustomerEditorSessionAuthority(claims, 'workspace:reconnect', db)
+      dependencies.assertWorkspace?.(claims.workspaceId)
       return { scope, context, checkpoint: { id: latest.checkpointId, digest: latest.digest, object_key: latest.objectKey } }
     }, { env: dependencies.env, runTransaction: dependencies.runTransaction ?? transaction }, async (_db, snapshot) => ({
       checkpointId: snapshot.checkpoint.id, digest: snapshot.checkpoint.digest, objectKey: snapshot.checkpoint.object_key

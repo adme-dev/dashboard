@@ -3,8 +3,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { parse } from 'smol-toml'
-import { describe, expect, it } from 'vitest'
-import { readCustomerActivation } from '../../server/utils/pageStudio/customerActivation'
+import { describe, expect, it, vi } from 'vitest'
+import { customerDestinationGuard, readCustomerActivation } from '../../server/utils/pageStudio/customerActivation'
 import { flattenRedirectedPagesConfig } from '../../scripts/deploy-pages.mjs'
 
 type Environment = {
@@ -59,6 +59,7 @@ describe('production Pages bounded native customer activation', () => {
     const activation = readCustomerActivation(config.env.production.vars)
     expect(activation).toEqual({
       previewEnabled: true, cmsSetupEnabled: true, browserEnabled: true, editorEnabled: true,
+      productionEditorEnabled: true, productionEditorOrigin: 'https://studio.xeroflow.io',
       previewApprovals: [
         '64326ad7-7354-42e6-871d-8dea401a7798',
         'a8ca805f-751f-484a-b074-688f8a82fe41'
@@ -78,15 +79,26 @@ describe('production Pages bounded native customer activation', () => {
     }
   })
 
-  it('keeps legacy scalar keys absent and production editor and Forms admission closed', () => {
+  it('keeps legacy scalar keys absent and Forms admission closed', () => {
     for (const key of [
       'PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED', 'PAGE_STUDIO_CUSTOMER_BROWSER_ENABLED',
       'PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED', 'PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED',
       'PAGE_STUDIO_CUSTOMER_FORMS_ENABLED', 'PAGE_STUDIO_CUSTOMER_WORKSPACE_ENABLED',
-      'PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED'
+      'PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED', 'PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN', 'PAGE_STUDIO_CUSTOMER_PRODUCTION_FORMS_ENABLED'
     ]) {
       expect(config.env.production.vars).not.toHaveProperty(key)
     }
+  })
+
+  it('bounds destination activation to the same two verified workspaces and expiry without granting a plan', () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-20T00:00:00Z'))
+    try {
+      const guard = customerDestinationGuard(config.env.production.vars)!
+      for (const row of readCustomerActivation(config.env.production.vars).previewApprovals) expect(() => guard(row.workspaceId)).not.toThrow()
+      expect(() => guard('11111111-1111-4111-8111-111111111111')).toThrow()
+      clock.mockReturnValue(Date.parse('2026-10-22T12:00:00Z'))
+      for (const row of readCustomerActivation(config.env.production.vars).previewApprovals) expect(() => guard(row.workspaceId)).toThrow()
+    } finally { clock.mockRestore() }
   })
 
   it.each(['production', 'preview'] as const)('preserves established %s content and provisioning resources', (name) => {

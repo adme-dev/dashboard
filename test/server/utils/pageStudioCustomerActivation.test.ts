@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { readCustomerActivation } from '~~/server/utils/pageStudio/customerActivation'
+import { customerDestinationGuard, readCustomerActivation } from '~~/server/utils/pageStudio/customerActivation'
 
 const key = 'PAGE_STUDIO_CUSTOMER_ACTIVATION'
 const scalarKeys = ['PREVIEW_ENABLED', 'PREVIEW_APPROVALS', 'CMS_SETUP_ENABLED', 'BROWSER_ENABLED', 'EDITOR_ENABLED']
@@ -71,5 +71,48 @@ describe('atomic customer activation configuration', () => {
     vi.stubEnv(key, JSON.stringify(enabled))
     expect(readCustomerActivation({})).toEqual(enabled)
     expect(readCustomerActivation({ PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED: 'false' })).toEqual(closed)
+  })
+})
+
+describe('bounded destination activation', () => {
+  const destination = { ...enabled, previewApprovals: [approval], productionEditorEnabled: true,
+    productionEditorOrigin: 'https://studio.example.test' }
+  it('keeps old bundles source-only and scalar-only production opt-in compatible', () => {
+    expect(readCustomerActivation(bundle(enabled)).productionEditorEnabled).toBeUndefined()
+    expect(readCustomerActivation({ PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED: 'true',
+      PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: 'https://studio.example.test' })).toMatchObject({ productionEditorEnabled: true, productionEditorOrigin: 'https://studio.example.test' })
+    expect(customerDestinationGuard({})).toBeUndefined()
+    expect(readCustomerActivation({ PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED: 'true',
+      PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: new URL('https://studio.example.test') }).productionEditorOrigin).toBeUndefined()
+  })
+  it('admits only the verified workspace within its existing approval window', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-20T00:00:00Z'))
+    const env = bundle(destination)
+    const guard = customerDestinationGuard(env)!
+    expect(() => guard(approval.workspaceId)).not.toThrow()
+    expect(() => guard('foreign')).toThrow()
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse(approval.policy.expiresAt))
+    expect(() => guard(approval.workspaceId)).toThrow()
+    vi.restoreAllMocks()
+  })
+  it('rechecks a closed rollout and does not require preview creation for destination editing', () => {
+    const env = bundle({ ...destination, previewEnabled: false })
+    const guard = customerDestinationGuard(env)!
+    expect(() => guard(approval.workspaceId)).not.toThrow()
+    env[key] = JSON.stringify({ ...destination, productionEditorEnabled: false })
+    expect(() => guard(approval.workspaceId)).toThrow()
+  })
+  it.each([
+    { productionEditorEnabled: true }, { productionEditorOrigin: 'https://studio.example.test' },
+    { productionEditorEnabled: 'true', productionEditorOrigin: 'https://studio.example.test' },
+    { productionEditorEnabled: true, productionEditorOrigin: 'https://studio.example.test/path' },
+    { productionEditorEnabled: true, productionEditorOrigin: 'https://*.example.test' }
+  ])('closes the whole bundle for a malformed production pair %#', (pair) => {
+    expect(readCustomerActivation(bundle({ ...enabled, ...pair }))).toEqual(closed)
+  })
+  it.each(['PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED', 'PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN'])('rejects conflicting scalar %s', (name) => {
+    expect(readCustomerActivation({ ...bundle(destination), [name]: undefined })).toEqual(closed)
+    vi.stubEnv(key, JSON.stringify(destination))
+    expect(readCustomerActivation({ [name]: 'true' })).toEqual(closed)
   })
 })

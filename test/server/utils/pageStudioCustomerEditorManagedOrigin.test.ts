@@ -36,6 +36,14 @@ describe('customer editor completed managed origin', () => {
     expect(mocks.authority).toHaveBeenCalledTimes(4)
     expect(mocks.authority.mock.calls.every(([, receipt]) => receipt.environment === 'production' && receipt.entitlement_id === 'plan')).toBe(true)
   })
+  it('rechecks the verified workspace after storage before any handoff', async () => {
+    const assertWorkspace = vi.fn().mockImplementationOnce(() => {}).mockImplementationOnce(() => {
+      throw Object.assign(new Error('Expired'), { statusCode: 403 })
+    })
+    await expect(launchCustomerEditor('a'.repeat(64), { ...options, assertWorkspace })).rejects.toMatchObject({ statusCode: 403 })
+    expect(assertWorkspace.mock.calls).toEqual([['workspace'], ['workspace']])
+    expect(mocks.handoff).not.toHaveBeenCalled()
+  })
   it('withholds a ticket after completion origin changes during storage', async () => {
     mocks.completion.mockResolvedValueOnce({ operationId: 'transfer', digest: 'original' }).mockResolvedValueOnce({ operationId: 'transfer', digest: 'changed' })
     await expect(launchCustomerEditor('a'.repeat(64), options)).rejects.toThrow('Changed snapshot')

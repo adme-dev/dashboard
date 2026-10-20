@@ -11,7 +11,7 @@ const Configuration = z.object({ enabled: z.literal(true), environment: z.enum([
   .refine(value => value.dashboardOrigin !== value.editorOrigin)
 const Token = z.string().regex(/^[A-Za-z0-9_-]{64}$/)
 const denied = () => createError({ statusCode: 403, statusMessage: 'Customer editor handoff is not available.' })
-interface Dependencies { runTransaction?: RunPageStudioTransaction }
+interface Dependencies { runTransaction?: RunPageStudioTransaction, assertWorkspace?: (workspaceId: string) => void }
 interface Receipt extends CustomerEditorAuthorityReceipt {
   id: string
   token_hash: string
@@ -62,6 +62,7 @@ async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown
     const { owned } = authority
     if (authority.identityId !== user.identityId || owned.workspaceId !== setup.workspaceId) throw denied()
     await readCustomerEditorAuthority(db, authorityReceipt)
+    dependencies.assertWorkspace?.(owned.workspaceId)
     // Use one database-clock value and clamp the ticket to both native authority deadlines.
     const receipt = (await db.query<Receipt>(`WITH clock AS (SELECT clock_timestamp() AS issued)
       INSERT INTO page_studio_customer_editor_handoffs
@@ -76,6 +77,7 @@ async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown
       owned.scope.businessId, config.dashboardOrigin, config.editorOrigin, authority.expiresAt, purpose, config.environment, authorityReceipt.entitlement_id])).rows[0]
     if (!receipt) throw denied()
     await audit(db, receipt, 'customer.handoff_issued')
+    dependencies.assertWorkspace?.(owned.workspaceId)
     return { token, expiresAt: new Date(receipt.expires_at).toISOString(), editorOrigin: config.editorOrigin }
   })
 }
@@ -103,10 +105,12 @@ export async function redeemCustomerEditorHandoff(token: unknown, trustedConfigu
     // ticket last, then recheck the already-locked authority with a fresh clock.
     await db.query('SELECT id FROM page_studio_customer_editor_handoffs WHERE token_hash = $1 FOR UPDATE', [hash])
     await readCustomerEditorAuthority(db, receipt)
+    dependencies.assertWorkspace?.(owned.workspaceId)
     const consumed = (await db.query(`UPDATE page_studio_customer_editor_handoffs SET consumed_at = clock_timestamp()
       WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > clock_timestamp() RETURNING id`, [hash])).rows[0]
     if (!consumed) throw denied()
     await audit(db, receipt, 'customer.handoff_consumed')
+    dependencies.assertWorkspace?.(owned.workspaceId)
     return { kind: 'customer-editor-handoff' as const, handoffId: receipt.id, identityId, workspaceId: owned.workspaceId,
       scope: owned.scope, returnUrl: `${config.dashboardOrigin}/studio/dashboard` }
   })

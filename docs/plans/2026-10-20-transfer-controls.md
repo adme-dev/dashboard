@@ -115,3 +115,25 @@ live/domain readback. Exercise role/cross-site/logout/expiry denials. Only after
 passing enable a site-scoped Pi canary, test a draft proposal in editor without
 publishing, verify cancellation/reconnect and other sites remain denied. Record
 exact source/deployment and retire merged owned branches.
+
+## Task 5b: Required bounded destination editor activation
+
+The paired `productionEditorEnabled` / `productionEditorOrigin` fields extend the
+existing strict activation bundle without adding Pages bindings. Older five-field
+bundles remain source-only; scalar-only deployments retain their prior behavior.
+Only the two reviewed native workspaces within the unchanged approval window may
+open or use the completed production editor. Current owner, original session,
+pinned publishing plan, completed managed origin and storage/head checks remain
+required. Source projection validates the original bundle before selecting source
+configuration; raw duplicate production keys never bypass strict parsing.
+
+The matching private management deployment carries the same exact bundle and
+checks verified workspace scope and expiry using the database clock inside its
+existing CMS authority fences. Release matching management before Pages; no new
+private request fields, JWT capabilities, migrations or quota changes. Pages stays
+at 150 bindings. Studio production customer flags and exact retained-scope domains
+remain separately reviewed prerequisites to hosted destination acceptance.
+
+This prepares destination editing only. Task 5 Pi remains the existing separately
+scoped agency canary after native owner/isolation acceptance. Native customer Pi
+continues to deny; this change enables neither Pi nor customer Forms UI.

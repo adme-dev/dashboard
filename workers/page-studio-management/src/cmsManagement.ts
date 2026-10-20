@@ -23,6 +23,7 @@ export async function handleCmsManagement(raw: unknown, env: Record<string, unkn
   const customerSource = stagingFromProduction && request.principal.source === 'customer-session'
   const native = customerSource ? customerPreviewRuntimeEnvironment(env) : null
   const storage = {
+    ...(Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ACTIVATION') ? { PAGE_STUDIO_CUSTOMER_ACTIVATION: env.PAGE_STUDIO_CUSTOMER_ACTIVATION } : {}),
     PAGE_STUDIO_RELEASE_ENVIRONMENT: deployment,
     PAGE_STUDIO_CONTENT_ENVIRONMENT: request.contentEnvironment,
     PAGE_STUDIO_CONTENT_ROUTER: customerSource ? native?.PAGE_STUDIO_CONTENT_ROUTER : stagingFromProduction ? env.PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER : env.PAGE_STUDIO_CONTENT_ROUTER,

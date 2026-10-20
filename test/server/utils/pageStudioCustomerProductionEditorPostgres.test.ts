@@ -1,3 +1,5 @@
+import { destinationActivation } from '../../helpers/pageStudioDestinationActivation'
+import { customerDestinationGuard } from '~~/server/utils/pageStudio/customerActivation'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -101,6 +103,26 @@ describe.runIf(Boolean(databaseUrl))('native production editor lifecycle', () =>
     const handoff = (await db.query('SELECT environment,entitlement_id,purpose FROM page_studio_customer_editor_handoffs')).rows[0]
     expect(handoff).toEqual({ environment: 'production', entitlement_id: planId, purpose: 'editor' })
     await expect(authorize(claims)).resolves.toMatchObject({ owned: { scope: { environment: 'production' } } })
+  })
+  it('rejects an unlisted verified workspace without inserting a handoff', async () => {
+    const { issueCustomerEditorHandoff } = await import('~~/server/utils/pageStudio/customerEditorHandoff')
+    const assertWorkspace = customerDestinationGuard(destinationActivation(randomUUID()))
+    await expect(issueCustomerEditorHandoff(sessionToken, config, { runTransaction, assertWorkspace })).rejects.toMatchObject({ statusCode: 403 })
+    expect((await db.query('SELECT count(*) FROM page_studio_customer_editor_handoffs')).rows[0].count).toBe('0')
+  })
+  it('rolls back ticket consumption and child issuance when scoped activation expires while signing', async () => {
+    const env = destinationActivation(fixture.workspaceId)
+    const assertWorkspace = customerDestinationGuard(env)
+    const { issueCustomerEditorHandoff } = await import('~~/server/utils/pageStudio/customerEditorHandoff')
+    const { exchangeCustomerEditorSession } = await import('~~/server/utils/pageStudio/customerEditorSessions')
+    const handoff = await issueCustomerEditorHandoff(sessionToken, config, { runTransaction, assertWorkspace })
+    await expect(exchangeCustomerEditorSession(handoff.token, config, { runTransaction, assertWorkspace,
+      signToken: async () => {
+        Object.assign(env, destinationActivation(fixture.workspaceId, '2020-01-01T00:00:00Z'))
+        return 'signed-test-token'
+      } })).rejects.toMatchObject({ statusCode: 403 })
+    expect((await db.query('SELECT consumed_at FROM page_studio_customer_editor_handoffs')).rows[0].consumed_at).toBeNull()
+    expect((await db.query('SELECT count(*) FROM page_studio_customer_editor_sessions')).rows[0].count).toBe('0')
   })
   it('does not depend on the cancelled preview or its approver', async () => {
     await db.query('UPDATE team_members SET is_active=FALSE')
