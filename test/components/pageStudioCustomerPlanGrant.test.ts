@@ -5,7 +5,7 @@ import Grant from '~~/app/components/page-studio/CustomerPlanGrant.client.vue'
 
 let app: App, host: HTMLElement
 const user = ref({ id: 'operator-a', role: 'owner', custom_role_id: null as string | null })
-const save = vi.fn(), toast = vi.fn(), granted = vi.fn()
+const save = vi.fn(), toast = vi.fn(), granted = vi.fn(), invalidated = vi.fn()
 const target = { workspaceId: '10000000-0000-4000-8000-000000000001', workspaceName: 'Flowers',
   siteId: '10000000-0000-4000-8000-000000000002', siteName: 'Flowers website', entitlementId: '10000000-0000-4000-8000-000000000003',
   planKey: 'customer_preview_v1', status: 'trial', effectiveUntil: null, eligible: true,
@@ -39,7 +39,7 @@ async function review() {
 }
 async function mount() {
   host = document.createElement('div')
-  app = createApp(Grant, { target: structuredClone(target), onGranted: granted })
+  app = createApp(Grant, { target: structuredClone(target), onGranted: granted, onInvalidated: invalidated })
   app.component('UModal', { props: ['title', 'description'], template: '<section><h2>{{ title }}</h2><p>{{ description }}</p><slot name="body"/><slot name="footer"/></section>' })
   app.component('UFormField', { props: ['label', 'help'], template: '<label :data-field="label">{{ label }}<slot/><span>{{ help }}</span></label>' })
   app.component('UInput', { props: ['modelValue', 'type', 'disabled'], emits: ['update:modelValue'], template: '<input :type="type || \'text\'" :disabled="disabled" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)"/>' })
@@ -65,6 +65,42 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('native customer plan review', () => {
+  it.each(['owner', 'admin'])('allows an assigned system-role %s candidate to reach the server', async (role) => {
+    user.value = { id: 'operator-a', role, custom_role_id: 'assigned-system-role' }
+    await mount()
+    await review()
+    button('Grant publishing access')!.click()
+    await flush()
+    expect(save).toHaveBeenCalledOnce()
+    expect(granted).toHaveBeenCalledOnce()
+  })
+  it('invalidates review when role assignment changes for the same user', async () => {
+    await mount()
+    await review()
+    user.value = { ...user.value, custom_role_id: 'changed-role' }
+    await flush()
+    expect(button('Grant publishing access')).toBeUndefined()
+    expect(button('Review plan')?.disabled).toBe(true)
+    expect(save).not.toHaveBeenCalled()
+  })
+  it('clears a denied confirmation and suppresses late result after role change', async () => {
+    let resolve!: (value: unknown) => void
+    save.mockImplementation(() => new Promise((done) => {
+      resolve = done
+    }))
+    await mount()
+    await review()
+    button('Grant publishing access')!.click()
+    await flush()
+    user.value = { ...user.value, role: 'member' }
+    await flush()
+    resolve(response)
+    await flush()
+    expect(granted).not.toHaveBeenCalled()
+    expect(toast).not.toHaveBeenCalled()
+    expect(button('Grant publishing access')).toBeUndefined()
+  })
+
   it('requires explicit review and submits the exact native target without an actor or tenant', async () => {
     await mount()
     await review()
@@ -111,13 +147,24 @@ describe('native customer plan review', () => {
     expect(save.mock.calls[1][1].body.requestId).not.toBe(save.mock.calls[0][1].body.requestId)
     expect(granted).toHaveBeenCalledOnce()
   })
+  it.each([401, 403, 409])('clears denied review and invalidates the parent target (%s)', async (statusCode) => {
+    save.mockRejectedValue({ statusCode })
+    await mount()
+    await review()
+    button('Grant publishing access')!.click()
+    await flush()
+    expect(button('Grant publishing access')).toBeUndefined()
+    expect(invalidated).toHaveBeenCalledOnce()
+    expect(granted).not.toHaveBeenCalled()
+  })
   it('blocks stale-target retries after conflict', async () => {
     save.mockRejectedValueOnce({ statusCode: 409 })
     await mount()
     await review()
     button('Grant publishing access')!.click()
     await flush()
-    expect(button('Grant publishing access')?.disabled).toBe(true)
+    expect(button('Grant publishing access')).toBeUndefined()
+    expect(button('Review plan')?.disabled).toBe(true)
     expect(host.textContent).toContain('Refresh')
   })
   it('removes grant authority if the operator changes after review', async () => {
@@ -125,7 +172,8 @@ describe('native customer plan review', () => {
     await review()
     user.value = { ...user.value, id: 'operator-b' }
     await flush()
-    expect(button('Grant publishing access')?.disabled).toBe(true)
+    expect(button('Grant publishing access')).toBeUndefined()
+    expect(button('Review plan')?.disabled).toBe(true)
     button('Grant publishing access')?.click()
     await flush()
     expect(save).not.toHaveBeenCalled()
