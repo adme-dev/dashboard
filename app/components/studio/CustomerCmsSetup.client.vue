@@ -63,13 +63,13 @@ const adoption = computed(() => data.value?.adoption)
 async function prepare(kind: keyof typeof labels) {
   if (working.value || error.value || uncertain.value || !active) return
   let current = data.value?.prerequisites.find(row => row.kind === kind)
-  if (!current) return
+  if (!current || ['uploading', 'reconciliation'].includes(current.runtimePhase ?? '')) return
   if (['reserved', 'running'].includes(current.status) && !(confirmedStep?.snapshot === data.value && confirmedStep.kind === kind)) {
     // Only this step's guarded response can avoid a duplicate read. Refresh
     // after uncertainty or any snapshot replacement; backend leases decide work.
     await readback()
     current = data.value?.prerequisites.find(row => row.kind === kind)
-    if (error.value || uncertain.value || !active || !current || current.status === 'installed' || current.status === 'disabled') return
+    if (error.value || uncertain.value || !active || !current || current.status === 'installed' || current.status === 'disabled' || ['uploading', 'reconciliation'].includes(current.runtimePhase ?? '')) return
   }
   run({ operation: 'schema', request: current.status === 'reconciliation'
     ? { action: 'recover', kind, requestId: crypto.randomUUID(), expectedRecoveryId: current.recoveryId }
@@ -125,11 +125,11 @@ function adopt() {
         <span>{{ labels[step.kind] }}<span v-if="step.status === 'installed'" class="ml-2 text-success">Ready</span><span v-else-if="['reserved', 'running'].includes(step.status)" class="ml-2 text-muted">Preparing</span></span>
         <UButton
           v-if="step.status !== 'installed'"
-          :label="step.status === 'reconciliation' ? 'Recover this step' : ['reserved', 'running'].includes(step.status) ? 'Resume step' : 'Prepare'"
+          :label="step.runtimePhase === 'reconciliation' ? 'Operator review needed' : step.runtimePhase === 'uploading' ? 'Preparing' : step.status === 'reconciliation' ? 'Recover this step' : ['reserved', 'running'].includes(step.status) ? 'Resume step' : 'Prepare'"
           color="neutral"
           variant="outline"
           :loading="busy"
-          :disabled="working || uncertain || Boolean(error) || (!step.canConfigure && step.status !== 'reconciliation') || data.prerequisites.slice(0, index).some(row => row.status !== 'installed')"
+          :disabled="working || uncertain || Boolean(error) || (['uploading', 'reconciliation'].includes(step.runtimePhase ?? '') || (!step.canConfigure && step.status !== 'reconciliation')) || data.prerequisites.slice(0, index).some(row => row.status !== 'installed')"
           @click="prepare(step.kind)"
         />
       </li>

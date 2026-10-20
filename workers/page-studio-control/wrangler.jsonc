@@ -3,13 +3,19 @@
   "name": "xeroflow-page-studio-control",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-30",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
   "workers_dev": false,
   "vars": {
-    "DASHBOARD_ORIGIN": "https://app.xeroflow.io"
+    "DASHBOARD_ORIGIN": "https://app.xeroflow.io",
+    "NATIVE_SCHEMA_TRANSPORT": "placed-fetch"
   },
   "secrets": {
-    "required": ["PAGE_STUDIO_CONTROL_SECRET"]
+    "required": [
+      "PAGE_STUDIO_CONTROL_SECRET"
+    ]
   },
   "observability": {
     "enabled": true,
@@ -27,13 +33,18 @@
       "placement": {
         "region": "aws:us-east-1"
       },
-      "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+      "compatibility_flags": [
+        "nodejs_compat",
+        "global_fetch_strictly_public"
+      ],
       "vars": {
         "DASHBOARD_ORIGIN": "https://preview.agency-dashboard-6cm.pages.dev",
         "CONTENT_COMPLETION_TRANSPORT": "management-rpc"
       },
       "secrets": {
-        "required": ["PAGE_STUDIO_CONTROL_SECRET"]
+        "required": [
+          "PAGE_STUDIO_CONTROL_SECRET"
+        ]
       },
       "services": [
         {
@@ -43,5 +54,11 @@
         }
       ]
     }
-  }
+  },
+  "services": [
+    {
+      "binding": "PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY",
+      "service": "xeroflow-page-studio-management-production"
+    }
+  ]
 }

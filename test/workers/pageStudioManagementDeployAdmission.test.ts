@@ -25,6 +25,7 @@ const config = (environment: string) => ({
   preview_urls: false,
   routes: [],
   triggers: { crons: [] },
+  ...(environment === 'production' ? { placement: { region: 'aws:us-east-1' } } : {}),
   vars: { PAGE_STUDIO_RELEASE_ENVIRONMENT: environment,
     ...(environment === 'production'
       ? {

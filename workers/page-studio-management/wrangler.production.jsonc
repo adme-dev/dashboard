@@ -80,5 +80,8 @@
       "service": "xeroflow-content-router-native-preview"
     }
   ],
-  "tsconfig": "tsconfig.json"
+  "tsconfig": "tsconfig.json",
+  "placement": {
+    "region": "aws:us-east-1"
+  }
 }

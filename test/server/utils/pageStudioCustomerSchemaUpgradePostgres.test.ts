@@ -518,4 +518,27 @@ describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native custo
     expect(await worker.value[contract.executeMethod]!(intent)).toMatchObject({ status: 'installed' })
     await expect((await api()).authorizeCustomerSchemaUpgrade(contract, intent, 'staging', { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
   })
+  it.each(['collection', 'workflow', 'collection-staging', 'form-runtime', 'form-drafts'])('retains %s identity and blocks uncertain runtime status under final authority', async (kind) => {
+    const first = await session(), worker = binding(), requestId = randomUUID()
+    await coordinate({ action: 'start', kind, requestId }, first.claims, worker)
+    const contract = (await contracts()).find(value => value.kind === kind)!
+    const originalIntent = structuredClone(worker.calls[0])
+    worker.value[contract.statusMethod] = async () => ({ state: 'reconciliation', runtimePhase: 'reconciliation', leaseUntil: null, receipt: null })
+    expect(await coordinate({ action: 'status', kind }, first.claims, worker)).toMatchObject({ status: 'reconciliation', runtimePhase: 'reconciliation', canConfigure: false, requestId, recoveryId: null })
+    expect(worker.calls).toEqual([originalIntent])
+    worker.value[contract.statusMethod] = async () => {
+      await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp()')
+      return { state: 'reconciliation', runtimePhase: 'reconciliation', leaseUntil: null, receipt: null }
+    }
+    await expect(coordinate({ action: 'status', kind }, first.claims, worker)).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it.each(['collection', 'workflow', 'collection-staging', 'form-runtime', 'form-drafts'])('private receiver reuses real retained %s authority and denies later child revocation', async (kind) => {
+    const first = await session(), worker = binding()
+    await coordinate({ action: 'start', kind, requestId: randomUUID() }, first.claims, worker)
+    const { handleNativeSchemaAuthority } = await import('../../../workers/page-studio-management/src/nativeSchemaAuthority')
+    const input = { kind, expectedControlPlaneEnvironment: 'production', intent: worker.calls[0] }
+    expect(await handleNativeSchemaAuthority(input, 'production', runTransaction)).toEqual({ ok: true, value: worker.calls[0] })
+    await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp()')
+    expect(await handleNativeSchemaAuthority(input, 'production', runTransaction)).toMatchObject({ ok: false, error: { statusCode: 403 } })
+  })
 })

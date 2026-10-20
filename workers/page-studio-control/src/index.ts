@@ -1,3 +1,6 @@
+import { NativeSchemaContracts, type NativeSchemaKind } from '../../../shared/pageStudio/nativeSchemaAuthority'
+import type { z } from 'zod'
+import { authorizeNativeSchemaThroughManagement } from './nativeSchemaAuthority'
 import { readCompletionThroughManagement } from './completion'
 
 const ALLOWED_DASHBOARD_ORIGINS = new Set([
@@ -157,6 +160,18 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     && 'CONTENT_COMPLETION_TRANSPORT' in env && env.CONTENT_COMPLETION_TRANSPORT === 'management-rpc') {
     return readCompletionThroughManagement(request, config.dashboardOrigin,
       'PAGE_STUDIO_MANAGEMENT_COMPLETION' in env ? env.PAGE_STUDIO_MANAGEMENT_COMPLETION : undefined)
+  }
+
+  if (request.method === 'POST' && config.dashboardOrigin === 'https://app.xeroflow.io') {
+    const kind = (Object.keys(NativeSchemaContracts) as z.infer<typeof NativeSchemaKind>[]).find(key => NativeSchemaContracts[key].path === url.pathname)
+    if (kind) {
+      const response = await authorizeNativeSchemaThroughManagement(request, kind, config.dashboardOrigin,
+        'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+        && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env
+          ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY
+          : undefined)
+      if (response) return response
+    }
   }
 
   let upstream: Response

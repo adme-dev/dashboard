@@ -1,3 +1,4 @@
+import { handleNativeSchemaAuthorityFetch } from './nativeSchemaAuthority'
 import { handleTransferControls } from './transferControls'
 import { handleTransferWorkflow } from './transferWorkflow'
 import { handleManagedTransferPreparation } from './managedTransferPreparation'
@@ -34,7 +35,11 @@ const Request = z.discriminatedUnion('operation', [
 ])
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
-  fetch() { return new Response('Not found', { status: 404 }) }
+  fetch(request: Request) {
+    return handleNativeSchemaAuthorityFetch(request, this.env,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
   async transferControls(input: unknown) {
     return handleTransferControls(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }

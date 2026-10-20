@@ -5,7 +5,7 @@ import { transaction } from '~~/server/utils/db'
 import { CustomerSchemaUpgradeRequestSchema, CustomerSchemaUpgradeStatusSchema } from '~~/shared/pageStudio/customerSchemaUpgrade'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
 import { CustomerEditorClaimsSchema, customerSchemaPreparationCapability, type CustomerEditorClaims } from './customerEditorToken'
-import { assertCustomerEditorSessionAuthority } from './customerEditorSessions'
+import { assertCustomerEditorSessionAuthority } from './customerEditorSessionAuthority'
 import { formDraftsRuntimeContract, formDraftsUpgradeContract, collectionUpgradeContract, workflowUpgradeContract, collectionStagingUpgradeContract, type SchemaUpgradeContract } from './schemaUpgradeContract'
 import { requirePageStudioProvisioningRuntime } from './provisioningBinding'
 import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
@@ -88,7 +88,7 @@ export async function coordinateCustomerSchemaUpgrade(input: unknown, tokenClaim
     if (saved && saved.intent.actor.userId !== claims.userId) throw denied()
     return saved
   })
-  const result = (status: string, saved: Retained | null, recoveryId: string | null = null) => CustomerSchemaUpgradeStatusSchema.parse({ kind: request.kind, status, ...(saved ? { requestId: saved.requestId } : {}), recoveryId, canConfigure: !['disabled', 'reconciliation'].includes(status) })
+  const result = (status: string, saved: Retained | null, recoveryId: string | null = null, runtimePhase?: string) => CustomerSchemaUpgradeStatusSchema.parse({ kind: request.kind, status, ...(runtimePhase ? { runtimePhase } : {}), ...(saved ? { requestId: saved.requestId } : {}), recoveryId, canConfigure: !['disabled', 'reconciliation'].includes(status) && !['uploading', 'reconciliation'].includes(runtimePhase ?? '') })
   if (!initial && request.action === 'status') return result('pending', null)
   if (!initial && request.action === 'recover') throw conflict()
   const binding = dependencies.binding ?? (() => {
@@ -155,8 +155,8 @@ export async function coordinateCustomerSchemaUpgrade(input: unknown, tokenClaim
     ? (raw === null
         ? { status: 'pending' }
         : (() => {
-            const value = z.object({ state: z.enum(['reserved', 'running', 'installed', 'disabled']), leaseUntil: z.string().nullable(), receipt: receipt.nullable() }).strict().parse(raw)
-            return { status: value.state, receipt: value.receipt }
+            const value = z.object({ state: z.enum(['reserved', 'running', 'installed', 'disabled', 'reconciliation']), runtimePhase: z.enum(['reserved', 'uploading', 'ready', 'reconciliation']).optional(), leaseUntil: z.string().nullable(), receipt: receipt.nullable() }).strict().parse(raw)
+            return { status: value.state, receipt: value.receipt, runtimePhase: value.runtimePhase }
           })())
     : z.discriminatedUnion('status', [z.object({ status: z.literal('running') }).strict(), z.object({ status: z.literal('installed'), receipt }).strict()]).parse(raw)
   const expected = contract.expectedReceipt(prepared.saved.intent)
@@ -167,5 +167,5 @@ export async function coordinateCustomerSchemaUpgrade(input: unknown, tokenClaim
     if (!same(head?.claims ?? prepared.saved.claims, claims)) throw conflict()
     return head
   })
-  return result(state.status, prepared.saved, currentHead?.recoveryId)
+  return result(state.status, prepared.saved, currentHead?.recoveryId, 'runtimePhase' in state ? state.runtimePhase : undefined)
 }

@@ -77,9 +77,12 @@ describe('management Worker request and business boundary', () => {
       log.mockRestore()
     }
   })
-  it('has no public HTTP management surface', async () => {
-    const response = worker().fetch()
+  it.each(['https://public.invalid/', 'https://public.invalid/native-schema-authority', 'https://page-studio-management.internal/native-schema-authority'])('denies unrelated origins and GET requests without business work: %s', async (url) => {
+    const response = await worker().fetch(new Request(url))
     expect(response.status).toBe(404)
     expect(await response.text()).toBe('Not found')
+    expect(mocks.read).not.toHaveBeenCalled()
+    expect(mocks.write).not.toHaveBeenCalled()
+    expect(mocks.transaction).not.toHaveBeenCalled()
   })
 })
