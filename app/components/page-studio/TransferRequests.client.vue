@@ -29,6 +29,11 @@ async function load() {
     }
   } finally { if (current === generation) loading.value = false }
 }
+function updateRequest(value: TransferControlsView) {
+  if (selected.value?.siteId !== value.siteId || selected.value?.requestId !== value.requestId) return
+  requests.value = requests.value.map(request => request.siteId === value.siteId && request.requestId === value.requestId ? value : request)
+  selected.value = value
+}
 function page(next: boolean) {
   if (loading.value || detailBusy.value) return
   if (next && nextCursor.value) {
@@ -147,6 +152,7 @@ onBeforeUnmount(() => {
               :request-id="selected.requestId"
               :actor-key="actorKey"
               @busy="detailBusy = $event"
+              @changed="updateRequest"
             />
             <p v-else class="text-sm text-muted">
               Choose a request to review its saved website and next available action.

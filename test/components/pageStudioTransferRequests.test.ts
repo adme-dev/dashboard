@@ -161,6 +161,22 @@ describe('operator queue role and identity changes', () => {
     await flush()
     expect(button(host, 'Refresh queue')?.disabled).toBe(false)
   })
+  it('updates the selected queue badge from authoritative detail reads and reservation', async () => {
+    let current = control({ state: 'approved', revision: 3, review, allowedActions: ['reserve'] })
+    fetch.mockImplementation(async (url, options) => {
+      if (options?.method === 'POST') current = reserved()
+      if (url.endsWith('/transfer-requests')) return { requests: [current], nextCursor: null }
+      return url.endsWith('/workflow') ? workflow() : current
+    })
+    const host = await mount(Queue, {}, { PageStudioTransferRequestDetail: Detail })
+    await click(host, 'Open request')
+    expect(host.querySelector('[aria-label="Preparation queue"]')?.textContent).toContain('approved')
+    await click(host, 'Reserve preparation')
+    await click(dialog(host)!, 'Confirm action')
+    expect(host.querySelector('[aria-label="Preparation queue"]')?.textContent).toContain('reserved')
+    expect(host.querySelector('[aria-label="Preparation queue"]')?.textContent).not.toContain('approved')
+    expect(posts()).toHaveLength(1)
+  })
   it('denied server results offer no stale action or detail', async () => {
     fetch.mockRejectedValue({ statusCode: 403 })
     const host = await mount(Queue)

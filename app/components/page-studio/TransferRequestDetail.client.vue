@@ -4,7 +4,7 @@ import { TransferControlsViewSchema, type TransferControlsView } from '~~/shared
 import { TransferWorkflowPhases, TransferWorkflowViewSchema, type TransferPhaseView } from '~~/shared/pageStudio/transferWorkflow'
 
 const props = defineProps<{ siteId: string, requestId: string, actorKey: string }>()
-const emit = defineEmits<{ changed: [], busy: [value: boolean] }>()
+const emit = defineEmits<{ changed: [request: TransferControlsView], busy: [value: boolean] }>()
 const saved = ref<TransferControlsView | null>(null), phases = ref<TransferPhaseView[]>([])
 const loading = ref(false), saving = ref(false), message = ref('')
 const heading = ref<HTMLElement | null>(null)
@@ -47,6 +47,7 @@ async function refresh(clearMessage = true, preserve = false) {
     const result = control(await $fetch<unknown>(endpoint.value))
     if (current !== generation) return
     saved.value = result
+    emit('changed', result)
     if (result.state === 'reserved') {
       const rows = workflow(await $fetch<unknown>(`${endpoint.value}/workflow`, { query: { expectedRevision: result.revision } }), result.revision)
       if (current !== generation) return
@@ -87,7 +88,7 @@ async function confirm() {
       saved.value = result
       phases.value = []
     }
-    emit('changed')
+    emit('changed', saved.value!)
   } catch {
     if (current !== generation) return
     saved.value = null
