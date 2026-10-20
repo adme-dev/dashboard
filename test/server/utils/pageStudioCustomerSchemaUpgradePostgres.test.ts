@@ -1,3 +1,4 @@
+import { nativePreviewBindings } from '../../utils/pageStudioNativePreview'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -270,6 +271,13 @@ describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native custo
     expect(intent.actor).toEqual({ kind: 'customer-user', userId: ids.owner, loginSessionHash: hash(token) })
     const { createSchemaUpgradeAuthority } = await import('~~/server/utils/pageStudio/schemaUpgradeAuthority')
     expect(await createSchemaUpgradeAuthority(contract).authorize(intent, 'staging', { runTransaction })).toEqual(intent)
+    const { customerSchemaCallbackEnvironment } = await import('~~/server/utils/pageStudio/customerPreviewCallbacks')
+    const env = { ...nativePreviewBindings(), PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' }
+    const selected = customerSchemaCallbackEnvironment(env, intent, contract)
+    expect(await createSchemaUpgradeAuthority(contract).authorize(intent, selected, { runTransaction })).toEqual(intent)
+    const forged = { ...intent, actor: { ...intent.actor, userId: ids.other } }
+    await expect(createSchemaUpgradeAuthority(contract).authorize(forged, customerSchemaCallbackEnvironment(env, forged, contract), { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    expect(() => customerSchemaCallbackEnvironment({ ...env, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false' }, intent, contract)).toThrow()
     expect(await coordinate({ action: 'start', kind, requestId }, claims, worker)).toEqual(result)
     expect(worker.calls[1]).toEqual(intent)
     expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=$1', [`content.${kind}-upgrade.requested`])).rows[0].count).toBe('1')

@@ -5,7 +5,8 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vites
 import { signCustomerEditorToken } from '~~/server/utils/pageStudio/customerEditorToken'
 import { signPageStudioSessionToken } from '~~/server/utils/pageStudio/sessions'
 
-const mocks = vi.hoisted(() => ({ exchange: vi.fn(), authorize: vi.fn(), commit: vi.fn(), read: vi.fn(), adopt: vi.fn(), upgrade: vi.fn() }))
+const mocks = vi.hoisted(() => ({ exchange: vi.fn(), authorize: vi.fn(), commit: vi.fn(), read: vi.fn(), adopt: vi.fn(), upgrade: vi.fn(), ticketEnvironment: vi.fn() }))
+vi.mock('~~/server/utils/pageStudio/customerPreviewRouting', () => ({ readCustomerEditorTicketEnvironment: mocks.ticketEnvironment }))
 vi.mock('~~/server/utils/pageStudio/customerEditorSessions', () => ({ exchangeCustomerEditorSession: mocks.exchange,
   assertCustomerEditorSessionAuthority: mocks.authorize, commitCustomerEditorCheckpoint: mocks.commit, readCustomerEditorCheckpoint: mocks.read }))
 vi.mock('~~/server/utils/pageStudio/customerSchemaUpgrade', () => ({ coordinateCustomerSchemaUpgrade: mocks.upgrade }))
@@ -41,6 +42,7 @@ beforeEach(() => {
   config = { PAGE_STUDIO_CONTROL_SECRET: 'private-machine-secret', PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED: 'true',
     PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_CUSTOMER_ORIGIN: issuer, PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: editorOrigin,
     PAGE_STUDIO_SESSION_ISSUER: issuer, PAGE_STUDIO_SESSION_PRIVATE_KEY: privatePem, PAGE_STUDIO_SESSION_PUBLIC_KEY: publicPem }
+  mocks.ticketEnvironment.mockResolvedValue('staging')
   mocks.exchange.mockResolvedValue({ token: signed, sessionId: claims.nonce })
   mocks.authorize.mockResolvedValue({ claims })
   mocks.read.mockResolvedValue(null)
@@ -68,6 +70,30 @@ describe('private native customer session endpoints', () => {
     expect((await call('cms-prerequisites', { action: 'status', kind: 'collection' }, headers)).status).toBe(403)
     expect(mocks.adopt).not.toHaveBeenCalled()
     expect(mocks.upgrade).not.toHaveBeenCalled()
+  })
+  it('selects private exchange from retained ticket metadata and later operations only from verified claims', async () => {
+    Object.assign(config, { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production', PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+      PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED: 'true', PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
+      PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER: { createProvisioning: vi.fn(), readProvisioning: vi.fn() },
+      PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER: { readManagedCmsTarget: vi.fn() },
+      PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS: { get: vi.fn() },
+      PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://source.example.test' })
+    expect((await call('exchange', { ticket: 'a'.repeat(64) }, { authorization: '' })).status).toBe(401)
+    expect(mocks.ticketEnvironment).not.toHaveBeenCalled()
+    expect((await call('exchange', { ticket: 'a'.repeat(64), environment: 'staging' })).status).toBe(400)
+    expect((await call('exchange', { ticket: 'a'.repeat(64) })).status).toBe(200)
+    expect(mocks.exchange).toHaveBeenLastCalledWith('a'.repeat(64), expect.objectContaining({ environment: 'staging', editorOrigin: 'https://source.example.test' }), expect.any(Object))
+    mocks.ticketEnvironment.mockResolvedValue('production')
+    expect((await call('exchange', { ticket: 'a'.repeat(64) })).status).toBe(200)
+    expect(mocks.exchange).toHaveBeenLastCalledWith('a'.repeat(64), expect.objectContaining({ environment: 'production', editorOrigin }), expect.any(Object))
+    const sourceToken = await signCustomerEditorToken({ ...claims, editorOrigin: 'https://source.example.test' }, privatePem, issuer)
+    expect((await call('latest-checkpoint', {}, { 'x-page-studio-customer-session': sourceToken })).status).toBe(200)
+    expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ environment: 'staging' }), {
+      env: expect.objectContaining({ PAGE_STUDIO_CONTENT_ROUTER: config.PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER, PAGE_STUDIO_CHECKPOINTS: config.PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS })
+    })
+    expect((await call('authorize', { capability: 'workspace:checkpoint' })).status).toBe(403)
+    delete config.PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS
+    expect((await call('authorize', { capability: 'workspace:checkpoint' }, { 'x-page-studio-customer-session': sourceToken })).status).toBe(403)
   })
   it('requires machine identity in addition to the dedicated customer JWT', async () => {
     expect((await call('authorize', { capability: 'workspace:checkpoint' }, { authorization: '' })).status).toBe(401)

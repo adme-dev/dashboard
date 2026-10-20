@@ -90,6 +90,21 @@ describe.runIf(Boolean(databaseUrl))('customer transfer current native authority
     await db.query('INSERT INTO page_studio_managed_transfer_intents VALUES($1,$2,$3,$4,$5,$6)', [operationId, fixture.site.id, fixture.tenantId, fixture.businessId, planId, 'a'.repeat(64)])
     return operationId
   }
+  it('selects source or completed destination from current native ownership, never caller environment', async () => {
+    const { readCustomerEditorEnvironment } = await import('~~/server/utils/pageStudio/customerPreviewRouting')
+    const identity = (await db.query('SELECT identity_id FROM page_studio_customer_accounts')).rows[0].identity_id
+    await db.query('INSERT INTO page_studio_customer_setup_drafts(identity_id,workspace_id,draft) VALUES($1,$2,$3::jsonb)', [identity, fixture.workspaceId,
+      JSON.stringify({ businessName: 'Plan preview', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] })])
+    expect(await readCustomerEditorEnvironment(sessionToken, runTransaction)).toBe('staging')
+    const operationId = await intent()
+    expect(await readCustomerEditorEnvironment(sessionToken, runTransaction)).toBe('staging')
+    await db.query('INSERT INTO page_studio_managed_transfer_completions VALUES($1,$2,$3)', [operationId, 'a'.repeat(64), contentScopeKey({ tenantId: fixture.tenantId, clientId: fixture.businessId, businessId: fixture.businessId, siteId: fixture.site.id, environment: 'production' })])
+    expect(await readCustomerEditorEnvironment(sessionToken, runTransaction)).toBe('production')
+    await db.query('UPDATE page_studio_workspace_memberships SET role=\'viewer\'')
+    await expect(readCustomerEditorEnvironment(sessionToken, runTransaction)).rejects.toMatchObject({ statusCode: 403 })
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+    await expect(readCustomerEditorEnvironment(sessionToken, runTransaction)).rejects.toMatchObject({ statusCode: 401 })
+  })
   it('reads exact saved milestones without invoking original-session coordinators', async () => {
     const operationId = await intent()
     expect(await read()).toMatchObject({ completed: false, stage: 'preparing-resources' })

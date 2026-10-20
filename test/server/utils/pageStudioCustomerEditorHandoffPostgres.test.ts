@@ -100,6 +100,15 @@ describe.runIf(Boolean(databaseUrl))('native customer editor handoff on PostgreS
     return api.redeemCustomerEditorHandoff(handoffToken, { ...config, ...overrides }, { runTransaction })
   }
 
+  it('routes retained opaque source tickets without consuming them and rejects replay and unknown tickets', async () => {
+    const { readCustomerEditorTicketEnvironment } = await import('~~/server/utils/pageStudio/customerPreviewRouting')
+    const ticket = await issue({ editorOrigin: 'https://studio-customer-preview.xeroflow.io' })
+    expect(await readCustomerEditorTicketEnvironment(ticket.token, runTransaction)).toBe('staging')
+    expect((await db.query('SELECT consumed_at FROM page_studio_customer_editor_handoffs')).rows[0].consumed_at).toBeNull()
+    await redeem(ticket.token, { editorOrigin: 'https://studio-customer-preview.xeroflow.io' })
+    await expect(readCustomerEditorTicketEnvironment(ticket.token, runTransaction)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(readCustomerEditorTicketEnvironment('z'.repeat(64), runTransaction)).rejects.toMatchObject({ statusCode: 403 })
+  })
   it('derives native scope, keeps secrets hashed and returns the fixed dashboard destination', async () => {
     const ticket = await issue()
     expect(ticket.token).toMatch(/^[A-Za-z0-9_-]{64}$/)
@@ -183,6 +192,8 @@ describe.runIf(Boolean(databaseUrl))('native customer editor handoff on PostgreS
         NOW() - INTERVAL '3 minutes', NOW() - INTERVAL '1 minute'
       FROM page_studio_customer_editor_handoffs WHERE token_hash = $2`, [hash(expired), hash(ticket.token)])
     await expect(redeem(expired)).rejects.toMatchObject({ statusCode: 403 })
+    const { readCustomerEditorTicketEnvironment } = await import('~~/server/utils/pageStudio/customerPreviewRouting')
+    await expect(readCustomerEditorTicketEnvironment(expired, runTransaction)).rejects.toMatchObject({ statusCode: 403 })
   })
 
   it('cannot change retained scope, extend expiry or clear consumption', async () => {

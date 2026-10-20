@@ -1,4 +1,5 @@
 import { createError, readBody, setHeader, type H3Event } from 'h3'
+import { customerPreviewRuntimeEnvironment } from './customerPreviewRuntime'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { CustomerCmsSetupRequestSchema } from '~~/shared/pageStudio/customerCmsSetup'
 import { guardCustomerRequest, customerSessionToken, limitCustomerRequest } from './customerSignupHttp'
@@ -6,14 +7,15 @@ import { parseCustomerEditorHandoffConfiguration } from './customerEditorHandoff
 import { readCustomerCmsSetup, mutateCustomerCmsSetup, type CustomerCmsSetupOptions } from './customerCmsSetup'
 
 export function customerCmsSetupOptions(event: H3Event): CustomerCmsSetupOptions | null {
-  const env = event.context.cloudflare?.env ?? {}
+  const env = customerPreviewRuntimeEnvironment(event.context.cloudflare?.env ?? {})
+  if (!env) return null
   const setting = (key: string) => Object.hasOwn(env, key) ? env[key] : process.env[key]
   if (setting('PAGE_STUDIO_CUSTOMER_CMS_SETUP_ENABLED') !== 'true'
     || setting('PAGE_STUDIO_PROVISIONING_ENVIRONMENT') !== 'staging'
     || setting('PAGE_STUDIO_CONTENT_ENVIRONMENT') !== 'staging'
-    || typeof env.PAGE_STUDIO_PROVISIONER?.readProvisioning !== 'function'
-    || typeof env.PAGE_STUDIO_CONTENT_ROUTER?.readManagedCmsTarget !== 'function'
-    || typeof env.PAGE_STUDIO_CHECKPOINTS?.get !== 'function') return null
+    || typeof (env.PAGE_STUDIO_PROVISIONER as { readProvisioning?: unknown } | undefined)?.readProvisioning !== 'function'
+    || typeof (env.PAGE_STUDIO_CONTENT_ROUTER as { readManagedCmsTarget?: unknown } | undefined)?.readManagedCmsTarget !== 'function'
+    || typeof (env.PAGE_STUDIO_CHECKPOINTS as { get?: unknown } | undefined)?.get !== 'function') return null
   try {
     const configuration = parseCustomerEditorHandoffConfiguration({ enabled: true,
       dashboardOrigin: setting('PAGE_STUDIO_CUSTOMER_ORIGIN'), editorOrigin: setting('PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN') })

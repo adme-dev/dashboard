@@ -15,7 +15,6 @@ describe.runIf(Boolean(databaseUrl))('native production editor lifecycle', () =>
   let fixture: { workspaceId: string, businessId: string, tenantId: string, site: { id: string } }
   let sessionToken: string
   let planId: string
-  let loginSessionHash: string
   let body: Record<string, unknown>
   const runTransaction = async <T>(work: (client: pg.Client) => Promise<T>) => {
     const client = new pg.Client({ connectionString: databaseUrl })
@@ -44,7 +43,10 @@ describe.runIf(Boolean(databaseUrl))('native production editor lifecycle', () =>
     const { exchangeCustomerEditorSession } = await import('~~/server/utils/pageStudio/customerEditorSessions')
     let claims: unknown
     const result = await exchangeCustomerEditorSession(token, { ...config, ...overrides }, { runTransaction,
-      signToken: async (value) => { claims = value; return 'test-signed-token' } })
+      signToken: async (value) => {
+        claims = value
+        return 'test-signed-token'
+      } })
     return { ...result, claims }
   }
   const session = async () => exchange((await ticket()).token)
@@ -78,8 +80,6 @@ describe.runIf(Boolean(databaseUrl))('native production editor lifecycle', () =>
       requestId: randomUUID(), name: 'Plan preview', route: 'plan-test', starterVersion: 'floristry-v1' }, { runTransaction,
       previewPolicy: { approvalId: randomUUID(), approvedBy: actorId, expiresAt: new Date(Date.now() + 86400_000).toISOString(),
         pagesPerSiteLimit: 5, storageBytesLimit: 10000, monthlyBuildLimit: 10, monthlyTrafficBytesLimit: 10000 } })
-    const { digestPortalSessionToken } = await import('~~/server/utils/portalSession')
-    loginSessionHash = await digestPortalSessionToken(sessionToken)
     body = { requestId: randomUUID(), workspaceId: fixture.workspaceId,
       expectedEntitlementId: (await db.query('SELECT entitlement_id FROM page_studio_sites')).rows[0].entitlement_id,
       planKey: 'studio_business', pagesPerSiteLimit: 10, storageBytesLimit: 100000, domainLimit: 2,
@@ -87,7 +87,7 @@ describe.runIf(Boolean(databaseUrl))('native production editor lifecycle', () =>
       effectiveUntil: null, reason: 'Approved customer publishing access' }
     planId = (await grant()).entitlement.id
     await db.query('INSERT INTO page_studio_customer_setup_drafts (identity_id,workspace_id,draft) VALUES($1,$2,$3::jsonb)',
-      [login.identityId,fixture.workspaceId,JSON.stringify({ businessName: 'Plan test', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] })])
+      [login.identityId, fixture.workspaceId, JSON.stringify({ businessName: 'Plan test', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] })])
   })
   afterAll(async () => {
     if (!db) return
@@ -111,6 +111,13 @@ describe.runIf(Boolean(databaseUrl))('native production editor lifecycle', () =>
     await expect(issueCustomerCmsSetupHandoff(sessionToken, config, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
     expect((await db.query('SELECT count(*) FROM page_studio_customer_editor_handoffs')).rows[0].count).toBe('0')
   })
+  it('routes immutable production tickets without consulting a caller environment', async () => {
+    const handoff = await ticket()
+    const { readCustomerEditorTicketEnvironment } = await import('~~/server/utils/pageStudio/customerPreviewRouting')
+    expect(await readCustomerEditorTicketEnvironment(handoff.token, runTransaction)).toBe('production')
+    await exchange(handoff.token)
+    await expect(readCustomerEditorTicketEnvironment(handoff.token, runTransaction)).rejects.toMatchObject({ statusCode: 403 })
+  })
   it('refuses a production ticket exchanged through the staging configuration without consuming it', async () => {
     const handoff = await ticket()
     await expect(exchange(handoff.token, { environment: 'staging' })).rejects.toMatchObject({ statusCode: 403 })
@@ -118,33 +125,33 @@ describe.runIf(Boolean(databaseUrl))('native production editor lifecycle', () =>
     await expect(exchange(handoff.token)).resolves.toHaveProperty('token')
   })
   it.each([
-    "UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()",
-    "UPDATE page_studio_workspace_memberships SET role='viewer'",
-    "UPDATE page_studio_entitlements SET status='cancelled' WHERE status='active'"
+    'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+    'UPDATE page_studio_workspace_memberships SET role=\'viewer\'',
+    'UPDATE page_studio_entitlements SET status=\'cancelled\' WHERE status=\'active\''
   ])('rejects ticket redemption after authority changes: %s', async (sql) => {
     const handoff = await ticket()
     await db.query(sql)
     await expect(exchange(handoff.token)).rejects.toMatchObject({ statusCode: 403 })
   })
   it.each([
-    "UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()",
-    "UPDATE page_studio_workspace_memberships SET role='viewer'",
-    "UPDATE page_studio_entitlements SET status='cancelled' WHERE status='active'",
-    "UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp()"
+    'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+    'UPDATE page_studio_workspace_memberships SET role=\'viewer\'',
+    'UPDATE page_studio_entitlements SET status=\'cancelled\' WHERE status=\'active\'',
+    'UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp()'
   ])('rejects established child sessions after authority changes: %s', async (sql) => {
     const { claims } = await session()
     await db.query(sql)
     await expect(authorize(claims)).rejects.toMatchObject({ statusCode: 403 })
   })
   it('clamps a child session to the membership deadline', async () => {
-    const deadline = (await db.query("UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()+interval '10 minutes' RETURNING expires_at")).rows[0].expires_at
+    const deadline = (await db.query('UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()+interval \'10 minutes\' RETURNING expires_at')).rows[0].expires_at
     const { claims } = await session()
     expect(claims).toMatchObject({ expiresAt: Math.floor(deadline.getTime() / 1000) })
   })
   it('preserves immutable environment and plan fields, including after migration replay', async () => {
     await session()
     await db.query(migration('456_page_studio_customer_editor_environment.sql'))
-    await expect(db.query("UPDATE page_studio_customer_editor_handoffs SET environment='staging',entitlement_id=NULL")).rejects.toThrow('immutable')
+    await expect(db.query('UPDATE page_studio_customer_editor_handoffs SET environment=\'staging\',entitlement_id=NULL')).rejects.toThrow('immutable')
     await expect(db.query('UPDATE page_studio_customer_editor_handoffs SET entitlement_id=$1', [randomUUID()])).rejects.toThrow('immutable')
   })
 })

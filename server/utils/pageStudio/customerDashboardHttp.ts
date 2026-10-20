@@ -3,19 +3,20 @@ import { z } from 'zod'
 import { CustomerProvisioningRecoverySchema } from '~~/shared/pageStudio/customerDashboard'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { guardCustomerRequest, customerSessionToken, limitCustomerRequest } from './customerSignupHttp'
+import { customerPreviewRuntimeEnvironment } from './customerPreviewRuntime'
 import { getPageStudioProvisioningRuntime } from './provisioningBinding'
 import { CustomerPreviewApprovalSchema, readCustomerDashboard, createCustomerDashboardPreview, recoverCustomerDashboardPreview, type CustomerDashboardDependencies } from './customerDashboard'
 
 import { customerCmsSetupOptions } from './customerCmsSetupHttp'
 import { customerCmsSetupAvailable } from './customerCmsSetup'
-import { customerEditorLaunchOptions } from './customerEditorLaunchHttp'
+import { customerEditorRequestOptions } from './customerEditorLaunchHttp'
 import { readCustomerManagedTransfer } from './customerManagedTransfer'
 import { readCustomerEditorAvailability } from './customerEditorLaunch'
 
 function options(event: H3Event): CustomerDashboardDependencies {
   const env = event.context.cloudflare?.env ?? {}
   const setting = (key: string) => env[key] ?? process.env[key]
-  const runtime = getPageStudioProvisioningRuntime(env)
+  const runtime = getPageStudioProvisioningRuntime(customerPreviewRuntimeEnvironment(env) ?? undefined)
   const enabled = setting('PAGE_STUDIO_CUSTOMER_PREVIEW_ENABLED') === 'true' && runtime?.environment === 'staging'
   try {
     const approvals = z.array(CustomerPreviewApprovalSchema).max(100)
@@ -38,7 +39,9 @@ export async function customerDashboardHandler(event: H3Event) {
   try {
     const dashboard = await readCustomerDashboard(token, options(event))
     const managedTransfer = dashboard.siteId ? await readCustomerManagedTransfer(token, dashboard.siteId, { env: event.context.cloudflare?.env ?? {} }) : null
-    const editor = customerEditorLaunchOptions(event)
+    const editorBlocked = (managedTransfer && !managedTransfer.completed)
+      || (!dashboard.siteId && event.context.cloudflare?.env?.PAGE_STUDIO_CONTENT_ENVIRONMENT === 'production')
+    const editor = editorBlocked ? null : await customerEditorRequestOptions(event, token)
     const cms = customerCmsSetupOptions(event)
     const canPrepareCms = !managedTransfer && cms ? await customerCmsSetupAvailable(token, cms) : false
     const canOpenStudio = (!managedTransfer || managedTransfer.completed) && editor ? await readCustomerEditorAvailability(token, editor) : false

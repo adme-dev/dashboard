@@ -1,3 +1,4 @@
+import { hasCustomerPreviewRuntimeConfiguration } from '~~/server/utils/pageStudio/customerPreviewRuntime'
 import { ManagedTransferCopyManagementRequestSchema as Request, ManagedTransferCopyManagementResultSchema as Result } from '~~/shared/pageStudio/managed-transfer-copy-management'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { capturePageStudioRpcMethod } from '~~/server/utils/pageStudio/privateRpc'
@@ -18,6 +19,15 @@ export async function handleManagedTransferCopyManagement(raw: unknown, env: Rec
   if (!parsed.success) return rejected('0'.repeat(64), 400)
   const request = structuredClone(parsed.data)
   const storage = {
+    ...(hasCustomerPreviewRuntimeConfiguration(env)
+      ? {
+          PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: env.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED,
+          PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: env.PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN,
+          PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER: capture(env.PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER, ['createProvisioning', 'readProvisioning']),
+          PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER: capture(env.PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER, ['readManagedCmsTarget', 'readManagedCmsObjectsAtTarget', 'fetch']),
+          PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS: capture(env.PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS, ['get'])
+        }
+      : {}),
     PAGE_STUDIO_RELEASE_ENVIRONMENT: env.PAGE_STUDIO_RELEASE_ENVIRONMENT,
     PAGE_STUDIO_PROVISIONING_ENVIRONMENT: env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT,
     MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY: env.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY,
