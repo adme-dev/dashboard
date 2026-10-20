@@ -12,6 +12,7 @@ import { issueCustomerCmsSetupHandoff, parseCustomerEditorHandoffConfiguration }
 import { exchangeCustomerEditorSession, assertCustomerEditorSessionAuthority } from './customerEditorSessions'
 import { CustomerEditorClaimsSchema, type CustomerEditorClaims } from './customerEditorToken'
 import { coordinateCustomerSchemaUpgrade } from './customerSchemaUpgrade'
+import type { CustomerSchemaUpgradeRequest } from '~~/shared/pageStudio/customerSchemaUpgrade'
 import { callNativeSchemaCoordinator } from './nativeSchemaCoordinatorClient'
 import { coordinateCmsAdoption } from './cmsAdoptionCoordinator'
 import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
@@ -143,7 +144,7 @@ async function claimsFor(token: string, options: CustomerCmsSetupOptions, issue:
     return claims
   })
 }
-function coordinateSchema(input: unknown, claims: CustomerEditorClaims, options: CustomerCmsSetupOptions) {
+function coordinateSchema(input: CustomerSchemaUpgradeRequest, claims: CustomerEditorClaims, options: CustomerCmsSetupOptions) {
   // Production native setup never falls back to distant public SQL when private configuration is missing.
   return options.env.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'production' || configuration(options).dashboardOrigin === 'https://app.xeroflow.io'
     ? callNativeSchemaCoordinator(input, claims, options.env)
