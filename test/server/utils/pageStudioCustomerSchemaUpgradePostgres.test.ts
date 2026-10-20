@@ -14,7 +14,7 @@ const migration = (name: string) => readFileSync(new URL(`../../../server/databa
 const ownershipMigration = '444_page_studio_customer_site_ownership.sql'
 const ids = { owner: randomUUID(), other: randomUUID(), client: randomUUID(), staff: randomUUID() }
 
-describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native customer CMS prerequisites on PostgreSQL (%s)', (purpose) => {
+describe.runIf(Boolean(databaseUrl)).each([['editor', 'direct'], ['cms-setup', 'direct'], ['editor', 'placed'], ['cms-setup', 'placed']])('native customer CMS prerequisites on PostgreSQL (%s/%s)', (purpose, transport) => {
   const schema = `customer_prereq_${randomUUID().replaceAll('-', '')}`
   let db: pg.Client
   let workspaces: typeof import('~~/server/utils/pageStudio/customerWorkspaces')
@@ -153,8 +153,15 @@ describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native custo
     })) }
   }
 
-  const coordinate = async (input: unknown, claims: unknown, worker: ReturnType<typeof binding>) =>
-    (await api()).coordinateCustomerSchemaUpgrade(input, claims, { runTransaction, binding: worker.value })
+  const coordinate = async (input: unknown, claims: unknown, worker: ReturnType<typeof binding>) => {
+    if (transport === 'direct') return (await api()).coordinateCustomerSchemaUpgrade(input, claims, { runTransaction, binding: worker.value })
+    const { handleNativeSchemaCoordinatorFetch } = await import('../../../workers/page-studio-management/src/nativeSchemaCoordinator')
+    const { callNativeSchemaCoordinator } = await import('~~/server/utils/pageStudio/nativeSchemaCoordinatorClient')
+    const env = { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', ...nativePreviewBindings({ ...worker.value, createProvisioning() {}, readProvisioning() {} }) }
+    return callNativeSchemaCoordinator(input, claims, { ...env, PAGE_STUDIO_MANAGEMENT: {
+      fetch: (request: Request) => handleNativeSchemaCoordinatorFetch(request, env, runTransaction)
+    } })
+  }
 
   it.each(['collection', 'workflow'])('recovers installed %s authority without executing an ancestor runtime', async (kind) => {
     const first = await session(), worker = binding(), requestId = randomUUID()
@@ -282,6 +289,21 @@ describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native custo
     expect(worker.calls[1]).toEqual(intent)
     expect((await db.query('SELECT COUNT(*) FROM page_studio_audit_events WHERE action=$1', [`content.${kind}-upgrade.requested`])).rows[0].count).toBe('1')
   })
+  it('reads installed state after a lost execution acknowledgment without replaying the effect', async () => {
+    const { claims } = await session(), worker = binding(), requestId = randomUUID(), kind = 'collection'
+    const execute = worker.value.executeCollectionUpgrade!
+    worker.value.executeCollectionUpgrade = async (value: unknown) => {
+      await execute(value)
+      throw new Error('synthetic lost acknowledgment')
+    }
+    await expect(coordinate({ action: 'start', kind, requestId }, claims, worker)).rejects.toMatchObject({ statusCode: 503 })
+    expect(worker.calls).toHaveLength(1)
+    const intent = structuredClone(worker.calls[0]), contract = (await contracts()).find(value => value.kind === kind)!
+    worker.value.readCollectionUpgradeOperation = async () => ({ state: 'installed', leaseUntil: null, receipt: contract.expectedReceipt(intent) })
+    expect(await coordinate({ action: 'status', kind }, claims, worker)).toMatchObject({ status: 'installed', requestId })
+    expect(worker.calls).toEqual([intent])
+    expect((await db.query('SELECT metadata FROM page_studio_audit_events WHERE action=\'content.collection-upgrade.requested\'')).rows[0].metadata.intent).toEqual(intent)
+  })
   it('serializes duplicate starts and rejects changed requests without replacing the intent', async () => {
     const { claims } = await session(), worker = binding(), requestId = randomUUID()
     await Promise.all([coordinate({ action: 'start', kind: 'collection', requestId }, claims, worker), coordinate({ action: 'start', kind: 'collection', requestId }, claims, worker)])
@@ -380,8 +402,13 @@ describe.runIf(Boolean(databaseUrl)).each(['editor', 'cms-setup'])('native custo
     await coordinate({ action: 'start', kind, requestId: randomUUID() }, first.claims, worker)
     await db.query(`CREATE FUNCTION reject_customer_upgrade_recovery() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit unavailable'; END $$;
       CREATE TRIGGER reject_customer_upgrade_recovery BEFORE INSERT ON page_studio_audit_events FOR EACH ROW WHEN (NEW.action='customer.collection-upgrade.recovered') EXECUTE FUNCTION reject_customer_upgrade_recovery()`)
-    await expect(coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, second.claims, worker)).rejects.toThrow('audit unavailable')
-    await db.query('DROP TRIGGER reject_customer_upgrade_recovery ON page_studio_audit_events; DROP FUNCTION reject_customer_upgrade_recovery()')
+    try {
+      const failed = coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, second.claims, worker)
+      if (transport === 'placed') await expect(failed).rejects.toMatchObject({ statusCode: 503, statusMessage: 'Customer CMS setup could not be verified.' })
+      else await expect(failed).rejects.toThrow('audit unavailable')
+    } finally {
+      await db.query('DROP TRIGGER reject_customer_upgrade_recovery ON page_studio_audit_events; DROP FUNCTION reject_customer_upgrade_recovery()')
+    }
     expect(await coordinate({ action: 'status', kind }, first.claims, worker)).toMatchObject({ recoveryId: null })
     const results = await Promise.allSettled([second, third].map(value => coordinate({ action: 'recover', kind, requestId: randomUUID(), expectedRecoveryId: null }, value.claims, worker)))
     expect(results.filter(value => value.status === 'fulfilled')).toHaveLength(1)

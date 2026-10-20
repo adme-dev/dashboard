@@ -12,6 +12,7 @@ import { issueCustomerCmsSetupHandoff, parseCustomerEditorHandoffConfiguration }
 import { exchangeCustomerEditorSession, assertCustomerEditorSessionAuthority } from './customerEditorSessions'
 import { CustomerEditorClaimsSchema, type CustomerEditorClaims } from './customerEditorToken'
 import { coordinateCustomerSchemaUpgrade } from './customerSchemaUpgrade'
+import { callNativeSchemaCoordinator } from './nativeSchemaCoordinatorClient'
 import { coordinateCmsAdoption } from './cmsAdoptionCoordinator'
 import type { PageStudioQueryClient, RunPageStudioTransaction } from './sites'
 
@@ -142,11 +143,17 @@ async function claimsFor(token: string, options: CustomerCmsSetupOptions, issue:
     return claims
   })
 }
+function coordinateSchema(input: unknown, claims: CustomerEditorClaims, options: CustomerCmsSetupOptions) {
+  // Production native setup never falls back to distant public SQL when private configuration is missing.
+  return options.env.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'production' || configuration(options).dashboardOrigin === 'https://app.xeroflow.io'
+    ? callNativeSchemaCoordinator(input, claims, options.env)
+    : coordinateCustomerSchemaUpgrade(input, claims, options)
+}
 export async function readCustomerCmsSetup(token: string, options: CustomerCmsSetupOptions) {
   const claims = await claimsFor(token, options, false)
   if (!claims) return CustomerCmsSetupStatusSchema.parse({ resumeRequired: true, prerequisites: [], adoption: null })
   const prerequisites = []
-  for (const kind of kinds) prerequisites.push(await coordinateCustomerSchemaUpgrade({ action: 'status', kind }, claims, options))
+  for (const kind of kinds) prerequisites.push(await coordinateSchema({ action: 'status', kind }, claims, options))
   const value = await coordinateCmsAdoption({ action: 'status' }, { source: 'customer-session', claims, env: options.env, capability: 'cms:adopt' }, options)
   // Final native check after all provider observations. No provider details or child tokens leave Dashboard.
   await (options.runTransaction ?? transactionWithoutRetry)(db => assertCustomerEditorSessionAuthority(claims, 'cms:prepare', db))
@@ -157,7 +164,7 @@ export async function mutateCustomerCmsSetup(token: string, input: unknown, opti
   const claims = await claimsFor(token, options, request.operation === 'resume')
   if (!claims) throw resume()
   if (request.operation === 'resume') return { resumed: true }
-  if (request.operation === 'schema') return coordinateCustomerSchemaUpgrade(request.request, claims, options)
+  if (request.operation === 'schema') return coordinateSchema(request.request, claims, options)
   const value = await coordinateCmsAdoption(request.request, { source: 'customer-session', claims, env: options.env, capability: 'cms:adopt' }, options)
   return CustomerCmsAdoptionStatusSchema.parse(adoptionStatus(value))
 }

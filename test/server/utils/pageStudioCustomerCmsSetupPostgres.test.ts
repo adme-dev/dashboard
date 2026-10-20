@@ -1,3 +1,6 @@
+import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
+import { nativePreviewBindings } from '../../utils/pageStudioNativePreview'
+import { handleNativeSchemaCoordinatorFetch } from '../../../workers/page-studio-management/src/nativeSchemaCoordinator'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -61,7 +64,9 @@ describe.runIf(Boolean(databaseUrl))('native CMS setup admission on PostgreSQL',
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
     await db.query(migration('456_page_studio_customer_editor_environment.sql'))
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
-    await db.query('CREATE TABLE page_studio_cms_scopes (scope_key TEXT, tenant_id TEXT, client_id UUID, site_id UUID, state TEXT)')
+    await db.query(migration('404_page_studio_documents.sql'))
+    await db.query(migration('422_page_studio_cms_visibility.sql'))
+    await db.query(migration('425_page_studio_cms_authoring_scope.sql'))
     workspaces = await import('~~/server/utils/pageStudio/customerWorkspaces')
   })
   beforeEach(async () => {
@@ -272,5 +277,125 @@ describe.runIf(Boolean(databaseUrl))('native CMS setup admission on PostgreSQL',
     await expect(authorize({ ...claims, capabilities: ['cms:prepare', 'workspace:create'] }, 'cms:prepare')).rejects.toMatchObject({ statusCode: 403 })
     await expect(authorize({ ...claims, siteId: randomUUID() }, 'cms:prepare')).rejects.toMatchObject({ statusCode: 403 })
     await expect(commit(claims, { checkpoint: checkpoint(claims), expectedCheckpointId: null })).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('composes all five placed statuses and first/resumed Forms POST with counted SQL and explicit HTTP overhead', async () => {
+    await approve()
+    const { options: baselineOptions } = await bootstrap(), api = await setupApi()
+    const counts = { public: 0, management: 0, publicTransactions: 0, managementTransactions: 0 }
+    let measured = false, studioMs = 0, privateCalls = 0, studioCalls = 0, formCalls = 0
+    const run = (bucket: 'public' | 'management') => async <T>(work: (client: import('~~/server/utils/pageStudio/sites').PageStudioQueryClient) => Promise<T>) => {
+      if (measured) {
+        counts[bucket] += 2
+        counts[bucket === 'public' ? 'publicTransactions' : 'managementTransactions']++
+      }
+      return runTransaction(client => work({ query: async (sql, params) => {
+        if (measured) counts[bucket]++
+        return client.query(sql, params) as never
+      } }))
+    }
+    const options = { ...baselineOptions, runTransaction: run('public') }
+    const binding = options.env.PAGE_STUDIO_PROVISIONER as Record<string, (input: unknown) => Promise<unknown>>
+    const env = options.env as Record<string, unknown>
+    binding.createProvisioning = async () => {
+      throw new Error('No provisioning mutation in this test')
+    }
+    Object.assign(env, nativePreviewBindings(binding), { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production',
+      PAGE_STUDIO_CONTENT_ROUTER: { readManagedCmsTarget() { throw new Error('Idle status must not discover an adoption target') } },
+      PAGE_STUDIO_CHECKPOINTS: { get() { throw new Error('Idle status must not read objects') } } })
+    attachCmsManagement(env, run('management'))
+    const management = env.PAGE_STUDIO_MANAGEMENT as { cmsAuthoring: (input: unknown) => Promise<unknown>, fetch?: (request: Request) => Promise<Response> }
+    const adoption = management.cmsAuthoring
+    management.cmsAuthoring = (input) => {
+      if (measured) privateCalls++
+      return adoption(input)
+    }
+    management.fetch = (request) => {
+      if (measured) privateCalls++
+      return handleNativeSchemaCoordinatorFetch(request, env, run('management'))
+    }
+    const contracts = Object.values(await import('~~/server/utils/pageStudio/schemaUpgradeContract'))
+    // Composed, not hosted: exact Studio public-entry ledger from form-drafts-status-budget.test.ts.
+    // D1=250ms, fresh native=300ms, inspect=10s, physical=1s, each pinned R2 object=1s.
+    const costs: Record<string, number> = { 'collection': 1650, 'workflow': 1050, 'collection-staging': 1300, 'form-runtime': 20150, 'form-drafts': 53950 }
+    for (const contract of contracts) {
+      binding[contract.discoveryMethod] = async (scope) => {
+        if (measured) {
+          studioCalls++
+          if (contract.kind === 'form-drafts') studioMs += 51900
+        }
+        return { scope, accountId: 'a'.repeat(32), databaseId: '11111111-1111-4111-8111-111111111111', name: `ps-content-${'b'.repeat(32)}`,
+          ...(contract.kind !== 'collection' ? { collectionOperationId: 'collection_original' } : {}),
+          ...(['collection-staging', 'form-runtime', 'form-drafts'].includes(contract.kind) ? { workflowOperationId: 'workflow_original' } : {}),
+          ...(contract.kind.startsWith('form-') ? { stagingOperationId: 'staging_original' } : {}),
+          ...(contract.kind === 'form-drafts' ? { runtime: { digest: 'd'.repeat(64), etag: 'verified-etag', successorIdentity: 'e'.repeat(64) } } : {}) }
+      }
+      binding[contract.executeMethod] = async (intent) => {
+        if (measured) studioCalls++
+        if (contract.kind === 'form-drafts') {
+          formCalls++
+          if (measured) studioMs += formCalls === 1 ? 36200 : 93950
+          if (formCalls === 1) return { status: 'running' }
+        }
+        return { status: 'installed', receipt: contract.expectedReceipt(intent as never) }
+      }
+      binding[contract.statusMethod] = async (intent) => {
+        if (measured) {
+          studioCalls++
+          studioMs += contract.kind === 'form-drafts' && formCalls === 1 ? 33750 : costs[contract.kind]!
+        }
+        return contract.kind === 'form-drafts' && formCalls === 1
+          ? { state: 'reserved', leaseUntil: null, receipt: null }
+          : { state: 'installed', leaseUntil: null, receipt: contract.expectedReceipt(intent as never) }
+      }
+    }
+    await api.mutateCustomerCmsSetup(token, { operation: 'resume' }, options)
+    for (const contract of contracts.filter(value => value.kind !== 'form-drafts')) await api.mutateCustomerCmsSetup(token, { operation: 'schema', request: { action: 'start', kind: contract.kind, requestId: randomUUID() } }, options)
+    const ledger: Record<string, unknown>[] = []
+    const record = async (phase: string, post: boolean, work: () => Promise<unknown>) => {
+      Object.assign(counts, { public: 0, management: 0, publicTransactions: 0, managementTransactions: 0 })
+      studioMs = 0
+      privateCalls = 0
+      studioCalls = 0
+      measured = true
+      try {
+        const result = await work()
+        // Explicit scenario allowances, NOT latency guarantees. Actual public handler's rate limit is one fresh SQL query.
+        const connectionMs = counts.publicTransactions * 500 + counts.managementTransactions * 100
+        const transportMs = privateCalls * 500 + studioCalls * 500
+        const provisioningMs = 750 // Actual readProvisioning performs one250ms D1 read plus500ms RPC allowance.
+        const middlewareMs = (post ? 750 : 0) + 1000 + 250 // rate SQL+connect; browser/edge; serialization/CPU.
+        const totalMs = studioMs + counts.public * 250 + counts.management * 10 + connectionMs + transportMs + provisioningMs + middlewareMs
+        ledger.push({ phase, ...counts, studioMs, privateCalls, studioCalls, totalMs })
+        expect(totalMs).toBeLessThan(125000)
+        return result
+      } finally { measured = false }
+    }
+    const requestId = randomUUID(), start = () => api.mutateCustomerCmsSetup(token, { operation: 'schema', request: { action: 'start', kind: 'form-drafts', requestId } }, options)
+    expect(await record('first', true, start)).toMatchObject({ status: 'running', requestId })
+    expect(await record('uncertain-refresh', false, () => api.readCustomerCmsSetup(token, options))).toMatchObject({ prerequisites: expect.arrayContaining([expect.objectContaining({ kind: 'form-drafts', status: 'reserved', requestId })]) })
+    expect(formCalls).toBe(1) // GET never repeats the uncertain effect.
+    expect(await record('resume', true, start)).toMatchObject({ status: 'installed', requestId })
+    expect(await record('installed-refresh', false, () => api.readCustomerCmsSetup(token, options))).toMatchObject({ resumeRequired: false, adoption: { phase: 'idle' } })
+    expect(ledger).toEqual([
+      expect.objectContaining({ phase: 'first', public: 81, management: 110, totalMs: 115000 }),
+      expect.objectContaining({ phase: 'uncertain-refresh', public: 96, management: 582, totalMs: 98320 }),
+      expect.objectContaining({ phase: 'resume', public: 81, management: 110, totalMs: 120350 }),
+      expect.objectContaining({ phase: 'installed-refresh', public: 96, management: 582, totalMs: 118520 })
+    ])
+    // Narrowest modeled margin4.65s; hosted acceptance remains required.
+  })
+
+  it.each(['binding', 'native-flag'])('production setup has no local coordinator fallback when %s is missing', async (missing) => {
+    await approve()
+    const { options } = await bootstrap(), api = await setupApi(), fetchPrivate = vi.fn()
+    const env = options.env as Record<string, unknown>
+    Object.assign(env, { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true', PAGE_STUDIO_MANAGEMENT: { fetch: fetchPrivate } })
+    await api.mutateCustomerCmsSetup(token, { operation: 'resume' }, options)
+    if (missing === 'binding') delete env.PAGE_STUDIO_MANAGEMENT
+    else delete env.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED
+    await expect(api.mutateCustomerCmsSetup(token, { operation: 'schema', request: { action: 'start', kind: 'collection', requestId: randomUUID() } }, options)).rejects.toMatchObject({ statusCode: 503 })
+    await expect(api.readCustomerCmsSetup(token, options)).rejects.toMatchObject({ statusCode: 503 })
+    expect(fetchPrivate).not.toHaveBeenCalled()
+    expect((await db.query('SELECT count(*) FROM page_studio_audit_events WHERE action=\'content.collection-upgrade.requested\'')).rows[0].count).toBe('0')
   })
 })
