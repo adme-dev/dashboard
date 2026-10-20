@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { validateManagementTarget } from '../../workers/page-studio-management/deploy.mjs'
 
-const config = (environment = 'production') => JSON.parse(readFileSync(`workers/page-studio-management/wrangler.${environment}.jsonc`, 'utf8'))
+const config = (environment = 'production') => JSON.parse(readFileSync(new URL(`../../workers/page-studio-management/wrangler.${environment}.jsonc`, import.meta.url), 'utf8'))
 describe('private management immutable deployment target', () => {
   it.each(['staging', 'production'])('accepts only the reviewed %s resource mapping', (environment) => {
     expect(() => validateManagementTarget(config(environment), environment)).not.toThrow()
@@ -10,7 +10,7 @@ describe('private management immutable deployment target', () => {
   it.each([
     { vars: { ...config().vars, PAGE_STUDIO_CLOUDFLARE_ZONE_ID: 'different-zone' } },
     { vars: { ...config().vars, PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID: 'different-account' } },
-    { services: [] },
+    { services: [] }, { placement: { region: 'aws:us-west-2' } }, { placement: { mode: 'smart' } }, { placement: undefined },
     { services: [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-staging' }] },
     { r2_buckets: [] }, { r2_buckets: [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: 'xeroflow-page-studio-checkpoints-staging' }] },
     { name: 'agency-dashboard' }, { account_id: 'other' }, { main: '../../other.ts' },

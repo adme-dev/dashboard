@@ -206,3 +206,16 @@ it('withholds a POST reply if a concurrent GET has settled with an error on the 
   expect(refresh).toHaveBeenCalledWith({ dedupe: 'defer' })
   expect(host.textContent).toContain('could not confirm')
 })
+
+it.each(['reconciliation', 'uploading'] as const)('preserves uncertain runtime identity and prevents misleading child recovery for %s', async (runtimePhase) => {
+  data.value.prerequisites[0] = { kind: 'collection', status: runtimePhase === 'reconciliation' ? 'reconciliation' : 'running', runtimePhase, requestId: original, recoveryId: recovery, canConfigure: false }
+  const host = await mount()
+  const button = step(host, 'Content collections').querySelector('button')!
+  expect(button.disabled).toBe(true)
+  expect(button.textContent).toBe(runtimePhase === 'reconciliation' ? 'Operator review needed' : 'Preparing')
+  button.click()
+  await flush()
+  expect(fetch).not.toHaveBeenCalled()
+  expect(data.value.prerequisites[0]?.requestId).toBe(original)
+  expect(data.value.prerequisites[0]?.recoveryId).toBe(recovery)
+})

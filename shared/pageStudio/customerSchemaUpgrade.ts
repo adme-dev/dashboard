@@ -10,5 +10,6 @@ export const CustomerSchemaUpgradeRequestSchema = z.discriminatedUnion('action',
 export type CustomerSchemaUpgradeRequest = z.infer<typeof CustomerSchemaUpgradeRequestSchema>
 export const CustomerSchemaUpgradeStatusSchema = z.object({
   kind, status: z.enum(['pending', 'running', 'reserved', 'installed', 'disabled', 'reconciliation']),
+  runtimePhase: z.enum(['reserved', 'uploading', 'ready', 'reconciliation']).optional(),
   requestId: id.optional(), recoveryId: id.nullable(), canConfigure: z.boolean()
 }).strict()

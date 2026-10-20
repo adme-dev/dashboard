@@ -6,10 +6,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 export function validateManagementTarget(config, environment) {
   assert(['staging', 'production'].includes(environment), 'Explicit staging or production target required')
-  const allowed = ['$schema', 'name', 'account_id', 'main', 'compatibility_date', 'compatibility_flags', 'workers_dev', 'preview_urls', 'routes', 'observability', 'vars', 'hyperdrive', 'triggers', 'r2_buckets', 'services', 'tsconfig']
+  const allowed = ['$schema', 'name', 'account_id', 'main', 'compatibility_date', 'compatibility_flags', 'workers_dev', 'preview_urls', 'routes', 'observability', 'vars', 'hyperdrive', 'triggers', 'r2_buckets', 'services', 'tsconfig', 'placement']
   assert(Object.keys(config).every(key => allowed.includes(key)), 'Unreviewed Worker capability')
   assert.equal(config.account_id, 'a5b299b3ad15c1b5b895dc66f9357b17')
   assert.equal(config.name, `xeroflow-page-studio-management-${environment}`)
+  assert.deepEqual(config.placement, environment === 'production' ? { region: 'aws:us-east-1' } : undefined, 'Reviewed database placement required')
   assert.equal(config.main, 'src/index.ts')
   assert.equal(config.tsconfig, 'tsconfig.json')
   assert.equal(config.compatibility_date, '2026-07-15')
