@@ -1,4 +1,5 @@
 import { customerEditorBrowserConfiguration } from '~~/server/utils/pageStudio/customerEditorLaunchHttp'
+import { customerPreviewRuntimeEnvironment } from '~~/server/utils/pageStudio/customerPreviewRuntime'
 
 const PORTAL_CSP = [
   `default-src 'self'`,
@@ -44,14 +45,19 @@ export default defineEventHandler((event) => {
   setHeader(event, 'Pragma', 'no-cache')
   setHeader(event, 'Expires', '0')
 
-  // The editor opens through a signed form POST in a popup, which inherits
-  // this document's policy. Portal navigation is client-side, so every portal
-  // document needs the configured origin, including the initial login document.
+  // Native launch submits a signed one-use ticket by same-tab form POST.
+  // Client-side navigation retains this policy, so initial portal and signup
+  // documents also need the configured editor destinations.
   const editorOrigin = isPortalPage
     ? editorFormOrigin(useRuntimeConfig(event).public.pageStudioEditorUrl)
     : ''
-  const customerOrigin = isPortalPage ? customerEditorBrowserConfiguration(event)?.editorOrigin : null
-  const formOrigins = [...new Set([editorOrigin, customerOrigin].filter(Boolean))].join(' ')
+  const nativeRuntime = isPortalPage ? customerPreviewRuntimeEnvironment(event.context?.cloudflare?.env ?? {}) : null
+  // Configuration permits the POST destination; launch still resolves owner/site authority.
+  const customerOrigins = isPortalPage
+    ? [customerEditorBrowserConfiguration(event)?.editorOrigin,
+        nativeRuntime && customerEditorBrowserConfiguration(event, nativeRuntime)?.editorOrigin].map(editorFormOrigin).filter(Boolean)
+    : []
+  const formOrigins = [...new Set([editorOrigin, ...customerOrigins].filter(Boolean))].join(' ')
   const csp = formOrigins
     ? PORTAL_CSP.replace('form-action \'self\'', `form-action 'self' ${formOrigins}`)
     : PORTAL_CSP
@@ -61,7 +67,7 @@ export default defineEventHandler((event) => {
   setHeader(event, 'X-Content-Type-Options', 'nosniff')
   // Cross-origin credential POSTs need Origin; no-referrer makes Chrome send
   // Origin: null. Origin-only discloses no path/query and matches Studio admission.
-  setHeader(event, 'Referrer-Policy', customerOrigin ? 'origin' : 'no-referrer')
+  setHeader(event, 'Referrer-Policy', customerOrigins.length ? 'origin' : 'no-referrer')
   setHeader(
     event,
     'Permissions-Policy',
