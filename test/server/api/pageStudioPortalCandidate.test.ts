@@ -24,7 +24,7 @@ const principal = { actorId: user.id, tenantId: scope.tenantId, login: { role: '
 const services = { verifyBuild: vi.fn() }
 const candidate = { build: { buildId: 'astro_candidate' }, preview: { hostname: 'candidate.review.example.invalid' }, session: { token: 'review-only-token' } }
 const { default: handler } = await import('~~/server/api/portal/page-studio/sites/[siteId]/versions/[versionId]/candidate.post')
-async function request(options: { body?: string, origin?: string, contentType?: string, key?: string, query?: string, site?: string, version?: string, suffix?: string } = {}) {
+async function request(options: { body?: string | Uint8Array<ArrayBuffer>, origin?: string, contentType?: string, key?: string, query?: string, site?: string, version?: string, suffix?: string } = {}) {
   const router = createRouter().post('/sites/:siteId/versions/:versionId/candidate', handler)
   const app = createApp().use(eventHandler((event) => {
     event.context.cloudflare = { env: { PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME: options.suffix ?? 'review.example.invalid' } }
@@ -137,5 +137,34 @@ describe('Invited customer approved candidate HTTP boundary', () => {
     expect(response.status).toBe(403)
     expect(await response.text()).not.toContain('review-only-token')
     expect(response.headers.get('cache-control')).toBe('private, no-store')
+  })
+  it.each([2048, 2049])('preserves the observed request byte boundary at %i', async (bytes) => {
+    const body = '{"environment":"production"}'.padEnd(bytes, ' ')
+    const response = await request({ body })
+    expect(response.status).toBe(bytes === 2048 ? 200 : 413)
+    if (bytes > 2048) {
+      expect(mocks.authority).not.toHaveBeenCalled()
+      expect(mocks.services).not.toHaveBeenCalled()
+      expect(mocks.build).not.toHaveBeenCalled()
+    }
+  })
+  it('rejects malformed UTF-8 before publication authority or compiler configuration', async () => {
+    const response = await request({ body: new Uint8Array([0x7b, 0x22, 0xc3, 0x22, 0x7d]) })
+    expect(response.status).toBe(400)
+    expect(mocks.authority).not.toHaveBeenCalled()
+    expect(mocks.services).not.toHaveBeenCalled()
+    expect(mocks.build).not.toHaveBeenCalled()
+  })
+  it.each([196, 197])('preserves the configured preview hostname limit at %i', async (length) => {
+    const suffix = `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${length === 196 ? 'test' : 'tests'}`
+    expect(suffix.length).toBe(length)
+    const response = await request({ suffix })
+    expect(response.status).toBe(length === 196 ? 200 : 503)
+    expect(mocks.authority).toHaveBeenCalled()
+    if (length > 196) {
+      expect(mocks.services).not.toHaveBeenCalled()
+      expect(mocks.signing).not.toHaveBeenCalled()
+      expect(mocks.build).not.toHaveBeenCalled()
+    }
   })
 })
