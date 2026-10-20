@@ -19,7 +19,7 @@ export function validateManagementTarget(config, environment) {
   assert.deepEqual(config.routes, [])
   assert.deepEqual(config.triggers, { crons: [] })
   assert.equal(config.vars.PAGE_STUDIO_RELEASE_ENVIRONMENT, environment)
-  const allowedVars = ['MANAGED_TRANSFER_EXECUTION_POLICY', 'PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST', 'PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST', 'PAGE_STUDIO_PROVISIONING_ENVIRONMENT', 'MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY', 'PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID', 'PAGE_STUDIO_CLOUDFLARE_ZONE_ID', 'PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET', 'PAGE_STUDIO_DOMAIN_IDENTITY_MODE', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT', 'PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT', 'PAGE_STUDIO_ACTION_RUNTIME_DIGEST', 'PAGE_STUDIO_CMS_STAGING_ACTION_RUNTIME_DIGEST']
+  const allowedVars = ['PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED', 'PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN', 'MANAGED_TRANSFER_EXECUTION_POLICY', 'PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST', 'PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST', 'PAGE_STUDIO_PROVISIONING_ENVIRONMENT', 'MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY', 'PAGE_STUDIO_RELEASE_ENVIRONMENT', 'PAGE_STUDIO_CLOUDFLARE_ACCOUNT_ID', 'PAGE_STUDIO_CLOUDFLARE_ZONE_ID', 'PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET', 'PAGE_STUDIO_DOMAIN_IDENTITY_MODE', 'PAGE_STUDIO_CMS_OBJECT_TRANSPORT', 'PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT', 'PAGE_STUDIO_ACTION_RUNTIME_DIGEST', 'PAGE_STUDIO_CMS_STAGING_ACTION_RUNTIME_DIGEST']
   assert(Object.keys(config.vars).every(key => allowedVars.includes(key)), 'Unreviewed Worker variable')
   assert.equal(config.vars.PAGE_STUDIO_PROVISIONING_ENVIRONMENT, environment === 'production' ? 'production' : undefined)
   if (config.vars.MANAGED_TRANSFER_DESTINATION_EXECUTION_POLICY !== undefined) {
@@ -52,8 +52,12 @@ export function validateManagementTarget(config, environment) {
     ? [{ binding: 'PAGE_STUDIO_CLIENT_STAGING', service: 'xeroflow-page-studio-client-staging' },
         { binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-production' },
         { binding: 'PAGE_STUDIO_CMS_STAGING_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' },
-        { binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-production' }]
+        { binding: 'PAGE_STUDIO_PROVISIONER', service: 'xeroflow-provisioning-production' },
+        { binding: 'PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER', service: 'xeroflow-provisioning-native-preview' },
+        { binding: 'PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER', service: 'xeroflow-content-router-native-preview' }]
     : [{ binding: 'PAGE_STUDIO_CONTENT_ROUTER', service: 'xeroflow-content-router-staging' }])
+  assert.equal(config.vars.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED, environment === 'production' ? 'false' : undefined)
+  assert.equal(config.vars.PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN, environment === 'production' ? 'https://studio-customer-preview.xeroflow.io' : undefined)
   assert.equal(config.vars.PAGE_STUDIO_CMS_OBJECT_TRANSPORT, environment === 'staging' ? 'placed-fetch' : undefined)
   assert.equal(config.vars.PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT, environment === 'production' ? 'placed-fetch' : undefined)
   const actionRuntime = 'c67adbab33650675260b6acba1dfa7413207796cb2bc5f56dd24d6eeaf55075e'
@@ -66,7 +70,10 @@ export function validateManagementTarget(config, environment) {
   if (environment === 'production') assert.equal(config.vars.PAGE_STUDIO_CUSTOM_HOSTNAME_TARGET, 'sites.xeroflow.io')
   assert.deepEqual(config.hyperdrive, [{ binding: 'HYPERDRIVE_FRESH', id: environment === 'staging' ? '3865ea5568234fc7b0e9e3e595a30286' : '90228af3e2cc461bbc09accc3b47bd9f' }])
   assert.deepEqual(config.r2_buckets, [{ binding: 'PAGE_STUDIO_CHECKPOINTS', bucket_name: `xeroflow-page-studio-checkpoints${environment === 'staging' ? '-staging' : ''}` },
-    ...(environment === 'production' ? [{ binding: 'PAGE_STUDIO_CMS_STAGING_CHECKPOINTS', bucket_name: 'xeroflow-page-studio-checkpoints-staging' }] : [])])
+    ...(environment === 'production'
+      ? [{ binding: 'PAGE_STUDIO_CMS_STAGING_CHECKPOINTS', bucket_name: 'xeroflow-page-studio-checkpoints-staging' },
+          { binding: 'PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS', bucket_name: 'xeroflow-page-studio-checkpoints-native-preview' }]
+      : [])])
   assert.deepEqual(config.observability, { enabled: true, head_sampling_rate: 0.1 })
 }
 

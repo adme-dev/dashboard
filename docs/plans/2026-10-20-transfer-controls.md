@@ -65,12 +65,51 @@ Verification: component tests, keyboard/mobile/dark mode, real signed-in browser
 workflow, refresh/lost response and account switch. Update relevant feature pages
 with delivered capabilities only.
 
-## Task 4: Release, hosted acceptance and scoped Pi activation
+## Task 4: Connect native source previews to the production control plane
+
+Hosted inspection found that genuine native test accounts exist only in the
+staging database. Production has no native accounts or transfer intents. Ordinary
+production signup therefore needs an isolated source-preview path before the
+reviewed transfer can be exercised. Do not copy identities or change existing
+shared staging callbacks.
+
+Add trusted customer-specific selectors for native preview provisioning, CMS,
+editor launch/session exchange and authenticated machine callbacks. Keep logical
+source content staging and production destination content production. Select
+source versus completed destination from authenticated retained state; never
+accept an arbitrary service/environment from the browser. Reuse existing native
+owner, plan, job, ticket and session validators on both sides of every effect.
+
+Prepare separate native-preview coordinator, executor, content router, registry
+and source-editor origin. The executor uses the production control-plane proxy.
+Use an isolated provisioning registry so existing staging cron cannot claim jobs
+for production accounts. Preserve the exact staging dispatch namespace contract.
+Connect transfer source reads to the same isolated registry/router/checkpoints
+without changing established site bindings. Existing native runtime policies stay
+scoped to genuine approved sites. Apply registry migrations and preserve current
+production/staging deployment settings.
+
+Verification: default-off selectors, unknown/missing bindings, forged actor and
+scope, foreign native ownership, old staging and production-destination regression,
+real callbacks through the private control plane, and current-main guarded source
+and deployment receipts. New accounts use ordinary email verification and setup.
+
+## Task 4b: Retrieve the existing public verification key for trusted deployment
+
+Add a read-only operator-authenticated endpoint that returns only the validated
+public session verification PEM and configured issuer. Reuse fresh built-in
+owner/admin authority; reject guests/custom mismatches and unauthenticated users.
+Never read or return the private signing key, cookies, tokens or arbitrary env
+values. Validate the PEM as the expected public algorithm; fail closed without
+logging raw values. No-store, fixed fields and tests for malformed/private PEM.
+Use it to install the same verification key in the isolated preview editor.
+
+## Task 5: Release, hosted acceptance and scoped Pi activation
 
 Use fresh current main, independent review, passing exact-tree CI and guarded
 releases. Apply additive migrations with preserved-row evidence. Deploy management
 before Pages. Renew acceptance through approved configuration/plan workflows only.
-Use the two previously verified native accounts, genuine owner/operator logins,
+Use the two approved real mailboxes through ordinary native signup, genuine owner/operator logins,
 full page/object/Forms copy, limits/uncertain recovery/final selection, and retained
 live/domain readback. Exercise role/cross-site/logout/expiry denials. Only after
 passing enable a site-scoped Pi canary, test a draft proposal in editor without
