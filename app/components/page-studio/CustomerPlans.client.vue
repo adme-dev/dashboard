@@ -90,6 +90,12 @@ function expiry(value: string | null) {
     </template>
     <template #body>
       <div class="mx-auto w-full max-w-6xl space-y-6">
+        <UButton
+          label="Website preparations"
+          to="/agency/page-studio/transfer-requests"
+          color="neutral"
+          variant="ghost"
+        />
         <header class="max-w-2xl space-y-2">
           <h1 class="text-2xl font-semibold tracking-tight text-highlighted">
             From preview to publishing

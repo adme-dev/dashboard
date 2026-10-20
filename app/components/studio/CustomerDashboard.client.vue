@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { watch } from 'vue'
 import { openCustomerStudio } from '~/utils/pageStudioCustomerLaunch'
 import type { CustomerDashboard } from '~~/shared/pageStudio/customerDashboard'
 
@@ -9,6 +10,10 @@ const { data: formsAvailability, error: formsError, refresh: refreshForms } = us
 const canManageForms = computed(() => !loadError.value && !formsError.value && formsAvailability.value?.available === true && Boolean(formsAvailability.value.siteId))
 const busy = ref(false)
 const actionError = ref('')
+const transferRequestId = ref<string | null>(null)
+watch(() => data.value?.siteId, () => {
+  transferRequestId.value = null
+}, { flush: 'sync' })
 const views: Record<CustomerDashboard['state'], { title: string, description: string, icon: string }> = {
   'recovery-required': { title: 'Continue your website setup', description: 'You’re signed in again. Resume to continue your saved setup with this login. We’ll keep the same website and its progress.', icon: 'i-lucide-play' },
   'setup-required': { title: 'Finish your business setup', description: 'Save your business details before creating your website.', icon: 'i-lucide-notebook-pen' },
@@ -89,6 +94,8 @@ async function signOut() {
   actionError.value = ''
   try {
     await $fetch(`${api}/logout`, { method: 'POST', body: {} })
+    data.value = null
+    transferRequestId.value = null
     await navigateTo('/studio/signup')
   } catch {
     actionError.value = 'We could not sign you out. Please try again.'
@@ -225,6 +232,16 @@ async function signOut() {
             @changed="load"
           />
         </div>
+        <StudioCustomerTransferRequest
+          v-if="data.siteId && !data.managedTransfer?.completed"
+          :key="data.siteId"
+          v-model:pending-request-id="transferRequestId"
+          :site-id="data.siteId"
+          :website-name="data.businessName"
+          :account-key="data.siteId"
+          :active="!busy && !loadError"
+          @changed="load"
+        />
         <StudioCustomerCmsSetup v-if="data.canPrepareCms && !loadError" @changed="load" />
         <div v-if="canManageForms" class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-6 py-5 sm:px-8">
           <div>
