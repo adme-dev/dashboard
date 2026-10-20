@@ -71,8 +71,10 @@ const API_INVENTORY = {
   // in the transaction. No customer self-grant or God mode bypass is registered.
   // Native transfer recovery adds one origin/session-guarded POST. Current owner,
   // exact site and retained transfer authority remain required; no God mode bypass.
-  totalRouteFiles: 2258,
-  mutationRouteFiles: 1229,
+  // Seven transfer routes add three mutations. Public verification bootstrap
+  // adds one read; all retain genuine login and native authority with no bypass.
+  totalRouteFiles: 2266,
+  mutationRouteFiles: 1232,
   explicitlyGuardedMutationFiles: 402,
   guardedMutationFilesWithTransactionCall: 48
 } as const
@@ -122,11 +124,39 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2258,
-      mutationRouteFiles: 1229,
+      totalRouteFiles: 2266,
+      mutationRouteFiles: 1232,
       explicitlyGuardedMutationFiles: 402,
       guardedMutationFilesWithTransactionCall: 48
     })
+  })
+
+  it('pins transfer and verification bootstrap routes to native authority without a bypass', () => {
+    const routes = {
+      'server/api/agency/page-studio/transfer-requests.get.ts': 'handleTransferOperatorHttp(event, \'GET\', \'list\')',
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId].get.ts': 'handleTransferOperatorHttp(event, \'GET\', \'request\')',
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId].post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'request\')',
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/workflow.get.ts': 'handleTransferOperatorHttp(event, \'GET\', \'workflow\')',
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/workflow.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'workflow\')',
+      'server/api/portal/page-studio/customer/sites/[siteId]/transfer-request.get.ts': 'handleTransferOwnerHttp(event, \'GET\')',
+      'server/api/portal/page-studio/customer/sites/[siteId]/transfer-request.post.ts': 'handleTransferOwnerHttp(event, \'POST\')',
+      'server/api/agency/page-studio/session-verification-key.get.ts': 'eventHandler(handleSessionVerificationKey)'
+    }
+    for (const [file, handler] of Object.entries(routes)) {
+      const source = readFileSync(file, 'utf8')
+      expect(source).toContain(handler)
+      expect(source).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
+    }
+    const transfer = readFileSync('server/utils/pageStudio/transferControlsHttp.ts', 'utf8')
+    expect(transfer).toContain('await requireCustomerPlanOperator(db, user.id)')
+    expect(transfer).toContain('resolvePageStudioLoginSession(db, event, \'agency\', user.id)')
+    expect(transfer).toContain('await readCustomerSession(token, transactionWithoutRetry)')
+    const bootstrap = readFileSync('server/utils/pageStudio/sessionVerificationKeyHttp.ts', 'utf8')
+    expect(bootstrap).toContain('await requireCustomerPlanOperator(db, user.id)')
+    expect(bootstrap).toContain('resolvePageStudioLoginSession(db, event, \'agency\', user.id)')
+    expect(bootstrap).toContain('return await transactionWithoutRetry(async (db) =>')
+    expect(bootstrap).not.toMatch(/resolvePageStudioSessionEnvironment|PAGE_STUDIO_SESSION_PRIVATE_KEY|bindPageStudioLoginSession|isApplicationCapabilityEnabled/)
+    expect(listReviewedGodModeReadRoutes().some(route => route.path === '/api/agency/page-studio/session-verification-key')).toBe(false)
   })
 
   it('pins news auto-posting to independent client scope and machine-secret authority', () => {
