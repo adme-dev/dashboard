@@ -28,7 +28,7 @@ const candidate = { build: { buildId: 'astro_native' }, preview: { hostname: 'bu
 const { default: handler } = await import('~~/server/api/portal/page-studio/customer/sites/[siteId]/versions/[versionId]/candidate.post')
 async function request(options: {
   method?: string
-  body?: string
+  body?: string | Uint8Array<ArrayBuffer>
   origin?: string
   cookie?: string
   key?: string
@@ -136,5 +136,34 @@ describe('Native customer candidate HTTP boundary', () => {
     expect(body).not.toContain(principal.tokenHash)
     expect(body).not.toContain(candidate.session.token)
     if (phase !== 'session') expect(mocks.session).not.toHaveBeenCalled()
+  })
+  it.each([2048, 2049])('preserves the observed request byte boundary at %i', async (bytes) => {
+    const body = '{"environment":"production"}'.padEnd(bytes, ' ')
+    const response = await request({ body })
+    expect(response.status).toBe(bytes === 2048 ? 200 : 413)
+    if (bytes > 2048) {
+      expect(mocks.authority).not.toHaveBeenCalled()
+      expect(mocks.services).not.toHaveBeenCalled()
+      expect(mocks.build).not.toHaveBeenCalled()
+    }
+  })
+  it('rejects malformed UTF-8 before publication authority or compiler configuration', async () => {
+    const response = await request({ body: new Uint8Array([0x7b, 0x22, 0xc3, 0x22, 0x7d]) })
+    expect(response.status).toBe(400)
+    expect(mocks.authority).not.toHaveBeenCalled()
+    expect(mocks.services).not.toHaveBeenCalled()
+    expect(mocks.build).not.toHaveBeenCalled()
+  })
+  it.each([196, 197])('preserves the configured preview hostname limit at %i', async (length) => {
+    const suffix = `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${length === 196 ? 'test' : 'tests'}`
+    expect(suffix.length).toBe(length)
+    const response = await request({ suffix })
+    expect(response.status).toBe(length === 196 ? 200 : 503)
+    expect(mocks.authority).toHaveBeenCalled()
+    if (length > 196) {
+      expect(mocks.services).not.toHaveBeenCalled()
+      expect(mocks.signing).not.toHaveBeenCalled()
+      expect(mocks.build).not.toHaveBeenCalled()
+    }
   })
 })
