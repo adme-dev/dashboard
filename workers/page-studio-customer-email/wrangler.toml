@@ -1,5 +1,6 @@
 name = "xeroflow-page-studio-customer-email-staging"
 main = "src/index.ts"
+account_id = "a5b299b3ad15c1b5b895dc66f9357b17"
 compatibility_date = "2026-08-12"
 workers_dev = false
 preview_urls = false
@@ -12,5 +13,15 @@ head_sampling_rate = 1
 invocation_logs = true
 
 [[send_email]]
+name = "EMAIL"
+allowed_sender_addresses = ["notification@xeroflow.io"]
+
+# Separate production gateway; adding this environment does not enable signup.
+[env.production]
+name = "xeroflow-page-studio-customer-email-production"
+workers_dev = false
+preview_urls = false
+
+[[env.production.send_email]]
 name = "EMAIL"
 allowed_sender_addresses = ["notification@xeroflow.io"]
