@@ -1,3 +1,4 @@
+import { destinationActivation } from '../../helpers/pageStudioDestinationActivation'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readCustomerManagedTransfer, recoverCustomerManagedTransfer } from '~~/server/utils/pageStudio/customerManagedTransfer'
 
@@ -31,6 +32,19 @@ describe('current customer transfer projection', () => {
     expect(mocks.authority).toHaveBeenCalledTimes(2)
     expect(mocks.authority.mock.calls.every(([input]) => input.siteId === siteId && input.entitlementId === planId && /^[a-f0-9]{64}$/.test(input.loginSessionHash))).toBe(true)
     expect(JSON.stringify(await readCustomerManagedTransfer(token, siteId, deps))).not.toContain(completion.digest)
+  })
+  it('rejects an unlisted destination before the private call and rechecks expiry after it', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const scoped = { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production', PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production', ...destinationActivation(workspaceId) }
+    await expect(recoverCustomerManagedTransfer(token, siteId, { action: 'retry-connection' }, { ...deps, env: scoped })).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.remote).not.toHaveBeenCalled()
+    mocks.authority.mockImplementation(async (_input, work, dependencies) => dependencies.runTransaction((db: unknown) => work(db, { ...current, workspaceId })))
+    mocks.remote.mockImplementation(async () => {
+      Object.assign(scoped, destinationActivation(workspaceId, '2020-01-01T00:00:00Z'))
+      return status
+    })
+    await expect(recoverCustomerManagedTransfer(token, siteId, { action: 'retry-connection' }, { ...deps, env: scoped })).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.remote).toHaveBeenCalledTimes(1)
   })
   it('keeps completion visible but all recovery closed when the editor rollout is disabled', async () => {
     const value = await readCustomerManagedTransfer(token, siteId, { ...deps, env: { ...env, PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED: 'false' } })

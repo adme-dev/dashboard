@@ -1,4 +1,5 @@
 import { createError } from 'h3'
+import { customerDestinationGuard, readCustomerActivation } from './customerActivation'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
@@ -18,7 +19,7 @@ const denied = () => createError({ statusCode: 403, statusMessage: 'Website acce
 const unavailable = () => createError({ statusCode: 503, statusMessage: 'Connection status could not be confirmed. Refresh before trying again.' })
 const conflict = () => createError({ statusCode: 409, statusMessage: 'Refresh the current transfer status before continuing.' })
 const production = (env: Record<string, unknown>) => env.PAGE_STUDIO_CONTENT_ENVIRONMENT === 'production' && env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT === 'production'
-const enabled = (env: Record<string, unknown>) => production(env) && env.PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED === 'true'
+const enabled = (env: Record<string, unknown>) => production(env) && readCustomerActivation(env).productionEditorEnabled === true
 interface SavedProgress { entitlement_id: string, resources_bound: boolean, source_frozen: boolean, destination_requested: boolean, destination_verified: boolean, copy_verified: boolean, history_verified: boolean }
 function stage(row: SavedProgress, entitlementId: string): Extract<CustomerManagedTransfer, { completed: false }>['stage'] {
   if (row.entitlement_id !== entitlementId) return 'needs-attention'
@@ -68,6 +69,7 @@ async function observed(token: string, siteId: string, action: 'status' | 'conne
     if (action !== 'status') throw conflict()
     return { projection: closed(siteId), identity: before.identity }
   }
+  customerDestinationGuard(dependencies.env)?.(before.identity.workspaceId)
   let value: CustomerManagedTransfer = closed(siteId), failed = false
   try {
     const result = CompletedManagedTransferStatusSchema.parse(structuredClone(await callCompletedManagedTransfer({ siteId, action }, { env: dependencies.env })))
@@ -77,6 +79,7 @@ async function observed(token: string, siteId: string, action: 'status' | 'conne
   const after = await snapshot(token, siteId, dependencies)
   if (!after.completion || collectionCanonical(before.identity) !== collectionCanonical(after.identity)) throw denied()
   if (!enabled(dependencies.env)) throw denied()
+  customerDestinationGuard(dependencies.env)?.(after.identity.workspaceId)
   if (failed && action !== 'status') throw unavailable()
   return { projection: value, identity: before.identity }
 }

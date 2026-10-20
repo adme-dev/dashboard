@@ -26,6 +26,7 @@ describe('private Page Studio management deployment configuration', () => {
       ...(environment === 'production'
         ? {
             PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+            PAGE_STUDIO_CUSTOMER_ACTIVATION: '{"previewEnabled":true,"previewApprovals":[{"workspaceId":"64326ad7-7354-42e6-871d-8dea401a7798","starterVersion":"limousine-v1","policy":{"approvalId":"2dee4ab1-e1a7-4f4f-8322-abdefa9afeb3","approvedBy":"6a5d2e15-315c-4790-b64e-5e3e17001c8e","expiresAt":"2026-10-22T12:00:00Z","pagesPerSiteLimit":10,"storageBytesLimit":104857600,"monthlyBuildLimit":10,"monthlyTrafficBytesLimit":104857600}},{"workspaceId":"a8ca805f-751f-484a-b074-688f8a82fe41","starterVersion":"limousine-v1","policy":{"approvalId":"a0511e75-a010-4b9b-bea0-51a448c07ccc","approvedBy":"6a5d2e15-315c-4790-b64e-5e3e17001c8e","expiresAt":"2026-10-22T12:00:00Z","pagesPerSiteLimit":10,"storageBytesLimit":104857600,"monthlyBuildLimit":10,"monthlyTrafficBytesLimit":104857600}}],"cmsSetupEnabled":true,"browserEnabled":true,"editorEnabled":true,"productionEditorEnabled":true,"productionEditorOrigin":"https://studio.xeroflow.io"}',
             PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
             PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://studio-customer-preview.xeroflow.io',
             PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST: '2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83',

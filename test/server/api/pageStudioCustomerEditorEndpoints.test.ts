@@ -1,3 +1,4 @@
+import { destinationActivation } from '../../helpers/pageStudioDestinationActivation'
 import { createServer, type Server } from 'node:http'
 import { createApp, createRouter, defineEventHandler, toNodeListener } from 'h3'
 import { exportPKCS8, exportSPKI, generateKeyPair } from 'jose'
@@ -67,6 +68,38 @@ describe('private native customer session endpoints', () => {
     config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED = 'true'
     config.PAGE_STUDIO_CUSTOMER_ACTIVATION = '{}'
     expect((await call('authorize', { capability: 'workspace:checkpoint' })).status).toBe(403)
+  })
+  it('uses signed workspace scope for bundled production admission and passes the guard into exchange/read/save', async () => {
+    delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED
+    delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN
+    Object.assign(config, destinationActivation(claims.workspaceId), { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' })
+    const token = await signCustomerEditorToken({ ...claims, environment: 'production' }, privatePem, issuer)
+    const headers = { 'x-page-studio-customer-session': token }
+    expect((await call('authorize', { capability: 'workspace:checkpoint' }, headers)).status).toBe(200)
+    expect((await call('latest-checkpoint', {}, headers)).status).toBe(200)
+    expect(mocks.read.mock.calls.at(-1)![1].assertWorkspace).toBeTypeOf('function')
+    expect((await call('checkpoint', {}, headers)).status).toBe(200)
+    expect(mocks.commit.mock.calls.at(-1)![2].assertWorkspace).toBeTypeOf('function')
+    mocks.ticketEnvironment.mockResolvedValue('production')
+    expect((await call('exchange', { ticket: 'a'.repeat(64) })).status).toBe(200)
+    expect(mocks.exchange.mock.calls.at(-1)![2].assertWorkspace).toBeTypeOf('function')
+    const foreign = await signCustomerEditorToken({ ...claims, workspaceId: crypto.randomUUID(), environment: 'production' }, privatePem, issuer)
+    mocks.authorize.mockClear()
+    expect((await call('authorize', { capability: 'workspace:checkpoint' }, { 'x-page-studio-customer-session': foreign })).status).toBe(403)
+    expect(mocks.authorize).not.toHaveBeenCalled()
+    Object.assign(config, destinationActivation(claims.workspaceId, '2020-01-01T00:00:00Z'))
+    expect((await call('checkpoint', { workspaceId: claims.workspaceId }, headers)).status).toBe(403)
+  })
+  it('rechecks the bundle after native authorization before returning a private receipt', async () => {
+    delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED
+    delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN
+    Object.assign(config, destinationActivation(claims.workspaceId), { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' })
+    const token = await signCustomerEditorToken({ ...claims, environment: 'production' }, privatePem, issuer)
+    mocks.authorize.mockImplementation(async () => {
+      Object.assign(config, destinationActivation(claims.workspaceId, '2020-01-01T00:00:00Z'))
+      return { claims }
+    })
+    expect((await call('authorize', { capability: 'workspace:checkpoint' }, { 'x-page-studio-customer-session': token })).status).toBe(403)
   })
   it('binds production routes to opt-in and rejects staging sessions or production setup', async () => {
     const token = await signCustomerEditorToken({ ...claims, environment: 'production' }, privatePem, issuer)

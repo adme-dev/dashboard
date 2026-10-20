@@ -78,6 +78,19 @@ describe('private management immutable deployment target', () => {
     const staging = config('staging')
     expect(() => validateManagementTarget({ ...staging, vars: { ...staging.vars, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false' } }, 'staging')).toThrow()
   })
+  it('requires the same exact bounded destination bundle on management and Pages', async () => {
+    const { parse } = await import('smol-toml')
+    const pages = parse(readFileSync('wrangler.toml', 'utf8')) as unknown as { env: { production: { vars: Record<string, string> } } }
+    const current = config()
+    expect(current.vars.PAGE_STUDIO_CUSTOMER_ACTIVATION).toBe(pages.env.production.vars.PAGE_STUDIO_CUSTOMER_ACTIVATION)
+    const activation = JSON.parse(current.vars.PAGE_STUDIO_CUSTOMER_ACTIVATION)
+    for (const value of [undefined, '{}', JSON.stringify({ ...activation, productionEditorEnabled: false }),
+      JSON.stringify({ ...activation, productionEditorOrigin: 'https://other.test' }),
+      JSON.stringify({ ...activation, previewApprovals: activation.previewApprovals.slice(1) }),
+      JSON.stringify({ ...activation, previewApprovals: activation.previewApprovals.map((row: { policy: object }) => ({ ...row, policy: { ...row.policy, expiresAt: '2027-01-01T00:00:00Z' } })) })]) {
+      expect(() => validateManagementTarget({ ...current, vars: { ...current.vars, PAGE_STUDIO_CUSTOMER_ACTIVATION: value } }, 'production')).toThrow()
+    }
+  })
   it('rejects an implicit or invented environment', () => {
     expect(() => validateManagementTarget(config(), undefined)).toThrow()
     expect(() => validateManagementTarget(config(), 'preview')).toThrow()

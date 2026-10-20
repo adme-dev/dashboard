@@ -16,6 +16,7 @@ export interface CustomerEditorLaunchOptions {
   configuration: unknown
   env: Record<string, unknown>
   runTransaction?: RunPageStudioTransaction
+  assertWorkspace?: (workspaceId: string) => void
 }
 const denied = () => createError({ statusCode: 409, statusMessage: 'Your editor is not available yet. Refresh your overview or contact support.' })
 async function snapshot(db: PageStudioQueryClient, token: string, environment: 'staging' | 'production') {
@@ -49,7 +50,11 @@ async function verified<T>(token: string, options: CustomerEditorLaunchOptions, 
   const config = parseCustomerEditorHandoffConfiguration(options.configuration)
   if (options.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== config.environment) throw denied()
   const run = options.runTransaction ?? transactionWithoutRetry
-  return withVerifiedCustomerEditorStorage(db => snapshot(db, token, config.environment), { ...options, runTransaction: run }, finish)
+  return withVerifiedCustomerEditorStorage(async (db) => {
+    const value = await snapshot(db, token, config.environment)
+    options.assertWorkspace?.(value.workspaceId)
+    return value
+  }, { ...options, runTransaction: run }, finish)
 }
 
 /** Redacted, read-only availability; never mints a transport ticket or child JWT. */
@@ -74,5 +79,5 @@ export async function readCustomerEditorAvailability(token: string, options: Cus
 }
 /** Explicit browser intent only. Final admission and ticket insertion share locks. */
 export async function launchCustomerEditor(token: string, options: CustomerEditorLaunchOptions) {
-  return await verified(token, options, db => issueCustomerEditorHandoff(token, options.configuration, { runTransaction: work => work(db) }))
+  return await verified(token, options, db => issueCustomerEditorHandoff(token, options.configuration, { runTransaction: work => work(db), assertWorkspace: options.assertWorkspace }))
 }

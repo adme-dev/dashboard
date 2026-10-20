@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { customerDestinationGuard } from './customerActivation'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import {
   authorizePageStudioBusinessContent,
@@ -241,11 +242,15 @@ export async function withCmsCommitAuthority<T>(
         || principal.env.PAGE_STUDIO_CONTENT_ENVIRONMENT !== scope.environment
         || principal.claims.environment !== scope.environment
         || (scope.environment === 'production' && input.mutation !== 'customer-checkpoint')) throw denied()
+      const destination = scope.environment === 'production' ? customerDestinationGuard(principal.env) : undefined
       const { assertCustomerEditorSessionAuthority } = await import('./customerEditorSessionAuthority')
       return await run(async (db) => {
         await db.query('SET LOCAL lock_timeout=\'3s\'')
         const recheck = async () => {
           const authority = await assertCustomerEditorSessionAuthority(principal.claims, capability, db)
+          // Trusted deployment scope is checked with the database clock at both
+          // authority fences; a private caller cannot omit or extend this window.
+          if (destination) destination(authority.owned.workspaceId, Number((await db.query<{ now: string }>('SELECT extract(epoch FROM clock_timestamp()) * 1000 AS now')).rows[0]?.now))
           if (!samePageStudioContentScope(authority.owned.scope, scope)) throw denied()
         }
         // Preserve native account → workspace → site/entitlement → child ordering.

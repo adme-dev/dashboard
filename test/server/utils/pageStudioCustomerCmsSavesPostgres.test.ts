@@ -1,3 +1,4 @@
+import { destinationActivation } from '../../helpers/pageStudioDestinationActivation'
 import { attachCmsManagement, nativeSourceCmsEnvironment } from '../../helpers/pageStudioCmsManagement'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -351,6 +352,32 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
     await expect(f.commit(input)).rejects.toMatchObject({ statusCode: 403 })
     expect((await db.query('SELECT COUNT(*) FROM page_studio_cms_commits')).rows[0].count).toBe('1')
   })
+  if (environment === 'production') {
+    it('enforces management deployment scope even when a private caller supplies no activation metadata', async () => {
+      const f = await managed(), input = await f.draft()
+      Object.assign(f.env, destinationActivation(randomUUID()))
+      attachCmsManagement(f.env, runTransaction)
+      await expect(f.commit(input)).rejects.toMatchObject({ statusCode: 403 })
+      expect((await db.query('SELECT current_checkpoint_id FROM page_studio_sites')).rows[0].current_checkpoint_id).toBe('base_checkpoint')
+      Object.assign(f.env, destinationActivation(f.claims.workspaceId))
+      attachCmsManagement(f.env, runTransaction)
+      await expect(f.commit(input)).resolves.toMatchObject({ acknowledged: true })
+    })
+    it('uses the database clock and rolls back if destination scope expires inside the final CMS transaction', async () => {
+      const f = await managed()
+      const expiry = new Date(Date.now() + 350).toISOString()
+      Object.assign(f.env, destinationActivation(f.claims.workspaceId, expiry))
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2020-01-01T00:00:00Z'))
+      const { withCmsCommitAuthority } = await import('~~/server/utils/pageStudio/cmsCommitAuthority')
+      try {
+        await expect(withCmsCommitAuthority({ scope: f.scope, principal: f.principal, mutation: 'customer-checkpoint' }, async (tx) => {
+          await tx.query('UPDATE page_studio_sites SET name=\'uncommitted\'')
+          await tx.query('SELECT pg_sleep(0.4)')
+        }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+        expect((await db.query('SELECT name FROM page_studio_sites')).rows[0].name).toBe('Customer Flowers')
+      } finally { clock.mockRestore() }
+    })
+  }
   it('rolls back work when native authority expires before transaction completion', async () => {
     const f = await managed()
     await db.query('UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp()+INTERVAL \'500 milliseconds\'')

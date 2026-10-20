@@ -1,5 +1,5 @@
 import { createError, readBody, setHeader, type H3Event } from 'h3'
-import { readCustomerActivation } from './customerActivation'
+import { customerDestinationGuard, readCustomerActivation } from './customerActivation'
 import { z } from 'zod'
 import { customerPreviewRuntimeEnvironment, hasCustomerPreviewRuntimeConfiguration } from './customerPreviewRuntime'
 import { readCustomerEditorEnvironment } from './customerPreviewRouting'
@@ -14,11 +14,11 @@ export function customerEditorBrowserConfiguration(event: H3Event, bindings: Rec
   const environment = setting('PAGE_STUDIO_CONTENT_ENVIRONMENT')
   if (!activation.browserEnabled || !activation.editorEnabled
     || (environment === 'production'
-      ? setting('PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED') !== 'true'
+      ? !activation.productionEditorEnabled
       : environment !== 'staging' || setting('PAGE_STUDIO_PROVISIONING_ENVIRONMENT') !== 'staging')) return null
   try {
     return parseCustomerEditorHandoffConfiguration({ enabled: true, environment,
-      dashboardOrigin: setting('PAGE_STUDIO_CUSTOMER_ORIGIN'), editorOrigin: setting('PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN') })
+      dashboardOrigin: setting('PAGE_STUDIO_CUSTOMER_ORIGIN'), editorOrigin: environment === 'production' ? activation.productionEditorOrigin : setting('PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN') })
   } catch { return null }
 }
 export function customerEditorLaunchOptions(event: H3Event, bindings: Record<string, unknown> = event.context?.cloudflare?.env ?? {}): CustomerEditorLaunchOptions | null {
@@ -27,7 +27,7 @@ export function customerEditorLaunchOptions(event: H3Event, bindings: Record<str
   const env = { PAGE_STUDIO_CONTENT_ENVIRONMENT: configuration.environment, PAGE_STUDIO_CHECKPOINTS: bindings.PAGE_STUDIO_CHECKPOINTS,
     PAGE_STUDIO_CONTENT_ROUTER: bindings.PAGE_STUDIO_CONTENT_ROUTER }
   if (typeof (env.PAGE_STUDIO_CHECKPOINTS as { get?: unknown } | undefined)?.get !== 'function' || typeof (env.PAGE_STUDIO_CONTENT_ROUTER as { readManagedCmsTarget?: unknown } | undefined)?.readManagedCmsTarget !== 'function') return null
-  return { configuration, env }
+  return { configuration, env, ...(configuration.environment === 'production' ? { assertWorkspace: customerDestinationGuard(bindings) } : {}) }
 }
 /** Browser input never selects its content environment. */
 export async function customerEditorRequestOptions(event: H3Event, token: string): Promise<CustomerEditorLaunchOptions | null> {

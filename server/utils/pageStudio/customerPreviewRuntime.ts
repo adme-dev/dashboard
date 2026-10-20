@@ -1,3 +1,4 @@
+import { readCustomerActivation } from './customerActivation'
 import { CustomerEditorOriginSchema } from './customerEditorToken'
 
 const keys = ['RUNTIME_ENABLED', 'PROVISIONER', 'CONTENT_ROUTER', 'CHECKPOINTS', 'EDITOR_ORIGIN']
@@ -17,9 +18,14 @@ export function customerPreviewRuntimeEnvironment(env: Record<string, unknown>):
     || !method(env.PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER, 'readManagedCmsTarget')
     || !method(env.PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS, 'get')
     || !CustomerEditorOriginSchema.safeParse(env.PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN).success) return null
-  return { ...env, PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging',
+  const source: Record<string, unknown> = { ...env, PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging',
     PAGE_STUDIO_PROVISIONER: env.PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER,
     PAGE_STUDIO_CONTENT_ROUTER: env.PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER,
     PAGE_STUDIO_CHECKPOINTS: env.PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS,
     PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: env.PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN }
+  // Validate original configuration before projecting source-only activation.
+  if (Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ACTIVATION') || Object.hasOwn(process.env, 'PAGE_STUDIO_CUSTOMER_ACTIVATION')) {
+    source.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...readCustomerActivation(env), productionEditorEnabled: undefined, productionEditorOrigin: undefined })
+  }
+  return source
 }

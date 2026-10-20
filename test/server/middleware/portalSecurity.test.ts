@@ -72,7 +72,7 @@ describe('portal response security middleware', () => {
   })
 
   it.each(['/studio', '/studio/signup', '/studio/dashboard', '/portal', '/portal/login', '/portal/projects'])(
-    'allows the checked-in production native launch after navigation from %s without production editor opt-in', (path) => {
+    'allows the checked-in production native launch after navigation from %s with paired destination opt-in', (path) => {
       const env = nativeBindings()
       editorUrl = production.vars.NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL
       expect(env.PAGE_STUDIO_CONTENT_ENVIRONMENT).toBe('production')
@@ -109,19 +109,23 @@ describe('portal response security middleware', () => {
     const headers = documentPolicy({ ...nativeBindings(), ...change })
     expect(headers['Content-Security-Policy'].split('; ').find(value => value.startsWith('form-action ')))
       .toBe('form-action \'self\' https://studio.xeroflow.io')
-    expect(headers['Referrer-Policy']).toBe('no-referrer')
+    expect(headers['Referrer-Policy']).toBe(Object.hasOwn(change, 'PAGE_STUDIO_CUSTOMER_ACTIVATION') || Object.hasOwn(change, 'PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED') ? 'no-referrer' : 'origin')
   })
 
   it('gates the production editor independently while retaining the enabled native source', () => {
-    const env = { ...nativeBindings(), PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: 'https://production-editor.example.test' }
-    expect(documentPolicy(env)['Content-Security-Policy']).not.toContain('production-editor.example.test')
-    const enabled = { ...env, PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED: 'true' }
-    expect(documentPolicy(enabled)['Content-Security-Policy']).toContain(
+    const env = nativeBindings()
+    const activation = JSON.parse(env.PAGE_STUDIO_CUSTOMER_ACTIVATION as string)
+    env.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...activation, productionEditorEnabled: false })
+    expect(documentPolicy(env)['Content-Security-Policy']).toContain(`form-action 'self' ${nativeOrigin};`)
+    env.PAGE_STUDIO_CUSTOMER_ACTIVATION = JSON.stringify({ ...activation, productionEditorOrigin: 'https://production-editor.example.test' })
+    expect(documentPolicy(env)['Content-Security-Policy']).toContain(
       `form-action 'self' https://production-editor.example.test ${nativeOrigin};`)
-    const productionOnly = documentPolicy({ ...enabled, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false' })
+    const productionOnly = documentPolicy({ ...env, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'false' })
     expect(productionOnly['Content-Security-Policy']).toContain('form-action \'self\' https://production-editor.example.test;')
     expect(productionOnly['Content-Security-Policy']).not.toContain(nativeOrigin)
     expect(productionOnly['Referrer-Policy']).toBe('origin')
+    expect(documentPolicy({ ...env, PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: 'https://conflict.test' })['Content-Security-Policy'])
+      .toContain('form-action \'self\';')
   })
 
   it.each(['/api/portal/dashboard', '/api/client-portal/analytics/personas'])(

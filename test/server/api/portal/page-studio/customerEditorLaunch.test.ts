@@ -1,3 +1,4 @@
+import { destinationActivation } from '../../../../helpers/pageStudioDestinationActivation'
 import { createServer, type Server } from 'node:http'
 import { createApp, toNodeListener, defineEventHandler } from 'h3'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -87,6 +88,23 @@ describe('native customer editor launch HTTP', () => {
     expect(mocks.launch).not.toHaveBeenCalled()
     mocks.ready.mockResolvedValue(false)
     expect(await (await call({}, {}, '/dashboard', 'GET')).json()).toMatchObject({ state, stage: 0, canOpenStudio: false })
+  })
+  it('binds bundled destination launch to a verified workspace guard while keeping native source separate', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    for (const key of ['EDITOR_ENABLED', 'BROWSER_ENABLED', 'EDITOR_ORIGIN']) Reflect.deleteProperty(config, `PAGE_STUDIO_CUSTOMER_${key}`)
+    Object.assign(config, destinationActivation(workspaceId), { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production', PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production',
+      PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true', PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: 'https://source.example.test',
+      PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER: { createProvisioning: vi.fn(), readProvisioning: vi.fn() },
+      PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER: { readManagedCmsTarget: vi.fn() }, PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS: { get: vi.fn() } })
+    expect((await call()).status).toBe(200)
+    const destination = mocks.launch.mock.calls.at(-1)![1]
+    expect(destination.configuration).toMatchObject({ environment: 'production', editorOrigin: 'https://studio.example.test' })
+    expect(() => destination.assertWorkspace(workspaceId)).not.toThrow()
+    expect(() => destination.assertWorkspace('foreign')).toThrow()
+    mocks.environment.mockResolvedValue('staging')
+    expect((await call()).status).toBe(200)
+    expect(mocks.launch.mock.calls.at(-1)![1].configuration).toMatchObject({ environment: 'staging', editorOrigin: 'https://source.example.test' })
+    expect(mocks.launch.mock.calls.at(-1)![1].assertWorkspace).toBeUndefined()
   })
   it('requires separate production opt-in and passes the same environment to storage and handoff', async () => {
     config.PAGE_STUDIO_CONTENT_ENVIRONMENT = 'production'
