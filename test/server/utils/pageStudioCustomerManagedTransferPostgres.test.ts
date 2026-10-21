@@ -4,7 +4,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { grantCustomerPublishingPlan } from '~~/server/utils/pageStudio/customerPlanGrants'
 import { contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
-import { readCustomerManagedTransfer, recoverCustomerManagedTransfer } from '~~/server/utils/pageStudio/customerManagedTransfer'
+import { readCustomerManagedTransfer, recoverCustomerManagedTransfer, readCustomerSavedPublishingCheckpoint } from '~~/server/utils/pageStudio/customerManagedTransfer'
 
 const { remote, completion } = vi.hoisted(() => ({ remote: vi.fn(), completion: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/completedManagedTransfer', () => ({ callCompletedManagedTransfer: remote }))
@@ -90,6 +90,88 @@ describe.runIf(Boolean(databaseUrl))('customer transfer current native authority
     await db.query('INSERT INTO page_studio_managed_transfer_intents VALUES($1,$2,$3,$4,$5,$6)', [operationId, fixture.site.id, fixture.tenantId, fixture.businessId, planId, 'a'.repeat(64)])
     return operationId
   }
+  const savedProjection = () => readCustomerSavedPublishingCheckpoint(sessionToken, fixture.site.id, { env, runTransaction })
+  const savedCheckpoint = async () => {
+    const checkpointId = `checkpoint_${randomUUID()}`
+    const identityId = (await db.query('SELECT identity_id FROM page_studio_customer_accounts')).rows[0].identity_id
+    await db.query(`INSERT INTO page_studio_checkpoints(id,tenant_id,client_id,site_id,author_id,digest,etag,object_key,created_at)
+      VALUES($1,$2,$3,$4,$5,$6,'saved-etag','saved/checkpoint.json',clock_timestamp())`,
+    [checkpointId, fixture.tenantId, fixture.businessId, fixture.site.id, identityId, 'a'.repeat(64)])
+    await db.query('UPDATE page_studio_sites SET current_checkpoint_id=$1 WHERE id=$2', [checkpointId, fixture.site.id])
+    return checkpointId
+  }
+  it('projects saved content under the upgraded plan independently of request/review/consent or execution progress', async () => {
+    expect(await savedProjection()).toBe(false)
+    await savedCheckpoint()
+    // No execution intent is fabricated: the existing request workflow remains separate.
+    expect(await read()).toBeNull()
+    expect(await savedProjection()).toBe(true)
+    await intent()
+    expect(await read()).toMatchObject({ completed: false, stage: 'preparing-resources' })
+    expect(await savedProjection()).toBe(true)
+    expect(remote).not.toHaveBeenCalled()
+  })
+  it.each(['expired', 'cancelled', 'preview', 'publishing-disabled'])('does not show saved publishing readiness for %s plans', async (reason) => {
+    await savedCheckpoint()
+    const changes: Record<string, string> = {
+      expired: "effective_until=clock_timestamp()-interval '1 second'",
+      cancelled: "status='cancelled'",
+      preview: "plan_key='customer_preview_v1'",
+      'publishing-disabled': "plan_metadata=jsonb_set(plan_metadata,'{publishingEnabled}','false')"
+    }
+    await db.query(`UPDATE page_studio_entitlements SET ${changes[reason]} WHERE id=$1`, [planId])
+    expect(await savedProjection()).toBe(false)
+    expect(remote).not.toHaveBeenCalled()
+  })
+  it('denies a revoked login rather than reusing a previously saved projection', async () => {
+    await savedCheckpoint()
+    expect(await savedProjection()).toBe(true)
+    await db.query('UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()')
+    await expect(savedProjection()).rejects.toMatchObject({ statusCode: 401 })
+  })
+  it('does not infer saved content from a checkpoint outside the exact current head', async () => {
+    await savedCheckpoint()
+    await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL WHERE id=$1', [fixture.site.id])
+    expect(await savedProjection()).toBe(false)
+  })
+  it('rejects a current-head pointer to another site checkpoint', async () => {
+    const checkpointId = await savedCheckpoint()
+    const foreignSite = randomUUID()
+    await db.query(`INSERT INTO page_studio_sites(id,tenant_id,client_id,entitlement_id,name,route,starter_version)
+      SELECT $1,tenant_id,client_id,entitlement_id,name,'foreign-head',starter_version FROM page_studio_sites WHERE id=$2`, [foreignSite, fixture.site.id])
+    await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL WHERE id=$1', [fixture.site.id])
+    await db.query('UPDATE page_studio_checkpoints SET site_id=$1 WHERE id=$2', [foreignSite, checkpointId])
+    await expect(db.query('UPDATE page_studio_sites SET current_checkpoint_id=$1 WHERE id=$2', [checkpointId, fixture.site.id])).rejects.toMatchObject({ code: '23503' })
+    expect(await savedProjection()).toBe(false)
+  })
+  it('withholds saved content if publishing authority expires at the final fence', async () => {
+    await savedCheckpoint()
+    let checkpointReads = 0
+    const saved = await readCustomerSavedPublishingCheckpoint(sessionToken, fixture.site.id, { env,
+      runTransaction: work => runTransaction(client => work({ query: async <T>(sql: string, params?: unknown[]) => {
+        const result = await client.query(sql, params)
+        if (sql.includes('checkpoint.id AS checkpoint_id')) {
+          checkpointReads++
+          await client.query("UPDATE page_studio_entitlements SET effective_until=clock_timestamp()-interval '1 second' WHERE id=$1", [planId])
+        }
+        return { rows: result.rows as T[] }
+      } })) })
+    expect(checkpointReads).toBe(1)
+    expect(saved).toBe(false)
+    expect(remote).not.toHaveBeenCalled()
+  })
+  it('rejects malformed saved-read input before entering a transaction or inspection fallback', async () => {
+    const unusedTransaction = vi.fn()
+    for (const [token, siteId] of [['invalid', fixture.site.id], [sessionToken, 'foreign']]) {
+      await expect(readCustomerSavedPublishingCheckpoint(token!, siteId!, { env, runTransaction: unusedTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    }
+    expect(unusedTransaction).not.toHaveBeenCalled()
+  })
+  it('withholds saved readiness after owner membership is revoked', async () => {
+    await savedCheckpoint()
+    await db.query('UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()')
+    await expect(savedProjection()).rejects.toMatchObject({ statusCode: 403 })
+  })
   it('selects source or completed destination from current native ownership, never caller environment', async () => {
     const { readCustomerEditorEnvironment } = await import('~~/server/utils/pageStudio/customerPreviewRouting')
     const identity = (await db.query('SELECT identity_id FROM page_studio_customer_accounts')).rows[0].identity_id

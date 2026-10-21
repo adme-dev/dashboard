@@ -1,3 +1,7 @@
+import { transferAuthorityKey } from '../../../shared/pageStudio/managedTransferAuthorityTransport'
+import { readManagedTransferAuthority } from './managedTransferAuthority'
+import { RESOURCE_AUTHORITY_PATH } from '../../../shared/pageStudio/managedTransferResourceAuthority'
+import { authorizeManagedResourceThroughManagement } from './managedTransferResourceAuthority'
 import { NativeSchemaContracts, type NativeSchemaKind } from '../../../shared/pageStudio/nativeSchemaAuthority'
 import type { z } from 'zod'
 import { authorizeNativeSchemaThroughManagement } from './nativeSchemaAuthority'
@@ -162,6 +166,21 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     && 'CONTENT_COMPLETION_TRANSPORT' in env && env.CONTENT_COMPLETION_TRANSPORT === 'management-rpc') {
     return readCompletionThroughManagement(request, config.dashboardOrigin,
       'PAGE_STUDIO_MANAGEMENT_COMPLETION' in env ? env.PAGE_STUDIO_MANAGEMENT_COMPLETION : undefined)
+  }
+
+  if (request.method === 'POST' && url.pathname === RESOURCE_AUTHORITY_PATH && config.dashboardOrigin === 'https://app.xeroflow.io') {
+    return authorizeManagedResourceThroughManagement(request,
+      'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+      && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env
+        ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY
+        : undefined)
+  }
+
+  const transferAuthority = transferAuthorityKey(url.pathname)
+  if (request.method === 'POST' && transferAuthority && config.dashboardOrigin === 'https://app.xeroflow.io') {
+    return readManagedTransferAuthority(request, transferAuthority,
+      'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+      && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY : undefined)
   }
 
   if (url.pathname === NATIVE_RUNTIME_RECOVERY_AUTHORITY_PATH) {

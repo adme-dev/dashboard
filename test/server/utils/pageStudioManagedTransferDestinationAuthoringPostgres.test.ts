@@ -112,6 +112,30 @@ describe.runIf(Boolean(databaseUrl))('current owner destination authoring author
     expect(result).toEqual({ ok: true, requestDigest: await digest(wire), value: authorization })
     expect(transactions).toBe(1)
   })
+  it('placed authoring preserves exact transaction SQL and current-plan denial', async () => {
+    const { handleManagedTransferAuthorityFetch } = await import('~~/workers/page-studio-management/src/managedTransferAuthority')
+    const authorization = { action: 'install', request }, wire = { expectedEnvironment: 'production', input: authorization }
+    const env = { ...options.env, PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true', PAGE_STUDIO_PROVISIONER: { createProvisioning: async () => null, readProvisioning: async () => null } }
+    const queries: unknown[][] = []
+    let transactions = 0
+    const run: typeof transaction = work => transaction(async (tx) => {
+      transactions++
+      return work({ query: async (sql: string, params?: unknown[]) => { queries.push([sql, structuredClone(params)]); return tx.query(sql, params) } } as pg.Client)
+    })
+    const direct = () => module().then(m => m.authorizeManagedTransferDestinationAuthoring(authorization, { env, runTransaction: run }))
+    const placed = () => handleManagedTransferAuthorityFetch(new Request('https://page-studio-management.internal/internal/page-studio/managed-transfers/destination-authoring/authorize', { method: 'POST', body: JSON.stringify(wire) }), env, run)
+    const expected = await direct(), expectedQueries = structuredClone(queries)
+    queries.length = 0; transactions = 0
+    const result = await placed()
+    expect(result.status).toBe(200)
+    expect(await result.json()).toEqual(expected)
+    expect(result.headers.get('x-request-digest')).toBe(await digest(wire))
+    expect(queries).toEqual(expectedQueries)
+    expect(transactions).toBe(1)
+    await db.query("UPDATE page_studio_entitlements SET status='cancelled'")
+    await expect(direct()).rejects.toMatchObject({ statusCode: 403 })
+    expect((await placed()).status).toBe(403)
+  })
   it('coordinates completed status/connect using real current-owner SQL with every RPC outside site locks', async () => {
     const { coordinateCompletedManagedTransfer } = await import('~~/workers/page-studio-management/src/completedManagedTransfer')
     let reads = 0, installs = 0

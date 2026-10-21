@@ -37,3 +37,5 @@ export const TransferOwnerBodySchema = z.discriminatedUnion('action', [
 export const TransferOperatorBodySchema = z.object({ action: z.enum(['review', 'reserve']), ...revision }).strict()
 export type TransferWorkflowRequest = z.infer<typeof TransferWorkflowRequestSchema>
 export type TransferPhaseView = z.infer<typeof TransferPhaseViewSchema>
+
+export const TRANSFER_WORKFLOW_URL = 'https://page-studio-management.internal/transfer-workflow'
