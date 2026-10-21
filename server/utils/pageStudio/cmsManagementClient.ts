@@ -1,11 +1,10 @@
 import type { z } from 'zod'
 import type { CmsAdoptionStatusSchema, CmsGraphCommitReceiptSchema, CmsGraphRestoreReceiptSchema, CmsManagementOperation } from '~~/shared/pageStudio/cmsManagementContract'
-import { CmsManagementRequestSchema, cmsManagementResultSchema } from '~~/shared/pageStudio/cmsManagementContract'
+import { CmsManagementRequestSchema, cmsManagementResultSchema, CMS_STATUS_URL, isPlacedCmsStatus } from '~~/shared/pageStudio/cmsManagementContract'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { PageStudioBusinessContentError } from './businessContent'
 import { capturePageStudioRpcMethod } from './privateRpc'
 import type { CmsGraphPrincipal } from './cmsGraphRead'
-import { CMS_STATUS_URL, isPlacedCmsStatus } from '~~/shared/pageStudio/cmsStatusTransport'
 import { placedAuthorityFetch } from './placedAuthorityFetch'
 
 const unavailable = () => new PageStudioBusinessContentError('CMS_MANAGEMENT_UNAVAILABLE', 503, 'Website content service is unavailable. Check the operation status before trying again.')
@@ -14,20 +13,19 @@ export function callCmsManagement(operation: 'adoption', body: unknown, principa
 export function callCmsManagement(operation: 'transition' | 'checkpoint', body: unknown, principal: CmsGraphPrincipal): Promise<z.infer<typeof CmsGraphCommitReceiptSchema>>
 export function callCmsManagement(operation: 'restore', body: unknown, principal: CmsGraphPrincipal): Promise<z.infer<typeof CmsGraphRestoreReceiptSchema>>
 export async function callCmsManagement(operation: CmsManagementOperation, body: unknown, principal: CmsGraphPrincipal) {
-  const env = principal.source === 'native-login' ? principal.request.env : principal.env
+  const source = principal.source
+  const env = source === 'native-login' ? principal.request.env : principal.env
   const binding = env.PAGE_STUDIO_MANAGEMENT as Record<string, unknown> | undefined
-  let request: ReturnType<typeof CmsManagementRequestSchema.parse>
-  try {
-    const serialized = principal.source === 'native-login'
-      ? { source: principal.source, request: { actor: principal.request.actor, siteId: principal.request.siteId,
-          ...(principal.request.collectionAccess === undefined ? {} : { collectionAccess: principal.request.collectionAccess }),
-          login: { ...principal.request.login, issuedAt: principal.request.login.issuedAt.toISOString(), expiresAt: principal.request.login.expiresAt.toISOString() } } }
-      : { source: principal.source, claims: principal.claims, capability: principal.capability }
-    request = CmsManagementRequestSchema.parse(structuredClone({ operation, body, principal: serialized,
-      expectedEnvironment: env.PAGE_STUDIO_RELEASE_ENVIRONMENT, contentEnvironment: env.PAGE_STUDIO_CONTENT_ENVIRONMENT }))
-  } catch { throw unavailable() }
   let response: unknown, requestDigest: string
   try {
+    let serialized
+    if (source === 'native-login') {
+      const { actor, siteId, collectionAccess, login } = principal.request
+      serialized = { source, request: { actor, siteId, ...(collectionAccess === undefined ? {} : { collectionAccess }),
+        login: { ...login, issuedAt: login.issuedAt.toISOString(), expiresAt: login.expiresAt.toISOString() } } }
+    } else serialized = { source, claims: principal.claims, capability: principal.capability }
+    const request = CmsManagementRequestSchema.parse(structuredClone({ operation, body, principal: serialized,
+      expectedEnvironment: env.PAGE_STUDIO_RELEASE_ENVIRONMENT, contentEnvironment: env.PAGE_STUDIO_CONTENT_ENVIRONMENT }))
     if (isPlacedCmsStatus(request)) {
       response = (await placedAuthorityFetch(binding, CMS_STATUS_URL, request, unavailable().message)).value
       requestDigest = await collectionDigest(request)

@@ -306,7 +306,7 @@ describe.runIf(Boolean(databaseUrl))('native CMS setup admission on PostgreSQL',
     const management = env.PAGE_STUDIO_MANAGEMENT as { cmsAuthoring: (input: unknown) => Promise<unknown>, fetch?: (request: Request) => Promise<Response> }
     const adoption = management.cmsAuthoring
     const status = management.fetch!
-    const { CMS_STATUS_URL } = await import('~~/shared/pageStudio/cmsStatusTransport')
+    const { CMS_STATUS_URL } = await import('~~/shared/pageStudio/cmsManagementContract')
     management.cmsAuthoring = (input) => {
       if (measured) privateCalls++
       return adoption(input)

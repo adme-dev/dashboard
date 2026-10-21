@@ -208,7 +208,7 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS adoption on PostgreSQL
     const f = await setupAdoption()
     const { handleCmsManagement } = await import('../../../workers/page-studio-management/src/cmsManagement')
     const { handleCmsStatusFetch } = await import('../../../workers/page-studio-management/src/cmsStatus')
-    const { CMS_STATUS_URL } = await import('../../../shared/pageStudio/cmsStatusTransport')
+    const { CMS_STATUS_URL } = await import('../../../shared/pageStudio/cmsManagementContract')
     const request = { operation: 'adoption', body: { action: 'status' }, expectedEnvironment: 'production', contentEnvironment: 'staging',
       principal: { source: 'customer-session', claims: f.claims, capability: 'workspace:create' } }
     const sql: string[] = []

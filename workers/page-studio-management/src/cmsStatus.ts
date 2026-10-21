@@ -1,5 +1,4 @@
-import { CmsManagementRequestSchema } from '../../../shared/pageStudio/cmsManagementContract'
-import { CMS_STATUS_URL, isPlacedCmsStatus } from '../../../shared/pageStudio/cmsStatusTransport'
+import { CmsManagementRequestSchema, CMS_STATUS_URL, isPlacedCmsStatus } from '../../../shared/pageStudio/cmsManagementContract'
 import { boundedBody } from '../../../shared/pageStudio/boundedPrivateBody'
 import { collectionDigest } from '../../../shared/pageStudio/collectionApi'
 import { customerPreviewRuntimeEnvironment } from '../../../server/utils/pageStudio/customerPreviewRuntime'

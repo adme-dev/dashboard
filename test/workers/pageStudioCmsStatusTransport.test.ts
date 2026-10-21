@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import Management from '../../workers/page-studio-management/src/index'
 import { handleCmsStatusFetch } from '../../workers/page-studio-management/src/cmsStatus'
-import { CMS_STATUS_URL } from '../../shared/pageStudio/cmsStatusTransport'
+import { CMS_STATUS_URL } from '../../shared/pageStudio/cmsManagementContract'
 import { collectionDigest } from '../../shared/pageStudio/collectionApi'
 import { CUSTOMER_EDITOR_CAPABILITIES } from '../../server/utils/pageStudio/customerEditorToken'
 import { nativePreviewBindings } from '../utils/pageStudioNativePreview'

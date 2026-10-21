@@ -28,6 +28,22 @@ describe('private CMS authoring transport', () => {
     expect(request.principal.request).not.toHaveProperty('env')
     expect(service.cmsAuthoring).toHaveBeenCalledOnce()
   })
+  it.each([undefined, false, true])('preserves native login wire fields and optional collectionAccess=%s', async (collectionAccess) => {
+    const { service, principal } = setup()
+    Object.assign(principal.request, { collectionAccess, ignored: 'not-on-wire' })
+    expect(await callCmsManagement('adoption', { action: 'status' }, principal)).toEqual(value)
+    expect(service.cmsAuthoring.mock.calls[0]![0]).toEqual({ operation: 'adoption', body: { action: 'status' },
+      expectedEnvironment: 'production', contentEnvironment: 'staging', principal: { source: 'native-login', request: {
+        actor: principal.request.actor, siteId: id, ...(collectionAccess === undefined ? {} : { collectionAccess }),
+        login: { role: 'agency', userId: id, tokenHash: 'b'.repeat(64), issuedAt: '2026-10-16T00:00:00.000Z', expiresAt: '2026-10-17T00:00:00.000Z' }
+      } } })
+  })
+  it('redacts serialization failures before any private call', async () => {
+    const { service, principal } = setup()
+    principal.request.login.issuedAt = new Date(Number.NaN)
+    await expect(callCmsManagement('adoption', { action: 'status' }, principal)).rejects.toMatchObject({ code: 'CMS_MANAGEMENT_UNAVAILABLE', statusCode: 503 })
+    expect(service.cmsAuthoring).not.toHaveBeenCalled()
+  })
   it('rejects a result for a mutated request without retrying', async () => {
     const { service, principal } = setup()
     service.cmsAuthoring.mockImplementation(async (input: unknown) => {

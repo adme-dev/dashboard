@@ -15,7 +15,7 @@ import { handleManagedTransferCopyExecutionManagement } from './managedTransferC
 import { handleManagedTransferCopyManagement } from './managedTransferCopyManagement'
 import { handleCmsManagement } from './cmsManagement'
 import { handleCmsStatusFetch } from './cmsStatus'
-import { CMS_STATUS_URL } from '../../../shared/pageStudio/cmsStatusTransport'
+import { CMS_STATUS_URL } from '../../../shared/pageStudio/cmsManagementContract'
 import { handleInspection } from './inspection'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import type { ManagementStagingEnv } from '../worker-staging'
