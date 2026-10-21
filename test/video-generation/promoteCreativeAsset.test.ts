@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  assertSafeCreativeAssetUrl,
+  promoteCreativeAssetToVideoSource
+} from '~~/server/utils/video-generation/promoteCreativeAsset'
+
 const mocks = vi.hoisted(() => ({
   find: vi.fn(),
   upload: vi.fn(),
@@ -16,11 +21,6 @@ vi.mock('~~/server/utils/storage', () => ({
 vi.mock('~~/server/utils/video-generation/sourceAssetStore', () => ({
   createSourceAsset: (...args: unknown[]) => mocks.create(...args)
 }))
-
-import {
-  assertSafeCreativeAssetUrl,
-  promoteCreativeAssetToVideoSource
-} from '~~/server/utils/video-generation/promoteCreativeAsset'
 
 const ctx = {
   userId: 'user-1',
@@ -46,6 +46,33 @@ beforeEach(() => {
 })
 
 describe('creative registry promotion', () => {
+  it.each([null, 'foreign'])('rejects an unbound or foreign asset before download under dealer scope: %s', async (clientId) => {
+    const clientScope = '11111111-1111-4111-8111-111111111111'
+    mocks.find.mockResolvedValue({
+      assetId: 'asset', source: 'monday', assetUrl: 'https://files.example.com/asset.png',
+      clientIds: clientId ? [clientId] : []
+    })
+    const fetchImpl = vi.fn()
+    await expect(promoteCreativeAssetToVideoSource({
+      assetId: 'asset', projectId: 'project', tenantId: clientScope,
+      subjectType: 'non_vehicle', expectedSourceSystem: 'monday', expectedSourceAssetRef: 'asset'
+    }, { ...ctx, clientScope }, { fetchImpl })).rejects.toThrow(/scope/)
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(mocks.upload).not.toHaveBeenCalled()
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects a changed proposal tenant before resolving or copying its asset', async () => {
+    const fetchImpl = vi.fn()
+    await expect(promoteCreativeAssetToVideoSource({
+      assetId: 'monday:3163988655', projectId: 'project', tenantId: 'client-1',
+      subjectType: 'non_vehicle', expectedSourceSystem: 'monday', expectedSourceAssetRef: 'monday:3163988655'
+    }, { ...ctx, clientScope: '11111111-1111-4111-8111-111111111111' }, { fetchImpl })).rejects.toThrow(/scope/)
+    expect(mocks.find).not.toHaveBeenCalled()
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(mocks.upload).not.toHaveBeenCalled()
+  })
+
   it('blocks local, private and non-HTTPS asset URLs', () => {
     expect(() => assertSafeCreativeAssetUrl('http://files.example.com/a.png')).toThrow(/HTTPS/)
     expect(() => assertSafeCreativeAssetUrl('https://127.0.0.1/a.png')).toThrow(/private/)

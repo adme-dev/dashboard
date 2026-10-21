@@ -1,11 +1,13 @@
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
+import { resolveCreativeClientScope } from '~~/server/utils/ai/creativeClientScope'
 import {
   filterUsableAvProjects,
   type VideoReadRunner,
   type VideoConfirmAction,
   type VideoGenerationPendingPayload,
   type VideoProjectPendingPayload,
-  type CreativePromotionPendingPayload
+  type CreativePromotionPendingPayload,
+  type ClaimedRow
 } from './videoTools'
 import { listProjects, getProjectWithCurrentTimeline, createProject, listRenderJobs } from '~~/server/utils/audio/projects'
 import { listSelectableVideoGenerationModels, getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
@@ -46,8 +48,10 @@ interface TimelineContextArgs { projectId: string }
  * Exported so the propose deps (Task 5) reuse the exact same gate.
  */
 export async function authorizedProject(projectId: string, ctx: ToolContext) {
+  const scope = resolveCreativeClientScope(ctx)
   const existing = await getProjectWithCurrentTimeline(projectId)
   if (!existing || existing.project.mediaType !== 'av') return null
+  if (scope && existing.project.clientId !== scope) return null
   if (!canUseVideoGenerationProject({ id: ctx.userId, role: ctx.userRole }, existing.project)) return null
   return existing
 }
@@ -64,7 +68,7 @@ function costReconciliation(job: { status: string, actualCostCents: number | nul
 export function buildVideoReadRunner(): VideoReadRunner {
   return {
     list_av_projects: async (_raw, ctx) => {
-      const all = await listProjects()
+      const all = await listProjects(resolveCreativeClientScope(ctx))
       return filterUsableAvProjects(all, { id: ctx.userId, role: ctx.userRole }).map(p => ({
         id: p.id,
         title: p.title,
@@ -75,6 +79,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
     },
 
     list_video_models: async (raw, ctx) => {
+      resolveCreativeClientScope(ctx)
       const a = raw as ModelsArgs
       const models = selectableVideoModelOptions(listSelectableVideoGenerationModels())
       if (!a.projectId) return { models, policy: { enabled: true } }
@@ -88,6 +93,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
     },
 
     list_video_generations: async (raw, ctx) => {
+      const scope = resolveCreativeClientScope(ctx)
       const a = raw as ListArgs
       let jobs
       if (a.projectId) {
@@ -95,10 +101,10 @@ export function buildVideoReadRunner(): VideoReadRunner {
         if (!existing) throw new Error('project not usable')
         jobs = await listVideoGenerationJobsForProject(a.projectId, 50)
       } else {
-        const projects = filterUsableAvProjects(await listProjects(), { id: ctx.userId, role: ctx.userRole })
+        const projects = filterUsableAvProjects(await listProjects(scope), { id: ctx.userId, role: ctx.userRole })
         jobs = await listVideoGenerationJobsForProjects(projects.map(project => project.id), 50)
       }
-      return jobs.map(j => ({
+      return jobs.filter(j => !scope || j.tenantId === scope).map(j => ({
         jobId: j.id,
         projectId: j.projectId,
         status: j.status,
@@ -116,7 +122,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
       const existing = await authorizedProject(a.projectId, ctx)
       if (!existing) throw new Error('project not usable')
       const tenantId = existing.project.clientId ?? 'agency'
-      const assets = await listApprovedVideoGenerationSourceAssets(tenantId)
+      const assets = await listApprovedVideoGenerationSourceAssets(tenantId, resolveCreativeClientScope(ctx) === undefined)
       return assets.map(asset => ({
         assetId: asset.id,
         filename: asset.original_filename || asset.r2_key.split('/').pop() || null,
@@ -132,11 +138,12 @@ export function buildVideoReadRunner(): VideoReadRunner {
     },
 
     get_video_generation_status: async (raw, ctx) => {
+      const scope = resolveCreativeClientScope(ctx)
       const a = raw as StatusArgs
       const job = await getVideoGenerationJob(a.jobId)
       if (!job) return { status: 'not_found' }
       const existing = await authorizedProject(job.projectId, ctx)
-      if (!existing) throw new Error('job not usable')
+      if (!existing || (scope && job.tenantId !== scope)) throw new Error('job not usable')
       return {
         jobId: job.id,
         status: job.status,
@@ -151,6 +158,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
     },
 
     get_timeline_context: async (raw, ctx) => {
+      const scope = resolveCreativeClientScope(ctx)
       const a = raw as TimelineContextArgs
       const existing = await authorizedProject(a.projectId, ctx)
       if (!existing) throw new Error('project not usable')
@@ -197,7 +205,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
           variants: job.variants,
           createdAt: job.createdAt
         })),
-        generationJobs: generationJobs.map(job => ({
+        generationJobs: generationJobs.filter(job => !scope || job.tenantId === scope).map(job => ({
           id: job.id,
           status: job.status,
           mode: job.mode,
@@ -274,7 +282,8 @@ export function buildVideoProposeDeps() {
     resolveProject: authorizedProject,
     getModel: getVideoGenerationModel,
     isTenantModel,
-    loadSources: (ids: string[], tenantId: string | undefined) => loadVideoGenerationSourceAssets(ids, tenantId),
+    loadSources: (ids: string[], tenantId: string | undefined, _mode: string, allowAgencyOwned = true) =>
+      loadVideoGenerationSourceAssets(ids, tenantId, allowAgencyOwned),
     loadPolicy: (tenantId: string) => loadTenantVideoGenerationPolicy(tenantId),
     evaluateCompliance: (input: Parameters<typeof evaluateVideoGenerationCompliance>[0]) => evaluateVideoGenerationCompliance(input),
     estimateCost: (model: Parameters<typeof estimateVideoGenerationCostCents>[0], secs: number) => estimateVideoGenerationCostCents(model, secs),
@@ -290,6 +299,29 @@ export function buildVideoProposeDeps() {
  */
 export function buildVideoConfirmDeps() {
   return {
+    // Recheck current authority before reservation, dispatch markers or asset copies.
+    // Legacy agency sessions retain their existing behavior.
+    authorize: async (row: ClaimedRow, ctx: ToolContext): Promise<boolean> => {
+      const scope = resolveCreativeClientScope(ctx)
+      if (!scope) return true
+      if (row.tool_name === 'video_project_create') {
+        return (row.resolved_payload as VideoProjectPendingPayload).clientId?.toLowerCase() === scope
+      }
+      const payload = row.resolved_payload as VideoGenerationPendingPayload | CreativePromotionPendingPayload
+      if (payload.tenantId !== scope) return false
+      const existing = await authorizedProject(payload.projectId, ctx)
+      if (!existing) return false
+      if (row.tool_name === 'video_source_promote') {
+        const promotion = payload as CreativePromotionPendingPayload
+        const asset = await findCreativeAssetById(promotion.assetId, ctx)
+        return !!asset?.assetUrl && asset.clientIds.includes(scope)
+          && asset.source === promotion.expectedSourceSystem && asset.assetId === promotion.expectedSourceAssetRef
+      }
+      const generation = payload as VideoGenerationPendingPayload
+      if (generation.timelineId !== (existing.timeline?.id ?? existing.project.currentTimelineId ?? null)) return false
+      await loadVideoGenerationSourceAssets(generation.sourceAssetIds, scope, false)
+      return true
+    },
     reserve: async (payload: VideoGenerationPendingPayload, ctx: ToolContext) => {
       // The endpoint injects idempotencyKey (mcp:<proposalId>) before dispatch; defensive narrow.
       const idempotencyKey = payload.idempotencyKey
@@ -318,9 +350,9 @@ export function buildVideoConfirmDeps() {
         await loadTenantVideoGenerationPolicy(payload.tenantId)
       )
     },
-    prepareEnqueue: async (payload: VideoGenerationPendingPayload) => {
+    prepareEnqueue: async (payload: VideoGenerationPendingPayload, ctx: ToolContext) => {
       return payload.sourceAssetIds.length > 0
-        ? await resolveSourceAssetUrls(payload.sourceAssetIds, payload.tenantId)
+        ? await resolveSourceAssetUrls(payload.sourceAssetIds, payload.tenantId, undefined, resolveCreativeClientScope(ctx) === undefined)
         : []
     },
     enqueue: async (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext, prepared?: unknown) => {

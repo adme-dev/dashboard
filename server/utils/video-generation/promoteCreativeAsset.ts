@@ -1,4 +1,5 @@
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
+import { resolveCreativeClientScope } from '~~/server/utils/ai/creativeClientScope'
 import { findCreativeAssetById, type CreativeAssetRecord } from '~~/server/utils/ai/tools/creativeAssets'
 import { createSourceAsset } from '~~/server/utils/video-generation/sourceAssetStore'
 import { generateStorageKey, uploadFile, type R2BucketBinding } from '~~/server/utils/storage'
@@ -78,12 +79,15 @@ export async function promoteCreativeAssetToVideoSource(
     fetchImpl?: typeof fetch
   } = {}
 ): Promise<{ sourceAssetId: string, status: string, sourceSystem: string, sourceAssetRef: string }> {
+  const scope = resolveCreativeClientScope(ctx)
+  if (scope && input.tenantId !== scope) throw new Error('Promotion is outside the connected client scope')
   const asset = await (deps.resolve ?? findCreativeAssetById)(input.assetId, ctx)
   if (!asset || !asset.assetUrl) throw new Error('Creative registry asset is unavailable or has no reachable file URL')
   if (asset.source !== input.expectedSourceSystem || asset.assetId !== input.expectedSourceAssetRef) {
     throw new Error('Creative registry provenance changed after proposal; create a new promotion proposal')
   }
-  if (asset.clientIds.length > 0 && input.tenantId !== 'agency' && !asset.clientIds.includes(input.tenantId)) {
+  if ((scope && !asset.clientIds.includes(scope))
+    || (asset.clientIds.length > 0 && input.tenantId !== 'agency' && !asset.clientIds.includes(input.tenantId))) {
     throw new Error('Creative registry asset is outside the project client scope')
   }
 

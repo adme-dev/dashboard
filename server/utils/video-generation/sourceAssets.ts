@@ -5,11 +5,11 @@ import type { VideoGenerationSourceAsset, VideoGenerationSubjectType } from '~~/
 // table the upload + from-asset endpoints write to) so compliance sees real approval
 // status + subject type. (Previously queried video_assets and hardcoded approved/vehicle,
 // which made every i2v request fail compliance as "missing_approved_asset".)
-export async function loadVideoGenerationSourceAssets(ids: string[], tenantId?: string): Promise<VideoGenerationSourceAsset[]> {
+export async function loadVideoGenerationSourceAssets(ids: string[], tenantId?: string, allowAgencyOwned = true): Promise<VideoGenerationSourceAsset[]> {
   if (ids.length === 0) return []
   const rows = await loadSourceAssetsByIds(ids)
   if (tenantId) {
-    const ordered = assertResolvableSources(rows, ids, tenantId)
+    const ordered = assertResolvableSources(rows, ids, tenantId, allowAgencyOwned)
     return ordered.map((row) => ({
       id: row.id,
       approved: row.status === 'approved',
