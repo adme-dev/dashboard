@@ -1,3 +1,5 @@
+import { handleCustomerEditorAuthorityFetch } from '../../../workers/page-studio-management/src/customerEditorAuthority'
+import { readPlacedCustomerEditorCheckpoint } from '../../../server/utils/pageStudio/customerEditorAuthorityClient'
 import { comparePlacedCustomerEditorAuthority, placedCustomerEditorAuthority } from '../../helpers/comparePlacedCustomerEditorAuthority'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -102,6 +104,14 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
   })
   const config = { enabled: true, dashboardOrigin: 'https://app.xeroflow.io', editorOrigin: 'https://studio.example.test' }
   const issuer = config.dashboardOrigin
+  const placedCheckpoint = (claims: import('~~/server/utils/pageStudio/customerEditorToken').CustomerEditorClaims, run: import('~~/shared/pageStudio/controlTypes').RunPageStudioTransaction = runTransaction) => readPlacedCustomerEditorCheckpoint(claims, {
+    fetch: (request: Request) => handleCustomerEditorAuthorityFetch(request, {
+      PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED: 'true',
+      PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true', PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: claims.editorOrigin,
+      PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER: { createProvisioning() {}, readProvisioning() {} },
+      PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER: { readManagedCmsTarget() {} }, PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS: { get() {} }
+    }, run)
+  })
   const ticket = async () => {
     const api = await import('~~/server/utils/pageStudio/customerEditorHandoff')
     return api.issueCustomerEditorHandoff(token, config, { runTransaction })
@@ -212,6 +222,36 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     const audit = (await db.query('SELECT metadata FROM page_studio_audit_events WHERE action = \'workspace.checkpointed\' ORDER BY occurred_at LIMIT 1')).rows[0].metadata
     expect(audit.customerEditor).toMatchObject({ sessionId: claims.nonce, workspaceId: fixture.workspaceId, userId: ids.owner })
   })
+  it('preserves native latest metadata SQL and fresh revocation fences through placed fetch', async () => {
+    const { claims } = await session()
+    const { readCustomerEditorCheckpoint } = await import('~~/server/utils/pageStudio/customerEditorSessions')
+    let queries: string[] = []
+    const run = <T>(work: (db: import('~~/shared/pageStudio/controlTypes').PageStudioQueryClient) => Promise<T>) => runTransaction(client => work({
+      query: async <T>(sql: string, params?: unknown[]) => { queries.push(sql); return { rows: (await client.query(sql, params)).rows as T[] } }
+    }))
+    const placed = () => placedCheckpoint(claims, run)
+    expect(await placed()).toBeNull()
+    const saved = checkpoint(claims)
+    await commit(claims, { checkpoint: saved, expectedCheckpointId: null })
+    queries = []
+    const direct = await readCustomerEditorCheckpoint(claims, { runTransaction: run })
+    const directQueries = queries
+    queries = []
+    expect(await placed()).toEqual(direct)
+    expect(queries).toEqual(directQueries)
+    expect(direct).toEqual({ checkpointId: saved.checkpointId, digest: saved.digest, objectKey: saved.objectKey })
+    // Revocation between the metadata SELECT and final fence must never return bytes.
+    const revokedDuringRead = <T>(work: (db: import('~~/shared/pageStudio/controlTypes').PageStudioQueryClient) => Promise<T>) => runTransaction(client => work({
+      query: async <T>(sql: string, params?: unknown[]) => {
+        const result = await client.query(sql, params)
+        if (sql.includes('SELECT checkpoint.id AS checkpoint_id')) await client.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp() WHERE nonce=$1', [claims.nonce])
+        return { rows: result.rows as T[] }
+      }
+    }))
+    await expect(placedCheckpoint(claims, revokedDuringRead)).rejects.toMatchObject({ statusCode: 403 })
+    await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp() WHERE nonce=$1', [claims.nonce])
+    await expect(placed()).rejects.toMatchObject({ statusCode: 403 })
+  })
   it('rejects foreign checkpoint scope/author/object key and managed CMS bypass', async () => {
     const { claims } = await session()
     const draft = checkpoint(claims)
@@ -260,7 +300,7 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     expect((await db.query('SELECT consumed_at FROM page_studio_customer_editor_handoffs')).rows[0].consumed_at).toBeNull()
     expect((await db.query('SELECT COUNT(*) FROM page_studio_customer_editor_sessions')).rows[0].count).toBe('0')
   })
-  it.each(['expiry', 'logout'].flatMap(reason => ['save', 'placed authorize'].map(mode => ({ reason, mode }))))('rejects $reason while $mode waits for authority locks', async ({ reason, mode }) => {
+  it.each(['expiry', 'logout'].flatMap(reason => ['save', 'placed authorize', 'placed checkpoint'].map(mode => ({ reason, mode }))))('rejects $reason while $mode waits for authority locks', async ({ reason, mode }) => {
     const { claims } = await session()
     const holder = new pg.Client({ connectionString: databaseUrl })
     const reader = new pg.Client({ connectionString: databaseUrl })
@@ -280,6 +320,7 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
       const { commitCustomerEditorCheckpoint } = await import('~~/server/utils/pageStudio/customerEditorSessions')
       outcome = Promise.allSettled([mode === 'save'
         ? commitCustomerEditorCheckpoint({ checkpoint: checkpoint(claims), expectedCheckpointId: null }, claims, { runTransaction: callback => callback(reader) })
+        : mode === 'placed checkpoint' ? placedCheckpoint(claims, callback => callback(reader))
         : placedCustomerEditorAuthority(claims, 'workspace:preview', fixture.workspaceId, config.editorOrigin, callback => callback(reader)).then((response) => { if (response.status !== 200) throw { statusCode: response.status } })])
       await vi.waitFor(async () => {
         expect((await db.query('SELECT $2::int = ANY(pg_blocking_pids($1)) AS blocked', [readerPid, holderPid])).rows[0].blocked).toBe(true)

@@ -1,4 +1,4 @@
-import { authorizePlacedCustomerEditor } from './customerEditorAuthorityClient'
+import { authorizePlacedCustomerEditor, readPlacedCustomerEditorCheckpoint } from './customerEditorAuthorityClient'
 import { assertMethod, createError, getHeader, readBody, setHeader, setResponseStatus, type H3Event } from 'h3'
 import { customerDestinationGuard, readCustomerActivation } from './customerActivation'
 import { z } from 'zod'
@@ -79,7 +79,9 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
     }
     if (operation === 'latest-checkpoint') {
       await body(event, Empty)
-      return { checkpoint: await readCustomerEditorCheckpoint(claims, { env: contentEnv, ...(assertWorkspace ? { assertWorkspace } : {}) }) }
+      return { checkpoint: setting(event, 'PAGE_STUDIO_RELEASE_ENVIRONMENT') === 'production' && claims.environment === 'staging'
+        ? await readPlacedCustomerEditorCheckpoint(claims, setting(event, 'PAGE_STUDIO_MANAGEMENT'))
+        : await readCustomerEditorCheckpoint(claims, { env: contentEnv, ...(assertWorkspace ? { assertWorkspace } : {}) }) }
     }
     if (operation === 'cms-prerequisites') {
       const { coordinateCustomerSchemaUpgrade } = await import('./customerSchemaUpgrade')

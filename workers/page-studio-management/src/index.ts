@@ -1,5 +1,5 @@
 import { handleCustomerEditorAuthorityFetch } from './customerEditorAuthority'
-import { CUSTOMER_EDITOR_AUTHORITY_URL } from '../../../shared/pageStudio/customerEditorAuthorityTransport'
+import { CUSTOMER_EDITOR_AUTHORITY_URL, CUSTOMER_EDITOR_CHECKPOINT_URL } from '../../../shared/pageStudio/customerEditorAuthorityTransport'
 import { handleNativeSchemaCoordinatorFetch } from './nativeSchemaCoordinator'
 import { NATIVE_SCHEMA_COORDINATOR_URL } from '../../../shared/pageStudio/nativeSchemaCoordinator'
 import { handleNativeSchemaAuthorityFetch } from './nativeSchemaAuthority'
@@ -46,7 +46,7 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch(request: Request) {
     if (request.url === CMS_STATUS_URL) return handleCmsStatusFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
-    if (request.url === CUSTOMER_EDITOR_AUTHORITY_URL) return handleCustomerEditorAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
+    if (request.url === CUSTOMER_EDITOR_AUTHORITY_URL || request.url === CUSTOMER_EDITOR_CHECKPOINT_URL) return handleCustomerEditorAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === NATIVE_SCHEMA_COORDINATOR_URL) return handleNativeSchemaCoordinatorFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))

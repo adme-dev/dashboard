@@ -1,6 +1,6 @@
 import type { PageStudioControlScope, PageStudioControlQueryClient, PageStudioCheckpointInput, PageStudioCheckpointCommitInput } from '~~/shared/pageStudio/controlTypes'
 import { editorCheckpointStagingOrigin, type CheckpointStagingOrigin } from './checkpointStagingOrigin'
-import { queryOneFresh, transaction } from '~~/server/utils/db'
+import { transaction } from '~~/server/utils/db'
 import { assertPageStudioSessionAuthority, PageStudioSessionAuthorityError } from './sessionAuthority'
 import { authorizePageStudioSession, type PageStudioSessionClaims } from './sessions'
 
@@ -409,28 +409,7 @@ async function persistPageStudioCheckpoint(
   })
 }
 
-export async function getLatestPageStudioCheckpoint(
-  scope: PageStudioControlScope,
-  dependencies: { queryOne?: typeof queryOneFresh } = {}
-): Promise<{ checkpointId: string, digest: string, objectKey: string } | null> {
-  // A saved head must be visible on immediate launch/reload; Hyperdrive may
-  // otherwise cache the previous checkpoint (including an empty result).
-  const readOne = dependencies.queryOne ?? queryOneFresh
-  const row = await readOne<{ checkpoint_id: string, digest: string, object_key: string }>(
-    `SELECT checkpoint.id AS checkpoint_id, checkpoint.digest, checkpoint.object_key
-     FROM page_studio_sites site
-     JOIN page_studio_checkpoints checkpoint
-       ON checkpoint.tenant_id = site.tenant_id
-      AND checkpoint.client_id = site.client_id
-      AND checkpoint.site_id = site.id
-      AND checkpoint.id = site.current_checkpoint_id
-     WHERE site.tenant_id = $1 AND site.client_id = $2 AND site.id = $3`,
-    [scope.tenantId, scope.clientId, scope.siteId]
-  )
-  return row
-    ? { checkpointId: row.checkpoint_id, digest: row.digest, objectKey: row.object_key }
-    : null
-}
+export { getLatestPageStudioCheckpoint } from './checkpointRead'
 
 function versionMatches(row: VersionRow, input: PageStudioVersionRegistrationInput): boolean {
   return row.checkpoint_id === input.checkpointId

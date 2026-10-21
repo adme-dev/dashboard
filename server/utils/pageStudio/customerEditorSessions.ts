@@ -1,3 +1,4 @@
+import { readNativeCustomerEditorCheckpoint } from './customerEditorCheckpointRead'
 import { createError, type H3Event } from 'h3'
 import { transaction } from '~~/server/utils/db'
 import { redeemCustomerEditorHandoff } from './customerEditorHandoff'
@@ -114,10 +115,5 @@ export async function readCustomerEditorCheckpoint(input: unknown, dependencies:
       checkpointId: snapshot.checkpoint.id, digest: snapshot.checkpoint.digest, objectKey: snapshot.checkpoint.object_key
     }))
   }
-  return (dependencies.runTransaction ?? transaction)(async (db) => {
-    await assertCustomerEditorSessionAuthority(claims, 'workspace:reconnect', db)
-    const checkpoint = await getLatestPageStudioCheckpoint(claims, { queryOne: async <T>(sql: string, params?: unknown[]) => (await db.query<T>(sql, params)).rows[0] ?? null })
-    await assertCustomerEditorSessionAuthority(claims, 'workspace:reconnect', db)
-    return checkpoint
-  })
+  return readNativeCustomerEditorCheckpoint(claims, dependencies.runTransaction ?? transaction)
 }
