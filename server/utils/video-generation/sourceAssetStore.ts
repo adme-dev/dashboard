@@ -70,14 +70,14 @@ export async function loadSourceAssetsByIds(ids: string[]): Promise<SourceAssetR
 }
 
 /** Approved sources available to a tenant. Agency-owned rows are shared deliberately. */
-export async function listApprovedVideoGenerationSourceAssets(tenantId: string): Promise<SourceAssetRow[]> {
+export async function listApprovedVideoGenerationSourceAssets(tenantId: string, allowAgencyOwned = true): Promise<SourceAssetRow[]> {
   return queryRows<SourceAssetRow>(
     `SELECT id, client_id, r2_key, status, content_type, subject_type,
             original_filename, width, height, created_at,
             source_system, source_asset_ref, source_metadata
        FROM video_gen_source_assets
       WHERE status = 'approved'
-        AND (client_id = $1::uuid OR client_id IS NULL)
+        AND (client_id = $1::uuid ${allowAgencyOwned ? 'OR client_id IS NULL' : ''})
       ORDER BY created_at DESC
       LIMIT 200`,
     [tenantId === 'agency' ? null : tenantId]
@@ -86,13 +86,13 @@ export async function listApprovedVideoGenerationSourceAssets(tenantId: string):
 
 /** Validate every requested id resolves to an approved, tenant-or-agency-owned source.
  *  Returns the rows in the same order as `ids`. Throws on any violation. */
-export function assertResolvableSources(rows: SourceAssetRow[], ids: string[], tenantId: string): SourceAssetRow[] {
+export function assertResolvableSources(rows: SourceAssetRow[], ids: string[], tenantId: string, allowAgencyOwned = true): SourceAssetRow[] {
   const byId = new Map(rows.map((r) => [r.id, r]))
   return ids.map((id) => {
     const r = byId.get(id)
     if (!r) throw new Error(`source asset ${id} not found`)
     if (r.status !== 'approved') throw new Error(`source asset ${id} is not approved`)
-    if (r.client_id !== null && r.client_id !== tenantId) throw new Error(`source asset ${id} is not owned by this tenant`)
+    if (r.client_id !== tenantId && !(allowAgencyOwned && r.client_id === null)) throw new Error(`source asset ${id} is not owned by this tenant`)
     return r
   })
 }

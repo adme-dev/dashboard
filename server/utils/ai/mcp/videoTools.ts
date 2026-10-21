@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import { resolveCreativeClientScope } from '~~/server/utils/ai/creativeClientScope'
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 import {
@@ -331,7 +332,7 @@ export interface VideoProposeDeps {
   resolveProject: (projectId: string, ctx: ToolContext) => Promise<ResolvedAvProject | null>
   getModel: (modelId: string) => VideoGenerationModel | null | undefined
   isTenantModel: (model: VideoGenerationModel) => boolean
-  loadSources: (ids: string[], tenantId: string | undefined, mode: string) => Promise<VideoGenerationSourceAsset[]>
+  loadSources: (ids: string[], tenantId: string | undefined, mode: string, allowAgencyOwned?: boolean) => Promise<VideoGenerationSourceAsset[]>
   loadPolicy: (tenantId: string) => Promise<VideoGenerationTenantPolicy>
   evaluateCompliance: (input: EvaluateVideoGenerationComplianceInput) => VideoGenerationComplianceResult
   estimateCost: (model: VideoGenerationModel, durationSeconds: number) => number
@@ -375,6 +376,13 @@ export async function executeVideoPropose(
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
+  let scope: string | undefined
+  try {
+    scope = resolveCreativeClientScope(ctx)
+  } catch {
+    return { ok: false, error: 'Invalid creative client scope.', code: 'forbidden' }
+  }
+
   if (action === 'video_timeline_edit') {
     const parsed = TimelineEditParams.safeParse(args)
     if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
@@ -405,8 +413,11 @@ export async function executeVideoPropose(
   if (action === 'video_project_create') {
     const parsed = VideoProjectParams.safeParse(args)
     if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+    if (scope && parsed.data.clientId !== undefined && parsed.data.clientId?.toLowerCase() !== scope) {
+      return { ok: false, error: 'Project is outside the connected client scope.', code: 'forbidden' }
+    }
     try {
-      const proposalId = await deps.persist(ctx, 'video_project_create', { title: parsed.data.title, clientId: parsed.data.clientId ?? null })
+      const proposalId = await deps.persist(ctx, 'video_project_create', { title: parsed.data.title, clientId: scope ?? parsed.data.clientId ?? null })
       return { ok: true, data: { proposalId, kind: 'video_project_create', title: parsed.data.title } }
     } catch {
       return { ok: false, error: 'Propose failed.', code: 'handler_error' }
@@ -425,7 +436,8 @@ export async function executeVideoPropose(
         return { ok: false, error: 'Creative registry asset is unavailable or has no reachable file URL.', code: 'source_asset_unavailable' }
       }
       const tenantId = existing.project.clientId ?? 'agency'
-      if (asset.clientIds.length > 0 && tenantId !== 'agency' && !asset.clientIds.includes(tenantId)) {
+      if ((scope && !asset.clientIds.includes(scope))
+        || (asset.clientIds.length > 0 && tenantId !== 'agency' && !asset.clientIds.includes(tenantId))) {
         return { ok: false, error: 'Creative registry asset is outside the project client scope.', code: 'forbidden' }
       }
       const payload: CreativePromotionPendingPayload = {
@@ -494,7 +506,7 @@ export async function executeVideoPropose(
     const tenantId = existing.project.clientId ?? 'agency'
     let sources: VideoGenerationSourceAsset[] = []
     try {
-      sources = await deps.loadSources(p.sourceAssetIds, p.mode === 'image-to-video' ? tenantId : undefined, p.mode)
+      sources = await deps.loadSources(p.sourceAssetIds, scope || p.mode === 'image-to-video' ? tenantId : undefined, p.mode, scope === undefined)
     } catch {
       return {
         ok: false,
@@ -559,6 +571,8 @@ export type VideoConfirmOutcome
 
 export interface VideoConfirmDeps {
   genEnabled: boolean
+  /** Required for client-bound contexts; must run before any mutation or dispatch marker. */
+  authorize?: (row: ClaimedRow, ctx: ToolContext) => Promise<boolean>
   reserve: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<{ ok: boolean, reason?: string, remainingCents?: number, job?: { id: string }, reused?: boolean }>
   prepareEnqueue?: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<unknown>
   enqueue: (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext, prepared?: unknown) => Promise<void>
@@ -582,6 +596,10 @@ export async function dispatchVideoConfirm(
   }
   if (!deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'forbidden' }
   try {
+    const scope = resolveCreativeClientScope(ctx)
+    if (scope && (!deps.authorize || !await deps.authorize(row, ctx))) {
+      return { ok: false, error: 'Video action is outside the connected client scope.', code: 'forbidden' }
+    }
     if (row.tool_name === 'video_source_promote') {
       if (!deps.promoteCreativeAsset) return { ok: false, error: 'Creative asset promotion is unavailable.', code: 'handler_error' }
       await deps.execution?.markDispatched()

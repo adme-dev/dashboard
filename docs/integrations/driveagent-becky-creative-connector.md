@@ -63,3 +63,18 @@ At creation of this plan: source discovery completed; client-bound connector, de
 - Existing draft rendering, agency list limits, one-use MCP request claims, generation confirmations, dispatch markers and stable logical idempotency remain intact. No removed features.
 
 - Independent review approved the scoped banner increment. New helper and test pass ESLint; the two existing source files retain the same 36 pre-existing lint findings as main (rule/count comparison recorded locally). Full typecheck and hosted acceptance are recorded separately.
+
+
+### Video client-boundary increment
+
+Provider-side preparation now also covers video project discovery, model/project reads, generation history/status, source discovery, project-create proposals and confirmation. A supplied client scope narrows owner/admin access as well as creator access. Project discovery and approved source discovery filter by client before their existing limits. Job status also checks the job tenant so reassignment does not expose a previous tenant's output.
+
+New project proposals bind an omitted client to the server scope; explicit foreign or null-client requests are rejected. Scoped confirmation requires an authorization adapter and rechecks current project permission/client, frozen tenant and timeline, and approved source ownership before reservation or dispatch. Creative promotion verifies current asset client/provenance before dispatch and repeats client checks before downloading. Scoped requests exclude the shared agency source library; unscoped agency calls retain existing sharing, permission, budget, confirmation and idempotency behavior.
+
+Regression evidence: the video suite initially reproduced 37 failures with 8 passes; source ownership reproduced 4 failures with 3 passes, and promotion reproduced 2 failures with 3 passes. The first combined verification passed 118 tests across eight suites using synthetic PGlite data and mocked provider/storage effects. Broader verification passed 294 tests across 38 suites, including video-generation engines, registered handlers, owner confirmation and banner client scope. Independent review independently passed 118 tests and approved this bounded increment with no blockers. Modified-file lint adds no diagnostics (18 remaining compared with 19 on the parent); both new test files are clean. Full typecheck is recorded separately.
+
+The preceding banner increment's full typecheck has been compared with unchanged main: both report the same 962 diagnostics after normalizing line/column positions, with no new diagnostics. This is a baseline comparison, not a clean repository-wide typecheck.
+
+Neither increment connects or activates a dealer. Image-generation result ownership, OAuth grant/request binding, stored proposal/replay binding, DriveAgent connection settings, Becky tool wiring and hosted acceptance remain required. No live render, provider spending, ad publication, billing, database migration or production deployment is part of this increment. Public feature claims therefore remain unchanged.
+
+Optional follow-up from review: generation-job tenant filtering currently follows the project-scoped SQL limit. Historical jobs from a reassigned client are excluded but can consume result slots; move this tenant filter before the limit when extending job pagination. This is a completeness limitation, not authorization to expose historical foreign results.
