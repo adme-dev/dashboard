@@ -7,7 +7,8 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vites
 import { signCustomerEditorToken } from '~~/server/utils/pageStudio/customerEditorToken'
 import { signPageStudioSessionToken } from '~~/server/utils/pageStudio/sessions'
 
-const mocks = vi.hoisted(() => ({ exchange: vi.fn(), authorize: vi.fn(), commit: vi.fn(), read: vi.fn(), adopt: vi.fn(), upgrade: vi.fn(), ticketEnvironment: vi.fn() }))
+const mocks = vi.hoisted(() => ({ nativeRead: vi.fn(), exchange: vi.fn(), authorize: vi.fn(), commit: vi.fn(), read: vi.fn(), adopt: vi.fn(), upgrade: vi.fn(), ticketEnvironment: vi.fn() }))
+vi.mock('~~/server/utils/pageStudio/customerEditorCheckpointRead', () => ({ readNativeCustomerEditorCheckpoint: mocks.nativeRead }))
 vi.mock('~~/server/utils/pageStudio/customerEditorSessionAuthority', () => ({ assertCustomerEditorSessionAuthority: mocks.authorize }))
 vi.mock('~~/server/utils/pageStudio/customerPreviewRouting', () => ({ readCustomerEditorTicketEnvironment: mocks.ticketEnvironment }))
 vi.mock('~~/server/utils/pageStudio/customerEditorSessions', () => ({ exchangeCustomerEditorSession: mocks.exchange,
@@ -49,6 +50,7 @@ beforeEach(() => {
   mocks.exchange.mockResolvedValue({ token: signed, sessionId: claims.nonce })
   mocks.authorize.mockResolvedValue({ claims })
   mocks.read.mockResolvedValue(null)
+  mocks.nativeRead.mockResolvedValue(null)
   mocks.commit.mockResolvedValue({ acknowledged: true })
 })
 // Exercise production through the real bounded receiver; authority remains the
@@ -62,6 +64,27 @@ const call = (path: string, body: unknown, headers: Record<string, string> = {})
     'x-page-studio-customer-session': signed, ...headers }, body: JSON.stringify(body)
 })
 describe('private native customer session endpoints', () => {
+  it('places only production native latest metadata and never falls back when its binding is missing', async () => {
+    productionDeployment()
+    Object.assign(config, { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
+      PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN: editorOrigin,
+      PAGE_STUDIO_CUSTOMER_PREVIEW_PROVISIONER: { createProvisioning() {}, readProvisioning() {} },
+      PAGE_STUDIO_CUSTOMER_PREVIEW_CONTENT_ROUTER: { readManagedCmsTarget() {} }, PAGE_STUDIO_CUSTOMER_PREVIEW_CHECKPOINTS: { get() {} } })
+    const response = await call('latest-checkpoint', {})
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ checkpoint: null })
+    expect(privateFetch).toHaveBeenCalledOnce()
+    expect(privateFetch.mock.calls[0]![0].url).toBe('https://page-studio-management.internal/customer-editor-checkpoint')
+    expect(mocks.nativeRead).toHaveBeenCalledWith(claims, expect.any(Function))
+    expect(mocks.read).not.toHaveBeenCalled()
+    mocks.nativeRead.mockClear()
+    mocks.read.mockClear()
+    delete config.PAGE_STUDIO_MANAGEMENT
+    expect((await call('latest-checkpoint', {})).status).toBe(503)
+    expect(mocks.read).not.toHaveBeenCalled()
+    expect(mocks.nativeRead).not.toHaveBeenCalled()
+  })
+
   it('requires a valid bundle for private sessions and retains machine authentication', async () => {
     delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED
     const activation = { previewEnabled: false, previewApprovals: [], cmsSetupEnabled: false, browserEnabled: false, editorEnabled: true }
