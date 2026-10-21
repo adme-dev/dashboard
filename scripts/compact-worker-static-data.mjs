@@ -96,6 +96,22 @@ export function createStaticDecoder(data) {
 }
 `
 
+function sharedDecoderSpecifier(workerDirectory, file) {
+  const decoderFile = path.join(workerDirectory, 'chunks', 'static-data-decoder.mjs')
+  const relative = path.relative(path.dirname(file), decoderFile).split(path.sep).join('/')
+  return relative.startsWith('.') ? relative : `./${relative}`
+}
+
+function staticModuleCandidate(workerDirectory, file, source, compactSource) {
+  const compacted = compactSource(source)
+  const shared = compactSource(source, { decoderSpecifier: sharedDecoderSpecifier(workerDirectory, file) })
+  // A module may only save bytes with a shared decoder. Keep that candidate
+  // until the directory-wide comparison includes the helper's complete cost.
+  return compacted.code !== source || shared.code !== source
+    ? { file, source, compacted, shared }
+    : null
+}
+
 export async function compactSsrMarkupDirectory(workerDirectory) {
   const directory = path.join(workerDirectory, 'chunks', 'build')
   let entries
@@ -110,10 +126,10 @@ export async function compactSsrMarkupDirectory(workerDirectory) {
     if (!entry.isFile() || !entry.name.endsWith('.mjs')) continue
     const file = path.join(directory, entry.name)
     const source = await readFile(file, 'utf8')
-    const compacted = compactSsrMarkupSource(source)
-    if (compacted.code !== source) changes.push({ file, source, compacted })
+    const candidate = staticModuleCandidate(workerDirectory, file, source, compactSsrMarkupSource)
+    if (candidate) changes.push(candidate)
   }
-  return writeCompactedStaticModules(workerDirectory, changes, compactSsrMarkupSource)
+  return writeCompactedStaticModules(workerDirectory, changes)
 }
 
 /** Nitro 2 emits this virtual module as one JSON default export. Retain all
@@ -175,18 +191,17 @@ export async function compactRouteSqlDirectory(workerDirectory) {
       if (entry.isDirectory()) await visit(file)
       if (!entry.isFile() || !entry.name.endsWith('.mjs')) continue
       const source = await readFile(file, 'utf8')
-      const compacted = compactSqlSource(source)
-      if (compacted.code === source) continue
-      changes.push({ file, source, compacted })
+      const candidate = staticModuleCandidate(workerDirectory, file, source, compactSqlSource)
+      if (candidate) changes.push(candidate)
     }
   }
   await visit(path.join(workerDirectory, 'chunks', 'routes'))
-  return writeCompactedStaticModules(workerDirectory, changes, compactSqlSource)
+  return writeCompactedStaticModules(workerDirectory, changes)
 }
 
 // SSR and SQL share the same decoder while retaining separate per-module caches.
 // Stage and validate every candidate before writing either directory.
-async function writeCompactedStaticModules(workerDirectory, changes, compactSource) {
+async function writeCompactedStaticModules(workerDirectory, changes) {
   const result = { changedFiles: 0, literals: 0, savedBytes: 0 }
   if (!changes.length) return result
 
@@ -200,10 +215,7 @@ async function writeCompactedStaticModules(workerDirectory, changes, compactSour
   } catch (error) {
     if (error.code !== 'ENOENT') throw error
   }
-  const shared = changes.map(({ file, source }) => {
-    const relative = path.relative(path.dirname(file), decoderFile).split(path.sep).join('/')
-    return compactSource(source, { decoderSpecifier: relative.startsWith('.') ? relative : `./${relative}` })
-  })
+  const shared = changes.map(change => change.shared)
   const decoderBytes = decoderExists ? 0 : Buffer.byteLength(SHARED_STATIC_DECODER)
   const inlineBytes = changes.reduce((sum, { compacted }) => sum + Buffer.byteLength(compacted.code), 0)
   const sharedBytes = shared.reduce((sum, compacted) => sum + Buffer.byteLength(compacted.code), decoderBytes)
@@ -213,6 +225,7 @@ async function writeCompactedStaticModules(workerDirectory, changes, compactSour
   if (useShared && !decoderExists) await writeFile(decoderFile, SHARED_STATIC_DECODER, { flag: 'wx' })
   for (const [index, { file, source, compacted }] of changes.entries()) {
     const selected = useShared ? shared[index] : compacted
+    if (selected.code === source) continue
     await writeFile(file, selected.code)
     result.changedFiles++
     result.literals += selected.literals
