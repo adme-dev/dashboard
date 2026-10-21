@@ -35,11 +35,13 @@ const views: Record<CustomerDashboard['state'], { title: string, description: st
 }
 const view = computed(() => overview.value?.canOpenStudio
   ? views['editor-ready']
-  : overview.value ? views[overview.value.state] : null)
+  : overview.value?.state === 'transfer-pending' && overview.value.managedTransfer === null
+    ? { title: 'Prepare your website transfer', description: 'Your website content is saved. Follow the transfer steps below to move it to your publishing plan. Studio becomes available after the transfer is connected.', icon: 'i-lucide-copy-check' }
+    : overview.value ? views[overview.value.state] : null)
 const steps = computed(() => [
   { label: 'Business details saved', done: true },
   { label: 'Website prepared', done: overview.value?.canOpenStudio === true || (overview.value?.stage ?? 0) >= 3 },
-  { label: 'Content added', done: overview.value?.canOpenStudio === true || (overview.value?.stage ?? 0) >= 4 },
+  { label: 'Website content saved', done: overview.value?.canOpenStudio === true || (overview.value?.stage ?? 0) >= 4 },
   { label: 'Studio available', done: overview.value?.canOpenStudio === true }
 ])
 async function load() {

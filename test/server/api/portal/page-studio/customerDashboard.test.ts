@@ -2,9 +2,9 @@ import { createServer, type Server } from 'node:http'
 import { createApp, toNodeListener, defineEventHandler } from 'h3'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ read: vi.fn(), create: vi.fn(), recover: vi.fn(), limit: vi.fn(), transfer: vi.fn() }))
+const mocks = vi.hoisted(() => ({ read: vi.fn(), create: vi.fn(), recover: vi.fn(), limit: vi.fn(), transfer: vi.fn(), saved: vi.fn() }))
 vi.mock('~~/server/utils/pageStudio/customerDashboard', async original => ({ ...await original<object>(), readCustomerDashboard: mocks.read, createCustomerDashboardPreview: mocks.create, recoverCustomerDashboardPreview: mocks.recover }))
-vi.mock('~~/server/utils/pageStudio/customerManagedTransfer', () => ({ readCustomerManagedTransfer: mocks.transfer }))
+vi.mock('~~/server/utils/pageStudio/customerManagedTransfer', () => ({ readCustomerManagedTransfer: mocks.transfer, readCustomerSavedPublishingCheckpoint: mocks.saved }))
 vi.mock('~~/server/utils/rateLimit', () => ({ checkAndConsume: mocks.limit }))
 
 describe('customer dashboard HTTP boundary', () => {
@@ -32,6 +32,7 @@ describe('customer dashboard HTTP boundary', () => {
       PAGE_STUDIO_PROVISIONER: { readProvisioning: vi.fn(), createProvisioning: vi.fn() } }
     mocks.limit.mockResolvedValue({ allowed: true })
     mocks.transfer.mockResolvedValue(null)
+    mocks.saved.mockResolvedValue(false)
     mocks.read.mockResolvedValue({ state: 'approval-pending', canCreate: false })
     mocks.create.mockResolvedValue({ state: 'preparing', canCreate: false })
   })
@@ -120,6 +121,7 @@ describe('customer dashboard HTTP boundary', () => {
     expect(result).toMatchObject({ siteId, managedTransfer, state: 'connection-pending', stage: 5,
       canCreate: false, canRetry: false, canPrepareCms: false, canOpenStudio: false })
     expect(result).not.toHaveProperty('recovery')
+    expect(mocks.saved).not.toHaveBeenCalled()
     expect(mocks.create).not.toHaveBeenCalled()
     expect(mocks.recover).not.toHaveBeenCalled()
   })
@@ -132,6 +134,42 @@ describe('customer dashboard HTTP boundary', () => {
     const result = await response.json()
     expect(result).toMatchObject({ state: 'transfer-pending', canCreate: false, canRetry: false, canPrepareCms: false, canOpenStudio: false })
     expect(result).not.toHaveProperty('recovery')
+  })
+  it('projects verified saved content before request, review or consent without inventing execution progress', async () => {
+    const siteId = 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020'
+    mocks.read.mockResolvedValue({ siteId, state: 'needs-attention', stage: 0, canCreate: false, canRetry: false })
+    mocks.saved.mockResolvedValue(true)
+    const response = await call()
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ siteId, state: 'transfer-pending', stage: 4, managedTransfer: null,
+      canOpenStudio: false, canPrepareCms: false, canCreate: false, canRetry: false })
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.recover).not.toHaveBeenCalled()
+  })
+  it('preserves verified saved steps during actual pending transfer', async () => {
+    const siteId = 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020'
+    mocks.read.mockResolvedValue({ siteId, state: 'needs-attention', stage: 0, canCreate: false, canRetry: false })
+    mocks.saved.mockResolvedValue(true)
+    const managedTransfer = { siteId, completed: false, stage: 'preparing-resources', canRetryConnection: false, canRetryRetention: false }
+    mocks.transfer.mockResolvedValue(managedTransfer)
+    expect(await (await call()).json()).toMatchObject({ state: 'transfer-pending', stage: 4, managedTransfer, canOpenStudio: false })
+  })
+  it('does not infer saved setup or grant capabilities without the saved-plan proof', async () => {
+    mocks.read.mockResolvedValue({ siteId: 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020', state: 'needs-attention', stage: 0, canCreate: false, canRetry: false })
+    mocks.saved.mockResolvedValue(false)
+    expect(await (await call()).json()).toMatchObject({ state: 'needs-attention', stage: 0, canOpenStudio: false, canCreate: false, canRetry: false })
+  })
+  it('does not add publishing checkpoint reads to normal preview setup', async () => {
+    mocks.read.mockResolvedValue({ siteId: 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020', state: 'verification-pending', stage: 3, canCreate: false, canRetry: false })
+    expect((await call()).status).toBe(200)
+    expect(mocks.saved).not.toHaveBeenCalled()
+  })
+  it('withholds the overview after saved-checkpoint authority rejects the original login', async () => {
+    mocks.read.mockResolvedValue({ siteId: 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020', state: 'needs-attention', stage: 0 })
+    mocks.saved.mockRejectedValue(Object.assign(new Error('private revoked login'), { statusCode: 401 }))
+    const response = await call()
+    expect(response.status).toBe(401)
+    expect(await response.text()).not.toContain('private revoked login')
   })
   it('withholds dashboard state when the current transfer owner changes', async () => {
     mocks.read.mockResolvedValue({ siteId: 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020', state: 'recovery-required', canRetry: true })
