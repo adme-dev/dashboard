@@ -5,6 +5,7 @@
 // fires in prod and can't reach the AI/R2 bindings anyway.
 import type { H3Event } from 'h3'
 import { createHash } from 'crypto'
+import { resolveCreativeClientScope } from '~~/server/utils/ai/creativeClientScope'
 
 export interface MusicJobPayload {
   assetId: string
@@ -35,12 +36,15 @@ export function getMusicQueue(event: H3Event): QueueProducer | null {
  * same key, so a double-submit collides on the audio_assets.idempotency_key
  * UNIQUE constraint instead of generating (and billing) twice. */
 export function musicIdempotencyKey(parts: {
+  clientScope?: string
   createdBy: string
   prompt: string
   isInstrumental: boolean
   lyrics: string | null
 }): string {
+  const scope = resolveCreativeClientScope({ clientScope: parts.clientScope })
   const h = createHash('sha256')
+  if (scope) h.update(JSON.stringify(['client-scoped-music-v1', scope]) + '\u0000')
   h.update([
     parts.createdBy,
     parts.prompt,

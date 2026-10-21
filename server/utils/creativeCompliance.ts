@@ -1,3 +1,4 @@
+import { resolveCreativeClientId, resolveCreativeClientScope } from '~~/server/utils/ai/creativeClientScope'
 import { queryOne } from '~~/server/utils/db'
 import { getFileMetadata, getPresignedDownloadUrl } from '~~/server/utils/storage'
 import { assertResolvableSources, loadSourceAssetsByIds } from '~~/server/utils/video-generation/sourceAssetStore'
@@ -161,6 +162,8 @@ export async function requestCreativeComplianceVerdict(
 }
 
 export interface RunCreativeComplianceInput {
+  /** Trusted server context; never derived from model arguments. */
+  clientScope?: string
   assetId: string
   clientId?: string
   createdBy: string
@@ -171,6 +174,8 @@ export interface RunCreativeComplianceInput {
 }
 
 export async function runCreativeComplianceCheck(input: RunCreativeComplianceInput) {
+  const clientScope = resolveCreativeClientScope(input)
+  const clientId = resolveCreativeClientId(input, input.clientId)
   const bannerTarget = await queryOne<{ id: string, r2_key: string, client_id: string | null, file_size: number, mime_type: string }>(
     `SELECT id, r2_key, client_id, file_size, mime_type FROM banner_assets WHERE id = $1`, [input.assetId],
   )
@@ -181,18 +186,19 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
        FROM video_gen_source_assets WHERE id = $1`, [input.assetId],
   )
   if (!bannerTarget && !sourceTarget) throw new Error('Creative asset not found in Banner Studio or approved video sources')
-  if (sourceTarget?.status !== 'approved') throw new Error('Video source asset is not approved')
+  if (sourceTarget && sourceTarget.status !== 'approved') throw new Error('Video source asset is not approved')
   const target = bannerTarget
     ? { ...bannerTarget, contentType: bannerTarget.mime_type, size: bannerTarget.file_size }
     : { ...sourceTarget!, contentType: sourceTarget!.content_type, size: 0 }
-  if (target.client_id && target.client_id !== (input.clientId ?? null)) throw new Error('Creative asset is not owned by this client')
+  if ((clientScope && target.client_id !== clientScope)
+    || (target.client_id && target.client_id !== (clientId ?? null))) throw new Error('Creative asset is not owned by this client')
   const targetMetadata = bannerTarget
     ? { size: target.size, contentType: target.contentType }
     : await getFileMetadata(target.r2_key)
   if (!targetMetadata) throw new Error('Creative asset file is unavailable')
   assertCreativeComplianceImageMetadata(targetMetadata)
   if (input.referenceSourceAssetIds.length > 4) throw new Error('At most four approved references are supported')
-  const tenantId = input.clientId ?? 'agency'
+  const tenantId = clientId ?? 'agency'
   const effectiveReferenceIds = sourceTarget && input.subjectType === 'vehicle' && input.referenceSourceAssetIds.length === 0
     ? [sourceTarget.id]
     : input.referenceSourceAssetIds
@@ -200,6 +206,7 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
     await loadSourceAssetsByIds(effectiveReferenceIds),
     effectiveReferenceIds,
     tenantId,
+    !clientScope
   )
   const referenceMetadata = await Promise.all(referenceRows.map(row => getFileMetadata(row.r2_key)))
   for (let index = 0; index < referenceRows.length; index++) {
@@ -239,13 +246,13 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
        reference_source_asset_ids, expected_claims, verdict, passed, confidence
      ) VALUES ($1,$2,$3,$4,$5,true,$6,$7,$8,$9,$10,$11)
      RETURNING id, created_at`,
-    [input.clientId ?? null, bannerTarget?.id ?? null, sourceTarget?.id ?? null, input.createdBy, CREATIVE_COMPLIANCE_MODEL, input.subjectType,
+    [clientId ?? null, bannerTarget?.id ?? null, sourceTarget?.id ?? null, input.createdBy, CREATIVE_COMPLIANCE_MODEL, input.subjectType,
       JSON.stringify(effectiveReferenceIds), JSON.stringify(input.expectedClaims ?? {}), JSON.stringify(verdict), passed, verdict.confidence],
   )
   if (!row) throw new Error('Creative compliance evidence was not persisted')
   await recordAiInvocation({
     featureKey: 'creative_compliance_preflight', provider: 'groq', modelId: CREATIVE_COMPLIANCE_MODEL,
-    gatewayUsed: true, userId: input.createdBy, clientId: input.clientId ?? null, requestId: row.id,
+    gatewayUsed: true, userId: input.createdBy, clientId: clientId ?? null, requestId: row.id,
     status: 'success', latencyMs: Date.now() - startedAt,
     metadata: { assetId: input.assetId, subjectType: input.subjectType, passed, referenceCount: references.length },
   })
