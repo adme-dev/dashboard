@@ -51,7 +51,7 @@ describe('owner MCP confirm execution', () => {
       ok: true,
       data: { resultRef: 'task-1', summary: 'Created task' }
     })
-    expect(mocks.queryOne).toHaveBeenCalledWith(expect.stringMatching(/status='proposed'.*source='mcp'/s), [proposalId, userId])
+    expect(mocks.queryOne).toHaveBeenCalledWith(expect.stringMatching(/status='proposed'.*source='mcp'/s), [proposalId, userId, null])
     expect(mocks.executorExecute).toHaveBeenCalledWith(
       { title: 'Ship' },
       expect.objectContaining({ userId, source: 'mcp' })

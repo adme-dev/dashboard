@@ -6,6 +6,7 @@
 //
 // Auth: x-mcp-secret == MCP_INTERNAL_SECRET. HARD-gated by MCP_SERVER_ENABLED.
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
+import { claimMcpProposal, revertMcpProposal } from '~~/server/utils/ai/mcp/proposalStore'
 import { queryOne, execute } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
 import { executeReadOnlyTool } from '~~/server/utils/ai/mcp/project'
@@ -43,7 +44,7 @@ import {
   isGoogleAdsSearchPlanningTool
 } from '~~/server/utils/ai/mcp/googleAdsSearchTools'
 import {
-  resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal,
+  resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL,
   isFinancialAction, MCP_FINANCIAL_ACTIONS, MCP_FINANCIAL_RICH_CONFIRM
 } from '~~/server/utils/ai/mcp/writeTools'
 import { getExecutor } from '~~/server/utils/ai/executors'
@@ -219,23 +220,12 @@ export default defineEventHandler(async (event) => {
       writeEnabled,
       financialEnabled,
       getExecutor,
-      claim: async (proposalId, uid) => queryOne<ClaimedProposal>(
-        `UPDATE ai_pending_actions SET status='executed', confirmed_by=$2, executed_at=now()
-          WHERE id = $1 AND user_id = $2 AND status='proposed' AND source='mcp' AND expires_at > now()
-          RETURNING tool_name, resolved_payload`,
-        [proposalId, uid]
-      ).catch(() => null),
-      replay: replayExecutedMcpProposal,
-      persistResult: persistMcpProposalResult,
+      claim: (proposalId, uid) => claimMcpProposal(proposalId, uid, ctx.clientScope),
+      replay: (proposalId, uid) => replayExecutedMcpProposal(proposalId, uid, ctx.clientScope),
+      persistResult: (proposalId, uid, data) => persistMcpProposalResult(proposalId, uid, data, ctx.clientScope),
       // Restore a just-claimed row to 'proposed' when a PRE-execution gate (ack/permission) rejects, so a
       // money-mover proposal isn't burned and the caller can retry with ack:true. Scoped to our own claim.
-      revertClaim: async (proposalId, uid) => {
-        await execute(
-          `UPDATE ai_pending_actions SET status='proposed', confirmed_by=NULL, executed_at=NULL
-          WHERE id = $1 AND user_id = $2 AND status='executed' AND source='mcp'`,
-          [proposalId, uid]
-        ).catch(() => {})
-      },
+      revertClaim: (proposalId, uid) => revertMcpProposal(proposalId, uid, ctx.clientScope),
       videoDispatch: async (row, vctx) => {
         const pid = String((args as { proposalId?: unknown }).proposalId ?? '')
         const payload = row.tool_name === 'video_generation'

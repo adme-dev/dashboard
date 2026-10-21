@@ -1,4 +1,4 @@
-import { execute, queryOne } from '~~/server/utils/db'
+import { claimMcpProposal, revertMcpProposal } from '~~/server/utils/ai/mcp/proposalStore'
 import { getExecutor } from '~~/server/utils/ai/executors'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
@@ -15,8 +15,7 @@ import {
   type VideoGenerationPendingPayload
 } from './videoTools'
 import {
-  executeWriteConfirm,
-  type ClaimedProposal
+  executeWriteConfirm
 } from './writeTools'
 import { persistMcpProposalResult, replayExecutedMcpProposal } from './proposalReplay'
 import { dispatchGoogleAdsConfirm } from './googleAdsTools'
@@ -42,21 +41,10 @@ export async function executeOwnerMcpConfirm(
     financialEnabled: true,
     execution,
     getExecutor,
-    claim: async (proposalId, uid) => queryOne<ClaimedProposal>(
-      `UPDATE ai_pending_actions SET status='executed', confirmed_by=$2, executed_at=now()
-        WHERE id = $1 AND user_id = $2 AND status='proposed' AND source='mcp' AND expires_at > now()
-        RETURNING tool_name, resolved_payload`,
-      [proposalId, uid]
-    ).catch(() => null),
-    replay: replayExecutedMcpProposal,
-    persistResult: persistMcpProposalResult,
-    revertClaim: async (proposalId, uid) => {
-      await execute(
-        `UPDATE ai_pending_actions SET status='proposed', confirmed_by=NULL, executed_at=NULL
-          WHERE id = $1 AND user_id = $2 AND status='executed' AND source='mcp'`,
-        [proposalId, uid]
-      ).catch(() => {})
-    },
+    claim: (proposalId, uid) => claimMcpProposal(proposalId, uid, ctx.clientScope),
+    replay: (proposalId, uid) => replayExecutedMcpProposal(proposalId, uid, ctx.clientScope),
+    persistResult: (proposalId, uid, data) => persistMcpProposalResult(proposalId, uid, data, ctx.clientScope),
+    revertClaim: (proposalId, uid) => revertMcpProposal(proposalId, uid, ctx.clientScope),
     videoDispatch: async (row, videoCtx) => {
       const payload = row.tool_name === 'video_generation'
         ? {
