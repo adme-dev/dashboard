@@ -204,6 +204,48 @@ describe.runIf(Boolean(databaseUrl))('native customer CMS adoption on PostgreSQL
       adoptionId: current.adoptionId, expectedProgressDigest: current.progressDigest })
     return { ...f, router, principal, call, advance }
   }
+  it('keeps real status SQL, locks and final revocation identical through placed fetch', async () => {
+    const f = await setupAdoption()
+    const { handleCmsManagement } = await import('../../../workers/page-studio-management/src/cmsManagement')
+    const { handleCmsStatusFetch } = await import('../../../workers/page-studio-management/src/cmsStatus')
+    const { CMS_STATUS_URL } = await import('../../../shared/pageStudio/cmsStatusTransport')
+    const request = { operation: 'adoption', body: { action: 'status' }, expectedEnvironment: 'production', contentEnvironment: 'staging',
+      principal: { source: 'customer-session', claims: f.claims, capability: 'workspace:create' } }
+    const sql: string[] = []
+    let revoke = false
+    const run: Parameters<typeof handleCmsManagement>[2] = work => runTransaction(async (client) => work({ query: async (text, values) => {
+      sql.push(text)
+      const result = await client.query(text, values)
+      if (revoke && text.includes('SELECT * FROM page_studio_cms_scopes')) {
+        revoke = false
+        await client.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp() WHERE nonce=$1', [f.claims.nonce])
+      }
+      return result
+    } }))
+    const invoke = () => handleCmsStatusFetch(new Request(CMS_STATUS_URL, { method: 'POST', body: JSON.stringify(request) }), f.env, run)
+    for (const phase of ['idle', 'managed']) {
+      if (phase === 'managed') await f.advance(await f.advance(await f.advance(await f.call({ action: 'start' }))))
+      sql.length = 0
+      const direct = await handleCmsManagement(request, f.env, run), expectedSql = [...sql]
+      expect(direct).toMatchObject({ ok: true, value: { phase } })
+      sql.length = 0
+      f.get.mockClear()
+      for (const mock of Object.values(f.router)) mock.mockClear()
+      const response = await invoke()
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual(direct)
+      expect(sql).toEqual(expectedSql)
+      expect(sql).toContain("SET LOCAL lock_timeout='3s'")
+      expect(sql.some(text => text.includes('FOR UPDATE OF site, entitlement'))).toBe(true)
+      expect(f.get).not.toHaveBeenCalled()
+      for (const mock of Object.values(f.router)) expect(mock).not.toHaveBeenCalled()
+    }
+    revoke = true
+    const response = await invoke()
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'CMS_AUTHORITY_DENIED', statusCode: 403 } })
+    expect((await db.query('SELECT revoked_at FROM page_studio_customer_editor_sessions WHERE nonce=$1', [f.claims.nonce])).rows[0].revoked_at).toBeNull()
+  })
   const launchFixture = async () => {
     const f = await setupAdoption()
     await f.advance(await f.advance(await f.advance(await f.call({ action: 'start' }))))

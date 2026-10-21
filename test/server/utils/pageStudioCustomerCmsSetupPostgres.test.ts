@@ -305,13 +305,15 @@ describe.runIf(Boolean(databaseUrl))('native CMS setup admission on PostgreSQL',
     attachCmsManagement(env, run('management'))
     const management = env.PAGE_STUDIO_MANAGEMENT as { cmsAuthoring: (input: unknown) => Promise<unknown>, fetch?: (request: Request) => Promise<Response> }
     const adoption = management.cmsAuthoring
+    const status = management.fetch!
+    const { CMS_STATUS_URL } = await import('~~/shared/pageStudio/cmsStatusTransport')
     management.cmsAuthoring = (input) => {
       if (measured) privateCalls++
       return adoption(input)
     }
     management.fetch = (request) => {
       if (measured) privateCalls++
-      return handleNativeSchemaCoordinatorFetch(request, env, run('management'))
+      return request.url === CMS_STATUS_URL ? status(request) : handleNativeSchemaCoordinatorFetch(request, env, run('management'))
     }
     const contracts = Object.values(await import('~~/server/utils/pageStudio/schemaUpgradeContract'))
     // Composed, not hosted: exact Studio public-entry ledger from form-drafts-status-budget.test.ts.

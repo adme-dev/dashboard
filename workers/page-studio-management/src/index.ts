@@ -14,6 +14,8 @@ import { handleManagedTransferDestinationAuthoringManagement } from './managedTr
 import { handleManagedTransferCopyExecutionManagement } from './managedTransferCopyExecutionManagement'
 import { handleManagedTransferCopyManagement } from './managedTransferCopyManagement'
 import { handleCmsManagement } from './cmsManagement'
+import { handleCmsStatusFetch } from './cmsStatus'
+import { CMS_STATUS_URL } from '../../../shared/pageStudio/cmsStatusTransport'
 import { handleInspection } from './inspection'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import type { ManagementStagingEnv } from '../worker-staging'
@@ -42,6 +44,8 @@ const Request = z.discriminatedUnion('operation', [
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch(request: Request) {
+    if (request.url === CMS_STATUS_URL) return handleCmsStatusFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === CUSTOMER_EDITOR_AUTHORITY_URL) return handleCustomerEditorAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === NATIVE_SCHEMA_COORDINATOR_URL) return handleNativeSchemaCoordinatorFetch(request, this.env as unknown as Record<string, unknown>,
