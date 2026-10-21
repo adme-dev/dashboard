@@ -1,3 +1,4 @@
+import { comparePlacedCustomerEditorAuthority } from '../../helpers/comparePlacedCustomerEditorAuthority'
 import { destinationActivation } from '../../helpers/pageStudioDestinationActivation'
 import { customerDestinationGuard } from '~~/server/utils/pageStudio/customerActivation'
 import { randomUUID } from 'node:crypto'
@@ -36,7 +37,7 @@ describe.runIf(Boolean(databaseUrl))('native production editor lifecycle', () =>
     const { grantCustomerPublishingPlan } = await import('~~/server/utils/pageStudio/customerPlanGrants')
     return grantCustomerPublishingPlan({ actorId: actor, body: { ...body, ...changes } }, { runTransaction })
   }
-  const config = { enabled: true, environment: 'production', dashboardOrigin: 'https://customers.example.test', editorOrigin: 'https://editor.example.test' }
+  const config = { enabled: true, environment: 'production', dashboardOrigin: 'https://app.xeroflow.io', editorOrigin: 'https://editor.example.test' }
   const ticket = async (overrides = {}) => {
     const { issueCustomerEditorHandoff } = await import('~~/server/utils/pageStudio/customerEditorHandoff')
     return issueCustomerEditorHandoff(sessionToken, { ...config, ...overrides }, { runTransaction })
@@ -53,8 +54,7 @@ describe.runIf(Boolean(databaseUrl))('native production editor lifecycle', () =>
   }
   const session = async () => exchange((await ticket()).token)
   const authorize = async (claims: unknown, capability = 'workspace:status') => {
-    const { assertCustomerEditorSessionAuthority } = await import('~~/server/utils/pageStudio/customerEditorSessions')
-    return runTransaction(tx => assertCustomerEditorSessionAuthority(claims, capability, tx))
+    return comparePlacedCustomerEditorAuthority(claims, capability, fixture.workspaceId, config.editorOrigin, runTransaction)
   }
   beforeAll(async () => {
     db = new pg.Client({ connectionString: databaseUrl })

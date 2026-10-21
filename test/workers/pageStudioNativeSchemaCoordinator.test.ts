@@ -132,3 +132,11 @@ it('binds a strict receiver rejection before any coordinator dispatch', async ()
   expect(coordinate).not.toHaveBeenCalled()
   expect(fetchPrivate).toHaveBeenCalledOnce()
 })
+
+it.each([false, true])('binds recover results to detached recovery id (mismatch=%s)', async (mismatch) => {
+  coordinate.mockImplementation(async value => ({ kind: value.kind, status: 'running', requestId: '20000000-0000-4000-8000-000000000001', recoveryId: mismatch ? '20000000-0000-4000-8000-000000000002' : value.requestId, canConfigure: true }))
+  const result = callNativeSchemaCoordinator({ ...input, action: 'recover', expectedRecoveryId: null }, claims, clientEnv())
+  if (mismatch) await expect(result).rejects.toMatchObject({ statusCode: 503 })
+  else expect(await result).toMatchObject({ recoveryId: id })
+  expect(fetchPrivate).toHaveBeenCalledOnce()
+})

@@ -1,3 +1,4 @@
+import { comparePlacedCustomerEditorAuthority } from '../../helpers/comparePlacedCustomerEditorAuthority'
 import { attachCmsManagement } from '../../helpers/pageStudioCmsManagement'
 import { nativePreviewBindings } from '../../utils/pageStudioNativePreview'
 import { handleNativeSchemaCoordinatorFetch } from '../../../workers/page-studio-management/src/nativeSchemaCoordinator'
@@ -103,7 +104,7 @@ describe.runIf(Boolean(databaseUrl))('native CMS setup admission on PostgreSQL',
     fixture = { workspaceId: wid, siteId: result.site.id }
     await db.query('INSERT INTO page_studio_customer_setup_drafts (identity_id, workspace_id, draft) VALUES ($1, $2, $3::jsonb)', [ids.owner, wid, JSON.stringify({ businessName: 'Customer Flowers', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] })])
   })
-  const config = { enabled: true, dashboardOrigin: 'https://customers.example.test', editorOrigin: 'https://studio.example.test' }
+  const config = { enabled: true, dashboardOrigin: 'https://app.xeroflow.io', editorOrigin: 'https://studio.example.test' }
   const issuer = config.dashboardOrigin
   const ticket = async () => {
     const api = await import('~~/server/utils/pageStudio/customerEditorHandoff')
@@ -121,8 +122,7 @@ describe.runIf(Boolean(databaseUrl))('native CMS setup admission on PostgreSQL',
     return { ...result, claims: await verifyCustomerEditorToken(result.token, publicPem, issuer) }
   }
   const authorize = async (claims: unknown, capability = 'workspace:checkpoint') => {
-    const { assertCustomerEditorSessionAuthority } = await import('~~/server/utils/pageStudio/customerEditorSessions')
-    return runTransaction(db => assertCustomerEditorSessionAuthority(claims, capability, db))
+    return comparePlacedCustomerEditorAuthority(claims, capability, fixture.workspaceId, config.editorOrigin, runTransaction)
   }
   const checkpoint = (claims: { siteId: string, clientId: string, tenantId: string, userId: string }, id = `draft_${randomUUID()}`) => ({
     checkpointId: id, createdAt: new Date().toISOString(), digest: 'a'.repeat(64), etag: 'saved-etag', userId: claims.userId,

@@ -1,3 +1,4 @@
+import { handleCustomerEditorAuthorityFetch } from '../../../workers/page-studio-management/src/customerEditorAuthority'
 import { destinationActivation } from '../../helpers/pageStudioDestinationActivation'
 import { createServer, type Server } from 'node:http'
 import { createApp, createRouter, defineEventHandler, toNodeListener } from 'h3'
@@ -7,13 +8,14 @@ import { signCustomerEditorToken } from '~~/server/utils/pageStudio/customerEdit
 import { signPageStudioSessionToken } from '~~/server/utils/pageStudio/sessions'
 
 const mocks = vi.hoisted(() => ({ exchange: vi.fn(), authorize: vi.fn(), commit: vi.fn(), read: vi.fn(), adopt: vi.fn(), upgrade: vi.fn(), ticketEnvironment: vi.fn() }))
+vi.mock('~~/server/utils/pageStudio/customerEditorSessionAuthority', () => ({ assertCustomerEditorSessionAuthority: mocks.authorize }))
 vi.mock('~~/server/utils/pageStudio/customerPreviewRouting', () => ({ readCustomerEditorTicketEnvironment: mocks.ticketEnvironment }))
 vi.mock('~~/server/utils/pageStudio/customerEditorSessions', () => ({ exchangeCustomerEditorSession: mocks.exchange,
   assertCustomerEditorSessionAuthority: mocks.authorize, commitCustomerEditorCheckpoint: mocks.commit, readCustomerEditorCheckpoint: mocks.read }))
 vi.mock('~~/server/utils/pageStudio/customerSchemaUpgrade', () => ({ coordinateCustomerSchemaUpgrade: mocks.upgrade }))
 vi.mock('~~/server/utils/pageStudio/cmsAdoptionCoordinator', () => ({ coordinateCmsAdoption: mocks.adopt }))
 vi.mock('~~/server/utils/db', () => ({ transaction: async (callback: (db: unknown) => unknown) => callback({}) }))
-const issuer = 'https://customers.example.test', editorOrigin = 'https://studio.example.test'
+const issuer = 'https://app.xeroflow.io', editorOrigin = 'https://studio.example.test'
 const now = Math.floor(Date.now() / 1000)
 const claims = { nonce: crypto.randomUUID(), userId: crypto.randomUUID(), workspaceId: crypto.randomUUID(), siteId: crypto.randomUUID(),
   clientId: crypto.randomUUID(), tenantId: 'studio-customer-test', role: 'customer' as const, environment: 'staging' as const,
@@ -40,7 +42,7 @@ afterAll(async () => {
 })
 beforeEach(() => {
   vi.resetAllMocks()
-  config = { PAGE_STUDIO_CONTROL_SECRET: 'private-machine-secret', PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED: 'true',
+  config = { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTROL_SECRET: 'private-machine-secret', PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED: 'true',
     PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'staging', PAGE_STUDIO_CUSTOMER_ORIGIN: issuer, PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN: editorOrigin,
     PAGE_STUDIO_SESSION_ISSUER: issuer, PAGE_STUDIO_SESSION_PRIVATE_KEY: privatePem, PAGE_STUDIO_SESSION_PUBLIC_KEY: publicPem }
   mocks.ticketEnvironment.mockResolvedValue('staging')
@@ -49,6 +51,12 @@ beforeEach(() => {
   mocks.read.mockResolvedValue(null)
   mocks.commit.mockResolvedValue({ acknowledged: true })
 })
+// Exercise production through the real bounded receiver; authority remains the
+// existing mock so expiry/revocation during its await is still observable.
+const privateFetch = vi.fn((request: Request) => handleCustomerEditorAuthorityFetch(request, config, async work => work({} as never)))
+function productionDeployment() {
+  Object.assign(config, { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_MANAGEMENT: { fetch: privateFetch } })
+}
 const call = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(`${base}/${path}`, {
   method: 'POST', headers: { 'content-type': 'application/json', 'authorization': 'Bearer private-machine-secret',
     'x-page-studio-customer-session': signed, ...headers }, body: JSON.stringify(body)
@@ -70,12 +78,14 @@ describe('private native customer session endpoints', () => {
     expect((await call('authorize', { capability: 'workspace:checkpoint' })).status).toBe(403)
   })
   it('uses signed workspace scope for bundled production admission and passes the guard into exchange/read/save', async () => {
+    productionDeployment()
     delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED
     delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN
     Object.assign(config, destinationActivation(claims.workspaceId), { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' })
     const token = await signCustomerEditorToken({ ...claims, environment: 'production' }, privatePem, issuer)
     const headers = { 'x-page-studio-customer-session': token }
     expect((await call('authorize', { capability: 'workspace:checkpoint' }, headers)).status).toBe(200)
+    expect(privateFetch).toHaveBeenCalledOnce()
     expect((await call('latest-checkpoint', {}, headers)).status).toBe(200)
     expect(mocks.read.mock.calls.at(-1)![1].assertWorkspace).toBeTypeOf('function')
     expect((await call('checkpoint', {}, headers)).status).toBe(200)
@@ -91,6 +101,7 @@ describe('private native customer session endpoints', () => {
     expect((await call('checkpoint', { workspaceId: claims.workspaceId }, headers)).status).toBe(403)
   })
   it('rechecks the bundle after native authorization before returning a private receipt', async () => {
+    productionDeployment()
     delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ENABLED
     delete config.PAGE_STUDIO_CUSTOMER_EDITOR_ORIGIN
     Object.assign(config, destinationActivation(claims.workspaceId), { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' })
@@ -100,8 +111,11 @@ describe('private native customer session endpoints', () => {
       return { claims }
     })
     expect((await call('authorize', { capability: 'workspace:checkpoint' }, { 'x-page-studio-customer-session': token })).status).toBe(403)
+    expect(privateFetch).toHaveBeenCalledOnce()
+    expect(mocks.authorize).toHaveBeenCalledOnce()
   })
   it('binds production routes to opt-in and rejects staging sessions or production setup', async () => {
+    productionDeployment()
     const token = await signCustomerEditorToken({ ...claims, environment: 'production' }, privatePem, issuer)
     const headers = { 'x-page-studio-customer-session': token }
     expect((await call('authorize', { capability: 'workspace:checkpoint' }, headers)).status).toBe(403)
@@ -110,6 +124,7 @@ describe('private native customer session endpoints', () => {
     config.PAGE_STUDIO_CUSTOMER_PRODUCTION_EDITOR_ENABLED = 'true'
     expect((await call('authorize', { capability: 'workspace:checkpoint' })).status).toBe(403)
     expect((await call('authorize', { capability: 'workspace:checkpoint' }, headers)).status).toBe(200)
+    expect(privateFetch).toHaveBeenCalledOnce()
     expect((await call('latest-checkpoint', {}, headers)).status).toBe(200)
     expect(mocks.read).toHaveBeenCalledWith(expect.objectContaining({ environment: 'production' }), {
       env: expect.objectContaining({ PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' })
@@ -181,7 +196,7 @@ describe('private native customer session endpoints', () => {
   it('dispatches checkpoint metadata and preserves write conflicts', async () => {
     const input = { checkpoint: { checkpointId: 'draft_example' }, expectedCheckpointId: null }
     expect((await call('checkpoint', input)).status).toBe(200)
-    expect(mocks.commit).toHaveBeenCalledWith(input, claims, { env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: undefined,
+    expect(mocks.commit).toHaveBeenCalledWith(input, claims, { env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ENVIRONMENT: undefined,
       PAGE_STUDIO_CHECKPOINTS: undefined, PAGE_STUDIO_CONTENT_ROUTER: undefined, PAGE_STUDIO_CMS_OBJECT_TRANSPORT: undefined } })
     mocks.commit.mockRejectedValueOnce({ statusCode: 409 })
     expect((await call('checkpoint', input)).status).toBe(409)
@@ -191,7 +206,7 @@ describe('private native customer session endpoints', () => {
     config.PAGE_STUDIO_CHECKPOINTS = { get: vi.fn() }
     config.PAGE_STUDIO_CONTENT_ROUTER = { readManagedCmsTarget: vi.fn() }
     await call('checkpoint', { env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'production' } })
-    expect(mocks.commit.mock.calls[0]![2]).toEqual({ env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging',
+    expect(mocks.commit.mock.calls[0]![2]).toEqual({ env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging',
       PAGE_STUDIO_CHECKPOINTS: config.PAGE_STUDIO_CHECKPOINTS, PAGE_STUDIO_CONTENT_ROUTER: config.PAGE_STUDIO_CONTENT_ROUTER,
       PAGE_STUDIO_CMS_OBJECT_TRANSPORT: undefined } })
   })
@@ -201,7 +216,7 @@ describe('private native customer session endpoints', () => {
     expect((await call('cms-adoption', { action: 'status' })).status).toBe(200)
     expect(mocks.adopt).toHaveBeenCalledWith({ action: 'status' }, {
       source: 'customer-session', claims, capability: 'workspace:create',
-      env: { PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CHECKPOINTS: undefined,
+      env: { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging', PAGE_STUDIO_CONTENT_ENVIRONMENT: 'staging', PAGE_STUDIO_CHECKPOINTS: undefined,
         PAGE_STUDIO_CONTENT_ROUTER: undefined, PAGE_STUDIO_CMS_OBJECT_TRANSPORT: undefined }
     })
     mocks.adopt.mockRejectedValueOnce({ statusCode: 403 })

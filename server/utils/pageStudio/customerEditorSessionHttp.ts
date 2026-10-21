@@ -1,3 +1,4 @@
+import { authorizePlacedCustomerEditor } from './customerEditorAuthorityClient'
 import { assertMethod, createError, getHeader, readBody, setHeader, setResponseStatus, type H3Event } from 'h3'
 import { customerDestinationGuard, readCustomerActivation } from './customerActivation'
 import { z } from 'zod'
@@ -66,10 +67,14 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
     )
     if (operation === 'authorize') {
       const input = await body(event, Authorize)
-      await transaction(async (db) => {
+      const release = setting(event, 'PAGE_STUDIO_RELEASE_ENVIRONMENT')
+      if (release === 'production') await authorizePlacedCustomerEditor(claims, input.capability, setting(event, 'PAGE_STUDIO_MANAGEMENT'))
+      else if (release === 'staging') await transaction(async (db) => {
         await assertCustomerEditorSessionAuthority(claims, input.capability, db)
         assertWorkspace?.(claims.workspaceId)
       })
+      else throw createError({ statusCode: 503 })
+      assertWorkspace?.(claims.workspaceId)
       return { authorized: true, sessionId: claims.nonce, capability: input.capability }
     }
     if (operation === 'latest-checkpoint') {

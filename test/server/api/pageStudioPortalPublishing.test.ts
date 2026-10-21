@@ -67,6 +67,22 @@ describe('Customer static publication HTTP boundary', () => {
     expect(mocks.build).not.toHaveBeenCalled()
     expect(mocks.tenant).not.toHaveBeenCalled()
   })
+  it.each(['activate', 'rollback'] as const)('authenticates before parsing %s and retains the exact bounded reader contract', async (action) => {
+    const body = action === 'activate' ? base : { environment: 'production', hostname: base.hostname, expectedActiveReleaseId: 'release-current', targetReleaseId: 'release-old' }
+    mocks.body.mockResolvedValue(body)
+    await invoke(action)
+    expect(mocks.auth.mock.invocationCallOrder[0]).toBeLessThan(mocks.body.mock.invocationCallOrder[0]!)
+    expect(mocks.body).toHaveBeenCalledWith(expect.anything(), 2048, [
+      'Website publication requires JSON', 'Website publication request is too large',
+      'Website publication request is required', 'Invalid website publication body', 'Invalid website publication JSON'
+    ])
+    vi.clearAllMocks()
+    mocks.body.mockResolvedValue({ ...body, scope })
+    await expect(invoke(action)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mocks.tenant).not.toHaveBeenCalled()
+    expect(mocks.build).not.toHaveBeenCalled()
+    expect(mocks.target).not.toHaveBeenCalled()
+  })
   it('derives account/scope and checks access before remote verification and again for activation', async () => {
     await expect(invoke()).resolves.toEqual({ release: { releaseId: 'release-new' } })
     expect(mocks.tenant).toHaveBeenCalledWith({ clientId: user.clientId, userId: user.id, siteId })
