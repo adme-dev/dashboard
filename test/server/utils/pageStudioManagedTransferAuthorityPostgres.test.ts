@@ -1276,6 +1276,59 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
                       const module = await import('~~/workers/page-studio-management/src/managedTransferCompletion')
                       return { ...c, context, ready, service, options, terminal: module }
                     }
+                    it.each(['execution/context', 'execution/authorize', 'source-drafts/authorize', 'destination-catalogue/authorize', 'destination-execution/authorize', 'copy-graph/authorize', 'forms-history/authorize', 'source-retention/authorize'] as const)('placed %s preserves exact SQL/parameters and fresh authority denial', async (key) => {
+                      const c = await terminalSetup()
+                      const execution = await import('~~/server/utils/pageStudio/managedTransferExecution')
+                      const source = await import('~~/server/utils/pageStudio/managedTransferSourceDrafts')
+                      const catalogue = await import('~~/server/utils/pageStudio/managedTransferDestinationCatalogue')
+                      const destination = await import('~~/server/utils/pageStudio/managedTransferDestinationExecution')
+                      const forms = await import('~~/server/utils/pageStudio/managedTransferFormsHistory')
+                      const retention = await import('~~/workers/page-studio-management/src/managedTransferSourceRetention')
+                      const { handleManagedTransferAuthorityFetch } = await import('~~/workers/page-studio-management/src/managedTransferAuthority')
+                      const row = async (table: string) => (await db.query(`SELECT request FROM ${table} WHERE operation_id=$1`, [c.value.operationId])).rows[0].request
+                      const inputs: Record<string, unknown> = {
+                        'execution/context': c.value,
+                        'execution/authorize': await row('page_studio_managed_transfer_executions'),
+                        'source-drafts/authorize': { action: 'read', request: c.context.sourceRequest },
+                        'destination-catalogue/authorize': { action: 'read', request: await row('page_studio_managed_transfer_destination_catalogues') },
+                        'destination-execution/authorize': { action: 'read', request: await row('page_studio_managed_transfer_destination_executions') },
+                        'copy-graph/authorize': { ...c.value, action: 'inspect', requestDigest: await collectionDigest(c.context.admission), contextDigest: await collectionDigest(c.context) },
+                        'forms-history/authorize': { action: 'read', request: await row('page_studio_managed_transfer_forms_history_requests') }
+                      }
+                      if (key === 'source-retention/authorize') {
+                        await c.terminal.completeManagedTransfer(c.value, c.options)
+                        inputs[key] = { action: 'retain', request: await retention.readManagedTransferSourceRetention(c.value, c.options) }
+                      }
+                      const handlers = { 'execution/context': execution.readManagedTransferExecutionContext, 'execution/authorize': execution.authorizeManagedTransferExecution,
+                        'source-drafts/authorize': source.authorizeManagedTransferSourceDrafts, 'destination-catalogue/authorize': catalogue.authorizeManagedTransferDestinationCatalogue,
+                        'destination-execution/authorize': destination.authorizeManagedTransferDestinationExecution, 'copy-graph/authorize': c.coordinator.authorizeManagedTransferCopyGraph,
+                        'forms-history/authorize': forms.authorizeManagedTransferFormsHistory, 'source-retention/authorize': retention.authorizeManagedTransferSourceRetention }
+                      const env = { ...c.options.env, PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
+                        PAGE_STUDIO_PROVISIONER: { ...c.options.env.PAGE_STUDIO_PROVISIONER, createProvisioning: async () => null, readProvisioning: async () => null } }
+                      const queries: unknown[][] = []
+                      let transactions = 0
+                      const traced: typeof runTransaction = work => runTransaction(async (tx) => {
+                        transactions++
+                        return work({ query: async (sql: string, params?: unknown[]) => { queries.push([sql, structuredClone(params)]); return tx.query(sql, params) } } as pg.Client)
+                      })
+                      const direct = () => handlers[key](inputs[key], { env, runTransaction: traced })
+                      const wire = { expectedEnvironment: 'production', input: inputs[key] }
+                      const placed = () => handleManagedTransferAuthorityFetch(new Request(`https://page-studio-management.internal/internal/page-studio/managed-transfers/${key}`, { method: 'POST', body: JSON.stringify(wire) }), env, traced)
+                      const expected = await direct(), expectedQueries = structuredClone(queries), expectedTransactions = transactions
+                      queries.length = 0; transactions = 0
+                      const result = await placed()
+                      expect(result.status).toBe(200)
+                      expect(await result.json()).toEqual(expected)
+                      expect(result.headers.get('x-request-digest')).toBe(await collectionDigest(wire))
+                      expect(queries).toEqual(expectedQueries)
+                      expect(transactions).toBe(expectedTransactions)
+                      // Terminal retention uses current owner/plan, intentionally not expired original sessions.
+                      await db.query(key === 'source-retention/authorize' ? "UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()" : "UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()")
+                      let status: unknown
+                      try { await direct() } catch (error) { status = (error as { statusCode?: number }).statusCode }
+                      expect([403, 409]).toContain(status)
+                      expect((await placed()).status).toBe(status)
+                    })
                     it('independently inspects both stores then switches all native metadata in one transaction', async () => {
                       const c = await terminalSetup()
                       const receipt = await c.terminal.completeManagedTransfer(c.value, c.options)

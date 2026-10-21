@@ -1,3 +1,5 @@
+import { transferAuthorityKey } from '../../../shared/pageStudio/managedTransferAuthorityTransport'
+import { readManagedTransferAuthority } from './managedTransferAuthority'
 import { RESOURCE_AUTHORITY_PATH } from '../../../shared/pageStudio/managedTransferResourceAuthority'
 import { authorizeManagedResourceThroughManagement } from './managedTransferResourceAuthority'
 import { NativeSchemaContracts, type NativeSchemaKind } from '../../../shared/pageStudio/nativeSchemaAuthority'
@@ -172,6 +174,13 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env
         ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY
         : undefined)
+  }
+
+  const transferAuthority = transferAuthorityKey(url.pathname)
+  if (request.method === 'POST' && transferAuthority && config.dashboardOrigin === 'https://app.xeroflow.io') {
+    return readManagedTransferAuthority(request, transferAuthority,
+      'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+      && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY : undefined)
   }
 
   if (url.pathname === NATIVE_RUNTIME_RECOVERY_AUTHORITY_PATH) {

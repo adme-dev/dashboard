@@ -1,3 +1,5 @@
+import { transferAuthorityKey } from '../../../shared/pageStudio/managedTransferAuthorityTransport'
+import { handleManagedTransferAuthorityFetch } from './managedTransferAuthority'
 import { TRANSFER_WORKFLOW_URL } from '../../../shared/pageStudio/transferWorkflow'
 import { handleTransferWorkflowFetch } from './transferWorkflowFetch'
 import { RESOURCE_AUTHORITY_URL } from '../../../shared/pageStudio/managedTransferResourceAuthority'
@@ -48,6 +50,8 @@ const Request = z.discriminatedUnion('operation', [
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch(request: Request) {
+    if (transferAuthorityKey(new URL(request.url).pathname)) return handleManagedTransferAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === TRANSFER_WORKFLOW_URL) return handleTransferWorkflowFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === RESOURCE_AUTHORITY_URL) return handleManagedTransferResourceAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
