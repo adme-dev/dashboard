@@ -3,11 +3,11 @@ import { PageStudioSessionClaimsSchema } from './sessionClaims'
 import { CustomerEditorClaimsSchema } from '../../server/utils/pageStudio/customerEditorToken'
 import { CmsAdoptionControlRequestSchema } from './cmsAdoptionControl'
 import { PageStudioContentScopeSchema } from './businessContent'
-import { CmsObjectPinSchema } from './cmsManaged'
+import { ReleaseScopedIdSchema as id, ReleaseSha256Schema as digest, CmsNativeCommitSchema } from './cmsManaged'
 import { PageStudioHistoryMutationSchema } from './draftHistory'
 
-const id = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
-const digest = z.string().regex(/^[a-f0-9]{64}$/)
+const { expectedApplication: application, expectedCheckpoint, expectedContent } = CmsNativeCommitSchema.shape
+const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const environment = z.enum(['staging', 'production'])
 const actor = z.discriminatedUnion('role', [
   z.object({ role: z.literal('agency'), actorId: id, tenantId: id, canEdit: z.boolean() }).strict(),
@@ -27,8 +27,8 @@ export const CmsGraphCheckpointSchema = z.object({
 }).strict()
 export const CmsGraphTransitionSchema = z.object({
   operationId: id, candidateId: id, candidateDigest: digest, privacyReviewDigest: digest.optional(),
-  expectedApplication: z.object({ id: z.uuid(), digest }).strict(), expectedCheckpoint: z.object({ id, digest }).strict(),
-  expectedContent: CmsObjectPinSchema.nullable(), contentRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  expectedApplication: application, expectedCheckpoint,
+  expectedContent, contentRevision: count,
   nextCheckpoint: CmsGraphCheckpointSchema,
   preparations: z.array(z.object({ operationId: id, requestDigest: digest, receiptDigest: digest }).strict()).max(32),
   summary: z.string().min(1).max(4000)
@@ -44,15 +44,14 @@ export const CmsManagementRequestSchema = z.discriminatedUnion('operation', [
   z.object({ ...scope, operation: z.literal('restore'), body: PageStudioHistoryMutationSchema }).strict()
 ])
 export type CmsManagementOperation = z.infer<typeof CmsManagementRequestSchema>['operation']
-const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 export const CmsAdoptionStatusSchema = z.object({
   phase: z.enum(['idle', 'freezing', 'importing', 'ready', 'managed', 'blocked']), adoptionId: id.nullable(),
   progress: z.object({ consumed: z.union([count, z.object({ content: count, record: count, schema: count }).strict()]), done: z.boolean() }).strict().nullable(),
   recoveryId: id.nullable(), recoveryRequired: z.boolean(), recoveryReason: z.string().max(256).nullable(),
-  receiptDigest: digest.nullable(), application: z.object({ id: z.uuid(), digest }).strict().nullable(), progressDigest: digest
+  receiptDigest: digest.nullable(), application: application.nullable(), progressDigest: digest
 }).strict()
 export const CmsGraphCommitReceiptSchema = z.object({ acknowledged: z.literal(true), operationId: id, checkpointId: id,
-  application: z.object({ id: z.uuid(), digest }).strict(), versionId: z.string().nullable(), currentCheckpointId: id.nullable(), isCurrent: z.boolean() }).strict()
+  application, versionId: z.string().nullable(), currentCheckpointId: id.nullable(), isCurrent: z.boolean() }).strict()
 export const CmsGraphRestoreReceiptSchema = CmsGraphCommitReceiptSchema.pick({ checkpointId: true, currentCheckpointId: true, isCurrent: true }).strict()
 export function cmsManagementResultSchema(operation: CmsManagementOperation) {
   return z.discriminatedUnion('ok', [
@@ -60,4 +59,12 @@ export function cmsManagementResultSchema(operation: CmsManagementOperation) {
     z.object({ ok: z.literal(false), requestDigest: digest, error: z.object({ code: z.string().regex(/^[A-Z][A-Z0-9_]{1,127}$/),
       statusCode: z.union([z.literal(400), z.literal(401), z.literal(403), z.literal(404), z.literal(409), z.literal(413), z.literal(422), z.literal(429), z.literal(503)]), message: z.string().max(512) }).strict() }).strict()
   ])
+}
+
+export const CMS_STATUS_URL = 'https://page-studio-management.internal/customer-cms-adoption-status'
+export function isPlacedCmsStatus(request: z.infer<typeof CmsManagementRequestSchema>) {
+  return request.operation === 'adoption' && request.body.action === 'status'
+    && request.expectedEnvironment === 'production' && request.contentEnvironment === 'staging'
+    && request.principal.source === 'customer-session' && request.principal.claims.environment === 'staging'
+    && ['workspace:create', 'cms:adopt'].includes(request.principal.capability)
 }

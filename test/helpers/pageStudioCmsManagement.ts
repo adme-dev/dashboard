@@ -1,4 +1,5 @@
 import { handleCmsManagement } from '../../workers/page-studio-management/src/cmsManagement'
+import { handleCmsStatusFetch } from '../../workers/page-studio-management/src/cmsStatus'
 import type { PageStudioControlQueryClient } from '../../server/utils/pageStudio/controlStore'
 
 /** Production control plane with an isolated, logically staging native source. */
@@ -28,5 +29,8 @@ export function attachCmsManagement(env: Record<string, unknown>, run: <T>(work:
     PAGE_STUDIO_CMS_STAGING_CHECKPOINTS: env.PAGE_STUDIO_CHECKPOINTS,
     PAGE_STUDIO_CMS_STAGING_OBJECT_TRANSPORT: env.PAGE_STUDIO_CMS_OBJECT_TRANSPORT,
     PAGE_STUDIO_CMS_STAGING_ACTION_RUNTIME_DIGEST: env.PAGE_STUDIO_ACTION_RUNTIME_DIGEST }
-  env.PAGE_STUDIO_MANAGEMENT = { cmsAuthoring: (request: unknown) => handleCmsManagement(request, workerEnv, run) }
+  env.PAGE_STUDIO_MANAGEMENT = {
+    cmsAuthoring: (request: unknown) => handleCmsManagement(request, workerEnv, run),
+    fetch: (request: Request) => handleCmsStatusFetch(request, workerEnv, run)
+  }
 }
