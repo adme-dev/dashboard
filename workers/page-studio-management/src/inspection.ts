@@ -1,3 +1,4 @@
+import { customerPreviewRuntimeEnvironment } from '../../../server/utils/pageStudio/customerPreviewRuntime'
 import { requireCustomerInspectionAuthority } from '../../../shared/pageStudio/customerInspectionAuthority'
 import { PageStudioInspectionRequest, MAX_INSPECTION_BYTES } from '../../../shared/pageStudio/inspectionContract'
 import type { PageStudioCheckpointBucket } from '../../../shared/pageStudio/checkpointReader'
@@ -22,6 +23,24 @@ export async function handleInspection(input: unknown, env: Record<string, unkno
         const actor = { actorId: request.actorId, accountId: request.accountId, workspaceId: request.workspaceId, siteId: request.siteId }
         const scope = await requireCustomerInspectionAuthority(db, actor, { lock: false })
         const query: InspectionQuery = async <T>(sql: string, params: unknown[]) => (await db.query<T>(sql, params)).rows[0] ?? null
+        if (env.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'production') {
+          let current = scope
+          const value = await readPageStudioLaunchState({ ...scope, siteId: request.siteId,
+            nativeStorage: {
+              source: () => env.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'production' && env.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED === 'true'
+                ? customerPreviewRuntimeEnvironment(env)?.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket | undefined
+                : undefined,
+              destination: () => env.PAGE_STUDIO_RELEASE_ENVIRONMENT === 'production' ? env.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket | undefined : undefined
+            },
+            beforeFinalRead: async () => {
+              current = await requireCustomerInspectionAuthority(db, actor)
+              if (current.tenantId !== scope.tenantId || current.clientId !== scope.clientId || current.workspaceId !== scope.workspaceId) {
+                throw Object.assign(new Error('Website access changed'), { statusCode: 403 })
+              }
+            }
+          }, query)
+          return { ...value, canManagePublication: current.canManagePublication === true }
+        }
         const value = await readPageStudioLaunchState({ ...scope, siteId: request.siteId,
           bucket: env.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket }, query)
         const current = await requireCustomerInspectionAuthority(db, actor)

@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { contentScopeKey } from '../../../shared/pageStudio/cmsManaged'
 import { inspectionError as createError, type InspectionQuery } from './inspectionTypes'
 import type { PageStudioLaunchState } from '../../../shared/pageStudio/launchReadiness'
 import { PageStudioSavedPagesSchema } from '../../../shared/pageStudio/savedPages'
@@ -23,12 +25,23 @@ interface LaunchRow {
   plan_status: string | null
   plan_current: boolean | null
   active_releases: PageStudioLaunchState['activeReleases']
+  native_completions?: unknown
 }
 
 // One scoped, uncached snapshot. A historical review or release is not evidence
 // that the currently saved checkpoint is approved or that access remains active.
-const stateSql = `
-  SELECT site.id, site.tenant_id, site.client_id, site.name, site.status, site.delivery_mode,
+const nativeCompletion = z.array(z.object({ operationId: z.string().uuid(), intentDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  completionIntentDigest: z.string().regex(/^[a-f0-9]{64}$/), destinationScopeKey: z.string() }).strict()).max(1)
+// Compare malformed completion metadata explicitly; never filter it into absence.
+const completionProjection = `COALESCE((SELECT jsonb_agg(jsonb_build_object(
+  'operationId', terminal.operation_id, 'intentDigest', intent.intent_digest,
+  'completionIntentDigest', terminal.intent_digest, 'destinationScopeKey', terminal.destination_scope_key)
+  ORDER BY terminal.operation_id)
+  FROM page_studio_managed_transfer_completions terminal
+  JOIN page_studio_managed_transfer_intents intent ON intent.operation_id=terminal.operation_id
+  WHERE intent.site_id=site.id AND intent.tenant_id=site.tenant_id AND intent.client_id=site.client_id), '[]'::jsonb) AS native_completions,`
+const stateSql = (native = false) => `
+  SELECT ${native ? completionProjection : ''}site.id, site.tenant_id, site.client_id, site.name, site.status, site.delivery_mode,
     site.current_checkpoint_id AS checkpoint_id, checkpoint.digest AS checkpoint_digest, checkpoint.object_key,
     version.id AS version_id, version.checkpoint_id AS version_checkpoint_id,
     version.digest AS version_digest, version.status AS version_status,
@@ -68,19 +81,42 @@ export async function readPageStudioLaunchState(input: {
   siteId: string
   clientId?: string
   bucket?: PageStudioCheckpointBucket
+  /** Trusted native receiver only; neither selector is supplied by the request. */
+  nativeStorage?: { source: () => PageStudioCheckpointBucket | undefined, destination: () => PageStudioCheckpointBucket | undefined }
+  beforeFinalRead?: () => Promise<void>
 }, queryOneFresh: InspectionQuery): Promise<PageStudioLaunchState> {
-  const sql = input.clientId ? `${stateSql} AND site.client_id = $3` : stateSql
+  const snapshotSql = stateSql(Boolean(input.nativeStorage))
+  const sql = input.clientId ? `${snapshotSql} AND site.client_id = $3` : snapshotSql
   const params = input.clientId ? [input.tenantId, input.siteId, input.clientId] : [input.tenantId, input.siteId]
   const row = await queryOneFresh<LaunchRow>(sql, params)
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Website not found' })
+  let bucket = input.bucket
+  let assertStorage = () => {}
+  if (input.nativeStorage) {
+    const completion = nativeCompletion.safeParse(row.native_completions)
+    const expected = contentScopeKey({ tenantId: input.tenantId, clientId: row.client_id, businessId: row.client_id, siteId: input.siteId, environment: 'production' })
+    if (!completion.success || completion.data.some(item => item.intentDigest !== item.completionIntentDigest || item.destinationScopeKey !== expected)) {
+      throw createError({ statusCode: 409, statusMessage: 'Website storage selection changed. Refresh before continuing.' })
+    }
+    const select = completion.data.length ? input.nativeStorage.destination : input.nativeStorage.source
+    bucket = select()
+    const selected = bucket, get = selected?.get
+    assertStorage = () => {
+      const current = select()
+      if (!selected || typeof get !== 'function' || current !== selected || current.get !== get) {
+        throw createError({ statusCode: 503, statusMessage: 'Website storage is unavailable.' })
+      }
+    }
+    assertStorage()
+  }
   const content: PageStudioLaunchState['content'] = {
     status: row.checkpoint_id ? 'unavailable' : 'required', publicPages: null, publicForms: null, requiresSealedFeatures: null
   }
-  if (row.checkpoint_id && row.checkpoint_digest && row.object_key && input.bucket) {
+  if (row.checkpoint_id && row.checkpoint_digest && row.object_key && bucket) {
     try {
       const checkpoint = await loadPageStudioCheckpoint({
         scope: { tenantId: input.tenantId, clientId: row.client_id, siteId: input.siteId },
-        bucket: input.bucket, checkpointId: row.checkpoint_id, objectKey: row.object_key, digests: [row.checkpoint_digest]
+        bucket, checkpointId: row.checkpoint_id, objectKey: row.object_key, digests: [row.checkpoint_digest]
       })
       const parsed = PageStudioSavedPagesSchema.parse(checkpoint.manifest)
       content.requiresSealedFeatures = typeof checkpoint.manifest === 'object' && checkpoint.manifest !== null
@@ -94,7 +130,10 @@ export async function readPageStudioLaunchState(input: {
       content.status = 'unavailable'
     }
   }
+  if (input.beforeFinalRead) await input.beforeFinalRead()
+  assertStorage()
   const latest = await queryOneFresh<LaunchRow>(sql, params)
+  assertStorage()
   if (!latest || JSON.stringify(latest) !== JSON.stringify(row)) {
     throw createError({ statusCode: 409, statusMessage: 'Website state changed. Refresh before continuing.' })
   }
