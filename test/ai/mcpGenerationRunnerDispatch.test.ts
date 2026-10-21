@@ -65,7 +65,7 @@ describe('real generation runner durability boundaries', () => {
   it('does not checkpoint when music preparation fails before queue send', async () => {
     mocks.createMusicAsset.mockRejectedValueOnce(new Error('database unavailable'))
     const execution = { markDispatched: vi.fn(), captureResult: vi.fn() }
-    await expect(buildGenerationRunner(execution).start_music_generation(musicArgs, ctx)).resolves.toMatchObject({ status: 'duplicate' })
+    await expect(buildGenerationRunner(execution).start_music_generation(musicArgs, ctx)).rejects.toThrow('database unavailable')
     expect(execution.markDispatched).not.toHaveBeenCalled()
     expect(mocks.queueSend).not.toHaveBeenCalled()
   })

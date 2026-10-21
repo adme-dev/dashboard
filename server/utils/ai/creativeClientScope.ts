@@ -9,3 +9,14 @@ export function resolveCreativeClientScope(ctx: Pick<ToolContext, 'clientScope'>
   }
   return ctx.clientScope.toLowerCase()
 }
+
+/** Bind caller input to the server-authorized client, including explicit null rejection. */
+export function resolveCreativeClientId(ctx: Pick<ToolContext, 'clientScope'>, requestedClientId?: string): string | undefined {
+  const scope = resolveCreativeClientScope(ctx)
+  if (!scope) return requestedClientId
+  if (requestedClientId !== undefined
+    && (typeof requestedClientId !== 'string' || requestedClientId.toLowerCase() !== scope)) {
+    throw Object.assign(new Error('Creative client does not match authorized scope'), { boundedCode: 'creative_client_scope_mismatch' })
+  }
+  return scope
+}

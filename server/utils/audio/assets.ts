@@ -2,6 +2,7 @@
 // keys. Voice (Phase 1), music (Phase 2), and render (Phase 3) all route through
 // here so the future client-portal surface reuses it untouched.
 import { randomUUID } from 'crypto'
+import { resolveCreativeClientScope } from '~~/server/utils/ai/creativeClientScope'
 import type { AudioAsset } from '~~/app/types'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { uploadFile, getPresignedDownloadUrl, isStorageConfigured } from '~~/server/utils/storage'
@@ -132,10 +133,12 @@ export async function createMusicAsset(input: CreateMusicAssetInput): Promise<Au
 /** Look up an existing asset by its idempotency key (used to resolve the unique
  * collision in createMusicAsset — distinguishes a true duplicate from a retry of
  * a failed brief). */
-export async function getMusicAssetByIdempotencyKey(key: string): Promise<AudioAsset | null> {
+export async function getMusicAssetByIdempotencyKey(key: string, clientScope?: string): Promise<AudioAsset | null> {
+  const scope = resolveCreativeClientScope({ clientScope })
   const row = await queryOne(
-    `SELECT * FROM audio_assets WHERE kind = 'music' AND idempotency_key = $1`,
-    [key]
+    `SELECT * FROM audio_assets WHERE kind = 'music' AND idempotency_key = $1
+     AND ($2::uuid IS NULL OR client_id = $2::uuid)`,
+    [key, scope ?? null]
   )
   return row ? mapRow(row) : null
 }
@@ -144,20 +147,26 @@ export async function getMusicAssetByIdempotencyKey(key: string): Promise<AudioA
  * back to 'queued'. Keeps r2_key_master if one exists so a render-only retry
  * doesn't re-bill the model (the worker skips generation when a master is set).
  * Returns true if a failed row was actually reset. */
-export async function requeueFailedMusicAsset(id: string): Promise<boolean> {
+export async function requeueFailedMusicAsset(id: string, clientScope?: string): Promise<boolean> {
+  const scope = resolveCreativeClientScope({ clientScope })
   const row = await queryOne(
     `UPDATE audio_assets SET status = 'queued', error = NULL, updated_at = now()
      WHERE id = $1 AND kind = 'music' AND status = 'failed'
+       AND ($2::uuid IS NULL OR client_id = $2::uuid)
      RETURNING id`,
-    [id]
+    [id, scope ?? null]
   )
   return !!row
 }
 
 /** Scoped single-asset read for the status endpoint. Mints a streamUrl when a
  * master exists (i.e. once the worker has uploaded a completed track). */
-export async function getAsset(id: string): Promise<AudioAsset | null> {
-  const row = await queryOne(`SELECT * FROM audio_assets WHERE id = $1`, [id])
+export async function getAsset(id: string, clientScope?: string): Promise<AudioAsset | null> {
+  const scope = resolveCreativeClientScope({ clientScope })
+  const row = await queryOne(
+    `SELECT * FROM audio_assets WHERE id = $1 AND ($2::uuid IS NULL OR client_id = $2::uuid)`,
+    [id, scope ?? null]
+  )
   if (!row) return null
   const asset = mapRow(row)
   asset.streamUrl = await streamUrlFor(asset)

@@ -1,3 +1,5 @@
+import { resolveCreativeClientId, resolveCreativeClientScope } from '~~/server/utils/ai/creativeClientScope'
+import { assertResolvableSources, loadSourceAssetsByIds } from '~~/server/utils/video-generation/sourceAssetStore'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { GenerationRunner } from './generationTools'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
@@ -111,19 +113,24 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
     },
     generate_banner_image: async (raw, ctx: ToolContext) => {
       const a = raw as BannerImageArgs
+      const clientScope = resolveCreativeClientScope(ctx)
+      const clientId = resolveCreativeClientId(ctx, a.clientId)
+      if (clientScope && a.referenceSourceAssetIds.length) {
+        assertResolvableSources(await loadSourceAssetsByIds(a.referenceSourceAssetIds), a.referenceSourceAssetIds, clientScope, false)
+      }
       const generationInput = {
         modelId: a.modelId,
         subjectType: a.subjectType,
         prompt: a.prompt,
         aspectRatio: a.aspectRatio,
-        metadata: { featureKey: 'banner_image_generation', userId: ctx.userId, clientId: a.clientId ?? 'agency' }
+        metadata: { featureKey: 'banner_image_generation', userId: ctx.userId, clientId: clientId ?? 'agency' }
       } as const
       buildCreativeGenerationInputs(generationInput)
       await execution?.markDispatched()
       const generated = await generateCreativeImage(creativeAiBinding(ctx), generationInput)
-      const { asset, uploaded } = await persistGeneratedBannerAsset({ generated, userId: ctx.userId, clientId: a.clientId, title: a.title, extraTags: [] })
+      const { asset, uploaded } = await persistGeneratedBannerAsset({ generated, userId: ctx.userId, clientId, title: a.title, extraTags: [] })
       const compliance = await runAutomaticCreativeCompliance({
-        assetId: asset.id, clientId: a.clientId, createdBy: ctx.userId, subjectType: 'non_vehicle',
+        assetId: asset.id, clientId, clientScope, createdBy: ctx.userId, subjectType: 'non_vehicle',
         referenceSourceAssetIds: a.referenceSourceAssetIds,
         expectedClaims: { price: a.expectedPrice, disclaimer: a.expectedDisclaimer, logo: a.expectedLogo },
       })
@@ -134,7 +141,9 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
 
     upscale_banner_image: async (raw, ctx: ToolContext) => {
       const a = raw as UpscaleImageArgs
-      const [sourceUrl] = await resolveSourceAssetUrls([a.sourceAssetId], a.clientId ?? 'agency')
+      const clientScope = resolveCreativeClientScope(ctx)
+      const clientId = resolveCreativeClientId(ctx, a.clientId)
+      const [sourceUrl] = await resolveSourceAssetUrls([a.sourceAssetId], clientId ?? 'agency', undefined, !clientScope)
       if (!sourceUrl) throw new Error('approved source asset unavailable')
       const generationInput = {
         modelId: 'aigateway/pruna-upscale',
@@ -145,7 +154,7 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
         outputQuality: a.outputQuality,
         enhanceDetails: a.enhanceDetails,
         enhanceRealism: a.enhanceRealism,
-        metadata: { featureKey: 'banner_image_upscale', userId: ctx.userId, clientId: a.clientId ?? 'agency' }
+        metadata: { featureKey: 'banner_image_upscale', userId: ctx.userId, clientId: clientId ?? 'agency' }
       } as const
       buildCreativeGenerationInputs(generationInput)
       await execution?.markDispatched()
@@ -153,12 +162,12 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
       const { asset, uploaded } = await persistGeneratedBannerAsset({
         generated,
         userId: ctx.userId,
-        clientId: a.clientId,
+        clientId,
         title: a.title,
         extraTags: [`source:${a.sourceAssetId}`],
       })
       const compliance = await runAutomaticCreativeCompliance({
-        assetId: asset.id, clientId: a.clientId, createdBy: ctx.userId, subjectType: a.subjectType,
+        assetId: asset.id, clientId, clientScope, createdBy: ctx.userId, subjectType: a.subjectType,
         referenceSourceAssetIds: [a.sourceAssetId],
         expectedClaims: { price: a.expectedPrice, disclaimer: a.expectedDisclaimer, logo: a.expectedLogo },
       })
@@ -169,9 +178,12 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
 
     verify_creative_compliance: async (raw, ctx: ToolContext) => {
       const a = raw as VerifyCreativeArgs
+      const clientScope = resolveCreativeClientScope(ctx)
+      const clientId = resolveCreativeClientId(ctx, a.clientId)
       const result = await runCreativeComplianceCheck({
         assetId: a.assetId,
-        clientId: a.clientId,
+        clientId,
+        clientScope,
         createdBy: ctx.userId,
         subjectType: a.subjectType,
         referenceSourceAssetIds: a.referenceSourceAssetIds,
@@ -190,6 +202,7 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
     // Synchronous: generate the VO and return the ready asset (with a playback URL).
     generate_voiceover: async (raw, ctx: ToolContext) => {
       const a = raw as VoiceoverArgs
+      const clientId = resolveCreativeClientId(ctx, a.clientId)
       const generated = await generateVoiceover(
         ctx.event,
         { text: a.text, lang: a.lang },
@@ -198,7 +211,7 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
       if (!generated) throw new Error('voice generation unavailable')
       const asset = await createVoiceAsset({
         createdBy: ctx.userId,
-        clientId: a.clientId ?? null,
+        clientId: clientId ?? null,
         title: a.title ?? null,
         text: generated.sanitizedText,
         lang: a.lang,
@@ -223,6 +236,8 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
     // so the host gets an actionable message instead of a generic handler_error.
     start_music_generation: async (raw, ctx: ToolContext) => {
       const a = raw as MusicArgs
+      const clientScope = resolveCreativeClientScope(ctx)
+      const clientId = resolveCreativeClientId(ctx, a.clientId)
       const rawKv = (ctx.event.context as { cloudflare?: { env?: { CACHE?: unknown } } }).cloudflare?.env?.CACHE
       const kv = isJsonKvBinding(rawKv) ? rawKv : null
       const blocklist = await loadBlocklist(kv)
@@ -245,6 +260,7 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
       }
 
       const idempotencyKey = musicIdempotencyKey({
+        clientScope,
         createdBy: ctx.userId,
         prompt: a.prompt,
         isInstrumental: a.isInstrumental,
@@ -255,7 +271,7 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
       try {
         asset = await createMusicAsset({
           createdBy: ctx.userId,
-          clientId: a.clientId ?? null,
+          clientId: clientId ?? null,
           title: a.title ?? null,
           prompt: a.prompt,
           isInstrumental: a.isInstrumental,
@@ -264,14 +280,20 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
           format: a.format,
           idempotencyKey
         })
-      } catch {
+      } catch (error) {
         // idempotency_key UNIQUE collision — same brief already exists. Allow retry of a FAILED one.
-        const existing = await getMusicAssetByIdempotencyKey(idempotencyKey)
-        if (existing && existing.status === 'failed' && await requeueFailedMusicAsset(existing.id)) {
+        let existing = await getMusicAssetByIdempotencyKey(idempotencyKey, clientScope)
+        if (!existing || (clientScope && existing.clientId !== clientScope)) throw error
+        if (existing.status === 'failed' && await requeueFailedMusicAsset(existing.id, clientScope)) {
           asset = { ...existing, status: 'queued', error: null }
         } else {
-          const duplicate = { status: 'duplicate', reason: 'That exact brief was just submitted — check the library.', jobId: existing?.id ?? null }
-          if (execution && existing?.id) {
+          // Re-read a lost retry race: ownership may have changed since lookup.
+          if (clientScope && existing.status === 'failed') {
+            existing = await getMusicAssetByIdempotencyKey(idempotencyKey, clientScope)
+            if (!existing || existing.clientId !== clientScope) throw error
+          }
+          const duplicate = { status: 'duplicate', reason: 'That exact brief was just submitted — check the library.', jobId: existing.id }
+          if (execution) {
             await execution.markDispatched()
             await execution.captureResult({ ok: true, data: duplicate })
           }
@@ -295,10 +317,11 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
     },
 
     // Poll any generation job (music) by its asset/job id; mints a fresh playback URL when ready.
-    get_generation_status: async (raw) => {
+    get_generation_status: async (raw, ctx: ToolContext) => {
+      const clientScope = resolveCreativeClientScope(ctx)
       const a = raw as StatusArgs
-      const asset = await getAsset(a.jobId)
-      if (!asset) return { status: 'not_found' }
+      const asset = await getAsset(a.jobId, clientScope)
+      if (!asset || (clientScope && asset.clientId !== clientScope)) return { status: 'not_found' }
       return {
         jobId: asset.id,
         status: asset.status,
