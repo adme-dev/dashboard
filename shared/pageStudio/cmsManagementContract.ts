@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { managementResultSchema } from './managementResult'
 import { PageStudioSessionClaimsSchema } from './sessionClaims'
 import { CustomerEditorClaimsSchema } from '../../server/utils/pageStudio/customerEditorToken'
 import { CmsAdoptionControlRequestSchema } from './cmsAdoptionControl'
@@ -54,11 +55,8 @@ export const CmsGraphCommitReceiptSchema = z.object({ acknowledged: z.literal(tr
   application, versionId: z.string().nullable(), currentCheckpointId: id.nullable(), isCurrent: z.boolean() }).strict()
 export const CmsGraphRestoreReceiptSchema = CmsGraphCommitReceiptSchema.pick({ checkpointId: true, currentCheckpointId: true, isCurrent: true }).strict()
 export function cmsManagementResultSchema(operation: CmsManagementOperation) {
-  return z.discriminatedUnion('ok', [
-    z.object({ ok: z.literal(true), requestDigest: digest, value: operation === 'adoption' ? CmsAdoptionStatusSchema : operation === 'restore' ? CmsGraphRestoreReceiptSchema : CmsGraphCommitReceiptSchema }).strict(),
-    z.object({ ok: z.literal(false), requestDigest: digest, error: z.object({ code: z.string().regex(/^[A-Z][A-Z0-9_]{1,127}$/),
-      statusCode: z.union([z.literal(400), z.literal(401), z.literal(403), z.literal(404), z.literal(409), z.literal(413), z.literal(422), z.literal(429), z.literal(503)]), message: z.string().max(512) }).strict() }).strict()
-  ])
+  return managementResultSchema(operation === 'adoption' ? CmsAdoptionStatusSchema : operation === 'restore' ? CmsGraphRestoreReceiptSchema : CmsGraphCommitReceiptSchema, z.object({ code: z.string().regex(/^[A-Z][A-Z0-9_]{1,127}$/),
+    statusCode: z.union([z.literal(400), z.literal(401), z.literal(403), z.literal(404), z.literal(409), z.literal(413), z.literal(422), z.literal(429), z.literal(503)]), message: z.string().max(512) }).strict())
 }
 
 export const CMS_STATUS_URL = 'https://page-studio-management.internal/customer-cms-adoption-status'

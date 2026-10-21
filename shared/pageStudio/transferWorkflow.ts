@@ -1,8 +1,8 @@
 import { z } from 'zod'
+import { managementResultSchema } from './managementResult'
 import { TransferControlsOperatorSchema } from './transferControls'
 
 const Id = z.string().uuid()
-const Hash = z.string().regex(/^[a-f0-9]{64}$/)
 export const TransferRevisionSchema = z.number().int().positive().max(2147483647)
 export const TransferWorkflowPhases = ['resources', 'source-execution', 'source-drafts', 'destination-catalogue',
   'destination-execution', 'copy-admission', 'copy-execution', 'forms-history', 'completion'] as const
@@ -29,10 +29,7 @@ export const TransferPhaseViewSchema = z.object({ phase: TransferWorkflowPhaseSc
 export const TransferWorkflowViewSchema = z.object({ siteId: Id, requestId: Id, revision: TransferRevisionSchema,
   phases: z.array(TransferPhaseViewSchema).min(1).max(9)
 }).strict()
-export const TransferWorkflowResponseSchema = z.discriminatedUnion('ok', [
-  z.object({ ok: z.literal(true), requestDigest: Hash, value: TransferWorkflowViewSchema }).strict(),
-  z.object({ ok: z.literal(false), requestDigest: Hash, error: z.object({ statusCode: z.number().int().min(400).max(599), message: z.string().max(160) }).strict() }).strict()
-])
+export const TransferWorkflowResponseSchema = managementResultSchema(TransferWorkflowViewSchema, z.object({ statusCode: z.number().int().min(400).max(599), message: z.string().max(160) }).strict())
 export const TransferOwnerBodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('request'), requestId: Id }).strict(),
   z.object({ action: z.enum(['approve', 'revoke']), requestId: Id, ...revision }).strict()

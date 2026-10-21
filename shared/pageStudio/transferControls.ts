@@ -1,7 +1,7 @@
 import { z } from 'zod'
+import { managementResultSchema, ManagementDigestSchema as Hash } from './managementResult'
 
 const Id = z.string().uuid()
-const Hash = z.string().regex(/^[a-f0-9]{64}$/)
 const Revision = z.number().int().positive().max(2147483647)
 const base = { siteId: Id, expectedEnvironment: z.literal('production') }
 const owner = { ownerLoginSessionHash: Hash }
@@ -33,10 +33,6 @@ export const TransferControlsListSchema = z.object({
   requests: z.array(TransferControlsViewSchema).max(50), nextCursor: Id.nullable()
 }).strict()
 export const TransferControlsValueSchema = z.union([TransferControlsViewSchema, TransferControlsListSchema, z.null()])
-export const TransferControlsResponseSchema = z.discriminatedUnion('ok', [
-  z.object({ ok: z.literal(true), requestDigest: Hash, value: TransferControlsValueSchema }).strict(),
-  z.object({ ok: z.literal(false), requestDigest: Hash,
-    error: z.object({ statusCode: z.number().int(), message: z.string().max(160) }).strict() }).strict()
-])
+export const TransferControlsResponseSchema = managementResultSchema(TransferControlsValueSchema, z.object({ statusCode: z.number().int(), message: z.string().max(160) }).strict())
 export type TransferControlsRequest = z.infer<typeof TransferControlsRequestSchema>
 export type TransferControlsView = z.infer<typeof TransferControlsViewSchema>
