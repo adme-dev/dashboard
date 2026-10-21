@@ -6,12 +6,12 @@ import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
 import { CustomerManagedTransferSchema, CustomerManagedTransferRecoverySchema, type CustomerManagedTransfer } from '~~/shared/pageStudio/customerManagedTransfer'
 import { CompletedManagedTransferStatusSchema } from '~~/shared/pageStudio/completed-managed-transfer-management'
-import type { RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
+import type { PageStudioQueryClient, RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 import { contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
 import { requireCustomerInspectionAuthority } from '~~/shared/pageStudio/customerInspectionAuthority'
 import { getLatestPageStudioCheckpoint } from './checkpointRead'
 import { readCustomerSession } from './customerSignup'
-import { withCustomerProductionAuthoringAuthority } from './customerAuthoringAuthority'
+import { withCustomerProductionAuthoringAuthority, type CustomerProductionAuthoringAuthority } from './customerAuthoringAuthority'
 import { readCurrentManagedTransferCompletion } from './managedTransferCompletionRead'
 import { callCompletedManagedTransfer } from './completedManagedTransfer'
 
@@ -30,32 +30,42 @@ function stage(row: SavedProgress, entitlementId: string): Extract<CustomerManag
   if (row.resources_bound || row.source_frozen) return 'freezing-source'
   return 'preparing-resources'
 }
+async function withPublishingAuthority<T>(token: string, siteId: string, dependencies: Dependencies,
+  work: (db: PageStudioQueryClient, authority: CustomerProductionAuthoringAuthority) => Promise<T>,
+  deniedFallback?: () => Promise<T>) {
+  if (!/^[A-Za-z0-9_-]{64}$/.test(token) || !z.uuid().safeParse(siteId).success) throw denied()
+  const loginSessionHash = await digestPortalSessionToken(token)
+  try {
+    return await (dependencies.runTransaction ?? transactionWithoutRetry)(async (db) => {
+      const row = (await db.query<{ entitlement_id: string }>('SELECT entitlement_id FROM page_studio_sites WHERE id=$1', [siteId])).rows[0]
+      if (!row) throw denied()
+      return withCustomerProductionAuthoringAuthority({ loginSessionHash, siteId, entitlementId: row.entitlement_id }, work, { runTransaction: work => work(db) })
+    })
+  } catch (error) {
+    if (!deniedFallback || (error as { statusCode?: number })?.statusCode !== 403) throw error
+    return deniedFallback()
+  }
+}
 /** Native read only. No original transfer session is consulted and no phase is
  * resumed. Historical stage evidence never implies a currently running worker. */
 async function snapshot(token: string, siteId: string, dependencies: Dependencies) {
-  if (!/^[A-Za-z0-9_-]{64}$/.test(token) || !z.uuid().safeParse(siteId).success) throw denied()
-  const loginSessionHash = await digestPortalSessionToken(token)
-  return (dependencies.runTransaction ?? transactionWithoutRetry)(async (db) => {
-    const row = (await db.query<{ entitlement_id: string }>('SELECT entitlement_id FROM page_studio_sites WHERE id=$1', [siteId])).rows[0]
-    if (!row) throw denied()
-    return withCustomerProductionAuthoringAuthority({ loginSessionHash, siteId, entitlementId: row.entitlement_id }, async (tx, authority) => {
-      const completion = await readCurrentManagedTransferCompletion(tx, authority.scope)
-      const identity = { identityId: authority.identityId, accountId: authority.accountId, workspaceId: authority.workspaceId,
-        entitlementId: authority.entitlementId, scope: authority.scope, completionDigest: completion?.digest ?? null }
-      if (completion) return { identity, completion: true as const, progress: null }
-      const saved = (await tx.query<SavedProgress>(`SELECT intent.entitlement_id,
-        EXISTS(SELECT 1 FROM page_studio_managed_transfer_resource_bindings r WHERE r.operation_id=intent.operation_id AND r.intent_digest=intent.intent_digest) AS resources_bound,
-        EXISTS(SELECT 1 FROM page_studio_managed_transfer_source_drafts s WHERE s.operation_id=intent.operation_id AND s.intent_digest=intent.intent_digest) AS source_frozen,
-        EXISTS(SELECT 1 FROM page_studio_managed_transfer_destination_catalogues d WHERE d.operation_id=intent.operation_id AND d.intent_digest=intent.intent_digest) AS destination_requested,
-        EXISTS(SELECT 1 FROM page_studio_managed_transfer_destination_execution_verifications d WHERE d.operation_id=intent.operation_id AND d.intent_digest=intent.intent_digest) AS destination_verified,
-        EXISTS(SELECT 1 FROM page_studio_managed_transfer_copy_graph_verifications c WHERE c.operation_id=intent.operation_id AND c.intent_digest=intent.intent_digest) AS copy_verified,
-        EXISTS(SELECT 1 FROM page_studio_managed_transfer_forms_history_verifications h WHERE h.operation_id=intent.operation_id AND h.intent_digest=intent.intent_digest) AS history_verified
-        FROM page_studio_managed_transfer_intents intent WHERE intent.site_id=$1 AND intent.tenant_id=$2 AND intent.client_id=$3 FOR SHARE OF intent NOWAIT`,
-      [siteId, authority.scope.tenantId, authority.scope.clientId])).rows
-      if (saved.length > 1) throw conflict()
-      const progress = saved[0] ? CustomerManagedTransferSchema.parse({ siteId, completed: false, stage: stage(saved[0], authority.entitlementId), canRetryConnection: false, canRetryRetention: false }) : null
-      return { identity, completion: false as const, progress }
-    }, { runTransaction: work => work(db) })
+  return withPublishingAuthority(token, siteId, dependencies, async (tx, authority) => {
+    const completion = await readCurrentManagedTransferCompletion(tx, authority.scope)
+    const identity = { identityId: authority.identityId, accountId: authority.accountId, workspaceId: authority.workspaceId,
+      entitlementId: authority.entitlementId, scope: authority.scope, completionDigest: completion?.digest ?? null }
+    if (completion) return { identity, completion: true as const, progress: null }
+    const saved = (await tx.query<SavedProgress>(`SELECT intent.entitlement_id,
+      EXISTS(SELECT 1 FROM page_studio_managed_transfer_resource_bindings r WHERE r.operation_id=intent.operation_id AND r.intent_digest=intent.intent_digest) AS resources_bound,
+      EXISTS(SELECT 1 FROM page_studio_managed_transfer_source_drafts s WHERE s.operation_id=intent.operation_id AND s.intent_digest=intent.intent_digest) AS source_frozen,
+      EXISTS(SELECT 1 FROM page_studio_managed_transfer_destination_catalogues d WHERE d.operation_id=intent.operation_id AND d.intent_digest=intent.intent_digest) AS destination_requested,
+      EXISTS(SELECT 1 FROM page_studio_managed_transfer_destination_execution_verifications d WHERE d.operation_id=intent.operation_id AND d.intent_digest=intent.intent_digest) AS destination_verified,
+      EXISTS(SELECT 1 FROM page_studio_managed_transfer_copy_graph_verifications c WHERE c.operation_id=intent.operation_id AND c.intent_digest=intent.intent_digest) AS copy_verified,
+      EXISTS(SELECT 1 FROM page_studio_managed_transfer_forms_history_verifications h WHERE h.operation_id=intent.operation_id AND h.intent_digest=intent.intent_digest) AS history_verified
+      FROM page_studio_managed_transfer_intents intent WHERE intent.site_id=$1 AND intent.tenant_id=$2 AND intent.client_id=$3 FOR SHARE OF intent NOWAIT`,
+    [siteId, authority.scope.tenantId, authority.scope.clientId])).rows
+    if (saved.length > 1) throw conflict()
+    const progress = saved[0] ? CustomerManagedTransferSchema.parse({ siteId, completed: false, stage: stage(saved[0], authority.entitlementId), canRetryConnection: false, canRetryRetention: false }) : null
+    return { identity, completion: false as const, progress }
   })
 }
 const closed = (siteId: string): CustomerManagedTransfer => ({ siteId, completed: true, stage: 'completed', editorConnection: 'unavailable', sourceRetention: 'unavailable', canRetryConnection: false, canRetryRetention: false })
@@ -130,23 +140,14 @@ export async function recoverCustomerManagedTransfer(token: string, siteId: stri
  * editor or resume provisioning; a persisted checkpoint is not live storage proof. */
 export async function readCustomerSavedPublishingCheckpoint(token: string, siteId: string, dependencies: Dependencies): Promise<boolean> {
   if (!production(dependencies.env)) return false
-  if (!/^[A-Za-z0-9_-]{64}$/.test(token) || !z.uuid().safeParse(siteId).success) throw denied()
-  const loginSessionHash = await digestPortalSessionToken(token)
-  try {
-    return await (dependencies.runTransaction ?? transactionWithoutRetry)(async (db) => {
-      const row = (await db.query<{ entitlement_id: string }>('SELECT entitlement_id FROM page_studio_sites WHERE id=$1', [siteId])).rows[0]
-      if (!row) throw denied()
-      return withCustomerProductionAuthoringAuthority({ loginSessionHash, siteId, entitlementId: row.entitlement_id }, async (tx, authority) => {
-        const checkpoint = await getLatestPageStudioCheckpoint(authority.scope, {
-          queryOne: async <T>(sql: string, params?: unknown[]) => (await tx.query<T>(sql, params)).rows[0] ?? null
-        })
-        return checkpoint !== null
-      }, { runTransaction: work => work(db) })
+  return withPublishingAuthority(token, siteId, dependencies, async (tx, authority) => {
+    const checkpoint = await getLatestPageStudioCheckpoint(authority.scope, {
+      queryOne: async <T>(sql: string, params?: unknown[]) => (await tx.query<T>(sql, params)).rows[0] ?? null
     })
-  } catch (error) {
-    if ((error as { statusCode?: number })?.statusCode !== 403) throw error
+    return checkpoint !== null
+  }, async () => {
     // A withdrawn plan may remain inspectable; a revoked login or membership may not.
     await inspectionCompletion(token, siteId, dependencies)
     return false
-  }
+  })
 }

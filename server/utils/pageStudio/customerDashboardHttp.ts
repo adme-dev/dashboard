@@ -42,11 +42,10 @@ export async function customerDashboardHandler(event: H3Event) {
     const canOpenStudio = (!managedTransfer || managedTransfer.completed) && editor ? await readCustomerEditorAvailability(token, editor) : false
     // Current native authority plus verified managed content supersedes the
     // historical preview job. This proves editing readiness, not publication.
-    if (managedTransfer?.completed) return { ...dashboard, managedTransfer, state: canOpenStudio ? 'editor-ready' : 'connection-pending', stage: 5,
-      canOpenStudio, canPrepareCms: false, canCreate: false, canRetry: false, recovery: undefined }
-    if (managedTransfer || savedPublishingCheckpoint) return { ...dashboard, managedTransfer, state: 'transfer-pending', stage: savedPublishingCheckpoint ? 4 : dashboard.stage,
-      canOpenStudio: false, canPrepareCms: false, canCreate: false, canRetry: false, recovery: undefined }
-    if (canOpenStudio) return { ...dashboard, managedTransfer, state: 'editor-ready', stage: 5,
+    const state = managedTransfer?.completed ? (canOpenStudio ? 'editor-ready' : 'connection-pending')
+      : managedTransfer || savedPublishingCheckpoint ? 'transfer-pending' : canOpenStudio ? 'editor-ready' : null
+    if (state) return { ...dashboard, managedTransfer, state,
+      stage: managedTransfer?.completed || canOpenStudio ? 5 : savedPublishingCheckpoint ? 4 : dashboard.stage,
       canOpenStudio, canPrepareCms: false, canCreate: false, canRetry: false, recovery: undefined }
     return { ...dashboard, managedTransfer, canPrepareCms, canOpenStudio }
   } catch (error) { safeError(error) }
