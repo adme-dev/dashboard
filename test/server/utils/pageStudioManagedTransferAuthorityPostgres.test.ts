@@ -452,6 +452,41 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
         const module = await import('~~/server/utils/pageStudio/managedTransferResources')
         return module.authorizeManagedTransferResources(value, { runTransaction })
       }
+      it.each([
+        'UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()',
+        'UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()',
+        'UPDATE page_studio_workspace_memberships SET role=\'manager\'',
+        'UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp()-interval \'1 second\'',
+        'UPDATE page_studio_entitlements SET storage_bytes_limit=storage_bytes_limit+1 WHERE status=\'active\'',
+        'UPDATE page_studio_cms_scopes SET current_content_id=NULL',
+        'UPDATE page_studio_sites SET current_checkpoint_id=NULL'
+      ])('placed authority matches direct fresh admission before and after revocation: %s', async (sql) => {
+        const reference = await prepared()
+        await prepare(reference)
+        const resourceRequest = (await db.query('SELECT request FROM page_studio_managed_transfer_resources')).rows[0].request
+        const execution = { ...reference, resourceRequest }
+        const envelope = { expectedControlPlaneEnvironment: 'production', execution }
+        const { handleManagedTransferResourceAuthorityFetch } = await import('~~/workers/page-studio-management/src/managedTransferResourceAuthority')
+        const invoke = () => handleManagedTransferResourceAuthorityFetch(new Request('https://page-studio-management.internal/managed-transfer-resource-authority', {
+          method: 'POST', body: JSON.stringify(envelope)
+        }), { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true' }, runTransaction)
+        const accepted = await invoke()
+        expect(accepted.status).toBe(200)
+        expect(accepted.headers.get('x-request-digest')).toBe(await collectionDigest(envelope))
+        expect(await accepted.json()).toEqual(await admission(execution))
+        await db.query(sql)
+        let directStatus: unknown
+        try {
+          await admission(execution)
+        } catch (error) {
+          directStatus = (error as { statusCode?: number }).statusCode
+        }
+        expect([403, 409]).toContain(directStatus)
+        const denied = await invoke()
+        expect(denied.status).toBe(directStatus)
+        expect(denied.headers.get('x-request-digest')).toBe(await collectionDigest(envelope))
+        expect(await denied.json()).toBe('Managed transfer resource authority unavailable')
+      })
       it('retains the exact production resource request independently of source design and replays lost acknowledgements', async () => {
         const value = await prepared()
         const before = (await db.query('SELECT current_checkpoint_id,status FROM page_studio_sites')).rows

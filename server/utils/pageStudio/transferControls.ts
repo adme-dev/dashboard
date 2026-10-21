@@ -1,9 +1,10 @@
 import { createError } from 'h3'
+import { placedAuthorityFetch } from './placedAuthorityFetch'
 import { z } from 'zod'
 import { NativeRuntimeRecoveryProjection } from '~~/shared/pageStudio/nativeRuntimeRecoveryOperator'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { TransferControlsRequestSchema, TransferControlsResponseSchema } from '~~/shared/pageStudio/transferControls'
-import { TransferWorkflowRequestSchema, TransferWorkflowResponseSchema, TransferWorkflowPhases } from '~~/shared/pageStudio/transferWorkflow'
+import { TransferWorkflowRequestSchema, TransferWorkflowResponseSchema, TransferWorkflowPhases, TRANSFER_WORKFLOW_URL } from '~~/shared/pageStudio/transferWorkflow'
 import { capturePageStudioRpcMethod } from './privateRpc'
 
 const unavailable = () => createError({ statusCode: 503, statusMessage: 'Transfer status could not be confirmed. Refresh the saved request before continuing.' })
@@ -34,16 +35,9 @@ export async function callTransferControls(input: unknown, env: Record<string, u
   return value
 }
 export async function callTransferWorkflow(input: unknown, env: Record<string, unknown>) {
-  const call = capturePageStudioRpcMethod(env.PAGE_STUDIO_MANAGEMENT as Record<string, unknown> | undefined, 'transferWorkflow')
-  const request = TransferWorkflowRequestSchema.parse({ ...input as object, expectedEnvironment: env.PAGE_STUDIO_RELEASE_ENVIRONMENT })
-  if (!call) throw unavailable()
+  const inputRequest = TransferWorkflowRequestSchema.parse({ ...input as object, expectedEnvironment: env.PAGE_STUDIO_RELEASE_ENVIRONMENT })
+  const { request, value: raw } = await placedAuthorityFetch(env.PAGE_STUDIO_MANAGEMENT, TRANSFER_WORKFLOW_URL, inputRequest, unavailable().message)
   const digest = await collectionDigest(request)
-  let raw: unknown
-  try {
-    raw = structuredClone(await call(structuredClone(request)))
-  } catch {
-    throw unavailable()
-  }
   const result = TransferWorkflowResponseSchema.safeParse(raw)
   if (!result.success || result.data.requestDigest !== digest) throw unavailable()
   if (!result.data.ok) throw createError({ statusCode: result.data.error.statusCode, statusMessage: result.data.error.message })

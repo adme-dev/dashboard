@@ -43,3 +43,14 @@ it('uses actual fixed RPC methods, fails closed without native SQL, and rejects 
   }
   expect(outbound).toBe(0)
 })
+it('exposes only the fixed placed paths with strict rejection before SQL', async () => {
+  const management = await runtime.getWorker('management')
+  for (const path of ['transfer-workflow', 'managed-transfer-resource-authority']) {
+    const url = `https://page-studio-management.internal/${path}`
+    expect((await management.fetch(url, { method: 'GET' })).status).toBe(404)
+    const rejected = await management.fetch(url, { method: 'POST', body: '{}' })
+    expect(rejected.status).toBe(400)
+    expect(rejected.headers.get('x-request-digest')).toMatch(/^[a-f0-9]{64}$/)
+  }
+  expect(outbound).toBe(0)
+})
