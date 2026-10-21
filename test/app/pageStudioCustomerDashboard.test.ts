@@ -80,6 +80,21 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('customer website overview', () => {
+  it('shows saved source steps and transfer preparation without offering editing or preview recovery', async () => {
+    read.mockResolvedValue({ ...value, siteId: 'saved-site', state: 'transfer-pending', stage: 4,
+      managedTransfer: null, canCreate: false, canRetry: false, canOpenStudio: false, canPrepareCms: false })
+    await mount()
+    expect(host.textContent).toContain('Prepare your website transfer')
+    expect(host.textContent).not.toContain('Your setup needs attention')
+    expect(host.textContent).not.toContain('Your website transfer is in progress')
+    for (const name of ['Website prepared', 'Website content saved']) {
+      const row = [...host.querySelectorAll('li')].find(node => node.textContent?.includes(name))
+      expect(row?.textContent).toContain(': complete')
+    }
+    for (const label of ['Open Studio', 'Create preview', 'Resume setup']) expect(button(label)).toBeUndefined()
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
   it('waits for a slow verified overview without offering duplicate creation', async () => {
     vi.useFakeTimers()
     useTimedDashboardReads()
@@ -147,7 +162,7 @@ describe('customer website overview', () => {
     expect(host.textContent).not.toContain('Not published')
     expect(host.textContent).toContain('Studio available: complete')
     expect(host.textContent).toContain('Website prepared: complete')
-    expect(host.textContent).toContain('Content added: complete')
+    expect(host.textContent).toContain('Website content saved: complete')
     expect(mutate).not.toHaveBeenCalled()
     let resolve!: (value: unknown) => void
     mutate.mockImplementationOnce(() => new Promise((done) => {

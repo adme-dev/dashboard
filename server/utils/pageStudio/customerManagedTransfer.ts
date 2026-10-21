@@ -9,6 +9,7 @@ import { CompletedManagedTransferStatusSchema } from '~~/shared/pageStudio/compl
 import type { RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 import { contentScopeKey } from '~~/shared/pageStudio/cmsManaged'
 import { requireCustomerInspectionAuthority } from '~~/shared/pageStudio/customerInspectionAuthority'
+import { getLatestPageStudioCheckpoint } from './checkpointRead'
 import { readCustomerSession } from './customerSignup'
 import { withCustomerProductionAuthoringAuthority } from './customerAuthoringAuthority'
 import { readCurrentManagedTransferCompletion } from './managedTransferCompletionRead'
@@ -123,4 +124,29 @@ export async function recoverCustomerManagedTransfer(token: string, siteId: stri
   const current = await observed(token, siteId, 'status', dependencies)
   if (!current.projection?.completed || !(request.action === 'retry-connection' ? current.projection.canRetryConnection : current.projection.canRetryRetention)) throw conflict()
   return (await observed(token, siteId, request.action === 'retry-connection' ? 'connect' : 'retain', dependencies, current.identity)).projection
+}
+
+/** Display-only saved-head proof. Publishing authority does not open the source
+ * editor or resume provisioning; a persisted checkpoint is not live storage proof. */
+export async function readCustomerSavedPublishingCheckpoint(token: string, siteId: string, dependencies: Dependencies): Promise<boolean> {
+  if (!production(dependencies.env)) return false
+  if (!/^[A-Za-z0-9_-]{64}$/.test(token) || !z.uuid().safeParse(siteId).success) throw denied()
+  const loginSessionHash = await digestPortalSessionToken(token)
+  try {
+    return await (dependencies.runTransaction ?? transactionWithoutRetry)(async (db) => {
+      const row = (await db.query<{ entitlement_id: string }>('SELECT entitlement_id FROM page_studio_sites WHERE id=$1', [siteId])).rows[0]
+      if (!row) throw denied()
+      return withCustomerProductionAuthoringAuthority({ loginSessionHash, siteId, entitlementId: row.entitlement_id }, async (tx, authority) => {
+        const checkpoint = await getLatestPageStudioCheckpoint(authority.scope, {
+          queryOne: async <T>(sql: string, params?: unknown[]) => (await tx.query<T>(sql, params)).rows[0] ?? null
+        })
+        return checkpoint !== null
+      }, { runTransaction: work => work(db) })
+    })
+  } catch (error) {
+    if ((error as { statusCode?: number })?.statusCode !== 403) throw error
+    // A withdrawn plan may remain inspectable; a revoked login or membership may not.
+    await inspectionCompletion(token, siteId, dependencies)
+    return false
+  }
 }
