@@ -1,3 +1,4 @@
+import { comparePlacedCustomerEditorAuthority, placedCustomerEditorAuthority } from '../../helpers/comparePlacedCustomerEditorAuthority'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
@@ -60,7 +61,7 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     await db.query(migration('448_page_studio_customer_cms_setup.sql'))
-    legacyClaimsConstraint = (await db.query("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='page_studio_customer_editor_sessions'::regclass AND conname='page_studio_customer_editor_sessions_check2'")).rows[0].definition
+    legacyClaimsConstraint = (await db.query('SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid=\'page_studio_customer_editor_sessions\'::regclass AND conname=\'page_studio_customer_editor_sessions_check2\'')).rows[0].definition
     await db.query(migration('456_page_studio_customer_editor_environment.sql'))
     await db.query('CREATE TABLE page_studio_cms_scopes (scope_key TEXT, tenant_id TEXT, client_id UUID, site_id UUID, state TEXT)')
     workspaces = await import('~~/server/utils/pageStudio/customerWorkspaces')
@@ -99,7 +100,7 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     fixture = { workspaceId: wid, siteId: result.site.id }
     await db.query('INSERT INTO page_studio_customer_setup_drafts (identity_id, workspace_id, draft) VALUES ($1, $2, $3::jsonb)', [ids.owner, wid, JSON.stringify({ businessName: 'Customer Flowers', businessType: 'Florist', timezone: 'UTC', goals: ['enquiries'] })])
   })
-  const config = { enabled: true, dashboardOrigin: 'https://customers.example.test', editorOrigin: 'https://studio.example.test' }
+  const config = { enabled: true, dashboardOrigin: 'https://app.xeroflow.io', editorOrigin: 'https://studio.example.test' }
   const issuer = config.dashboardOrigin
   const ticket = async () => {
     const api = await import('~~/server/utils/pageStudio/customerEditorHandoff')
@@ -117,8 +118,7 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     return { ...result, claims: await verifyCustomerEditorToken(result.token, publicPem, issuer) }
   }
   const authorize = async (claims: unknown, capability = 'workspace:checkpoint') => {
-    const { assertCustomerEditorSessionAuthority } = await import('~~/server/utils/pageStudio/customerEditorSessions')
-    return runTransaction(db => assertCustomerEditorSessionAuthority(claims, capability, db))
+    return comparePlacedCustomerEditorAuthority(claims, capability, fixture.workspaceId, config.editorOrigin, runTransaction)
   }
   const checkpoint = (claims: { siteId: string, clientId: string, tenantId: string, userId: string }, id = `draft_${randomUUID()}`) => ({
     checkpointId: id, createdAt: new Date().toISOString(), digest: 'a'.repeat(64), etag: 'saved-etag', userId: claims.userId,
@@ -141,7 +141,7 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     await db.query(migration('447_page_studio_customer_editor_sessions.sql'))
     const before = (await db.query('SELECT to_jsonb(s) AS child,to_jsonb(h) AS handoff FROM page_studio_customer_editor_sessions s JOIN page_studio_customer_editor_handoffs h ON h.id=s.handoff_id')).rows[0]
     await db.query(migration('456_page_studio_customer_editor_environment.sql'))
-    const after = (await db.query("SELECT to_jsonb(s)-'environment' AS child,to_jsonb(h)-ARRAY['environment','entitlement_id'] AS handoff FROM page_studio_customer_editor_sessions s JOIN page_studio_customer_editor_handoffs h ON h.id=s.handoff_id")).rows[0]
+    const after = (await db.query('SELECT to_jsonb(s)-\'environment\' AS child,to_jsonb(h)-ARRAY[\'environment\',\'entitlement_id\'] AS handoff FROM page_studio_customer_editor_sessions s JOIN page_studio_customer_editor_handoffs h ON h.id=s.handoff_id')).rows[0]
     expect(after).toEqual(before)
     await expect(authorize(claims)).resolves.toBeDefined()
     await db.query('UPDATE page_studio_customer_editor_sessions SET revoked_at=clock_timestamp()')
@@ -260,7 +260,7 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
     expect((await db.query('SELECT consumed_at FROM page_studio_customer_editor_handoffs')).rows[0].consumed_at).toBeNull()
     expect((await db.query('SELECT COUNT(*) FROM page_studio_customer_editor_sessions')).rows[0].count).toBe('0')
   })
-  it.each(['expiry', 'logout'])('rejects %s while a save waits for authority locks', async (reason) => {
+  it.each(['expiry', 'logout'].flatMap(reason => ['save', 'placed authorize'].map(mode => ({ reason, mode }))))('rejects $reason while $mode waits for authority locks', async ({ reason, mode }) => {
     const { claims } = await session()
     const holder = new pg.Client({ connectionString: databaseUrl })
     const reader = new pg.Client({ connectionString: databaseUrl })
@@ -278,7 +278,9 @@ describe.runIf(Boolean(databaseUrl))('native customer editor sessions on Postgre
         await holder.query('SELECT id FROM page_studio_sites FOR UPDATE')
       } else await holder.query('SELECT token_hash FROM page_studio_customer_sessions FOR UPDATE')
       const { commitCustomerEditorCheckpoint } = await import('~~/server/utils/pageStudio/customerEditorSessions')
-      outcome = Promise.allSettled([commitCustomerEditorCheckpoint({ checkpoint: checkpoint(claims), expectedCheckpointId: null }, claims, { runTransaction: callback => callback(reader) })])
+      outcome = Promise.allSettled([mode === 'save'
+        ? commitCustomerEditorCheckpoint({ checkpoint: checkpoint(claims), expectedCheckpointId: null }, claims, { runTransaction: callback => callback(reader) })
+        : placedCustomerEditorAuthority(claims, 'workspace:preview', fixture.workspaceId, config.editorOrigin, callback => callback(reader)).then((response) => { if (response.status !== 200) throw { statusCode: response.status } })])
       await vi.waitFor(async () => {
         expect((await db.query('SELECT $2::int = ANY(pg_blocking_pids($1)) AS blocked', [readerPid, holderPid])).rows[0].blocked).toBe(true)
       }, { timeout: 3000, interval: 10 })

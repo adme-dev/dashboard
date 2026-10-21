@@ -1,3 +1,5 @@
+import { handleCustomerEditorAuthorityFetch } from './customerEditorAuthority'
+import { CUSTOMER_EDITOR_AUTHORITY_URL } from '../../../shared/pageStudio/customerEditorAuthorityTransport'
 import { handleNativeSchemaCoordinatorFetch } from './nativeSchemaCoordinator'
 import { NATIVE_SCHEMA_COORDINATOR_URL } from '../../../shared/pageStudio/nativeSchemaCoordinator'
 import { handleNativeSchemaAuthorityFetch } from './nativeSchemaAuthority'
@@ -40,6 +42,8 @@ const Request = z.discriminatedUnion('operation', [
 const rejected = (code: string, statusCode: number, message: string) => ({ ok: false as const, error: { code, statusCode, message } })
 export default class PageStudioManagement extends WorkerEntrypoint<Env> {
   fetch(request: Request) {
+    if (request.url === CUSTOMER_EDITOR_AUTHORITY_URL) return handleCustomerEditorAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === NATIVE_SCHEMA_COORDINATOR_URL) return handleNativeSchemaCoordinatorFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === NATIVE_RUNTIME_RECOVERY_AUTHORITY_URL) return handleNativeRuntimeRecoveryFetch(request, this.env as unknown as Record<string, unknown>,

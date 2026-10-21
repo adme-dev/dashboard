@@ -31,7 +31,7 @@ const { default: rollback } = await import('~~/server/api/portal/page-studio/cus
 async function request(options: {
   action?: 'activate' | 'rollback'
   method?: string
-  body?: string
+  body?: string | Uint8Array<ArrayBuffer>
   origin?: string
   cookie?: string
   key?: string
@@ -110,6 +110,27 @@ describe('Native customer static publication HTTP boundary', () => {
     expect((await request({ body: '{bad' })).status).toBe(400)
     expect((await request({ contentType: 'text/plain' })).status).toBe(415)
     expect(mocks.prepare).not.toHaveBeenCalled()
+  })
+  it.each(['activate', 'rollback'] as const)('preserves exact byte and syntax boundaries for %s', async (action) => {
+    const body = JSON.stringify(action === 'activate' ? base : restore)
+    expect((await request({ action, body: body.padEnd(2048, ' ') })).status).toBe(200)
+    vi.clearAllMocks()
+    for (const options of [
+      { body: body.padEnd(2049, ' '), status: 413 },
+      { body: new Uint8Array([0xc3, 0x28]), status: 400 },
+      { body: '{bad', status: 400 },
+      { contentType: 'text/plain', status: 415 },
+      { query: '?foreign=1', status: 400 },
+      { site: 'invalid', status: 400 },
+      { key: '', status: 400 },
+      { body: JSON.stringify({ ...(action === 'activate' ? base : restore), scope }), status: 400 }
+    ]) {
+      expect((await request({ action, ...options })).status).toBe(options.status)
+    }
+    expect(mocks.prepare).not.toHaveBeenCalled()
+    expect(mocks.build).not.toHaveBeenCalled()
+    expect(mocks.target).not.toHaveBeenCalled()
+    expect((await request({ action, cookie: '', body: 'x'.repeat(2049) })).status).toBe(401)
   })
   it.each(['prepare', 'authority'] as const)('does not inspect artifacts or delivery when %s denies current access', async (phase) => {
     mocks[phase].mockRejectedValue(createError({ statusCode: 403 }))
