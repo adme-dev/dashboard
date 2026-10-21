@@ -1,6 +1,7 @@
 // server/utils/ai/mcp/bannerRunner.ts
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { escapeLike } from '~~/server/utils/ai/toolContext'
+import { resolveCreativeClientScope } from '~~/server/utils/ai/creativeClientScope'
 import { loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
 import { buildBannerHTML } from '~~/server/utils/banner/htmlBuilder'
 import { enqueueBannerRender, projectJobStatus, type BannerJobRow, type BannerRenderInput } from '~~/server/utils/banner/renderJob'
@@ -36,8 +37,8 @@ export interface LoadProjectRow { id: string, name: string, canvas_data: unknown
 
 /** Injected loaders for banner projects — default implementations reach the DB; override in tests. */
 export interface BannerProjectLoaders {
-  loadProjectsRows: () => Promise<LoadProjectsRow[]>
-  loadProjectRow: (nameOrId: string) => Promise<LoadProjectRow | null>
+  loadProjectsRows: (clientScope?: string) => Promise<LoadProjectsRow[]>
+  loadProjectRow: (nameOrId: string, clientScope?: string) => Promise<LoadProjectRow | null>
 }
 
 type BannerMutationDb = {
@@ -116,12 +117,13 @@ export async function createBannerProjectDraft(
   format: 'mrec'
   headline: string
 } }> {
+  const clientScope = resolveCreativeClientScope(ctx)
   const canvasData = buildMrecDraftCanvas(input.headline)
   const result = await db.query(
-    `INSERT INTO banner_projects (name, canvas_data, status, created_by)
-     VALUES ($1, $2::jsonb, 'draft', $3)
+    `INSERT INTO banner_projects (name, canvas_data, status, created_by, client_id)
+     VALUES ($1, $2::jsonb, 'draft', $3, $4::uuid)
      RETURNING id, name, status`,
-    [input.name, JSON.stringify(canvasData), ctx.userId],
+    [input.name, JSON.stringify(canvasData), ctx.userId, clientScope ?? null],
   )
   const row = result?.rows?.[0] as { id?: unknown, name?: unknown, status?: unknown } | undefined
   if (!row || typeof row.id !== 'string' || typeof row.name !== 'string' || row.status !== 'draft') {
@@ -147,18 +149,21 @@ export const BANNER_JOB_STATUS_CAP = 20
 
 function defaultLoaders(): BannerProjectLoaders {
   return {
-    loadProjectsRows: () => queryRows<LoadProjectsRow>(
-      `SELECT id, name, canvas_data, updated_at FROM banner_projects ORDER BY updated_at DESC LIMIT ${BANNER_PROJECT_LIST_CAP + 1}`, []),
-    loadProjectRow: (nameOrId: string) => queryOne<LoadProjectRow>(
-      `SELECT id, name, canvas_data FROM banner_projects WHERE id::text = $1 OR name ILIKE $2 ORDER BY (id::text = $1) DESC, name ASC LIMIT 1`,
-      [nameOrId, `%${escapeLike(nameOrId)}%`]),
+    loadProjectsRows: clientScope => queryRows<LoadProjectsRow>(
+      `SELECT id, name, canvas_data, updated_at FROM banner_projects
+       WHERE ($1::uuid IS NULL OR client_id = $1::uuid)
+       ORDER BY updated_at DESC LIMIT ${BANNER_PROJECT_LIST_CAP + 1}`, [clientScope ?? null]),
+    loadProjectRow: (nameOrId, clientScope) => queryOne<LoadProjectRow>(
+      `SELECT id, name, canvas_data FROM banner_projects
+       WHERE (id::text = $1 OR name ILIKE $2) AND ($3::uuid IS NULL OR client_id = $3::uuid)
+       ORDER BY (id::text = $1) DESC, name ASC LIMIT 1`,
+      [nameOrId, `%${escapeLike(nameOrId)}%`, clientScope ?? null]),
   }
 }
 
-/** Resolve a banner project for the actor: name-or-id → { id, name, formats }.
- * ctx is intentionally unused — banner studio is staff-wide, unscoped lookup. */
-async function resolveBannerProject(nameOrId: string, loaders: BannerProjectLoaders): Promise<{ id: string, name: string, formats: string[] } | null> {
-  const row = await loaders.loadProjectRow(nameOrId)
+/** Preserve agency discovery while narrowing a connected client's lookup at the database boundary. */
+async function resolveBannerProject(nameOrId: string, loaders: BannerProjectLoaders, ctx: ToolContext): Promise<{ id: string, name: string, formats: string[] } | null> {
+  const row = await loaders.loadProjectRow(nameOrId, resolveCreativeClientScope(ctx))
   if (!row) return null
   return { id: row.id, name: row.name, formats: extractFormats(row.canvas_data) }
 }
@@ -166,8 +171,8 @@ async function resolveBannerProject(nameOrId: string, loaders: BannerProjectLoad
 export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerReadRunner {
   const l = loaders ?? defaultLoaders()
   return {
-    list_banner_projects: async () => {
-      const all = await l.loadProjectsRows()
+    list_banner_projects: async (_raw, ctx) => {
+      const all = await l.loadProjectsRows(resolveCreativeClientScope(ctx))
       const truncatedAtSource = all.length > BANNER_PROJECT_LIST_CAP
       const rows = truncatedAtSource ? all.slice(0, BANNER_PROJECT_LIST_CAP) : all
       return {
@@ -181,13 +186,18 @@ export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerRea
         })),
       }
     },
-    get_banner_render_status: async (raw) => {
+    get_banner_render_status: async (raw, ctx) => {
+      const clientScope = resolveCreativeClientScope(ctx)
       const requested = (raw as { jobIds?: string[] }).jobIds ?? []
       const ids = requested.slice(0, BANNER_JOB_STATUS_CAP)
       if (!ids.length) return { jobs: [], limit: BANNER_JOB_STATUS_CAP, ignoredJobIds: 0 }
       const rows = await queryRows<BannerJobRow>(
-        `SELECT id, project_id, format_key, width, height, fps, crf, quality, source_r2_key, status, url, file_size, error
-           FROM banner_render_jobs WHERE id = ANY($1)`, [ids])
+        `SELECT j.id, j.project_id, j.format_key, j.width, j.height, j.fps, j.crf, j.quality,
+                j.source_r2_key, j.status, j.url, j.file_size, j.error
+           FROM banner_render_jobs j
+           WHERE j.id = ANY($1) AND ($2::uuid IS NULL OR EXISTS (
+             SELECT 1 FROM banner_projects p WHERE p.id = j.project_id AND p.client_id = $2::uuid
+           ))`, [ids, clientScope ?? null])
       return { jobs: projectJobStatus(rows), limit: BANNER_JOB_STATUS_CAP, ignoredJobIds: Math.max(0, requested.length - ids.length) }
     },
   }
@@ -195,13 +205,13 @@ export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerRea
 
 export function buildBannerProposeDeps(): BannerProposeDeps {
   return {
-    resolveProject: (project: string) => resolveBannerProject(project, defaultLoaders()),
+    resolveProject: (project, ctx) => resolveBannerProject(project, defaultLoaders(), ctx),
     persist: async (ctx, action, payload) => ({ proposalId: await proposeAction(ctx, null, action, payload) }),
   }
 }
 
 export interface BannerConfirmDeps {
-  loadLayers: (projectId: string, format: string) => Promise<{ layers: any[], width: number, height: number }>
+  loadLayers: (projectId: string, format: string, clientScope?: string) => Promise<{ layers: any[], width: number, height: number }>
   buildHtml: (format: string, layers: any[], options: { baseUrl: string }) => string
   enqueue: (input: BannerRenderInput, deps: any) => Promise<{ jobIds: string[] }>
   execution?: TrustedSupplementalExecutionServices
@@ -209,7 +219,10 @@ export interface BannerConfirmDeps {
 
 export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload, ctx: ToolContext, deps: BannerConfirmDeps): Promise<{ ok: true, data: { jobIds: string[] } } | { ok: false, error: string, code: 'handler_error' }> {
   try {
-    const { layers, width, height } = await deps.loadLayers(payload.projectId, payload.format)
+    const clientScope = resolveCreativeClientScope(ctx)
+    const { layers, width, height } = clientScope === undefined
+      ? await deps.loadLayers(payload.projectId, payload.format)
+      : await deps.loadLayers(payload.projectId, payload.format, clientScope)
     const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? process.env.R2_PUBLIC_URL ?? ''
     const html = deps.buildHtml(payload.format, layers, { baseUrl })
     const enqueueDeps = {
