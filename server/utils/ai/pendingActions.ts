@@ -1,3 +1,4 @@
+import { resolveCreativeClientScope } from './creativeClientScope'
 import { queryOne } from '~~/server/utils/db'
 import { isReadOnlyRole, roleHasPermission } from '~~/server/utils/permissions'
 import { ok, fail, type ToolContext, type ToolResult } from './toolContext'
@@ -54,13 +55,14 @@ export async function proposeAction(
   toolName: string,
   resolvedPayload: unknown,
 ): Promise<string> {
+  const clientScope = resolveCreativeClientScope(ctx)
   const godModePreparation = ctx.source === 'god_mode_preparation'
   const row = await queryOne<{ id: string }>(
     `INSERT INTO ai_pending_actions (
        conversation_id, user_id, tool_name, resolved_payload, status, source,
-       god_mode_execution_key, god_mode_state
+       god_mode_execution_key, god_mode_state, client_scope
      )
-     VALUES ($1, $2, $3, $4, 'proposed', $5, $6, $7)
+     VALUES ($1, $2, $3, $4, 'proposed', $5, $6, $7, $8)
      RETURNING id`,
     [
       conversationId,
@@ -69,7 +71,8 @@ export async function proposeAction(
       JSON.stringify(resolvedPayload),
       ctx.source ?? 'chat',
       godModePreparation ? ctx.godModeExecutionKey ?? null : null,
-      godModePreparation ? 'preparing' : null
+      godModePreparation ? 'preparing' : null,
+      clientScope ?? null
     ],
   )
   if (!row) throw new Error('Failed to persist proposed action')
