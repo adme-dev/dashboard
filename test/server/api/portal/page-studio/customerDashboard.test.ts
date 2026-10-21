@@ -154,6 +154,12 @@ describe('customer dashboard HTTP boundary', () => {
     mocks.transfer.mockResolvedValue(managedTransfer)
     expect(await (await call()).json()).toMatchObject({ state: 'transfer-pending', stage: 4, managedTransfer, canOpenStudio: false })
   })
+  it('keeps incomplete transfer controls closed even when stale fields claim readiness', async () => {
+    const siteId = 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020'
+    mocks.read.mockResolvedValue({ siteId, state: 'editor-ready', stage: 5, canOpenStudio: true, canCreate: true, canRetry: true })
+    mocks.transfer.mockResolvedValue({ siteId, completed: false, stage: 'completed', editorConnection: 'ready', canRetryConnection: true })
+    expect(await (await call()).json()).toMatchObject({ state: 'transfer-pending', canOpenStudio: false, canPrepareCms: false, canCreate: false, canRetry: false })
+  })
   it('does not infer saved setup or grant capabilities without the saved-plan proof', async () => {
     mocks.read.mockResolvedValue({ siteId: 'ad7a22f9-1c8a-44d7-92b2-d4202e4a2020', state: 'needs-attention', stage: 0, canCreate: false, canRetry: false })
     mocks.saved.mockResolvedValue(false)

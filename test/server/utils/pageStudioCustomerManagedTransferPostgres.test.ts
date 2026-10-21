@@ -160,6 +160,13 @@ describe.runIf(Boolean(databaseUrl))('customer transfer current native authority
     expect(saved).toBe(false)
     expect(remote).not.toHaveBeenCalled()
   })
+  it('rejects malformed saved-read input before entering a transaction or inspection fallback', async () => {
+    const unusedTransaction = vi.fn()
+    for (const [token, siteId] of [['invalid', fixture.site.id], [sessionToken, 'foreign']]) {
+      await expect(readCustomerSavedPublishingCheckpoint(token!, siteId!, { env, runTransaction: unusedTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    }
+    expect(unusedTransaction).not.toHaveBeenCalled()
+  })
   it('withholds saved readiness after owner membership is revoked', async () => {
     await savedCheckpoint()
     await db.query('UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()')
