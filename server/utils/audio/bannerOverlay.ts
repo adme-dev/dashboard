@@ -1,4 +1,5 @@
 import { queryOne } from '~~/server/utils/db'
+import { resolveCreativeClientScope } from '~~/server/utils/ai/creativeClientScope'
 import { FORMATS } from '~~/app/utils/banner-constants'
 
 /** Default banner format key for a video canvas aspect. Overlay clips may override via gsap_format_key. */
@@ -9,8 +10,10 @@ export function resolveOverlayFormatKey(width: number, height: number): string {
   return 'ig_sq'                       // ~1:1
 }
 
-export async function loadBannerLayers(projectId: string, formatKey: string): Promise<{ layers: any[]; width: number; height: number }> {
-  const row = await queryOne(`SELECT canvas_data AS "canvasData" FROM banner_projects WHERE id = $1`, [projectId])
+export async function loadBannerLayers(projectId: string, formatKey: string, clientScope?: string): Promise<{ layers: any[]; width: number; height: number }> {
+  const scope = resolveCreativeClientScope({ clientScope })
+  const row = await queryOne(`SELECT canvas_data AS "canvasData" FROM banner_projects
+    WHERE id = $1 AND ($2::uuid IS NULL OR client_id = $2::uuid)`, [projectId, scope ?? null])
   if (!row) throw new Error(`banner project not found: ${projectId}`)
   const artboard = (row as any).canvasData?.[formatKey]
   if (!artboard?.layers) throw new Error(`banner project ${projectId} has no format "${formatKey}"`)

@@ -152,6 +152,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.4",
     "@nuxt/eslint": "^1.16.0",
     "@types/dompurify": "^3.2.0",
     "@types/leaflet": "^1.9.22",
