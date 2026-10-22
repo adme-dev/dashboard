@@ -494,4 +494,90 @@ describe.runIf(Boolean(databaseUrl))('immutable complete recovery reconciliation
     await expect(read(captureId)).rejects.toBeDefined()
     await expect(capture({captureId,inventory},observation)).rejects.toBeDefined()
   })
+  async function coordinatorFixture() {
+    const inventory = await fixture(), captureId = randomUUID()
+    const ensure = vi.fn(async (wire: { transition: { eventId: string, next: unknown } }) => ({
+      kind: 'created-initial-closure', eventId: wire.transition.eventId, head: wire.transition.next,
+      historicalProofDigest: await collectionDigest(wire), verificationDigest: await collectionDigest(wire)
+    }))
+    const observe = vi.fn(observation)
+    const env = { PAGE_STUDIO_PROVISIONING_ENVIRONMENT: 'production', PAGE_STUDIO_PROVISIONER: {
+      ensureInitialManagedTransferRecoveryClosed: ensure, observeManagedTransferRecoveryInventory: observe
+    } }
+    const request = { siteId: input.siteId, requestId, operator: input.operator,
+      body: { action: 'inspect', expectedRevision: 5, expectedHeadVersion: 1,
+        recoveryId: inventory.recovery.recoveryId, captureId } }
+    const inspect = async (value: unknown = request) => (await import('~~/server/utils/pageStudio/customerTransferRecoveryCoordinator'))
+      .inspectCustomerTransferRecovery(value, { env, runTransaction })
+    return { inventory, captureId, ensure, observe, env, request, inspect }
+  }
+  it('coordinator derives the complete inspection server-side and stores evidence after close then observation', async () => {
+    const c = await coordinatorFixture(), order: string[] = []
+    c.ensure.mockImplementationOnce(async wire => {
+      // Remote work must not hold the site's PG transaction lock.
+      await runTransaction(client => client.query('SELECT id FROM page_studio_sites WHERE id=$1 FOR UPDATE NOWAIT', [input.siteId]))
+      order.push('close')
+      return { kind: 'created-initial-closure', eventId: wire.transition.eventId, head: wire.transition.next,
+        historicalProofDigest: await collectionDigest(wire), verificationDigest: await collectionDigest(wire) }
+    })
+    c.observe.mockImplementationOnce(async wire => { order.push('inventory'); return observation(wire) })
+    const result = await c.inspect()
+    expect(order).toEqual(['close', 'inventory'])
+    expect(c.observe).toHaveBeenCalledExactlyOnceWith(c.inventory)
+    expect(result).toMatchObject({ siteId: input.siteId, requestId, revision: 5, captureId: c.captureId,
+      recoveryId: c.inventory.recovery.recoveryId, state: 'observed', historical: false })
+    expect(JSON.stringify(result)).not.toContain(operatorHash)
+    expect(result).not.toHaveProperty('observation')
+    expect(await count()).toBe(1)
+    expect(c.ensure.mock.calls[0]![0].transition.eventId).toBe(c.inventory.recovery.recoveryId)
+  })
+  it('coordinator exact receipt retry does not repeat closure or physical inventory', async () => {
+    const c = await coordinatorFixture(), first = await c.inspect(), second = await c.inspect()
+    expect(second).toEqual({ ...first, historical: true })
+    expect(c.ensure).toHaveBeenCalledOnce(); expect(c.observe).toHaveBeenCalledOnce()
+  })
+  it.each(['operationId', 'intentDigest', 'source', 'inspection', 'deadline', 'observation'])(
+    'coordinator rejects caller supplied private %s before RPC', async field => {
+      const c = await coordinatorFixture()
+      await expect(c.inspect({ ...c.request, body: { ...c.request.body, [field]: 'untrusted' } })).rejects.toBeDefined()
+      expect(c.ensure).not.toHaveBeenCalled(); expect(c.observe).not.toHaveBeenCalled()
+    })
+  it.each(['siteId', 'requestId', 'recoveryId', 'expectedHeadVersion', 'expectedRevision'])(
+    'coordinator rejects wrong scoped selector %s before RPC', async field => {
+      const c = await coordinatorFixture(), request = structuredClone(c.request)
+      if (field === 'siteId' || field === 'requestId') request[field] = randomUUID()
+      else Object.assign(request.body, { [field]: field === 'recoveryId' ? randomUUID() : 2 })
+      await expect(c.inspect(request)).rejects.toBeDefined()
+      expect(c.ensure).not.toHaveBeenCalled(); expect(c.observe).not.toHaveBeenCalled()
+    })
+  it('coordinator rejects wrong closure proof without observing or capturing', async () => {
+    const c = await coordinatorFixture()
+    c.ensure.mockImplementationOnce(async wire => ({ kind: 'created-initial-closure', eventId: wire.transition.eventId,
+      head: wire.transition.next, historicalProofDigest: 'f'.repeat(64), verificationDigest: 'f'.repeat(64) }))
+    await expect(c.inspect()).rejects.toBeDefined()
+    expect(c.observe).not.toHaveBeenCalled(); expect(await count()).toBe(0)
+  })
+  it('coordinator accepts verified old proof with fresh verification digest without relabeling history', async () => {
+    const c = await coordinatorFixture()
+    c.ensure.mockImplementationOnce(async wire => ({ kind: 'verified-initial-closure', eventId: wire.transition.eventId,
+      head: wire.transition.next, historicalProofDigest: 'f'.repeat(64), verificationDigest: await collectionDigest(wire) }))
+    expect((await c.inspect()).state).toBe('observed')
+    expect(await count()).toBe(1)
+  })
+  it('coordinator retains no receipt after closure loses its acknowledgment and does not retry', async () => {
+    const c = await coordinatorFixture(); c.ensure.mockRejectedValueOnce(new Error('Lost acknowledgment'))
+    await expect(c.inspect()).rejects.toBeDefined()
+    expect(c.ensure).toHaveBeenCalledOnce(); expect(c.observe).not.toHaveBeenCalled(); expect(await count()).toBe(0)
+  })
+  it('coordinator detects binding replacement during closure before physical observation', async () => {
+    const c = await coordinatorFixture()
+    c.ensure.mockImplementationOnce(async wire => {
+      c.env.PAGE_STUDIO_PROVISIONER = { ...c.env.PAGE_STUDIO_PROVISIONER }
+      return { kind: 'created-initial-closure', eventId: wire.transition.eventId, head: wire.transition.next,
+        historicalProofDigest: await collectionDigest(wire), verificationDigest: await collectionDigest(wire) }
+    })
+    await expect(c.inspect()).rejects.toBeDefined()
+    expect(c.observe).not.toHaveBeenCalled(); expect(await count()).toBe(0)
+  })
+
 })
