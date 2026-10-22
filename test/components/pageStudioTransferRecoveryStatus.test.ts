@@ -2,7 +2,7 @@
 import { reactive } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import Recovery from '~~/app/components/page-studio/TransferRecoveryStatus.client.vue'
-import { cleanup, click, deferred, flush, mount, otherSite, requestId, siteId } from './pageStudioTransferTestSupport'
+import { button, cleanup, click, deferred, flush, mount, otherSite, requestId, siteId } from './pageStudioTransferTestSupport'
 
 const fetch = vi.fn()
 const props = () => reactive({ siteId, requestId, revision: 5, actorKey: 'operator-a' })
@@ -59,4 +59,76 @@ it('clears prior data after a failed refresh and permits one explicit read retry
   await click(host, 'Refresh recovery status')
   expect(host.textContent).toContain('No recovery review yet')
   expect(fetch).toHaveBeenCalledTimes(3)
+})
+
+const inspectResult = { siteId, requestId, revision: 5, recoveryId: head.recoveryId,
+  state: 'observed', historical: false, digest: 'b'.repeat(64),
+  observedStartedAt: '2026-10-23T00:00:00.000Z', observedCompletedAt: '2026-10-23T00:00:01.000Z' }
+it('opens only after explicit confirmation and never runs inspection automatically', async () => {
+  fetch.mockResolvedValue({ ...view(null), allowedActions: ['open'] })
+  const host = await mount(Recovery, props())
+  await click(host, 'Open recovery review')
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(host.querySelector('[role="dialog"]')?.textContent).toContain('one hour')
+  fetch.mockImplementationOnce(async (_url, options) => ({ ...view(), recovery: { ...head, recoveryId: options.body.recoveryId, deadline: options.body.deadline }, allowedActions: ['revoke'] }))
+  await click(host, 'Open review')
+  expect(fetch).toHaveBeenCalledTimes(2)
+  expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'POST', retry: 0, body: { action: 'open', expectedRevision: 5, expectedHeadVersion: null } })
+  expect(host.textContent).toContain('Inspect retained transfer')
+})
+it('explicitly captures one inspection and shows evidence without claiming transfer readiness', async () => {
+  fetch.mockResolvedValue({ ...view(), allowedActions: ['revoke'] })
+  const host = await mount(Recovery, props())
+  fetch.mockImplementationOnce(async (_url, options) => ({ ...inspectResult, captureId: options.body.captureId }))
+  await click(host, 'Inspect retained transfer')
+  expect(fetch.mock.calls[1][0]).toBe(`/api/agency/page-studio/sites/${siteId}/transfer-requests/${requestId}/recovery/inspect`)
+  expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'POST', retry: 0, body: { action: 'inspect', recoveryId: head.recoveryId, expectedHeadVersion: 1, expectedRevision: 5 } })
+  expect(host.textContent).toContain('Inspection recorded')
+  expect(host.textContent).toContain('Further checks and approvals')
+  expect(button(host, 'Inspect retained transfer')?.disabled).toBe(true)
+})
+it('lost inspection acknowledgement retains the same capture ID for an explicit retry', async () => {
+  fetch.mockResolvedValue({ ...view(), allowedActions: ['revoke'] })
+  const host = await mount(Recovery, props())
+  fetch.mockRejectedValueOnce(Error('secret failure'))
+  await click(host, 'Inspect retained transfer')
+  const original = fetch.mock.calls[1][1].body.captureId
+  expect(host.textContent).toContain('Inspection not confirmed')
+  expect(host.textContent).not.toContain('secret failure')
+  expect(fetch).toHaveBeenCalledTimes(2)
+  fetch.mockImplementationOnce(async (_url, options) => ({ ...inspectResult, historical: true, captureId: options.body.captureId }))
+  await click(host, 'Check this inspection')
+  expect(fetch.mock.calls[2][1].body.captureId).toBe(original)
+  expect(host.textContent).toContain('Saved inspection retrieved')
+})
+it('discards a late inspection when the site changes', async () => {
+  fetch.mockResolvedValue({ ...view(), allowedActions: ['revoke'] })
+  const values = props(), host = await mount(Recovery, values), pending = deferred()
+  fetch.mockReturnValueOnce(pending.promise)
+  await click(host, 'Inspect retained transfer')
+  const captureId = fetch.mock.calls[1][1].body.captureId
+  values.siteId = otherSite
+  fetch.mockRejectedValue({ statusCode: 403 })
+  await flush()
+  pending.resolve({ ...inspectResult, captureId })
+  await flush()
+  expect(host.textContent).not.toContain('Inspection recorded')
+})
+it('rejects an inspection receipt from another capture', async () => {
+  fetch.mockResolvedValue({ ...view(), allowedActions: ['revoke'] })
+  const host = await mount(Recovery, props())
+  fetch.mockResolvedValueOnce({ ...inspectResult, captureId: otherSite })
+  await click(host, 'Inspect retained transfer')
+  expect(host.textContent).toContain('Inspection not confirmed')
+  expect(host.textContent).not.toContain('Inspection recorded')
+})
+it('revokes only after confirmation and clears saved inspection', async () => {
+  fetch.mockResolvedValue({ ...view(), allowedActions: ['revoke'] })
+  const host = await mount(Recovery, props())
+  await click(host, 'Close review')
+  expect(fetch).toHaveBeenCalledTimes(1)
+  fetch.mockResolvedValueOnce(view({ ...head, state: 'revoked', version: 2 }))
+  await click(host, 'Confirm close')
+  expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'POST', retry: 0, body: { action: 'revoke', recoveryId: head.recoveryId, expectedHeadVersion: 1 } })
+  expect(host.textContent).toContain('Recovery review revoked')
 })
