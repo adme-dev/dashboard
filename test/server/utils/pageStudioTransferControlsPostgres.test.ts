@@ -96,6 +96,7 @@ describe.runIf(Boolean(databaseUrl))('retained transfer controls on PostgreSQL',
     version, bytes: 30, freezeDigest: sourceFreeze.digest, operationId: 'adoption_a', origin: 'legacy', sha256: 'a'.repeat(64) })
   beforeAll(async () => {
     await db.query(readFileSync('server/database/migrations/457_page_studio_managed_transfer_intents.sql', 'utf8'))
+    await db.query(readFileSync('server/database/migrations/473_page_studio_transfer_recovery_heads.sql', 'utf8'))
     await db.query(readFileSync('server/database/migrations/472_page_studio_transfer_requests.sql', 'utf8'))
   })
   beforeEach(async () => {

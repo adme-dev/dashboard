@@ -165,7 +165,16 @@ export async function withManagedTransferIntentAuthority<T>(input: unknown,
     || row.intent.destination.requestKey !== `transfer_${parsed.data.operationId}`) throw denied()
   return withManagedTransferAuthority(original.data.authority, async (db, authority) => {
     if (!equal(authority, row.intent.authority)) throw conflict()
-    return work(db, structuredClone(row.intent))
+    // Any head permanently closes legacy admission, even revoked or corrupt
+    // metadata. The migration serializes head writes with this same site lock.
+    const legacy = async () => {
+      if ((await db.query('SELECT 1 FROM page_studio_transfer_recovery_heads WHERE operation_id=$1',
+        [parsed.data.operationId])).rows.length) throw denied()
+    }
+    await legacy()
+    const result = await work(db, structuredClone(row.intent))
+    await legacy()
+    return result
   }, dependencies)
 }
 
