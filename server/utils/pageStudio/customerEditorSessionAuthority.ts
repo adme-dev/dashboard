@@ -1,11 +1,12 @@
 import { createError } from 'h3'
+import { readCustomerAdoptionAuthority } from './customerAdoptionAuthority'
 import { CustomerEditorClaimsSchema, CustomerEditorCapabilitySchema, CUSTOMER_CMS_SETUP_MAX_SECONDS, customerSessionHasPurpose } from './customerEditorToken'
 import { readCustomerEditorAuthority, type CustomerEditorAuthorityReceipt } from './customerEditorAuthority'
 import type { PageStudioQueryClient } from '~~/shared/pageStudio/controlTypes'
 
 const denied = () => createError({ statusCode: 403, statusMessage: 'Customer editor access is not available.' })
 export interface AuthorityReceipt extends CustomerEditorAuthorityReceipt {
-  purpose: 'editor' | 'cms-setup'
+  purpose: 'editor' | 'cms-setup' | 'cms-adoption'
   handoff_id: string
   login_session_hash: string
   identity_id: string
@@ -38,7 +39,7 @@ export async function assertCustomerEditorSessionAuthority(input: unknown, capab
     || receipt.site_id !== claims.siteId || receipt.business_id !== claims.clientId || receipt.tenant_id !== claims.tenantId
     || receipt.editor_origin !== claims.editorOrigin || `${receipt.dashboard_origin}/studio/dashboard` !== claims.returnUrl) throw denied()
   if (!customerSessionHasPurpose(claims.capabilities, receipt.purpose)
-    || (receipt.purpose === 'cms-setup' && claims.expiresAt - claims.issuedAt > CUSTOMER_CMS_SETUP_MAX_SECONDS)) throw denied()
+    || (receipt.purpose !== 'editor' && claims.expiresAt - claims.issuedAt > CUSTOMER_CMS_SETUP_MAX_SECONDS)) throw denied()
   const { identityId, owned } = await readCustomerEditorAuthority(db, receipt)
   if (identityId !== claims.userId || owned.workspaceId !== claims.workspaceId || owned.scope.businessId !== claims.clientId || owned.scope.tenantId !== claims.tenantId) throw denied()
   // Lock child last. Recheck time-based parent/membership authority after any wait.
@@ -49,6 +50,7 @@ export async function assertCustomerEditorSessionAuthority(input: unknown, capab
   const active = (await db.query(`SELECT nonce FROM page_studio_customer_editor_sessions
     WHERE nonce = $1 AND revoked_at IS NULL AND expires_at > clock_timestamp()`, [claims.nonce])).rows[0]
   if (!active) throw denied()
+  if (receipt.purpose === 'cms-adoption') await readCustomerAdoptionAuthority(db, receipt, claims.nonce)
   return { claims, handoffId: receipt.handoff_id, owned }
 }
 

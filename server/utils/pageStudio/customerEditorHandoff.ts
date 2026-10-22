@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CustomerAdoptionGrantReferenceSchema } from '~~/shared/pageStudio/customerAdoptionGrant'
 import { CustomerEditorOriginSchema as Origin } from './customerEditorToken'
 import { createError } from 'h3'
 import { transaction } from '~~/server/utils/db'
@@ -24,7 +25,7 @@ interface Receipt extends CustomerEditorAuthorityReceipt {
   dashboard_origin: string
   editor_origin: string
   expires_at: Date
-  purpose: 'editor' | 'cms-setup'
+  purpose: 'editor' | 'cms-setup' | 'cms-adoption'
 }
 export function parseCustomerEditorHandoffConfiguration(value: unknown) {
   const parsed = Configuration.safeParse(value)
@@ -40,10 +41,11 @@ async function audit(db: PageStudioQueryClient, receipt: Receipt, action: string
 
 /** Internal only. A transport ticket is NOT a Studio JWT, editor permission or Ready receipt.
  * Future HTTP producer must enforce exact origin/rate limit and readiness before calling. */
-async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown, dependencies: Dependencies, purpose: 'editor' | 'cms-setup') {
+async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown, dependencies: Dependencies, purpose: 'editor' | 'cms-setup' | 'cms-adoption', grant?: z.infer<typeof CustomerAdoptionGrantReferenceSchema>) {
   const config = parseCustomerEditorHandoffConfiguration(trustedConfiguration)
   if (!Token.safeParse(sessionToken).success) throw denied()
   if (config.environment === 'production' && purpose !== 'editor') throw denied()
+  const adoption = purpose === 'cms-adoption'
   const token = generatePortalMagicLinkToken()
   const tokenHash = await digestPortalSessionToken(token)
   const loginHash = await digestPortalSessionToken(sessionToken as string)
@@ -57,7 +59,8 @@ async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown
       WHERE receipt.workspace_id=$1`, [setup.workspaceId])).rows[0]
     if (!site) throw denied()
     const authorityReceipt = { environment: config.environment, entitlement_id: config.environment === 'production' ? site.entitlement_id : null,
-      site_id: site.site_id, login_session_hash: loginHash, purpose }
+      site_id: site.site_id, login_session_hash: loginHash, purpose,
+      adoption_grant_id: grant?.grantId ?? null, adoption_grant_revision: grant?.revision ?? null }
     const authority = await readCustomerEditorAuthority(db, authorityReceipt)
     const { owned } = authority
     if (authority.identityId !== user.identityId || owned.workspaceId !== setup.workspaceId) throw denied()
@@ -67,16 +70,17 @@ async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown
     const receipt = (await db.query<Receipt>(`WITH clock AS (SELECT clock_timestamp() AS issued)
       INSERT INTO page_studio_customer_editor_handoffs
         (token_hash, login_session_hash, identity_id, workspace_id, site_id, tenant_id, business_id,
-         dashboard_origin, editor_origin, issued_at, expires_at, purpose, environment, entitlement_id)
+         dashboard_origin, editor_origin, issued_at, expires_at, purpose, environment, entitlement_id${adoption ? ', adoption_grant_id, adoption_grant_revision' : ''})
       SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, clock.issued,
-        LEAST(clock.issued + INTERVAL '2 minutes', session.expires_at, $10::timestamptz), $11, $12, $13
+        LEAST(clock.issued + INTERVAL '2 minutes', session.expires_at, $10::timestamptz), $11, $12, $13${adoption ? ', $14, $15' : ''}
       FROM page_studio_customer_sessions session CROSS JOIN clock
       WHERE session.token_hash = $2 AND session.revoked_at IS NULL AND session.expires_at > clock.issued
         AND $10::timestamptz > clock.issued
       RETURNING *`, [tokenHash, loginHash, user.identityId, owned.workspaceId, site.site_id, owned.scope.tenantId,
-      owned.scope.businessId, config.dashboardOrigin, config.editorOrigin, authority.expiresAt, purpose, config.environment, authorityReceipt.entitlement_id])).rows[0]
+      owned.scope.businessId, config.dashboardOrigin, config.editorOrigin, authority.expiresAt, purpose, config.environment, authorityReceipt.entitlement_id, ...(adoption ? [authorityReceipt.adoption_grant_id, authorityReceipt.adoption_grant_revision] : [])])).rows[0]
     if (!receipt) throw denied()
     await audit(db, receipt, 'customer.handoff_issued')
+    if (purpose === 'cms-adoption') await readCustomerEditorAuthority(db, authorityReceipt)
     dependencies.assertWorkspace?.(owned.workspaceId)
     return { token, expiresAt: new Date(receipt.expires_at).toISOString(), editorOrigin: config.editorOrigin }
   })
@@ -85,6 +89,10 @@ async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown
 export const issueCustomerEditorHandoff = (token: unknown, config: unknown, deps: Dependencies = {}) => issueHandoff(token, config, deps, 'editor')
 /** Internal producer only; completed provisioning must be verified before calling. */
 export const issueCustomerCmsSetupHandoff = (token: unknown, config: unknown, deps: Dependencies = {}) => issueHandoff(token, config, deps, 'cms-setup')
+
+/** Explicit linked parent; genuine owner login is still independently required. */
+export const issueCustomerCmsAdoptionHandoff = (token: unknown, config: unknown, grant: unknown, deps: Dependencies = {}) =>
+  issueHandoff(token, config, deps, 'cms-adoption', CustomerAdoptionGrantReferenceSchema.parse(grant))
 
 /** For an authenticated private Studio adapter only. Origins are trusted server config,
  * not proof of caller identity. Returned context cannot authorize editing or publication. */
@@ -110,6 +118,7 @@ export async function redeemCustomerEditorHandoff(token: unknown, trustedConfigu
       WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > clock_timestamp() RETURNING id`, [hash])).rows[0]
     if (!consumed) throw denied()
     await audit(db, receipt, 'customer.handoff_consumed')
+    if (receipt.purpose === 'cms-adoption') await readCustomerEditorAuthority(db, receipt)
     dependencies.assertWorkspace?.(owned.workspaceId)
     return { kind: 'customer-editor-handoff' as const, handoffId: receipt.id, identityId, workspaceId: owned.workspaceId,
       scope: owned.scope, returnUrl: `${config.dashboardOrigin}/studio/dashboard` }
