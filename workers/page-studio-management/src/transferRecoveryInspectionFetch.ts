@@ -1,8 +1,8 @@
 import { boundedBody } from '../../../shared/pageStudio/boundedPrivateBody'
 import { collectionDigest } from '../../../shared/pageStudio/collectionApi'
-import { TransferRecoveryInspectionRequestSchema, TransferRecoveryInspectionAcknowledgmentSchema } from '../../../shared/pageStudio/transferRecoveryInspection'
-import { TRANSFER_RECOVERY_INSPECTION_URL, TRANSFER_RECOVERY_INSPECTION_UNAVAILABLE } from '../../../shared/pageStudio/transferRecoveryInspectionTransport'
+import { TransferRecoveryInspectionWireSchema, TransferRecoveryInspectionWireAcknowledgmentSchema, TRANSFER_RECOVERY_INSPECTION_URL, TRANSFER_RECOVERY_INSPECTION_UNAVAILABLE } from '../../../shared/pageStudio/transferRecoveryInspectionTransport'
 import { authorizeCustomerTransferRecoveryInspection } from '../../../server/utils/pageStudio/customerTransferRecoveryInspection'
+import { authorizeCustomerTransferRecoveryInventory } from '../../../server/utils/pageStudio/customerTransferRecoveryInventory'
 import type { RunPageStudioTransaction } from '../../../shared/pageStudio/controlTypes'
 
 /** Fresh PG inspection of one detached private envelope; no automatic retries,
@@ -19,14 +19,15 @@ export async function handleTransferRecoveryInspectionFetch(request: Request, en
     const body = await boundedBody(request, 16384)
     if (body.tooLarge) return denied(400)
     digest = await collectionDigest(body.value)
-    const parsed = TransferRecoveryInspectionRequestSchema.safeParse(body.value)
+    const parsed = TransferRecoveryInspectionWireSchema.safeParse(body.value)
     if (!parsed.success) return denied(400)
     envelope = parsed.data
   } catch { return denied(400) }
   if (config.PAGE_STUDIO_RELEASE_ENVIRONMENT !== 'production' || config.PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED !== 'true') return denied()
   try {
-    const result = TransferRecoveryInspectionAcknowledgmentSchema.safeParse(
-      await authorizeCustomerTransferRecoveryInspection(envelope, { runTransaction }))
+    const result = TransferRecoveryInspectionWireAcknowledgmentSchema.safeParse(envelope.purpose === 'inventory'
+      ? await authorizeCustomerTransferRecoveryInventory(envelope, { runTransaction })
+      : await authorizeCustomerTransferRecoveryInspection(envelope, { runTransaction }))
     if (!result.success || result.data.purpose !== envelope.purpose || result.data.envelopeDigest !== digest) return denied()
     return reply(result.data)
   } catch (error) {
