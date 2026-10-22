@@ -526,6 +526,224 @@ describe.runIf(Boolean(databaseUrl))('retained transfer controls on PostgreSQL',
       await expect(gate({ action: 'revoke', expectedRevision: 5, recoveryId: body.recoveryId, expectedHeadVersion: 1 })).rejects.toMatchObject({ statusCode: 403 })
     })
   })
+  describe('explicit recovery inspection authority', () => {
+    async function observation(options: { planExpiry?: boolean, headMilliseconds?: number } = {}) {
+      if (options.planExpiry) await db.query("UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+interval '1 second' WHERE id=$1", [input.entitlementId])
+      await approved()
+      await control('reserve', 3)
+      const retained = (await db.query('SELECT operation_id,intent_digest FROM page_studio_managed_transfer_intents')).rows[0]
+      const reference = { operationId: retained.operation_id, intentDigest: retained.intent_digest }
+      const { prepareManagedTransferResources } = await import('~~/server/utils/pageStudio/managedTransferResources')
+      await prepareManagedTransferResources(reference, { runTransaction, artifacts: {
+        runtimeDigest: 'a'.repeat(64), schemaDigest: 'b'.repeat(64), policyVersion: 'content-attachment-v1' } })
+      const resourceRequest = (await db.query('SELECT request FROM page_studio_managed_transfer_resources')).rows[0].request
+      const request = { ...reference, resourceRequest }
+      const { changeCustomerTransferRecovery } = await import('~~/server/utils/pageStudio/customerTransferRecovery')
+      const recoveryId = randomUUID(), deadline = new Date(Date.now()+(options.headMilliseconds ?? 3600000)).toISOString()
+      await changeCustomerTransferRecovery({ siteId: input.siteId, requestId, operator: input.operator,
+        body: { action: 'open', expectedRevision: 5, expectedHeadVersion: null, recoveryId, deadline } }, { runTransaction })
+      return { purpose: 'observe' as const, request, requestDigest: await collectionDigest(request),
+        recovery: { ...reference, recoveryId, epoch: 1, version: 1, mode: 'closed' as const },
+        inspection: { operatorId: actorId, loginSessionHash: operatorHash,
+          pg: { requestId, requestRevision: 5, recoveryId, epoch: 1, version: 1, deadline } } }
+    }
+    async function inspect(value: unknown, run = runTransaction) {
+      const { authorizeCustomerTransferRecoveryInspection } = await import('~~/server/utils/pageStudio/customerTransferRecoveryInspection')
+      return authorizeCustomerTransferRecoveryInspection(value, { runTransaction: run })
+    }
+    it('returns only a purpose-specific full-envelope digest for exact current closed inspection', async () => {
+      const value = await observation()
+      expect(await inspect(value)).toEqual({ purpose: 'observe', envelopeDigest: await collectionDigest(value) })
+      expect((await db.query('SELECT mode,cas_version FROM page_studio_transfer_recovery_heads')).rows).toEqual([{ mode: 'reconciling', cas_version: 1 }])
+    })
+    function closing(value: Awaited<ReturnType<typeof observation>>) {
+      return { purpose: 'close' as const, inspection: value.inspection, transition: {
+        eventId: randomUUID(), previous: null, next: { ...value.recovery, admissionId: null, appliedDigest: null,
+          deadline: null, pendingDigest: null, preparedDigest: null, reconciliationDigest: null,
+          reviewDigest: null, revision: null } } }
+    }
+    it('binds the exact initial G2 transition without performing a transition or granting a phase', async () => {
+      const value = closing(await observation())
+      const before = (await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows
+      expect(await inspect(value)).toEqual({ purpose: 'close', envelopeDigest: await collectionDigest(value) })
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual(before)
+      const { authorizeManagedTransferResources } = await import('~~/server/utils/pageStudio/managedTransferResources')
+      const retained = (await db.query('SELECT operation_id,intent_digest,request FROM page_studio_managed_transfer_resources')).rows[0]
+      await expect(authorizeManagedTransferResources({ operationId: retained.operation_id, intentDigest: retained.intent_digest,
+        resourceRequest: retained.request }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it('allows historical plan/session expiry only with a fresh genuine original operator login', async () => {
+      const value = await observation({ planExpiry: true })
+      await db.query(`SELECT pg_sleep(GREATEST(0,extract(epoch FROM effective_until-clock_timestamp()))+0.01)
+        FROM page_studio_entitlements WHERE id=$1`, [input.entitlementId])
+      await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()-interval '1 second'")
+      await db.query("UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp()-interval '1 second'")
+      const fresh = 'f'.repeat(64)
+      await db.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+        VALUES('agency',$1,$2,clock_timestamp(),clock_timestamp()+interval '1 hour')`, [fresh, actorId])
+      value.inspection.loginSessionHash = fresh
+      expect(await inspect(value)).toEqual({ purpose: 'observe', envelopeDigest: await collectionDigest(value) })
+      expect(value.request.resourceRequest.actor.loginSessionHash).toBe(operatorHash)
+    })
+    it('keeps PG and D1 versions distinct', async () => {
+      const value = await observation()
+      value.recovery.version = 7
+      expect(await inspect(value)).toEqual({ purpose: 'observe', envelopeDigest: await collectionDigest(value) })
+      value.inspection.pg.version = 7
+      await expect(inspect(value)).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it.each(['purpose','extra','request','revision','recovery','epoch','version','deadline','operator','login',
+      'operation','intent','d1 recovery','d1 epoch','d1 operation','digest','resource actor','resource anchor','resource scope'])('denies foreign or stale %s', async (kind) => {
+      const value = await observation()
+      if (kind === 'purpose') Object.assign(value, { purpose: 'admit' })
+      if (kind === 'extra') Object.assign(value, { allow: true })
+      if (kind === 'request') value.inspection.pg.requestId = randomUUID()
+      if (kind === 'revision') value.inspection.pg.requestRevision = 4
+      if (kind === 'recovery') value.inspection.pg.recoveryId = randomUUID()
+      if (kind === 'epoch') value.inspection.pg.epoch = 2
+      if (kind === 'version') value.inspection.pg.version = 2
+      if (kind === 'deadline') value.inspection.pg.deadline = new Date(Date.now()+7200000).toISOString()
+      if (kind === 'operator') value.inspection.operatorId = randomUUID()
+      if (kind === 'login') value.inspection.loginSessionHash = 'b'.repeat(64)
+      if (kind === 'operation') value.request.operationId = randomUUID()
+      if (kind === 'intent') value.request.intentDigest = 'b'.repeat(64)
+      if (kind === 'd1 recovery') value.recovery.recoveryId = randomUUID()
+      if (kind === 'd1 epoch') value.recovery.epoch = 2
+      if (kind === 'd1 operation') value.recovery.operationId = randomUUID()
+      if (kind === 'digest') value.requestDigest = 'b'.repeat(64)
+      if (kind === 'resource actor') value.request.resourceRequest.actor.loginSessionHash = 'b'.repeat(64)
+      if (kind === 'resource anchor') value.request.resourceRequest.anchor.digest = 'b'.repeat(64)
+      if (kind === 'resource scope') value.request.resourceRequest.scope.environment = 'staging'
+      if (kind.startsWith('resource')) value.requestDigest = await collectionDigest(value.request)
+      await expect(inspect(value)).rejects.toBeDefined()
+    })
+    it.each(['previous','epoch','version','deadline','admission','extra','event'])('denies noninitial or malformed close %s', async (kind) => {
+      const value = closing(await observation())
+      if (kind === 'previous') Object.assign(value.transition, { previous: value.transition.next })
+      if (kind === 'epoch') value.transition.next.epoch = 2
+      if (kind === 'version') value.transition.next.version = 2
+      if (kind === 'deadline') Object.assign(value.transition.next, { deadline: value.inspection.pg.deadline })
+      if (kind === 'admission') Object.assign(value.transition.next, { admissionId: randomUUID() })
+      if (kind === 'extra') Object.assign(value.transition, { proofDigest: 'b'.repeat(64) })
+      if (kind === 'event') value.transition.eventId = 'invalid'
+      await expect(inspect(value)).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it.each(['source','owner','role','login','staff','mapping','revoked','missing resources','missing completion store'])('denies current authority drift: %s', async (kind) => {
+      const value = await observation()
+      if (kind === 'source') await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+      if (kind === 'owner') await db.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+      if (kind === 'role') await db.query("UPDATE page_studio_workspace_memberships SET role='viewer'")
+      if (kind === 'login') await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      if (kind === 'staff') await db.query('UPDATE team_members SET is_active=FALSE')
+      if (kind === 'mapping') await db.query("UPDATE page_studio_customer_identities SET subject='foreign'")
+      if (kind === 'revoked') await db.query("UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=2")
+      if (kind === 'missing resources') await db.query('ALTER TABLE page_studio_managed_transfer_resources RENAME TO unavailable_resources')
+      if (kind === 'missing completion store') await db.query('ALTER TABLE page_studio_managed_transfer_completions RENAME TO unavailable_completions')
+      try { await expect(inspect(value)).rejects.toBeDefined() } finally {
+        if (kind === 'missing resources') await db.query('ALTER TABLE unavailable_resources RENAME TO page_studio_managed_transfer_resources')
+        if (kind === 'missing completion store') await db.query('ALTER TABLE unavailable_completions RENAME TO page_studio_managed_transfer_completions')
+      }
+    })
+    it('rejects expired recovery without changing its retained deadline', async () => {
+      const value = await observation({ headMilliseconds: 150 })
+      await db.query('SELECT pg_sleep(0.2)')
+      await expect(inspect(value)).rejects.toMatchObject({ statusCode: 403 })
+      expect((await db.query('SELECT cas_version FROM page_studio_transfer_recovery_heads')).rows[0].cas_version).toBe(1)
+    })
+    it.each(['operator','membership','head'])('fences %s expiry during an awaited resource read', async (kind) => {
+      const value = await observation({ headMilliseconds: kind === 'head' ? 250 : undefined })
+      if (kind === 'operator') await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()+interval '250 milliseconds'")
+      if (kind === 'membership') await db.query("UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()+interval '250 milliseconds'")
+      let delayed = false
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (!delayed && sql.includes('SELECT intent_digest,request,request_digest,identity')) {
+          delayed = true
+          await tx.query('SELECT pg_sleep(0.3)')
+        }
+        return result
+      } } as pg.Client))
+      await expect(inspect(value, run)).rejects.toBeDefined()
+      expect(delayed).toBe(true)
+    })
+    it.each(['source','owner','operator','head'])('rechecks %s after an awaited retained resource read', async (kind) => {
+      const value = await observation()
+      let changed = false
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (!changed && sql.includes('SELECT intent_digest,request,request_digest,identity')) {
+          changed = true
+          if (kind === 'source') await tx.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+          if (kind === 'owner') await tx.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+          if (kind === 'operator') await tx.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+          if (kind === 'head') await tx.query("UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=2")
+        }
+        return result
+      } } as pg.Client))
+      await expect(inspect(value, run)).rejects.toBeDefined()
+      expect(changed).toBe(true)
+      expect((await db.query('SELECT cas_version FROM page_studio_transfer_recovery_heads')).rows[0].cas_version).toBe(1)
+    })
+    it('detaches the full envelope before awaited transaction work', async () => {
+      const value = await observation(), digest = await collectionDigest(value)
+      const run: typeof runTransaction = work => {
+        value.inspection.pg.version = 99
+        value.request.resourceRequest.actor.loginSessionHash = 'b'.repeat(64)
+        return runTransaction(work)
+      }
+      expect(await inspect(value, run)).toEqual({ purpose: 'observe', envelopeDigest: digest })
+    })
+    it.each(['operator','membership','head'])('checks %s time after the final G1 authority query', async (kind) => {
+      const value = await observation({ headMilliseconds: kind === 'head' ? 250 : undefined })
+      if (kind === 'operator') await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()+interval '250 milliseconds'")
+      if (kind === 'membership') await db.query("UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()+interval '250 milliseconds'")
+      let clocks = 0
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('($4::boolean=FALSE') && ++clocks === 2) await tx.query('SELECT pg_sleep(0.3)')
+        return result
+      } } as pg.Client))
+      await expect(inspect(value, run)).rejects.toMatchObject({ statusCode: 403 })
+      expect(clocks).toBe(2)
+    })
+    it.each(['observe','close'])('denies an actual retained completion marker for %s', async (purpose) => {
+      const value = await observation(), reference = value.request
+      const hash = 'f'.repeat(64), a = randomUUID(), b = randomUUID(), audit = randomUUID()
+      const receipt = { formatVersion: 1, operationId: reference.operationId, intentDigest: reference.intentDigest,
+        copyProofDigest: hash, historyReceiptDigest: hash, digest: hash, auditId: audit,
+        source: { generation: a, scope: { environment: 'staging' } }, destination: { generation: b, scope: { environment: 'production' } } }
+      // Negative marker only, as in G1: actual completion CHECKs; prerequisite
+      // FKs disabled locally. This is not evidence of a completed transfer.
+      await db.query('ALTER TABLE page_studio_managed_transfer_completions DISABLE TRIGGER ALL')
+      try {
+        await db.query(`INSERT INTO page_studio_managed_transfer_completions(operation_id,intent_digest,source_scope_key,source_generation,
+          destination_scope_key,destination_generation,copy_proof_digest,history_receipt_digest,receipt,receipt_json,receipt_digest,audit_id)
+          VALUES($1,$2,'source',$3,'destination',$4,$5,$5,$6::jsonb,$6,$5,$7)`,
+        [reference.operationId, reference.intentDigest, a, b, hash, JSON.stringify(receipt), audit])
+      } finally { await db.query('ALTER TABLE page_studio_managed_transfer_completions ENABLE TRIGGER ALL') }
+      await expect(inspect(purpose === 'observe' ? value : closing(value))).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it.each(['request_digest','identity','intent_digest','request','missing'])('denies corrupted retained resource %s', async (field) => {
+      const value = await observation()
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('SELECT intent_digest,request,request_digest,identity')) {
+          if (field === 'missing') return { ...result, rows: [] }
+          result.rows[0][field] = field === 'request' ? { ...value.request.resourceRequest, policyVersion: 'foreign' } : 'b'.repeat(64)
+        }
+        return result
+      } } as pg.Client))
+      await expect(inspect(value, run)).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it.each(['page_studio_login_sessions','page_studio_workspace_memberships','page_studio_sites','page_studio_transfer_recovery_heads'])('fails closed on locked %s', async (table) => {
+      const value = await observation()
+      await db.query('BEGIN')
+      try {
+        await db.query(`SELECT * FROM ${table} FOR UPDATE`)
+        await expect(inspect(value)).rejects.toMatchObject({ statusCode: 503 })
+      } finally { await db.query('ROLLBACK') }
+    })
+  })
   it('retains owner consent, source review, approval and a single reservation with opaque public views', async () => {
     const first = await control('request')
     expect(first).toMatchObject({ requestId, siteId: input.siteId, revision: 1, state: 'requested', allowedActions: ['revoke'] })
