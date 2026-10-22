@@ -8,6 +8,8 @@ import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
 import { TransferOwnerBodySchema, TransferOperatorBodySchema, TransferWorkflowBodySchema } from '~~/shared/pageStudio/transferWorkflow'
 import { NativeRuntimeRecoveryOperatorBody } from '~~/shared/pageStudio/nativeRuntimeRecoveryOperator'
 import { TransferRecoveryRequestSchema } from '~~/shared/pageStudio/transferRecovery'
+import { TransferRecoveryInspectActionSchema } from '~~/shared/pageStudio/transferRecoveryCoordinator'
+import { callTransferRecoveryInspection } from './transferRecoveryCoordinatorClient'
 import { callTransferRecovery } from './transferRecoveryClient'
 import { callNativeRuntimeRecovery, callTransferControls, callTransferWorkflow } from './transferControls'
 import { requireCustomerPlanOperator } from './customerPlanGrants'
@@ -79,18 +81,21 @@ export async function handleTransferOwnerHttp(event: H3Event, method: 'GET' | 'P
   } catch (error) { guarded(error) }
 }
 /** Current operator is independently checked before and after the one RPC. */
-export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' | 'POST', route: 'list' | 'request' | 'workflow' | 'runtime-recovery' | 'recovery') {
+export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' | 'POST', route: 'list' | 'request' | 'workflow' | 'runtime-recovery' | 'recovery' | 'recovery-inspect') {
   setHeader(event, 'cache-control', 'private, no-store')
   try {
     boundary(event, method)
-    if ((route === 'list' && method !== 'GET') || (route === 'runtime-recovery' && method !== 'POST')) throw createError({ statusCode: 405 })
+    if ((route === 'list' && method !== 'GET') || ((route === 'runtime-recovery' || route === 'recovery-inspect') && method !== 'POST')) throw createError({ statusCode: 405 })
     const query = parse(route === 'list' ? ListQuery : (route === 'workflow' || route === 'recovery') && method === 'GET' ? StatusQuery : emptyQuery, getQuery(event))
     const identity = route === 'list' ? {} : { siteId: parse(Id, getRouterParam(event, 'siteId')), requestId: parse(Id, getRouterParam(event, 'requestId')) }
     const principal = await operator(event)
     await limitOperator(event, principal.loginSessionHash, method)
     const env = event.context.cloudflare?.env ?? {}
     let result: unknown
-    if (route === 'recovery') {
+    if (route === 'recovery-inspect') {
+      const input = await body(event, TransferRecoveryInspectActionSchema)
+      result = await callTransferRecoveryInspection({ ...identity, ...input, operator: principal }, env)
+    } else if (route === 'recovery') {
       const input = method === 'GET' ? { ...query, action: 'status' } : await body(event, TransferRecoveryRequestSchema)
       result = await callTransferRecovery({ ...identity, ...input, operator: principal }, env)
     } else if (route === 'runtime-recovery') {

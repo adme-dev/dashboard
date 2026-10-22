@@ -2,24 +2,27 @@ import { randomUUID } from 'node:crypto'
 import { createApp, createRouter, toWebHandler, createError, eventHandler } from 'h3'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), operator: vi.fn(), login: vi.fn(), bind: vi.fn(), session: vi.fn(), controls: vi.fn(), workflow: vi.fn(), limit: vi.fn() }))
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), operator: vi.fn(), login: vi.fn(), bind: vi.fn(), session: vi.fn(), controls: vi.fn(), workflow: vi.fn(), inspect: vi.fn(), limit: vi.fn() }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.auth }))
 vi.mock('~~/server/utils/db', () => ({ transactionWithoutRetry: async work => work({}), transaction: async work => work({}) }))
 vi.mock('~~/server/utils/pageStudio/customerPlanGrants', () => ({ requireCustomerPlanOperator: mocks.operator }))
 vi.mock('~~/server/utils/pageStudio/loginSessions', () => ({ resolvePageStudioLoginSession: mocks.login, bindPageStudioLoginSession: mocks.bind }))
 vi.mock('~~/server/utils/pageStudio/customerSignup', () => ({ readCustomerSession: mocks.session }))
 vi.mock('~~/server/utils/pageStudio/transferControls', () => ({ callTransferControls: mocks.controls, callTransferWorkflow: mocks.workflow }))
+vi.mock('~~/server/utils/pageStudio/transferRecoveryCoordinatorClient', () => ({ callTransferRecoveryInspection: mocks.inspect }))
 vi.mock('~~/server/utils/rateLimit', () => ({ checkAndConsume: mocks.limit }))
 const siteId = randomUUID(), requestId = randomUUID(), actorId = randomUUID()
 const env = { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED: 'true', PAGE_STUDIO_CUSTOMER_ORIGIN: 'https://studio.example.test',
   PAGE_STUDIO_CUSTOMER_TERMS_VERSION: 'v1', PAGE_STUDIO_CUSTOMER_EMAIL_FROM: 'studio@example.test' }
 const paths = {
+  inspect: '/sites/:siteId/transfer-requests/:requestId/recovery/inspect',
   owner: '/sites/:siteId/transfer-request', list: '/transfer-requests',
   operator: '/sites/:siteId/transfer-requests/:requestId', workflow: '/sites/:siteId/transfer-requests/:requestId/workflow'
 }
 type Route = keyof typeof paths
 async function request(route: Route, method: 'GET' | 'POST', body?: unknown, options: { cookie?: string, origin?: string, query?: string, contentType?: string, pathSite?: string, actualMethod?: string } = {}) {
   const files = {
+    inspect: 'agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/inspect.post',
     owner: `portal/page-studio/customer/sites/[siteId]/transfer-request.${method.toLowerCase()}`,
     list: 'agency/page-studio/transfer-requests.get',
     operator: `agency/page-studio/sites/[siteId]/transfer-requests/[requestId].${method.toLowerCase()}`,
@@ -132,4 +135,39 @@ it('limits request before RPC and does not retry uncertain acknowledgements', as
   expect(response.status).toBe(503)
   expect(await response.text()).not.toContain('credentials')
   expect(mocks.controls).toHaveBeenCalledTimes(1)
+})
+
+const inspectBody = { action: 'inspect', expectedRevision: 5, expectedHeadVersion: 1, recoveryId: randomUUID(), captureId: randomUUID() }
+it('explicit inspection POST derives the current cookie identity and rechecks it after one call', async () => {
+  mocks.inspect.mockResolvedValue({ state: 'observed' })
+  expect((await request('inspect', 'POST', inspectBody)).status).toBe(200)
+  expect(mocks.inspect).toHaveBeenCalledExactlyOnceWith({ ...inspectBody, siteId, requestId, operator: { actorId, loginSessionHash: 'a'.repeat(64) } }, env)
+  expect(mocks.operator).toHaveBeenCalledTimes(2)
+})
+it.each(['source', 'operator', 'operationId', 'observation'])('inspection rejects browser supplied %s', async key => {
+  expect((await request('inspect', 'POST', { ...inspectBody, [key]: {} })).status).toBe(400)
+  expect(mocks.inspect).not.toHaveBeenCalled()
+})
+it('inspection rejects GET and unknown query without private dispatch', async () => {
+  expect((await request('inspect', 'POST', undefined, { actualMethod: 'GET' })).status).toBe(405)
+  expect((await request('inspect', 'POST', inspectBody, { query: '?force=1' })).status).toBe(400)
+  expect(mocks.inspect).not.toHaveBeenCalled()
+})
+it('inspection denies cross origin, missing login, rate limit and revocation', async () => {
+  expect((await request('inspect', 'POST', inspectBody, { origin: 'https://foreign.test' })).status).toBe(403)
+  expect((await request('inspect', 'POST', inspectBody, { cookie: '' })).status).toBe(401)
+  mocks.limit.mockResolvedValueOnce({ allowed: false, resetAt: new Date(Date.now() + 1000) })
+  expect((await request('inspect', 'POST', inspectBody)).status).toBe(429)
+  expect(mocks.inspect).not.toHaveBeenCalled()
+  mocks.operator.mockResolvedValueOnce(undefined).mockRejectedValueOnce({ statusCode: 403 })
+  mocks.inspect.mockResolvedValue({ state: 'observed' })
+  expect((await request('inspect', 'POST', inspectBody)).status).toBe(403)
+  expect(mocks.inspect).toHaveBeenCalledOnce()
+})
+it('inspection does not retry a lost response', async () => {
+  mocks.inspect.mockRejectedValue(Error('private lost acknowledgment'))
+  const response = await request('inspect', 'POST', inspectBody)
+  expect(response.status).toBe(503)
+  expect(await response.text()).not.toContain('acknowledgment')
+  expect(mocks.inspect).toHaveBeenCalledOnce()
 })
