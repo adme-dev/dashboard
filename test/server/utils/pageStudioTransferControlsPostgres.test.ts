@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
@@ -96,6 +96,9 @@ describe.runIf(Boolean(databaseUrl))('retained transfer controls on PostgreSQL',
     version, bytes: 30, freezeDigest: sourceFreeze.digest, operationId: 'adoption_a', origin: 'legacy', sha256: 'a'.repeat(64) })
   beforeAll(async () => {
     await db.query(readFileSync('server/database/migrations/457_page_studio_managed_transfer_intents.sql', 'utf8'))
+    for (const name of readdirSync('server/database/migrations').filter(name => /^(45[89]|46[0-9]|470|471)_/.test(name)).sort()) {
+      await db.query(readFileSync(`server/database/migrations/${name}`, 'utf8'))
+    }
     await db.query(readFileSync('server/database/migrations/473_page_studio_transfer_recovery_heads.sql', 'utf8'))
     await db.query(readFileSync('server/database/migrations/472_page_studio_transfer_requests.sql', 'utf8'))
   })
@@ -354,6 +357,173 @@ describe.runIf(Boolean(databaseUrl))('retained transfer controls on PostgreSQL',
       const request = kind === 'new plan expiry' ? { ...body, effectiveUntil: new Date(Date.now()+75).toISOString() } : body
       await expect(renew(request, run)).rejects.toBeDefined()
       expect(await state()).toEqual(before)
+    })
+  })
+  describe('initial recovery gate controls', () => {
+    async function opening() {
+      await approved()
+      await control('reserve', 3)
+      return { action: 'open' as const, expectedRevision: 5, recoveryId: randomUUID(), expectedHeadVersion: null,
+        deadline: new Date(Date.now()+3600000).toISOString() }
+    }
+    async function gate(body: unknown, run = runTransaction, operator = input.operator) {
+      const { changeCustomerTransferRecovery } = await import('~~/server/utils/pageStudio/customerTransferRecovery')
+      return changeCustomerTransferRecovery({ siteId: input.siteId, requestId, operator, body }, { runTransaction: run })
+    }
+    async function status() {
+      const { readCustomerTransferRecovery } = await import('~~/server/utils/pageStudio/customerTransferRecovery')
+      return readCustomerTransferRecovery({ siteId: input.siteId, requestId, operator: input.operator, query: { expectedRevision: 5 } }, { runTransaction })
+    }
+    it('opens only an initial denial gate and returns safe status, then revokes without deletion', async () => {
+      const body = await opening()
+      expect(await status()).toMatchObject({ recovery: null, allowedActions: ['open'] })
+      const opened = await gate(body)
+      expect(opened).toMatchObject({ siteId: input.siteId, requestId, revision: 5,
+        recovery: { recoveryId: body.recoveryId, epoch: 1, version: 1, state: 'reconciling', expired: false }, allowedActions: ['revoke'] })
+      expect(await gate(body)).toEqual(opened)
+      const revoked = await gate({ action: 'revoke', expectedRevision: 5, recoveryId: body.recoveryId, expectedHeadVersion: 1 })
+      expect(revoked).toMatchObject({ recovery: { version: 2, state: 'revoked' }, allowedActions: [] })
+      expect(await gate({ action: 'revoke', expectedRevision: 5, recoveryId: body.recoveryId, expectedHeadVersion: 1 })).toEqual(revoked)
+      expect(await gate(body)).toEqual(revoked)
+      expect((await db.query('SELECT mode FROM page_studio_transfer_recovery_events ORDER BY cas_version')).rows).toEqual([{ mode: 'reconciling' }, { mode: 'revoked' }])
+      const text = JSON.stringify(revoked)
+      for (const forbidden of ['intentDigest','operationId','session','operatorId','owner','sourceDigest']) expect(text).not.toContain(forbidden)
+    })
+    it('permits fresh original operator inspection after original sessions and plan expire, without editing them', async () => {
+      await db.query("UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+interval '1 second' WHERE id=$1", [input.entitlementId])
+      const body = await opening()
+      await db.query("SELECT pg_sleep(GREATEST(0,extract(epoch FROM effective_until-clock_timestamp()))+0.01) FROM page_studio_entitlements WHERE id=$1", [input.entitlementId])
+      await db.query("UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp()-interval '1 second'")
+      await db.query("UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()")
+      const fresh = 'e'.repeat(64)
+      await db.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+        VALUES('agency',$1,$2,clock_timestamp(),clock_timestamp()+interval '1 hour')`, [fresh, actorId])
+      const old = (await db.query('SELECT * FROM page_studio_transfer_requests')).rows
+      expect(await gate(body, runTransaction, { actorId, loginSessionHash: fresh })).toMatchObject({ recovery: { state: 'reconciling' } })
+      expect((await db.query('SELECT * FROM page_studio_transfer_requests')).rows).toEqual(old)
+    })
+    it.each(['source','owner','archived site','deadline','revision','head version','completed table'])('denies invalid new closure: %s', async (kind) => {
+      const body = await opening()
+      if (kind === 'source') await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+      if (kind === 'owner') await db.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+      if (kind === 'archived site') await db.query("UPDATE page_studio_sites SET status='archived'")
+      if (kind === 'completed table') await db.query('ALTER TABLE page_studio_managed_transfer_completions RENAME TO unavailable_completions')
+      try {
+        const changed = kind === 'deadline' ? { ...body, deadline: new Date(Date.now()+25*3600000).toISOString() }
+          : kind === 'revision' ? { ...body, expectedRevision: 4 } : kind === 'head version' ? { ...body, expectedHeadVersion: 1 } : body
+        await expect(gate(changed)).rejects.toBeDefined()
+        expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual([])
+      } finally {
+        if (kind === 'completed table') await db.query('ALTER TABLE unavailable_completions RENAME TO page_studio_managed_transfer_completions')
+      }
+    })
+    it('blocks initial close for a retained completion marker and still permits bounded status', async () => {
+      const body = await opening()
+      const intent = (await db.query('SELECT operation_id,intent_digest FROM page_studio_managed_transfer_intents')).rows[0]
+      const hash = 'f'.repeat(64), a = randomUUID(), b = randomUUID(), audit = randomUUID()
+      const receipt = { formatVersion: 1, operationId: intent.operation_id, intentDigest: intent.intent_digest,
+        copyProofDigest: hash, historyReceiptDigest: hash, digest: hash, auditId: audit,
+        source: { generation: a, scope: { environment: 'staging' } }, destination: { generation: b, scope: { environment: 'production' } } }
+      // Negative marker fixture only: real completion table/CHECK constraints,
+      // with prerequisite FKs disabled locally. This does not claim a completed transfer.
+      await db.query('ALTER TABLE page_studio_managed_transfer_completions DISABLE TRIGGER ALL')
+      try {
+        await db.query(`INSERT INTO page_studio_managed_transfer_completions(operation_id,intent_digest,source_scope_key,source_generation,
+          destination_scope_key,destination_generation,copy_proof_digest,history_receipt_digest,receipt,receipt_json,receipt_digest,audit_id)
+          VALUES($1,$2,'source',$3,'destination',$4,$5,$5,$6::jsonb,$6,$5,$7)`,
+        [intent.operation_id, intent.intent_digest, a, b, hash, JSON.stringify(receipt), audit])
+      } finally { await db.query('ALTER TABLE page_studio_managed_transfer_completions ENABLE TRIGGER ALL') }
+      await expect(gate(body)).rejects.toMatchObject({ statusCode: 409 })
+      expect(await status()).toMatchObject({ recovery: null, allowedActions: [] })
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual([])
+    })
+    it('allows inspection/revocation after head expiry and source/owner revocation without reopening', async () => {
+      const body = await opening()
+      const short = { ...body, deadline: new Date(Date.now()+100).toISOString() }
+      await gate(short)
+      await db.query('SELECT pg_sleep(0.15)')
+      await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+      await db.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+      expect(await status()).toMatchObject({ recovery: { state: 'reconciling', expired: true }, allowedActions: ['revoke'] })
+      expect(await gate({ action: 'revoke', expectedRevision: 5, recoveryId: body.recoveryId, expectedHeadVersion: 1 })).toMatchObject({ recovery: { state: 'revoked', expired: true } })
+      expect(await gate(short)).toMatchObject({ recovery: { state: 'revoked', expired: true }, allowedActions: [] })
+      await expect(gate({ ...body, recoveryId: randomUUID() })).rejects.toMatchObject({ statusCode: 409 })
+      await expect(gate({ ...body, deadline: new Date(Date.now()+7200000).toISOString() })).rejects.toMatchObject({ statusCode: 409 })
+    })
+    it('retains exactly one initial head under competing closes and rejects stale revocation', async () => {
+      const body = await opening()
+      const results = await Promise.allSettled([gate(body), gate({ ...body, recoveryId: randomUUID() })])
+      expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1)
+      const head = (await db.query('SELECT recovery_id FROM page_studio_transfer_recovery_heads')).rows[0]
+      await expect(gate({ action: 'revoke', expectedRevision: 5, recoveryId: head.recovery_id, expectedHeadVersion: 2 })).rejects.toMatchObject({ statusCode: 409 })
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_events')).rows).toHaveLength(1)
+    })
+    it.each(['operator','site','request'])('denies concurrent %s changes without waiting', async (kind) => {
+      const body = await opening()
+      await db.query('BEGIN')
+      try {
+        await db.query(`SELECT * FROM ${kind === 'operator' ? 'page_studio_login_sessions' : kind === 'site' ? 'page_studio_sites' : 'page_studio_transfer_requests'} FOR UPDATE`)
+        await expect(gate(body)).rejects.toMatchObject({ statusCode: 503 })
+      } finally { await db.query('ROLLBACK') }
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual([])
+    })
+    it.each(['source','owner','operator','deadline','failed acknowledgement'])('rolls back close on final %s change', async (kind) => {
+      const body = await opening()
+      let inserted = false
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('INSERT INTO page_studio_transfer_recovery_heads')) {
+          inserted = true
+          if (kind === 'source') await tx.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+          if (kind === 'owner') await tx.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+          if (kind === 'operator') await tx.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+          if (kind === 'deadline') await tx.query('SELECT pg_sleep(0.2)')
+          if (kind === 'failed acknowledgement') throw new Error('Injected transaction interruption')
+        }
+        return result
+      } } as pg.Client))
+      await expect(gate(kind === 'deadline' ? { ...body, deadline: new Date(Date.now()+150).toISOString() } : body, run)).rejects.toBeDefined()
+      expect(inserted).toBe(true)
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual([])
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_events')).rows).toEqual([])
+    })
+    it('recovers a lost committed acknowledgement by exact readback without a second transition', async () => {
+      const body = await opening()
+      const loseAck: typeof runTransaction = async work => {
+        await runTransaction(work)
+        throw new Error('Lost committed acknowledgement')
+      }
+      await expect(gate(body, loseAck)).rejects.toThrow('Lost committed acknowledgement')
+      expect(await gate(body)).toMatchObject({ recovery: { version: 1, state: 'reconciling' } })
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_events')).rows).toHaveLength(1)
+    })
+    it.each(['open','status','revoke'])('checks current operator time after the last awaited login read for %s', async (action) => {
+      const body = await opening()
+      if (action === 'revoke') await gate(body)
+      const before = (await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows
+      await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()+interval '200 milliseconds'")
+      let reads = 0
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('FOR SHARE OF login,staff') && ++reads === 2) await tx.query('SELECT pg_sleep(0.25)')
+        return result
+      } } as pg.Client))
+      if (action === 'status') {
+        const { readCustomerTransferRecovery } = await import('~~/server/utils/pageStudio/customerTransferRecovery')
+        await expect(readCustomerTransferRecovery({ siteId: input.siteId, requestId, operator: input.operator,
+          query: { expectedRevision: 5 } }, { runTransaction: run })).rejects.toMatchObject({ statusCode: 403 })
+      } else await expect(gate(action === 'open' ? body : { action: 'revoke', expectedRevision: 5,
+        recoveryId: body.recoveryId, expectedHeadVersion: 1 }, run)).rejects.toMatchObject({ statusCode: 403 })
+      expect(reads).toBe(2)
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual(before)
+    })
+    it('denies a different operator and original operator logout on every action', async () => {
+      const body = await opening()
+      await expect(gate(body, runTransaction, { ...input.operator, actorId: randomUUID() })).rejects.toMatchObject({ statusCode: 403 })
+      await gate(body)
+      await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      await expect(status()).rejects.toMatchObject({ statusCode: 403 })
+      await expect(gate({ action: 'revoke', expectedRevision: 5, recoveryId: body.recoveryId, expectedHeadVersion: 1 })).rejects.toMatchObject({ statusCode: 403 })
     })
   })
   it('retains owner consent, source review, approval and a single reservation with opaque public views', async () => {
