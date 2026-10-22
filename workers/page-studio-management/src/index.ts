@@ -4,6 +4,8 @@ import { TRANSFER_WORKFLOW_URL } from '../../../shared/pageStudio/transferWorkfl
 import { handleTransferWorkflowFetch } from './transferWorkflowFetch'
 import { TRANSFER_RECOVERY_URL } from '../../../shared/pageStudio/transferRecoveryTransport'
 import { handleTransferRecoveryFetch } from './transferRecoveryFetch'
+import { TRANSFER_RECOVERY_INSPECTION_URL } from '../../../shared/pageStudio/transferRecoveryInspectionTransport'
+import { handleTransferRecoveryInspectionFetch } from './transferRecoveryInspectionFetch'
 import { RESOURCE_AUTHORITY_URL } from '../../../shared/pageStudio/managedTransferResourceAuthority'
 import { handleManagedTransferResourceAuthorityFetch } from './managedTransferResourceAuthority'
 import { handleCustomerEditorAuthorityFetch } from './customerEditorAuthority'
@@ -57,6 +59,8 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
     if (request.url === TRANSFER_WORKFLOW_URL) return handleTransferWorkflowFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === TRANSFER_RECOVERY_URL) return handleTransferRecoveryFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === TRANSFER_RECOVERY_INSPECTION_URL) return handleTransferRecoveryInspectionFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === RESOURCE_AUTHORITY_URL) return handleManagedTransferResourceAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
