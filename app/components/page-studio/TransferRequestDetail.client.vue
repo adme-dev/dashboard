@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { TransferControlsViewSchema, type TransferControlsView } from '~~/shared/pageStudio/transferControls'
 import { TransferWorkflowPhases, TransferWorkflowViewSchema, type TransferPhaseView } from '~~/shared/pageStudio/transferWorkflow'
+import TransferRecoveryStatus from './TransferRecoveryStatus.client.vue'
 
 const props = defineProps<{ siteId: string, requestId: string, actorKey: string }>()
 const emit = defineEmits<{ changed: [request: TransferControlsView], busy: [value: boolean] }>()
@@ -178,8 +179,15 @@ onBeforeUnmount(() => {
           Waiting for the owner to approve this exact saved review.
         </p>
         <p v-else-if="saved.state === 'needs-attention'" class="text-sm text-muted">
-          The original authority needs attention. Session recovery is not available here.
+          The original authority needs attention. Check the recovery review below before continuing.
         </p>
+        <TransferRecoveryStatus
+          v-if="saved.state === 'needs-attention'"
+          :site-id="siteId"
+          :request-id="requestId"
+          :revision="saved.revision"
+          :actor-key="actorKey"
+        />
         <p v-if="nextStep" class="text-sm text-highlighted">
           Next available step: {{ names[nextStep.phase] }}. Choose an explicit action below.
         </p>
