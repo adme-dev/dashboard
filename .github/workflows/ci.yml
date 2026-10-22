@@ -182,7 +182,7 @@ jobs:
       - name: Page Studio expired transfer recovery database tests
         run: |
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_cms_transfer_recovery_ci'
-          pnpm exec vitest run test/server/utils/pageStudioTransferControlsPostgres.test.ts test/server/utils/pageStudioTransferRecoveryMigrationPostgres.test.ts test/server/utils/pageStudioTransferRecoveryInventoryPostgres.test.ts --maxWorkers=1
+          pnpm exec vitest run test/server/utils/pageStudioTransferControlsPostgres.test.ts test/server/utils/pageStudioTransferRecoveryMigrationPostgres.test.ts test/server/utils/pageStudioTransferRecoveryInventoryPostgres.test.ts test/server/utils/pageStudioTransferRecoveryReconciliationPostgres.test.ts --maxWorkers=1
         timeout-minutes: 8
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
