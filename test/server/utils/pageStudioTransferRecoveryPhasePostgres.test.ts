@@ -1407,5 +1407,31 @@ describe.runIf(Boolean(databaseUrl))(
         (await db.query('SELECT count(*)::integer n FROM page_studio_managed_transfer_executions')).rows[0].n
       ).toBe(0)
     })
+    it('invokes callable RPC proxy for discovery without call/bind properties', async () => {
+      const f = await phaseFixture(),
+        service = f.env.PAGE_STUDIO_PROVISIONER,
+        properties: PropertyKey[] = []
+      let calls = 0
+      service.discoverManagedTransferRecoveryExecution = new Proxy(f.discover, {
+        get(target, property, receiver) {
+          if (property === 'call' || property === 'bind') {
+            properties.push(property)
+            throw new Error('Named RPC function property is a remote method')
+          }
+          return Reflect.get(target, property, receiver)
+        },
+        apply(target, receiver, args) {
+          calls++
+          expect(receiver).toBe(service)
+          expect(args).toHaveLength(1)
+          return Reflect.apply(target, receiver, args)
+        }
+      })
+      expect(
+        await prepareCustomerTransferRecoverySourceExecution(f.value, { env: f.env, runTransaction })
+      ).toMatchObject({ state: 'execution-reserved' })
+      expect(calls).toBe(1)
+      expect(properties).toEqual([])
+    })
   }
 )

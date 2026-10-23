@@ -72,7 +72,7 @@ export async function executeCustomerTransferRecoverySourceEffect(
   current()
   // One explicit invocation. Native permits only a fresh acquired claim to write;
   // retained uncertainty is inspected read-only for this exact original invocation.
-  const raw = structuredClone(await method.call(service, structuredClone(before)))
+  const raw = structuredClone(await Reflect.apply(method, service, [structuredClone(before)]))
   current()
   const receipt = await verifyRecoverySourceEffectResult(before, raw)
   current()

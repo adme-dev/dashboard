@@ -1136,5 +1136,39 @@ describe.runIf(Boolean(databaseUrl))(
       expect(injected).toBe(true)
       expect(f.execute).toHaveBeenCalledTimes(1)
     })
+    it.each(['upload', 'install'] as const)(
+      'invokes callable RPC proxy for %s without call/bind properties',
+      async (action) => {
+        const f = await controlFixture(action),
+          service = f.env.PAGE_STUDIO_PROVISIONER,
+          properties: PropertyKey[] = []
+        let calls = 0
+        service.executeManagedTransferRecoverySourceEffect = new Proxy(f.execute, {
+          get(target, property, receiver) {
+            if (property === 'call' || property === 'bind') {
+              properties.push(property)
+              throw new Error('Named RPC function property is a remote method')
+            }
+            return Reflect.get(target, property, receiver)
+          },
+          apply(target, receiver, args) {
+            calls++
+            expect(receiver).toBe(service)
+            expect(args).toHaveLength(1)
+            return Reflect.apply(target, receiver, args)
+          }
+        })
+        expect(
+          (
+            await f.api.executeCustomerTransferRecoverySourceEffect(f.value, {
+              env: f.env,
+              runTransaction: f.run
+            })
+          ).result.action
+        ).toBe(action)
+        expect(calls).toBe(1)
+        expect(properties).toEqual([])
+      }
+    )
   }
 )

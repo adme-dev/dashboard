@@ -1060,5 +1060,37 @@ describe.runIf(Boolean(databaseUrl))(
         await expect(f.control(action, swap)).rejects.toThrow()
       }
     )
+    it.each(['prepare', 'enable'] as const)(
+      'invokes callable RPC proxy for %s without call/bind properties',
+      async (action) => {
+        const f = await coordinatorFixture()
+        await f.reach(action === 'prepare' ? 'pending' : 'applied')
+        const name =
+          action === 'prepare'
+            ? 'prepareManagedTransferRecoveryAdmission'
+            : 'enableManagedTransferRecoveryAdmission'
+        const original = f.service[name],
+          properties: PropertyKey[] = []
+        let calls = 0
+        f.service[name] = new Proxy(original, {
+          get(target, property, receiver) {
+            if (property === 'call' || property === 'bind') {
+              properties.push(property)
+              throw new Error('Named RPC function property is a remote method')
+            }
+            return Reflect.get(target, property, receiver)
+          },
+          apply(target, receiver, args) {
+            calls++
+            expect(receiver).toBe(f.service)
+            expect(args).toHaveLength(1)
+            return Reflect.apply(target, receiver, args)
+          }
+        })
+        expect((await f.control(action)).d1State).toBe(action === 'prepare' ? 'prepared' : 'enabled')
+        expect(calls).toBe(1)
+        expect(properties).toEqual([])
+      }
+    )
   }
 )

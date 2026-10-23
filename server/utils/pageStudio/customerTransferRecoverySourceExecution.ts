@@ -80,7 +80,7 @@ export async function prepareCustomerTransferRecoverySourceExecution(input: unkn
   })
   const envelopeDigest = await collectionDigest(envelope)
   current()
-  const raw = structuredClone(await method.call(service, structuredClone(envelope)))
+  const raw = structuredClone(await Reflect.apply(method, service, [structuredClone(envelope)]))
   current()
   const observed = TransferRecoverySourceDiscoveryResultSchema.parse(raw)
   if (observed.envelopeDigest !== envelopeDigest) throw reviewDenied()

@@ -85,7 +85,7 @@ function capture(d: Dependencies, action: TransferRecoveryAdmissionControlInput[
     call: async (input: unknown) => {
       current()
       if (typeof method !== 'function' || !service) throw reviewDenied()
-      const result = structuredClone(await method.call(service, structuredClone(input)))
+      const result = structuredClone(await Reflect.apply(method, service, [structuredClone(input)]))
       current()
       return result
     }
