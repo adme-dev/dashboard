@@ -193,6 +193,12 @@ jobs:
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
+      - name: Page Studio explicit recovery admission control database tests
+        run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoveryAdmissionControlPostgres.test.ts --maxWorkers=1
+        timeout-minutes: 5
+        env:
+          PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
+
       - name: Page Studio recovery source association database tests
         run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoveryPhasePostgres.test.ts --maxWorkers=1
         timeout-minutes: 6
