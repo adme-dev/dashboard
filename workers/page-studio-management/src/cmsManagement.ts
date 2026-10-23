@@ -7,10 +7,21 @@ import type { PageStudioCheckpointInput, PageStudioControlQueryClient } from '~~
 import { coordinateCmsAdoption } from './cms/adoptionCoordinator'
 import { coordinateCmsGraphCheckpoint, coordinateCmsGraphTransition, coordinateCmsGraphRestore } from './cms/graphMutations'
 import { runCmsDatabaseInvocation, transactionWithoutRetry } from './cmsDatabase'
+import { ZodError } from 'zod'
 
 type Runner = <T>(work: (db: PageStudioControlQueryClient) => Promise<T>) => Promise<T>
 const rejected = (requestDigest: string, code = 'CMS_MANAGEMENT_UNAVAILABLE', statusCode = 503, message = 'Website content service is unavailable. Check the operation status before trying again.') =>
   ({ ok: false as const, requestDigest, error: { code, statusCode, message } })
+
+// Fixed labels only: never log the request, SQL, error message or validation input.
+function failureCategory(error: unknown) {
+  if (error instanceof ZodError) return 'validation'
+  if (error instanceof TypeError) return 'type'
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+  if (code === '42P01' || code === '42703' || code === '42883') return 'database-schema'
+  if (code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ECONNREFUSED') return 'connection'
+  return 'unexpected'
+}
 
 /** Service-binding-only capability. No public HTTP route or caller-selected provider. */
 export async function handleCmsManagement(raw: unknown, env: Record<string, unknown>, run: Runner) {
@@ -35,12 +46,16 @@ export async function handleCmsManagement(raw: unknown, env: Record<string, unkn
     && (deployment === 'production' || request.contentEnvironment === 'staging')
   const requestDigest = await collectionDigest(request)
   if (!validEnvironment || typeof (storage.PAGE_STUDIO_CONTENT_ROUTER as { readManagedCmsTarget?: unknown } | undefined)?.readManagedCmsTarget !== 'function'
-    || typeof (storage.PAGE_STUDIO_CHECKPOINTS as { get?: unknown } | undefined)?.get !== 'function') return rejected(requestDigest)
+    || typeof (storage.PAGE_STUDIO_CHECKPOINTS as { get?: unknown } | undefined)?.get !== 'function') {
+    console.warn('page-studio-cms-management-failed', { operation: request.operation, stage: 'configuration', category: 'binding-or-environment' })
+    return rejected(requestDigest)
+  }
   const source = request.principal
   if (source.source === 'customer-session' && source.claims.environment !== request.contentEnvironment) return rejected(requestDigest, 'CMS_AUTHORITY_DENIED', 403, 'CMS mutation access denied')
   const principal: CmsGraphPrincipal = source.source === 'native-login'
     ? { source: source.source, request: { ...source.request, login: { ...source.request.login, issuedAt: new Date(source.request.login.issuedAt), expiresAt: new Date(source.request.login.expiresAt) }, env: storage } }
     : { ...source, env: storage }
+  let stage: 'coordinate' | 'result' = 'coordinate'
   try {
     const value = await runCmsDatabaseInvocation(run, async () => {
       // Dependencies preserve each original transaction boundary. No SQL lock is
@@ -53,6 +68,7 @@ export async function handleCmsManagement(raw: unknown, env: Record<string, unkn
         case 'restore': return coordinateCmsGraphRestore(request.body, principal, deps)
       }
     })
+    stage = 'result'
     return cmsManagementResultSchema(request.operation).parse({ ok: true, requestDigest, value })
   } catch (error) {
     if (error instanceof PageStudioBusinessContentError) {
@@ -61,6 +77,7 @@ export async function handleCmsManagement(raw: unknown, env: Record<string, unkn
     }
     const status = (error as { statusCode?: number })?.statusCode
     if (status === 401 || status === 403) return rejected(requestDigest, 'CMS_AUTHORITY_DENIED', status, 'CMS mutation access denied')
+    console.warn('page-studio-cms-management-failed', { operation: request.operation, stage, category: failureCategory(error) })
     return rejected(requestDigest)
   }
 }

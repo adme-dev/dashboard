@@ -96,4 +96,25 @@ describe('CMS management invocation boundary', () => {
     expect(JSON.stringify(result)).not.toContain('postgres')
     expect(operations.adoption).toHaveBeenCalledOnce()
   })
+  it('reports a bounded failure stage without logging private error values', async () => {
+    const f = fixture()
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      operations.adoption.mockRejectedValue(Object.assign(new Error('postgres://secret'), { code: '42P01' }))
+      await handleCmsManagement(f.request, f.env, f.run)
+      expect(log).toHaveBeenCalledWith('page-studio-cms-management-failed', {
+        operation: 'adoption', stage: 'coordinate', category: 'database-schema'
+      })
+      expect(JSON.stringify(log.mock.calls)).not.toContain('postgres')
+      log.mockClear()
+      operations.adoption.mockResolvedValue({ privateValue: 'secret' })
+      await handleCmsManagement(f.request, f.env, f.run)
+      expect(log).toHaveBeenCalledWith('page-studio-cms-management-failed', {
+        operation: 'adoption', stage: 'result', category: 'validation'
+      })
+      expect(JSON.stringify(log.mock.calls)).not.toContain('secret')
+    } finally {
+      log.mockRestore()
+    }
+  })
 })
