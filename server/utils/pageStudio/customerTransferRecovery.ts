@@ -12,9 +12,9 @@ const Id = z.string().uuid()
 const Scope = z.object({ siteId: Id, requestId: Id,
   operator: z.object({ actorId: Id, loginSessionHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict() }).strict()
 const Head = z.object({ recovery_id: Id, epoch: z.literal(1), cas_version: z.number().int().positive(),
-  mode: z.enum(['reconciling', 'revoked']), intent_digest: z.string().regex(/^[a-f0-9]{64}$/),
+  mode: z.enum(['reconciling', 'approved', 'revoked']), intent_digest: z.string().regex(/^[a-f0-9]{64}$/),
   deadline: z.coerce.date(), expired: z.boolean() }).strict().refine(head =>
-  head.cas_version === (head.mode === 'reconciling' ? 1 : 2))
+  head.mode === 'reconciling' ? head.cas_version === 1 : head.mode === 'approved' ? head.cas_version === 2 : [2,3].includes(head.cas_version))
 const denied = () => createError({ statusCode: 403, statusMessage: 'Current original transfer operator access is required' })
 const conflict = () => createError({ statusCode: 409, statusMessage: 'Refresh the retained transfer recovery before continuing' })
 const equal = (a: unknown, b: unknown) => collectionCanonical(a) === collectionCanonical(b)
@@ -104,7 +104,9 @@ async function recovery(route: Route, expectedRevision: number, request: Transfe
         if (head) {
           // Lost acknowledgement of this exact initial close is historical.
           // Even a revoked/expired head is returned, never reset or extended.
-          if (head.recovery_id !== request.recoveryId || head.deadline.toISOString() !== new Date(request.deadline).toISOString()) throw conflict()
+          if (head.recovery_id !== request.recoveryId || !(await db.query(`SELECT 1 FROM page_studio_transfer_recovery_events
+            WHERE operation_id=$1 AND recovery_id=$2 AND epoch=1 AND cas_version=1 AND mode='reconciling' AND deadline=$3::timestamptz`,
+          [stored.operation_id,request.recoveryId,request.deadline])).rows.length) throw conflict()
         } else {
           if (!currentOwner || await completed() || !await sourceCurrent()) throw conflict()
           if (!(await db.query(`SELECT 1 WHERE isfinite($1::timestamptz) AND $1::timestamptz>clock_timestamp()
@@ -121,7 +123,7 @@ async function recovery(route: Route, expectedRevision: number, request: Transfe
           if (head.cas_version !== request.expectedHeadVersion + 1) throw conflict()
         } else if ((await db.query(`UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=cas_version+1
           WHERE operation_id=$1 AND intent_digest=$2 AND recovery_id=$3 AND epoch=1
-            AND mode='reconciling' AND cas_version=$4 RETURNING operation_id`,
+            AND mode IN ('reconciling','approved') AND cas_version=$4 RETURNING operation_id`,
         [stored.operation_id, stored.intent_digest, request.recoveryId, request.expectedHeadVersion])).rows.length !== 1) throw conflict()
       }
       currentOwner = await owner()
@@ -146,7 +148,7 @@ async function recovery(route: Route, expectedRevision: number, request: Transfe
       return TransferRecoveryViewSchema.parse({ siteId: route.siteId, requestId: route.requestId, revision: stored.revision,
         recovery: head ? { recoveryId: head.recovery_id, epoch: head.epoch, version: head.cas_version, state: head.mode,
           deadline: head.deadline.toISOString(), expired: head.expired } : null,
-        allowedActions: head?.mode === 'reconciling' ? ['revoke'] : canOpen ? ['open'] : [] })
+        allowedActions: head && ['reconciling','approved'].includes(head.mode) ? ['revoke'] : canOpen ? ['open'] : [] })
     })
   } catch (error) {
     if (['55P03', '40P01', '57014'].includes(String((error as { code?: string })?.code))) {
