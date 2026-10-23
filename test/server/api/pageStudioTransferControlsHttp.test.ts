@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { createApp, createRouter, toWebHandler, createError, eventHandler } from 'h3'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), operator: vi.fn(), login: vi.fn(), bind: vi.fn(), session: vi.fn(), controls: vi.fn(), workflow: vi.fn(), inspect: vi.fn(), limit: vi.fn() }))
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), operator: vi.fn(), login: vi.fn(), bind: vi.fn(), session: vi.fn(), controls: vi.fn(), workflow: vi.fn(), inspect: vi.fn(), adoption: vi.fn(), limit: vi.fn() }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.auth }))
 vi.mock('~~/server/utils/db', () => ({ transactionWithoutRetry: async work => work({}), transaction: async work => work({}) }))
 vi.mock('~~/server/utils/pageStudio/customerPlanGrants', () => ({ requireCustomerPlanOperator: mocks.operator }))
@@ -10,11 +10,13 @@ vi.mock('~~/server/utils/pageStudio/loginSessions', () => ({ resolvePageStudioLo
 vi.mock('~~/server/utils/pageStudio/customerSignup', () => ({ readCustomerSession: mocks.session }))
 vi.mock('~~/server/utils/pageStudio/transferControls', () => ({ callTransferControls: mocks.controls, callTransferWorkflow: mocks.workflow }))
 vi.mock('~~/server/utils/pageStudio/transferRecoveryCoordinatorClient', () => ({ callTransferRecoveryInspection: mocks.inspect }))
+vi.mock('~~/server/utils/pageStudio/customerAdoptionClient', () => ({ callCustomerAdoptionGrant: mocks.adoption }))
 vi.mock('~~/server/utils/rateLimit', () => ({ checkAndConsume: mocks.limit }))
 const siteId = randomUUID(), requestId = randomUUID(), actorId = randomUUID()
 const env = { PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production', PAGE_STUDIO_CUSTOMER_SIGNUP_ENABLED: 'true', PAGE_STUDIO_CUSTOMER_ORIGIN: 'https://studio.example.test',
   PAGE_STUDIO_CUSTOMER_TERMS_VERSION: 'v1', PAGE_STUDIO_CUSTOMER_EMAIL_FROM: 'studio@example.test' }
 const paths = {
+  adoption: '/sites/:siteId/adoption-grant',
   inspect: '/sites/:siteId/transfer-requests/:requestId/recovery/inspect',
   owner: '/sites/:siteId/transfer-request', list: '/transfer-requests',
   operator: '/sites/:siteId/transfer-requests/:requestId', workflow: '/sites/:siteId/transfer-requests/:requestId/workflow'
@@ -22,6 +24,7 @@ const paths = {
 type Route = keyof typeof paths
 async function request(route: Route, method: 'GET' | 'POST', body?: unknown, options: { cookie?: string, origin?: string, query?: string, contentType?: string, pathSite?: string, actualMethod?: string } = {}) {
   const files = {
+    adoption: `agency/page-studio/sites/[siteId]/adoption-grant.${method.toLowerCase()}`,
     inspect: 'agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/inspect.post',
     owner: `portal/page-studio/customer/sites/[siteId]/transfer-request.${method.toLowerCase()}`,
     list: 'agency/page-studio/transfer-requests.get',
@@ -32,7 +35,8 @@ async function request(route: Route, method: 'GET' | 'POST', body?: unknown, opt
   const handlers = import.meta.glob('../../../server/api/**/transfer-request.*.ts')
   const operatorHandlers = import.meta.glob('../../../server/api/agency/page-studio/**/transfer-requests/**/*.ts')
   const listHandlers = import.meta.glob('../../../server/api/agency/page-studio/transfer-requests.get.ts')
-  const all = { ...handlers, ...operatorHandlers, ...listHandlers }
+  const adoptionHandlers = import.meta.glob('../../../server/api/agency/page-studio/**/adoption-grant.*.ts')
+  const all = { ...handlers, ...operatorHandlers, ...listHandlers, ...adoptionHandlers }
   const loaded = await all[`../../../server/api/${files[route]}.ts`]() as { default: Parameters<ReturnType<typeof createRouter>['use']>[1] }
   const app = createApp().use((event) => {
     event.context.cloudflare = { env }
@@ -47,6 +51,7 @@ async function request(route: Route, method: 'GET' | 'POST', body?: unknown, opt
 beforeEach(() => {
   vi.resetAllMocks()
   vi.stubGlobal('eventHandler', eventHandler)
+  vi.stubGlobal('defineEventHandler', eventHandler)
   mocks.auth.mockResolvedValue({ id: actorId })
   mocks.login.mockResolvedValue({ userId: actorId, tokenHash: 'a'.repeat(64), role: 'agency' })
   mocks.session.mockResolvedValue({ identityId: randomUUID(), accountId: randomUUID() })
@@ -170,4 +175,41 @@ it('inspection does not retry a lost response', async () => {
   expect(response.status).toBe(503)
   expect(await response.text()).not.toContain('acknowledgment')
   expect(mocks.inspect).toHaveBeenCalledOnce()
+})
+
+const adoptionGrantId = randomUUID()
+const adoptionBody = { grantId: adoptionGrantId, expectedGrantId: null, expectedRevision: 0, sourceDigest: 'b'.repeat(64), expiresAt: '2026-10-23T12:00:00.000Z', reason: 'Complete existing adoption' }
+it.each([
+  ['GET', undefined, { action: 'inspect' }],
+  ['POST', { action: 'grant', body: adoptionBody }, { action: 'grant', body: adoptionBody }],
+  ['POST', { action: 'withdraw', grantId: adoptionGrantId, expectedRevision: 1 }, { action: 'withdraw', grantId: adoptionGrantId, expectedRevision: 1 }]
+] as const)('adoption %s derives current staff authority and rechecks after its one call', async (method, body, action) => {
+  mocks.adoption.mockResolvedValue({ action: action.action, siteId })
+  expect((await request('adoption', method, body)).status).toBe(200)
+  expect(mocks.adoption).toHaveBeenCalledExactlyOnceWith({ siteId, operator: { actorId, loginSessionHash: 'a'.repeat(64) }, request: action }, env)
+  expect(mocks.operator).toHaveBeenCalledTimes(2)
+  expect(mocks.auth).toHaveBeenCalledTimes(2)
+})
+it('adoption denies forged authority, query, origin, cookie, role and oversized body before dispatch', async () => {
+  expect((await request('adoption', 'GET', undefined, { query: '?grantId=latest' })).status).toBe(400)
+  expect((await request('adoption', 'POST', { action: 'grant', body: adoptionBody, operator: { actorId } })).status).toBe(400)
+  expect((await request('adoption', 'POST', {}, { origin: 'https://foreign.test' })).status).toBe(403)
+  expect((await request('adoption', 'POST', {}, { cookie: '' })).status).toBe(401)
+  expect((await request('adoption', 'POST', {}, { contentType: 'text/plain' })).status).toBe(415)
+  expect((await request('adoption', 'POST', { padding: 'x'.repeat(4097) })).status).toBe(413)
+  mocks.operator.mockRejectedValue({ statusCode: 403 })
+  expect((await request('adoption', 'POST', { action: 'grant', body: adoptionBody })).status).toBe(403)
+  expect(mocks.adoption).not.toHaveBeenCalled()
+})
+it('adoption withholds success on authority loss and redacts uncertain result without retry', async () => {
+  mocks.operator.mockResolvedValueOnce(undefined).mockRejectedValueOnce({ statusCode: 403 })
+  mocks.adoption.mockResolvedValue({ action: 'grant', siteId })
+  expect((await request('adoption', 'POST', { action: 'grant', body: adoptionBody })).status).toBe(403)
+  expect(mocks.adoption).toHaveBeenCalledOnce()
+  mocks.operator.mockResolvedValue(undefined)
+  mocks.adoption.mockRejectedValue(Error('private details'))
+  const response = await request('adoption', 'POST', { action: 'grant', body: adoptionBody })
+  expect(response.status).toBe(503)
+  expect(await response.text()).not.toContain('private details')
+  expect(mocks.adoption).toHaveBeenCalledTimes(2)
 })
