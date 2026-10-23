@@ -9,6 +9,7 @@ type TestEvent = {
 }
 type TestHandler = (event: TestEvent) => unknown
 type TestGlobals = typeof globalThis & {
+  setHeader: (event: TestEvent, name: string, value: string) => void
   defineEventHandler: (handler: TestHandler) => TestHandler
   getQuery: (event: TestEvent) => Record<string, string>
   getRouterParam: (event: TestEvent, name: string) => string | undefined
@@ -16,6 +17,7 @@ type TestGlobals = typeof globalThis & {
 }
 
 const g = globalThis as TestGlobals
+g.setHeader = vi.fn()
 g.defineEventHandler = handler => handler
 g.getQuery = event => event.query ?? {}
 g.getRouterParam = (event, name) => event.params?.[name]
@@ -24,6 +26,12 @@ g.createError = input => Object.assign(new Error(input.statusMessage), input)
 const requireAuth = vi.fn()
 const queryOne = vi.fn()
 const queryRows = vi.fn()
+const clientAccess = vi.fn()
+const allClientAccess = vi.fn()
+vi.mock('~~/server/utils/social/clientAccess', () => ({
+  requireSocialClientAccess: (...args: unknown[]) => clientAccess(...args),
+  hasAllSocialClientAccess: (...args: unknown[]) => allClientAccess(...args)
+}))
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => requireAuth(...args)
@@ -31,7 +39,9 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => queryOne(...args),
-  queryRows: (...args: unknown[]) => queryRows(...args)
+  queryRows: (...args: unknown[]) => queryRows(...args),
+  queryOneFresh: (...args: unknown[]) => queryOne(...args),
+  queryRowsFresh: (...args: unknown[]) => queryRows(...args)
 }))
 
 const { default: jobsHandler } = await import('~~/server/api/agency/banner-studio/export-video/jobs.get')
@@ -68,7 +78,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   requireAuth.mockResolvedValue({ id: 'user-1' })
   queryRows.mockResolvedValue([])
-  queryOne.mockResolvedValue({ id: JOB_ID, project_id: PROJECT_ID, r2_key: KEY, status: 'done', format_key: 'leaderboard' })
+  queryOne.mockResolvedValue({ id: JOB_ID, project_id: PROJECT_ID, r2_key: KEY, status: 'done', format_key: 'leaderboard', client_id: null, created_by: 'user-1' })
+  clientAccess.mockReset().mockResolvedValue({ id: 'user-1' })
+  allClientAccess.mockReset().mockReturnValue(false)
 })
 
 describe('GET /agency/banner-studio/export-video/jobs', () => {
@@ -76,7 +88,7 @@ describe('GET /agency/banner-studio/export-video/jobs', () => {
     queryRows.mockResolvedValueOnce([{
       id: JOB_ID, project_id: PROJECT_ID, format_key: 'leaderboard', width: 728, height: 90,
       fps: 30, crf: 23, quality: 1, source_r2_key: 'banner-render-jobs/source.html',
-      status: 'done', url: 'https://pub-old-example.r2.dev/leaked.mp4', file_size: 71546, error: null
+      status: 'done', url: 'https://pub-old-example.r2.dev/leaked.mp4', file_size: 71546, error: null, created_by: 'user-1'
     }])
 
     await expect(jobsHandler({ query: { ids: JOB_ID } } as TestEvent)).resolves.toEqual({
@@ -86,13 +98,37 @@ describe('GET /agency/banner-studio/export-video/jobs', () => {
         status: 'done',
         url: `/api/agency/banner-studio/export-video/jobs/${JOB_ID}/download`,
         fileSize: 71546,
-        error: null
+        error: null,
+        canRetry: false
       }]
     })
   })
 })
 
 describe('GET /agency/banner-studio/export-video/jobs/:id/download', () => {
+  it.each(['GET', 'HEAD'] as const)('denies foreign-client %s requests before accessing R2', async (method) => {
+    queryOne.mockResolvedValue({ id: JOB_ID, project_id: PROJECT_ID, r2_key: KEY, status: 'done', client_id: 'foreign-client', created_by: 'user-1' })
+    clientAccess.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { statusCode: 403 }))
+    const bucket = { head: vi.fn(), get: vi.fn() }
+    await expect(downloadHandler!(event({ method, bucket }))).rejects.toMatchObject({ statusCode: 403 })
+    expect(clientAccess).toHaveBeenCalledWith(expect.anything(), 'foreign-client')
+    expect(bucket.head).not.toHaveBeenCalled()
+    expect(bucket.get).not.toHaveBeenCalled()
+  })
+
+  it('allows assigned-client downloads and restricts agency downloads to creator or all-client staff', async () => {
+    const job = { id: JOB_ID, project_id: PROJECT_ID, r2_key: KEY, status: 'done', created_by: 'other-user' }
+    queryOne.mockResolvedValue({ ...job, client_id: 'assigned-client' })
+    const bucket = { head: vi.fn(async () => objectBody()), get: vi.fn(async () => objectBody()) }
+    await expect(downloadHandler!(event({ bucket }))).resolves.toHaveProperty('status', 200)
+    expect(clientAccess).toHaveBeenCalledWith(expect.anything(), 'assigned-client')
+    queryOne.mockResolvedValue({ ...job, client_id: null })
+    bucket.head.mockClear()
+    await expect(downloadHandler!(event({ bucket }))).rejects.toMatchObject({ statusCode: 403 })
+    expect(bucket.head).not.toHaveBeenCalled()
+    allClientAccess.mockReturnValue(true)
+    await expect(downloadHandler!(event({ bucket }))).resolves.toHaveProperty('status', 200)
+  })
   it('streams an authenticated completed MP4 from the private R2 binding', async () => {
     const bucket = { head: vi.fn(async () => objectBody()), get: vi.fn(async () => objectBody()) }
 
@@ -108,8 +144,18 @@ describe('GET /agency/banner-studio/export-video/jobs/:id/download', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(response.headers.get('content-disposition')).toBe(`attachment; filename="leaderboard_${JOB_ID}.mp4"`)
-    expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('WHERE id = $1'), [JOB_ID])
+    expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('WHERE j.id = $1'), [JOB_ID])
     expect(bucket.get).toHaveBeenCalledWith(KEY, undefined)
+  })
+
+  it('serves a fenced attempt key through the stable private job URL', async () => {
+    const key = `banner-videos/${PROJECT_ID}/${JOB_ID}-33333333-3333-4333-8333-333333333333.mp4`
+    queryOne.mockResolvedValueOnce({ id: JOB_ID, project_id: PROJECT_ID, r2_key: key, status: 'done', format_key: 'leaderboard', client_id: null, created_by: 'user-1' })
+    const bucket = { head: vi.fn(async () => objectBody()), get: vi.fn(async () => objectBody()) }
+    expect(downloadHandler).toBeTypeOf('function')
+    const response = await downloadHandler!(event({ bucket }))
+    expect(response.status).toBe(200)
+    expect(bucket.get).toHaveBeenCalledWith(key, undefined)
   })
 
   it('serves a byte range for MP4 seeking without exposing another project key', async () => {

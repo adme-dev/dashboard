@@ -1,11 +1,14 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { hasAllSocialClientAccess, hasSocialClientPermission, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  setHeader(event, 'Cache-Control', 'private, no-store')
 
   const query = getQuery(event)
   const { clientId, status, search, limit, offset } = query
+  if (clientId) await requireSocialClientAccess(event, String(clientId))
 
   try {
     let sql = `
@@ -27,6 +30,17 @@ export default defineEventHandler(async (event) => {
 
     const params: any[] = []
     let paramIndex = 1
+    if (!hasAllSocialClientAccess(user)) {
+      sql += ` AND ((p.client_id IS NULL AND p.created_by = $${paramIndex})`
+      params.push(user.id)
+      if (hasSocialClientPermission(user)) {
+        sql += ` OR EXISTS (SELECT 1 FROM client_team_assignments a WHERE a.client_id = p.client_id AND a.team_member_id = $${paramIndex})`
+      }
+      sql += ')'
+      paramIndex++
+    } else if (!hasSocialClientPermission(user)) {
+      sql += ' AND p.client_id IS NULL'
+    }
 
     if (clientId) {
       sql += ` AND p.client_id = $${paramIndex}`
@@ -60,7 +74,7 @@ export default defineEventHandler(async (event) => {
       paramIndex++
     }
 
-    return await queryRows(sql, params)
+    return await queryRowsFresh(sql, params)
   } catch (error: any) {
     console.error('Failed to fetch banner projects:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch banner projects' })

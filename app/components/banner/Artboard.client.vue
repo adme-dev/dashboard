@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { layerTransformOrigin } from '~/utils/banner-transform'
 import type { Layer } from '~/types/banner-studio'
 import { FORMATS } from '~/utils/banner-constants'
 import { computeClipPath } from '~/utils/banner-mask'
@@ -11,6 +12,18 @@ const props = defineProps<{
 }>()
 
 const { state, selectLayer, activeLayers, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
+const { openEffects } = useBannerInspector()
+const effectMenu = ref<{ id: number, x: number, y: number } | null>(null)
+const effectMenuItems = computed(() => [[{ label: 'Effects and AI artwork', icon: 'i-lucide-sparkles', onSelect: () => {
+  if (effectMenu.value) openEffects(effectMenu.value.id)
+  effectMenu.value = null
+} }]])
+function onLayerContextMenu(event: MouseEvent, layer: Layer) {
+  if (!props.isActive || layer.locked || !['text', 'image'].includes(layer.type)) return
+  event.preventDefault()
+  event.stopPropagation()
+  effectMenu.value = { id: layer.id, x: event.clientX, y: event.clientY }
+}
 const { remoteLocks } = useBannerRealtime()
 const artboardEl = ref<HTMLElement | null>(null)
 const { dragState, guides, onLayerMouseDown, onResizeHandleMouseDown } = useBannerDrag(artboardEl)
@@ -370,8 +383,11 @@ defineExpose({ artboardEl })
         width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
         height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
         zIndex: layer.zIndex,
+        mixBlendMode: layer.mixBlendMode || 'normal',
         pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
-        visibility: layer.hidden && layer.type !== 'audio' ? 'hidden' : 'visible',
+        display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
+        visibility: (layer.hidden && layer.type !== 'audio') || (layer.clipToPresence && (state.currentTime < layer.startTime || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[formatKey]?.playback?.duration))) ? 'hidden' : 'visible',
+        transformOrigin: layerTransformOrigin(layer.transformOrigin),
         transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
         cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
         clipPath: maskClipPaths.get(layer.id) || undefined,
@@ -379,7 +395,8 @@ defineExpose({ artboardEl })
         outlineOffset: layer.isMask ? '-1px' : undefined,
       }"
       @click="onLayerClick($event, layer)"
-      @mousedown="isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
+      @contextmenu="onLayerContextMenu($event, layer)"
+      @mousedown="$event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
     >
       <!-- Layer type renderers -->
       <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" />
@@ -420,6 +437,11 @@ defineExpose({ artboardEl })
       </template>
     </div>
 
+    <Teleport to="body">
+      <UDropdownMenu :items="effectMenuItems" :open="!!effectMenu" @update:open="value => { if (!value) effectMenu = null }">
+        <span v-if="effectMenu" class="fixed w-px h-px pointer-events-none" :style="{ left: `${effectMenu.x}px`, top: `${effectMenu.y}px` }" />
+      </UDropdownMenu>
+    </Teleport>
     <!-- Smart guide lines -->
     <template v-if="dragState">
       <div

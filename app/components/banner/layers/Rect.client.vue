@@ -14,9 +14,9 @@ const displayFillColor = computed(() => getFeedOverride(props.layer.id, 'fillCol
   <div
     class="w-full h-full pointer-events-none"
     :style="{
-      backgroundColor: displayFillColor,
+      background: displayFillColor,
       borderRadius: `${layer.borderRadius ?? 0}px`,
-      opacity: layer.opacity,
+      opacity: layer.opacity
     }"
   />
 </template>

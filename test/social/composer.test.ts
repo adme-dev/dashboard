@@ -25,6 +25,13 @@ describe('resolveComposerContent', () => {
 })
 
 describe('composerToBody', () => {
+  it('preserves video project provenance while changing creative selection', () => {
+    const source = { source: 'video_studio', projectId: 'project-1', assetId: 'asset-1', prompt: 'Approved motion', creativeId: 'old' }
+    const state = { ...emptyComposerState(), metadata: source, creativeId: 'new' }
+    expect(composerToBody(state, 'client-1').metadata).toEqual({ ...source, creativeId: 'new' })
+    state.creativeId = null
+    expect(composerToBody(state, 'client-1').metadata).toEqual({ source: 'video_studio', projectId: 'project-1', assetId: 'asset-1', prompt: 'Approved motion' })
+  })
   it('omits overrides when customization is off and nulls empty arrays', () => {
     const s = { ...emptyComposerState(), content: 'hi', platforms: ['facebook' as const], platformOverrides: { x: {} } }
     const body = composerToBody(s, 'C1')

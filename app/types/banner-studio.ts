@@ -6,7 +6,7 @@ export interface BannerFormat {
   h: number
   name: string
   label: string
-  platform: 'Google' | 'Facebook' | 'Instagram' | 'TikTok' | 'LinkedIn'
+  platform: 'Google' | 'Facebook' | 'Instagram' | 'TikTok' | 'LinkedIn' | 'Custom'
   icon: string
 }
 
@@ -69,14 +69,24 @@ export interface Layer {
   zIndex: number
   opacity: number
   rotation?: number
+  /** Local pixel pivot; may lie outside a split text row. Defaults to CSS centre. */
+  transformOrigin?: { x: number, y: number }
+  mixBlendMode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity'
   // Visibility
   locked?: boolean
   hidden?: boolean
+  /** Imported hard-cut scenes use an explicit presence window. */
+  clipToPresence?: boolean
   // Text properties
   text?: string
+  /** Safe inline superscripts; rendered only while their text matches the layer. */
+  textRuns?: Array<{ text: string, fontSize?: number, top?: number }>
   fontSize?: number
   fontWeight?: number
   fontFamily?: string
+  /** Imported text can include a larger whitespace run that determines its baseline. */
+  lineBoxFontSize?: number
+  textAntialias?: boolean
   color?: string
   textTransform?: string
   letterSpacing?: string
@@ -87,12 +97,18 @@ export interface Layer {
   textShadow?: string
   textStroke?: string
   gradientColors?: string[]
+  textDepth?: import('../../shared/bannerEffects').BannerTextDepth
+  /** Generated material clipped through the native font, not raster lettering. */
+  textTexture?: string
+  visualFilter?: 'none' | 'grayscale(1)' | 'saturate(1.5)' | 'brightness(1.2)' | 'blur(2px)'
+  effectOrigin?: { sourceLayerId: number, text: string, recipe: import('../../shared/bannerEffects').BannerEffectRecipe }
   // Background (for bg layer or text badges)
   bgColor?: string
   // Image/video
   src?: string
   srcType?: 'image' | 'video' // default 'image'
   fit?: 'cover' | 'contain' | 'fill'
+  imageCrop?: import('../../shared/bannerImageCrop').BannerImageCrop
   /** Marks an image layer as the brand logo so brand kits can swap it */
   isLogo?: boolean
   focalX?: number // 0-100, default 50 (center)
@@ -100,6 +116,8 @@ export interface Layer {
   // Button
   textColor?: string
   borderRadius?: number
+  borderWidth?: number
+  borderColor?: string
   paddingH?: number
   paddingV?: number
   // Rect
@@ -136,7 +154,14 @@ export interface Layer {
   dur?: number
 }
 
+export interface BannerPlayback {
+  /** Seconds per cycle. 0 loops means continuous; otherwise total plays. */
+  duration: number
+  loopCount: number
+}
+
 export interface ArtboardState {
+  playback?: BannerPlayback
   layers: Layer[]
   bgColor?: string
 }
@@ -297,6 +322,7 @@ export interface SelectionState {
 }
 
 export interface UndoAction {
+  formatKey?: string
   type: string
   before: any
   after: any
@@ -567,6 +593,8 @@ export interface EditLayerResult {
 // ── AI Image Generation Types ──
 
 export interface GenerateImageResult {
+  status?: 'ready' | 'review_blocked'
+  modelId?: string
   url: string
   r2Key: string
   seed: number | null

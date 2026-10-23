@@ -2,12 +2,13 @@
 const { selectedLayer } = useBannerStudio()
 const { feedsState } = useBannerFeeds()
 
-const activeTab = ref('background')
+const { inspectorTab: activeTab } = useBannerInspector()
 
 const tabs = [
   { label: 'Properties', value: 'properties' },
   { label: 'Animation', value: 'animation' },
   { label: 'Background', value: 'background' },
+  { label: 'Effects', value: 'effects' }
 ]
 
 // When a layer is selected, switch to properties if on background tab
@@ -33,30 +34,24 @@ watch(selectedLayer, (layer) => {
           Background
         </button>
       </div>
-      <div class="flex-1 overflow-y-auto p-3 space-y-3 inspector-content">
+      <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 inspector-content">
         <BannerInspectorBackground />
       </div>
     </template>
 
     <!-- Inspector content when layer selected -->
     <template v-else>
-      <!-- Tab bar -->
-      <div class="flex border-b border-[#3a3a3f] shrink-0">
-        <button
-          v-for="tab in tabs"
-          :key="tab.value"
-          class="flex-1 text-[10px] font-semibold uppercase tracking-wider py-2 px-1 text-center transition-colors"
-          :class="activeTab === tab.value
-            ? 'text-[#4a8fe8] bg-[#4a8fe8]/8 border-b-2 border-[#4a8fe8]'
-            : 'text-[#666] hover:text-[#999]'"
-          @click="activeTab = tab.value"
-        >
-          {{ tab.label }}
-        </button>
-      </div>
+      <UTabs
+        v-model="activeTab"
+        :items="tabs"
+        :content="false"
+        size="xs"
+        class="shrink-0 min-w-0"
+        :ui="{ trigger: 'min-w-0 px-1 text-[10px]', list: 'rounded-none' }"
+      />
 
       <!-- Scrollable content -->
-      <div class="flex-1 overflow-y-auto p-3 space-y-3 inspector-content">
+      <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 inspector-content">
         <!-- Properties tab -->
         <template v-if="activeTab === 'properties'">
           <BannerInspectorPosition />
@@ -84,6 +79,8 @@ watch(selectedLayer, (layer) => {
           <!-- Motion path + tweens belong with animation, not static properties -->
           <BannerInspectorMotionPath />
         </template>
+
+        <BannerInspectorEffects v-show="activeTab === 'effects'" />
 
         <!-- Background tab -->
         <template v-if="activeTab === 'background'">

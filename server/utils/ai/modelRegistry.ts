@@ -625,6 +625,18 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     sourceFile: 'server/api/agency/banner-studio/ai/copy-suggest.post.ts'
   },
   {
+    featureKey: 'banner_design_assist',
+    label: 'Banner Studio native design assistant',
+    surface: '/agency/banner-studio',
+    owner: 'Creative',
+    provider: 'groq',
+    modelId: GROQ_MODELS.REASONING_120B,
+    fallback: GROQ_MODELS.REASONING_20B,
+    modality: 'text',
+    riskTier: 'high',
+    sourceFile: 'server/api/agency/banner-studio/ai/design-assist.post.ts'
+  },
+  {
     featureKey: 'banner_code_assist',
     label: 'Banner Studio code assist',
     surface: '/agency/banner-studio',

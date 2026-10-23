@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
 const mockRequireAuth = vi.fn()
+const mockWriteAccess = vi.fn()
+const mockClientAccess = vi.fn()
 const mockReadMultipartFormData = vi.fn()
 const mockUploadBannerAsset = vi.fn()
 const mockDeleteBannerFile = vi.fn()
@@ -33,7 +35,12 @@ vi.mock('node:crypto', async (importOriginal) => {
 })
 
 vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
+  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
+  requireWriteAccess: (...args: unknown[]) => mockWriteAccess(...args)
+}))
+vi.mock('~~/server/utils/social/clientAccess', async importOriginal => ({
+  ...await importOriginal<typeof import('~~/server/utils/social/clientAccess')>(),
+  requireSocialClientAccess: (...args: unknown[]) => mockClientAccess(...args)
 }))
 
 vi.mock('~~/server/utils/bannerStorage', () => ({
@@ -91,6 +98,8 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRequireAuth.mockResolvedValue(USER)
+    mockWriteAccess.mockReset().mockResolvedValue(USER)
+    mockClientAccess.mockReset().mockResolvedValue(USER)
     mockReadMultipartFormData.mockResolvedValue([{
       name: 'file',
       filename: 'Launch Car.JPEG',
@@ -142,7 +151,7 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
       ASSET.r2Key,
       ASSET.url,
       USER.id,
-      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), null
     ])
   })
 
@@ -181,7 +190,7 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
       ASSET.r2Key,
       ASSET.url,
       USER.id,
-      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), null
     ])
 
     const mutation = mockExecuteUpload.mock.calls[0]?.[1]
@@ -216,6 +225,61 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
       uploadFile: expect.any(Function),
       insertAsset: expect.any(Function)
     }))
+  })
+
+  it('authorizes and persists the selected client on uploaded assets', async () => {
+    mockReadMultipartFormData.mockResolvedValueOnce([
+      { name: 'file', filename: 'Launch Car.jpg', type: 'image/jpeg', data: JPEG },
+      { name: 'clientId', data: Buffer.from(USER.id) }
+    ])
+    mockQueryOne.mockResolvedValueOnce({ ...ASSET, clientId: USER.id })
+    const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
+    await expect(handler(event())).resolves.toMatchObject({ clientId: USER.id })
+    expect(mockWriteAccess).toHaveBeenCalledOnce()
+    expect(mockClientAccess).toHaveBeenCalledWith(expect.anything(), USER.id)
+    expect(mockQueryOne.mock.calls[0]?.[0]).toContain('created_at, client_id)')
+    expect(mockQueryOne.mock.calls[0]?.[1].at(-1)).toBe(USER.id)
+  })
+
+  it('denies foreign-client uploads before storage or coordinator admission', async () => {
+    mockReadMultipartFormData.mockResolvedValueOnce([
+      { name: 'file', filename: 'Launch Car.jpg', type: 'image/jpeg', data: JPEG },
+      { name: 'clientId', data: Buffer.from(USER.id) }
+    ])
+    mockClientAccess.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { statusCode: 403 }))
+    const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
+    await expect(handler(event())).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockExecuteUpload).not.toHaveBeenCalled()
+    expect(mockUploadBannerAsset).not.toHaveBeenCalled()
+  })
+
+  it.each([['bad-id'], [USER.id, USER.id], ['']])('rejects invalid or duplicated client fields: %j', async (...clients) => {
+    mockReadMultipartFormData.mockResolvedValueOnce([
+      { name: 'file', filename: 'Launch Car.jpg', type: 'image/jpeg', data: JPEG },
+      ...clients.map(id => ({ name: 'clientId', data: Buffer.from(id) }))
+    ])
+    const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
+    await expect(handler(event())).rejects.toMatchObject({ statusCode: 400 })
+    expect(mockExecuteUpload).not.toHaveBeenCalled()
+  })
+
+  it('rejects a replay whose persisted client differs from the authorized request', async () => {
+    mockExecuteUpload.mockResolvedValueOnce({ ...ASSET, clientId: USER.id })
+    const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
+    await expect(handler(event())).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('rejects a file-only God Mode digest when a client scope has been added', async () => {
+    mockReadMultipartFormData.mockResolvedValueOnce([
+      { name: 'file', filename: 'Launch Car.JPEG', type: 'image/jpeg', data: JPEG },
+      { name: 'clientId', data: Buffer.from(USER.id) }
+    ])
+    const request = event({ 'x-banner-upload-digest': '122fe4684bb6802ae6e8225410da6a48c48a7a05a5200ef83b097d8c653bc6fe' })
+    const { seedGodModeRouteAuditState } = await import('~~/server/utils/godMode/featureGate')
+    seedGodModeRouteAuditState(request, { actorUserId: USER.id, correlationId: ASSET.id, sessionDigest: 'a'.repeat(64), routeOrTool: 'POST /api/agency/banner-studio/assets/upload', emergencyDisabled: false })
+    const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
+    await expect(handler(request)).rejects.toMatchObject({ statusCode: 409 })
+    expect(mockExecuteUpload).not.toHaveBeenCalled()
   })
 
   it('rejects a validated file whose digest does not match the active owner claim before R2 upload', async () => {

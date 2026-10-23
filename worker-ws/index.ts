@@ -228,8 +228,14 @@ function getCookieCandidates(request: Request, names: readonly string[]): string
     const eq = part.indexOf('=')
     if (eq === -1) continue
     const name = part.slice(0, eq).trim()
-    const value = part.slice(eq + 1).trim()
-    if (!allowedNames.has(name) || !value || seen.has(value)) continue
+    if (!allowedNames.has(name)) continue
+    let value: string
+    try {
+      value = decodeURIComponent(part.slice(eq + 1).trim())
+    } catch {
+      continue
+    }
+    if (!value || seen.has(value)) continue
     seen.add(value)
     candidates.push(value)
   }

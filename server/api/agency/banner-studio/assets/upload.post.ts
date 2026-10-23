@@ -1,6 +1,7 @@
 import { createError, getHeader, readMultipartFormData } from 'h3'
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
+import { isSocialClientId, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import {
   bannerAssetDeliveryUrl,
@@ -46,10 +47,19 @@ export default defineEventHandler(async (event) => {
   if (files.length !== 1 || !files[0]?.data) {
     throw createError({ statusCode: 400, statusMessage: 'Exactly one file field is required' })
   }
+  const clientFields = formData?.filter(part => part.name === 'clientId') ?? []
+  const clientId = clientFields[0]?.data.toString('utf-8').trim().toLowerCase() || null
+  if (clientFields.length > 1 || (clientFields.length && !isSocialClientId(clientId))) {
+    throw createError({ statusCode: 400, statusMessage: 'A single valid clientId is required' })
+  }
+  if (clientId) {
+    await requireWriteAccess(event)
+    await requireSocialClientAccess(event, clientId)
+  }
 
   let validated: ValidatedBannerAssetUpload
   try {
-    validated = validateBannerAssetUpload(files[0])
+    validated = validateBannerAssetUpload(files[0], clientId)
   } catch {
     throw createError({ statusCode: 400, statusMessage: 'Invalid banner asset upload' })
   }
@@ -70,7 +80,7 @@ export default defineEventHandler(async (event) => {
     const r2Key = createBannerAssetStorageKey(validated.fileName, user.id)
     const createdAt = new Date().toISOString()
     const { nativeUpload, signingSecret } = resolveBannerAssetDelivery(event)
-    return await executeGodModeBannerAssetUpload(event, {
+    const result = await executeGodModeBannerAssetUpload(event, {
       assetId,
       r2Key,
       result: (stored, identity) => ({
@@ -83,6 +93,7 @@ export default defineEventHandler(async (event) => {
         thumbnailUrl: null,
         tags: [],
         uploadedBy: user.id,
+        clientId,
         createdAt
       }),
       deleteFile: async key => await deleteBannerFile(key, nativeUpload?.bucket),
@@ -99,7 +110,7 @@ export default defineEventHandler(async (event) => {
       },
       insertAsset: async (db, stored: StoredBannerAssetUpload, result) => {
         if (!result) throw new Error('Banner asset insert identity is unavailable')
-        const sql = `INSERT INTO banner_assets (id, name, mime_type, file_size, r2_key, url, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, mime_type AS "mimeType", file_size AS "fileSize", r2_key AS "r2Key", url, thumbnail_url AS "thumbnailUrl", tags, uploaded_by AS "uploadedBy", created_at AS "createdAt"`
+        const sql = `INSERT INTO banner_assets (id, name, mime_type, file_size, r2_key, url, uploaded_by, created_at, client_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, name, mime_type AS "mimeType", file_size AS "fileSize", r2_key AS "r2Key", url, thumbnail_url AS "thumbnailUrl", tags, uploaded_by AS "uploadedBy", created_at AS "createdAt", client_id AS "clientId"`
         const params = [
           result.id,
           result.name,
@@ -108,7 +119,8 @@ export default defineEventHandler(async (event) => {
           stored.key,
           stored.url,
           result.uploadedBy,
-          result.createdAt
+          result.createdAt,
+          clientId
         ]
         const row = db
           ? (await db.query(sql, params)).rows[0]
@@ -117,6 +129,10 @@ export default defineEventHandler(async (event) => {
         return row
       }
     })
+    if ((result.clientId ?? null) !== clientId) {
+      throw createError({ statusCode: 409, statusMessage: 'Uploaded asset belongs to a different client scope' })
+    }
+    return result
   } catch (error: unknown) {
     if (isHttpError(error)) throw error
     console.error('Failed to upload banner asset', {

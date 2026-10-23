@@ -100,11 +100,15 @@ export function canonicalBannerAssetIdentity(input: BannerAssetIdentityInput): B
   }
 }
 
-export function serializeBannerAssetIdentity(identity: BannerAssetIdentity): string {
+export function serializeBannerAssetIdentity(identity: BannerAssetIdentity, clientId?: string | null): string {
+  if (clientId && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(clientId)) {
+    throw new Error('Invalid banner asset client')
+  }
   return JSON.stringify({
     fileName: identity.fileName,
     mimeType: identity.mimeType,
     size: identity.size,
-    contentSha256: identity.contentSha256
+    contentSha256: identity.contentSha256,
+    ...(clientId ? { clientId: clientId.toLowerCase() } : {})
   })
 }

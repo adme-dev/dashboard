@@ -3,8 +3,10 @@ import { getFileMetadata, getPresignedDownloadUrl } from '~~/server/utils/storag
 import { assertResolvableSources, loadSourceAssetsByIds } from '~~/server/utils/video-generation/sourceAssetStore'
 import { resolveGroqGatewayBaseUrl, buildGatewayAuthHeaders } from '~~/server/utils/groqClient'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
+import { getCachedCfBinding } from '~~/server/utils/cfBindings'
 
-export const CREATIVE_COMPLIANCE_MODEL = 'qwen/qwen3.6-27b'
+// Groq's September 2026 successor retains vision and JSON mode.
+export const CREATIVE_COMPLIANCE_MODEL = 'qwen/qwen3.8-27b'
 export const CREATIVE_COMPLIANCE_MAX_IMAGE_BYTES = 20 * 1024 * 1024
 
 export function assertCreativeComplianceImageMetadata(input: { size: number, contentType: string }): void {
@@ -21,6 +23,7 @@ export interface CreativeComplianceVerdict {
   artefactsDetected: boolean
   confidence: number
   notes: string
+  textMatchesBrief?: boolean
 }
 
 export interface CreativeComplianceExpectedClaims {
@@ -28,6 +31,7 @@ export interface CreativeComplianceExpectedClaims {
   disclaimer?: string
   logo?: string
   notes?: string
+  text?: string
 }
 
 export interface VisionComplianceRequest {
@@ -68,10 +72,11 @@ export function normalizeCreativeComplianceVerdict(value: unknown): CreativeComp
     artefactsDetected: booleanField(raw.artefactsDetected, 'artefactsDetected'),
     confidence,
     notes: boundedText(raw.notes, 2000),
+    ...(typeof raw.textMatchesBrief === 'boolean' ? { textMatchesBrief: raw.textMatchesBrief } : {})
   }
 }
 
-export function creativeCompliancePassed(verdict: CreativeComplianceVerdict): boolean {
+export function creativeCompliancePassed(verdict: CreativeComplianceVerdict, expectedText?: string): boolean {
   return verdict.vehicleMatchesReference
     && verdict.badgeVisibleAndCorrect
     && verdict.disclaimerPresent
@@ -79,6 +84,7 @@ export function creativeCompliancePassed(verdict: CreativeComplianceVerdict): bo
     && verdict.logoPresentUndistorted
     && !verdict.artefactsDetected
     && verdict.confidence >= 0.75
+    && (!expectedText || verdict.textMatchesBrief === true)
 }
 
 function parseJsonContent(content: unknown): unknown {
@@ -115,6 +121,7 @@ export async function requestCreativeComplianceVerdict(
     price: boundedText(input.expectedClaims?.price, 500),
     disclaimer: boundedText(input.expectedClaims?.disclaimer, 2000),
     logo: boundedText(input.expectedClaims?.logo, 500),
+    text: boundedText(input.expectedClaims?.text, 250)
   }
   const analystContext = boundedText(input.expectedClaims?.notes, 2000)
   const prompt = [
@@ -123,7 +130,8 @@ export async function requestCreativeComplianceVerdict(
     `Expected claims: ${JSON.stringify(expectedClaims)}.`,
     ...(analystContext ? [`Analyst context (background only — do NOT repeat it in your notes): ${analystContext}`] : []),
     'Return one JSON object only with exactly these keys: vehicleMatchesReference, badgeVisibleAndCorrect,',
-    'disclaimerPresent, priceMatchesBrief, logoPresentUndistorted, artefactsDetected, confidence, notes.',
+    'disclaimerPresent, priceMatchesBrief, logoPresentUndistorted, artefactsDetected, confidence, notes' + (expectedClaims.text ? ', textMatchesBrief.' : '.'),
+    ...(expectedClaims.text ? ['Set textMatchesBrief true only when every visible word and punctuation matches expected text; ignore line wrapping only. Missing or unreadable characters fail.'] : []),
     'The notes field must contain YOUR OWN visual observations of the images, never text supplied to you.',
     'For a genuinely non-applicable check return true and explain why in notes. Never infer unreadable copy as present.',
   ].join(' ')
@@ -143,7 +151,7 @@ export async function requestCreativeComplianceVerdict(
       messages: [{ role: 'user', content }],
       response_format: { type: 'json_object' },
       temperature: 0,
-      // qwen3.6-27b is a reasoning model: its thinking tokens count against this
+      // Qwen is a reasoning model: its thinking tokens count against this
       // budget, and ~1200 left no room for the JSON verdict (Groq then 400s with
       // json_validate_failed and an empty failed_generation). Confirmed in the AI
       // Gateway log for the 2026-08-20 12:35 inspection.
@@ -181,11 +189,11 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
        FROM video_gen_source_assets WHERE id = $1`, [input.assetId],
   )
   if (!bannerTarget && !sourceTarget) throw new Error('Creative asset not found in Banner Studio or approved video sources')
-  if (sourceTarget?.status !== 'approved') throw new Error('Video source asset is not approved')
+  if (sourceTarget && sourceTarget.status !== 'approved') throw new Error('Video source asset is not approved')
   const target = bannerTarget
     ? { ...bannerTarget, contentType: bannerTarget.mime_type, size: bannerTarget.file_size }
     : { ...sourceTarget!, contentType: sourceTarget!.content_type, size: 0 }
-  if (target.client_id && target.client_id !== (input.clientId ?? null)) throw new Error('Creative asset is not owned by this client')
+  if (target.client_id !== (input.clientId ?? null)) throw new Error('Creative asset is not owned by this client')
   const targetMetadata = bannerTarget
     ? { size: target.size, contentType: target.contentType }
     : await getFileMetadata(target.r2_key)
@@ -212,19 +220,22 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
     ...referenceRows.map(row => getPresignedDownloadUrl(row.r2_key, 3600)),
   ])
   const config = useRuntimeConfig()
-  const gatewayUrl = String(config.aiGatewayUrl || process.env.AI_GATEWAY_URL || '')
+  const gatewayUrl = String(getCachedCfBinding('AI_GATEWAY_URL') ?? (config.aiGatewayUrl || process.env.AI_GATEWAY_URL || ''))
   // Same cf-aig-authorization fallback chain as the shared Groq chat client
   // (groqClient.ts) — an authenticated AI Gateway 401s the inspection path when
   // only CF_API_TOKEN is configured and this reads AI_GATEWAY_AUTH_TOKEN alone.
   const gatewayAuthToken = String(
-    config.aiGatewayAuthToken
+    getCachedCfBinding('AI_GATEWAY_AUTH_TOKEN')
+    || getCachedCfBinding('CF_API_TOKEN')
+    || getCachedCfBinding('CLOUDFLARE_API_TOKEN')
+    || config.aiGatewayAuthToken
     || process.env.AI_GATEWAY_AUTH_TOKEN
     || (config as { cfApiToken?: string }).cfApiToken
     || process.env.CF_API_TOKEN
     || process.env.CLOUDFLARE_API_TOKEN
     || ''
   )
-  const groqApiKey = String(config.groqApiKey || process.env.GROQ_API_KEY || process.env.GROQ_API || '')
+  const groqApiKey = String(getCachedCfBinding('GROQ_API_KEY') || getCachedCfBinding('GROQ_API') || config.groqApiKey || process.env.GROQ_API_KEY || process.env.GROQ_API || '')
   await input.beforeDispatch?.()
   const startedAt = Date.now()
   const verdict = await requestCreativeComplianceVerdict({
@@ -232,7 +243,7 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
     imageUrls: [targetUrl, ...references],
     expectedClaims: input.expectedClaims,
   }, { gatewayUrl, gatewayAuthToken, groqApiKey })
-  const passed = creativeCompliancePassed(verdict)
+  const passed = creativeCompliancePassed(verdict, input.expectedClaims?.text)
   const row = await queryOne<{ id: string, created_at: string }>(
     `INSERT INTO creative_compliance_checks (
        client_id, asset_id, source_asset_id, created_by, model_id, gateway_used, subject_type,

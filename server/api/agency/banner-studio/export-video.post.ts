@@ -1,4 +1,5 @@
 import { createError, readBody } from 'h3'
+import { dispatchBannerRenderJob, RECORD_BANNER_DISPATCH_FAILURE_SQL } from '~~/server/utils/banner/renderDispatch'
 import { requireAuth } from '~~/server/utils/auth'
 import { uploadFile } from '~~/server/utils/storage'
 import { execute } from '~~/server/utils/db'
@@ -56,10 +57,13 @@ export default defineEventHandler(async (event) => {
               [r.id, r.project_id, r.format_key, r.width, r.height, r.fps, r.crf, r.quality, r.source_r2_key, r.created_by]
             )
           },
-          sendQueue: async (msg) => {
-            await markDispatched()
-            await queue.send(msg)
-          }
+          sendQueue: msg => dispatchBannerRenderJob(msg.jobId, {
+            beforeDispatch: markDispatched,
+            send: message => queue.send(message),
+            recordFailure: async (jobId, uncertain, message) => {
+              await execute(RECORD_BANNER_DISPATCH_FAILURE_SQL, [jobId, uncertain, message])
+            }
+          })
         }
       )
     })
