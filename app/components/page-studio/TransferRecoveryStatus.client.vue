@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TransferRecoveryAdmission from './TransferRecoveryAdmission.client.vue'
 import TransferRecoveryApproval from './TransferRecoveryApproval.client.vue'
 import { TransferRecoveryInspectionViewSchema } from '~~/shared/pageStudio/transferRecoveryCoordinator'
 import type { z } from 'zod'
@@ -7,7 +8,7 @@ import { TransferRecoveryViewSchema, type TransferRecoveryView } from '~~/shared
 
 const props = defineProps<{ siteId: string, requestId: string, revision: number, actorKey: string }>()
 const saved = ref<TransferRecoveryView | null>(null)
-const loading = ref(false), failed = ref(false), reviewControlsOpen = ref(false)
+const loading = ref(false), failed = ref(false), reviewControlsOpen = ref(false), admissionControlsOpen = ref(false)
 const busy = ref(false), actionFailed = ref(false), inspectionFailed = ref(false)
 const modal = ref<'open' | 'revoke' | null>(null)
 const modalAction = ref<'open' | 'revoke'>('open')
@@ -82,7 +83,7 @@ const description = computed(() => {
   if (!saved.value?.recovery) return 'A new review and approval are required before this transfer can continue.'
   if (saved.value.recovery.state === 'revoked') return 'This review was closed. Refreshing its status will not reopen it.'
   if (saved.value.recovery.expired) return 'This review has expired. It cannot authorize the transfer to continue.'
-  if (['approved', 'pending', 'applied'].includes(saved.value.recovery.state)) return 'The review is approved. Transfer admission is still required; no execution has been enabled.'
+  if (['approved', 'pending', 'applied'].includes(saved.value.recovery.state)) return 'The review is approved. Check saved readiness for the current admission status before continuing.'
   return 'This review does not authorize transfer execution. Further checks and approvals are required.'
 })
 async function refresh() {
@@ -112,6 +113,7 @@ watch(() => [props.siteId, props.requestId, props.revision, props.actorKey], () 
   inspectionFailed.value = false
   actionFailed.value = false
   reviewControlsOpen.value = false
+  admissionControlsOpen.value = false
   void refresh()
 }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => { generation++ })
@@ -200,6 +202,8 @@ onBeforeUnmount(() => { generation++ })
     </div>
     <UButton v-if="saved?.recovery && !saved.recovery.expired && saved.recovery.state !== 'revoked' && saved.allowedActions.includes('revoke') && !reviewControlsOpen" label="Prepare recovery approval" color="neutral" variant="outline" @click="reviewControlsOpen = true" />
     <TransferRecoveryApproval v-if="reviewControlsOpen" :site-id="siteId" :request-id="requestId" :revision="revision" :actor-key="actorKey" mode="operator" />
+    <UButton v-if="saved?.recovery && !saved.recovery.expired && ['approved', 'pending', 'applied'].includes(saved.recovery.state) && !admissionControlsOpen" label="Check transfer readiness" color="neutral" variant="outline" @click="admissionControlsOpen = true" />
+    <TransferRecoveryAdmission v-if="admissionControlsOpen" :site-id="siteId" :request-id="requestId" :revision="revision" :actor-key="actorKey" />
     <UModal
       :open="!!modal"
       :title="modalAction === 'open' ? 'Open a recovery review' : 'Close this review'"

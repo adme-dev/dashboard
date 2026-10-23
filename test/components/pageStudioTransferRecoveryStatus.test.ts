@@ -24,8 +24,8 @@ it.each([
   fetch.mockResolvedValue(view(recovery))
   const host = await mount(Recovery, props())
   expect(host.textContent).toContain(label)
-  expect(host.querySelectorAll('button')).toHaveLength(1)
-  expect(host.querySelector('button')?.textContent).toBe('Refresh recovery status')
+  expect(host.querySelectorAll('button')).toHaveLength(label === 'Recovery review approved' ? 2 : 1)
+  expect(button(host, 'Refresh recovery status')).toBeDefined()
   expect(fetch).toHaveBeenCalledExactlyOnceWith(`/api/agency/page-studio/sites/${siteId}/transfer-requests/${requestId}/recovery`,
     { query: { expectedRevision: 5 }, retry: 0 })
   expect(fetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
@@ -136,7 +136,19 @@ it('revokes only after confirmation and clears saved inspection', async () => {
 it('approved review allows revocation without exposing inspection or execution', async () => {
   fetch.mockResolvedValue({ ...view({ ...head, state: 'approved', version: 2 }), allowedActions: ['revoke'] })
   const host = await mount(Recovery, props())
-  expect(host.textContent).toContain('Transfer admission is still required')
+  expect(host.textContent).toContain('Check saved readiness')
   expect(host.textContent).not.toContain('Inspect retained transfer')
   expect(fetch).toHaveBeenCalledOnce()
+})
+
+it('opens admission controls explicitly and reads their saved state without starting preparation', async () => {
+  fetch.mockResolvedValueOnce(view({ ...head, state: 'approved', version: 2 }))
+  const host = await mount(Recovery, props())
+  expect(fetch).toHaveBeenCalledOnce()
+  fetch.mockResolvedValueOnce({ siteId, requestId, expectedRevision: 5, action: 'read', admissionId: null,
+    review: { reviewId: otherSite, revision: 1, reviewDigest: 'b'.repeat(64) }, deadline: head.deadline, pgState: 'approved', d1State: 'unverified' })
+  await click(host, 'Check transfer readiness')
+  expect(fetch).toHaveBeenCalledTimes(2)
+  expect(fetch.mock.calls[1][1].body.request).toEqual({ action: 'read' })
+  expect(button(host, 'Start preparation')).toBeDefined()
 })
