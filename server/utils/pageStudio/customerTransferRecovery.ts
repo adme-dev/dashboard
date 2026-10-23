@@ -12,9 +12,10 @@ const Id = z.string().uuid()
 const Scope = z.object({ siteId: Id, requestId: Id,
   operator: z.object({ actorId: Id, loginSessionHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict() }).strict()
 const Head = z.object({ recovery_id: Id, epoch: z.literal(1), cas_version: z.number().int().positive(),
-  mode: z.enum(['reconciling', 'approved', 'revoked']), intent_digest: z.string().regex(/^[a-f0-9]{64}$/),
+  mode: z.enum(['reconciling', 'approved', 'pending', 'applied', 'revoked']), intent_digest: z.string().regex(/^[a-f0-9]{64}$/),
   deadline: z.coerce.date(), expired: z.boolean() }).strict().refine(head =>
-  head.mode === 'reconciling' ? head.cas_version === 1 : head.mode === 'approved' ? head.cas_version === 2 : [2,3].includes(head.cas_version))
+  head.mode === 'revoked' ? [2,3,4,5].includes(head.cas_version)
+    : head.cas_version === { reconciling: 1, approved: 2, pending: 3, applied: 4 }[head.mode])
 const denied = () => createError({ statusCode: 403, statusMessage: 'Current original transfer operator access is required' })
 const conflict = () => createError({ statusCode: 409, statusMessage: 'Refresh the retained transfer recovery before continuing' })
 const equal = (a: unknown, b: unknown) => collectionCanonical(a) === collectionCanonical(b)
@@ -123,7 +124,7 @@ async function recovery(route: Route, expectedRevision: number, request: Transfe
           if (head.cas_version !== request.expectedHeadVersion + 1) throw conflict()
         } else if ((await db.query(`UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=cas_version+1
           WHERE operation_id=$1 AND intent_digest=$2 AND recovery_id=$3 AND epoch=1
-            AND mode IN ('reconciling','approved') AND cas_version=$4 RETURNING operation_id`,
+            AND mode IN ('reconciling','approved','pending','applied') AND cas_version=$4 RETURNING operation_id`,
         [stored.operation_id, stored.intent_digest, request.recoveryId, request.expectedHeadVersion])).rows.length !== 1) throw conflict()
       }
       currentOwner = await owner()
@@ -148,7 +149,7 @@ async function recovery(route: Route, expectedRevision: number, request: Transfe
       return TransferRecoveryViewSchema.parse({ siteId: route.siteId, requestId: route.requestId, revision: stored.revision,
         recovery: head ? { recoveryId: head.recovery_id, epoch: head.epoch, version: head.cas_version, state: head.mode,
           deadline: head.deadline.toISOString(), expired: head.expired } : null,
-        allowedActions: head && ['reconciling','approved'].includes(head.mode) ? ['revoke'] : canOpen ? ['open'] : [] })
+        allowedActions: head && ['reconciling','approved','pending','applied'].includes(head.mode) ? ['revoke'] : canOpen ? ['open'] : [] })
     })
   } catch (error) {
     if (['55P03', '40P01', '57014'].includes(String((error as { code?: string })?.code))) {

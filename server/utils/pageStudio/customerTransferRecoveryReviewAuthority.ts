@@ -41,7 +41,7 @@ export async function recoveryReviewContext(
   route: ReviewRoute,
   actor: ReviewActor,
   renewalRequestId: string,
-  approved = false
+  stage: boolean | 'pending' | 'applied' = false
 ) {
   const retained = (
     await db.query<{ intent: Intent; intent_digest: string }>(
@@ -100,16 +100,20 @@ export async function recoveryReviewContext(
       [scope.siteId, scope.tenantId, scope.clientId]
     )
   ).rows[0]
+  const mode = stage === false ? 'reconciling' : stage === true ? 'approved' : stage
+  const expectedVersion = { reconciling: 1, approved: 2, pending: 3, applied: 4 }[mode]
   const head = (
     await db.query<{ recovery_id: string; epoch: number; cas_version: number; deadline: Date; mode: string }>(
       `SELECT recovery_id,epoch,cas_version,deadline,mode
     FROM page_studio_transfer_recovery_heads WHERE operation_id=$1 AND intent_digest=$2
       AND mode=$3 AND epoch=1 AND deadline>clock_timestamp()
-      AND admission_id IS NULL AND d1_prepared_digest IS NULL AND applied_grant_digest IS NULL FOR UPDATE NOWAIT`,
-      [intent.operationId, retained.intent_digest, approved ? 'approved' : 'reconciling']
+      AND ((mode IN ('reconciling','approved') AND admission_id IS NULL AND d1_prepared_digest IS NULL AND applied_grant_digest IS NULL)
+        OR (mode='pending' AND admission_id IS NOT NULL AND d1_prepared_digest IS NULL AND applied_grant_digest IS NULL)
+        OR (mode='applied' AND admission_id IS NOT NULL AND d1_prepared_digest IS NOT NULL AND applied_grant_digest IS NOT NULL)) FOR UPDATE NOWAIT`,
+      [intent.operationId, retained.intent_digest, mode]
     )
   ).rows[0]
-  if (!site || !head || head.cas_version !== (approved ? 2 : 1)) throw reviewDenied()
+  if (!site || !head || head.cas_version !== expectedVersion) throw reviewDenied()
   const audit = (
     await db.query<{
       id: string

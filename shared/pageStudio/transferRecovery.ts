@@ -17,7 +17,7 @@ export const TransferRecoveryRequestSchema = z.discriminatedUnion('action', [
 ])
 export const TransferRecoveryStatusRequestSchema = z.object(revision).strict()
 const RecoveryHead = z.object({ recoveryId: Id, epoch: HeadVersion, version: HeadVersion,
-  state: z.enum(['reconciling', 'approved', 'revoked']), deadline: Deadline, expired: z.boolean() }).strict()
+  state: z.enum(['reconciling', 'approved', 'pending', 'applied', 'revoked']), deadline: Deadline, expired: z.boolean() }).strict()
 
 /** This view contains no private intent, session, provider or admission proof.
  * Empty actions always remain valid: a retained head is not permission to act. */
@@ -25,7 +25,7 @@ export const TransferRecoveryViewSchema = z.object({ siteId: Id, requestId: Id,
   revision: TransferRevisionSchema, recovery: RecoveryHead.nullable(),
   allowedActions: z.array(z.enum(['open', 'revoke'])).max(1)
 }).strict().refine(value => value.allowedActions.every(action => action === 'open'
-  ? value.recovery === null : value.recovery?.state === 'reconciling' || value.recovery?.state === 'approved'),
+  ? value.recovery === null : Boolean(value.recovery && ['reconciling', 'approved', 'pending', 'applied'].includes(value.recovery.state))),
 { message: 'Recovery actions do not match the saved state.' })
 
 export type TransferRecoveryRequest = z.infer<typeof TransferRecoveryRequestSchema>
