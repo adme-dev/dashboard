@@ -1,0 +1,99 @@
+{
+  "pending": {
+    "body": {
+      "formatVersion": 1,
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "epoch": 1,
+      "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+      "reviewId": "3b89f3c1-3206-40b7-8fb6-651f57553b93",
+      "revision": 1,
+      "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "pgVersion": 3,
+      "prepareEventId": "f4bb5737-f6e0-4909-84b0-6ccbf16a71a7",
+      "enableEventId": "34569260-0dd8-4f2a-b0cb-c7a655f601e8"
+    },
+    "digest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6"
+  },
+  "applied": {
+    "body": {
+      "formatVersion": 1,
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "epoch": 1,
+      "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+      "reviewId": "3b89f3c1-3206-40b7-8fb6-651f57553b93",
+      "revision": 1,
+      "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "pgVersion": 4,
+      "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+      "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8"
+    },
+    "digest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058"
+  },
+  "inspection": {
+    "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "operatorId": "3baf77e9-8b0d-4b03-9cd5-0d6296e6eca6",
+    "pg": {
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "epoch": 1,
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "requestId": "4f20e668-3ae8-4510-9da2-5b0692cc137f",
+      "requestRevision": 5,
+      "version": 4
+    }
+  },
+  "recovery": {
+    "epoch": 1,
+    "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+    "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+    "version": 3,
+    "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+    "appliedDigest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058",
+    "deadline": "2099-01-01T00:00:00.000Z",
+    "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+    "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8",
+    "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "revision": 1,
+    "mode": "enabled"
+  },
+  "purpose": "recovery-phase",
+  "command": {
+    "phase": "source-execution",
+    "verb": "read",
+    "action": "discover",
+    "request": {
+      "formatVersion": 1,
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sourceScope": {
+        "businessId": "client_a",
+        "clientId": "client_a",
+        "environment": "staging",
+        "siteId": "site_a",
+        "tenantId": "tenant_a"
+      },
+      "sourceTarget": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "collectionReceiptDigest": "1cafa732631ec922111b68f269e3b471d603445a4a3a07569abccf39e4943836",
+        "databaseId": "3bca66d5-ad54-4499-be9f-65a3c75a5315",
+        "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "routeId": "431adb35-4a57-477f-aff7-b741217bd455",
+        "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+        "stagingReceiptDigest": "b476b0286abddd8bf985d48d6e20c50e45bef31287bcfc6616ca0cdee589850a",
+        "workflowReceiptDigest": "cb56b4683dbd1d5f88680c5213bb066d1230b82204abf2067620ebf62e5e05f8"
+      },
+      "freezeDigest": "67989130753a792e984fb7870edc671ebf2e96c3ef7c5bf776aee0b8f5ecb594"
+    },
+    "requestDigest": "1e0b26453b01b420f87abd76fd0f5fbd552a70bd45a0c7ec617d80a8d307a318",
+    "invocationId": "5b908bec-e80e-45f5-bb50-50cfbdb36670"
+  }
+}
