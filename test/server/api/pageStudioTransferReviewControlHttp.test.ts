@@ -21,7 +21,7 @@ async function request(owner: boolean, value: unknown = body, options: { cookie?
     headers: { host: 'studio.example.test', 'x-forwarded-proto': 'https', origin: options.origin ?? 'https://studio.example.test', cookie: options.cookie ?? (owner ? `__Host-studio_customer_session=${token}` : 'auth_token=real-cookie'), 'content-type': options.contentType ?? 'application/json' }, ...(method === 'GET' ? {} : { body: JSON.stringify(value) }) }))
 }
 beforeEach(() => {
-  vi.resetAllMocks(); vi.stubGlobal('eventHandler', eventHandler)
+  env.PAGE_STUDIO_CUSTOMER_ORIGIN = 'https://studio.example.test'; vi.resetAllMocks(); vi.stubGlobal('eventHandler', eventHandler)
   mocks.auth.mockResolvedValue({ id: actorId }); mocks.login.mockResolvedValue({ userId: actorId, tokenHash: 'a'.repeat(64), role: 'agency' })
   mocks.session.mockResolvedValue({ identityId: id(6), accountId: id(7) }); mocks.limit.mockResolvedValue({ allowed: true })
   mocks.call.mockResolvedValue({ ok: true })
@@ -60,4 +60,13 @@ it.each([false, true])('closes on rate-limit failure and never retries lost ackn
   const response = await request(owner)
   expect(response.status).toBe(503); expect(await response.text()).not.toContain('private owner token')
   expect(mocks.call).toHaveBeenCalledOnce()
+})
+
+it('returns only the validated configured owner origin to the operator', async () => {
+  expect(await (await request(false)).json()).toEqual({ view: { ok: true }, customerOrigin: 'https://studio.example.test' })
+  env.PAGE_STUDIO_CUSTOMER_ORIGIN = 'https://studio.example.test/unsafe-path'
+  expect(await (await request(false)).json()).toEqual({ view: { ok: true }, customerOrigin: null })
+  expect((await request(true)).status).toBe(503)
+  env.PAGE_STUDIO_CUSTOMER_ORIGIN = 'https://studio.example.test'
+  expect(await (await request(true)).json()).toEqual({ ok: true })
 })

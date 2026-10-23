@@ -49,6 +49,10 @@ function guarded(error: unknown): never {
   throw createError({ statusCode: code && [400, 401, 403, 404, 405, 409, 413, 415, 429].includes(code) ? code : 503,
     statusMessage: code === 401 ? 'Sign in to continue.' : 'Transfer status could not be confirmed. Refresh the saved request before continuing.' })
 }
+function publicCustomerOrigin(env: Record<string, unknown>) {
+  const origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ORIGIN') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)
+  return origin.success ? origin.data : null
+}
 async function operator(event: H3Event) {
   // Studio operations require a genuine cookie login, never bearer-only authority.
   if (!getCookie(event, 'auth_token') && !getCookie(event, 'auth_token_client')) throw createError({ statusCode: 401 })
@@ -102,12 +106,12 @@ export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' |
       const request = method === 'GET' ? { action: 'inspect' as const } : parse(CustomerAdoptionOperatorActionSchema,
         await readPageStudioJson(event, 4096, ['Use JSON for this request.', 'The request is too large.', 'Choose an adoption action.', 'Invalid adoption request.', 'Invalid adoption JSON.']))
       const view = await callCustomerAdoptionGrant({ siteId: identity.siteId!, operator: principal, request }, env)
-      const origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ORIGIN') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)
-      result = { view, customerOrigin: origin.success ? origin.data : null }
+      result = { view, customerOrigin: publicCustomerOrigin(env) }
     } else if (route === 'recovery-review') {
       const input = parse(z.object({ expectedRevision: z.number().int().positive().max(2147483646), request: RecoveryReviewOperatorAction }).strict(),
         await readPageStudioJson(event, 4096, ['Use JSON for this request.', 'The request is too large.', 'Choose a review action.', 'Invalid review request.', 'Invalid review JSON.']))
-      result = await callTransferRecoveryReviewControl({ ...identity, ...input, authentication: { operator: principal } }, env)
+      const view = await callTransferRecoveryReviewControl({ ...identity, ...input, authentication: { operator: principal } }, env)
+      result = { view, customerOrigin: publicCustomerOrigin(env) }
     } else if (route === 'recovery-inspect') {
       const input = await body(event, TransferRecoveryInspectActionSchema)
       result = await callTransferRecoveryInspection({ ...identity, ...input, operator: principal }, env)

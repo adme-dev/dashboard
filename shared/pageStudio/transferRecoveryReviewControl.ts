@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CustomerAdoptionCustomerOriginSchema } from './customerAdoptionTransport'
 import { collectionCanonical } from './collectionApi'
 import { managementResultSchema } from './managementResult'
 import { TransferRecoveryReviewCreateSchema, TransferRecoveryReviewOperatorSchema, TransferRecoveryReviewReferenceSchema, TransferRecoveryReviewRouteSchema } from './transferRecoveryReview'
@@ -51,3 +52,5 @@ export function matchesRecoveryReviewControl(view: RecoveryReviewControlView, in
   return view.action === 'approve-review' && action.action === 'approve-review'
     && collectionCanonical(view.review) === collectionCanonical(action.review) && view.approvalId === action.approvalId
 }
+
+export const RecoveryReviewOperatorPublicResponse = z.object({ view: RecoveryReviewPublicView, customerOrigin: CustomerAdoptionCustomerOriginSchema.nullable() }).strict()

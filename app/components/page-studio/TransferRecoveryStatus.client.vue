@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TransferRecoveryApproval from './TransferRecoveryApproval.client.vue'
 import { TransferRecoveryInspectionViewSchema } from '~~/shared/pageStudio/transferRecoveryCoordinator'
 import type { z } from 'zod'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
@@ -6,7 +7,7 @@ import { TransferRecoveryViewSchema, type TransferRecoveryView } from '~~/shared
 
 const props = defineProps<{ siteId: string, requestId: string, revision: number, actorKey: string }>()
 const saved = ref<TransferRecoveryView | null>(null)
-const loading = ref(false), failed = ref(false)
+const loading = ref(false), failed = ref(false), reviewControlsOpen = ref(false)
 const busy = ref(false), actionFailed = ref(false), inspectionFailed = ref(false)
 const modal = ref<'open' | 'revoke' | null>(null)
 const modalAction = ref<'open' | 'revoke'>('open')
@@ -75,13 +76,13 @@ const title = computed(() => {
   if (!saved.value?.recovery) return 'No recovery review yet'
   if (saved.value.recovery.state === 'revoked') return 'Recovery review revoked'
   if (saved.value.recovery.expired) return 'Recovery review expired'
-  return saved.value.recovery.state === 'approved' ? 'Recovery review approved' : 'Recovery review open'
+  return { approved: 'Recovery review approved', pending: 'Recovery admission pending', applied: 'Recovery admission recorded', reconciling: 'Recovery review open' }[saved.value.recovery.state]
 })
 const description = computed(() => {
   if (!saved.value?.recovery) return 'A new review and approval are required before this transfer can continue.'
   if (saved.value.recovery.state === 'revoked') return 'This review was closed. Refreshing its status will not reopen it.'
   if (saved.value.recovery.expired) return 'This review has expired. It cannot authorize the transfer to continue.'
-  if (saved.value.recovery.state === 'approved') return 'The review is approved. Transfer admission is still required; no execution has been enabled.'
+  if (['approved', 'pending', 'applied'].includes(saved.value.recovery.state)) return 'The review is approved. Transfer admission is still required; no execution has been enabled.'
   return 'This review does not authorize transfer execution. Further checks and approvals are required.'
 })
 async function refresh() {
@@ -110,6 +111,7 @@ watch(() => [props.siteId, props.requestId, props.revision, props.actorKey], () 
   captureId = null
   inspectionFailed.value = false
   actionFailed.value = false
+  reviewControlsOpen.value = false
   void refresh()
 }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => { generation++ })
@@ -196,11 +198,13 @@ onBeforeUnmount(() => { generation++ })
         @click="refresh"
       />
     </div>
+    <UButton v-if="saved?.recovery && !saved.recovery.expired && saved.recovery.state !== 'revoked' && saved.allowedActions.includes('revoke') && !reviewControlsOpen" label="Prepare recovery approval" color="neutral" variant="outline" @click="reviewControlsOpen = true" />
+    <TransferRecoveryApproval v-if="reviewControlsOpen" :site-id="siteId" :request-id="requestId" :revision="revision" :actor-key="actorKey" mode="operator" />
     <UModal
       :open="!!modal"
       :title="modalAction === 'open' ? 'Open a recovery review' : 'Close this review'"
       :description="modalAction === 'open' ? 'Open a review for up to one hour. This does not resume, publish or renew the website.' : 'Close this review and prevent further recovery actions under it. Saved history is retained.'"
-      @update:open="value => { if (!value) modal = null }"
+      @update:open="(value: boolean) => { if (!value) modal = null }"
     >
       <template #footer>
         <UButton label="Cancel" color="neutral" variant="outline" @click="modal = null" />
