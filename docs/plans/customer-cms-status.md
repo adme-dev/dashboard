@@ -1358,3 +1358,58 @@ Verification for these increments: 17 additional real-PostgreSQL coordinator cas
 The full Dashboard CI run on the earlier `5336903d9` candidate passed 17,479 tests and failed its mechanical route-count assertion. Commit `e11b2877f` adds the exact three scoped routes to that assertion without relaxing isolation. Studio CI on the earlier `cd9a6d8` candidate exposed a GSAP example optional-peer Node types mismatch; commit `62df8d9` aligns the example with the existing Node type peer. Its typecheck, three browser tests and frozen-lock validation pass; renewed full CI remains pending.
 
 Remaining work is explicit: fresh immutable review and owner/operator consent; matching PostgreSQL/D1 admission; recovery identities and fences through every remaining phase/finalizer; adoption HTTP/customer integration; current-source release; genuine hosted A/B activation and isolation; then the separate Pi canary. Pi remains disabled. Neither local proof nor a closed recovery head completes these gates. Public websites, domains and live Forms are unchanged.
+
+
+### 2026-10-23: owner approval screens and paired admission (local candidates)
+
+The earlier remaining-work lists are superseded by this checkpoint where they
+refer to adoption UI, review consent, or initial paired admission. These pieces
+are implemented and independently reviewed; none is a production activation.
+
+- Dashboard `f9393d732` and `73efc2268` connect the separate existing-source
+  adoption grant to operator and native customer controls. Fresh account changes
+  and document lifecycle changes invalidate the view. Actual Chrome desktop and
+  390px checks used a synthetic local API, not genuine hosted customer evidence.
+- Dashboard `a56103e60` implements immutable complete reviews and distinct genuine
+  owner/operator consent; `fc7544f3f` connects the fixed private and authenticated
+  public review routes. `dad541565` adds the owner review page and operator
+  renewal/create/consent/approval controls. The UI persists only exact public
+  request references for explicit lost-response reconciliation. It reads current
+  server state after reload before offering another approval. Component14 and
+  HTTP13 checks, scoped lint and bounded strict Vue types pass; mobile review
+  details and confirmation were checked in actual Chrome.
+- Dashboard `ba6613b236c81cb6cc1490f9033b6db2804d42eb` records pending/applied
+  admission only with fresh matching PostgreSQL and D1 proofs. Studio
+  `1340310baedfa0cb11f474843663205954bce9c0` and
+  `ca1f25b6d4a341cb16184df17a505ea74440fbd5` provide the immutable D1
+  prepared/enabled ledger and private executor integration. Dashboard
+  `3e8038404` supplies the bounded private admission transport. No production
+  renewal, admission, migration, upload or installation was performed.
+- Studio `60034b14adbb616d26433e6d4679e5dc3853928f` implements read-only
+  enabled-recovery and source-discovery checks against actual SQLite state.
+  All26 new and16 existing execution cases pass. Dashboard `142b44e5f` adds matching atomic PostgreSQL request retention and
+  requires a separate recovery runtime descriptor; ordinary runtime configuration
+  cannot create a permanently unusable saved request. Its45 cases and71 prior
+  regression cases pass. Dashboard `1fbb9dcbb` supplies the private phase transport
+  with42 cases, fresh environment checks and no public fallback. Studio `66256f4`
+  supplies actual private read-only factory and forwarding integration. These read
+  capabilities cannot upload or install a recovery runtime.
+
+CI status: Dashboard's earlier `035c733e3` production build passed the unchanged
+bundle limit after lossless literal compaction, but its full suite failed one
+configuration-inventory assertion (17,603 passed). `b0663ac3b` records precisely
+that new configuration row and passes the targeted inventory suite; full run39881850313 passed. The newer UI and phase candidates still require their own full CI. Studio run39875143813 passed both transfer
+stress jobs. Two Windows integration tests exceeded their5-second default;
+Ubuntu's hosted runner lost communication during lint. Neither result is a
+production release receipt. The scoped test-only timeout repair is committed as Studio `df6d8a5`; all
+assertions remain unchanged. Dashboard `f13863b6f` adds dedicated serialized
+PostgreSQL approval/admission and source-association CI steps so those tests run
+with the disposable database instead of being skipped by the ordinary suite.
+
+Outstanding: complete the recovery identity and physical provider checks through
+source execution, freeze, destination execution, copy/history, final selection,
+and original-source retention; connect explicit recovery continuation controls;
+release the current reviewed candidates; open the bounded two-mailbox sign-in
+window; verify genuine A/B adoption, transfer and account/session isolation; then
+run the separately scoped agency Pi pilot. Pi is still disabled. No public site,
+DNS record, publishing pointer or live Forms endpoint changed in these increments.
