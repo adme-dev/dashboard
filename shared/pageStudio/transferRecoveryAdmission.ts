@@ -1,19 +1,13 @@
 import { z } from 'zod'
 import { TransferRecoveryInventoryRequestSchema } from './transferRecoveryInventory'
 import { ManagedTransferRecoveryInventorySchema } from './transferRecoveryReconciliation'
-import {
-  TransferRecoveryReviewRouteSchema,
-  TransferRecoveryReviewOperatorSchema,
-  TransferRecoveryReviewReferenceSchema
-} from './transferRecoveryReview'
+import { RecoveryAdmissionDeadlineSchema } from './transferRecoveryAdmissionPublic'
+
+export { RecoveryAdmissionDeadlineSchema, TransferRecoveryPendingInputSchema, TransferRecoveryAppliedInputSchema } from './transferRecoveryAdmissionPublic'
 
 const Id = z.string().uuid(),
   Digest = z.string().regex(/^[a-f0-9]{64}$/),
   Version = z.number().int().positive().max(2147483646)
-export const RecoveryAdmissionDeadlineSchema = z
-  .string()
-  .datetime({ precision: 3 })
-  .refine((value) => new Date(value).toISOString() === value)
 /** PG is read as exact UTC microsecond text. Unsupported precision fails before
  * admission; no truncated Date object is ever claimed to equal the database. */
 export function canonicalRecoveryAdmissionDeadline(exactPgText: string) {
@@ -134,23 +128,6 @@ export const TransferRecoveryPreparedVerificationSchema = z
     observation: TransferRecoveryAdmissionObservationSchema
   })
   .strict()
-export const TransferRecoveryPendingInputSchema = TransferRecoveryReviewRouteSchema.extend({
-  operator: TransferRecoveryReviewOperatorSchema,
-  body: z
-    .object({
-      admissionId: Id,
-      review: TransferRecoveryReviewReferenceSchema,
-      expectedHeadVersion: z.literal(2),
-      prepareEventId: Id,
-      enableEventId: Id
-    })
-    .strict()
-}).strict()
-export const TransferRecoveryAppliedInputSchema = TransferRecoveryReviewRouteSchema.extend({
-  operator: TransferRecoveryReviewOperatorSchema,
-  body: z.object({ admissionId: Id, expectedHeadVersion: z.literal(3) }).strict()
-}).strict()
-
 export type TransferRecoveryAdmissionRequest = z.infer<typeof TransferRecoveryAdmissionRequestSchema>
 export type TransferRecoveryAdmissionAcknowledgment = z.infer<typeof TransferRecoveryAdmissionAcknowledgmentSchema>
 

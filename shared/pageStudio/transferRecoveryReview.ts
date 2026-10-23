@@ -1,17 +1,16 @@
 import { z } from 'zod'
+import { TransferRecoveryReviewInstantSchema as Instant } from './transferRecoveryReviewPublic'
 import { collectionDigest } from './collectionApi'
 import {
   TransferRecoveryReconciliationInvariantSchema,
   TransferRecoveryReconciliationReceiptSchema
 } from './transferRecoveryReconciliation'
 
+export { TransferRecoveryReviewReferenceSchema, TransferRecoveryReviewRouteSchema, TransferRecoveryReviewOperatorSchema, TransferRecoveryReviewCreateSchema, TransferRecoveryConsentSchema, TransferRecoveryApprovalSchema } from './transferRecoveryReviewPublic'
+
 const Id = z.string().uuid(),
   Digest = z.string().regex(/^[a-f0-9]{64}$/)
 const Version = z.number().int().min(1).max(2147483646)
-const Instant = z
-  .string()
-  .datetime({ offset: true })
-  .transform((v) => new Date(v).toISOString())
 /** Only transport/capture identities are excluded. The stored receipts remain
  * untouched; their full IDs/digests/times are retained separately. */
 export const TransferRecoveryEvidenceSchema = TransferRecoveryReconciliationInvariantSchema.omit({
@@ -73,37 +72,6 @@ export const TransferRecoveryReviewSchema = z
     remainingWork: z.literal('same-operation-source-through-retention')
   })
   .strict()
-export const TransferRecoveryReviewReferenceSchema = z
-  .object({ reviewId: Id, revision: Version, reviewDigest: Digest })
-  .strict()
-export const TransferRecoveryReviewRouteSchema = z
-  .object({ siteId: Id, requestId: Id, expectedRevision: Version })
-  .strict()
-export const TransferRecoveryReviewOperatorSchema = z.object({ actorId: Id, loginSessionHash: Digest }).strict()
-export const TransferRecoveryReviewCreateSchema = TransferRecoveryReviewRouteSchema.extend({
-  operator: TransferRecoveryReviewOperatorSchema,
-  body: z
-    .object({
-      reviewId: Id,
-      expectedReviewRevision: z.number().int().min(0).max(2147483645),
-      recoveryId: Id,
-      expectedHeadVersion: z.literal(1),
-      renewalRequestId: Id,
-      captureId: Id,
-      maximumDeadline: Instant
-    })
-    .strict()
-}).strict()
-export const TransferRecoveryConsentSchema = TransferRecoveryReviewRouteSchema.extend({
-  review: TransferRecoveryReviewReferenceSchema,
-  consentId: Id
-}).strict()
-export const TransferRecoveryApprovalSchema = TransferRecoveryReviewRouteSchema.extend({
-  operator: TransferRecoveryReviewOperatorSchema,
-  review: TransferRecoveryReviewReferenceSchema,
-  approvalId: Id,
-  captureId: Id
-}).strict()
 export async function verifyRecoveryReview(value: unknown, digest: string) {
   const review = TransferRecoveryReviewSchema.parse(value)
   if (

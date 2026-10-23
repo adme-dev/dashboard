@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { TransferControlsOperatorSchema } from './transferControls'
-import { TransferRecoveryInspectActionSchema, TransferRecoveryInspectionViewSchema } from './transferRecoveryCoordinator'
+import { TransferRecoveryInspectActionSchema, TransferRecoveryInspectionViewSchema } from './transferRecoveryCoordinatorPublic'
 import { managementResultSchema } from './managementResult'
 export const TRANSFER_RECOVERY_COORDINATOR_URL = 'https://page-studio-management.internal/transfer-recovery-inspect'
 export const TRANSFER_RECOVERY_COORDINATOR_UNAVAILABLE = 'Recovery inspection could not be confirmed. Check the saved request before trying again.'

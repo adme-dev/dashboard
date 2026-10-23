@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { CustomerAdoptionCustomerOriginSchema } from './customerAdoptionTransport'
 import { collectionCanonical } from './collectionApi'
 import { managementResultSchema } from './managementResult'
-import { TransferRecoveryReviewCreateSchema, TransferRecoveryReviewOperatorSchema, TransferRecoveryReviewReferenceSchema, TransferRecoveryReviewRouteSchema } from './transferRecoveryReview'
+import { TransferRecoveryReviewCreateSchema, TransferRecoveryReviewOperatorSchema, TransferRecoveryReviewReferenceSchema, TransferRecoveryReviewRouteSchema } from './transferRecoveryReviewPublic'
 
 const Id = z.string().uuid()
 const Instant = z.string().datetime()

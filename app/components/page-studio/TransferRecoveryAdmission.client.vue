@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { z } from 'zod'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
-import { TransferRecoveryReviewRouteSchema } from '~~/shared/pageStudio/transferRecoveryReview'
+import { TransferRecoveryReviewRouteSchema } from '~~/shared/pageStudio/transferRecoveryReviewPublic'
 import { TransferRecoveryAdmissionControlActionSchema, TransferRecoveryAdmissionControlViewSchema, type TransferRecoveryAdmissionControlView } from '~~/shared/pageStudio/transferRecoveryAdmissionControl'
 
 const props = defineProps<{ siteId: string, requestId: string, revision: number, actorKey: string }>()

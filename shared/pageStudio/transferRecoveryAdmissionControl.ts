@@ -3,11 +3,11 @@ import {
   TransferRecoveryReviewRouteSchema,
   TransferRecoveryReviewOperatorSchema,
   TransferRecoveryReviewReferenceSchema
-} from './transferRecoveryReview'
+} from './transferRecoveryReviewPublic'
 import {
   RecoveryAdmissionDeadlineSchema,
   TransferRecoveryPendingInputSchema
-} from './transferRecoveryAdmission'
+} from './transferRecoveryAdmissionPublic'
 
 const Id = z.string().uuid()
 export const TransferRecoveryAdmissionControlActionSchema = z.discriminatedUnion('action', [

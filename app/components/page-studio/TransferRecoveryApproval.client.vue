@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { z } from 'zod'
 import { RecoveryReviewOperatorAction, RecoveryReviewOwnerAction, RecoveryReviewOperatorPublicResponse, RecoveryReviewPublicView, type RecoveryReviewControlView } from '~~/shared/pageStudio/transferRecoveryReviewControl'
-import { TransferRecoveryReviewReferenceSchema, TransferRecoveryReviewRouteSchema } from '~~/shared/pageStudio/transferRecoveryReview'
+import { TransferRecoveryReviewReferenceSchema, TransferRecoveryReviewRouteSchema } from '~~/shared/pageStudio/transferRecoveryReviewPublic'
 import { TransferRecoveryViewSchema, type TransferRecoveryView } from '~~/shared/pageStudio/transferRecovery'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import TransferRecoveryAdmission from './TransferRecoveryAdmission.client.vue'
 import TransferRecoveryApproval from './TransferRecoveryApproval.client.vue'
-import { TransferRecoveryInspectionViewSchema } from '~~/shared/pageStudio/transferRecoveryCoordinator'
+import { TransferRecoveryInspectionViewSchema } from '~~/shared/pageStudio/transferRecoveryCoordinatorPublic'
 import type { z } from 'zod'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { TransferRecoveryViewSchema, type TransferRecoveryView } from '~~/shared/pageStudio/transferRecovery'
