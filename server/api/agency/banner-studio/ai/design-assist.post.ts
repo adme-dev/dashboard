@@ -114,7 +114,7 @@ export default defineEventHandler(async (event) => {
     if (!(Object.values(GROQ_MODELS) as string[]).includes(groqModel)) throw createError({ statusCode: 503, statusMessage: 'Configured design model is unavailable' })
     model = `groq/${groqModel}`
     try {
-      raw = await generateGroqInsight(prompt, { ...options, model: groqModel as GroqModel })
+      raw = await generateGroqInsight(prompt, { ...options, featureKey: options.featureKey, model: groqModel as GroqModel })
     } catch { /* Try only the finite, configured fallback. */ }
   }
   if (!raw) throw createError({ statusCode: 502, statusMessage: 'Design assistant returned no proposal; your canvas has not changed' })

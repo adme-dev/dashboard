@@ -74,10 +74,13 @@ const API_INVENTORY = {
   // Seven transfer routes add three mutations. Public verification bootstrap
   // adds one read; all retain genuine login and native authority with no bypass.
   // Native CMS runtime recovery adds one genuine operator-cookie POST; no God mode bypass.
-  totalRouteFiles: 2267,
-  mutationRouteFiles: 1233,
-  explicitlyGuardedMutationFiles: 402,
-  guardedMutationFilesWithTransactionCall: 48
+  // Banner recovery adds six routes (five mutations) and eight explicit write
+  // gates. Preset creation, design/reference generation, export retry and social
+  // handoff retain client/project authority; none registers a mutation bypass.
+  totalRouteFiles: 2273,
+  mutationRouteFiles: 1238,
+  explicitlyGuardedMutationFiles: 410,
+  guardedMutationFilesWithTransactionCall: 49
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -125,10 +128,10 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2267,
-      mutationRouteFiles: 1233,
-      explicitlyGuardedMutationFiles: 402,
-      guardedMutationFilesWithTransactionCall: 48
+      totalRouteFiles: 2273,
+      mutationRouteFiles: 1238,
+      explicitlyGuardedMutationFiles: 410,
+      guardedMutationFilesWithTransactionCall: 49
     })
   })
 
