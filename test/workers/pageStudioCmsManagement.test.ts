@@ -118,6 +118,9 @@ describe('CMS management invocation boundary', () => {
     }
   })
   it.each([
+    ['23505', 'private uniqueness details', 'database-constraint'],
+    ['22P02', 'private invalid value', 'database-value'],
+    ['57014', 'private SQL timeout', 'database-contention'],
     ['CHECKPOINT_INVALID', 'private checkpoint content', 'checkpoint-invalid'],
     ['CHECKPOINT_NOT_FOUND', 'private object key', 'checkpoint-missing'],
     ['CHECKPOINT_DIGEST_MISMATCH', 'private digest', 'checkpoint-digest'],

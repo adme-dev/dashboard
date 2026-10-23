@@ -21,6 +21,9 @@ function failureCategory(error: unknown) {
   if (code === 'CHECKPOINT_INVALID') return 'checkpoint-invalid'
   if (code === 'CHECKPOINT_NOT_FOUND') return 'checkpoint-missing'
   if (code === 'CHECKPOINT_DIGEST_MISMATCH') return 'checkpoint-digest'
+  if (code === '23503' || code === '23505' || code === '23514' || code === '23502') return 'database-constraint'
+  if (code === '22P02' || code === '22001' || code === '22003') return 'database-value'
+  if (code === '40001' || code === '40P01' || code === '55P03' || code === '57014') return 'database-contention'
   if (code === '42P01' || code === '42703' || code === '42883') return 'database-schema'
   if (code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ECONNREFUSED') return 'connection'
   if (error instanceof Error) {

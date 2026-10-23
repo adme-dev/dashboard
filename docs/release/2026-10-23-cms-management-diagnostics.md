@@ -25,3 +25,7 @@ Main Pi release handoff: `/Users/paulgiurin/Documents/XeroFlow Imports/Recovery 
 Version45e4dc2d-b795-48f8-bc15-0ecb70c052e8 received the fresh synthetic AI acceptance and reported operationcheckpoint / stagecoordinate / categoryunexpected. Jobpi_ui_b4ca3c19-ae0a-4da0-936d-b1b0d6d7bf67 produced a valid one-heading proposal in1model call; accept still502. Thus neither request validation nor final result validation explains this failure. Existing candidate remains available for idempotent retry; do not generate another.
 
 Added fixed classification for existing checkpoint codes and exact known storage errors; unknown error values still never logged. Regression cases failed before and passed after;26focused tests, types and guarded dry-run pass (`/tmp/pi-v8-cms-storage-{tests,types,build}.log`). No changes to persistence or authorization. Follow-up staging deployment pending.
+
+## Coordinator stage diagnostics
+
+Storage classifier deployed as version `1da02a1c-b71f-44e4-845f-69633212cdf0` from `f1ebec233`; retrying the same candidate still reported coordinate/unexpected. Added fixed snapshot/replay/base/artifacts/candidate/verify/commit stages and bounded SQLSTATE categories. The wrapper rethrows the exact original error and invokes work once; transaction boundaries and authorization remain unchanged. Six focused files / 44 tests, Worker typecheck and guarded staging dry-run pass. Evidence: `/tmp/pi-v8-cms-stage-{tests,types,build}.log`. Reviewed the narrow diff and new files; staging deployment follows this commit.
