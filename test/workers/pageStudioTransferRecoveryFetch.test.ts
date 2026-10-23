@@ -100,3 +100,26 @@ it('returns the exact historical open result after revocation without reopening 
     PAGE_STUDIO_MANAGEMENT: { fetch: req => handleTransferRecoveryFetch(req, config, run) } })).toEqual(result)
   expect(mocks.change).toHaveBeenCalledOnce()
 })
+
+it.each([
+  { state: 'approved', version: 2 }, { state: 'revoked', version: 3 }
+])('reads immutable open history with a shortened approved deadline: %j', async change => {
+  const body = { ...input, action: 'open', recoveryId, deadline: '2026-10-24T00:00:00.000Z', expectedHeadVersion: null }
+  const result = { ...view, allowedActions: [], recovery: { recoveryId, epoch: 1, expired: true,
+    deadline: '2026-10-23T23:00:00.000Z', ...change } }
+  mocks.change.mockResolvedValueOnce(result)
+  expect(await callTransferRecovery(body, { ...config,
+    PAGE_STUDIO_MANAGEMENT: { fetch: req => handleTransferRecoveryFetch(req, config, run) } })).toEqual(result)
+  expect(mocks.change).toHaveBeenCalledOnce()
+})
+it.each([
+  { state: 'approved', version: 1 }, { state: 'approved', version: 3 },
+  { state: 'revoked', version: 4 }, { state: 'reconciling', version: 1 },
+  { state: 'revoked', version: 2 }
+])('denies shortened deadline for an impossible open replay head: %j', async change => {
+  const body = { ...input, action: 'open', recoveryId, deadline: '2026-10-24T00:00:00.000Z', expectedHeadVersion: null }
+  mocks.change.mockResolvedValueOnce({ ...view, allowedActions: [], recovery: { recoveryId, epoch: 1,
+    deadline: '2026-10-23T23:00:00.000Z', expired: true, ...change } })
+  await expect(callTransferRecovery(body, { ...config,
+    PAGE_STUDIO_MANAGEMENT: { fetch: req => handleTransferRecoveryFetch(req, config, run) } })).rejects.toMatchObject({ statusCode: 503 })
+})

@@ -16,11 +16,18 @@ export async function callTransferRecovery(input: unknown, env: Record<string, u
   if (view.siteId !== request.siteId || view.requestId !== request.requestId || view.revision !== request.expectedRevision) throw unavailable()
   if (request.action !== 'status') {
     if (!view.recovery || view.recovery.recoveryId !== request.recoveryId) throw unavailable()
-    // An exact open replay may read its later revoked head. It must never
-    // reinterpret that history as a fresh review or select a successor epoch.
-    if (request.action === 'open' && (view.recovery.epoch !== 1
-      || view.recovery.version !== (view.recovery.state === 'reconciling' ? 1 : 2)
-      || Date.parse(view.recovery.deadline) !== Date.parse(request.deadline))) throw unavailable()
+    // The private authority verifies the immutable original open event. A
+    // later approval can only shorten its deadline; preserve that history.
+    if (request.action === 'open') {
+      const head = view.recovery
+      const approvedHistory = (head.state === 'approved' && head.version === 2)
+        || (head.state === 'revoked' && head.version === 3)
+      const initialHistory = (head.state === 'reconciling' && head.version === 1)
+        || (head.state === 'revoked' && head.version === 2)
+      const deadline = Date.parse(head.deadline), original = Date.parse(request.deadline)
+      if (head.epoch !== 1 || (!approvedHistory && !initialHistory)
+        || (approvedHistory ? deadline > original : deadline !== original)) throw unavailable()
+    }
     if (request.action === 'revoke' && (view.recovery.state !== 'revoked'
       || view.recovery.version !== request.expectedHeadVersion + 1)) throw unavailable()
   }

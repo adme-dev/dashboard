@@ -17,7 +17,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 it.each([
-  [head, 'Recovery review open'], [null, 'No recovery review yet'],
+  [head, 'Recovery review open'], [{ ...head, state: 'approved', version: 2 }, 'Recovery review approved'], [null, 'No recovery review yet'],
   [{ ...head, expired: true }, 'Recovery review expired'],
   [{ ...head, state: 'revoked', version: 2, expired: true }, 'Recovery review revoked']
 ])('explains saved state without offering or sending transfer mutations', async (recovery, label) => {
@@ -131,4 +131,12 @@ it('revokes only after confirmation and clears saved inspection', async () => {
   await click(host, 'Confirm close')
   expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'POST', retry: 0, body: { action: 'revoke', recoveryId: head.recoveryId, expectedHeadVersion: 1 } })
   expect(host.textContent).toContain('Recovery review revoked')
+})
+
+it('approved review allows revocation without exposing inspection or execution', async () => {
+  fetch.mockResolvedValue({ ...view({ ...head, state: 'approved', version: 2 }), allowedActions: ['revoke'] })
+  const host = await mount(Recovery, props())
+  expect(host.textContent).toContain('Transfer admission is still required')
+  expect(host.textContent).not.toContain('Inspect retained transfer')
+  expect(fetch).toHaveBeenCalledOnce()
 })

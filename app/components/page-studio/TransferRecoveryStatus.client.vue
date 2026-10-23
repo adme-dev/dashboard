@@ -74,12 +74,14 @@ async function inspect() {
 const title = computed(() => {
   if (!saved.value?.recovery) return 'No recovery review yet'
   if (saved.value.recovery.state === 'revoked') return 'Recovery review revoked'
-  return saved.value.recovery.expired ? 'Recovery review expired' : 'Recovery review open'
+  if (saved.value.recovery.expired) return 'Recovery review expired'
+  return saved.value.recovery.state === 'approved' ? 'Recovery review approved' : 'Recovery review open'
 })
 const description = computed(() => {
   if (!saved.value?.recovery) return 'A new review and approval are required before this transfer can continue.'
   if (saved.value.recovery.state === 'revoked') return 'This review was closed. Refreshing its status will not reopen it.'
   if (saved.value.recovery.expired) return 'This review has expired. It cannot authorize the transfer to continue.'
+  if (saved.value.recovery.state === 'approved') return 'The review is approved. Transfer admission is still required; no execution has been enabled.'
   return 'This review does not authorize transfer execution. Further checks and approvals are required.'
 })
 async function refresh() {
