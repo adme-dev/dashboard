@@ -1,3 +1,5 @@
+import { handleTransferRecoveryReviewControlFetch } from './transferRecoveryReviewControlFetch'
+import { RECOVERY_REVIEW_CONTROL_URL } from '../../../shared/pageStudio/transferRecoveryReviewControl'
 import { TRANSFER_RECOVERY_ADMISSION_URL } from '../../../shared/pageStudio/transferRecoveryAdmissionTransport'
 import { handleTransferRecoveryAdmissionFetch } from './transferRecoveryAdmissionFetch'
 import { transferAuthorityKey } from '../../../shared/pageStudio/managedTransferAuthorityTransport'
@@ -69,6 +71,8 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
     if (request.url === TRANSFER_RECOVERY_COORDINATOR_URL) return handleTransferRecoveryCoordinatorFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === TRANSFER_RECOVERY_URL) return handleTransferRecoveryFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === RECOVERY_REVIEW_CONTROL_URL) return handleTransferRecoveryReviewControlFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === TRANSFER_RECOVERY_ADMISSION_URL) return handleTransferRecoveryAdmissionFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
