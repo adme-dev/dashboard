@@ -29,3 +29,9 @@ Added fixed classification for existing checkpoint codes and exact known storage
 ## Coordinator stage diagnostics
 
 Storage classifier deployed as version `1da02a1c-b71f-44e4-845f-69633212cdf0` from `f1ebec233`; retrying the same candidate still reported coordinate/unexpected. Added fixed snapshot/replay/base/artifacts/candidate/verify/commit stages and bounded SQLSTATE categories. The wrapper rethrows the exact original error and invokes work once; transaction boundaries and authorization remain unchanged. Six focused files / 44 tests, Worker typecheck and guarded staging dry-run pass. Evidence: `/tmp/pi-v8-cms-stage-{tests,types,build}.log`. Reviewed the narrow diff and new files; staging deployment follows this commit.
+
+## Hosted result after stage instrumentation
+
+Source `7bf2ee7fa9ba7d997dbdf6867b12fa095b00ebc9` deployed to staging only: version `07e1682b-a98b-4594-a012-a423ffd7dca5`, deployment `d8b64962-5fcd-430b-905e-bfcba81668f9`, API verified100%. Retrying the same candidate succeeded; fresh Launch Studio proved the heading persisted. Supported History restore to the immediately preceding draft succeeded, and another fresh launch proved restoration. Further proposal rejection and generation cancellation left the original heading unchanged. Safe tail emitted no failure for this successful acceptance. This diagnostic change does not explain earlier intermittent failures, so root cause remains unproven.
+
+Pi test admission closed afterward (version `2419e61a-abaf-4854-8784-43e615f8c4e1`, deployment `b8136864-24bd-430c-b900-af0188e7143d`, disabled/empty allowlist/Linux verified). Production unchanged. Full exact-head native CI39942489039 still running. Screenshot and latest operational details are in the stable external handoff folder.
