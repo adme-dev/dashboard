@@ -96,4 +96,45 @@ describe('CMS management invocation boundary', () => {
     expect(JSON.stringify(result)).not.toContain('postgres')
     expect(operations.adoption).toHaveBeenCalledOnce()
   })
+  it('reports a bounded failure stage without logging private error values', async () => {
+    const f = fixture()
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      operations.adoption.mockRejectedValue(Object.assign(new Error('postgres://secret'), { code: '42P01' }))
+      await handleCmsManagement(f.request, f.env, f.run)
+      expect(log).toHaveBeenCalledWith('page-studio-cms-management-failed', {
+        operation: 'adoption', stage: 'coordinate', category: 'database-schema'
+      })
+      expect(JSON.stringify(log.mock.calls)).not.toContain('postgres')
+      log.mockClear()
+      operations.adoption.mockResolvedValue({ privateValue: 'secret' })
+      await handleCmsManagement(f.request, f.env, f.run)
+      expect(log).toHaveBeenCalledWith('page-studio-cms-management-failed', {
+        operation: 'adoption', stage: 'result', category: 'validation'
+      })
+      expect(JSON.stringify(log.mock.calls)).not.toContain('secret')
+    } finally {
+      log.mockRestore()
+    }
+  })
+  it.each([
+    ['23505', 'private uniqueness details', 'database-constraint'],
+    ['22P02', 'private invalid value', 'database-value'],
+    ['57014', 'private SQL timeout', 'database-contention'],
+    ['CHECKPOINT_INVALID', 'private checkpoint content', 'checkpoint-invalid'],
+    ['CHECKPOINT_NOT_FOUND', 'private object key', 'checkpoint-missing'],
+    ['CHECKPOINT_DIGEST_MISMATCH', 'private digest', 'checkpoint-digest'],
+    ['unknown-secret-code', 'Managed graph storage bytes unavailable or inconsistent', 'graph-storage'],
+    ['unknown-secret-code', 'Managed CMS object transport unavailable', 'object-transport'],
+    ['unknown-secret-code', 'Accepted CMS state unavailable or stale', 'accepted-state'],
+    ['unknown-secret-code', 'private error content', 'unexpected']
+  ])('classifies known storage failure %s without logging inputs', async (code, message, category) => {
+    const f = fixture()
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      operations.adoption.mockRejectedValue(Object.assign(new Error(message), { code }))
+      await handleCmsManagement(f.request, f.env, f.run)
+      expect(log).toHaveBeenCalledExactlyOnceWith('page-studio-cms-management-failed', { operation: 'adoption', stage: 'coordinate', category })
+    } finally { log.mockRestore() }
+  })
 })

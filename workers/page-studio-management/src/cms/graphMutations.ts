@@ -14,6 +14,7 @@ import { withCmsCommitAuthority } from '~~/server/utils/pageStudio/cmsCommitAuth
 import { cmsEqual } from '~~/server/utils/pageStudio/cmsVisibility'
 import type { PageStudioCheckpointInput, PageStudioControlQueryClient } from '~~/shared/pageStudio/controlTypes'
 import { readCmsGraphSnapshot, snapshotInTransaction, graphCheckpointMutation, cmsGraphConflict, cmsGraphEnvironment, type CmsGraphPrincipal, type CmsGraphDependencies, type CmsGraphSnapshot, type CmsGraphTransitionInput, type CmsGraphCommitReceipt } from '~~/server/utils/pageStudio/cmsGraphRead'
+import { checkpointStage } from './checkpointStage'
 
 const denyCustomerGraphOperation = () => new PageStudioBusinessContentError('CMS_GRAPH_AUTHORITY_DENIED', 403, 'Customer sessions allow ordinary page saves only.')
 const graphId = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
@@ -214,15 +215,15 @@ export async function coordinateCmsGraphCheckpoint(
   const mode = internal.mode ?? 'checkpoint'
   if (principal.source === 'customer-session' && (mode !== 'checkpoint' || Object.keys(internal).length !== 0)) throw denyCustomerGraphOperation()
   if (mode === 'ai-page' && principal.source === 'studio-session' && principal.capability !== 'model:invoke') throw cmsGraphConflict('AI page acceptance requires model invocation authority.')
-  const snapshot = await readCmsGraphSnapshot(principal, deps)
+  const snapshot = await checkpointStage('snapshot', () => readCmsGraphSnapshot(principal, deps))
   const operationId = `${mode.replace('-', '_')}_${await collectionDigest([snapshot.scope, internal.idempotencyKey ?? caller.checkpoint.checkpointId])}`
-  const original = await withCmsCommitAuthority({ scope: snapshot.scope, principal, mutation: graphCheckpointMutation(principal) }, async (db) => {
+  const original = await checkpointStage('replay', () => withCmsCommitAuthority({ scope: snapshot.scope, principal, mutation: graphCheckpointMutation(principal) }, async (db) => {
     const current = await snapshotInTransaction(db, snapshot.scope, principal)
     const rows = (await db.query<{ request: { intent: CmsGraphTransitionInput, caller: unknown, mode: string }, result: CmsGraphCommitReceipt }>('SELECT request,result FROM page_studio_cms_commits WHERE scope_key=$1 AND operation_id=$2', [current.context.state.scope_key, operationId])).rows
     if (!rows.length) return null
     if (!cmsEqual(rows[0]!.request.caller, caller) || rows[0]!.request.mode !== mode) throw cmsGraphConflict()
     return await replayExact(db, current, rows[0]!.request.intent, mode)
-  }, deps)
+  }, deps))
   if (original) return original
   if ((internal.expectedBaseDigest !== undefined && internal.expectedBaseDigest !== snapshot.checkpoint.digest) || caller.expectedCheckpointId !== snapshot.checkpoint.id || caller.checkpoint.userId !== snapshot.actor.userId || !cmsEqual(caller.checkpoint.scope, { tenantId: snapshot.scope.tenantId, clientId: snapshot.scope.clientId, siteId: snapshot.scope.siteId })) throw cmsGraphConflict()
   const input: CmsGraphTransitionInput = {
@@ -233,11 +234,12 @@ export async function coordinateCmsGraphCheckpoint(
     nextCheckpoint: caller.checkpoint, preparations: [], summary: internal.summary ?? 'Saved website pages'
   }
   const storage = createCmsGraphStorage(cmsGraphEnvironment(principal), snapshot)
-  const base = await readBase(snapshot, storage), artifactBytes = await readArtifacts(snapshot, storage, base)
-  const nextCheckpoint = await storage.readCheckpoint({ id: input.nextCheckpoint.checkpointId, digest: input.nextCheckpoint.digest, object_key: input.nextCheckpoint.objectKey })
+  const base = await checkpointStage('base', () => readBase(snapshot, storage))
+  const artifactBytes = await checkpointStage('artifacts', () => readArtifacts(snapshot, storage, base))
+  const nextCheckpoint = await checkpointStage('candidate', () => storage.readCheckpoint({ id: input.nextCheckpoint.checkpointId, digest: input.nextCheckpoint.digest, object_key: input.nextCheckpoint.objectKey }))
   const { candidateId: _candidateId, candidateDigest: _candidateDigest, preparations: _preparations, ...request } = requestFor(snapshot, input)
-  const proof = await verifyGraph(() => verifyBuilderApplicationCheckpoint({ request, base, artifactBytes, nextCheckpoint }))
-  return await commitPreparedGraph({ snapshot, input, proof, preparations: [], mode, caller, history: internal.history, pageCount: (nextCheckpoint.manifest as { pages: unknown[] }).pages.length }, principal, deps)
+  const proof = await checkpointStage('verify', () => verifyGraph(() => verifyBuilderApplicationCheckpoint({ request, base, artifactBytes, nextCheckpoint })))
+  return await checkpointStage('commit', () => commitPreparedGraph({ snapshot, input, proof, preparations: [], mode, caller, history: internal.history, pageCount: (nextCheckpoint.manifest as { pages: unknown[] }).pages.length }, principal, deps))
 }
 
 /** Native history restore retains today's accepted graph and independent records. */
