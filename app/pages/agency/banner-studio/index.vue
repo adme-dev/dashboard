@@ -207,7 +207,7 @@ function clearFilters() {
           variant="outline"
           icon="i-lucide-upload"
           size="sm"
-          @click="showImportModal = true"
+          @click="() => { showImportModal = true }"
         >
           Import from TheBrief
         </UButton>
@@ -229,7 +229,7 @@ function clearFilters() {
           :variant="clientFilter === 'all' ? 'soft' : 'ghost'"
           color="neutral"
           class="w-full justify-start"
-          @click="clientFilter = 'all'"
+          @click="() => { clientFilter = 'all' }"
         >
           <template #trailing>
             <span class="ml-auto text-xs text-muted">{{ allProjects.length }}</span>
@@ -245,7 +245,7 @@ function clearFilters() {
           color="neutral"
           class="w-full justify-start"
           :ui="{ label: 'truncate' }"
-          @click="clientFilter = client.id"
+          @click="() => { clientFilter = client.id }"
         >
           <template #trailing>
             <span class="ml-auto text-xs text-muted">{{ client.count }}</span>
@@ -261,7 +261,7 @@ function clearFilters() {
           :variant="folderFilter === 'all' ? 'soft' : 'ghost'"
           color="neutral"
           class="w-full justify-start"
-          @click="folderFilter = 'all'"
+          @click="() => { folderFilter = 'all' }"
         />
         <UButton
           v-for="folder in folders"
@@ -274,7 +274,7 @@ function clearFilters() {
           color="neutral"
           class="w-full justify-start"
           :ui="{ label: 'truncate' }"
-          @click="folderFilter = folder"
+          @click="() => { folderFilter = folder }"
         />
         <p v-if="!folders.length" class="px-2 py-2 text-xs text-muted">
           No source folders recorded.
@@ -289,7 +289,7 @@ function clearFilters() {
           :variant="tagFilter === 'all' ? 'soft' : 'ghost'"
           color="neutral"
           class="w-full justify-start"
-          @click="tagFilter = 'all'"
+          @click="() => { tagFilter = 'all' }"
         />
         <UButton
           v-for="tag in categories"
@@ -301,7 +301,7 @@ function clearFilters() {
           color="neutral"
           class="w-full justify-start"
           :ui="{ label: 'truncate' }"
-          @click="tagFilter = tag"
+          @click="() => { tagFilter = tag }"
         />
         <p v-if="!categories.length" class="px-2 py-2 text-xs text-muted">
           No categories recorded.
@@ -331,7 +331,7 @@ function clearFilters() {
               :aria-pressed="view === 'list'"
               :variant="view === 'list' ? 'soft' : 'ghost'"
               color="neutral"
-              @click="view = 'list'"
+              @click="() => { view = 'list' }"
             />
             <UButton
               icon="i-lucide-layout-grid"
@@ -339,7 +339,7 @@ function clearFilters() {
               :aria-pressed="view === 'grid'"
               :variant="view === 'grid' ? 'soft' : 'ghost'"
               color="neutral"
-              @click="view = 'grid'"
+              @click="() => { view = 'grid' }"
             />
           </div>
         </div>
@@ -444,7 +444,7 @@ function clearFilters() {
               label="Cancel"
               variant="outline"
               color="neutral"
-              @click="showDeleteModal = false"
+              @click="() => { showDeleteModal = false }"
             />
             <UButton label="Delete" color="error" @click="doDelete" />
           </div>

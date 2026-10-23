@@ -66,7 +66,7 @@ const filteredTemplates = computed(() => {
   ), sort.value)
 })
 function dimensions(t: LibraryTemplate) {
-  return t._isCustomHtml ? `${t.width} × ${t.height}` : bannerDimensions(t.canvasData, t.formats)
+  return t._isCustomHtml === true ? `${t.width} × ${t.height}` : bannerDimensions(t.canvasData, t.formats)
 }
 function itemKey(t: LibraryTemplate) {
   return `${t._isCustomHtml ? 'html' : 'native'}:${t.id}`
@@ -77,7 +77,7 @@ const libraryItems = computed(() => filteredTemplates.value.slice((page.value - 
   dimensions: dimensions(t), type: t._isCustomHtml ? 'Custom HTML' : 'Native editable',
   date: t._isCustomHtml ? t.updatedAt || t.createdAt : t.createdAt,
   dateLabel: t._isCustomHtml && t.updatedAt ? '' : 'Added ', thumbnailUrl: t.thumbnailUrl,
-  canvasData: t._isCustomHtml ? undefined : t.canvasData
+  canvasData: t._isCustomHtml === true ? undefined : t.canvasData
 })))
 const hasActiveFilters = computed(() => Boolean(searchQuery.value || activeCategory.value !== 'all' || typeFilter.value !== 'all'))
 function clearFilters() {
@@ -217,7 +217,7 @@ const dropdownItems = (tpl: LibraryTemplate) => {
           :aria-pressed="activeCategory === 'all'"
           color="neutral"
           class="w-full justify-start"
-          @click="activeCategory = 'all'"
+          @click="() => { activeCategory = 'all' }"
         >
           <template #trailing>
             <span class="ml-auto text-xs text-muted">{{ allTemplates.length }}</span>
@@ -233,7 +233,7 @@ const dropdownItems = (tpl: LibraryTemplate) => {
           color="neutral"
           class="w-full justify-start capitalize"
           :ui="{ label: 'truncate' }"
-          @click="activeCategory = category"
+          @click="() => { activeCategory = category }"
         />
       </aside>
       <main class="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -259,7 +259,7 @@ const dropdownItems = (tpl: LibraryTemplate) => {
               :aria-pressed="view === 'list'"
               :variant="view === 'list' ? 'soft' : 'ghost'"
               color="neutral"
-              @click="view = 'list'"
+              @click="() => { view = 'list' }"
             />
             <UButton
               icon="i-lucide-layout-grid"
@@ -267,7 +267,7 @@ const dropdownItems = (tpl: LibraryTemplate) => {
               :aria-pressed="view === 'grid'"
               :variant="view === 'grid' ? 'soft' : 'ghost'"
               color="neutral"
-              @click="view = 'grid'"
+              @click="() => { view = 'grid' }"
             />
           </div>
         </div>
@@ -367,7 +367,7 @@ const dropdownItems = (tpl: LibraryTemplate) => {
               label="Cancel"
               variant="outline"
               size="sm"
-              @click="showDeleteModal = false"
+              @click="() => { showDeleteModal = false }"
             />
             <UButton
               label="Delete"

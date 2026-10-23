@@ -196,7 +196,7 @@ onUnmounted(() => {
             :variant="isLooping ? 'soft' : 'ghost'"
             size="xs"
             :color="isLooping ? 'primary' : undefined"
-            @click="isLooping = !isLooping"
+            @click="() => { isLooping = !isLooping }"
           />
 
           <!-- Time display -->

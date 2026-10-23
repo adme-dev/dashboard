@@ -76,7 +76,7 @@ function onKeydown(e: KeyboardEvent) {
     :style="{
       opacity: layer.opacity,
       backgroundColor: layer.bgColor || 'transparent',
-      padding: layer.bgColor ? `${layer.paddingV || 4}px ${layer.paddingH || 10}px` : undefined
+      padding: layer.bgColor ? `${layer.paddingV ?? 4}px ${layer.paddingH ?? 10}px` : undefined
     }"
     @dblclick="onDoubleClick"
   >

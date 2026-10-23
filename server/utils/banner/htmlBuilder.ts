@@ -237,7 +237,7 @@ export function buildBannerHTML(
         if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
         style += `line-height:${l.lineHeight || 1.2};`
         if (l.textAlign) style += `text-align:${l.textAlign};`
-        if (l.bgColor) style += `background:${l.bgColor};`
+        if (l.bgColor) style += `background:${l.bgColor};padding:${l.paddingV ?? 4}px ${l.paddingH ?? 10}px;`
         if (l.fontStyle === 'italic') style += 'font-style:italic;'
         if (!bannerTextDepthShadow(l as unknown as Record<string, unknown>) && !safeBannerTextTexture(l.textTexture)) style += bannerEffectCss(l as unknown as Record<string, unknown>)
         const lineStrut = Number.isFinite(l.lineBoxFontSize) && l.lineBoxFontSize! > (l.fontSize || 16)

@@ -523,7 +523,10 @@ const { activeSize } = useBannerFileSize()
                 <USelectMenu v-model="settingsClientId" :items="clientSelectItems" value-key="value" class="w-full" searchable />
               </UFormField>
               <div class="flex justify-end gap-2">
-                <UButton label="Cancel" variant="ghost" size="sm" @click="showProjectSettings = false" />
+                <UButton label="Cancel"
+                         variant="ghost"
+                         size="sm"
+                         @click="() => { showProjectSettings = false }" />
                 <UButton label="Save" size="sm" :loading="settingsSaving" @click="saveProjectSettings" />
               </div>
             </div>
@@ -569,21 +572,21 @@ const { activeSize } = useBannerFileSize()
             icon="i-lucide-wand-sparkles"
             variant="soft"
             size="xs"
-            @click="showDesignAssistant = true"
+            @click="() => { showDesignAssistant = true }"
           />
           <UButton
             label="Publish"
             icon="i-lucide-megaphone"
             variant="soft"
             size="xs"
-            @click="showAdPublish = true"
+            @click="() => { showAdPublish = true }"
           />
         </div>
         <UButton
           label="Export"
           icon="i-lucide-download"
           size="xs"
-          @click="showExportModal = true"
+          @click="() => { showExportModal = true }"
         />
         <UDropdownMenu :items="moreMenuItems" :content="{ align: 'end' }">
           <UTooltip text="Create, preview, publish and manage this banner">
@@ -619,7 +622,7 @@ const { activeSize } = useBannerFileSize()
         variant="soft"
         size="xs"
         class="ring-1 ring-(--ui-primary)"
-        @click="showSizePicker = true"
+        @click="() => { showSizePicker = true }"
       >
         <span class="font-mono text-xs">{{ activeFormat.w }}×{{ activeFormat.h }}</span>
         <span class="text-xs text-(--ui-text-muted)">{{ activeFormat.name }}</span>
@@ -639,7 +642,7 @@ const { activeSize } = useBannerFileSize()
             variant="ghost"
             size="xs"
             :class="state.showGrid ? 'text-(--ui-primary)' : ''"
-            @click="state.showGrid = !state.showGrid"
+            @click="() => { state.showGrid = !state.showGrid }"
           />
         </UTooltip>
         <UTooltip text="Snap to grid">
@@ -648,7 +651,7 @@ const { activeSize } = useBannerFileSize()
             variant="ghost"
             size="xs"
             :class="state.snapToGrid ? 'text-(--ui-primary)' : ''"
-            @click="state.snapToGrid = !state.snapToGrid"
+            @click="() => { state.snapToGrid = !state.snapToGrid }"
           />
         </UTooltip>
         <UPopover v-if="safeZoneKeys.length > 1">
@@ -727,7 +730,7 @@ const { activeSize } = useBannerFileSize()
               color="neutral"
               size="sm"
               class="shrink-0"
-              @click="leftPanelCollapsed = !leftPanelCollapsed"
+              @click="() => { leftPanelCollapsed = !leftPanelCollapsed }"
             />
           </UTooltip>
         </div>
@@ -836,7 +839,10 @@ const { activeSize } = useBannerFileSize()
               <NuxtLink to="/agency/ad-preview" target="_blank">
                 <UButton label="Open Full Page" icon="i-lucide-external-link" variant="ghost" size="xs" />
               </NuxtLink>
-              <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="showPreview = false" />
+              <UButton icon="i-lucide-x"
+                       variant="ghost"
+                       size="xs"
+                       @click="() => { showPreview = false }" />
             </div>
           </div>
           <div class="flex flex-wrap gap-6 items-start justify-center">
@@ -909,7 +915,10 @@ const { activeSize } = useBannerFileSize()
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-bold">Save Version</h2>
-            <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="showSaveVersion = false" />
+            <UButton icon="i-lucide-x"
+                     variant="ghost"
+                     size="xs"
+                     @click="() => { showSaveVersion = false }" />
           </div>
           <p class="text-sm text-(--ui-text-muted) mb-4">
             Create a named snapshot of the current canvas state. You can restore it later from the History panel.
@@ -921,7 +930,10 @@ const { activeSize } = useBannerFileSize()
             @keydown.enter="handleSaveVersion"
           />
           <div class="flex justify-end gap-2">
-            <UButton label="Cancel" variant="ghost" size="sm" @click="showSaveVersion = false" />
+            <UButton label="Cancel"
+                     variant="ghost"
+                     size="sm"
+                     @click="() => { showSaveVersion = false }" />
             <UButton
               label="Save Version"
               icon="i-lucide-bookmark-plus"
@@ -940,7 +952,10 @@ const { activeSize } = useBannerFileSize()
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-bold">Analytics</h2>
-            <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="showAnalytics = false" />
+            <UButton icon="i-lucide-x"
+                     variant="ghost"
+                     size="xs"
+                     @click="() => { showAnalytics = false }" />
           </div>
           <BannerAnalyticsDashboard :project-id="projectId" />
         </div>

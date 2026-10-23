@@ -796,7 +796,7 @@ onUnmounted(() => {
         :variant="state.isLooping ? 'soft' : 'ghost'"
         size="xs"
         :color="state.isLooping ? 'primary' : undefined"
-        @click="state.isLooping = !state.isLooping"
+        @click="() => { state.isLooping = !state.isLooping }"
       />
       <div class="text-xs font-mono text-(--ui-text-muted) ml-2">
         {{ formatTime(state.currentTime) }} / {{ formatTime(state.duration) }}

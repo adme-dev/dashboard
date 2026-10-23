@@ -311,7 +311,11 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
               <ChatEmojiPicker @select="insertEmoji" />
             </template>
           </UPopover>
-          <UButton size="xs" variant="ghost" color="primary" icon="i-lucide-sparkles" @click="aiOpen = true">
+          <UButton size="xs"
+                   variant="ghost"
+                   color="primary"
+                   icon="i-lucide-sparkles"
+                   @click="() => { aiOpen = true }">
             Write with AI
           </UButton>
         </div>
@@ -375,7 +379,12 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
     <UFormField label="Media" help="Export a banner as MP4 to create a social draft, or attach an image URL.">
       <div class="flex gap-2">
         <UButton icon="i-lucide-image" color="neutral" variant="subtle" @click="openBanner">Banner Studio</UButton>
-        <UButton icon="i-lucide-sparkles" color="primary" variant="subtle" @click="aiImgOpen = true">AI image</UButton>
+        <UButton icon="i-lucide-sparkles"
+                 color="primary"
+                 variant="subtle"
+                 @click="() => { aiImgOpen = true }">
+          AI image
+        </UButton>
         <UInput v-model="newMediaUrl" placeholder="https://…/image.jpg" class="flex-1" @keydown.enter.prevent="addMedia" />
         <UButton icon="i-lucide-plus" color="neutral" variant="subtle" @click="addMedia">Add</UButton>
       </div>
@@ -413,7 +422,10 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
             <h3 class="font-semibold">
               Use a Banner Studio export
             </h3>
-            <UButton icon="i-lucide-x" color="neutral" variant="ghost" @click="bannerOpen = false" />
+            <UButton icon="i-lucide-x"
+                     color="neutral"
+                     variant="ghost"
+                     @click="() => { bannerOpen = false }" />
           </div>
           <div class="space-y-4">
             <p class="text-sm text-muted">
@@ -446,7 +458,9 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
           </UFormField>
           <p class="text-xs text-muted">Tuned for {{ labelFor(state.platforms[0]) || 'Facebook' }} (your first selected network).</p>
           <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="aiOpen = false">Cancel</UButton>
+            <UButton color="neutral" variant="ghost" @click="() => { aiOpen = false }">
+              Cancel
+            </UButton>
             <UButton color="primary" icon="i-lucide-sparkles" :loading="aiLoading" @click="generateCaption">Generate</UButton>
           </div>
         </div>
@@ -462,7 +476,9 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
             <UTextarea v-model="aiImgPrompt" :rows="3" placeholder="e.g. cosy winter scene, knitted jumper flatlay, warm tones" class="w-full" />
           </UFormField>
           <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="aiImgOpen = false">Cancel</UButton>
+            <UButton color="neutral" variant="ghost" @click="() => { aiImgOpen = false }">
+              Cancel
+            </UButton>
             <UButton color="primary" icon="i-lucide-sparkles" :loading="aiImgLoading" @click="generateImage">Generate</UButton>
           </div>
         </div>

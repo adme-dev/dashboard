@@ -3,7 +3,9 @@ import path from 'node:path'
 import { brotliCompressSync, constants } from 'node:zlib'
 import ts from 'typescript'
 
-const MIN_LITERAL_CHARACTERS = 1024
+// Medium SSR fragments can share the existing decoder. Per-literal and whole-module
+// byte comparisons still reject any encoding that grows the deployed artifact.
+const MIN_LITERAL_CHARACTERS = 128
 const compress = value => brotliCompressSync(Buffer.from(value, 'utf8'), {
   params: { [constants.BROTLI_PARAM_QUALITY]: 11 }
 }).toString('base64')

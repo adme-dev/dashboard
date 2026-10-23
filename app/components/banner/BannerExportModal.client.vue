@@ -472,7 +472,7 @@ const exportButtonLabel = computed(() => {
             :class="exportType === opt.value
               ? 'bg-(--ui-bg-elevated) text-(--ui-text) shadow-sm'
               : 'text-(--ui-text-muted) hover:text-(--ui-text)'"
-            @click="exportType = opt.value as any"
+            @click="() => { exportType = opt.value as any }"
           >
             <UIcon :name="opt.icon" class="w-3.5 h-3.5" />
             {{ opt.label }}
@@ -490,7 +490,7 @@ const exportButtonLabel = computed(() => {
                 :class="imageQuality === 1
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="imageQuality = 1"
+                @click="() => { imageQuality = 1 }"
               >
                 Standard (1x)
               </button>
@@ -499,7 +499,7 @@ const exportButtonLabel = computed(() => {
                 :class="imageQuality === 2
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="imageQuality = 2"
+                @click="() => { imageQuality = 2 }"
               >
                 Retina (2x)
               </button>
@@ -563,7 +563,7 @@ const exportButtonLabel = computed(() => {
                 :class="videoFps === fps
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="videoFps = fps"
+                @click="() => { videoFps = fps }"
               >
                 {{ fps }}fps
               </button>
@@ -579,7 +579,7 @@ const exportButtonLabel = computed(() => {
                 :class="videoQuality === 1
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="videoQuality = 1"
+                @click="() => { videoQuality = 1 }"
               >
                 Standard (1x)
               </button>
@@ -588,7 +588,7 @@ const exportButtonLabel = computed(() => {
                 :class="videoQuality === 2
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="videoQuality = 2"
+                @click="() => { videoQuality = 2 }"
               >
                 Retina (2x)
               </button>

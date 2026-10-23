@@ -361,7 +361,7 @@ const quickActions = [
               variant="link"
               size="xs"
               :aria-expanded="expandedReference === reference.id"
-              @click="expandedReference = expandedReference === reference.id ? null : reference.id"
+              @click="() => { expandedReference = expandedReference === reference.id ? null : reference.id }"
             />
             <p v-if="expandedReference === reference.id" class="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-xs text-muted">
               {{ reference.description }}
@@ -393,7 +393,7 @@ const quickActions = [
             color="neutral"
             size="sm"
             :disabled="pending"
-            @click="prompt = action.prompt"
+            @click="() => { prompt = action.prompt }"
           />
         </div>
         <UFormField label="What would you like to create or change?" help="Follow up to refine the preview, or apply it to your canvas. Cmd/Ctrl + Enter sends.">
@@ -414,7 +414,7 @@ const quickActions = [
           color="neutral"
           size="sm"
           :aria-expanded="advanced"
-          @click="advanced = !advanced"
+          @click="() => { advanced = !advanced }"
         />
         <div v-if="advanced" class="grid grid-cols-1 gap-4 rounded-lg border border-default p-3">
           <UFormField label="Model preference" help="Auto chooses a configured model for your request. The model used appears with the proposal.">
@@ -499,7 +499,7 @@ const quickActions = [
             variant="ghost"
             color="neutral"
             size="sm"
-            @click="replay++"
+            @click="() => { replay++ }"
           />
           <UAlert
             v-if="stale && !applied"

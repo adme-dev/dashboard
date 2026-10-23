@@ -274,7 +274,7 @@ function toggleGradient() {
             variant="outline"
             class="w-full justify-between font-normal"
             trailing-icon="i-lucide-chevron-down"
-            @click="showFontPicker = !showFontPicker"
+                @click="() => { showFontPicker = !showFontPicker }"
           >
             <span class="truncate text-xs">{{ selectedLayer.fontFamily ?? 'Barlow Condensed' }}</span>
           </UButton>
@@ -288,7 +288,7 @@ function toggleGradient() {
                     :key="cat.v"
                     size="xs"
                     :variant="fontCategory === cat.v ? 'solid' : 'ghost'"
-                    @click="fontCategory = cat.v as FontCategory"
+                        @click="() => { fontCategory = cat.v as FontCategory }"
                   >
                     {{ cat.l }}
                   </UButton>
@@ -459,14 +459,10 @@ function toggleGradient() {
       </div>
     </div>
 
-    <div v-if="selectedLayer.bgColor" class="grid grid-cols-2 gap-1.5">
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Pad H</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.paddingH ?? 0" @update:model-value="v => setNum('paddingH', v)" />
-      </div>
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Pad V</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.paddingV ?? 0" @update:model-value="v => setNum('paddingV', v)" />
+        <div v-if="selectedLayer.bgColor" class="@container">
+          <div class="grid grid-cols-1 @lg:grid-cols-2 gap-3">
+            <BannerInspectorNumericField property="paddingH" label="Horizontal padding" :default-value="10" />
+            <BannerInspectorNumericField property="paddingV" label="Vertical padding" :default-value="4" />
       </div>
     </div>
 
