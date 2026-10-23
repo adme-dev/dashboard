@@ -1454,3 +1454,33 @@ copy/history, destination verification, selection and original-source retention
 still require their recovery-aware execution paths before genuine A/B hosted
 acceptance and the separate Pi canary. No production migration, grant, customer
 activation, publishing pointer, DNS or Forms change occurred. Pi stays disabled.
+
+### 2026-10-23: recovery integration and resumed execution work
+
+Dashboard recovery PR #690 now includes released main `3150d0533`, preserving
+the Banner Studio release. Integration commit `0d6cecf5e` passed 647 local tests
+(including 86 real PostgreSQL cases) and strict Management types. Full CI run
+`39905884235` is still running; this is not a production release receipt.
+
+Studio `17509a6` fixes the actual hosted catalogue invocation exceeding its D1
+query budget. Start now retains the reservation, and each explicit Resume
+advances one verified phase. Existing authorization and physical verification
+checks and the original query limits remain intact. The actual catalogue RPC,
+native phase-boundary and destination-execution regressions pass. Commit
+`8a02cf1` records four exact secret-scan false positives, independently recomputed
+as deterministic fixture effect hashes; the new scan passes. Full Linux/Windows
+CI run `39905834064` is still running.
+
+The resumed source-recovery agent's exact claim-acknowledgment and read-only
+claim-observation fix is independently approved and committed as `a699814`.
+The new upload/install/selection engine has a separate independent approval
+with 29 passing tests, package types and lint. Its private executor wiring is
+still being completed. A separate agent is implementing the source-freeze
+PostgreSQL contract and retention checks. Neither constitutes hosted acceptance.
+
+Release sequencing must include the compatible freeze RPC and physical reader
+in the pinned successor artifact before retaining its recovery request. Existing
+retained requests cannot silently change artifact or descriptor. Later
+destination/copy/history/selection/retention recovery paths and genuine hosted
+customer acceptance remain outstanding, followed by the separate Pi canary.
+Pi remains disabled; no public site, domain or production grant changed here.
