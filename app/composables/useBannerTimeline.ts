@@ -1,10 +1,12 @@
+import { applyBannerPlayback, resolveBannerPlayback } from '~/utils/banner-playback'
 import gsap from 'gsap'
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
 import { CustomEase } from 'gsap/CustomEase'
 import { parseCubicEase, cubicEaseToSvg } from '~/utils/banner-ease'
-import type { Layer, Keyframe, KeyframeProperty } from '~/types/banner-studio'
+import type { Layer, Keyframe, KeyframeProperty, BannerPlayback } from '~/types/banner-studio'
 import { ANIM_IN, ANIM_OUT } from '~/utils/banner-constants'
-import { computeClipPathPx } from '~/utils/banner-mask'
+import { computeAnimatedClipPath } from '~/utils/banner-mask'
+import { registerTimelineMaskUpdate, updateTimelineMasks } from '~/utils/bannerTimelineMasks'
 
 gsap.registerPlugin(MotionPathPlugin, CustomEase)
 
@@ -209,15 +211,17 @@ function addKeyframeTrack(
 }
 
 /** Add keyframe-based animation for a layer to a GSAP timeline */
-function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
-  const isBg = layer.type === 'bg'
+function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, cycleEnd?: number) {
+  const isBg = layer.type === 'bg' && !layer.clipToPresence
   const kfs = layer.keyframes!
 
-  // Set initial hidden state
+  // Preserve zero-time opacity when seeking backwards to the first frame.
+  const firstOpacity = [...(kfs.opacity || [])].sort((a, b) => a.time - b.time)[0]
+  const initialOpacity = firstOpacity?.time === 0 ? firstOpacity.value : 0
   if (isBg) {
-    tl.set(el, { autoAlpha: 0, immediateRender: false }, 0)
+    tl.set(el, { autoAlpha: initialOpacity, immediateRender: false }, 0)
   } else {
-    tl.set(el, { opacity: 0, immediateRender: false }, 0)
+    tl.set(el, { opacity: initialOpacity, immediateRender: false }, 0)
   }
 
   // Build each property track (skip x/y when motion path is active)
@@ -226,6 +230,12 @@ function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Lay
     if (!keyframes || keyframes.length < 2) continue
     if (skipXY && (prop === 'x' || prop === 'y')) continue
     addKeyframeTrack(tl, el, prop as KeyframeProperty, keyframes, isBg)
+  }
+
+  if (layer.clipToPresence) {
+    tl.set(el, { visibility: layer.startTime === 0 ? 'visible' : 'hidden', immediateRender: false }, 0)
+    if (layer.startTime > 0) tl.set(el, { visibility: 'visible', immediateRender: false }, layer.startTime)
+    if (layer.endTime !== cycleEnd) tl.set(el, { visibility: 'hidden', immediateRender: false }, layer.endTime)
   }
 
   // For properties without keyframes, set the default value at startTime
@@ -252,7 +262,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const opKey = isBg ? 'autoAlpha' : 'opacity'
 
   // Initial hidden state — skip x/y when motion path drives position
-  const init: Record<string, any> = { [opKey]: 0, scale: 1, rotation: 0, immediateRender: false }
+  const init: Record<string, any> = { [opKey]: 0, scale: 1, rotation: layer.rotation || 0, immediateRender: false }
   if (!hasMP) { init.x = 0; init.y = 0 }
   tl.set(el, init, 0)
 
@@ -274,7 +284,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
       ? Object.fromEntries(Object.entries(preset.from).filter(([k]) => k !== 'x' && k !== 'y'))
       : { ...preset.from }
     if (Object.keys(fromProps).length > 0) {
-      const toProp: Record<string, any> = { [opKey]: layer.opacity, scale: 1, rotation: 0, duration: animDur, ease, immediateRender: false }
+      const toProp: Record<string, any> = { [opKey]: layer.opacity, scale: 1, rotation: layer.rotation || 0, duration: animDur, ease, immediateRender: false }
       if (!hasMP) { toProp.x = 0; toProp.y = 0 }
       tl.fromTo(el, fromProps, toProp, startTime)
     } else {
@@ -353,8 +363,8 @@ function addAudioSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   }, startTime)
 }
 
-/** Add animated mask clip-path proxy to timeline */
-function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
+/** Recompute animated clips after timeline transforms have settled. */
+function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, layers: Layer[]) {
   if (!layer.isMask || !layer.maskTargetIds?.length) return
 
   // Hide mask layer visually during playback
@@ -366,7 +376,7 @@ function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const targets = layer.maskTargetIds
     .map(id => ({
       el: artboard.querySelector(`#lyr-${id}`) as HTMLElement,
-      layer: lastLayers.find(l => l.id === id)!,
+      layer: layers.find(l => l.id === id)!,
     }))
     .filter(t => t.el && t.layer)
 
@@ -374,47 +384,32 @@ function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
 
   const shape = layer.maskShape || 'rect'
   const invert = layer.maskInvert || false
-  const start = layer.startTime || 0
-  const end = layer.endTime || (start + 3)
+  // Update only after all child tweens have applied their transforms.
+  registerTimelineMaskUpdate(tl, () => {
+    // Read GSAP-animated transform values from mask element
+    const gx = (gsap.getProperty(el, 'x') as number) || 0
+    const gy = (gsap.getProperty(el, 'y') as number) || 0
+    const sx = (gsap.getProperty(el, 'scaleX') as number) ?? 1
+    const sy = (gsap.getProperty(el, 'scaleY') as number) ?? 1
 
-  // Proxy tween that updates clip-path on targets every frame
-  tl.to({ t: 0 }, {
-    t: 1,
-    duration: end - start,
-    ease: 'none',
-    onUpdate() {
-      // Read GSAP-animated transform values from mask element
-      const gx = (gsap.getProperty(el, 'x') as number) || 0
-      const gy = (gsap.getProperty(el, 'y') as number) || 0
-      const sx = (gsap.getProperty(el, 'scaleX') as number) || 1
-      const sy = (gsap.getProperty(el, 'scaleY') as number) || 1
-      const mx = layer.x + gx
-      const my = layer.y + gy
-      const mw = layer.w * sx
-      const mh = layer.h * sy
-
-      for (const t of targets) {
-        const tgx = (gsap.getProperty(t.el, 'x') as number) || 0
-        const tgy = (gsap.getProperty(t.el, 'y') as number) || 0
-        const tsx = (gsap.getProperty(t.el, 'scaleX') as number) || 1
-        const tsy = (gsap.getProperty(t.el, 'scaleY') as number) || 1
-        const tx = t.layer.x + tgx
-        const ty = t.layer.y + tgy
-        const tw = t.layer.w * tsx
-        const th = t.layer.h * tsy
-        t.el.style.clipPath = computeClipPathPx(
-          { x: mx, y: my, w: mw, h: mh },
-          { x: tx, y: ty, w: tw, h: th },
-          shape,
-          invert,
-        )
-      }
-    },
-  }, start)
+    for (const t of targets) {
+      const tgx = (gsap.getProperty(t.el, 'x') as number) || 0
+      const tgy = (gsap.getProperty(t.el, 'y') as number) || 0
+      const tsx = (gsap.getProperty(t.el, 'scaleX') as number) ?? 1
+      const tsy = (gsap.getProperty(t.el, 'scaleY') as number) ?? 1
+      t.el.style.clipPath = computeAnimatedClipPath(
+        layer, t.layer,
+        { x: gx, y: gy, scaleX: sx, scaleY: sy },
+        { x: tgx, y: tgy, scaleX: tsx, scaleY: tsy },
+        shape,
+        invert,
+      )
+    }
+  })
 }
 
 /** Add a layer's animation to a GSAP timeline (keyframes or preset) */
-function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, soloPathLayerId?: number | null) {
+function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, soloPathLayerId?: number | null, cycleEnd?: number) {
   if (layer.type === 'audio') {
     // Audio layers skip visual animation — only sync playback
     addAudioSync(tl, el, layer)
@@ -430,7 +425,7 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
     tl.set(el, { [opKey]: layer.opacity }, layer.startTime || 0)
     tl.set(el, { [opKey]: 0 }, layer.endTime || ((layer.startTime || 0) + 3))
   } else if (hasKeyframes(layer)) {
-    buildLayerKeyframes(tl, el, layer)
+    buildLayerKeyframes(tl, el, layer, cycleEnd)
   } else {
     buildPresetLayer(tl, el, layer)
   }
@@ -461,8 +456,6 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
   }
 
   addVideoSync(tl, el, layer)
-  // Mask layers: hide visually, animate clip-path on targets
-  addMaskAnimation(tl, el, layer)
 }
 
 /** Get the latest end time from a layer's keyframes */
@@ -487,11 +480,14 @@ export function useBannerTimeline() {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (el) {
         gsap.killTweensOf(el)
-        // Reset GSAP's internal transform cache so next timeline starts clean
-        gsap.set(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, clearProps: 'transform' })
+        // Clear animated transforms, then restore the model's resting transform
+        // through GSAP so both its cache and the inline style agree. Vue does not
+        // reapply unchanged rotation bindings after an imperative style reset.
+        gsap.set(el, { clearProps: 'transform' })
+        gsap.set(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: layer.rotation || 0 })
         el.style.removeProperty('opacity')
-        el.style.removeProperty('visibility')
-        el.style.removeProperty('transform')
+        if (layer.clipToPresence) el.style.visibility = layer.hidden || state.currentTime < layer.startTime || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[state.activeKey]?.playback?.duration) ? 'hidden' : 'visible'
+        else el.style.removeProperty('visibility')
         el.style.removeProperty('clip-path')
         // Pause and reset audio elements
         const audioEl = el.querySelector('audio') as HTMLAudioElement
@@ -506,9 +502,10 @@ export function useBannerTimeline() {
       if (masterTl && state.isPlaying) {
         state.currentTime = masterTl.time()
         // Loop range: if playhead exceeds loopOut, jump back to loopIn
-        if (state.loopIn != null && state.loopOut != null && state.isLooping) {
+        if (state.loopIn != null && state.loopOut != null && state.isLooping && !resolveBannerPlayback(state.sets[state.activeKey]?.playback)) {
           if (state.currentTime >= state.loopOut) {
             masterTl.seek(state.loopIn)
+            updateTimelineMasks(masterTl)
             state.currentTime = state.loopIn
           }
         }
@@ -531,19 +528,21 @@ export function useBannerTimeline() {
     lastArtboardEl = artboardEl
     lastLayers = layers
 
+    const playback = resolveBannerPlayback(state.sets[state.activeKey]?.playback)
     masterTl = gsap.timeline({
       paused: true,
       onComplete() {
         stopTimePoller()
         state.currentTime = state.duration
-        if (state.isLooping) {
+        if (!playback && state.isLooping) {
           const loopStart = state.loopIn != null ? state.loopIn : 0
           masterTl?.seek(loopStart)
+          if (masterTl) updateTimelineMasks(masterTl)
           masterTl?.play()
           startTimePoller()
         } else {
           state.isPlaying = false
-          if (lastArtboardEl) clearGsap(lastArtboardEl, lastLayers)
+          if (!playback && lastArtboardEl) clearGsap(lastArtboardEl, lastLayers)
         }
       },
     })
@@ -560,10 +559,12 @@ export function useBannerTimeline() {
       naturalEnd = Math.max(naturalEnd, endTime)
 
       const soloId = state.soloMotionPath ? state.selectedLayerId : null
-      addLayerToTimeline(masterTl!, el, layer, soloId)
+      addLayerToTimeline(masterTl!, el, layer, soloId, playback?.duration)
+      addMaskAnimation(masterTl!, el, layer, layers)
     })
 
-    state.duration = naturalEnd || 5
+    applyBannerPlayback(masterTl, playback)
+    state.duration = Math.max(naturalEnd, playback?.duration || 0) || 5
     return masterTl
   }
 
@@ -587,7 +588,8 @@ export function useBannerTimeline() {
       pauseTimeline()
     } else {
       if (masterTl) {
-        masterTl.seek(0)
+        masterTl.totalTime(0)
+        updateTimelineMasks(masterTl)
         state.isPlaying = true
         masterTl.play()
         startTimePoller()
@@ -599,6 +601,7 @@ export function useBannerTimeline() {
     if (!masterTl) return
     pauseTimeline()
     masterTl.seek(time)
+    updateTimelineMasks(masterTl)
     state.currentTime = time
     // Manually sync video and audio elements to the seeked time
     if (lastArtboardEl) {
@@ -651,11 +654,11 @@ export function useBannerTimeline() {
   }
 
   // Build a standalone timeline for a specific artboard key (for PlayAll)
-  function buildTimelineForKey(artboardEl: HTMLElement, layers: Layer[]): gsap.core.Timeline {
+  function buildTimelineForKey(artboardEl: HTMLElement, layers: Layer[], playback?: BannerPlayback): gsap.core.Timeline {
     const tl = gsap.timeline({
       paused: true,
       onComplete() {
-        if (state.isLooping) {
+        if (!resolveBannerPlayback(playback) && state.isLooping) {
           tl.restart()
         }
       },
@@ -664,9 +667,11 @@ export function useBannerTimeline() {
     layers.forEach(layer => {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (!el) return
-      addLayerToTimeline(tl, el, layer)
+      addLayerToTimeline(tl, el, layer, null, playback?.duration)
+      addMaskAnimation(tl, el, layer, layers)
     })
 
+    applyBannerPlayback(tl, playback)
     return tl
   }
 

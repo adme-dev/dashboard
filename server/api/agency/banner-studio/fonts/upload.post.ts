@@ -64,9 +64,12 @@ export default defineEventHandler(async (event) => {
   const rawFamily = familyField?.data?.toString().trim() || deriveFontFamily(fileName)
   // Limit family name length
   const fontFamily = rawFamily.slice(0, 100)
-  const rawWeight = parseInt(weightField?.data?.toString() || '400') || 400
-  // Validate weight is 100-900 and multiple of 100
-  const fontWeight = Math.min(900, Math.max(100, Math.round(rawWeight / 100) * 100))
+  // Keep imported face weights exact; rounding can select a different brand face.
+  const rawWeight = weightField ? weightField.data.toString().trim() : '400'
+  const fontWeight = Number(rawWeight)
+  if (!/^\d+$/.test(rawWeight) || !Number.isInteger(fontWeight) || fontWeight < 1 || fontWeight > 1000) {
+    throw createError({ statusCode: 400, statusMessage: 'Font weight must be an integer from 1 to 1000' })
+  }
   const fontFormat = fontFormatFromExt(ext)
 
   try {

@@ -23,12 +23,13 @@ export interface GenerateCreativeImageInput {
   metadata?: Record<string, string>
 }
 
+// Recraft V4.1 1K sizes: https://www.recraft.ai/docs/api-reference/appendix
 const RECRAFT_SIZE: Record<NonNullable<GenerateCreativeImageInput['aspectRatio']>, string> = {
   '1:1': '1024x1024',
-  '16:9': '1792x1024',
-  '9:16': '1024x1792',
-  '4:3': '1365x1024',
-  '3:4': '1024x1365',
+  '16:9': '1344x768',
+  '9:16': '768x1344',
+  '4:3': '1216x896',
+  '3:4': '896x1216'
 }
 
 function clampInteger(value: number | undefined, min: number, max: number, fallback: number): number {

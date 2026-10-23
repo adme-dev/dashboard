@@ -27,6 +27,19 @@ const metadata = () => Object.fromEntries(Array.from({ length: 100 }, (_, index)
 ]))
 
 describe('lossless generated Worker data compaction', () => {
+  it('losslessly compacts repeated medium fragments with complete decoder overhead included', async () => {
+    const fragment = '<span class="text-muted">Saved &amp; ready 🚘</span>'.repeat(8)
+    expect(fragment.length).toBeLessThan(1024)
+    const source = `export function render(push) { ${Array.from({ length: 12 }, () => `push(${JSON.stringify(fragment)});`).join('')} }`
+    const result = compactSsrMarkupSource(source)
+    expect(result.literals).toBe(12)
+    expect(Buffer.byteLength(result.code)).toBeLessThan(Buffer.byteLength(source))
+    const output: string[] = []
+    ;(await evaluate(result.code)).render((value: string) => output.push(value))
+    expect(output).toEqual(Array(12).fill(fragment))
+    expect(compactSsrMarkupSource(result.code).code).toBe(result.code)
+  })
+
   it('preserves complete static markup, interpolation order and named functions', async () => {
     const source = `export function render(push, next) { push(${JSON.stringify(html)}); push(next()); push(${JSON.stringify(html)}); }`
     const result = compactSsrMarkupSource(source)
@@ -128,9 +141,18 @@ it('losslessly compacts medium SSR literals and keeps the complete decoder cost 
   expect((await evaluate(compacted.code)).data).toEqual({ first: markup, second: markup })
   expect(compactSsrMarkupSource(compacted.code).code).toBe(compacted.code)
 })
-it('retains literals below 256 characters even when repeated', () => {
-  const markup = `<p>${'x'.repeat(248)}</p>`
-  expect(markup.length).toBe(255)
+it('retains literals below 128 characters even when repeated', () => {
+  const markup = `<p>${'x'.repeat(120)}</p>`
+  expect(markup.length).toBe(127)
   const source = `export const data = { a: ${JSON.stringify(markup)}, b: ${JSON.stringify(markup)}, c: ${JSON.stringify(markup)} };`
   expect(compactSsrMarkupSource(source)).toEqual({ code: source, literals: 0 })
+})
+it('preserves medium SSR property values when compression saves bytes', async () => {
+  const markup = '<p>preserved</p>'.repeat(45)
+  expect(markup.length).toBeLessThan(1024)
+  const source = `export const data = { first: ${JSON.stringify(markup)}, second: ${JSON.stringify(markup)} };`
+  const result = compactSsrMarkupSource(source)
+  expect(result.literals).toBe(2)
+  expect(Buffer.byteLength(result.code)).toBeLessThan(Buffer.byteLength(source))
+  expect((await evaluate(result.code)).data).toEqual({ first: markup, second: markup })
 })

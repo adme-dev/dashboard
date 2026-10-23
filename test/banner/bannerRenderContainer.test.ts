@@ -20,6 +20,16 @@ describe('uploadBannerMp4', () => {
     })
   })
 
+  it('isolates attempt objects while retaining the stable job download URL', async () => {
+    const put = vi.fn().mockResolvedValue(undefined)
+    const env = { AUDIO_BUCKET: { put } } as Parameters<typeof uploadBannerMp4>[0]
+    const first = await uploadBannerMp4(env, 'project', 'format', new Uint8Array([1]), 'job', 'first-attempt')
+    const second = await uploadBannerMp4(env, 'project', 'format', new Uint8Array([2]), 'job', 'second-attempt')
+    expect(first.r2Key).not.toBe(second.r2Key)
+    expect(first.url).toBe(second.url)
+    expect(second.url).toBe('/api/agency/banner-studio/export-video/jobs/job/download')
+  })
+
   it('does not embed an unsafe format key in the R2 object path', async () => {
     const put = vi.fn().mockResolvedValue(undefined)
     const result = await uploadBannerMp4(

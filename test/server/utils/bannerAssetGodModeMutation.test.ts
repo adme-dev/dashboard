@@ -845,6 +845,30 @@ describe('God mode banner asset upload coordination', () => {
     expect(deleteBannerFile).toHaveBeenCalledWith(R2_KEY)
   })
 
+  it('does not finalize an asset insert that lost its authorized client scope', async () => {
+    const event = request()
+    const prepared = await prepareGodModeBannerAssetUpload(event, dependencies)
+    await executeGodModeBannerAssetUpload(event, {
+      assetId: ASSET_ID, r2Key: R2_KEY,
+      result: (stored, identity) => ({ ...resultFactory(stored, identity), clientId: ACTOR_ID }),
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      insertAsset: vi.fn().mockResolvedValue({ ...asset, clientId: null })
+    })
+    await expect(prepared.persistTerminal(terminal())).rejects.toThrow('unexpected result')
+    expect(appendAudit).not.toHaveBeenCalledWith(expect.objectContaining({ phase: 'succeeded' }), expect.anything())
+  })
+
+  it('does not reconcile an ordinary upload to a durable row in another client scope', async () => {
+    const ordinaryEvent = { context: {} } as unknown as H3Event
+    await expect(executeGodModeBannerAssetUpload(ordinaryEvent, {
+      assetId: ASSET_ID, r2Key: R2_KEY,
+      result: (stored, identity) => ({ ...resultFactory(stored, identity), clientId: ACTOR_ID }),
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      insertAsset: vi.fn().mockRejectedValue(new Error('response lost')),
+      reconcileAsset: vi.fn().mockResolvedValue({ ...asset, clientId: null })
+    })).rejects.toMatchObject({ statusCode: 503 })
+  })
+
   it('keeps concurrent rollback deletion bound to each upload request bucket', async () => {
     const firstKey = 'banner-assets/owner-a/object-a/launch-car.jpg'
     const secondKey = 'banner-assets/owner-b/object-b/launch-car.jpg'

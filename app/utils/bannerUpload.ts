@@ -31,7 +31,7 @@ export function nextBannerUploadKey(): string {
   return `banner-upload:${globalThis.crypto.randomUUID()}`
 }
 
-export async function prepareBannerUploadRequest(file: File, key: string): Promise<PreparedBannerUploadRequest> {
+export async function prepareBannerUploadRequest(file: File, key: string, clientId?: string | null): Promise<PreparedBannerUploadRequest> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const contentSha256 = await sha256Hex(bytes)
   const identity = canonicalBannerAssetIdentity({
@@ -40,9 +40,10 @@ export async function prepareBannerUploadRequest(file: File, key: string): Promi
     claimedMimeType: file.type,
     contentSha256
   })
-  const requestDigest = await sha256Hex(new TextEncoder().encode(serializeBannerAssetIdentity(identity)))
+  const requestDigest = await sha256Hex(new TextEncoder().encode(serializeBannerAssetIdentity(identity, clientId)))
   const body = new FormData()
   body.append('file', file)
+  if (clientId) body.append('clientId', clientId.toLowerCase())
 
   return {
     body,

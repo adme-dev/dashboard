@@ -16,6 +16,7 @@ const testGlobal = globalThis as typeof globalThis & {
 testGlobal.defineEventHandler = handler => handler
 testGlobal.getQuery = event => event.query ?? {}
 testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
+vi.stubGlobal('setHeader', vi.fn())
 
 const mockRequireAuth = vi.fn()
 const mockQueryRows = vi.fn()
@@ -25,7 +26,12 @@ vi.mock('~~/server/utils/auth', () => ({
 }))
 
 vi.mock('~~/server/utils/db', () => ({
-  queryRows: (...args: unknown[]) => mockQueryRows(...args)
+  queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args)
+}))
+vi.mock('~~/server/utils/social/clientAccess', () => ({
+  hasAllSocialClientAccess: () => false,
+  hasSocialClientPermission: () => true,
+  requireSocialClientAccess: vi.fn()
 }))
 
 const { default: handler } = await import(

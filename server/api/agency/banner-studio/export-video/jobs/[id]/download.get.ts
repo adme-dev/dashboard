@@ -1,13 +1,16 @@
 import { createError, getRouterParam } from 'h3'
 
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
+import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 interface BannerRenderJob {
   id: string
   project_id: string
   r2_key: string | null
   status: string
+  client_id: string | null
+  created_by: string | null
 }
 
 interface R2Object {
@@ -68,7 +71,7 @@ function parseByteRange(value: string, size: number): ByteRange | null {
 function isSafeVideoKey(key: string | null, projectId: string): key is string {
   if (typeof key !== 'string' || typeof projectId !== 'string' || !JOB_ID_PATTERN.test(projectId)) return false
   const match = VIDEO_KEY_PATTERN.exec(key)
-  return Boolean(match && match[1].toLowerCase() === projectId.toLowerCase())
+  return Boolean(match && match[1]?.toLowerCase() === projectId.toLowerCase())
 }
 
 function storageUnavailable(message = 'Banner video storage is unavailable'): never {
@@ -92,23 +95,28 @@ function invalidRangeError(error: unknown): boolean {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const id = getRouterParam(event, 'id') || ''
   if (!JOB_ID_PATTERN.test(id)) notFound()
 
   let job: BannerRenderJob | null
   try {
-    job = await queryOne<BannerRenderJob>(
-      `SELECT id, project_id, r2_key, status
-         FROM banner_render_jobs
-        WHERE id = $1`,
+    job = await queryOneFresh<BannerRenderJob>(
+      `SELECT j.id, j.project_id, j.r2_key, j.status, p.client_id, p.created_by
+         FROM banner_render_jobs j
+         JOIN banner_projects p ON p.id = j.project_id
+        WHERE j.id = $1`,
       [id]
     )
   } catch {
     storageUnavailable('Banner video delivery is unavailable')
   }
   if (!job || job.id !== id || job.status !== 'done' || !isSafeVideoKey(job.r2_key, job.project_id)) notFound()
+  if (job.client_id) await requireSocialClientAccess(event, job.client_id)
+  else if (job.created_by !== user.id && !hasAllSocialClientAccess(user)) {
+    throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
+  }
 
   const bucket = (event.context as { cloudflare?: { env?: { MEDIA_BUCKET?: unknown } } }).cloudflare?.env?.MEDIA_BUCKET as R2Bucket | undefined
   if (!bucket || typeof bucket.head !== 'function' || typeof bucket.get !== 'function') storageUnavailable()

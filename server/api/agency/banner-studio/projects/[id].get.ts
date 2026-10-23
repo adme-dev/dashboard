@@ -1,8 +1,10 @@
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  setHeader(event, 'Cache-Control', 'private, no-store')
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -10,7 +12,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const row = await queryOne(`
+    const row = await queryOneFresh(`
       SELECT
         p.id, p.name,
         p.client_id AS "clientId",
@@ -28,6 +30,10 @@ export default defineEventHandler(async (event) => {
 
     if (!row) {
       throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+    }
+    if (row.clientId) await requireSocialClientAccess(event, row.clientId)
+    else if (row.createdBy !== user.id && !hasAllSocialClientAccess(user)) {
+      throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
     }
 
     return row

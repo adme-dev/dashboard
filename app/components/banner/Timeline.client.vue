@@ -791,10 +791,12 @@ onUnmounted(() => {
       />
       <UButton
         icon="i-lucide-repeat"
+        :disabled="!!state.sets[state.activeKey]?.playback"
+        :title="state.sets[state.activeKey]?.playback ? 'Uses imported playback count' : 'Loop preview'"
         :variant="state.isLooping ? 'soft' : 'ghost'"
         size="xs"
         :color="state.isLooping ? 'primary' : undefined"
-        @click="state.isLooping = !state.isLooping"
+        @click="() => { state.isLooping = !state.isLooping }"
       />
       <div class="text-xs font-mono text-(--ui-text-muted) ml-2">
         {{ formatTime(state.currentTime) }} / {{ formatTime(state.duration) }}

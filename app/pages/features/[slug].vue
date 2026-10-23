@@ -2443,11 +2443,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Multi-Format Artboards',
-        content: 'Define multiple ad sizes in a single project — 300x250, 728x90, 160x600, 320x50, and any custom dimensions. Each format gets its own artboard with independent layer positioning, so you can fine-tune layouts per size while keeping shared assets and animations consistent. Add new formats at any time, and optionally use AI auto-resize to adapt layouts intelligently.'
+        content: 'Define multiple ad sizes in a single project — 300x250, 728x90, 160x600, 320x50, and any custom dimensions. Each format gets its own artboard with independent layer positioning, so you can fine-tune layouts per size while keeping shared assets and animations consistent. Collapse the main admin navigation into a persistent icon rail, with tooltips and flyouts for navigation groups. The editor tools sidebar can also collapse for more canvas space; selecting a tool reopens its panel, and your layout preference is remembered. A wrapping canvas toolbar and labelled Actions menu keep creation and publishing controls accessible on smaller screens. Add new formats at any time, and optionally use AI auto-resize to adapt layouts intelligently.'
       },
       {
         title: 'Properties Panel',
-        content: 'Select any layer to reveal a context-sensitive properties panel on the right. Text layers show font family, size, weight, colour, line height, and letter spacing. Images show source URL, object fit, and border radius. All layers expose position (x, y), dimensions (width, height), rotation, opacity, and animation controls. Changes apply instantly on the artboard with no render delay.'
+        content: 'Edit fonts, spacing, position, rotation and opacity. Text Effects preserves your font and animation with editable depth, bevel, lighting, shadows and reviewed AI textures. Transparency surrounds the lettering. Save client or agency recipes. Depth simulates 3D.'
       },
       {
         title: 'Keyboard Shortcuts',

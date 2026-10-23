@@ -23,11 +23,11 @@ export interface BannerAssetUploadFile {
   data: Uint8Array | Buffer
 }
 
-export function digestBannerAssetUpload(input: BannerAssetIdentity): string {
-  return createHash('sha256').update(serializeBannerAssetIdentity(input)).digest('hex')
+export function digestBannerAssetUpload(input: BannerAssetIdentity, clientId?: string | null): string {
+  return createHash('sha256').update(serializeBannerAssetIdentity(input, clientId)).digest('hex')
 }
 
-export function validateBannerAssetUpload(file: BannerAssetUploadFile): ValidatedBannerAssetUpload {
+export function validateBannerAssetUpload(file: BannerAssetUploadFile, clientId?: string | null): ValidatedBannerAssetUpload {
   if (file.data.byteLength > MAX_BANNER_VIDEO_BYTES) {
     throw new Error('Banner asset upload exceeds the 100 MiB limit')
   }
@@ -53,6 +53,6 @@ export function validateBannerAssetUpload(file: BannerAssetUploadFile): Validate
     fileName: identity.fileName,
     mimeType: identity.mimeType,
     size: identity.size,
-    requestDigest: digestBannerAssetUpload(identity)
+    requestDigest: digestBannerAssetUpload(identity, clientId)
   }
 }

@@ -7,6 +7,7 @@ import type { SocialAccount } from '~/types'
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const api = useSocialPublishing()
 const { state, reset, loadFromPost, resolved, toBody } = useSocialComposer()
@@ -26,6 +27,7 @@ const { clientId } = useSocialPublishingClient()
 const pageName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || '')
 const accounts = ref<SocialAccount[]>([])
 const accountsLoading = ref(false)
+const bannerSuggestedSchedule = computed(() => typeof state.value.metadata.bannerSuggestedSchedule === 'string' ? state.value.metadata.bannerSuggestedSchedule : '')
 
 const saving = ref(false)
 const persistedStatus = ref<string | null>(null)
@@ -63,8 +65,9 @@ onMounted(async () => {
   if (editId) {
     try {
       const post = await api.getPost(editId)
+      await router.replace({ query: { ...route.query, client: post.client_id } })
+      await nextTick()
       loadFromPost(post)
-      clientId.value = post.client_id
       persistedStatus.value = post.status
       approvedBody.value = JSON.stringify(toBody(post.client_id))
     } catch {
@@ -75,17 +78,9 @@ onMounted(async () => {
     state.value.scheduleMode = 'schedule'
     state.value.scheduledAt = new Date(route.query.date as string).toISOString()
   }
-  // Deep-link from Banner Studio: ?creative=<bannerPublishedId> prefills the media + creativeId.
-  const creativeId = route.query.creative as string | undefined
-  if (creativeId) {
-    try {
-      const creatives = await apiFetch<{ id: string; url: string }[]>('/api/agency/banner-studio/published/with-projects')
-      const match = creatives.find(c => c.id === creativeId)
-      if (match) {
-        if (!state.value.mediaUrls.includes(match.url)) state.value.mediaUrls.push(match.url)
-        state.value.creativeId = match.id
-      }
-    } catch { /* non-fatal — composer still opens */ }
+  // Legacy web-ad links cannot be attached as photos or video.
+  if (route.query.creative) {
+    toast.add({ title: 'Export this banner as media first', description: 'In Banner Studio, export MP4 and choose Create social draft, or upload a PNG/JPG here.', color: 'warning' })
   }
 
   // Deep-link from Auto Feed: ?prefill=<base64 JSON {clientId, caption, imageUrl, link}>
@@ -103,11 +98,11 @@ onMounted(async () => {
   }
 })
 
-function guard(): string | null {
+function guard(requireAccounts = true): string | null {
   if (!clientId.value) { toast.add({ title: 'Pick a client first', color: 'warning' }); return null }
   if (!state.value.platforms.length) { toast.add({ title: 'Select at least one network', color: 'warning' }); return null }
   const missing = missingAccountPlatforms(state.value.platforms, state.value.accountIds, accounts.value)
-  if (missing.length) {
+  if (requireAccounts && missing.length) {
     toast.add({
       title: 'Select publishing accounts',
       description: missing.map(platform => platformLabel[platform] || platform).join(', '),
@@ -118,8 +113,8 @@ function guard(): string | null {
   return clientId.value
 }
 
-async function upsert(extra: Record<string, any> = {}): Promise<string | null> {
-  const cid = guard()
+async function upsert(extra: Record<string, unknown> = {}, requireAccounts = true): Promise<string | null> {
+  const cid = guard(requireAccounts)
   if (!cid) return null
   const body = { ...toBody(cid), ...extra }
   const row = state.value.id
@@ -153,7 +148,7 @@ async function publishApprovedPost() {
 async function saveDraft() {
   saving.value = true
   try {
-    const id = await upsert()
+    const id = await upsert({}, false)
     if (id) toast.add({ title: 'Draft saved', color: 'success' })
   } catch (e: any) {
     toast.add({ title: 'Save failed', description: e?.data?.statusMessage, color: 'error' })
@@ -209,6 +204,14 @@ const primaryLabel = computed(() => ({
     <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-8">
       <!-- Authoring -->
       <div>
+        <UAlert
+          v-if="bannerSuggestedSchedule"
+          class="mb-5"
+          title="Suggested posting time"
+          :description="`${bannerSuggestedSchedule}. Choose the exact date, time and timezone in Timing below before requesting approval.`"
+          color="info"
+          variant="subtle"
+        />
         <SocialPublishingPostComposer
           :client-id="clientId"
           :accounts="accounts"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { layerTransformOrigin } from '~/utils/banner-transform'
 import type { Layer } from '~/types/banner-studio'
 import { FORMATS } from '~/utils/banner-constants'
 import { computeClipPath } from '~/utils/banner-mask'
@@ -11,6 +12,18 @@ const props = defineProps<{
 }>()
 
 const { state, selectLayer, activeLayers, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
+const { openEffects } = useBannerInspector()
+const effectMenu = ref<{ id: number, x: number, y: number } | null>(null)
+const effectMenuItems = computed(() => [[{ label: 'Effects and AI artwork', icon: 'i-lucide-sparkles', onSelect: () => {
+  if (effectMenu.value) openEffects(effectMenu.value.id)
+  effectMenu.value = null
+} }]])
+function onLayerContextMenu(event: MouseEvent, layer: Layer) {
+  if (!props.isActive || layer.locked || !['text', 'image'].includes(layer.type)) return
+  event.preventDefault()
+  event.stopPropagation()
+  effectMenu.value = { id: layer.id, x: event.clientX, y: event.clientY }
+}
 const { remoteLocks } = useBannerRealtime()
 const artboardEl = ref<HTMLElement | null>(null)
 const { dragState, guides, onLayerMouseDown, onResizeHandleMouseDown } = useBannerDrag(artboardEl)
@@ -66,6 +79,27 @@ const selectedLayerObj = computed(() => {
   if (!state.selectedLayerId) return null
   return layers.value.find(l => l.id === state.selectedLayerId) || null
 })
+
+// GSAP writes preview transforms directly to the layer element. Follow those
+// styles so the top-level handles remain attached after timeline pause/scrub.
+const selectionGeometry = ref<Record<string, string>>({})
+let selectionObserver: MutationObserver | undefined
+watch([artboardEl, selectedLayerObj], () => {
+  selectionObserver?.disconnect()
+  selectionGeometry.value = {}
+  const element = artboardEl.value?.querySelector<HTMLElement>(`#lyr-${selectedLayerObj.value?.id}`)
+  if (!element) return
+  const sync = () => {
+    const { left, top, width, height, transform, transformOrigin, visibility } = element.style
+    const next = { left, top, width, height, transform, transformOrigin, visibility }
+    if (Object.entries(next).some(([key, value]) => selectionGeometry.value[key] !== value))
+      selectionGeometry.value = next
+  }
+  sync()
+  selectionObserver = new MutationObserver(sync)
+  selectionObserver.observe(element, { attributes: true, attributeFilter: ['style'] })
+}, { flush: 'post' })
+onBeforeUnmount(() => selectionObserver?.disconnect())
 
 // Motion path SVG overlay
 const motionPathSvg = computed(() => {
@@ -168,21 +202,31 @@ const RESIZE_HANDLES = ['tl', 'tc', 'tr', 'ml', 'mr', 'bl', 'bc', 'br'] as const
 function handleStyle(handle: string) {
   const base: Record<string, string> = {
     position: 'absolute',
-    width: '6px',
-    height: '6px',
+    // Keep a usable screen-space target even when a large artboard is zoomed out.
+    width: `${12 / state.wsScale}px`,
+    height: `${12 / state.wsScale}px`,
+    pointerEvents: 'auto',
+    touchAction: 'none',
     backgroundColor: '#fff',
     border: '1px solid #4a8fe8',
     borderRadius: '50%',
     boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
     zIndex: '9999',
   }
+  const offset = `${-6 / state.wsScale}px`
   // Position
-  if (handle.includes('t')) base.top = '-3px'
-  if (handle.includes('b')) base.bottom = '-3px'
-  if (handle.includes('l')) base.left = '-3px'
-  if (handle.includes('r')) base.right = '-3px'
-  if (handle === 'tc' || handle === 'bc') { base.left = '50%'; base.marginLeft = '-3px' }
-  if (handle === 'ml' || handle === 'mr') { base.top = '50%'; base.marginTop = '-3px' }
+  if (handle.includes('t')) base.top = offset
+  if (handle.includes('b')) base.bottom = offset
+  if (handle.includes('l')) base.left = offset
+  if (handle.includes('r')) base.right = offset
+  if (handle === 'tc' || handle === 'bc') {
+    base.left = '50%'
+    base.marginLeft = offset
+  }
+  if (handle === 'ml' || handle === 'mr') {
+    base.top = '50%'
+    base.marginTop = offset
+  }
   // Cursor
   const cursorMap: Record<string, string> = {
     tl: 'nw-resize', tr: 'ne-resize', bl: 'sw-resize', br: 'se-resize',
@@ -370,8 +414,11 @@ defineExpose({ artboardEl })
         width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
         height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
         zIndex: layer.zIndex,
+        mixBlendMode: layer.mixBlendMode || 'normal',
         pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
-        visibility: layer.hidden && layer.type !== 'audio' ? 'hidden' : 'visible',
+        display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
+        visibility: (layer.hidden && layer.type !== 'audio') || (layer.clipToPresence && (state.currentTime < layer.startTime || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[formatKey]?.playback?.duration))) ? 'hidden' : 'visible',
+        transformOrigin: layerTransformOrigin(layer.transformOrigin),
         transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
         cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
         clipPath: maskClipPaths.get(layer.id) || undefined,
@@ -379,7 +426,8 @@ defineExpose({ artboardEl })
         outlineOffset: layer.isMask ? '-1px' : undefined,
       }"
       @click="onLayerClick($event, layer)"
-      @mousedown="isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
+      @contextmenu="onLayerContextMenu($event, layer)"
+      @mousedown="$event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
     >
       <!-- Layer type renderers -->
       <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" />
@@ -389,17 +437,6 @@ defineExpose({ artboardEl })
       <BannerLayersButton v-else-if="layer.type === 'button'" :layer="layer" :is-active="isActive" />
       <BannerLayersRect v-else-if="layer.type === 'rect'" :layer="layer" :is-active="isActive" />
       <BannerLayersAudio v-else-if="layer.type === 'audio'" :layer="layer" :is-active="isActive" />
-
-      <!-- Selection handles -->
-      <template v-if="isSelected(layer)">
-        <div class="absolute inset-0 border border-[#4a8fe8] shadow-[0_0_0_1px_rgba(74,143,232,0.3)] pointer-events-none" style="z-index: 9998" />
-        <div
-          v-for="handle in RESIZE_HANDLES"
-          :key="handle"
-          :style="handleStyle(handle)"
-          @mousedown="onResizeHandleMouseDown($event, layer.id, handle)"
-        />
-      </template>
 
       <!-- Remote lock indicator -->
       <template v-if="getRemoteLock(layer.id) && !isSelected(layer)">
@@ -418,6 +455,37 @@ defineExpose({ artboardEl })
           {{ getRemoteLock(layer.id)!.userName }}
         </div>
       </template>
+    </div>
+
+    <Teleport to="body">
+      <UDropdownMenu :items="effectMenuItems" :open="!!effectMenu" @update:open="value => { if (!value) effectMenu = null }">
+        <span v-if="effectMenu" class="fixed w-px h-px pointer-events-none" :style="{ left: `${effectMenu.x}px`, top: `${effectMenu.y}px` }" />
+      </UDropdownMenu>
+    </Teleport>
+    <!-- Selection belongs to the editor, outside layer stacking and clip paths. -->
+    <div
+      v-if="isActive && !state.isPlaying && selectedLayerObj && !selectedLayerObj.hidden && !selectedLayerObj.locked && !['bg', 'audio'].includes(selectedLayerObj.type)"
+      data-testid="banner-selection"
+      class="absolute pointer-events-none border border-[#4a8fe8]"
+      :style="{
+        left: `${selectedLayerObj.x}px`,
+        top: `${selectedLayerObj.y}px`,
+        width: `${selectedLayerObj.w}px`,
+        height: `${selectedLayerObj.h}px`,
+        transformOrigin: layerTransformOrigin(selectedLayerObj.transformOrigin),
+        transform: selectedLayerObj.rotation ? `rotate(${selectedLayerObj.rotation}deg)` : undefined,
+        ...selectionGeometry,
+        zIndex: Math.max(10000, ...layers.map(layer => layer.zIndex + 1))
+      }"
+      @click.stop
+    >
+      <div
+        v-for="handle in RESIZE_HANDLES"
+        :key="handle"
+        :data-resize-handle="handle"
+        :style="handleStyle(handle)"
+        @mousedown="onResizeHandleMouseDown($event, selectedLayerObj.id, handle)"
+      />
     </div>
 
     <!-- Smart guide lines -->

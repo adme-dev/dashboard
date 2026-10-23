@@ -10,18 +10,18 @@ export interface GoogleFont {
 
 export interface CustomFont {
   id: number
-  name: string          // font-family name (used as font-family in @font-face)
+  name: string // font-family name (used as font-family in @font-face)
   mimeType: string
   fileSize: number
   r2Key: string
-  url: string           // R2 public URL for @font-face src
-  tags: string[]        // TEXT[] from DB: ['font', 'weight:400', 'format:woff2']
+  url: string // R2 public URL for @font-face src
+  tags: string[] // TEXT[] from DB: ['font', 'weight:400', 'format:woff2']
   uploadedBy: string
   createdAt: string
 }
 
 /** Parse font metadata from TEXT[] tags */
-function parseFontTags(tags: string[]): { weight: number; format: string } {
+function parseFontTags(tags: string[]): { weight: number, format: string } {
   let weight = 400
   let format = 'woff2'
   if (!Array.isArray(tags)) return { weight, format }
@@ -46,6 +46,17 @@ function isSafeUrl(url: string): boolean {
 
 // Module-scope state (singleton)
 const loadedFonts = new Set<string>()
+const loadedCustomFonts = new Map<string, HTMLStyleElement>()
+
+function customFontKey(font: CustomFont): string {
+  return JSON.stringify([font.name, parseFontTags(font.tags).weight])
+}
+
+function unloadCustomFont(font: CustomFont) {
+  const key = customFontKey(font)
+  loadedCustomFonts.get(key)?.remove()
+  loadedCustomFonts.delete(key)
+}
 const recentFonts = ref<string[]>([])
 const customFonts = ref<CustomFont[]>([])
 let recentLoaded = false
@@ -60,13 +71,17 @@ function loadRecentFromStorage() {
       const data = JSON.parse(stored)
       if (Array.isArray(data)) recentFonts.value = data
     }
-  } catch {}
+  } catch {
+    // Storage may be unavailable; font selection still works in memory.
+  }
 }
 
 function saveRecent() {
   try {
     localStorage.setItem('banner-recent-fonts', JSON.stringify(recentFonts.value))
-  } catch {}
+  } catch {
+    // Storage may be unavailable; font selection still works in memory.
+  }
 }
 
 // Top 120+ Google Fonts by popularity — compact embedded list
@@ -172,7 +187,7 @@ const GOOGLE_FONTS: GoogleFont[] = [
   { family: 'Roboto Mono', category: 'monospace', weights: [300, 400, 500, 600, 700] },
   { family: 'Space Mono', category: 'monospace', weights: [400, 700] },
   { family: 'IBM Plex Mono', category: 'monospace', weights: [300, 400, 500, 600, 700] },
-  { family: 'Inconsolata', category: 'monospace', weights: [300, 400, 500, 600, 700, 800, 900] },
+  { family: 'Inconsolata', category: 'monospace', weights: [300, 400, 500, 600, 700, 800, 900] }
 ]
 
 // System fonts (always available, no loading needed)
@@ -184,7 +199,7 @@ const SYSTEM_FONTS: GoogleFont[] = [
   { family: 'Courier New', category: 'monospace', weights: [400, 700] },
   { family: 'Verdana', category: 'sans-serif', weights: [400, 700] },
   { family: 'Trebuchet MS', category: 'sans-serif', weights: [400, 700] },
-  { family: 'Impact', category: 'sans-serif', weights: [400] },
+  { family: 'Impact', category: 'sans-serif', weights: [400] }
 ]
 
 const SYSTEM_FONT_FAMILIES = new Set(SYSTEM_FONTS.map(f => f.family))
@@ -197,7 +212,7 @@ export const FONT_CATEGORIES = [
   { label: 'Display', value: 'display' },
   { label: 'Script', value: 'handwriting' },
   { label: 'Mono', value: 'monospace' },
-  { label: 'System', value: 'system' },
+  { label: 'System', value: 'system' }
 ] as const
 
 export type FontCategory = typeof FONT_CATEGORIES[number]['value']
@@ -207,16 +222,16 @@ export function useBannerFonts() {
   loadRecentFromStorage()
 
   /** Custom fonts as GoogleFont entries for unified search */
-  const customFontEntries = computed<GoogleFont[]>(() =>
-    customFonts.value.map(cf => {
-      const { weight } = parseFontTags(cf.tags)
-      return {
-        family: cf.name,
-        category: 'custom' as const,
-        weights: [weight],
-      }
-    }),
-  )
+  const customFontEntries = computed<GoogleFont[]>(() => {
+    const families = new Map<string, Set<number>>()
+    for (const font of customFonts.value) {
+      if (!families.has(font.name)) families.set(font.name, new Set())
+      families.get(font.name)!.add(parseFontTags(font.tags).weight)
+    }
+    return [...families].map(([family, weights]) => ({
+      family, category: 'custom', weights: [...weights].sort((a, b) => a - b)
+    }))
+  })
 
   const allFonts = computed(() => [...customFontEntries.value, ...GOOGLE_FONTS, ...SYSTEM_FONTS])
 
@@ -259,12 +274,12 @@ export function useBannerFonts() {
   /** Load a custom font by injecting @font-face CSS */
   function loadCustomFont(cf: CustomFont): Promise<void> {
     const family = cf.name
-    if (loadedFonts.has(family)) return Promise.resolve()
+    const key = customFontKey(cf)
+    if (loadedCustomFonts.has(key)) return Promise.resolve()
     if (!isSafeUrl(cf.url)) return Promise.resolve()
-    loadedFonts.add(family)
 
     const { weight, format } = parseFontTags(cf.tags)
-    const escapedFamily = family.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedFamily = family.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
     const css = `@font-face {
   font-family: '${escapedFamily}';
   src: url('${cf.url}') format('${format}');
@@ -275,16 +290,16 @@ export function useBannerFonts() {
     const style = document.createElement('style')
     style.textContent = css
     document.head.appendChild(style)
+    loadedCustomFonts.set(key, style)
     return Promise.resolve()
   }
 
   /** Load a Google Font by injecting a <link> element. Returns a promise that resolves when loaded. */
   function loadFont(family: string, weights?: number[]): Promise<void> {
+    // Every recorded weight is needed when the editor changes text weight later.
+    const custom = getUsedCustomFonts([{ fontFamily: family }])
+    if (custom.length) return Promise.all(custom.map(loadCustomFont)).then(() => {})
     if (SYSTEM_FONT_FAMILIES.has(family)) return Promise.resolve()
-
-    // Check if this is a custom font
-    const cf = getCustomFont(family)
-    if (cf) return loadCustomFont(cf)
 
     const key = family
     if (loadedFonts.has(key)) return Promise.resolve()
@@ -322,41 +337,54 @@ export function useBannerFonts() {
     trackRecent(family)
   }
 
-  /** Fetch custom fonts from the API (deduped via shared Promise) */
-  function fetchCustomFonts(): Promise<void> {
-    if (customFontsFetch) return customFontsFetch
-    customFontsFetch = (async () => {
-      try {
-        const data = await apiFetch<CustomFont[]>('/api/agency/banner-studio/fonts')
-        customFonts.value = data || []
-        // Inject @font-face for all custom fonts
-        for (const cf of customFonts.value) {
-          loadCustomFont(cf)
-        }
-      } catch (e) {
-        console.warn('Failed to fetch custom fonts:', e)
-        customFontsFetch = null // allow retry on failure
-      }
+  /** Refresh the shared catalog before import reuse; callers must handle lookup failures. */
+  function refreshCustomFonts(): Promise<CustomFont[]> {
+    const previous = customFontsFetch
+    const request = (async () => {
+      // Serialize catalog snapshots so an older response cannot replace this refresh.
+      if (previous) await previous.catch(() => undefined)
+      const data = await apiFetch<CustomFont[]>('/api/agency/banner-studio/fonts')
+      for (const style of loadedCustomFonts.values()) style.remove()
+      loadedCustomFonts.clear()
+      customFonts.value = data || []
+      for (const font of customFonts.value) loadCustomFont(font)
     })()
-    return customFontsFetch
+    customFontsFetch = request
+    void request.catch(() => {
+      if (customFontsFetch === request) customFontsFetch = null
+    })
+    return request.then(() => [...customFonts.value])
+  }
+
+  /** Editor previews share a cached request and degrade gracefully on lookup failure. */
+  async function fetchCustomFonts(): Promise<void> {
+    try {
+      if (customFontsFetch) await customFontsFetch
+      else await refreshCustomFonts()
+    } catch (error) {
+      console.warn('Failed to fetch custom fonts:', error)
+    }
   }
 
   /** Upload a custom font file */
-  async function uploadCustomFont(file: File, familyName?: string): Promise<CustomFont | null> {
+  async function uploadCustomFont(file: File, familyName?: string, weight?: number): Promise<CustomFont | null> {
     const formData = new FormData()
     formData.append('file', file)
     if (familyName) formData.append('family', familyName)
+    if (weight !== undefined) formData.append('weight', String(weight))
 
     try {
       const result = await apiFetch<CustomFont>('/api/agency/banner-studio/fonts/upload', {
         method: 'POST',
-        body: formData,
+        body: formData
       })
-      // Add to local state and inject @font-face
-      customFonts.value.unshift(result)
+      // An initial catalog request may contain a stale snapshot from before this upload.
+      if (customFontsFetch) await customFontsFetch
+      customFonts.value = [result, ...customFonts.value.filter(font => font.id !== result.id)]
+      unloadCustomFont(result)
       loadCustomFont(result)
       return result
-    } catch (e: any) {
+    } catch (e) {
       console.error('Font upload failed:', e)
       throw e
     }
@@ -367,14 +395,16 @@ export function useBannerFonts() {
     await apiFetch(`/api/agency/banner-studio/fonts/${id}`, { method: 'DELETE' })
     const idx = customFonts.value.findIndex(f => f.id === id)
     if (idx > -1) {
-      const family = customFonts.value[idx].name
+      const removed = customFonts.value[idx]
       customFonts.value.splice(idx, 1)
-      loadedFonts.delete(family)
+      unloadCustomFont(removed)
+      const replacement = customFonts.value.find(font => customFontKey(font) === customFontKey(removed))
+      if (replacement) loadCustomFont(replacement)
     }
   }
 
   /** Get unique Google font families from a layer set (excludes custom + system) */
-  function getUsedFonts(layers: { fontFamily?: string; fontWeight?: number }[]): Map<string, Set<number>> {
+  function getUsedFonts(layers: { fontFamily?: string, fontWeight?: number }[]): Map<string, Set<number>> {
     const fonts = new Map<string, Set<number>>()
     for (const l of layers) {
       if (!l.fontFamily) continue
@@ -388,24 +418,24 @@ export function useBannerFonts() {
 
   /** Get custom fonts used in layers (for HTML export @font-face generation) */
   function getUsedCustomFonts(layers: { fontFamily?: string }[]): CustomFont[] {
+    const families = new Set(layers.map(layer => layer.fontFamily).filter(Boolean))
     const used: CustomFont[] = []
     const seen = new Set<string>()
-    for (const l of layers) {
-      if (!l.fontFamily || seen.has(l.fontFamily)) continue
-      const cf = getCustomFont(l.fontFamily)
-      if (cf) {
-        used.push(cf)
-        seen.add(l.fontFamily)
-      }
+    // The catalog is newest-first. Export one source per family/weight, keeping all weights.
+    for (const font of customFonts.value) {
+      const key = customFontKey(font)
+      if (!families.has(font.name) || seen.has(key)) continue
+      used.push(font)
+      seen.add(key)
     }
     return used
   }
 
   /** Get custom fonts used in layers, formatted for HTML export options */
-  function getExportCustomFonts(layers: { fontFamily?: string }[]): { family: string; url: string; format: string; weight: number }[] {
+  function getExportCustomFonts(layers: { fontFamily?: string }[]): { family: string, url: string, format: string, weight: number }[] {
     return getUsedCustomFonts(layers)
       .filter(cf => isSafeUrl(cf.url))
-      .map(cf => {
+      .map((cf) => {
         const { weight, format } = parseFontTags(cf.tags)
         return { family: cf.name, url: cf.url, format, weight }
       })
@@ -416,15 +446,15 @@ export function useBannerFonts() {
     const fonts = getUsedCustomFonts(layers).filter(cf => isSafeUrl(cf.url))
     if (fonts.length === 0) return ''
 
-    return fonts.map(cf => {
+    return fonts.map((cf) => {
       const { weight, format } = parseFontTags(cf.tags)
-      const family = cf.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const family = cf.name.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
       return `@font-face { font-family: '${family}'; src: url('${cf.url}') format('${format}'); font-weight: ${weight}; font-display: swap; }`
     }).join('\n')
   }
 
   /** Build Google Fonts CSS URL for HTML export */
-  function buildGoogleFontsUrl(layers: { fontFamily?: string; fontWeight?: number }[]): string {
+  function buildGoogleFontsUrl(layers: { fontFamily?: string, fontWeight?: number }[]): string {
     const fonts = getUsedFonts(layers)
     if (fonts.size === 0) return ''
 
@@ -440,7 +470,7 @@ export function useBannerFonts() {
   }
 
   /** Load all fonts used in layers (for editor preview) */
-  function loadUsedFonts(layers: { fontFamily?: string; fontWeight?: number }[]) {
+  function loadUsedFonts(layers: { fontFamily?: string, fontWeight?: number }[]) {
     const fonts = getUsedFonts(layers)
     for (const [family, weights] of fonts) {
       loadFont(family, Array.from(weights))
@@ -465,6 +495,7 @@ export function useBannerFonts() {
     selectFont,
     trackRecent,
     fetchCustomFonts,
+    refreshCustomFonts,
     uploadCustomFont,
     deleteCustomFont,
     getUsedFonts,
@@ -472,6 +503,6 @@ export function useBannerFonts() {
     getExportCustomFonts,
     buildCustomFontsCss,
     buildGoogleFontsUrl,
-    loadUsedFonts,
+    loadUsedFonts
   }
 }

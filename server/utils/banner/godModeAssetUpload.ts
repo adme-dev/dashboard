@@ -22,7 +22,7 @@ const REQUEST_DIGEST = /^[a-f0-9]{64}$/
 const UUID_TEXT = '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
 const UUID = new RegExp(UUID_TEXT, 'i')
 const EXECUTION_SQL = `SELECT state, result_reference, route_or_tool, correlation_id, execution_phase, execution_metadata ->> 'requestDigest' AS request_digest, execution_metadata ->> 'r2Key' AS r2_key, execution_metadata ->> 'assetId' AS asset_id, updated_at < NOW() - INTERVAL '2 minutes' AS claim_stale FROM god_mode_execution_ledger WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2`
-const ASSET_SQL = `SELECT id, name, mime_type AS "mimeType", file_size AS "fileSize", r2_key AS "r2Key", url, thumbnail_url AS "thumbnailUrl", tags, uploaded_by AS "uploadedBy", created_at AS "createdAt" FROM banner_assets WHERE id = CASE WHEN $1 ~* '${UUID_TEXT}' THEN $1::uuid ELSE NULL END`
+const ASSET_SQL = `SELECT id, name, mime_type AS "mimeType", file_size AS "fileSize", r2_key AS "r2Key", url, thumbnail_url AS "thumbnailUrl", tags, uploaded_by AS "uploadedBy", created_at AS "createdAt", client_id AS "clientId" FROM banner_assets WHERE id = CASE WHEN $1 ~* '${UUID_TEXT}' THEN $1::uuid ELSE NULL END`
 const TERMINAL_SQL = `SELECT phase AS terminal_phase FROM god_mode_audit_events WHERE correlation_id = $1::uuid AND phase IN ('succeeded', 'failed')`
 const CLAIM_OWNERSHIP_LOST = new Error('Banner upload claim ownership changed')
 
@@ -39,6 +39,7 @@ export interface BannerAssetUploadResult {
   tags: string[]
   uploadedBy: string
   createdAt: string
+  clientId?: string | null
 }
 
 export interface StoredBannerAssetUpload {
@@ -178,6 +179,7 @@ function exactAssetResult(
   return candidate.id === expected.id
     && candidate.r2Key === expected.r2Key
     && candidate.uploadedBy === expected.uploadedBy
+    && (candidate.clientId ?? null) === (expected.clientId ?? null)
     && candidate.name === expected.name
     && candidate.mimeType === expected.mimeType
     && candidate.fileSize === expected.fileSize
@@ -340,7 +342,8 @@ async function reconcileTransactionOutcome(
     || !asset
     || asset.id !== row.result_reference
     || asset.r2Key !== current.newR2Key
-    || asset.uploadedBy !== current.actorUserId) {
+    || asset.uploadedBy !== current.actorUserId
+    || (current.pending && (asset.clientId ?? null) !== (current.pending.result.clientId ?? null))) {
     throw recoveryRequired()
   }
 
@@ -413,7 +416,8 @@ async function persistTerminal(
         const inserted = await current.pending.insertAsset(db, current.pending.stored, current.pending.result)
         if (inserted.id !== current.pending.result.id
           || inserted.r2Key !== current.pending.stored.key
-          || inserted.uploadedBy !== current.actorUserId) {
+          || inserted.uploadedBy !== current.actorUserId
+          || (inserted.clientId ?? null) !== (current.pending.result.clientId ?? null)) {
           throw new Error('Banner asset insert returned an unexpected result')
         }
         resultReference = current.resultReference
