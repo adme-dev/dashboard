@@ -25,6 +25,11 @@ export const CustomerAdoptionOperatorViewSchema = z.discriminatedUnion('action',
 ])
 export const CustomerAdoptionTransportResponseSchema = managementResultSchema(CustomerAdoptionOperatorViewSchema,
   z.object({ statusCode: z.number().int().min(400).max(599), message: z.literal(CUSTOMER_ADOPTION_UNAVAILABLE) }).strict())
+export const CustomerAdoptionCustomerOriginSchema = z.string().max(2048).refine(value => {
+  try { const url = new URL(value); return url.protocol === 'https:' && url.origin === value && !url.username && !url.password }
+  catch { return false }
+})
+export const CustomerAdoptionPublicViewSchema = z.object({ view: CustomerAdoptionOperatorViewSchema, customerOrigin: CustomerAdoptionCustomerOriginSchema.nullable() }).strict()
 export function matchesCustomerAdoptionResponse(view: z.infer<typeof CustomerAdoptionOperatorViewSchema>, input: z.infer<typeof CustomerAdoptionTransportSchema>) {
   if (view.siteId !== input.siteId || view.action !== input.request.action) return false
   if (view.action === 'inspect') return true

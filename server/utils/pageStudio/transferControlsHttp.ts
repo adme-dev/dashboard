@@ -10,7 +10,7 @@ import { NativeRuntimeRecoveryOperatorBody } from '~~/shared/pageStudio/nativeRu
 import { TransferRecoveryRequestSchema } from '~~/shared/pageStudio/transferRecovery'
 import { TransferRecoveryInspectActionSchema } from '~~/shared/pageStudio/transferRecoveryCoordinator'
 import { callTransferRecoveryInspection } from './transferRecoveryCoordinatorClient'
-import { CustomerAdoptionOperatorActionSchema } from '~~/shared/pageStudio/customerAdoptionTransport'
+import { CustomerAdoptionOperatorActionSchema, CustomerAdoptionCustomerOriginSchema } from '~~/shared/pageStudio/customerAdoptionTransport'
 import { callCustomerAdoptionGrant } from './customerAdoptionClient'
 import { callTransferRecovery } from './transferRecoveryClient'
 import { callNativeRuntimeRecovery, callTransferControls, callTransferWorkflow } from './transferControls'
@@ -99,7 +99,9 @@ export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' |
     if (route === 'adoption-grant') {
       const request = method === 'GET' ? { action: 'inspect' as const } : parse(CustomerAdoptionOperatorActionSchema,
         await readPageStudioJson(event, 4096, ['Use JSON for this request.', 'The request is too large.', 'Choose an adoption action.', 'Invalid adoption request.', 'Invalid adoption JSON.']))
-      result = await callCustomerAdoptionGrant({ siteId: identity.siteId!, operator: principal, request }, env)
+      const view = await callCustomerAdoptionGrant({ siteId: identity.siteId!, operator: principal, request }, env)
+      const origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ORIGIN') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)
+      result = { view, customerOrigin: origin.success ? origin.data : null }
     } else if (route === 'recovery-inspect') {
       const input = await body(event, TransferRecoveryInspectActionSchema)
       result = await callTransferRecoveryInspection({ ...identity, ...input, operator: principal }, env)

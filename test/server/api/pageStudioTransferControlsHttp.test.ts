@@ -213,3 +213,13 @@ it('adoption withholds success on authority loss and redacts uncertain result wi
   expect(await response.text()).not.toContain('private details')
   expect(mocks.adoption).toHaveBeenCalledTimes(2)
 })
+it.each(['https://customer.example.test', 'https://customer.example.test/path', 'javascript:alert(1)'])('adoption publishes only a validated configured customer origin: %s', async origin => {
+  const previous = env.PAGE_STUDIO_CUSTOMER_ORIGIN
+  env.PAGE_STUDIO_CUSTOMER_ORIGIN = origin
+  try {
+    mocks.adoption.mockResolvedValue({ action: 'inspect', siteId, sourceDigest: 'b'.repeat(64), selection: null })
+    const response = await request('adoption', 'GET')
+    expect(response.status).toBe(200)
+    expect((await response.json()).customerOrigin).toBe(origin === 'https://customer.example.test' ? origin : null)
+  } finally { env.PAGE_STUDIO_CUSTOMER_ORIGIN = previous }
+})
