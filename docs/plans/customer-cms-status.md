@@ -1413,3 +1413,44 @@ release the current reviewed candidates; open the bounded two-mailbox sign-in
 window; verify genuine A/B adoption, transfer and account/session isolation; then
 run the separately scoped agency Pi pilot. Pi is still disabled. No public site,
 DNS record, publishing pointer or live Forms endpoint changed in these increments.
+
+
+### 2026-10-23: explicit admission controls and interrupted-step recovery
+
+Dashboard `34e308ac6` adds the current-PG admission coordinator (34 contract/real
+PostgreSQL cases), `a001a11a5` adds its strict operator HTTP and private Management
+transport, and `63cba14de` adds the explicit readiness screen. Studio `b981766`
+exposes actual prepare/enable operations through the fixed private executor and
+corrects original-input replay after a lost post-CAS acknowledgement. Actual D1
+and factory regressions prove unchanged request retries retain one event, while
+later or revoked state denies the earlier transition. All scopes received
+independent approval before commit.
+
+The readiness UI preserves exact public action IDs across reload, obtains a fresh
+authenticated status read, and requires explicit confirmation for each step. A
+PostgreSQL applied record never implies current D1 readiness. A cross-tab advance
+past an interrupted preparation has an explicit Use newer saved state action;
+it only clears obsolete local work and requires another website verification.
+103 combined transport, HTTP, component and isolation-inventory tests passed.
+Scoped lint, Management strict types, bounded Vue types and the Management dry
+run passed. Actual Chrome/Nuxt UI checks completed all four steps with synthetic
+local data, checked 390px layout without overflow or console errors, and proved
+refresh returns readiness to unverified. This is not hosted account acceptance.
+Browser receipt: `transfer-recovery-admission-ui-browser-20261023.json`, SHA256
+`9884c73aeabfeb56ef0c7a16d2cc5520c508bc1f31d1c727197604d7ad3b5ad7`.
+
+Dashboard `fde236dd7` adds a dedicated disposable PostgreSQL CI step for the
+coordinator; current run39887266912 is pending completion. Studio `da42fcd`
+fixes only formatting of two fixture arrays reported by Windows CI; their parsed
+JSON and canonical protocol digests are unchanged. Current Studio run39887166626
+is pending completion. The preceding candidate runs were superseded; Studio's
+Ubuntu runner shutdown during lint is not attributed to an application defect.
+Neither current candidate has a full CI pass or a release receipt yet.
+
+Remaining source recovery is being implemented as a descriptor-bound physical
+runtime change with fresh PG authority and an atomic tenant database install.
+It is not callable from the public readiness screen. Source execution, freeze,
+copy/history, destination verification, selection and original-source retention
+still require their recovery-aware execution paths before genuine A/B hosted
+acceptance and the separate Pi canary. No production migration, grant, customer
+activation, publishing pointer, DNS or Forms change occurred. Pi stays disabled.
