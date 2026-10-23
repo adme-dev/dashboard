@@ -78,8 +78,9 @@ const API_INVENTORY = {
   // Each delegates genuine cookie/role/origin checks; no God mode bypass.
   // Existing-source adoption adds four native-authenticated routes, two mutations; no bypass.
   // Immutable recovery review adds two explicit role/session-guarded POSTs; no bypass.
-  totalRouteFiles: 2276,
-  mutationRouteFiles: 1239,
+  // Recovery admission adds one explicit operator-cookie POST; no bypass.
+  totalRouteFiles: 2277,
+  mutationRouteFiles: 1240,
   explicitlyGuardedMutationFiles: 402,
   guardedMutationFilesWithTransactionCall: 48
 } as const
@@ -129,8 +130,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2276,
-      mutationRouteFiles: 1239,
+      totalRouteFiles: 2277,
+      mutationRouteFiles: 1240,
       explicitlyGuardedMutationFiles: 402,
       guardedMutationFilesWithTransactionCall: 48
     })
@@ -138,6 +139,7 @@ describe('God mode route isolation inventory', () => {
 
   it('pins transfer and verification bootstrap routes to native authority without a bypass', () => {
     const routes = {
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/admission.post.ts': "handleTransferOperatorHttp(event, 'POST', 'recovery-admission')",
       'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': "handleTransferOperatorHttp(event, 'POST', 'recovery-review')",
       'server/api/portal/page-studio/customer/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': 'handleTransferReviewOwnerHttp(event)',
       'server/api/agency/page-studio/sites/[siteId]/adoption-grant.get.ts': 'handleTransferOperatorHttp(event, \'GET\', \'adoption-grant\')',

@@ -14,6 +14,8 @@ import { CustomerAdoptionOperatorActionSchema, CustomerAdoptionCustomerOriginSch
 import { callCustomerAdoptionGrant } from './customerAdoptionClient'
 import { callTransferRecovery } from './transferRecoveryClient'
 import { RecoveryReviewOwnerAction, RecoveryReviewOperatorAction } from '~~/shared/pageStudio/transferRecoveryReviewControl'
+import { TransferRecoveryAdmissionControlActionSchema } from '~~/shared/pageStudio/transferRecoveryAdmissionControl'
+import { callTransferRecoveryAdmissionControl } from './transferRecoveryAdmissionControlClient'
 import { callTransferRecoveryReviewControl } from './transferRecoveryReviewControlClient'
 import { callNativeRuntimeRecovery, callTransferControls, callTransferWorkflow } from './transferControls'
 import { requireCustomerPlanOperator } from './customerPlanGrants'
@@ -89,11 +91,11 @@ export async function handleTransferOwnerHttp(event: H3Event, method: 'GET' | 'P
   } catch (error) { guarded(error) }
 }
 /** Current operator is independently checked before and after the one RPC. */
-export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' | 'POST', route: 'list' | 'request' | 'workflow' | 'runtime-recovery' | 'recovery' | 'recovery-inspect' | 'adoption-grant' | 'recovery-review') {
+export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' | 'POST', route: 'list' | 'request' | 'workflow' | 'runtime-recovery' | 'recovery' | 'recovery-inspect' | 'adoption-grant' | 'recovery-review' | 'recovery-admission') {
   setHeader(event, 'cache-control', 'private, no-store')
   try {
     boundary(event, method)
-    if ((route === 'list' && method !== 'GET') || ((route === 'runtime-recovery' || route === 'recovery-inspect' || route === 'recovery-review') && method !== 'POST')) throw createError({ statusCode: 405 })
+    if ((route === 'list' && method !== 'GET') || ((route === 'runtime-recovery' || route === 'recovery-inspect' || route === 'recovery-review' || route === 'recovery-admission') && method !== 'POST')) throw createError({ statusCode: 405 })
     const query = parse(route === 'list' ? ListQuery : (route === 'workflow' || route === 'recovery') && method === 'GET' ? StatusQuery : emptyQuery, getQuery(event))
     const identity = route === 'list' ? {} : route === 'adoption-grant'
       ? { siteId: parse(Id, getRouterParam(event, 'siteId')) }
@@ -112,6 +114,10 @@ export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' |
         await readPageStudioJson(event, 4096, ['Use JSON for this request.', 'The request is too large.', 'Choose a review action.', 'Invalid review request.', 'Invalid review JSON.']))
       const view = await callTransferRecoveryReviewControl({ ...identity, ...input, authentication: { operator: principal } }, env)
       result = { view, customerOrigin: publicCustomerOrigin(env) }
+    } else if (route === 'recovery-admission') {
+      const input = parse(z.object({ expectedRevision: z.number().int().positive().max(2147483646), request: TransferRecoveryAdmissionControlActionSchema }).strict(),
+        await readPageStudioJson(event, 4096, ['Use JSON for this request.', 'The request is too large.', 'Choose a readiness action.', 'Invalid readiness request.', 'Invalid readiness JSON.']))
+      result = await callTransferRecoveryAdmissionControl({ ...identity, ...input, operator: principal }, env)
     } else if (route === 'recovery-inspect') {
       const input = await body(event, TransferRecoveryInspectActionSchema)
       result = await callTransferRecoveryInspection({ ...identity, ...input, operator: principal }, env)
