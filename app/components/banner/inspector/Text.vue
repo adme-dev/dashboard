@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { FORMATS, FONT_WEIGHTS, TEXT_SHADOW_PRESETS, TEXT_STROKE_PRESETS } from '~/utils/banner-constants'
+import { FORMATS, TEXT_SHADOW_PRESETS, TEXT_STROKE_PRESETS } from '~/utils/banner-constants'
+import { bannerFontWeightOptions } from '~/utils/banner-font-weights'
 import type { FontCategory } from '~/composables/useBannerFonts'
 
 const { state, selectedLayer, updateLayer } = useBannerStudio()
@@ -73,6 +74,10 @@ const uploading = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const filteredFonts = computed(() => searchFonts(fontSearch.value, fontCategory.value))
+const fontWeightOptions = computed(() => bannerFontWeightOptions(
+  getFont(selectedLayer.value?.fontFamily ?? 'Barlow Condensed')?.weights,
+  selectedLayer.value?.fontWeight ?? 400
+))
 
 function pickFont(family: string) {
   selectFont(family)
@@ -207,7 +212,7 @@ function toggleGradient() {
 </script>
 
 <template>
-  <div v-if="selectedLayer" class="space-y-3">
+  <div v-if="selectedLayer" class="@container space-y-3">
     <details open class="bs-section group">
       <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
         <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
@@ -261,16 +266,15 @@ function toggleGradient() {
       </UPopover>
     </div>
 
-    <div class="grid grid-cols-2 gap-1.5">
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Font</label>
+    <div class="grid grid-cols-1 gap-1.5 @lg:grid-cols-2">
+      <UFormField label="Font">
         <UPopover v-model:open="showFontPicker">
           <UButton
             size="xs"
             variant="outline"
             class="w-full justify-between font-normal"
             trailing-icon="i-lucide-chevron-down"
-            @click="showFontPicker = !showFontPicker"
+                @click="() => { showFontPicker = !showFontPicker }"
           >
             <span class="truncate text-xs">{{ selectedLayer.fontFamily ?? 'Barlow Condensed' }}</span>
           </UButton>
@@ -284,7 +288,7 @@ function toggleGradient() {
                     :key="cat.v"
                     size="xs"
                     :variant="fontCategory === cat.v ? 'solid' : 'ghost'"
-                    @click="fontCategory = cat.v as FontCategory"
+                        @click="() => { fontCategory = cat.v as FontCategory }"
                   >
                     {{ cat.l }}
                   </UButton>
@@ -373,17 +377,17 @@ function toggleGradient() {
             </div>
           </template>
         </UPopover>
-      </div>
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Weight</label>
-        <USelectMenu
-          size="xs"
-          :model-value="String(selectedLayer.fontWeight ?? 400)"
-          :items="FONT_WEIGHTS.map(w => ({ label: w.label, value: String(w.value) }))"
-          value-key="value"
-          @update:model-value="v => setNum('fontWeight', v)"
-        />
-      </div>
+      </UFormField>
+          <UFormField label="Weight">
+            <USelectMenu
+              size="xs"
+              class="w-full"
+              :model-value="String(selectedLayer.fontWeight ?? 400)"
+              :items="fontWeightOptions"
+              value-key="value"
+              @update:model-value="v => setNum('fontWeight', v)"
+            />
+          </UFormField>
     </div>
 
     <div class="grid grid-cols-2 gap-1.5">
@@ -455,14 +459,10 @@ function toggleGradient() {
       </div>
     </div>
 
-    <div v-if="selectedLayer.bgColor" class="grid grid-cols-2 gap-1.5">
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Pad H</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.paddingH ?? 0" @update:model-value="v => setNum('paddingH', v)" />
-      </div>
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Pad V</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.paddingV ?? 0" @update:model-value="v => setNum('paddingV', v)" />
+        <div v-if="selectedLayer.bgColor" class="@container">
+          <div class="grid grid-cols-1 @lg:grid-cols-2 gap-3">
+            <BannerInspectorNumericField property="paddingH" label="Horizontal padding" :default-value="10" />
+            <BannerInspectorNumericField property="paddingV" label="Vertical padding" :default-value="4" />
       </div>
     </div>
 

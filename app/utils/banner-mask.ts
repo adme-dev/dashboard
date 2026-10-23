@@ -92,3 +92,20 @@ export function computeClipPathPx(
 
   return `inset(${t}px ${r}px ${b}px ${l}px)`
 }
+
+export interface MaskTransform { x: number; y: number; scaleX: number; scaleY: number }
+
+/** Convert centred GSAP transforms back to the target's unscaled CSS box. */
+export function computeAnimatedClipPath(mask: Rect, target: Rect, mt: MaskTransform, tt: MaskTransform, shape: 'rect' | 'ellipse', invert: boolean): string {
+  if (!tt.scaleX || !tt.scaleY) return 'inset(50%)'
+  const mx = mask.x + mt.x + mask.w * (1 - mt.scaleX) / 2
+  const my = mask.y + mt.y + mask.h * (1 - mt.scaleY) / 2
+  const tx = target.x + tt.x + target.w * (1 - tt.scaleX) / 2
+  const ty = target.y + tt.y + target.h * (1 - tt.scaleY) / 2
+  const x1 = (mx - tx) / tt.scaleX, x2 = (mx + mask.w * mt.scaleX - tx) / tt.scaleX
+  const y1 = (my - ty) / tt.scaleY, y2 = (my + mask.h * mt.scaleY - ty) / tt.scaleY
+  return computeClipPathPx(
+    { x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) },
+    { x: 0, y: 0, w: target.w, h: target.h }, shape, invert,
+  )
+}

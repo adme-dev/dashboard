@@ -646,7 +646,7 @@ const featuresCol3a = [
 
 const featuresCol3b = [
   { title: 'Page Studio', subtitle: 'Your websites, CMS and image tools', icon: 'i-lucide-panels-top-left', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/studio' },
-  { title: 'Banner Studio', subtitle: 'HTML5 ad design & animation', icon: 'i-lucide-palette', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/banner-studio' },
+  { title: 'Banner Studio', subtitle: 'Visual design, AI & animation', icon: 'i-lucide-palette', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/banner-studio' },
   { title: 'Bulk Ad Launch', subtitle: 'Publish ads across platforms', icon: 'i-lucide-rocket', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/bulk-ad-launch' },
   { title: 'Ad Export', subtitle: 'Platform-compliant ZIP export', icon: 'i-lucide-download', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/ad-platform-export' },
   { title: 'Dealer Feeds', subtitle: 'Vehicle feeds & Meta catalogue delivery', icon: 'i-lucide-boxes', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/dealer-inventory-feeds' },

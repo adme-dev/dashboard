@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import JSZip from 'jszip'
+import { apiErrorDescription, apiErrorStatus } from '~/utils/apiError'
 import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import type { Layer, ImageExportResult } from '~/types/banner-studio'
-import { summarizeExportJobs } from '~/utils/bannerExportPoll'
+import { exportFormatLabel } from '~/utils/bannerExportPoll'
 import type { ExportJob } from '~/utils/bannerExportPoll'
 import { describeBannerVideoExportError } from '~/utils/bannerExportError'
 import { createBannerVideoExportSession } from '~/utils/bannerVideoExport'
+import { bannerRenderSuggestions, snapshotBannerSocialSuggestion } from '~/utils/bannerRenderSuggestions'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean, initialType?: 'html5' | 'png' | 'jpg' | 'gif' | 'mp4', socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const { state, activeLayers } = useBannerStudio()
@@ -25,9 +27,26 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
 const selected = ref<Set<string>>(new Set(state.setKeys))
 const isExporting = ref(false)
 const exportProgress = ref(0)
+const currentJobs = ref<ExportJob[]>([])
+const videoJobsUnavailable = ref(true)
+const videoPendingFormats = ref<string[]>([])
+const videoJobsBlocked = computed(() => videoJobsUnavailable.value || videoPendingFormats.value.some(key => selected.value.has(key)))
+const currentVideoBlocked = computed(() => videoJobsUnavailable.value || videoPendingFormats.value.includes(state.activeKey))
+
+watch(() => props.open, (open) => {
+  if (open) {
+    selected.value = new Set(state.setKeys)
+    if (props.initialType) exportType.value = props.initialType
+  }
+})
+watch(() => state.project?.id, () => {
+  currentJobs.value = []
+  videoJobsUnavailable.value = true
+  videoPendingFormats.value = []
+})
 
 // Export type: html5, png, jpg, gif, mp4
-const exportType = ref<'html5' | 'png' | 'jpg' | 'gif' | 'mp4'>('html5')
+const exportType = ref<'html5' | 'png' | 'jpg' | 'gif' | 'mp4'>(props.initialType || 'html5')
 const imageQuality = ref<1 | 2>(1) // 1x or 2x retina
 const jpgQuality = ref(90) // 0-100
 const gifFps = ref(10) // 5-15
@@ -40,7 +59,7 @@ const exportTypeOptions = [
   { label: 'PNG', value: 'png', icon: 'i-lucide-image', desc: 'Static images (lossless)' },
   { label: 'JPG', value: 'jpg', icon: 'i-lucide-image', desc: 'Static images (compressed)' },
   { label: 'GIF', value: 'gif', icon: 'i-lucide-film', desc: 'Animated images' },
-  { label: 'MP4', value: 'mp4', icon: 'i-lucide-video', desc: 'Video files (H.264)' },
+  { label: 'MP4', value: 'mp4', icon: 'i-lucide-video', desc: 'Video files (H.264)' }
 ]
 
 const isImageExport = computed(() => exportType.value === 'png' || exportType.value === 'jpg')
@@ -52,11 +71,12 @@ const estimatedVideoFrames = computed(() => Math.ceil(state.duration * videoFps.
 // Group by platform
 const platformGroups = computed(() => {
   const groups: Record<string, string[]> = {}
-  state.setKeys.forEach(key => {
+  state.setKeys.forEach((key) => {
     const fmt = FORMATS[key]
     if (!fmt) return
-    if (!groups[fmt.platform]) groups[fmt.platform] = []
-    groups[fmt.platform].push(key)
+    const platform = isVideoExport.value && ['Facebook', 'Instagram'].includes(fmt.platform) ? 'Social formats' : fmt.platform
+    if (!groups[platform]) groups[platform] = []
+    groups[platform].push(key)
   })
   return groups
 })
@@ -64,7 +84,7 @@ const platformGroups = computed(() => {
 function togglePlatform(platform: string) {
   const keys = platformGroups.value[platform] || []
   const allSelected = keys.every(k => selected.value.has(k))
-  keys.forEach(k => {
+  keys.forEach((k) => {
     if (allSelected) selected.value.delete(k)
     else selected.value.add(k)
   })
@@ -77,9 +97,10 @@ function toggleSize(key: string) {
 
 function buildExportHTML(fmtKey: string, layers: Layer[]): string {
   return buildBannerHTML(fmtKey, layers, {
+    playback: state.sets[fmtKey]?.playback || state.sets[state.activeKey]?.playback,
     includeAnimations: !isImageExport.value,
     bgColor: state.sets[fmtKey]?.bgColor || state.bgColor || '#0a0a10',
-    customFonts: getExportCustomFonts(layers),
+    customFonts: getExportCustomFonts(layers)
   })
 }
 
@@ -96,13 +117,16 @@ function getScaledLayers(fmtKey: string): Layer[] {
   const sx = tgtFmt.w / srcFmt.w
   const sy = tgtFmt.h / srcFmt.h
 
-  return srcLayers.map(l => {
+  return srcLayers.map((l) => {
     const n = { ...JSON.parse(JSON.stringify(l)) }
     n.x = Math.round(l.x * sx)
     n.y = Math.round(l.y * sy)
     n.w = Math.round(l.w * sx)
     n.h = Math.round(l.h * sy)
-    if (n.type === 'bg') { n.w = tgtFmt.w; n.h = tgtFmt.h }
+    if (n.type === 'bg') {
+      n.w = tgtFmt.w
+      n.h = tgtFmt.h
+    }
     if (n.fontSize) n.fontSize = Math.max(7, Math.round(n.fontSize * Math.min(sx, sy)))
     return n
   })
@@ -128,7 +152,9 @@ function exportCurrent() {
     const prevSelected = selected.value
     selected.value = keys
     const exportFn = isVideoExport.value ? exportVideos : isGifExport.value ? exportGifs : exportImages
-    exportFn().finally(() => { selected.value = prevSelected })
+    exportFn().finally(() => {
+      selected.value = prevSelected
+    })
     return
   }
   const html = buildExportHTML(state.activeKey, activeLayers.value)
@@ -163,7 +189,7 @@ async function exportZip() {
 
     toast.add({ title: 'Export complete', description: `${keys.length} banners exported as ZIP`, color: 'success' })
     emit('update:open', false)
-  } catch (err) {
+  } catch {
     toast.add({ title: 'Export failed', description: 'Something went wrong during export', color: 'error' })
   } finally {
     isExporting.value = false
@@ -185,9 +211,9 @@ async function exportImages() {
 
   try {
     // Build HTML for each selected format (static, no animations)
-    const formats = keys.map(key => {
+    const formats = keys.map((key) => {
       const fmt = FORMATS[key]
-      if (!fmt) return null
+      if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildExportHTML(key, layers)
       return { key, html, width: fmt.w, height: fmt.h }
@@ -203,8 +229,8 @@ async function exportImages() {
         formats,
         quality: imageQuality.value,
         format: exportType.value,
-        jpgQuality: exportType.value === 'jpg' ? jpgQuality.value : undefined,
-      },
+        jpgQuality: exportType.value === 'jpg' ? jpgQuality.value : undefined
+      }
     })
 
     exportProgress.value = 80
@@ -239,11 +265,11 @@ async function exportImages() {
     toast.add({
       title: 'Export complete',
       description: `${results.length} ${exportType.value.toUpperCase()}${qualityLabel} images exported`,
-      color: 'success',
+      color: 'success'
     })
     emit('update:open', false)
-  } catch (err: any) {
-    const message = err?.data?.statusMessage || err?.message || 'Image export failed'
+  } catch (err: unknown) {
+    const message = apiErrorDescription(err, 'Image export failed')
     toast.add({ title: 'Export failed', description: message, color: 'error' })
   } finally {
     isExporting.value = false
@@ -265,14 +291,15 @@ async function exportGifs() {
 
   try {
     // Build HTML for each selected format (WITH animations for GSAP)
-    const formats = keys.map(key => {
+    const formats = keys.map((key) => {
       const fmt = FORMATS[key]
-      if (!fmt) return null
+      if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
+        playback: state.sets[key]?.playback || state.sets[state.activeKey]?.playback,
         includeAnimations: true,
         bgColor: state.sets[key]?.bgColor || state.bgColor || '#0a0a10',
-        customFonts: getExportCustomFonts(layers),
+        customFonts: getExportCustomFonts(layers)
       })
       return { key, html, width: fmt.w, height: fmt.h }
     }).filter(Boolean)
@@ -284,8 +311,8 @@ async function exportGifs() {
       body: {
         projectId: state.project.id,
         formats,
-        fps: gifFps.value,
-      },
+        fps: gifFps.value
+      }
     })
 
     exportProgress.value = 80
@@ -314,11 +341,11 @@ async function exportGifs() {
     toast.add({
       title: 'Export complete',
       description: `${results.length} GIF${results.length > 1 ? 's' : ''} exported at ${gifFps.value}fps`,
-      color: 'success',
+      color: 'success'
     })
     emit('update:open', false)
-  } catch (err: any) {
-    const message = err?.data?.statusMessage || err?.message || 'GIF export failed'
+  } catch (err: unknown) {
+    const message = apiErrorDescription(err, 'GIF export failed')
     toast.add({ title: 'Export failed', description: message, color: 'error' })
   } finally {
     isExporting.value = false
@@ -327,6 +354,7 @@ async function exportGifs() {
 }
 
 async function exportVideos() {
+  if (isExporting.value || videoJobsBlocked.value) return
   const keys = [...selected.value]
   if (!keys.length) return
 
@@ -338,22 +366,23 @@ async function exportVideos() {
   isExporting.value = true
   exportProgress.value = 0
 
-  let pollTimer: ReturnType<typeof setTimeout> | null = null
+  const projectId = state.project.id
+  const suggestionClientId = state.project.clientId
+  const socialSuggestion = snapshotBannerSocialSuggestion(props.socialSuggestion)
 
   try {
-    const formats = keys.map(key => {
+    const formats = keys.map((key) => {
       const fmt = FORMATS[key]
-      if (!fmt) return null
+      if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
+        playback: state.sets[key]?.playback || state.sets[state.activeKey]?.playback,
         includeAnimations: true,
         bgColor: state.sets[key]?.bgColor || state.bgColor || '#0a0a10',
-        customFonts: getExportCustomFonts(layers),
+        customFonts: getExportCustomFonts(layers)
       })
       return { key, html, width: fmt.w, height: fmt.h }
     }).filter(Boolean)
-
-    exportProgress.value = 5
 
     // Enqueue render jobs
     const { jobIds } = await videoExportSession.attempt(async headers =>
@@ -361,7 +390,7 @@ async function exportVideos() {
         method: 'POST',
         headers,
         body: {
-          projectId: state.project.id,
+          projectId,
           formats,
           fps: videoFps.value,
           quality: videoQuality.value,
@@ -370,86 +399,22 @@ async function exportVideos() {
       })
     )
 
-    exportProgress.value = 10
-
-    // Poll until all jobs finish (max 150 polls ≈ 5 min at 2s intervals)
-    const MAX_POLL_ATTEMPTS = 150
-    let pollAttempts = 0
-    await new Promise<void>((resolve, reject) => {
-      const poll = async () => {
-        pollAttempts++
-        if (pollAttempts > MAX_POLL_ATTEMPTS) {
-          if (pollTimer) clearTimeout(pollTimer)
-          isExporting.value = false
-          toast.add({
-            title: 'Still processing',
-            description: 'Still processing — check the exports gallery.',
-            color: 'warning',
-          })
-          resolve()
-          return
-        }
-        try {
-          const { jobs } = await apiFetch<{ jobs: ExportJob[] }>(
-            `/api/agency/banner-studio/export-video/jobs?ids=${jobIds.join(',')}`,
-          )
-          const summary = summarizeExportJobs(jobs)
-          // Map render progress to 10–95% range
-          exportProgress.value = 10 + Math.round(summary.progress * 0.85)
-
-          if (summary.finished) {
-            if (summary.failed > 0) {
-              toast.add({
-                title: 'Some exports failed',
-                description: `${summary.failed} of ${summary.total} MP4 render${summary.failed > 1 ? 's' : ''} failed`,
-                color: 'error',
-              })
-            }
-            if (summary.urls.length > 0) {
-              const projectName = state.project?.name || 'banners'
-              if (summary.urls.length === 1) {
-                window.open(summary.urls[0], '_blank')
-              } else {
-                // Download as ZIP using the same downloadBlob helper
-                const zip = new JSZip()
-                const jobsDone = jobs.filter(j => j.status === 'done')
-                for (const job of jobsDone) {
-                  const fmt = FORMATS[job.formatKey]
-                  const filename = `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.mp4`
-                  const response = await fetch(job.url as string)
-                  const blob = await response.blob()
-                  zip.file(filename, blob)
-                }
-                exportProgress.value = 97
-                const blob = await zip.generateAsync({ type: 'blob' })
-                downloadBlob(blob, `${projectName}_videos.zip`)
-              }
-              exportProgress.value = 100
-              toast.add({
-                title: 'Export complete',
-                description: `${summary.urls.length} MP4 video${summary.urls.length > 1 ? 's' : ''} ready at ${videoFps.value}fps`,
-                color: 'success',
-              })
-              emit('update:open', false)
-            }
-            resolve()
-          } else {
-            pollTimer = setTimeout(poll, 2000)
-          }
-        } catch (pollErr) {
-          reject(pollErr)
-        }
-      }
-      poll()
-    })
-  } catch (err: any) {
-    const status = err?.statusCode ?? err?.status
+    if (!jobIds.length) throw new Error('No render jobs were created. Try exporting again.')
+    bannerRenderSuggestions.remember(projectId, suggestionClientId, jobIds, socialSuggestion)
+    if (state.project?.id === projectId) {
+      currentJobs.value = jobIds.map((jobId, index) => ({
+        jobId, formatKey: formats[index]?.key || '', status: 'queued', url: null, fileSize: null, error: null
+      }))
+      videoPendingFormats.value = [...new Set([...videoPendingFormats.value, ...keys])]
+    }
+    toast.add({ title: 'Video exports queued', description: `${jobIds.length} render jobs saved. You can close this dialog and return to check their status.`, color: 'success' })
+  } catch (err: unknown) {
+    const status = apiErrorStatus(err) ?? (err && typeof err === 'object' && 'status' in err ? err.status : null)
     const message = status === 503
       ? 'MP4 export isn\'t enabled yet — the render queue binding is not active'
       : describeBannerVideoExportError(err)
     toast.add({ title: 'Export failed', description: message, color: 'error' })
   } finally {
-    if (pollTimer) clearTimeout(pollTimer)
     isExporting.value = false
     exportProgress.value = 0
   }
@@ -485,10 +450,17 @@ const exportButtonLabel = computed(() => {
 <template>
   <UModal :open="props.open" @update:open="emit('update:open', $event)">
     <template #content>
-      <div class="p-4">
+      <div class="p-4 max-h-[90dvh] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold">Export Banners</h3>
-          <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="emit('update:open', false)" />
+          <h3 class="text-lg font-semibold">
+            Export Banners
+          </h3>
+          <UButton
+            icon="i-lucide-x"
+            variant="ghost"
+            size="xs"
+            @click="emit('update:open', false)"
+          />
         </div>
 
         <!-- Export type selector -->
@@ -500,7 +472,7 @@ const exportButtonLabel = computed(() => {
             :class="exportType === opt.value
               ? 'bg-(--ui-bg-elevated) text-(--ui-text) shadow-sm'
               : 'text-(--ui-text-muted) hover:text-(--ui-text)'"
-            @click="exportType = opt.value as any"
+            @click="() => { exportType = opt.value as any }"
           >
             <UIcon :name="opt.icon" class="w-3.5 h-3.5" />
             {{ opt.label }}
@@ -518,7 +490,7 @@ const exportButtonLabel = computed(() => {
                 :class="imageQuality === 1
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="imageQuality = 1"
+                @click="() => { imageQuality = 1 }"
               >
                 Standard (1x)
               </button>
@@ -527,7 +499,7 @@ const exportButtonLabel = computed(() => {
                 :class="imageQuality === 2
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="imageQuality = 2"
+                @click="() => { imageQuality = 2 }"
               >
                 Retina (2x)
               </button>
@@ -547,7 +519,7 @@ const exportButtonLabel = computed(() => {
               max="100"
               step="5"
               class="w-full accent-(--ui-primary)"
-            />
+            >
           </div>
         </div>
 
@@ -565,7 +537,7 @@ const exportButtonLabel = computed(() => {
               max="15"
               step="1"
               class="w-full accent-(--ui-primary)"
-            />
+            >
           </div>
           <div class="flex items-center justify-between text-[11px]">
             <span class="text-(--ui-text-muted)">
@@ -591,7 +563,7 @@ const exportButtonLabel = computed(() => {
                 :class="videoFps === fps
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="videoFps = fps"
+                @click="() => { videoFps = fps }"
               >
                 {{ fps }}fps
               </button>
@@ -607,7 +579,7 @@ const exportButtonLabel = computed(() => {
                 :class="videoQuality === 1
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="videoQuality = 1"
+                @click="() => { videoQuality = 1 }"
               >
                 Standard (1x)
               </button>
@@ -616,7 +588,7 @@ const exportButtonLabel = computed(() => {
                 :class="videoQuality === 2
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
                   : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="videoQuality = 2"
+                @click="() => { videoQuality = 2 }"
               >
                 Retina (2x)
               </button>
@@ -636,7 +608,7 @@ const exportButtonLabel = computed(() => {
               max="35"
               step="1"
               class="w-full accent-(--ui-primary)"
-            />
+            >
             <div class="flex justify-between text-[10px] text-(--ui-text-dimmed) mt-0.5">
               <span>Higher quality</span>
               <span>Smaller file</span>
@@ -679,13 +651,13 @@ const exportButtonLabel = computed(() => {
                   :model-value="selected.has(key)"
                   @update:model-value="toggleSize(key)"
                 />
-                <span class="text-xs">{{ FORMATS[key]?.name }}</span>
+                <span class="text-xs">{{ exportFormatLabel(key, FORMATS[key]?.name) }}</span>
                 <span class="text-[11px] font-mono text-(--ui-text-muted)">{{ FORMATS[key]?.w }}x{{ FORMATS[key]?.h }}</span>
                 <span v-if="isImageExport && imageQuality === 2" class="text-[10px] text-(--ui-text-dimmed)">
                   ({{ (FORMATS[key]?.w || 0) * 2 }}x{{ (FORMATS[key]?.h || 0) * 2 }})
                 </span>
                 <BannerFileSizeMeter
-                  v-if="state.sets[key]"
+                  v-if="exportType === 'html5' && state.sets[key]"
                   :total="estimateSize(key).total"
                   compact
                   class="flex-1"
@@ -696,16 +668,18 @@ const exportButtonLabel = computed(() => {
         </div>
 
         <!-- Platform validation -->
-        <div v-if="state.project?.id" class="mb-4 p-3 bg-(--ui-bg) rounded-lg">
-          <div class="text-xs font-medium text-(--ui-text-muted) mb-2">Platform Compliance</div>
+        <div v-if="state.project?.id && exportType === 'html5'" class="mb-4 p-3 bg-(--ui-bg) rounded-lg">
+          <div class="text-xs font-medium text-(--ui-text-muted) mb-2">
+            HTML5 display-ad compliance
+          </div>
           <BannerValidationBadges :project-id="state.project.id" />
         </div>
 
         <!-- Progress -->
-        <div v-if="isExporting" class="mb-4">
+        <div v-if="isExporting && !isVideoExport" class="mb-4">
           <div class="flex items-center justify-between mb-1">
             <span class="text-xs text-(--ui-text-muted)">
-              {{ isVideoExport ? 'Encoding videos...' : isGifExport ? 'Generating GIFs...' : isImageExport ? 'Rendering images...' : 'Exporting...' }}
+              {{ isGifExport ? 'Generating GIFs...' : isImageExport ? 'Rendering images...' : 'Exporting...' }}
             </span>
             <span class="text-xs font-mono text-(--ui-text-muted)">{{ exportProgress }}%</span>
           </div>
@@ -717,6 +691,22 @@ const exportButtonLabel = computed(() => {
           </div>
         </div>
 
+        <p v-if="isExporting && isVideoExport" role="status" class="mb-4 text-xs text-muted">
+          Submitting render jobs…
+        </p>
+
+        <BannerVideoResults
+          v-if="state.project?.id && isVideoExport"
+          :key="state.project.id"
+          :project-id="state.project.id"
+          :client-id="state.project.clientId"
+          :completed="currentJobs"
+          :social-suggestion="props.socialSuggestion"
+          :open="props.open"
+          @blocked="videoJobsUnavailable = $event"
+          @pending-formats="videoPendingFormats = $event"
+        />
+
         <!-- Actions -->
         <div class="flex gap-2 pt-3 border-t border-(--ui-border)">
           <UButton
@@ -724,7 +714,7 @@ const exportButtonLabel = computed(() => {
             :icon="isVideoExport ? 'i-lucide-video' : isGifExport ? 'i-lucide-film' : isImageExport ? 'i-lucide-image' : 'i-lucide-file-code'"
             variant="outline"
             size="sm"
-            :disabled="isExporting"
+            :disabled="isExporting || (isVideoExport && currentVideoBlocked)"
             @click="exportCurrent"
           />
           <UButton
@@ -732,7 +722,7 @@ const exportButtonLabel = computed(() => {
             :icon="isVideoExport ? 'i-lucide-video' : isGifExport ? 'i-lucide-film' : isImageExport ? 'i-lucide-images' : 'i-lucide-archive'"
             size="sm"
             class="flex-1"
-            :disabled="selected.size === 0 || isExporting"
+            :disabled="selected.size === 0 || isExporting || (isVideoExport && videoJobsBlocked)"
             :loading="isExporting"
             @click="handleExport"
           />

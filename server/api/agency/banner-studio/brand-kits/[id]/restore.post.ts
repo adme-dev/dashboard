@@ -2,6 +2,7 @@ import { transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getBrandKit, snapshotBrandKitVersion } from '~~/server/utils/banner/brandKits'
+import { lockBrandKitForWrite } from '~~/server/utils/banner/brandKitAccess'
 
 /** POST /brand-kits/:id/restore { version } — roll content back to a snapshot (current state is versioned first) */
 export default defineEventHandler(async (event) => {
@@ -11,6 +12,7 @@ export default defineEventHandler(async (event) => {
   if (!Number.isInteger(version)) throw createError({ statusCode: 400, statusMessage: 'version is required' })
 
   await transaction(async (db) => {
+    await lockBrandKitForWrite(event, db, id)
     const v = await db.query(`SELECT snapshot FROM brand_kit_versions WHERE brand_kit_id = $1 AND version = $2`, [id, version])
     const snap = v.rows?.[0]?.snapshot
     if (!snap) throw createError({ statusCode: 404, statusMessage: 'Version not found' })

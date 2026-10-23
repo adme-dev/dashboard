@@ -1,6 +1,7 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryOneFresh, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { bannerRenderDownloadUrl } from '~~/server/utils/banner/renderJob'
+import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 interface BannerExportRow {
   id: string
@@ -16,13 +17,20 @@ interface BannerExportRow {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const query = getQuery(event)
   const { projectId } = query
 
   if (!projectId) {
     throw createError({ statusCode: 400, statusMessage: 'projectId is required' })
+  }
+  const project = await queryOneFresh<{ client_id: string | null, created_by: string | null }>(
+    'SELECT client_id, created_by FROM banner_projects WHERE id = $1', [projectId])
+  if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+  if (project.client_id) await requireSocialClientAccess(event, project.client_id)
+  else if (project.created_by !== user.id && !hasAllSocialClientAccess(user)) {
+    throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
   }
 
   try {
@@ -46,6 +54,8 @@ export default defineEventHandler(async (event) => {
 
     return rows.map(({ exportType, renderJobId, ...row }) => ({
       ...row,
+      exportType,
+      renderJobId,
       url: exportType === 'mp4'
         ? (renderJobId ? bannerRenderDownloadUrl(renderJobId) : null)
         : row.url

@@ -41,6 +41,21 @@ describe('governed creative generation models', () => {
     })).toThrow(/Vehicle generation is blocked/)
   })
 
+  it.each([
+    ['1:1', '1024x1024'],
+    ['16:9', '1344x768'],
+    ['9:16', '768x1344'],
+    ['4:3', '1216x896'],
+    ['3:4', '896x1216']
+  ] as const)('uses the Recraft V4.1 supported size for %s', (aspectRatio, size) => {
+    expect(buildCreativeGenerationInputs({
+      modelId: 'aigateway/recraft-offer-card',
+      subjectType: 'non_vehicle',
+      prompt: 'Isolated chrome lettering',
+      aspectRatio
+    })).toMatchObject({ size })
+  })
+
   it('emits the exact safe Pruna transform payload', () => {
     expect(buildCreativeGenerationInputs({
       modelId: 'aigateway/pruna-upscale',

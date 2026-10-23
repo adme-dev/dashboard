@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
+import { validateBannerAssetUpload } from '~~/server/utils/banner/assetUploadValidation'
 import {
   createBannerUploadSession,
   nextBannerUploadKey,
@@ -19,6 +20,17 @@ function keyFactory(...keys: string[]) {
 }
 
 describe('banner upload browser identity', () => {
+  it('binds the client into the digest and multipart body with server parity', async () => {
+    const file = jpegFile()
+    const clientA = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA'
+    const clientB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const a = await prepareBannerUploadRequest(file, 'banner-upload:fixed-key', clientA)
+    const b = await prepareBannerUploadRequest(file, 'banner-upload:fixed-key', clientB)
+    const legacy = await prepareBannerUploadRequest(file, 'banner-upload:fixed-key')
+    expect(a.body.get('clientId')).toBe(clientA.toLowerCase())
+    expect(a.headers['X-Banner-Upload-Digest']).toBe(validateBannerAssetUpload({ filename: file.name, type: file.type, data: JPEG }, clientA).requestDigest)
+    expect(new Set([a, b, legacy].map(r => r.headers['X-Banner-Upload-Digest'])).size).toBe(3)
+  })
   it('hashes the canonical validated upload identity and sends stable headers', async () => {
     const file = jpegFile()
 

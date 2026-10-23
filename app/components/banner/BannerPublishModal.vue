@@ -145,6 +145,7 @@ async function publish() {
       }
 
       const html = buildBannerHTML(key, layers, {
+        playback: state.sets[key]?.playback,
         includeAnimations: true,
         bgColor: state.sets[key]?.bgColor || state.bgColor || '#0a0a10',
         customFonts: getExportCustomFonts(layers),
@@ -366,7 +367,7 @@ function getPublishedMenuItems(pub: BannerPublished) {
         <div class="mb-4">
           <button
             class="flex items-center gap-1.5 text-xs text-(--ui-text-muted) hover:text-(--ui-text) transition-colors mb-2"
-            @click="scheduleMode = !scheduleMode"
+            @click="() => { scheduleMode = !scheduleMode }"
           >
             <UIcon name="i-lucide-clock" class="w-3.5 h-3.5" />
             {{ scheduleMode ? 'Publish now instead' : 'Schedule for later' }}
@@ -460,7 +461,10 @@ function getPublishedMenuItems(pub: BannerPublished) {
               {{ FORMATS[tagsForBanner?.formatKey || '']?.name }} — {{ tagsForBanner?.width }}x{{ tagsForBanner?.height }}
             </p>
           </div>
-          <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="showTags = false" />
+          <UButton icon="i-lucide-x"
+                   variant="ghost"
+                   size="xs"
+                   @click="() => { showTags = false }" />
         </div>
 
         <div class="space-y-4">

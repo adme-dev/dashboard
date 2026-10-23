@@ -4,6 +4,7 @@ import { registerGodModeStudioMutationFamilies } from '~~/server/utils/video/god
 import { registerGodModeChatMutationFamily } from '~~/server/utils/ai/godModeMutationFamily'
 import { registerGodModeBannerAssetUploadFamily } from '~~/server/utils/banner/godModeAssetUpload'
 import { registerGodModeBannerProjectCreationFamily } from '~~/server/utils/banner/godModeProjectCreation'
+import { registerGodModeBannerSocialDraftFamily } from '~~/server/utils/banner/godModeSocialDraft'
 import { registerGodModeAgencyClientMutationFamilies } from '~~/server/utils/clients/godModeMutations'
 import { registerGodModeCatalogSourceMutationFamily } from '~~/server/utils/crm/catalogSourceGodMode'
 import { registerGodModeGoogleConversionActionMutationFamily } from '~~/server/utils/measurement/googleConversionActionGodMode'
@@ -26,6 +27,7 @@ registerGodModeMediaExternalMutationFamilies()
 registerGodModeStudioMutationFamilies()
 registerGodModeBannerAssetUploadFamily()
 registerGodModeBannerProjectCreationFamily()
+registerGodModeBannerSocialDraftFamily()
 registerGodModeDealerFeedMutationFamilies()
 registerGodModeCatalogSourceMutationFamily()
 registerGodModeSocialAccountMapMutationFamily()

@@ -70,28 +70,31 @@ export default {
     }
 
     if (batch.queue === 'banner-render') {
-      const { runBannerRenderJob } = await import('./bannerRenderWorker')
+      const { runBannerRenderJob, BannerRenderBusyError } = await import('./bannerRenderWorker')
       const { renderBanner, getSourceHtml, uploadBannerMp4 } = await import('./bannerRenderContainer')
       const db = await import('./db')
       for (const msg of batch.messages) {
         const { jobId } = msg.body as { jobId: string }
         try {
-          await runBannerRenderJob({ jobId }, {
+          const completed = await runBannerRenderJob({ jobId }, {
             loadJob: db.dbLoadBannerJob,
             markRendering: db.dbMarkBannerRendering,
+            renewLease: db.dbRenewBannerLease,
             getSourceHtml: (key) => getSourceHtml(env as any, key),
             render: (html, p) => renderBanner(env as any, { jobId, html, ...p }),
-            uploadMp4: (projectId, formatKey, bytes) => uploadBannerMp4(env as any, projectId, formatKey, bytes, jobId),
-            insertExport: db.dbInsertBannerExport,
+            uploadMp4: (projectId, formatKey, bytes) => uploadBannerMp4(env as any, projectId, formatKey, bytes, jobId, crypto.randomUUID()),
+            discardUpload: (key) => (env.AUDIO_BUCKET as R2Bucket).delete(key),
             markDone: db.dbMarkBannerDone,
             markFailed: db.dbMarkBannerFailed,
           })
           // Cleanup source HTML on success only (keep on failure so retries can re-read).
-          try { await (env.AUDIO_BUCKET as R2Bucket).delete(`banner-render-jobs/${jobId}/source.html`) } catch { /* ignore */ }
+          if (completed) {
+            try { await (env.AUDIO_BUCKET as R2Bucket).delete(`banner-render-jobs/${jobId}/source.html`) } catch { /* ignore */ }
+          }
           msg.ack()
         } catch (e) {
           console.error('audio-jobs.banner-render.error', jobId, e)
-          msg.retry({ delaySeconds: 30 })
+          msg.retry({ delaySeconds: e instanceof BannerRenderBusyError ? e.retryAfterSeconds : 30 })
         }
       }
       return

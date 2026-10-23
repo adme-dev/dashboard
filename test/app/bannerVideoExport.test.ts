@@ -6,7 +6,7 @@ import { createBannerVideoExportSession } from '~~/app/utils/bannerVideoExport'
 describe('banner video export request identity', () => {
   it('routes the MP4 enqueue request through the shared identity session', () => {
     const source = readFileSync('app/components/banner/BannerExportModal.client.vue', 'utf8')
-    const enqueue = source.match(/videoExportSession\.attempt\([\s\S]*?exportProgress\.value = 10/)?.[0]
+    const enqueue = source.match(/videoExportSession\.attempt\([\s\S]*?if \(!jobIds\.length\)/)?.[0]
 
     expect(enqueue).toContain('\'/api/agency/banner-studio/export-video\'')
     expect(enqueue).toContain('headers,')

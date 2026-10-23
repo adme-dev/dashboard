@@ -28,6 +28,7 @@ const {
   duplicateLayer,
   updateLayer,
   setActiveArtboard,
+  zoomToFitFormat,
   loadProject,
   saveProject,
   initDefault,
@@ -128,6 +129,11 @@ watch(() => activeLayers.value, (layers) => {
 
 // Left panel tab state
 const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history'>('sets')
+const leftPanelCollapsed = useCookie<boolean>('banner-studio-sidebar-collapsed', {
+  default: () => false,
+  maxAge: 60 * 60 * 24 * 365,
+  sameSite: 'lax'
+})
 const leftTabItems = [
   { id: 'sets' as const, label: 'Sets', icon: 'i-lucide-layers' },
   { id: 'templates' as const, label: 'Templates', icon: 'i-lucide-layout-template' },
@@ -137,10 +143,48 @@ const leftTabItems = [
   { id: 'brand' as const, label: 'Brand', icon: 'i-lucide-palette' },
   { id: 'history' as const, label: 'History', icon: 'i-lucide-history' },
 ]
+function openLeftPanel(tab: string) {
+  const item = leftTabItems.find(item => item.id === tab)
+  if (!item) return
+  leftTab.value = item.id
+  leftPanelCollapsed.value = false
+}
 
 // Modals
 const showSizePicker = ref(false)
 const showExportModal = ref(false)
+const showDesignAssistant = ref(false)
+const exportInitialType = ref<'html5' | 'mp4'>('html5')
+const socialSuggestion = ref<{ caption?: string, suggestedSchedule?: string } | undefined>()
+const { openGenerate: openGenerateImage } = useAiImageGenerate()
+async function prepareAssistantSocial(suggestion: { caption?: string, suggestedSchedule?: string }) {
+  const sourceProjectId = state.project?.id
+  const sourceCanvas = JSON.stringify(state.sets)
+  const sourceClient = state.project?.clientId
+  if (!sourceProjectId) return
+  try {
+    await saveProject()
+    if (state.project?.id !== sourceProjectId) return
+    if (state.isDirty || JSON.stringify(state.sets) !== sourceCanvas || state.project?.clientId !== sourceClient) {
+      toast.add({ title: 'Project changed', description: 'Review the latest canvas and prepare the export again.', color: 'warning' })
+      showDesignAssistant.value = true
+      return
+    }
+    socialSuggestion.value = suggestion
+    exportInitialType.value = 'mp4'
+    showExportModal.value = true
+  } catch {
+    if (state.project?.id !== sourceProjectId) return
+    toast.add({ title: 'Could not save project', description: 'Your applied design is still on the canvas. Try preparing the export again.', color: 'error' })
+    showDesignAssistant.value = true
+  }
+}
+watch(showExportModal, (open) => {
+  if (!open) {
+    exportInitialType.value = 'html5'
+    socialSuggestion.value = undefined
+  }
+})
 const showPlayAll = ref(false)
 const showGenerateUrl = ref(false)
 const showDissector = ref(false)
@@ -157,6 +201,7 @@ const previewHtml = computed(() => {
   const layers = state.sets[state.activeKey]?.layers
   if (!layers?.length) return ''
   return buildBannerHTML(state.activeKey, layers, {
+    playback: state.sets[state.activeKey]?.playback,
     includeAnimations: true,
     bgColor: state.sets[state.activeKey]?.bgColor || state.bgColor || '#0a0a10',
     customFonts: getExportCustomFonts(layers),
@@ -263,16 +308,24 @@ watch(showProjectSettings, (open) => {
   settingsClientId.value = state.project?.clientId || 'none'
 })
 async function saveProjectSettings() {
-  if (!state.project?.id) { state.project = { ...(state.project as any), name: settingsName.value }; showProjectSettings.value = false; return }
+  const nextClient = settingsClientId.value === 'none' ? null : settingsClientId.value
+  const clientName = clientsForSettings.value?.find(c => c.id === nextClient)?.name
+  if (!state.project?.id) {
+    const prevClient = state.project?.clientId
+    state.project = { ...(state.project as any), name: settingsName.value.trim(), clientId: nextClient, clientName }
+    state.isDirty = true
+    showProjectSettings.value = false
+    if (nextClient && nextClient !== prevClient) offerDefaultBrandKit(nextClient)
+    return
+  }
   settingsSaving.value = true
   const prevClient = state.project.clientId
   try {
-    const nextClient = settingsClientId.value === 'none' ? null : settingsClientId.value
     const updated = await $fetch(`/api/agency/banner-studio/projects/${state.project.id}`, {
       method: 'PATCH',
       body: { name: settingsName.value.trim() || state.project.name, clientId: nextClient },
     }) as any
-    state.project = { ...state.project, name: updated?.name ?? settingsName.value, clientId: nextClient, clientName: clientsForSettings.value?.find(c => c.id === nextClient)?.name }
+    state.project = { ...state.project, name: updated?.name ?? settingsName.value, clientId: nextClient, clientName }
     showProjectSettings.value = false
     if (nextClient && nextClient !== prevClient) offerDefaultBrandKit(nextClient)
   } catch {
@@ -341,6 +394,7 @@ const REVIEW_STATUS_LABELS: Record<string, string> = {
 
 async function handleSave() {
   if (state.isSaving) return // ignore double-clicks while a save is in flight
+  state.isSaving = true
   try {
     // Auto-create project on first save when route is "new"
     if (!state.project?.id) {
@@ -349,6 +403,7 @@ async function handleSave() {
         headers: { 'Idempotency-Key': createProjectIdempotencyKey },
         body: {
           name: state.project?.name || 'Untitled Banner',
+          clientId: state.project?.clientId || null,
           canvasData: state.sets,
         },
       })
@@ -364,6 +419,8 @@ async function handleSave() {
   } catch (error) {
     if (!isAmbiguousApiFailure(error)) createProjectIdempotencyKey = crypto.randomUUID()
     toast.add({ title: 'Error', description: 'Failed to save project', color: 'error' })
+  } finally {
+    state.isSaving = false
   }
 }
 
@@ -392,28 +449,34 @@ async function handleSaveVersion() {
 
 // Zoom controls
 function zoomIn() {
-  state.wsScale = Math.min(2, state.wsScale * 1.2)
+  state.wsScale = Math.min(4, state.wsScale * 1.2)
+}
+function resetZoom() {
+  state.wsScale = 1
 }
 function zoomOut() {
   state.wsScale = Math.max(0.05, state.wsScale / 1.2)
 }
 function zoomFit() {
-  const fmt = activeFormat.value
-  if (!fmt) { state.wsScale = 0.22; return }
-  // Measure the actual scrollable canvas area (panels can be resized/collapsed),
-  // falling back to a window-based estimate before the canvas has mounted.
   const canvasEl = (canvasRef.value as any)?.$el as HTMLElement | undefined
-  const pad = 64 // canvas p-8 on both sides
-  const availW = canvasEl ? canvasEl.clientWidth - pad : Math.max(400, window.innerWidth - 64 - 256 - 40 - 288)
-  const availH = canvasEl ? canvasEl.clientHeight - pad - 40 /* artboard label */ : Math.max(300, window.innerHeight - 64 - 40 - 200)
-  const scale = Math.min(availW / fmt.w, availH / fmt.h) * 0.92
-  state.wsScale = Math.max(0.1, Math.min(4, Math.round(scale * 100) / 100))
+  zoomToFitFormat(state.activeKey, canvasEl
+    ? { width: canvasEl.clientWidth, height: canvasEl.clientHeight }
+    : undefined, 4)
 }
 
 const zoomPercent = computed(() => Math.round(state.wsScale * 100))
 
 // Secondary actions live in an overflow menu so the toolbar stays scannable
 const moreMenuItems = computed(() => [[
+  { label: 'Create with AI', icon: 'i-lucide-wand-sparkles', onSelect: () => { showDesignAssistant.value = true } },
+  { label: 'From URL', icon: 'i-lucide-globe', onSelect: () => { showGenerateUrl.value = true } },
+  { label: 'Dissect artwork', icon: 'i-lucide-scan-line', onSelect: () => { showDissector.value = true } }
+], [
+  { label: 'Preview in ad placements', icon: 'i-lucide-eye', onSelect: () => { showPreview.value = true } },
+  { label: 'Ad tags & embed code', icon: 'i-lucide-code', onSelect: () => { showPublishModal.value = true } },
+  { label: 'Publish to Meta Ads', icon: 'i-lucide-megaphone', onSelect: () => { showAdPublish.value = true } },
+  ...(hasFeedBindings.value ? [{ label: 'Generate DCO variants', icon: 'i-lucide-layers', onSelect: () => { showDCOModal.value = true } }] : [])
+], [
   { label: 'Save version', icon: 'i-lucide-bookmark-plus', onSelect: () => { showSaveVersion.value = true } },
   { label: 'Save as template', icon: 'i-lucide-bookmark', onSelect: () => { showSaveTemplate.value = true } },
 ], [
@@ -428,18 +491,26 @@ const { activeSize } = useBannerFileSize()
 </script>
 
 <template>
-  <div class="flex flex-col h-[calc(100vh-0px)] overflow-hidden bg-[#1a1a1e]">
+  <div class="@container flex flex-col min-w-0 h-[calc(100vh-0px)] overflow-hidden bg-[#1a1a1e]">
     <!-- Top Toolbar -->
-    <div class="flex items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2d2d32] shrink-0">
+    <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2d2d32] shrink-0">
       <!-- Project name -->
       <div class="flex items-center gap-2 shrink-0">
         <UIcon name="i-lucide-palette" class="text-(--ui-text-muted) shrink-0" />
         <!-- Project settings: name + client. Name text hidden on narrow viewports (tab title carries it) -->
         <UPopover v-model:open="showProjectSettings">
           <UTooltip text="Project settings — name & client">
-            <button class="flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-white/[0.05] transition-colors min-w-0">
-              <span class="hidden 2xl:inline text-sm font-semibold truncate max-w-[12rem]">{{ state.project?.name || 'New Banner' }}</span>
-              <UBadge v-if="state.project?.clientName" variant="subtle" color="neutral" size="xs" class="hidden xl:inline-flex max-w-[9rem] truncate">{{ state.project.clientName }}</UBadge>
+            <button aria-label="Project settings" class="flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-white/[0.05] transition-colors min-w-0">
+              <span class="hidden @2xl:inline text-sm font-semibold truncate max-w-[12rem]">{{ state.project?.name || 'New Banner' }}</span>
+              <UBadge
+                v-if="state.project?.clientName"
+                variant="subtle"
+                color="neutral"
+                size="xs"
+                class="hidden @4xl:inline-flex max-w-[9rem] truncate"
+              >
+                {{ state.project.clientName }}
+              </UBadge>
               <UIcon name="i-lucide-chevron-down" class="w-3 h-3 text-(--ui-text-dimmed) shrink-0" />
             </button>
           </UTooltip>
@@ -452,7 +523,10 @@ const { activeSize } = useBannerFileSize()
                 <USelectMenu v-model="settingsClientId" :items="clientSelectItems" value-key="value" class="w-full" searchable />
               </UFormField>
               <div class="flex justify-end gap-2">
-                <UButton label="Cancel" variant="ghost" size="sm" @click="showProjectSettings = false" />
+                <UButton label="Cancel"
+                         variant="ghost"
+                         size="sm"
+                         @click="() => { showProjectSettings = false }" />
                 <UButton label="Save" size="sm" :loading="settingsSaving" @click="saveProjectSettings" />
               </div>
             </div>
@@ -474,8 +548,62 @@ const { activeSize } = useBannerFileSize()
         </UBadge>
       </div>
 
-      <div class="h-4 w-px bg-[#3a3a3f]" />
+      <!-- Essential actions remain visible; secondary actions also live in the menu. -->
+      <div class="ml-auto flex items-center gap-1 shrink-0">
+        <UTooltip :text="state.isDirty ? 'Save — unsaved changes' : 'Save'" :kbds="['meta', 'S']">
+          <UButton
+            icon="i-lucide-save"
+            aria-label="Save banner"
+            variant="ghost"
+            size="xs"
+            class="relative"
+            :loading="state.isSaving"
+            @click="handleSave"
+          >
+            <span
+              v-if="state.isDirty && !state.isSaving"
+              class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-warning ring-2 ring-[#2d2d32]"
+            />
+          </UButton>
+        </UTooltip>
+        <div class="hidden @5xl:flex items-center gap-1">
+          <UButton
+            label="Create with AI"
+            icon="i-lucide-wand-sparkles"
+            variant="soft"
+            size="xs"
+            @click="() => { showDesignAssistant = true }"
+          />
+          <UButton
+            label="Publish"
+            icon="i-lucide-megaphone"
+            variant="soft"
+            size="xs"
+            @click="() => { showAdPublish = true }"
+          />
+        </div>
+        <UButton
+          label="Export"
+          icon="i-lucide-download"
+          size="xs"
+          @click="() => { showExportModal = true }"
+        />
+        <UDropdownMenu :items="moreMenuItems" :content="{ align: 'end' }">
+          <UTooltip text="Create, preview, publish and manage this banner">
+            <UButton
+              label="Actions"
+              icon="i-lucide-ellipsis"
+              variant="soft"
+              color="neutral"
+              size="xs"
+            />
+          </UTooltip>
+        </UDropdownMenu>
+      </div>
+    </div>
 
+    <!-- Canvas controls wrap independently of project actions. -->
+    <div aria-label="Canvas controls" class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#252528] shrink-0">
       <!-- Undo / Redo -->
       <div class="flex gap-0.5">
         <UTooltip text="Undo" :kbds="['meta', 'Z']">
@@ -488,32 +616,13 @@ const { activeSize } = useBannerFileSize()
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
 
-      <!-- Generate from URL -->
-      <UButton
-        icon="i-lucide-globe"
-        label="From URL"
-        variant="ghost"
-        size="xs"
-        @click="showGenerateUrl = true"
-      />
-      <!-- Dissect banner -->
-      <UButton
-        icon="i-lucide-scan-line"
-        label="Dissect"
-        variant="ghost"
-        size="xs"
-        @click="showDissector = true"
-      />
-
-      <div class="flex-1" />
-
       <!-- Active format chip -->
       <UButton
         v-if="activeFormat"
         variant="soft"
         size="xs"
         class="ring-1 ring-(--ui-primary)"
-        @click="showSizePicker = true"
+        @click="() => { showSizePicker = true }"
       >
         <span class="font-mono text-xs">{{ activeFormat.w }}×{{ activeFormat.h }}</span>
         <span class="text-xs text-(--ui-text-muted)">{{ activeFormat.name }}</span>
@@ -521,7 +630,7 @@ const { activeSize } = useBannerFileSize()
       </UButton>
 
       <!-- File size indicator -->
-      <BannerFileSizeMeter :total="activeSize.total" class="w-24 hidden 2xl:block" />
+      <BannerFileSizeMeter :total="activeSize.total" class="w-24 hidden @4xl:block" />
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
 
@@ -533,7 +642,7 @@ const { activeSize } = useBannerFileSize()
             variant="ghost"
             size="xs"
             :class="state.showGrid ? 'text-(--ui-primary)' : ''"
-            @click="state.showGrid = !state.showGrid"
+            @click="() => { state.showGrid = !state.showGrid }"
           />
         </UTooltip>
         <UTooltip text="Snap to grid">
@@ -542,7 +651,7 @@ const { activeSize } = useBannerFileSize()
             variant="ghost"
             size="xs"
             :class="state.snapToGrid ? 'text-(--ui-primary)' : ''"
-            @click="state.snapToGrid = !state.snapToGrid"
+            @click="() => { state.snapToGrid = !state.snapToGrid }"
           />
         </UTooltip>
         <UPopover v-if="safeZoneKeys.length > 1">
@@ -572,7 +681,9 @@ const { activeSize } = useBannerFileSize()
       <!-- Zoom -->
       <div class="flex items-center gap-1">
         <UTooltip text="Zoom out"><UButton icon="i-lucide-zoom-out" variant="ghost" size="xs" @click="zoomOut" /></UTooltip>
-        <span class="text-[11px] font-mono tabular-nums text-[#888] w-12 text-center">{{ zoomPercent }}%</span>
+        <UTooltip text="Actual size (100%)">
+          <UButton :label="`${zoomPercent}%`" aria-label="Reset zoom to actual size (100%)" variant="ghost" color="neutral" size="xs" class="w-14 justify-center font-mono tabular-nums" @click="resetZoom" />
+        </UTooltip>
         <UTooltip text="Zoom in"><UButton icon="i-lucide-zoom-in" variant="ghost" size="xs" @click="zoomIn" /></UTooltip>
         <UTooltip text="Fit to view"><UButton icon="i-lucide-scan" variant="ghost" size="xs" @click="zoomFit" /></UTooltip>
       </div>
@@ -597,65 +708,55 @@ const { activeSize } = useBannerFileSize()
         </UTooltip>
       </div>
 
-      <div class="h-4 w-px bg-[#3a3a3f]" />
-
-      <!-- Actions: primary (Save · Preview · Ad tags · Publish · Export) + overflow -->
-      <div class="ml-auto flex items-center gap-1 shrink-0">
-      <UTooltip :text="state.isDirty ? 'Save — unsaved changes' : 'Save'" :kbds="['meta', 'S']">
-        <UButton
-          icon="i-lucide-save"
-          variant="ghost"
-          size="xs"
-          class="relative"
-          :loading="state.isSaving"
-          @click="handleSave"
-        >
-          <span
-            v-if="state.isDirty && !state.isSaving"
-            class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-warning ring-2 ring-[#2d2d32]"
-          />
-        </UButton>
-      </UTooltip>
-      <UTooltip text="Preview in ad placements">
-        <UButton icon="i-lucide-eye" variant="ghost" size="xs" @click="showPreview = true" />
-      </UTooltip>
-      <UTooltip text="Ad tags — click-through URL, pixels and embed code">
-        <UButton label="Ad tags" icon="i-lucide-code" variant="soft" size="xs" @click="showPublishModal = true" />
-      </UTooltip>
-      <UTooltip text="Publish to Meta Ads">
-        <UButton label="Publish" icon="i-lucide-megaphone" variant="soft" size="xs" @click="showAdPublish = true" />
-      </UTooltip>
-      <UButton v-if="hasFeedBindings" label="DCO" icon="i-lucide-layers" variant="soft" color="warning" size="xs" @click="showDCOModal = true" />
-      <UButton label="Export" icon="i-lucide-download" size="xs" @click="showExportModal = true" />
-      <UDropdownMenu :items="moreMenuItems" :content="{ align: 'end' }">
-        <UTooltip text="More — versions, templates, analytics, A/B tests">
-          <UButton icon="i-lucide-ellipsis" variant="ghost" size="xs" />
-        </UTooltip>
-      </UDropdownMenu>
-      </div>
     </div>
 
     <!-- Main Content -->
     <div class="flex flex-1 min-h-0 overflow-hidden">
       <!-- Left Sidebar -->
-      <div class="w-64 shrink-0 border-r border-[#3a3a3f] flex flex-col bg-[#252528]">
+      <aside
+        aria-label="Banner tools"
+        class="shrink-0 min-h-0 border-r border-[#3a3a3f] flex flex-col bg-[#252528]"
+        :class="leftPanelCollapsed ? 'w-12' : 'w-64'"
+      >
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-[#3a3a3f] p-1.5">
+          <span v-if="!leftPanelCollapsed" class="pl-1.5 text-xs font-medium text-muted">Tools & resources</span>
+          <UTooltip :text="leftPanelCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+            <UButton
+              :icon="leftPanelCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
+              :aria-label="leftPanelCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+              :aria-expanded="!leftPanelCollapsed"
+              aria-controls="banner-tools-content"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              class="shrink-0"
+              @click="() => { leftPanelCollapsed = !leftPanelCollapsed }"
+            />
+          </UTooltip>
+        </div>
         <!-- Left tabs (icon-only with tooltips) -->
-        <div class="flex items-center border-b border-[#3a3a3f] bg-[#2a2a2e]">
+        <div
+          class="flex bg-[#2a2a2e]"
+          :class="leftPanelCollapsed ? 'flex-col items-center gap-1 overflow-y-auto py-2' : 'shrink-0 items-center border-b border-[#3a3a3f]'"
+        >
           <UTooltip v-for="tab in leftTabItems" :key="tab.id" :text="tab.label" :delay-duration="300">
-            <button
-              class="flex-1 flex items-center justify-center py-2.5 transition-colors"
-              :class="leftTab === tab.id
-                ? 'text-[#4a8fe8] border-b-2 border-[#4a8fe8] bg-[#4a8fe8]/5'
-                : 'text-[#666] hover:text-[#999]'"
-              @click="leftTab = tab.id"
-            >
-              <UIcon :name="tab.icon" class="w-4 h-4" />
-            </button>
+            <UButton
+              :icon="tab.icon"
+              :aria-label="tab.label"
+              :aria-pressed="leftTab === tab.id && !leftPanelCollapsed"
+              aria-controls="banner-tools-content"
+              :variant="leftTab === tab.id ? 'soft' : 'ghost'"
+              :color="leftTab === tab.id ? 'primary' : 'neutral'"
+              size="sm"
+              class="justify-center shrink-0"
+              :class="leftPanelCollapsed ? 'size-9' : 'flex-1 rounded-none py-2.5'"
+              @click="openLeftPanel(tab.id)"
+            />
           </UTooltip>
         </div>
 
         <!-- Left panel content -->
-        <div class="flex-1 overflow-y-auto">
+        <div v-show="!leftPanelCollapsed" id="banner-tools-content" class="flex-1 min-h-0 overflow-y-auto">
           <BannerSetsPanel v-if="leftTab === 'sets'" />
           <BannerTemplatesPanel v-else-if="leftTab === 'templates'" />
           <BannerElementsPanel v-else-if="leftTab === 'elements'" />
@@ -664,10 +765,10 @@ const { activeSize } = useBannerFileSize()
           <BannerBrandPanel v-else-if="leftTab === 'brand'" />
           <BannerVersionHistoryPanel v-else-if="leftTab === 'history'" :project-id="projectId" />
         </div>
-      </div>
+      </aside>
 
       <!-- Vertical Toolbar -->
-      <BannerToolbar @switch-tab="(tab: string) => leftTab = tab as any" />
+      <BannerToolbar @switch-tab="openLeftPanel" />
 
       <!-- Center: Canvas + Timeline -->
       <div class="flex-1 flex flex-col min-w-0">
@@ -703,7 +804,18 @@ const { activeSize } = useBannerFileSize()
 
     <!-- Modals -->
     <BannerSizePicker v-if="showSizePicker" v-model:open="showSizePicker" />
-    <BannerExportModal v-if="showExportModal" v-model:open="showExportModal" />
+    <BannerDesignAssistant
+      v-model:open="showDesignAssistant"
+      :project-id="projectId"
+      @prepare-social="prepareAssistantSocial"
+      @generate-image="openGenerateImage"
+    />
+    <BannerExportModal
+      v-if="showExportModal"
+      v-model:open="showExportModal"
+      :initial-type="exportInitialType"
+      :social-suggestion="socialSuggestion"
+    />
     <BannerPlayAll v-if="showPlayAll" v-model:open="showPlayAll" />
     <BannerGenerateFromUrl v-if="showGenerateUrl" v-model:open="showGenerateUrl" />
     <BannerDissectorModal v-if="showDissector" v-model:open="showDissector" />
@@ -727,7 +839,10 @@ const { activeSize } = useBannerFileSize()
               <NuxtLink to="/agency/ad-preview" target="_blank">
                 <UButton label="Open Full Page" icon="i-lucide-external-link" variant="ghost" size="xs" />
               </NuxtLink>
-              <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="showPreview = false" />
+              <UButton icon="i-lucide-x"
+                       variant="ghost"
+                       size="xs"
+                       @click="() => { showPreview = false }" />
             </div>
           </div>
           <div class="flex flex-wrap gap-6 items-start justify-center">
@@ -800,7 +915,10 @@ const { activeSize } = useBannerFileSize()
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-bold">Save Version</h2>
-            <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="showSaveVersion = false" />
+            <UButton icon="i-lucide-x"
+                     variant="ghost"
+                     size="xs"
+                     @click="() => { showSaveVersion = false }" />
           </div>
           <p class="text-sm text-(--ui-text-muted) mb-4">
             Create a named snapshot of the current canvas state. You can restore it later from the History panel.
@@ -812,7 +930,10 @@ const { activeSize } = useBannerFileSize()
             @keydown.enter="handleSaveVersion"
           />
           <div class="flex justify-end gap-2">
-            <UButton label="Cancel" variant="ghost" size="sm" @click="showSaveVersion = false" />
+            <UButton label="Cancel"
+                     variant="ghost"
+                     size="sm"
+                     @click="() => { showSaveVersion = false }" />
             <UButton
               label="Save Version"
               icon="i-lucide-bookmark-plus"
@@ -831,7 +952,10 @@ const { activeSize } = useBannerFileSize()
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-bold">Analytics</h2>
-            <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="showAnalytics = false" />
+            <UButton icon="i-lucide-x"
+                     variant="ghost"
+                     size="xs"
+                     @click="() => { showAnalytics = false }" />
           </div>
           <BannerAnalyticsDashboard :project-id="projectId" />
         </div>

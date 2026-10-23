@@ -73,6 +73,7 @@ export function estimateBannerDuration(layers: Layer[], fallback = 5): number {
 
 export function buildEngagrFrameRuntimeScript(args: {
   durationSec: number
+  fixedCycleDuration?: boolean
   fps?: RenderFps
   visibleElements?: Array<{ id: string, type?: string, start?: number, end?: number }>
 }): string {
@@ -83,6 +84,7 @@ export function buildEngagrFrameRuntimeScript(args: {
 (function(){
   var diagnostics = [];
   var visibleElements = ${visibleElements};
+  var fixedCycleDuration = ${Boolean(args.fixedCycleDuration)};
   var fallbackDuration = ${duration.toFixed(3)};
   function record(code, message) {
     diagnostics.push({ code: code, message: String(message || ''), at: Date.now() });
@@ -95,6 +97,7 @@ export function buildEngagrFrameRuntimeScript(args: {
     return children && children[0] ? children[0] : null;
   }
   function readDuration() {
+    if (fixedCycleDuration) return fallbackDuration;
     var tl = timeline();
     var d = null;
     try {
@@ -121,6 +124,7 @@ export function buildEngagrFrameRuntimeScript(args: {
       try {
         if (tl && typeof tl.pause === 'function') tl.pause();
         if (tl && typeof tl.seek === 'function') tl.seek(seekTime, false);
+        if (typeof window.__engagrUpdateMasks === 'function') window.__engagrUpdateMasks();
         pauseMedia();
         runtime.duration = readDuration();
       } catch (err) {

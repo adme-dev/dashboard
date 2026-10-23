@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { buildBannerHTML } from '~/utils/banner-html-builder'
-import { FORMATS } from '~/utils/banner-constants'
+import { resolveBannerFormat } from '~/utils/banner-constants'
 import type { ArtboardState } from '~/types/banner-studio'
 
 const props = defineProps<{
   canvasData: Record<string, ArtboardState>
 }>()
 
-const iframeRef = ref<HTMLIFrameElement | null>(null)
+const { fetchCustomFonts, getExportCustomFonts } = useBannerFonts()
 const containerRef = ref<HTMLDivElement | null>(null)
+const fontsReady = ref(false)
 
 /** Pick the best artboard for thumbnail: prefer mrec (300x250) or first available */
 const preview = computed(() => {
+  if (!fontsReady.value) return null
   const data = props.canvasData
   if (!data || typeof data !== 'object') return null
 
@@ -25,12 +27,13 @@ const preview = computed(() => {
   const artboard = data[fmtKey]
   if (!artboard?.layers?.length) return null
 
-  const fmt = FORMATS[fmtKey]
+  const fmt = resolveBannerFormat(fmtKey)
   if (!fmt) return null
 
   const html = buildBannerHTML(fmtKey, artboard.layers, {
     includeAnimations: false,
     bgColor: artboard.bgColor || '#0a0a10',
+    customFonts: getExportCustomFonts(artboard.layers)
   })
 
   return { html, width: fmt.w, height: fmt.h }
@@ -49,32 +52,37 @@ function updateScale() {
   scale.value = Math.min(scaleX, scaleY)
 }
 
+let resizeObserver: ResizeObserver | undefined
+watch(preview, updateScale, { flush: 'post' })
+
 onMounted(() => {
+  void fetchCustomFonts().then(() => {
+    fontsReady.value = true
+  })
   updateScale()
   // Observe container resize
   if (containerRef.value) {
-    const ro = new ResizeObserver(updateScale)
-    ro.observe(containerRef.value)
-    onBeforeUnmount(() => ro.disconnect())
+    resizeObserver = new ResizeObserver(updateScale)
+    resizeObserver.observe(containerRef.value)
   }
 })
+onBeforeUnmount(() => resizeObserver?.disconnect())
 </script>
 
 <template>
   <div ref="containerRef" class="w-full h-full overflow-hidden relative">
     <template v-if="preview">
       <iframe
-        ref="iframeRef"
         :srcdoc="preview.html"
         :width="preview.width"
         :height="preview.height"
         sandbox=""
         loading="lazy"
-        class="absolute origin-top-left pointer-events-none border-0"
+        class="absolute left-1/2 top-1/2 origin-center pointer-events-none border-0"
         :style="{
-          transform: `scale(${scale})`,
+          transform: `translate(-50%, -50%) scale(${scale})`,
           width: `${preview.width}px`,
-          height: `${preview.height}px`,
+          height: `${preview.height}px`
         }"
       />
     </template>

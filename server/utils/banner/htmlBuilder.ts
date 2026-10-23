@@ -1,5 +1,9 @@
-import { FORMATS, ANIM_IN, ANIM_OUT } from '~~/app/utils/banner-constants'
-import type { Layer, KeyframeProperty, Keyframe } from '~~/app/types/banner-studio'
+import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
+import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
+import { resolveBannerPlayback, bannerPlaybackRepeat } from '~~/app/utils/banner-playback'
+import { layerTransformOrigin } from '~~/app/utils/banner-transform'
+import { ANIM_IN, ANIM_OUT, resolveBannerFormat } from '~~/app/utils/banner-constants'
+import type { Layer, KeyframeProperty, Keyframe, BannerPlayback } from '~~/app/types/banner-studio'
 import { buildEngagrFrameRuntimeScript, buildVisibleElementManifest, estimateBannerDuration } from '~~/app/utils/banner-render-runtime'
 import { computeClipPathPx } from './mask'
 
@@ -91,18 +95,21 @@ function kfGsapProp(prop: KeyframeProperty, isBg: boolean): string {
 }
 
 /** Generate GSAP animation JS lines for a keyframe-based layer */
-function buildKeyframeAnimLines(l: Layer): string[] {
+function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
   const lines: string[] = []
-  const isBg = l.type === 'bg'
+  const isBg = l.type === 'bg' && !l.clipToPresence
   const sel = `'[data-id="${l.id}"]'`
   const kfs = l.keyframes!
   const skipXY = (l.motionPath?.length ?? 0) >= 2
 
-  // Initial hidden state
+  // A zero-time hold must restore its first opacity when scrubbing backwards.
+  // Hiding first at the same timestamp otherwise wins GSAP's reverse seek.
+  const firstOpacity = [...(kfs.opacity || [])].sort((a, b) => a.time - b.time)[0]
+  const initialOpacity = firstOpacity?.time === 0 ? firstOpacity.value : 0
   if (isBg) {
-    lines.push(`  tl.set(${sel}, { autoAlpha: 0 }, 0);`)
+    lines.push(`  tl.set(${sel}, { autoAlpha: ${initialOpacity} }, 0);`)
   } else {
-    lines.push(`  tl.set(${sel}, { opacity: 0 }, 0);`)
+    lines.push(`  tl.set(${sel}, { opacity: ${initialOpacity} }, 0);`)
   }
 
   // Build each property track (skip x/y when motion path active)
@@ -129,6 +136,12 @@ function buildKeyframeAnimLines(l: Layer): string[] {
     }
   }
 
+  if (l.clipToPresence) {
+    lines.push(`  tl.set(${sel}, { visibility: '${l.startTime === 0 ? 'visible' : 'hidden'}' }, 0);`)
+    if (l.startTime > 0) lines.push(`  tl.set(${sel}, { visibility: 'visible' }, ${l.startTime});`)
+    if (l.endTime !== cycleEnd) lines.push(`  tl.set(${sel}, { visibility: 'hidden' }, ${l.endTime});`)
+  }
+
   // Motion path tweens (chained)
   if (l.motionPath && l.motionPath.length >= 2) {
     const startTime = l.startTime || 0
@@ -153,6 +166,7 @@ function buildKeyframeAnimLines(l: Layer): string[] {
 }
 
 export interface BuildBannerOptions {
+  playback?: BannerPlayback
   includeAnimations?: boolean
   bgColor?: string
   feedUrl?: string
@@ -173,18 +187,25 @@ export function buildBannerHTML(
   options: BuildBannerOptions = {},
 ): string {
   const { includeAnimations = true, bgColor = '#0a0a10', feedUrl, feedBindings, customFonts = [] } = options
+  const playback = resolveBannerPlayback(options.playback)
   const customFontFamilies = new Set(customFonts.map(cf => cf.family))
-  const fmt = FORMATS[fmtKey]
+  const fmt = resolveBannerFormat(fmtKey)
   if (!fmt) return ''
 
   const layerDivs = [...layers]
     .sort((a, b) => a.zIndex - b.zIndex)
     .map((l) => {
-      // Skip mask layers — they don't render in output
-      if (l.isMask) return ''
-
       let style = `position:absolute;left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;opacity:${l.opacity};`
+      const transformOrigin = layerTransformOrigin(l.transformOrigin)
+      if (transformOrigin) style += `transform-origin:${transformOrigin};`
+      if (l.hidden) style += 'display:none!important;'
+      if (l.clipToPresence && l.startTime > 0) style += 'visibility:hidden;'
       if (l.rotation) style += `transform:rotate(${l.rotation}deg);`
+      if (l.mixBlendMode && /^(normal|multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/.test(l.mixBlendMode)) {
+        style += `mix-blend-mode:${l.mixBlendMode};`
+      }
+      // Invisible geometry keeps mask keyframes and motion paths on the same timeline.
+      if (l.isMask) return `<div class="layer" data-id="${l.id}" style="${style}visibility:hidden!important;pointer-events:none;"></div>`
 
       // Apply initial clip-path from mask layer targeting this layer
       const maskLayer = layers.find(m => m.isMask && m.maskTargetIds?.includes(l.id))
@@ -209,25 +230,35 @@ export function buildBannerHTML(
         return `<div class="layer" data-id="${l.id}" style="${style}"></div>`
       }
       if (l.type === 'text') {
+        style += 'white-space:pre-wrap;word-break:break-word;'
+        if (l.textAntialias) style += '-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;'
         style += `font-size:${l.fontSize || 16}px;font-weight:${l.fontWeight || 400};font-family:'${l.fontFamily || 'Barlow Condensed'}',sans-serif;color:${l.color || '#fff'};`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
         if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
-        if (l.lineHeight) style += `line-height:${l.lineHeight};`
+        style += `line-height:${l.lineHeight || 1.2};`
         if (l.textAlign) style += `text-align:${l.textAlign};`
-        if (l.bgColor) style += `background:${l.bgColor};`
-        return `<div class="layer" data-id="${l.id}" style="${style}">${escapeHtml(l.text || '')}</div>`
+        if (l.bgColor) style += `background:${l.bgColor};padding:${l.paddingV ?? 4}px ${l.paddingH ?? 10}px;`
+        if (l.fontStyle === 'italic') style += 'font-style:italic;'
+        if (!bannerTextDepthShadow(l as unknown as Record<string, unknown>) && !safeBannerTextTexture(l.textTexture)) style += bannerEffectCss(l as unknown as Record<string, unknown>)
+        const lineStrut = Number.isFinite(l.lineBoxFontSize) && l.lineBoxFontSize! > (l.fontSize || 16)
+          ? `<span aria-hidden="true" style="font-size:${l.lineBoxFontSize}px">&#160;</span>`
+          : ''
+        const content = `${l.textRuns?.length && l.textRuns.map(run => run.text).join('') === l.text ? l.textRuns.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('') : escapeHtml(l.text || '')}${lineStrut}`
+        return `<div class="layer" data-id="${l.id}" style="${style}">${bannerTextMarkup(content, l as unknown as Record<string, unknown>)}</div>`
       }
       if (l.type === 'button') {
         style += `font-size:${l.fontSize || 12}px;font-weight:${l.fontWeight || 700};font-family:'${l.fontFamily || 'Barlow Condensed'}',sans-serif;`
         style += `background:${l.bgColor || '#e8c84a'};color:${l.textColor || '#000'};`
-        style += `display:flex;align-items:center;justify-content:center;cursor:pointer;`
+        style += `display:flex;align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;white-space:nowrap;line-height:${l.lineHeight || 1};`
+        if (l.borderWidth !== undefined) style += `border:${l.borderWidth}px solid ${l.borderColor || 'transparent'};`
         if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
         if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
         return `<div class="layer" data-id="${l.id}" style="${style}">${escapeHtml(l.text || '')}</div>`
       }
       if (l.type === 'image') {
-        return `<div class="layer" data-id="${l.id}" style="${style}"><img src="${escapeHtml(absSrc(l.src, options.baseUrl))}" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};" /></div>`
+        style += 'overflow:hidden;' + bannerEffectCss({ visualFilter: l.visualFilter })
+        return `<div class="layer" data-id="${l.id}" style="${style}"><img src="${escapeHtml(absSrc(l.src, options.baseUrl))}" style="${bannerImageCropCss(l.imageCrop) || `width:100%;height:100%;object-fit:${l.fit || 'cover'};`}" /></div>`
       }
       if (l.type === 'video') {
         const objPos = `${l.focalX ?? 50}% ${l.focalY ?? 50}%`
@@ -249,9 +280,6 @@ export function buildBannerHTML(
     const lines: string[] = []
 
     sortedByTime.forEach((l) => {
-      // Skip mask layers — they have no DOM element in export
-      if (l.isMask) return
-
       // Audio layers only need sync script — no visual animation
       if (l.type === 'audio') {
         const startTime = l.startTime || 0
@@ -266,7 +294,7 @@ export function buildBannerHTML(
 
       // Keyframe-based layers use dedicated builder
       if (layerHasKeyframes(l)) {
-        lines.push(...buildKeyframeAnimLines(l))
+        lines.push(...buildKeyframeAnimLines(l, playback?.duration))
         // Video sync for keyframe layers
         if ((l.type === 'bg' && l.srcType === 'video') || l.type === 'video') {
           const startTime = l.startTime || 0
@@ -382,8 +410,6 @@ export function buildBannerHTML(
     // Animated mask clip-path proxy scripts
     const maskLayers = sortedByTime.filter(l => l.isMask && l.maskTargetIds?.length)
     maskLayers.forEach((mask) => {
-      const startTime = mask.startTime || 0
-      const endTime = mask.endTime || (startTime + 3)
       const shape = mask.maskShape || 'rect'
       const invert = mask.maskInvert || false
 
@@ -396,20 +422,16 @@ export function buildBannerHTML(
       const sels = targets.map(t => `'[data-id="${t.id}"]'`).join(',')
       const tData = targets.map(t => `{x:${t.x},y:${t.y},w:${t.w},h:${t.h}}`).join(',')
 
-      // Generate proxy animation with onUpdate computing clip-path
-      const preset = ANIM_IN.find((a: any) => a.id === mask.animIn)
-      const animDur = mask.animInDur || 0.6
-      const ease = mask.ease || 'power2.out'
-
-      // Compute initial mask position based on animation preset
-      const fromX = (preset?.from?.x as number) || 0
-      const fromY = (preset?.from?.y as number) || 0
-      const fromScale = (preset?.from?.scale as number) || 1
-
       lines.push(`  (function() {
     var sels = [${sels}];
     var tData = [${tData}];
-    var mask = { x: ${mask.x + fromX}, y: ${mask.y + fromY}, w: ${mask.w * fromScale}, h: ${mask.h * fromScale} };
+    var maskEl = document.querySelector('[data-id="${mask.id}"]');
+    var origin = { x: ${mask.x}, y: ${mask.y}, w: ${mask.w}, h: ${mask.h} };
+    function bounds(el, base) {
+      var sx = Number(gsap.getProperty(el, 'scaleX')), sy = Number(gsap.getProperty(el, 'scaleY'));
+      sx = isFinite(sx) ? sx : 1; sy = isFinite(sy) ? sy : 1;
+      return { x: base.x + (Number(gsap.getProperty(el, 'x')) || 0) + base.w * (1-sx)/2, y: base.y + (Number(gsap.getProperty(el, 'y')) || 0) + base.h * (1-sy)/2, w: base.w * sx, h: base.h * sy, sx: sx, sy: sy };
+    }
     function clip(m, t) {
       ${shape === 'ellipse'
         ? `var rx=m.w/2, ry=m.h/2, cx=(m.x-t.x)+rx, cy=(m.y-t.y)+ry; return 'ellipse('+rx+'px '+ry+'px at '+cx+'px '+cy+'px)';`
@@ -417,11 +439,17 @@ export function buildBannerHTML(
           ? `var il=Math.max(0,Math.min(t.w,m.x-t.x)), it=Math.max(0,Math.min(t.h,m.y-t.y)), ir=Math.max(0,Math.min(t.w,m.x-t.x+m.w)), ib=Math.max(0,Math.min(t.h,m.y-t.y+m.h)); return 'polygon(0px 0px,'+t.w+'px 0px,'+t.w+'px '+t.h+'px,0px '+t.h+'px,0px 0px,'+il+'px '+it+'px,'+il+'px '+ib+'px,'+ir+'px '+ib+'px,'+ir+'px '+it+'px,'+il+'px '+it+'px)';`
           : `var tp=Math.max(0,m.y-t.y), rt=Math.max(0,t.w-(m.x-t.x+m.w)), bt=Math.max(0,t.h-(m.y-t.y+m.h)), lt=Math.max(0,m.x-t.x); return 'inset('+tp+'px '+rt+'px '+bt+'px '+lt+'px)';`}
     }
-    function upd() { sels.forEach(function(s, i) { var el=document.querySelector(s); if(el) el.style.clipPath=clip(mask, tData[i]); }); }
-    tl.to(mask, { x: ${mask.x}, y: ${mask.y}, w: ${mask.w}, h: ${mask.h}, duration: ${animDur}, ease: ${easeToExportExpr(ease)}, onUpdate: upd }, ${startTime});
+    function upd() { if (!maskEl) return; var mask = bounds(maskEl, origin); sels.forEach(function(s, i) {
+      var el=document.querySelector(s); if (!el) return; var t=bounds(el, tData[i]);
+      if (!t.sx || !t.sy) { el.style.clipPath='inset(50%)'; return; }
+      var x1=(mask.x-t.x)/t.sx, x2=(mask.x+mask.w-t.x)/t.sx, y1=(mask.y-t.y)/t.sy, y2=(mask.y+mask.h-t.y)/t.sy;
+      el.style.clipPath=clip({ x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1),h:Math.abs(y2-y1) }, { x:0,y:0,w:tData[i].w,h:tData[i].h });
+    }); }
+    maskUpdates.push(upd);
   })();`)
     })
 
+    if (playback) lines.push(`  tl.to({}, { duration: ${playback.duration} }, 0);`)
     animLines = lines.join('\n')
   }
 
@@ -444,11 +472,12 @@ export function buildBannerHTML(
     : ''
   const animScript =
     includeAnimations && animLines
-      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline();\n  window.__engagrTimeline = tl;\n${animLines}\n<\/script>`
+      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline(${playback ? `{ repeat: ${bannerPlaybackRepeat(playback)} }` : ''});\n  const maskUpdates = [];\n  window.__engagrTimeline = tl;\n${animLines}\n  window.__engagrUpdateMasks = function() { maskUpdates.forEach(function(update) { update(); }); };\n  tl.eventCallback('onUpdate', window.__engagrUpdateMasks);\n<\/script>`
       : ''
   const runtimeScript = includeAnimations
     ? buildEngagrFrameRuntimeScript({
-        durationSec: estimateBannerDuration(layers),
+        durationSec: playback ? Math.max(playback.duration, estimateBannerDuration(layers)) : estimateBannerDuration(layers),
+        fixedCycleDuration: Boolean(playback),
         visibleElements: buildVisibleElementManifest(layers),
       })
     : ''

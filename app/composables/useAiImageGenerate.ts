@@ -1,130 +1,98 @@
 import type { GenerateImageResult } from '~/types/banner-studio'
+import { BANNER_IMAGE_MODEL } from '~~/shared/bannerImageGeneration'
 
-// Module-scope singleton state
-const _isGenerating = ref(false)
-const _showGenerateSlideover = ref(false)
-const _generatePrompt = ref('')
-const _generatePreviewUrl = ref<string | null>(null)
-const _generateError = ref<string | null>(null)
-const _generateAspectRatio = ref('1:1')
-const _generateGuidance = ref(3.5)
-const _generateSteps = ref(28)
-const _generatePromptEnhance = ref(true)
-const _generateUseSeed = ref(false)
-const _generateSeedInput = ref(0)
-const _lastGenerateSeed = ref<number | null>(null)
+const isGenerating = ref(false)
+const showGenerateSlideover = ref(false)
+const generatePrompt = ref('')
+const generatePreviewUrl = ref<string | null>(null)
+const generateError = ref<string | null>(null)
+const generateAspectRatio = ref('1:1')
+const generationReady = ref(false)
+let requestVersion = 0
+let sourceProjectId: string | null = null
+let sourceClientId: string | null = null
 
 export function useAiImageGenerate() {
-  const { addLayer, nextId, state } = useBannerStudio()
+  const { addLayer, state, activeFormat } = useBannerStudio()
   const toast = useToast()
-  const apiFetch = $fetch as <T = unknown>(
-    request: string,
-    options?: { method?: string, body?: unknown }
-  ) => Promise<T>
 
   function openGenerate() {
-    _generatePrompt.value = ''
-    _generatePreviewUrl.value = null
-    _generateError.value = null
-    _generateAspectRatio.value = '1:1'
-    _generateGuidance.value = 3.5
-    _generateSteps.value = 28
-    _generatePromptEnhance.value = true
-    _generateUseSeed.value = false
-    _generateSeedInput.value = 0
-    _lastGenerateSeed.value = null
-    _showGenerateSlideover.value = true
+    cancelGenerate()
+    sourceProjectId = state.project?.id ?? null
+    sourceClientId = state.project?.clientId ?? null
+    generateAspectRatio.value = '1:1'
+    showGenerateSlideover.value = true
   }
 
   async function submitGenerate() {
-    if (!_generatePrompt.value.trim()) return
-
-    _isGenerating.value = true
-    _generateError.value = null
-    _generatePreviewUrl.value = null
-
+    if (!generatePrompt.value.trim() || isGenerating.value) return
+    const version = ++requestVersion
+    const projectId = state.project?.id ?? null
+    const clientId = state.project?.clientId ?? null
+    sourceProjectId = projectId
+    sourceClientId = clientId
+    isGenerating.value = true
+    generateError.value = null
+    generatePreviewUrl.value = null
+    generationReady.value = false
     try {
-      const result = await apiFetch<GenerateImageResult>('/api/agency/banner-studio/ai/generate-image', {
+      const result = await $fetch<GenerateImageResult>('/api/agency/banner-studio/ai/generate-image', {
         method: 'POST',
         body: {
-          prompt: _generatePrompt.value.trim(),
-          projectId: state.project?.id,
-          clientId: state.project?.clientId || undefined,
-          aspectRatio: _generateAspectRatio.value,
-          guidanceScale: _generateGuidance.value,
-          steps: _generateSteps.value,
-          promptEnhance: _generatePromptEnhance.value,
-          seed: _generateUseSeed.value ? _generateSeedInput.value : undefined,
-          randomizeSeed: !_generateUseSeed.value,
-        },
+          prompt: generatePrompt.value.trim(),
+          projectId,
+          clientId: clientId || undefined,
+          aspectRatio: generateAspectRatio.value,
+          modelId: BANNER_IMAGE_MODEL.id,
+          subjectType: 'non_vehicle'
+        }
       })
-
-      if (!result?.url) {
-        _generateError.value = 'No image returned from AI'
-        return
+      if (version !== requestVersion || (state.project?.id ?? null) !== projectId || (state.project?.clientId ?? null) !== clientId) return
+      if (!result?.url) throw new Error('No image returned from AI')
+      generatePreviewUrl.value = result.url
+      generationReady.value = result.status === 'ready'
+      if (!generationReady.value) generateError.value = 'The image needs a successful quality review before it can be added. Your canvas is unchanged.'
+    } catch (error: unknown) {
+      if (version === requestVersion && (state.project?.id ?? null) === projectId && (state.project?.clientId ?? null) === clientId) {
+        const err = error as { data?: { statusMessage?: string }, message?: string }
+        generateError.value = err.data?.statusMessage || err.message || 'AI generation failed'
       }
-
-      _generatePreviewUrl.value = result.url
-      _lastGenerateSeed.value = result.seed ?? null
-    } catch (err: any) {
-      _generateError.value = err?.data?.statusMessage || err?.message || 'AI generation failed'
     } finally {
-      _isGenerating.value = false
+      if (version === requestVersion) isGenerating.value = false
     }
   }
 
-  function applyGenerate() {
-    const previewUrl = _generatePreviewUrl.value
-    if (!previewUrl) return
-
-    // Calculate dimensions from aspect ratio
-    const [aw, ah] = _generateAspectRatio.value.split(':').map(Number)
-    const baseSize = 300
-    const w = aw >= ah ? baseSize : Math.round(baseSize * (aw / ah))
-    const h = ah >= aw ? baseSize : Math.round(baseSize * (ah / aw))
-
+  function applyGenerate(asBackground = false) {
+    const src = generatePreviewUrl.value
+    if (!src || !generationReady.value || (state.project?.id ?? null) !== sourceProjectId || (state.project?.clientId ?? null) !== sourceClientId) return
+    const [aw, ah] = generateAspectRatio.value.split(':').map(Number)
+    const format = activeFormat.value
+    const w = asBackground ? format?.w || 300 : Math.min(format?.w || 300, 600)
+    const h = asBackground ? format?.h || 250 : Math.round(w * ah / aw)
     addLayer({
-      id: nextId(),
-      type: 'image',
-      src: previewUrl,
-      name: `AI: ${_generatePrompt.value.trim().slice(0, 30)}`,
-      x: 10,
-      y: 10,
-      w,
-      h,
-      fit: 'contain',
-      animIn: 'fadeIn',
+      type: asBackground ? 'bg' : 'image', src, srcType: 'image',
+      name: `AI: ${generatePrompt.value.trim().slice(0, 30)}`,
+      x: asBackground ? 0 : 10, y: asBackground ? 0 : 10,
+      w, h, ...(asBackground ? { zIndex: 0 } : {}),
+      fit: asBackground ? 'cover' : 'contain', animIn: 'fadeIn'
     })
-
-    toast.add({ title: 'Image added', description: 'AI generated image added to canvas', color: 'success' })
-    _showGenerateSlideover.value = false
-    _generatePreviewUrl.value = null
-    _generatePrompt.value = ''
+    toast.add({ title: asBackground ? 'Background added' : 'Image added', color: 'success' })
+    cancelGenerate()
   }
 
   function cancelGenerate() {
-    _showGenerateSlideover.value = false
-    _generatePreviewUrl.value = null
-    _generatePrompt.value = ''
-    _generateError.value = null
+    requestVersion++
+    isGenerating.value = false
+    showGenerateSlideover.value = false
+    generatePreviewUrl.value = null
+    generatePrompt.value = ''
+    generateError.value = null
+    generationReady.value = false
   }
 
   return {
-    isGenerating: _isGenerating,
-    showGenerateSlideover: _showGenerateSlideover,
-    generatePrompt: _generatePrompt,
-    generatePreviewUrl: _generatePreviewUrl,
-    generateError: _generateError,
-    generateAspectRatio: _generateAspectRatio,
-    generateGuidance: _generateGuidance,
-    generateSteps: _generateSteps,
-    generatePromptEnhance: _generatePromptEnhance,
-    generateUseSeed: _generateUseSeed,
-    generateSeedInput: _generateSeedInput,
-    lastGenerateSeed: _lastGenerateSeed,
-    openGenerate,
-    submitGenerate,
-    applyGenerate,
-    cancelGenerate,
+    isGenerating, showGenerateSlideover, generatePrompt, generatePreviewUrl,
+    generateError, generateAspectRatio, generationReady,
+    openGenerate, submitGenerate, applyGenerate, cancelGenerate
   }
 }

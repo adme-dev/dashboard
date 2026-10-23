@@ -36,6 +36,13 @@ describe('creative compliance pre-flight', () => {
     expect(() => normalizeCreativeComplianceVerdict({ ...passing, confidence: 2 })).toThrow(/outside 0-1/)
   })
 
+  it('requires exact-text evidence for text artwork but preserves generic reviews', () => {
+    expect(creativeCompliancePassed(passing, 'EOFY')).toBe(false)
+    expect(creativeCompliancePassed({ ...passing, textMatchesBrief: false }, 'EOFY')).toBe(false)
+    expect(creativeCompliancePassed({ ...passing, textMatchesBrief: true }, 'EOFY')).toBe(true)
+    expect(creativeCompliancePassed(passing)).toBe(true)
+  })
+
   it('requires an approved reference for vehicle checks', async () => {
     await expect(requestCreativeComplianceVerdict({
       subjectType: 'vehicle', imageUrls: ['https://assets.test/output.png'],
@@ -64,7 +71,7 @@ describe('creative compliance pre-flight', () => {
       'cf-aig-authorization': 'Bearer gateway-token',
     })
     expect(JSON.parse(init.body)).toMatchObject({
-      model: 'qwen/qwen3.6-27b',
+      model: 'qwen/qwen3.8-27b',
       response_format: { type: 'json_object' },
     })
   })

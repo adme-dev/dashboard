@@ -103,6 +103,35 @@ describe('realtime WebSocket auth observability', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 
+  it('accepts the URL-encoded session cookie emitted by H3', async () => {
+    mockFetch.mockResolvedValueOnce(databaseRows([['user-1', 'User', null]]))
+    const token = await createToken({ userId: 'user-1', exp: Date.now() + 60_000 })
+    // H3's cookie serializer escapes the base64 padding and signature characters.
+    expect(encodeURIComponent(token)).not.toBe(token)
+    await expect(handleBannerConnect(
+      request(`auth_token=${encodeURIComponent(token)}`), connectedEnv(), 'project-1'
+    )).resolves.toMatchObject({ status: 200 })
+  })
+
+  it.each(['expired', 'tampered'])('still rejects an encoded %s token', async (kind) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let token = await createToken({ userId: 'user-1', exp: Date.now() + (kind === 'expired' ? -60_000 : 60_000) })
+    if (kind === 'tampered') {
+      const [data, signature] = token.split('.')
+      token = `${data}.${signature[0] === 'A' ? 'B' : 'A'}${signature.slice(1)}`
+    }
+    await expect(handleBannerConnect(request(`auth_token=${encodeURIComponent(token)}`), connectedEnv(), 'project-1'))
+      .resolves.toMatchObject({ status: 401 })
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('rejects malformed cookie encoding without forwarding or throwing', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expect(handleBannerConnect(request('auth_token=%E0%A4%A'), connectedEnv(), 'project-1'))
+      .resolves.toMatchObject({ status: 401 })
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
   it('bounds signature work when duplicate cookie names are supplied', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const token = await createToken({ userId: 'user-1', exp: Date.now() + 60_000 })
