@@ -117,9 +117,20 @@ describe('lossless generated Worker data compaction', () => {
     expect(() => compactPublicAssetsPlugin().transform(source, '\0virtual:#nitro-internal-virtual/public-assets-data')).toThrow()
   })
 })
-it('keeps the original minimum threshold for medium SSR literals', () => {
-  const markup = '<p>preserved</p>'.repeat(45)
+it('losslessly compacts medium SSR literals and keeps the complete decoder cost smaller', async () => {
+  const markup = '<p>preserved 🚘 &amp;\r\n</p>'.repeat(25)
+  expect(markup.length).toBeGreaterThanOrEqual(256)
   expect(markup.length).toBeLessThan(1024)
   const source = `export const data = { first: ${JSON.stringify(markup)}, second: ${JSON.stringify(markup)} };`
+  const compacted = compactSsrMarkupSource(source)
+  expect(compacted.literals).toBe(2)
+  expect(Buffer.byteLength(compacted.code)).toBeLessThan(Buffer.byteLength(source))
+  expect((await evaluate(compacted.code)).data).toEqual({ first: markup, second: markup })
+  expect(compactSsrMarkupSource(compacted.code).code).toBe(compacted.code)
+})
+it('retains literals below 256 characters even when repeated', () => {
+  const markup = `<p>${'x'.repeat(248)}</p>`
+  expect(markup.length).toBe(255)
+  const source = `export const data = { a: ${JSON.stringify(markup)}, b: ${JSON.stringify(markup)}, c: ${JSON.stringify(markup)} };`
   expect(compactSsrMarkupSource(source)).toEqual({ code: source, literals: 0 })
 })

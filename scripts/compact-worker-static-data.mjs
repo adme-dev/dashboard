@@ -3,7 +3,9 @@ import path from 'node:path'
 import { brotliCompressSync, constants } from 'node:zlib'
 import ts from 'typescript'
 
-const MIN_LITERAL_CHARACTERS = 1024
+// Medium SSR literals share the existing lazy decoder. Per-literal and whole-
+// module byte-win checks still include all decoder overhead.
+const MIN_LITERAL_CHARACTERS = 256
 const compress = value => brotliCompressSync(Buffer.from(value, 'utf8'), {
   params: { [constants.BROTLI_PARAM_QUALITY]: 11 }
 }).toString('base64')
