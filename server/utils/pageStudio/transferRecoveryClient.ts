@@ -21,7 +21,9 @@ export async function callTransferRecovery(input: unknown, env: Record<string, u
     if (request.action === 'open') {
       const head = view.recovery
       const approvedHistory = (head.state === 'approved' && head.version === 2)
-        || (head.state === 'revoked' && head.version === 3)
+        || (head.state === 'pending' && head.version === 3)
+        || (head.state === 'applied' && head.version === 4)
+        || (head.state === 'revoked' && [3, 4, 5].includes(head.version))
       const initialHistory = (head.state === 'reconciling' && head.version === 1)
         || (head.state === 'revoked' && head.version === 2)
       const deadline = Date.parse(head.deadline), original = Date.parse(request.deadline)
