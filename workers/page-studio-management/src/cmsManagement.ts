@@ -18,8 +18,16 @@ function failureCategory(error: unknown) {
   if (error instanceof ZodError) return 'validation'
   if (error instanceof TypeError) return 'type'
   const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+  if (code === 'CHECKPOINT_INVALID') return 'checkpoint-invalid'
+  if (code === 'CHECKPOINT_NOT_FOUND') return 'checkpoint-missing'
+  if (code === 'CHECKPOINT_DIGEST_MISMATCH') return 'checkpoint-digest'
   if (code === '42P01' || code === '42703' || code === '42883') return 'database-schema'
   if (code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ECONNREFUSED') return 'connection'
+  if (error instanceof Error) {
+    if (error.message === 'Managed graph storage bytes unavailable or inconsistent') return 'graph-storage'
+    if (error.message === 'Managed CMS object transport unavailable') return 'object-transport'
+    if (error.message === 'Accepted CMS state unavailable or stale') return 'accepted-state'
+  }
   return 'unexpected'
 }
 

@@ -19,3 +19,9 @@ Read both edited files end-to-end; checked aliases, absence of UI changes, uncha
 Commit and deploy staging only through `node workers/page-studio-management/deploy.mjs staging`. Read the exact deployment/version back. Retest existing authenticated proposal acceptance with service-tail capture filtered to fixed diagnostic fields. Never archive request headers/tokens. Check the current checkpoint and operation receipt before interpreting a retry. Production is not authorized for this diagnostic deployment until its normal exact-main release gates pass.
 
 Main Pi release handoff: `/Users/paulgiurin/Documents/XeroFlow Imports/Recovery 2026-10-23/PAGE-STUDIO-HANDOFF.md`.
+
+## First hosted diagnostic result
+
+Version45e4dc2d-b795-48f8-bc15-0ecb70c052e8 received the fresh synthetic AI acceptance and reported operationcheckpoint / stagecoordinate / categoryunexpected. Jobpi_ui_b4ca3c19-ae0a-4da0-936d-b1b0d6d7bf67 produced a valid one-heading proposal in1model call; accept still502. Thus neither request validation nor final result validation explains this failure. Existing candidate remains available for idempotent retry; do not generate another.
+
+Added fixed classification for existing checkpoint codes and exact known storage errors; unknown error values still never logged. Regression cases failed before and passed after;26focused tests, types and guarded dry-run pass (`/tmp/pi-v8-cms-storage-{tests,types,build}.log`). No changes to persistence or authorization. Follow-up staging deployment pending.

@@ -117,4 +117,21 @@ describe('CMS management invocation boundary', () => {
       log.mockRestore()
     }
   })
+  it.each([
+    ['CHECKPOINT_INVALID', 'private checkpoint content', 'checkpoint-invalid'],
+    ['CHECKPOINT_NOT_FOUND', 'private object key', 'checkpoint-missing'],
+    ['CHECKPOINT_DIGEST_MISMATCH', 'private digest', 'checkpoint-digest'],
+    ['unknown-secret-code', 'Managed graph storage bytes unavailable or inconsistent', 'graph-storage'],
+    ['unknown-secret-code', 'Managed CMS object transport unavailable', 'object-transport'],
+    ['unknown-secret-code', 'Accepted CMS state unavailable or stale', 'accepted-state'],
+    ['unknown-secret-code', 'private error content', 'unexpected']
+  ])('classifies known storage failure %s without logging inputs', async (code, message, category) => {
+    const f = fixture()
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      operations.adoption.mockRejectedValue(Object.assign(new Error(message), { code }))
+      await handleCmsManagement(f.request, f.env, f.run)
+      expect(log).toHaveBeenCalledExactlyOnceWith('page-studio-cms-management-failed', { operation: 'adoption', stage: 'coordinate', category })
+    } finally { log.mockRestore() }
+  })
 })
