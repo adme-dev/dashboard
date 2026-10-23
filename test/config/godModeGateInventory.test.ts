@@ -280,16 +280,18 @@ describe('God mode gate inventory', () => {
     // classification or authorizing a God mode bypass.
     expect(inventory.rows).toContain('server/utils/pageStudio/sessionVerificationKeyHttp.ts\t: process.env.PAGE_STUDIO_SESSION_PUBLIC_KEY\tunrelated_configuration')
     expect(inventory.rows).toContain('server/utils/pageStudio/sessionVerificationKeyHttp.ts\t: process.env.PAGE_STUDIO_SESSION_ISSUER\tunrelated_configuration')
-    // Banner recovery adds eight explicit write gates while retaining independent
-    // client/project checks. Cached provider bindings replace environment-only
-    // reads in compliance and signed links without changing their classification.
-    expect(inventory.rows).toHaveLength(1614)
+    // Existing-source adoption exposes only a validated configured customer origin.
+    // This presentation URL read does not register an authority bypass.
+    expect(inventory.rows).toContain("server/utils/pageStudio/transferControlsHttp.ts\tconst origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ORIGIN') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)\tunrelated_configuration")
+    // Released Banner routes retain eight additional explicit write gates.
+    // Combined with the recovery origin row above, this pins both inventories.
+    expect(inventory.rows).toHaveLength(1615)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 128,
       provider_infrastructure_availability: 224,
       application_governance_bypass: 1633,
       ordinary_user_behavior: 192,
-      unrelated_configuration: 436
+      unrelated_configuration: 437
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -304,7 +306,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('91419c421c0ef45f938053d64358ef6f390c279e92ec59a6531c2cebaf5f25dd')
+    expect(inventory.digest).toBe('03bab306af81fb29f3488ed916268b8d3b61a0bc35619c4f8b06a0269a3b5f01')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

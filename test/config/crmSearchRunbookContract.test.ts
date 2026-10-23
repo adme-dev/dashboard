@@ -5,12 +5,12 @@ const read = (name: string) => readFileSync(new URL(`../../docs/runbooks/${name}
 const project = (name: string) => readFileSync(new URL(`../../${name}`, import.meta.url), 'utf8')
 
 describe('CRM search release runbooks', () => {
-  it('runs the complete caller guard before excluding it from the remaining CI suite', () => {
+  it('runs the complete caller guard and browser checks serially before excluding them from the remaining CI suite', () => {
     const ci = project('.github/workflows/ci.yml')
     const step = ci.split('      - name: Full test suite\n')[1]?.split('      # Kept as separate steps')[0]
     expect(step).toContain(`run: |
-          pnpm exec vitest run test/server/api/crmSearchEndpoints.test.ts
-          pnpm run test:run --exclude test/server/api/crmSearchEndpoints.test.ts`)
+          pnpm exec vitest run test/server/api/crmSearchEndpoints.test.ts test/app/aiGovernanceControlPlane.test.ts --maxWorkers=1
+          pnpm run test:run --exclude test/server/api/crmSearchEndpoints.test.ts --exclude test/app/aiGovernanceControlPlane.test.ts`)
     expect(step).not.toMatch(/continue-on-error|--passWithNoTests|--testTimeout|--testNamePattern|\|\|/)
     expect(step).toContain('timeout-minutes: 20')
   })

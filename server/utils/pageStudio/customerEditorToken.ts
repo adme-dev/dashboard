@@ -13,6 +13,7 @@ export const CustomerEditorCapabilitySchema = z.enum([...CUSTOMER_EDITOR_CAPABIL
 export function customerSessionCapabilities(purpose: unknown) {
   if (purpose === 'editor') return [...CUSTOMER_EDITOR_CAPABILITIES]
   if (purpose === 'cms-setup') return [...CUSTOMER_CMS_SETUP_CAPABILITIES]
+  if (purpose === 'cms-adoption') return ['cms:adopt'] as const
   throw createError({ statusCode: 403, statusMessage: 'Customer session purpose is not available.' })
 }
 export function customerSessionHasPurpose(capabilities: readonly string[], purpose: unknown) {
@@ -20,7 +21,7 @@ export function customerSessionHasPurpose(capabilities: readonly string[], purpo
   return capabilities.length === expected.length && expected.every(value => capabilities.includes(value))
 }
 export function customerSchemaPreparationCapability(claims: CustomerEditorClaims) {
-  if (claims.environment !== 'staging') throw createError({ statusCode: 403, statusMessage: 'Customer CMS setup is not available.' })
+  if (claims.environment !== 'staging' || customerSessionHasPurpose(claims.capabilities, 'cms-adoption')) throw createError({ statusCode: 403, statusMessage: 'Customer CMS setup is not available.' })
   return customerSessionHasPurpose(claims.capabilities, 'cms-setup') ? 'cms:prepare' as const : 'workspace:create' as const
 }
 export const CustomerEditorOriginSchema = z.string().max(2048).refine((value) => {

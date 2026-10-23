@@ -146,6 +146,13 @@ function expiry(value: string | null) {
                 <p class="text-sm text-muted">
                   {{ target.limits.pagesPerSiteLimit }} pages · {{ target.limits.domainLimit }} custom domains · {{ target.limits.buildLimit }} builds/month
                 </p>
+                <UButton
+                  :to="`/agency/page-studio/${target.siteId}/adoption`"
+                  label="Review existing content setup"
+                  color="neutral"
+                  variant="link"
+                  class="-ml-2"
+                />
               </div>
               <UButton
                 v-if="target.eligible"

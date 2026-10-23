@@ -1,6 +1,14 @@
+import { TRANSFER_RECOVERY_SOURCE_EFFECT_PATH } from '../../../shared/pageStudio/transferRecoverySourceEffectTransport'
+import { readTransferRecoverySourceEffectThroughManagement } from './transferRecoverySourceEffect'
+import { TRANSFER_RECOVERY_PHASE_PATH } from '../../../shared/pageStudio/transferRecoveryPhaseTransport'
+import { readTransferRecoveryPhaseThroughManagement } from './transferRecoveryPhase'
+import { TRANSFER_RECOVERY_ADMISSION_PATH } from '../../../shared/pageStudio/transferRecoveryAdmissionTransport'
+import { readTransferRecoveryAdmissionThroughManagement } from './transferRecoveryAdmission'
 import { transferAuthorityKey } from '../../../shared/pageStudio/managedTransferAuthorityTransport'
 import { readManagedTransferAuthority } from './managedTransferAuthority'
 import { RESOURCE_AUTHORITY_PATH } from '../../../shared/pageStudio/managedTransferResourceAuthority'
+import { TRANSFER_RECOVERY_INSPECTION_PATH } from '../../../shared/pageStudio/transferRecoveryInspectionTransport'
+import { inspectTransferRecoveryThroughManagement } from './transferRecoveryInspection'
 import { authorizeManagedResourceThroughManagement } from './managedTransferResourceAuthority'
 import { NativeSchemaContracts, type NativeSchemaKind } from '../../../shared/pageStudio/nativeSchemaAuthority'
 import type { z } from 'zod'
@@ -166,6 +174,30 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     && 'CONTENT_COMPLETION_TRANSPORT' in env && env.CONTENT_COMPLETION_TRANSPORT === 'management-rpc') {
     return readCompletionThroughManagement(request, config.dashboardOrigin,
       'PAGE_STUDIO_MANAGEMENT_COMPLETION' in env ? env.PAGE_STUDIO_MANAGEMENT_COMPLETION : undefined)
+  }
+
+  if (url.pathname === TRANSFER_RECOVERY_SOURCE_EFFECT_PATH) {
+    return readTransferRecoverySourceEffectThroughManagement(request, config.dashboardOrigin,
+      'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+      && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY : undefined)
+  }
+
+  if (url.pathname === TRANSFER_RECOVERY_PHASE_PATH) {
+    return readTransferRecoveryPhaseThroughManagement(request, config.dashboardOrigin,
+      'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+      && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY : undefined)
+  }
+
+  if (url.pathname === TRANSFER_RECOVERY_ADMISSION_PATH) {
+    return readTransferRecoveryAdmissionThroughManagement(request, config.dashboardOrigin,
+      'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+      && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY : undefined)
+  }
+
+  if (url.pathname === TRANSFER_RECOVERY_INSPECTION_PATH) {
+    return inspectTransferRecoveryThroughManagement(request, config.dashboardOrigin,
+      'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+      && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY : undefined)
   }
 
   if (request.method === 'POST' && url.pathname === RESOURCE_AUTHORITY_PATH && config.dashboardOrigin === 'https://app.xeroflow.io') {
