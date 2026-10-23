@@ -11,9 +11,9 @@ Recover the complete Banner Studio work from `feat/banner-effects-panel-20261006
 - [x] Recover native effects, reusable scoped presets, AI artwork/review/refinement and native glyph depth/texture.
 - [x] Recover design assistant, client reference/brand guides, revision retention and export retry/handoff dependencies.
 - [x] Preserve newer main fixes; reconcile conflicts rather than replace newer shared files.
-- [ ] Verify regression tests, changed-file lint/types, build and guarded deployment target.
-- [ ] Browser check library/editor/import preview/effects and established QR navigation; compare saved project IDs and source tags.
-- [ ] Review, push/merge, deploy verified artifact and record production receipt. Do not claim completion before these checks.
+- [x] Verify regression tests, changed-file lint/types, build and guarded deployment target.
+- [x] Browser check library/editor/import preview/effects and established QR navigation; compare saved project IDs and source tags.
+- [x] Review, push/merge, deploy verified artifact and record production receipt. Do not claim completion before these checks.
 - [ ] Retire only this task's completed worktree after preserving committed evidence.
 
 ## Implementation groups
@@ -33,7 +33,7 @@ The read-only investigation found 187 projects, 169 source:thebrief tags, all165
 - https://developers.cloudflare.com/pages/configuration/rollbacks/ — accessed2026-10-23; Pages production rollback contract. Preserve the exact prior production deployment and release source. Preview is not itself a production rollback target.
 
 ## Release state
-Not deployed. Recovery source and verification are in progress. No current release gate is waived; database/provider changes require explicit reconciliation and verification before execution.
+Deployed and authenticated live checks passed on 23 October 2026. See final release receipt below; earlier checkpoints are retained as history.
 
 ## Recovery reconciliation
 - Initial171 Banner/TheBrief paths restored with git three-way application from merge-base23ab2f936. All applied cleanly against currentmain.
@@ -67,3 +67,15 @@ Not deployed. Recovery source and verification are in progress. No current relea
 - Release is not yet deployed. Preview acceptance, merge, production deployment and exact receipt remain required.
 
 Evidence: `/Users/paulgiurin/Documents/XeroFlow Imports/Recovery 2026-10-23/evidence/` contains final tests, lint comparison, typechecks, build and production-before receipts. These logs are outside the clean release checkout.
+
+## Final production receipt — 23 October 2026
+
+- Recovery PR #691 merged as `fe945073e34bffd9d8017c5ed581b67d66057237`; integration follow-up PR #692 merged as `3d52376a87c312d3186cf7b488fc3dccfda91346`.
+- Production: `agency-dashboard`, deployment `e05daa91-adf2-47f3-8849-cc27ca593fb7`, source `3d52376a87c312d3186cf7b488fc3dccfda91346`. Live: https://app.xeroflow.io/agency/banner-studio. Guarded build/deploy succeeded, raw 25,447,816 bytes and gzip 7,315,512 bytes, unchanged budgets.
+- Preview acceptance used an isolated staging client: importer save, deduplication, resizing 240x120 to220x140, padding10 to20, persistence and native effects passed. Additive migrations473–475 reconciled staging; production already had the schema and was idempotently reconciled. No customer draft writes or paid AI generation were performed.
+- Production authenticated UI confirms187 projects, all source-folder/category controls, three explicitly saved templates, importer modal, an existing native editor, Effects and QR navigation. Imported designs remain projects; the saved-template gallery is not the full imported-library inventory.
+- Final app/server typechecks:635/295 existing diagnostics elsewhere, zero recovered-file diagnostics. Focused recovery run:735passed/3skipped. Repository-wide lint/typecheck are not clean.
+- Full CI39898082379 finished with17,838passing tests and four integration failures. All four were corrected in #692: reviewed route/gate snapshots, explicit existing featureKey forwarding, and Cloudflare binding lookup for render signing. Follow-up134focused tests passed, plus24signing/inventory tests; independent review approved. Full follow-up CI39901148840 remains running, so this is not a full-CI-green claim.
+- Previous rollback artifact:614e2ebc-2372-447a-af95-ef59228cfc71. First recovery artifact:dd1a8b79-0710-48cd-b9ad-c8b4d7bd628b. Audio-jobs worker unchanged.
+- User subsequently requested recent TheBrief imports; recovery checkout remains active for that continuation. Historical Banner/Page Studio worktrees remain preserved; Northwall Arc historical branch is not included in this Banner release.
+- Evidence, screenshots and exact deployment JSON: `/Users/paulgiurin/Documents/XeroFlow Imports/Recovery 2026-10-23/evidence/`.
