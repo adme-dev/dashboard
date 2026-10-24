@@ -47,6 +47,23 @@ closed without retry. Each successful response is no-store.
   gzip; Control 691.09 KiB raw /103.26 KiB gzip. Staging intentionally lacks the
   production private authority binding; its Wrangler warning does not establish
   hosted activation or a working staging recovery path.
+- The actual Studio local D1 readiness result passed Dashboard's strict schema
+  and full result verifier; a tampered envelope was rejected. The two-repository
+  fixture uses synthetic authority/provider state, not hosted customer accounts.
+- A bundled Control Worker successfully calls a synthetic authority through an
+  actual workerd service binding, with matching digest and no public outbound
+  request. This checks native built-in fetch behavior; PostgreSQL authorization
+  is separately covered above. The local harness uses Management's compatibility
+  date, 2026-07-15, supported by the locked Dashboard workerd binary.
+
+## CI execution allowance
+
+Run40060185479 spent35m44s on the required sequential checks before its build.
+Three recent successful runs took up to8m29s for build and6m31s for the full test
+suite, so the former45-minute job allowance cannot accommodate this expanded
+pipeline. The overall CI job limit is now90 minutes; every individual step limit,
+assertion, required test, concurrency setting and deployment gate is unchanged.
+This configuration change does not make an interrupted older run a passing gate.
 
 ## Remaining release gates
 

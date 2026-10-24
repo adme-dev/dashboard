@@ -49,7 +49,9 @@ concurrency:
 jobs:
   ci:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # The sequential database gates take ~36 minutes before build and full tests.
+    # Keep each step's limit; allow the complete required pipeline to finish.
+    timeout-minutes: 90
 
     strategy:
       matrix:
