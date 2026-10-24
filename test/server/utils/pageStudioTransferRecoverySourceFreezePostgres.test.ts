@@ -1453,6 +1453,33 @@ describe.runIf(Boolean(databaseUrl))(
         await expect(f.authority.authorizeCustomerTransferRecoverySourceReady(changed, f.d)).rejects.toThrow()
       }
     })
+    it('private readiness transport uses real PG authority and denies owner expiry without effects', async () => {
+      const { handleTransferRecoverySourceReadyFetch } = await import('../../../workers/page-studio-management/src/transferRecoverySourceReadyFetch')
+      const f = await freezeFixture()
+      await f.prepare()
+      const wire = f.getWire()
+      const env = {
+        ...f.d.env,
+        PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production',
+        PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
+        MANAGED_TRANSFER_RECOVERY_SOURCE_FREEZE_POLICY: JSON.stringify(f.d.freezeDescriptor)
+      }
+      const call = () => handleTransferRecoverySourceReadyFetch(new Request(
+        'https://page-studio-management.internal/transfer-recovery-source-ready',
+        { method: 'POST', body: JSON.stringify(wire) }
+      ), env, runTransaction)
+      const before = await pairCounts()
+      const accepted = await call()
+      expect(accepted.status).toBe(200)
+      expect(await accepted.json()).toEqual({ purpose: 'recovery-source-freeze-ready', envelopeDigest: await collectionDigest(wire) })
+      expect(await pairCounts()).toEqual(before)
+      await db.query('UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp() WHERE token_hash=$1', [input.ownerLoginSessionHash])
+      const denied = await call()
+      expect(denied.status).toBe(403)
+      expect(await pairCounts()).toEqual(before)
+      expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
+    })
+
     it('ready authority catches final-clock dependency replacement', async () => {
       const f = await freezeFixture()
       await f.prepare()
