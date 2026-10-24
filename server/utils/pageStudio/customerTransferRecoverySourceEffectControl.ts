@@ -1,3 +1,4 @@
+import { captureRecoveryRpc } from './recoveryPrivateRpc'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import {
@@ -28,14 +29,14 @@ export async function executeCustomerTransferRecoverySourceEffect(
     run = selectedRunner ?? transactionWithoutRetry,
     config = recoverySourceConfiguration(env),
     service = env.PAGE_STUDIO_PROVISIONER as Record<string, unknown> | undefined,
-    method = service?.executeManagedTransferRecoverySourceEffect
-  if (!service || typeof method !== 'function') throw reviewDenied()
+    capability = captureRecoveryRpc(service, 'executeManagedTransferRecoverySourceEffect')
+  if (!capability) throw reviewDenied()
   const current = () => {
+    capability.assertCurrent()
     if (
       d.env !== env ||
       d.runTransaction !== selectedRunner ||
       env.PAGE_STUDIO_PROVISIONER !== service ||
-      service.executeManagedTransferRecoverySourceEffect !== method ||
       !reviewSame(recoverySourceConfiguration(env), config)
     )
       throw reviewDenied()
@@ -72,7 +73,7 @@ export async function executeCustomerTransferRecoverySourceEffect(
   current()
   // One explicit invocation. Native permits only a fresh acquired claim to write;
   // retained uncertainty is inspected read-only for this exact original invocation.
-  const raw = structuredClone(await Reflect.apply(method, service, [structuredClone(before)]))
+  const raw = structuredClone(await capability.call(structuredClone(before)))
   current()
   const receipt = await verifyRecoverySourceEffectResult(before, raw)
   current()

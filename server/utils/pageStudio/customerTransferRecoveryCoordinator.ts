@@ -9,7 +9,7 @@ import type { RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes
 import { readCustomerTransferRecovery } from './customerTransferRecovery'
 import { authorizeCustomerTransferRecoveryInventory } from './customerTransferRecoveryInventory'
 import { captureCustomerTransferRecoveryReconciliation } from './customerTransferRecoveryReconciliation'
-import { capturePageStudioRpcMethod } from './privateRpc'
+import { captureRecoveryRpc } from './recoveryPrivateRpc'
 import type { assertManagedTransferSource } from './managedTransferIntent'
 
 type Intent = Parameters<typeof assertManagedTransferSource>[1]
@@ -27,14 +27,13 @@ export async function inspectCustomerTransferRecovery(input: unknown, dependenci
   const { siteId, requestId, operator, body } = parsed
   const { env } = dependencies, run = dependencies.runTransaction ?? transactionWithoutRetry
   const service = env.PAGE_STUDIO_PROVISIONER as Record<string, unknown> | undefined
-  const ensureMethod = service?.ensureInitialManagedTransferRecoveryClosed
-  const observeMethod = service?.observeManagedTransferRecoveryInventory
-  const ensure = capturePageStudioRpcMethod(service, 'ensureInitialManagedTransferRecoveryClosed')
-  const observe = capturePageStudioRpcMethod(service, 'observeManagedTransferRecoveryInventory')
+  const ensure = captureRecoveryRpc(service, 'ensureInitialManagedTransferRecoveryClosed')
+  const observe = captureRecoveryRpc(service, 'observeManagedTransferRecoveryInventory')
   const validate = () => {
+    ensure?.assertCurrent()
+    observe?.assertCurrent()
     if (env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT !== 'production' || dependencies.env !== env
-      || env.PAGE_STUDIO_PROVISIONER !== service || service?.ensureInitialManagedTransferRecoveryClosed !== ensureMethod
-      || service?.observeManagedTransferRecoveryInventory !== observeMethod || !ensure || !observe) throw denied()
+      || env.PAGE_STUDIO_PROVISIONER !== service || !ensure || !observe) throw denied()
   }
   validate()
   const inventory = await run(async db => {
@@ -82,11 +81,11 @@ export async function inspectCustomerTransferRecovery(input: unknown, dependenci
           reconciliationDigest: null, reviewDigest: null, revision: null } } })
       const digest = await collectionDigest(closure)
       validate()
-      const closed = TransferRecoveryInitialClosureResultSchema.parse(await ensure!(structuredClone(closure)))
+      const closed = TransferRecoveryInitialClosureResultSchema.parse(await ensure!.call(structuredClone(closure)))
       validate()
       if (closed.eventId !== closure.transition.eventId || !same(closed.head, closure.transition.next)
         || closed.verificationDigest !== digest || (closed.kind === 'created-initial-closure' && closed.historicalProofDigest !== digest)) throw denied()
-      const result = await observe!(structuredClone(value))
+      const result = await observe!.call(structuredClone(value))
       validate()
       return result
     }

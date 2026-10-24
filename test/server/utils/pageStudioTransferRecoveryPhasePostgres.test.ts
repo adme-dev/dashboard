@@ -1,3 +1,4 @@
+import { freshRecoveryRpcBinding } from '../../fixtures/recoveryFreshRpcBinding'
 import { prepareCustomerTransferRecoverySourceExecution } from '~~/server/utils/pageStudio/customerTransferRecoverySourceExecution'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -1406,6 +1407,13 @@ describe.runIf(Boolean(databaseUrl))(
       expect(
         (await db.query('SELECT count(*)::integer n FROM page_studio_managed_transfer_executions')).rows[0].n
       ).toBe(0)
+    })
+    it('supports fresh named RPC wrappers for actual PG discovery', async () => {
+      const f = await phaseFixture()
+      f.env.PAGE_STUDIO_PROVISIONER = freshRecoveryRpcBinding(f.env.PAGE_STUDIO_PROVISIONER)
+      expect(await prepareCustomerTransferRecoverySourceExecution(f.value, { env: f.env, runTransaction }))
+        .toMatchObject({ state: 'execution-reserved' })
+      expect(f.discover).toHaveBeenCalledOnce()
     })
     it('invokes callable RPC proxy for discovery without call/bind properties', async () => {
       const f = await phaseFixture(),
