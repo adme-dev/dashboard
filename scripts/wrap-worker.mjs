@@ -13,7 +13,7 @@ import { build } from 'esbuild'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { compactSsrMarkupDirectory, compactNitroSqlModule, compactRouteSqlDirectory } from './compact-worker-static-data.mjs'
+import { compactSsrMarkupDirectory, compactNitroSqlModule, compactRouteSqlDirectory, compactSqlTemplateDirectory } from './compact-worker-static-data.mjs'
 import {
   buildCompressedPrecomputedManifestModule,
   buildWorkerDispatcherModule,
@@ -155,6 +155,8 @@ if (!await exists(compactChunksDirectory)) {
   console.log(`[wrap-worker] compacted ${sql.literals} static SQL strings, saved ${sql.savedBytes} bytes`)
   const routeSql = await compactRouteSqlDirectory(distDir)
   console.log(`[wrap-worker] compacted ${routeSql.literals} route SQL strings in ${routeSql.changedFiles} modules, saved ${routeSql.savedBytes} bytes`)
+  const templateSql = await compactSqlTemplateDirectory(distDir)
+  console.log(`[wrap-worker] encoded ${templateSql.literals} static SQL template segments in ${templateSql.changedFiles} modules, saved ${templateSql.savedBytes} bytes`)
 
   // These stable generated runtime boundaries are emitted readable. Compact
   // them while preserving function names for framework introspection, and mark
