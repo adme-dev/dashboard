@@ -5,8 +5,8 @@
     "astroBuildIdentityFixtures.json": "aab6df58afb3eab789e92ab582ceb9cd9c731a30bea96bfb47f4356f20b8751f",
     "builderGraphFixtures.json": "5e55191f0940e2be57d20c8477e221e105d8ad87d511b2db93db67548cd2dcca",
     "builderGraphLicenses.txt": "8d5d58fee24c22b7ca431fdd84693b6487f0a338cdad215d6f86e2465fb0e70e",
-    "builderGraphVerifier.d.mts": "fae6e748e7dbe41cdf596b8c7407fbf8c171dceb76914873ee8f4f531876725b",
-    "builderGraphVerifier.mjs": "ef78ea269eee13d2409743470e0bcd427483cb25bf6fb7e3be83ec14874c3784"
+    "builderGraphVerifier.d.mts": "cdc28ba433232169170b7bdecc3cd9d3bc3e72c3bf104eb0b14c638fd97cabad",
+    "builderGraphVerifier.mjs": "d2b62ba1f27784f9c21316c87da2d9681aabea3789e2fd5a1293d95bd53a7be6"
   },
   "generator": "scripts/generate-native-builder-verifier.mjs",
   "options": {
@@ -19,331 +19,395 @@
     "target": "es2022",
     "treeShaking": true
   },
-  "sourceDigest": "356aa3bdc204beb277b68af6e0e1466401d3742112bc3b659ca0dc3b2907254f",
+  "sourceDigest": "009136a0325189393f790a62a9c96d68b49b62de6bfa8b5a592fbc5e17e7f812",
   "sources": [
     {
       "path": "LICENSE",
       "sha256": "f0f5d7fafdae50715e3b5ad31445536387840351572ded8c66b55887b34d3563"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/index.js",
-      "sha256": "c733a1897d6b4b30dad6998597f6896b265b094a65534359ada34b08ecf8932c"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+      "sha256": "32e7efd49a94a765f6d10a1a0a3c02c50c246def17c80c6f0225f85525d98505"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/checks.js",
-      "sha256": "78a162d29e06001b4d919e1ed08f6e7d0d665bba0ef983201373745410d7b354"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/checks.js",
+      "sha256": "7543391a9ad5e7df287bbfecaa79844d46af44c75c1de0d43a411d65795d9dd1"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/coerce.js",
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/coerce.js",
       "sha256": "fb2efe3b6eacc475c77cbb571b5fb8650d92a10f316dc869e49b722973d83c3c"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/compat.js",
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/compat.js",
       "sha256": "0e948b101771cc0e7b753e54b3f5b486929d3db9bd4c09d98fe4ce86271bcf7b"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/errors.js",
-      "sha256": "b155316267f79068ddc2dddc7046e13785804b768ca36e6deff1691d154f7c20"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/deep-partial.js",
+      "sha256": "0abffcc9838e04dc6f091229c1d522fbfd43aab9563316b52d3eb8ff2bacf26d"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js",
-      "sha256": "179a03ace3d1d77895cc5b3c54a3fcbf2b7f8bad44d6f030092491c10e5d9097"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/errors.js",
+      "sha256": "d32f7c1ef8e2c70072f6f0ec8ba7081bbc331353cc3a7cb4429e5ece91409543"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/from-json-schema.js",
-      "sha256": "d8866bf5232e55d12cda032bde6a56a05a0a8b276945c2e4eed66432ef5cc9b2"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/external.js",
+      "sha256": "c6b584ae70ba4e7132b2cd78c23ea4ecedc9828abf999edee312372e1fb453d6"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/iso.js",
-      "sha256": "3cc5e6b4da086b8ffc7ee3188c69e4d3c945b368092e78d2299b5321182752c5"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/from-json-schema.js",
+      "sha256": "31dc999a26cb6928f5e99ea564d648567e85cf9aa47565198fb6186dbd6c070e"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/parse.js",
-      "sha256": "14cbcc416ab9169abc2cde97af77da54ca769684eac1e03a3753c16ea4a7cd95"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/in-out.js",
+      "sha256": "34370913842ff02d14a9796b11c5ec2af160bdb35a7148edc286e9a9c6fb5c17"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js",
-      "sha256": "eb4af7946a092aff8678b9251728ea58dab40154920cd65ec4a2ca1d4df68393"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/iso.js",
+      "sha256": "deaa026b7c5302e59719f401248e7866691d8d8a892884dd2b6868b1cb7252d8"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/api.js",
-      "sha256": "00cb5edcfde8098e5a169e66c1dce50c101484d21436e3d78e137e1fa87c4836"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/parse.js",
+      "sha256": "11941573401bbef138842c7a523dff554873343fccbf0e8b0a144259d2d703f1"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/checks.js",
-      "sha256": "5a33a20dcad372b4d18ead8d1e58b1950454f136a2216e62f247e0e5601ac838"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/schemas.js",
+      "sha256": "2bf4a631a18f734a9a7ab7fc11bcf919214774d2235a312dcec0dd53d0324c32"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js",
-      "sha256": "a5e713beaac4647151e03716a83f51ab714e5337cf66850f3b28eaf072a0bbfe"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/api.js",
+      "sha256": "03ae6016abc9585e3f3481d6b8d775a95ae4ee65badbde73ca1ed953ff14c0e7"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/doc.js",
-      "sha256": "e084bbcc536746a8942fd33b08afe4db345554b3a0383114f1dca95261c958d9"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/checks.js",
+      "sha256": "bc42543274218aa7ef72192b3218d2a4a399e53df8de240a04d9ff275096f563"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/errors.js",
-      "sha256": "bdd0ed8fd4a6e9d04fe6423b0f9df3a0b403939bc7dcedd8930a4b8df1fb118c"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/compile.js",
+      "sha256": "53fcf24821f50ecf42492ab7101abe8a50ead8286a53567d71648fe5ca346b99"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/index.js",
-      "sha256": "f9698820ee8371215e8d015cfa060230c62e65428397dce83f78e6538976301c"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js",
+      "sha256": "c7ce485c97263e42568d16b11bb4a90133221c7e807498a9273d70f41ba16ef6"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-generator.js",
-      "sha256": "9cc884cdb535a9c87b85b66e61a593ff6b686222f038834f81c5e92552cd6e23"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/doc.js",
+      "sha256": "be4c1b1a1ad247cc70f360a572060edd7e0cea24252c3a319f33d247899c5643"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-processors.js",
-      "sha256": "ff15f567c9401dd7d3151ce11736283ff747c9a9e205cc08ee96f90eadc1c0c6"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/errors.js",
+      "sha256": "a0c95ef2f7085b5bc2931f7b566f524b26a0360c8df741e3f87f923745cf9792"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema.js",
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/index.js",
+      "sha256": "2a0e452323aa5b75b7d7de4879289e2579b9dd2d6af291c0416ba6806ca2199d"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/json-schema-generator.js",
+      "sha256": "beaeab6faa654e99e443b8a9f5d8a4adc08cd8226f92a0cd32477a58ecfa1807"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/json-schema-processors.js",
+      "sha256": "b6d2aee72212c076b9cde38da6333591c76a24eb049a4ee4e7bd2b7825d8b817"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/json-schema.js",
       "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/parse.js",
-      "sha256": "2578b8d1341c3882a6c089f9ec57ce1c1a16b8b2b477721d4d89ba3d3ee50c9c"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/memoizer.js",
+      "sha256": "18a3188c51229d9189a5408b0b7fbc3e121b55c2b4c3c406d79cb9b77e7ad964"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/regexes.js",
-      "sha256": "3cb122080c1154321331322ebc0cbe04878fe104c8c7b335891d9f85fc4b3f63"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/parse.js",
+      "sha256": "fb05b91ec260f3f484f7c00a177b6126ceb8fd1b09dc90b1200afdffd4d98efd"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/registries.js",
-      "sha256": "620ea1a715ccc4e6e605a271343bf47942dccae90885dc71f137b1f08a972e50"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/regexes.js",
+      "sha256": "24fc98f6fc9175e50ff29d28b040e3b4ac5650de19914d45ee27b853d367ecc6"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/schemas.js",
-      "sha256": "09da9b0cb9b9d2d795c349bc47c7521d5aaffe241885f0c9728f2aa7de3834c9"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/registries.js",
+      "sha256": "f04d4b2c0bc5b4ac2d6610ea34edf2e5260eade18f20976b79916dcdbeb9fa4d"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/to-json-schema.js",
-      "sha256": "fb3c9ab59947582f7671a53c8e20a3ced5eaa92d1c220ce8b27717a59033ad0d"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/schemas.js",
+      "sha256": "0ee56e8afbae28eeb1060a162ad7e56f0675ee6fb83f0ae56bea2e088f6cdbc0"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/util.js",
-      "sha256": "968e3433e810cf7ba5efb609a1cb6d9a6cfb51215fd1f699938228f7ac25deb3"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/to-json-schema.js",
+      "sha256": "85b883eb8f05e9f060c71a39fce7df9345b566af29d5bc9c8fa477fe616a051d"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/versions.js",
-      "sha256": "bf082fde98fa7725412d713c7f56da3a5603bdef199d68d5769263f30ce9c756"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js",
+      "sha256": "bb08133b11b478c8e715038fff26ebea204d7fd5443fba31fe138b142d202efb"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ar.js",
-      "sha256": "220ca3ca8cf67e4ccc05d789eeed2692d970269fe0cd82f05db8fd899b661b9e"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/versions.js",
+      "sha256": "28439030e50c35b90e1f88726297a346f5285e32e24da7ea4ce15618661d9ac1"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/az.js",
-      "sha256": "4725ffef0b2f2df947194f9698c792b69f52a8c3a5a1e1bdfabbf62259a1dd46"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/visit.js",
+      "sha256": "a804062900869e09ea0b975cfa569fd3c70dc33bad7fc30b63872d451cae29f7"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/be.js",
-      "sha256": "da4bda7fbc940dd9f50efdd914caa9397243be779a505b82bd4be5395d3b795e"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ar.js",
+      "sha256": "eec4016c2b3063ae929617d90ec609e4c425e60c97a954d3a24de0f457b6ec97"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/bg.js",
-      "sha256": "48511ad2f86043f0eea6e7673d5e2b848a3295a26c9c4650e96b3884d640196d"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/az.js",
+      "sha256": "5bd03646b9d18b73e71356cd28937e4e6413b806bb23e14689cc88f6f65ff3a6"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ca.js",
-      "sha256": "796f9ba7dcd53648171aa0132c50271ef358936765cec0a44a642c41d05b3e8c"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/be.js",
+      "sha256": "f969afea5d9800a71958a621658943b85a2576a2bfefdd5dea70afc4924d4af4"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/cs.js",
-      "sha256": "670a75fe1db1104db090c95aabb01e4eb6decd451fe77fd830c2e4dafc79b49a"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/bg.js",
+      "sha256": "96741333a790320e05aef7286b5b709a4a7c48cfffc50fc5e6acff5b505275e9"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/da.js",
-      "sha256": "cdaad7a1fa370abda1943fe9c2caba961e7896b9808d51275daf33f964af49cc"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/bn.js",
+      "sha256": "6d8227b52a6864465b7c52a9ef7e09d261d904ec8a619932e15dd9f9f826e8dd"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/de.js",
-      "sha256": "521a4ed29fcaf3f781163875dc282cfb5262047773aa2b70a852996b1d8a51b9"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ca.js",
+      "sha256": "67f6f38b59a6e3ee81cc5155480465331dd9a142b2471a495503a81dafba0684"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/el.js",
-      "sha256": "9857a9e4909282b2efd86317fc3e67ed86e24287f32329cfa5ab833c05fc0d81"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ckb.js",
+      "sha256": "bdb9ef0cfda4009f8892585a1780fff863cd409931d6f89394c271042c131137"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/en.js",
-      "sha256": "232a0828d64df8e410b23ac9825a667bd9d485fd70acdc4b4d0870539faef0a4"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/cs.js",
+      "sha256": "4ffa0e484ad1842a2c0e5c7f2dfe9160155ff5be4b95ab6e524d3a30a2210488"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/eo.js",
-      "sha256": "ebe08048aa3ee9871ce9fe1271e254cb672b1968ec40ac253066d08d176e8a65"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/da.js",
+      "sha256": "29addcd60e88422bed9ed78c6c864220a15c06b31fdb4ab7ad4f87be4098e6ae"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/es.js",
-      "sha256": "4edd9302e9724c408b024220e99092fbd2f90100ac3c6407a94543b79843610c"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/de.js",
+      "sha256": "f344eb96ba18d9db907f3f9c95897ce2590ab0cde1553c023daffbb1cb5ef6f4"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fa.js",
-      "sha256": "2dc1bee1e984e8a15191fb3c69aaecaa26c922e12a0d4486ac005a0372b78565"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/el.js",
+      "sha256": "fdea833aa0a8c381d26216db1521dd7fbc4dccb6d3aa50f9a585ffb975df91eb"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fi.js",
-      "sha256": "3911184979f01d2ae580ce611710ee40597eff97a410d0fa823ab6ea27cee88c"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/en.js",
+      "sha256": "d5930e10d137b048b37823e168e4177947e1f696ada8419c71bb0d32da4333c0"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr-CA.js",
-      "sha256": "f8716c2baaccdfd1d958743bbc5250c9bdef5152d0801470e9b9a380d618f4ab"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/eo.js",
+      "sha256": "97797bd22319ecc3f2044da6c305f1114b851803697029ffce2b66644757da3a"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr.js",
-      "sha256": "3ea466ca5737984bb5acc9008822060272f596317004618cfe1e05109f707577"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/es.js",
+      "sha256": "12e762b921b1e3fdb8e265d2b554de81ce9706ceb23a81527f48ae2dddf355db"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/he.js",
-      "sha256": "290512e43d2907700211da09dc3959fd98d120bfb89f8836e6e3f83a472e26fe"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/fa.js",
+      "sha256": "60e7eeff4c000c85f8420168374344305d3c2110a5f91a2fb672b2a2381eeddf"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hr.js",
-      "sha256": "1ea65433c32b89bead43113ac69b3acc520bb73ae231dd2e05fedf8e8c5656d6"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/fi.js",
+      "sha256": "1e72af4193e564cd37dce4a850dc18bc1bcd6ca280f29e9f5f8c6bbab6a2cad9"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hu.js",
-      "sha256": "913ee94a253db79b31463ae23a337060b6fe28be73dfc7657d8a83a4942bd8a8"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/fr-CA.js",
+      "sha256": "a2ca0451ff943766bb6a88b392b25447462a1d3ed75c1adda5ddb0bc474bcd42"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hy.js",
-      "sha256": "0d3bbb96c0f8bc74468a2dfc7d066e838bb56fab64fd5ec03ce9c4d89eccbe99"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/fr.js",
+      "sha256": "477345d6401d0e4f07794b1a2cff8b78953723f1fc8cfaeb6b660c19be47125a"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/id.js",
-      "sha256": "cd2c19b5c30dade3ed91ffcff3deb0b068713be24f02248e7e46b87b2b9553ee"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/gu.js",
+      "sha256": "b1921ac6b4158e6360a8da6099df8bbf2d7bce7c1cf381d5a5e47aa0c74874d2"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/index.js",
-      "sha256": "d73f41a76614855d43eea493030a1aa05dca30c9a17015a0da5b8b70da61b6b1"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/he.js",
+      "sha256": "1cfff31fac19616d900d1f3febd9690ea87711e13b5be299326ebfd3f33aad4d"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/is.js",
-      "sha256": "ead5b14eac892229f915fe38ec94ab3b1e676f8aa2df2a8450848ba9ca9a1612"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/hi.js",
+      "sha256": "c31e466c2a31dc10ba6a288e1aebf429a6e9566a26918d0240aae058693f6329"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/it.js",
-      "sha256": "439969d199427d77ebf1e477bf2295b226712804b25437d442f9dfc78aca95e0"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/hr.js",
+      "sha256": "ff2bebef0761f2d6095103d58484e3b95551bc51d56770db8f161b8e0e0ec941"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ja.js",
-      "sha256": "43ee10378cac22b0b8aee912a66c3f36a834d5b4c76e9748f88a784044f248fd"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/hu.js",
+      "sha256": "9816c21ee0b3be9d973f9e033e9587a608f2d35dd1b984d415b88e03242b0189"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ka.js",
-      "sha256": "0ab5322368f9ac6e6b58f93dac484a4f4f06cdf4c0677f4df88164e9d8b4bf81"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/hy.js",
+      "sha256": "daf6d0c590d9b061759598ba9f7f97041e2874c7a58da2c64b86f152840d68fa"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/kh.js",
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/id.js",
+      "sha256": "e5c23bb0b6f696fa936bafd7969e64738504cf7a5be3ec04b24ae899d4912b58"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/index.js",
+      "sha256": "7ea85250d1e7bd9459cda61f38c78757a410d561a5421bb3f08019bba79c9849"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/is.js",
+      "sha256": "1cce1285bbf55c8a76303fea0be0fb6d39fbd0ece833137ea23a22f406ac1ae1"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/it.js",
+      "sha256": "096b497df6c5fe7de4422482b7733e764e4b344e8d7f768a7289556687acdb82"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ja.js",
+      "sha256": "2a6bbbd6dbd573687b22f35873a13cdf730c07423b4ab114e5a8b12d8777146d"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ka.js",
+      "sha256": "baf3204123cf4246df654fd1948b6c8da6917e7a06e470aeeaf7c1eaa7003628"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/kh.js",
       "sha256": "78c3d1991041bb8c8fc0f7c5d745aae422d4c2e4e8f30bae44f3fef4765900a8"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/km.js",
-      "sha256": "dbdabda94dd93d4a1827e6c809505c79fa6aa7abefec91dc50fa0871382c99cc"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/km.js",
+      "sha256": "e61079f14070dfa9c7b2047eb79f5bea6d4e845f192756d103c121bbd63ee18a"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ko.js",
-      "sha256": "d2efe22ac069d9b32b0109fa07713ac0695ac1c1357afc4e4277056466f2e196"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/kn.js",
+      "sha256": "884b1b68a1ca02fe9a774b8de9cbfa3486892eea36192699120f57b31f0a1f42"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/lt.js",
-      "sha256": "dad886e52c56a1329d22e072f8b08dc8730f69c3dc5e5acf8267cac18df1ab28"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ko.js",
+      "sha256": "11fcef61a2f23e010bf0f569d71be0d49524afc97f3072cc03fdc6fe3ea2f14d"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/mk.js",
-      "sha256": "9eb4af0392fc5b9c438cdc6ceea446acc541b59e221dba918f7b80800d9da3d1"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/lt.js",
+      "sha256": "d2e67a35a3c6e7241a9eb9c5851e4b5b651ac8b23278854862e6055829946c48"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ms.js",
-      "sha256": "c550a9185d997e8fcd17311951aa1e29793a50b8e825e18310efd5a46c641795"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/mk.js",
+      "sha256": "64ddd914c432ba5690d0686bff6603651ce886a891f84823d7dc766c9c980cd1"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/nl.js",
-      "sha256": "acba414579c5bbd7f83dc6661fa1a12d65f1822f9b0f5035549ac60f46d93763"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ms.js",
+      "sha256": "94faf0d306ffa2a4f95e57f3e53060d27220a639b9cb529f00d1d01b6270f045"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/no.js",
-      "sha256": "1854483c7cf158b8f97f0faf6fd799eb1f762009018b5fde893ca33f2fb0b313"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ne.js",
+      "sha256": "6da69989b702ae15baa27b799b6b2b32fd011ba3980a190dd0eccfc9233083d6"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ota.js",
-      "sha256": "34ae496104bc17fea7d30c3d45c94cfe3d1d569b5d39a6ca51de6c177690c556"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/nl.js",
+      "sha256": "296ced8be508c5f9e82b562049d2974882029bcd5b2ab4ade14401b33ec99909"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pl.js",
-      "sha256": "18eab58f395e30b906e8e3fddc5f212eb19f2c4362410889a5c5e0141ebe2144"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/nn.js",
+      "sha256": "bae9756817629db30841eb54a27ed9b3c71c2a4208314d8d070be624bd2e9359"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ps.js",
-      "sha256": "f977b5141fa8fb6a8459372e0b2895d74b381c9f2ff4899141f7ee3e639a4513"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/no.js",
+      "sha256": "f358e5586940350ee25a05db184565d23eb1c66903e182ebec812172f31cb55a"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pt.js",
-      "sha256": "df172afc585544dee7c063c484f5a07b5ed103e2c1072a782c763ad8ceb08e17"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ota.js",
+      "sha256": "66ed8c3ce00b2e9971ed5a17f002937405d8cdfeb399ebe012db9d2317f42146"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ro.js",
-      "sha256": "ecae409f4299ab91e2aff1095db14e23f3cf2c05b3654e242047655352c7f46b"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/pl.js",
+      "sha256": "b7f82cf9f747785beeec05cd31d3d7493c52bd3647598924141568f148c07222"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ru.js",
-      "sha256": "c397a473e94d7d189a9c09c7890fe379c4f6f46d9556d52a040a90ffa56f7b93"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ps.js",
+      "sha256": "1c15b81fcce0cdc59dbcca18df5c4ecf4e176fc3fb7668207b9ba54df43cce46"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sl.js",
-      "sha256": "ee2ff3a19b62cd2f89b54b165088773b937de15df7253df220bef07d9adf2d80"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/pt-BR.js",
+      "sha256": "abc52db767b9dd938954776728ea7480cdcab569a5a17664f60e5a2c1d63e60b"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sv.js",
-      "sha256": "97d6718fb643e05d6fe30fa4f9f09b8d9a3eda4a3a350b57dfb2944943d19502"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/pt.js",
+      "sha256": "93a820f60d571607bf34b69198f5b24617475584c0b22c0f8d160fcdef096a46"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ta.js",
-      "sha256": "04bbde9766251f9047e786fdd77632f2ecd53aec2eb060eb2fc85bf576ad729d"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ro.js",
+      "sha256": "54751d2866171c9c7ce1a72868dec09efa54d1b2b67401767594c5b360aca38a"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/th.js",
-      "sha256": "aea70c9ac2b399fe4749e19ba3aa99c3efb4dfb50eadfb62b0b2a6e005748f3d"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ru.js",
+      "sha256": "40a019b53bd1684fd4b750db87021520dd5d710f714010c0a594e5bcf5787478"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/tr.js",
-      "sha256": "4449f41d22c6f15ede5066f79d840a52ec45a6b694c859e16f9121062b6fad2f"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/sk.js",
+      "sha256": "ae7c49242e70149434c9051dd00209afbd517d98ba54c13692371a5340b616da"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ua.js",
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/sl.js",
+      "sha256": "490ca48f8aae3aed660758b32856d49a9fc5c7e255dad220e75abaef8c35140b"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/sv.js",
+      "sha256": "448f36996bb0d159489b34ad7d86df03e520a13e43b1c98ea2fb18d7ed4a3c95"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ta.js",
+      "sha256": "8b6e1bc033fdaefb1acfc7edf88c9f53c3a50cc892066effdab306103e994d42"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/tg.js",
+      "sha256": "9a5c9a3b18b8ccded28d66033575b22d823df17a7afa8bb9a733f31fe071462f"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/th.js",
+      "sha256": "913cc4962ddf5cb54ed694d04b7008493ef401d3333b26426b32f4890712574e"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/tk.js",
+      "sha256": "445abfed18c5a9d79143b02c9cf9c171b41fb5dff8ffc2cb59b7aef7203e5a7f"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/tr.js",
+      "sha256": "bca07607a27f518f19877dd9c2235fada9c73eb56896f0f6e274781fab71d64e"
+    },
+    {
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ua.js",
       "sha256": "9391169ffbc72f777a83230b6ffcc3f4cf46ab5945ec540de9ef4609dca1f4cc"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uk.js",
-      "sha256": "77136a2a60eef62f7cc803a0f9971aebbc641403af77c1b41fd5ce59abfa5de3"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/uk.js",
+      "sha256": "1e59ba41296aeb5b6142a6e5ed84712931e33e54ab0b9ae5d83faf436fc3d968"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ur.js",
-      "sha256": "858f4f38d651073e7a3fbec7ed356692578b3ad1fae1b453cb3d85312a4f39d2"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/ur.js",
+      "sha256": "d37ed2c93408e0a6b6e1cd290117a6f0e9d7b2c83509cd34b502e1dd94899c87"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uz.js",
-      "sha256": "d540bed482d15c47cb45439cff34e053379c53019c7c7c5fbe43f222d0c81f04"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/uz.js",
+      "sha256": "2cbe07635b03064ffad0bfcc98d2d570f3264b9cd3e22bbd5c160cd0343f7872"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/vi.js",
-      "sha256": "2c61bd3f4a733f3cbb1ad85e75a053cb15a8ebeb83ab56dc21f2948b1138e12f"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/vi.js",
+      "sha256": "15939adaf263e0869c602d4b34c206178a235b8bec11c8207ccd3fa50de3a141"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/yo.js",
-      "sha256": "98b9cbf31bf00c8b2c00de62725a9dd7cb718ac72d6e8fd4e0a1a7c49723e0f4"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/yo.js",
+      "sha256": "88b33f6527c1a2faaf159568330cf727c448dc468eac72142a6fb24f8714ac1e"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-CN.js",
-      "sha256": "99a4b16af598834a0b11607fcdebd1c6de026386ff1d6a5a306b364c154c5899"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/zh-CN.js",
+      "sha256": "8fc02f2bd4d92f46b24b8d82da0ee95c962fc80c14dd7dd469500e14de08d320"
     },
     {
-      "path": "node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-TW.js",
-      "sha256": "37dcae620e1553e9174a4b9434bbcc4e465150a627e80c9c17fd01de8baaf59a"
+      "path": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/zh-TW.js",
+      "sha256": "01d9b119e318d8b9f1a8fa720d06424457429425a61d0730984b750e6a5edf7d"
     },
     {
       "path": "package.json",
-      "sha256": "cb32cad95a22031d49326ddb6d0d6b814a6a8945dae18446c3437822c5d7ed23"
+      "sha256": "ce0fb7452b4be965e224e2ecf9817a2fbb91c5865ee6f243a12639e31a0e3337"
     },
     {
       "path": "packages/protocol/package.json",
@@ -402,8 +466,12 @@
       "sha256": "a3526f7e886996820355a51089f3c167cf27fda0ac8cf24ee7204a1e6b251df7"
     },
     {
+      "path": "packages/protocol/src/builder-graph-snapshot-contract.ts",
+      "sha256": "2b45bff0f790766ea5a802925ec94f7ff18e252ec7c181553675fe56f90d7a7d"
+    },
+    {
       "path": "packages/protocol/src/builder-graph-verifier.ts",
-      "sha256": "d258008dcb6cd0e9360efd4ed7b11fd3411ba0e364ee18dc172339795c59f592"
+      "sha256": "932b9ecca024099ba1c1b5a8bd4ab59f14999787f64961b5482e84bb6e1095e8"
     },
     {
       "path": "packages/protocol/src/builder-instance-reference.ts",
@@ -431,7 +499,7 @@
     },
     {
       "path": "packages/protocol/src/cms-managed.ts",
-      "sha256": "d9210e36fe80b84a7345855beff1790297fbc998c64f2f10472f48c46525ef6f"
+      "sha256": "10c988a6b13f6a457dce3cc26d7b48495405b0c17a3aceaee060cac526a31444"
     },
     {
       "path": "packages/protocol/src/collection-api.ts",
@@ -443,7 +511,7 @@
     },
     {
       "path": "packages/protocol/src/component-design.ts",
-      "sha256": "9dee24528c81b22355cabaecd95ccd71fec8b640ec51d560bd5cd598a544bcc3"
+      "sha256": "8da2b79ff1a8da21fa70d42acfc67e247cde400078e070fbd8cdf9a6556f32dc"
     },
     {
       "path": "packages/protocol/src/content-attachment.ts",
@@ -471,23 +539,27 @@
     },
     {
       "path": "packages/protocol/src/runtime-capabilities.ts",
-      "sha256": "b59267c691c53bd460701a82a303752fdc2e7afd007926f5c94cc7948b6f3e8c"
+      "sha256": "c7ebedf58fcc81b30dae32aa78933681d9d46c4b605f40e5f0b6b679a595693d"
     },
     {
       "path": "packages/protocol/src/section-motion.ts",
-      "sha256": "8ed13402c5123d8aafdb6c9b16f8f263717e69e8ed46132656b5749f3b4b714c"
+      "sha256": "5e4c573876070ac67743feee47ac704ea3f07d085eef4f134bd22efdf8c8893b"
     },
     {
       "path": "packages/protocol/src/service-area-map.ts",
       "sha256": "aa88bae0992418e3c4024f3ef390aa02b185b64352520825a9167e239c511f68"
     },
     {
+      "path": "packages/protocol/src/shared-forms.ts",
+      "sha256": "91fc87d47c2c405f95d7cd05a65952772c196b166431e62348dfadf4c0d2be5a"
+    },
+    {
       "path": "packages/protocol/src/shell.ts",
-      "sha256": "e10165cb69f8e063b0614634aa2ae9af07c30e857a8b0fca8a1887b6919e6e0a"
+      "sha256": "6eaaa43ab0351b20baf503e735cf64dffb21cff0686a7b47d7257a7d310973a5"
     },
     {
       "path": "packages/protocol/src/site.ts",
-      "sha256": "467105d7b97539eda7334744bb11af8c84cbd30d92cff2875a595186651457c0"
+      "sha256": "7a352608d631e79b9951b6c7bf2660574305608b59fb4cd54b78c82138a00ffe"
     },
     {
       "path": "packages/protocol/src/template-selection.ts",
@@ -499,7 +571,7 @@
     },
     {
       "path": "packages/protocol/src/validation.ts",
-      "sha256": "4322376c755f41b2ec30d6218e73520375f1db1e87a88387fd58d10fd0e8117c"
+      "sha256": "6848fb0f1cecee6c888bc47de980e6a408b55d03f2972cc5bdc972781d529e7e"
     },
     {
       "path": "packages/protocol/test/fixtures/astro-build-identity.v1.json",
@@ -515,7 +587,7 @@
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "8ab4aec2417c6f5a7dd0390a73e8deecaa05aa520a5a1f8922e2810b98c0da08"
+      "sha256": "bfcbcee53dca4e3a8adf7d9b2507d1092cc07b850eae5fc6601291b5b2dd89ab"
     },
     {
       "path": "scripts/generate-native-builder-verifier.mjs",
@@ -525,7 +597,7 @@
   "tools": {
     "esbuild": "0.28.2",
     "typescript": "6.0.3",
-    "zod": "4.4.3"
+    "zod": "4.6.7"
   },
   "version": 1
 }

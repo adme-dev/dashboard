@@ -1,0 +1,142 @@
+{
+  "purpose": "inventory",
+  "inspection": {
+    "operatorId": "20000000-0000-4000-8000-000000000001",
+    "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "pg": {
+      "requestId": "20000000-0000-4000-8000-000000000001",
+      "requestRevision": 5,
+      "recoveryId": "20000000-0000-4000-8000-000000000001",
+      "epoch": 1,
+      "version": 1,
+      "deadline": "2026-10-24T00:00:00.000Z"
+    }
+  },
+  "request": {
+    "operationId": "20000000-0000-4000-8000-000000000001",
+    "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "resourceRequest": {
+      "version": 1,
+      "mode": "attach-existing-content",
+      "operationId": "transfer_20000000-0000-4000-8000-000000000001",
+      "policyVersion": "content-attachment-v1",
+      "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "schemaDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "actor": {
+        "kind": "agency-user",
+        "userId": "20000000-0000-4000-8000-000000000001",
+        "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "scope": {
+        "businessId": "20000000-0000-4000-8000-000000000001",
+        "clientId": "20000000-0000-4000-8000-000000000001",
+        "environment": "production",
+        "siteId": "20000000-0000-4000-8000-000000000001",
+        "tenantId": "20000000-0000-4000-8000-000000000001"
+      },
+      "anchor": {
+        "checkpointId": "checkpoint_1",
+        "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    }
+  },
+  "requestDigest": "a1f901fcae4a8e6ff1a5a7cc9ce6f297e91fb7bb72061007deeda90495a9389e",
+  "recovery": {
+    "operationId": "20000000-0000-4000-8000-000000000001",
+    "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "recoveryId": "20000000-0000-4000-8000-000000000001",
+    "epoch": 1,
+    "version": 1,
+    "mode": "closed"
+  },
+  "source": {
+    "scope": {
+      "businessId": "20000000-0000-4000-8000-000000000001",
+      "clientId": "20000000-0000-4000-8000-000000000001",
+      "environment": "staging",
+      "siteId": "20000000-0000-4000-8000-000000000001",
+      "tenantId": "20000000-0000-4000-8000-000000000001"
+    },
+    "target": {
+      "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "databaseId": "20000000-0000-4000-8000-000000000002",
+      "name": "ps-content-cccccccccccccccccccccccccccccccc",
+      "routeId": "source_route",
+      "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "collectionReceiptDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "workflowReceiptDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stagingReceiptDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "freezeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "checkpoint": {
+      "checkpointId": "checkpoint_1",
+      "objectKey": "test/checkpoint_1.json",
+      "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "catalogueRequest": {
+    "operationId": "20000000-0000-4000-8000-000000000001",
+    "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "formatVersion": 1,
+    "resourceRequest": {
+      "operationId": "20000000-0000-4000-8000-000000000001",
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "resourceRequest": {
+        "version": 1,
+        "mode": "attach-existing-content",
+        "operationId": "transfer_20000000-0000-4000-8000-000000000001",
+        "policyVersion": "content-attachment-v1",
+        "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "schemaDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "actor": {
+          "kind": "agency-user",
+          "userId": "20000000-0000-4000-8000-000000000001",
+          "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "scope": {
+          "businessId": "20000000-0000-4000-8000-000000000001",
+          "clientId": "20000000-0000-4000-8000-000000000001",
+          "environment": "production",
+          "siteId": "20000000-0000-4000-8000-000000000001",
+          "tenantId": "20000000-0000-4000-8000-000000000001"
+        },
+        "anchor": {
+          "checkpointId": "checkpoint_1",
+          "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    },
+    "baseline": {
+      "operationId": "20000000-0000-4000-8000-000000000001",
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "version": 1,
+      "resourceIdentity": "cms_attach_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "preparationId": "20000000-0000-4000-8000-000000000001",
+      "preparationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "database": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "databaseId": "20000000-0000-4000-8000-000000000001",
+        "name": "ps-content-cccccccccccccccccccccccccccccccc",
+        "schemaDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "worker": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "databaseId": "20000000-0000-4000-8000-000000000001",
+        "scope": {
+          "businessId": "20000000-0000-4000-8000-000000000001",
+          "clientId": "20000000-0000-4000-8000-000000000001",
+          "environment": "production",
+          "siteId": "20000000-0000-4000-8000-000000000001",
+          "tenantId": "20000000-0000-4000-8000-000000000001"
+        },
+        "namespace": "xeroflow-page-studio-dispatch-production",
+        "scriptName": "ps-content-cccccccccccccccccccccccccccccccc",
+        "ownerTag": "ps-owner-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "compatibilityDate": "2026-10-20",
+        "runtimeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "setupDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "etag": "test-etag"
+      }
+    }
+  }
+}

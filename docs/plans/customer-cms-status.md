@@ -1303,3 +1303,184 @@ Verification: the combined native PostgreSQL suite passes 322 tests, and the add
 Migrations 466, 467 and 469 were applied to the configured database with zero rows in the new tables, both expected triggers per table, and unchanged fingerprints for sites, release pointers and resource bindings. Receipts are in `.verification/managed-transfer/{copy-graph,forms-history,forms-history-verification}-migration-receipt.json`. No customer activation occurred. Migration 468 is unused; terminal selection is reserved as 471 after copy verification 470.
 
 Actual copy/history orchestration, final atomic selection, retained old-live authority, recovery UI and hosted acceptance remain outstanding. The exact prepared-runtime policy is intentionally unconfigured until artifact digests are reviewed. The latest a113 CI build and database groups passed; one unrelated governance UI test timed out, passed all 16 cases on isolated rerun, and the failed CI job is rerunning. No production deployment or DNS change is claimed.
+
+
+### 2026-10-23: effective source release and expired-transfer recovery
+
+**Deployed and verified:** Studio PR #148 fixes source runtime discovery to use the effective native runtime after CMS setup. Reviewed source merged as `33b32bc6619703619d9459d3045731d7d84b5615`; all four CI verification/stress jobs passed. Only `xeroflow-provisioning-executor-production` changed: version `ddba9f22-5ecc-4e73-8470-7e99a5100a76`, deployment `787dc494-de10-4edf-9fd4-8e38b2a1898a`, 100% traffic. Exact before/after readback preserved all 17 bindings, observability and the other services. Dashboard remains at `961520050d4e6f25330a0f6d67fda9f8095217d9`. The release report is retained in `.superpowers/sdd/2026-10-20-transfer-controls/native-transfer-effective-source-release.md` of the dedicated release checkout. This release has not yet passed a resumed hosted source execution.
+
+**Implemented and tested locally, not deployed:** expired-transfer recovery has its first non-authorizing foundation. Dashboard commit `f9862f8e139ebeae5ed7455a538c3b3d0e4ad185` adds immutable recovery history, a closed recovery head and legacy admission checks before/after work; 485 PostgreSQL/authority/control/workflow tests passed. Studio commit `4a6921d49ff1576f1399a1c9f4296bc60b16cd21` adds atomic closed/revoked CAS, legacy admission guards and database protection against a delayed catalogue containment callback; 102 distinct tests, types and scoped lint passed. Both exact file sets received independent approval. These commits cannot approve, enable or resume recovery. Migrations were exercised only in owned local test databases; no production recovery head or renewal was created.
+
+Subsequent reviewed local increments:
+
+- Dashboard `a51a4f422aaaadb3ed8f05751ad8356673d07f1a` implements private bounded plan renewal: at most seven days, exact original allowances, original operator, immutable audit and atomic site-pointer change. Only the predecessor's status is cancelled; original dates and terms remain intact. No live entitlement was issued.
+- Dashboard `0ae55c1cf` defines strict public recovery requests and projections; 36 contract tests pass. Dashboard `7b6ae13714d4c68fc703980202dbb8a1109d1295` implements private initial recovery open/status/revoke. The final 95-case PostgreSQL suite covers controls, renewal and recovery, including replay, races and final-clock expiry. Opening a review closes legacy execution; it cannot enable transfer work or create another recovery epoch.
+- Studio `e7dd4ffd46dc9ec32b45fd6c6c9f50fc6fdcc8a8` verifies all four real catalogue SQL batches statement by statement, with and without later content. Eight cases pass, with schema and row snapshots unchanged after each late statement. This does not depend on REST batch rollback and is not combined source/destination eligibility proof.
+
+Dashboard `88eb17561` connects the new public HTTP/private management transport to those private helpers. Across four focused suites, 82 distinct HTTP/transport regression cases passed, including the exact historical open replay after revocation. Strict management types and scoped Nuxt ESLint passed; the generated full Nuxt lint configuration is absent in this sparse worktree. A separate read-only resource observer is in progress. Neither is a released recovery workflow; owner consent, cross-store admission, all remaining phase fences and hosted acceptance still remain.
+
+**Fresh hosted evidence:** the original customer A request remains revision 5 with its original checkpoint. Read-only Refresh now returns `needs-attention` and no phase actions because its original approval/plan expired. Resources and the four catalogue steps remain previously verified; source execution, freeze and copy were not claimed complete. The bounded signup/session window has also expired: the public configuration returns `enabled:false`, and a genuine desktop sign-in attempt cannot request a link. Desktop Mail/browser control now works; permission access is no longer the sign-in blocker.
+
+Customer B's current site was inspected in a read-only database transaction on 22 October 22:05 UTC (23 October Melbourne). It has no CMS adoption scope, generation, application or adoption receipt; its trial expired on 22 October 12:00 UTC. Installed schema prerequisites and a successful provisioning resume do not establish adoption or transfer readiness. Evidence receipts: `native-a-expired-ui-20261023.json` and `native-b-adoption-read-only-20261023.json` in the dedicated release checkout's `.verification/release-20261020/`.
+
+**Next implementation and acceptance tasks, in order:**
+
+1. Prove complete-resource/catalogue reconciliation, including noninterference of delayed legacy SQL; partial or uncertain effects remain unsupported.
+2. Connect the reviewed private publishing-plan renewal and initial closed-review controls to the complete recovery flow. Retain exact old limits and immutable history; do not treat plan renewal or an open review as transfer permission.
+3. Complete fresh owner/operator consent, cross-store admission and explicit recovery identities through every remaining phase and finalizer. A recovery head by itself never grants permission.
+4. Add a separate explicit existing-source adoption grant for B's unfinished CMS adoption. It must not revive old preview/CMS grants or authorize another provisioning/runtime/schema operation.
+5. Release a newly reviewed two-mailbox sign-in window, obtain genuine fresh sessions, and exercise the complete hosted A/B transfer and isolation matrix.
+6. Run the separately scoped agency Pi pilot, including reject/accept/save/reopen/restore, cancellation and negative checks, after the hosted gates pass. Pi remains disabled; implementation, CI and infrastructure alone do not prove this pilot.
+
+Do not deploy a stale worktree or extend the old acceptance records to make these tests pass. Preserve the original source and saved progress; public websites, DNS, publication and live Forms are unchanged by this recovery work.
+
+### 2026-10-23: complete observation transport and immutable recovery evidence
+
+Current branches were refreshed against Dashboard main `961520050d4e6f25330a0f6d67fda9f8095217d9` and Studio main `33b32bc6619703619d9459d3045731d7d84b5615`; both recovery candidates include current main. Draft PRs remain Dashboard #690 and Studio #149. These increments are committed and pushed for CI, not deployed.
+
+- Dashboard `ab027cd61` implements fresh private observation/initial-close inspection (157 real PostgreSQL control/inspection cases passed). `9cdb3135d` connects the bounded private Management receiver; `555c036ef` and Studio `11b66b2` connect the fixed Control gateway and strict inspection client.
+- Dashboard `7a9f6b854` adds complete PostgreSQL inventory prerequisites, with explicit queries across all nine later-phase admission stores (50 real PostgreSQL cases passed). `1ec222b05` and Studio `2226284` extend the private wire to complete inventory, without an incomplete-observation fallback. Shared canonical fixtures and their digest agree; 38 Dashboard transport and 20 Studio client cases pass.
+- Dashboard `5336903d9` adds immutable complete reconciliation receipts, authenticated historical retrieval and migration 474 (90 real PostgreSQL cases passed). Fresh capture brackets the remote observer with current authority/source/head checks, validates all required evidence, and performs a final locked authorization after insertion and retained-hash readback. Historical replay never refreshes its timestamps or grants authority. CI explicitly runs the receipt database suite. Migration 474 ran twice only in disposable local schemas.
+- Studio `f9f9d25` implements atomic initial G2 closure with fresh pre/post authorization and exact event/head proof (50 store/closure cases passed). `cd9a6d8` connects the private production executor using its captured first-primary database and Control bindings (34 boundary/resource regression cases passed). No public HTTP endpoint or transfer admission was added. Strict types and scoped lint pass; the Control client and business package build.
+- Studio `9d00228` updates Storybook, Vitest and ip-address to patched versions through the generated pnpm lockfile. Both local audits report no vulnerabilities; 1,600 relevant tests passed, including four actual Storybook browser tests. The new full Linux/Windows CI runs remain separate acceptance evidence.
+
+All listed slices received independent SPEC PASS / QUALITY APPROVE reviews in the release checkout's `.superpowers/sdd/2026-10-20-transfer-controls/`. The actual combined Studio source/destination inventory observer is still under final test/review. The end-to-end explicit reconciliation coordinator, fresh-login verification of a previously closed event, renewed consent, recovery admission and remaining phase/finalizer fencing are not complete. Customer B's bounded existing-source adoption and genuine hosted isolation checks remain outstanding. No production recovery migration, renewed grant, customer activation or Pi enablement occurred in these increments.
+
+
+### 2026-10-23: explicit inspection controls and bounded adoption implementation
+
+Dashboard candidate now includes `f2881ce0a` (private closed-recovery coordinator), `f615b5b2c` (explicit authenticated inspection transport), `8e71f8d85` (review/open/inspect/close UI), `cdbb74aa0` (separate existing-source adoption grant) and `e11b2877f` (three recovery routes recorded in the isolation inventory). Studio candidate includes `3787b4b` (complete read-only physical inventory), `fe70685` (fresh-login verification of the retained closed head), `629e7e5` (exact native adoption-source proof) and `788e0ff` (inventory executor and fixed production forwarding). All scopes received independent review. These are implementation commits, not production activation.
+
+The inspection path derives private selectors from retained records, brackets remote reads with fresh database authority, preserves immutable capture evidence and never retries an uncertain remote mutation automatically. Its explicit UI separates opening a recovery review from permission to resume a transfer. Inspection does not create consent or enable execution. Real Chrome verification exercised the actual Nuxt UI modal/component at desktop and 390px mobile width using a local synthetic API harness; it was not hosted account acceptance.
+
+Verification for these increments: 17 additional real-PostgreSQL coordinator cases, 59 HTTP/transport cases, 18 component cases, 95 Studio closure/verification cases and 122 Studio inventory integration cases passed. The adoption grant passed 54 owned cases, the final two dispatch regressions and 115 legacy regressions. Scoped types/lint passed; broader pre-existing Nuxt ambient/Neon diagnostics remain disclosed. Migration 475 was executed and reapplied only in disposable local PostgreSQL schemas. No live grant, source change, entitlement renewal or production migration occurred.
+
+The full Dashboard CI run on the earlier `5336903d9` candidate passed 17,479 tests and failed its mechanical route-count assertion. Commit `e11b2877f` adds the exact three scoped routes to that assertion without relaxing isolation. Studio CI on the earlier `cd9a6d8` candidate exposed a GSAP example optional-peer Node types mismatch; commit `62df8d9` aligns the example with the existing Node type peer. Its typecheck, three browser tests and frozen-lock validation pass; renewed full CI remains pending.
+
+Remaining work is explicit: fresh immutable review and owner/operator consent; matching PostgreSQL/D1 admission; recovery identities and fences through every remaining phase/finalizer; adoption HTTP/customer integration; current-source release; genuine hosted A/B activation and isolation; then the separate Pi canary. Pi remains disabled. Neither local proof nor a closed recovery head completes these gates. Public websites, domains and live Forms are unchanged.
+
+
+### 2026-10-23: owner approval screens and paired admission (local candidates)
+
+The earlier remaining-work lists are superseded by this checkpoint where they
+refer to adoption UI, review consent, or initial paired admission. These pieces
+are implemented and independently reviewed; none is a production activation.
+
+- Dashboard `f9393d732` and `73efc2268` connect the separate existing-source
+  adoption grant to operator and native customer controls. Fresh account changes
+  and document lifecycle changes invalidate the view. Actual Chrome desktop and
+  390px checks used a synthetic local API, not genuine hosted customer evidence.
+- Dashboard `a56103e60` implements immutable complete reviews and distinct genuine
+  owner/operator consent; `fc7544f3f` connects the fixed private and authenticated
+  public review routes. `dad541565` adds the owner review page and operator
+  renewal/create/consent/approval controls. The UI persists only exact public
+  request references for explicit lost-response reconciliation. It reads current
+  server state after reload before offering another approval. Component14 and
+  HTTP13 checks, scoped lint and bounded strict Vue types pass; mobile review
+  details and confirmation were checked in actual Chrome.
+- Dashboard `ba6613b236c81cb6cc1490f9033b6db2804d42eb` records pending/applied
+  admission only with fresh matching PostgreSQL and D1 proofs. Studio
+  `1340310baedfa0cb11f474843663205954bce9c0` and
+  `ca1f25b6d4a341cb16184df17a505ea74440fbd5` provide the immutable D1
+  prepared/enabled ledger and private executor integration. Dashboard
+  `3e8038404` supplies the bounded private admission transport. No production
+  renewal, admission, migration, upload or installation was performed.
+- Studio `60034b14adbb616d26433e6d4679e5dc3853928f` implements read-only
+  enabled-recovery and source-discovery checks against actual SQLite state.
+  All26 new and16 existing execution cases pass. Dashboard `142b44e5f` adds matching atomic PostgreSQL request retention and
+  requires a separate recovery runtime descriptor; ordinary runtime configuration
+  cannot create a permanently unusable saved request. Its45 cases and71 prior
+  regression cases pass. Dashboard `1fbb9dcbb` supplies the private phase transport
+  with42 cases, fresh environment checks and no public fallback. Studio `66256f4`
+  supplies actual private read-only factory and forwarding integration. These read
+  capabilities cannot upload or install a recovery runtime.
+
+CI status: Dashboard's earlier `035c733e3` production build passed the unchanged
+bundle limit after lossless literal compaction, but its full suite failed one
+configuration-inventory assertion (17,603 passed). `b0663ac3b` records precisely
+that new configuration row and passes the targeted inventory suite; full run39881850313 passed. The newer UI and phase candidates still require their own full CI. Studio run39875143813 passed both transfer
+stress jobs. Two Windows integration tests exceeded their5-second default;
+Ubuntu's hosted runner lost communication during lint. Neither result is a
+production release receipt. The scoped test-only timeout repair is committed as Studio `df6d8a5`; all
+assertions remain unchanged. Dashboard `f13863b6f` adds dedicated serialized
+PostgreSQL approval/admission and source-association CI steps so those tests run
+with the disposable database instead of being skipped by the ordinary suite.
+
+Outstanding: complete the recovery identity and physical provider checks through
+source execution, freeze, destination execution, copy/history, final selection,
+and original-source retention; connect explicit recovery continuation controls;
+release the current reviewed candidates; open the bounded two-mailbox sign-in
+window; verify genuine A/B adoption, transfer and account/session isolation; then
+run the separately scoped agency Pi pilot. Pi is still disabled. No public site,
+DNS record, publishing pointer or live Forms endpoint changed in these increments.
+
+
+### 2026-10-23: explicit admission controls and interrupted-step recovery
+
+Dashboard `34e308ac6` adds the current-PG admission coordinator (34 contract/real
+PostgreSQL cases), `a001a11a5` adds its strict operator HTTP and private Management
+transport, and `63cba14de` adds the explicit readiness screen. Studio `b981766`
+exposes actual prepare/enable operations through the fixed private executor and
+corrects original-input replay after a lost post-CAS acknowledgement. Actual D1
+and factory regressions prove unchanged request retries retain one event, while
+later or revoked state denies the earlier transition. All scopes received
+independent approval before commit.
+
+The readiness UI preserves exact public action IDs across reload, obtains a fresh
+authenticated status read, and requires explicit confirmation for each step. A
+PostgreSQL applied record never implies current D1 readiness. A cross-tab advance
+past an interrupted preparation has an explicit Use newer saved state action;
+it only clears obsolete local work and requires another website verification.
+103 combined transport, HTTP, component and isolation-inventory tests passed.
+Scoped lint, Management strict types, bounded Vue types and the Management dry
+run passed. Actual Chrome/Nuxt UI checks completed all four steps with synthetic
+local data, checked 390px layout without overflow or console errors, and proved
+refresh returns readiness to unverified. This is not hosted account acceptance.
+Browser receipt: `transfer-recovery-admission-ui-browser-20261023.json`, SHA256
+`9884c73aeabfeb56ef0c7a16d2cc5520c508bc1f31d1c727197604d7ad3b5ad7`.
+
+Dashboard `fde236dd7` adds a dedicated disposable PostgreSQL CI step for the
+coordinator; current run39887266912 is pending completion. Studio `da42fcd`
+fixes only formatting of two fixture arrays reported by Windows CI; their parsed
+JSON and canonical protocol digests are unchanged. Current Studio run39887166626
+is pending completion. The preceding candidate runs were superseded; Studio's
+Ubuntu runner shutdown during lint is not attributed to an application defect.
+Neither current candidate has a full CI pass or a release receipt yet.
+
+Remaining source recovery is being implemented as a descriptor-bound physical
+runtime change with fresh PG authority and an atomic tenant database install.
+It is not callable from the public readiness screen. Source execution, freeze,
+copy/history, destination verification, selection and original-source retention
+still require their recovery-aware execution paths before genuine A/B hosted
+acceptance and the separate Pi canary. No production migration, grant, customer
+activation, publishing pointer, DNS or Forms change occurred. Pi stays disabled.
+
+### 2026-10-23: recovery integration and resumed execution work
+
+Dashboard recovery PR #690 now includes released main `3150d0533`, preserving
+the Banner Studio release. Integration commit `0d6cecf5e` passed 647 local tests
+(including 86 real PostgreSQL cases) and strict Management types. Full CI run
+`39905884235` is still running; this is not a production release receipt.
+
+Studio `17509a6` fixes the actual hosted catalogue invocation exceeding its D1
+query budget. Start now retains the reservation, and each explicit Resume
+advances one verified phase. Existing authorization and physical verification
+checks and the original query limits remain intact. The actual catalogue RPC,
+native phase-boundary and destination-execution regressions pass. Commit
+`8a02cf1` records four exact secret-scan false positives, independently recomputed
+as deterministic fixture effect hashes; the new scan passes. Full Linux/Windows
+CI run `39905834064` is still running.
+
+The resumed source-recovery agent's exact claim-acknowledgment and read-only
+claim-observation fix is independently approved and committed as `a699814`.
+The new upload/install/selection engine has a separate independent approval
+with 29 passing tests, package types and lint. Its private executor wiring is
+still being completed. A separate agent is implementing the source-freeze
+PostgreSQL contract and retention checks. Neither constitutes hosted acceptance.
+
+Release sequencing must include the compatible freeze RPC and physical reader
+in the pinned successor artifact before retaining its recovery request. Existing
+retained requests cannot silently change artifact or descriptor. Later
+destination/copy/history/selection/retention recovery paths and genuine hosted
+customer acceptance remain outstanding, followed by the separate Pi canary.
+Pi remains disabled; no public site, domain or production grant changed here.

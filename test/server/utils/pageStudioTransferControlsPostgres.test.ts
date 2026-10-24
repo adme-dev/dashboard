@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
@@ -96,6 +96,10 @@ describe.runIf(Boolean(databaseUrl))('retained transfer controls on PostgreSQL',
     version, bytes: 30, freezeDigest: sourceFreeze.digest, operationId: 'adoption_a', origin: 'legacy', sha256: 'a'.repeat(64) })
   beforeAll(async () => {
     await db.query(readFileSync('server/database/migrations/457_page_studio_managed_transfer_intents.sql', 'utf8'))
+    for (const name of readdirSync('server/database/migrations').filter(name => /^(45[89]|46[0-9]|470|471)_/.test(name)).sort()) {
+      await db.query(readFileSync(`server/database/migrations/${name}`, 'utf8'))
+    }
+    await db.query(readFileSync('server/database/migrations/473_page_studio_transfer_recovery_heads.sql', 'utf8'))
     await db.query(readFileSync('server/database/migrations/472_page_studio_transfer_requests.sql', 'utf8'))
   })
   beforeEach(async () => {
@@ -151,6 +155,595 @@ describe.runIf(Boolean(databaseUrl))('retained transfer controls on PostgreSQL',
     await control('review', 1)
     return control('approve', 2)
   }
+  describe('bounded expired-plan renewal', () => {
+    async function renewalFixture(options: { ai?: number, sites?: number, headMilliseconds?: number } = {}) {
+      if (options.ai !== undefined) await db.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=$1 WHERE id=$2', [options.ai, input.entitlementId])
+      if (options.sites !== undefined) await db.query('UPDATE page_studio_entitlements SET active_site_limit=$1 WHERE id=$2', [options.sites, input.entitlementId])
+      await db.query("UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+interval '2 seconds' WHERE id=$1", [input.entitlementId])
+      await approved()
+      await control('reserve', 3)
+      const retained = (await db.query('SELECT operation_id,intent_digest FROM page_studio_managed_transfer_intents')).rows[0]
+      const recoveryId = randomUUID()
+      await db.query(`SELECT pg_sleep(GREATEST(0,extract(epoch FROM effective_until-clock_timestamp()))+0.01)
+        FROM page_studio_entitlements WHERE id=$1`, [input.entitlementId])
+      await db.query(`INSERT INTO page_studio_transfer_recovery_heads
+        (operation_id,intent_digest,recovery_id,epoch,mode,cas_version,deadline)
+        VALUES($1,$2,$3,1,'reconciling',1,clock_timestamp()+$4*interval '1 millisecond')`,
+      [retained.operation_id, retained.intent_digest, recoveryId, options.headMilliseconds ?? 3600000])
+      return { requestId: randomUUID(), transferRequestId: requestId, operationId: retained.operation_id,
+        intentDigest: retained.intent_digest, recoveryId, epoch: 1, expectedHeadVersion: 1,
+        expectedEntitlementId: input.entitlementId, effectiveUntil: new Date(Date.now()+86400_000).toISOString(), reason: 'Bounded expired transfer plan renewal' }
+    }
+    it('renews exact original terms atomically without authorizing transfer or changing original records', async () => {
+      const body = await renewalFixture()
+      const { renewCustomerTransferPlan } = await import('~~/server/utils/pageStudio/customerTransferPlanRenewal')
+      const previous = (await db.query('SELECT to_jsonb(e) AS value FROM page_studio_entitlements e WHERE id=$1', [input.entitlementId])).rows[0].value
+      const original = (await db.query('SELECT to_jsonb(r) AS value FROM page_studio_transfer_requests r')).rows
+      const result = await renewCustomerTransferPlan({ operator: input.operator, body }, { runTransaction })
+      expect(result.replayed).toBe(false)
+      expect((await db.query('SELECT to_jsonb(e) AS value FROM page_studio_entitlements e WHERE id=$1', [input.entitlementId])).rows[0].value).toEqual({ ...previous, status: 'cancelled' })
+      expect((await db.query('SELECT entitlement_id FROM page_studio_sites')).rows[0].entitlement_id).toBe(result.entitlement.id)
+      expect((await db.query('SELECT to_jsonb(r) AS value FROM page_studio_transfer_requests r')).rows).toEqual(original)
+      expect((await db.query('SELECT mode,cas_version FROM page_studio_transfer_recovery_heads')).rows).toEqual([{ mode: 'reconciling', cas_version: 1 }])
+    })
+    async function renew(body: unknown, run = runTransaction, operator = input.operator) {
+      const { renewCustomerTransferPlan } = await import('~~/server/utils/pageStudio/customerTransferPlanRenewal')
+      return renewCustomerTransferPlan({ operator, body }, { runTransaction: run })
+    }
+    async function state() {
+      await db.query("SET TIME ZONE 'UTC'")
+      return (await db.query(`SELECT jsonb_build_object(
+        'plans',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM page_studio_entitlements e),
+        'site',(SELECT to_jsonb(s) FROM page_studio_sites s),
+        'audit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM page_studio_audit_events a),
+        'request',(SELECT to_jsonb(r) FROM page_studio_transfer_requests r),
+        'intent',(SELECT to_jsonb(i) FROM page_studio_managed_transfer_intents i),
+        'head',(SELECT to_jsonb(h) FROM page_studio_transfer_recovery_heads h)) AS value`)).rows[0].value
+    }
+    it('copies every allowance and preserves immutable audit snapshots and historical replay after pointer/head changes', async () => {
+      const body = await renewalFixture(), before = await state()
+      const first = await renew(body)
+      const after = await state()
+      const old = before.plans.find((p: { id: string }) => p.id === input.entitlementId)
+      const next = after.plans.find((p: { id: string }) => p.id === first.entitlement.id)
+      for (const key of Object.keys(old).filter(key => !['id','status','effective_from','effective_until','created_at','updated_at','created_by'].includes(key))) expect(next[key]).toEqual(old[key])
+      expect(after.intent).toEqual(before.intent)
+      const audit = after.audit.find((a: { action: string }) => a.action === 'customer_transfer_plan_renewed')
+      expect(audit.metadata).toMatchObject({ previousEntitlement: old, cancelledEntitlement: { ...old, status: 'cancelled' }, nextEntitlement: next })
+      await expect(db.query("UPDATE page_studio_audit_events SET metadata='{}' WHERE action='customer_transfer_plan_renewed'")).rejects.toBeDefined()
+      await db.query('UPDATE page_studio_sites SET entitlement_id=$1', [input.entitlementId])
+      await db.query("UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=2")
+      const moved = await state()
+      expect(await renew(body)).toEqual({ ...first, replayed: true })
+      expect(await state()).toEqual(moved)
+      await expect(renew({ ...body, reason: 'Changed terms for same request' })).rejects.toMatchObject({ statusCode: 409 })
+      expect(await state()).toEqual(moved)
+    })
+    it('does not require or recreate expired owner cookies and does not reopen legacy admission', async () => {
+      const body = await renewalFixture()
+      await db.query("UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp()-interval '1 second'")
+      const sessions = (await db.query('SELECT * FROM page_studio_customer_sessions')).rows
+      await renew(body)
+      expect((await db.query('SELECT * FROM page_studio_customer_sessions')).rows).toEqual(sessions)
+      const { withManagedTransferIntentAuthority } = await import('~~/server/utils/pageStudio/managedTransferIntent')
+      const work = vi.fn()
+      await expect(withManagedTransferIntentAuthority({ operationId: body.operationId, intentDigest: body.intentDigest }, work, { runTransaction })).rejects.toBeDefined()
+      expect(work).not.toHaveBeenCalled()
+    })
+    it.each([
+      ['operator revoked', "UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()"],
+      ['operator expired', "UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()-interval '1 second'"],
+      ['operator invalidated', 'UPDATE team_members SET sessions_invalidated_at=clock_timestamp()'],
+      ['owner revoked', 'UPDATE page_studio_workspace_memberships SET revoked_at=clock_timestamp()'],
+      ['owner expired', "UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()-interval '1 second'"],
+      ['owner downgraded', "UPDATE page_studio_workspace_memberships SET role='manager'"],
+      ['account suspended', "UPDATE page_studio_customer_accounts SET status='suspended'"],
+      ['head revoked', "UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=2"],
+      ['unexpired predecessor', "UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+interval '1 day' WHERE status='active'"],
+      ['unbounded predecessor', "UPDATE page_studio_entitlements SET effective_until=NULL WHERE status='active'"],
+      ['changed allowance', "UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1 WHERE status='active'"],
+      ['changed source', "UPDATE page_studio_sites SET current_checkpoint_id=NULL"]
+    ])('denies %s without effects', async (_name, sql) => {
+      const body = await renewalFixture()
+      await db.query(sql)
+      const before = await state()
+      await expect(renew(body)).rejects.toBeDefined()
+      expect(await state()).toEqual(before)
+    })
+    it.each(['epoch','expectedHeadVersion','expectedEntitlementId','recoveryId','transferRequestId','intentDigest','effectiveUntil'])('denies substituted %s without effects', async (field) => {
+      const body = await renewalFixture(), before = await state()
+      const value = field === 'effectiveUntil' ? new Date(Date.now()+8*86400_000).toISOString()
+        : field === 'intentDigest' ? 'f'.repeat(64) : ['epoch','expectedHeadVersion'].includes(field) ? 2 : randomUUID()
+      await expect(renew({ ...body, [field]: value })).rejects.toMatchObject({ statusCode: 409 })
+      expect(await state()).toEqual(before)
+    })
+    it('refuses a different genuine platform operator', async () => {
+      const body = await renewalFixture(), actor = randomUUID()
+      await db.query("INSERT INTO team_members VALUES($1,TRUE,'owner',NULL,NULL)", [actor])
+      const before = await state()
+      await expect(renew(body, runTransaction, { ...input.operator, actorId: actor })).rejects.toMatchObject({ statusCode: 409 })
+      expect(await state()).toEqual(before)
+    })
+    it.each([{ ai: 1 }, { sites: 2 }])('refuses unsupported original limits even with matching retained digest: %j', async (limits) => {
+      const body = await renewalFixture(limits), before = await state()
+      await expect(renew(body)).rejects.toMatchObject({ statusCode: 409 })
+      expect(await state()).toEqual(before)
+    })
+    it('checks actual head expiry again after audit work', async () => {
+      const body = await renewalFixture({ headMilliseconds: 100 }), before = await state()
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('INSERT INTO page_studio_audit_events')) await tx.query('SELECT pg_sleep(0.15)')
+        return result
+      } } as pg.Client))
+      await expect(renew(body, run)).rejects.toMatchObject({ statusCode: 409 })
+      expect(await state()).toEqual(before)
+    })
+    it('checks expiry after the last source/row reread rather than only before it', async () => {
+      const body = await renewalFixture(), before = await state()
+      let waited = false
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('FROM page_studio_sites site CROSS JOIN')) {
+          waited = true
+          await tx.query('SELECT pg_sleep(0.25)')
+        }
+        return result
+      } } as pg.Client))
+      await expect(renew({ ...body, effectiveUntil: new Date(Date.now()+200).toISOString() }, run)).rejects.toMatchObject({ statusCode: 409 })
+      expect(waited).toBe(true)
+      expect(await state()).toEqual(before)
+    })
+    it('requires current operator authority even for historical replay', async () => {
+      const body = await renewalFixture()
+      await renew(body)
+      await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      const before = await state()
+      await expect(renew(body)).rejects.toMatchObject({ statusCode: 403 })
+      expect(await state()).toEqual(before)
+    })
+    it('rejects historical replay when its current login expires during the last owner query', async () => {
+      const body = await renewalFixture()
+      await renew(body)
+      await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()+interval '200 milliseconds'")
+      const before = await state()
+      let ownerReads = 0
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('FOR SHARE OF account,identity,membership,workspace,owner,receipt') && ++ownerReads === 2) {
+          await tx.query('SELECT pg_sleep(0.25)')
+        }
+        return result
+      } } as pg.Client))
+      await expect(renew(body, run)).rejects.toMatchObject({ statusCode: 403 })
+      expect(ownerReads).toBe(2)
+      expect(await state()).toEqual(before)
+    })
+    it('allows only one competing renewal and never two active entitlements', async () => {
+      const body = await renewalFixture()
+      const results = await Promise.allSettled([renew(body), renew({ ...body, requestId: randomUUID() })])
+      expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1)
+      expect((await db.query("SELECT id FROM page_studio_entitlements WHERE status='active'")).rows).toHaveLength(1)
+      expect((await db.query("SELECT id FROM page_studio_audit_events WHERE action='customer_transfer_plan_renewed'")).rows).toHaveLength(1)
+    })
+    it('denies changing owner/operator locks without waiting or creating effects', async () => {
+      const body = await renewalFixture(), before = await state()
+      for (const table of ['page_studio_login_sessions','page_studio_workspace_memberships','page_studio_sites','page_studio_transfer_recovery_heads']) {
+        await db.query('BEGIN')
+        try {
+          await db.query(`SELECT * FROM ${table} FOR UPDATE`)
+          await expect(renew(body)).rejects.toMatchObject({ statusCode: 503 })
+        } finally { await db.query('ROLLBACK') }
+        expect(await state()).toEqual(before)
+      }
+    })
+    it.each(['audit failure','operator expiry','membership expiry','new plan expiry','pointer change','source change','new allowance'])('rolls back atomically on final %s', async (kind) => {
+      const body = await renewalFixture(), before = await state()
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('INSERT INTO page_studio_audit_events')) {
+          if (kind === 'audit failure') throw new Error('Injected audit failure')
+          if (kind === 'operator expiry') await tx.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()-interval '1 second'")
+          if (kind === 'membership expiry') await tx.query("UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()-interval '1 second'")
+          if (kind === 'new plan expiry') await tx.query('SELECT pg_sleep(0.1)')
+          if (kind === 'pointer change') await tx.query('UPDATE page_studio_sites SET entitlement_id=$1', [input.entitlementId])
+          if (kind === 'source change') await tx.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+          if (kind === 'new allowance') await tx.query("UPDATE page_studio_entitlements SET monthly_ai_operation_limit=1 WHERE status='active'")
+        }
+        return result
+      } } as pg.Client))
+      // A short new plan expires during the final audit await; the immutable
+      // head deadline itself cannot be edited in this foundation.
+      const request = kind === 'new plan expiry' ? { ...body, effectiveUntil: new Date(Date.now()+75).toISOString() } : body
+      await expect(renew(request, run)).rejects.toBeDefined()
+      expect(await state()).toEqual(before)
+    })
+  })
+  describe('initial recovery gate controls', () => {
+    async function opening() {
+      await approved()
+      await control('reserve', 3)
+      return { action: 'open' as const, expectedRevision: 5, recoveryId: randomUUID(), expectedHeadVersion: null,
+        deadline: new Date(Date.now()+3600000).toISOString() }
+    }
+    async function gate(body: unknown, run = runTransaction, operator = input.operator) {
+      const { changeCustomerTransferRecovery } = await import('~~/server/utils/pageStudio/customerTransferRecovery')
+      return changeCustomerTransferRecovery({ siteId: input.siteId, requestId, operator, body }, { runTransaction: run })
+    }
+    async function status() {
+      const { readCustomerTransferRecovery } = await import('~~/server/utils/pageStudio/customerTransferRecovery')
+      return readCustomerTransferRecovery({ siteId: input.siteId, requestId, operator: input.operator, query: { expectedRevision: 5 } }, { runTransaction })
+    }
+    it('opens only an initial denial gate and returns safe status, then revokes without deletion', async () => {
+      const body = await opening()
+      expect(await status()).toMatchObject({ recovery: null, allowedActions: ['open'] })
+      const opened = await gate(body)
+      expect(opened).toMatchObject({ siteId: input.siteId, requestId, revision: 5,
+        recovery: { recoveryId: body.recoveryId, epoch: 1, version: 1, state: 'reconciling', expired: false }, allowedActions: ['revoke'] })
+      expect(await gate(body)).toEqual(opened)
+      const revoked = await gate({ action: 'revoke', expectedRevision: 5, recoveryId: body.recoveryId, expectedHeadVersion: 1 })
+      expect(revoked).toMatchObject({ recovery: { version: 2, state: 'revoked' }, allowedActions: [] })
+      expect(await gate({ action: 'revoke', expectedRevision: 5, recoveryId: body.recoveryId, expectedHeadVersion: 1 })).toEqual(revoked)
+      expect(await gate(body)).toEqual(revoked)
+      expect((await db.query('SELECT mode FROM page_studio_transfer_recovery_events ORDER BY cas_version')).rows).toEqual([{ mode: 'reconciling' }, { mode: 'revoked' }])
+      const text = JSON.stringify(revoked)
+      for (const forbidden of ['intentDigest','operationId','session','operatorId','owner','sourceDigest']) expect(text).not.toContain(forbidden)
+    })
+    it('permits fresh original operator inspection after original sessions and plan expire, without editing them', async () => {
+      await db.query("UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+interval '1 second' WHERE id=$1", [input.entitlementId])
+      const body = await opening()
+      await db.query("SELECT pg_sleep(GREATEST(0,extract(epoch FROM effective_until-clock_timestamp()))+0.01) FROM page_studio_entitlements WHERE id=$1", [input.entitlementId])
+      await db.query("UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp()-interval '1 second'")
+      await db.query("UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()")
+      const fresh = 'e'.repeat(64)
+      await db.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+        VALUES('agency',$1,$2,clock_timestamp(),clock_timestamp()+interval '1 hour')`, [fresh, actorId])
+      const old = (await db.query('SELECT * FROM page_studio_transfer_requests')).rows
+      expect(await gate(body, runTransaction, { actorId, loginSessionHash: fresh })).toMatchObject({ recovery: { state: 'reconciling' } })
+      expect((await db.query('SELECT * FROM page_studio_transfer_requests')).rows).toEqual(old)
+    })
+    it.each(['source','owner','archived site','deadline','revision','head version','completed table'])('denies invalid new closure: %s', async (kind) => {
+      const body = await opening()
+      if (kind === 'source') await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+      if (kind === 'owner') await db.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+      if (kind === 'archived site') await db.query("UPDATE page_studio_sites SET status='archived'")
+      if (kind === 'completed table') await db.query('ALTER TABLE page_studio_managed_transfer_completions RENAME TO unavailable_completions')
+      try {
+        const changed = kind === 'deadline' ? { ...body, deadline: new Date(Date.now()+25*3600000).toISOString() }
+          : kind === 'revision' ? { ...body, expectedRevision: 4 } : kind === 'head version' ? { ...body, expectedHeadVersion: 1 } : body
+        await expect(gate(changed)).rejects.toBeDefined()
+        expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual([])
+      } finally {
+        if (kind === 'completed table') await db.query('ALTER TABLE unavailable_completions RENAME TO page_studio_managed_transfer_completions')
+      }
+    })
+    it('blocks initial close for a retained completion marker and still permits bounded status', async () => {
+      const body = await opening()
+      const intent = (await db.query('SELECT operation_id,intent_digest FROM page_studio_managed_transfer_intents')).rows[0]
+      const hash = 'f'.repeat(64), a = randomUUID(), b = randomUUID(), audit = randomUUID()
+      const receipt = { formatVersion: 1, operationId: intent.operation_id, intentDigest: intent.intent_digest,
+        copyProofDigest: hash, historyReceiptDigest: hash, digest: hash, auditId: audit,
+        source: { generation: a, scope: { environment: 'staging' } }, destination: { generation: b, scope: { environment: 'production' } } }
+      // Negative marker fixture only: real completion table/CHECK constraints,
+      // with prerequisite FKs disabled locally. This does not claim a completed transfer.
+      await db.query('ALTER TABLE page_studio_managed_transfer_completions DISABLE TRIGGER ALL')
+      try {
+        await db.query(`INSERT INTO page_studio_managed_transfer_completions(operation_id,intent_digest,source_scope_key,source_generation,
+          destination_scope_key,destination_generation,copy_proof_digest,history_receipt_digest,receipt,receipt_json,receipt_digest,audit_id)
+          VALUES($1,$2,'source',$3,'destination',$4,$5,$5,$6::jsonb,$6,$5,$7)`,
+        [intent.operation_id, intent.intent_digest, a, b, hash, JSON.stringify(receipt), audit])
+      } finally { await db.query('ALTER TABLE page_studio_managed_transfer_completions ENABLE TRIGGER ALL') }
+      await expect(gate(body)).rejects.toMatchObject({ statusCode: 409 })
+      expect(await status()).toMatchObject({ recovery: null, allowedActions: [] })
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual([])
+    })
+    it('allows inspection/revocation after head expiry and source/owner revocation without reopening', async () => {
+      const body = await opening()
+      const short = { ...body, deadline: new Date(Date.now()+100).toISOString() }
+      await gate(short)
+      await db.query('SELECT pg_sleep(0.15)')
+      await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+      await db.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+      expect(await status()).toMatchObject({ recovery: { state: 'reconciling', expired: true }, allowedActions: ['revoke'] })
+      expect(await gate({ action: 'revoke', expectedRevision: 5, recoveryId: body.recoveryId, expectedHeadVersion: 1 })).toMatchObject({ recovery: { state: 'revoked', expired: true } })
+      expect(await gate(short)).toMatchObject({ recovery: { state: 'revoked', expired: true }, allowedActions: [] })
+      await expect(gate({ ...body, recoveryId: randomUUID() })).rejects.toMatchObject({ statusCode: 409 })
+      await expect(gate({ ...body, deadline: new Date(Date.now()+7200000).toISOString() })).rejects.toMatchObject({ statusCode: 409 })
+    })
+    it('retains exactly one initial head under competing closes and rejects stale revocation', async () => {
+      const body = await opening()
+      const results = await Promise.allSettled([gate(body), gate({ ...body, recoveryId: randomUUID() })])
+      expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1)
+      const head = (await db.query('SELECT recovery_id FROM page_studio_transfer_recovery_heads')).rows[0]
+      await expect(gate({ action: 'revoke', expectedRevision: 5, recoveryId: head.recovery_id, expectedHeadVersion: 2 })).rejects.toMatchObject({ statusCode: 409 })
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_events')).rows).toHaveLength(1)
+    })
+    it.each(['operator','site','request'])('denies concurrent %s changes without waiting', async (kind) => {
+      const body = await opening()
+      await db.query('BEGIN')
+      try {
+        await db.query(`SELECT * FROM ${kind === 'operator' ? 'page_studio_login_sessions' : kind === 'site' ? 'page_studio_sites' : 'page_studio_transfer_requests'} FOR UPDATE`)
+        await expect(gate(body)).rejects.toMatchObject({ statusCode: 503 })
+      } finally { await db.query('ROLLBACK') }
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual([])
+    })
+    it.each(['source','owner','operator','deadline','failed acknowledgement'])('rolls back close on final %s change', async (kind) => {
+      const body = await opening()
+      let inserted = false
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('INSERT INTO page_studio_transfer_recovery_heads')) {
+          inserted = true
+          if (kind === 'source') await tx.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+          if (kind === 'owner') await tx.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+          if (kind === 'operator') await tx.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+          if (kind === 'deadline') await tx.query('SELECT pg_sleep(0.2)')
+          if (kind === 'failed acknowledgement') throw new Error('Injected transaction interruption')
+        }
+        return result
+      } } as pg.Client))
+      await expect(gate(kind === 'deadline' ? { ...body, deadline: new Date(Date.now()+150).toISOString() } : body, run)).rejects.toBeDefined()
+      expect(inserted).toBe(true)
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual([])
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_events')).rows).toEqual([])
+    })
+    it('recovers a lost committed acknowledgement by exact readback without a second transition', async () => {
+      const body = await opening()
+      const loseAck: typeof runTransaction = async work => {
+        await runTransaction(work)
+        throw new Error('Lost committed acknowledgement')
+      }
+      await expect(gate(body, loseAck)).rejects.toThrow('Lost committed acknowledgement')
+      expect(await gate(body)).toMatchObject({ recovery: { version: 1, state: 'reconciling' } })
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_events')).rows).toHaveLength(1)
+    })
+    it.each(['open','status','revoke'])('checks current operator time after the last awaited login read for %s', async (action) => {
+      const body = await opening()
+      if (action === 'revoke') await gate(body)
+      const before = (await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows
+      await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()+interval '200 milliseconds'")
+      let reads = 0
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('FOR SHARE OF login,staff') && ++reads === 2) await tx.query('SELECT pg_sleep(0.25)')
+        return result
+      } } as pg.Client))
+      if (action === 'status') {
+        const { readCustomerTransferRecovery } = await import('~~/server/utils/pageStudio/customerTransferRecovery')
+        await expect(readCustomerTransferRecovery({ siteId: input.siteId, requestId, operator: input.operator,
+          query: { expectedRevision: 5 } }, { runTransaction: run })).rejects.toMatchObject({ statusCode: 403 })
+      } else await expect(gate(action === 'open' ? body : { action: 'revoke', expectedRevision: 5,
+        recoveryId: body.recoveryId, expectedHeadVersion: 1 }, run)).rejects.toMatchObject({ statusCode: 403 })
+      expect(reads).toBe(2)
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual(before)
+    })
+    it('denies a different operator and original operator logout on every action', async () => {
+      const body = await opening()
+      await expect(gate(body, runTransaction, { ...input.operator, actorId: randomUUID() })).rejects.toMatchObject({ statusCode: 403 })
+      await gate(body)
+      await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      await expect(status()).rejects.toMatchObject({ statusCode: 403 })
+      await expect(gate({ action: 'revoke', expectedRevision: 5, recoveryId: body.recoveryId, expectedHeadVersion: 1 })).rejects.toMatchObject({ statusCode: 403 })
+    })
+  })
+  describe('explicit recovery inspection authority', () => {
+    async function observation(options: { planExpiry?: boolean, headMilliseconds?: number } = {}) {
+      if (options.planExpiry) await db.query("UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+interval '1 second' WHERE id=$1", [input.entitlementId])
+      await approved()
+      await control('reserve', 3)
+      const retained = (await db.query('SELECT operation_id,intent_digest FROM page_studio_managed_transfer_intents')).rows[0]
+      const reference = { operationId: retained.operation_id, intentDigest: retained.intent_digest }
+      const { prepareManagedTransferResources } = await import('~~/server/utils/pageStudio/managedTransferResources')
+      await prepareManagedTransferResources(reference, { runTransaction, artifacts: {
+        runtimeDigest: 'a'.repeat(64), schemaDigest: 'b'.repeat(64), policyVersion: 'content-attachment-v1' } })
+      const resourceRequest = (await db.query('SELECT request FROM page_studio_managed_transfer_resources')).rows[0].request
+      const request = { ...reference, resourceRequest }
+      const { changeCustomerTransferRecovery } = await import('~~/server/utils/pageStudio/customerTransferRecovery')
+      const recoveryId = randomUUID(), deadline = new Date(Date.now()+(options.headMilliseconds ?? 3600000)).toISOString()
+      await changeCustomerTransferRecovery({ siteId: input.siteId, requestId, operator: input.operator,
+        body: { action: 'open', expectedRevision: 5, expectedHeadVersion: null, recoveryId, deadline } }, { runTransaction })
+      return { purpose: 'observe' as const, request, requestDigest: await collectionDigest(request),
+        recovery: { ...reference, recoveryId, epoch: 1, version: 1, mode: 'closed' as const },
+        inspection: { operatorId: actorId, loginSessionHash: operatorHash,
+          pg: { requestId, requestRevision: 5, recoveryId, epoch: 1, version: 1, deadline } } }
+    }
+    async function inspect(value: unknown, run = runTransaction) {
+      const { authorizeCustomerTransferRecoveryInspection } = await import('~~/server/utils/pageStudio/customerTransferRecoveryInspection')
+      return authorizeCustomerTransferRecoveryInspection(value, { runTransaction: run })
+    }
+    it('returns only a purpose-specific full-envelope digest for exact current closed inspection', async () => {
+      const value = await observation()
+      expect(await inspect(value)).toEqual({ purpose: 'observe', envelopeDigest: await collectionDigest(value) })
+      expect((await db.query('SELECT mode,cas_version FROM page_studio_transfer_recovery_heads')).rows).toEqual([{ mode: 'reconciling', cas_version: 1 }])
+    })
+    function closing(value: Awaited<ReturnType<typeof observation>>) {
+      return { purpose: 'close' as const, inspection: value.inspection, transition: {
+        eventId: randomUUID(), previous: null, next: { ...value.recovery, admissionId: null, appliedDigest: null,
+          deadline: null, pendingDigest: null, preparedDigest: null, reconciliationDigest: null,
+          reviewDigest: null, revision: null } } }
+    }
+    it('binds the exact initial G2 transition without performing a transition or granting a phase', async () => {
+      const value = closing(await observation())
+      const before = (await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows
+      expect(await inspect(value)).toEqual({ purpose: 'close', envelopeDigest: await collectionDigest(value) })
+      expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual(before)
+      const { authorizeManagedTransferResources } = await import('~~/server/utils/pageStudio/managedTransferResources')
+      const retained = (await db.query('SELECT operation_id,intent_digest,request FROM page_studio_managed_transfer_resources')).rows[0]
+      await expect(authorizeManagedTransferResources({ operationId: retained.operation_id, intentDigest: retained.intent_digest,
+        resourceRequest: retained.request }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it('allows historical plan/session expiry only with a fresh genuine original operator login', async () => {
+      const value = await observation({ planExpiry: true })
+      await db.query(`SELECT pg_sleep(GREATEST(0,extract(epoch FROM effective_until-clock_timestamp()))+0.01)
+        FROM page_studio_entitlements WHERE id=$1`, [input.entitlementId])
+      await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()-interval '1 second'")
+      await db.query("UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp()-interval '1 second'")
+      const fresh = 'f'.repeat(64)
+      await db.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+        VALUES('agency',$1,$2,clock_timestamp(),clock_timestamp()+interval '1 hour')`, [fresh, actorId])
+      value.inspection.loginSessionHash = fresh
+      expect(await inspect(value)).toEqual({ purpose: 'observe', envelopeDigest: await collectionDigest(value) })
+      expect(value.request.resourceRequest.actor.loginSessionHash).toBe(operatorHash)
+    })
+    it('keeps PG and D1 versions distinct', async () => {
+      const value = await observation()
+      value.recovery.version = 7
+      expect(await inspect(value)).toEqual({ purpose: 'observe', envelopeDigest: await collectionDigest(value) })
+      value.inspection.pg.version = 7
+      await expect(inspect(value)).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it.each(['purpose','extra','request','revision','recovery','epoch','version','deadline','operator','login',
+      'operation','intent','d1 recovery','d1 epoch','d1 operation','digest','resource actor','resource anchor','resource scope'])('denies foreign or stale %s', async (kind) => {
+      const value = await observation()
+      if (kind === 'purpose') Object.assign(value, { purpose: 'admit' })
+      if (kind === 'extra') Object.assign(value, { allow: true })
+      if (kind === 'request') value.inspection.pg.requestId = randomUUID()
+      if (kind === 'revision') value.inspection.pg.requestRevision = 4
+      if (kind === 'recovery') value.inspection.pg.recoveryId = randomUUID()
+      if (kind === 'epoch') value.inspection.pg.epoch = 2
+      if (kind === 'version') value.inspection.pg.version = 2
+      if (kind === 'deadline') value.inspection.pg.deadline = new Date(Date.now()+7200000).toISOString()
+      if (kind === 'operator') value.inspection.operatorId = randomUUID()
+      if (kind === 'login') value.inspection.loginSessionHash = 'b'.repeat(64)
+      if (kind === 'operation') value.request.operationId = randomUUID()
+      if (kind === 'intent') value.request.intentDigest = 'b'.repeat(64)
+      if (kind === 'd1 recovery') value.recovery.recoveryId = randomUUID()
+      if (kind === 'd1 epoch') value.recovery.epoch = 2
+      if (kind === 'd1 operation') value.recovery.operationId = randomUUID()
+      if (kind === 'digest') value.requestDigest = 'b'.repeat(64)
+      if (kind === 'resource actor') value.request.resourceRequest.actor.loginSessionHash = 'b'.repeat(64)
+      if (kind === 'resource anchor') value.request.resourceRequest.anchor.digest = 'b'.repeat(64)
+      if (kind === 'resource scope') value.request.resourceRequest.scope.environment = 'staging'
+      if (kind.startsWith('resource')) value.requestDigest = await collectionDigest(value.request)
+      await expect(inspect(value)).rejects.toBeDefined()
+    })
+    it.each(['previous','epoch','version','deadline','admission','extra','event'])('denies noninitial or malformed close %s', async (kind) => {
+      const value = closing(await observation())
+      if (kind === 'previous') Object.assign(value.transition, { previous: value.transition.next })
+      if (kind === 'epoch') value.transition.next.epoch = 2
+      if (kind === 'version') value.transition.next.version = 2
+      if (kind === 'deadline') Object.assign(value.transition.next, { deadline: value.inspection.pg.deadline })
+      if (kind === 'admission') Object.assign(value.transition.next, { admissionId: randomUUID() })
+      if (kind === 'extra') Object.assign(value.transition, { proofDigest: 'b'.repeat(64) })
+      if (kind === 'event') value.transition.eventId = 'invalid'
+      await expect(inspect(value)).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it.each(['source','owner','role','login','staff','mapping','revoked','missing resources','missing completion store'])('denies current authority drift: %s', async (kind) => {
+      const value = await observation()
+      if (kind === 'source') await db.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+      if (kind === 'owner') await db.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+      if (kind === 'role') await db.query("UPDATE page_studio_workspace_memberships SET role='viewer'")
+      if (kind === 'login') await db.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+      if (kind === 'staff') await db.query('UPDATE team_members SET is_active=FALSE')
+      if (kind === 'mapping') await db.query("UPDATE page_studio_customer_identities SET subject='foreign'")
+      if (kind === 'revoked') await db.query("UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=2")
+      if (kind === 'missing resources') await db.query('ALTER TABLE page_studio_managed_transfer_resources RENAME TO unavailable_resources')
+      if (kind === 'missing completion store') await db.query('ALTER TABLE page_studio_managed_transfer_completions RENAME TO unavailable_completions')
+      try { await expect(inspect(value)).rejects.toBeDefined() } finally {
+        if (kind === 'missing resources') await db.query('ALTER TABLE unavailable_resources RENAME TO page_studio_managed_transfer_resources')
+        if (kind === 'missing completion store') await db.query('ALTER TABLE unavailable_completions RENAME TO page_studio_managed_transfer_completions')
+      }
+    })
+    it('rejects expired recovery without changing its retained deadline', async () => {
+      const value = await observation({ headMilliseconds: 150 })
+      await db.query('SELECT pg_sleep(0.2)')
+      await expect(inspect(value)).rejects.toMatchObject({ statusCode: 403 })
+      expect((await db.query('SELECT cas_version FROM page_studio_transfer_recovery_heads')).rows[0].cas_version).toBe(1)
+    })
+    it.each(['operator','membership','head'])('fences %s expiry during an awaited resource read', async (kind) => {
+      const value = await observation({ headMilliseconds: kind === 'head' ? 250 : undefined })
+      if (kind === 'operator') await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()+interval '250 milliseconds'")
+      if (kind === 'membership') await db.query("UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()+interval '250 milliseconds'")
+      let delayed = false
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (!delayed && sql.includes('SELECT intent_digest,request,request_digest,identity')) {
+          delayed = true
+          await tx.query('SELECT pg_sleep(0.3)')
+        }
+        return result
+      } } as pg.Client))
+      await expect(inspect(value, run)).rejects.toBeDefined()
+      expect(delayed).toBe(true)
+    })
+    it.each(['source','owner','operator','head'])('rechecks %s after an awaited retained resource read', async (kind) => {
+      const value = await observation()
+      let changed = false
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (!changed && sql.includes('SELECT intent_digest,request,request_digest,identity')) {
+          changed = true
+          if (kind === 'source') await tx.query('UPDATE page_studio_sites SET current_checkpoint_id=NULL')
+          if (kind === 'owner') await tx.query("UPDATE page_studio_customer_accounts SET status='suspended'")
+          if (kind === 'operator') await tx.query('UPDATE page_studio_login_sessions SET revoked_at=clock_timestamp()')
+          if (kind === 'head') await tx.query("UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=2")
+        }
+        return result
+      } } as pg.Client))
+      await expect(inspect(value, run)).rejects.toBeDefined()
+      expect(changed).toBe(true)
+      expect((await db.query('SELECT cas_version FROM page_studio_transfer_recovery_heads')).rows[0].cas_version).toBe(1)
+    })
+    it('detaches the full envelope before awaited transaction work', async () => {
+      const value = await observation(), digest = await collectionDigest(value)
+      const run: typeof runTransaction = work => {
+        value.inspection.pg.version = 99
+        value.request.resourceRequest.actor.loginSessionHash = 'b'.repeat(64)
+        return runTransaction(work)
+      }
+      expect(await inspect(value, run)).toEqual({ purpose: 'observe', envelopeDigest: digest })
+    })
+    it.each(['operator','membership','head'])('checks %s time after the final G1 authority query', async (kind) => {
+      const value = await observation({ headMilliseconds: kind === 'head' ? 250 : undefined })
+      if (kind === 'operator') await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()+interval '250 milliseconds'")
+      if (kind === 'membership') await db.query("UPDATE page_studio_workspace_memberships SET expires_at=clock_timestamp()+interval '250 milliseconds'")
+      let clocks = 0
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('($4::boolean=FALSE') && ++clocks === 2) await tx.query('SELECT pg_sleep(0.3)')
+        return result
+      } } as pg.Client))
+      await expect(inspect(value, run)).rejects.toMatchObject({ statusCode: 403 })
+      expect(clocks).toBe(2)
+    })
+    it.each(['observe','close'])('denies an actual retained completion marker for %s', async (purpose) => {
+      const value = await observation(), reference = value.request
+      const hash = 'f'.repeat(64), a = randomUUID(), b = randomUUID(), audit = randomUUID()
+      const receipt = { formatVersion: 1, operationId: reference.operationId, intentDigest: reference.intentDigest,
+        copyProofDigest: hash, historyReceiptDigest: hash, digest: hash, auditId: audit,
+        source: { generation: a, scope: { environment: 'staging' } }, destination: { generation: b, scope: { environment: 'production' } } }
+      // Negative marker only, as in G1: actual completion CHECKs; prerequisite
+      // FKs disabled locally. This is not evidence of a completed transfer.
+      await db.query('ALTER TABLE page_studio_managed_transfer_completions DISABLE TRIGGER ALL')
+      try {
+        await db.query(`INSERT INTO page_studio_managed_transfer_completions(operation_id,intent_digest,source_scope_key,source_generation,
+          destination_scope_key,destination_generation,copy_proof_digest,history_receipt_digest,receipt,receipt_json,receipt_digest,audit_id)
+          VALUES($1,$2,'source',$3,'destination',$4,$5,$5,$6::jsonb,$6,$5,$7)`,
+        [reference.operationId, reference.intentDigest, a, b, hash, JSON.stringify(receipt), audit])
+      } finally { await db.query('ALTER TABLE page_studio_managed_transfer_completions ENABLE TRIGGER ALL') }
+      await expect(inspect(purpose === 'observe' ? value : closing(value))).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it.each(['request_digest','identity','intent_digest','request','missing'])('denies corrupted retained resource %s', async (field) => {
+      const value = await observation()
+      const run: typeof runTransaction = work => runTransaction(tx => work({ query: async (sql: string, args?: unknown[]) => {
+        const result = await tx.query(sql, args)
+        if (sql.includes('SELECT intent_digest,request,request_digest,identity')) {
+          if (field === 'missing') return { ...result, rows: [] }
+          result.rows[0][field] = field === 'request' ? { ...value.request.resourceRequest, policyVersion: 'foreign' } : 'b'.repeat(64)
+        }
+        return result
+      } } as pg.Client))
+      await expect(inspect(value, run)).rejects.toMatchObject({ statusCode: 403 })
+    })
+    it.each(['page_studio_login_sessions','page_studio_workspace_memberships','page_studio_sites','page_studio_transfer_recovery_heads'])('fails closed on locked %s', async (table) => {
+      const value = await observation()
+      await db.query('BEGIN')
+      try {
+        await db.query(`SELECT * FROM ${table} FOR UPDATE`)
+        await expect(inspect(value)).rejects.toMatchObject({ statusCode: 503 })
+      } finally { await db.query('ROLLBACK') }
+    })
+  })
   it('retains owner consent, source review, approval and a single reservation with opaque public views', async () => {
     const first = await control('request')
     expect(first).toMatchObject({ requestId, siteId: input.siteId, revision: 1, state: 'requested', allowedActions: ['revoke'] })

@@ -7,6 +7,16 @@ import { checkAndConsume } from '~~/server/utils/rateLimit'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
 import { TransferOwnerBodySchema, TransferOperatorBodySchema, TransferWorkflowBodySchema } from '~~/shared/pageStudio/transferWorkflow'
 import { NativeRuntimeRecoveryOperatorBody } from '~~/shared/pageStudio/nativeRuntimeRecoveryOperator'
+import { TransferRecoveryRequestSchema } from '~~/shared/pageStudio/transferRecovery'
+import { TransferRecoveryInspectActionSchema } from '~~/shared/pageStudio/transferRecoveryCoordinatorPublic'
+import { callTransferRecoveryInspection } from './transferRecoveryCoordinatorClient'
+import { CustomerAdoptionOperatorActionSchema, CustomerAdoptionCustomerOriginSchema } from '~~/shared/pageStudio/customerAdoptionTransport'
+import { callCustomerAdoptionGrant } from './customerAdoptionClient'
+import { callTransferRecovery } from './transferRecoveryClient'
+import { RecoveryReviewOwnerAction, RecoveryReviewOperatorAction } from '~~/shared/pageStudio/transferRecoveryReviewControl'
+import { TransferRecoveryAdmissionControlActionSchema } from '~~/shared/pageStudio/transferRecoveryAdmissionControl'
+import { callTransferRecoveryAdmissionControl } from './transferRecoveryAdmissionControlClient'
+import { callTransferRecoveryReviewControl } from './transferRecoveryReviewControlClient'
 import { callNativeRuntimeRecovery, callTransferControls, callTransferWorkflow } from './transferControls'
 import { requireCustomerPlanOperator } from './customerPlanGrants'
 import { bindPageStudioLoginSession, resolvePageStudioLoginSession } from './loginSessions'
@@ -40,6 +50,10 @@ function guarded(error: unknown): never {
   const code = (error as { statusCode?: number })?.statusCode
   throw createError({ statusCode: code && [400, 401, 403, 404, 405, 409, 413, 415, 429].includes(code) ? code : 503,
     statusMessage: code === 401 ? 'Sign in to continue.' : 'Transfer status could not be confirmed. Refresh the saved request before continuing.' })
+}
+function publicCustomerOrigin(env: Record<string, unknown>) {
+  const origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ORIGIN') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)
+  return origin.success ? origin.data : null
 }
 async function operator(event: H3Event) {
   // Studio operations require a genuine cookie login, never bearer-only authority.
@@ -77,18 +91,40 @@ export async function handleTransferOwnerHttp(event: H3Event, method: 'GET' | 'P
   } catch (error) { guarded(error) }
 }
 /** Current operator is independently checked before and after the one RPC. */
-export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' | 'POST', route: 'list' | 'request' | 'workflow' | 'runtime-recovery') {
+export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' | 'POST', route: 'list' | 'request' | 'workflow' | 'runtime-recovery' | 'recovery' | 'recovery-inspect' | 'adoption-grant' | 'recovery-review' | 'recovery-admission') {
   setHeader(event, 'cache-control', 'private, no-store')
   try {
     boundary(event, method)
-    if ((route === 'list' && method !== 'GET') || (route === 'runtime-recovery' && method !== 'POST')) throw createError({ statusCode: 405 })
-    const query = parse(route === 'list' ? ListQuery : route === 'workflow' && method === 'GET' ? StatusQuery : emptyQuery, getQuery(event))
-    const identity = route === 'list' ? {} : { siteId: parse(Id, getRouterParam(event, 'siteId')), requestId: parse(Id, getRouterParam(event, 'requestId')) }
+    if ((route === 'list' && method !== 'GET') || ((route === 'runtime-recovery' || route === 'recovery-inspect' || route === 'recovery-review' || route === 'recovery-admission') && method !== 'POST')) throw createError({ statusCode: 405 })
+    const query = parse(route === 'list' ? ListQuery : (route === 'workflow' || route === 'recovery') && method === 'GET' ? StatusQuery : emptyQuery, getQuery(event))
+    const identity = route === 'list' ? {} : route === 'adoption-grant'
+      ? { siteId: parse(Id, getRouterParam(event, 'siteId')) }
+      : { siteId: parse(Id, getRouterParam(event, 'siteId')), requestId: parse(Id, getRouterParam(event, 'requestId')) }
     const principal = await operator(event)
     await limitOperator(event, principal.loginSessionHash, method)
     const env = event.context.cloudflare?.env ?? {}
     let result: unknown
-    if (route === 'runtime-recovery') {
+    if (route === 'adoption-grant') {
+      const request = method === 'GET' ? { action: 'inspect' as const } : parse(CustomerAdoptionOperatorActionSchema,
+        await readPageStudioJson(event, 4096, ['Use JSON for this request.', 'The request is too large.', 'Choose an adoption action.', 'Invalid adoption request.', 'Invalid adoption JSON.']))
+      const view = await callCustomerAdoptionGrant({ siteId: identity.siteId!, operator: principal, request }, env)
+      result = { view, customerOrigin: publicCustomerOrigin(env) }
+    } else if (route === 'recovery-review') {
+      const input = parse(z.object({ expectedRevision: z.number().int().positive().max(2147483646), request: RecoveryReviewOperatorAction }).strict(),
+        await readPageStudioJson(event, 4096, ['Use JSON for this request.', 'The request is too large.', 'Choose a review action.', 'Invalid review request.', 'Invalid review JSON.']))
+      const view = await callTransferRecoveryReviewControl({ ...identity, ...input, authentication: { operator: principal } }, env)
+      result = { view, customerOrigin: publicCustomerOrigin(env) }
+    } else if (route === 'recovery-admission') {
+      const input = parse(z.object({ expectedRevision: z.number().int().positive().max(2147483646), request: TransferRecoveryAdmissionControlActionSchema }).strict(),
+        await readPageStudioJson(event, 4096, ['Use JSON for this request.', 'The request is too large.', 'Choose a readiness action.', 'Invalid readiness request.', 'Invalid readiness JSON.']))
+      result = await callTransferRecoveryAdmissionControl({ ...identity, ...input, operator: principal }, env)
+    } else if (route === 'recovery-inspect') {
+      const input = await body(event, TransferRecoveryInspectActionSchema)
+      result = await callTransferRecoveryInspection({ ...identity, ...input, operator: principal }, env)
+    } else if (route === 'recovery') {
+      const input = method === 'GET' ? { ...query, action: 'status' } : await body(event, TransferRecoveryRequestSchema)
+      result = await callTransferRecovery({ ...identity, ...input, operator: principal }, env)
+    } else if (route === 'runtime-recovery') {
       const input = await body(event, NativeRuntimeRecoveryOperatorBody)
       result = await callNativeRuntimeRecovery({ siteId: identity.siteId!, requestId: identity.requestId!, ...input, operator: principal }, env)
     } else if (route === 'workflow') {
@@ -99,6 +135,25 @@ export async function handleTransferOperatorHttp(event: H3Event, method: 'GET' |
       result = await callTransferControls({ ...identity, ...input, operator: principal }, env)
     }
     if (collectionCanonical(principal) !== collectionCanonical(await operator(event))) throw createError({ statusCode: 403 })
+    return result
+  } catch (error) { guarded(error) }
+}
+
+/** Native customer can only read or consent to an exact immutable review. */
+export async function handleTransferReviewOwnerHttp(event: H3Event) {
+  setHeader(event, 'cache-control', 'private, no-store')
+  try {
+    guardCustomerRequest(event, 'POST')
+    boundary(event, 'POST')
+    parse(emptyQuery, getQuery(event))
+    const scope = { siteId: parse(Id, getRouterParam(event, 'siteId')), requestId: parse(Id, getRouterParam(event, 'requestId')) }
+    const token = customerSessionToken(event), hash = await digestPortalSessionToken(token)
+    const principal = await readCustomerSession(token, transactionWithoutRetry)
+    await limitCustomerRequest(event, `transfer-review:${hash}`, 30)
+    const input = parse(z.object({ expectedRevision: z.number().int().positive().max(2147483646), request: RecoveryReviewOwnerAction }).strict(),
+      await readPageStudioJson(event, 4096, ['Use JSON for this request.', 'The request is too large.', 'Choose a review action.', 'Invalid review request.', 'Invalid review JSON.']))
+    const result = await callTransferRecoveryReviewControl({ ...scope, ...input, authentication: { ownerToken: token } }, event.context.cloudflare?.env ?? {})
+    if (collectionCanonical(principal) !== collectionCanonical(await readCustomerSession(token, transactionWithoutRetry))) throw createError({ statusCode: 403 })
     return result
   } catch (error) { guarded(error) }
 }

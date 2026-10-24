@@ -1,7 +1,27 @@
+import { TRANSFER_RECOVERY_SOURCE_READY_URL } from '../../../shared/pageStudio/transferRecoverySourceReadyTransport'
+import { handleTransferRecoverySourceReadyFetch } from './transferRecoverySourceReadyFetch'
+import { TRANSFER_RECOVERY_SOURCE_EFFECT_URL } from '../../../shared/pageStudio/transferRecoverySourceEffectTransport'
+import { handleTransferRecoverySourceEffectFetch } from './transferRecoverySourceEffectFetch'
+import { RECOVERY_ADMISSION_CONTROL_URL } from '../../../shared/pageStudio/transferRecoveryAdmissionControlTransport'
+import { handleTransferRecoveryAdmissionControlFetch } from './transferRecoveryAdmissionControlFetch'
+import { TRANSFER_RECOVERY_PHASE_URL } from '../../../shared/pageStudio/transferRecoveryPhaseTransport'
+import { handleTransferRecoveryPhaseFetch } from './transferRecoveryPhaseFetch'
+import { handleTransferRecoveryReviewControlFetch } from './transferRecoveryReviewControlFetch'
+import { RECOVERY_REVIEW_CONTROL_URL } from '../../../shared/pageStudio/transferRecoveryReviewControl'
+import { TRANSFER_RECOVERY_ADMISSION_URL } from '../../../shared/pageStudio/transferRecoveryAdmissionTransport'
+import { handleTransferRecoveryAdmissionFetch } from './transferRecoveryAdmissionFetch'
 import { transferAuthorityKey } from '../../../shared/pageStudio/managedTransferAuthorityTransport'
 import { handleManagedTransferAuthorityFetch } from './managedTransferAuthority'
 import { TRANSFER_WORKFLOW_URL } from '../../../shared/pageStudio/transferWorkflow'
 import { handleTransferWorkflowFetch } from './transferWorkflowFetch'
+import { TRANSFER_RECOVERY_COORDINATOR_URL } from '../../../shared/pageStudio/transferRecoveryCoordinatorTransport'
+import { handleTransferRecoveryCoordinatorFetch } from './transferRecoveryCoordinatorFetch'
+import { CUSTOMER_ADOPTION_URL } from '../../../shared/pageStudio/customerAdoptionTransport'
+import { handleCustomerAdoptionFetch } from './customerAdoptionFetch'
+import { TRANSFER_RECOVERY_URL } from '../../../shared/pageStudio/transferRecoveryTransport'
+import { handleTransferRecoveryFetch } from './transferRecoveryFetch'
+import { TRANSFER_RECOVERY_INSPECTION_URL } from '../../../shared/pageStudio/transferRecoveryInspectionTransport'
+import { handleTransferRecoveryInspectionFetch } from './transferRecoveryInspectionFetch'
 import { RESOURCE_AUTHORITY_URL } from '../../../shared/pageStudio/managedTransferResourceAuthority'
 import { handleManagedTransferResourceAuthorityFetch } from './managedTransferResourceAuthority'
 import { handleCustomerEditorAuthorityFetch } from './customerEditorAuthority'
@@ -53,6 +73,26 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
     if (transferAuthorityKey(new URL(request.url).pathname)) return handleManagedTransferAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === TRANSFER_WORKFLOW_URL) return handleTransferWorkflowFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === CUSTOMER_ADOPTION_URL) return handleCustomerAdoptionFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === TRANSFER_RECOVERY_COORDINATOR_URL) return handleTransferRecoveryCoordinatorFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === TRANSFER_RECOVERY_URL) return handleTransferRecoveryFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === RECOVERY_ADMISSION_CONTROL_URL) return handleTransferRecoveryAdmissionControlFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === RECOVERY_REVIEW_CONTROL_URL) return handleTransferRecoveryReviewControlFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === TRANSFER_RECOVERY_SOURCE_READY_URL) return handleTransferRecoverySourceReadyFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === TRANSFER_RECOVERY_SOURCE_EFFECT_URL) return handleTransferRecoverySourceEffectFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === TRANSFER_RECOVERY_PHASE_URL) return handleTransferRecoveryPhaseFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === TRANSFER_RECOVERY_ADMISSION_URL) return handleTransferRecoveryAdmissionFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === TRANSFER_RECOVERY_INSPECTION_URL) return handleTransferRecoveryInspectionFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === RESOURCE_AUTHORITY_URL) return handleManagedTransferResourceAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))

@@ -24,7 +24,14 @@ export function compactSqlSource(source, { decoderSpecifier } = {}) {
   return compactStaticSource(source, 'XEROFLOW_STATIC_SQL_DATA', value => /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(value), 256, true, decoderSpecifier)
 }
 
-function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LITERAL_CHARACTERS, includeConstants = false, decoderSpecifier) {
+/** Encode only cooked static segments of untagged SQL templates. Keep every
+ * original expression in its template position: concatenation would change
+ * coercion hints, Symbol errors and expression evaluation order. */
+export function compactSqlTemplateSource(source, { decoderSpecifier } = {}) {
+  return compactStaticSource(source, 'XEROFLOW_SQL_TEMPLATE_DATA', () => false, 256, false, decoderSpecifier, true)
+}
+
+function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LITERAL_CHARACTERS, includeConstants = false, decoderSpecifier, sqlTemplates = false) {
   const unchanged = { code: source, literals: 0 }
   if (source.includes(marker)) return unchanged
   const file = ts.createSourceFile('ssr.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
@@ -33,7 +40,28 @@ function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LI
   while (source.includes(`__xfStatic${suffix}`)) suffix++
   const prefix = `__xfStatic${suffix}`
   const values = [], indexes = new Map(), replacements = []
+  const encode = (value, start, end, template = false) => {
+    if (value.length < minimumCharacters || !value.isWellFormed()) return
+    const encoded = compress(value)
+    if (encoded.length + 32 >= Buffer.byteLength(source.slice(start, end))) return
+    let index = indexes.get(value)
+    if (index === undefined) {
+      index = values.length
+      indexes.set(value, index)
+      values.push(encoded)
+    }
+    const call = `${prefix}(${index})`
+    replacements.push({ start, end, value: template ? '${' + call + '}' : call })
+  }
   const visit = (node) => {
+    if (sqlTemplates && ts.isTemplateExpression(node) && !ts.isTaggedTemplateExpression(node.parent)
+      && /^\s*(?:\/\*[\s\S]*?\*\/\s*)*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(node.head.text)) {
+      for (const part of [node.head, ...node.templateSpans.map(span => span.literal)]) {
+        // Preserve the surrounding ` / } and ${ / ` delimiters. Replacing
+        // only a quasi cannot overlap a nested expression's source range.
+        encode(part.text, part.getStart(file) + 1, part.getEnd() - (part.kind === ts.SyntaxKind.TemplateTail ? 1 : 2), true)
+      }
+    }
     if (ts.isStringLiteralLike(node)
       && ((ts.isCallExpression(node.parent)
         && node.parent.expression.kind !== ts.SyntaxKind.ImportKeyword
@@ -50,17 +78,7 @@ function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LI
       && accepts(node.text)
     // UTF-8 replaces lone surrogates, so do not encode those JS strings.
       && node.text.isWellFormed()) {
-      const start = node.getStart(file), end = node.getEnd()
-      const encoded = compress(node.text)
-      if (encoded.length + 32 < Buffer.byteLength(source.slice(start, end))) {
-        let index = indexes.get(node.text)
-        if (index === undefined) {
-          index = values.length
-          indexes.set(node.text, index)
-          values.push(encoded)
-        }
-        replacements.push({ start, end, value: `${prefix}(${index})` })
-      }
+      encode(node.text, node.getStart(file), node.getEnd())
     }
     ts.forEachChild(node, visit)
   }
@@ -179,6 +197,16 @@ export async function compactNitroSqlModule(workerDirectory) {
  * between Nuxt/Vite releases. Reuse the same lossless literal encoder there,
  * before minification, without scanning client chunks or source maps. */
 export async function compactRouteSqlDirectory(workerDirectory) {
+  return compactSqlDirectories(workerDirectory, ['routes'], compactSqlSource)
+}
+
+/** Generated server boundaries only. The same lazy decoder serves fixed SQL
+ * fragments; request expressions and parameters never enter its data or cache. */
+export async function compactSqlTemplateDirectory(workerDirectory) {
+  return compactSqlDirectories(workerDirectory, ['nitro', 'routes'], compactSqlTemplateSource)
+}
+
+async function compactSqlDirectories(workerDirectory, directories, compactSource) {
   const changes = []
   const visit = async (directory) => {
     let entries
@@ -193,11 +221,11 @@ export async function compactRouteSqlDirectory(workerDirectory) {
       if (entry.isDirectory()) await visit(file)
       if (!entry.isFile() || !entry.name.endsWith('.mjs')) continue
       const source = await readFile(file, 'utf8')
-      const candidate = staticModuleCandidate(workerDirectory, file, source, compactSqlSource)
+      const candidate = staticModuleCandidate(workerDirectory, file, source, compactSource)
       if (candidate) changes.push(candidate)
     }
   }
-  await visit(path.join(workerDirectory, 'chunks', 'routes'))
+  for (const directory of directories) await visit(path.join(workerDirectory, 'chunks', directory))
   return writeCompactedStaticModules(workerDirectory, changes)
 }
 

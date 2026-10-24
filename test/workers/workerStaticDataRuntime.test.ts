@@ -6,10 +6,10 @@ import { expect, it } from 'vitest'
 import { compactSsrMarkupDirectory, compactPublicAssetsPlugin, compactNitroSqlModule } from '../../scripts/compact-worker-static-data.mjs'
 import { compactDeployedWorkerModules, compactWorkerModuleFilenames } from '../../scripts/compact-worker-module.mjs'
 
-it('serves identical SSR bytes and metadata through actual Workers after the full compaction chain', async () => {
+it.each([8, 100])('serves identical SSR bytes and metadata through actual Workers after full compaction (%i repetitions)', async repetitions => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pages-static-runtime-'))
   let worker: Miniflare | undefined
-  const markup = '<section><h1>Fantasy 🚘</h1><p>&lt;Saved draft&gt;\nLine two</p></section>'.repeat(100)
+  const markup = '<section><h1>Fantasy 🚘</h1><p>&lt;Saved draft&gt;\nLine two</p></section>'.repeat(repetitions)
   const metadata = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [
     `/image-${i}.png`, { type: 'image/png', etag: `"${i}"`, mtime: '2026-09-22T00:00:00.000Z', size: 100 + i, path: `../image-${i}.png`, encoding: i % 2 ? null : 'br' }
   ]))

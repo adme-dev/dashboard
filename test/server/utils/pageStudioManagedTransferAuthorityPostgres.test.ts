@@ -259,6 +259,7 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
       await db.query(readFileSync('server/database/migrations/461_page_studio_managed_transfer_source_drafts.sql', 'utf8'))
       await db.query(readFileSync('server/database/migrations/462_page_studio_managed_transfer_destination_catalogues.sql', 'utf8'))
       await db.query(readFileSync('server/database/migrations/463_page_studio_managed_transfer_catalogue_verifications.sql', 'utf8'))
+      await db.query(readFileSync('server/database/migrations/473_page_studio_transfer_recovery_heads.sql', 'utf8'))
       // Load the real coordinators as fixture setup, outside operation deadlines.
       await import('~~/server/utils/pageStudio/managedTransferIntent')
       await import('~~/server/utils/pageStudio/managedTransferResources')
@@ -314,6 +315,94 @@ describe.runIf(Boolean(databaseUrl))('native managed transfer authority on Postg
         const module = await import('~~/server/utils/pageStudio/managedTransferIntent')
         return { reference: { operationId: value.operationId, intentDigest: saved.intentDigest }, module }
       }
+      async function closeRecovery(reference: { operationId: string, intentDigest: string }, client = db) {
+        return client.query(`INSERT INTO page_studio_transfer_recovery_heads
+          (operation_id,intent_digest,recovery_id,epoch,mode,cas_version,deadline)
+          VALUES($1,$2,$3,1,'reconciling',1,clock_timestamp()+interval '1 hour') RETURNING *`,
+        [reference.operationId, reference.intentDigest, randomUUID()])
+      }
+      it('denies legacy work for every retained recovery head, including revoked', async () => {
+        const c = await original(), work = vi.fn()
+        await closeRecovery(c.reference)
+        await expect(c.module.withManagedTransferIntentAuthority(c.reference, work, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+        await db.query("UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=2")
+        await expect(c.module.withReservedManagedTransfer(c.reference, work, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+        expect(work).not.toHaveBeenCalled()
+      })
+      it('rolls back SQL effects if a head appears during an awaited consumer', async () => {
+        const c = await original()
+        await expect(c.module.withManagedTransferIntentAuthority(c.reference, async tx => {
+          await tx.query("INSERT INTO transfer_effects VALUES('denied')")
+          await closeRecovery(c.reference, tx as pg.Client)
+        }, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+        expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
+        expect((await db.query('SELECT * FROM page_studio_transfer_recovery_heads')).rows).toEqual([])
+      })
+      it('serializes recovery close with an already admitted original transaction', async () => {
+        const c = await original()
+        await c.module.withManagedTransferIntentAuthority(c.reference, async () => {
+          await expect(closeRecovery(c.reference)).rejects.toMatchObject({ code: '55P03' })
+        }, { runTransaction })
+        await closeRecovery(c.reference)
+        await expect(c.module.withManagedTransferIntentAuthority(c.reference, vi.fn(), { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+      })
+      it.each(['approved', 'pending', 'applied'])('denies even unsupported %s metadata rather than falling back to legacy', async mode => {
+        const c = await original(), work = vi.fn()
+        await closeRecovery(c.reference)
+        // Simulate corrupt storage in this disposable schema; application code
+        // cannot perform this trigger bypass.
+        await db.query('ALTER TABLE page_studio_transfer_recovery_heads DISABLE TRIGGER USER')
+        try { await db.query('UPDATE page_studio_transfer_recovery_heads SET mode=$1,intent_digest=$2', [mode, 'f'.repeat(64)]) }
+        finally { await db.query('ALTER TABLE page_studio_transfer_recovery_heads ENABLE TRIGGER USER') }
+        await expect(c.module.withManagedTransferIntentAuthority(c.reference, work, { runTransaction })).rejects.toMatchObject({ statusCode: 403 })
+        expect(work).not.toHaveBeenCalled()
+      })
+      it('fails closed if recovery storage is unavailable', async () => {
+        const c = await original(), work = vi.fn()
+        await db.query('ALTER TABLE page_studio_transfer_recovery_heads RENAME TO recovery_unavailable')
+        try { await expect(c.module.withManagedTransferIntentAuthority(c.reference, work, { runTransaction })).rejects.toThrow() }
+        finally { await db.query('ALTER TABLE recovery_unavailable RENAME TO page_studio_transfer_recovery_heads') }
+        expect(work).not.toHaveBeenCalled()
+      })
+      it.each(["epoch=0", "epoch=2147483647", "cas_version=0", "mode='applied'",
+        "intent_digest=repeat('f',64)", "deadline='infinity'", "deadline=clock_timestamp()-interval '1 second'",
+        "review_digest=repeat('a',64)"])('rejects invalid initial selector %s without history', async change => {
+        const c = await original()
+        // INSERT SELECT keeps the fixture mutation entirely inside the test DB.
+        const fields: Record<string, string> = { operation_id: 'operation_id', intent_digest: 'intent_digest', recovery_id: 'recovery_id', epoch: '1',
+          mode: "'reconciling'", cas_version: '1', deadline: "clock_timestamp()+interval '1 hour'" }
+        const split = change.indexOf('=')
+        fields[change.slice(0, split)] = change.slice(split + 1)
+        await expect(db.query(`WITH parameters AS (SELECT $1::uuid AS operation_id,$2::text AS intent_digest,$3::uuid AS recovery_id)
+          INSERT INTO page_studio_transfer_recovery_heads(${Object.keys(fields).join(',')})
+          SELECT ${Object.values(fields).join(',')} FROM parameters`, [c.reference.operationId, c.reference.intentDigest, randomUUID()])).rejects.toThrow()
+        expect((await db.query('SELECT * FROM page_studio_transfer_recovery_events')).rows).toEqual([])
+      })
+      it('retains immutable transition history and rejects stale CAS without changing the original intent', async () => {
+        const c = await original()
+        const originalRows = (await db.query('SELECT * FROM page_studio_managed_transfer_intents')).rows
+        const opened = (await closeRecovery(c.reference)).rows[0]
+        const cas = (version: number) => db.query(`UPDATE page_studio_transfer_recovery_heads SET mode='revoked',cas_version=cas_version+1
+          WHERE operation_id=$1 AND intent_digest=$2 AND recovery_id=$3 AND epoch=1 AND mode='reconciling' AND cas_version=$4 RETURNING *`,
+        [c.reference.operationId, c.reference.intentDigest, opened.recovery_id, version])
+        expect((await cas(2)).rowCount).toBe(0)
+        expect((await cas(1)).rowCount).toBe(1)
+        expect((await cas(1)).rowCount).toBe(0)
+        const history = (await db.query('SELECT * FROM page_studio_transfer_recovery_events ORDER BY cas_version')).rows
+        expect(history.map(row => row.mode)).toEqual(['reconciling', 'revoked'])
+        for (const sql of ["DELETE FROM page_studio_transfer_recovery_heads", "DELETE FROM page_studio_transfer_recovery_events",
+          "UPDATE page_studio_transfer_recovery_events SET mode='applied'",
+          "UPDATE page_studio_transfer_recovery_heads SET mode='applied',cas_version=3",
+          "UPDATE page_studio_transfer_recovery_heads SET mode='reconciling',cas_version=3",
+          "UPDATE page_studio_transfer_recovery_heads SET deadline=deadline+interval '1 hour',cas_version=3"]) {
+          await expect(db.query(sql)).rejects.toThrow()
+        }
+        expect((await db.query('SELECT * FROM page_studio_transfer_recovery_events ORDER BY cas_version')).rows).toEqual(history)
+        expect((await db.query('SELECT * FROM page_studio_managed_transfer_intents')).rows).toEqual(originalRows)
+        await db.query(`UPDATE page_studio_transfer_recovery_heads SET mode='reconciling',cas_version=3,epoch=2,recovery_id=$1,
+          deadline=clock_timestamp()+interval '2 hours'`, [randomUUID()])
+        expect((await db.query('SELECT mode,epoch,cas_version FROM page_studio_transfer_recovery_heads')).rows).toEqual([{ mode: 'reconciling', epoch: 2, cas_version: 3 }])
+      })
       it('can resolve original authority after source authoring ends without reopening nonterminal phases', async () => {
         const c = await original()
         await db.query('UPDATE page_studio_cms_scopes SET state=\'blocked\'')

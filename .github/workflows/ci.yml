@@ -49,7 +49,9 @@ concurrency:
 jobs:
   ci:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # The sequential database gates take ~36 minutes before build and full tests.
+    # Keep each step's limit; allow the complete required pipeline to finish.
+    timeout-minutes: 90
 
     strategy:
       matrix:
@@ -179,6 +181,44 @@ jobs:
           PAGE_STUDIO_WORKSPACE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_activation_astro_ci
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_activation_astro_ci
 
+      - name: Page Studio expired transfer recovery database tests
+        run: |
+          psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_cms_transfer_recovery_ci'
+          pnpm exec vitest run test/server/utils/pageStudioTransferControlsPostgres.test.ts test/server/utils/pageStudioTransferRecoveryMigrationPostgres.test.ts test/server/utils/pageStudioTransferRecoveryInventoryPostgres.test.ts test/server/utils/pageStudioTransferRecoveryReconciliationPostgres.test.ts --maxWorkers=1
+        timeout-minutes: 8
+        env:
+          PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
+
+      - name: Page Studio recovery approval and admission database tests
+        run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoveryReviewPostgres.test.ts test/server/utils/pageStudioTransferRecoveryAdmissionPostgres.test.ts --maxWorkers=1
+        timeout-minutes: 8
+        env:
+          PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
+
+      - name: Page Studio explicit recovery admission control database tests
+        run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoveryAdmissionControlPostgres.test.ts --maxWorkers=1
+        timeout-minutes: 5
+        env:
+          PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
+
+      - name: Page Studio recovery source association database tests
+        run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoveryPhasePostgres.test.ts --maxWorkers=1
+        timeout-minutes: 6
+        env:
+          PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
+
+      - name: Page Studio recovery source effect authority and coordinator database tests
+        run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoverySourceEffectPostgres.test.ts test/server/utils/pageStudioTransferRecoverySourceEffectControlPostgres.test.ts --maxWorkers=1
+        timeout-minutes: 6
+        env:
+          PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
+
+      - name: Page Studio recovery source freeze database tests
+        run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoverySourceFreezePostgres.test.ts --maxWorkers=1
+        timeout-minutes: 6
+        env:
+          PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
+
       - name: Page Studio booking and content authority database tests
         run: pnpm exec vitest run test/server/utils/pageStudioBookingsPostgres.test.ts test/server/utils/pageStudioPortalBookingsPostgres.test.ts test/server/utils/pageStudioBusinessContentPostgres.test.ts test/server/utils/pageStudioEmailConfigurationPostgres.test.ts
         timeout-minutes: 5
@@ -214,10 +254,12 @@ jobs:
       # reached production behind a green check — main deploys on merge.
       - name: Full test suite
         # The repository-wide caller scan competes with other test files for CPU.
-        # Run its unchanged assertions/15s limit first, then every remaining file.
+        # The governance layout checks also launch Chromium. Run both suites
+        # serially first, with unchanged assertions and timeouts, so browser startup
+        # does not compete with the full pool. Every other test still runs below.
         run: |
-          pnpm exec vitest run test/server/api/crmSearchEndpoints.test.ts
-          pnpm run test:run --exclude test/server/api/crmSearchEndpoints.test.ts
+          pnpm exec vitest run test/server/api/crmSearchEndpoints.test.ts test/app/aiGovernanceControlPlane.test.ts --maxWorkers=1
+          pnpm run test:run --exclude test/server/api/crmSearchEndpoints.test.ts --exclude test/app/aiGovernanceControlPlane.test.ts
         timeout-minutes: 20
 
       # Kept as separate steps despite being subsets of the run above: both are

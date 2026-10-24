@@ -1,0 +1,69 @@
+{
+  "pending": {
+    "body": {
+      "formatVersion": 1,
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "epoch": 1,
+      "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+      "reviewId": "3b89f3c1-3206-40b7-8fb6-651f57553b93",
+      "revision": 1,
+      "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "pgVersion": 3,
+      "prepareEventId": "f4bb5737-f6e0-4909-84b0-6ccbf16a71a7",
+      "enableEventId": "34569260-0dd8-4f2a-b0cb-c7a655f601e8"
+    },
+    "digest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6"
+  },
+  "applied": {
+    "body": {
+      "formatVersion": 1,
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "epoch": 1,
+      "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+      "reviewId": "3b89f3c1-3206-40b7-8fb6-651f57553b93",
+      "revision": 1,
+      "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "pgVersion": 4,
+      "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+      "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8"
+    },
+    "digest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058"
+  },
+  "inspection": {
+    "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "operatorId": "3baf77e9-8b0d-4b03-9cd5-0d6296e6eca6",
+    "pg": {
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "epoch": 1,
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "requestId": "4f20e668-3ae8-4510-9da2-5b0692cc137f",
+      "requestRevision": 5,
+      "version": 4
+    }
+  },
+  "recovery": {
+    "epoch": 1,
+    "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+    "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+    "version": 3,
+    "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+    "appliedDigest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058",
+    "deadline": "2099-01-01T00:00:00.000Z",
+    "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+    "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8",
+    "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "revision": 1,
+    "mode": "enabled"
+  },
+  "purpose": "recovery-enabled"
+}

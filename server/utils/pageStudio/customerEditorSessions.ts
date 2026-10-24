@@ -29,21 +29,21 @@ export async function exchangeCustomerEditorSession(ticket: unknown, configurati
     const context = await redeemCustomerEditorHandoff(ticket, configuration, { runTransaction: callback => callback(db), assertWorkspace: dependencies.assertWorkspace })
     const handoff = (await db.query<AuthorityReceipt>('SELECT * FROM page_studio_customer_editor_handoffs WHERE id=$1', [context.handoffId])).rows[0]
     const capabilities = customerSessionCapabilities(handoff?.purpose)
-    const setup = handoff?.purpose === 'cms-setup'
+    const setup = handoff?.purpose === 'cms-setup', adoption = handoff?.purpose === 'cms-adoption'
     if (!handoff) throw denied()
     const authority = await readCustomerEditorAuthority(db, handoff)
     // Use one instant for both bounds: separate clock reads can cross a second
     // and create an overlong session that our own authority checks reject.
     const parent = (await db.query<{ issued: number, expires: number, editor_origin: string }>(`WITH issuance AS MATERIALIZED (SELECT clock_timestamp() AS instant)
       SELECT floor(extract(epoch FROM issuance.instant))::int AS issued,
-      floor(extract(epoch FROM LEAST(native.expires_at, entitlement.effective_until, $3::timestamptz,
+      floor(extract(epoch FROM LEAST(native.expires_at, CASE WHEN handoff.purpose='cms-adoption' THEN $3::timestamptz ELSE entitlement.effective_until END, $3::timestamptz,
         issuance.instant + $2 * INTERVAL '1 second')))::int AS expires, handoff.editor_origin
       FROM page_studio_customer_editor_handoffs handoff
       CROSS JOIN issuance
       JOIN page_studio_customer_sessions native ON native.token_hash = handoff.login_session_hash
       JOIN page_studio_sites site ON site.id = handoff.site_id
       JOIN page_studio_entitlements entitlement ON entitlement.id = site.entitlement_id
-      WHERE handoff.id = $1`, [context.handoffId, setup ? CUSTOMER_CMS_SETUP_MAX_SECONDS : CUSTOMER_EDITOR_MAX_SECONDS, authority.expiresAt])).rows[0]
+      WHERE handoff.id = $1`, [context.handoffId, (setup || adoption) ? CUSTOMER_CMS_SETUP_MAX_SECONDS : CUSTOMER_EDITOR_MAX_SECONDS, authority.expiresAt])).rows[0]
     if (!parent) throw denied()
     const claims = parseClaims({ role: 'customer', environment: context.scope.environment, nonce: crypto.randomUUID(), userId: context.identityId,
       workspaceId: context.workspaceId, clientId: context.scope.clientId, siteId: context.scope.siteId, tenantId: context.scope.tenantId,
@@ -53,11 +53,12 @@ export async function exchangeCustomerEditorSession(ticket: unknown, configurati
       VALUES ($1, $2, $3::jsonb, to_timestamp($4), to_timestamp($5))`,
     [claims.nonce, context.handoffId, JSON.stringify(claims), claims.issuedAt, claims.expiresAt])
     const token = await sign(claims)
-    await assertCustomerEditorSessionAuthority(claims, setup ? 'cms:prepare' : 'workspace:create', db)
+    await assertCustomerEditorSessionAuthority(claims, adoption ? 'cms:adopt' : setup ? 'cms:prepare' : 'workspace:create', db)
     await db.query(`INSERT INTO page_studio_audit_events
       (tenant_id, client_id, site_id, actor_id, actor_role, action, resource_type, resource_id)
       VALUES ($1, $2, $3, $4, 'customer', 'customer.session_issued', 'customer_editor_session', $5)`,
     [claims.tenantId, claims.clientId, claims.siteId, claims.userId, claims.nonce])
+    if (adoption) await assertCustomerEditorSessionAuthority(claims, 'cms:adopt', db)
     dependencies.assertWorkspace?.(claims.workspaceId)
     return { token, sessionId: claims.nonce, expiresAt: claims.expiresAt, returnUrl: claims.returnUrl }
   })

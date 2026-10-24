@@ -1,0 +1,287 @@
+{
+  "catalogueRequest": {
+    "baseline": {
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "database": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "databaseId": "9b270eb9-3864-4565-ae00-bcf64f572ae3",
+        "name": "ps-content-9406b6ce9c9f4be0b6b36310504af3c0",
+        "schemaDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a"
+      },
+      "preparationDigest": "7a6b9fe21da9cddb213153123aa64fdde63adb1d2a78ba7fcfd96f42129e16f1",
+      "preparationId": "9671581b-ab47-4e66-a93c-517bd08058c3",
+      "resourceIdentity": "cms_attach_350d47e02052c9df09c649b2b05748d25f438053ba480972be37a02937c49bab",
+      "version": 1,
+      "worker": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "compatibilityDate": "2026-08-18",
+        "databaseId": "9b270eb9-3864-4565-ae00-bcf64f572ae3",
+        "etag": "verified-etag",
+        "namespace": "xeroflow-page-studio-dispatch-production",
+        "ownerTag": "ps-owner-fce267f19c9343eaa92f3041e170b8b8",
+        "runtimeDigest": "6578261a7e696d68eb6bc5cc17fe7004ac97546e837882ca106a814d8506d046",
+        "scope": {
+          "businessId": "client_a",
+          "clientId": "client_a",
+          "environment": "production",
+          "siteId": "site_a",
+          "tenantId": "tenant_a"
+        },
+        "scriptName": "ps-content-6c1cc5b8dc0544a58a53f56b011ff6fb",
+        "setupDigest": "8c9f5e6fc3c907a54ca2a9db4a2dd0a0910ca7249ab110961d6a365ef9ddf06a"
+      }
+    },
+    "formatVersion": 1,
+    "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+    "resourceRequest": {
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "resourceRequest": {
+        "actor": {
+          "kind": "agency-user",
+          "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "userId": "33333333-3333-4333-8333-333333333333"
+        },
+        "anchor": {
+          "checkpointId": "original-checkpoint",
+          "digest": "0a6d8ef858cda2a80c09b424a7824461defdfe1f21b1b835e47bbed097adfe2a"
+        },
+        "mode": "attach-existing-content",
+        "operationId": "transfer_ea8fd34d-def0-469f-b043-6c159aab1443",
+        "policyVersion": "content-attachment-v1",
+        "runtimeDigest": "6578261a7e696d68eb6bc5cc17fe7004ac97546e837882ca106a814d8506d046",
+        "schemaDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+        "scope": {
+          "businessId": "client_a",
+          "clientId": "client_a",
+          "environment": "production",
+          "siteId": "site_a",
+          "tenantId": "tenant_a"
+        },
+        "version": 1
+      }
+    }
+  },
+  "inspection": {
+    "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "operatorId": "3baf77e9-8b0d-4b03-9cd5-0d6296e6eca6",
+    "pg": {
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "epoch": 1,
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "requestId": "4f20e668-3ae8-4510-9da2-5b0692cc137f",
+      "requestRevision": 5,
+      "version": 4
+    }
+  },
+  "request": {
+    "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+    "resourceRequest": {
+      "actor": {
+        "kind": "agency-user",
+        "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "userId": "33333333-3333-4333-8333-333333333333"
+      },
+      "anchor": {
+        "checkpointId": "original-checkpoint",
+        "digest": "0a6d8ef858cda2a80c09b424a7824461defdfe1f21b1b835e47bbed097adfe2a"
+      },
+      "mode": "attach-existing-content",
+      "operationId": "transfer_ea8fd34d-def0-469f-b043-6c159aab1443",
+      "policyVersion": "content-attachment-v1",
+      "runtimeDigest": "6578261a7e696d68eb6bc5cc17fe7004ac97546e837882ca106a814d8506d046",
+      "schemaDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+      "scope": {
+        "businessId": "client_a",
+        "clientId": "client_a",
+        "environment": "production",
+        "siteId": "site_a",
+        "tenantId": "tenant_a"
+      },
+      "version": 1
+    }
+  },
+  "requestDigest": "f513f3ba301839191a5eaefce00b26b2e3bee952c00191c21a2b4c7f754232df",
+  "source": {
+    "checkpoint": {
+      "checkpointId": "original-checkpoint",
+      "digest": "0a6d8ef858cda2a80c09b424a7824461defdfe1f21b1b835e47bbed097adfe2a",
+      "objectKey": "tenants/tenant_a/clients/client_a/sites/site_a/checkpoints/original-checkpoint.json"
+    },
+    "freezeDigest": "67989130753a792e984fb7870edc671ebf2e96c3ef7c5bf776aee0b8f5ecb594",
+    "scope": {
+      "businessId": "client_a",
+      "clientId": "client_a",
+      "environment": "staging",
+      "siteId": "site_a",
+      "tenantId": "tenant_a"
+    },
+    "target": {
+      "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "collectionReceiptDigest": "1cafa732631ec922111b68f269e3b471d603445a4a3a07569abccf39e4943836",
+      "databaseId": "3bca66d5-ad54-4499-be9f-65a3c75a5315",
+      "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "routeId": "431adb35-4a57-477f-aff7-b741217bd455",
+      "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+      "stagingReceiptDigest": "b476b0286abddd8bf985d48d6e20c50e45bef31287bcfc6616ca0cdee589850a",
+      "workflowReceiptDigest": "cb56b4683dbd1d5f88680c5213bb066d1230b82204abf2067620ebf62e5e05f8"
+    }
+  },
+  "pending": {
+    "body": {
+      "formatVersion": 1,
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "epoch": 1,
+      "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+      "reviewId": "3b89f3c1-3206-40b7-8fb6-651f57553b93",
+      "revision": 1,
+      "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "pgVersion": 3,
+      "prepareEventId": "f4bb5737-f6e0-4909-84b0-6ccbf16a71a7",
+      "enableEventId": "34569260-0dd8-4f2a-b0cb-c7a655f601e8"
+    },
+    "digest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6"
+  },
+  "approvedObservation": {
+    "catalogue": {
+      "planDigest": "cabc94aaaddc5c221b49a965ec78fe31cd5dbc7efb058b8897cc8acf6da47b23",
+      "receiptDigest": "4d302df445b3cb61149f4ebb69c1bb76c6481ad6a7cc294c7b6847e5669e2141",
+      "requestDigest": "c54160c6b90a9d4cf6ebe7b353f74eee799a1859a57c88cd28f06f9f090f14cb",
+      "snapshotDigest": "c62983fd5e7ee760714c314b8a655d2a806ab81f97b73a2c57f6a54b7af21df9",
+      "verifiedPhases": [
+        "collection",
+        "workflow",
+        "staging",
+        "forms"
+      ]
+    },
+    "destination": {
+      "historyDigest": "7acb6c8159f6aa1c0d77a47eac7b36bb5d588ebb9d79bc31ed6624648b294502",
+      "physicalDigest": "74a7343d6298f2f06acd8abaee9ed53e6185d62cbbe8a6c6c07a110c975f3550",
+      "registryDigest": "dc76f5803ccd03b2976e024277cd3e3b351346bce1be0e669481b39e759803bf"
+    },
+    "envelopeDigest": "ae8ac08788277c0de1e347f4bdb23b6b698a5a8860f54dd2c63d11e381c286df",
+    "kind": "completed-early-phase-inventory",
+    "later": {
+      "destinationPhysical": {
+        "importSchema": 0,
+        "imports": 0,
+        "preparations": 0,
+        "preparedObjects": 0,
+        "transferFences": 0,
+        "transferSchema": 0,
+        "cutovers": 0
+      },
+      "destinationRegistry": {
+        "authoring": 0,
+        "destinations": 0,
+        "executions": 0,
+        "uploads": 0
+      },
+      "sourcePhysical": {
+        "importSchema": 0,
+        "imports": 0,
+        "preparations": 0,
+        "preparedObjects": 0,
+        "transferFences": 0,
+        "transferSchema": 0
+      },
+      "sourceRegistry": {
+        "authoring": 0,
+        "destinations": 0,
+        "executions": 0,
+        "uploads": 0
+      }
+    },
+    "noninterference": {
+      "catalogue": "complete-four-phase-effects",
+      "catalogueBarrierDigest": "50074b978b006ab13e4b36f0df1cbc5f6c6dcd3883a9984a5f89dc603bb8e50f",
+      "later": "fresh-pg-admission-and-physical-absence",
+      "resources": "complete-one-shot-effects",
+      "source": "exact-adoption-freeze",
+      "version": 1
+    },
+    "recovery": {
+      "epoch": 1,
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "mode": "closed",
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "version": 1
+    },
+    "resources": {
+      "databaseId": "9b270eb9-3864-4565-ae00-bcf64f572ae3",
+      "digest": "7ce7b4cfcc3400dec8e49d068fb553b037c9021d8ff94912b5b7d0d0f6d83f40",
+      "resourceIdentity": "cms_attach_350d47e02052c9df09c649b2b05748d25f438053ba480972be37a02937c49bab"
+    },
+    "source": {
+      "checkpointDigest": "0a6d8ef858cda2a80c09b424a7824461defdfe1f21b1b835e47bbed097adfe2a",
+      "freezeDigest": "67989130753a792e984fb7870edc671ebf2e96c3ef7c5bf776aee0b8f5ecb594",
+      "historyDigest": "5ae1625b488b3935122d8dd627fe575b388a5aa360378fa4407aad08baaed1e2",
+      "physicalDigest": "d16c07651bff705d020de31846b462d8d8635f8171d0d4f30993466bd4f8426d",
+      "registryDigest": "5e8b07a1047718abc77f9895f1b07419100245fe15f6b7d87a86fd9c32ce9258",
+      "scope": {
+        "businessId": "client_a",
+        "clientId": "client_a",
+        "environment": "staging",
+        "siteId": "site_a",
+        "tenantId": "tenant_a"
+      },
+      "target": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "collectionReceiptDigest": "1cafa732631ec922111b68f269e3b471d603445a4a3a07569abccf39e4943836",
+        "databaseId": "3bca66d5-ad54-4499-be9f-65a3c75a5315",
+        "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "routeId": "431adb35-4a57-477f-aff7-b741217bd455",
+        "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+        "stagingReceiptDigest": "b476b0286abddd8bf985d48d6e20c50e45bef31287bcfc6616ca0cdee589850a",
+        "workflowReceiptDigest": "cb56b4683dbd1d5f88680c5213bb066d1230b82204abf2067620ebf62e5e05f8"
+      },
+      "workerDigest": "0a3b0a2ea6e292beed058dfde87911817d0636e1d3d1a3be65be00dfbc996ff4"
+    },
+    "version": 1
+  },
+  "purpose": "admission-applied",
+  "applied": {
+    "body": {
+      "formatVersion": 1,
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "epoch": 1,
+      "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+      "reviewId": "3b89f3c1-3206-40b7-8fb6-651f57553b93",
+      "revision": 1,
+      "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "pgVersion": 4,
+      "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+      "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8"
+    },
+    "digest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058"
+  },
+  "recovery": {
+    "epoch": 1,
+    "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+    "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+    "version": 2,
+    "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+    "appliedDigest": null,
+    "deadline": "2099-01-01T00:00:00.000Z",
+    "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+    "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8",
+    "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "revision": 1,
+    "mode": "prepared"
+  }
+}
