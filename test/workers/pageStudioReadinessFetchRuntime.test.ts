@@ -4,6 +4,7 @@ import { build } from 'esbuild'
 import { Miniflare, Response as LocalResponse } from 'miniflare'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { collectionDigest } from '../../shared/pageStudio/collectionApi'
+import { sourceFreezeTransportFixture } from './pageStudioTransferRecoverySourceFreezeSupport'
 import { sourceEffectTransportFixture } from './pageStudioTransferRecoverySourceEffectSupport'
 
 let runtime: Miniflare, directory: string, outbound = 0
@@ -20,7 +21,7 @@ beforeAll(async () => {
     resolveDir: process.cwd(), contents: `
       import { collectionDigest } from '${path.resolve('shared/pageStudio/collectionApi.ts')}';
       export default { async fetch(request) {
-        if (request.url !== 'https://page-studio-management.internal/transfer-recovery-source-ready' || request.method !== 'POST')
+        if (!['https://page-studio-management.internal/transfer-recovery-source-ready', 'https://page-studio-management.internal/transfer-recovery-source-freeze'].includes(request.url) || request.method !== 'POST')
           return new Response(null, { status: 404 });
         const input = await request.json();
         const digest = await collectionDigest(input);
@@ -50,6 +51,19 @@ it('uses the real service-binding fetch callable for the source-ready callback',
   } }
   const control = await runtime.getWorker('control')
   const response = await control.fetch('https://control.internal/internal/page-studio/managed-transfers/recovery/source-ready', {
+    method: 'POST', body: JSON.stringify(input)
+  })
+  expect(response.status).toBe(200)
+  const digest = await collectionDigest(input)
+  expect(response.headers.get('x-request-digest')).toBe(digest)
+  expect(await response.json()).toEqual({ purpose: input.purpose, envelopeDigest: digest })
+  expect(outbound).toBe(0)
+})
+
+it.each(['claim', 'dispatch', 'inspect', 'settle'] as const)('uses the real private binding for exact freeze %s authority', async (verb) => {
+  const input = await sourceFreezeTransportFixture(verb)
+  const control = await runtime.getWorker('control')
+  const response = await control.fetch('https://control.internal/internal/page-studio/managed-transfers/recovery/source-freeze', {
     method: 'POST', body: JSON.stringify(input)
   })
   expect(response.status).toBe(200)

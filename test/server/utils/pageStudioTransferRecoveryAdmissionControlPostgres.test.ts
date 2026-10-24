@@ -1,3 +1,4 @@
+import { freshRecoveryRpcBinding } from '../../fixtures/recoveryFreshRpcBinding'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import pg from 'pg'
@@ -775,6 +776,17 @@ describe.runIf(Boolean(databaseUrl))(
         nativeState: () => nativeState
       }
     }
+    it('supports fresh named RPC wrappers through actual PG admission steps', async () => {
+      const f = await coordinatorFixture()
+      f.env.PAGE_STUDIO_PROVISIONER = freshRecoveryRpcBinding(f.service)
+      await f.control('begin')
+      expect(await f.control('prepare')).toMatchObject({ pgState: 'pending', d1State: 'prepared' })
+      expect(await f.control('apply')).toMatchObject({ pgState: 'applied', d1State: 'unverified' })
+      expect(await f.control('enable')).toMatchObject({ pgState: 'applied', d1State: 'enabled' })
+      expect(f.service.prepareManagedTransferRecoveryAdmission).toHaveBeenCalledOnce()
+      expect(f.service.verifyPreparedManagedTransferRecoveryAdmission).toHaveBeenCalledOnce()
+      expect(f.service.enableManagedTransferRecoveryAdmission).toHaveBeenCalledOnce()
+    })
     it('runs four separately requested steps and reads only proven PG state', async () => {
       const f = await coordinatorFixture()
       expect(await f.control('read')).toMatchObject({

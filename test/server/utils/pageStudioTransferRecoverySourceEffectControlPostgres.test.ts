@@ -1,3 +1,4 @@
+import { freshRecoveryRpcBinding } from '../../fixtures/recoveryFreshRpcBinding'
 // Uses the established genuine PG lifecycle fixture; native discovery is a test boundary only.
 import { prepareCustomerTransferRecoverySourceExecution } from '~~/server/utils/pageStudio/customerTransferRecoverySourceExecution'
 import { randomUUID } from 'node:crypto'
@@ -999,6 +1000,13 @@ describe.runIf(Boolean(databaseUrl))(
         expect((await db.query('SELECT count(*)::integer n FROM transfer_effects')).rows[0].n).toBe(0)
       }
     )
+    it.each(['upload', 'install'] as const)('supports fresh named RPC wrappers for actual PG %s control', async (action) => {
+      const f = await controlFixture(action)
+      f.env.PAGE_STUDIO_PROVISIONER = freshRecoveryRpcBinding(f.env.PAGE_STUDIO_PROVISIONER)
+      const result = await f.api.executeCustomerTransferRecoverySourceEffect(f.value, { env: f.env, runTransaction: f.run })
+      expect(result.result.action).toBe(action)
+      expect(f.execute).toHaveBeenCalledOnce()
+    })
     it('denies a missing fixed method without calling an ordinary executor', async () => {
       const f = await controlFixture()
       const fallback = vi.fn()

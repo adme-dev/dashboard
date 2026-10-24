@@ -19,7 +19,7 @@ import {
   verifyRetainedPreparedAdmission
 } from './customerTransferRecoveryAdmissionAuthority'
 import { reviewDenied, reviewSame } from './customerTransferRecoveryReviewAuthority'
-import { capturePageStudioRpcMethod } from './privateRpc'
+import { captureRecoveryRpc } from './recoveryPrivateRpc'
 import type { RunPageStudioTransaction } from '~~/shared/pageStudio/controlTypes'
 interface Dependencies {
   runTransaction?: RunPageStudioTransaction
@@ -127,16 +127,16 @@ function preparedReader(d: Dependencies) {
   const adapter = d.verifyPrepared,
     env = d.env,
     service = env?.PAGE_STUDIO_PROVISIONER as Record<string, unknown> | undefined
-  const method = service?.verifyPreparedManagedTransferRecoveryAdmission
-  const invoke = capturePageStudioRpcMethod(service, 'verifyPreparedManagedTransferRecoveryAdmission')
+  const capability = adapter ? null : captureRecoveryRpc(service, 'verifyPreparedManagedTransferRecoveryAdmission')
+  const invoke = capability?.call
   const current = () => {
+    capability?.assertCurrent()
     if (d.verifyPrepared !== adapter || d.env !== env) throw reviewDenied()
     if (
       !adapter &&
       (!env ||
         env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT !== 'production' ||
         env.PAGE_STUDIO_PROVISIONER !== service ||
-        service?.verifyPreparedManagedTransferRecoveryAdmission !== method ||
         !invoke)
     )
       throw reviewDenied()

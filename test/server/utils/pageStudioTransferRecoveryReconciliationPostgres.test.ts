@@ -1,3 +1,4 @@
+import { freshRecoveryRpcBinding } from '../../fixtures/recoveryFreshRpcBinding'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import pg from 'pg'
@@ -511,6 +512,14 @@ describe.runIf(Boolean(databaseUrl))('immutable complete recovery reconciliation
       .inspectCustomerTransferRecovery(value, { env, runTransaction })
     return { inventory, captureId, ensure, observe, env, request, inspect }
   }
+  it('supports fresh named RPC wrappers for actual PG closure and inspection', async () => {
+    const c = await coordinatorFixture()
+    c.env.PAGE_STUDIO_PROVISIONER = freshRecoveryRpcBinding(c.env.PAGE_STUDIO_PROVISIONER)
+    expect(await c.inspect()).toMatchObject({ state: 'observed', historical: false })
+    expect(c.ensure).toHaveBeenCalledOnce()
+    expect(c.observe).toHaveBeenCalledOnce()
+    expect(await count()).toBe(1)
+  })
   it('coordinator derives the complete inspection server-side and stores evidence after close then observation', async () => {
     const c = await coordinatorFixture(), order: string[] = []
     c.ensure.mockImplementationOnce(async wire => {

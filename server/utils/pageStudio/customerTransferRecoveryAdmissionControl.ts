@@ -1,3 +1,4 @@
+import { captureRecoveryRpc } from './recoveryPrivateRpc'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
@@ -57,8 +58,9 @@ function capture(d: Dependencies, action: TransferRecoveryAdmissionControlInput[
         : action === 'apply'
           ? 'verifyPreparedManagedTransferRecoveryAdmission'
           : null
-  const method = name ? service?.[name] : null
+  const capability = name ? captureRecoveryRpc(service, name) : null
   const current = () => {
+    capability?.assertCurrent()
     if (
       d.env !== env ||
       d.runTransaction !== run ||
@@ -67,7 +69,7 @@ function capture(d: Dependencies, action: TransferRecoveryAdmissionControlInput[
       env.PAGE_STUDIO_RELEASE_ENVIRONMENT !== release ||
       env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT !== provisioning ||
       env.PAGE_STUDIO_PROVISIONER !== service ||
-      (name && (!service || typeof method !== 'function' || service[name] !== method))
+      (name && !capability)
     )
       throw reviewDenied()
   }
@@ -84,8 +86,8 @@ function capture(d: Dependencies, action: TransferRecoveryAdmissionControlInput[
     transaction,
     call: async (input: unknown) => {
       current()
-      if (typeof method !== 'function' || !service) throw reviewDenied()
-      const result = structuredClone(await Reflect.apply(method, service, [structuredClone(input)]))
+      if (!capability) throw reviewDenied()
+      const result = structuredClone(await capability.call(structuredClone(input)))
       current()
       return result
     }

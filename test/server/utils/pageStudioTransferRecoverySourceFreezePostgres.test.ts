@@ -5,8 +5,11 @@ import { readFileSync, readdirSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
+import type { TransferRecoveryReconciliationCaptureSchema } from '~~/shared/pageStudio/transferRecoveryReconciliation'
 import type { CmsFreezeReceiptSchema } from '~~/shared/pageStudio/cmsManaged'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
+
+type RecoveryInventory = z.infer<typeof TransferRecoveryReconciliationCaptureSchema>['inventory']
 
 vi.mock('~~/server/utils/db', () => ({
   transactionWithoutRetry: () => {
@@ -318,7 +321,7 @@ describe.runIf(Boolean(databaseUrl))(
         clientId: expected.businessId,
         businessId: expected.businessId,
         siteId: input.siteId,
-        environment: 'staging'
+        environment: 'staging' as const
       }
       key = JSON.stringify([
         scope.tenantId,
@@ -466,7 +469,7 @@ describe.runIf(Boolean(databaseUrl))(
       return control('approve', 2)
     }
 
-    async function fixture(expiringPlan = false, recoveryMillis = 3600000) {
+    async function fixture(expiringPlan = false, recoveryMillis = 3600000): Promise<RecoveryInventory> {
       if (expiringPlan)
         await db.query(
           "UPDATE page_studio_entitlements SET effective_until=clock_timestamp()+interval '5 seconds' WHERE id=$1",
@@ -617,7 +620,7 @@ describe.runIf(Boolean(databaseUrl))(
         catalogueRequest
       }
     }
-    async function observation(value: Awaited<ReturnType<typeof fixture>>) {
+    async function observation(value: RecoveryInventory) {
       const { planManagedTransferDestinationCatalogue } =
         await import('~~/shared/pageStudio/managed-transfer-destination-catalogue-result')
       const plan = await planManagedTransferDestinationCatalogue(value.catalogueRequest)
@@ -687,7 +690,7 @@ describe.runIf(Boolean(databaseUrl))(
     }
     async function capture(
       value: unknown,
-      observe: (value: Awaited<ReturnType<typeof fixture>>) => Promise<unknown>,
+      observe: (value: RecoveryInventory) => Promise<unknown>,
       run = runTransaction
     ) {
       const { captureCustomerTransferRecoveryReconciliation } =
@@ -1123,6 +1126,137 @@ describe.runIf(Boolean(databaseUrl))(
         getWire: () => readyWire!
       }
     }
+    async function executionFixture() {
+      const f = await freezeFixture()
+      const wire = await f.envelope()
+      const observed = structuredClone(f.getObserved())
+      f.readReady.mockImplementation(async (raw) => {
+        await f.authority.authorizeCustomerTransferRecoverySourceReady(raw, f.d)
+        return structuredClone(observed)
+      })
+      const { plannedFreezeResult } = await import('../../fixtures/recoverySourceFreezePlannedResult')
+      const executeFreeze = vi.fn(async (raw: unknown) => {
+        await f.authority.authorizeCustomerTransferRecoverySourceFreeze(raw, f.d)
+        return plannedFreezeResult(raw)
+      })
+      const coordinator = await import('~~/server/utils/pageStudio/customerTransferRecoverySourceFreezeControl')
+      const dependencies = { ...f.d, executeFreeze }
+      const execute = () => coordinator.executeCustomerTransferRecoverySourceFreeze(f.value, dependencies)
+      return { ...f, wire, observed, executeFreeze, dependencies, execute, coordinator, plannedFreezeResult }
+    }
+    it('native freeze binding prepares through a captured ready callable without acquiring an effect', async () => {
+      const f = await freezeFixture()
+      const native = await import('~~/server/utils/pageStudio/customerTransferRecoverySourceFreezeNative')
+      const { freshRecoveryRpcBinding } = await import('../../fixtures/recoveryFreshRpcBinding')
+      const env = { ...f.env, PAGE_STUDIO_PROVISIONER: freshRecoveryRpcBinding({
+        inspectManagedTransferRecoverySourceReady: f.readReady
+      }) }
+      const pair = await native.prepareNativeCustomerTransferRecoverySourceFreeze(f.value, { ...f.d, env })
+      expect(pair.association.invocationId).toBe(f.value.body.invocationId)
+      expect(f.readReady).toHaveBeenCalledTimes(1)
+      expect(await pairCounts()).toEqual({ drafts: 1, associations: 1 })
+    })
+    it('native freeze binding executes the fixed captured methods and checks the full receipt', async () => {
+      const f = await executionFixture()
+      const native = await import('~~/server/utils/pageStudio/customerTransferRecoverySourceFreezeNative')
+      const { freshRecoveryRpcBinding } = await import('../../fixtures/recoveryFreshRpcBinding')
+      const env = { ...f.env, PAGE_STUDIO_PROVISIONER: freshRecoveryRpcBinding({
+        inspectManagedTransferRecoverySourceReady: f.readReady,
+        executeManagedTransferRecoverySourceFreeze: f.executeFreeze
+      }) }
+      expect(await native.executeNativeCustomerTransferRecoverySourceFreeze(f.value, { ...f.d, env }))
+        .toEqual(await f.plannedFreezeResult(f.wire))
+      expect(f.executeFreeze).toHaveBeenCalledTimes(1)
+    })
+    it.each(['binding', 'method', 'environment'])('native freeze binding rejects %s drift after readiness', async (mode) => {
+      const f = await executionFixture()
+      const native = await import('~~/server/utils/pageStudio/customerTransferRecoverySourceFreezeNative')
+      const service = { inspectManagedTransferRecoverySourceReady: f.readReady,
+        executeManagedTransferRecoverySourceFreeze: f.executeFreeze }
+      const env = { ...f.env, PAGE_STUDIO_PROVISIONER: service }
+      f.readReady.mockImplementation(async () => {
+        if (mode === 'binding') env.PAGE_STUDIO_PROVISIONER = { ...service }
+        if (mode === 'method') service.executeManagedTransferRecoverySourceFreeze = vi.fn()
+        if (mode === 'environment') env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'staging'
+        return structuredClone(f.observed)
+      })
+      await expect(native.executeNativeCustomerTransferRecoverySourceFreeze(f.value, { ...f.d, env })).rejects.toThrow()
+      expect(f.executeFreeze).not.toHaveBeenCalled()
+    })
+    it('native freeze binding denies old artifacts without invoking readiness or a fallback', async () => {
+      const f = await executionFixture()
+      const native = await import('~~/server/utils/pageStudio/customerTransferRecoverySourceFreezeNative')
+      f.readReady.mockClear()
+      const fallback = vi.fn()
+      const env = { ...f.env, PAGE_STUDIO_PROVISIONER: {
+        inspectManagedTransferRecoverySourceReady: f.readReady,
+        executeManagedTransferSourceFreeze: fallback
+      } }
+      await expect(native.executeNativeCustomerTransferRecoverySourceFreeze(f.value, { ...f.d, env })).rejects.toThrow()
+      expect(f.readReady).not.toHaveBeenCalled()
+      expect(fallback).not.toHaveBeenCalled()
+    })
+    it('freeze coordinator invokes private readiness and execution outside PG locks and verifies retained identity', async () => {
+      const f = await executionFixture()
+      let locked = false
+      f.dependencies.runTransaction = work => runTransaction(async (db) => {
+        locked = true
+        try {
+          return await work(db)
+        } finally {
+          locked = false
+        }
+      })
+      f.readReady.mockImplementation(async (raw) => {
+        expect(locked).toBe(false)
+        await f.authority.authorizeCustomerTransferRecoverySourceReady(raw, f.d)
+        return structuredClone(f.observed)
+      })
+      f.executeFreeze.mockImplementation(async (raw) => {
+        expect(locked).toBe(false)
+        await f.authority.authorizeCustomerTransferRecoverySourceFreeze(raw, f.d)
+        return f.plannedFreezeResult(raw)
+      })
+      expect(await f.execute()).toEqual(await f.plannedFreezeResult(f.wire))
+      expect(f.executeFreeze).toHaveBeenCalledTimes(1)
+      expect(f.executeFreeze.mock.calls[0][0]).toEqual(f.wire)
+      expect(await pairCounts()).toEqual({ drafts: 1, associations: 1 })
+      expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
+    })
+    it('freeze coordinator replays only the exact original invocation and never retries a failed call', async () => {
+      const f = await executionFixture()
+      expect(await f.execute()).toEqual(await f.execute())
+      expect(f.executeFreeze).toHaveBeenCalledTimes(2)
+      await expect(f.coordinator.executeCustomerTransferRecoverySourceFreeze({
+        ...f.value, body: { ...f.value.body, invocationId: randomUUID() }
+      }, f.dependencies)).rejects.toThrow()
+      expect(f.executeFreeze).toHaveBeenCalledTimes(2)
+      f.executeFreeze.mockRejectedValueOnce(new Error('Uncertain remote effect'))
+      await expect(f.execute()).rejects.toThrow()
+      expect(f.executeFreeze).toHaveBeenCalledTimes(3)
+    })
+    it('freeze coordinator denies changed readiness before execution', async () => {
+      const f = await executionFixture()
+      f.readReady.mockImplementation(async () => ({ ...f.observed, envelopeDigest: '0'.repeat(64) }))
+      await expect(f.execute()).rejects.toThrow()
+      expect(f.executeFreeze).not.toHaveBeenCalled()
+    })
+    it.each(['receipt', 'expiry', 'callback', 'policy'])('freeze coordinator denies final %s drift', async (mode) => {
+      const f = await executionFixture()
+      f.executeFreeze.mockImplementation(async (raw) => {
+        const result = await f.plannedFreezeResult(raw)
+        if (mode === 'receipt') result.result.receipt.digest = '0'.repeat(64)
+        if (mode === 'expiry') await db.query(
+          'UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp() WHERE token_hash=$1',
+          [input.ownerLoginSessionHash])
+        if (mode === 'callback') f.dependencies.executeFreeze = vi.fn()
+        if (mode === 'policy') f.dependencies.freezeDescriptor = { ...f.d.freezeDescriptor, layoutDigest: '0'.repeat(64) }
+        return result
+      })
+      await expect(f.execute()).rejects.toThrow()
+      expect(f.executeFreeze).toHaveBeenCalledTimes(1)
+      expect(await pairCounts()).toEqual({ drafts: 1, associations: 1 })
+    })
     it('retains exact atomic pair and replays without old readiness/source authority', async () => {
       const f = await freezeFixture(),
         pair = await f.prepare()
@@ -1480,6 +1614,31 @@ describe.runIf(Boolean(databaseUrl))(
       expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
     })
 
+    it('private freeze transport uses real PG authority and denies owner expiry without effects', async () => {
+      const { handleTransferRecoverySourceFreezeFetch } = await import('../../../workers/page-studio-management/src/transferRecoverySourceFreezeFetch')
+      const f = await freezeFixture()
+      const wire = await f.envelope()
+      const env = {
+        ...f.d.env,
+        PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production',
+        PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
+        MANAGED_TRANSFER_RECOVERY_SOURCE_FREEZE_POLICY: JSON.stringify(f.d.freezeDescriptor)
+      }
+      const call = () => handleTransferRecoverySourceFreezeFetch(new Request(
+        'https://page-studio-management.internal/transfer-recovery-source-freeze',
+        { method: 'POST', body: JSON.stringify(wire) }
+      ), env, runTransaction)
+      const before = await pairCounts()
+      const accepted = await call()
+      expect(accepted.status).toBe(200)
+      expect(await accepted.json()).toEqual({ purpose: 'recovery-source-freeze', envelopeDigest: await collectionDigest(wire) })
+      expect(await pairCounts()).toEqual(before)
+      await db.query('UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp() WHERE token_hash=$1', [input.ownerLoginSessionHash])
+      expect((await call()).status).toBe(403)
+      expect(await pairCounts()).toEqual(before)
+      expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
+    })
+
     it('ready authority catches final-clock dependency replacement', async () => {
       const f = await freezeFixture()
       await f.prepare()
@@ -1511,6 +1670,7 @@ describe.runIf(Boolean(databaseUrl))(
           association = { sql, values: structuredClone(values!) }
           throw new Error('Capture direct SQL fixture')
         }
+        return undefined
       })
       await expect(f.prepare()).rejects.toThrow('Capture direct SQL fixture')
       expect(draft).toBeDefined()
@@ -1581,6 +1741,7 @@ describe.runIf(Boolean(databaseUrl))(
             [input.ownerLoginSessionHash]
           )
         }
+        return undefined
       })
       await expect(
         f.authority.authorizeCustomerTransferRecoverySourceFreeze(wire, { ...f.d, runTransaction: run })

@@ -1,3 +1,4 @@
+import { captureRecoveryRpc } from './recoveryPrivateRpc'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { collectionDigest } from '~~/shared/pageStudio/collectionApi'
 import { ManagedTransferExecutionRequestSchema } from '~~/shared/pageStudio/managed-transfer-execution'
@@ -36,12 +37,12 @@ export async function prepareCustomerTransferRecoverySourceExecution(input: unkn
   const value = TransferRecoverySourceInputSchema.parse(input),
     config = recoverySourceConfiguration(d.env)
   const service = d.env.PAGE_STUDIO_PROVISIONER as Record<string, unknown> | undefined
-  const method = service?.discoverManagedTransferRecoveryExecution
-  if (!service || typeof method !== 'function') throw reviewDenied()
+  const capability = captureRecoveryRpc(service, 'discoverManagedTransferRecoveryExecution')
+  if (!capability) throw reviewDenied()
   const current = () => {
+    capability.assertCurrent()
     if (
       d.env.PAGE_STUDIO_PROVISIONER !== service ||
-      service.discoverManagedTransferRecoveryExecution !== method ||
       !reviewSame(recoverySourceConfiguration(d.env), config)
     )
       throw reviewDenied()
@@ -80,7 +81,7 @@ export async function prepareCustomerTransferRecoverySourceExecution(input: unkn
   })
   const envelopeDigest = await collectionDigest(envelope)
   current()
-  const raw = structuredClone(await Reflect.apply(method, service, [structuredClone(envelope)]))
+  const raw = structuredClone(await capability.call(structuredClone(envelope)))
   current()
   const observed = TransferRecoverySourceDiscoveryResultSchema.parse(raw)
   if (observed.envelopeDigest !== envelopeDigest) throw reviewDenied()
