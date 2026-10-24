@@ -1144,6 +1144,58 @@ describe.runIf(Boolean(databaseUrl))(
       const execute = () => coordinator.executeCustomerTransferRecoverySourceFreeze(f.value, dependencies)
       return { ...f, wire, observed, executeFreeze, dependencies, execute, coordinator, plannedFreezeResult }
     }
+    it('native freeze binding prepares through a captured ready callable without acquiring an effect', async () => {
+      const f = await freezeFixture()
+      const native = await import('~~/server/utils/pageStudio/customerTransferRecoverySourceFreezeNative')
+      const { freshRecoveryRpcBinding } = await import('../../fixtures/recoveryFreshRpcBinding')
+      const env = { ...f.env, PAGE_STUDIO_PROVISIONER: freshRecoveryRpcBinding({
+        inspectManagedTransferRecoverySourceReady: f.readReady
+      }) }
+      const pair = await native.prepareNativeCustomerTransferRecoverySourceFreeze(f.value, { ...f.d, env })
+      expect(pair.association.invocationId).toBe(f.value.body.invocationId)
+      expect(f.readReady).toHaveBeenCalledTimes(1)
+      expect(await pairCounts()).toEqual({ drafts: 1, associations: 1 })
+    })
+    it('native freeze binding executes the fixed captured methods and checks the full receipt', async () => {
+      const f = await executionFixture()
+      const native = await import('~~/server/utils/pageStudio/customerTransferRecoverySourceFreezeNative')
+      const { freshRecoveryRpcBinding } = await import('../../fixtures/recoveryFreshRpcBinding')
+      const env = { ...f.env, PAGE_STUDIO_PROVISIONER: freshRecoveryRpcBinding({
+        inspectManagedTransferRecoverySourceReady: f.readReady,
+        executeManagedTransferRecoverySourceFreeze: f.executeFreeze
+      }) }
+      expect(await native.executeNativeCustomerTransferRecoverySourceFreeze(f.value, { ...f.d, env }))
+        .toEqual(await f.plannedFreezeResult(f.wire))
+      expect(f.executeFreeze).toHaveBeenCalledTimes(1)
+    })
+    it.each(['binding', 'method', 'environment'])('native freeze binding rejects %s drift after readiness', async (mode) => {
+      const f = await executionFixture()
+      const native = await import('~~/server/utils/pageStudio/customerTransferRecoverySourceFreezeNative')
+      const service = { inspectManagedTransferRecoverySourceReady: f.readReady,
+        executeManagedTransferRecoverySourceFreeze: f.executeFreeze }
+      const env = { ...f.env, PAGE_STUDIO_PROVISIONER: service }
+      f.readReady.mockImplementation(async () => {
+        if (mode === 'binding') env.PAGE_STUDIO_PROVISIONER = { ...service }
+        if (mode === 'method') service.executeManagedTransferRecoverySourceFreeze = vi.fn()
+        if (mode === 'environment') env.PAGE_STUDIO_PROVISIONING_ENVIRONMENT = 'staging'
+        return structuredClone(f.observed)
+      })
+      await expect(native.executeNativeCustomerTransferRecoverySourceFreeze(f.value, { ...f.d, env })).rejects.toThrow()
+      expect(f.executeFreeze).not.toHaveBeenCalled()
+    })
+    it('native freeze binding denies old artifacts without invoking readiness or a fallback', async () => {
+      const f = await executionFixture()
+      const native = await import('~~/server/utils/pageStudio/customerTransferRecoverySourceFreezeNative')
+      f.readReady.mockClear()
+      const fallback = vi.fn()
+      const env = { ...f.env, PAGE_STUDIO_PROVISIONER: {
+        inspectManagedTransferRecoverySourceReady: f.readReady,
+        executeManagedTransferSourceFreeze: fallback
+      } }
+      await expect(native.executeNativeCustomerTransferRecoverySourceFreeze(f.value, { ...f.d, env })).rejects.toThrow()
+      expect(f.readReady).not.toHaveBeenCalled()
+      expect(fallback).not.toHaveBeenCalled()
+    })
     it('freeze coordinator invokes private readiness and execution outside PG locks and verifies retained identity', async () => {
       const f = await executionFixture()
       let locked = false
