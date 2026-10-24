@@ -147,6 +147,18 @@ export interface BuilderGraphCheckpointInput {
   nextCheckpoint: unknown;
   request: unknown;
 }
+export interface BuilderGraphSnapshotInput {
+  artifactBytes: string[];
+  base: unknown;
+  scope: unknown;
+}
+export interface BuilderGraphSnapshotProof {
+  baseDigest: string;
+  pins: BuilderGraphPin[];
+  proofDigest: string;
+  schemas: BuilderGraphSchemaSelection[];
+  version: 1;
+}
 export interface BuilderGraphArtifactProof {
   digest: string;
   pins: BuilderGraphPin[];
@@ -159,6 +171,12 @@ export declare class BuilderGraphVerificationError extends Error {
 export declare function verifyBuilderArtifactSet(
   input: BuilderGraphArtifactInput
 ): Promise<BuilderGraphArtifactProof>;
+/** Intrinsic snapshot proof only. Native must independently establish that the
+ * application/checkpoint/heads are accepted and current before using this proof.
+ * No new save, feature approval, execution authority or visibility is implied. */
+export declare function verifyBuilderApplicationSnapshot(
+  input: BuilderGraphSnapshotInput
+): Promise<BuilderGraphSnapshotProof>;
 /** Pure page save/restore proof: preserves the CURRENT graph and all record heads.
  * Native must still recheck current authority and every base under its locks. */
 export declare function verifyBuilderApplicationCheckpoint(

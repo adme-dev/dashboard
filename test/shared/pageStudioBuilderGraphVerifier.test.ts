@@ -18,9 +18,10 @@ describe('single-source generated builder graph verifier', () => {
       loader: 'js', format: 'esm', platform: 'neutral', target: 'esnext',
       minify: true, keepNames: true, legalComments: 'none'
     })
-    // Includes the verifier and its validation dependency. Namespace imports in
-    // the source let esbuild discard unused Zod APIs before this artifact ships.
-    expect(Buffer.byteLength(result.code)).toBeLessThan(190_000)
+    // Zod 4.6.7 security patch + current Studio schema: 206,814 bytes with names.
+    // Namespace imports discard unused APIs; this allowance does not change the
+    // independently enforced total Pages raw/gzip deployment budgets.
+    expect(Buffer.byteLength(result.code)).toBeLessThan(210_000)
   })
   for (const fixture of fixtures) {
     it(fixture.name, async () => {
