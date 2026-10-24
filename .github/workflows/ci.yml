@@ -221,7 +221,7 @@ jobs:
 
       - name: Page Studio continuation journal and current authority (PostgreSQL)
         timeout-minutes: 5
-        run: pnpm exec vitest run test/server/utils/pageStudioContinuationJournalPostgres.test.ts test/server/utils/pageStudioContinuationConsentPostgres.test.ts test/server/utils/pageStudioTransferRecoveryContinuationAuthorityPostgres.test.ts --maxWorkers=1
+        run: pnpm exec vitest run test/server/utils/pageStudioContinuationJournalPostgres.test.ts test/server/utils/pageStudioContinuationConsentPostgres.test.ts test/server/utils/pageStudioTransferRecoveryContinuationAuthorityPostgres.test.ts test/server/utils/pageStudioContinuationSourceSeedPostgres.test.ts test/server/utils/pageStudioContinuationAdmissionEvidencePostgres.test.ts --maxWorkers=1
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
