@@ -10,11 +10,15 @@ const head = { recoveryId: '20000000-0000-4000-8000-000000000003', epoch: 1, ver
   state: 'reconciling', deadline: '2026-10-24T00:00:00.000Z', expired: false }
 const view = (recovery: unknown = head) => ({ siteId, requestId, revision: 5, recovery, allowedActions: [] })
 beforeEach(() => {
+  // Fixture authority is valid at this instant; expiry behavior must not depend
+  // on the calendar date when CI happens to run. Leave async timers real.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-10-23T23:00:00.000Z'))
   vi.resetAllMocks()
   vi.stubGlobal('$fetch', fetch)
   fetch.mockResolvedValue(view())
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 it.each([
   [head, 'Recovery review open'], [{ ...head, state: 'approved', version: 2 }, 'Recovery review approved'], [null, 'No recovery review yet'],
