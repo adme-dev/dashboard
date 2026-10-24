@@ -18,6 +18,12 @@ it('verifies a real local tenant D1 receipt with a separately synthetic settleme
   const fixture = JSON.parse(readFileSync('test/fixtures/transfer-recovery-source-freeze-physical.json', 'utf8'))
   expect(await verifyRecoverySourceFreezeResult(fixture.request, fixture.result)).toEqual(fixture.result)
 })
+it('verifies actual local Studio acquisition, tenant freeze and retained settlement', async () => {
+  // Real local central registry + tenant D1. PG/provider are synthetic and this
+  // does not claim hosted authorization or cross-account acceptance.
+  const fixture = JSON.parse(readFileSync('test/fixtures/transfer-recovery-source-freeze-settled.json', 'utf8'))
+  expect(await verifyRecoverySourceFreezeResult(fixture.request, fixture.result)).toEqual(fixture.result)
+})
 it('verifies the independently planned full freeze receipt and settled claim', async () => {
   expect(await verifyRecoverySourceFreezeResult(input, output)).toEqual(output)
 })
