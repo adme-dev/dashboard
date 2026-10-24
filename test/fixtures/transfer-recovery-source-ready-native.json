@@ -1,0 +1,784 @@
+{
+  "evidence": "Synthetic authority/provider; actual local completed claims and workerd D1; not production",
+  "request": {
+    "pending": {
+      "body": {
+        "formatVersion": 1,
+        "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+        "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+        "epoch": 1,
+        "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+        "reviewId": "3b89f3c1-3206-40b7-8fb6-651f57553b93",
+        "revision": 1,
+        "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "deadline": "2099-01-01T00:00:00.000Z",
+        "pgVersion": 3,
+        "prepareEventId": "f4bb5737-f6e0-4909-84b0-6ccbf16a71a7",
+        "enableEventId": "34569260-0dd8-4f2a-b0cb-c7a655f601e8"
+      },
+      "digest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6"
+    },
+    "applied": {
+      "body": {
+        "formatVersion": 1,
+        "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+        "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+        "epoch": 1,
+        "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+        "reviewId": "3b89f3c1-3206-40b7-8fb6-651f57553b93",
+        "revision": 1,
+        "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "deadline": "2099-01-01T00:00:00.000Z",
+        "pgVersion": 4,
+        "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+        "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8"
+      },
+      "digest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058"
+    },
+    "inspection": {
+      "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "operatorId": "3baf77e9-8b0d-4b03-9cd5-0d6296e6eca6",
+      "pg": {
+        "deadline": "2099-01-01T00:00:00.000Z",
+        "epoch": 1,
+        "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+        "requestId": "4f20e668-3ae8-4510-9da2-5b0692cc137f",
+        "requestRevision": 5,
+        "version": 4
+      }
+    },
+    "recovery": {
+      "epoch": 1,
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+      "version": 3,
+      "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+      "appliedDigest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058",
+      "deadline": "2099-01-01T00:00:00.000Z",
+      "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+      "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8",
+      "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "revision": 1,
+      "mode": "enabled"
+    },
+    "descriptor": {
+      "execution": {
+        "from": {
+          "compatibilityDate": "2026-08-18",
+          "digest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058"
+        },
+        "kind": "managed-draft-transfer",
+        "to": {
+          "compatibilityDate": "2026-08-18",
+          "digest": "8d11efe063735fa4e829031369790c490f9774828c89626bf34a7bf405450420"
+        },
+        "version": 1,
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "namespace": "xeroflow-page-studio-dispatch-staging"
+      },
+      "formatVersion": 1,
+      "kind": "managed-transfer-recovery-source-v1",
+      "layoutDigest": "d5e7f6ffe8fcc64533e3296713ad3ab0232b84bde0d40f211cee10d9871a94df"
+    },
+    "descriptorDigest": "8d4493c1143b1425340c43a4eccb13296c75fb3760440a89d7497d1d1ec81c96",
+    "request": {
+      "formatVersion": 1,
+      "formReceipt": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "collectionOperationId": "cms_runtime",
+        "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+        "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "operationId": "storage",
+        "scope": {
+          "businessId": "client_a",
+          "clientId": "client_a",
+          "environment": "staging",
+          "siteId": "site_a",
+          "tenantId": "tenant_a"
+        },
+        "workflowOperationId": "workflow_a",
+        "stagingOperationId": "staging_a",
+        "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+        "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+      },
+      "freeze": {
+        "createdAt": "2026-10-15T00:00:00.000Z",
+        "request": {
+          "actor": {
+            "kind": "agency-user",
+            "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "userId": "10000000-0000-4000-8000-000000000001"
+          },
+          "adoptionId": "adopt_execution",
+          "formatVersion": 1,
+          "scope": {
+            "businessId": "client_a",
+            "clientId": "client_a",
+            "environment": "staging",
+            "siteId": "site_a",
+            "tenantId": "tenant_a"
+          },
+          "target": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionReceiptDigest": "9da0d6fc68274407f5d27c187a9fe0d4d3ffc9768022eea4c574f6bd012f4678",
+            "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+            "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "routeId": "6857fd9c-30a5-4fcb-977a-87211c55af01",
+            "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+            "stagingReceiptDigest": "4cdcf2ebeddac3776a289c87f5f35ec6ec3192cfecd2ccf4f01051b07447a47d",
+            "workflowReceiptDigest": "a306834e5f51f60cc9ad3fa468efa769e51890e56eb6e90ab49569fbe0e5eb16"
+          }
+        },
+        "state": "frozen",
+        "digest": "f30b9cc0d9f89145f0d3cab7aab901f938ef7b06a7b33bfe9fe1f47b542d778b"
+      },
+      "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+      "policy": {
+        "formReceiptDigest": "9f96e8a12be0f4b34c4c40251ffc35ecbe1b8498356f543a442e34abfd455e8a",
+        "from": {
+          "compatibilityDate": "2026-08-18",
+          "digest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058"
+        },
+        "kind": "managed-draft-transfer",
+        "to": {
+          "compatibilityDate": "2026-08-18",
+          "digest": "8d11efe063735fa4e829031369790c490f9774828c89626bf34a7bf405450420"
+        },
+        "version": 1
+      },
+      "predecessor": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "compatibilityDate": "2026-08-18",
+        "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+        "namespace": "xeroflow-page-studio-dispatch-staging",
+        "ownerTag": "ps-owner-bc4d2d502ba444b7b341e3746b3a3c98",
+        "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+        "scope": {
+          "businessId": "client_a",
+          "clientId": "client_a",
+          "environment": "staging",
+          "siteId": "site_a",
+          "tenantId": "tenant_a"
+        },
+        "scriptName": "ps-content-334b111f0cf443b2a923caf48e351246",
+        "setupDigest": "b11b68ae6a22c197f52b06bf77453f92079706596250388d5dd754b46d3854b2"
+      },
+      "sourceScope": {
+        "businessId": "client_a",
+        "clientId": "client_a",
+        "environment": "staging",
+        "siteId": "site_a",
+        "tenantId": "tenant_a"
+      },
+      "sourceTarget": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "collectionReceiptDigest": "9da0d6fc68274407f5d27c187a9fe0d4d3ffc9768022eea4c574f6bd012f4678",
+        "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+        "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "routeId": "6857fd9c-30a5-4fcb-977a-87211c55af01",
+        "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+        "stagingReceiptDigest": "4cdcf2ebeddac3776a289c87f5f35ec6ec3192cfecd2ccf4f01051b07447a47d",
+        "workflowReceiptDigest": "a306834e5f51f60cc9ad3fa468efa769e51890e56eb6e90ab49569fbe0e5eb16"
+      },
+      "successor": {
+        "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "compatibilityDate": "2026-08-18",
+        "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+        "namespace": "xeroflow-page-studio-dispatch-staging",
+        "ownerTag": "ps-owner-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "runtimeDigest": "8d11efe063735fa4e829031369790c490f9774828c89626bf34a7bf405450420",
+        "scope": {
+          "businessId": "client_a",
+          "clientId": "client_a",
+          "environment": "staging",
+          "siteId": "site_a",
+          "tenantId": "tenant_a"
+        },
+        "scriptName": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "setupDigest": "b11b68ae6a22c197f52b06bf77453f92079706596250388d5dd754b46d3854b2"
+      }
+    },
+    "requestDigest": "082c45081f44fe14624ae814624c8bbaae7ee572cf2920ae4ae18a92e09eb592",
+    "freezeDescriptor": {
+      "formatVersion": 1,
+      "kind": "managed-transfer-recovery-source-freeze-v1",
+      "layoutDigest": "1178514581ebf0325762f3819407662d9c7c3d796fa8cb173c7a294d16ee821f"
+    },
+    "purpose": "recovery-source-freeze-ready"
+  },
+  "result": {
+    "envelopeDigest": "0048d28b8d9838a70f9706de50218d5d07aacab18cb3f3d646fbbbd0e155ed44",
+    "install": {
+      "claim": {
+        "effectKey": "9cec3190d114b6ea2d04c16022cf43e26645a3b5fd9c1fa42291907da8b575d2",
+        "head": {
+          "epoch": 1,
+          "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+          "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+          "version": 3,
+          "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+          "deadline": "2099-01-01T00:00:00.000Z",
+          "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+          "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "appliedDigest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058",
+          "mode": "enabled",
+          "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8"
+        },
+        "identity": {
+          "action": "install",
+          "invocationId": "853d9c01-aa2f-4e00-b8eb-9e1348931ec4",
+          "phase": "source-execution",
+          "requestDigest": "082c45081f44fe14624ae814624c8bbaae7ee572cf2920ae4ae18a92e09eb592",
+          "resourceDigest": "c22547bf2c4c79ceef2c1db64c9cacab0c0b25dbdc4acf3cfbffbbc055bbaf94"
+        },
+        "proofDigest": "56ab60486f87762e3da7c671fe5d131b018ba2fae58d43596036a1ebfc489842",
+        "resultDigest": "3448415d0d7c9143d13a9961a216e802eab3f9d325376a2a5fd5f8fa3ed3af5b",
+        "settlementDigest": "39eb8ee2fb326ea08520e5ec416501d5633c8bd1de07b588da06716e72196ae5",
+        "state": "completed"
+      },
+      "receipt": {
+        "associationDigest": "a9c51b4ef80329acc987fbf2f6550b86005bf9d379a4f63a18c5595bcaf32211",
+        "claimDigest": "9b4621ded5a06a4235ef15ed2e39cf3c46f3cf8e66309d61766d43ab6d517c7c",
+        "descriptorDigest": "8d4493c1143b1425340c43a4eccb13296c75fb3760440a89d7497d1d1ec81c96",
+        "digest": "58b8141ae873ccf2d23471f336ebfddd6931f95d96ab11d79f87ebab4e9fba08",
+        "formatVersion": 1,
+        "kind": "managed-transfer-recovery-source-v1",
+        "nativeIntentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "operationId": "transfer_ea8fd34d-def0-469f-b043-6c159aab1443",
+        "predecessor": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "collectionOperationId": "cms_runtime",
+          "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+          "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "operationId": "storage",
+          "scope": {
+            "businessId": "client_a",
+            "clientId": "client_a",
+            "environment": "staging",
+            "siteId": "site_a",
+            "tenantId": "tenant_a"
+          },
+          "workflowOperationId": "workflow_a",
+          "stagingOperationId": "staging_a",
+          "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+          "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+        },
+        "schemaDigest": "d5e7f6ffe8fcc64533e3296713ad3ab0232b84bde0d40f211cee10d9871a94df"
+      }
+    },
+    "purpose": "recovery-source-freeze-ready",
+    "selection": {
+      "execution": {
+        "formatVersion": 1,
+        "freeze": {
+          "createdAt": "2026-10-15T00:00:00.000Z",
+          "request": {
+            "actor": {
+              "kind": "agency-user",
+              "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "userId": "10000000-0000-4000-8000-000000000001"
+            },
+            "adoptionId": "adopt_execution",
+            "formatVersion": 1,
+            "scope": {
+              "businessId": "client_a",
+              "clientId": "client_a",
+              "environment": "staging",
+              "siteId": "site_a",
+              "tenantId": "tenant_a"
+            },
+            "target": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionReceiptDigest": "9da0d6fc68274407f5d27c187a9fe0d4d3ffc9768022eea4c574f6bd012f4678",
+              "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+              "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "routeId": "6857fd9c-30a5-4fcb-977a-87211c55af01",
+              "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+              "stagingReceiptDigest": "4cdcf2ebeddac3776a289c87f5f35ec6ec3192cfecd2ccf4f01051b07447a47d",
+              "workflowReceiptDigest": "a306834e5f51f60cc9ad3fa468efa769e51890e56eb6e90ab49569fbe0e5eb16"
+            }
+          },
+          "state": "frozen",
+          "digest": "f30b9cc0d9f89145f0d3cab7aab901f938ef7b06a7b33bfe9fe1f47b542d778b"
+        },
+        "identity": "3852aa91777a316a58d1f2240c812beec167203a6e33116134992a9903e68ff6",
+        "originalRouteDigest": "3d842b11f578a6e65b37102d1fd62727fa075fdbeac11477cc93d7777a34cf56",
+        "owner": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "compatibilityDate": "2026-08-18",
+          "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+          "namespace": "xeroflow-page-studio-dispatch-staging",
+          "ownerTag": "ps-owner-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "runtimeDigest": "8d11efe063735fa4e829031369790c490f9774828c89626bf34a7bf405450420",
+          "scope": {
+            "businessId": "client_a",
+            "clientId": "client_a",
+            "environment": "staging",
+            "siteId": "site_a",
+            "tenantId": "tenant_a"
+          },
+          "scriptName": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "setupDigest": "b11b68ae6a22c197f52b06bf77453f92079706596250388d5dd754b46d3854b2"
+        },
+        "policy": {
+          "formReceiptDigest": "9f96e8a12be0f4b34c4c40251ffc35ecbe1b8498356f543a442e34abfd455e8a",
+          "from": {
+            "compatibilityDate": "2026-08-18",
+            "digest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058"
+          },
+          "kind": "managed-draft-transfer",
+          "to": {
+            "compatibilityDate": "2026-08-18",
+            "digest": "8d11efe063735fa4e829031369790c490f9774828c89626bf34a7bf405450420"
+          },
+          "version": 1
+        },
+        "predecessor": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "compatibilityDate": "2026-08-18",
+          "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+          "namespace": "xeroflow-page-studio-dispatch-staging",
+          "ownerTag": "ps-owner-bc4d2d502ba444b7b341e3746b3a3c98",
+          "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+          "scope": {
+            "businessId": "client_a",
+            "clientId": "client_a",
+            "environment": "staging",
+            "siteId": "site_a",
+            "tenantId": "tenant_a"
+          },
+          "scriptName": "ps-content-334b111f0cf443b2a923caf48e351246",
+          "setupDigest": "b11b68ae6a22c197f52b06bf77453f92079706596250388d5dd754b46d3854b2"
+        },
+        "schemaReceipt": {
+          "associationDigest": "a9c51b4ef80329acc987fbf2f6550b86005bf9d379a4f63a18c5595bcaf32211",
+          "claimDigest": "9b4621ded5a06a4235ef15ed2e39cf3c46f3cf8e66309d61766d43ab6d517c7c",
+          "descriptorDigest": "8d4493c1143b1425340c43a4eccb13296c75fb3760440a89d7497d1d1ec81c96",
+          "digest": "58b8141ae873ccf2d23471f336ebfddd6931f95d96ab11d79f87ebab4e9fba08",
+          "formatVersion": 1,
+          "kind": "managed-transfer-recovery-source-v1",
+          "nativeIntentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "operationId": "transfer_ea8fd34d-def0-469f-b043-6c159aab1443",
+          "predecessor": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "cms_runtime",
+            "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+            "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "operationId": "storage",
+            "scope": {
+              "businessId": "client_a",
+              "clientId": "client_a",
+              "environment": "staging",
+              "siteId": "site_a",
+              "tenantId": "tenant_a"
+            },
+            "workflowOperationId": "workflow_a",
+            "stagingOperationId": "staging_a",
+            "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+            "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+          },
+          "schemaDigest": "d5e7f6ffe8fcc64533e3296713ad3ab0232b84bde0d40f211cee10d9871a94df"
+        },
+        "workerReceipt": {
+          "etag": "successor"
+        },
+        "recovery": {
+          "claim": {
+            "effectKey": "9cec3190d114b6ea2d04c16022cf43e26645a3b5fd9c1fa42291907da8b575d2",
+            "head": {
+              "epoch": 1,
+              "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+              "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+              "version": 3,
+              "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+              "deadline": "2099-01-01T00:00:00.000Z",
+              "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+              "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "revision": 1,
+              "appliedDigest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058",
+              "mode": "enabled",
+              "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8"
+            },
+            "identity": {
+              "action": "install",
+              "invocationId": "853d9c01-aa2f-4e00-b8eb-9e1348931ec4",
+              "phase": "source-execution",
+              "requestDigest": "082c45081f44fe14624ae814624c8bbaae7ee572cf2920ae4ae18a92e09eb592",
+              "resourceDigest": "c22547bf2c4c79ceef2c1db64c9cacab0c0b25dbdc4acf3cfbffbbc055bbaf94"
+            },
+            "proofDigest": "56ab60486f87762e3da7c671fe5d131b018ba2fae58d43596036a1ebfc489842",
+            "resultDigest": null,
+            "settlementDigest": null,
+            "state": "dispatching"
+          },
+          "descriptor": {
+            "execution": {
+              "from": {
+                "compatibilityDate": "2026-08-18",
+                "digest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058"
+              },
+              "kind": "managed-draft-transfer",
+              "to": {
+                "compatibilityDate": "2026-08-18",
+                "digest": "8d11efe063735fa4e829031369790c490f9774828c89626bf34a7bf405450420"
+              },
+              "version": 1,
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "namespace": "xeroflow-page-studio-dispatch-staging"
+            },
+            "formatVersion": 1,
+            "kind": "managed-transfer-recovery-source-v1",
+            "layoutDigest": "d5e7f6ffe8fcc64533e3296713ad3ab0232b84bde0d40f211cee10d9871a94df"
+          },
+          "predecessors": {
+            "collection": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+              "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "operationId": "cms_runtime",
+              "scope": {
+                "businessId": "client_a",
+                "clientId": "client_a",
+                "environment": "staging",
+                "siteId": "site_a",
+                "tenantId": "tenant_a"
+              },
+              "sourceDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+              "targetDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee"
+            },
+            "workflow": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "cms_runtime",
+              "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+              "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "operationId": "workflow_a",
+              "scope": {
+                "businessId": "client_a",
+                "clientId": "client_a",
+                "environment": "staging",
+                "siteId": "site_a",
+                "tenantId": "tenant_a"
+              },
+              "sourceDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee",
+              "targetDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae"
+            },
+            "forms": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "cms_runtime",
+              "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+              "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "operationId": "storage",
+              "scope": {
+                "businessId": "client_a",
+                "clientId": "client_a",
+                "environment": "staging",
+                "siteId": "site_a",
+                "tenantId": "tenant_a"
+              },
+              "workflowOperationId": "workflow_a",
+              "stagingOperationId": "staging_a",
+              "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+              "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+            },
+            "staging": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "cms_runtime",
+              "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+              "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "operationId": "staging_a",
+              "scope": {
+                "businessId": "client_a",
+                "clientId": "client_a",
+                "environment": "staging",
+                "siteId": "site_a",
+                "tenantId": "tenant_a"
+              },
+              "sourceDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae",
+              "targetDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+              "workflowOperationId": "workflow_a"
+            }
+          },
+          "request": {
+            "formatVersion": 1,
+            "formReceipt": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionOperationId": "cms_runtime",
+              "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+              "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "operationId": "storage",
+              "scope": {
+                "businessId": "client_a",
+                "clientId": "client_a",
+                "environment": "staging",
+                "siteId": "site_a",
+                "tenantId": "tenant_a"
+              },
+              "workflowOperationId": "workflow_a",
+              "stagingOperationId": "staging_a",
+              "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+              "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+            },
+            "freeze": {
+              "createdAt": "2026-10-15T00:00:00.000Z",
+              "request": {
+                "actor": {
+                  "kind": "agency-user",
+                  "loginSessionHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "userId": "10000000-0000-4000-8000-000000000001"
+                },
+                "adoptionId": "adopt_execution",
+                "formatVersion": 1,
+                "scope": {
+                  "businessId": "client_a",
+                  "clientId": "client_a",
+                  "environment": "staging",
+                  "siteId": "site_a",
+                  "tenantId": "tenant_a"
+                },
+                "target": {
+                  "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "collectionReceiptDigest": "9da0d6fc68274407f5d27c187a9fe0d4d3ffc9768022eea4c574f6bd012f4678",
+                  "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+                  "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                  "routeId": "6857fd9c-30a5-4fcb-977a-87211c55af01",
+                  "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+                  "stagingReceiptDigest": "4cdcf2ebeddac3776a289c87f5f35ec6ec3192cfecd2ccf4f01051b07447a47d",
+                  "workflowReceiptDigest": "a306834e5f51f60cc9ad3fa468efa769e51890e56eb6e90ab49569fbe0e5eb16"
+                }
+              },
+              "state": "frozen",
+              "digest": "f30b9cc0d9f89145f0d3cab7aab901f938ef7b06a7b33bfe9fe1f47b542d778b"
+            },
+            "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+            "policy": {
+              "formReceiptDigest": "9f96e8a12be0f4b34c4c40251ffc35ecbe1b8498356f543a442e34abfd455e8a",
+              "from": {
+                "compatibilityDate": "2026-08-18",
+                "digest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058"
+              },
+              "kind": "managed-draft-transfer",
+              "to": {
+                "compatibilityDate": "2026-08-18",
+                "digest": "8d11efe063735fa4e829031369790c490f9774828c89626bf34a7bf405450420"
+              },
+              "version": 1
+            },
+            "predecessor": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "compatibilityDate": "2026-08-18",
+              "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+              "namespace": "xeroflow-page-studio-dispatch-staging",
+              "ownerTag": "ps-owner-bc4d2d502ba444b7b341e3746b3a3c98",
+              "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+              "scope": {
+                "businessId": "client_a",
+                "clientId": "client_a",
+                "environment": "staging",
+                "siteId": "site_a",
+                "tenantId": "tenant_a"
+              },
+              "scriptName": "ps-content-334b111f0cf443b2a923caf48e351246",
+              "setupDigest": "b11b68ae6a22c197f52b06bf77453f92079706596250388d5dd754b46d3854b2"
+            },
+            "sourceScope": {
+              "businessId": "client_a",
+              "clientId": "client_a",
+              "environment": "staging",
+              "siteId": "site_a",
+              "tenantId": "tenant_a"
+            },
+            "sourceTarget": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "collectionReceiptDigest": "9da0d6fc68274407f5d27c187a9fe0d4d3ffc9768022eea4c574f6bd012f4678",
+              "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+              "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "routeId": "6857fd9c-30a5-4fcb-977a-87211c55af01",
+              "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+              "stagingReceiptDigest": "4cdcf2ebeddac3776a289c87f5f35ec6ec3192cfecd2ccf4f01051b07447a47d",
+              "workflowReceiptDigest": "a306834e5f51f60cc9ad3fa468efa769e51890e56eb6e90ab49569fbe0e5eb16"
+            },
+            "successor": {
+              "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "compatibilityDate": "2026-08-18",
+              "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+              "namespace": "xeroflow-page-studio-dispatch-staging",
+              "ownerTag": "ps-owner-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "runtimeDigest": "8d11efe063735fa4e829031369790c490f9774828c89626bf34a7bf405450420",
+              "scope": {
+                "businessId": "client_a",
+                "clientId": "client_a",
+                "environment": "staging",
+                "siteId": "site_a",
+                "tenantId": "tenant_a"
+              },
+              "scriptName": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "setupDigest": "b11b68ae6a22c197f52b06bf77453f92079706596250388d5dd754b46d3854b2"
+            }
+          }
+        }
+      },
+      "kind": "managed-recovery-execution",
+      "route": {
+        "activationId": "6857fd9c-30a5-4fcb-977a-87211c55af01",
+        "formDrafts": {
+          "capability": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "activationId": "6857fd9c-30a5-4fcb-977a-87211c55af01",
+            "auditId": "3fdaee0f-9053-40dc-819d-9b0ab4ee17aa",
+            "createdAt": "2026-10-24T04:27:38.089Z",
+            "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+            "identity": "037f5737ba056f3f744b61dd90f4b92308e3be8abe3d261ca54db0c33d3ffdda",
+            "operationIdentity": "be07ddbb57c3221a5397fd1439e70d5c0085303d8359039507104594fef23f61",
+            "receiptDigest": "9f96e8a12be0f4b34c4c40251ffc35ecbe1b8498356f543a442e34abfd455e8a",
+            "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+            "runtimeEtag": "successor",
+            "runtimeIdentity": "7df6261070624455f9417aed8085dae9cb1a72e5fc7736ca6ccdfd980224618f",
+            "scope": {
+              "businessId": "client_a",
+              "clientId": "client_a",
+              "environment": "staging",
+              "siteId": "site_a",
+              "tenantId": "tenant_a"
+            }
+          },
+          "digest": "9f96e8a12be0f4b34c4c40251ffc35ecbe1b8498356f543a442e34abfd455e8a",
+          "receipt": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "cms_runtime",
+            "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+            "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "operationId": "storage",
+            "scope": {
+              "businessId": "client_a",
+              "clientId": "client_a",
+              "environment": "staging",
+              "siteId": "site_a",
+              "tenantId": "tenant_a"
+            },
+            "workflowOperationId": "workflow_a",
+            "stagingOperationId": "staging_a",
+            "sourceDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+            "targetDigest": "c4f79d0a585c725b72fd8f85ad52ed0494268b7d57853965a673149170b033b2"
+          }
+        },
+        "namespace": "xeroflow-page-studio-dispatch-staging",
+        "receipts": {
+          "collection": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+            "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "operationId": "cms_runtime",
+            "scope": {
+              "businessId": "client_a",
+              "clientId": "client_a",
+              "environment": "staging",
+              "siteId": "site_a",
+              "tenantId": "tenant_a"
+            },
+            "sourceDigest": "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a",
+            "targetDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee"
+          },
+          "workflow": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "cms_runtime",
+            "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+            "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "operationId": "workflow_a",
+            "scope": {
+              "businessId": "client_a",
+              "clientId": "client_a",
+              "environment": "staging",
+              "siteId": "site_a",
+              "tenantId": "tenant_a"
+            },
+            "sourceDigest": "0feb591f4c5fcb82c9b10204f7e387e83b4eb52eb634ce772f8cad8716ca0cee",
+            "targetDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae"
+          },
+          "staging": {
+            "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "collectionOperationId": "cms_runtime",
+            "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+            "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "operationId": "staging_a",
+            "scope": {
+              "businessId": "client_a",
+              "clientId": "client_a",
+              "environment": "staging",
+              "siteId": "site_a",
+              "tenantId": "tenant_a"
+            },
+            "sourceDigest": "60631223175cb7e8bf9dca5b08347a192844b8600bd8687e1caa8b60c9f337ae",
+            "targetDigest": "863be4f1fa6709c12fcdc8be3c5432c754dcdc535995f31042613e8072571e0e",
+            "workflowOperationId": "workflow_a"
+          }
+        },
+        "scope": {
+          "businessId": "client_a",
+          "clientId": "client_a",
+          "environment": "staging",
+          "siteId": "site_a",
+          "tenantId": "tenant_a"
+        },
+        "scriptName": "ps-content-334b111f0cf443b2a923caf48e351246",
+        "target": {
+          "accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "collectionReceiptDigest": "9da0d6fc68274407f5d27c187a9fe0d4d3ffc9768022eea4c574f6bd012f4678",
+          "databaseId": "aefdcf21-ec1c-439a-b48f-4ab8eceb1a39",
+          "name": "ps-content-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "routeId": "6857fd9c-30a5-4fcb-977a-87211c55af01",
+          "runtimeDigest": "7987134f323e4c8a94da12605f5a134eedb7b9d8958b4968d123fee52af03058",
+          "stagingReceiptDigest": "4cdcf2ebeddac3776a289c87f5f35ec6ec3192cfecd2ccf4f01051b07447a47d",
+          "workflowReceiptDigest": "a306834e5f51f60cc9ad3fa468efa769e51890e56eb6e90ab49569fbe0e5eb16"
+        }
+      }
+    },
+    "upload": {
+      "claim": {
+        "effectKey": "206b2ddecc5ae67402443ac1bec4776e786009e606e74109e58c9cd0c530833e",
+        "head": {
+          "epoch": 1,
+          "intentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "operationId": "ea8fd34d-def0-469f-b043-6c159aab1443",
+          "recoveryId": "a73b8b43-93a6-4d96-97c6-8c0b958a626f",
+          "version": 3,
+          "admissionId": "94820e2e-526f-496d-9b70-513f9bc28be8",
+          "deadline": "2099-01-01T00:00:00.000Z",
+          "pendingDigest": "a4afb677dc50625dfb715d018f27d80e45daf9496f7979e4e661c181473234f6",
+          "reconciliationDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "reviewDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "appliedDigest": "9ad920c9e99d567086c90ba3ad0cac226d34e2723e4fa8f795544057a1843058",
+          "mode": "enabled",
+          "preparedDigest": "2704442cc2d5a4188c2848410aa190b673b07caa3bdefb00f40e7cbdb1917ce8"
+        },
+        "identity": {
+          "action": "upload",
+          "invocationId": "3b19fe25-0b83-4efe-a150-50f7f733223f",
+          "phase": "source-execution",
+          "requestDigest": "082c45081f44fe14624ae814624c8bbaae7ee572cf2920ae4ae18a92e09eb592",
+          "resourceDigest": "3858d498898c02028d6d9516e845b5a414b65c60b02bbcdba349387d64747348"
+        },
+        "proofDigest": "b45c4c702f8518f4c74ac28e22670b4fc56caa989e49beede9f3f31c968b57b3",
+        "resultDigest": "301a276ba9643f8ed07d64bb1342036184d6c15558d9ae7ed2594fe4c71ccce0",
+        "settlementDigest": "bcbe07691636718ba1624c6e06bf260a97d526525e75f4839c352505b5c174f2",
+        "state": "completed"
+      },
+      "receipt": {
+        "etag": "successor"
+      }
+    }
+  }
+}

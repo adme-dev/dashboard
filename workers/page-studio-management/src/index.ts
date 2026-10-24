@@ -1,3 +1,5 @@
+import { TRANSFER_RECOVERY_SOURCE_FREEZE_URL } from '../../../shared/pageStudio/transferRecoverySourceFreezeTransport'
+import { handleTransferRecoverySourceFreezeFetch } from './transferRecoverySourceFreezeFetch'
 import { TRANSFER_RECOVERY_SOURCE_READY_URL } from '../../../shared/pageStudio/transferRecoverySourceReadyTransport'
 import { handleTransferRecoverySourceReadyFetch } from './transferRecoverySourceReadyFetch'
 import { TRANSFER_RECOVERY_SOURCE_EFFECT_URL } from '../../../shared/pageStudio/transferRecoverySourceEffectTransport'
@@ -83,6 +85,8 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
     if (request.url === RECOVERY_ADMISSION_CONTROL_URL) return handleTransferRecoveryAdmissionControlFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === RECOVERY_REVIEW_CONTROL_URL) return handleTransferRecoveryReviewControlFetch(request, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+    if (request.url === TRANSFER_RECOVERY_SOURCE_FREEZE_URL) return handleTransferRecoverySourceFreezeFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === TRANSFER_RECOVERY_SOURCE_READY_URL) return handleTransferRecoverySourceReadyFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))

@@ -1,3 +1,5 @@
+import { TRANSFER_RECOVERY_SOURCE_FREEZE_PATH } from '../../../shared/pageStudio/transferRecoverySourceFreezeTransport'
+import { authorizeTransferRecoverySourceFreezeThroughManagement } from './transferRecoverySourceFreeze'
 import { TRANSFER_RECOVERY_SOURCE_READY_PATH } from '../../../shared/pageStudio/transferRecoverySourceReadyTransport'
 import { readTransferRecoverySourceReadyThroughManagement } from './transferRecoverySourceReady'
 import { TRANSFER_RECOVERY_SOURCE_EFFECT_PATH } from '../../../shared/pageStudio/transferRecoverySourceEffectTransport'
@@ -176,6 +178,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     && 'CONTENT_COMPLETION_TRANSPORT' in env && env.CONTENT_COMPLETION_TRANSPORT === 'management-rpc') {
     return readCompletionThroughManagement(request, config.dashboardOrigin,
       'PAGE_STUDIO_MANAGEMENT_COMPLETION' in env ? env.PAGE_STUDIO_MANAGEMENT_COMPLETION : undefined)
+  }
+
+  if (url.pathname === TRANSFER_RECOVERY_SOURCE_FREEZE_PATH) {
+    return authorizeTransferRecoverySourceFreezeThroughManagement(request, config.dashboardOrigin,
+      'NATIVE_SCHEMA_TRANSPORT' in env && env.NATIVE_SCHEMA_TRANSPORT === 'placed-fetch'
+      && 'PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY' in env
+        ? env.PAGE_STUDIO_NATIVE_SCHEMA_AUTHORITY
+        : undefined)
   }
 
   if (url.pathname === TRANSFER_RECOVERY_SOURCE_READY_PATH) {

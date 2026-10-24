@@ -1480,6 +1480,31 @@ describe.runIf(Boolean(databaseUrl))(
       expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
     })
 
+    it('private freeze transport uses real PG authority and denies owner expiry without effects', async () => {
+      const { handleTransferRecoverySourceFreezeFetch } = await import('../../../workers/page-studio-management/src/transferRecoverySourceFreezeFetch')
+      const f = await freezeFixture()
+      const wire = await f.envelope()
+      const env = {
+        ...f.d.env,
+        PAGE_STUDIO_RELEASE_ENVIRONMENT: 'production',
+        PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED: 'true',
+        MANAGED_TRANSFER_RECOVERY_SOURCE_FREEZE_POLICY: JSON.stringify(f.d.freezeDescriptor)
+      }
+      const call = () => handleTransferRecoverySourceFreezeFetch(new Request(
+        'https://page-studio-management.internal/transfer-recovery-source-freeze',
+        { method: 'POST', body: JSON.stringify(wire) }
+      ), env, runTransaction)
+      const before = await pairCounts()
+      const accepted = await call()
+      expect(accepted.status).toBe(200)
+      expect(await accepted.json()).toEqual({ purpose: 'recovery-source-freeze', envelopeDigest: await collectionDigest(wire) })
+      expect(await pairCounts()).toEqual(before)
+      await db.query('UPDATE page_studio_customer_sessions SET expires_at=clock_timestamp() WHERE token_hash=$1', [input.ownerLoginSessionHash])
+      expect((await call()).status).toBe(403)
+      expect(await pairCounts()).toEqual(before)
+      expect((await db.query('SELECT * FROM transfer_effects')).rows).toEqual([])
+    })
+
     it('ready authority catches final-clock dependency replacement', async () => {
       const f = await freezeFixture()
       await f.prepare()
