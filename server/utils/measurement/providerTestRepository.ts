@@ -186,7 +186,10 @@ export function createPostgresMeasurementProviderTestRepository(
         ) return { status: 'not_test_mode' }
         if (row.platform !== expectedPlatform(input.mode)) return { status: 'not_found' }
         if (!row.provider_event_name) return { status: 'mapping_not_found' }
-        if (!row.account_id) return { status: 'connection_not_found' }
+        // GA4 Measurement Protocol authenticates with its scoped API secret.
+        // The provider test service resolves that binding and fails closed if it is missing.
+        const usesGa4Secret = row.platform === 'ga4' && input.mode === 'ga4_debug_validation'
+        if (!usesGa4Secret && !row.account_id) return { status: 'connection_not_found' }
         const capabilityModes = Array.isArray(row.capability_modes)
           ? row.capability_modes.filter((mode): mode is string => typeof mode === 'string')
           : []
@@ -257,7 +260,7 @@ export function createPostgresMeasurementProviderTestRepository(
         }
 
         const metadata = record(row.metadata)
-        const operatingAccountId = row.account_id.replaceAll('-', '')
+        const operatingAccountId = (row.account_id ?? '').replaceAll('-', '')
         const loginAccountId = (
           stringValue(metadata.google_login_customer_id)
           ?? stringValue(metadata.login_customer_id)

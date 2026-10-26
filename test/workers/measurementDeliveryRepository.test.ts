@@ -337,7 +337,11 @@ describe('measurement delivery repository', () => {
   })
 
   it('maps the GA4 client ID from the tracking_events join into the claim attribution', async () => {
-    const row = { ...deliveryRow(), platform: 'ga4' as const, tracking_ga_client_id: '1234567890.1234567890' }
+    const row = {
+      ...deliveryRow(), platform: 'ga4' as const, tracking_ga_client_id: '1234567890.1234567890',
+      account_id: null, refresh_token: null, scopes: null, metadata: null,
+      credential_ref: 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE'
+    }
     const client = {
       query: vi.fn(async (sql: string) => {
         if (/SELECT[\s\S]*FOR UPDATE OF d SKIP LOCKED/.test(sql)) return { rows: [row] }
@@ -359,5 +363,9 @@ describe('measurement delivery repository', () => {
 
     expect(claim?.platform).toBe('ga4')
     expect(claim?.attribution.gaClientId).toBe('1234567890.1234567890')
+    expect(claim).toMatchObject({
+      operatingAccountId: '', loginAccountId: '', refreshToken: null, connectionScopes: [],
+      credentialRef: 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE'
+    })
   })
 })

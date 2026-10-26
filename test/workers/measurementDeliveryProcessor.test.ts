@@ -242,6 +242,11 @@ describe('measurement delivery processor', () => {
       platform: 'ga4',
       externalDestinationId: 'G-ABCDEFG123',
       credentialRef: 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE',
+      operatingAccountId: '',
+      loginAccountId: '',
+      accessToken: null,
+      refreshToken: null,
+      connectionScopes: [],
       attribution: { ...claim().attribution, gaClientId: '1234567890.1234567890' }
     })
     const state = setup([ga4, null])
@@ -252,6 +257,7 @@ describe('measurement delivery processor', () => {
     expect(result).toEqual({ claimed: 1, accepted: 1, retryable: 0, permanentFailure: 0, policySkipped: 0 })
     expect(state.resolveProviderCredential).toHaveBeenCalledWith('MEASUREMENT_PROVIDER_GA4_BIG_GARAGE')
     expect(state.deliverGa4).toHaveBeenCalledWith(expect.objectContaining({ apiSecret: 'ga4-api-secret' }))
+    expect(state.refreshGoogleAccessToken).not.toHaveBeenCalled()
   })
 
   it('never sends GA4 delivery when the credential reference is absent', async () => {
