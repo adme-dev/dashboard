@@ -44,6 +44,20 @@ The primary users are agency staff — account managers, media buyers, producers
 - **Vitest** — unit and integration tests
 - **happy-dom** — DOM environment for tests
 
+## Marketing and measurement platform guard (MANDATORY)
+
+Before changing dealer tracking, advertising conversion configuration, GTM, or header/body scripts:
+
+1. Identify the exact dealer ID, public host, form endpoint, platform and current conversion owner. Distinguish a native DriveAgent website from an external/legacy website and XeroFlow measurement. A DriveAgent-branded portal hostname alone does not prove the form uses the current native enquiry pipeline.
+2. Read the target repository's AGENTS.md/CLAUDE.md, current tracking guide, graph wiki and GitHub wiki before proposing changes. Record the source revision and check wiki/graph freshness against current source. For DriveAgent start with `docs/guides/tracking-architecture.md`, `docs/server-side-tracking-guide.md`, and `docs/deployment/TRACKING_DELIVERY_CLAIMS.md`. Treat stale diagrams as context, not release evidence; correct misleading documentation as part of the task.
+3. Native DriveAgent enquiries already have server-side conversion routing. Inspect the accepted-enquiry handler, destination configuration, consent policy, credentials presence, queue/consumer and dealer-scoped Conversion Delivery evidence first. Repair this supported path; do not add raw GTM/gtag/Meta header scripts or an external `tracking.js` installer as a substitute for native server delivery or merely to clear a provider warning.
+4. Browser page views, consent and attribution signals are separate from accepted-lead delivery. Retain only a documented browser requirement, with explicit ownership and consent. Do not assume a shared event ID deduplicates every provider or every event type; verify the actual provider contract and browser/server mapping before enabling overlapping senders.
+5. For an external site, trace the actual backend and existing provider hooks before selecting a signed server-to-server integration. Do not route the same accepted enquiry through both DriveAgent and XeroFlow without verified ownership and deduplication.
+6. Verify the exact live dealer/host after changes. Report configuration, validation, transport receipt and provider reporting separately. An installed tag, successful debug payload or empty ledger is not proof of customer-event delivery. Never fabricate a customer enquiry to obtain proof.
+7. Update canonical tracking documentation and the relevant maintained wiki when behavior or ownership changes. If generated graph/wiki output cannot be refreshed, record its source revision and stale areas explicitly. Keep credentials and customer payloads out of documentation.
+
+These checks apply even when the task originates in Monday or another marketing system. Do not treat a request to install a tag as evidence that the platform lacks native tracking.
+
 ## UI Rules (MANDATORY)
 
 **Always use Nuxt UI v4 components.** Never use browser-native dialogs or raw HTML form elements.
