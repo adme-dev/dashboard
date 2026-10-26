@@ -51,7 +51,7 @@ function timingRecords(log: { mock: { calls: unknown[][] } }) {
 }
 const stagesOf = (record: { stages: Array<{ stage: string }> }) => record.stages.map(item => item.stage)
 /** Real graph storage over a stub R2 bucket whose bodies count the bytes actually streamed. */
-type RealOptions = { corrupt?: number, getDelay?: number, omitSize?: boolean }
+type RealOptions = { corrupt?: number, getDelay?: number, omitSize?: boolean, chunkSize?: number }
 const artifactValue = (index: number, padding: number) => ({ kind: 'component', id: `component-${String(index).padStart(2, '0')}`, version: 1, scope, source: 'x'.repeat(padding) })
 const realArtifacts = (count: number, padding: number, options: RealOptions = {}) => realArtifactsOf(Array.from({ length: count }, () => padding), options)
 /** Artifacts whose canonical bytes add up to exactly `total`. */
@@ -66,27 +66,34 @@ async function realArtifactsOf(paddings: number[], options: RealOptions = {}) {
     pins.push({ kind: 'component', id, version: 1, sha256: await collectionDigest(value) })
     objects.set(id, index === options.corrupt ? collectionCanonical({ ...value, source: 'y'.repeat(padding) }) : collectionCanonical(value))
   }
+  const gate: Array<() => void> = []
+  const release = () => {
+    for (const next of gate.splice(0)) next()
+  }
   const meter = { streamed: 0, openBodies: 0, total: [...objects.values()].reduce((sum, raw) => sum + raw.length, 0), largest: Math.max(...[...objects.values()].map(raw => raw.length)) }
   const get = vi.fn(async (key: string) => {
     await delay(options.getDelay ?? 0)
     const raw = new TextEncoder().encode(objects.get(key.split('/')[4]!)!)
     meter.openBodies++
-    let sent = false
+    let offset = 0
     return { ...(options.omitSize ? {} : { size: raw.byteLength }), body: new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (sent) {
+      async pull(controller) {
+        if (offset >= raw.byteLength) {
           meter.openBodies--
           controller.close()
           return
         }
-        sent = true
-        meter.streamed += raw.byteLength
-        controller.enqueue(raw)
+        // Chunked bodies advance in lockstep, one chunk per release, so concurrent reads interleave mid-stream.
+        if (options.chunkSize) await new Promise<void>(resolve => gate.push(resolve))
+        const chunk = raw.subarray(offset, offset + (options.chunkSize ?? raw.byteLength))
+        offset += chunk.byteLength
+        meter.streamed += chunk.byteLength
+        controller.enqueue(chunk)
       },
       cancel() { meter.openBodies-- }
     }, { highWaterMark: 0 }) }
   })
-  return { pins, get, meter }
+  return { pins, get, meter, release }
 }
 function useRealStorage(f: ReturnType<typeof fixture>, get: (key: string) => Promise<unknown>) {
   stubs.storage.mockReset().mockImplementation((_env, snapshot) => ({ ...realStorage({ PAGE_STUDIO_CHECKPOINTS: { get } }, snapshot), readCheckpoint: f.storage.readCheckpoint }))
@@ -212,13 +219,26 @@ describe('managed checkpoint timing and artifact reads', () => {
       expect(stubs.verify).not.toHaveBeenCalled()
     })
     it(`streams at most the budget plus one in-hand chunk per concurrent read for ${sizes} sizes`, async () => {
-      const real = await realArtifacts(12, 254_000, { omitSize, getDelay: 1 })
+      // 1.9 MB of small artifacts settle first, so eight 250 KB reads are mid-stream when the budget trips.
+      const chunkSize = 16_384
+      const real = await realArtifactsOf([...Array.from({ length: 19 }, () => 100_000), ...Array.from({ length: 21 }, () => 250_000)], { omitSize, chunkSize })
+      expect(real.meter.total).toBeGreaterThan(2_000_000 + 8 * real.meter.largest)
       const f = fixture(real.pins)
       useRealStorage(f, real.get)
       vi.spyOn(console, 'info').mockImplementation(() => {})
       vi.spyOn(console, 'warn').mockImplementation(() => {})
-      await expect(coordinateCmsGraphCheckpoint(f.input, f.principal)).rejects.toThrow(storageError)
-      expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000 + 8 * real.meter.largest)
+      let settled = false
+      const run = coordinateCmsGraphCheckpoint(f.input, f.principal).finally(() => {
+        settled = true
+      })
+      run.catch(() => {})
+      while (!settled) {
+        await delay(0)
+        real.release()
+      }
+      await expect(run).rejects.toThrow(storageError)
+      expect(real.meter.streamed).toBeGreaterThan(2_000_000)
+      expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000 + 8 * chunkSize)
       expect(real.meter.openBodies).toBe(0)
     })
   }
