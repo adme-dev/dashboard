@@ -22,6 +22,66 @@ const input = {
 }
 
 describe('measurement provider test repository', () => {
+  function unconnectedContext(platform: 'ga4' | 'google_data_manager' = 'ga4') {
+    return {
+      profile_id: '77777777-7777-4777-8777-777777777777',
+      profile_enabled: false, profile_environment: 'test',
+      destination_enabled: false, destination_environment: 'test', destination_config_version: 3,
+      platform, external_destination_id: 'G-ABC123',
+      credential_ref: 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE',
+      provider_event_name: 'generate_lead', account_id: null, refresh_token: null,
+      scopes: null, metadata: null, allowed_origins: [],
+      capability_modes: platform === 'ga4' ? ['ga4_measurement_protocol'] : ['google_data_manager']
+    }
+  }
+
+  function unconnectedRepository(row = unconnectedContext()) {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: row.profile_id }] })
+      .mockResolvedValueOnce({ rows: [row] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '33333333-3333-4333-8333-333333333333', mode: 'ga4_debug_validation', status: 'requested',
+        provider_request_id: null, error_class: null, redacted_error: null, completed_at: null
+      }] })
+    const resolveCredential = vi.fn()
+    const repository = createPostgresMeasurementProviderTestRepository(
+      async callback => callback({ query }), resolveCredential
+    )
+    return { repository, query, resolveCredential }
+  }
+
+  it('reserves GA4 debug validation with its scoped secret and no OAuth account', async () => {
+    const test = unconnectedRepository()
+    await expect(test.repository.reserve({
+      ...input, mode: 'ga4_debug_validation', gaClientId: '123.456'
+    } as never)).resolves.toMatchObject({
+      status: 'reserved',
+      context: {
+        delivery: { operatingAccountId: '', loginAccountId: '', externalDestinationId: 'G-ABC123' },
+        credential: { credentialRef: 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE', refreshToken: null, scopes: [] }
+      }
+    })
+    expect(test.resolveCredential).not.toHaveBeenCalled()
+    expect(test.query.mock.calls[2]![0]).toContain('sc.client_id = d.client_id')
+  })
+
+  it('still requires an active OAuth account for Google Data Manager validation', async () => {
+    const test = unconnectedRepository(unconnectedContext('google_data_manager'))
+    await expect(test.repository.reserve({
+      ...input, mode: 'google_validate_only', clickIdentifier: { type: 'gclid', value: 'GCLID_1' }
+    } as never)).resolves.toEqual({ status: 'connection_not_found' })
+    expect(test.query).toHaveBeenCalledTimes(3)
+  })
+
+  it('cannot bypass a Google destination connection gate by claiming GA4 mode', async () => {
+    const test = unconnectedRepository(unconnectedContext('google_data_manager'))
+    await expect(test.repository.reserve({
+      ...input, mode: 'ga4_debug_validation', gaClientId: '123.456'
+    } as never)).resolves.toEqual({ status: 'not_found' })
+    expect(test.query).toHaveBeenCalledTimes(3)
+  })
+
   it('maps each provider test mode to the platform it belongs to', () => {
     expect(expectedPlatform('meta_test_events')).toBe('meta')
     expect(expectedPlatform('google_validate_only')).toBe('google_data_manager')

@@ -52,8 +52,8 @@ function context(
       occurredAt: '2026-07-17T08:00:00.000Z',
       idempotencyKey: ids.idempotency,
       externalDestinationId: platform === 'ga4' ? 'G-ABC123' : '573284833843027',
-      operatingAccountId: '4221552633',
-      loginAccountId: '4221552633',
+      operatingAccountId: platform === 'ga4' ? '' : '4221552633',
+      loginAccountId: platform === 'ga4' ? '' : '4221552633',
       metaDeliveryMode
     },
     credential: {
@@ -525,7 +525,32 @@ describe('measurement provider test service', () => {
       apiSecret: 'meta-dataset-token'
     }))
     expect(test.deliverGoogle).not.toHaveBeenCalled()
+    expect(test.refreshGoogleAccessToken).not.toHaveBeenCalled()
     expect(result.run.status).toBe('accepted')
+  })
+
+  it.each([
+    ['missing reference', null, 'ga4_credential_ref_required'],
+    ['unavailable binding', 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE', 'ga4_credential_unavailable']
+  ])('fails GA4 validation closed for %s without falling back to OAuth', async (_label, credentialRef, errorClass) => {
+    const reserved = context('ga4')
+    reserved.credential.credentialRef = credentialRef
+    const test = setup(reserved)
+    test.resolveProviderCredential.mockResolvedValueOnce(null)
+
+    const result = await test.service.run({
+      ...baseInput(), mode: 'ga4_debug_validation', gaClientId: '123.456'
+    })
+
+    expect(result.run.status).toBe('failed')
+    expect(test.repository.complete).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', errorClass }))
+    expect(test.recordValidation).toHaveBeenCalledWith(expect.objectContaining({
+      capabilities: [expect.objectContaining({ mode: 'ga4_measurement_protocol', status: 'blocked' })]
+    }))
+    expect(test.validateGa4).not.toHaveBeenCalled()
+    expect(test.refreshGoogleAccessToken).not.toHaveBeenCalled()
+    expect(test.deliverGoogle).not.toHaveBeenCalled()
+    if (credentialRef === null) expect(test.resolveProviderCredential).not.toHaveBeenCalled()
   })
 
   it('rejects a GA4 test with a malformed gaClientId before reserving provider traffic', async () => {
