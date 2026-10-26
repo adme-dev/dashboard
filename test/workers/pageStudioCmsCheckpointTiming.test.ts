@@ -51,15 +51,22 @@ function timingRecords(log: { mock: { calls: unknown[][] } }) {
 }
 const stagesOf = (record: { stages: Array<{ stage: string }> }) => record.stages.map(item => item.stage)
 /** Real graph storage over a stub R2 bucket whose bodies count the bytes actually streamed. */
-async function realArtifacts(count: number, padding: number, options: { corrupt?: number, getDelay?: number, omitSize?: boolean } = {}) {
+type RealOptions = { corrupt?: number, getDelay?: number, omitSize?: boolean }
+const artifactValue = (index: number, padding: number) => ({ kind: 'component', id: `component-${String(index).padStart(2, '0')}`, version: 1, scope, source: 'x'.repeat(padding) })
+const realArtifacts = (count: number, padding: number, options: RealOptions = {}) => realArtifactsOf(Array.from({ length: count }, () => padding), options)
+/** Artifacts whose canonical bytes add up to exactly `total`. */
+function realArtifactsTotaling(total: number, count: number, options: RealOptions = {}) {
+  const overhead = collectionCanonical(artifactValue(0, 0)).length, paddings = Array.from({ length: count - 1 }, () => 250_000)
+  return realArtifactsOf([...paddings, total - paddings.reduce((sum, padding) => sum + padding + overhead, 0) - overhead], options)
+}
+async function realArtifactsOf(paddings: number[], options: RealOptions = {}) {
   const pins: Pin[] = [], objects = new Map<string, string>()
-  for (let index = 0; index < count; index++) {
-    const id = `component-${String(index).padStart(2, '0')}`
-    const value = { kind: 'component', id, version: 1, scope, source: 'x'.repeat(padding) }
+  for (const [index, padding] of paddings.entries()) {
+    const value = artifactValue(index, padding), id = value.id
     pins.push({ kind: 'component', id, version: 1, sha256: await collectionDigest(value) })
     objects.set(id, index === options.corrupt ? collectionCanonical({ ...value, source: 'y'.repeat(padding) }) : collectionCanonical(value))
   }
-  const meter = { streamed: 0, openBodies: 0 }
+  const meter = { streamed: 0, openBodies: 0, total: [...objects.values()].reduce((sum, raw) => sum + raw.length, 0), largest: Math.max(...[...objects.values()].map(raw => raw.length)) }
   const get = vi.fn(async (key: string) => {
     await delay(options.getDelay ?? 0)
     const raw = new TextEncoder().encode(objects.get(key.split('/')[4]!)!)
@@ -182,26 +189,39 @@ describe('managed checkpoint timing and artifact reads', () => {
     expect(record).toMatchObject({ outcome: 'failed', artifactsRead: null })
     expect(stagesOf(record)).toEqual(['snapshot', 'replay', 'base', 'artifacts'])
   })
-  it('never streams more than the shared 2 MB artifact budget across concurrent reads', async () => {
-    const real = await realArtifacts(10, 254_000)
-    const f = fixture(real.pins)
-    useRealStorage(f, real.get)
-    vi.spyOn(console, 'info').mockImplementation(() => {})
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await expect(coordinateCmsGraphCheckpoint(f.input, f.principal)).rejects.toThrow(storageError)
-    expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000)
-    expect(real.meter.openBodies).toBe(0)
-    expect(stubs.verify).not.toHaveBeenCalled()
-  })
-  it('accepts a graph just under the budget through real storage in manifest order', async () => {
-    const real = await realArtifacts(7, 254_000)
-    const f = fixture(real.pins)
-    useRealStorage(f, real.get)
-    vi.spyOn(console, 'info').mockImplementation(() => {})
-    expect(await coordinateCmsGraphCheckpoint(f.input, f.principal)).toBe(receipt)
-    const bytes = stubs.verify.mock.calls[0]![0].artifactBytes as string[]
-    expect(bytes.map(raw => JSON.parse(raw).id)).toEqual(real.pins.map(pin => pin.id))
-  })
+  for (const omitSize of [false, true]) {
+    const sizes = omitSize ? 'undeclared' : 'declared'
+    it(`accepts ${sizes} artifacts totalling exactly 2,000,000 bytes in manifest order`, async () => {
+      const real = await realArtifactsTotaling(2_000_000, 8, { omitSize })
+      expect(real.meter.total).toBe(2_000_000)
+      const f = fixture(real.pins)
+      useRealStorage(f, real.get)
+      vi.spyOn(console, 'info').mockImplementation(() => {})
+      expect(await coordinateCmsGraphCheckpoint(f.input, f.principal)).toBe(receipt)
+      const bytes = stubs.verify.mock.calls[0]![0].artifactBytes as string[]
+      expect(bytes.map(raw => JSON.parse(raw).id)).toEqual(real.pins.map(pin => pin.id))
+    })
+    it(`rejects ${sizes} artifacts totalling 2,000,001 bytes`, async () => {
+      const real = await realArtifactsTotaling(2_000_001, 8, { omitSize })
+      expect(real.meter.total).toBe(2_000_001)
+      const f = fixture(real.pins)
+      useRealStorage(f, real.get)
+      vi.spyOn(console, 'info').mockImplementation(() => {})
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await expect(coordinateCmsGraphCheckpoint(f.input, f.principal)).rejects.toThrow(storageError)
+      expect(stubs.verify).not.toHaveBeenCalled()
+    })
+    it(`streams at most the budget plus one in-hand chunk per concurrent read for ${sizes} sizes`, async () => {
+      const real = await realArtifacts(12, 254_000, { omitSize, getDelay: 1 })
+      const f = fixture(real.pins)
+      useRealStorage(f, real.get)
+      vi.spyOn(console, 'info').mockImplementation(() => {})
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await expect(coordinateCmsGraphCheckpoint(f.input, f.principal)).rejects.toThrow(storageError)
+      expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000 + 8 * real.meter.largest)
+      expect(real.meter.openBodies).toBe(0)
+    })
+  }
   it('fails on a corrupt sibling through real storage without leaving reads behind', async () => {
     const real = await realArtifacts(40, 1_000, { corrupt: 3, getDelay: 5 })
     const f = fixture(real.pins)
@@ -215,36 +235,6 @@ describe('managed checkpoint timing and artifact reads', () => {
     expect(real.get.mock.calls.length).toBeLessThan(40)
     expect(openWhenLogged).toBe(0)
     expect(stubs.verify).not.toHaveBeenCalled()
-  })
-  it('reserves the per-object maximum for undeclared sizes so concurrent reads stay within the budget', async () => {
-    const real = await realArtifacts(10, 254_000, { omitSize: true })
-    const f = fixture(real.pins)
-    useRealStorage(f, real.get)
-    vi.spyOn(console, 'info').mockImplementation(() => {})
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await expect(coordinateCmsGraphCheckpoint(f.input, f.principal)).rejects.toThrow(storageError)
-    expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000)
-    expect(real.meter.openBodies).toBe(0)
-  })
-  it('stays within the budget when undeclared reads race near exhaustion', async () => {
-    const real = await realArtifacts(16, 150_000, { omitSize: true, getDelay: 1 })
-    const f = fixture(real.pins)
-    useRealStorage(f, real.get)
-    vi.spyOn(console, 'info').mockImplementation(() => {})
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await expect(coordinateCmsGraphCheckpoint(f.input, f.principal)).rejects.toThrow(storageError)
-    expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000)
-    expect(real.meter.openBodies).toBe(0)
-  })
-  it('still accepts undeclared graphs that fit the budget once in-flight claims settle', async () => {
-    const real = await realArtifacts(12, 150_000, { omitSize: true, getDelay: 1 })
-    const f = fixture(real.pins)
-    useRealStorage(f, real.get)
-    vi.spyOn(console, 'info').mockImplementation(() => {})
-    expect(await coordinateCmsGraphCheckpoint(f.input, f.principal)).toBe(receipt)
-    expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000)
-    const bytes = stubs.verify.mock.calls[0]![0].artifactBytes as string[]
-    expect(bytes.map(raw => JSON.parse(raw).id)).toEqual(real.pins.map(pin => pin.id))
   })
   it('cancels a body as soon as it streams past its declared size', async () => {
     let pulls = 0
@@ -261,11 +251,36 @@ describe('managed checkpoint timing and artifact reads', () => {
     expect(pulls).toBe(2)
     expect(cancel).toHaveBeenCalledOnce()
   })
-  it('releases a claim when a body reader cannot open so waiting siblings settle with the original error', async () => {
-    const real = await realArtifacts(10, 254_000)
+  it('does not wait on a body cancel that never settles', async () => {
+    const real = await realArtifacts(10, 1_000)
+    const get = vi.fn(async (key: string) => {
+      const id = key.split('/')[4]
+      if (id === 'component-00') return { size: 1_000, body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(1_500).fill(32))
+        },
+        cancel: () => new Promise(() => {})
+      }, { highWaterMark: 0 }) }
+      if (id === 'component-01') {
+        const body = { getReader: vi.fn(), cancel: () => new Promise(() => {}) }
+        return { size: 300_000, body }
+      }
+      return await real.get(key)
+    })
+    const f = fixture(real.pins)
+    useRealStorage(f, get)
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const run = coordinateCmsGraphCheckpoint(f.input, f.principal)
+    run.catch(() => {})
+    expect(await Promise.race([run.then(() => 'settled', () => 'settled'), delay(2_000).then(() => 'hung')])).toBe('settled')
+    await expect(run).rejects.toThrow(storageError)
+  })
+  it('returns the original error when a body reader cannot open', async () => {
+    const real = await realArtifacts(10, 1_000)
     const readerError = new Error('reader unavailable')
     const get = vi.fn(async (key: string) => key.split('/')[4] === 'component-00'
-      ? { size: 254_000, body: { getReader() { throw readerError }, cancel: async () => {} } }
+      ? { size: 1_000, body: { getReader() { throw readerError }, cancel: () => new Promise(() => {}) } }
       : await real.get(key))
     const f = fixture(real.pins)
     useRealStorage(f, get)
@@ -276,24 +291,6 @@ describe('managed checkpoint timing and artifact reads', () => {
     expect(await Promise.race([run.then(() => 'settled', () => 'settled'), delay(2_000).then(() => 'hung')])).toBe('settled')
     await expect(run).rejects.toBe(readerError)
     expect(real.meter.openBodies).toBe(0)
-  })
-  it('never leaves a claim waiting when every holder fails mid-stream', async () => {
-    const pins = (await realArtifacts(12, 254_000)).pins
-    const streamError = new Error('stream interrupted')
-    const get = vi.fn(async () => ({ size: 254_000, body: new ReadableStream<Uint8Array>({
-      async pull(controller) {
-        await delay(5)
-        controller.error(streamError)
-      }
-    }, { highWaterMark: 0 }) }))
-    const f = fixture(pins)
-    useRealStorage(f, get)
-    vi.spyOn(console, 'info').mockImplementation(() => {})
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const run = coordinateCmsGraphCheckpoint(f.input, f.principal)
-    run.catch(() => {})
-    expect(await Promise.race([run.then(() => 'settled', () => 'settled'), delay(2_000).then(() => 'hung')])).toBe('settled')
-    await expect(run).rejects.toBe(streamError)
   })
   it('runs bounded reads with at least one worker for a non-positive limit', async () => {
     const read = vi.fn(async (value: number) => value * 2)
