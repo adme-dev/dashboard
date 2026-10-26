@@ -17,17 +17,18 @@ describe('social publishing platform registry', () => {
     expect(LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS.map(option => option.value)).toEqual([
       'facebook',
       'instagram',
-      'google-business'
+      'google-business',
+      'linkedin'
     ])
   })
 
   it('keeps planned platforms labelable for legacy posts and read-only filters', () => {
-    expect(SOCIAL_PUBLISHING_PLATFORM_OPTIONS.find(option => option.value === 'linkedin')?.live).toBe(false)
+    expect(SOCIAL_PUBLISHING_PLATFORM_OPTIONS.find(option => option.value === 'tiktok')?.live).toBe(false)
     expect(socialPublishingPlatformLabel('youtube')).toBe('YouTube')
   })
 
   it('documents why paid-media OAuth cannot be used as organic publishing readiness', () => {
-    expect(socialPublishingPlatformReadiness('linkedin')).toContain('Organic organization discovery foundation is available')
+    expect(socialPublishingPlatformReadiness('linkedin')).toContain('Ready for Company Page connection')
     expect(socialPublishingPlatformReadiness('tiktok')).toContain('Content Posting creator OAuth foundation is available')
     expect(socialPublishingPlatformReadiness('youtube')).toContain('OAuth channel discovery foundation is available')
     expect(socialPublishingPlatformReadiness('facebook')).toBe('Ready for publishing account connection')
@@ -38,7 +39,8 @@ describe('social publishing platform registry', () => {
       LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS.map(option => option.value)
     )
     expect(isProductionReadySocialPublishPlatform('google-business')).toBe(true)
-    expect(isProductionReadySocialPublishPlatform('linkedin')).toBe(false)
+    expect(isProductionReadySocialPublishPlatform('linkedin')).toBe(true)
+    expect(isProductionReadySocialPublishPlatform('tiktok')).toBe(false)
     expect(socialPublishingPlatformProductionStatus('tiktok')?.reason)
       .toContain('app audit')
     expect(() => assertProductionReadyPublishPlatforms(['facebook', 'youtube']))

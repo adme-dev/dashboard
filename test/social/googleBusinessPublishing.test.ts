@@ -15,7 +15,7 @@ vi.mock('~~/server/utils/social-providers/registry', () => ({
   getProviderOrThrow: () => ({ identifier: 'google-business', name: 'GBP', post: postSpy })
 }))
 
-vi.mock('~~/server/utils/db', () => ({ execute: (...a: unknown[]) => executeSpy(...a) }))
+vi.mock('~~/server/utils/db', () => ({ execute: (...a: unknown[]) => executeSpy(...a), queryOne: vi.fn(async () => null) }))
 
 vi.mock('~~/server/utils/socialOAuth/googleBusiness', () => ({
   refreshGoogleBusinessToken: (...a: unknown[]) => refreshSpy(...a)

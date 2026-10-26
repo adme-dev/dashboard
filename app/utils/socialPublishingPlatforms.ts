@@ -47,10 +47,10 @@ export const SOCIAL_PUBLISHING_PLATFORM_OPTIONS: SocialPublishingPlatformOption[
     label: 'LinkedIn',
     icon: 'i-lucide-linkedin',
     limit: 3000,
-    live: false,
-    connectable: false,
-    readiness: 'Organic organization discovery foundation is available; publishing, refresh hardening, and live provider smoke remain disabled',
-    docsUrl: 'https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin'
+    live: true,
+    connectable: true,
+    readiness: 'Ready for Company Page connection (organization admins): publishing, comments inbox, and Page analytics',
+    docsUrl: 'https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api'
   },
   {
     value: 'tiktok',

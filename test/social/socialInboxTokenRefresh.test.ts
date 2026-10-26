@@ -47,7 +47,7 @@ describe('resolveSocialInboxAccessToken', () => {
     )
     expect(execute).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE social_accounts'),
-      ['acct-1', 'new-access-token', 'new-refresh-token', '2026-06-30T01:00:00.000Z']
+      ['acct-1', 'new-access-token', 'new-refresh-token', '2026-06-30T01:00:00.000Z', 'old-access-token']
     )
   })
 
@@ -102,7 +102,7 @@ describe('resolveSocialInboxAccessToken', () => {
     expect(refreshGoogleBusinessToken).toHaveBeenCalledOnce()
     expect(execute).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE social_accounts'),
-      ['acct-1', 'new-access-token', 'stored-refresh-token', '2026-06-30T01:00:00.000Z']
+      ['acct-1', 'new-access-token', 'stored-refresh-token', '2026-06-30T01:00:00.000Z', 'old-access-token']
     )
   })
 
@@ -127,7 +127,7 @@ describe('resolveSocialInboxAccessToken', () => {
 
     expect(execute).toHaveBeenCalledWith(
       expect.stringContaining('last_error = $2'),
-      ['acct-1', 'Google Business token refresh failed: invalid_grant']
+      ['acct-1', 'Google Business token refresh failed: invalid_grant', 'old-access-token']
     )
   })
 
@@ -191,7 +191,7 @@ describe('resolveSocialInboxAccessToken', () => {
     )
     expect(execute).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE social_accounts'),
-      ['acct-1', 'new-youtube-token', 'new-youtube-refresh', '2026-06-30T02:00:00.000Z']
+      ['acct-1', 'new-youtube-token', 'new-youtube-refresh', '2026-06-30T02:00:00.000Z', 'old-access-token']
     )
   })
 
@@ -255,5 +255,27 @@ describe('resolveSocialInboxAccessToken', () => {
       'tiktok-client-key',
       'tiktok-client-secret'
     )
+  })
+
+  it('does not overwrite a concurrent reconnect and returns the row\'s current token', async () => {
+    const execute = vi.fn().mockResolvedValue(0) // compare-and-set lost: access_token changed mid-refresh
+    const queryOne = vi.fn().mockResolvedValue({ access_token: 'reconnected-token' })
+
+    const token = await resolveSocialInboxAccessToken({
+      event: undefined,
+      db: { execute, queryOne },
+      account: account({ platform: 'linkedin' }),
+      deps: {
+        now: () => NOW,
+        refreshLinkedInOrganicToken: vi.fn().mockResolvedValue({ access_token: 'stale-grant-token', expires_in: 60, refresh_token_expires_in: 1000 }),
+        getLinkedInOrganicOAuthConfig: () => ({ clientId: 'li', clientSecret: 'secret', redirectUri: '/cb' })
+      }
+    })
+
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(execute.mock.calls[0]![0]).toContain('WHERE id = $1 AND access_token = $5')
+    expect(execute.mock.calls[0]![1]![4]).toBe('old-access-token')
+    expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('SELECT access_token FROM social_accounts'), ['acct-1'])
+    expect(token).toBe('reconnected-token')
   })
 })

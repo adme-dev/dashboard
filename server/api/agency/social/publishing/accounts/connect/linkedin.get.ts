@@ -1,7 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { signState } from '~~/server/utils/socialOAuth/state'
-import { buildLinkedInOrganicAuthUrl } from '~~/server/utils/socialOAuth/linkedin'
+import { buildLinkedInOrganicAuthUrl, resolveLinkedInOrganicScopes } from '~~/server/utils/socialOAuth/linkedin'
 import {
   buildLinkedInOrganicRedirectUri,
   getLinkedInOrganicOAuthConfig,
@@ -35,5 +35,5 @@ export default defineEventHandler(async (event) => {
   const redirectUri = buildLinkedInOrganicRedirectUri(event)
   const nonce = crypto.randomUUID()
   const state = signState({ clientId, userId: String(user.id), platform: 'linkedin', nonce }, secret)
-  return sendRedirect(event, buildLinkedInOrganicAuthUrl(linkedinConfig.clientId, redirectUri, state), 302)
+  return sendRedirect(event, buildLinkedInOrganicAuthUrl(linkedinConfig.clientId, redirectUri, state, resolveLinkedInOrganicScopes(linkedinConfig.scopes)), 302)
 })

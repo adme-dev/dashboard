@@ -102,7 +102,7 @@ export default defineEventHandler(async (event) => {
           (async () => {
             const accessToken = await resolveSocialInboxAccessToken({
               event,
-              db: { execute },
+              db: { execute, queryOne },
               account: acct
             })
             return fetchInbox({

@@ -3,6 +3,7 @@ import {
   LINKEDIN_ORGANIC_OAUTH_SCOPES,
   LINKEDIN_REST_VERSION,
   buildLinkedInOrganicAuthUrl,
+  resolveLinkedInOrganicScopes,
   discoverLinkedInOrganizations,
   getLinkedInDiscoveryErrorReason,
   mapLinkedInOrganizationsToAccountRows,
@@ -12,8 +13,30 @@ import {
 const { ofetchSpy } = vi.hoisted(() => ({ ofetchSpy: vi.fn() }))
 vi.mock('ofetch', () => ({ ofetch: ofetchSpy }))
 
+describe('resolveLinkedInOrganicScopes', () => {
+  it('defaults to the documented Community Management scopes', () => {
+    expect(resolveLinkedInOrganicScopes()).toEqual(LINKEDIN_ORGANIC_OAUTH_SCOPES)
+    expect(resolveLinkedInOrganicScopes('  ')).toEqual(LINKEDIN_ORGANIC_OAUTH_SCOPES)
+  })
+
+  it('honours an operator override, splitting on spaces or commas and de-duplicating', () => {
+    expect(resolveLinkedInOrganicScopes('r_organization_admin, w_organization_social  w_organization_social'))
+      .toEqual(['r_organization_admin', 'w_organization_social'])
+  })
+
+  it('puts the override into the authorize URL space-delimited', () => {
+    const url = new URL(buildLinkedInOrganicAuthUrl('id', 'https://app.xeroflow.io/cb', 'S', resolveLinkedInOrganicScopes('a,b')))
+    expect(url.searchParams.get('scope')).toBe('a b')
+  })
+})
+
 describe('buildLinkedInOrganicAuthUrl', () => {
-  it('requests the organic member-share and organization-admin scopes with signed state', () => {
+  it('requests only Company Page scopes (no member-share w_member_social)', () => {
+    expect(LINKEDIN_ORGANIC_OAUTH_SCOPES).toEqual(['rw_organization_admin', 'r_organization_social', 'w_organization_social', 'r_organization_social_feed', 'w_organization_social_feed'])
+    expect(LINKEDIN_ORGANIC_OAUTH_SCOPES).not.toContain('w_member_social')
+  })
+
+  it('requests the organization-admin scopes with signed state', () => {
     const url = new URL(buildLinkedInOrganicAuthUrl('linkedin-client', 'https://app.xeroflow.io/linkedin', 'STATE'))
     expect(`${url.origin}${url.pathname}`).toBe('https://www.linkedin.com/oauth/v2/authorization')
     expect(url.searchParams.get('response_type')).toBe('code')
@@ -91,7 +114,7 @@ describe('mapLinkedInOrganizationsToAccountRows', () => {
   }]
 
   it('maps administered organizations to linkedin publishing account rows', () => {
-    const rows = mapLinkedInOrganizationsToAccountRows(organizations, 'AT', 'RT', '2026-01-01T00:00:00.000Z')
+    const rows = mapLinkedInOrganizationsToAccountRows(organizations, 'AT', 'RT', '2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z')
     expect(rows).toEqual([{
       platform: 'linkedin',
       platform_account_id: '79988552',
@@ -103,7 +126,9 @@ describe('mapLinkedInOrganizationsToAccountRows', () => {
         linkedinOrganizationUrn: 'urn:li:organization:79988552',
         linkedinVanityName: 'firstdemocompany',
         linkedinRole: 'ADMINISTRATOR',
-        publishingReadiness: 'oauth_connected_publish_not_enabled'
+        linkedinAuthorType: 'organization',
+        refreshTokenExpiresAt: '2027-01-01T00:00:00.000Z',
+        publishingReadiness: 'publish_enabled'
       }
     }])
   })

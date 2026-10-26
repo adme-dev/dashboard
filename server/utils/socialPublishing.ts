@@ -8,7 +8,7 @@
  *    platform_results / status to social_posts.
  */
 import { getProviderOrThrow } from '~~/server/utils/social-providers/registry'
-import { execute } from '~~/server/utils/db'
+import { execute, queryOne } from '~~/server/utils/db'
 import { resolveSocialAccountAccessToken } from '~~/server/utils/socialInbox/tokenRefresh'
 import { classifySocialPublishingAccountHealth } from '~~/server/utils/socialPublishing/accountHealth'
 import { productionReadyPublishPlatformsError } from '~~/server/utils/socialPublishing/platformReadiness'
@@ -237,7 +237,8 @@ async function publishResolvedTarget(
         accountId: target.accountId,
         accessToken: target.accessToken,
         platformPostId: r.platformPostId,
-        content: firstComment
+        content: firstComment,
+        options: publishOptions
       })
       if (commentResult) {
         result.firstComment = commentResult.result
@@ -329,6 +330,7 @@ async function publishFirstComment(params: {
   accessToken: string
   platformPostId: string
   content: string | null
+  options?: Record<string, unknown>
 }): Promise<{ result: NonNullable<PublishTargetResult['firstComment']>, failed: boolean } | null> {
   if (!params.content) return null
   if (!params.platformPostId) {
@@ -348,7 +350,8 @@ async function publishFirstComment(params: {
     accountId: params.accountId,
     accessToken: params.accessToken,
     postId: params.platformPostId,
-    content: params.content
+    content: params.content,
+    options: params.options
   })
 
   return {
@@ -442,6 +445,14 @@ async function resolvePublishTarget(account: PublishableAccount): Promise<{
   accessToken: string
   options: Record<string, unknown>
 }> {
+  if (account.platform === 'linkedin') {
+    return {
+      accountId: account.platform_account_id,
+      accessToken: await refreshableAccessToken(account),
+      options: { isOrganization: linkedInAccountIsOrganization(account) }
+    }
+  }
+
   if (account.platform !== 'google-business') {
     return { accountId: account.platform_account_id, accessToken: account.access_token, options: {} }
   }
@@ -454,25 +465,34 @@ async function resolvePublishTarget(account: PublishableAccount): Promise<{
     throw new Error('Google Business Profile account is missing account/location metadata')
   }
 
-  let accessToken = account.access_token
-  if (account.refresh_token) {
-    accessToken = await resolveSocialAccountAccessToken({
-      db: { execute },
-      account: {
-        id: account.id,
-        platform: account.platform,
-        access_token: account.access_token,
-        refresh_token: account.refresh_token,
-        token_expires_at: account.token_expires_at ?? null
-      }
-    })
-  }
-
   return {
     accountId,
-    accessToken,
+    accessToken: await refreshableAccessToken(account),
     options: { locationId }
   }
+}
+
+/**
+ * LinkedIn rows created by organization discovery carry `linkedinOrganizationUrn`; any row
+ * without an explicit `linkedinAuthorType: 'person'` publishes as the organization.
+ */
+export function linkedInAccountIsOrganization(account: Pick<PublishableAccount, 'metadata'>): boolean {
+  return account.metadata?.linkedinAuthorType !== 'person'
+}
+
+/** Refresh an expired/near-expiry OAuth token (when a refresh token exists) and persist it. */
+async function refreshableAccessToken(account: PublishableAccount): Promise<string> {
+  if (!account.refresh_token) return account.access_token
+  return resolveSocialAccountAccessToken({
+    db: { execute, queryOne },
+    account: {
+      id: account.id,
+      platform: account.platform,
+      access_token: account.access_token,
+      refresh_token: account.refresh_token,
+      token_expires_at: account.token_expires_at ?? null
+    }
+  })
 }
 
 function errorMessage(error: unknown): string {

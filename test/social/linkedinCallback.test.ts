@@ -114,6 +114,31 @@ describe('LinkedIn organic publishing account callback', () => {
     )
   })
 
+  it('persists the refresh token lifetime for single and multi-organization connects', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-26T00:00:00.000Z'))
+    try {
+      mockExchangeLinkedInOrganicCode.mockResolvedValue({
+        access_token: 'AT', refresh_token: 'RT', expires_in: 5184000, refresh_token_expires_in: 31536000
+      })
+      await callbackH({ query: { code: 'CODE', state: 'STATE' } } as never)
+      expect(mockMapLinkedInOrganizationsToAccountRows).toHaveBeenCalledWith(
+        expect.any(Array), 'AT', 'RT', '2026-12-25T00:00:00.000Z', '2027-10-26T00:00:00.000Z'
+      )
+
+      mockDiscoverLinkedInOrganizations.mockResolvedValueOnce([
+        { id: '1', urn: 'urn:li:organization:1', name: 'A', vanityName: null, role: 'ADMINISTRATOR' },
+        { id: '2', urn: 'urn:li:organization:2', name: 'B', vanityName: null, role: 'ADMINISTRATOR' }
+      ])
+      await callbackH({ query: { code: 'CODE', state: 'STATE' } } as never)
+      expect(mockPutPending).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.objectContaining({
+        linkedin: expect.objectContaining({ refreshTokenExpiresAt: '2027-10-26T00:00:00.000Z' })
+      }))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('redirects before token exchange when callback client access is no longer valid', async () => {
     mockRequireSocialClientAccess.mockRejectedValueOnce(new Error('No access'))
     const event: TestEvent = { query: { code: 'CODE', state: 'STATE' } }

@@ -10,6 +10,7 @@ const mockFetchAccountMetrics = vi.fn()
 const mockFetchPostMetrics = vi.fn()
 const mockUpsertPostMetric = vi.fn()
 const mockUpsertAccountMetric = vi.fn()
+const mockResolveSocialAccountAccessToken = vi.fn()
 const mockConsoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -20,6 +21,7 @@ vi.mock('h3', () => ({
 }))
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  queryOne: vi.fn(async () => null),
   execute: (...args: unknown[]) => mockExecute(...args)
 }))
 vi.mock('~~/server/utils/social-providers/registry', () => ({
@@ -31,6 +33,10 @@ vi.mock('~~/server/utils/social-providers/registry', () => ({
 vi.mock('~~/server/utils/socialReporting/store', () => ({
   upsertPostMetric: (...args: unknown[]) => mockUpsertPostMetric(...args),
   upsertAccountMetric: (...args: unknown[]) => mockUpsertAccountMetric(...args)
+}))
+
+vi.mock('~~/server/utils/socialInbox/tokenRefresh', () => ({
+  resolveSocialAccountAccessToken: (...args: unknown[]) => mockResolveSocialAccountAccessToken(...args)
 }))
 
 const { default: handler } = await import('../../server/api/cron/sync-social-metrics.post')
@@ -86,6 +92,7 @@ describe('social metrics sync target extraction', () => {
       accountsSynced: 1,
       unsupportedProviders: 0,
       accountFailures: 0,
+      accountPartialFailures: 0,
       postTargetsDiscovered: 1,
       postsSynced: 1,
       postFailures: 0
@@ -109,6 +116,7 @@ describe('social metrics sync target extraction', () => {
       accountsSynced: 0,
       unsupportedProviders: 0,
       accountFailures: 1,
+      accountPartialFailures: 0,
       postTargetsDiscovered: 1,
       postsSynced: 0,
       postFailures: 1
@@ -129,5 +137,67 @@ describe('social metrics sync target extraction', () => {
     const res = await handler(event({ headers: { 'x-cron-secret': 'test-secret' } }))
     expect(res.health).toMatchObject({ status: 'critical', postsSynced: 0, postFailures: 1 })
     expect(mockUpsertPostMetric).not.toHaveBeenCalled()
+  })
+})
+
+describe('social metrics sync LinkedIn token refresh', () => {
+  const linkedinAccount = {
+    id: 'li1',
+    client_id: 'C1',
+    platform: 'linkedin',
+    platform_account_id: '79988552',
+    access_token: 'stale',
+    refresh_token: 'RT',
+    token_expires_at: '2020-01-01T00:00:00.000Z'
+  }
+  const linkedinPosts = [{
+    id: 'P1',
+    platform_results: { linkedin: { platform: 'linkedin', accountId: 'li1', platformPostId: 'urn:li:share:1' } }
+  }]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockQueryRows.mockReset()
+    mockFetchAccountMetrics.mockResolvedValue({ followers: 3 })
+    mockFetchPostMetrics.mockResolvedValue([{ postId: 'P1', platformPostId: 'urn:li:share:1', impressions: 1 }])
+  })
+
+  it('refreshes the LinkedIn token before account and post metric calls', async () => {
+    mockQueryRows.mockResolvedValueOnce([linkedinAccount]).mockResolvedValueOnce(linkedinPosts)
+    mockResolveSocialAccountAccessToken.mockResolvedValueOnce('fresh')
+
+    const res = await handler(event({ headers: { 'x-cron-secret': 'test-secret' } }))
+
+    expect(mockQueryRows.mock.calls[0]![0]).toContain('refresh_token, token_expires_at')
+    expect(mockResolveSocialAccountAccessToken).toHaveBeenCalledWith(expect.objectContaining({
+      account: { id: 'li1', platform: 'linkedin', access_token: 'stale', refresh_token: 'RT', token_expires_at: '2020-01-01T00:00:00.000Z' }
+    }))
+    expect(mockFetchAccountMetrics).toHaveBeenCalledWith({ accountId: '79988552', accessToken: 'fresh' })
+    expect(mockFetchPostMetrics).toHaveBeenCalledWith(expect.objectContaining({ accessToken: 'fresh' }))
+    expect(res.health).toMatchObject({ status: 'healthy', accountsSynced: 1, postsSynced: 1 })
+  })
+
+  it('reports partially unavailable account metrics as a warning, not healthy', async () => {
+    mockQueryRows.mockResolvedValueOnce([linkedinAccount]).mockResolvedValueOnce(linkedinPosts)
+    mockResolveSocialAccountAccessToken.mockResolvedValueOnce('fresh')
+    mockFetchAccountMetrics.mockResolvedValueOnce({ followers: 3, partialFailures: ['share statistics unavailable: 503'] })
+
+    const res = await handler(event({ headers: { 'x-cron-secret': 'test-secret' } }))
+
+    expect(mockUpsertAccountMetric).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      metric: { followers: 3, partialFailures: ['share statistics unavailable: 503'] }
+    }))
+    expect(res.health).toMatchObject({ status: 'warning', accountsSynced: 1, accountPartialFailures: 1 })
+  })
+
+  it('counts a failed refresh as an account failure and skips provider calls', async () => {
+    mockQueryRows.mockResolvedValueOnce([linkedinAccount]).mockResolvedValueOnce(linkedinPosts)
+    mockResolveSocialAccountAccessToken.mockRejectedValueOnce(new Error('LinkedIn token refresh failed'))
+
+    const res = await handler(event({ headers: { 'x-cron-secret': 'test-secret' } }))
+
+    expect(mockFetchAccountMetrics).not.toHaveBeenCalled()
+    expect(mockFetchPostMetrics).not.toHaveBeenCalled()
+    expect(res.health).toMatchObject({ status: 'critical', accountFailures: 1, postFailures: 1 })
   })
 })
