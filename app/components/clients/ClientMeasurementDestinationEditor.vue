@@ -72,6 +72,7 @@ const capabilityOrigins = reactive<Record<string, ManagementOrigin>>({})
 const activeMappings = reactive<Record<string, boolean>>({})
 const providerEventNames = reactive<Record<string, string>>({})
 const mappingEnquiryTypes = reactive<Record<string, string>>({})
+const ga4EnquiryTypes = ref<string[]>(['untyped'])
 const reason = ref('')
 const accounts = ref<Record<Platform, ConnectedAccount[]>>({
   meta: [],
@@ -108,6 +109,10 @@ const enquiryTypeItems = [
   { label: 'Model / variant enquiry', value: 'model_variant' },
   { label: 'Service booking', value: 'service_booking' }
 ]
+const ga4EnquiryTypeItems = [
+  { label: 'Untyped enquiries only', value: 'untyped' },
+  ...enquiryTypeItems.filter(item => item.value !== 'aggregate')
+]
 
 const currentCapabilities = computed(() => capabilityDefinitions[platform.value])
 const currentAccounts = computed(() => accounts.value[platform.value].filter(account => (
@@ -118,6 +123,8 @@ const selectedMappingRows = computed(() => mappingDefinitions.filter(definition 
 const requiresConnection = computed(() => platform.value !== 'ga4'
   && selectedCapabilityRows.value.some(definition => capabilityOrigins[definition.mode] === 'zero'))
 const mappingsComplete = computed(() => selectedMappingRows.value.every(definition => providerEventNames[definition.name]?.trim()))
+const enquiryTypesComplete = computed(() => platform.value !== 'ga4'
+  || !activeMappings.web_conversion || ga4EnquiryTypes.value.length > 0)
 const selectedGoogleAction = computed(() => googleActions.value.find(action => action.id === externalDestinationId.value) ?? null)
 const connectedAccountItems = computed(() => currentAccounts.value.map(account => ({
   label: `${account.accountName} · ${account.accountId}`,
@@ -170,6 +177,7 @@ const canSave = computed(() => (
   && selectedCapabilityRows.value.length > 0
   && (!requiresConnection.value || Boolean(socialConnectionId.value))
   && mappingsComplete.value
+  && enquiryTypesComplete.value
   && googleActionCompatible.value
   && credentialRefValid.value
   && Boolean(reason.value.trim())
@@ -177,6 +185,7 @@ const canSave = computed(() => (
 ))
 
 function resetPlatformState() {
+  ga4EnquiryTypes.value = ['untyped']
   googleActionRequestId += 1
   socialConnectionId.value = ''
   externalDestinationId.value = ''
@@ -305,14 +314,18 @@ async function saveDestination() {
             canZeroMutate: capabilityOrigins[definition.mode] === 'zero',
             blockingReason: null
           })),
-          mappings: selectedMappingRows.value.map(definition => ({
-            canonicalEventName: definition.name,
-            enquiryType: definition.name === 'web_conversion' && mappingEnquiryTypes[definition.name] !== 'aggregate'
-              ? mappingEnquiryTypes[definition.name]
-              : null,
-            providerEventName: providerEventNames[definition.name].trim(),
-            isActive: true
-          }))
+          mappings: selectedMappingRows.value.flatMap(definition => {
+            const enquiryTypes = definition.name === 'web_conversion' && platform.value === 'ga4'
+              ? ga4EnquiryTypes.value.map(type => type === 'untyped' ? null : type)
+              : [definition.name === 'web_conversion' && mappingEnquiryTypes[definition.name] !== 'aggregate'
+                  ? mappingEnquiryTypes[definition.name] : null]
+            return enquiryTypes.map(enquiryType => ({
+              canonicalEventName: definition.name,
+              enquiryType,
+              providerEventName: providerEventNames[definition.name].trim(),
+              isActive: true
+            }))
+          })
         }
       }
     })
@@ -501,10 +514,21 @@ void loadAccounts('meta')
             </UFormField>
             <UFormField
               v-if="mapping.name === 'web_conversion'"
-              label="Enquiry type"
-              help="Choose an exact type when this destination represents one specific website action."
+              :label="platform === 'ga4' ? 'Enquiry types' : 'Enquiry type'"
+              :help="platform === 'ga4' ? 'Select each exact enquiry type to send to this GA4 event. Untyped matches only enquiries without a type; it does not include the other types.' : 'Choose an exact type when this destination represents one specific website action.'"
             >
               <USelect
+                v-if="platform === 'ga4'"
+                v-model="ga4EnquiryTypes"
+                data-testid="measurement-ga4-enquiry-types"
+                :items="ga4EnquiryTypeItems"
+                value-key="value"
+                multiple
+                placeholder="Select enquiry types"
+                class="w-full"
+              />
+              <USelect
+                v-else
                 v-model="mappingEnquiryTypes[mapping.name]"
                 :items="enquiryTypeItems"
                 value-key="value"
