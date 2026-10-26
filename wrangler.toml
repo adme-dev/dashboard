@@ -10,7 +10,6 @@ compatibility_flags = ["nodejs_compat", "no_handle_cross_request_promise_resolut
 # Environment Variables (non-secret)
 # ============================================
 [vars]
-APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = ""
 AI_GOVERNED_CATALOG_MODE = "legacy"
@@ -314,7 +313,6 @@ PAGE_STUDIO_INVITED_ORIGIN = "https://xeroflowpages.com"
 PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
 PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"102d79c9f6e62c96365e31f9ae4a798cb58df4cafd451bdebf6e4f2a8fcb6322\",\"generation\":\"astro_runtime_5986dc6fe5cac2da5d354b0bfa611394e463f93ab42f86776caeb9853251f781\"}"
 PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS = "astro_runtime_a6a72b897cb1ddde19c975a711a37da398e7e00fbc72847a2b92ea30e8d43ac6"
-APP_NAME = "XeroFlow Agency"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = "https://studio.xeroflow.io"
 AI_GOVERNED_CATALOG_MODE = "legacy"
 EMAIL_FROM = "notification@adme.net.au"
@@ -433,7 +431,6 @@ PAGE_STUDIO_ACTION_RUNTIME_DIGEST = "c67adbab33650675260b6acba1dfa7413207796cb2b
 PAGE_STUDIO_RUNTIME_STAGING_CANARIES = "[{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\",\"hostname\":\"page-studio-staging.xeroflow.io\"},{\"tenantId\":\"tenant_page_studio_staging\",\"clientId\":\"20000000-0000-4000-8000-000000000301\",\"siteId\":\"5ddc69f4-bd4f-4179-ba6f-e23412133cb0\",\"hostname\":\"cms-second-staging.xeroflow.io\"}]"
 PAGE_STUDIO_RELEASE_PREVIEW_HOSTNAME = "xeroflowpages.com"
 PAGE_STUDIO_RUNTIME_RETAINED_GENERATIONS = "astro_runtime_0939af784c64cb0ac97cdaa33dc3a84f5f304b97df52210b111a8b95a889a0e4,astro_runtime_21b84e1cde3f8be3,astro_runtime_a71fb2968a783bc114ee9a340ff7ff60a6c74ab442d49fa360464b5f4fac2f27,astro_runtime_91baeb98a143ef30fb3bc0f2d891c3a147583702238f3e6ac11f9fb8d857c4e4,astro_runtime_e2a0dabf7c067db91c8e9f1a15779f1d600323381580735847a0625f3347b617,astro_runtime_a8ea2d0477dc5309093dfbe24b5c754bb1444455ad54b2cc99ff3e61adc3185e"
-APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = "https://studio-staging.xeroflow.io"
 SEARCH_AUTHORITY_ENABLED = "false"
