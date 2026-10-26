@@ -5,6 +5,7 @@
  */
 
 import { ofetch } from 'ofetch'
+import { LINKEDIN_API_VERSION } from '~~/server/utils/linkedinApiVersion'
 
 export const LINKEDIN_API_BASE = 'https://api.linkedin.com/rest'
 
@@ -302,7 +303,7 @@ async function linkedinFetch<T>(
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-Restli-Protocol-Version': '2.0.0',
-          'LinkedIn-Version': '202401',
+          'LinkedIn-Version': LINKEDIN_API_VERSION,
         },
         query,
       })

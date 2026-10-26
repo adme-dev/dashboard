@@ -13,9 +13,10 @@
 import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { providerFetch } from './http'
+import { LINKEDIN_API_VERSION } from '~~/server/utils/linkedinApiVersion'
 
 const LINKEDIN_API_BASE = 'https://api.linkedin.com'
-const LINKEDIN_VERSION = '202402'
+const LINKEDIN_VERSION = LINKEDIN_API_VERSION
 
 /**
  * Build common LinkedIn REST headers.

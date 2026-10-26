@@ -1,11 +1,12 @@
 import { ofetch } from 'ofetch'
+import { LINKEDIN_API_VERSION } from '~~/server/utils/linkedinApiVersion'
 import type { AccountRow } from './store'
 
 const LINKEDIN_AUTH_URL = 'https://www.linkedin.com/oauth/v2/authorization'
 const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken'
 const LINKEDIN_API_BASE = 'https://api.linkedin.com/rest'
 
-export const LINKEDIN_REST_VERSION = '202506'
+export const LINKEDIN_REST_VERSION = LINKEDIN_API_VERSION
 export const LINKEDIN_ORGANIC_OAUTH_SCOPES = [
   'r_organization_admin',
   'w_organization_social',
