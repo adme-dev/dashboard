@@ -14,6 +14,7 @@ const emit = defineEmits<{
 
 type EditableProfile = Pick<
   ClientMeasurementProfile,
+  | 'trackingSiteId'
   | 'collectionTier'
   | 'firstPartyHostname'
   | 'consentMode'
@@ -24,6 +25,7 @@ type EditableProfile = Pick<
 >
 
 const form = reactive<EditableProfile>({
+  trackingSiteId: props.profile.trackingSiteId,
   collectionTier: props.profile.collectionTier,
   firstPartyHostname: props.profile.firstPartyHostname,
   consentMode: props.profile.consentMode,
@@ -40,7 +42,60 @@ const apiFetch = $fetch as <T>(
   options: { method: 'PUT', body: unknown }
 ) => Promise<T>
 
+const NO_TRACKING_SITE = '__none__'
+interface TrackingSiteChoice { id: string, client_id: string, name: string }
+const trackingSiteSelection = computed({
+  get: () => form.trackingSiteId ?? NO_TRACKING_SITE,
+  set: (value: string) => { form.trackingSiteId = value === NO_TRACKING_SITE ? null : value }
+})
+const {
+  data: trackingSitesData,
+  status: trackingSitesStatus,
+  error: trackingSitesError,
+  execute: loadTrackingSites,
+  clear: clearTrackingSites
+} = useFetch<{ sites: TrackingSiteChoice[] }>('/api/agency/tracking', {
+  query: computed(() => ({ clientId: props.clientId })),
+  immediate: props.canConfigure,
+  watch: false
+})
+
+watch([() => props.clientId, () => props.canConfigure], () => {
+  clearTrackingSites()
+  if (props.canConfigure) void loadTrackingSites()
+})
+
+const clientTrackingSites = computed(() => (trackingSitesData.value?.sites ?? []).filter(site => (
+  site.client_id === props.clientId && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(site.id)
+)))
+const trackingSiteItems = computed(() => {
+  const items: Array<{ label: string, value: string, disabled?: boolean }> = [
+    { label: 'No linked tracking site', value: NO_TRACKING_SITE },
+    ...clientTrackingSites.value.map(site => ({ label: site.name || site.id, value: site.id }))
+  ]
+  if (props.profile.trackingSiteId && !clientTrackingSites.value.some(site => site.id === props.profile.trackingSiteId)) {
+    items.push({ label: `Current linked site (${props.profile.trackingSiteId})`, value: props.profile.trackingSiteId, disabled: true })
+  }
+  return items
+})
+const trackingSiteChanged = computed(() => form.trackingSiteId !== props.profile.trackingSiteId)
+const trackingSiteError = computed(() => {
+  if (form.collectionTier === 'first_party_cname' && !form.trackingSiteId) return 'First-party collection requires a linked tracking site.'
+  if (trackingSiteChanged.value && (trackingSitesStatus.value !== 'success'
+    || (form.trackingSiteId !== null && !clientTrackingSites.value.some(site => site.id === form.trackingSiteId)))) {
+    return 'Choose a tracking site belonging to this client.'
+  }
+  return undefined
+})
+const trackingSiteHelp = computed(() => {
+  if (trackingSitesStatus.value === 'pending') return 'Loading tracking sites…'
+  if (trackingSitesError.value) return 'The existing link is preserved. Retry to change it.'
+  if (trackingSitesStatus.value === 'success' && clientTrackingSites.value.length === 0) return 'No tracking sites are available for this client. The existing link is preserved unless you clear it.'
+  return 'Link an existing website belonging to this client. Changes take effect when you save.'
+})
+
 function resetForm(profile: ClientMeasurementProfile) {
+  form.trackingSiteId = profile.trackingSiteId
   form.collectionTier = profile.collectionTier
   form.firstPartyHostname = profile.firstPartyHostname
   form.consentMode = profile.consentMode
@@ -52,7 +107,7 @@ function resetForm(profile: ClientMeasurementProfile) {
   saveError.value = null
 }
 
-watch(() => props.profile, resetForm)
+watch([() => props.profile, () => props.clientId], ([profile]) => resetForm(profile))
 
 const patch = computed(() => {
   const changes: Partial<EditableProfile> = {}
@@ -60,6 +115,7 @@ const patch = computed(() => {
     ? form.firstPartyHostname?.trim().toLowerCase() || null
     : null
 
+  if (trackingSiteChanged.value) changes.trackingSiteId = form.trackingSiteId
   if (form.collectionTier !== props.profile.collectionTier) changes.collectionTier = form.collectionTier
   if (hostname !== props.profile.firstPartyHostname) changes.firstPartyHostname = hostname
   if (form.consentMode !== props.profile.consentMode) changes.consentMode = form.consentMode
@@ -84,6 +140,7 @@ const canSave = computed(() => (
   && Boolean(form.vertical.trim())
   && !policyConflict.value
   && !hostnameMissing.value
+  && !trackingSiteError.value
   && !saving.value
 ))
 
@@ -147,6 +204,21 @@ async function saveProfile() {
     </div>
 
     <template v-if="canConfigure">
+      <UFormField label="Tracking site" :help="trackingSiteHelp" :error="trackingSiteError" class="mt-5">
+        <USelectMenu
+          v-model="trackingSiteSelection"
+          data-testid="measurement-tracking-site"
+          :items="trackingSiteItems"
+          value-key="value"
+          :loading="trackingSitesStatus === 'pending'"
+          :disabled="saving || trackingSitesStatus !== 'success'"
+          class="w-full"
+        />
+      </UFormField>
+      <div v-if="trackingSitesError" role="alert" class="mt-2 flex flex-wrap items-center gap-2 text-sm text-error">
+        <span>Tracking sites could not be loaded.</span>
+        <UButton data-testid="retry-tracking-sites" label="Retry" variant="ghost" size="sm" :loading="trackingSitesStatus === 'pending'" @click="loadTrackingSites()" />
+      </div>
       <div class="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         <label class="space-y-1.5 text-sm">
           <span class="font-medium text-highlighted">Collection tier</span>
