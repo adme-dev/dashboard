@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
+import { CreateConversionDestinationConfigurationSchema } from '~~/server/utils/measurement/contracts'
 import ClientMeasurementDestinationEditor from '~~/app/components/clients/ClientMeasurementDestinationEditor.vue'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
@@ -126,7 +127,6 @@ describe('ClientMeasurementDestinationEditor', () => {
       await nextTick()
       expect(host.textContent).toContain('Destination delivery remains dormant')
 
-      select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, '33333333-3333-4333-8333-333333333333')
       input(host.querySelector<HTMLInputElement>('[data-testid="measurement-destination-id"]')!, '573284833843027')
       input(host.querySelector<HTMLInputElement>('[data-testid="measurement-credential-ref"]')!, 'MEASUREMENT_PROVIDER_META_FERNTREE')
       check(host.querySelector<HTMLInputElement>('[data-testid="capability-meta_crm_capi"]')!)
@@ -137,6 +137,12 @@ describe('ClientMeasurementDestinationEditor', () => {
       await nextTick()
 
       const save = host.querySelector<HTMLButtonElement>('[data-testid="save-measurement-destination"]')!
+      expect(save.disabled).toBe(true)
+      expect(host.textContent).toContain('Zero-managed capabilities require a connected credential source')
+      select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, '33333333-3333-4333-8333-333333333333')
+      // Changing a credential source resets its provider destination.
+      input(host.querySelector<HTMLInputElement>('[data-testid="measurement-destination-id"]')!, '573284833843027')
+      await nextTick()
       expect(save.disabled).toBe(false)
       save.click()
       await flushUi()
@@ -293,6 +299,10 @@ describe('ClientMeasurementDestinationEditor', () => {
     try {
       select(host.querySelector<HTMLSelectElement>('select')!, 'google_data_manager')
       await flushUi()
+      check(host.querySelector<HTMLInputElement>('[data-testid="capability-google_data_manager"]')!)
+      await nextTick()
+      expect(host.textContent).toContain('Zero-managed capabilities require a connected credential source')
+      expect(host.querySelector<HTMLButtonElement>('[data-testid="save-measurement-destination"]')!.disabled).toBe(true)
       select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, googleConnectionId)
       await flushUi()
 
@@ -405,10 +415,10 @@ describe('ClientMeasurementDestinationEditor', () => {
     }
   })
 
-  it('sources GA4 credentials from the ga4 properties endpoint and saves a free-text Measurement ID destination', async () => {
+  it('saves GA4 with only its Measurement Protocol secret binding and no OAuth connection', async () => {
     const ga4ConnectionId = '77777777-7777-4777-8777-777777777777'
     const fetchMock = vi.fn(async (request: string, options?: { method?: string, body?: unknown }) => {
-      if (request === '/api/agency/social/meta/accounts') return []
+      if (request === '/api/agency/social/meta/accounts') return [{ id: '33333333-3333-4333-8333-333333333333', accountId: '123', accountName: 'Previous Meta source', status: 'active' }]
       if (request === '/api/agency/social/ga4/properties') {
         return {
           connections: [{
@@ -445,22 +455,22 @@ describe('ClientMeasurementDestinationEditor', () => {
     await flushUi()
 
     try {
+      select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, '33333333-3333-4333-8333-333333333333')
+      await nextTick()
       select(host.querySelector<HTMLSelectElement>('select')!, 'ga4')
       await flushUi()
 
-      expect(fetchMock).toHaveBeenCalledWith('/api/agency/social/ga4/properties')
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/agency/social/ga4/properties')
       expect(fetchMock).not.toHaveBeenCalledWith('/api/agency/social/google/accounts')
       expect(host.textContent).toContain('Measurement ID')
       expect(host.textContent).not.toContain('Dataset ID')
       expect(host.textContent).not.toContain('Conversion Action ID')
-      expect(host.textContent).toContain('Ferntree GA4')
+      expect(host.querySelector('[data-testid="measurement-connection"]')).toBeNull()
 
       const destination = host.querySelector<HTMLInputElement>('[data-testid="measurement-destination-id"]')!
       expect(destination.tagName).toBe('INPUT')
 
-      select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, ga4ConnectionId)
       input(destination, 'G-ABC1234XYZ')
-      input(host.querySelector<HTMLInputElement>('[data-testid="measurement-credential-ref"]')!, 'MEASUREMENT_PROVIDER_GA4_FERNTREE')
       check(host.querySelector<HTMLInputElement>('[data-testid="capability-ga4_measurement_protocol"]')!)
       check(host.querySelector<HTMLInputElement>('[data-testid="mapping-web_conversion"]')!)
       await nextTick()
@@ -469,6 +479,12 @@ describe('ClientMeasurementDestinationEditor', () => {
       await nextTick()
 
       const save = host.querySelector<HTMLButtonElement>('[data-testid="save-measurement-destination"]')!
+      expect(save.disabled).toBe(true)
+      input(host.querySelector<HTMLInputElement>('[data-testid="measurement-credential-ref"]')!, 'raw-provider-secret')
+      await nextTick()
+      expect(save.disabled).toBe(true)
+      input(host.querySelector<HTMLInputElement>('[data-testid="measurement-credential-ref"]')!, 'MEASUREMENT_PROVIDER_GA4_FERNTREE')
+      await nextTick()
       expect(save.disabled).toBe(false)
       save.click()
       await flushUi()
@@ -480,7 +496,7 @@ describe('ClientMeasurementDestinationEditor', () => {
           reason: 'Map the approved GA4 Measurement Protocol destination for test validation',
           destination: {
             platform: 'ga4',
-            socialConnectionId: ga4ConnectionId,
+            socialConnectionId: null,
             externalDestinationId: 'G-ABC1234XYZ',
             credentialRef: 'MEASUREMENT_PROVIDER_GA4_FERNTREE',
             capabilities: [{
@@ -499,15 +515,22 @@ describe('ClientMeasurementDestinationEditor', () => {
           }
         }
       })
+      const body = fetchMock.mock.calls.find(([url]) => url.endsWith('/destinations'))![1]!.body as Record<string, unknown>
+      expect(CreateConversionDestinationConfigurationSchema.safeParse({
+        ...body, clientId: CLIENT_ID, actor: { type: 'team_member', id: 'operator' }
+      }).success).toBe(true)
+      expect(JSON.stringify(body)).not.toContain('raw-provider-secret')
     } finally {
       app.unmount()
       host.remove()
     }
   })
 
-  it('surfaces an error when GA4 connections cannot be loaded, without falling back to the Google accounts endpoint', async () => {
+  it('ignores an in-flight Meta failure after switching to GA4 without fetching agency OAuth', async () => {
+    let rejectMeta!: (error: Error) => void
+    const pendingMeta = new Promise<unknown[]>((_resolve, reject) => { rejectMeta = reject })
     const fetchMock = vi.fn(async (request: string) => {
-      if (request === '/api/agency/social/meta/accounts') return []
+      if (request === '/api/agency/social/meta/accounts') return pendingMeta
       if (request === '/api/agency/social/ga4/properties') {
         throw new Error('GA4 connections could not be loaded')
       }
@@ -529,10 +552,14 @@ describe('ClientMeasurementDestinationEditor', () => {
     try {
       select(host.querySelector<HTMLSelectElement>('select')!, 'ga4')
       await flushUi()
+      rejectMeta(new Error('Stale Meta credential failure'))
+      await flushUi()
 
-      expect(fetchMock).toHaveBeenCalledWith('/api/agency/social/ga4/properties')
+      expect(host.textContent).not.toContain('Stale Meta credential failure')
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/agency/social/ga4/properties')
       expect(fetchMock).not.toHaveBeenCalledWith('/api/agency/social/google/accounts')
-      expect(host.textContent).toContain('GA4 connections could not be loaded')
+      expect(host.textContent).not.toContain('GA4 connections could not be loaded')
+      expect(host.querySelector('[data-testid="measurement-connection"]')).toBeNull()
       expect(host.textContent).not.toContain('No connected account is available for this provider.')
     } finally {
       app.unmount()

@@ -115,7 +115,8 @@ const currentAccounts = computed(() => accounts.value[platform.value].filter(acc
 )))
 const selectedCapabilityRows = computed(() => currentCapabilities.value.filter(definition => selectedCapabilities[definition.mode]))
 const selectedMappingRows = computed(() => mappingDefinitions.filter(definition => activeMappings[definition.name]))
-const requiresConnection = computed(() => selectedCapabilityRows.value.some(definition => capabilityOrigins[definition.mode] === 'zero'))
+const requiresConnection = computed(() => platform.value !== 'ga4'
+  && selectedCapabilityRows.value.some(definition => capabilityOrigins[definition.mode] === 'zero'))
 const mappingsComplete = computed(() => selectedMappingRows.value.every(definition => providerEventNames[definition.name]?.trim()))
 const selectedGoogleAction = computed(() => googleActions.value.find(action => action.id === externalDestinationId.value) ?? null)
 const connectedAccountItems = computed(() => currentAccounts.value.map(account => ({
@@ -227,42 +228,21 @@ function errorMessage(error: unknown, fallback: string) {
 
 async function loadAccounts(targetPlatform: Platform = platform.value) {
   const requestId = ++accountRequestId
-  accountsPending.value = true
   accountError.value = null
+  // GA4 Measurement Protocol uses its purpose-scoped API secret, not reporting OAuth.
+  // Invalidate any in-flight account lookup without offering agency-wide connections.
+  if (targetPlatform === 'ga4') {
+    accountsPending.value = false
+    return
+  }
+  accountsPending.value = true
   try {
-    if (targetPlatform === 'ga4') {
-      // GA4 has no flat accounts endpoint like Meta/Google. Its real credential source is
-      // /api/agency/social/ga4/properties, which lists each active ga4 connection plus the
-      // GA4 properties visible to it. A connection can serve multiple properties - the
-      // operator still pins the exact one via the Measurement ID field below - so this list
-      // only needs to identify the connection itself. There is no GA4 equivalent of a single
-      // external account number the way Meta/Google have an ad-account ID, so accountId
-      // reuses the connection id (the only stable per-row identifier available) rather than
-      // arbitrarily picking one of the connection's properties.
-      const result = await apiFetch<{
-        connections: Array<{ connectionId: string, accountName: string }>
-      }>('/api/agency/social/ga4/properties')
-      if (requestId === accountRequestId) {
-        accounts.value = {
-          ...accounts.value,
-          ga4: result.connections.map(connection => ({
-            id: connection.connectionId,
-            accountId: connection.connectionId,
-            accountName: connection.accountName,
-            // The endpoint's SQL already filters to platform='ga4' AND status='active', so every
-            // row returned has already passed the same status gate applied to Meta/Google accounts.
-            status: 'active'
-          }))
-        }
-      }
-    } else {
-      const endpoint = targetPlatform === 'meta'
-        ? '/api/agency/social/meta/accounts'
-        : '/api/agency/social/google/accounts'
-      const result = await apiFetch<ConnectedAccount[]>(endpoint)
-      if (requestId === accountRequestId) {
-        accounts.value = { ...accounts.value, [targetPlatform]: result }
-      }
+    const endpoint = targetPlatform === 'meta'
+      ? '/api/agency/social/meta/accounts'
+      : '/api/agency/social/google/accounts'
+    const result = await apiFetch<ConnectedAccount[]>(endpoint)
+    if (requestId === accountRequestId) {
+      accounts.value = { ...accounts.value, [targetPlatform]: result }
     }
   } catch (error: unknown) {
     if (requestId === accountRequestId) {
@@ -315,7 +295,7 @@ async function saveDestination() {
         reason: reason.value.trim(),
         destination: {
           platform: platform.value,
-          socialConnectionId: socialConnectionId.value || null,
+          socialConnectionId: platform.value === 'ga4' ? null : socialConnectionId.value || null,
           externalDestinationId: externalDestinationId.value.trim(),
           credentialRef: credentialRef.value.trim() || null,
           capabilities: selectedCapabilityRows.value.map(definition => ({
@@ -355,7 +335,8 @@ void loadAccounts('meta')
           Configure conversion destination
         </h3>
         <p class="mt-1 max-w-3xl text-sm text-muted">
-          Select a connected account only as the credential source, then map the exact provider Dataset or Conversion Action independently.
+          <template v-if="platform === 'ga4'">Configure the Measurement ID and server-side API secret binding for this client's GA4 property.</template>
+          <template v-else>Select a connected account only as the credential source, then map the exact provider Dataset or Conversion Action independently.</template>
         </p>
       </div>
       <UButton
@@ -377,7 +358,7 @@ void loadAccounts('meta')
         />
       </UFormField>
 
-      <UFormField label="Connected credential source">
+      <UFormField v-if="platform !== 'ga4'" label="Connected credential source">
         <USelect
           v-model="socialConnectionId"
           data-testid="measurement-connection"
