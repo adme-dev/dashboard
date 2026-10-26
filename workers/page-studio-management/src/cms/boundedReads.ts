@@ -16,7 +16,7 @@ export async function readBounded<T, R>(items: readonly T[], limit: number, read
       }
     }
   }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker))
   if (failures.length) throw failures[0]
   return results
 }

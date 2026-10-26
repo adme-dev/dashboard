@@ -8,6 +8,7 @@ vi.mock('~~/server/utils/pageStudio/cmsGraphStorage', async importOriginal => ({
 vi.mock('~~/shared/pageStudio/generated/builderGraphVerifier.mjs', async importOriginal => ({ ...await importOriginal<object>(), verifyBuilderApplicationCheckpoint: stubs.verify }))
 
 const { coordinateCmsGraphCheckpoint } = await import('../../workers/page-studio-management/src/cms/graphMutations')
+const { readBounded } = await import('../../workers/page-studio-management/src/cms/boundedReads')
 const { createCmsGraphStorage: realStorage } = await vi.importActual<typeof import('~~/server/utils/pageStudio/cmsGraphStorage')>('~~/server/utils/pageStudio/cmsGraphStorage')
 
 type Pin = { kind: 'component', id: string, version: number, sha256: string }
@@ -50,7 +51,7 @@ function timingRecords(log: { mock: { calls: unknown[][] } }) {
 }
 const stagesOf = (record: { stages: Array<{ stage: string }> }) => record.stages.map(item => item.stage)
 /** Real graph storage over a stub R2 bucket whose bodies count the bytes actually streamed. */
-async function realArtifacts(count: number, padding: number, options: { corrupt?: number, getDelay?: number } = {}) {
+async function realArtifacts(count: number, padding: number, options: { corrupt?: number, getDelay?: number, omitSize?: boolean } = {}) {
   const pins: Pin[] = [], objects = new Map<string, string>()
   for (let index = 0; index < count; index++) {
     const id = `component-${String(index).padStart(2, '0')}`
@@ -64,7 +65,7 @@ async function realArtifacts(count: number, padding: number, options: { corrupt?
     const raw = new TextEncoder().encode(objects.get(key.split('/')[4]!)!)
     meter.openBodies++
     let sent = false
-    return { size: raw.byteLength, body: new ReadableStream<Uint8Array>({
+    return { ...(options.omitSize ? {} : { size: raw.byteLength }), body: new ReadableStream<Uint8Array>({
       pull(controller) {
         if (sent) {
           meter.openBodies--
@@ -214,6 +215,56 @@ describe('managed checkpoint timing and artifact reads', () => {
     expect(real.get.mock.calls.length).toBeLessThan(40)
     expect(openWhenLogged).toBe(0)
     expect(stubs.verify).not.toHaveBeenCalled()
+  })
+  it('reserves the per-object maximum for undeclared sizes so concurrent reads stay within the budget', async () => {
+    const real = await realArtifacts(10, 254_000, { omitSize: true })
+    const f = fixture(real.pins)
+    useRealStorage(f, real.get)
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expect(coordinateCmsGraphCheckpoint(f.input, f.principal)).rejects.toThrow(storageError)
+    expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000)
+    expect(real.meter.openBodies).toBe(0)
+  })
+  it('stays within the budget when undeclared reads race near exhaustion', async () => {
+    const real = await realArtifacts(16, 150_000, { omitSize: true, getDelay: 1 })
+    const f = fixture(real.pins)
+    useRealStorage(f, real.get)
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expect(coordinateCmsGraphCheckpoint(f.input, f.principal)).rejects.toThrow(storageError)
+    expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000)
+    expect(real.meter.openBodies).toBe(0)
+  })
+  it('still accepts undeclared graphs that fit the budget once in-flight claims settle', async () => {
+    const real = await realArtifacts(12, 150_000, { omitSize: true, getDelay: 1 })
+    const f = fixture(real.pins)
+    useRealStorage(f, real.get)
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    expect(await coordinateCmsGraphCheckpoint(f.input, f.principal)).toBe(receipt)
+    expect(real.meter.streamed).toBeLessThanOrEqual(2_000_000)
+    const bytes = stubs.verify.mock.calls[0]![0].artifactBytes as string[]
+    expect(bytes.map(raw => JSON.parse(raw).id)).toEqual(real.pins.map(pin => pin.id))
+  })
+  it('cancels a body as soon as it streams past its declared size', async () => {
+    let pulls = 0
+    const cancel = vi.fn()
+    const get = vi.fn(async () => ({ size: 1_000, body: new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++
+        controller.enqueue(new Uint8Array(1_000).fill(32))
+      },
+      cancel
+    }, { highWaterMark: 0 }) }))
+    const storage = realStorage({ PAGE_STUDIO_CHECKPOINTS: { get } }, { scope, context: { state: { target: {} } } } as Parameters<typeof realStorage>[1])
+    await expect(storage.readArtifact(pinsFor(1)[0])).rejects.toThrow(storageError)
+    expect(pulls).toBe(2)
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+  it('runs bounded reads with at least one worker for a non-positive limit', async () => {
+    const read = vi.fn(async (value: number) => value * 2)
+    expect(await readBounded([1, 2, 3], 0, read)).toEqual([2, 4, 6])
+    expect(await readBounded([1, 2], -3, read)).toEqual([2, 4])
   })
   it('logs a replay found by the replay stage as replayed', async () => {
     const f = fixture(pinsFor(2))

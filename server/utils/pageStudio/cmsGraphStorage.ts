@@ -19,7 +19,31 @@ async function sha256(raw: string) {
 export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pick<CmsGraphSnapshot, 'scope'> & { context: { state: Pick<CmsGraphSnapshot['context']['state'], 'target'> } }) {
   const bucket = env.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket | undefined
   const service = env.PAGE_STUDIO_CONTENT_ROUTER as Record<string, ((input: unknown) => Promise<unknown>) | undefined> | undefined
-  let artifactBytes = 0
+  let artifactBytes = 0, artifactClaims = 0
+  const claimReleased: Array<() => void> = []
+  /**
+   * Concurrent artifact reads share one budget. Claim the declared size (or the
+   * per-object maximum when undeclared) before any body is streamed; wait for
+   * in-flight siblings to settle their claims rather than fail on them, and
+   * refuse only when nothing else holds a claim. Failed reads stay charged.
+   */
+  const claimArtifactBytes = async (declared: number | undefined, max: number) => {
+    while (true) {
+      const claim = declared ?? max
+      if (artifactBytes + claim <= ARTIFACT_BYTE_BUDGET) {
+        artifactBytes += claim
+        artifactClaims++
+        return claim
+      }
+      if (!artifactClaims) throw failed()
+      await new Promise<void>(resolve => claimReleased.push(resolve))
+    }
+  }
+  const settleArtifactClaim = (claimed: number, used: number) => {
+    artifactBytes -= claimed - used
+    artifactClaims--
+    for (const wake of claimReleased.splice(0)) wake()
+  }
   const cache = new Map<string, string>()
   const call = async (name: string, input: unknown) => {
     if (typeof service?.[name] !== 'function') throw failed()
@@ -31,34 +55,37 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
   }
   const rawObject = async (key: string, max: number, artifact = false) => {
     if (cache.has(key)) return cache.get(key)!
-    if (!bucket?.get || (artifact && artifactBytes >= ARTIFACT_BYTE_BUDGET)) throw failed()
+    if (!bucket?.get || (artifact && artifactBytes >= ARTIFACT_BYTE_BUDGET && !artifactClaims)) throw failed()
     const object = await bucket.get(key)
     if (!object) throw failed()
-    // Concurrent artifact reads share one budget: claim declared bytes before any body is streamed.
-    const reserved = artifact ? object.size ?? 0 : 0
-    if ((object.size !== undefined && (object.size < 1 || object.size > max)) || artifactBytes + reserved > ARTIFACT_BYTE_BUDGET) {
+    if (object.size !== undefined && (object.size < 1 || object.size > max)) {
       await object.body.cancel().catch(() => {})
       throw failed()
     }
-    artifactBytes += reserved
+    let claimed: number
+    try {
+      claimed = artifact ? await claimArtifactBytes(object.size, max) : 0
+    } catch (error) {
+      await object.body.cancel().catch(() => {})
+      throw error
+    }
+    const limit = artifact ? claimed : object.size ?? max
     const reader = object.body.getReader(), chunks: Uint8Array[] = []
-    let size = 0, counted = reserved
+    let size = 0
     try {
       while (true) {
         const part = await reader.read()
         if (part.done) break
         size += part.value.byteLength
-        if (artifact && size > counted) {
-          artifactBytes += size - counted
-          counted = size
-        }
-        if (size > max || artifactBytes > ARTIFACT_BYTE_BUDGET) throw failed()
+        if (size > limit) throw failed()
         chunks.push(part.value)
       }
     } catch (error) {
       await reader.cancel().catch(() => {})
+      if (artifact) settleArtifactClaim(claimed, claimed)
       throw error
     } finally { reader.releaseLock() }
+    if (artifact) settleArtifactClaim(claimed, size)
     if (object.size !== undefined && object.size !== size) throw failed()
     const all = new Uint8Array(size)
     let offset = 0
