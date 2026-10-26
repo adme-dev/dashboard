@@ -11,12 +11,13 @@ import {
   refreshGoogleDataManagerAccessToken
 } from './providers'
 import { createMeasurementDeliveryRepository } from './repository'
-import { resolveMeasurementProviderCredential } from './credential'
+import { createGoogleRefreshTokenResolver, resolveMeasurementProviderCredential } from './credential'
 
 interface Env {
   HYPERDRIVE: { connectionString: string }
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
+  REPO_TOKEN_ENCRYPTION_KEY?: string
   META_GRAPH_API_VERSION: string
   WORKER_ID_PREFIX: string
   [key: string]: unknown
@@ -57,7 +58,10 @@ export default {
     _ctx: ExecutionContext
   ): Promise<void> {
     const database = createMeasurementWorkerDatabase(env.HYPERDRIVE.connectionString)
-    const repository = createMeasurementDeliveryRepository(database)
+    const repository = createMeasurementDeliveryRepository({
+      ...database,
+      resolveRefreshToken: createGoogleRefreshTokenResolver(env.REPO_TOKEN_ENCRYPTION_KEY)
+    })
     const processor = createMeasurementDeliveryProcessor({
       repository,
       deliverMeta: deliverMetaConversionEvent,
@@ -108,7 +112,10 @@ export default {
     _ctx: ExecutionContext
   ): Promise<void> {
     const database = createMeasurementWorkerDatabase(env.HYPERDRIVE.connectionString)
-    const repository = createMeasurementDiagnosticRepository(database)
+    const repository = createMeasurementDiagnosticRepository({
+      ...database,
+      resolveRefreshToken: createGoogleRefreshTokenResolver(env.REPO_TOKEN_ENCRYPTION_KEY)
+    })
     const reconciler = createMeasurementDiagnosticReconciler({
       repository,
       retrieve: retrieveGoogleDataManagerRequestStatus,

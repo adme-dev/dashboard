@@ -1,3 +1,6 @@
+import { GOOGLE_CREDENTIAL_PROFILE_JOIN, type GoogleRefreshCredentialRow } from '../../../shared/utils/googleRefreshCredential'
+import { createGoogleRefreshTokenResolver } from './credential'
+
 interface QueryResult {
   rows?: unknown[]
 }
@@ -7,10 +10,11 @@ interface TransactionClient {
 }
 
 interface RepositoryDeps {
+  resolveRefreshToken?: (row: GoogleRefreshCredentialRow) => Promise<string | null>
   transaction: <T>(callback: (db: TransactionClient) => Promise<T>) => Promise<T>
 }
 
-interface DiagnosticRow {
+interface DiagnosticRow extends GoogleRefreshCredentialRow {
   delivery_id: string
   client_id: string
   destination_id: string
@@ -80,6 +84,9 @@ export function createMeasurementDiagnosticRepository(deps: RepositoryDeps) {
                     AS diagnostic_started_at,
                   d.diagnostic_check_count,
                   sc.refresh_token,
+                  sc.google_credential_profile_id,
+                  gcp.refresh_token_encrypted AS profile_refresh_token_encrypted,
+                  gcp.refresh_token_iv AS profile_refresh_token_iv,
                   sc.scopes
              FROM conversion_deliveries d
              JOIN conversion_destinations dest
@@ -90,6 +97,7 @@ export function createMeasurementDiagnosticRepository(deps: RepositoryDeps) {
               AND sc.id = dest.social_connection_id
               AND sc.platform = 'google'
               AND sc.status = 'active'
+             ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
             WHERE dest.platform = 'google_data_manager'
               AND d.status = 'accepted'
               AND d.provider_request_id IS NOT NULL
@@ -133,7 +141,7 @@ export function createMeasurementDiagnosticRepository(deps: RepositoryDeps) {
           startedAt: iso(row.diagnostic_started_at),
           checkNumber,
           workerId,
-          refreshToken: row.refresh_token,
+          refreshToken: await (deps.resolveRefreshToken ?? createGoogleRefreshTokenResolver())(row),
           connectionScopes: scopes(row.scopes)
         }
       })

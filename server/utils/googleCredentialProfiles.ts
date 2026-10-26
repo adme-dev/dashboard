@@ -1,3 +1,7 @@
+import {
+  resolveGoogleRefreshCredential,
+  type GoogleRefreshCredentialRow
+} from '~~/shared/utils/googleRefreshCredential'
 import { execute, queryOne, transaction } from '~~/server/utils/db'
 import {
   getCustomerInfo,
@@ -133,36 +137,18 @@ export const GOOGLE_CREDENTIAL_PROFILE_SELECT = `
   gcp.token_expires_at AS profile_token_expires_at
 `
 
-export const GOOGLE_CREDENTIAL_PROFILE_JOIN = `
-  LEFT JOIN google_credential_profiles gcp
-    ON gcp.id = sc.google_credential_profile_id
-   AND gcp.status = 'active'
-`
-
 interface ResolveCredentialDeps {
   decrypt?: (ciphertext: BinaryToken, iv: BinaryToken) => Promise<string>
 }
 
-export interface GoogleRefreshCredentialRow {
-  refresh_token: string | null
-  google_credential_profile_id?: string | null
-  profile_refresh_token_encrypted?: BinaryToken | null
-  profile_refresh_token_iv?: BinaryToken | null
-}
+export { GOOGLE_CREDENTIAL_PROFILE_JOIN } from '~~/shared/utils/googleRefreshCredential'
+export type { GoogleRefreshCredentialRow } from '~~/shared/utils/googleRefreshCredential'
 
 export async function resolveGoogleRefreshToken(
   row: GoogleRefreshCredentialRow,
   deps: ResolveCredentialDeps = {}
 ): Promise<string | null> {
-  if (!row.google_credential_profile_id) return row.refresh_token
-  if (!row.profile_refresh_token_encrypted && !row.profile_refresh_token_iv) return null
-  if (!row.profile_refresh_token_encrypted || !row.profile_refresh_token_iv) {
-    throw new Error('Google credential profile is incomplete')
-  }
-  return (deps.decrypt || decryptToken)(
-    row.profile_refresh_token_encrypted,
-    row.profile_refresh_token_iv
-  )
+  return resolveGoogleRefreshCredential(row, { decrypt: deps.decrypt || decryptToken })
 }
 
 export async function resolveGoogleCredential(
