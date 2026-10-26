@@ -14,7 +14,7 @@ import { withCmsCommitAuthority } from '~~/server/utils/pageStudio/cmsCommitAuth
 import { cmsEqual } from '~~/server/utils/pageStudio/cmsVisibility'
 import type { PageStudioCheckpointInput, PageStudioControlQueryClient } from '~~/shared/pageStudio/controlTypes'
 import { readCmsGraphSnapshot, snapshotInTransaction, graphCheckpointMutation, cmsGraphConflict, cmsGraphEnvironment, type CmsGraphPrincipal, type CmsGraphDependencies, type CmsGraphSnapshot, type CmsGraphTransitionInput, type CmsGraphCommitReceipt } from '~~/server/utils/pageStudio/cmsGraphRead'
-import { mapWithConcurrency } from '~~/server/utils/concurrency'
+import { readBounded } from './boundedReads'
 import { checkpointStage, checkpointTiming, logCheckpointTiming } from './checkpointStage'
 
 /** R2 GETs in flight per graph read; up to 288 pins otherwise run back to back. */
@@ -89,7 +89,7 @@ async function readArtifacts(snapshot: CmsGraphSnapshot, storage: ReturnType<typ
   const unique = new Map(roots.map(pin => [collectionCanonical(pin), pin]))
   if (unique.size > 288) throw cmsGraphConflict('The feature graph exceeds the artifact limit.')
   const pending = [...unique.values()].filter(pin => !(pin.kind === 'collection' && baselineWrappers.has(pin.sha256)))
-  return await mapWithConcurrency(pending, ARTIFACT_READ_CONCURRENCY, pin => storage.readArtifact(pin))
+  return await readBounded(pending, ARTIFACT_READ_CONCURRENCY, pin => storage.readArtifact(pin))
 }
 type PreparedGraph = {
   snapshot: CmsGraphSnapshot
@@ -110,14 +110,14 @@ async function replayExact(db: PageStudioControlQueryClient, snapshot: CmsGraphS
   if (row.request.mode !== mode || !cmsEqual(row.request.intent, input) || !cmsEqual(row.request.actor, snapshot.actor) || !cmsEqual(row.request.principalIdentity, snapshot.principalIdentity)) throw cmsGraphConflict('This operation identity already represents another request.')
   return { ...row.result, currentCheckpointId: snapshot.checkpoint.id, isCurrent: row.result.checkpointId === snapshot.checkpoint.id && row.result.application.id === snapshot.context.application.id }
 }
-async function commitPreparedGraph(prepared: PreparedGraph, principal: CmsGraphPrincipal, deps: CmsGraphDependencies) {
+async function commitPreparedGraph(prepared: PreparedGraph, principal: CmsGraphPrincipal, deps: CmsGraphDependencies): Promise<{ receipt: CmsGraphCommitReceipt, replayed: boolean }> {
   const { snapshot, input, proof } = prepared
   const mode = prepared.mode ?? 'feature'
   const mutation = prepared.preparations.length ? 'collection-schema' as const : graphCheckpointMutation(principal)
   return await withCmsCommitAuthority({ scope: snapshot.scope, principal, mutation }, async (db) => {
     const current = await snapshotInTransaction(db, snapshot.scope, principal)
     const replay = await replayExact(db, current, input, mode)
-    if (replay) return replay
+    if (replay) return { receipt: replay, replayed: true }
     if (!cmsEqual(snapshot, current)) throw cmsGraphConflict()
     const limits = (await db.query<{ pages_per_site_limit: number }>('SELECT entitlement.pages_per_site_limit FROM page_studio_sites site JOIN page_studio_entitlements entitlement ON entitlement.id=site.entitlement_id WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3', [snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId])).rows
     if (limits.length !== 1 || prepared.pageCount > limits[0]!.pages_per_site_limit) throw cmsGraphConflict('The saved pages exceed the current website allowance.')
@@ -167,7 +167,7 @@ async function commitPreparedGraph(prepared: PreparedGraph, principal: CmsGraphP
     for (const action of version ? ['workspace.checkpointed', 'version.registered', 'version.submitted'] : ['workspace.checkpointed']) await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId, cp.userId, role, action, action === 'workspace.checkpointed' ? 'checkpoint' : 'version', action === 'workspace.checkpointed' ? cp.checkpointId : version!.id, `cms:graph:${input.operationId}:${action}`, { checkpointId: cp.checkpointId, digest: cp.digest, applicationId: appId, commitProtocol: 'cms-graph-v1', ...(principal.source === 'customer-session' ? { customerEditor: { sessionId: principal.claims.nonce, userId: principal.claims.userId, workspaceId: principal.claims.workspaceId } } : {}), expectedCheckpointId: input.expectedCheckpoint.id, ...(action === 'workspace.checkpointed' && stagingOrigin ? { stagingOrigin } : {}) }])
     if (prepared.history) await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata) VALUES($1,$2,$3,$4,$5,'draft.history.saved','checkpoint',$6,$7,$8)`,
       [snapshot.scope.tenantId, snapshot.scope.clientId, snapshot.scope.siteId, cp.userId, role, cp.checkpointId, `history:${role}:${cp.userId}:${prepared.history.requestId}`, { request: prepared.history, checkpointId: cp.checkpointId }])
-    return receipt
+    return { receipt, replayed: false }
   }, deps)
 }
 /** Actual immutable bytes outside locks; native visibility and receipt in one SQL transaction. */
@@ -199,7 +199,7 @@ export async function coordinateCmsGraphTransition(raw: CmsGraphTransitionInput,
   }
   const proof = await verifyGraph(() => verifyBuilderApplicationTransition({ request: requestFor(snapshot, input), base, nextCheckpoint, candidateBytes, artifactBytes,
     preparations: preparations.map(item => ({ requestBytes: collectionCanonical(item.request), receiptBytes: collectionCanonical(item.receipt) })), expectedRuntimeDigest }))
-  return await commitPreparedGraph({ snapshot, input, proof, preparations, pageCount: (nextCheckpoint.manifest as { pages: unknown[] }).pages.length }, principal, deps)
+  return (await commitPreparedGraph({ snapshot, input, proof, preparations, pageCount: (nextCheckpoint.manifest as { pages: unknown[] }).pages.length }, principal, deps)).receipt
 }
 
 /** Managed ordinary save: the caller supplies pages, never a different graph. */
@@ -245,8 +245,8 @@ export async function coordinateCmsGraphCheckpoint(
     const nextCheckpoint = await checkpointStage('candidate', () => storage.readCheckpoint({ id: input.nextCheckpoint.checkpointId, digest: input.nextCheckpoint.digest, object_key: input.nextCheckpoint.objectKey }), timing)
     const { candidateId: _candidateId, candidateDigest: _candidateDigest, preparations: _preparations, ...request } = requestFor(snapshot, input)
     const proof = await checkpointStage('verify', () => verifyGraph(() => verifyBuilderApplicationCheckpoint({ request, base, artifactBytes, nextCheckpoint })), timing)
-    const receipt = await checkpointStage('commit', () => commitPreparedGraph({ snapshot, input, proof, preparations: [], mode, caller, history: internal.history, pageCount: (nextCheckpoint.manifest as { pages: unknown[] }).pages.length }, principal, deps), timing)
-    outcome = 'committed'
+    const { receipt, replayed } = await checkpointStage('commit', () => commitPreparedGraph({ snapshot, input, proof, preparations: [], mode, caller, history: internal.history, pageCount: (nextCheckpoint.manifest as { pages: unknown[] }).pages.length }, principal, deps), timing)
+    outcome = replayed ? 'replayed' : 'committed'
     return receipt
   } finally {
     logCheckpointTiming(timing, mode, outcome)

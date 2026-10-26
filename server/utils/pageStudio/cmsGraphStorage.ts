@@ -11,6 +11,7 @@ import type { CmsPreparationReader } from './cmsCommits'
 const scopedId = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
 const storedObject = z.object({ pin: CmsObjectPinSchema, body: z.unknown(), schema: CmsObjectPinSchema.nullable(), actorId: z.string(), createdAt: z.string(), head: z.boolean() }).strict()
 const failed = () => new Error('Managed graph storage bytes unavailable or inconsistent')
+const ARTIFACT_BYTE_BUDGET = 2_000_000
 async function sha256(raw: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))), byte => byte.toString(16).padStart(2, '0')).join('')
 }
@@ -30,22 +31,28 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
   }
   const rawObject = async (key: string, max: number, artifact = false) => {
     if (cache.has(key)) return cache.get(key)!
-    if (!bucket?.get) throw failed()
+    if (!bucket?.get || (artifact && artifactBytes >= ARTIFACT_BYTE_BUDGET)) throw failed()
     const object = await bucket.get(key)
     if (!object) throw failed()
-    if (object.size !== undefined && (object.size < 1 || object.size > max)) {
+    // Concurrent artifact reads share one budget: claim declared bytes before any body is streamed.
+    const reserved = artifact ? object.size ?? 0 : 0
+    if ((object.size !== undefined && (object.size < 1 || object.size > max)) || artifactBytes + reserved > ARTIFACT_BYTE_BUDGET) {
       await object.body.cancel().catch(() => {})
       throw failed()
     }
+    artifactBytes += reserved
     const reader = object.body.getReader(), chunks: Uint8Array[] = []
-    let size = 0
+    let size = 0, counted = reserved
     try {
       while (true) {
         const part = await reader.read()
         if (part.done) break
         size += part.value.byteLength
-        if (artifact) artifactBytes += part.value.byteLength
-        if (size > max || artifactBytes > 2_000_000) throw failed()
+        if (artifact && size > counted) {
+          artifactBytes += size - counted
+          counted = size
+        }
+        if (size > max || artifactBytes > ARTIFACT_BYTE_BUDGET) throw failed()
         chunks.push(part.value)
       }
     } catch (error) {
