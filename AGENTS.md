@@ -58,6 +58,8 @@ Before changing dealer tracking, advertising conversion configuration, GTM, or h
 
 These checks apply even when the task originates in Monday or another marketing system. Do not treat a request to install a tag as evidence that the platform lacks native tracking.
 
+For the 26 October ITA dealer repairs, resume from [the task and evidence ledger](docs/runbooks/ita-dealer-completion-ledger-20261026.md). Keep source, configuration, deployment and actual provider delivery distinct; update the ledger at meaningful checkpoints and close tasks only against their recorded acceptance criteria.
+
 ## UI Rules (MANDATORY)
 
 **Always use Nuxt UI v4 components.** Never use browser-native dialogs or raw HTML form elements.
