@@ -53,12 +53,15 @@ describe('production Pages text binding budget', () => {
 
   it('fits the scoped activation in the full reviewed text-binding budget', () => {
     const declaredTextBindings = Object.keys(config.env.production.vars).length
-    expect(declaredTextBindings).toBe(47)
+    expect(declaredTextBindings).toBe(46)
+    expect(config.env.production.vars).not.toHaveProperty('APP_NAME')
     // NUXT_APP_BASE_URL, NUXT_APP_BUILD_ASSETS_DIR, NUXT_APP_CDN_URL, NITRO_PRESET.
+    // Reviewed 2026-10-26 in agency-dashboard production: 46 plain_text and
+    // 100 secret_text bindings, including the scoped Astoria GA4 credential.
     // Secret count is live provider state and must be recounted before release.
     const generatedTextBindings = 4
     const providerTextBindingLimit = 150
-    const reviewedSecretBindings = 99
+    const reviewedSecretBindings = 100
     expect(declaredTextBindings + reviewedSecretBindings + generatedTextBindings).toBe(providerTextBindingLimit)
     expect(config.env.production.vars).toHaveProperty('PAGE_STUDIO_CUSTOMER_ACTIVATION')
     for (const suffix of ['PREVIEW_ENABLED', 'PREVIEW_APPROVALS', 'CMS_SETUP_ENABLED', 'BROWSER_ENABLED', 'EDITOR_ENABLED']) {
