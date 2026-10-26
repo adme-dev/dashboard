@@ -948,14 +948,15 @@ export async function syncTikTokSpend(month: number, year: number): Promise<{ sy
 
 // ─── LinkedIn Spend Sync ────────────────────────────────────────
 
-export async function syncLinkedinSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number }> {
-  const { getLinkedInCampaignInsights, getLinkedInCampaignDailyInsights, refreshLinkedInToken } = await import('~~/server/utils/linkedinClient')
+export async function syncLinkedinSpend(month: number, year: number): Promise<SyncResult> {
+  const { getLinkedInCampaignInsights, getLinkedInCampaignDailyInsights, ensureLinkedInAccessToken } = await import('~~/server/utils/linkedinClient')
 
   const period = `${year}-${String(month).padStart(2, '0')}`
   const config = useRuntimeConfig()
 
   const connections = await queryRows<{
     id: string
+    client_id: string | null
     account_id: string
     account_name: string
     access_token: string
@@ -963,12 +964,12 @@ export async function syncLinkedinSpend(month: number, year: number): Promise<{ 
     token_expires_at: string | null
     metadata: any
   }>(
-    `SELECT id, account_id, account_name, access_token, refresh_token, token_expires_at, metadata
+    `SELECT id, client_id, account_id, account_name, access_token, refresh_token, token_expires_at, metadata
      FROM social_connections
      WHERE platform = 'linkedin' AND status = 'active'`
   )
 
-  if (connections.length === 0) return { synced: 0, totalSpend: 0 }
+  if (connections.length === 0) return { synced: 0, totalSpend: 0, failures: [] }
 
   const mappings = await queryRows<{
     connection_id: string
@@ -981,29 +982,19 @@ export async function syncLinkedinSpend(month: number, year: number): Promise<{ 
      FROM ad_account_client_map`
   )
 
+  const failures: SyncResult['failures'] = []
   let totalSynced = 0
   let totalSpend = 0
 
   for (const conn of connections) {
-    let accessToken = conn.access_token
-
-    // Refresh token if expired (LinkedIn tokens expire in ~60 days)
-    if (conn.refresh_token && conn.token_expires_at) {
-      const expiresAt = new Date(conn.token_expires_at)
-      if (expiresAt.getTime() < Date.now() + 5 * 60 * 1000) {
-        try {
-          const refreshed = await refreshLinkedInToken(conn.refresh_token, config.linkedinClientId, config.linkedinClientSecret)
-          accessToken = refreshed.access_token
-          const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000)
-          await queryOne(
-            `UPDATE social_connections SET access_token = $1, refresh_token = COALESCE($2, refresh_token), token_expires_at = $3, updated_at = NOW() WHERE id = $4`,
-            [accessToken, refreshed.refresh_token || null, newExpiry, conn.id]
-          )
-        } catch (err: any) {
-          console.error(`[LinkedInSync] Failed to refresh token for ${conn.account_name}:`, err.message)
-          continue
-        }
-      }
+    let accessToken: string
+    try {
+      accessToken = await ensureLinkedInAccessToken(conn, config)
+    } catch (err: any) {
+      const reason = sanitizeSpendSyncFailureReason(err?.message)
+      console.error(`[LinkedInSync] Failed to refresh token for ${conn.account_name}:`, reason)
+      failures.push({ account: conn.account_name, reason: `Token refresh failed: ${reason}` })
+      continue
     }
 
     const accountId = conn.account_id
@@ -1012,9 +1003,18 @@ export async function syncLinkedinSpend(month: number, year: number): Promise<{ 
     try {
       campaigns = await getLinkedInCampaignInsights(accountId, accessToken, month, year)
     } catch (err: any) {
-      console.error(`[LinkedInSync] Failed to fetch insights for ${conn.account_name}:`, err.message)
+      const reason = sanitizeSpendSyncFailureReason(err?.message)
+      console.error(`[LinkedInSync] Failed to fetch insights for ${conn.account_name}:`, reason)
+      failures.push({ account: conn.account_name, reason: `Insights failed: ${reason}` })
       continue
     }
+
+    const connectionClient = conn.client_id
+      ? await queryOne<{ id: string; media_commission_rate: string | null }>(
+          `SELECT id, media_commission_rate FROM agency_clients WHERE id = $1 LIMIT 1`,
+          [conn.client_id]
+        )
+      : null
 
     for (const campaign of campaigns) {
       const spend = parseFloat(campaign.spend || '0')
@@ -1022,16 +1022,18 @@ export async function syncLinkedinSpend(month: number, year: number): Promise<{ 
 
       totalSpend += spend
 
-      let clientId: string | null = null
-      let commissionRate = 0
+      let clientId: string | null = connectionClient?.id || conn.client_id || null
+      let commissionRate = parseFloat(connectionClient?.media_commission_rate || '0') || 0
       const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
       if (mapping) {
         const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
           `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
-        clientId = client?.id || null
-        commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
+        if (client) {
+          clientId = client.id
+          commissionRate = parseFloat(client.media_commission_rate || '0') || 0
+        }
       }
 
       const impressions = parseInt(campaign.impressions || '0', 10)
@@ -1098,11 +1100,13 @@ export async function syncLinkedinSpend(month: number, year: number): Promise<{ 
         }
       }
     } catch (err: any) {
-      console.error(`[LinkedInSync] Daily spend failed for ${conn.account_name}:`, err.message)
+      const reason = sanitizeSpendSyncFailureReason(err?.message)
+      console.error(`[LinkedInSync] Daily spend failed for ${conn.account_name}:`, reason)
+      failures.push({ account: conn.account_name, reason: `Daily spend failed: ${reason}` })
     }
   }
 
-  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
+  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
 }
 
 // ─── Pinterest Spend Sync ───────────────────────────────────────

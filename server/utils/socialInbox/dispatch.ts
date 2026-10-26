@@ -3,6 +3,7 @@
 // Keeps the "where does a reply go on each channel" rule in ONE place.
 import { getProviderOrThrow } from '~~/server/utils/social-providers/registry'
 import { recordOutbound } from './store'
+import { resolveSocialAccountAccessToken } from './tokenRefresh'
 
 interface TargetDb { queryOne<T = any>(sql: string, params?: any[]): Promise<T | null> }
 
@@ -37,7 +38,7 @@ export async function dispatchReply(
   args: { content: string; sentByUserId: string; aiGenerated?: boolean },
 ): Promise<{ ok: boolean; platformMessageId?: string; error?: string; clientId?: string }> {
   const conv = await db.queryOne<any>(
-    `SELECT c.*, a.platform_account_id, a.access_token, a.metadata AS account_metadata
+    `SELECT c.*, a.platform_account_id, a.access_token, a.refresh_token, a.token_expires_at, a.metadata AS account_metadata
        FROM social_conversations c JOIN social_accounts a ON a.id = c.social_account_id
       WHERE c.id = $1`, [conversationId])
   if (!conv) return { ok: false, error: 'conversation not found' }
@@ -46,10 +47,39 @@ export async function dispatchReply(
   try { provider = getProviderOrThrow(conv.platform) } catch (e: any) { return { ok: false, error: String(e?.message ?? e) } }
   if (!provider.reply) return { ok: false, error: `${conv.platform} replies not supported` }
 
+  // LinkedIn access tokens live ~60 days; refresh (and persist) before replying when near expiry.
+  let accessToken = conv.access_token
+  if (conv.platform === 'linkedin' && conv.refresh_token) {
+    try {
+      accessToken = await resolveSocialAccountAccessToken({
+        db,
+        account: {
+          id: conv.social_account_id,
+          platform: conv.platform,
+          access_token: conv.access_token,
+          refresh_token: conv.refresh_token,
+          token_expires_at: conv.token_expires_at ?? null
+        }
+      })
+    } catch (e: unknown) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
   const target = await resolveReplyTarget(db, conversationId, conv)
+  // LinkedIn nests one level deep: when the target is itself a nested reply, pass its parent thread.
+  const threadParent = conv.platform === 'linkedin' && conv.channel_type === 'comment'
+    ? await db.queryOne<{ platform_message_id: string }>(
+      `SELECT p.platform_message_id
+         FROM social_messages m JOIN social_messages p ON p.id = m.parent_message_id
+        WHERE m.conversation_id = $1 AND m.platform_message_id = $2
+        LIMIT 1`,
+      [conversationId, target])
+    : null
   const r = await provider.reply({
-    accountId: conv.platform_account_id, accessToken: conv.access_token,
+    accountId: conv.platform_account_id, accessToken,
     conversationId: target, content: args.content, channelType: conv.channel_type,
+    threadParentId: threadParent?.platform_message_id ?? undefined,
     // IG DMs route through the linked Page (stored on the IG account row at metadata.via_page_id).
     viaPageId: conv.account_metadata?.via_page_id,
   })

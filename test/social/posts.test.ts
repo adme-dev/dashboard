@@ -96,9 +96,9 @@ describe('publishing posts CRUD', () => {
     await expect(createH({
       body: {
         clientId: 'C1',
-        targets: [{ platform: 'linkedin', accountId: 'A1' }]
+        targets: [{ platform: 'tiktok', accountId: 'A1' }]
       }
-    })).rejects.toThrow('LinkedIn publishing is not production-ready')
+    })).rejects.toThrow('TikTok publishing is not production-ready')
     expect(mockQueryRows).not.toHaveBeenCalled()
   })
 

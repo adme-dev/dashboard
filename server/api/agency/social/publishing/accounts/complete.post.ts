@@ -119,7 +119,8 @@ export default defineEventHandler(async (event) => {
         chosen,
         linkedin.accessToken,
         linkedin.refreshToken,
-        pending.expiresAt
+        pending.expiresAt,
+        linkedin.refreshTokenExpiresAt ?? null
       ), pending.clientId, String(user.id))
       return { id: sel.nonce, ...saved }
     }

@@ -53,6 +53,7 @@ export default defineEventHandler(async (event) => {
   let accessToken: string
   let refreshToken: string | null = null
   let expiresAt: string | null = null
+  let refreshTokenExpiresAt: string | null
   try {
     const token = await exchangeLinkedInOrganicCode(
       String(q.code),
@@ -63,6 +64,9 @@ export default defineEventHandler(async (event) => {
     accessToken = token.access_token
     refreshToken = token.refresh_token || null
     expiresAt = new Date(Date.now() + (token.expires_in || 3600) * 1000).toISOString()
+    refreshTokenExpiresAt = token.refresh_token_expires_in
+      ? new Date(Date.now() + token.refresh_token_expires_in * 1000).toISOString()
+      : null
   } catch (err) {
     logOAuthFailure('linkedin', 'linkedin_token_exchange_failed', err, state.clientId)
     return fail('linkedin_token_exchange_failed', state.clientId)
@@ -77,7 +81,7 @@ export default defineEventHandler(async (event) => {
   if (!organizations.length) return fail('no_linkedin_organizations', state.clientId)
 
   if (organizations.length === 1) {
-    const rows = mapLinkedInOrganizationsToAccountRows(organizations, accessToken, refreshToken, expiresAt)
+    const rows = mapLinkedInOrganizationsToAccountRows(organizations, accessToken, refreshToken, expiresAt, refreshTokenExpiresAt)
     const res = await upsertSocialAccount({ queryOne, execute }, state.clientId, rows[0]!, state.userId)
     if (res.status === 'conflict') return fail('linkedin_organization_owned_by_another_client', state.clientId)
     return sendRedirect(event, linkedInAccountsPath({ social_connected: '1', client: state.clientId }), 302)
@@ -92,6 +96,7 @@ export default defineEventHandler(async (event) => {
     linkedin: {
       accessToken,
       refreshToken,
+      refreshTokenExpiresAt,
       organizations
     }
   })

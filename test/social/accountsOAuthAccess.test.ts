@@ -92,6 +92,7 @@ vi.mock('~~/server/utils/socialOAuth/youtube', () => ({
 }))
 vi.mock('~~/server/utils/socialOAuth/linkedin', () => ({
   buildLinkedInOrganicAuthUrl: (...a: unknown[]) => mockBuildLinkedInOrganicAuthUrl(...a),
+  resolveLinkedInOrganicScopes: (override?: string) => override ? override.split(' ') : ['default_scope'],
   mapLinkedInOrganizationsToAccountRows: (...a: unknown[]) => mockMapLinkedInOrganizationsToAccountRows(...a)
 }))
 vi.mock('~~/server/utils/socialOAuth/tiktok', () => ({
@@ -309,6 +310,7 @@ describe('social publishing account OAuth client access', () => {
       linkedin: {
         accessToken: 'AT',
         refreshToken: 'RT',
+        refreshTokenExpiresAt: '2027-01-01T00:00:00.000Z',
         organizations: [{ id: '79988552', name: 'First Demo', vanityName: 'firstdemo', role: 'ADMINISTRATOR' }]
       }
     })
@@ -319,7 +321,8 @@ describe('social publishing account OAuth client access', () => {
       [{ id: '79988552', name: 'First Demo', vanityName: 'firstdemo', role: 'ADMINISTRATOR' }],
       'AT',
       'RT',
-      '2026-01-01T00:00:00.000Z'
+      '2026-01-01T00:00:00.000Z',
+      '2027-01-01T00:00:00.000Z'
     )
     expect(mockUpsertSocialAccount).toHaveBeenCalledOnce()
     expect(result).toEqual({ connected: ['Organization'], conflicts: [] })

@@ -29,6 +29,7 @@ export interface PendingConnection {
   linkedin?: {
     accessToken: string
     refreshToken: string | null
+    refreshTokenExpiresAt?: string | null
     organizations: LinkedInOrganizationSelection[]
   }
 }

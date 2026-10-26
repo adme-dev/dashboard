@@ -33,14 +33,18 @@ export async function upsertAccountMetric(
   db: MetricsDbRunner, args: { clientId: string; accountId: string; platform: string; snapshotDate: string; postsCount?: number; metric: AccountMetric },
 ): Promise<void> {
   const { clientId, accountId, platform, snapshotDate, metric, postsCount } = args
-  const unavailable = platform === 'facebook' ? null : 0
+  const unavailable = platform === 'facebook' || platform === 'linkedin' ? null : 0
+  // NULL means "not collected this poll": keep any value already captured for the same day.
   await db.execute(
     `INSERT INTO social_account_metrics
        (client_id, social_account_id, platform, snapshot_date, followers, reach, impressions, profile_views, posts_count, updated_at)
      VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9, NOW())
      ON CONFLICT (social_account_id, snapshot_date) DO UPDATE SET
-       followers = EXCLUDED.followers, reach = EXCLUDED.reach, impressions = EXCLUDED.impressions,
-       profile_views = EXCLUDED.profile_views, posts_count = EXCLUDED.posts_count, updated_at = NOW()`,
+       followers = COALESCE(EXCLUDED.followers, social_account_metrics.followers),
+       reach = COALESCE(EXCLUDED.reach, social_account_metrics.reach),
+       impressions = COALESCE(EXCLUDED.impressions, social_account_metrics.impressions),
+       profile_views = COALESCE(EXCLUDED.profile_views, social_account_metrics.profile_views),
+       posts_count = EXCLUDED.posts_count, updated_at = NOW()`,
     [clientId, accountId, platform, snapshotDate, metric.followers ?? unavailable, metric.reach ?? unavailable,
      metric.impressions ?? unavailable, metric.profileViews ?? unavailable, postsCount ?? 0],
   )

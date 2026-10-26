@@ -15,7 +15,10 @@ const providerMocks = vi.hoisted(() => ({
 const tokenRefreshMocks = vi.hoisted(() => ({
   execute: vi.fn(),
   refreshGoogleBusinessToken: vi.fn(),
-  getGoogleBusinessOAuthConfig: vi.fn()
+  getGoogleBusinessOAuthConfig: vi.fn(),
+  refreshLinkedInOrganicToken: vi.fn(),
+  getLinkedInOrganicOAuthConfig: vi.fn(),
+  queryOne: vi.fn()
 }))
 
 // publishPost dispatches through the registry; mock it so no real network calls happen.
@@ -28,15 +31,19 @@ vi.mock('~~/server/utils/social-providers/registry', () => ({
   })
 }))
 vi.mock('~~/server/utils/db', () => ({
-  execute: (...args: unknown[]) => tokenRefreshMocks.execute(...args)
+  execute: (...args: unknown[]) => tokenRefreshMocks.execute(...args),
+  queryOne: (...args: unknown[]) => tokenRefreshMocks.queryOne(...args)
 }))
 vi.mock('~~/server/utils/socialOAuth/googleBusiness', () => ({
   refreshGoogleBusinessToken: (...args: unknown[]) => tokenRefreshMocks.refreshGoogleBusinessToken(...args)
 }))
+vi.mock('~~/server/utils/socialOAuth/linkedin', () => ({
+  refreshLinkedInOrganicToken: (...args: unknown[]) => tokenRefreshMocks.refreshLinkedInOrganicToken(...args)
+}))
 vi.mock('~~/server/utils/socialOAuth/env', () => ({
   getGoogleBusinessOAuthConfig: (...args: unknown[]) => tokenRefreshMocks.getGoogleBusinessOAuthConfig(...args),
   getYouTubeOAuthConfig: () => ({ clientId: '', clientSecret: '', redirectUri: '' }),
-  getLinkedInOrganicOAuthConfig: () => ({ clientId: '', clientSecret: '', redirectUri: '' }),
+  getLinkedInOrganicOAuthConfig: (...args: unknown[]) => tokenRefreshMocks.getLinkedInOrganicOAuthConfig(...args),
   getTikTokContentOAuthConfig: () => ({ clientKey: '', clientSecret: '', redirectUri: '' })
 }))
 
@@ -68,6 +75,18 @@ beforeEach(() => {
   tokenRefreshMocks.getGoogleBusinessOAuthConfig.mockReturnValue({
     clientId: 'google-client-id',
     clientSecret: 'google-client-secret',
+    redirectUri: '/callback'
+  })
+  tokenRefreshMocks.refreshLinkedInOrganicToken.mockReset()
+  tokenRefreshMocks.refreshLinkedInOrganicToken.mockResolvedValue({
+    access_token: 'new-li-token',
+    expires_in: 5184000,
+    refresh_token_expires_in: 31536000
+  })
+  tokenRefreshMocks.getLinkedInOrganicOAuthConfig.mockReset()
+  tokenRefreshMocks.getLinkedInOrganicOAuthConfig.mockReturnValue({
+    clientId: 'li-client-id',
+    clientSecret: 'li-client-secret',
     redirectUri: '/callback'
   })
 })
@@ -270,7 +289,7 @@ describe('publishPost', () => {
     )
     expect(tokenRefreshMocks.execute).toHaveBeenCalledWith(
       expect.stringContaining('last_error = NULL'),
-      ['gbp1', 'new-gbp-token', 'new-gbp-refresh', expect.any(String)]
+      ['gbp1', 'new-gbp-token', 'new-gbp-refresh', expect.any(String), 'old-gbp-token']
     )
     expect(providerMocks.post).toHaveBeenCalledWith('google-business', expect.objectContaining({
       accessToken: 'new-gbp-token'
@@ -412,6 +431,62 @@ describe('publishPost', () => {
       accountId: 'yt1',
       error: expect.stringContaining('YouTube publishing is not production-ready')
     }))
+  })
+})
+
+describe('publishPost — LinkedIn Company Pages', () => {
+  const linkedinAccount = {
+    id: 'li1',
+    platform: 'linkedin',
+    platform_account_id: '79988552',
+    access_token: 'stored-li-token',
+    refresh_token: 'stored-li-refresh',
+    token_expires_at: '2099-01-01T00:00:00.000Z',
+    account_name: 'ADME Advertising',
+    metadata: { linkedinOrganizationUrn: 'urn:li:organization:79988552', linkedinAuthorType: 'organization' }
+  }
+  const linkedinPost: PublishablePost = {
+    id: 'LI', content: 'Page update', media_urls: [], link_url: null,
+    platforms: ['linkedin'], platform_overrides: {}, accounts: [linkedinAccount]
+  }
+
+  it('dispatches saved org accounts with isOrganization and reuses it for the first comment', async () => {
+    const res = await publishPost({ ...linkedinPost, first_comment: 'More in the comments' })
+
+    expect(res.status).toBe('published')
+    expect(providerMocks.post).toHaveBeenCalledWith('linkedin', expect.objectContaining({
+      accountId: '79988552',
+      accessToken: 'stored-li-token',
+      options: expect.objectContaining({ isOrganization: true })
+    }))
+    expect(providerMocks.comment).toHaveBeenCalledWith('linkedin', expect.objectContaining({
+      accountId: '79988552',
+      postId: 'pid_linkedin',
+      options: expect.objectContaining({ isOrganization: true })
+    }))
+    expect(tokenRefreshMocks.refreshLinkedInOrganicToken).not.toHaveBeenCalled()
+  })
+
+  it('defaults discovery-created rows without an author type to organization authorship', async () => {
+    await publishPost({ ...linkedinPost, accounts: [{ ...linkedinAccount, metadata: { linkedinOrganizationUrn: 'urn:li:organization:79988552' } }] })
+    expect(providerMocks.post).toHaveBeenCalledWith('linkedin', expect.objectContaining({
+      options: expect.objectContaining({ isOrganization: true })
+    }))
+  })
+
+  it('refreshes a near-expiry LinkedIn token, persists it and the refresh-token lifetime, then publishes', async () => {
+    await publishPost({ ...linkedinPost, accounts: [{ ...linkedinAccount, token_expires_at: new Date(Date.now() + 60_000).toISOString() }] })
+
+    expect(tokenRefreshMocks.refreshLinkedInOrganicToken).toHaveBeenCalledWith('stored-li-refresh', 'li-client-id', 'li-client-secret')
+    expect(tokenRefreshMocks.execute).toHaveBeenCalledWith(
+      expect.stringContaining('last_error = NULL'),
+      ['li1', 'new-li-token', 'stored-li-refresh', expect.any(String), 'stored-li-token']
+    )
+    expect(tokenRefreshMocks.execute).toHaveBeenCalledWith(
+      expect.stringContaining('metadata = COALESCE(metadata, \'{}\'::jsonb) || $2::jsonb'),
+      ['li1', expect.stringContaining('refreshTokenExpiresAt')]
+    )
+    expect(providerMocks.post).toHaveBeenCalledWith('linkedin', expect.objectContaining({ accessToken: 'new-li-token' }))
   })
 })
 

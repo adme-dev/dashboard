@@ -139,6 +139,7 @@ export function getLinkedInOrganicOAuthConfig(event?: H3Event): {
   clientId: string
   clientSecret: string
   redirectUri: string
+  scopes: string
 } {
   const config = useRuntimeConfig()
   return {
@@ -159,7 +160,8 @@ export function getLinkedInOrganicOAuthConfig(event?: H3Event): {
     redirectUri: firstConfigured([
       getConfiguredValue(event, 'LINKEDIN_ORGANIC_REDIRECT_URI'),
       String(config.linkedinOrganicRedirectUri || LINKEDIN_ORGANIC_CALLBACK_PATH)
-    ])
+    ]),
+    scopes: getConfiguredValue(event, 'LINKEDIN_ORGANIC_SCOPES').trim()
   }
 }
 

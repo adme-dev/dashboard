@@ -1,17 +1,30 @@
 import { ofetch } from 'ofetch'
+import { LINKEDIN_API_VERSION } from '~~/server/utils/linkedinApiVersion'
 import type { AccountRow } from './store'
 
 const LINKEDIN_AUTH_URL = 'https://www.linkedin.com/oauth/v2/authorization'
 const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken'
 const LINKEDIN_API_BASE = 'https://api.linkedin.com/rest'
 
-export const LINKEDIN_REST_VERSION = '202506'
+export const LINKEDIN_REST_VERSION = LINKEDIN_API_VERSION
+// Community Management API permissions required by the endpoints we call
+// (202610 docs): org discovery + share/follower statistics need
+// rw_organization_admin; Posts need r/w_organization_social; Comments need
+// r/w_organization_social_feed. Operators can override with a space-separated
+// LINKEDIN_ORGANIC_SCOPES to match the app's Auth tab exactly — requesting a
+// scope the app isn't granted fails the whole consent screen.
 export const LINKEDIN_ORGANIC_OAUTH_SCOPES = [
-  'r_organization_admin',
-  'w_organization_social',
+  'rw_organization_admin',
   'r_organization_social',
-  'w_member_social'
+  'w_organization_social',
+  'r_organization_social_feed',
+  'w_organization_social_feed'
 ]
+
+export function resolveLinkedInOrganicScopes(override?: string | null): string[] {
+  const scopes = String(override || '').split(/[\s,]+/).map(scope => scope.trim()).filter(Boolean)
+  return scopes.length ? Array.from(new Set(scopes)) : LINKEDIN_ORGANIC_OAUTH_SCOPES
+}
 
 export interface LinkedInOrganicTokenResponse {
   access_token: string
@@ -45,13 +58,13 @@ export interface LinkedInOrganizationSelection {
   role: string
 }
 
-export function buildLinkedInOrganicAuthUrl(clientId: string, redirectUri: string, state: string): string {
+export function buildLinkedInOrganicAuthUrl(clientId: string, redirectUri: string, state: string, scopes: string[] = LINKEDIN_ORGANIC_OAUTH_SCOPES): string {
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,
     state,
-    scope: LINKEDIN_ORGANIC_OAUTH_SCOPES.join(' ')
+    scope: scopes.join(' ')
   })
   return `${LINKEDIN_AUTH_URL}?${params.toString()}`
 }
@@ -136,7 +149,8 @@ export function mapLinkedInOrganizationsToAccountRows(
   organizations: LinkedInOrganizationSelection[],
   accessToken: string,
   refreshToken: string | null,
-  expiresAt: string | null
+  expiresAt: string | null,
+  refreshTokenExpiresAt: string | null = null
 ): AccountRow[] {
   return organizations.map(organization => ({
     platform: 'linkedin',
@@ -149,7 +163,9 @@ export function mapLinkedInOrganizationsToAccountRows(
       linkedinOrganizationUrn: organization.urn,
       linkedinVanityName: organization.vanityName,
       linkedinRole: organization.role,
-      publishingReadiness: 'oauth_connected_publish_not_enabled'
+      linkedinAuthorType: 'organization',
+      ...(refreshTokenExpiresAt ? { refreshTokenExpiresAt } : {}),
+      publishingReadiness: 'publish_enabled'
     }
   }))
 }

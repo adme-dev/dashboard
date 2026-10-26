@@ -78,4 +78,15 @@ describe('store upserts (idempotent latest-snapshot)', () => {
     expect(sql).toMatch(/ON CONFLICT \(social_account_id, snapshot_date\) DO UPDATE/i)
     expect(params.slice(0, 5)).toEqual(['c1', 'a1', 'instagram', '2026-06-02', 999])
   })
+  it('upsertAccountMetric keeps prior same-day LinkedIn reach/impressions when a stats sub-request failed', async () => {
+    let sql = ''; let params: any[] = []
+    const db = { execute: vi.fn(async (s: string, p: any[]) => { sql = s; params = p; return 1 }) }
+    await upsertAccountMetric(db as any, {
+      clientId: 'c1', accountId: 'a1', platform: 'linkedin', snapshotDate: '2026-10-26',
+      metric: { followers: 50, partialFailures: ['share statistics unavailable: 503'] },
+    })
+    expect(params).toEqual(['c1', 'a1', 'linkedin', '2026-10-26', 50, null, null, null, 0])
+    expect(sql).toContain('reach = COALESCE(EXCLUDED.reach, social_account_metrics.reach)')
+    expect(sql).toContain('impressions = COALESCE(EXCLUDED.impressions, social_account_metrics.impressions)')
+  })
 })

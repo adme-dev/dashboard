@@ -283,12 +283,15 @@ describe('God mode gate inventory', () => {
     // Existing-source adoption exposes only a validated configured customer origin.
     // This presentation URL read does not register an authority bypass.
     expect(inventory.rows).toContain("server/utils/pageStudio/transferControlsHttp.ts\tconst origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ORIGIN') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)\tunrelated_configuration")
+    // LinkedIn Ads live insights read runtime config only for the OAuth client
+    // credentials used to refresh an expired token; no gate or bypass is added.
+    expect(inventory.rows).toContain('server/api/agency/social/linkedin/insights.get.ts\tconst accessToken = await ensureLinkedInAccessToken(conn, useRuntimeConfig(event))\tprovider_infrastructure_availability')
     // Released Banner routes retain eight additional explicit write gates.
     // Combined with the recovery origin row above, this pins both inventories.
-    expect(inventory.rows).toHaveLength(1615)
+    expect(inventory.rows).toHaveLength(1616)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 128,
-      provider_infrastructure_availability: 224,
+      provider_infrastructure_availability: 225,
       application_governance_bypass: 1633,
       ordinary_user_behavior: 192,
       unrelated_configuration: 437
@@ -306,7 +309,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('03bab306af81fb29f3488ed916268b8d3b61a0bc35619c4f8b06a0269a3b5f01')
+    expect(inventory.digest).toBe('f6fc6b3487c44de96734733f0f83c7236dba1770c6471040e2fa2051797cbf01')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

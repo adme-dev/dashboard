@@ -66,6 +66,8 @@ export interface AccountMetric {
   reach?: number
   impressions?: number
   profileViews?: number
+  /** Sub-requests that failed; their fields are left undefined (persisted as NULL). */
+  partialFailures?: string[]
 }
 
 /** Slice 2 inbox: poll a provider for new engagement since a cursor. */
@@ -89,6 +91,8 @@ export interface ReplyParams {
   accessToken: string
   /** resolved reply target: comment id (comment) / object id (review/mention) / participant PSID (dm) */
   conversationId: string
+  /** Platform id of the reply target's parent message, when the target is itself a nested reply. */
+  threadParentId?: string
   content: string
   /** channel being replied on — providers branch DMs (Send API) vs comments (graph comments edge). */
   channelType?: 'comment' | 'dm' | 'mention' | 'review'
@@ -122,6 +126,8 @@ export interface CommentParams {
   postId: string
   content: string
   media?: MediaItem[]
+  /** Same platform options the post was published with (e.g. LinkedIn `isOrganization`). */
+  options?: Record<string, unknown>
 }
 
 export interface PostResult {

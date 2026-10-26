@@ -29,8 +29,8 @@ export const SOCIAL_PUBLISHING_PLATFORM_PRODUCTION_STATUS: SocialPublishingPlatf
   {
     value: 'linkedin',
     label: 'LinkedIn',
-    productionReady: false,
-    reason: 'Organic organization discovery foundation is available; publishing, refresh hardening, and live provider smoke remain disabled'
+    productionReady: true,
+    reason: 'Ready for Company Page connection (organization admins): publishing, comments inbox, and Page analytics'
   },
   {
     value: 'tiktok',

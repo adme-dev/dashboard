@@ -1,9 +1,10 @@
 import { requireSocialCronAuth } from '~~/server/utils/socialPublishing/cronAuth'
 import { defineEventHandler } from 'h3'
-import { queryRows, execute } from '~~/server/utils/db'
+import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getProvider } from '~~/server/utils/social-providers/registry'
 import { upsertPostMetric, upsertAccountMetric } from '~~/server/utils/socialReporting/store'
 import { publishedTargetsForAccount, type PublishableAccount } from '~~/server/utils/socialPublishing'
+import { resolveSocialAccountAccessToken } from '~~/server/utils/socialInbox/tokenRefresh'
 
 /**
  * POST /api/cron/sync-social-metrics
@@ -17,7 +18,12 @@ const TRAILING_DAYS = 90
 
 interface MetricSyncAccount extends Pick<PublishableAccount, 'id' | 'platform' | 'platform_account_id' | 'access_token'> {
   client_id: string
+  refresh_token?: string | null
+  token_expires_at?: string | null
 }
+
+/** Platforms whose short-lived tokens must be refreshed before metric calls. */
+const REFRESH_BEFORE_METRICS = new Set(['linkedin'])
 
 interface MetricsSyncHealth {
   status: 'healthy' | 'warning' | 'critical'
@@ -25,6 +31,8 @@ interface MetricsSyncHealth {
   accountsSynced: number
   unsupportedProviders: number
   accountFailures: number
+  /** Accounts synced with some metrics unavailable (left NULL rather than zeroed). */
+  accountPartialFailures: number
   postTargetsDiscovered: number
   postsSynced: number
   postFailures: number
@@ -35,7 +43,7 @@ export default defineEventHandler(async (event) => {
 
   const today = new Date().toISOString().slice(0, 10)
   const accounts = await queryRows<MetricSyncAccount>(
-    `SELECT id, client_id, platform, platform_account_id, access_token
+    `SELECT id, client_id, platform, platform_account_id, access_token, refresh_token, token_expires_at
        FROM social_accounts WHERE is_active = TRUE AND access_token IS NOT NULL`
   )
 
@@ -43,6 +51,7 @@ export default defineEventHandler(async (event) => {
   let postsSynced = 0
   let unsupportedProviders = 0
   let accountFailures = 0
+  let accountPartialFailures = 0
   let postTargetsDiscovered = 0
   let postFailures = 0
 
@@ -64,15 +73,41 @@ export default defineEventHandler(async (event) => {
     const targets = posts.flatMap(p => publishedTargetsForAccount(p.id, p.platform_results, acct))
     postTargetsDiscovered += targets.length
 
+    let accessToken = acct.access_token
+    if (REFRESH_BEFORE_METRICS.has(acct.platform) && acct.refresh_token) {
+      try {
+        accessToken = await resolveSocialAccountAccessToken({
+          event,
+          db: { execute, queryOne },
+          account: {
+            id: acct.id,
+            platform: acct.platform,
+            access_token: acct.access_token,
+            refresh_token: acct.refresh_token,
+            token_expires_at: acct.token_expires_at ?? null
+          }
+        })
+      } catch (e: unknown) {
+        accountFailures++
+        postFailures += targets.length
+        console.error('social-metrics: token refresh failed', { accountId: acct.id, platform: acct.platform, error: errorMessage(e) })
+        continue
+      }
+    }
+
     // Account-level snapshot (today).
     if (provider.fetchAccountMetrics) {
       try {
-        const metric = await provider.fetchAccountMetrics({ accountId: acct.platform_account_id, accessToken: acct.access_token })
+        const metric = await provider.fetchAccountMetrics({ accountId: acct.platform_account_id, accessToken })
         await upsertAccountMetric({ execute }, {
           clientId: acct.client_id, accountId: acct.id, platform: acct.platform,
           snapshotDate: today, postsCount: targets.length, metric
         })
         accountsSynced++
+        if (metric.partialFailures?.length) {
+          accountPartialFailures++
+          console.warn('social-metrics: account metrics partially unavailable', { accountId: acct.id, platform: acct.platform, failures: metric.partialFailures })
+        }
       } catch (e: unknown) {
         accountFailures++
         console.error('social-metrics: account fetch failed', { accountId: acct.id, platform: acct.platform, error: errorMessage(e) })
@@ -83,7 +118,7 @@ export default defineEventHandler(async (event) => {
     if (provider.fetchPostMetrics && targets.length) {
       const pending = new Set(targets.map(target => JSON.stringify([target.postId, target.platformPostId])))
       try {
-        const metrics = await provider.fetchPostMetrics({ accountId: acct.platform_account_id, accessToken: acct.access_token, posts: targets })
+        const metrics = await provider.fetchPostMetrics({ accountId: acct.platform_account_id, accessToken, posts: targets })
         for (const metric of metrics) {
           const key = JSON.stringify([metric.postId, metric.platformPostId])
           if (!pending.has(key)) continue
@@ -103,6 +138,7 @@ export default defineEventHandler(async (event) => {
     accountsSynced,
     unsupportedProviders,
     accountFailures,
+    accountPartialFailures,
     postTargetsDiscovered,
     postsSynced,
     postFailures
@@ -115,7 +151,7 @@ export default defineEventHandler(async (event) => {
 function metricsSyncHealth(input: Omit<MetricsSyncHealth, 'status'>): MetricsSyncHealth {
   const status: MetricsSyncHealth['status'] = input.accountFailures > 0 || input.postFailures > 0
     ? 'critical'
-    : input.unsupportedProviders > 0 ? 'warning' : 'healthy'
+    : input.unsupportedProviders > 0 || input.accountPartialFailures > 0 ? 'warning' : 'healthy'
   return { status, ...input }
 }
 

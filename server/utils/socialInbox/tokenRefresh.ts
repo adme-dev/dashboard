@@ -26,6 +26,8 @@ export interface SocialInboxTokenAccount {
 
 interface SocialInboxTokenDb {
   execute(sql: string, params?: unknown[]): Promise<number>
+  /** Used to re-read the row when a concurrent reconnect/refresh won the write race. */
+  queryOne?<T = unknown>(sql: string, params?: unknown[]): Promise<T | null>
 }
 
 interface GoogleBusinessOAuthConfig {
@@ -44,6 +46,8 @@ interface RefreshTokenResponse {
   access_token: string
   refresh_token?: string
   expires_in?: number
+  /** LinkedIn: remaining lifetime of the (non-rotating) refresh token, in seconds. */
+  refresh_token_expires_in?: number
 }
 
 type OAuthRefreshFn = (
@@ -130,39 +134,62 @@ export async function resolveSocialAccountAccessToken({
   try {
     refreshed = await adapter.refresh(account.refresh_token, adapter.clientIdOrKey, adapter.clientSecret)
   } catch (error: unknown) {
-    await recordTokenRefreshFailure(db, account.id, `${adapter.label} token refresh failed: ${errorMessage(error)}`.slice(0, 500))
+    await recordTokenRefreshFailure(db, account, `${adapter.label} token refresh failed: ${errorMessage(error)}`.slice(0, 500))
     throw error
   }
 
   const refreshToken = refreshed.refresh_token || account.refresh_token
   const expiresAt = resolveTokenExpiry(now(), refreshed)
 
-  await db.execute(
+  // Compare-and-set on the token we started from: if the account was reconnected (or refreshed
+  // by another worker) while we awaited the provider, never overwrite the newer grant.
+  const updated = await db.execute(
     `UPDATE social_accounts
        SET access_token = $2,
            refresh_token = $3,
            token_expires_at = $4,
            last_error = NULL,
            updated_at = NOW()
-     WHERE id = $1`,
-    [account.id, refreshed.access_token, refreshToken, expiresAt]
+     WHERE id = $1 AND access_token = $5`,
+    [account.id, refreshed.access_token, refreshToken, expiresAt, account.access_token]
   )
+
+  if (updated === 0) {
+    const current = await db.queryOne?.<{ access_token: string | null }>(
+      `SELECT access_token FROM social_accounts WHERE id = $1`,
+      [account.id]
+    )
+    return current?.access_token || refreshed.access_token
+  }
+
+  if (refreshed.refresh_token_expires_in) {
+    // metadata is JSONB; record when the refresh token itself lapses so health checks can warn.
+    await db.execute(
+      `UPDATE social_accounts
+          SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+        WHERE id = $1`,
+      [account.id, JSON.stringify({
+        refreshTokenExpiresAt: new Date(now() + refreshed.refresh_token_expires_in * 1000).toISOString()
+      })]
+    )
+  }
 
   return refreshed.access_token
 }
 
 async function recordTokenRefreshFailure(
   db: ResolveSocialInboxAccessTokenInput['db'],
-  accountId: string,
+  account: SocialInboxTokenAccount,
   message: string
 ) {
   try {
+    // Same compare-and-set: a failure on a stale grant must not flag a freshly reconnected row.
     await db.execute(
       `UPDATE social_accounts
           SET last_error = $2,
               updated_at = NOW()
-        WHERE id = $1`,
-      [accountId, message]
+        WHERE id = $1 AND access_token = $3`,
+      [account.id, message, account.access_token]
     )
   } catch {
     // Preserve the original provider refresh failure for the caller.
