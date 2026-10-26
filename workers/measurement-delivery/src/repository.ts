@@ -1,3 +1,6 @@
+import { GOOGLE_CREDENTIAL_PROFILE_JOIN, type GoogleRefreshCredentialRow } from '../../../shared/utils/googleRefreshCredential'
+import { createGoogleRefreshTokenResolver } from './credential'
+
 import type {
   MeasurementDeliveryClaim,
   MeasurementDeliveryMessage,
@@ -13,10 +16,11 @@ interface TransactionClient {
 }
 
 interface RepositoryDeps {
+  resolveRefreshToken?: (row: GoogleRefreshCredentialRow) => Promise<string | null>
   transaction: <T>(callback: (db: TransactionClient) => Promise<T>) => Promise<T>
 }
 
-interface DeliveryRow {
+interface DeliveryRow extends GoogleRefreshCredentialRow {
   delivery_id: string
   destination_id: string
   attempt_count: number | string
@@ -208,6 +212,9 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
                   dest.credential_ref,
                   sc.account_id,
                   sc.refresh_token,
+                  sc.google_credential_profile_id,
+                  gcp.refresh_token_encrypted AS profile_refresh_token_encrypted,
+                  gcp.refresh_token_iv AS profile_refresh_token_iv,
                   sc.scopes,
                   sc.metadata
              FROM conversion_deliveries d
@@ -258,6 +265,7 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
                 WHEN dest.platform = 'meta' THEN 'meta'
                 ELSE 'google'
               END
+             ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
             WHERE d.client_id = $1
               AND d.event_id = $2
               AND (
@@ -296,7 +304,10 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
         if (!Number.isInteger(attemptNumber) || attemptNumber < 1) {
           throw new Error('Measurement delivery attempt was not claimed')
         }
-        return mapClaim(message.clientId, row, attemptNumber)
+        const refreshToken = row.platform === 'google_data_manager'
+          ? await (deps.resolveRefreshToken ?? createGoogleRefreshTokenResolver())(row)
+          : row.refresh_token
+        return mapClaim(message.clientId, { ...row, refresh_token: refreshToken }, attemptNumber)
       })
     },
 

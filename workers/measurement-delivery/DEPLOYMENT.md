@@ -24,14 +24,25 @@ From `workers/measurement-delivery/`:
 ```sh
 pnpm exec wrangler secret put GOOGLE_CLIENT_ID
 pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET
+pnpm exec wrangler secret put REPO_TOKEN_ENCRYPTION_KEY
 ```
 
 Do not place OAuth tokens, refresh tokens, app secrets, or database URLs in
 `wrangler.toml`.
 
-Google Data Manager uses the tenant-scoped Google refresh grant in
-`social_connections`, and the Worker refreshes a short-lived access token only
-after verifying the `https://www.googleapis.com/auth/datamanager` scope.
+Google Data Manager resolves the refresh grant through the active, tenant-scoped
+`social_connections` row. Direct OAuth connections use their refresh token;
+delegated connections use the linked active `google_credential_profiles` record,
+with the same selection policy as Pages provider tests. An unavailable or invalid
+profile never falls back to a legacy token. Both queue delivery and scheduled
+request diagnostics use this resolver.
+
+`REPO_TOKEN_ENCRYPTION_KEY` must be the existing Pages AES-256-GCM encryption key
+for those database profile tokens; generating a different key will not decrypt
+them. Supply it securely to this Worker before activating delegated delivery.
+The key is not needed for direct OAuth or Meta/GA4 delivery. The Worker refreshes
+a short-lived Google access token only after verifying the
+`https://www.googleapis.com/auth/datamanager` scope.
 
 Meta CAPI does **not** use the linked Facebook OAuth token. Generate a
 dataset-specific CAPI access token in Meta Events Manager and provision the same
@@ -72,6 +83,24 @@ binding.
    gain the new scope automatically.
 9. Validate in test mode, record provider request IDs/diagnostics, obtain privacy
    and live approvals, and only then activate one client at a time.
+
+## Delegated credential fix release
+
+This fix targets the standalone `measurement-delivery-worker`, not a Pages-only
+release. After reconciling the reviewed source with current `origin/main`, run:
+
+```sh
+pnpm --dir workers/measurement-delivery typecheck
+pnpm --dir workers/measurement-delivery deploy:dry-run
+pnpm --dir workers/measurement-delivery deploy
+```
+
+Record the source commit and Worker version/deployment ID. Verify an authorized
+Google event through both provider acceptance and the later diagnostic result;
+a successful dormant provider test alone does not verify the Worker. If previous
+attempts already failed with `google_credential_missing`, preserve their audit
+records and explicitly assess recovery; this code change does not reset terminal
+deliveries or replay events automatically.
 
 ## Verification and rollback
 
