@@ -261,6 +261,40 @@ describe('managed checkpoint timing and artifact reads', () => {
     expect(pulls).toBe(2)
     expect(cancel).toHaveBeenCalledOnce()
   })
+  it('releases a claim when a body reader cannot open so waiting siblings settle with the original error', async () => {
+    const real = await realArtifacts(10, 254_000)
+    const readerError = new Error('reader unavailable')
+    const get = vi.fn(async (key: string) => key.split('/')[4] === 'component-00'
+      ? { size: 254_000, body: { getReader() { throw readerError }, cancel: async () => {} } }
+      : await real.get(key))
+    const f = fixture(real.pins)
+    useRealStorage(f, get)
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const run = coordinateCmsGraphCheckpoint(f.input, f.principal)
+    run.catch(() => {})
+    expect(await Promise.race([run.then(() => 'settled', () => 'settled'), delay(2_000).then(() => 'hung')])).toBe('settled')
+    await expect(run).rejects.toBe(readerError)
+    expect(real.meter.openBodies).toBe(0)
+  })
+  it('never leaves a claim waiting when every holder fails mid-stream', async () => {
+    const pins = (await realArtifacts(12, 254_000)).pins
+    const streamError = new Error('stream interrupted')
+    const get = vi.fn(async () => ({ size: 254_000, body: new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        await delay(5)
+        controller.error(streamError)
+      }
+    }, { highWaterMark: 0 }) }))
+    const f = fixture(pins)
+    useRealStorage(f, get)
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const run = coordinateCmsGraphCheckpoint(f.input, f.principal)
+    run.catch(() => {})
+    expect(await Promise.race([run.then(() => 'settled', () => 'settled'), delay(2_000).then(() => 'hung')])).toBe('settled')
+    await expect(run).rejects.toBe(streamError)
+  })
   it('runs bounded reads with at least one worker for a non-positive limit', async () => {
     const read = vi.fn(async (value: number) => value * 2)
     expect(await readBounded([1, 2, 3], 0, read)).toEqual([2, 4, 6])

@@ -70,9 +70,10 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
       throw error
     }
     const limit = artifact ? claimed : object.size ?? max
-    const reader = object.body.getReader(), chunks: Uint8Array[] = []
-    let size = 0
+    const chunks: Uint8Array[] = []
+    let size = 0, reader: ReadableStreamDefaultReader<Uint8Array> | undefined
     try {
+      reader = object.body.getReader()
       while (true) {
         const part = await reader.read()
         if (part.done) break
@@ -81,10 +82,10 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
         chunks.push(part.value)
       }
     } catch (error) {
-      await reader.cancel().catch(() => {})
+      await (reader ?? object.body).cancel().catch(() => {})
       if (artifact) settleArtifactClaim(claimed, claimed)
       throw error
-    } finally { reader.releaseLock() }
+    } finally { reader?.releaseLock() }
     if (artifact) settleArtifactClaim(claimed, size)
     if (object.size !== undefined && object.size !== size) throw failed()
     const all = new Uint8Array(size)
