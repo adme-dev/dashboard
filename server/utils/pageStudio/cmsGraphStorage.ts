@@ -11,6 +11,15 @@ import type { CmsPreparationReader } from './cmsCommits'
 const scopedId = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
 const storedObject = z.object({ pin: CmsObjectPinSchema, body: z.unknown(), schema: CmsObjectPinSchema.nullable(), actorId: z.string(), createdAt: z.string(), head: z.boolean() }).strict()
 const failed = () => new Error('Managed graph storage bytes unavailable or inconsistent')
+const ARTIFACT_BYTE_BUDGET = 2_000_000
+/** Cancel without awaiting: cleanup must never keep a failed read from settling. */
+function abandon(stream: { cancel(): Promise<unknown> }) {
+  try {
+    stream.cancel().catch(() => {})
+  } catch {
+    // A body that cannot even start cancelling has nothing left to release.
+  }
+}
 async function sha256(raw: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))), byte => byte.toString(16).padStart(2, '0')).join('')
 }
@@ -34,24 +43,27 @@ export function createCmsGraphStorage(env: Record<string, unknown>, snapshot: Pi
     const object = await bucket.get(key)
     if (!object) throw failed()
     if (object.size !== undefined && (object.size < 1 || object.size > max)) {
-      await object.body.cancel().catch(() => {})
+      abandon(object.body)
       throw failed()
     }
-    const reader = object.body.getReader(), chunks: Uint8Array[] = []
-    let size = 0
+    const limit = Math.min(object.size ?? max, max), chunks: Uint8Array[] = []
+    let size = 0, reader: ReadableStreamDefaultReader<Uint8Array> | undefined
     try {
+      reader = object.body.getReader()
       while (true) {
         const part = await reader.read()
         if (part.done) break
         size += part.value.byteLength
+        // Charged per chunk exactly as sequential reads were, so acceptance is unchanged. With
+        // concurrent reads, memory can briefly exceed the budget by at most one in-hand chunk per read.
         if (artifact) artifactBytes += part.value.byteLength
-        if (size > max || artifactBytes > 2_000_000) throw failed()
+        if (size > limit || artifactBytes > ARTIFACT_BYTE_BUDGET) throw failed()
         chunks.push(part.value)
       }
     } catch (error) {
-      await reader.cancel().catch(() => {})
+      abandon(reader ?? object.body)
       throw error
-    } finally { reader.releaseLock() }
+    } finally { reader?.releaseLock() }
     if (object.size !== undefined && object.size !== size) throw failed()
     const all = new Uint8Array(size)
     let offset = 0
