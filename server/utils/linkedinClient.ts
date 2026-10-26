@@ -5,6 +5,7 @@
  */
 
 import { ofetch } from 'ofetch'
+import { createError } from 'h3'
 import { LINKEDIN_API_VERSION } from '~~/server/utils/linkedinApiVersion'
 
 export const LINKEDIN_API_BASE = 'https://api.linkedin.com/rest'
@@ -50,7 +51,7 @@ export function getLinkedInAuthUrl(clientId: string, redirectUri: string, state:
     client_id: clientId,
     redirect_uri: redirectUri,
     state,
-    scope: 'r_ads,r_ads_reporting',
+    scope: 'r_ads r_ads_reporting',
   })
   return `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
 }
@@ -126,30 +127,59 @@ export async function refreshLinkedInToken(
   }
 }
 
+/** Refresh expiring Ads credentials and persist rotation before making API calls. */
+export async function ensureLinkedInAccessToken(
+  connection: {
+    id: string
+    access_token: string
+    refresh_token: string | null
+    token_expires_at: string | Date | null
+  },
+  config: { linkedinClientId: string; linkedinClientSecret: string }
+): Promise<string> {
+  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : null
+  if (expiresAt === null || expiresAt > Date.now() + 5 * 60 * 1000) return connection.access_token
+
+  if (!connection.refresh_token) {
+    if (expiresAt > Date.now()) return connection.access_token
+    throw createError({ statusCode: 401, statusMessage: 'LinkedIn token expired. Please reconnect.' })
+  }
+  if (!config.linkedinClientId || !config.linkedinClientSecret) {
+    throw createError({ statusCode: 500, statusMessage: 'LinkedIn app credentials not configured' })
+  }
+
+  const refreshed = await refreshLinkedInToken(connection.refresh_token, config.linkedinClientId, config.linkedinClientSecret)
+  const { queryOne } = await import('~~/server/utils/db')
+  // Only persist over the grant we read: a reconnect that landed mid-refresh wins.
+  const updated = await queryOne<{ id: string }>(
+    `UPDATE social_connections SET access_token = $1, refresh_token = COALESCE($2, refresh_token), token_expires_at = $3, updated_at = NOW() WHERE id = $4 AND access_token = $5 RETURNING id`,
+    [refreshed.access_token, refreshed.refresh_token || null, new Date(Date.now() + refreshed.expires_in * 1000), connection.id, connection.access_token]
+  )
+  if (updated) return refreshed.access_token
+  const current = await queryOne<{ access_token: string }>(
+    `SELECT access_token FROM social_connections WHERE id = $1`,
+    [connection.id]
+  )
+  return current?.access_token || refreshed.access_token
+}
+
 // ============================================
 // Ad Account Endpoints
 // ============================================
 
 /**
  * Get ad accounts accessible by the token.
- * Uses LinkedIn REST API v2 with versioned headers.
+ * Uses the versioned REST API and Rest.li 2.0 cursor-based search.
  */
 export async function getLinkedInAdAccounts(accessToken: string): Promise<LinkedInAdAccount[]> {
-  const res = await linkedinFetch<{
-    elements: Array<{
-      id: number | string
-      name: string
-      currency: string
-      status: string
-    }>
-  }>(`${LINKEDIN_API_BASE}/adAccounts`, accessToken, {
-    q: 'search',
-    'search.status.values[0]': 'ACTIVE',
-    'search.status.values[1]': 'DRAFT',
-    count: 100,
-  })
+  const accounts = await linkedinSearch<{
+    id: number | string
+    name: string
+    currency: string
+    status: string
+  }>(`${LINKEDIN_API_BASE}/adAccounts`, accessToken, '(status:(values:List(ACTIVE,DRAFT)))')
 
-  return (res.elements || []).map(a => ({
+  return accounts.map(a => ({
     id: String(a.id),
     name: a.name,
     currency: a.currency || 'USD',
@@ -191,19 +221,14 @@ export async function getLinkedInCampaignInsights(
     q: 'analytics',
     pivot: 'CAMPAIGN',
     timeGranularity: 'MONTHLY',
-    'dateRange.start.year': startYear,
-    'dateRange.start.month': startMonth,
-    'dateRange.start.day': startDay,
-    'dateRange.end.year': endYear,
-    'dateRange.end.month': endMonth,
-    'dateRange.end.day': endDay,
-    accounts: `urn:li:sponsoredAccount:${accountId}`,
-    fields: 'costInLocalCurrency,impressions,clicks,externalWebsiteConversions',
+    dateRange: `(start:(year:${startYear},month:${startMonth},day:${startDay}),end:(year:${endYear},month:${endMonth},day:${endDay}))`,
+    accounts: `List(${encodeRestliValue(`urn:li:sponsoredAccount:${accountId}`)})`,
+    fields: 'costInLocalCurrency,impressions,clicks,externalWebsiteConversions,pivotValues,dateRange',
   })
 
   // Fetch campaign names in bulk
   const campaignIds = (res.elements || []).map(e => extractCampaignId(e.pivotValues))
-  const campaignNames = await fetchCampaignNames(accessToken, campaignIds)
+  const campaignNames = await fetchCampaignNames(accountId, accessToken, campaignIds)
 
   return (res.elements || []).map(item => {
     const campaignId = extractCampaignId(item.pivotValues)
@@ -249,19 +274,14 @@ export async function getLinkedInCampaignDailyInsights(
     q: 'analytics',
     pivot: 'CAMPAIGN',
     timeGranularity: 'DAILY',
-    'dateRange.start.year': startYear,
-    'dateRange.start.month': startMonth,
-    'dateRange.start.day': startDay,
-    'dateRange.end.year': endYear,
-    'dateRange.end.month': endMonth,
-    'dateRange.end.day': endDay,
-    accounts: `urn:li:sponsoredAccount:${accountId}`,
-    fields: 'costInLocalCurrency,impressions,clicks,externalWebsiteConversions',
+    dateRange: `(start:(year:${startYear},month:${startMonth},day:${startDay}),end:(year:${endYear},month:${endMonth},day:${endDay}))`,
+    accounts: `List(${encodeRestliValue(`urn:li:sponsoredAccount:${accountId}`)})`,
+    fields: 'costInLocalCurrency,impressions,clicks,externalWebsiteConversions,pivotValues,dateRange',
   })
 
   // Fetch campaign names in bulk
   const campaignIds = [...new Set((res.elements || []).map(e => extractCampaignId(e.pivotValues)))]
-  const campaignNames = await fetchCampaignNames(accessToken, campaignIds)
+  const campaignNames = await fetchCampaignNames(accountId, accessToken, campaignIds)
 
   return (res.elements || []).map(item => {
     const campaignId = extractCampaignId(item.pivotValues)
@@ -288,28 +308,31 @@ export async function getLinkedInCampaignDailyInsights(
 /**
  * LinkedIn API fetch wrapper with rate-limit handling.
  * LinkedIn uses Bearer token and requires versioned headers.
- * Rate limit: 100 calls/day/member.
+ * Query values contain Rest.li syntax; encode data values before passing them.
  */
 async function linkedinFetch<T>(
   url: string,
   token: string,
-  query: Record<string, any>,
+  query: Record<string, string | number>,
   retries = 3
 ): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await ofetch<T>(url, {
+      // Preserve List/record delimiters and already-encoded URNs. Passing query
+      // to ofetch (or URLSearchParams) would serialize these a second time.
+      const queryString = Object.entries(query).map(([key, value]) => `${key}=${value}`).join('&')
+      return await ofetch<T>(`${url}?${queryString}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-Restli-Protocol-Version': '2.0.0',
           'LinkedIn-Version': LINKEDIN_API_VERSION,
         },
-        query,
+        retry: 0, // This wrapper owns rate-limit/server-error retries.
       })
     } catch (err: any) {
       const status = err?.status || err?.statusCode
-      if ((status === 429 || status === 500) && attempt < retries) {
+      if ((status === 429 || (status >= 500 && status <= 504)) && attempt < retries) {
         const delay = Math.pow(2, attempt + 1) * 1000
         await new Promise(resolve => setTimeout(resolve, delay))
         continue
@@ -318,6 +341,32 @@ async function linkedinFetch<T>(
     }
   }
   throw new Error('LinkedIn API: max retries exceeded')
+}
+
+/** Encode data only, including characters reserved by Rest.li's grammar. */
+function encodeRestliValue(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
+}
+
+// Guards against a cursor that never terminates (repeated or endless tokens).
+const LINKEDIN_SEARCH_MAX_PAGES = 50
+
+async function linkedinSearch<T>(url: string, token: string, search: string): Promise<T[]> {
+  const elements: T[] = []
+  const seenTokens = new Set<string>()
+  let pageToken: string | undefined
+  for (let page = 0; page < LINKEDIN_SEARCH_MAX_PAGES; page++) {
+    const res = await linkedinFetch<{ elements?: T[]; metadata?: { nextPageToken?: string } }>(url, token, {
+      q: 'search', search, pageSize: 100,
+      ...(pageToken ? { pageToken: encodeRestliValue(pageToken) } : {}),
+    })
+    const pageElements = res.elements || []
+    elements.push(...pageElements)
+    pageToken = res.metadata?.nextPageToken
+    if (!pageToken || !pageElements.length || seenTokens.has(pageToken)) break
+    seenTokens.add(pageToken)
+  }
+  return elements
 }
 
 /**
@@ -334,27 +383,25 @@ function extractCampaignId(pivotValues: string[]): string {
  * Fetch campaign names in bulk from LinkedIn Campaigns API.
  */
 async function fetchCampaignNames(
+  accountId: string,
   accessToken: string,
   campaignIds: string[]
 ): Promise<Map<string, string>> {
   const names = new Map<string, string>()
   if (!campaignIds.length) return names
 
-  // LinkedIn supports batch GET via IDs parameter
+  // Search IDs are sponsoredCampaign URNs. Bound each query's URL length and
+  // use the account-scoped campaign endpoint required by current versions.
   try {
-    const res = await linkedinFetch<{
-      elements: Array<{
-        id: number | string
-        name: string
-      }>
-    }>(`${LINKEDIN_API_BASE}/adCampaigns`, accessToken, {
-      q: 'search',
-      'search.id.values': campaignIds,
-      count: 1000,
-    })
-
-    for (const c of res.elements || []) {
-      names.set(String(c.id), c.name)
+    const ids = [...new Set(campaignIds.filter(Boolean))]
+    for (let offset = 0; offset < ids.length; offset += 50) {
+      const urns = ids.slice(offset, offset + 50).map(id => encodeRestliValue(`urn:li:sponsoredCampaign:${id}`))
+      const campaigns = await linkedinSearch<{ id: number | string; name: string }>(
+        `${LINKEDIN_API_BASE}/adAccounts/${encodeRestliValue(accountId)}/adCampaigns`,
+        accessToken,
+        `(id:(values:List(${urns.join(',')})))`
+      )
+      for (const c of campaigns) names.set(String(c.id), c.name)
     }
   } catch {
     // Graceful degradation — campaign names are non-critical
