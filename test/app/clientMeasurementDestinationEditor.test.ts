@@ -22,11 +22,11 @@ const stubs = {
   },
   USelect: {
     inheritAttrs: false,
-    props: ['modelValue', 'items', 'disabled', 'placeholder', 'valueKey'],
+    props: { modelValue: null, items: null, disabled: null, placeholder: null, valueKey: null, multiple: Boolean },
     emits: ['update:modelValue'],
-    template: `<select v-bind="$attrs" :value="modelValue" :disabled="disabled" @change="$emit('update:modelValue', $event.target.value)">
-      <option v-if="placeholder" value="">{{ placeholder }}</option>
-      <option v-for="item in items" :key="item[valueKey || 'value']" :value="item[valueKey || 'value']">{{ item.label }}</option>
+    template: `<select v-bind="$attrs" v-bind="multiple ? {} : { value: modelValue }" :multiple="multiple" :disabled="disabled" @change="$emit('update:modelValue', multiple ? Array.from($event.target.options).filter(option => option.selected).map(option => option.value) : $event.target.value)">
+      <option v-if="placeholder && !multiple" value="">{{ placeholder }}</option>
+      <option v-for="item in items" :key="item[valueKey || 'value']" :value="item[valueKey || 'value']" :selected="multiple && modelValue.includes(item[valueKey || 'value'])">{{ item.label }}</option>
     </select>`
   },
   UInput: {
@@ -68,6 +68,11 @@ function select(element: HTMLSelectElement, value: string) {
 
 function check(element: HTMLInputElement) {
   element.checked = true
+  element.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function selectMultiple(element: HTMLSelectElement, values: string[]) {
+  for (const option of Array.from(element.options)) option.selected = values.includes(option.value)
   element.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
@@ -339,7 +344,7 @@ describe('ClientMeasurementDestinationEditor', () => {
               mode: 'google_data_manager',
               managementOrigin: 'zero'
             })],
-            mappings: [expect.objectContaining({ canonicalEventName: 'web_conversion' })]
+            mappings: [expect.objectContaining({ canonicalEventName: 'web_conversion', enquiryType: null })]
           })
         })
       })
@@ -486,6 +491,15 @@ describe('ClientMeasurementDestinationEditor', () => {
       input(host.querySelector<HTMLInputElement>('[data-testid="measurement-credential-ref"]')!, 'MEASUREMENT_PROVIDER_GA4_FERNTREE')
       await nextTick()
       expect(save.disabled).toBe(false)
+      const enquiryTypes = host.querySelector<HTMLSelectElement>('[data-testid="measurement-ga4-enquiry-types"]')!
+      expect(Array.from(enquiryTypes.options).filter(option => option.selected).map(option => option.value)).toEqual(['untyped'])
+      expect(host.textContent).toContain('Untyped matches only enquiries without a type')
+      selectMultiple(enquiryTypes, [])
+      await nextTick()
+      expect(save.disabled).toBe(true)
+      selectMultiple(enquiryTypes, ['stock', 'contact', 'model_variant'])
+      await nextTick()
+      expect(save.disabled).toBe(false)
       save.click()
       await flushUi()
 
@@ -506,12 +520,12 @@ describe('ClientMeasurementDestinationEditor', () => {
               canZeroMutate: true,
               blockingReason: null
             }],
-            mappings: [{
+            mappings: ['stock', 'contact', 'model_variant'].map(enquiryType => ({
               canonicalEventName: 'web_conversion',
-              enquiryType: null,
+              enquiryType,
               providerEventName: 'purchase',
               isActive: true
-            }]
+            }))
           }
         }
       })
@@ -520,6 +534,21 @@ describe('ClientMeasurementDestinationEditor', () => {
         ...body, clientId: CLIENT_ID, actor: { type: 'team_member', id: 'operator' }
       }).success).toBe(true)
       expect(JSON.stringify(body)).not.toContain('raw-provider-secret')
+      // Null is an independent exact match, and may coexist with explicitly typed events.
+      selectMultiple(enquiryTypes, ['untyped', 'contact'])
+      await nextTick()
+      save.click()
+      await flushUi()
+      const latestBody = fetchMock.mock.calls.filter(([url]) => url.endsWith('/destinations')).at(-1)![1]!.body as {
+        destination: { mappings: Array<{ canonicalEventName: string, enquiryType: string | null, providerEventName: string, isActive: boolean }> }
+      }
+      expect(latestBody.destination.mappings).toEqual([
+        { canonicalEventName: 'web_conversion', enquiryType: null, providerEventName: 'purchase', isActive: true },
+        { canonicalEventName: 'web_conversion', enquiryType: 'contact', providerEventName: 'purchase', isActive: true }
+      ])
+      expect(CreateConversionDestinationConfigurationSchema.safeParse({
+        ...latestBody, clientId: CLIENT_ID, actor: { type: 'team_member', id: 'operator' }
+      }).success).toBe(true)
     } finally {
       app.unmount()
       host.remove()
