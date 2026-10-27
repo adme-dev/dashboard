@@ -9,7 +9,9 @@ describe('singleEmailAddress', () => {
   it.each([
     '', 'jane', 'jane@acme', 'a,b@acme.co', 'a;b@acme.co', 'a:b@acme.co', '@acme.co', 'jane@@acme.co', 'a@b.co,c@d.co', 'a@b.co c@d.co',
     'Jane <jane@acme.co>', '"jane"@acme.co', 'jane@acme.co\r\nBcc: x@y.co',
-    `${'a'.repeat(250)}@b.co`
+    `${'a'.repeat(250)}@b.co`, `${'a'.repeat(65)}@b.co`,
+    'a..b@example.com', '.a@example.com', 'a.@example.com', 'a@-invalid.example', 'a@invalid-.example',
+    'a@example..com', 'a\u0000b@example.com', 'a@exa\u0000mple.com', 'a\u0085@example.com'
   ])('rejects %j', (value) => {
     expect(singleEmailAddress(value)).toBeNull()
   })
