@@ -1,0 +1,152 @@
+{
+  "scope": "One explicitly approved labelled operator contact enquiry. Exact native-to-GA4 delivery proved; no paid-ad attribution claim.",
+  "approval": "User replied approve to the disclosed single Northern Nissan operator enquiry using Paul Giurin / paul@adme.net.au, analytics consent, no sales follow-up.",
+  "testReference": "ITA-NISSAN-QA-20261027",
+  "acceptance": {
+    "at": "2026-10-27T06:27:53.658831+00:00",
+    "url": "https://www.northernnissan.com.au/api/enquiries",
+    "method": "POST",
+    "status": 200,
+    "completed": true,
+    "request": {
+      "event_id": "2b114ae1-a543-4fd2-8b34-5e89ad5f0540",
+      "source": "contact_form_block",
+      "category": "general_enquiry"
+    },
+    "response": {
+      "success": true,
+      "enquiry": {
+        "id": "78bd3a51-21a7-4bfa-aee6-6b84da76597c",
+        "dealer_id": "fda2904a-5c22-4adc-8611-ae8e8463a04c",
+        "created_at": "2026-10-27 06:27:04.426255+00",
+        "source": "contact_form_block",
+        "category": "general_enquiry",
+        "status": "new"
+      },
+      "conversion": {
+        "type": "contact_us",
+        "transactionId": "enquiry-78bd3a51-21a7-4bfa-aee6-6b84da76597c"
+      }
+    }
+  },
+  "native": {
+    "at": "2026-10-27T06:30:23.254Z",
+    "rows": [
+      {
+        "id": "26bc529c-068f-4249-b583-f9c5309750a8",
+        "event_id": "2b114ae1-a543-4fd2-8b34-5e89ad5f0540",
+        "event_type": "lead",
+        "created_at": "2026-10-27T06:27:10.091783+00:00",
+        "ga4_sent": true,
+        "ga4_sent_at": "2026-10-27T06:27:09.955+00:00",
+        "ga4_error": null,
+        "google_ads_sent": false,
+        "google_ads_error": null,
+        "valid_ga_identity": true
+      }
+    ]
+  },
+  "googleAnalytics": {
+    "verifiedAt": "2026-10-27T06:29:37.415982+00:00",
+    "url": "https://analytics.google.com/analytics/web/?authuser=0#/a100341175p308088672/realtime/overview",
+    "exactEventIdVisible": true,
+    "tableRows": [
+      "2b114ae1-a543-4fd2-8b34-5e89ad5f0540\t1",
+      "generate_lead\t1"
+    ],
+    "propertyId": "308088672"
+  },
+  "campaign": {
+    "observedAt": "2026-10-27T06:30:24.377Z",
+    "campaign": {
+      "results": [
+        {
+          "campaign": {
+            "resourceName": "customers/5253781131/campaigns/21711826789",
+            "status": "ENABLED",
+            "id": "21711826789",
+            "primaryStatus": "ELIGIBLE"
+          },
+          "campaignBudget": {
+            "resourceName": "customers/5253781131/campaignBudgets/13924476861",
+            "amountMicros": "16200000"
+          }
+        }
+      ]
+    },
+    "groups": {
+      "results": [
+        {
+          "assetGroup": {
+            "resourceName": "customers/5253781131/assetGroups/6517324168",
+            "name": "Pmax | inventory",
+            "status": "PAUSED",
+            "id": "6517324168",
+            "primaryStatus": "PAUSED",
+            "primaryStatusReasons": [
+              "ASSET_GROUP_PAUSED"
+            ]
+          }
+        },
+        {
+          "assetGroup": {
+            "resourceName": "customers/5253781131/assetGroups/6527376552",
+            "name": "EOFY - 2024",
+            "status": "PAUSED",
+            "id": "6527376552",
+            "primaryStatus": "PAUSED",
+            "primaryStatusReasons": [
+              "ASSET_GROUP_PAUSED"
+            ]
+          }
+        },
+        {
+          "assetGroup": {
+            "resourceName": "customers/5253781131/assetGroups/6546236223",
+            "name": "2024 Plate Clearance Cash Back",
+            "status": "PAUSED",
+            "id": "6546236223",
+            "primaryStatus": "PAUSED",
+            "primaryStatusReasons": [
+              "ASSET_GROUP_PAUSED"
+            ]
+          }
+        },
+        {
+          "assetGroup": {
+            "resourceName": "customers/5253781131/assetGroups/6695638883",
+            "name": "Convert_PMaxInventory_Brand_Focused",
+            "status": "ENABLED",
+            "id": "6695638883",
+            "primaryStatus": "ELIGIBLE"
+          }
+        }
+      ]
+    }
+  },
+  "sourceReceipt": {
+    "commitSha": "1fdb4a59b7d72d00c2158b0cf94b91ee213fb7e9",
+    "artifactSha256": "c8d418d31aa690a101dc3d151dde0fdb9bbb562681f5056961c6b52426346f3f",
+    "projectName": "dealer-network",
+    "deploymentUrl": "https://d03dab87.dealer-network.pages.dev",
+    "verifiedAt": "2026-10-27T06:13:50.663Z"
+  },
+  "exactHostHealth": {
+    "host": "www.northernnissan.com.au",
+    "observedAt": "2026-10-27T06:28:35.911Z",
+    "status": 200,
+    "health": "healthy",
+    "version": "1fdb4a59b7d72d00c2158b0cf94b91ee213fb7e9"
+  },
+  "consent": {
+    "policyDefaultAllowed": true,
+    "validBrowserGaIdentity": true,
+    "explicitOperatorApproval": true,
+    "manufacturedConsentCookie": false
+  },
+  "limitations": [
+    "Direct-navigation operator test is not a customer enquiry or ad-attributed conversion.",
+    "No ad click was generated or invented and no customer record replayed.",
+    "Privacy footer did not visibly open a panel; consent-controls and blocked-script acceptance are not proved by this test."
+  ]
+}
