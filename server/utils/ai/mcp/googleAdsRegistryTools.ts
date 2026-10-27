@@ -39,7 +39,8 @@ function flagsFor(context: McpProjectionContext): GoogleAdsMcpFlags {
 export function projectGoogleAdsMcpSuite(context: McpProjectionContext): McpToolManifest[] {
   const manifests = projectGoogleAdsTools(
     context.governanceBypass ? 'admin' : context.role,
-    flagsFor(context)
+    flagsFor(context),
+    context.governanceBypass ? undefined : context.permissionGroups
   )
   return manifests.map(manifest => manifest.name === MCP_CONFIRM_TOOL
     ? projectConfirmActionManifest(resolveRegisteredConfirmDescription(context))
@@ -119,7 +120,11 @@ export function resolveGoogleAdsMcpExecutions(
   context: McpProjectionContext
 ): McpExecutionDescriptor[] {
   const flags = flagsFor(context)
-  return projectGoogleAdsTools(context.governanceBypass ? 'admin' : context.role, flags)
+  return projectGoogleAdsTools(
+    context.governanceBypass ? 'admin' : context.role,
+    flags,
+    context.governanceBypass ? undefined : context.permissionGroups
+  )
     .filter(manifest => manifest.name !== MCP_CONFIRM_TOOL)
     .map(manifest => executionDescriptor(manifest, flags))
 }

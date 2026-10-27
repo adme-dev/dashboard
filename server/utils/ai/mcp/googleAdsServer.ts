@@ -30,6 +30,7 @@ import {
   inspectGoogleAdsActionPlanDrift,
   reverifyGoogleAdsActionPlan
 } from '~~/server/utils/googleAds/reverification'
+import { mcpGoogleAdsControlAuthority } from './googleAdsSearchTools'
 import {
   GOOGLE_ADS_PENDING_ACTION,
   type GoogleAdsConfirmDependencies,
@@ -316,24 +317,15 @@ export function buildGoogleAdsMcpToolDependencies(
         })
       }
     }),
-    executeAutomatic: (plan, context) => executeSearchGoogleAdsControlAction(plan, {
-      actorRole: context.userRole,
-      hasWriteScope: true
-    }, flags),
+    executeAutomatic: (plan, context) => executeSearchGoogleAdsControlAction(plan, mcpGoogleAdsControlAuthority(context, true), flags),
     runSearchTermPolicy: (input, context) => runGoogleAdsSearchTermPolicy({
       ...input,
       actorId: context.userId
-    }, {
-      actorRole: context.userRole,
-      hasWriteScope: true
-    }, flags),
+    }, mcpGoogleAdsControlAuthority(context, true), flags),
     runPausePolicy: (input, context) => runGoogleAdsPausePolicy({
       ...input,
       actorId: context.userId
-    }, {
-      actorRole: context.userRole,
-      hasWriteScope: true
-    }, flags),
+    }, mcpGoogleAdsControlAuthority(context, true), flags),
     inspectDrift: (plan, context) => inspectGoogleAdsActionPlanDrift(
       plan, context.userId
     ),
@@ -355,9 +347,6 @@ export function buildGoogleAdsConfirmDependencies(
       actorId: plan.actorId,
       approvalId
     }),
-    executeConfirmed: (plan, context) => executeSearchGoogleAdsControlAction(plan, {
-      actorRole: context.userRole,
-      hasWriteScope: true
-    }, flags)
+    executeConfirmed: (plan, context) => executeSearchGoogleAdsControlAction(plan, mcpGoogleAdsControlAuthority(context, true), flags)
   }
 }

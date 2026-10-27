@@ -1,11 +1,11 @@
 import { z } from 'zod'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import {
   GoogleAdsActionPlanSchema,
   type GoogleAdsActionPlan
 } from '~~/server/utils/googleAds/contracts'
-import type { McpToolManifest } from './project'
+import { hasMcpPermission, mcpContextHasPermission, type McpToolManifest } from './project'
 import {
   getGoogleAdsSearchPlanningToolSchema,
   googleAdsSearchPlanningTools,
@@ -299,8 +299,12 @@ export function getGoogleAdsToolSchema(name: string): z.ZodType | null {
   return null
 }
 
-export function projectGoogleAdsTools(role: string, flags: GoogleAdsMcpFlags): McpToolManifest[] {
-  if (!roleHasPermission(role, 'MEDIA_BUYING')) return []
+export function projectGoogleAdsTools(
+  role: string,
+  flags: GoogleAdsMcpFlags,
+  permissionGroups?: readonly PermissionGroup[]
+): McpToolManifest[] {
+  if (!hasMcpPermission(role, 'MEDIA_BUYING', permissionGroups)) return []
   const projected: McpToolManifest[] = []
   if (flags.read) projected.push(...googleAdsReadTools)
   if (flags.write) {
@@ -352,6 +356,22 @@ export type GoogleAdsMcpToolOutcome
   = | { ok: true, data: unknown }
     | { ok: false, error: string, code: 'not_found' | 'forbidden' | 'disabled' | 'bad_args' | 'blocked' | 'automation_disabled' | 'destructive_disabled' | 'invalid_state' | 'validation_failed' | 'handler_error' }
 
+/**
+ * Fresh MCP staff: a stored plan's risk tier needs the CURRENT group the Google Ads policy demands for it
+ * (destructive → ADMIN, rich_confirm → MANAGEMENT). Checked before a plan is proposed or approved, so a
+ * plan created before a custom role revoked that group cannot be carried forward. Owner God mode and
+ * legacy contexts are authorized by the role-derived policy downstream, unchanged.
+ */
+export function mcpGoogleAdsRiskTierPermitted(
+  context: Pick<ToolContext, 'userRole' | 'permissionGroups' | 'mcpStaffAuthority'>,
+  riskTier: GoogleAdsActionPlan['riskTier']
+): boolean {
+  if (context.mcpStaffAuthority !== 'fresh') return true
+  if (riskTier === 'destructive_confirm') return mcpContextHasPermission(context, 'ADMIN')
+  if (riskTier === 'rich_confirm') return mcpContextHasPermission(context, 'MANAGEMENT')
+  return true
+}
+
 function validationPassed(validation: unknown): boolean {
   return Boolean(validation && typeof validation === 'object'
     && (validation as { valid?: unknown }).valid === true)
@@ -367,7 +387,7 @@ export async function executeGoogleAdsTool(
   if (!isGoogleAdsToolName(name)) {
     return { ok: false, error: `Unknown Google Ads tool: ${name}`, code: 'not_found' }
   }
-  if (!roleHasPermission(context.userRole, 'MEDIA_BUYING')) {
+  if (!mcpContextHasPermission(context, 'MEDIA_BUYING')) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
@@ -494,6 +514,9 @@ export async function executeGoogleAdsTool(
         code: 'destructive_disabled'
       }
     }
+    if (!mcpGoogleAdsRiskTierPermitted(context, plan.riskTier)) {
+      return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+    }
 
     if (plan.executionMode === 'automatic') {
       if (!flags.automation) {
@@ -554,7 +577,7 @@ export async function dispatchGoogleAdsConfirm(
   if (!flags.write) {
     return { ok: false, error: 'Google Ads write tools are not enabled over MCP.', code: 'forbidden' }
   }
-  if (!roleHasPermission(context.userRole, 'MEDIA_BUYING')) {
+  if (!mcpContextHasPermission(context, 'MEDIA_BUYING')) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
@@ -575,6 +598,9 @@ export async function dispatchGoogleAdsConfirm(
     }
     if (plan.riskTier === 'destructive_confirm' && !flags.destructive) {
       return { ok: false, error: 'Permanent Google Ads removal is not enabled.', code: 'forbidden' }
+    }
+    if (!mcpGoogleAdsRiskTierPermitted(context, plan.riskTier)) {
+      return { ok: false, error: 'Not permitted.', code: 'forbidden' }
     }
     if ((plan.riskTier === 'rich_confirm' || plan.riskTier === 'destructive_confirm') && !acknowledged) {
       return { ok: false, error: 'This Google Ads action requires explicit ack:true.', code: 'confirm_required' }

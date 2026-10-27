@@ -4,7 +4,7 @@
 // DB boundary only.
 import { randomUUID } from 'crypto'
 import type { MediaProject, MediaTimeline, MediaRenderJob } from '~~/app/types'
-import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { queryOne, queryOneFresh, queryRows, transaction } from '~~/server/utils/db'
 import type { GodModeTransactionDb as Db } from '~~/server/utils/godMode/transactionCoordinator'
 import { computeDuration, type TimelineState } from '~~/server/utils/audio/timelineSchema'
 
@@ -133,6 +133,13 @@ export async function getProjectWithCurrentTimeline(
     timeline = tlRow ? mapTimelineRow(tlRow) : null
   }
   return { project, timeline }
+}
+
+/** Project row by id through the uncached primitive, for authorization decisions that must see the
+ * current client association (the cached route can return a moved project's earlier client). */
+export async function getProjectFresh(id: string): Promise<MediaProject | null> {
+  const row = await queryOneFresh(`SELECT * FROM media_projects WHERE id = $1`, [id])
+  return row ? mapProjectRow(row) : null
 }
 
 /** Delete a project and all its dependent rows in one transaction.

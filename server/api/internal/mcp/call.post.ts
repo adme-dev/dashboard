@@ -4,7 +4,13 @@
 // and routes through the existing governed tool suites. Every ordinary call is written to
 // ai_action_audit with arg keys only, never values.
 //
-// Auth: x-mcp-secret == MCP_INTERNAL_SECRET. HARD-gated by MCP_SERVER_ENABLED.
+// Ordinary users get a fresh, uncached staff context (resolveMcpStaffContext). Write-class tools always
+// need the signed mcp:write scope and a writable role policy. Non-management staff may invoke only
+// reviewed marketingPolicy tools — the same rule tools/list projects — so a stale host catalog cannot
+// reach other handlers. Management staff keep the existing suite routing under their fresh groups and
+// may call only names in their own fresh tools/list projection.
+//
+// Auth: x-mcp-secret == MCP_INTERNAL_SECRET (binding first). HARD-gated by MCP_SERVER_ENABLED (binding first).
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { queryOne, execute } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
@@ -34,8 +40,7 @@ import {
 } from '~~/server/utils/ai/mcp/googleAdsTools'
 import {
   buildGoogleAdsConfirmDependencies,
-  buildGoogleAdsMcpToolDependencies,
-  googleAdsMcpFlagsFromEnv
+  buildGoogleAdsMcpToolDependencies
 } from '~~/server/utils/ai/mcp/googleAdsServer'
 import {
   executeGoogleAdsSearchPlanningTool,
@@ -55,17 +60,27 @@ import {
 } from '~~/server/utils/ai/mcp/requestClaim'
 import { executeGodModeMcpCall } from '~~/server/utils/ai/mcp/directExecution'
 import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
-import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import type { ToolResult } from '~~/server/utils/ai/toolContext'
+import { readMcpRuntimeValue, resolveMcpRuntimeConfig } from '~~/server/utils/ai/mcp/runtimeConfig'
+import { resolveMcpStaffContext } from '~~/server/utils/ai/mcp/staffAuthority'
+import {
+  evaluateStaffToolAdmission,
+  executeStaffMcpReadTool,
+  isMcpManagementStaff,
+  projectMcpToolsForStaff
+} from '~~/server/utils/ai/mcp/marketingPolicy'
 import { executeOrdinaryMcpRememberMutation } from '~~/server/utils/ai/tools/remember'
 import { persistMcpProposalResult, replayExecutedMcpProposal } from '~~/server/utils/ai/mcp/proposalReplay'
 
 export default defineEventHandler(async (event) => {
-  if (process.env.MCP_SERVER_ENABLED !== 'true') {
+  const runtime = resolveMcpRuntimeConfig(event)
+  if (!runtime.serverEnabled) {
     throw createError({ statusCode: 503, statusMessage: 'MCP server disabled' })
   }
   // Always require the shared secret. The previous `!import.meta.dev` bypass was a fail-open gate that
   // would expose this surface unauthenticated in any non-production build — never skip the check itself.
-  const expectedSecret = process.env.MCP_INTERNAL_SECRET
+  // Binding first (Pages runtime), then the local process env; a present non-string binding fails closed.
+  const expectedSecret = readMcpRuntimeValue(event, 'MCP_INTERNAL_SECRET')
   const secret = getHeader(event, 'x-mcp-secret')
   if (!expectedSecret || secret !== expectedSecret) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
@@ -139,29 +154,32 @@ export default defineEventHandler(async (event) => {
       idempotencyKey,
       toolName,
       args: body?.args ?? {},
-      requireWriteScope: process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
+      requireWriteScope: runtime.legacyRequireWriteScope
     })
   }
 
-  const user = await queryOne<{ role: string, name: string | null, email: string | null }>(
-    `SELECT user_role AS role, name, email FROM team_members WHERE id = $1 AND is_active = TRUE`,
-    [userId]
-  )
-  if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
-
+  // Fresh identity, role policy, assignments and marketing grants (403 inactive / 503 unavailable).
+  // The context stamps source='mcp' (write proposals persist with conv_id NULL).
+  const ctx = await resolveMcpStaffContext(event, userId, claim.scope, { runtimeConfig: runtime })
   const args = (body?.args ?? {}) as Record<string, unknown>
-  // Whole endpoint is the MCP surface → stamp source='mcp' (write proposals persist with conv_id NULL).
   const grantedScopes = new Set(claim.scope)
-  const ctx: ToolContext = {
-    userId,
-    userRole: user.role ?? '',
-    userName: user.name ?? undefined,
-    userEmail: user.email ?? undefined,
-    mcpScopes: grantedScopes,
-    event,
-    source: 'mcp',
-  }
-  const writeEnabled = process.env.MCP_WRITE_TOOLS_ENABLED === 'true'
+  const managementStaff = isMcpManagementStaff(ctx)
+  const flags = runtime.suiteFlags
+  // Management staff may invoke only what their fresh tools/list projection advertises (same runtime
+  // config, fresh groups, write scope and read-only policy) — a stale host catalog grants nothing.
+  const managementCeiling = managementStaff
+    ? new Set(projectMcpToolsForStaff({
+        context: {
+          tools: registry as AiTool<unknown>[],
+          role: ctx.userRole,
+          scopes: claim.scope,
+          requireWriteScope: true,
+          suiteFlags: flags
+        },
+        staff: ctx
+      }).map(tool => tool.name))
+    : null
+  const writeEnabled = flags.writes
 
   // Generation tools (Phase 2a) are a separate, explicitly-gated action group — they bill + persist
   // assets, so they go through executeGenerationTool (gated by MCP_GEN_TOOLS_ENABLED + CREATIVE), NOT
@@ -172,31 +190,56 @@ export default defineEventHandler(async (event) => {
   const isConfirm = toolName === MCP_CONFIRM_TOOL
   // Video suite (Phase 2b): reads gated by MCP_VIDEO_TOOLS_ENABLED; confirm-tier propose/create gated
   // ALSO by MCP_VIDEO_GEN_ENABLED. Video spend is its own confirm action — never the generic write flag.
-  const videoSuiteEnabled = process.env.MCP_VIDEO_TOOLS_ENABLED === 'true'
-  const videoGenEnabled = process.env.MCP_VIDEO_GEN_ENABLED === 'true'
+  const videoSuiteEnabled = flags.video
+  const videoGenEnabled = flags.videoGeneration
   const isVideoRead = videoReadTools.some(t => t.name === toolName)
   const videoProposeAction = resolveVideoProposeAction(toolName) // 'video_generation' | 'video_project_create' | null
   // Banner suite (Phase 2b): reads and propose/confirm gated by MCP_BANNER_TOOLS_ENABLED.
-  const bannerEnabled = process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
+  const bannerEnabled = flags.banners
   const isBannerRead = bannerReadTools.some(t => t.name === toolName)
   const bannerProposeAction = resolveBannerProposeAction(toolName) // 'banner_render' | null
   // Financial suite (Phase D4): propose_* names routed when MCP_FINANCIAL_TOOLS_ENABLED is on.
-  const financialEnabled = process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true'
+  const financialEnabled = flags.financial
   const isFinancialPropose = isFinancialAction(toolName) // propose_budget_change etc.
-  const googleAdsFlags = googleAdsMcpFlagsFromEnv()
+  const googleAdsFlags = {
+    read: flags.googleAdsRead,
+    write: flags.googleAdsWrite,
+    automation: flags.googleAdsAutomation,
+    destructive: flags.googleAdsDestructive
+  }
   const isGoogleAdsTool = isGoogleAdsToolName(toolName)
   const isGoogleAdsPropose = toolName === GOOGLE_ADS_PROPOSE_ACTION_TOOL
   const isGoogleAdsSearchPlan = isGoogleAdsSearchPlanningTool(toolName)
 
-  // CRITICAL-B: OAuth write-scope enforcement. Scope comes only from the verified signed claim. When
-  // MCP_REQUIRE_WRITE_SCOPE is on, any WRITE-class tool (propose_*/confirm_action/generation/banner/
-  // financial) requires mcp:write — so a connector consented as read-only cannot drive writes/money-movers
-  // even if the user's ROLE would allow it. Flag OFF (default) → no scope check (non-breaking rollout).
-  const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
+  // CRITICAL-B: OAuth write-scope enforcement. Scope comes only from the verified signed claim. Any
+  // WRITE-class tool (propose_*/confirm_action/generation/banner/financial/remember) requires mcp:write
+  // for every ordinary user — independent of the legacy MCP_REQUIRE_WRITE_SCOPE opt-out, which now only
+  // labels the owner's audited scope bypass. A read-only role policy blocks the same class.
+  const isWriteScopeTool = isWriteScopeToolName(toolName)
 
   let outcome: { ok: boolean, data?: unknown, error?: string, code?: string }
-  if (requireWriteScope && isWriteScopeToolName(toolName) && !hasWriteScope(grantedScopes)) {
+  if (isWriteScopeTool && !hasWriteScope(grantedScopes)) {
     outcome = { ok: false, error: 'This action requires write access. Reconnect your AI assistant and grant write (mcp:write) to use it.', code: 'insufficient_scope' }
+  } else if (isWriteScopeTool && ctx.assistantReadOnly === true) {
+    outcome = { ok: false, error: 'Your role is read-only.', code: 'read_only' }
+  } else if (!managementStaff) {
+    // Non-management staff: reviewed staff-policy tools only, re-evaluated against fresh authority.
+    const admission = evaluateStaffToolAdmission(toolName, ctx)
+    if (!admission.allowed) {
+      outcome = { ok: false, error: admission.error, code: admission.code }
+    } else if (isRemember) {
+      return await executeOrdinaryMcpRememberMutation({
+        userId,
+        idempotencyKey,
+        sessionDigest: claim.bodyDigest,
+        args,
+        ctx
+      })
+    } else {
+      outcome = await executeStaffMcpReadTool(registry as AiTool<unknown>[], toolName, args, ctx)
+    }
+  } else if (managementCeiling && !managementCeiling.has(toolName)) {
+    outcome = { ok: false, error: 'Not permitted.', code: 'forbidden' }
   } else if (isRemember) {
     // Unlike proposal writes, remember is an immediate private write. Its coordinator atomically owns
     // the idempotency claim, memory upsert, action audit, and terminal ledger state, so do not append
@@ -213,11 +256,14 @@ export default defineEventHandler(async (event) => {
     // EITHER the 2c write group OR the 2b video-gen group is on. videoDispatch handles video tool_names
     // (returns jobId/projectId/cap_exceeded); non-video rows fall through to the 2c executor (gated by
     // writeEnabled). The idempotencyKey is derived from the proposalId so a double-confirm can't double-bill.
+    // suiteFlags authorizes each claimed row against its OWN suite switches before any dispatcher, so a
+    // confirm_action reached through one enabled suite cannot run a banner/video/… action whose suite is off.
     const videoConfirmDeps = buildVideoConfirmDeps()
     outcome = await executeWriteConfirm(args, ctx, {
       enabled: writeEnabled || videoGenEnabled || bannerEnabled || financialEnabled || googleAdsFlags.write,
       writeEnabled,
       financialEnabled,
+      suiteFlags: flags,
       getExecutor,
       claim: async (proposalId, uid) => queryOne<ClaimedProposal>(
         `UPDATE ai_pending_actions SET status='executed', confirmed_by=$2, executed_at=now()
@@ -242,7 +288,7 @@ export default defineEventHandler(async (event) => {
           ? { ...(row.resolved_payload as Record<string, unknown>), idempotencyKey: `mcp:${pid}` }
           : row.resolved_payload
         return dispatchVideoConfirm({ tool_name: row.tool_name, resolved_payload: payload }, vctx, {
-          genEnabled: videoGenEnabled,
+          genEnabled: videoSuiteEnabled && videoGenEnabled,
           ...videoConfirmDeps
         })
       },
@@ -266,7 +312,7 @@ export default defineEventHandler(async (event) => {
           args,
           ctx,
           googleAdsFlags,
-          !requireWriteScope || hasWriteScope(grantedScopes)
+          hasWriteScope(grantedScopes)
         )
       : await executeGoogleAdsTool(
           toolName,
@@ -282,7 +328,8 @@ export default defineEventHandler(async (event) => {
       outcome = { ok: false, error: 'Write tools are not enabled over MCP.', code: 'disabled' }
     } else {
       const tool = (registry as AiTool<unknown>[]).find(t => t.name === writeAction)
-      const allowed = filterToolsForUser(registry as AiTool<unknown>[], ctx.userRole).some(t => t.name === writeAction)
+      const allowed = filterToolsForUser(registry as AiTool<unknown>[], ctx.userRole, ctx.permissionGroups, ctx.assistantReadOnly)
+        .some(t => t.name === writeAction)
       if (!tool || !allowed) {
         outcome = { ok: false, error: 'Not permitted.', code: 'forbidden' }
       } else {
@@ -319,7 +366,8 @@ export default defineEventHandler(async (event) => {
       // MCP_FINANCIAL_ACTIONS uses the propose_* names directly).
       const registryActionName = toolName // e.g. 'propose_budget_change' IS the registry name
       const tool = (registry as AiTool<unknown>[]).find(t => t.name === registryActionName)
-      const allowed = filterToolsForUser(registry as AiTool<unknown>[], ctx.userRole).some(t => t.name === registryActionName)
+      const allowed = filterToolsForUser(registry as AiTool<unknown>[], ctx.userRole, ctx.permissionGroups, ctx.assistantReadOnly)
+        .some(t => t.name === registryActionName)
       if (!tool || !allowed) {
         outcome = { ok: false, error: 'Not permitted.', code: 'forbidden' }
       } else {
@@ -337,7 +385,7 @@ export default defineEventHandler(async (event) => {
     outcome = await executeBannerTool(buildBannerReadRunner(), toolName, args, ctx, bannerEnabled)
   } else if (isGeneration) {
     outcome = await executeGenerationTool(toolName, args, ctx, {
-      enabled: process.env.MCP_GEN_TOOLS_ENABLED === 'true',
+      enabled: flags.generation,
       runner: buildGenerationRunner()
     })
   } else if (isVideoRead) {

@@ -82,9 +82,13 @@ const API_INVENTORY = {
   // Banner recovery adds six routes (five mutations) and eight explicit write
   // gates. Preset creation, design/reference generation, export retry and social
   // handoff retain client/project authority; none registers a mutation bypass.
+  // Marketing staff MCP: internal/mcp tools.post and call.post no longer contain a
+  // lexical role read; both now resolve fresh staff authority through
+  // server/utils/ai/mcp/staffAuthority.ts after the service secret and signed
+  // request claim. Their guard is stronger, not removed; no bypass is registered.
   totalRouteFiles: 2283,
   mutationRouteFiles: 1245,
-  explicitlyGuardedMutationFiles: 410,
+  explicitlyGuardedMutationFiles: 408,
   guardedMutationFilesWithTransactionCall: 49
 } as const
 
@@ -135,7 +139,7 @@ describe('God mode route isolation inventory', () => {
     expect(API_INVENTORY).toEqual({
       totalRouteFiles: 2283,
       mutationRouteFiles: 1245,
-      explicitlyGuardedMutationFiles: 410,
+      explicitlyGuardedMutationFiles: 408,
       guardedMutationFilesWithTransactionCall: 49
     })
   })

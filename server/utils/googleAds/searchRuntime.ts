@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { queryOne } from '~~/server/utils/db'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
 import {
   planGoogleAdsAction,
   hashGoogleAdsValue,
@@ -50,6 +50,23 @@ import { GoogleAdsActionError, normalizeGoogleAdsError } from '~~/server/utils/g
 export interface GoogleAdsControlAuthority {
   actorRole: string
   hasWriteScope: boolean
+  /**
+   * Trusted fresh permission groups (MCP staff resolved by resolveMcpStaffContext). When present they —
+   * not permissions re-derived from the legacy role — decide media, elevated and destructive authority.
+   */
+  permissionGroups?: readonly PermissionGroup[]
+}
+
+/** Actor-derived policy inputs: fresh groups when supplied, otherwise the legacy role's permissions. */
+function authorityPolicyInput(authority: GoogleAdsControlAuthority) {
+  const groups = authority.permissionGroups
+  const has = (group: PermissionGroup) => groups ? groups.includes(group) : roleHasPermission(authority.actorRole, group)
+  return {
+    actorRole: authority.actorRole,
+    hasMediaPermission: has('MEDIA_BUYING'),
+    hasElevatedPermission: has('MANAGEMENT'),
+    ...(groups ? { hasDestructivePermission: groups.includes('ADMIN') } : {})
+  }
 }
 
 export interface GoogleAdsControlFlags {
@@ -303,9 +320,7 @@ export async function planSearchGoogleAdsControlAction(
     buildAction: async context => buildSearchGoogleAdsAction(context),
     resolvePolicy: () => resolveGoogleAdsPolicy({
       operation: input.operation,
-      actorRole: authority.actorRole,
-      hasMediaPermission: roleHasPermission(authority.actorRole, 'MEDIA_BUYING'),
-      hasElevatedPermission: roleHasPermission(authority.actorRole, 'MANAGEMENT'),
+      ...authorityPolicyInput(authority),
       hasWriteScope: authority.hasWriteScope,
       globalWriteEnabled: flags.write,
       automationEnabled: flags.automation,
@@ -1302,9 +1317,7 @@ export async function executeSearchGoogleAdsControlAction(
     resolvePolicy: candidate => ({
       ...resolveGoogleAdsPolicy({
         operation: candidate.operation,
-        actorRole: authority.actorRole,
-        hasMediaPermission: roleHasPermission(authority.actorRole, 'MEDIA_BUYING'),
-        hasElevatedPermission: roleHasPermission(authority.actorRole, 'MANAGEMENT'),
+        ...authorityPolicyInput(authority),
         hasWriteScope: authority.hasWriteScope,
         globalWriteEnabled: flags.write,
         automationEnabled: flags.automation,

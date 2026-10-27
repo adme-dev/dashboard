@@ -39,7 +39,7 @@ const TASK_3_OWNED_FILES = new Set([
   'server/plugins/godModeAudit.ts',
   'server/api/crm/ai/status.get.ts'
 ])
-const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|isReadOnlyRole\(|GOD_MODE_DISABLED|AI_GATEWAY_URL/i
+const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasMcpPermission\(|mcpContextHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|isReadOnlyRole\(|GOD_MODE_DISABLED|AI_GATEWAY_URL/i
 
 const CENTRAL_HELPER_BY_CLASS = {
   identity_tenant_hard_boundary: 'unchanged independent scope helper',
@@ -77,7 +77,7 @@ function classifyGate(file: string, line: string): GateClass {
     || (file === 'server/utils/godMode/authority.ts' && /process\.env/.test(line))) {
     return 'provider_infrastructure_availability'
   }
-  if (/requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|roleHasPermission\(|hasRole\(|isReadOnlyRole\(|feature.?flag|suite.?enabled|(?:^|[_A-Z])ENABLED(?:\b|_)/i.test(line)) {
+  if (/requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|roleHasPermission\(|hasMcpPermission\(|mcpContextHasPermission\(|hasRole\(|isReadOnlyRole\(|feature.?flag|suite.?enabled|(?:^|[_A-Z])ENABLED(?:\b|_)/i.test(line)) {
     return 'application_governance_bypass'
   }
   if (/secret|api.?key|token|binding|provider|credential|database_url|account_id|bucket|r2_|resend|groq|anthropic|xero|google.?maps/i.test(line)) {
@@ -290,13 +290,28 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows.filter(row => row.startsWith('server/utils/socialOAuth/env.ts\tconst config = useRuntimeConfig()'))).toHaveLength(6)
     // Released Banner routes retain eight additional explicit write gates.
     // Combined with the recovery origin row above, this pins both inventories.
-    expect(inventory.rows).toHaveLength(1613)
+    // Marketing staff MCP: the tools/list, tools/call and my-tools routes no longer read suite flags,
+    // the master switch or MCP_REQUIRE_WRITE_SCOPE inline from process.env; one binding-first resolver
+    // (server/utils/ai/mcp/runtimeConfig.ts) supplies the identical gates. Ordinary staff identity and
+    // role policy move to the fresh staffAuthority resolver, and MCP read execution honours freshly
+    // resolved permission groups. No gate is removed and none registers a God mode bypass.
+    // Task 1 corrections: MCP suite role checks now go through hasMcpPermission (projection) and
+    // mcpContextHasPermission (execution), which the pattern above tracks as governance gates, so fresh
+    // staff groups govern supplemental suites (+5 governance rows net, +25 permissionGroups wiring
+    // rows). The internal-route MCP_INTERNAL_SECRET reads moved to the binding-first runtime reader
+    // (-2 provider rows); the ingress check itself is unchanged and fails closed.
+    // Task 1 review round 1: confirm_action checks each claimed row's own suite switch
+    // (mcpPendingActionSuiteEnabled, +2) and the video dispatcher needs both video switches (+1);
+    // fresh MCP staff carry their groups into the Google Ads policy — two risk-tier checks (+2) and one
+    // fresh-or-role permission helper (+1) replace four inline legacy-role derivations (-4), plus four
+    // permissionGroups wiring rows. No gate is removed or turned into a God mode bypass.
+    expect(inventory.rows).toHaveLength(1638)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 128,
-      provider_infrastructure_availability: 224,
-      application_governance_bypass: 1633,
-      ordinary_user_behavior: 192,
-      unrelated_configuration: 435
+      identity_tenant_hard_boundary: 127,
+      provider_infrastructure_availability: 222,
+      application_governance_bypass: 1622,
+      ordinary_user_behavior: 234,
+      unrelated_configuration: 432
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -311,7 +326,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('cef85f34a2fd968996632bfc6e7377f6e4b960c7a7bf61dd22a4d0b2bad5fbf4')
+    expect(inventory.digest).toBe('3638658efc40d97245c9b6ae6077de11dc1f36d1091f0529d512c72eceed2533')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

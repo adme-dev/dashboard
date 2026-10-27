@@ -22,6 +22,12 @@ export interface ResolveGoogleAdsPolicyInput {
   actorRole: string
   hasMediaPermission: boolean
   hasElevatedPermission: boolean
+  /**
+   * Current destructive authority from trusted fresh permission groups (MCP staff). When supplied it must
+   * hold IN ADDITION to the owner/admin role, so a custom role revoking ADMIN revokes permanent removal.
+   * Omitted for legacy callers, whose role alone decides.
+   */
+  hasDestructivePermission?: boolean
   hasWriteScope: boolean
   globalWriteEnabled: boolean
   automationEnabled: boolean
@@ -162,7 +168,7 @@ export function resolveGoogleAdsPolicy(input: ResolveGoogleAdsPolicyInput): Goog
 
   if (riskTier === 'destructive_confirm') {
     if (!input.destructiveEnabled) return blocked('destructive_actions_disabled')
-    if (input.actorRole !== 'owner' && input.actorRole !== 'admin') {
+    if ((input.actorRole !== 'owner' && input.actorRole !== 'admin') || input.hasDestructivePermission === false) {
       return blocked('owner_or_admin_required')
     }
   }

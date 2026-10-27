@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
-import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
+import { hasMcpPermission, mcpContextHasPermission, type McpExecutionDescriptor, type McpProjectionContext, type McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 import {
   MCP_VIDEO_CONFIRM_DESCRIPTION,
@@ -140,11 +140,11 @@ export const videoReadTools: VideoToolDescriptor[] = [
 export function projectVideoReadTools(
   role: string,
   suiteEnabled: boolean,
-  options: { bypassPermissions?: boolean } = {}
+  options: { bypassPermissions?: boolean, permissionGroups?: readonly PermissionGroup[] } = {}
 ): McpToolManifest[] {
   if (!suiteEnabled) return []
   return videoReadTools
-    .filter(t => options.bypassPermissions || roleHasPermission(role, t.requiredPermission))
+    .filter(t => options.bypassPermissions || hasMcpPermission(role, t.requiredPermission, options.permissionGroups))
     .map(t => ({
       name: t.name,
       description: t.description,
@@ -152,13 +152,36 @@ export function projectVideoReadTools(
     }))
 }
 
+export interface AvProjectActor {
+  id: string
+  role: string
+  permissionGroups?: ToolContext['permissionGroups']
+  mcpStaffAuthority?: ToolContext['mcpStaffAuthority']
+}
+
+export function avProjectActor(ctx: ToolContext): AvProjectActor {
+  return { id: ctx.userId, role: ctx.userRole, permissionGroups: ctx.permissionGroups, mcpStaffAuthority: ctx.mcpStaffAuthority }
+}
+
+/**
+ * Agency-wide AV project visibility: legacy admin/owner. Fresh MCP staff additionally need their CURRENT
+ * ADMIN group, so a custom role narrowing a legacy admin sees only the projects they created.
+ */
+export function canUseAllAvProjects(actor: AvProjectActor): boolean {
+  const legacyAll = actor.role === 'admin' || actor.role === 'owner'
+  return legacyAll && (actor.mcpStaffAuthority !== 'fresh' || !!actor.permissionGroups?.includes('ADMIN'))
+}
+
+export function canUseAvProject(actor: AvProjectActor, project: { createdBy?: string | null }): boolean {
+  return canUseAllAvProjects(actor) || project.createdBy === actor.id
+}
+
 /** Keep only AV projects the actor may use: admin/owner see all; everyone else sees their own. */
 export function filterUsableAvProjects<T extends { mediaType: string, createdBy?: string | null }>(
   projects: T[],
-  actor: { id: string, role: string }
+  actor: AvProjectActor
 ): T[] {
-  const all = actor.role === 'admin' || actor.role === 'owner'
-  return projects.filter(p => p.mediaType === 'av' && (all || p.createdBy === actor.id))
+  return projects.filter(p => p.mediaType === 'av' && canUseAvProject(actor, p))
 }
 
 export type VideoExecuteOutcome
@@ -185,7 +208,7 @@ export async function executeVideoTool(
   const tool = videoReadTools.find(t => t.name === name)
   if (!tool) return { ok: false, error: `Unknown video tool: ${name}`, code: 'not_found' }
 
-  if (!deps.bypassPermissions && !roleHasPermission(ctx.userRole, tool.requiredPermission)) {
+  if (!deps.bypassPermissions && !mcpContextHasPermission(ctx, tool.requiredPermission)) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
@@ -371,7 +394,7 @@ export async function executeVideoPropose(
   if ((action === 'video_generation' || action === 'video_project_create') && !deps.genEnabled) {
     return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'disabled' }
   }
-  if (!deps.bypassPermissions && !roleHasPermission(ctx.userRole, 'CREATIVE')) {
+  if (!deps.bypassPermissions && !mcpContextHasPermission(ctx, 'CREATIVE')) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
@@ -557,8 +580,17 @@ export type VideoConfirmOutcome
   = | { ok: true, data: unknown }
     | { ok: false, error: string, code: 'forbidden' | 'cap_exceeded' | 'handler_error' }
 
+/** The project/tenant pair a retained generation or promotion proposal was authorized against. */
+export interface VideoConfirmProjectTarget { projectId: string, tenantId: string }
+
 export interface VideoConfirmDeps {
   genEnabled: boolean
+  /**
+   * Re-resolve and authorize the retained project for the CURRENT actor, and confirm it still belongs to
+   * the retained tenant. Runs before any reservation/promotion, so a proposal made under since-revoked
+   * authority (or a project moved to another client) is refused without effects.
+   */
+  authorizeProject: (target: VideoConfirmProjectTarget, ctx: ToolContext) => Promise<boolean>
   reserve: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<{ ok: boolean, reason?: string, remainingCents?: number, job?: { id: string }, reused?: boolean }>
   prepareEnqueue?: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<unknown>
   enqueue: (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext, prepared?: unknown) => Promise<void>
@@ -582,6 +614,14 @@ export async function dispatchVideoConfirm(
   }
   if (!deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'forbidden' }
   try {
+    if (row.tool_name === 'video_source_promote' || row.tool_name === 'video_generation') {
+      const target = row.resolved_payload as Partial<VideoConfirmProjectTarget> | null
+      const usable = typeof target?.projectId === 'string' && typeof target.tenantId === 'string'
+        && await deps.authorizeProject({ projectId: target.projectId, tenantId: target.tenantId }, ctx)
+      if (!usable) {
+        return { ok: false, error: 'Project not found or not an AV project you can use.', code: 'forbidden' }
+      }
+    }
     if (row.tool_name === 'video_source_promote') {
       if (!deps.promoteCreativeAsset) return { ok: false, error: 'Creative asset promotion is unavailable.', code: 'handler_error' }
       await deps.execution?.markDispatched()
@@ -641,10 +681,10 @@ export type VideoFlags = { suite: boolean, gen: boolean }
 export function projectVideoTools(
   role: string,
   flags: VideoFlags,
-  options: { bypassPermissions?: boolean, confirmDescription?: string } = {}
+  options: { bypassPermissions?: boolean, confirmDescription?: string, permissionGroups?: readonly PermissionGroup[] } = {}
 ): McpToolManifest[] {
   if (!flags.suite) return []
-  if (!options.bypassPermissions && !roleHasPermission(role, 'CREATIVE')) return []
+  if (!options.bypassPermissions && !hasMcpPermission(role, 'CREATIVE', options.permissionGroups)) return []
   const reads = projectVideoReadTools(role, true, options)
   if (!flags.gen) return reads
   const proposes = videoProposeTools.map(t => ({
@@ -669,7 +709,8 @@ export function projectVideoMcpSuite(context: McpProjectionContext): McpToolMani
     },
     {
       bypassPermissions: context.governanceBypass,
-      confirmDescription: resolveRegisteredConfirmDescription(context)
+      confirmDescription: resolveRegisteredConfirmDescription(context),
+      permissionGroups: context.permissionGroups
     }
   )
 }

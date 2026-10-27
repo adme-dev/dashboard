@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
   resolveAuthority: vi.fn(),
   isActiveAuthority: vi.fn(),
   projectGodMode: vi.fn(),
-  projectRegistered: vi.fn()
+  projectRegistered: vi.fn(),
+  resolveStaff: vi.fn()
 }))
 
 vi.mock('h3', () => ({
@@ -22,6 +23,7 @@ vi.mock('~~/server/utils/ai/mcp/registry', () => ({
   projectGodModeTools: mocks.projectGodMode,
   projectRegisteredMcpTools: mocks.projectRegistered
 }))
+vi.mock('~~/server/utils/ai/mcp/staffAuthority', () => ({ resolveMcpStaffContext: mocks.resolveStaff }))
 
 const { default: handler } = await import('../../../../server/api/agency/ai/mcp/my-tools.get')
 
@@ -80,36 +82,42 @@ describe('owner-visible MCP manifest', () => {
     expect(mocks.projectRegistered).not.toHaveBeenCalled()
   })
 
-  it('keeps ordinary users on the existing governed read-only projection', async () => {
-    const event = { context: {} } as any
-    mocks.requireAuth.mockResolvedValue({ id: USER_ID, role: 'member' })
+  it('previews management staff through the shared staff projection with runtime flags and assumed scopes', async () => {
+    const event = { context: { cloudflare: { env: { MCP_BANNER_TOOLS_ENABLED: 'true' } } } } as any
+    mocks.requireAuth.mockResolvedValue({ id: USER_ID, role: 'lead' })
     const authority = { active: false, actorUserId: USER_ID }
     mocks.resolveAuthority.mockResolvedValue(authority)
     mocks.isActiveAuthority.mockReturnValue(false)
+    mocks.resolveStaff.mockResolvedValue({
+      userId: USER_ID,
+      userRole: 'lead',
+      permissionGroups: ['MANAGEMENT'],
+      assistantReadOnly: false,
+      mcpScopes: new Set(['mcp:read', 'mcp:write']),
+      marketingCapabilities: [],
+      event
+    })
 
     const result = await handler(event)
 
+    expect(mocks.resolveStaff).toHaveBeenCalledWith(event, USER_ID, ['mcp:read', 'mcp:write'], expect.anything())
     expect(mocks.projectRegistered).toHaveBeenCalledWith(expect.objectContaining({
       tools: [{ name: 'registry-tool' }],
-      role: 'member',
-      scopes: ['mcp:read'],
+      role: 'lead',
+      scopes: ['mcp:read', 'mcp:write'],
+      permissionGroups: ['MANAGEMENT'],
       requireWriteScope: true,
-      suiteFlags: {
-        generation: false,
-        writes: false,
-        financial: false,
-        video: false,
-        videoGeneration: false,
-        banners: false,
-        feeds: false
-      }
+      // The preview reads the same runtime flags as tools/list instead of hard-coding them off.
+      suiteFlags: expect.objectContaining({ banners: true, writes: false })
     }))
     expect(mocks.projectGodMode).not.toHaveBeenCalled()
     expect(result).toEqual({
       enabled: true,
       workerOrigin: 'https://mcp.example.test',
-      role: 'member',
-      tools: [{ name: 'get_tasks', description: 'Core read' }]
+      role: 'lead',
+      preview: { assumedScopes: ['mcp:read', 'mcp:write'], projection: 'management' },
+      marketingCapabilities: [],
+      tools: [{ name: 'get_tasks', description: 'Core read', requiresWriteScope: false }]
     })
   })
 })

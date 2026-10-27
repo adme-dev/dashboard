@@ -217,106 +217,119 @@ const minimalInspection: CapabilityInspection = {
   },
 }
 
-const defaultDeps: CapabilitiesDeps = {
-  inspect: async (ctx) => {
-    const [toolModule, registryModule, generationModule, feedModule] = await Promise.all([
-      import('./index'),
-      import('../mcp/registry'),
-      import('../mcp/generationTools'),
-      import('../mcp/feedTools'),
-    ])
-    const generationEnabled = process.env.MCP_GEN_TOOLS_ENABLED === 'true'
-    const writeEnabled = process.env.MCP_WRITE_TOOLS_ENABLED === 'true'
-    const financialEnabled = process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true'
-    const videoEnabled = process.env.MCP_VIDEO_TOOLS_ENABLED === 'true'
-    const videoGenerationEnabled = process.env.MCP_VIDEO_GEN_ENABLED === 'true'
-    const bannerEnabled = process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
-    const feedEnabled = process.env.MCP_FEED_TOOLS_ENABLED === 'true'
-    const projectionContext = {
-      tools: toolModule.registry,
-      role: ctx.userRole,
-      scopes: [...(ctx.mcpScopes ?? [])],
-      requireWriteScope: process.env.MCP_REQUIRE_WRITE_SCOPE === 'true',
-      suiteFlags: {
-        generation: generationEnabled,
-        writes: writeEnabled,
-        financial: financialEnabled,
-        video: videoEnabled,
-        videoGeneration: videoEnabled && videoGenerationEnabled,
-        banners: bannerEnabled,
-        feeds: feedEnabled,
-      },
-    }
-    // Capabilities and tools/list share one projection authority. Building the complete God-mode
-    // execution map also asserts that every advertised name has exactly one schema-matched handler.
-    const executionsByName = new Map(
-      registryModule.resolveGodModeMcpExecutions(projectionContext).map(execution => [execution.name, execution])
-    )
-    const executableNames = new Set(executionsByName.keys())
-    const manifests = ctx.godModeExecutionKey
-      ? registryModule.projectGodModeTools(projectionContext)
+/** The served-catalog inspection behind get_capabilities (owner, management MCP staff, legacy callers). */
+export async function inspectCapabilityCatalog(ctx: ToolContext): Promise<CapabilityInspection> {
+  const [toolModule, registryModule, generationModule, feedModule, policyModule, runtimeModule] = await Promise.all([
+    import('./index'),
+    import('../mcp/registry'),
+    import('../mcp/generationTools'),
+    import('../mcp/feedTools'),
+    import('../mcp/marketingPolicy'),
+    import('../mcp/runtimeConfig'),
+  ])
+  const generationEnabled = process.env.MCP_GEN_TOOLS_ENABLED === 'true'
+  const writeEnabled = process.env.MCP_WRITE_TOOLS_ENABLED === 'true'
+  const financialEnabled = process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true'
+  const videoEnabled = process.env.MCP_VIDEO_TOOLS_ENABLED === 'true'
+  const videoGenerationEnabled = process.env.MCP_VIDEO_GEN_ENABLED === 'true'
+  const bannerEnabled = process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
+  const feedEnabled = process.env.MCP_FEED_TOOLS_ENABLED === 'true'
+  const projectionContext = {
+    tools: toolModule.registry,
+    role: ctx.userRole,
+    scopes: [...(ctx.mcpScopes ?? [])],
+    requireWriteScope: process.env.MCP_REQUIRE_WRITE_SCOPE === 'true',
+    suiteFlags: {
+      generation: generationEnabled,
+      writes: writeEnabled,
+      financial: financialEnabled,
+      video: videoEnabled,
+      videoGeneration: videoEnabled && videoGenerationEnabled,
+      banners: bannerEnabled,
+      feeds: feedEnabled,
+    },
+  }
+  // Capabilities and tools/list share one projection authority. Building the complete God-mode
+  // execution map also asserts that every advertised name has exactly one schema-matched handler.
+  const executionsByName = new Map(
+    registryModule.resolveGodModeMcpExecutions(projectionContext).map(execution => [execution.name, execution])
+  )
+  const executableNames = new Set(executionsByName.keys())
+  // Ordinary management MCP staff: exactly their tools/list projection — binding-first runtime
+  // config, fresh groups, signed write scope. (Non-management staff never reach get_capabilities.)
+  const freshManagement = ctx.mcpStaffAuthority === 'fresh' && policyModule.isMcpManagementStaff(ctx)
+  const manifests = ctx.godModeExecutionKey
+    ? registryModule.projectGodModeTools(projectionContext)
+    : freshManagement
+      ? policyModule.projectMcpToolsForStaff({
+          context: { ...projectionContext, suiteFlags: runtimeModule.resolveMcpRuntimeConfig(ctx.event).suiteFlags },
+          staff: ctx
+        })
       : registryModule.projectRegisteredMcpTools(projectionContext)
-    for (const manifest of manifests) {
-      if (!executableNames.has(manifest.name)) {
-        throw new Error(`Capability has no registered MCP execution: ${manifest.name}`)
-      }
+  for (const manifest of manifests) {
+    if (!executableNames.has(manifest.name)) {
+      throw new Error(`Capability has no registered MCP execution: ${manifest.name}`)
     }
-    const inspectionNames = new Set(['verify_creative_compliance', 'run_adspend_sync', 'get_sync_status'])
-    const generationNames = new Set(
-      generationModule.generationTools
-        .map(tool => tool.name)
-        .filter(name => !generationModule.isGenerationReadToolName(name) && !inspectionNames.has(name))
-    )
-    const alwaysConfirmNames = new Set<string>(feedModule.MCP_FEED_ALWAYS_CONFIRM)
-    const unique = [...new Map(manifests.map(manifest => {
-      const mode: ToolMode = manifest.name === 'confirm_action'
-        ? 'confirmation'
-        : inspectionNames.has(manifest.name)
-          ? 'inspection'
-        : generationNames.has(manifest.name)
-          ? 'direct_generation'
-          : manifest.name.startsWith('propose_') || manifest.name === 'create_video_project'
-            ? 'propose_only'
-            : 'read'
-      // G-1a: report what will ACTUALLY happen for this caller. Under owner god-mode,
-      // catalog-registry writes direct-execute (confirmation is a bypassed control) —
-      // an agent must never read propose_only and get a live write. Supplemental
-      // suites (video/banner) genuinely stop at a proposal and keep their mode.
-      const execution = executionsByName.get(manifest.name)
-      const directExecutes = Boolean(ctx.godModeExecutionKey)
-        && mode === 'propose_only'
-        && execution?.kind === 'catalog'
-        && execution.tool.mutates === true
-      // P-2 carve-in: feed attach / product-set-rules NEVER direct-execute — confirm_action with
-      // ack:true is required regardless of caller authority, and effectiveMode must say so.
-      const alwaysConfirms = Boolean(ctx.godModeExecutionKey) && alwaysConfirmNames.has(manifest.name)
-      return [manifest.name, {
-        name: manifest.name,
-        mode,
-        ...(alwaysConfirms
+  }
+  const inspectionNames = new Set(['verify_creative_compliance', 'run_adspend_sync', 'get_sync_status'])
+  const generationNames = new Set(
+    generationModule.generationTools
+      .map(tool => tool.name)
+      .filter(name => !generationModule.isGenerationReadToolName(name) && !inspectionNames.has(name))
+  )
+  const alwaysConfirmNames = new Set<string>(feedModule.MCP_FEED_ALWAYS_CONFIRM)
+  const unique = [...new Map(manifests.map(manifest => {
+    const mode: ToolMode = manifest.name === 'confirm_action'
+      ? 'confirmation'
+      : inspectionNames.has(manifest.name)
+        ? 'inspection'
+      : generationNames.has(manifest.name)
+        ? 'direct_generation'
+        : manifest.name.startsWith('propose_') || manifest.name === 'create_video_project'
+          ? 'propose_only'
+          : 'read'
+    // G-1a: report what will ACTUALLY happen for this caller. Under owner god-mode,
+    // catalog-registry writes direct-execute (confirmation is a bypassed control) —
+    // an agent must never read propose_only and get a live write. Supplemental
+    // suites (video/banner) genuinely stop at a proposal and keep their mode.
+    const execution = executionsByName.get(manifest.name)
+    const directExecutes = Boolean(ctx.godModeExecutionKey)
+      && mode === 'propose_only'
+      && execution?.kind === 'catalog'
+      && execution.tool.mutates === true
+    // P-2 carve-in: feed attach / product-set-rules NEVER direct-execute — confirm_action with
+    // ack:true is required regardless of caller authority, and effectiveMode must say so.
+    const alwaysConfirms = Boolean(ctx.godModeExecutionKey) && alwaysConfirmNames.has(manifest.name)
+    return [manifest.name, {
+      name: manifest.name,
+      mode,
+      ...(alwaysConfirms
+        ? {
+            effectiveMode: 'confirmation_required' as const,
+            effectiveModeReason: 'binds or retargets a client ad account; requires confirm_action with ack:true regardless of caller authority. Pass dryRun:true to preview without writing.'
+          }
+        : directExecutes
           ? {
-              effectiveMode: 'confirmation_required' as const,
-              effectiveModeReason: 'binds or retargets a client ad account; requires confirm_action with ack:true regardless of caller authority. Pass dryRun:true to preview without writing.'
+              effectiveMode: 'direct_execute' as const,
+              effectiveModeReason: 'owner god-mode bypasses confirmation for registry writes; pass dryRun:true (where supported) to preview without writing'
             }
-          : directExecutes
-            ? {
-                effectiveMode: 'direct_execute' as const,
-                effectiveModeReason: 'owner god-mode bypasses confirmation for registry writes; pass dryRun:true (where supported) to preview without writing'
-              }
-            : {})
-      }]
-    })).values()]
-    return {
-      tools: unique,
-      suites: {
-        textModels: true,
-        imageGeneration: unique.some(tool => tool.name === 'generate_banner_image'),
-        bannerStudio: unique.some(tool => tool.name === 'list_banner_projects'),
-        video: unique.some(tool => tool.name === 'list_video_models'),
-        audio: unique.some(tool => tool.name === 'generate_voiceover' || tool.name === 'start_music_generation'),
-      },
-    }
-  },
+          : {})
+    }]
+  })).values()]
+  return {
+    tools: unique,
+    suites: {
+      textModels: true,
+      imageGeneration: unique.some(tool => tool.name === 'generate_banner_image'),
+      bannerStudio: unique.some(tool => tool.name === 'list_banner_projects'),
+      video: unique.some(tool => tool.name === 'list_video_models'),
+      audio: unique.some(tool => tool.name === 'generate_voiceover' || tool.name === 'start_music_generation'),
+    },
+  }
+}
+
+const defaultDeps: CapabilitiesDeps = {
+  inspect: inspectCapabilityCatalog,
   inspectActions: inspectGodModeActions,
   inspectGenerationSpend: inspectGenerationSpendStatus,
   inspectDataSyncRuns: inspectDataSyncRunStatus,

@@ -1,7 +1,8 @@
 # Marketing staff MCP completion
 
-Status: proposed design incorporating Claude planning, Kimi's source audit and
-an independent Claude builder review. No product changes or activation.
+Status: approved for implementation by the user's 27 October instruction to
+spin up Claude, Codex and Kimi and get this done. Design incorporates Claude
+planning, Kimi's source audit and an independent Claude builder review.
 Source inspected: `5d17d2fa4012a011f943df8a80c579923f163dd8`, equal to freshly fetched
 `origin/main` on 27 October 2026. Branch:
 `adme-dev/Garrix-Lopena-marketing-MCP-for-the-marketing-employees`.
@@ -19,17 +20,17 @@ marketing workflows, and requested Claude for planning with Kimi helping.
 The supplied example describes arbitrary GTM tag/trigger/variable management;
 that is broader than the current XeroFlow tag installer.
 
-Proposed policy, pending user choice: staff may read and prepare drafts for
+Approved execution default: staff may read and prepare drafts for
 assigned clients; publishing, scheduling for automatic publication, advertising
 spend changes and tracking activation require owner/admin review. Existing
-management access remains explicit. This is a design assumption, not a recorded
-user approval. Custom staff roles receive only capabilities established by the
+management access remains explicit. The user authorized proceeding with this
+design after review. Custom staff roles receive only capabilities established by the
 existing role resolver and explicit marketing action grants; unknown roles fail
 closed. No blanket FINANCE, ADMIN or God-mode grant is part of this work.
 
-Proposed defaults resolve the builder review's policy questions:
+The implementation defaults resolve the builder review's policy questions:
 
-| Decision | Proposed default |
+| Decision | Implementation default |
 | --- | --- |
 | Pilot population | Individually enrolled `media_buyer`, `account_manager`, `creative`, `producer`, or approved custom-role employees; enrollment does not change their base role. |
 | Narrow capabilities | Separate marketing reporting, social drafting, ads planning and tracking planning grants. Reporting includes assigned-client spend, budgets and pacing, but no invoices, payroll, profitability or agency finance. Grant only the families needed by each employee. |
@@ -40,8 +41,9 @@ Proposed defaults resolve the builder review's policy questions:
 | Inbox messages | Read and draft replies in the initial scope; sending comments, replies or DMs is an external publication and requires review before it is added. |
 | GTM drafts | Staff may prepare a local change proposal. Writing a provider workspace/version is a separate reviewed operation after tracking ownership checks; no blanket installer permission. |
 
-These are builder-selected defaults for review, not claims about policy already
-chosen by the user.
+These builder-selected defaults were included in the design approved for
+implementation. Individual employee enrollment and client assignments still
+require the operator's actual selections.
 
 This extends the existing Worker/Pages MCP and provider services. It does not
 create another marketing backend or duplicate accepted-enquiry conversion delivery.
@@ -269,18 +271,17 @@ Host documentation checked 27 October 2026:
 - [OpenAI custom MCP setup](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt): current Plugins setup replaces the old mandatory Developer Mode steps; full write support is documented for Business and Enterprise/Edu, while Pro has read/fetch access. Workspace tools require admin refresh after changes. Confirm the actual staff workspace at rollout.
 - [Claude custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp): remote connectors include Free (one connector) and paid plans; organization controls and per-user OAuth still apply.
 
-## Next decision
+## Execution order
 
-Approve or adjust the proposed staff action policy and this staged scope before
-implementation. The recommended first implementation is slice 1, followed by the
+Implementation is authorized. The first implementation is slice 1, followed by the
 reviewed social workflow; TikTok completion and general GTM editing remain explicit
 deliverables rather than implicit promises of the initial pilot.
 
 ## Resume record
 
 Worktree: `/Users/paulgiurin/orca/workspaces/dashboard/Garrix-Lopena-marketing-MCP-for-the-marketing-employees`.
-Only this design document was added. Product code, flags, database and deployments
-are unchanged. Baseline commands were `pnpm exec vitest run` with the six MCP
+At the design checkpoint, only this document had been added; product code, flags,
+database and deployments were unchanged. Baseline commands were `pnpm exec vitest run` with the six MCP
 suites listed above, then the two targeted internal-delegation/client-access suites.
 Planning/audit reports are `/tmp/marketing-mcp-claude-plan.md`,
 `/tmp/marketing-mcp-kimi-audit.md` and `/tmp/marketing-mcp-builder-review.md`;
@@ -289,10 +290,11 @@ Claude's suggestions to require the dealer-creative PR stack first and defer the
 ordinary read execution fix were not adopted: overlap needs coordination, while
 slice 1 must deliver actually executable staff reads. Its old host instructions
 were superseded by the official documentation checked above. The builder's policy
-questions are resolved as explicit proposed defaults, pending user review.
+questions are resolved by the implementation defaults above.
 
-Next: record the user's policy/design response, fetch current main again and
-check relevant PR ownership, produce the detailed slice-1 implementation plan,
-then implement and verify its real staff execution and client isolation. Preserve
+Execution update: rebased onto `faad3ba57` main; plan is
+`docs/superpowers/plans/2026-10-27-marketing-staff-mcp.md`. Current execution ledger
+is `.superpowers/sdd/2026-10-27-marketing-staff-mcp/progress.md` and Orca run is
+`run_4b0a4b04db4a`. Implement and verify real staff execution and client isolation. Preserve
 remaining social, ads/GTM and TikTok slices until their acceptance is satisfied;
 do not call the read pilot completion of the full marketing MCP request.
