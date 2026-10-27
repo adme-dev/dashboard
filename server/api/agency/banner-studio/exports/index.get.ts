@@ -1,4 +1,4 @@
-import { queryOneFresh, queryRows } from '~~/server/utils/db'
+import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { bannerRenderDownloadUrl } from '~~/server/utils/banner/renderJob'
 import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const rows = await queryRows<BannerExportRow>(`
+    const rows = await queryRowsFresh<BannerExportRow>(`
       SELECT
         e.id,
         e.project_id AS "projectId",
