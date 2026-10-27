@@ -19,7 +19,7 @@ describe('TikTok exact direct post', () => {
     expect(await fetchTikTokPublishStatus('fixture', 'receipt-1')).toMatchObject({ state: 'unknown', providerReceipt: { code: 'invalid_publish_id' } })
   })
   it('retains exact string and safe numeric public IDs without inventing rounded int64 IDs', async () => {
-    request.mockResolvedValueOnce({ data: { status: 'PUBLISH_COMPLETE', publicaly_available_post_id: ['7123456789012345678', 12345, 7123456789012345678] }, error: { code: 'ok' } })
+    request.mockResolvedValueOnce({ data: { status: 'PUBLISH_COMPLETE', publicaly_available_post_id: ['7123456789012345678', 12345, Number('7123456789012345678')] }, error: { code: 'ok' } })
     expect(await fetchTikTokPublishStatus('fixture', 'receipt-1')).toMatchObject({ state: 'published', publicPostIds: ['7123456789012345678', '12345'] })
   })
   it('returns accepted with a receipt and no publication URL; photo AIGC belongs at the top level', async () => {

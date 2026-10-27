@@ -114,7 +114,7 @@ export async function executeTask4StaffTool(
 ): Promise<ToolResult> {
   const { evaluateStaffToolAdmission } = await import('./marketingPolicy')
   const admission = evaluateStaffToolAdmission(name, ctx)
-  if (!admission.allowed)
+  if (admission.allowed === false)
     return { ok: false, error: admission.error, code: admission.code }
   if (!isTask4StaffTool(name))
     return { ok: false, error: 'Unknown tool', code: 'not_found' }

@@ -430,7 +430,7 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   if (deps.videoDispatch) {
     const vo = await deps.videoDispatch(row, ctx)
     if (vo) {
-      if (!vo.ok && vo.code === 'forbidden') return await rejectAndRevert(vo)
+      if (vo.ok === false && vo.code === 'forbidden') return await rejectAndRevert(vo)
       return await persistSuccess(vo)
     }
   }

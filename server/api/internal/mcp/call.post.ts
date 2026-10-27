@@ -249,7 +249,7 @@ export default defineEventHandler(async (event) => {
   } else if (!managementStaff) {
     // Non-management staff: reviewed staff-policy tools only, re-evaluated against fresh authority.
     const admission = evaluateStaffToolAdmission(toolName, ctx)
-    if (!admission.allowed) {
+    if (admission.allowed === false) {
       outcome = { ok: false, error: admission.error, code: admission.code }
     } else if (isRemember) {
       return await executeOrdinaryMcpRememberMutation({
@@ -269,7 +269,7 @@ export default defineEventHandler(async (event) => {
   } else if (isSocialMcpToolName(toolName)) {
     // Management staff reach the same reviewed suite, re-admitted against their fresh grant/scope.
     const admission = evaluateStaffToolAdmission(toolName, ctx)
-    outcome = admission.allowed ? await runSocialTool() : { ok: false, error: admission.error, code: admission.code }
+    outcome = admission.allowed === true ? await runSocialTool() : { ok: false, error: admission.error, code: admission.code }
   } else if (isRemember) {
     // Unlike proposal writes, remember is an immediate private write. Its coordinator atomically owns
     // the idempotency claim, memory upsert, action audit, and terminal ledger state, so do not append

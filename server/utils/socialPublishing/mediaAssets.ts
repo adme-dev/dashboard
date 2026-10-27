@@ -516,7 +516,7 @@ export async function readPinnedSocialMedia(input: {
 // ---------------------------------------------------------------------------------------------------
 // Scoped discovery
 
-interface AssetListRow extends StoredAssetRow {}
+type AssetListRow = StoredAssetRow
 
 export interface SocialMediaAssetPage {
   items: SocialMediaAssetSummary[]
@@ -537,7 +537,9 @@ function decodeCursor(value: unknown): [string, string, string] | null {
       && (parsed[1] === 'banner_asset' || parsed[1] === 'video_asset') && typeof parsed[2] === 'string' && UUID.test(parsed[2])) {
       return parsed as [string, string, string]
     }
-  } catch {}
+  } catch {
+    // Malformed JSON follows the same invalid-cursor response below.
+  }
   return badRequest('Invalid cursor')
 }
 

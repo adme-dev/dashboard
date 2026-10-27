@@ -294,7 +294,7 @@ export async function executeStaffMcpReadTool(
   policy: Readonly<Record<string, StaffToolPolicyEntry>> = MCP_STAFF_TOOL_POLICY
 ): Promise<ExecuteOutcome | { ok: false, error: string, code: StaffToolDenialCode }> {
   const admission = evaluateStaffToolAdmission(name, ctx, policy)
-  if (!admission.allowed) return { ok: false, error: admission.error, code: admission.code }
+  if (admission.allowed === false) return { ok: false, error: admission.error, code: admission.code }
   const tool = tools.find(candidate => candidate.name === name)
   if (!tool) return { ok: false, error: `Unknown tool: ${name}`, code: 'not_found' }
   return await runReadToolHandler(tool, args, ctx)

@@ -4,7 +4,7 @@ import { resolveScopedClient, readLeadSummary } from '../marketing/clientReads'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
-import { type ResolveClient } from './clientResolve'
+import type { ResolveClient } from './clientResolve'
 import { periodSinceISO, type Period } from './period'
 import { cursorForOffset, cursorOffset } from './responseContract'
 
