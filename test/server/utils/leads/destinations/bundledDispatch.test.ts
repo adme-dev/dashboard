@@ -36,7 +36,7 @@ it('dispatches a signed Meta lead through all real bundled adapters with Nitro-s
   // queue and unrelated service boundaries are replaced; registration is real.
   const stubs: Record<string, string> = {
     'server/utils/leads/db.ts': ['claimDelivery', 'loadLead', 'loadRuleForForm', 'releaseClaim', 'markDelivered', 'markFailed', 'markSkipped'].map(name => `export const ${name} = (...args) => globalThis.__bundledLeadHooks.${name}(...args);`).join('\n'),
-    'server/utils/db.ts': 'export const queryOne = (...args) => globalThis.__bundledLeadHooks.queryOne(...args); export const execute = () => {};',
+    'server/utils/db.ts': 'export const queryOne = (...args) => globalThis.__bundledLeadHooks.queryOne(...args); export const execute = () => {}; export const transaction = () => {};',
     'server/utils/leads/rulesEngine.ts': 'export const evaluateLead = () => {};',
     'server/utils/leads/crmPromotion.ts': 'export const crmLeadPromotionService = { promote() {} };',
     'server/utils/leads/crmPromotionState.ts': 'export const markCrmPromotionFailure = () => {}; export const markCrmPromotionResult = () => {}; export const markCrmPromotionStarted = () => {};',
@@ -72,7 +72,7 @@ it('dispatches a signed Meta lead through all real bundled adapters with Nitro-s
     await bundle.close()
   }
   const compiled = await import(/* @vite-ignore */ `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`)
-  expect(compiled.listAdapterTypes().sort()).toEqual(['assign_user', 'autogate', 'email', 'portal', 'sheets', 'slack', 'webhook'])
+  expect(compiled.listAdapterTypes().sort()).toEqual(['assign_user', 'autogate', 'autoresponder_email', 'email', 'portal', 'sheets', 'slack', 'webhook'])
   await compiled.handleQueueMessage({ type: 'delivery.dispatch', payload: { delivery_id: delivery.id } })
   expect(fetch).toHaveBeenCalledOnce()
   const [url, options] = fetch.mock.calls[0] as unknown as [string, RequestInit]

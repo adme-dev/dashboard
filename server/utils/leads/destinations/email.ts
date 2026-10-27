@@ -2,7 +2,8 @@
 import { Resend } from 'resend'
 import { registerAdapter } from './registry'
 import { renderTemplate } from '../templateRender'
-import type { DestinationAdapter } from './types'
+import { singleEmailAddress, stripHeaderBreaks } from '../emailHeaders'
+import type { DestinationAdapter, Lead } from './types'
 
 interface Cfg {
   to: string[]
@@ -12,6 +13,17 @@ interface Cfg {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// Subjects are visible in notification previews and mailbox lists, so they
+// carry form metadata only. Field values (name, email, message) stay in the
+// body; `{{ field.* }}` and other tokens render empty in the subject.
+const SUBJECT_TOKENS: ReadonlySet<string> = new Set(['form_name', 'source'])
+const FALLBACK_SUBJECT = 'New lead'
+
+export function renderNotificationSubject(template: string, lead: Lead): string {
+  const rendered = stripHeaderBreaks(renderTemplate(template, lead, { allowedTokens: SUBJECT_TOKENS }).text)
+  return rendered || FALLBACK_SUBJECT
+}
 
 const adapter: DestinationAdapter<Cfg> = {
   type: 'email',
@@ -28,12 +40,16 @@ const adapter: DestinationAdapter<Cfg> = {
     const apiKey = process.env.RESEND_API_KEY
     if (!apiKey) return { status: 'failed', error: 'RESEND_API_KEY missing' }
     const resend = new Resend(apiKey)
-    const subject = renderTemplate(config.subject_template, lead).text
+    const subject = renderNotificationSubject(config.subject_template, lead)
     const html = renderTemplate(config.body_template, lead, { html: true }).text
+    // Replying to the notification reaches the visitor, but only when they
+    // submitted exactly one valid address (see contact.post.ts).
+    const replyTo = singleEmailAddress(lead.field_data?.email)
     try {
       const { data, error } = await resend.emails.send({
-        from: config.from ?? 'leads@adme.net.au',
+        from: stripHeaderBreaks(config.from ?? 'leads@adme.net.au'),
         to: config.to,
+        ...(replyTo ? { replyTo } : {}),
         subject,
         html,
         headers: { 'X-Leads-Idempotency-Key': delivery.idempotency_key },

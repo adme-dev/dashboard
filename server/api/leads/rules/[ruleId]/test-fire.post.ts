@@ -52,6 +52,8 @@ export default defineEventHandler(async (event) => {
     spam_reasons: null, assigned_to: null, contacted_at: null, contacted_by: null,
     notes: null, created_by: null, deleted_at: null,
     created_at: new Date().toISOString(),
+    // Synthetic: visitor-facing destinations (auto-acknowledgement) must skip it.
+    is_test: true
   }
 
   const destinations: any[] = await queryRows(
@@ -82,6 +84,10 @@ export default defineEventHandler(async (event) => {
       updated_at: new Date().toISOString(),
     }
     const r = await adapter.dispatch(fakeDelivery, fakeLead, d.config)
+    if (r.status === 'skipped') {
+      results.push({ id: d.id, type: d.destination_type, skipped: r.reason })
+      continue
+    }
     results.push({ id: d.id, type: d.destination_type, ...r })
   }
   // Stamp the rule so the editor's "Verify" step stays checked across reloads.

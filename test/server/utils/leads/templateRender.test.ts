@@ -40,4 +40,11 @@ describe('renderTemplate', () => {
   it('leaves unknown braces alone if not template syntax', () => {
     expect(renderTemplate('1{2}3', lead).text).toBe('1{2}3')
   })
+  it('renders only allow-listed tokens when allowedTokens is set', () => {
+    const r = renderTemplate('{{ form_name }}: {{ field.first_name }} {{ attribution.utm_source }}', lead, {
+      allowedTokens: new Set(['form_name'])
+    })
+    expect(r.text).toBe('Quote Form:  ')
+    expect(r.warnings).toEqual(['blocked:field.first_name', 'blocked:attribution.utm_source'])
+  })
 })
