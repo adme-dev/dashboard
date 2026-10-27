@@ -1,0 +1,89 @@
+{
+  "propertyId": "558508526",
+  "streamId": "16110501658",
+  "measurementId": "G-YYX5DY94SE",
+  "website": "https://www.fairfieldfoton.com.au",
+  "operatorTest": true,
+  "requestAndAcceptance": {
+    "url": "https://www.fairfieldfoton.com.au/api/enquiries",
+    "method": "POST",
+    "httpStatus": 200,
+    "eventId": "58508e25-ef39-4b64-af01-df580f18e612",
+    "enquiryId": "341f7563-f786-453d-91cb-0af1035d3f64",
+    "acceptedAt": "2026-10-27 05:38:03.980006+00",
+    "success": true,
+    "deduplicated": false,
+    "dealerId": "4d4dc739-3d6d-4e60-bfe6-debf620fe386",
+    "source": "contact_form_block",
+    "category": "general_enquiry",
+    "operatorTestLabelPresent": true,
+    "crmAssigned": true
+  },
+  "nativeDelivery": {
+    "at": "2026-10-27T05:38:29.801Z",
+    "rows": [
+      {
+        "id": "f2831361-2dcb-4bb1-82d0-4b6df52c411a",
+        "event_id": "58508e25-ef39-4b64-af01-df580f18e612",
+        "event_type": "lead",
+        "created_at": "2026-10-27T05:38:12.731088+00:00",
+        "ga4_sent": true,
+        "ga4_sent_at": "2026-10-27T05:38:12.515+00:00",
+        "ga4_error": null,
+        "google_ads_sent": false,
+        "google_ads_error": null,
+        "valid_ga_identity": true
+      }
+    ]
+  },
+  "googleReporting": {
+    "url": "https://analytics.google.com/analytics/web/?authuser=3#/a411623622p558508526/realtime/overview",
+    "exactEventIdVisible": true,
+    "tableRows": [
+      "58508e25-ef39-4b64-af01-df580f18e612\t1",
+      "generate_lead\t1"
+    ],
+    "propertyHeader": "\u00a0Analytics\nAll accounts\nchevron_right\nFairfield Foton\nFairfield Foton - GA4\narrow_drop_down\nsearch\nhelp\nHome\nReports\nExplore\nAdvertising\nTasks\nAdmin\nC",
+    "verifiedAt": "2026-10-27T05:40:13.990480+00:00"
+  },
+  "embeddedReportingHealth": {
+    "httpStatus": 200,
+    "data": {
+      "propertyConfigured": true,
+      "oauthConnected": true,
+      "propertyAccessible": true,
+      "propertyId": "558508526",
+      "propertyDisplayName": "Fairfield Foton - GA4",
+      "googleAccountEmail": "socialmedia@adme.net.au",
+      "redirectUri": "https://dealer-network.pages.dev/api/admin/marketing/ga4/callback",
+      "state": "healthy"
+    },
+    "verifiedAt": "2026-10-27T05:47:04.431835+00:00"
+  },
+  "oauthCallbackRegistration": {
+    "clientId": "276717583442-428unrl1oude957tnmlollai9f3vrt5h.apps.googleusercontent.com",
+    "path": "/auth/clients/276717583442-428unrl1oude957tnmlollai9f3vrt5h.apps.googleusercontent.com",
+    "uris": [
+      "https://auth.engagr.com.au",
+      "https://auth.engagr.com.au/api/auth/callback/google",
+      "http://localhost:3000/api/auth/callback/google",
+      "https://dealer-network.pages.dev/api/admin/marketing/ga4/callback"
+    ],
+    "verifiedAt": "2026-10-27T05:44:35.529354+00:00"
+  },
+  "nativeReport": {
+    "sessions": 7,
+    "users": 5,
+    "processedConversions": 0,
+    "populatedPagesAndSources": true,
+    "scope": "Current native GA4 page default reporting window; processed metrics are not Realtime"
+  },
+  "mondayCloseout": {
+    "itemId": "13156840770",
+    "updateId": "5667260266",
+    "status": "Done",
+    "verifiedAt": "2026-10-27T05:49:25.377Z",
+    "bodyVerified": true,
+    "assigneeAndDuePreserved": true
+  }
+}
