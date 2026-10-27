@@ -48,11 +48,11 @@ vi.mock('~~/server/utils/ai/mcp/requestClaim', () => ({
   consumeMcpRequestClaim: mocks.consumeClaim,
   getMcpRequestGodModeAuthority: mocks.getAuthority
 }))
-vi.mock('~~/server/utils/db', () => ({
-  queryOne: mocks.queryOne,
-  execute: mocks.execute,
-  queryRows: vi.fn(async () => [])
-}))
+vi.mock('~~/server/utils/db', () => {
+  const queryRows = vi.fn(async () => [])
+  // Staff authority reads through the uncached primitives; the same SQL-aware fixture answers both.
+  return { queryOne: mocks.queryOne, queryOneFresh: mocks.queryOne, execute: mocks.execute, queryRows, queryRowsFresh: queryRows }
+})
 vi.mock('~~/server/utils/ai/tools', () => ({ registry: [] }))
 vi.mock('~~/server/utils/ai/tools/remember', () => ({
   executeOrdinaryMcpRememberMutation: mocks.executeRemember
@@ -65,7 +65,9 @@ vi.mock('~~/server/utils/ai/mcp/project', () => ({
 }))
 vi.mock('~~/server/utils/ai/mcp/registry', () => ({
   projectRegisteredMcpTools: mocks.projectRegistered,
-  projectGodModeTools: mocks.projectGodMode
+  projectGodModeTools: mocks.projectGodMode,
+  // Task 3 staff-only suites (social drafts) are covered by test/ai/mcpSocialTools.test.ts.
+  projectStaffOnlyMcpTools: () => []
 }))
 vi.mock('~~/server/utils/ai/mcp/directExecution', () => ({
   executeGodModeMcpCall: mocks.executeGodModeMcpCall
@@ -127,6 +129,16 @@ const USER_ID = '11111111-1111-4111-8111-111111111111'
 const INTERNAL_SECRET = 'internal-service-secret'
 const CLAIM = 'signed-request-claim-redacted'
 
+// Ordinary users now resolve fresh staff authority (identity row, then role policy row). `null` for
+// the role row selects the static system-role default.
+let actorRole = 'member'
+function staffAuthorityRow(sql: string) {
+  if (String(sql).includes('FROM team_members')) {
+    return { role: actorRole, custom_role_id: null, name: null, email: null }
+  }
+  return null
+}
+
 function event(body: Record<string, unknown>, headers: Record<string, string> = {}) {
   return { body, headers, context: {}, method: 'POST', path: '/api/internal/mcp/tools' } as any
 }
@@ -172,7 +184,8 @@ describe('signed internal MCP list/call endpoints', () => {
       scope: ['mcp:read'],
       godMode: false
     })
-    mocks.queryOne.mockResolvedValue({ role: 'member' })
+    actorRole = 'member'
+    mocks.queryOne.mockImplementation(async (sql: string) => staffAuthorityRow(sql))
     mocks.execute.mockResolvedValue(1)
     mocks.projectReadOnly.mockReturnValue([{ name: 'get_tasks', description: 'read', inputSchema: {} }])
     mocks.projectGeneration.mockReturnValue([])
@@ -214,9 +227,12 @@ describe('signed internal MCP list/call endpoints', () => {
       ordering.push('claim-consumed')
       return { uid: USER_ID, scope: ['mcp:read'], godMode: false }
     })
-    mocks.queryOne.mockImplementation(async () => {
-      ordering.push('projected')
-      return { role: 'member' }
+    // Management staff keep the registered suite projection (non-management staff use the reviewed
+    // staff policy instead, covered in mcpStaffCatalog.test.ts).
+    actorRole = 'lead'
+    mocks.queryOne.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('FROM team_members')) ordering.push('projected')
+      return staffAuthorityRow(sql)
     })
 
     await expect(toolsHandler(requestEvent)).resolves.toEqual({
@@ -463,10 +479,11 @@ describe('signed internal MCP list/call endpoints', () => {
     expect(mocks.execute).not.toHaveBeenCalled()
   })
 
-  it('keeps ordinary write projection and confirmation behavior unchanged', async () => {
+  it('keeps ordinary management write projection and confirmation behavior, with mandatory write scope', async () => {
     mocks.consumeClaim.mockResolvedValue({ uid: USER_ID, scope: ['mcp:read', 'mcp:write'], godMode: false })
     mocks.getAuthority.mockReturnValue({ active: false, actorUserId: USER_ID })
     mocks.isActiveAuthority.mockReturnValue(false)
+    actorRole = 'lead'
 
     const requestEvent = event(
       { userId: USER_ID },
@@ -475,7 +492,7 @@ describe('signed internal MCP list/call endpoints', () => {
     await toolsHandler(requestEvent)
 
     expect(mocks.projectRegistered).toHaveBeenCalledWith(expect.objectContaining({
-      role: 'member',
+      role: 'lead',
       scopes: ['mcp:read', 'mcp:write'],
       requireWriteScope: true
     }))
@@ -491,7 +508,15 @@ describe('signed internal MCP list/call endpoints', () => {
       { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM }
     )
     confirmEvent.path = '/api/internal/mcp/call'
-    await expect(callHandler(confirmEvent)).resolves.toEqual({
+    // Management calls are capped by the same fresh projection tools/list serves: not listed → denied.
+    await expect(callHandler(confirmEvent)).resolves.toMatchObject({ ok: false, code: 'forbidden' })
+    expect(mocks.executeWriteConfirm).not.toHaveBeenCalled()
+
+    mocks.projectRegistered.mockReturnValue([
+      { name: 'get_tasks', description: 'read', inputSchema: {} },
+      { name: 'confirm_action', description: 'confirm', inputSchema: {} }
+    ])
+    await expect(callHandler({ ...confirmEvent, body: { ...confirmEvent.body, idempotencyKey: `mcp:${'e'.repeat(64)}` } })).resolves.toEqual({
       ok: true,
       data: { resultRef: 'task-ordinary' }
     })

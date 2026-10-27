@@ -16,7 +16,7 @@ Object.assign(globalThis, {
 vi.mock('~~/server/utils/db', () => ({ queryOne: vi.fn(), execute: vi.fn() }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: (...args: any[]) => access(...args) }))
 vi.mock('~~/server/utils/metaClient', () => ({ exchangeMetaCode: (...args: any[]) => exchange(...args), exchangeForLongLivedToken: vi.fn(async () => ({ access_token: 'test-long' })) }))
-vi.mock('~~/server/utils/socialOAuth/meta', () => ({ listManagedPages: vi.fn(async () => []), mapPagesToAccountRows: vi.fn(), subscribePageWebhook: vi.fn() }))
+vi.mock('~~/server/utils/socialOAuth/meta', () => ({ attachMetaGrantedScopes: vi.fn(async (pages: any) => pages), listManagedPages: vi.fn(async () => []), mapPagesToAccountRows: vi.fn(), subscribePageWebhook: vi.fn() }))
 vi.mock('~~/server/utils/socialOAuth/store', () => ({ upsertSocialAccount: vi.fn(), markWebhookSubscribed: vi.fn() }))
 vi.mock('~~/server/utils/socialOAuth/pending', () => ({ putPending: vi.fn() }))
 vi.mock('~~/server/utils/socialOAuth/diagnostics', () => ({ logOAuthFailure: vi.fn() }))

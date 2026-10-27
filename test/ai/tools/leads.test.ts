@@ -2,7 +2,12 @@ import { describe, it, expect, vi } from 'vitest'
 import { getLeads, leadName, maskContact, leadsTool, type LeadsDeps, type LeadRow } from '~~/server/utils/ai/tools/leads'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
-const ctx: ToolContext = { userId: 'u1', userRole: 'owner', event: {} as any }
+vi.mock('~~/server/utils/db', async original => ({ ...(await original<any>()),
+  queryOneFresh: vi.fn(async (sql: string, params: any[]) => sql.includes('team_members') ? { id: params[0] } : sql.includes('FROM leads') ? { total_submissions: 63, campaign_attributed: 4, ad_attributed: 3 } : { id: 'c1' }),
+  queryRowsFresh: vi.fn(async () => [{ id: 'c1', name: 'Acme' }])
+}))
+
+const ctx = { userId: '11111111-1111-4111-8111-111111111111', userRole: 'owner', event: { context: {} } as any } as ToolContext
 const now = new Date('2026-06-22T00:00:00.000Z')
 const resolveClient = vi.fn().mockResolvedValue({ id: 'c1', name: 'Acme' })
 const row = (i: number): LeadRow => ({

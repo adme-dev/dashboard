@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
-import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
+import { hasMcpPermission, mcpContextHasPermission, type McpExecutionDescriptor, type McpProjectionContext, type McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 // Static import (not `await import(...)`): with only the zero-arg handler call statically
 // visible, Rollup treated the namespace-mediated `buildGenerationRunner(services)` call as
@@ -152,11 +152,11 @@ export const generationTools: GenerationToolDescriptor[] = [
 export function projectGenerationTools(
   role: string,
   enabled: boolean,
-  options: { bypassPermissions?: boolean } = {}
+  options: { bypassPermissions?: boolean, permissionGroups?: readonly PermissionGroup[] } = {}
 ): McpToolManifest[] {
   if (!enabled) return []
   return generationTools
-    .filter(t => options.bypassPermissions || roleHasPermission(role, t.requiredPermission))
+    .filter(t => options.bypassPermissions || hasMcpPermission(role, t.requiredPermission, options.permissionGroups))
     .map(t => ({
       name: t.name,
       description: t.description,
@@ -169,7 +169,7 @@ export function projectGenerationMcpSuite(context: McpProjectionContext): McpToo
   return projectGenerationTools(
     context.role,
     context.governanceBypass || context.suiteFlags.generation,
-    { bypassPermissions: context.governanceBypass }
+    { bypassPermissions: context.governanceBypass, permissionGroups: context.permissionGroups }
   )
 }
 
@@ -274,7 +274,7 @@ export async function executeGenerationTool(
   const tool = generationTools.find(t => t.name === name)
   if (!tool) return { ok: false, error: `Unknown generation tool: ${name}`, code: 'not_found' }
 
-  if (!deps.bypassPermissions && !roleHasPermission(ctx.userRole, tool.requiredPermission)) {
+  if (!deps.bypassPermissions && !mcpContextHasPermission(ctx, tool.requiredPermission)) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 

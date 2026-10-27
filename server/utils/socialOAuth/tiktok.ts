@@ -8,8 +8,7 @@ const TIKTOK_API_BASE = 'https://open.tiktokapis.com/v2'
 export const TIKTOK_CONTENT_OAUTH_SCOPES = [
   'user.info.basic',
   'user.info.profile',
-  'video.publish',
-  'video.upload'
+  'video.publish'
 ]
 
 export interface TikTokContentTokenResponse {
@@ -141,7 +140,8 @@ export function mapTikTokCreatorToAccountRow(
   creator: TikTokCreatorSelection,
   accessToken: string,
   refreshToken: string | null,
-  expiresAt: string | null
+  expiresAt: string | null,
+  grant: { scope?: string, refreshExpiresAt?: string | null } = {}
 ): AccountRow {
   return {
     platform: 'tiktok',
@@ -151,6 +151,8 @@ export function mapTikTokCreatorToAccountRow(
     refresh_token: refreshToken,
     token_expires_at: expiresAt,
     metadata: {
+      grantedScopes: (grant.scope ?? '').split(/[ ,]+/).filter(Boolean),
+      refreshTokenExpiresAt: grant.refreshExpiresAt ?? null,
       tiktokOpenId: creator.openId,
       tiktokUsername: creator.username,
       avatarUrl: creator.avatarUrl,

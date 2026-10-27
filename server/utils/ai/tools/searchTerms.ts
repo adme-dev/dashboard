@@ -1,11 +1,11 @@
+import { resolveMarketingReadScope, requireMarketingReadPermission, requireOwnerRefresh } from '../marketing/readScope'
+import { resolveScopedSearchTermTarget, readScopedSearchTermSnapshot } from '../marketing/searchTermReads'
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { fail, ok, type ToolContext, type ToolResult } from '../toolContext'
 import { diagnosticDataStatus } from '~~/server/utils/adDiagnostics'
 import {
   SEARCH_TERM_SOURCE_CAP,
-  loadCampaignSearchTerms,
-  resolveSearchTermTarget,
   syncCampaignSearchTerms,
   type SearchTermSnapshot,
   type SearchTermTarget,
@@ -32,15 +32,23 @@ type Args = z.infer<typeof params>
 
 export type SearchTermsDeps = {
   resolve: (args: Args, ctx: ToolContext) => Promise<SearchTermTarget | null>
-  load: (target: SearchTermTarget, startDate: string, endDate: string) => Promise<SearchTermSnapshot | null>
-  sync: (target: SearchTermTarget, startDate: string, endDate: string) => Promise<SearchTermSnapshot>
+  load: (target: SearchTermTarget, startDate: string, endDate: string, ctx: ToolContext) => Promise<SearchTermSnapshot | null>
+  sync: (target: SearchTermTarget, startDate: string, endDate: string, ctx: ToolContext) => Promise<SearchTermSnapshot>
   now?: () => Date
 }
 
 const defaultDeps: SearchTermsDeps = {
-  resolve: (args, ctx) => resolveSearchTermTarget(args, ctx),
-  load: (target, startDate, endDate) => loadCampaignSearchTerms(target.mediaSpendId, startDate, endDate),
-  sync: (target, startDate, endDate) => syncCampaignSearchTerms(target, startDate, endDate),
+  resolve: async (args, ctx) => resolveScopedSearchTermTarget(await resolveMarketingReadScope(ctx), args),
+  load: async (target, startDate, endDate, ctx) => readScopedSearchTermSnapshot(await resolveMarketingReadScope(ctx), target, startDate, endDate),
+  sync: async (target, startDate, endDate, ctx) => {
+    const scope = await requireOwnerRefresh(ctx)
+    const current = await resolveScopedSearchTermTarget(scope, { campaignId: target.campaignId, clientName: target.clientName ?? undefined })
+    if (!current || current.clientId !== target.clientId || current.connectionId !== target.connectionId || current.platform !== target.platform) throw new Error('Campaign not found')
+    await syncCampaignSearchTerms(current, startDate, endDate)
+    const stored = await readScopedSearchTermSnapshot(scope, current, startDate, endDate)
+    if (!stored) throw new Error('Search terms unavailable')
+    return stored
+  },
 }
 
 function defaultPeriod(now: Date) {
@@ -52,19 +60,22 @@ function defaultPeriod(now: Date) {
 
 export async function getSearchTerms(args: Args, ctx: ToolContext, deps: SearchTermsDeps = defaultDeps): Promise<ToolResult> {
   try {
+    const scope = await resolveMarketingReadScope(ctx)
+    requireMarketingReadPermission(scope, 'search_terms')
+    if (args.refresh && !scope.ownerRefreshAllowed) return fail('Refreshing requires a reviewed owner operation.', 'MARKETING_REFRESH_REQUIRES_REVIEW')
     const target = await deps.resolve(args, ctx)
     if (!target) return fail('No campaign matched the requested client/campaign scope.', 'SEARCH_TERM_CAMPAIGN_NOT_FOUND')
     const now = deps.now?.() ?? new Date()
     const period = args.startDate && args.endDate
       ? { start: args.startDate, end: args.endDate }
       : defaultPeriod(now)
-    let snapshot = await deps.load(target, period.start, period.end)
+    let snapshot = await deps.load(target, period.start, period.end, ctx)
     const ageMs = snapshot?.asOf ? now.getTime() - Date.parse(snapshot.asOf) : Number.POSITIVE_INFINITY
     const shouldRefresh = args.refresh || !snapshot || ageMs > 24 * 3_600_000
     let refresh = { attempted: false, succeeded: false, error: null as string | null }
-    if (shouldRefresh) {
+    if (scope.ownerRefreshAllowed && shouldRefresh) {
       const beforeAsOf = snapshot?.asOf || null
-      snapshot = await deps.sync(target, period.start, period.end)
+      snapshot = await deps.sync(target, period.start, period.end, ctx)
       refresh = {
         attempted: true,
         succeeded: snapshot.asOf != null && snapshot.asOf !== beforeAsOf && snapshot.lastError == null,
@@ -107,7 +118,7 @@ export async function getSearchTerms(args: Args, ctx: ToolContext, deps: SearchT
       dataStatus,
       asOf: snapshot.asOf,
       unavailableReason: snapshot.lastError,
-      refresh,
+      refresh: { ...refresh, ...(!scope.ownerRefreshAllowed ? { unavailableReason: 'Refresh requires a reviewed owner operation.' } : {}) },
       sourceCap: SEARCH_TERM_SOURCE_CAP,
       terms: page.items.map(term => ({
         ...term,

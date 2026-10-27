@@ -50,6 +50,7 @@ export default defineEventHandler(async (event) => {
   if (!q.code) return fail('no_code', state.clientId)
   if (!linkedinConfig.clientId || !linkedinConfig.clientSecret) return fail('linkedin_not_configured', state.clientId)
 
+  let grantedScope: string | undefined
   let accessToken: string
   let refreshToken: string | null = null
   let expiresAt: string | null = null
@@ -61,6 +62,7 @@ export default defineEventHandler(async (event) => {
       linkedinConfig.clientSecret,
       redirectUri
     )
+    grantedScope = token.scope
     accessToken = token.access_token
     refreshToken = token.refresh_token || null
     expiresAt = new Date(Date.now() + (token.expires_in || 3600) * 1000).toISOString()
@@ -81,7 +83,7 @@ export default defineEventHandler(async (event) => {
   if (!organizations.length) return fail('no_linkedin_organizations', state.clientId)
 
   if (organizations.length === 1) {
-    const rows = mapLinkedInOrganizationsToAccountRows(organizations, accessToken, refreshToken, expiresAt, refreshTokenExpiresAt)
+    const rows = mapLinkedInOrganizationsToAccountRows(organizations, accessToken, refreshToken, expiresAt, refreshTokenExpiresAt, grantedScope)
     const res = await upsertSocialAccount({ queryOne, execute }, state.clientId, rows[0]!, state.userId)
     if (res.status === 'conflict') return fail('linkedin_organization_owned_by_another_client', state.clientId)
     return sendRedirect(event, linkedInAccountsPath({ social_connected: '1', client: state.clientId }), 302)
@@ -97,6 +99,7 @@ export default defineEventHandler(async (event) => {
       accessToken,
       refreshToken,
       refreshTokenExpiresAt,
+      grantedScope,
       organizations
     }
   })

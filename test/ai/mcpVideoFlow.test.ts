@@ -57,7 +57,8 @@ function makeEngine() {
     enqueued.push(jobId)
   })
   const createProject = vi.fn(async (_payload: VideoProjectPendingPayload) => ({ projectId: 'proj-1' }))
-  return { enqueued, confirmDeps: { reserve, enqueue, createProject } }
+  const authorizeProject = vi.fn(async () => true)
+  return { enqueued, confirmDeps: { authorizeProject, reserve, enqueue, createProject } }
 }
 
 type Store = ReturnType<typeof makeStore>

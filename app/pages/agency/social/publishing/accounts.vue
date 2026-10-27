@@ -309,6 +309,17 @@ onMounted(async () => {
             class="flex items-center gap-2 rounded-md border border-default bg-elevated/30 px-3 py-2 min-w-0"
           >
             <div class="flex-1 min-w-0" :title="a.account_name || a.platform_account_id">
+              <details v-if="a.operations?.length" class="text-sm text-muted mb-2">
+                <summary class="cursor-pointer">
+                  Staff connector operations
+                </summary>
+                <ul class="space-y-2 mt-2">
+                  <li v-for="operation in a.operations" :key="operation.operation">
+                    <span class="font-medium">{{ operation.operation.replaceAll('_', ' ') }}: {{ operation.state.replaceAll('_', ' ') }}</span>
+                    <p>{{ operation.reason }}</p>
+                  </li>
+                </ul>
+              </details>
               <div class="text-sm truncate">
                 {{ a.account_name || a.platform_account_id }}
               </div>

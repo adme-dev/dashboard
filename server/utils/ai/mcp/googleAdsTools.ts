@@ -1,11 +1,12 @@
 import { z } from 'zod'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import { delegatedAdsContext, assertGoogleAdsConnection } from '~~/server/utils/ai/marketing/googleAdsAccess'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import {
   GoogleAdsActionPlanSchema,
   type GoogleAdsActionPlan
 } from '~~/server/utils/googleAds/contracts'
-import type { McpToolManifest } from './project'
+import { hasMcpPermission, mcpContextHasPermission, type McpToolManifest } from './project'
 import {
   getGoogleAdsSearchPlanningToolSchema,
   googleAdsSearchPlanningTools,
@@ -299,8 +300,12 @@ export function getGoogleAdsToolSchema(name: string): z.ZodType | null {
   return null
 }
 
-export function projectGoogleAdsTools(role: string, flags: GoogleAdsMcpFlags): McpToolManifest[] {
-  if (!roleHasPermission(role, 'MEDIA_BUYING')) return []
+export function projectGoogleAdsTools(
+  role: string,
+  flags: GoogleAdsMcpFlags,
+  permissionGroups?: readonly PermissionGroup[]
+): McpToolManifest[] {
+  if (!hasMcpPermission(role, 'MEDIA_BUYING', permissionGroups)) return []
   const projected: McpToolManifest[] = []
   if (flags.read) projected.push(...googleAdsReadTools)
   if (flags.write) {
@@ -352,6 +357,22 @@ export type GoogleAdsMcpToolOutcome
   = | { ok: true, data: unknown }
     | { ok: false, error: string, code: 'not_found' | 'forbidden' | 'disabled' | 'bad_args' | 'blocked' | 'automation_disabled' | 'destructive_disabled' | 'invalid_state' | 'validation_failed' | 'handler_error' }
 
+/**
+ * Fresh MCP staff: a stored plan's risk tier needs the CURRENT group the Google Ads policy demands for it
+ * (destructive → ADMIN, rich_confirm → MANAGEMENT). Checked before a plan is proposed or approved, so a
+ * plan created before a custom role revoked that group cannot be carried forward. Owner God mode and
+ * legacy contexts are authorized by the role-derived policy downstream, unchanged.
+ */
+export function mcpGoogleAdsRiskTierPermitted(
+  context: Pick<ToolContext, 'userRole' | 'permissionGroups' | 'mcpStaffAuthority'>,
+  riskTier: GoogleAdsActionPlan['riskTier']
+): boolean {
+  if (context.mcpStaffAuthority !== 'fresh') return true
+  if (riskTier === 'destructive_confirm') return mcpContextHasPermission(context, 'ADMIN')
+  if (riskTier === 'rich_confirm') return mcpContextHasPermission(context, 'MANAGEMENT')
+  return true
+}
+
 function validationPassed(validation: unknown): boolean {
   return Boolean(validation && typeof validation === 'object'
     && (validation as { valid?: unknown }).valid === true)
@@ -367,11 +388,13 @@ export async function executeGoogleAdsTool(
   if (!isGoogleAdsToolName(name)) {
     return { ok: false, error: `Unknown Google Ads tool: ${name}`, code: 'not_found' }
   }
-  if (!roleHasPermission(context.userRole, 'MEDIA_BUYING')) {
+  if (delegatedAdsContext(context) ? !(context.marketingCapabilities ?? []).some(c => c === 'ads_plan' || c === 'reporting') : !mcpContextHasPermission(context, 'MEDIA_BUYING')) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
+  if (delegatedAdsContext(context) && (name === GOOGLE_ADS_PROPOSE_ACTION_TOOL || name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL || name === GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL)) return { ok: false, error: 'Use the independently reviewed planning workflow.', code: 'forbidden' }
   const isWrite = isGoogleAdsWriteToolName(name)
+  if (delegatedAdsContext(context) && isWrite && (context.assistantReadOnly || ![...(context.mcpScopes ?? [])].includes('mcp:write'))) return { ok: false, error: 'Signed write scope required.', code: 'forbidden' }
   if (isWrite && !flags.write) {
     return { ok: false, error: 'Google Ads write tools are not enabled over MCP.', code: 'disabled' }
   }
@@ -470,6 +493,7 @@ export async function executeGoogleAdsTool(
       return { ok: false, error: 'This action plan belongs to another user.', code: 'forbidden' }
     }
 
+    if (delegatedAdsContext(context)) await assertGoogleAdsConnection(context, plan.clientId, plan.connectionId, plan.customerId)
     if (name === GOOGLE_ADS_GET_STATUS_TOOL) {
       return { ok: true, data: await dependencies.getStatus(plan, context) }
     }
@@ -493,6 +517,9 @@ export async function executeGoogleAdsTool(
         error: 'Permanent Google Ads removal is not enabled.',
         code: 'destructive_disabled'
       }
+    }
+    if (!mcpGoogleAdsRiskTierPermitted(context, plan.riskTier)) {
+      return { ok: false, error: 'Not permitted.', code: 'forbidden' }
     }
 
     if (plan.executionMode === 'automatic') {
@@ -551,10 +578,11 @@ export async function dispatchGoogleAdsConfirm(
   dependencies: GoogleAdsConfirmDependencies
 ): Promise<WriteConfirmOutcome | null> {
   if (row.tool_name !== GOOGLE_ADS_PENDING_ACTION) return null
+  if (delegatedAdsContext(context)) return { ok: false, error: 'Google Ads changes require independent browser review; retained MCP proposals cannot be self-confirmed.', code: 'forbidden' }
   if (!flags.write) {
     return { ok: false, error: 'Google Ads write tools are not enabled over MCP.', code: 'forbidden' }
   }
-  if (!roleHasPermission(context.userRole, 'MEDIA_BUYING')) {
+  if (delegatedAdsContext(context) ? !(context.marketingCapabilities ?? []).some(c => c === 'ads_plan' || c === 'reporting') : !mcpContextHasPermission(context, 'MEDIA_BUYING')) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
@@ -575,6 +603,9 @@ export async function dispatchGoogleAdsConfirm(
     }
     if (plan.riskTier === 'destructive_confirm' && !flags.destructive) {
       return { ok: false, error: 'Permanent Google Ads removal is not enabled.', code: 'forbidden' }
+    }
+    if (!mcpGoogleAdsRiskTierPermitted(context, plan.riskTier)) {
+      return { ok: false, error: 'Not permitted.', code: 'forbidden' }
     }
     if ((plan.riskTier === 'rich_confirm' || plan.riskTier === 'destructive_confirm') && !acknowledged) {
       return { ok: false, error: 'This Google Ads action requires explicit ack:true.', code: 'confirm_required' }

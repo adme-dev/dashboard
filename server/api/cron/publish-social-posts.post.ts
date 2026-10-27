@@ -1,14 +1,35 @@
 import { requireSocialCronAuth } from '~~/server/utils/socialPublishing/cronAuth'
 import { defineEventHandler } from 'h3'
-import { queryRowsFresh, queryOneFresh } from '~~/server/utils/db'
-import { startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/client'
+import { execute, queryRowsFresh, queryOneFresh } from '~~/server/utils/db'
+import { agencyWorkflowConfigText, startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/client'
 import { claimAndPublishSocialPost } from '~~/server/utils/socialPublishing/dispatch'
 
 interface DuePostRow {
   id: string
   client_id: string
   scheduled_at: string | null
+  approved_revision_id?: string | null
 }
+
+/**
+ * A delegated approval that expired before dispatch is never published late: the revision expires and
+ * the post returns to draft for a new reviewed schedule.
+ */
+const EXPIRE_DELEGATED_APPROVALS_SQL = `
+  WITH expired AS (
+    UPDATE social_post_revisions r
+       SET review_status = 'expired'
+      FROM social_posts p
+     WHERE p.review_policy = 'delegated_marketing' AND p.status IN ('approved', 'scheduled')
+       AND r.id = p.approved_revision_id AND r.post_id = p.id AND r.client_id = p.client_id
+       AND r.review_status = 'approved' AND r.expires_at <= NOW()
+    RETURNING r.post_id, r.client_id
+  )
+  UPDATE social_posts p
+     SET status = 'draft', approved_by = NULL, approved_at = NULL, approved_revision_id = NULL,
+         rejection_reason = 'Approval expired before dispatch; resubmit for review', updated_at = NOW()
+    FROM expired
+   WHERE p.id = expired.post_id AND p.client_id = expired.client_id AND p.status IN ('approved', 'scheduled')`
 
 interface DispatchHealthRow {
   due_backlog?: number | string | null
@@ -34,22 +55,35 @@ interface DispatchHealth {
 export default defineEventHandler(async (event) => {
   requireSocialCronAuth(event)
 
+  try {
+    await execute(EXPIRE_DELEGATED_APPROVALS_SQL)
+  } catch (error) {
+    // Expired approvals are also excluded from the due query below, so a failed sweep cannot publish late.
+    console.warn('social-dispatch.expire-approvals.failed', { error: error instanceof Error ? error.message : String(error) })
+  }
+
   const due = await queryRowsFresh<DuePostRow>(
-    `SELECT id, client_id, scheduled_at::text
+    `SELECT id, client_id, scheduled_at::text, approved_revision_id
        FROM social_posts
       WHERE scheduled_at <= NOW() AND status = 'scheduled' AND publish_attempts < 3
+        AND (review_policy IS DISTINCT FROM 'delegated_marketing' OR EXISTS (
+          SELECT 1 FROM social_post_revisions r
+           WHERE r.id = social_posts.approved_revision_id AND r.post_id = social_posts.id
+             AND r.review_status = 'approved' AND r.expires_at > NOW()
+        ))
       ORDER BY scheduled_at ASC LIMIT 10`
   )
 
   const results: Array<{ id: string, status: string, workflowInstanceId?: string }> = []
   for (const post of due) {
-    if (scheduledPublishingWorkflowPrimary()) {
+    if (scheduledPublishingWorkflowPrimary(event)) {
       const started = await startSocialPublishingWorkflow(event, {
         postId: post.id,
         clientId: post.client_id,
         scheduledAt: post.scheduled_at ?? undefined,
         trigger: 'cron',
-        requestedBy: 'social-dispatch-cron'
+        requestedBy: 'social-dispatch-cron',
+        ...(post.approved_revision_id ? { revisionId: post.approved_revision_id } : {})
       })
       if (started.ok) {
         results.push({ id: post.id, status: 'workflow_started', workflowInstanceId: started.instanceId })
@@ -67,7 +101,9 @@ export default defineEventHandler(async (event) => {
       scheduledAt: post.scheduled_at,
       claimStatuses: ['scheduled'],
       maxAttempts: 3,
-      source: 'cron'
+      source: 'cron',
+      event,
+      revisionId: post.approved_revision_id ?? null
     })
     if (dispatch.skipped) continue
     results.push({ id: post.id, status: dispatch.status ?? 'failed' })
@@ -97,9 +133,10 @@ export default defineEventHandler(async (event) => {
   return { processed: results.length, results, health }
 })
 
-function scheduledPublishingWorkflowPrimary(): boolean {
-  return process.env.AGENCY_WORKFLOWS_ENABLED === 'true'
-    && process.env.AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY === 'true'
+/** Request bindings first, local env second; an explicit binding value (even "false") wins. */
+function scheduledPublishingWorkflowPrimary(event: Parameters<typeof agencyWorkflowConfigText>[0]): boolean {
+  return agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_ENABLED') === 'true'
+    && agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY') === 'true'
 }
 
 function dispatchHealth(row: DispatchHealthRow | null): DispatchHealth {

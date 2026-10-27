@@ -1,271 +1,315 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'agency' })
 
-interface McpTool { name: string, description: string }
+interface McpTool { name: string, description: string, requiresWriteScope?: boolean }
 interface MyToolsResponse {
   enabled: boolean
   workerOrigin: string
   role: string
   authority?: 'god_mode'
+  preview: { assumedScopes: string[], projection: 'owner' | 'management' | 'staff' }
+  marketingCapabilities?: string[]
+  access?: {
+    permissionGroups: string[]
+    readOnly: boolean
+    clientScope: { mode: 'assigned' | 'all_active', assignedClientCount: number | null }
+  }
   tools: McpTool[]
 }
 
-const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
-const data = ref<MyToolsResponse | null>(null)
-const pending = ref(false)
-
+const { data, pending, error, refresh } = useFetch<MyToolsResponse>('/api/agency/ai/mcp/my-tools', { lazy: true })
+const refreshFailed = ref(false)
+const loadFailed = computed(() => Boolean(error.value) || refreshFailed.value)
 async function refreshTools() {
-  pending.value = true
+  refreshFailed.value = false
   try {
-    data.value = await apiFetch<MyToolsResponse>('/api/agency/ai/mcp/my-tools')
-  } finally {
-    pending.value = false
+    await refresh()
+  } catch {
+    refreshFailed.value = true
   }
 }
 
-await refreshTools()
-
-const enabled = computed(() => data.value?.enabled ?? false)
-const role = computed(() => data.value?.role ?? '')
-const tools = computed(() => data.value?.tools ?? [])
 const isGodMode = computed(() => data.value?.authority === 'god_mode')
-
+const tools = computed(() => data.value?.tools ?? [])
 const connectorUrl = computed(() => {
   const origin = (data.value?.workerOrigin || 'https://mcp-server.adme-dev.workers.dev').replace(/\/$/, '')
   return `${origin}/mcp`
 })
-
+const clientScopeLabel = computed(() => {
+  const scope = data.value?.access?.clientScope
+  if (!scope) return 'Client scope unavailable'
+  if (scope.mode === 'all_active') return 'All active clients'
+  if (!scope.assignedClientCount) return 'No active client assignments'
+  return `${scope.assignedClientCount} assigned active ${scope.assignedClientCount === 1 ? 'client' : 'clients'}`
+})
 const { copy, copied } = useClipboard({ source: connectorUrl })
 const toast = useToast()
-function copyUrl() {
-  copy(connectorUrl.value)
-  toast.add({ title: 'Connector URL copied', color: 'success' })
+async function copyUrl() {
+  try {
+    await copy(connectorUrl.value)
+    toast.add({ title: 'Connector URL copied', color: 'success' })
+  } catch {
+    toast.add({ title: 'Could not copy URL', description: 'Select and copy the URL shown here.', color: 'error' })
+  }
 }
-
-// Friendly label from a tool's snake_case name, e.g. get_finance_snapshot → Finance snapshot
 function toolTitle(name: string) {
   const words = name.replace(/^get_/, '').replace(/_/g, ' ').trim()
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
-
 const host = ref<'claude' | 'cursor' | 'chatgpt'>('claude')
 const hostTabs = [
   { label: 'Claude', value: 'claude', icon: 'i-lucide-sparkles' },
-  { label: 'Cursor', value: 'cursor', icon: 'i-lucide-square-terminal' },
   { label: 'ChatGPT', value: 'chatgpt', icon: 'i-lucide-message-square' },
+  { label: 'Cursor', value: 'cursor', icon: 'i-lucide-square-terminal' },
 ]
-
-const steps: Record<string, string[]> = {
+const hostGuides = {
+  claude: 'https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp',
+  chatgpt: 'https://developers.openai.com/plugins/deploy/connect-chatgpt',
+  cursor: 'https://cursor.com/docs/mcp',
+}
+const steps = {
   claude: [
-    'Open Claude, then go to Settings → Connectors.',
-    'Click “Add custom connector”.',
-    'Paste the connector URL above and save.',
-    'Click Connect, sign in with your XeroFlow account, and approve access.',
-    'In a chat, ask: “Using XeroFlow, show me the finance snapshot.”',
-  ],
-  cursor: [
-    'Open Cursor, then go to Settings → Tools & Integrations.',
-    'Add a new MCP server and paste the connector URL above.',
-    'Sign in with your XeroFlow account when prompted, and approve access.',
-    'The XeroFlow tools now appear in the agent’s tool list.',
+    'On Pro/Max, open Customize → Connectors → + Add → Add custom connector. Enter the name and connector URL.',
+    'On Team/Enterprise, an authorized owner first adds the custom Web connector in Organization settings → Connectors. Members then open Customize → Connectors and choose Connect.',
+    'Sign in with your own XeroFlow account. Review the requested OAuth scopes and tool approvals; enable only the tools you need in your conversation.',
   ],
   chatgpt: [
-    'Open Settings → Connectors (Developer Mode must be enabled by a workspace admin).',
-    'Add a connector and paste the connector URL above.',
-    'Sign in with your XeroFlow account and approve access.',
-    'Ask ChatGPT to use a XeroFlow tool, e.g. “show me a client overview”.',
+    'On the web, open Plugins → + → Add custom MCP server. Enter the connection details and the full connector URL.',
+    'Review authentication and the risk notice, create the plugin, then install it. Sign in with your own XeroFlow account and review the requested permissions.',
+    'Start a new Work chat, type @ and select the plugin. Review any action confirmations shown. After tool or authentication changes, open the plugin and select Refresh.',
+  ],
+  cursor: [
+    'Open Cursor’s Customize page to manage MCP servers, or follow the official guide to add a remote server URL in mcp.json.',
+    'Use the full connector URL with Streamable HTTP and complete XeroFlow OAuth using your own account.',
+    'Review the available tools and requested approvals before asking the agent to use XeroFlow.'
   ],
 }
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
-    <UDashboardPanel>
+  <div class="flex-1 min-w-0 min-h-0">
+    <UDashboardPanel :ui="{ root: 'max-h-svh' }">
       <UDashboardNavbar title="Connect AI Assistants">
         <template #trailing>
-          <UBadge
-            :color="enabled ? 'success' : 'neutral'"
-            :variant="enabled ? 'subtle' : 'outline'"
-            :icon="enabled ? 'i-lucide-circle-check' : 'i-lucide-circle-pause'"
-          >
-            {{ enabled ? 'Active' : 'Unavailable' }}
+          <UBadge v-if="data && !pending && !loadFailed" :color="data.enabled ? 'success' : 'neutral'" variant="subtle">
+            {{ data.enabled ? 'Server enabled' : 'Server unavailable' }}
           </UBadge>
         </template>
       </UDashboardNavbar>
-
-      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div class="max-w-3xl mx-auto space-y-6">
-          <!-- Intro -->
+      <div class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+        <div class="max-w-3xl space-y-8">
           <div class="space-y-2">
-            <h1 class="text-lg font-semibold text-[var(--ui-text-highlighted)]">
-              Use XeroFlow from inside Claude, Cursor, or ChatGPT
+            <h1 class="text-lg font-semibold text-highlighted">
+              Bring your assigned work into your AI assistant
             </h1>
-            <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed">
-              Connect your AI assistant to XeroFlow and ask it about your work in plain language —
-              finance, ad spend, tasks, clients, briefs and more. Ordinary connections see only the
-              role-scoped tools available to that user. Owners with active God mode also receive the
-              registered write-capable suites, including audited Google Tag Manager operations.
+            <p class="text-sm text-muted leading-relaxed">
+              Connect with your XeroFlow login to read permitted campaign data and prepare reviewed work.
+              Your current permissions, client assignments and capability grants determine the tools you can use.
             </p>
           </div>
 
-          <UAlert
-            v-if="isGodMode"
-            color="warning"
-            variant="subtle"
-            icon="i-lucide-shield-alert"
-            title="Owner God mode is active"
-            description="This connector includes audited mutation tools. Live Google Tag Manager publishing and rollback use exact resource IDs, provider read-back, idempotency and the dedicated God-mode execution ledger."
-          />
-
-          <UAlert
-            v-if="!enabled"
-            color="warning"
-            variant="subtle"
-            icon="i-lucide-circle-pause"
-            title="Connector is currently turned off"
-            description="An administrator needs to enable the MCP server before connections will work. Steps below still apply once it’s on."
-          />
-
-          <!-- Connector URL — the signature block -->
-          <UCard>
-            <template #header>
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-plug" class="w-5 h-5 text-[var(--ui-text-muted)]" />
-                <h2 class="font-semibold text-[var(--ui-text-highlighted)]">Connector URL</h2>
-              </div>
-            </template>
-
-            <div class="space-y-3">
-              <p class="text-sm text-[var(--ui-text-muted)]">
-                Paste this into your assistant’s custom-connector setup.
-              </p>
-              <div class="flex items-stretch gap-2">
-                <div
-                  class="flex-1 min-w-0 flex items-center gap-2 rounded-md border border-[var(--ui-border)] bg-[var(--ui-bg-muted)] px-3 py-2"
-                >
-                  <span class="size-2 rounded-full shrink-0" :class="enabled ? 'bg-emerald-500' : 'bg-[var(--ui-text-dimmed)]'" />
-                  <code class="truncate font-mono text-sm text-[var(--ui-text-highlighted)]">{{ connectorUrl }}</code>
-                </div>
-                <UButton
-                  :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
-                  :color="copied ? 'success' : 'neutral'"
-                  variant="subtle"
-                  :label="copied ? 'Copied' : 'Copy'"
-                  @click="copyUrl"
-                />
-              </div>
-              <p class="text-xs text-[var(--ui-text-dimmed)]">
-                Works with Claude (Pro, Max, Team, Enterprise) and Cursor today. ChatGPT needs a
-                Team, Business, or Enterprise workspace with Developer Mode enabled by an admin —
-                it isn’t available on Plus or Pro.
-              </p>
+          <section aria-labelledby="setup-heading" class="space-y-4">
+            <h2 id="setup-heading" class="font-semibold text-highlighted">Connect your assistant</h2>
+            <p class="text-sm text-muted">Use this full URL in your assistant’s remote MCP setup.</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <code class="flex-1 min-w-0 break-all rounded-md border border-default bg-elevated px-3 py-2 text-sm text-highlighted">{{ connectorUrl }}</code>
+              <UButton
+                :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+                color="neutral"
+                variant="subtle"
+                :label="copied ? 'Copied' : 'Copy'"
+                @click="copyUrl"
+              />
             </div>
-          </UCard>
+            <UTabs v-model="host" :items="hostTabs" :content="false" />
+            <ol class="list-decimal space-y-3 pl-5 text-sm text-default leading-relaxed">
+              <li v-for="step in steps[host]" :key="step" class="pl-1">
+                {{ step }}
+              </li>
+            </ol>
+            <p v-if="host === 'claude'" class="text-sm text-muted">
+              Custom remote connectors are available on Free (one connector), Pro, Max, Team and Enterprise.
+              Organization controls apply. Review “Allow always” carefully; disable write tools when using Research.
+            </p>
+            <p v-else-if="host === 'chatgpt'" class="text-sm text-muted">
+              Full modify/write MCP support depends on your plan, workspace policy and rollout.
+              Check official availability before enabling writes; this page does not verify your ChatGPT plan.
+            </p>
+            <UButton
+              :to="hostGuides[host]"
+              target="_blank"
+              rel="noopener noreferrer"
+              color="neutral"
+              variant="link"
+              icon="i-lucide-external-link"
+              label="Official setup guide"
+            />
+          </section>
 
-          <!-- Setup steps -->
-          <UCard>
-            <template #header>
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-list-checks" class="w-5 h-5 text-[var(--ui-text-muted)]" />
-                <h2 class="font-semibold text-[var(--ui-text-highlighted)]">Set it up</h2>
-              </div>
-            </template>
-
-            <div class="space-y-4">
-              <UTabs v-model="host" :items="hostTabs" :content="false" />
-              <ol class="space-y-3">
-                <li
-                  v-for="(step, i) in steps[host]"
-                  :key="i"
-                  class="flex gap-3 text-sm"
-                >
-                  <span
-                    class="shrink-0 size-6 rounded-full grid place-items-center text-xs font-semibold bg-[var(--ui-bg-elevated)] text-[var(--ui-text-highlighted)] ring-1 ring-[var(--ui-border)]"
-                  >{{ i + 1 }}</span>
-                  <span class="text-[var(--ui-text)] leading-relaxed pt-0.5">{{ step }}</span>
-                </li>
-              </ol>
+          <section aria-labelledby="access-heading" class="border-t border-default pt-6 space-y-4" :aria-busy="pending">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h2 id="access-heading" class="font-semibold text-highlighted">Your access preview</h2>
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-refresh-cw"
+                :loading="pending"
+                label="Refresh access"
+                @click="refreshTools"
+              />
             </div>
-          </UCard>
-
-          <!-- What you can do (live, role-scoped) -->
-          <UCard>
-            <template #header>
-              <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center gap-2">
-                  <UIcon name="i-lucide-wrench" class="w-5 h-5 text-[var(--ui-text-muted)]" />
-                  <h2 class="font-semibold text-[var(--ui-text-highlighted)]">What your assistant can do</h2>
-                </div>
-                <div class="flex items-center gap-2">
-                  <UBadge v-if="role" color="neutral" variant="subtle" class="capitalize">{{ role }}</UBadge>
-                  <UBadge color="primary" variant="subtle">{{ tools.length }} tools</UBadge>
-                </div>
-              </div>
-            </template>
-
-            <div class="space-y-3">
-              <p class="text-sm text-[var(--ui-text-muted)]">
-                These are the exact tools available to this connection.
-                <template v-if="isGodMode">
-                  Owner God mode exposes the complete registered catalog, including separately
-                  audited write suites. Google Tag Manager changes still follow draft, publish,
-                  verify and rollback boundaries.
-                </template>
-                <template v-else>
-                  Most look up your data; creative roles also get owned-media generation and video
-                  discovery. Platform mutation suites are not exposed.
-                </template>
+            <div v-if="pending" role="status" class="flex items-center gap-2 text-sm text-muted">
+              <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin motion-reduce:animate-none" />
+              Loading your access preview…
+            </div>
+            <div v-else-if="loadFailed" role="alert" class="space-y-3">
+              <UAlert
+                color="error"
+                variant="subtle"
+                title="Could not load your access preview"
+                description="Retry to check your current permissions. If this continues, sign in again or ask an administrator to check your account."
+              />
+              <UButton
+                color="neutral"
+                variant="outline"
+                label="Retry"
+                @click="refreshTools"
+              />
+            </div>
+            <template v-else-if="data">
+              <p class="text-sm text-muted">
+                This is a preview, not a live OAuth grant or a test of your assistant connection.
+                Actual host tools can be narrower. XeroFlow checks current authority again on every request.
               </p>
-
-              <div v-if="pending" class="text-sm text-[var(--ui-text-dimmed)]">Loading your tools…</div>
-              <div v-else-if="!tools.length" class="text-sm text-[var(--ui-text-dimmed)]">
-                Your role doesn’t have any AI tools enabled yet.
-              </div>
-              <div v-else class="grid sm:grid-cols-2 gap-2">
-                <div
-                  v-for="t in tools"
-                  :key="t.name"
-                  class="rounded-md border border-[var(--ui-border)] p-3"
-                >
-                  <div class="flex items-center gap-2">
-                    <UIcon name="i-lucide-circle-check" class="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span class="text-sm font-medium text-[var(--ui-text-highlighted)]">{{ toolTitle(t.name) }}</span>
+              <p class="text-xs text-muted">
+                Assumed scopes: {{ data.preview.assumedScopes.join(', ') }}
+              </p>
+              <UAlert
+                v-if="!data.enabled"
+                color="warning"
+                variant="subtle"
+                title="Connector is currently turned off"
+                description="An administrator must enable the MCP server before connections work. The preview below describes configured access only."
+              />
+              <UAlert
+                v-if="isGodMode"
+                color="warning"
+                variant="subtle"
+                title="Owner God mode is active"
+                description="This separate owner preview includes the registered catalog and audited write suites. Provider gates and dedicated execution boundaries still apply; it is not evidence of an external host grant or a successful action."
+              />
+              <template v-else>
+                <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
+                  <div>
+                    <dt class="text-muted">
+                      Current role
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ data.role || 'No role' }}
+                    </dd>
                   </div>
-                  <p class="mt-1 text-xs text-[var(--ui-text-muted)] leading-relaxed line-clamp-2">{{ t.description }}</p>
-                </div>
-              </div>
-            </div>
-          </UCard>
-
-          <!-- How it stays safe -->
-          <UCard>
-            <template #header>
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-shield-check" class="w-5 h-5 text-[var(--ui-text-muted)]" />
-                <h2 class="font-semibold text-[var(--ui-text-highlighted)]">How it stays safe</h2>
+                  <div>
+                    <dt class="text-muted">
+                      Client scope
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ clientScopeLabel }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-muted">
+                      Effective permission groups
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ data.access?.permissionGroups.join(', ') || 'None' }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-muted">
+                      Write policy
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ data.access?.readOnly ? 'Read-only policy' : 'Writes still require a grant, scope and operation checks' }}
+                    </dd>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <dt class="text-muted">
+                      Marketing capability grants
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ data.marketingCapabilities?.join(', ') || 'No marketing capabilities granted' }}
+                    </dd>
+                  </div>
+                </dl>
+                <p v-if="data.access?.clientScope.mode === 'assigned' && !data.access.clientScope.assignedClientCount" class="text-sm text-muted">
+                  Ask an administrator to assign your active clients. No assignments means no client data access.
+                </p>
+              </template>
+              <p v-if="!tools.length" class="text-sm text-muted">
+                No tools are available in this preview. Ask an administrator to check your permissions, assignments and grants.
+              </p>
+              <div v-else class="space-y-3">
+                <p class="text-sm font-medium text-highlighted">
+                  {{ tools.length }} tools in this preview
+                </p>
+                <ul class="divide-y divide-default">
+                  <li v-for="tool in tools" :key="tool.name" class="py-3 space-y-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-sm font-medium text-highlighted">{{ toolTitle(tool.name) }}</span>
+                      <UBadge
+                        v-if="tool.requiresWriteScope"
+                        color="warning"
+                        variant="subtle"
+                        size="sm"
+                      >
+                        Requires mcp:write
+                      </UBadge>
+                    </div>
+                    <p class="text-xs text-muted leading-relaxed">
+                      {{ tool.description }}
+                    </p>
+                  </li>
+                </ul>
+                <p v-if="tools.some(tool => tool.name === 'get_campaign_breakdown')" class="text-sm text-muted">
+                  Try: “Show stored campaign performance for one of my assigned clients, including the reporting period and coverage gaps.”
+                </p>
+                <p v-if="tools.some(tool => tool.name === 'create_social_post_draft')" class="text-sm text-muted">
+                  Try: “Prepare a social draft for my assigned client, then submit the exact revision for independent review.”
+                </p>
               </div>
             </template>
+          </section>
 
-            <ul class="space-y-2.5 text-sm text-[var(--ui-text)]">
-              <li class="flex gap-2.5">
-                <UIcon name="i-lucide-user-check" class="w-4 h-4 mt-0.5 text-[var(--ui-text-muted)] shrink-0" />
-                <span><span class="font-medium">Signs in as you.</span> The assistant connects with your own XeroFlow login and sees only what your role allows.</span>
-              </li>
-              <li class="flex gap-2.5">
-                <UIcon name="i-lucide-eye" class="w-4 h-4 mt-0.5 text-[var(--ui-text-muted)] shrink-0" />
-                <span v-if="isGodMode"><span class="font-medium">Writes cross a dedicated boundary.</span> Owner mutations run through the trusted God-mode coordinator and its external-provider dispatch ledger; ordinary browser GTM controls do not depend on this MCP path.</span>
-                <span v-else><span class="font-medium">No platform writes.</span> It looks things up and can generate permitted owned media, but registered mutation suites are not exposed.</span>
-              </li>
-              <li class="flex gap-2.5">
-                <UIcon name="i-lucide-scroll-text" class="w-4 h-4 mt-0.5 text-[var(--ui-text-muted)] shrink-0" />
-                <span><span class="font-medium">Every request is logged.</span> Each tool call is recorded in the AI audit trail for accountability.</span>
-              </li>
-              <li class="flex gap-2.5">
-                <UIcon name="i-lucide-clock" class="w-4 h-4 mt-0.5 text-[var(--ui-text-muted)] shrink-0" />
-                <span><span class="font-medium">Access is explicit.</span> Tool availability is projected from the signed-in identity, current role, suite flags and active owner authority on every connection.</span>
-              </li>
-            </ul>
-          </UCard>
+          <section aria-labelledby="readiness-heading" class="border-t border-default pt-6 space-y-3">
+            <h2 id="readiness-heading" class="font-semibold text-highlighted">Check each provider separately</h2>
+            <p class="text-sm text-muted leading-relaxed">
+              Connecting ChatGPT, Claude or Cursor authorizes access to XeroFlow. Provider OAuth is separate.
+              A connected account can support one operation while another is unavailable. Stored reports do not refresh providers.
+            </p>
+            <p class="text-sm text-muted leading-relaxed">
+              Social drafts require an independent owner/admin to approve the exact revision in XeroFlow before dispatch.
+              Edits, expiry or revoked access can require a new review. TikTok publishing remains unavailable pending product eligibility and app approval; OAuth alone cannot enable it.
+            </p>
+            <p class="text-sm text-muted leading-relaxed">
+              Owner MCP mutations use a dedicated execution boundary; ordinary browser GTM controls do not depend on this MCP path.
+              Open the tracking manager to use your existing browser controls.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                to="/agency/tracking"
+                color="neutral"
+                variant="outline"
+                label="Tracking manager"
+              />
+              <UButton
+                to="/agency/social/publishing/accounts"
+                color="neutral"
+                variant="outline"
+                label="Publishing account readiness"
+              />
+              <UButton
+                to="/agency/social"
+                color="neutral"
+                variant="outline"
+                label="Advertising connections"
+              />
+            </div>
+          </section>
         </div>
       </div>
     </UDashboardPanel>

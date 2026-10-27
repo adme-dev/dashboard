@@ -21,6 +21,7 @@ vi.mock('~~/server/utils/auth', () => ({
 vi.mock('~~/server/utils/permissions', () => ({ PERMISSIONS: { CREATIVE: ['owner'] } }))
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
+  queryRowsFresh: (...a: unknown[]) => mockQueryRows(...a),
   queryOne: (...a: unknown[]) => mockQueryOne(...a),
   execute: (...a: unknown[]) => mockExecute(...a),
   transaction: async (callback: (db: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<unknown>) => {
@@ -38,6 +39,7 @@ vi.mock('~~/server/utils/db', () => ({
 }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({
   requireSocialClientAccess: (...a: unknown[]) => mockRequireSocialClientAccess(...a),
+  requireFreshSocialClientAccess: async (...a: unknown[]) => ({ user: await mockRequireSocialClientAccess(...a), context: { assistantReadOnly: false } }),
 }))
 
 const { default: listHandler } = await import('../../server/api/agency/social/publishing/accounts/index.get')

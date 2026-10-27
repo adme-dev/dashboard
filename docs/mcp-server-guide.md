@@ -31,15 +31,22 @@ projection/execution. Claims, service secrets, and raw payloads are never audit 
 
 ## 2. Connecting a host
 
-1. In your MCP host, add the server URL: `https://mcp-server.adme-dev.workers.dev`.
+1. In your MCP host, add the server URL: `https://mcp-server.adme-dev.workers.dev/mcp`.
 2. The host opens an **OAuth** flow → you're bounced to the XeroFlow login (`/api/mcp/authorize`).
 3. On confirmed login the app mints a short-lived **HMAC assertion** of your `userId`; the Worker
    exchanges it for your identity and completes authorization.
 4. Every `tools/list` is fetched fresh from Pages. Ordinary users receive the role/scope/flag-governed
-   catalog; active owners receive current owner behavior only after a fresh database check.
+   catalog using fresh custom/system role permissions, assignments and narrow capability grants; active owners receive current owner behavior only after a fresh database check.
 
-**In-app view of your tools:** `/agency/ai/connectors` (or `GET /api/agency/ai/mcp/my-tools`) shows the
-tools your account can currently call over MCP.
+**In-app view of your tools:** `/agency/ai/connectors` (or `GET /api/agency/ai/mcp/my-tools`) shows
+an access preview with fresh permission groups, read-only policy, marketing grants and client-scope count.
+It assumes `mcp:read` and `mcp:write`; it does not inspect a host OAuth grant or verify a connection.
+Actual host tools may be narrower. Errors offer retry and never present a stale preview as current.
+
+For current ChatGPT Plugins / Claude Connectors / Cursor setup, operator JSON enrollment and revocation,
+see [Marketing staff MCP setup](runbooks/marketing-staff-mcp.md). Use your own XeroFlow login; provider OAuth
+is a separate connection. Full ChatGPT write support is plan/workspace dependent. The official host links
+in that runbook were checked on 28 October 2026; documentation is not live host acceptance.
 
 ## 3. Capability groups & flags
 
@@ -47,8 +54,11 @@ Each group is gated independently by an env var in `wrangler.toml [vars]` (NOT t
 Direct-Upload deploy bakes `[vars]` and **replaces** dashboard plaintext vars; secrets survive). Activating
 a group is **uncomment + redeploy**, and is always an **operator decision** for ordinary users. Active
 owner projection bypasses application role, suite, catalog, department, and personal governance only
-after current owner revalidation. The signed OAuth scope remains transport authority: a token without
-`mcp:write` cannot discover or execute registered writes.
+after current owner revalidation. Ordinary staff always need signed `mcp:write` for write-class tools,
+regardless of `MCP_REQUIRE_WRITE_SCOPE`. Active owner projection deliberately bypasses read/write
+catalog narrowing; current owner authority, exact signed request verification, tenant boundaries,
+provider availability, schemas, durable execution and audit remain mandatory. Do not apply the owner
+catalog to employee enrollment.
 
 | Group | Flag | Default | What it adds |
 |---|---|---|---|
@@ -66,8 +76,18 @@ must never reach the Worker, a client, logs, `[vars]`, or source.
 
 ## 4. Tool catalog
 
-### 4.1 Phase 1 — reads (role-scoped, read-only) · always on
-Business data, filtered to the caller's role. Representative set:
+### 4.1 Staff reporting and the broader registered read catalog
+
+Enrolled ordinary marketing staff receive only reviewed tools admitted by `marketingPolicy.ts`.
+The `reporting` grant enables `get_campaign_breakdown`, `get_ad_breakdown`, `get_ad_creative_text`,
+`get_search_terms`, `get_adspend_pacing` and `get_social_performance`, plus permitted stored Google Ads
+reads. Client scope is applied before totals, joins, paging or detail access. Ordinary reads use stored
+provider data; they do not trigger a sync. Coverage, source periods and unavailable data remain explicit.
+Actor-private/self-scoped tools are admitted separately. Missing assignments do not widen access.
+
+The broader registry below is available only through the applicable management/owner projection;
+it is **not** the ordinary marketing staff catalog. Fresh permission groups narrow management access.
+Representative registered reads:
 `get_tasks`, `get_briefs`, `get_project_status`, `get_client_overview`, `get_client_profitability`,
 `get_finance_snapshot`, `get_budget_health`, `get_campaign_breakdown`, `get_adspend_pacing`,
 `get_ad_breakdown`, `get_ad_creative_text`, `get_search_terms`,
@@ -83,25 +103,32 @@ Search/Shopping coverage is full, Performance Max is explicitly limited, and oth
 its own `asOf`, `dataStatus`, and unavailable reason. Provider errors remain platform-scoped; results are read-only,
 cursor-paginated where applicable, and source caps/truncation are declared.
 
-### 4.2 2a — generation (`MCP_GEN_TOOLS_ENABLED`, CREATIVE role) · rate-limited 20/10min
+### 4.2 2a — broader generation catalog (`MCP_GEN_TOOLS_ENABLED`, CREATIVE permission) · rate-limited 20/10min
 - `generate_banner_image` — synchronous text-to-image; returns a ready Banner Studio asset and seed.
 - `generate_voiceover` — synchronous; returns a finished, licence-clear audio asset.
 - `start_music_generation` — async; returns a `jobId` (poll `get_generation_status`).
 - `get_generation_status(jobId)` — poll an async generation job.
 
-### 4.3 2c — ordinary-user writes (`MCP_WRITE_TOOLS_ENABLED`) · two-step propose→confirm
+### 4.3 2c — eligible management writes (`MCP_WRITE_TOOLS_ENABLED`) · two-step propose→confirm
 `propose_create_task`, `propose_assign_task` (`assign_task`), `propose_status_change`,
 `propose_brief_convert`, `propose_opportunity`, `log_crm_activity`, `propose_proof_status`,
 `propose_team_memory`, `propose_knowledge_article`, `propose_schedule_post` → each returns a `proposalId`;
 **`confirm_action(proposalId)`** executes it. Financial writes (budget/quote/EOM/expense) are **excluded**
 (held for decision D4).
 
-For ordinary users, this confirmation behavior is unchanged. For a freshly revalidated active owner,
+`propose_schedule_post` is **not** available to ordinary staff (including leads/project managers and
+admins without owner God mode): it is withheld from their catalog, a direct call returns
+`review_required`, and `confirm_action` refuses — and restores untouched — any retained ordinary-MCP
+`propose_schedule_post` proposal. Ordinary staff prepare social posts through the reviewed draft suite
+(§4.5), so no MCP path can create a legacy post its own requester could approve. Owner God mode and the
+in-app (browser/chat) legacy flows are unchanged.
+
+Eligible non-owner management tools retain confirmation; non-management staff cannot acquire these suites merely by receiving a marketing grant. For a freshly revalidated active owner,
 registered write tools execute through the direct audited owner coordinator and do not require a second
 `confirm_action` or rich acknowledgement. Authentication, tenant/client validation, schemas, provider
 availability, durable idempotency, and immutable attempt/outcome audit remain mandatory.
 
-### 4.4 2b — video suite (`MCP_VIDEO_TOOLS_ENABLED` + `MCP_VIDEO_GEN_ENABLED`, CREATIVE role)
+### 4.4 2b — broader video catalog (`MCP_VIDEO_TOOLS_ENABLED` + `MCP_VIDEO_GEN_ENABLED`, CREATIVE role)
 **Reads (gated `MCP_VIDEO_TOOLS_ENABLED`, no spend):**
 - `list_av_projects` — AV projects you can generate into (`id`/`title`/`client`/`hasTimeline`).
 - `list_video_models` — selectable models + each model's allowed modes/durations/aspect-ratios/
@@ -121,7 +148,46 @@ availability, durable idempotency, and immutable attempt/outcome audit remain ma
 > Video spend is its **own** confirm action under its **own** flags — it is *not* part of the 2c financial
 > set and is never reachable via `MCP_WRITE_TOOLS_ENABLED`.
 
-## 5. Using it — an ordinary-user video generation walk-through
+### 4.5 Reviewed social drafts (staff `social_draft` grant) · Facebook, Instagram, LinkedIn organic posts
+Available to ordinary staff whose operator-owned `MCP_MARKETING_STAFF_GRANTS` entry includes
+`social_draft`, for their **assigned** clients (fresh MANAGEMENT/ADMIN staff: active clients). Grants,
+assignments, role policy and active status are re-read on every list, call and replay.
+
+**Reads:** `list_social_publishing_accounts(clientId)` (connected accounts + readiness, never tokens),
+`list_social_media_assets(clientId, kind?, limit?, cursor?)` (client-owned banner/video assets),
+`get_social_post_status(postId)`.
+
+**Local writes (signed `mcp:write` + writable role; durably idempotent per MCP request):**
+`create_social_post_draft`, `update_social_post_draft`, `submit_social_post_for_review`.
+
+Semantics:
+- A draft targets **exact** client-owned accounts. Media are typed asset references, never URLs.
+  `scheduledAt` is only the requested time — nothing is scheduled by the staff tool.
+- `submit_social_post_for_review` freezes an immutable revision (content, ordered targets and options,
+  overrides, link, hashtags, first comment, schedule/timezone, campaign/package, and the stored ETag/size of
+  every media file) with a SHA-256 fingerprint. Instagram needs JPEG image or video media; Facebook and
+  LinkedIn reject media mixes their providers would drop.
+- A **different**, currently active owner/admin approves or rejects that exact revision in XeroFlow
+  (Social → Approvals). Approval rechecks the requester’s current grant, writable policy and client access.
+  The requester and draft creator can never review it; leads/project managers are
+  not reviewers. News drafts additionally need the client-portal decision on the **same** revision.
+- Approval is single-use and expires (24h for immediate posts, one hour after the slot for scheduled ones);
+  an expired approval returns the post to draft instead of publishing late. Any edit supersedes the review.
+- Publishing runs through the existing dispatcher (manual publish by an owner/admin, scheduled workflow or
+  cron). Immediately before the provider call it re-checks the requester's grant/assignment, the
+  reviewer's authority, the approved revision hash, every target account's client binding and the reviewed
+  media bytes; providers fetch content-pinned links that refuse replaced files.
+- Statuses: `draft`, `awaiting_client`, `awaiting_review`, `rejected`, `approved`, `scheduled`,
+  `publishing`, `accepted`, `published`, `partially_published`, `failed`, `unknown`. `unknown` means the
+  request may have reached the provider without a definitive answer: it is held for read-back, never
+  retried automatically, and cannot be edited or resubmitted. A `failed` dispatch had no successful
+  provider effect and may be edited and resubmitted for a new review.
+- There is no staff publish, schedule or confirm tool. Connecting Claude/ChatGPT does not connect any social
+  account: provider OAuth stays in the XeroFlow dashboard. Facebook, Instagram and LinkedIn operations still require per-account/provider readiness.
+  TikTok has a dormant implemented path but remains unavailable in production pending eligibility and app
+  acceptance. YouTube, Google Business, paid mutation and inbox replies are not offered by these staff tools.
+
+## 5. Using it — eligible management video generation walk-through
 
 ```
 1. list_av_projects                    → pick a projectId (or call create_video_project → confirm_action)
@@ -134,8 +200,10 @@ availability, durable idempotency, and immutable attempt/outcome audit remain ma
 6. get_video_generation_status { jobId } (poll)      → status → assetUrl when 'succeeded'
 ```
 
-For an ordinary user, the propose→confirm split means **a human approves the spend** before any budget is
-reserved, and the cost + compliance verdict are shown up front. A current active owner invokes the
+For eligible non-owner management, the propose→confirm split requires confirmation before budget is
+reserved, with cost and compliance shown up front. Host confirmation behavior is separate; a tool annotation
+or a generated confirmation is not independent human approval. Marketing staff social/Ads/tracking work uses
+the exact independent-review boundaries described here and in the review runbooks. A current active owner invokes the
 registered direct tool instead; the same cost, compliance, cap, tenant, idempotency, and audit boundaries
 still apply without a second confirmation call.
 
@@ -149,7 +217,13 @@ still apply without a second confirmation call.
 - **Stable operation idempotency**: OAuth session identity plus the MCP SDK JSON-RPC request ID, exact
   tool, and canonical operation-body digest; never JTI. Reusing one protocol ID for a different tool or
   body produces a different execution key rather than replaying or suppressing the wrong operation.
-- **Ordinary users retain HITL**: proposal/confirmation and scope/RBAC/suite controls remain unchanged.
+- **Fresh staff authority**: current active identity, custom/system permission groups, read-only policy,
+  active client assignments and operator capability grants are resolved on every ordinary list/call.
+  Missing/invalid grants admit no marketing capabilities. Unknown/unreviewed tools are denied.
+- **Ordinary signed scopes**: `mcp:write` is mandatory for local mutations as well as provider writes.
+  Grant enrollment cannot override read-only policy, assignment scope or operation readiness.
+- **Independent review**: social revisions and Ads/tracking proposals need a separate current owner/admin;
+  edits, expiry and revocation are checked again before effects. Generic propose/confirm is not a substitute.
 - **Owners execute directly**: registered writes bypass application governance, not authentication,
   tenant/client boundaries, input validation, durable execution coordination, or immutable auditing.
 - **Per-actor rate limit** (20 / 10 min) on generation + video propose/create; cheap polls exempt.
@@ -176,13 +250,18 @@ sessions that predate `oauthSessionId`, verify a safe read, then reopen traffic.
 fail closed; zero-downtime rotation is not supported until overlapping current/next verification keys are
 implemented.
 
-**Activate a group** (after sign-off): uncomment its flag in `wrangler.toml [vars]` → deploy from the
-clean worktree (`pnpm deploy:production`).
+**Activate a group** (after operator sign-off): review the correct environment-specific `wrangler.toml`
+variables and exact text-binding budget, run `pnpm deploy:check`, then use the guarded
+`pnpm deploy:production` workflow from a reviewed candidate that includes current main. Record source,
+target and deployment ID. Do not add bindings based on an older count or deploy directly with Wrangler.
+Staff grants are one JSON binding; retain `{}` to revoke all grants instead of deleting a key that can fall
+back to process environment. See [staff enrollment and revocation](runbooks/marketing-staff-mcp.md).
 
 **2b is doubly-dormant:** a live video generation **also** needs the base `VIDEO_GENERATION_ENABLED=true`
 baked into `[vars]` and a tenant with video-gen enabled — otherwise the engine 404s.
 
-**Live-verify checklists:**
+**Live-verify checklists (only separately authorized actions and eligible accounts; not automatic enrollment):**
+- *Marketing staff:* verify the actual signed host grant/catalog, assigned-client stored reporting and independently reviewed local preparation. Record provider readiness and any approved delivery separately; do not fabricate customer events.
 - *Owner:* call one registered write directly, confirm there is no `confirm_action`, verify one durable
   execution identity plus immutable attempt/outcome, then downgrade the account and retry to prove denial.
 - *2a:* generate a voiceover + a music track from the Claude connector → confirm the R2 asset + an
@@ -201,7 +280,7 @@ baked into `[vars]` and a tenant with video-gen enabled — otherwise the engine
 | `409 MCP request assertion already consumed` | A one-time claim was replayed; the Worker must mint a new claim while retaining the same logical idempotency key for a transport retry |
 | `{ code: 'disabled', error: 'Write tools are not enabled over MCP.' }` | `MCP_WRITE_TOOLS_ENABLED` off |
 | `{ code: 'disabled', error: 'Video generation is not enabled over MCP.' }` | `MCP_VIDEO_GEN_ENABLED` off |
-| Video tools missing from `tools/list` | `MCP_VIDEO_TOOLS_ENABLED` off, or your role lacks CREATIVE |
+| Video tools missing from `tools/list` | Outside the ordinary marketing staff catalog; otherwise check the applicable suite flag and fresh CREATIVE permission |
 | Video propose succeeds but generation 404s on confirm | base `VIDEO_GENERATION_ENABLED` absent from `[vars]` |
 | `{ code: 'cap_exceeded' }` on confirm | tenant monthly video budget cap reached |
 | `{ code: 'rate_limited' }` | >20 generation/video-propose calls in 10 min for this actor |
@@ -209,12 +288,51 @@ baked into `[vars]` and a tenant with video-gen enabled — otherwise the engine
 
 ## 9. Where the code lives
 
+- Staff policy, fresh authority and config: `server/utils/ai/mcp/{marketingPolicy,staffAuthority,runtimeConfig}.ts`
 - Read projection + guard: `server/utils/ai/mcp/project.ts`
 - Generation (2a): `server/utils/ai/mcp/generationTools.ts` + `generationRunner.ts`
 - Writes (2c): `server/utils/ai/mcp/writeTools.ts`
+- Reviewed social drafts: `server/utils/ai/mcp/socialTools.ts` (+ `socialToolNames.ts`), services in
+  `server/utils/socialPublishing/{drafts,revisions,mediaAssets,dispatch}.ts`, reviewer authority in
+  `server/utils/ai/marketing/reviewAuthority.ts`, migration `483_social_post_revision_review.sql`
 - Video (2b): `server/utils/ai/mcp/videoTools.ts` + `videoRunner.ts`
 - Rate limit: `server/utils/ai/mcp/rateLimit.ts`
 - Internal endpoints: `server/api/internal/mcp/{tools,call,exchange}.post.ts`
 - OAuth bounce: `server/api/mcp/authorize.get.ts` + `server/utils/ai/mcp/{assertion,consent}.ts`
 - In-app connector page: `app/pages/agency/ai/connectors.vue` + `GET /api/agency/ai/mcp/my-tools`
 - Worker: `workers/mcp-server/` (deploy: `workers/mcp-server/DEPLOYMENT.md`)
+
+### Independently reviewed Ads and tracking proposals
+
+Enrolled staff with `ads_plan` can inspect assigned Google Ads accounts and prepare
+immutable plans. Ordinary management/admin MCP users use the same independent
+review requirement: legacy propose/confirm/automatic tools cannot self-approve
+campaign changes. A different active owner/admin reviews and executes the exact
+plan at `/agency/marketing/reviews/google-ads`. Owner direct execution remains
+separate. `reporting` also permits scoped Ads reads; every local mutation requires
+signed `mcp:write` and current role/client access.
+
+With `tracking_plan`, staff inspect assigned GTM site inventories, record
+ownership evidence and prepare local binding/workspace/installation/publish/
+rollback proposals. Provider workspace creation and publication require separate
+reviews at `/agency/marketing/reviews/gtm`. The bounded Google tag, GA4 event and
+Google Ads conversion templates exclude raw HTML/JavaScript, arbitrary variables
+and unknown settings. Native DriveAgent accepted enquiries retain their supported
+server delivery. See [the review runbook](runbooks/marketing-ads-tracking-review.md)
+for exact capabilities, uncertain outcomes and provider acceptance requirements.
+
+### Social operation readiness
+
+Staff social tools create/edit local drafts, submit an exact revision for independent review, and read
+scoped accounts/media/status. They do not expose live publishing, comment sending or inbox sending.
+Provider adapter presence is separate from connector coverage: account readiness intersects current
+staff grants, signed scope, assigned clients, actual provider grants and account health. Missing grant
+evidence is unavailable, never inferred from a connection badge. Paid reporting uses existing scoped
+reporting tools and advertiser connections; Meta/LinkedIn/TikTok paid mutations are unsupported.
+
+TikTok Direct Post implementation retains accepted processing receipts and bounded status reconciliation,
+but production publishing remains unavailable pending actual product eligibility, app audit/scopes,
+verified media delivery and live acceptance. Internal team upload utilities are excluded by TikTok's
+published guidelines. See [TikTok activation boundaries](runbooks/tiktok-publishing-activation.md).
+LinkedIn video is referenced in a Posts call only after its Videos API reports `AVAILABLE`; ambiguous
+publication outcomes remain held and cannot be blindly retried.

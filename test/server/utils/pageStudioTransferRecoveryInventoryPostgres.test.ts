@@ -210,15 +210,61 @@ describe.runIf(Boolean(databaseUrl))('complete recovery inventory authority on P
   })
 
   it('accepts expired original terms only as historical provenance with a fresh original operator', async () => {
-    const value = await fixture(true)
-    await db.query(`SELECT pg_sleep(GREATEST(0,extract(epoch FROM effective_until-clock_timestamp()))+0.01)
-      FROM page_studio_entitlements WHERE id=$1`, [input.entitlementId])
-    await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()-interval '1 second'")
-    const fresh = 'f'.repeat(64)
-    await db.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
-      VALUES('agency',$1,$2,clock_timestamp(),clock_timestamp()+interval '1 hour')`, [fresh, actorId])
-    value.inspection.loginSessionHash = fresh
-    expect(await inspect(value)).toEqual({ purpose: 'inventory', envelopeDigest: await collectionDigest(value) })
+    try {
+      // Pin time through real legacy admission, then expire its retained authority.
+      // Millisecond precision matches the authority's JavaScript ISO timestamp.
+      await db.query(`
+        CREATE TABLE "${schema}".recovery_inventory_test_clock(value TIMESTAMPTZ NOT NULL);
+        INSERT INTO "${schema}".recovery_inventory_test_clock
+          VALUES (date_trunc('milliseconds', pg_catalog.clock_timestamp()));
+        CREATE FUNCTION "${schema}".clock_timestamp() RETURNS TIMESTAMPTZ
+          LANGUAGE SQL VOLATILE AS 'SELECT value FROM "${schema}".recovery_inventory_test_clock'
+      `)
+      // Both connections must resolve the local function before explicit pg_catalog.
+      // Keep VOLATILE semantics so each call observes the current controlled value.
+      const assertControlledClock = async (client: pg.Client) => {
+        const clock = (await client.query(`SELECT
+          'clock_timestamp()'::regprocedure::oid = $1::regprocedure::oid AS controlled,
+          clock_timestamp() = (SELECT value FROM "${schema}".recovery_inventory_test_clock) AS frozen`,
+        [`"${schema}".clock_timestamp()`])).rows[0]
+        expect(clock).toEqual({ controlled: true, frozen: true })
+      }
+      await assertControlledClock(db)
+      await runTransaction(assertControlledClock)
+
+      const value = await fixture(true)
+      const retainedIntent = async () => (await db.query(
+        'SELECT intent,intent_digest FROM page_studio_managed_transfer_intents WHERE operation_id=$1',
+        [value.request.operationId]
+      )).rows[0]
+      const before = await retainedIntent()
+      await db.query(`UPDATE "${schema}".recovery_inventory_test_clock SET value=value+interval '2 seconds'`)
+      const expiry = (await db.query(`SELECT
+        e.effective_until<clock_timestamp() AS plan_expired,
+        (i.intent->'authority'->>'expiresAt')::timestamptz<clock_timestamp() AS retained_authority_expired,
+        (i.intent->'authority'->>'expiresAt')::timestamptz=e.effective_until AS retained_plan_expiry
+        FROM page_studio_managed_transfer_intents i
+        JOIN page_studio_entitlements e ON e.id=i.entitlement_id
+        WHERE i.operation_id=$1`, [value.request.operationId])).rows[0]
+      expect(expiry).toEqual({ plan_expired: true, retained_authority_expired: true, retained_plan_expiry: true })
+
+      await db.query("UPDATE page_studio_login_sessions SET expires_at=clock_timestamp()-interval '1 second'")
+      const fresh = 'f'.repeat(64)
+      await db.query(`INSERT INTO page_studio_login_sessions(role,token_hash,user_id,issued_at,expires_at)
+        VALUES('agency',$1,$2,clock_timestamp(),clock_timestamp()+interval '1 hour')`, [fresh, actorId])
+      value.inspection.loginSessionHash = fresh
+      expect(await inspect(value)).toEqual({ purpose: 'inventory', envelopeDigest: await collectionDigest(value) })
+
+      const after = await retainedIntent()
+      expect(after).toEqual(before)
+      expect(after.intent_digest).toBe(value.request.intentDigest)
+    } finally {
+      try {
+        await db.query(`DROP FUNCTION IF EXISTS "${schema}".clock_timestamp()`)
+      } finally {
+        await db.query(`DROP TABLE IF EXISTS "${schema}".recovery_inventory_test_clock`)
+      }
+    }
   })
   it.each(['resources','resource_bindings','destination_catalogues','catalogue_verifications'])('requires complete retained %s provenance', async (table) => {
     const value = await fixture(), name = `page_studio_managed_transfer_${table}`

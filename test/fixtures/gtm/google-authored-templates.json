@@ -1,0 +1,23 @@
+{
+  "evidence": "Pinned Google-authored representations; sanitized bounded projections, not live write acceptance",
+  "fixtures": [
+    {
+      "source": "https://github.com/google/site-kit-wp/blob/5d622ae5ead711e36db48aab6fe9946a06632f8e/assets/js/modules/tagmanager/datastore/__fixtures__/live-container-version--web-google-tag.json",
+      "level": "observed_read",
+      "input": {"templateId":"tag.google.v1","name":"GA4 Google Tag","tagId":"G-ABC12DE34F","firingTriggerId":["2147479553"]},
+      "body": {"name":"GA4 Google Tag","type":"googtag","firingTriggerId":["2147479553"],"parameter":[{"key":"tagId","type":"template","value":"G-ABC12DE34F"}]}
+    },
+    {
+      "source": "https://github.com/google-marketing-solutions/ga4-gtm-utilities/blob/9a4d06d2edbcf677ee178a58cae77069e9b34a07/features/eventTags.js",
+      "level": "authored_write_builder",
+      "input": {"templateId":"tag.ga4_event.v1","name":"GA4 Event","eventName":"view_item","measurementIdOverride":"G-ABC12DE34F","firingTriggerId":["14"]},
+      "body": {"name":"GA4 Event","type":"gaawe","firingTriggerId":["14"],"parameter":[{"key":"eventName","type":"template","value":"view_item"},{"key":"measurementIdOverride","type":"template","value":"G-ABC12DE34F"}]}
+    },
+    {
+      "source": "https://github.com/google-marketing-solutions/gtm-boilerplate/blob/10216cf81945a68be3dfb2e71bde353aaf5f1cea/google_tag_manager_web/src/web-container.json",
+      "level": "observed_export_lowercase_rest_enum_projection",
+      "input": {"templateId":"tag.google_ads_conversion.v1","name":"Google Ads conversion","conversionId":"1234567890","conversionLabel":"abcdEFGHijklmnop","firingTriggerId":["14"]},
+      "body": {"name":"Google Ads conversion","type":"awct","firingTriggerId":["14"],"parameter":[{"key":"conversionId","type":"template","value":"1234567890"},{"key":"conversionLabel","type":"template","value":"abcdEFGHijklmnop"}]}
+    }
+  ]
+}

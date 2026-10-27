@@ -123,6 +123,7 @@ describe('mapLinkedInOrganizationsToAccountRows', () => {
       refresh_token: 'RT',
       token_expires_at: '2026-01-01T00:00:00.000Z',
       metadata: {
+        grantedScopes: [],
         linkedinOrganizationUrn: 'urn:li:organization:79988552',
         linkedinVanityName: 'firstdemocompany',
         linkedinRole: 'ADMINISTRATOR',

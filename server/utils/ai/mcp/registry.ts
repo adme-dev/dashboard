@@ -1,3 +1,4 @@
+import { projectTask4StaffSuite, resolveTask4StaffExecutions } from './marketingTask4Tools'
 import { z } from 'zod'
 import { hasWriteScope, isWriteScopeToolName } from './scope'
 import {
@@ -38,6 +39,7 @@ import {
   resolveGoogleAdsMcpExecutions
 } from './googleAdsRegistryTools'
 import { projectGoogleAdsTools } from './googleAdsTools'
+import { projectSocialMcpSuite, resolveSocialMcpExecutions } from './socialTools'
 
 export interface RegisteredMcpSuite {
   key: string
@@ -111,6 +113,28 @@ const suiteDefinitions: RegisteredMcpSuite[] = [
 
 export const registeredMcpSuites: readonly RegisteredMcpSuite[] = Object.freeze(
   suiteDefinitions.map(suite => Object.freeze({
+    ...suite,
+    sourceProjectors: suite.sourceProjectors ? Object.freeze([...suite.sourceProjectors]) : undefined
+  }))
+)
+
+/**
+ * Staff-only supplemental suites. They are validated and deduplicated by the same projection machinery
+ * but are deliberately NOT part of the owner God-mode union: their tools exist for delegated staff work
+ * that a separate reviewer approves, and they expose no provider-capable descriptor. marketingPolicy
+ * projects and admits them per fresh staff context (grant, client coverage, write scope).
+ */
+const staffSuiteDefinitions: RegisteredMcpSuite[] = [
+  { key: 'marketing-ads-tracking', project: projectTask4StaffSuite, executions: resolveTask4StaffExecutions },
+  {
+    key: 'social-drafts',
+    project: projectSocialMcpSuite,
+    executions: resolveSocialMcpExecutions
+  }
+]
+
+export const staffOnlyMcpSuites: readonly RegisteredMcpSuite[] = Object.freeze(
+  staffSuiteDefinitions.map(suite => Object.freeze({
     ...suite,
     sourceProjectors: suite.sourceProjectors ? Object.freeze([...suite.sourceProjectors]) : undefined
   }))
@@ -193,15 +217,15 @@ function projectSuites(
   return [...byName.values()].map(entry => entry.manifest)
 }
 
-function resolveOwnerCatalog(
+function resolveCatalog(
   context: McpProjectionContext,
-  suites: readonly RegisteredMcpSuite[]
+  suites: readonly RegisteredMcpSuite[],
+  staffOnly = false
 ): { manifests: McpToolManifest[], executions: McpExecutionDescriptor[] } {
-  const ownerContext = { ...context, governanceBypass: true }
-  const manifests = projectSuites(ownerContext, suites)
+  const manifests = projectSuites(context, suites)
   const executionRows = new Map<string, Array<{ suiteKey: string, descriptor: McpExecutionDescriptor }>>()
   for (const suite of suites) {
-    for (const descriptor of suite.executions(ownerContext)) {
+    for (const descriptor of suite.executions(context)) {
       if (
         !descriptor
         || typeof descriptor.name !== 'string'
@@ -218,7 +242,8 @@ function resolveOwnerCatalog(
         throw new Error(`Local-transactional MCP resolver requires a transaction-aware executor: ${descriptor.name}`)
       }
       if (
-        descriptor.kind === 'supplemental'
+        !staffOnly
+        && descriptor.kind === 'supplemental'
         && descriptor.tool.mutates
         && descriptor.executionClass !== 'local-transactional'
         && typeof descriptor.executeSupplemental !== 'function'
@@ -263,6 +288,36 @@ export function projectRegisteredMcpTools(
 }
 
 /**
+ * Validated staff-only supplemental manifests (unfiltered — callers apply staff admission). Each
+ * manifest must have exactly one matching local execution descriptor with an identical schema.
+ */
+export function projectStaffOnlyMcpTools(
+  context: McpProjectionContext,
+  suites: readonly RegisteredMcpSuite[] = staffOnlyMcpSuites
+): McpToolManifest[] {
+  return resolveStaffOnlyCatalog(context, suites).manifests
+}
+
+function resolveStaffOnlyCatalog(context: McpProjectionContext, suites: readonly RegisteredMcpSuite[]) {
+  const resolved = resolveCatalog({ ...context, governanceBypass: false }, suites, true)
+  for (const descriptor of resolved.executions) {
+    if (descriptor.executionClass && descriptor.executionClass !== 'local-transactional') {
+      throw new Error(`Staff-only MCP suites may only execute locally: ${descriptor.name}`)
+    }
+    if (descriptor.executeSupplemental) throw new Error(`Staff-only MCP suites expose no dispatch executor: ${descriptor.name}`)
+  }
+  return resolved
+}
+
+/** Validated staff descriptors; calls still use their scoped staff dispatch boundary, never God mode. */
+export function resolveStaffOnlyMcpExecutions(
+  context: McpProjectionContext,
+  suites: readonly RegisteredMcpSuite[] = staffOnlyMcpSuites
+): McpExecutionDescriptor[] {
+  return resolveStaffOnlyCatalog(context, suites).executions
+}
+
+/**
  * Complete owner union. Callers must first validate a runtime-branded current GodModeAuthority. This
  * deliberately bypasses application suite flags and OAuth read/write narrowing, but not route auth,
  * claim verification, tenancy, provider availability, schema validation, execution idempotency, or audit.
@@ -271,14 +326,14 @@ export function projectGodModeTools(
   context: McpProjectionContext,
   suites: readonly RegisteredMcpSuite[] = registeredMcpSuites
 ): McpToolManifest[] {
-  return resolveOwnerCatalog(context, suites).manifests
+  return resolveCatalog({ ...context, governanceBypass: true }, suites).manifests
 }
 
 export function resolveGodModeMcpExecutions(
   context: McpProjectionContext,
   suites: readonly RegisteredMcpSuite[] = registeredMcpSuites
 ): McpExecutionDescriptor[] {
-  return resolveOwnerCatalog(context, suites).executions
+  return resolveCatalog({ ...context, governanceBypass: true }, suites).executions
 }
 
 export function resolveGodModeMcpExecution(

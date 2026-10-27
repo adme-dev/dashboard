@@ -4,7 +4,9 @@ import {
   emptyComposerState,
   missingAccountPlatforms,
   resolveComposerContent,
-  syncComposerAccountIds
+  syncComposerAccountIds,
+  syncComposerTargets,
+  isApprovedComposerUnchanged
 } from '../../app/composables/useSocialComposer'
 
 describe('resolveComposerContent', () => {
@@ -103,5 +105,33 @@ describe('approved composer payload integrity', () => {
     expect(isApprovedComposerUnchanged({ ...saved, accountIds: ['other-page'] }, 'client-1', 'approved', approvedBody)).toBe(false)
     expect(isApprovedComposerUnchanged(saved, 'other-client', 'approved', approvedBody)).toBe(false)
     expect(isApprovedComposerUnchanged({ ...saved, id: null }, 'client-1', 'approved', approvedBody)).toBe(false)
+  })
+})
+
+describe('complete authoritative selected targets', () => {
+  const accounts = [
+    { id: 'fb', platform: 'facebook' as const, is_active: true },
+    { id: 'li', platform: 'linkedin' as const, is_active: true },
+    { id: 'old-tt', platform: 'tiktok' as const, is_active: true },
+    { id: 'new-tt', platform: 'tiktok' as const, is_active: true }
+  ]
+  it('preserves only exact options while adding and removing selected identities', () => {
+    const original = { platform: 'facebook' as const, accountId: 'fb', options: { linkTitle: 'Keep me' } }
+    expect(syncComposerTargets(['facebook', 'linkedin'], ['fb', 'li'], [original], accounts)).toEqual([
+      original, { platform: 'linkedin', accountId: 'li' }
+    ])
+    expect(syncComposerTargets(['linkedin'], ['li'], [original], accounts)).toEqual([{ platform: 'linkedin', accountId: 'li' }])
+  })
+  it('does not move a TikTok attestation to a replacement account or inherit platform consent', () => {
+    const original = { platform: 'tiktok' as const, accountId: 'old-tt', options: { consent: true, consentPayloadIdentity: 'old-identity', privacy_level: 'SELF_ONLY' } }
+    expect(syncComposerTargets(['tiktok'], ['old-tt'], [original], accounts)).toEqual([original])
+    expect(syncComposerTargets(['tiktok'], ['new-tt'], [original], accounts)).toEqual([
+      { platform: 'tiktok', accountId: 'new-tt', options: { consent: false } }
+    ])
+  })
+  it.each(['legacy', 'delegated_marketing'])('refuses a partial explicit target set before saving or treating it as approved: %s', (reviewPolicy) => {
+    const state = { ...emptyComposerState(), reviewPolicy, id: 'saved', platforms: ['facebook' as const, 'linkedin' as const], accountIds: ['fb', 'li'], publishTargets: [{ platform: 'facebook' as const, accountId: 'fb' }] }
+    expect(() => composerToBody(state, 'client')).toThrow(/selection is still updating/)
+    expect(isApprovedComposerUnchanged(state, 'client', 'approved', '{}')).toBe(false)
   })
 })

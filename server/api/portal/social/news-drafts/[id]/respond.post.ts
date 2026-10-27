@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid news draft ID' })
   }
 
-  const body = await readBody<{ action?: unknown, feedback?: unknown }>(event)
+  const body = await readBody<{ action?: unknown, feedback?: unknown, revisionId?: unknown }>(event)
   const allowed = new Set<PortalSocialNewsAction>(['approve', 'reject', 'request_changes'])
   if (typeof body?.action !== 'string' || !allowed.has(body.action as PortalSocialNewsAction)) {
     throw createError({ statusCode: 400, statusMessage: 'Valid action is required' })
@@ -34,6 +34,10 @@ export default defineEventHandler(async (event) => {
   if ((body.action === 'reject' || body.action === 'request_changes') && !feedback) {
     throw createError({ statusCode: 400, statusMessage: 'Feedback is required for this action' })
   }
+  // The revision the client was shown; the service requires it whenever the draft is revision-bound.
+  if (body.revisionId != null && (typeof body.revisionId !== 'string' || !isUUID(body.revisionId))) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid revision ID' })
+  }
 
   return respondToPortalSocialNewsDraft(
     { queryRows, transaction },
@@ -42,7 +46,8 @@ export default defineEventHandler(async (event) => {
       clientUserId: clientUser.id,
       postId,
       action: body.action as PortalSocialNewsAction,
-      feedback: feedback || null
+      feedback: feedback || null,
+      revisionId: typeof body.revisionId === 'string' ? body.revisionId : null
     }
   )
 })

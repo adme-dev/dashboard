@@ -1,9 +1,10 @@
 import { z } from 'zod'
-import { queryRows } from '~~/server/utils/db'
+import { resolveMarketingReadScope } from '../marketing/readScope'
+import { resolveScopedClient, readLeadSummary } from '../marketing/clientReads'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
-import { defaultResolveClient, type ResolveClient } from './clientResolve'
+import type { ResolveClient } from './clientResolve'
 import { periodSinceISO, type Period } from './period'
 import { cursorForOffset, cursorOffset } from './responseContract'
 
@@ -21,22 +22,21 @@ type Args = z.infer<typeof params>
 export type LeadRow = { id: string, submitted_at: string, source: string, status: string, campaign_name: string | null, field_data: Record<string, unknown> | null }
 export type LeadCount = { status: string, source: string, count: number }
 export type LeadsDeps = {
-  resolveClient: ResolveClient
+  resolveClient: (name: string, ctx: ToolContext) => ReturnType<ResolveClient>
   list: (q: { clientId: string, status?: string, source?: string, fromISO: string, limit: number, offset: number }, ctx: ToolContext) => Promise<{ items: LeadRow[], total: number }>
-  summary: (clientId: string, fromISO: string) => Promise<LeadCount[]>
+  summary: (clientId: string, fromISO: string, ctx: ToolContext, filters?: { status?: string, source?: string }) => Promise<LeadCount[]>
 }
 
 const defaultDeps: LeadsDeps = {
-  resolveClient: defaultResolveClient,
-  list: ({ clientId, status, source, fromISO, limit, offset }, ctx) =>
-    aiInternalFetch('/api/leads/list', { query: { client_id: clientId, status, source, from: fromISO, page_size: limit, page: Math.floor(offset / limit) + 1 } }, ctx),
-  summary: (clientId, fromISO) =>
-    queryRows<LeadCount>(
-      `SELECT status, source, COUNT(*)::int AS count FROM leads
-       WHERE client_id = $1 AND deleted_at IS NULL AND is_test = false AND submitted_at >= $2
-       GROUP BY status, source`,
-      [clientId, fromISO],
-    ),
+  resolveClient: async (name, ctx) => resolveScopedClient(await resolveMarketingReadScope(ctx), name),
+  list: async ({ clientId, status, source, fromISO, limit, offset }, ctx) => {
+    const scope = await resolveMarketingReadScope(ctx)
+    if (!scope.ownerVerified) throw new Error('LEAD_LIST_NOT_AVAILABLE')
+    const { requireScopedClient } = await import('../marketing/readScope')
+    await requireScopedClient(scope, clientId)
+    return aiInternalFetch('/api/leads/list', { query: { client_id: clientId, status, source, from: fromISO, page_size: limit, page: Math.floor(offset / limit) + 1 } }, ctx)
+  },
+  summary: async (clientId, fromISO, ctx, filters) => readLeadSummary(await resolveMarketingReadScope(ctx), { clientId, fromISO, ...filters }),
 }
 
 /** Pull a display name from a lead's advertiser-defined field_data. Pure. */
@@ -70,12 +70,13 @@ function sumBy(rows: LeadCount[], field: 'status' | 'source'): Record<string, nu
 }
 
 export async function getLeads(args: Args, ctx: ToolContext, deps: LeadsDeps = defaultDeps, now: Date = new Date()): Promise<ToolResult> {
-  const client = await deps.resolveClient(args.clientName)
+  try {
+    if (!args.summary && !(await resolveMarketingReadScope(ctx)).ownerVerified) return fail('Lead lists are unavailable for ordinary reporting.', 'LEAD_LIST_NOT_AVAILABLE')
+    const client = await deps.resolveClient(args.clientName, ctx)
   if (!client) return fail(`No matching client for "${args.clientName}".`)
   const fromISO = periodSinceISO(args.period as Period, now)
-  try {
     if (args.summary) {
-      const rows = await deps.summary(client.id, fromISO)
+      const rows = await deps.summary(client.id, fromISO, ctx, { status: args.status, source: args.source })
       const total = rows.reduce((n, r) => n + r.count, 0)
       return ok({
         client: client.name, period: args.period, total,

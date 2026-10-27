@@ -1,7 +1,13 @@
+import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { describe, it, expect, vi } from 'vitest'
 import { getAdspendPacing, projectPacingCampaign, type AdspendDeps, type PacingCampaign } from '~~/server/utils/ai/tools/adspend'
 
-const ctx = { userId: 'u1', userRole: 'owner', event: {} as any }
+vi.mock('~~/server/utils/db', async original => ({ ...(await original<any>()),
+  queryOneFresh: vi.fn(async (sql: string, params: any[]) => sql.includes('team_members') ? { id: params[0] } : sql.includes('FROM leads') ? { total_submissions: 63, campaign_attributed: 4, ad_attributed: 3 } : { id: 'c1' }),
+  queryRowsFresh: vi.fn(async () => [{ id: 'c1', name: 'Acme' }])
+}))
+
+const ctx = { userId: '11111111-1111-4111-8111-111111111111', userRole: 'owner', event: { context: {} } as any } as ToolContext
 // Fixtures sync at 2026-08-18T08:15Z; pin the clock so the P-02 halt never trips by accident.
 const NOW = () => new Date('2026-08-18T12:00:00Z')
 
@@ -255,4 +261,13 @@ describe('get_adspend_pacing', () => {
       expect((res as any).data.basis.pacePct).toMatch(/elapsedDays/)
     })
   })
+})
+
+it('verified owner substring retains multiple client names', async () => {
+  const result: any = await getAdspendPacing({ clientName: 'acme' }, ctx, {
+    now: NOW, loadCoverageDeltas: async () => null,
+    pacing: async () => ['Acme North', 'Acme South', 'Other'].map(client => campaign({ client }))
+  })
+  expect(result.ok).toBe(true)
+  expect(result.data.campaigns.map((row: any) => row.client)).toEqual(['Acme North', 'Acme South'])
 })

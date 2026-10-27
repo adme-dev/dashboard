@@ -12,7 +12,7 @@ interface Env {
 
 export default {
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext) {
-    const jobs = ['publish-social-posts', 'replenish-social-news']
+    const jobs = ['publish-social-posts', 'replenish-social-news', 'reconcile-social-posts']
     const results = await Promise.allSettled(jobs.map(async (job) => {
       const resp = await fetch(`${env.APP_BASE_URL}/api/cron/${job}`, {
         method: 'POST',
@@ -24,7 +24,7 @@ export default {
     }))
     const failed = jobs.filter((_, index) => results[index]?.status === 'rejected')
     if (failed.length) {
-      // Finish both jobs before marking the invocation failed so one outage does
+      // Finish all jobs before marking the invocation failed so one outage does
       // not suppress the other job, and broken authentication remains visible.
       console.error('social-dispatch-cron.request-failed', { jobs: failed })
       throw new Error(`Social cron job failed: ${failed.join(', ')}`)

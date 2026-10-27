@@ -1,10 +1,9 @@
 import { z } from 'zod'
-import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
-// Use Nitro's global $fetch (auto-imported), NOT raw ofetch — it resolves relative internal routes
-// on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
+import { resolveMarketingReadScope, requireMarketingReadPermission, loadMarketingCoverageDelta } from '../marketing/readScope'
+import { resolveScopedClient } from '../marketing/clientReads'
+import { readSpendSummary } from '../marketing/spendReads'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
-import { aiInternalFetch } from '../internalFetch'
 import { dayOfMonth, expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
 import { buildDataHealth, mergeSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
 
@@ -20,6 +19,7 @@ type Args = z.infer<typeof params>
 export type PacingStatus = 'underpacing' | 'overpacing' | 'on_pace' | 'partial_budget_coverage' | 'no_budget_set'
 
 export type PacingCampaign = {
+  clientId?: string
   client: string
   platform: 'meta' | 'google'
   spend: number
@@ -41,9 +41,9 @@ export type PacingCampaign = {
 }
 
 export type AdspendDeps = {
-  loadCoverageDeltas?: () => Promise<Record<string, unknown> | null>
+  loadCoverageDeltas?: (ctx: ToolContext) => Promise<Record<string, unknown> | null>
 
-  pacing: (ctx: ToolContext) => Promise<PacingCampaign[]>
+  pacing: (ctx: ToolContext, query?: { clientId?: string, clientName?: string, platform?: string }) => Promise<PacingCampaign[]>
   now?: () => Date
 }
 
@@ -59,11 +59,6 @@ function classify(pacePct: number): PacingStatus {
   return 'on_pace'
 }
 
-// Real wiring: spend data is route-mediated via the spend summary endpoint (the
-// same source the spend pages use). Forward the caller's auth headers so the
-// tenant/session resolves, mirroring finance.ts. The summary returns one row per
-// client+platform with budget + actual spend for the current period; we derive
-// pace against the expected-to-date budget burn.
 /**
  * R-3 two-clock pacing, per row. The *data clock* is `spendAsOf` (the newest daily_spend date the
  * provider has reported); expected-to-date is measured at that date, not at wall-clock `now`, so a
@@ -83,6 +78,7 @@ export function projectPacingCampaign(it: any, now: Date): PacingCampaign {
     const rawPlatform = String(it?.platform ?? '')
     const platform: 'meta' | 'google' = rawPlatform.startsWith('google') ? 'google' : 'meta'
     return {
+    clientId: String(it?.groupKey ?? '').split(':client:')[1],
       client: String(it?.clientName ?? 'Unknown'),
       platform,
       spend,
@@ -102,9 +98,9 @@ export function projectPacingCampaign(it: any, now: Date): PacingCampaign {
 }
 
 const defaultDeps: AdspendDeps = {
-  pacing: async (ctx) => {
-    const r: any = await aiInternalFetch('/api/agency/social/spend/summary', {}, ctx)
+  pacing: async (ctx, query) => {
     const now = new Date()
+    const r = await readSpendSummary(await resolveMarketingReadScope(ctx), { month: now.getMonth() + 1, year: now.getFullYear(), ...query })
     const items: any[] = Array.isArray(r?.items) ? r.items : []
     return items.map(it => projectPacingCampaign(it, now))
   },
@@ -125,8 +121,13 @@ function currentPeriod() {
 
 export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: AdspendDeps = defaultDeps): Promise<ToolResult> {
   try {
-    const sourceRows = await deps.pacing(ctx)
-    const all = sourceRows.map((c) => {
+    const scope = await resolveMarketingReadScope(ctx)
+    requireMarketingReadPermission(scope, 'pacing')
+    const requestedClient = !scope.ownerVerified && args.clientName ? await resolveScopedClient(scope, args.clientName) : null
+    const clientId = requestedClient?.id
+    if (!scope.ownerVerified && args.clientName && !clientId) return fail('Client not found')
+    const sourceRows = await deps.pacing(ctx, { clientId, clientName: scope.ownerVerified ? args.clientName : undefined, platform: args.platform })
+    const all = sourceRows.filter(c => (scope.ownerVerified ? (!args.clientName || c.client.toLowerCase().includes(args.clientName.toLowerCase())) : !requestedClient || (c.clientId ? c.clientId === requestedClient.id : c.client === requestedClient.name)) && (!args.platform || c.platform === args.platform)).map((c) => {
       const hasCoverageCounts = Number.isFinite(c.campaignCount) && Number.isFinite(c.budgetedCampaignCount)
       const hasPartialBudgetCoverage = c.budget !== null
         && hasCoverageCounts
@@ -142,10 +143,8 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       }
     })
 
-    const nameNeedle = args.clientName?.trim().toLowerCase()
     const matchesCommonFilters = (c: PacingCampaign) => {
       if (args.platform && c.platform !== args.platform) return false
-      if (nameNeedle && !c.client.toLowerCase().includes(nameNeedle)) return false
       if (args.status === 'underpacing' && c.status !== 'underpacing') return false
       if (args.status === 'overpacing' && c.status !== 'overpacing') return false
       if (args.status === 'on_pace' && c.status !== 'on_pace') return false
@@ -159,7 +158,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
     const unattributed = all
       .filter(c => c.unattributed && matchesCommonFilters(c))
       .map(c => ({ ...c, accountName: c.client }))
-    const coverageDelta = await (deps.loadCoverageDeltas ?? getSpendCoverageDeltas)().catch(() => null)
+    const coverageDelta = await (deps.loadCoverageDeltas ? deps.loadCoverageDeltas(ctx) : loadMarketingCoverageDelta(scope)).catch(() => null)
     const page = paginateWithCursor(filtered, args.cursor, args.limit)
     const health = buildDataHealth({
       configured: all.length > 0,
@@ -181,6 +180,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       return ok({
         period: currentPeriod(),
         source: 'synced_ad_platform_spend',
+        coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
         halted: true,
         haltReason: halt.haltReason,
         haltDetail: halt.haltDetail,
@@ -201,6 +201,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
     return ok({
       period: currentPeriod(),
       source: 'synced_ad_platform_spend',
+      coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
       halted: false,
       basis: {
         pacePct: `spend ÷ expected-to-date × 100, where expected-to-date = budget × (elapsedDays ÷ days in month); underpacing < ${UNDERPACE_PCT}, overpacing > ${OVERPACE_PCT}`,

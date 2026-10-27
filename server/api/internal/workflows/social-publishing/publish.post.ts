@@ -1,5 +1,6 @@
 import { defineEventHandler, getHeader, readBody, createError, type H3Event } from 'h3'
 import { claimAndPublishSocialPost } from '~~/server/utils/socialPublishing/dispatch'
+import { agencyWorkflowConfigText } from '~~/server/utils/agencyWorkflows/client'
 import {
   SOCIAL_PUBLISHING_WORKFLOW_KIND,
   normalizeSocialPublishingWorkflowPayload,
@@ -13,12 +14,13 @@ import {
  * Pages-side callback for the standalone agency-workflows Worker. The Worker
  * owns durable scheduling/retries; Pages owns database access and provider
  * dispatch. Authentication is the x-workflow-secret header, and the route stays
- * disabled unless AGENCY_WORKFLOWS_ENABLED is explicitly true.
+ * disabled unless AGENCY_WORKFLOWS_ENABLED is explicitly true. Both are read from the request's
+ * Cloudflare bindings first (Pages exposes secrets only there), local process env second.
  */
 export default defineEventHandler(async (event) => {
   requireWorkflowCallbackSecret(event)
 
-  if (process.env.AGENCY_WORKFLOWS_ENABLED !== 'true') {
+  if (agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_ENABLED') !== 'true') {
     throw createError({ statusCode: 503, statusMessage: 'Agency workflows are disabled' })
   }
 
@@ -31,7 +33,10 @@ export default defineEventHandler(async (event) => {
     maxAttempts: socialPublishingWorkflowMaxAttempts(payload.trigger),
     source: 'workflow',
     actorId: payload.requestedBy ?? null,
-    auditAction: 'post_published'
+    auditAction: 'post_published',
+    event,
+    // A callback minted for one approved revision can never claim a newer one.
+    revisionId: payload.revisionId ?? null
   })
 
   return {
@@ -44,7 +49,8 @@ export default defineEventHandler(async (event) => {
 })
 
 function requireWorkflowCallbackSecret(event: H3Event) {
-  const expected = process.env.WORKFLOW_CALLBACK_SECRET?.trim() || process.env.WORKFLOW_SERVICE_SECRET?.trim()
+  const expected = agencyWorkflowConfigText(event, 'WORKFLOW_CALLBACK_SECRET')
+    || agencyWorkflowConfigText(event, 'WORKFLOW_SERVICE_SECRET')
   if (!expected) {
     throw createError({ statusCode: 503, statusMessage: 'WORKFLOW_CALLBACK_SECRET is not configured' })
   }

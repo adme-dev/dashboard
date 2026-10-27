@@ -322,7 +322,7 @@ describe('social publishing account OAuth client access', () => {
       'AT',
       'RT',
       '2026-01-01T00:00:00.000Z',
-      '2027-01-01T00:00:00.000Z'
+      '2027-01-01T00:00:00.000Z', undefined
     )
     expect(mockUpsertSocialAccount).toHaveBeenCalledOnce()
     expect(result).toEqual({ connected: ['Organization'], conflicts: [] })

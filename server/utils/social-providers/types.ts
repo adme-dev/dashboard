@@ -117,6 +117,12 @@ export interface PostParams {
   media?: MediaItem[]
   /** Platform-specific options (e.g., { type: 'reel' } for Instagram) */
   options?: Record<string, unknown>
+  /**
+   * Server-owned reviewed-payload contract: set only when dispatching an approved delegated revision.
+   * The provider must deliver every media item and the exact copy, or fail before the publication
+   * request — it never drops a failed upload or truncates reviewed text.
+   */
+  reviewed?: boolean
 }
 
 export interface CommentParams {
@@ -128,6 +134,8 @@ export interface CommentParams {
   media?: MediaItem[]
   /** Same platform options the post was published with (e.g. LinkedIn `isOrganization`). */
   options?: Record<string, unknown>
+  /** Reviewed-payload contract (see PostParams.reviewed): reject rather than truncate reviewed text. */
+  reviewed?: boolean
 }
 
 export interface PostResult {
@@ -135,8 +143,17 @@ export interface PostResult {
   platformPostId: string
   /** Direct URL to the published post */
   url: string
-  status: 'success' | 'failed'
+  status: 'success' | 'accepted' | 'failed'
+  providerStatus?: string
+  providerReceipt?: { code: string | null, logId: string | null }
   error?: string
+  /**
+   * True when the publication request may have taken effect but no definitive answer came back
+   * (transport failure / timeout, a 408 or 5xx response to the publication request itself, or an
+   * accepted response with no receipt). Callers must hold such an outcome for read-back instead of
+   * retrying it. Preparation failures before the publication request are never indeterminate.
+   */
+  indeterminate?: boolean
 }
 
 export interface MediaItem {
@@ -145,6 +162,7 @@ export interface MediaItem {
   type: 'image' | 'video'
   alt?: string
   mimeType?: string
+  durationSeconds?: number | null
 }
 
 /** Platform content limits */

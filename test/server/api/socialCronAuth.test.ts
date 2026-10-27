@@ -9,7 +9,10 @@ vi.mock('h3', () => ({
 vi.mock('~~/server/utils/db', () => ({ queryRows: db.rows, queryRowsFresh: db.rows, queryOneFresh: db.one, execute: vi.fn() }))
 vi.mock('~~/server/utils/socialNewsAutopost', () => ({ dueNewsAutopostClients: db.due, checkNewsAutopost: vi.fn() }))
 vi.mock('~~/server/utils/socialPublishing/dispatch', () => ({ claimAndPublishSocialPost: vi.fn() }))
-vi.mock('~~/server/utils/agencyWorkflows/client', () => ({ startSocialPublishingWorkflow: vi.fn() }))
+vi.mock('~~/server/utils/agencyWorkflows/client', async importOriginal => ({
+  ...(await importOriginal<typeof import('~~/server/utils/agencyWorkflows/client')>()),
+  startSocialPublishingWorkflow: vi.fn()
+}))
 vi.mock('~~/server/utils/social-providers/registry', () => ({ getProvider: vi.fn() }))
 vi.mock('~~/server/utils/socialReporting/store', () => ({ upsertPostMetric: vi.fn(), upsertAccountMetric: vi.fn() }))
 vi.mock('~~/server/utils/socialPublishing', () => ({ publishedTargetsForAccount: vi.fn() }))

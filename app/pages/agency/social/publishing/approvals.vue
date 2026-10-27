@@ -7,7 +7,7 @@ import {
   formatApprovalDate,
 } from '~/utils/socialPublishingApprovals'
 import { platformLabel } from '~~/app/utils/socialReportScheduleForm'
-import type { SocialPost, SocialPublishPlatform } from '~/types'
+import type { SocialApprovalEffectiveTarget, SocialApprovalPost, SocialPost, SocialPublishPlatform } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -16,12 +16,12 @@ const toast = useToast()
 
 const { clientId } = useSocialPublishingClient()
 
-const pending = ref<SocialPost[]>([])
+const pending = ref<SocialApprovalPost[]>([])
 const loading = ref(false)
 const selectedId = ref<string | null>(null)
 const previewPlatform = ref<SocialPublishPlatform | null>(null)
 const approvingId = ref<string | null>(null)
-const rejectTarget = ref<SocialPost | null>(null)
+const rejectTarget = ref<SocialApprovalPost | null>(null)
 const rejectReason = ref('')
 const rejecting = ref(false)
 
@@ -39,6 +39,59 @@ const clientApprovalBlocked = computed(() =>
   selectedPost.value?.metadata?.source === 'mcp_news'
   && selectedPost.value.client_approval_status !== 'approved'
 )
+const selectedRevision = computed(() => selectedPost.value?.current_revision ?? null)
+const delegatedReview = computed(() => selectedPost.value?.review?.independentReviewRequired === true)
+const decisionBlockedReason = computed(() => selectedPost.value?.review?.blockedReason ?? null)
+const approveDisabled = computed(() => clientApprovalBlocked.value || !!decisionBlockedReason.value)
+const revisionTargets = computed(() => selectedRevision.value?.targets ?? [])
+const revisionMediaPreviews = computed(() => selectedPost.value?.media_previews ?? [])
+const effectiveTargets = computed(() => selectedPost.value?.effective_targets ?? [])
+const effectiveTargetsByKey = computed(() => new Map(effectiveTargets.value.map(target => [target.key, target])))
+
+const MODE_LABELS: Record<string, string> = {
+  post: 'Feed post',
+  story: 'Story',
+  reel: 'Reel',
+  carousel: 'Carousel',
+  text: 'Text post',
+  link: 'Link post',
+  image: 'Image post',
+  multi_image: 'Multi-image post',
+  video: 'Video post'
+}
+
+function modeLabel(mode: string) {
+  return MODE_LABELS[mode] ?? mode
+}
+
+function destinationName(target: SocialApprovalEffectiveTarget) {
+  return target.account?.name || `${platformLabel(target.platform)} account`
+}
+
+function destinationDetail(target: SocialApprovalEffectiveTarget) {
+  if (!target.account) return 'This account is no longer connected to this client'
+  const author = target.account.authorType === 'person' ? ', posting as a member' : target.account.authorType === 'organization' ? ', posting as the page' : ''
+  return `${platformLabel(target.platform)} ${target.account.platformAccountId}${author}`
+}
+
+function targetCollaborators(target: SocialApprovalEffectiveTarget) {
+  const value = target.options.collaborators
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function shortHash(hash: string | null | undefined) {
+  return hash ? hash.slice(0, 12) : ''
+}
+
+function formatBytes(bytes: number | null | undefined) {
+  if (!bytes) return ''
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
+function targetAccountLabel(target: { platform: string, accountId: string }) {
+  const effective = effectiveTargetsByKey.value.get(`${target.platform}:${target.accountId}`)
+  return effective?.account?.name || `account ${target.accountId.slice(0, 8)}`
+}
 
 function clientDecisionLabel(status: SocialPost['client_approval_status']) {
   if (!status) return 'Not requested'
@@ -84,20 +137,22 @@ watch(selectedPost, (post) => {
   }
 }, { immediate: true })
 
-async function approve(p: SocialPost) {
+async function approve(p: SocialApprovalPost) {
   approvingId.value = p.id
   try {
-    await api.approve(p.id)
+    // Bind the decision to the exact revision on screen; a stale view gets a 409 and reloads.
+    await api.approve(p.id, p.current_revision?.id ?? null)
     toast.add({ title: 'Approved', color: 'success' })
     await load()
   } catch (e: any) {
     toast.add({ title: 'Approve failed', description: e?.data?.statusMessage, color: 'error' })
+    if (e?.statusCode === 409 || e?.data?.statusCode === 409) await load()
   } finally {
     approvingId.value = null
   }
 }
 
-function openReject(p: SocialPost) {
+function openReject(p: SocialApprovalPost) {
   rejectTarget.value = p
   rejectReason.value = p.rejection_reason ?? ''
 }
@@ -111,13 +166,17 @@ async function confirmReject() {
   }
   rejecting.value = true
   try {
-    await api.reject(rejectTarget.value.id, reason)
+    await api.reject(rejectTarget.value.id, reason, rejectTarget.value.current_revision?.id ?? null)
     toast.add({ title: 'Sent back for changes', color: 'success' })
     rejectTarget.value = null
     rejectReason.value = ''
     await load()
   } catch (e: any) {
     toast.add({ title: 'Reject failed', description: e?.data?.statusMessage, color: 'error' })
+    if (e?.statusCode === 409 || e?.data?.statusCode === 409) {
+      rejectTarget.value = null
+      await load()
+    }
   } finally {
     rejecting.value = false
   }
@@ -160,38 +219,51 @@ async function confirmReject() {
           <UBadge color="neutral" variant="subtle">{{ pending.length }} pending</UBadge>
         </div>
 
-        <button
-          v-for="p in pending"
-          :key="p.id"
-          type="button"
-          class="w-full rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          :class="selectedPost?.id === p.id ? 'border-primary bg-primary/5' : 'border-default hover:border-muted'"
-          :aria-pressed="selectedPost?.id === p.id"
-          @click="selectedId = p.id"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <p class="text-sm font-medium truncate">{{ approvalPrimaryContent(p, null) }}</p>
-              <p class="text-xs text-muted mt-1">
-                Requested {{ formatApprovalDate(p.approval_requested_at, p.timezone) }}
-              </p>
-              <div class="flex flex-wrap gap-1 mt-3">
-                <UBadge v-for="pl in p.platforms" :key="pl" color="neutral" variant="subtle" size="xs">
-                  {{ platformLabel(pl) }}
-                </UBadge>
-                <UBadge
-                  v-if="p.metadata?.source === 'mcp_news'"
-                  :color="clientDecisionColor(p.client_approval_status)"
-                  variant="outline"
-                  size="xs"
-                >
-                  Client: {{ clientDecisionLabel(p.client_approval_status) }}
-                </UBadge>
+        <div class="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+          <UButton
+            v-for="p in pending"
+            :key="p.id"
+            color="neutral"
+            variant="ghost"
+            block
+            class="items-start justify-start rounded-lg border p-4 text-left font-normal text-default transition-colors"
+            :class="selectedPost?.id === p.id ? 'border-primary bg-primary/5' : 'border-default hover:border-muted'"
+            :aria-pressed="selectedPost?.id === p.id"
+            @click="() => { selectedId = p.id }"
+          >
+            <div class="flex w-full min-w-0 items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium truncate">{{ approvalPrimaryContent(p, null) }}</p>
+                <p class="text-xs text-muted mt-1">
+                  Requested {{ formatApprovalDate(p.approval_requested_at, p.timezone) }}
+                </p>
+                <div class="flex flex-wrap gap-1 mt-3">
+                  <UBadge v-for="pl in p.platforms" :key="pl" color="neutral" variant="subtle" size="xs">
+                    {{ platformLabel(pl) }}
+                  </UBadge>
+                  <UBadge
+                    v-if="p.metadata?.source === 'mcp_news'"
+                    :color="clientDecisionColor(p.client_approval_status)"
+                    variant="outline"
+                    size="xs"
+                  >
+                    Client: {{ clientDecisionLabel(p.client_approval_status) }}
+                  </UBadge>
+                  <UBadge
+                    v-if="p.review?.independentReviewRequired"
+                    color="info"
+                    variant="outline"
+                    size="xs"
+                    icon="i-lucide-user-check"
+                  >
+                    Staff draft, revision {{ p.current_revision?.revision_number ?? '?' }}
+                  </UBadge>
+                </div>
               </div>
+              <UIcon name="i-lucide-chevron-right" class="size-4 text-muted mt-1 shrink-0" />
             </div>
-            <UIcon name="i-lucide-chevron-right" class="size-4 text-muted mt-1 shrink-0" />
-          </div>
-        </button>
+          </UButton>
+        </div>
       </section>
 
       <section v-if="selectedPost" class="rounded-lg border border-default bg-default">
@@ -243,9 +315,118 @@ async function confirmReject() {
                   loading="lazy"
                 >
               </div>
+              <div v-if="revisionMediaPreviews.length" class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-4">
+                <template v-for="media in revisionMediaPreviews" :key="`${media.kind}:${media.id}`">
+                  <video
+                    v-if="media.url && media.mediaType === 'video'"
+                    :src="media.url"
+                    controls
+                    preload="metadata"
+                    class="aspect-video w-full rounded-md border border-default bg-elevated"
+                  />
+                  <img
+                    v-else-if="media.url"
+                    :src="media.url"
+                    alt=""
+                    class="aspect-video w-full rounded-md border border-default object-cover bg-elevated"
+                    loading="lazy"
+                  >
+                  <div v-else class="flex aspect-video items-center justify-center rounded-md border border-default bg-elevated text-xs text-muted">
+                    Preview unavailable
+                  </div>
+                </template>
+              </div>
               <p v-if="selectedPost.first_comment" class="mt-4 rounded-md bg-elevated p-3 text-xs text-muted">
                 First comment: {{ selectedPost.first_comment }}
               </p>
+            </div>
+
+            <div v-if="effectiveTargets.length" class="rounded-lg border border-default p-4">
+              <div class="mb-1 flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold">
+                  What each destination publishes
+                </h3>
+                <span class="text-xs text-muted">
+                  {{ effectiveTargets.length }} {{ effectiveTargets.length === 1 ? 'destination' : 'destinations' }}
+                </span>
+              </div>
+              <p class="mb-3 text-xs text-muted">
+                Exactly what this revision sends to each account, including hashtags and the tracked link.
+              </p>
+              <ul class="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+                <li
+                  v-for="target in effectiveTargets"
+                  :key="target.key"
+                  class="rounded-md border border-default p-3"
+                  :data-destination="target.key"
+                >
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <p class="truncate text-sm font-medium" :class="target.account ? '' : 'text-error'">
+                        {{ destinationName(target) }}
+                      </p>
+                      <p class="mt-0.5 truncate text-xs text-muted" :title="target.accountId">
+                        {{ destinationDetail(target) }}
+                      </p>
+                    </div>
+                    <UBadge color="primary" variant="subtle" size="xs">
+                      {{ modeLabel(target.mode) }}
+                    </UBadge>
+                  </div>
+                  <p v-if="targetCollaborators(target).length" class="mt-2 text-xs">
+                    <span class="text-muted">Collaborators:</span> {{ targetCollaborators(target).join(', ') }}
+                  </p>
+                  <p class="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-elevated p-3 text-sm">
+                    {{ target.content || 'No caption' }}
+                  </p>
+                  <dl v-if="target.platform === 'tiktok'" class="mt-2 space-y-1 text-xs">
+                    <div>
+                      <dt class="inline text-muted">
+                        Privacy:
+                      </dt><dd class="inline">
+                        {{ target.options.privacy_level || 'Not selected' }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="inline text-muted">
+                        Photo title:
+                      </dt><dd class="inline">
+                        {{ target.options.title || 'None' }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="inline text-muted">
+                        Comments / Duet / Stitch:
+                      </dt><dd class="inline">
+                        {{ target.options.disable_comment === false ? 'On' : 'Off' }} / {{ target.options.disable_duet === false ? 'On' : 'Off' }} / {{ target.options.disable_stitch === false ? 'On' : 'Off' }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="inline text-muted">
+                        Disclosures:
+                      </dt><dd class="inline">
+                        Your brand {{ target.options.brand_organic_toggle === true ? 'on' : 'off' }}, paid partnership {{ target.options.brand_content_toggle === true ? 'on' : 'off' }}, AI-generated {{ target.options.is_aigc === true ? 'on' : 'off' }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="inline text-muted">
+                        Music / branded-content consent:
+                      </dt><dd class="inline">
+                        {{ target.options.consent === true ? 'Confirmed for this revision' : 'Missing' }}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p v-if="target.firstComment" class="mt-2 text-xs">
+                    <span class="text-muted">First comment:</span> {{ target.firstComment }}
+                  </p>
+                  <ul v-if="target.notes.length" class="mt-2 space-y-1">
+                    <li v-for="note in target.notes" :key="note" class="flex items-start gap-1.5 text-xs text-muted">
+                      <UIcon name="i-lucide-info" class="mt-0.5 size-3 shrink-0" />
+                      <span>{{ note }}</span>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
             </div>
 
             <div class="rounded-lg border border-default p-4">
@@ -322,8 +503,86 @@ async function confirmReject() {
               </div>
             </div>
 
+            <div v-if="selectedRevision" class="rounded-lg border border-default p-4">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <h3 class="text-sm font-semibold">
+                  Exact revision
+                </h3>
+                <UBadge color="neutral" variant="subtle" size="xs">
+                  #{{ selectedRevision.revision_number }}
+                </UBadge>
+              </div>
+              <dl class="space-y-2 text-sm">
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Fingerprint
+                  </dt>
+                  <dd class="font-mono text-xs" :title="selectedRevision.content_hash">
+                    {{ shortHash(selectedRevision.content_hash) }}
+                  </dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Submitted
+                  </dt>
+                  <dd>{{ formatApprovalDate(selectedRevision.requested_at, selectedPost.timezone) }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Review closes
+                  </dt>
+                  <dd>{{ formatApprovalDate(selectedRevision.expires_at, selectedPost.timezone) }}</dd>
+                </div>
+                <div v-if="selectedRevision.schedule?.scheduledAt" class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Publishes at
+                  </dt>
+                  <dd>{{ formatApprovalDate(selectedRevision.schedule.scheduledAt, selectedRevision.schedule.timezone) }}</dd>
+                </div>
+              </dl>
+              <div v-if="revisionTargets.length" class="mt-3 space-y-1">
+                <p class="text-xs text-muted">
+                  Publishes to exactly
+                </p>
+                <div class="flex flex-wrap gap-1">
+                  <UBadge
+                    v-for="target in revisionTargets"
+                    :key="`${target.platform}:${target.accountId}`"
+                    color="neutral"
+                    variant="outline"
+                    size="xs"
+                    :title="target.accountId"
+                  >
+                    {{ platformLabel(target.platform) }} {{ targetAccountLabel(target) }}
+                  </UBadge>
+                </div>
+              </div>
+              <div v-if="selectedRevision.media?.length" class="mt-3 space-y-1">
+                <p class="text-xs text-muted">
+                  Reviewed media is pinned to these exact files
+                </p>
+                <ul class="space-y-1 text-xs">
+                  <li v-for="media in selectedRevision.media" :key="`${media.kind}:${media.id}`" class="flex justify-between gap-3">
+                    <span>{{ media.mediaType === 'video' ? 'Video' : 'Image' }} ({{ media.mimeType }})</span>
+                    <span class="text-muted">{{ formatBytes(media.byteSize) }}</span>
+                  </li>
+                </ul>
+              </div>
+              <p v-if="delegatedReview" class="mt-3 text-xs text-muted">
+                Submitted by a staff member over their AI assistant. Approving authorizes this exact revision only; any edit needs a new review.
+              </p>
+            </div>
+
             <div class="rounded-lg border border-default p-4">
               <h3 class="text-sm font-semibold mb-3">Decision</h3>
+              <UAlert
+                v-if="decisionBlockedReason"
+                color="neutral"
+                variant="subtle"
+                icon="i-lucide-lock"
+                :title="decisionBlockedReason"
+                class="mb-3"
+              />
               <UAlert
                 v-if="clientApprovalBlocked"
                 color="warning"
@@ -338,16 +597,17 @@ async function confirmReject() {
                   icon="i-lucide-check"
                   block
                   :loading="approvingId === selectedPost.id"
-                  :disabled="selectedPost.metadata?.source === 'mcp_news' && selectedPost.client_approval_status !== 'approved'"
+                  :disabled="approveDisabled || (selectedPost.metadata?.source === 'mcp_news' && selectedPost.client_approval_status !== 'approved')"
                   @click="approve(selectedPost)"
                 >
-                  Approve
+                  {{ delegatedReview ? 'Approve this revision' : 'Approve' }}
                 </UButton>
                 <UButton
                   color="error"
                   variant="subtle"
                   icon="i-lucide-x"
                   block
+                  :disabled="delegatedReview && !!decisionBlockedReason"
                   @click="openReject(selectedPost)"
                 >
                   Request changes

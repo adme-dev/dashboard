@@ -3,13 +3,19 @@
 // Pages then requires an exact one-time claim, revalidates current authority, and projects the scoped
 // toolset. Staff-first: serves the staff registry; client/portal is a separate surface.
 //
-// Auth: x-mcp-secret must match MCP_INTERNAL_SECRET (the Worker holds the same secret). HARD-gated by
-// MCP_SERVER_ENABLED — 503 until the operator turns the expose layer on.
+// Owners with active God-mode authority keep the complete registered union. Every other user is
+// freshly resolved (resolveMcpStaffContext) and projected through marketingPolicy — the same policy
+// tools/call and the connector preview use.
+//
+// Auth: x-mcp-secret must match MCP_INTERNAL_SECRET (binding first; the Worker holds the same secret). HARD-gated by
+// MCP_SERVER_ENABLED (binding first, then process env) — 503 until the operator turns it on.
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { randomUUID } from 'node:crypto'
-import { queryOne } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
-import { projectGodModeTools, projectRegisteredMcpTools } from '~~/server/utils/ai/mcp/registry'
+import { projectGodModeTools } from '~~/server/utils/ai/mcp/registry'
+import { projectMcpToolsForStaff } from '~~/server/utils/ai/mcp/marketingPolicy'
+import { readMcpRuntimeValue, resolveMcpRuntimeConfig } from '~~/server/utils/ai/mcp/runtimeConfig'
+import { resolveMcpStaffContext } from '~~/server/utils/ai/mcp/staffAuthority'
 import {
   consumeMcpRequestClaim,
   getMcpRequestGodModeAuthority
@@ -39,11 +45,13 @@ function manifestResponse<T>(tools: T[], assertOwnerFloor = false) {
 }
 
 export default defineEventHandler(async (event) => {
-  if (process.env.MCP_SERVER_ENABLED !== 'true') {
+  const runtime = resolveMcpRuntimeConfig(event)
+  if (!runtime.serverEnabled) {
     throw createError({ statusCode: 503, statusMessage: 'MCP server disabled' })
   }
   // Always require the shared secret (no dev bypass — that was a fail-open gate in non-prod builds).
-  const expectedSecret = process.env.MCP_INTERNAL_SECRET
+  // Binding first (Pages runtime), then the local process env; a present non-string binding fails closed.
+  const expectedSecret = readMcpRuntimeValue(event, 'MCP_INTERNAL_SECRET')
   const secret = getHeader(event, 'x-mcp-secret')
   if (!expectedSecret || secret !== expectedSecret) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
@@ -62,25 +70,14 @@ export default defineEventHandler(async (event) => {
   )
 
   const authority = getMcpRequestGodModeAuthority(event, userId)
-  const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
+  // Legacy opt-in: only labels the owner's scope bypass below; ordinary staff always need mcp:write.
+  const requireWriteScope = runtime.legacyRequireWriteScope
   const projectionContext = {
     tools: registry as AiTool<unknown>[],
     role: 'owner',
     scopes: claim.scope,
     requireWriteScope,
-    suiteFlags: {
-      generation: process.env.MCP_GEN_TOOLS_ENABLED === 'true',
-      writes: process.env.MCP_WRITE_TOOLS_ENABLED === 'true',
-      financial: process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true',
-      video: process.env.MCP_VIDEO_TOOLS_ENABLED === 'true',
-      videoGeneration: process.env.MCP_VIDEO_GEN_ENABLED === 'true',
-      banners: process.env.MCP_BANNER_TOOLS_ENABLED === 'true',
-      feeds: process.env.MCP_FEED_TOOLS_ENABLED === 'true',
-      googleAdsRead: process.env.GOOGLE_ADS_MCP_READ_ENABLED === 'true',
-      googleAdsWrite: process.env.GOOGLE_ADS_MCP_WRITE_ENABLED === 'true',
-      googleAdsAutomation: process.env.GOOGLE_ADS_MCP_AUTOMATION_ENABLED === 'true',
-      googleAdsDestructive: process.env.GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED === 'true'
-    }
+    suiteFlags: runtime.suiteFlags
   }
   if (isActiveGodModeAuthority(authority, userId)) {
     const correlationId = randomUUID()
@@ -124,14 +121,9 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const user = await queryOne<{ role: string }>(
-    `SELECT user_role AS role FROM team_members WHERE id = $1 AND is_active = TRUE`,
-    [userId]
-  )
-  if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
-
-  // The registered suite list is the only assembly authority. For ordinary users its projectors retain
-  // the existing per-suite flags, role permissions, and signed-claim write-scope narrowing.
-  const role = user.role ?? ''
-  return manifestResponse(projectRegisteredMcpTools({ ...projectionContext, role }))
+  // Fresh, uncached staff authority (403 inactive / 503 unavailable). Management staff keep the
+  // registered suite projection narrowed by fresh groups + signed write scope; everyone else sees only
+  // reviewed staff-policy tools.
+  const staff = await resolveMcpStaffContext(event, userId, claim.scope, { runtimeConfig: runtime })
+  return manifestResponse(projectMcpToolsForStaff({ context: projectionContext, staff }))
 })

@@ -248,6 +248,7 @@ describe('creative registry promotion', () => {
   it('confirms a promotion and returns the approved source identifier', async () => {
     const deps = {
       genEnabled: true,
+      authorizeProject: vi.fn(async () => true),
       reserve: vi.fn(async () => ({ ok: true, reused: false, job: { id: 'job-1' } })),
       enqueue: vi.fn(async () => {}),
       createProject: vi.fn(async () => ({ projectId: 'newproj' })),
@@ -257,7 +258,7 @@ describe('creative registry promotion', () => {
     }
     const r = await dispatchVideoConfirm({
       tool_name: 'video_source_promote',
-      resolved_payload: { assetId: 'monday:3163988655' }
+      resolved_payload: { assetId: 'monday:3163988655', projectId: 'p1', tenantId: 'c1' }
     }, ctx('admin'), deps)
     expect(r).toEqual({ ok: true, data: {
       sourceAssetId: 'source-1', status: 'approved', sourceSystem: 'monday', sourceAssetRef: 'monday:3163988655'
@@ -357,6 +358,7 @@ const genPayload = {
 describe('dispatchVideoConfirm', () => {
   const okDeps = () => ({
     genEnabled: true,
+    authorizeProject: vi.fn(async () => true),
     reserve: vi.fn(async () => ({ ok: true, reused: false, job: { id: 'job-1' } })),
     enqueue: vi.fn(async () => {}),
     createProject: vi.fn(async () => ({ projectId: 'newproj' }))

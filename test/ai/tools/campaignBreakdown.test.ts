@@ -1,8 +1,14 @@
+import { queryOneFresh } from '~~/server/utils/db'
 import { describe, it, expect, vi } from 'vitest'
 import { getCampaignBreakdown, getLeadAttributionSummary, type CampaignBreakdownDeps, type BreakdownCampaign } from '~~/server/utils/ai/tools/campaignBreakdown'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
-const ctx = { userId: 'u1', userRole: 'media_buyer', conversationId: 'c1', event: {} as any } as ToolContext
+vi.mock('~~/server/utils/db', async original => ({ ...(await original<any>()),
+  queryOneFresh: vi.fn(async (sql: string, params: any[]) => sql.includes('team_members') ? { id: params[0] } : sql.includes('FROM leads') ? { total_submissions: 63, campaign_attributed: 4, ad_attributed: 3 } : { id: 'c1' }),
+  queryRowsFresh: vi.fn(async (_sql: string, params: any[]) => [{ id: 'c1', name: String(params[0]).toLowerCase().includes('globex') ? 'Globex' : 'Acme' }])
+}))
+
+const ctx = { userId: '11111111-1111-4111-8111-111111111111', userRole: 'owner', event: { context: {} } as any } as ToolContext
 
 const rows: BreakdownCampaign[] = [
   { campaignId: 'c1', mediaSpendId: '00000000-0000-4000-8000-0000000000c1', campaignName: 'Acme Prospecting', clientName: 'Acme', platform: 'meta', spend: 100, roas: 2.0, cpc: 1.5, campaignStatus: 'ACTIVE', effectiveStatus: 'active', firstServedDate: '2026-08-01', lastServedDate: '2026-08-18', endDate: null, lastSyncedAt: '2026-08-18T08:00:00Z', impressions: 1000, clicks: 67, conversions: 4, leadCount: 3, costPerLead: 33.33, frequency: 1.4 },
@@ -21,15 +27,15 @@ const data = (r: any) => { expect(r.ok).toBe(true); return (r as any).data }
 
 describe('getCampaignBreakdown', () => {
   it('counts only real submitted leads and preserves campaign/ad attribution coverage', async () => {
-    const load = vi.fn().mockResolvedValue({ total_submissions: 63, campaign_attributed: 4, ad_attributed: 3 })
+    const load = vi.mocked(queryOneFresh)
     const result = await getLeadAttributionSummary({
       platform: 'meta', clientName: 'South % Morang', startDate: '2026-08-01', endDate: '2026-08-19',
-    }, load)
+    }, ctx)
 
-    expect(result).toEqual({ totalSubmissions: 63, campaignAttributed: 4, adAttributed: 3 })
-    expect(String(load.mock.calls[0][0])).toContain('l.is_test = false')
-    expect(String(load.mock.calls[0][0])).toContain('l.campaign_id IS NOT NULL')
-    expect(load.mock.calls[0][1]).toEqual(['2026-08-01', '2026-08-19', 'meta', '%South \\% Morang%'])
+    expect(result).toMatchObject({ totalSubmissions: 63, campaignAttributed: 4, adAttributed: 3 })
+    expect(String(load.mock.calls.find(call => String(call[0]).includes('FROM leads'))![0])).toContain('l.is_test = false')
+    expect(String(load.mock.calls.find(call => String(call[0]).includes('FROM leads'))![0])).toContain('l.campaign_id IS NOT NULL')
+    expect(load.mock.calls.find(call => String(call[0]).includes('FROM leads'))![1]).toEqual(['2026-08-01', '2026-08-19', '%South \\% Morang%', 'meta'])
   })
 
   it('returns campaigns sorted by spend desc (default) capped with a more count', async () => {
@@ -159,7 +165,7 @@ describe('getCampaignBreakdown', () => {
       .mockResolvedValueOnce({ campaigns: [refreshed], total: 1 })
     const refreshDiagnostics = vi.fn().mockResolvedValue([{ available: true, error: null }])
     const d = data(await getCampaignBreakdown({ platform: 'google' }, ctx, deps({ breakdown, refreshDiagnostics })))
-    expect(refreshDiagnostics).toHaveBeenCalledWith([mediaSpendId])
+    expect(refreshDiagnostics).toHaveBeenCalledWith([mediaSpendId], ctx)
     expect(breakdown).toHaveBeenCalledTimes(2)
     expect(d.diagnosticRefresh).toMatchObject({ attempted: 1, succeeded: 1, failed: 0, targetCap: 20 })
     expect(d.campaigns[0]).toMatchObject({ servingStatus: 'LIMITED', impressionShareDataStatus: 'fresh' })
@@ -180,7 +186,7 @@ describe('getCampaignBreakdown', () => {
       refreshDiagnostics,
     }))
 
-    expect(refreshDiagnostics).toHaveBeenCalledWith([globexId])
+    expect(refreshDiagnostics).toHaveBeenCalledWith([globexId], ctx)
   })
 
   it('sorts by roas desc with nulls last', async () => {
@@ -297,4 +303,14 @@ describe('getCampaignBreakdown', () => {
       expect(d.truncatedAtSource).toBe(true)
     })
   })
+})
+
+it('verified owner substring retains multiple client names', async () => {
+  const matching = [
+    { ...rows[0], clientName: 'Acme North', campaignId: 'north' },
+    { ...rows[0], clientName: 'Acme South', campaignId: 'south' },
+    { ...rows[0], clientName: 'Other', campaignId: 'other' }
+  ]
+  const result = data(await getCampaignBreakdown({ clientName: 'acme', sortBy: 'spend' }, ctx, deps({ breakdown: async () => ({ campaigns: matching, total: matching.length }) })))
+  expect(result.campaigns.map((row: any) => row.clientName)).toEqual(['Acme North', 'Acme South'])
 })

@@ -74,7 +74,8 @@ describe('portal social news routes', () => {
       clientUserId: 'portal-user-1',
       postId: POST_ID,
       action: 'approve',
-      feedback: 'Looks good'
+      feedback: 'Looks good',
+      revisionId: null
     })
 
     mockRequireClientAuth.mockResolvedValueOnce({
@@ -84,6 +85,17 @@ describe('portal social news routes', () => {
     })
     await expect(respondHandler({ params: { id: POST_ID }, body: { action: 'approve' } }))
       .rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('forwards the revision the client was shown and rejects a malformed one', async () => {
+    const REVISION_ID = '22222222-2222-4222-8222-222222222222'
+    await respondHandler({ params: { id: POST_ID }, body: { action: 'reject', feedback: 'No', revisionId: REVISION_ID } })
+    expect(mockRespond.mock.calls[0][1]).toMatchObject({ action: 'reject', revisionId: REVISION_ID })
+    await expect(respondHandler({ params: { id: POST_ID }, body: { action: 'approve', revisionId: 'revision-1' } }))
+      .rejects.toMatchObject({ statusCode: 400 })
+    await expect(respondHandler({ params: { id: POST_ID }, body: { action: 'approve', revisionId: 7 } }))
+      .rejects.toMatchObject({ statusCode: 400 })
+    expect(mockRespond).toHaveBeenCalledTimes(1)
   })
 
   it('validates ids, actions, and feedback at the HTTP boundary', async () => {

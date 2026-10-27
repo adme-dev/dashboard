@@ -1,10 +1,11 @@
+import { assertGoogleAdsResourceCustomers, delegatedAdsContext, assertGoogleAdsConnection, replayGoogleAdsPlan } from '~~/server/utils/ai/marketing/googleAdsAccess'
 import { z } from 'zod'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
-import { toMcpInputSchema, type McpToolManifest } from '~~/server/utils/ai/mcp/project'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import { mcpContextHasPermission, toMcpInputSchema, type McpToolManifest } from '~~/server/utils/ai/mcp/project'
 import type { PlanGoogleAdsActionInput } from '~~/server/utils/googleAds/actionPlanner'
 import {
   planSearchGoogleAdsControlAction,
+  type GoogleAdsControlAuthority,
   type GoogleAdsControlFlags
 } from '~~/server/utils/googleAds/searchRuntime'
 import { ListingGroupNodesInputSchema } from '~~/server/utils/googleAds/listingGroups'
@@ -1108,6 +1109,21 @@ const ENABLE_OPERATIONS = {
   keyword: 'enable_keyword'
 } as const
 
+/**
+ * The Google Ads control authority for an MCP context. Fresh MCP staff carry their CURRENT permission
+ * groups into the Google Ads policy, so a custom role that revokes ADMIN / MANAGEMENT / MEDIA_BUYING from
+ * a broad legacy role (e.g. `admin`) also revokes destructive, elevated and media authority downstream.
+ * Owner God mode and legacy contexts keep the role-derived authority unchanged.
+ */
+export function mcpGoogleAdsControlAuthority(context: ToolContext, hasWriteScope: boolean): GoogleAdsControlAuthority {
+  return {
+    actorRole: context.userRole,
+    hasWriteScope,
+    delegatedPlanning: delegatedAdsContext(context) && (context.marketingCapabilities ?? []).includes('ads_plan'),
+    ...(context.mcpStaffAuthority === 'fresh' ? { permissionGroups: context.permissionGroups ?? [] } : {})
+  }
+}
+
 export interface GoogleAdsSearchPlanningToolDependencies {
   plan: typeof planSearchGoogleAdsControlAction
 }
@@ -1134,7 +1150,7 @@ export async function executeGoogleAdsSearchPlanningTool(
   if (!flags.write) {
     return { ok: false, error: 'Google Ads write tools are not enabled over MCP.', code: 'disabled' }
   }
-  if (!hasWriteScope || !roleHasPermission(context.userRole, 'MEDIA_BUYING')) {
+  if (!hasWriteScope || (delegatedAdsContext(context) ? !(context.marketingCapabilities ?? []).includes('ads_plan') : !mcpContextHasPermission(context, 'MEDIA_BUYING'))) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
   const dependencies = { ...defaultDependencies, ...overrides }
@@ -2054,10 +2070,14 @@ export async function executeGoogleAdsSearchPlanningTool(
     } else {
       throw new Error('Unsupported Google Ads Search planning tool')
     }
-    const plan = await dependencies.plan(plannerInput, {
-      actorRole: context.userRole,
-      hasWriteScope
-    }, flags)
+    let replay: Awaited<ReturnType<typeof replayGoogleAdsPlan>> = null
+    if (delegatedAdsContext(context)) {
+      if (plannerInput.requestedMode !== 'proposal' || /^(remove_|archive_custom_)/.test(plannerInput.operation)) return { ok: false, error: 'Staff automatic and destructive actions are unavailable.', code: 'forbidden' }
+      const mapping = await assertGoogleAdsConnection(context, plannerInput.clientId, plannerInput.connectionId, undefined, 'plan')
+      assertGoogleAdsResourceCustomers(plannerInput.arguments, mapping.customerId)
+      replay = await replayGoogleAdsPlan(context, plannerInput.clientId, plannerInput.idempotencyKey)
+    }
+    const plan = replay ?? await dependencies.plan(plannerInput, mcpGoogleAdsControlAuthority(context, hasWriteScope), flags)
     if (!plan.policyDecision.allowed || plan.status === 'cancelled') {
       return {
         ok: false,

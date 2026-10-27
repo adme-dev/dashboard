@@ -15,7 +15,8 @@ const http = vi.hoisted(() => ({
   providerFetch: vi.fn(),
   providerFetchRaw: vi.fn()
 }))
-vi.mock('../../server/utils/social-providers/http', () => ({
+vi.mock('../../server/utils/social-providers/http', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../server/utils/social-providers/http')>()),
   providerFetch: (...args: unknown[]) => http.providerFetch(...args),
   providerFetchRaw: (...args: unknown[]) => http.providerFetchRaw(...args),
   fetchWithTimeout: vi.fn()
@@ -169,6 +170,7 @@ describe('linkedinProvider.post — multipart video upload', () => {
   it('declares the real size, uploads every part by byte range, and finalizes with ETags + uploadToken', async () => {
     const source = new Uint8Array(10).map((_, i) => i).buffer
     http.providerFetch.mockImplementation(async (url: string) => {
+      if (url.includes('/rest/videos/urn%3Ali%3Avideo%3AV1')) return { status: 'AVAILABLE' }
       if (url === 'https://r2.example/clip.mp4') return source
       if (url === `${API}/rest/videos?action=initializeUpload`) {
         return {
@@ -575,5 +577,55 @@ describe('linkedinProvider analytics', () => {
     expect(metric).toEqual({ followers: 5, partialFailures: ['share statistics unavailable: Service Unavailable'] })
     expect(metric.impressions).toBeUndefined()
     expect(metric.reach).toBeUndefined()
+  })
+})
+
+describe('LinkedIn video availability gate', () => {
+  it.each(['PROCESSING_FAILED', 'UNKNOWN', undefined])('does not create a post for readiness %s', async (status) => {
+    http.providerFetch.mockImplementation(async (url: string) => {
+      if (url.includes('initializeUpload')) return { value: { video: 'urn:li:video:V', uploadInstructions: [{ uploadUrl: 'https://up/part', firstByte: 0, lastByte: 3 }] } }
+      if (url.includes('/rest/videos/')) return { status }
+      return new ArrayBuffer(4)
+    })
+    http.providerFetchRaw.mockResolvedValue(raw(undefined, { etag: 'part' }))
+    expect((await linkedinProvider.post({ accountId: '1', accessToken: 'AT', content: 'x', media: [{ url: 'https://fixture/v.mp4', type: 'video' }] })).status).toBe('failed')
+    expect(http.providerFetchRaw.mock.calls.some(([url]) => String(url).endsWith('/rest/posts'))).toBe(false)
+  })
+  it('polls only bounded processing reads and creates one post after AVAILABLE', async () => {
+    vi.useFakeTimers()
+    let polls = 0
+    http.providerFetch.mockImplementation(async (url: string) => {
+      if (url.includes('initializeUpload')) return { value: { video: 'urn:li:video:V', uploadInstructions: [{ uploadUrl: 'https://up/part', firstByte: 0, lastByte: 3 }] } }
+      if (url.includes('/rest/videos/')) return { status: ++polls === 3 ? 'AVAILABLE' : 'PROCESSING' }
+      return new ArrayBuffer(4)
+    })
+    http.providerFetchRaw.mockImplementation(async (url: string) => url.endsWith('/rest/posts') ? raw(undefined, { 'x-restli-id': 'urn:li:share:1' }) : raw(undefined, { etag: 'part' }))
+    try {
+      const result = linkedinProvider.post({ accountId: '1', accessToken: 'AT', content: 'x', media: [{ url: 'https://fixture/v.mp4', type: 'video' }] })
+      await vi.runAllTimersAsync()
+      expect((await result).status).toBe('success')
+      expect(polls).toBe(3)
+      expect(http.providerFetchRaw.mock.calls.filter(([url]) => String(url).endsWith('/rest/posts'))).toHaveLength(1)
+    } finally { vi.useRealTimers() }
+  })
+  it('stops after six processing reads without creating a post', async () => {
+    vi.useFakeTimers()
+    let polls = 0
+    http.providerFetch.mockImplementation(async (url: string) => {
+      if (url.includes('initializeUpload')) return { value: { video: 'urn:li:video:V', uploadInstructions: [{ uploadUrl: 'https://up/part', firstByte: 0, lastByte: 3 }] } }
+      if (url.includes('/rest/videos/')) {
+        polls++
+        return { status: 'PROCESSING' }
+      }
+      return new ArrayBuffer(4)
+    })
+    http.providerFetchRaw.mockResolvedValue(raw(undefined, { etag: 'part' }))
+    try {
+      const result = linkedinProvider.post({ accountId: '1', accessToken: 'AT', content: 'x', media: [{ url: 'https://fixture/v.mp4', type: 'video' }] })
+      await vi.runAllTimersAsync()
+      expect((await result).status).toBe('failed')
+      expect(polls).toBe(6)
+      expect(http.providerFetchRaw.mock.calls.some(([url]) => String(url).endsWith('/rest/posts'))).toBe(false)
+    } finally { vi.useRealTimers() }
   })
 })

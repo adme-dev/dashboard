@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { queryOne } from '~~/server/utils/db'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
 import {
   planGoogleAdsAction,
   hashGoogleAdsValue,
@@ -48,8 +48,29 @@ import {
 import { GoogleAdsActionError, normalizeGoogleAdsError } from '~~/server/utils/googleAds/errors'
 
 export interface GoogleAdsControlAuthority {
+  delegatedPlanning?: boolean
+  executorId?: string
+  reviewedPlanId?: string
   actorRole: string
   hasWriteScope: boolean
+  /**
+   * Trusted fresh permission groups (MCP staff resolved by resolveMcpStaffContext). When present they —
+   * not permissions re-derived from the legacy role — decide media, elevated and destructive authority.
+   */
+  permissionGroups?: readonly PermissionGroup[]
+}
+
+/** Actor-derived policy inputs: fresh groups when supplied, otherwise the legacy role's permissions. */
+function authorityPolicyInput(authority: GoogleAdsControlAuthority) {
+  const groups = authority.permissionGroups
+  const has = (group: PermissionGroup) => groups ? groups.includes(group) : roleHasPermission(authority.actorRole, group)
+  return {
+    actorRole: authority.actorRole,
+    delegatedPlanning: authority.delegatedPlanning === true,
+    hasMediaPermission: authority.delegatedPlanning === true || has('MEDIA_BUYING'),
+    hasElevatedPermission: has('MANAGEMENT'),
+    ...(groups ? { hasDestructivePermission: groups.includes('ADMIN') } : {})
+  }
 }
 
 export interface GoogleAdsControlFlags {
@@ -303,9 +324,7 @@ export async function planSearchGoogleAdsControlAction(
     buildAction: async context => buildSearchGoogleAdsAction(context),
     resolvePolicy: () => resolveGoogleAdsPolicy({
       operation: input.operation,
-      actorRole: authority.actorRole,
-      hasMediaPermission: roleHasPermission(authority.actorRole, 'MEDIA_BUYING'),
-      hasElevatedPermission: roleHasPermission(authority.actorRole, 'MANAGEMENT'),
+      ...authorityPolicyInput(authority),
       hasWriteScope: authority.hasWriteScope,
       globalWriteEnabled: flags.write,
       automationEnabled: flags.automation,
@@ -318,7 +337,7 @@ export async function planSearchGoogleAdsControlAction(
             actionClass: grantActive ? grant?.actionClass : undefined
           }
     }),
-    persist: dependencies.persist,
+    persist: plan => dependencies.persist({ ...plan, reviewPolicy: authority.delegatedPlanning ? 'delegated_marketing' : 'legacy' }),
     policyVersion: grantActive && grant ? grant.policyVersion : 'google-ads-v1',
     grantId: grantActive && grant ? grant.id : null,
     now: dependencies.now,
@@ -1260,6 +1279,9 @@ export async function executeSearchGoogleAdsControlAction(
   flags: GoogleAdsControlFlags,
   overrides: Partial<SearchGoogleAdsExecutionDependencies> = {}
 ): Promise<GoogleAdsExecutionOutcome> {
+  if (plan.reviewPolicy === 'delegated_marketing' && (authority.reviewedPlanId !== plan.id || !plan.reviewedBy || plan.reviewedBy === plan.actorId)) {
+    return { ok: false, status: 'forbidden', message: 'Independent browser review required.' }
+  }
   if (!isExecutableSearchGoogleAdsPlan(plan)) {
     return { ok: false, status: 'blocked', message: 'This Google Ads action type is not active.' }
   }
@@ -1302,9 +1324,7 @@ export async function executeSearchGoogleAdsControlAction(
     resolvePolicy: candidate => ({
       ...resolveGoogleAdsPolicy({
         operation: candidate.operation,
-        actorRole: authority.actorRole,
-        hasMediaPermission: roleHasPermission(authority.actorRole, 'MEDIA_BUYING'),
-        hasElevatedPermission: roleHasPermission(authority.actorRole, 'MANAGEMENT'),
+        ...authorityPolicyInput(authority),
         hasWriteScope: authority.hasWriteScope,
         globalWriteEnabled: flags.write,
         automationEnabled: flags.automation,
@@ -1325,7 +1345,8 @@ export async function executeSearchGoogleAdsControlAction(
       id: candidate.id,
       clientId: candidate.clientId,
       actorId: candidate.actorId,
-      expectedStatus
+      expectedStatus,
+      ...(candidate.reviewPolicy === 'delegated_marketing' ? { executorId: authority.executorId } : {})
     })),
     validate: () => runMutation(true),
     mutate: () => runMutation(false),
