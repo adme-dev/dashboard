@@ -1,7 +1,9 @@
 import { z } from 'zod'
 
 /** Draft outcome contract. Fixed same-site paths only; no answer interpolation. */
-const RedirectPath = /^\/(?:[a-zA-Z0-9_-]+\/?)*$/
+// Same paths as /^\/(?:segment\/?)*$/ without its exponential backtracking:
+// every repeated segment must end in "/", so there is one way to match.
+const RedirectPath = /^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]*$/
 const ReservedPath = /^\/(?:api|_nuxt|assets)(?:\/|$)/i
 export function isFormRedirectPath(value: string): boolean {
   if (!RedirectPath.test(value) || value !== value.trim() || value.startsWith('//')) return false
