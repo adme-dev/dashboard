@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-27T08:10:22.656Z",
+  "result": [
+    {
+      "name": "home",
+      "status": 200
+    },
+    {
+      "name": "contact",
+      "status": 200
+    },
+    {
+      "name": "public-submit-get",
+      "status": 405
+    },
+    {
+      "name": "diagnostic-get",
+      "status": 405
+    },
+    {
+      "name": "unsigned-diagnostic",
+      "status": 401
+    }
+  ]
+}

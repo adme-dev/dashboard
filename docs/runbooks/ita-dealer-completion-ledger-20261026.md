@@ -11,7 +11,7 @@ On 27 October, the user explicitly requested updates to the related marketing jo
 | Item | Verified status | Posted update ID |
 | --- | --- | --- |
 | Northern Nissan PMAX | **QA** (06:33 UTC) | `5667297106` |
-| Astoria ORC | Awaiting Client | `5667031182` |
+| Astoria ORC | Working On It (08:06 UTC readback; human-owned status preserved) | `5667031182` |
 | Fairfield Foton setup | **Done** (05:49 UTC) | `5667260266` |
 | Driveagent conversion tracking | QA | `5667031486` |
 
@@ -52,9 +52,9 @@ Astoria's portal hostname does not establish native DriveAgent conversion routin
 | ITA-FF-04 | Fairfield server conversions | Verified for one authorized labelled contact enquiry through GA4 reporting | Complete within tested ordinary contact/GA4 scope; retain exact event evidence below | Accepted enquiry and matching native event; exact same event ID observed once in GA4 Realtime |
 | ITA-FF-05 | Fairfield embedded Analytics reporting | Verified healthy; GA4 Data API reports loaded | Complete within exact Fairfield property/account scope | Native health healthy for property 558508526 and authorized account; actual report contains traffic and page data |
 | ITA-CV-01 | Requested GTM-N7LKRFRG | Installed | Complete within installation scope | Installed on Astoria dealer website; empty requested container does not replace existing conversion owner `GTM-WJ5VC5B2` |
-| ITA-CV-02 | Astoria signed server delivery | GTM v24 and XeroFlow v8 live; no events or deliveries yet | Coordinator: trace next permitted enquiry and resolve legacy hook ownership | One signed accepted receipt per enquiry, active consent-gated destinations, verified provider behavior and no overlapping GA4 lead sender |
+| ITA-CV-02 | Astoria signed server delivery | Signed synthetic receipt/storage and containment verified; real conversions still unproven | Coordinator: trace next permitted enquiry and resolve legacy hook ownership | One signed accepted receipt per enquiry, active consent-gated destinations, verified provider behavior and no overlapping GA4 lead sender |
 | ITA-CV-03 | Astoria blocked-script resilience | PR5 deployed; controlled blocked-script browser check open | Coordinator: complete a permitted real-browser external-script-absence check | Consent UI works without external SDKs; actual consented identity reaches signed receipt; denied/withdrawn consent suppresses measurement; automated tests alone do not close browser acceptance |
-| ITA-CV-04 | End-to-end proof | Pending authorization / live events | Paul: approve labelled operator enquiries or choose natural traffic; coordinator records lineage and provider results | CRM acceptance, canonical UUID, queue/consumer result, provider transport and reporting recorded separately; never invent a lead or click ID |
+| ITA-CV-04 | End-to-end proof | Contained synthetic server tests passed with duplicate recovery; customer path remains open | Coordinator: retain synthetic evidence below; verify real CRM acceptance, browser ownership and provider reporting separately | CRM acceptance, canonical UUID, queue/consumer result, provider transport and reporting recorded separately; never invent a lead or click ID |
 | ITA-DOC-01 | Platform guard / documentation | Guards merged; ongoing ledger maintenance | Coordinator maintains this ledger and canonical tracking guides | Current ownership, exact source/deployment receipts and remaining gates remain discoverable |
 
 ## Verified repairs and release identities
@@ -305,3 +305,40 @@ Technical repair and ordinary contact-to-GA4 acceptance have passed. Keep the pa
 
 
 Monday update **5667297106** and the change to **QA** were independently read back at **06:33:22 UTC** on item **3948720818**. The saved post links the committed exact-event proof, records that both campaign warnings cleared, and keeps genuine Ads attribution open. Assignee Paul and due date **27 October** were preserved.
+
+
+## Astoria contained synthetic diagnostics — 27 October, 07:58–08:10 UTC
+
+The user asked to create a dummy function and run dummy enquiries. This authorizes contained synthetic tests; the prepared real operator enquiry remains unsubmitted. [Astoria PR7](https://github.com/adme-dev/astoria-gwm/pull/7) adds an HMAC-authenticated diagnostic using the same accepted-lead service with a simulated CRM response, isolated Netlify Blobs storage and XeroFlow's existing test-run protocol. No real contact details, consent grant, analytics identity or advertising click identifier is generated. Public enquiry input cannot select test mode. All **93 repository tests passed**; all changed source, tests and documentation were reviewed before commit. The canonical Astoria tracking guide documents invocation and scope.
+
+### Repository connection repair and deployed source
+
+The first preview failed at repository preparation with GitHub “Repository not found.” The earlier saved-link/published-commit check did not establish current clone access. Reconnected the **same** repository through Netlify's existing authorized GitHub account, preserving site ID, master branch, build command, output and functions directory. A fresh build of unchanged master succeeded, then the diagnostic preview succeeded. No additional GitHub app permissions were requested.
+
+- Site: `15b1a934-6bea-4ee4-9645-616853907ec7`, `astoriagwm.com.au`.
+- Failed preview: `6ae05991fe26d21c6186f96f`; successful preview: `6ae05ab94a8866f420573740`, reviewed head `d3b9a561195aaac81de47936b0adc0175c090a94`.
+- Reconnection verification build: `6ae05a81a326f2f3fc573783`, unchanged source `adc0414084d19ac155383cdd4b8ac443be455c85`.
+- Published diagnostic: **`6ae05b31900c697e170cae95`**, production/master, source **`c96233aa1a89c3ab3a9cd6883d064f5715bcf873`**, completed **08:05:38 UTC**. Merged tree equals reviewed preview tree `d3146988822340651ef6f74c453ce4283bb3a5bf`.
+
+### Runtime evidence
+
+Capture run **`56f51b56-8ed9-46a5-90d9-ea62dafdd778`** was created through the authenticated supported API and activated for Astoria's connector. One preview fixture and six production scenarios ran. The receiver stored six total test leads: one preview plus five accepted production fixtures. The rejected fixture stored none.
+
+| Production scenario | Result |
+| --- | --- |
+| Contact accepted | Signed receipt 201/created, delivered tombstone; repeated submission did not resend the simulated CRM |
+| Stock accepted | Same result, form 6 / stock classification |
+| Model variant accepted | Same result, form 5 / model_variant classification |
+| CRM rejection (simulated) | Rejected, zero outbound webhook attempts and zero receiver rows |
+| First webhook failure (simulated) | Initially queued; same retry service delivered the identical UUID without another simulated CRM call |
+| Duplicate receipt | First receipt created one test lead; immediate second acknowledgement was not obtained and the gateway retained its accepted envelope. A subsequent **manual same-core retry of the isolated synthetic store** returned HTTP 200 / duplicate in 5,178 ms and replaced the envelope with a delivered tombstone. The initial acknowledgement failure's cause was not established. This was not a scheduled-job invocation. |
+
+Database readback verified **every stored lead has is_test=true**, exactly one row per accepted submission UUID, no rejected row, **zero rule deliveries, zero CRM links, zero conversion events and zero conversion deliveries**. Server evidence records trusted receipt and canonical test storage passed, with destinations explicitly skipped because normal side effects are contained. The receiver's active status now reflects a synthetic receipt, not a customer event. No customer acceptance or provider reporting claim follows from that status.
+
+Production HTTP checks passed: home/contact 200, public submission GET 405, diagnostic GET 405, unsigned diagnostic POST 401. Successful authenticated diagnostic execution plus receiver acceptance proves the deployed Netlify secret works with the configured XeroFlow connector, without revealing or comparing Netlify's masked secret value.
+
+After verification, removed exactly eight keys from the isolated test-run Blobs store and read back zero remaining keys. No production enquiry store was touched. XeroFlow test records remain flagged for audit. The capture-test run requires browser/candidate stages too, so this server-only run must not be called an overall passed browser capture test.
+
+**Remaining:** real legacy CRM acceptance and provider-hook ownership; controlled real-browser external-script-absence acceptance; actual consented event delivery/reporting in GA4 and genuine paid-ad attribution. No production measurement profile was disabled merely to rerun provider validation. The currently deployed profile remains enabled/live v8 with four destinations. Parent tracking task stays QA.
+
+Durable receipts: [production scenarios](evidence/astoria-synthetic-20261027/production.json), [duplicate recovery](evidence/astoria-synthetic-20261027/duplicate-recovery.json), [receiver and containment proof](evidence/astoria-synthetic-20261027/receiver-proof.json), [deployment](evidence/astoria-synthetic-20261027/deployment.json), [published deploy screenshot](evidence/astoria-synthetic-20261027/published-deploy.png), [cleanup](evidence/astoria-synthetic-20261027/cleanup.json), [HTTP guards](evidence/astoria-synthetic-20261027/http-checks.json). Canonical Astoria source/docs were updated in PR7; no maintained graph/wiki refresh is claimed because the earlier access/freshness limitation remains.

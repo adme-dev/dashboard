@@ -1,0 +1,245 @@
+{
+  "at": "2026-10-27T08:05:56.734Z",
+  "endpoint": "https://astoriagwm.com.au",
+  "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+  "results": [
+    {
+      "input": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "f8ffda6c-fa99-417b-9a1c-a6ff395a7a40",
+        "kind": "contact",
+        "scenario": "accepted"
+      },
+      "startedAt": "2026-10-27T08:05:56.737Z",
+      "status": "received",
+      "httpStatus": 200,
+      "result": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "f8ffda6c-fa99-417b-9a1c-a6ff395a7a40",
+        "kind": "contact",
+        "scenario": "accepted",
+        "upstream": "simulated",
+        "simulatedCrmCalls": 1,
+        "webhookAttempts": 1,
+        "first": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "f8ffda6c-fa99-417b-9a1c-a6ff395a7a40",
+          "trackingStatus": "delivered"
+        },
+        "retry": null,
+        "repeated": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "f8ffda6c-fa99-417b-9a1c-a6ff395a7a40",
+          "trackingStatus": "delivered"
+        },
+        "receipts": [
+          {
+            "status": 201,
+            "outcome": "created"
+          }
+        ],
+        "ledgerStatus": "delivered",
+        "customerPayloadRetained": false
+      }
+    },
+    {
+      "input": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "5981b138-bbe0-4bde-9f89-e52c5a040579",
+        "kind": "stock",
+        "scenario": "accepted"
+      },
+      "startedAt": "2026-10-27T08:06:07.804Z",
+      "status": "received",
+      "httpStatus": 200,
+      "result": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "5981b138-bbe0-4bde-9f89-e52c5a040579",
+        "kind": "stock",
+        "scenario": "accepted",
+        "upstream": "simulated",
+        "simulatedCrmCalls": 1,
+        "webhookAttempts": 1,
+        "first": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "5981b138-bbe0-4bde-9f89-e52c5a040579",
+          "trackingStatus": "delivered"
+        },
+        "retry": null,
+        "repeated": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "5981b138-bbe0-4bde-9f89-e52c5a040579",
+          "trackingStatus": "delivered"
+        },
+        "receipts": [
+          {
+            "status": 201,
+            "outcome": "created"
+          }
+        ],
+        "ledgerStatus": "delivered",
+        "customerPayloadRetained": false
+      }
+    },
+    {
+      "input": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "a6b90809-2d2f-482c-b769-6188b3d079c0",
+        "kind": "model_variant",
+        "scenario": "accepted"
+      },
+      "startedAt": "2026-10-27T08:06:16.027Z",
+      "status": "received",
+      "httpStatus": 200,
+      "result": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "a6b90809-2d2f-482c-b769-6188b3d079c0",
+        "kind": "model_variant",
+        "scenario": "accepted",
+        "upstream": "simulated",
+        "simulatedCrmCalls": 1,
+        "webhookAttempts": 1,
+        "first": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "a6b90809-2d2f-482c-b769-6188b3d079c0",
+          "trackingStatus": "delivered"
+        },
+        "retry": null,
+        "repeated": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "a6b90809-2d2f-482c-b769-6188b3d079c0",
+          "trackingStatus": "delivered"
+        },
+        "receipts": [
+          {
+            "status": 201,
+            "outcome": "created"
+          }
+        ],
+        "ledgerStatus": "delivered",
+        "customerPayloadRetained": false
+      }
+    },
+    {
+      "input": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "b049ea7f-6688-4e0d-8bf4-bfc03ce2eb28",
+        "kind": "contact",
+        "scenario": "rejected"
+      },
+      "startedAt": "2026-10-27T08:06:24.324Z",
+      "status": "received",
+      "httpStatus": 200,
+      "result": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "b049ea7f-6688-4e0d-8bf4-bfc03ce2eb28",
+        "kind": "contact",
+        "scenario": "rejected",
+        "upstream": "simulated",
+        "simulatedCrmCalls": 1,
+        "webhookAttempts": 0,
+        "first": {
+          "is_valid": false,
+          "confirmation_message": "Please check your details and try again."
+        },
+        "retry": null,
+        "repeated": {
+          "is_valid": false
+        },
+        "receipts": [],
+        "ledgerStatus": "rejected",
+        "customerPayloadRetained": false
+      }
+    },
+    {
+      "input": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "47101aed-0455-424d-a40e-7f5c42ac92a1",
+        "kind": "contact",
+        "scenario": "retry"
+      },
+      "startedAt": "2026-10-27T08:06:27.167Z",
+      "status": "received",
+      "httpStatus": 200,
+      "result": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "47101aed-0455-424d-a40e-7f5c42ac92a1",
+        "kind": "contact",
+        "scenario": "retry",
+        "upstream": "simulated",
+        "simulatedCrmCalls": 1,
+        "webhookAttempts": 2,
+        "first": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "47101aed-0455-424d-a40e-7f5c42ac92a1",
+          "trackingStatus": "queued"
+        },
+        "retry": {
+          "delivered": 1
+        },
+        "repeated": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "47101aed-0455-424d-a40e-7f5c42ac92a1",
+          "trackingStatus": "delivered"
+        },
+        "receipts": [
+          {
+            "status": 201,
+            "outcome": "created"
+          }
+        ],
+        "ledgerStatus": "delivered",
+        "customerPayloadRetained": false
+      }
+    },
+    {
+      "input": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "a0fda83e-d84d-43ce-aa33-cba2153e9797",
+        "kind": "contact",
+        "scenario": "duplicate"
+      },
+      "startedAt": "2026-10-27T08:06:42.678Z",
+      "status": "received",
+      "httpStatus": 200,
+      "result": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "a0fda83e-d84d-43ce-aa33-cba2153e9797",
+        "kind": "contact",
+        "scenario": "duplicate",
+        "upstream": "simulated",
+        "simulatedCrmCalls": 1,
+        "webhookAttempts": 1,
+        "first": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "a0fda83e-d84d-43ce-aa33-cba2153e9797",
+          "trackingStatus": "queued"
+        },
+        "retry": null,
+        "repeated": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "a0fda83e-d84d-43ce-aa33-cba2153e9797",
+          "trackingStatus": "queued"
+        },
+        "receipts": [
+          {
+            "status": 201,
+            "outcome": "created"
+          }
+        ],
+        "ledgerStatus": "accepted",
+        "customerPayloadRetained": true
+      }
+    }
+  ]
+}
