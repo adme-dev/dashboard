@@ -89,6 +89,8 @@ Task 1 does not claim the six reads execute yet: Task 2 delivers that before pil
 
 - [x] Correct host setup from current official documentation, provide staff-relevant examples, explain separate provider OAuth and grant/readiness status.
 - [x] Verify bounded scroll, Nuxt UI, custom-role presentation and preview parity. Public pages distinguish delivered workflows from unavailable provider actions.
-- [ ] Run combined regression suite, lint/type/build checks appropriate to changed code and repository deploy guards. Fresh independent whole-branch review, then fix material findings.
-- [ ] Fetch current main, reconcile, record exact source and prepare reviewable release. Deployment/live-account proof remains distinct from local tests and may require available provider grants.
-- [ ] Keep the execution ledger current with every completed task, commit, review, blocker and remaining acceptance. Never report completion of the full request for a read-only pilot.
+- [x] Run combined regression suite, lint/type/build checks appropriate to changed code and repository deploy guards. Fresh independent whole-branch review, then fix material findings.
+- [x] Fetch current main, reconcile, record exact source and prepare reviewable release. Deployment/live-account proof remains distinct from local tests and may require available provider grants.
+- [x] Keep the execution ledger current with every completed task, commit, review, blocker and remaining acceptance. Never report completion of the full request for a read-only pilot.
+
+Qualification and remaining release/activation gates are recorded in [the 28 October release record](../../runbooks/marketing-staff-mcp-release-20261028.md). These checkboxes record completed implementation and release preparation, not production deployment or staff/provider acceptance. The full lint check remains failing with added debt; full typecheck has zero added diagnostics against current main but is not clean.
