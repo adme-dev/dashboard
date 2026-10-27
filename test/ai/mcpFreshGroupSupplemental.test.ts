@@ -21,7 +21,7 @@ vi.mock('~~/server/utils/googleAds/searchRuntime', async (importOriginal) => {
 // (resolveMcpStaffContext), never by the legacy `team_members.user_role` string. A custom role that
 // narrows a broad legacy role (e.g. lead → MANAGEMENT only) must lose the CREATIVE / MEDIA_BUYING /
 // FINANCE supplemental suites at discovery, invocation and confirmation. Contexts without the fresh
-// marker (owner God mode, legacy non-MCP callers) keep their existing role semantics.
+// marker keep role semantics for unaffected suites; ordinary Ads callers require narrow grants.
 const { registry } = await import('~~/server/utils/ai/tools')
 const { projectMcpToolsForStaff } = await import('~~/server/utils/ai/mcp/marketingPolicy')
 const { projectRegisteredMcpTools } = await import('~~/server/utils/ai/mcp/registry')
@@ -33,6 +33,9 @@ const { executeGoogleAdsTool, dispatchGoogleAdsConfirm, googleAdsReadTools, GOOG
 const { executeGoogleAdsSearchPlanningTool, googleAdsSearchPlanningTools } = await import('~~/server/utils/ai/mcp/googleAdsSearchTools')
 const { executeWriteConfirm, MCP_FINANCIAL_ACTIONS, MCP_SUPPLEMENTAL_PENDING_PERMISSIONS, MCP_WRITE_SAFE_ACTIONS, mcpPendingActionSuiteEnabled } = await import('~~/server/utils/ai/mcp/writeTools')
 const { GOOGLE_ADS_PROPOSE_ACTION_TOOL } = await import('~~/server/utils/ai/mcp/googleAdsTools')
+const { ADS_STAFF_READ_NAMES, ADS_STAFF_PLAN_NAMES } = await import('~~/server/utils/ai/mcp/marketingTask4Names')
+const { planSearchGoogleAdsControlAction } = await import('~~/server/utils/googleAds/searchRuntime')
+const { resolveGoogleAdsPolicy } = await import('~~/server/utils/googleAds/policy')
 const { buildGoogleAdsConfirmDependencies } = await import('~~/server/utils/ai/mcp/googleAdsServer')
 const { VIDEO_CONFIRM_ACTIONS } = await import('~~/server/utils/ai/mcp/videoTools')
 const { BANNER_CONFIRM_ACTIONS } = await import('~~/server/utils/ai/mcp/bannerTools')
@@ -72,10 +75,10 @@ function legacyCtx(userRole = 'lead'): ToolContext {
   return { userId: USER_ID, userRole, source: 'mcp', event: {} as any }
 }
 
-function staffNames(groups: PermissionGroup[]): Set<string> {
+function staffNames(groups: PermissionGroup[], overrides: Partial<ToolContext> = {}): Set<string> {
   return new Set(projectMcpToolsForStaff({
     context: { tools: registry as any, role: 'owner', scopes: [], requireWriteScope: false, suiteFlags: allFlags },
-    staff: freshCtx(groups)
+    staff: { ...freshCtx(groups), ...overrides }
   }).map(tool => tool.name))
 }
 
@@ -103,9 +106,29 @@ describe('management projection uses fresh groups for every supplemental suite',
     expect(feedNames.some(name => creative.has(name))).toBe(false)
 
     const media = staffNames(['MANAGEMENT', 'MEDIA_BUYING'])
-    expect(googleAdsNames.every(name => media.has(name))).toBe(true)
+    expect(googleAdsNames.some(name => media.has(name))).toBe(false)
     expect(feedNames.every(name => media.has(name))).toBe(true)
     expect(bannerNames.some(name => media.has(name))).toBe(false)
+  })
+
+  it('requires the Ads capability and signed write scope even for current ADMIN management', () => {
+    const groups: PermissionGroup[] = ['ADMIN', 'MANAGEMENT', 'MEDIA_BUYING']
+    const granted = staffNames(groups, { marketingCapabilities: ['ads_plan'] })
+    const allowed = [...ADS_STAFF_READ_NAMES, ...ADS_STAFF_PLAN_NAMES]
+    expect([...granted].filter(name => name.startsWith('google_ads_')).sort()).toEqual([...allowed].sort())
+    for (const name of ['google_ads_plan_remove', 'google_ads_run_pause_policy', GOOGLE_ADS_PROPOSE_ACTION_TOOL]) {
+      expect(granted.has(name), name).toBe(false)
+    }
+    for (const overrides of [
+      { marketingCapabilities: [] },
+      { marketingCapabilities: ['ads_plan'], mcpScopes: new Set(['mcp:read']) },
+      { marketingCapabilities: ['ads_plan'], assistantReadOnly: true }
+    ] as Partial<ToolContext>[]) {
+      const narrowed = staffNames(groups, overrides)
+      expect(ADS_STAFF_PLAN_NAMES.some(name => narrowed.has(name))).toBe(false)
+      if (!overrides.marketingCapabilities?.length) expect(ADS_STAFF_READ_NAMES.some(name => narrowed.has(name))).toBe(false)
+      else expect(narrowed.has('google_ads_list_campaigns')).toBe(true)
+    }
   })
 
   it('leaves the legacy role-based projection unchanged when no fresh groups are supplied', () => {
@@ -170,7 +193,7 @@ describe('management supplemental execution uses fresh groups', () => {
     expect(loadPlan).not.toHaveBeenCalled()
   })
 
-  it('legacy contexts (no fresh marker) keep the role-based permission semantics', async () => {
+  it('legacy contexts retain creative permissions but cannot use Ads without a narrow grant', async () => {
     const ctx = legacyCtx('lead')
     const genRunner = { list_creative_models: vi.fn(async () => ({ models: [] })) } as any
     await expect(executeGenerationTool('list_creative_models', {}, ctx, { enabled: true, runner: genRunner }))
@@ -178,8 +201,11 @@ describe('management supplemental execution uses fresh groups', () => {
     const bannerRunner = { list_banner_projects: vi.fn(async () => []) } as any
     await expect(executeBannerTool(bannerRunner, 'list_banner_projects', {}, ctx, true))
       .resolves.not.toMatchObject({ code: 'forbidden' })
-    await expect(executeGoogleAdsTool(googleAdsReadTools[0]!.name, {}, ctx, { read: false, write: false, automation: false, destructive: false }, runner))
-      .resolves.not.toMatchObject({ code: 'forbidden' })
+    const provider = vi.fn()
+    const adsRunner = new Proxy({}, { get: () => provider }) as any
+    await expect(executeGoogleAdsTool(googleAdsReadTools[0]!.name, {}, ctx, { read: true, write: true, automation: true, destructive: true }, adsRunner))
+      .resolves.toMatchObject({ ok: false, code: 'forbidden' })
+    expect(provider).not.toHaveBeenCalled()
   })
 
   it('a fresh legacy-admin narrowed to MANAGEMENT sees only their own AV projects', () => {
@@ -195,6 +221,8 @@ describe('management supplemental execution uses fresh groups', () => {
 })
 
 describe('confirm_action rechecks the pending action permission with fresh groups', () => {
+  // These dispatcher stubs isolate the shared permission guard. Real Ads confirmation denial is
+  // covered below; passing this outer guard does not grant provider execution or self-review.
   function confirmDeps(toolName: string, requiredPermission?: PermissionGroup) {
     const execute = vi.fn(async () => ({ resultRef: 'r1', summary: 'done' }))
     return {
@@ -236,7 +264,7 @@ describe('confirm_action rechecks the pending action permission with fresh group
       expect(deps.revertClaim).toHaveBeenCalledWith(PROPOSAL_ID, USER_ID)
     })
 
-    it(`still confirms a ${c.toolName} proposal while ${c.group} is current`, async () => {
+    it(`passes a ${c.toolName} proposal to its dispatcher while ${c.group} is current`, async () => {
       const { deps, execute } = confirmDeps(c.toolName, c.requiredPermission)
       const outcome = await executeWriteConfirm({ proposalId: PROPOSAL_ID, ack: true }, freshCtx(['MANAGEMENT', c.group]), deps as any)
       expect(outcome).toMatchObject({ ok: true })
@@ -268,8 +296,8 @@ describe('confirm_action rechecks the pending action permission with fresh group
   })
 })
 
-// ── I1: destructive Google Ads authority follows the CURRENT ADMIN group ────────────────────────────
-describe('destructive Google Ads authority uses fresh groups at planning, proposal and confirmation', () => {
+// ── Ads MCP admission and lower-level destructive policy are separate boundaries ────────────────────────────
+describe('ordinary Ads MCP cannot inherit destructive authority from ADMIN or retained proposals', () => {
   const CLIENT_ID = '44444444-4444-4444-8444-444444444444'
   const CONNECTION_ID = '55555555-5555-4555-8555-555555555555'
   const PLAN_ID = '66666666-6666-4666-8666-666666666666'
@@ -324,51 +352,68 @@ describe('destructive Google Ads authority uses fresh groups at planning, propos
     return mutate
   }
 
-  /** Plan the removal while ADMIN is still current (the proposal a later revocation must not inherit). */
-  async function plannedWhileAdmin(): Promise<GoogleAdsActionPlan> {
-    const persist = usePlanningEdges()
-    const planned = await executeGoogleAdsSearchPlanningTool('google_ads_plan_remove', removeArgs, current(), googleFlags, true)
-    expect(planned).toMatchObject({ ok: true, data: { riskTier: 'destructive_confirm', status: 'pending_approval' } })
-    return persist.mock.calls[0]![0]
+  // A retained plan is built at the actual lower-level planner boundary, independent of MCP admission.
+  // This models an existing approved administrative plan without granting staff the owner MCP path.
+  async function retainedAdministrativePlan(): Promise<GoogleAdsActionPlan> {
+    usePlanningEdges()
+    const plan = await planSearchGoogleAdsControlAction({
+      clientId: CLIENT_ID, connectionId: CONNECTION_ID, idempotencyKey: removeArgs.idempotencyKey,
+      actorId: USER_ID, source: 'mcp', requestedMode: 'proposal', operation: 'remove_campaign',
+      resourceType: 'campaign', arguments: { resourceName: CAMPAIGN, reason: removeArgs.reason }
+    }, { actorRole: 'admin', hasWriteScope: true, permissionGroups: ['ADMIN', 'MANAGEMENT', 'MEDIA_BUYING'] }, googleFlags)
+    expect(plan).toMatchObject({ riskTier: 'destructive_confirm', status: 'pending_approval' })
+    return plan
   }
 
-  it('blocks a newly planned removal once ADMIN is revoked, while MEDIA_BUYING remains', async () => {
-    const persist = usePlanningEdges()
-    await expect(executeGoogleAdsSearchPlanningTool('google_ads_plan_remove', removeArgs, narrowed(), googleFlags, true))
-      .resolves.toMatchObject({ ok: false, code: 'blocked' })
-    expect(persist.mock.calls[0]![0]).toMatchObject({
-      status: 'cancelled',
-      policyDecision: { allowed: false, code: 'owner_or_admin_required' }
+  const ordinaryContexts = [
+    ['revoked ADMIN', narrowed],
+    ['current ADMIN without grant', current],
+    ['current ADMIN with Ads grant', () => ({ ...current(), marketingCapabilities: ['ads_plan'] } as ToolContext)],
+    ['legacy admin without fresh marker', () => legacyCtx('admin')]
+  ] as const
+
+  for (const [label, context] of ordinaryContexts) {
+    it(`denies new destructive MCP planning for ${label} before persistence or provider access`, async () => {
+      usePlanningEdges()
+      await expect(executeGoogleAdsSearchPlanningTool('google_ads_plan_remove', removeArgs, context(), googleFlags, true))
+        .resolves.toMatchObject({ ok: false, code: 'forbidden' })
+      for (const edge of Object.values(googleAdsEdges.planning)) {
+        if (vi.isMockFunction(edge)) expect(edge).not.toHaveBeenCalled()
+      }
     })
-  })
 
-  it('still plans the removal for current ADMIN and for legacy (non-fresh) admin contexts', async () => {
-    await plannedWhileAdmin()
-    usePlanningEdges()
-    await expect(executeGoogleAdsSearchPlanningTool('google_ads_plan_remove', removeArgs, legacyCtx('admin'), googleFlags, true))
-      .resolves.toMatchObject({ ok: true, data: { riskTier: 'destructive_confirm' } })
-  })
+    it(`denies retained destructive proposal for ${label} before loading or validating it`, async () => {
+      const plan = await retainedAdministrativePlan()
+      const deps = {
+        loadPlan: vi.fn(async () => plan),
+        validatePlan: vi.fn(async () => ({ valid: true })),
+        recordValidation: vi.fn(async () => {}),
+        proposePlan: vi.fn(async () => ({ proposalId: PROPOSAL_ID }))
+      } as any
+      await expect(executeGoogleAdsTool(GOOGLE_ADS_PROPOSE_ACTION_TOOL, { actionPlanId: PLAN_ID }, context(), googleFlags, deps))
+        .resolves.toMatchObject({ ok: false, code: 'forbidden' })
+      for (const edge of Object.values(deps)) expect(edge).not.toHaveBeenCalled()
+    })
+  }
 
-  it('refuses to propose a retained destructive plan after ADMIN is revoked', async () => {
-    const plan = await plannedWhileAdmin()
-    const deps = {
-      loadPlan: vi.fn(async () => plan),
-      validatePlan: vi.fn(async () => ({ valid: true })),
-      recordValidation: vi.fn(async () => {}),
-      proposePlan: vi.fn(async () => ({ proposalId: PROPOSAL_ID }))
-    } as any
-    await expect(executeGoogleAdsTool(GOOGLE_ADS_PROPOSE_ACTION_TOOL, { actionPlanId: PLAN_ID }, narrowed(), googleFlags, deps))
-      .resolves.toMatchObject({ ok: false, code: 'forbidden' })
-    expect(deps.validatePlan).not.toHaveBeenCalled()
-    expect(deps.proposePlan).not.toHaveBeenCalled()
-
-    await expect(executeGoogleAdsTool(GOOGLE_ADS_PROPOSE_ACTION_TOOL, { actionPlanId: PLAN_ID }, current(), googleFlags, deps))
-      .resolves.toMatchObject({ ok: true, data: { proposalId: PROPOSAL_ID } })
+  it.each(['owner', 'admin'])('preserves %s destructive policy only at the actual policy boundary', actorRole => {
+    const policy = {
+      operation: 'remove_campaign' as const, actorRole, hasMediaPermission: true,
+      hasElevatedPermission: true, hasWriteScope: true, globalWriteEnabled: true,
+      automationEnabled: true, destructiveEnabled: true, requestedMode: 'proposal' as const,
+      accountPolicy: { enabled: true }
+    }
+    expect(resolveGoogleAdsPolicy(policy)).toMatchObject({ allowed: true, riskTier: 'destructive_confirm' })
+    expect(resolveGoogleAdsPolicy({ ...policy, hasDestructivePermission: false }))
+      .toMatchObject({ allowed: false, code: 'owner_or_admin_required' })
+    expect(resolveGoogleAdsPolicy({ ...policy, delegatedPlanning: true }))
+      .toMatchObject({ allowed: false, code: 'independent_review_required' })
   })
 
   function confirmThroughRoute(plan: GoogleAdsActionPlan, ctx: ToolContext) {
     const real = buildGoogleAdsConfirmDependencies(googleFlags)
     const approvePlan = vi.fn(async (candidate: GoogleAdsActionPlan) => ({ ...candidate, status: 'approved' as const }))
+    const loadPlan = vi.fn(async () => plan)
     const revertClaim = vi.fn(async () => {})
     const outcome = executeWriteConfirm({ proposalId: PROPOSAL_ID, ack: true }, ctx, {
       enabled: true,
@@ -379,34 +424,28 @@ describe('destructive Google Ads authority uses fresh groups at planning, propos
       revertClaim,
       googleAdsDispatch: (row, googleContext) => dispatchGoogleAdsConfirm(row, PROPOSAL_ID, true, googleContext, googleFlags, {
         ...real,
-        loadPlan: async () => plan,
+        loadPlan,
         approvePlan
       })
     })
-    return { outcome, approvePlan, revertClaim }
+    return { outcome, approvePlan, loadPlan, revertClaim }
   }
 
-  it('refuses to confirm a retained destructive proposal after ADMIN revocation, without burning it', async () => {
-    const plan = await plannedWhileAdmin()
-    const mutate = useExecutionEdges({ ...plan, status: 'approved' })
-    const { outcome, approvePlan, revertClaim } = confirmThroughRoute(plan, narrowed())
-    await expect(outcome).resolves.toMatchObject({ ok: false, code: 'forbidden' })
-    expect(approvePlan).not.toHaveBeenCalled()
-    expect(mutate).not.toHaveBeenCalled()
-    expect(revertClaim).toHaveBeenCalledWith(PROPOSAL_ID, USER_ID)
-  })
-
-  it('confirms and executes the same destructive proposal while ADMIN is current', async () => {
-    const plan = await plannedWhileAdmin()
-    const mutate = useExecutionEdges({ ...plan, status: 'approved' })
-    const { outcome, approvePlan } = confirmThroughRoute(plan, current())
-    await expect(outcome).resolves.toMatchObject({ ok: true })
-    expect(approvePlan).toHaveBeenCalledTimes(1)
-    expect(mutate).toHaveBeenCalledTimes(2)
-  })
+  for (const [label, context] of ordinaryContexts) {
+    it(`refuses retained destructive confirmation for ${label} without burning the proposal`, async () => {
+      const plan = await retainedAdministrativePlan()
+      useExecutionEdges({ ...plan, status: 'approved' })
+      const { outcome, approvePlan, loadPlan, revertClaim } = confirmThroughRoute(plan, context())
+      await expect(outcome).resolves.toMatchObject({ ok: false, code: 'forbidden' })
+      expect(loadPlan).not.toHaveBeenCalled()
+      expect(approvePlan).not.toHaveBeenCalled()
+      for (const edge of Object.values(googleAdsEdges.execution)) expect(edge).not.toHaveBeenCalled()
+      expect(revertClaim).toHaveBeenCalledWith(PROPOSAL_ID, USER_ID)
+    })
+  }
 
   it('the concrete confirm executor carries fresh groups, so an already-approved removal is blocked by policy', async () => {
-    const plan = { ...(await plannedWhileAdmin()), status: 'approved' as const }
+    const plan = { ...(await retainedAdministrativePlan()), status: 'approved' as const }
     const mutate = useExecutionEdges(plan)
     await expect(buildGoogleAdsConfirmDependencies(googleFlags).executeConfirmed(plan, narrowed()))
       .resolves.toMatchObject({ ok: false, status: 'blocked', code: 'owner_or_admin_required' })

@@ -8,6 +8,16 @@ vi.mock('~~/server/utils/db', () => Object.fromEntries(['execute','queryOne','qu
 vi.mock('~~/server/utils/social-providers/http', async original => ({ ...await original<any>(), providerFetch: (...args: any[]) => fixture.request(...args) }))
 // Exercise dormant implementation in isolation; production remains unconditionally externally gated.
 vi.mock('~~/server/utils/socialPublishing/platformReadiness', async original => ({ ...await original<any>(), productionReadyPublishPlatformsError: () => null, assertProductionReadyPublishPlatforms: () => {} }))
+// Override only static provider support: grants, health, actor authority and review stay real.
+vi.mock('~~/shared/socialCapabilityReadiness', async original => {
+  const actual = await original<typeof import('~~/shared/socialCapabilityReadiness')>()
+  return {
+    ...actual,
+    providerOperationSupport: (platform: string, operation: string) => platform === 'tiktok' && operation === 'organic_publish'
+      ? { state: 'available', reason: 'Explicit dormant test override' }
+      : actual.providerOperationSupport(platform, operation as Parameters<typeof actual.providerOperationSupport>[1])
+  }
+})
 const dsn = process.env.SOCIAL_TASK5_TEST_DSN ?? ''
 const C = '0a000000-0000-4000-8000-00000000000a', STAFF = '51000000-0000-4000-8000-000000000001', ADMIN = 'ad000000-0000-4000-8000-000000000001', A = 'fa000000-0000-4000-8000-00000000000a', IMG = 'aa000000-0000-4000-8000-000000000001'
 const creator = { creator_nickname: 'Fixture creator', creator_username: 'fixture', privacy_level_options: ['SELF_ONLY'], comment_disabled: false, duet_disabled: false, stitch_disabled: true, max_video_post_duration_sec: 300 }
@@ -27,6 +37,25 @@ async function dispatch(ids: { postId: string, revisionId: string }) {
 }
 async function due() { await pool.query("UPDATE social_post_target_attempts SET next_poll_at=NOW()-INTERVAL '1 second' WHERE state='accepted'") }
 const reconcile = async () => (await import('~~/server/utils/socialPublishing/reconciliation')).reconcileDueSocialPostTargets({ event: event() })
+describe('dormant fixture eligibility boundary', () => {
+  it('keeps actual production TikTok support disabled', async () => {
+    const support = await vi.importActual<typeof import('~~/shared/socialCapabilityReadiness')>('~~/shared/socialCapabilityReadiness')
+    const readiness = await vi.importActual<typeof import('~~/server/utils/socialPublishing/platformReadiness')>('~~/server/utils/socialPublishing/platformReadiness')
+    expect(support.providerOperationSupport('tiktok', 'organic_publish').state).toBe('external_blocked')
+    expect(support.platformPublishingSupport('tiktok').productionReady).toBe(false)
+    expect(() => readiness.assertProductionReadyPublishPlatforms(['tiktok'])).toThrow('not production-ready')
+  })
+
+  it('retains real grant and account checks under the static support override', async () => {
+    const { providerAccountOperationEligibility } = await import('~~/server/utils/socialPublishing/capabilityReadiness')
+    const healthy = { platform: 'tiktok', isActive: true, hasRefreshToken: true, metadata: { grantedScopes: ['video.publish'], refreshTokenExpiresAt: '2099-01-01T00:00:00Z' } }
+    expect(providerAccountOperationEligibility(healthy, 'organic_publish').state).toBe('available')
+    expect(providerAccountOperationEligibility({ ...healthy, metadata: { ...healthy.metadata, grantedScopes: [] } }, 'organic_publish').state).toBe('external_blocked')
+    expect(providerAccountOperationEligibility({ ...healthy, isActive: false }, 'organic_publish').state).toBe('external_blocked')
+    expect(providerAccountOperationEligibility(healthy, 'organic_comment').state).toBe('unsupported')
+  })
+})
+
 describe.skipIf(!dsn)('Task5 actual reviewed dispatch, provider adapter and SQL', () => {
   beforeAll(async () => { pool = guardedSocialTask3Pool(dsn); fixture.db = socialTask3DbModule(pool) })
   afterAll(async () => { await pool?.end() })
@@ -79,7 +108,7 @@ describe.skipIf(!dsn)('Task5 actual reviewed dispatch, provider adapter and SQL'
   })
   it.each(['success', 'failed', 'unknown', 'interrupted'])('R1 commits publication before first-comment transport: %s', async mode => {
     const B = 'fb000000-0000-4000-8000-00000000000b'
-    await pool.query("INSERT INTO social_accounts(id,client_id,platform,platform_account_id) VALUES($1,$2,'facebook','page')", [B,C])
+    await pool.query("INSERT INTO social_accounts(id,client_id,platform,platform_account_id,metadata) VALUES($1,$2,'facebook','page',$3::jsonb)", [B,C,JSON.stringify({grantedScopes:['pages_manage_posts','pages_manage_engagement']})])
     const actor = {actorId:STAFF,clientIds:[C],event:event()}
     const {createSocialPostDraft} = await import('~~/server/utils/socialPublishing/drafts')
     const {submitSocialPostForReview,reviewSocialPostRevision} = await import('~~/server/utils/socialPublishing/revisions')
@@ -167,7 +196,7 @@ describe.skipIf(!dsn)('Task5 actual reviewed dispatch, provider adapter and SQL'
   })
   it.each(['success','failed'])('I1 persists receipt before later target returns and never regresses terminal target: %s', async second => {
     const B = 'fb000000-0000-4000-8000-00000000000b'
-    await pool.query("INSERT INTO social_accounts(id,client_id,platform,platform_account_id) VALUES($1,$2,'facebook','page')",[B,C])
+    await pool.query("INSERT INTO social_accounts(id,client_id,platform,platform_account_id,metadata) VALUES($1,$2,'facebook','page',$3::jsonb)",[B,C,JSON.stringify({grantedScopes:['pages_manage_posts']})])
     const ids = await approved([{ platform:'facebook', accountId:B }])
     let entered!: () => void, release!: () => void
     const waiting = new Promise<void>(resolve => { entered=resolve })
@@ -224,7 +253,7 @@ describe.skipIf(!dsn)('Task5 actual reviewed dispatch, provider adapter and SQL'
   })
   it('I1 interruption after the first durable receipt retains the whole target set without continuing fan-out',async()=>{
     const B='fb000000-0000-4000-8000-00000000000b'
-    await pool.query("INSERT INTO social_accounts(id,client_id,platform,platform_account_id) VALUES($1,$2,'facebook','page')",[B,C])
+    await pool.query("INSERT INTO social_accounts(id,client_id,platform,platform_account_id,metadata) VALUES($1,$2,'facebook','page',$3::jsonb)",[B,C,JSON.stringify({grantedScopes:['pages_manage_posts']})])
     const ids=await approved([{platform:'facebook',accountId:B}])
     const service=await import('~~/server/utils/socialPublishing/reconciliation')
     const persist=service.recordSocialTargetOutcome

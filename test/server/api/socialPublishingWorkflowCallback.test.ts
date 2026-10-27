@@ -200,10 +200,12 @@ describe('social publishing workflow callback', () => {
     }
     mockQueryOne.mockResolvedValueOnce(claimedPost)
 
-    const result = await workflowCallback({
+    const event = {
       headers: { 'x-workflow-secret': 'workflow-secret' },
-      body: validPayload()
-    })
+      body: validPayload(),
+      context: { cloudflare: { env: { AGENCY_WORKFLOWS_ENABLED: 'true', WORKFLOW_CALLBACK_SECRET: 'workflow-secret' } } }
+    }
+    const result = await workflowCallback(event)
 
     expect(result).toMatchObject({
       ok: true,
@@ -224,7 +226,8 @@ describe('social publishing workflow callback', () => {
     expect(mockPublishPost).toHaveBeenCalledWith(expect.objectContaining({
       id: 'post-1',
       accounts: [expect.objectContaining({ id: 'acct-1', platform: 'facebook' })]
-    }))
+    }), event)
+    expect(mockPublishPost.mock.calls[0][1]).toBe(event)
     expect(mockExecute).toHaveBeenCalledWith(expect.stringContaining('published_at=CASE'), [
       'post-1',
       'published',

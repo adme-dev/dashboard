@@ -447,9 +447,9 @@ describe('authoritative registered MCP suite projection', () => {
       ...Object.values(import.meta.glob('../../server/utils/ai/mcp/*Tools.ts', { eager: true }))
     ] as Record<string, unknown>[]
     const exportedProjectors = modules.flatMap(module => Object.entries(module))
-      .filter(([name, value]) => name.endsWith('McpSuite') && typeof value === 'function')
+      .filter(([name, value]) => (name.endsWith('McpSuite') || name.endsWith('StaffSuite')) && typeof value === 'function')
       .map(([, value]) => value)
-    // Owner-union suites plus the explicit staff-only suites (Task 3 social drafts); disjoint.
+    // Owner-union suites plus the explicit staff-only suites (social drafts and Ads/tracking); disjoint.
     const allSuites = [...registeredMcpSuites, ...staffOnlyMcpSuites]
     expect(staffOnlyMcpSuites.every(suite => !registeredMcpSuites.some(owner => owner.key === suite.key || owner.project === suite.project))).toBe(true)
     const registeredProjectors = allSuites.map(suite => suite.project)
@@ -458,7 +458,7 @@ describe('authoritative registered MCP suite projection', () => {
       .map(([, value]) => value)
     const registeredSourceProjectors = allSuites.flatMap(suite => suite.sourceProjectors ?? [])
     const exportedExecutionResolvers = modules.flatMap(module => Object.entries(module))
-      .filter(([name, value]) => name.startsWith('resolve') && name.endsWith('McpExecutions') && typeof value === 'function')
+      .filter(([name, value]) => name.startsWith('resolve') && (name.endsWith('McpExecutions') || name.endsWith('StaffExecutions')) && typeof value === 'function')
       .map(([, value]) => value)
     const registeredExecutionResolvers = allSuites.map(suite => suite.executions)
 
