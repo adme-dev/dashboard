@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "banner-engine-native-canary",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-27",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "BANNER_NATIVE_CANARY_ENABLED": "false",
+    "BANNER_NATIVE_CANARY_PACKAGE_SHA256": "UNPREPARED",
+    "BANNER_NATIVE_CANARY_OUTER_IMAGE": "UNPUBLISHED"
+  },
+  "durable_objects": { "bindings": [{ "name": "NATIVE_CANARY", "class_name": "NativeCanary" }] },
+  "migrations": [{ "tag": "native-canary-v1", "new_sqlite_classes": ["NativeCanary"] }],
+  "containers": [{
+    "name": "banner-engine-native-canary",
+    "class_name": "NativeCanary",
+    "image": "./.artifacts/context/Dockerfile",
+    "image_build_context": "./.artifacts/context",
+    "instance_type": "standard-3",
+    "max_instances": 1,
+    "scheduling_policy": "default"
+  }]
+}
