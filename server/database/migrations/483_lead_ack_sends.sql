@@ -7,6 +7,7 @@
 --   * one acknowledgement per (client, form, recipient) per rolling 24 h;
 --   * the per-site (client) daily cap;
 --   * replay safety: a retried or re-ingested submission maps to the same key.
+-- Resend hard bounces/complaints on these messages feed suppression_list.
 -- recipient_hash is sha256 of the lowercased address; no raw address is stored.
 -- Until this runs, the adapter fails without sending (the table is missing).
 BEGIN;
@@ -33,5 +34,8 @@ CREATE INDEX IF NOT EXISTS idx_lead_ack_sends_recipient_window
   ON lead_ack_sends (client_id, form_key, recipient_hash, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_lead_ack_sends_client_day
   ON lead_ack_sends (client_id, created_at DESC);
+-- Resend bounce/complaint webhooks map back to the acknowledgement.
+CREATE INDEX IF NOT EXISTS idx_lead_ack_sends_provider_message
+  ON lead_ack_sends (provider_message_id) WHERE provider_message_id IS NOT NULL;
 
 COMMIT;
