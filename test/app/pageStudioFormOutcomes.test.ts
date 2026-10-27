@@ -11,6 +11,12 @@ describe('form outcomes', () => {
   it.each(['https://evil.example', '//evil.example', '/\\evil', '/%2f%2fevil', '/%252fevil', '/a/../b', '/a/%2e%2e/b', '/thanks?email={{email}}', '/thanks#x', 'javascript:alert(1)', '/thanks\n', '/api/forms/x', '/thanks//x'])('rejects unsafe or non-page redirect %s', (path) => {
     expect(FormOutcomeSchema.safeParse({ type: 'redirect', path }).success).toBe(false)
   })
+  it('rejects a long near-miss redirect path in linear time', () => {
+    // The previous pattern took about 25 seconds on this input.
+    const started = performance.now()
+    expect(FormOutcomeSchema.safeParse({ type: 'redirect', path: `/${'a'.repeat(32)}!` }).success).toBe(false)
+    expect(performance.now() - started).toBeLessThan(250)
+  })
   it('accepts a fixed local page path and rejects extra fields', () => {
     expect(FormOutcomeSchema.parse({ type: 'redirect', path: '/weddings/thank-you' })).toEqual({ type: 'redirect', path: '/weddings/thank-you' })
     expect(FormOutcomeSchema.safeParse({ type: 'redirect', path: '/thanks', query: '{{email}}' }).success).toBe(false)
