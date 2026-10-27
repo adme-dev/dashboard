@@ -77,5 +77,13 @@
     "processedConversions": 0,
     "populatedPagesAndSources": true,
     "scope": "Current native GA4 page default reporting window; processed metrics are not Realtime"
+  },
+  "mondayCloseout": {
+    "itemId": "13156840770",
+    "updateId": "5667260266",
+    "status": "Done",
+    "verifiedAt": "2026-10-27T05:49:25.377Z",
+    "bodyVerified": true,
+    "assigneeAndDuePreserved": true
   }
 }

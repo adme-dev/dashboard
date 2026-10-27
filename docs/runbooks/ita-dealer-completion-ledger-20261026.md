@@ -6,13 +6,13 @@ This is the durable continuation record for the four Monday items supplied by Ga
 
 ## Exact Monday jobs
 
-On 27 October, the user explicitly requested updates to the related marketing jobs. Four evidence-based updates were posted through Paul Giurin's authenticated Monday account and independently read back by **02:00:35 UTC (13:00 AEDT)**. All four remain in **Marketing → Items to Action**; assignee Paul Giurin and the existing due-date fields were preserved. Each update records verified implementation, remaining acceptance criteria and the committed evidence ledger. No parent task was marked Done.
+On 27 October, the user explicitly requested updates to the related marketing jobs. Four evidence-based updates were posted through Paul Giurin's authenticated Monday account and independently read back by **02:00:35 UTC (13:00 AEDT)**. At that checkpoint, all four were in **Marketing → Items to Action**; assignee Paul Giurin and the existing due-date fields were preserved. Each update records verified implementation, remaining acceptance criteria and the committed evidence ledger. No parent task was marked Done at that checkpoint. Fairfield was subsequently closed with the proof below at **05:49:25 UTC**; the table reflects that later result.
 
 | Item | Verified status | Posted update ID |
 | --- | --- | --- |
 | Northern Nissan PMAX | Working On It | `5667031021` |
 | Astoria ORC | Awaiting Client | `5667031182` |
-| Fairfield Foton setup | QA | `5667031341` |
+| Fairfield Foton setup | **Done** (05:49 UTC) | `5667260266` |
 | Driveagent conversion tracking | QA | `5667031486` |
 
 | Parent job | Exact Monday item | Remaining scope |
@@ -161,6 +161,8 @@ Supporting receipts: `/private/tmp/ita-two-jobs-production-release-20261027.json
 ## Fairfield accepted-enquiry proof: 27 October, 05:34–05:47 UTC
 
 Supersedes the earlier statements that Fairfield Analytics access and accepted-enquiry delivery were unproven. **Direct Google Analytics access and one native server-delivered contact enquiry are now verified end to end.** The embedded-reporting OAuth connection is also verified healthy. No claim is made about every form, Google Ads attribution or prolonged reliability.
+
+**Monday closeout:** Fairfield item `13156840770` was changed from QA to **Done** at **05:49:25 UTC**, with update **`5667260266`** containing the exact proof links and bounded scope. The saved update body and status were independently read back; Paul remains assigned and the existing blank due date was preserved. Astoria conversion status was not changed. Local write/readback receipt: `/private/tmp/fairfield-monday-closed-20261027.json`.
 
 ### Exact property and operator test
 
