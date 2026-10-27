@@ -13,7 +13,7 @@ function firstUrl(platformResults: any): string | null {
   return null
 }
 
-export async function readSocialOverview(scope: MarketingReadScope, query: { clientId: string; from: string; to: string; platform?: string | null }) {
+export async function readSocialOverview(scope: MarketingReadScope, query: { clientId: string, from: string, to: string, platform?: string | null }) {
   requireMarketingReadPermission(scope, 'social')
   const clientId = query.clientId
   const to = query.to ? new Date(String(query.to)) : new Date()
@@ -29,12 +29,12 @@ export async function readSocialOverview(scope: MarketingReadScope, query: { cli
   const [current, prior, growth] = await Promise.all([
     portalPeriodPostRows({ queryRows }, clientId, from.toISOString(), to.toISOString(), platform),
     portalPeriodPostRows({ queryRows }, clientId, priorFrom.toISOString(), from.toISOString(), platform),
-    portalAccountGrowth({ queryRows }, clientId, from.toISOString().slice(0, 10), to.toISOString().slice(0, 10), platform),
+    portalAccountGrowth({ queryRows }, clientId, from.toISOString().slice(0, 10), to.toISOString().slice(0, 10), platform)
   ])
 
   const best = rankBestContent(current, 5).map(r => ({
     postId: r.post_id, content: (r.content || '').slice(0, 140), permalink: firstUrl(r.platform_results),
-    engagements: r.engagements, reach: r.reach, engagementRate: r.engagementRate,
+    engagements: r.engagements, reach: r.reach, engagementRate: r.engagementRate
   }))
 
   return {
@@ -42,6 +42,6 @@ export async function readSocialOverview(scope: MarketingReadScope, query: { cli
     kpis: buildOverview(current, prior),
     cadence: cadenceByWeekday(current),
     bestContent: best,
-    accountGrowth: growth,
+    accountGrowth: growth
   }
 }

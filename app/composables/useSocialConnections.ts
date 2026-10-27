@@ -47,7 +47,7 @@ export type MarketingSpendSummaryItem = Omit<FinanceSpendSummaryItem, 'clientCod
 export type SpendSummary = FinanceSpendSummary | (Omit<FinanceSpendSummary, 'projection' | 'items' | 'totals' | 'latestSyncJobs'> & {
   projection: 'marketing'
   items: MarketingSpendSummaryItem[]
-  totals: { budget: number; spend: number; variance: number }
+  totals: { budget: number, spend: number, variance: number }
 })
 
 interface PacingReview {

@@ -6,8 +6,8 @@ import { getGoogleAdsActionPlanForActor } from '~~/server/utils/googleAds/action
 /** Only the authenticated owner path stays direct. Ordinary ADMIN is delegated. */
 export function delegatedAdsContext(ctx: ToolContext): boolean {
   return (
-    ctx.mcpStaffAuthority === 'fresh' ||
-    (ctx.userRole !== 'owner' && !ctx.godModeExecutionKey)
+    ctx.mcpStaffAuthority === 'fresh'
+    || (ctx.userRole !== 'owner' && !ctx.godModeExecutionKey)
   )
 }
 export async function assertGoogleAdsClientAccess(
@@ -20,10 +20,10 @@ export async function assertGoogleAdsClientAccess(
       statusCode: 403,
       statusMessage: 'Client scope mismatch'
     })
-  const { assertMarketingCapabilityAtBoundary, freshContextCoversClient } =
-    await import('./reviewAuthority')
-  const { resolveMcpStaffContext } =
-    await import('~~/server/utils/ai/mcp/staffAuthority')
+  const { assertMarketingCapabilityAtBoundary, freshContextCoversClient }
+    = await import('./reviewAuthority')
+  const { resolveMcpStaffContext }
+    = await import('~~/server/utils/ai/mcp/staffAuthority')
   if (!delegatedAdsContext(ctx)) {
     if (ctx.clientScope && ctx.clientScope !== clientId)
       throw createError({ statusCode: 403, statusMessage: 'Client mismatch' })
@@ -46,9 +46,9 @@ export async function assertGoogleAdsClientAccess(
     !(await freshContextCoversClient(
       { ...fresh, clientScope: ctx.clientScope },
       clientId
-    )) ||
-    !(fresh.marketingCapabilities ?? []).some(
-      (c) => c === 'reporting' || c === 'ads_plan'
+    ))
+    || !(fresh.marketingCapabilities ?? []).some(
+      c => c === 'reporting' || c === 'ads_plan'
     )
   ) {
     throw createError({

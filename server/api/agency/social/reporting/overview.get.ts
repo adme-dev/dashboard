@@ -1,5 +1,6 @@
 import { readSocialOverview } from '~~/server/utils/ai/marketing/socialReads'
 import { resolveBrowserMarketingReadScope } from '~~/server/utils/ai/marketing/readScope'
+
 export default defineEventHandler(async (event) => {
   const scope = await resolveBrowserMarketingReadScope(event)
   const q = getQuery(event)

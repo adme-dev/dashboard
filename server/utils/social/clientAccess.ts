@@ -70,7 +70,7 @@ export async function requireSocialClientScope(event: H3Event, clientId: string 
 export async function requireFreshSocialClientAccess(event: H3Event, clientId: string | undefined) {
   const user = await requireAuth(event)
   if (!isSocialClientId(clientId)) throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
-  const [{resolveMcpStaffContext},{freshContextCoversClient}] = await Promise.all([
+  const [{ resolveMcpStaffContext }, { freshContextCoversClient }] = await Promise.all([
     import('~~/server/utils/ai/mcp/staffAuthority'), import('~~/server/utils/ai/marketing/reviewAuthority')
   ])
   const context = await resolveMcpStaffContext(event, user.id, [])

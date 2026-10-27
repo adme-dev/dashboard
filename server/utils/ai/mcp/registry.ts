@@ -1,4 +1,4 @@
-import { projectTask4StaffSuite,resolveTask4StaffExecutions } from './marketingTask4Tools'
+import { projectTask4StaffSuite, resolveTask4StaffExecutions } from './marketingTask4Tools'
 import { z } from 'zod'
 import { hasWriteScope, isWriteScopeToolName } from './scope'
 import {
@@ -125,7 +125,7 @@ export const registeredMcpSuites: readonly RegisteredMcpSuite[] = Object.freeze(
  * projects and admits them per fresh staff context (grant, client coverage, write scope).
  */
 const staffSuiteDefinitions: RegisteredMcpSuite[] = [
-  { key: 'marketing-ads-tracking', project:projectTask4StaffSuite, executions:resolveTask4StaffExecutions },
+  { key: 'marketing-ads-tracking', project: projectTask4StaffSuite, executions: resolveTask4StaffExecutions },
   {
     key: 'social-drafts',
     project: projectSocialMcpSuite,

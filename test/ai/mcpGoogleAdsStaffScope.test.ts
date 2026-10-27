@@ -10,6 +10,7 @@ import {
 } from '../../server/utils/ai/mcp/marketingPolicy'
 import { executeTask4StaffTool } from '../../server/utils/ai/mcp/marketingTask4Tools'
 import { isWriteScopeToolName } from '../../server/utils/ai/mcp/scope'
+
 const flags = { read: true, write: true, automation: true, destructive: true }
 const uid = '33333333-3333-4333-8333-333333333333'
 const ctx = (role = 'admin') => ({
@@ -106,7 +107,7 @@ describe('ordinary advertising independent-review boundary', () => {
       },
       staff: ctx()
     })
-    const names = manifests.map((m) => m.name)
+    const names = manifests.map(m => m.name)
     expect(names).toContain('google_ads_plan_update_budget')
     expect(names).toContain('propose_gtm_workspace_change')
     expect(names).not.toContain('propose_google_ads_action')
@@ -114,7 +115,7 @@ describe('ordinary advertising independent-review boundary', () => {
     expect(names).not.toContain('google_ads_plan_remove')
     expect(
       (
-        manifests.find((m) => m.name === 'google_ads_plan_pause')!
+        manifests.find(m => m.name === 'google_ads_plan_pause')!
           .inputSchema as any
       ).properties.requestedMode.enum
     ).toEqual(['proposal'])

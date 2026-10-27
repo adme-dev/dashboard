@@ -259,7 +259,8 @@ export async function inspectCapabilityCatalog(ctx: ToolContext): Promise<Capabi
   const freshManagement = ctx.mcpStaffAuthority === 'fresh' && policyModule.isMcpManagementStaff(ctx)
   const staffProjectionContext = { ...projectionContext, suiteFlags: runtimeModule.resolveMcpRuntimeConfig(ctx.event).suiteFlags }
   const staffExecutions = freshManagement && !ctx.godModeExecutionKey
-    ? registryModule.resolveStaffOnlyMcpExecutions(staffProjectionContext) : []
+    ? registryModule.resolveStaffOnlyMcpExecutions(staffProjectionContext)
+    : []
   const staffMutationNames = new Set(staffExecutions.filter(execution => execution.tool.mutates).map(execution => execution.name))
   const executableNames = new Set([...executionsByName.keys(), ...staffExecutions.map(execution => execution.name)])
   const manifests = ctx.godModeExecutionKey
@@ -286,14 +287,14 @@ export async function inspectCapabilityCatalog(ctx: ToolContext): Promise<Capabi
     const mode: ToolMode = staffMutationNames.has(manifest.name)
       ? 'local_mutation'
       : manifest.name === 'confirm_action'
-      ? 'confirmation'
-      : inspectionNames.has(manifest.name)
+        ? 'confirmation'
+        : inspectionNames.has(manifest.name)
         ? 'inspection'
-      : generationNames.has(manifest.name)
-        ? 'direct_generation'
-        : manifest.name.startsWith('propose_') || manifest.name === 'create_video_project'
-          ? 'propose_only'
-          : 'read'
+          : generationNames.has(manifest.name)
+            ? 'direct_generation'
+            : manifest.name.startsWith('propose_') || manifest.name === 'create_video_project'
+              ? 'propose_only'
+              : 'read'
     // G-1a: report what will ACTUALLY happen for this caller. Under owner god-mode,
     // catalog-registry writes direct-execute (confirmation is a bypassed control) —
     // an agent must never read propose_only and get a live write. Supplemental

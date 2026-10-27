@@ -1,11 +1,17 @@
 import { beforeEach, expect, it, vi } from 'vitest'
+import { readCampaignAnalytics } from '../../server/utils/ai/marketing/campaignReads'
+
 const db = vi.hoisted(() => ({ queryOneFresh: vi.fn(), queryRowsFresh: vi.fn() }))
 vi.mock('~~/server/utils/db', () => db)
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: vi.fn() }))
-import { readCampaignAnalytics } from '../../server/utils/ai/marketing/campaignReads'
+
 const scope: any = { actorUserId: 'staff', clientIds: ['a'], permissionGroups: [], reportingGranted: true, ownerVerified: false, financialReadAllowed: false, ownerRefreshAllowed: false }
 const query: any = { startDate: '2026-10-01', endDate: '2026-10-27', showInactive: true, sortBy: 'spend', sortDir: 'DESC', limit: 200, offset: 0 }
-beforeEach(() => { vi.clearAllMocks(); db.queryOneFresh.mockResolvedValue({ count: 0 }); db.queryRowsFresh.mockResolvedValue([]) })
+beforeEach(() => {
+  vi.clearAllMocks()
+  db.queryOneFresh.mockResolvedValue({ count: 0 })
+  db.queryRowsFresh.mockResolvedValue([])
+})
 it('campaign_count_and_rows_scope_before_group_limit', async () => {
   await readCampaignAnalytics(scope, query)
   const sql = db.queryRowsFresh.mock.calls[0][0]
@@ -34,5 +40,7 @@ it('client_lead_totals_deduplicate_ambiguous_accounts', async () => {
   const result = await readLeadAttribution(scope, { ...query, campaignName: 'Same' })
   expect(result).toMatchObject({ totalSubmissions: 1, accountAttributionStatus: 'ambiguous' })
   const [sql] = db.queryOneFresh.mock.calls[0]
-  expect(sql).toContain('COUNT(DISTINCT l.id)'); expect(sql).toContain('matched.client_id = l.client_id'); expect(sql).toContain('l.source = CASE')
+  expect(sql).toContain('COUNT(DISTINCT l.id)')
+  expect(sql).toContain('matched.client_id = l.client_id')
+  expect(sql).toContain('l.source = CASE')
 })

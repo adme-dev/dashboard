@@ -311,7 +311,7 @@ export async function claimGoogleAdsActionPlan(
       AND client_id = $2
       AND actor_id = $3
       AND status = $4
-      AND ${input.executorId ? "review_policy='delegated_marketing' AND reviewed_by IS NOT NULL AND reviewed_by<>actor_id AND $5::uuid<>actor_id" : "review_policy='legacy'"}
+      AND ${input.executorId ? 'review_policy=\'delegated_marketing\' AND reviewed_by IS NOT NULL AND reviewed_by<>actor_id AND $5::uuid<>actor_id' : 'review_policy=\'legacy\''}
       AND expires_at > NOW()
     RETURNING ${PLAN_COLUMNS}
   `, [id, clientId, actorId, expectedStatus, ...(input.executorId ? [UuidSchema.parse(input.executorId)] : [])])

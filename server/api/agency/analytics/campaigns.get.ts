@@ -1,6 +1,7 @@
 import { readCampaignAnalytics } from '~~/server/utils/ai/marketing/campaignReads'
 import { resolveBrowserMarketingReadScope } from '~~/server/utils/ai/marketing/readScope'
 import { normalizeBudgetPlatform } from '~~/server/utils/campaignBudgetIdentity'
+
 const ALLOWED_SORT: string[] = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform', 'lead_count', 'cost_per_lead', 'reach', 'cost_per_result', 'end_date', 'health_score']
 export default defineEventHandler(async (event) => {
   const scope = await resolveBrowserMarketingReadScope(event)

@@ -318,21 +318,21 @@ describe('God mode gate inventory', () => {
     // lexical pattern and does not register a God mode bypass.
     const publishingCron = readFileSync('server/api/cron/publish-social-posts.post.ts', 'utf8')
     const publishingCallback = readFileSync('server/api/internal/workflows/social-publishing/publish.post.ts', 'utf8')
-    expect(publishingCron).toContain("agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_ENABLED') === 'true'")
-    expect(publishingCron).toContain("agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY') === 'true'")
-    expect(publishingCallback).toContain("agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_ENABLED') !== 'true'")
-    expect(publishingCallback).toContain("agencyWorkflowConfigText(event, 'WORKFLOW_CALLBACK_SECRET')")
-    expect(publishingCallback).toContain("agencyWorkflowConfigText(event, 'WORKFLOW_SERVICE_SECRET')")
-    expect(publishingCallback).toContain("getHeader(event, 'x-workflow-secret') !== expected")
+    expect(publishingCron).toContain('agencyWorkflowConfigText(event, \'AGENCY_WORKFLOWS_ENABLED\') === \'true\'')
+    expect(publishingCron).toContain('agencyWorkflowConfigText(event, \'AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY\') === \'true\'')
+    expect(publishingCallback).toContain('agencyWorkflowConfigText(event, \'AGENCY_WORKFLOWS_ENABLED\') !== \'true\'')
+    expect(publishingCallback).toContain('agencyWorkflowConfigText(event, \'WORKFLOW_CALLBACK_SECRET\')')
+    expect(publishingCallback).toContain('agencyWorkflowConfigText(event, \'WORKFLOW_SERVICE_SECRET\')')
+    expect(publishingCallback).toContain('getHeader(event, \'x-workflow-secret\') !== expected')
     // Task4: seven explicit ordinary wiring/reviewer rows (four GTM review handlers,
     // two Ads review service rows and one GTM reviewer gate). Three existing MEDIA_BUYING
     // predicates are replaced by delegated-grant versus legacy branches, with unchanged
     // governance count. No owner bypass or provider/identity gate is removed. Exact diff:
     // .superpowers/sdd/2026-10-27-marketing-staff-mcp/task-4-gate-inventory-diff.json.
     // I2: fresh browser policy adds exactly one permission-group read; no bypass changes.
-    expect(inventory.rows).toContain("server/utils/social/clientAccess.ts\tconst groups = context.permissionGroups ?? []\tordinary_user_behavior")
+    expect(inventory.rows).toContain('server/utils/social/clientAccess.ts\tconst groups = context.permissionGroups ?? []\tordinary_user_behavior')
     // R3 adds the current CREATIVE operation check; reads retain their existing authority boundary.
-    expect(inventory.rows).toContain("server/api/agency/social/publishing/accounts/index.get.ts\tconst canPublish = context.permissionGroups?.includes('CREATIVE') === true\tordinary_user_behavior")
+    expect(inventory.rows).toContain('server/api/agency/social/publishing/accounts/index.get.ts\tconst canPublish = context.permissionGroups?.includes(\'CREATIVE\') === true\tordinary_user_behavior')
     // Task6 adds exactly three lexical permission-group presentation/metadata rows. No gate or classifier changes.
     expect(inventory.rows).toHaveLength(1657)
     expect(inventory.counts).toEqual({
@@ -355,11 +355,13 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.rows).toContain("server/utils/ai/marketing/reviewAuthority.ts\tif (!(ctx.permissionGroups ?? []).includes('ADMIN')) {\tordinary_user_behavior")
+    expect(inventory.rows).toContain('server/utils/ai/marketing/reviewAuthority.ts\tif (!(ctx.permissionGroups ?? []).includes(\'ADMIN\')) {\tordinary_user_behavior')
     expect(inventory.rows.filter(row => row.startsWith('server/utils/socialPublishing/mediaAssets.ts\t'))).toEqual([
-      "server/utils/socialPublishing/mediaAssets.ts\tconst secret = typeof bound === 'string' ? bound : (env && 'RENDER_LINK_SECRET' in env ? null : process.env.RENDER_LINK_SECRET)\tprovider_infrastructure_availability"
+      'server/utils/socialPublishing/mediaAssets.ts\tconst secret = typeof bound === \'string\' ? bound : (env && \'RENDER_LINK_SECRET\' in env ? null : process.env.RENDER_LINK_SECRET)\tprovider_infrastructure_availability'
     ])
-    expect(inventory.digest).toBe('d4049c9d69989449eefa2d81d03fc6adf74a6b859ff555d8284edc7827ec3be7')
+    // Formatting connectors.vue changes one lexical permission-group presentation row;
+    // all 1657 rows retain their classifications and counts.
+    expect(inventory.digest).toBe('d87c32635f751e1a2ba781e643d84e8bfe2c07c6acf26c7ec7af001ccbcc5b2e')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

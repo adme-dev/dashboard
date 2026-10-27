@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
   const requestedRevisionId = await optionalRevisionId(event)
 
   let post: ApprovedPost | null
-  let revisionId: string | null = null
+  let revisionId: string | null
   if (existing.review_policy === 'delegated_marketing') {
     if (!requestedRevisionId) throw createError({ statusCode: 400, statusMessage: 'revisionId required' })
     const [{ requireIndependentMarketingReviewer }, { reviewSocialPostRevision }, { transaction }] = await Promise.all([
@@ -153,7 +153,7 @@ export default defineEventHandler(async (event) => {
 })
 
 async function optionalRevisionId(event: Parameters<typeof getRouterParam>[0]): Promise<string | null> {
-  let body: { revisionId?: unknown } | null = null
+  let body: { revisionId?: unknown } | null
   try {
     body = await readBody(event)
   } catch {

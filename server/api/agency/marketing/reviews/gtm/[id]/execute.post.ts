@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { executeApprovedGtmProposal } from '~~/server/utils/tracking/gtmProposals'
+
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')

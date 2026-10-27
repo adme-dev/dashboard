@@ -394,7 +394,7 @@ export async function executeGoogleAdsTool(
 
   if (delegatedAdsContext(context) && (name === GOOGLE_ADS_PROPOSE_ACTION_TOOL || name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL || name === GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL)) return { ok: false, error: 'Use the independently reviewed planning workflow.', code: 'forbidden' }
   const isWrite = isGoogleAdsWriteToolName(name)
-  if (delegatedAdsContext(context) && isWrite && (context.assistantReadOnly || ![...(context.mcpScopes??[])].includes('mcp:write'))) return {ok:false,error:'Signed write scope required.',code:'forbidden'}
+  if (delegatedAdsContext(context) && isWrite && (context.assistantReadOnly || ![...(context.mcpScopes ?? [])].includes('mcp:write'))) return { ok: false, error: 'Signed write scope required.', code: 'forbidden' }
   if (isWrite && !flags.write) {
     return { ok: false, error: 'Google Ads write tools are not enabled over MCP.', code: 'disabled' }
   }

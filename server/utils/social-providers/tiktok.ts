@@ -3,6 +3,7 @@ import type { SocialPostProvider, PostParams, PostResult, FetchInboxParams, Fetc
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { providerFetch, isAmbiguousHttpOutcome } from './http'
 import { tikTokPayloadError, type TikTokCreatorCapabilities } from '~~/shared/tiktokPosting'
+
 const TIKTOK_API_BASE = 'https://open.tiktokapis.com/v2'
 type TikTokResponse = { data?: Record<string, any>, error?: { code?: string, log_id?: string } }
 export function tikTokReceipt(response: TikTokResponse) {
@@ -57,7 +58,14 @@ export const tiktokProvider: SocialPostProvider = {
     const mapped = media.map(m => ({ mediaType: m.type, durationSeconds: m.durationSeconds }))
     const problem = tikTokPayloadError(params.content, mapped, options)
     if (problem) return fail(problem)
-    if (media.some(m => { try { return new URL(m.url).protocol !== 'https:' } catch { return true } })) return fail('TikTok media requires HTTPS')
+    if (media.some((m) => {
+      try {
+        return new URL(m.url).protocol !== 'https:'
+      } catch {
+        return true
+      }
+    }))
+      return fail('TikTok media requires HTTPS')
     try {
       const creator = await queryTikTokCreatorPostCapabilities(params.accessToken)
       const error = tikTokPayloadError(params.content, mapped, options, creator)
@@ -66,14 +74,16 @@ export const tiktokProvider: SocialPostProvider = {
     const video = media[0]!.type === 'video'
     const common = { privacy_level: options.privacy_level, disable_comment: options.disable_comment !== false,
       brand_content_toggle: options.brand_content_toggle === true, brand_organic_toggle: options.brand_organic_toggle === true }
-    const body = video ? {
-      post_info: { ...common, title: params.content, disable_duet: options.disable_duet !== false, disable_stitch: options.disable_stitch !== false,
-        video_cover_timestamp_ms: options.video_cover_timestamp_ms ?? 0, is_aigc: options.is_aigc === true },
-      source_info: { source: 'PULL_FROM_URL', video_url: media[0]!.url }
-    } : {
-      post_info: { ...common, title: options.title ?? '', description: params.content, auto_add_music: options.auto_add_music === true },
-      source_info: { source: 'PULL_FROM_URL', photo_cover_index: options.photo_cover_index ?? 0, photo_images: media.map(m => m.url) },
-      post_mode: 'DIRECT_POST', media_type: 'PHOTO', is_aigc: options.is_aigc === true
+    const body = video
+      ? {
+          post_info: { ...common, title: params.content, disable_duet: options.disable_duet !== false, disable_stitch: options.disable_stitch !== false,
+            video_cover_timestamp_ms: options.video_cover_timestamp_ms ?? 0, is_aigc: options.is_aigc === true },
+          source_info: { source: 'PULL_FROM_URL', video_url: media[0]!.url }
+    }
+      : {
+          post_info: { ...common, title: options.title ?? '', description: params.content, auto_add_music: options.auto_add_music === true },
+          source_info: { source: 'PULL_FROM_URL', photo_cover_index: options.photo_cover_index ?? 0, photo_images: media.map(m => m.url) },
+          post_mode: 'DIRECT_POST', media_type: 'PHOTO', is_aigc: options.is_aigc === true
     }
     try {
       const r = await providerFetch<TikTokResponse>(`${TIKTOK_API_BASE}/post/publish/${video ? 'video' : 'content'}/init/`, { method: 'POST', headers: headers(params.accessToken), body, retry: 0, timeout: 12000 })

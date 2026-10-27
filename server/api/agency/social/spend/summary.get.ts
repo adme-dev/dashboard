@@ -1,5 +1,6 @@
 import { readSpendSummary } from '~~/server/utils/ai/marketing/spendReads'
 import { resolveBrowserMarketingReadScope } from '~~/server/utils/ai/marketing/readScope'
+
 export default eventHandler(async (event) => {
   const scope = await resolveBrowserMarketingReadScope(event)
   const query = getQuery(event)

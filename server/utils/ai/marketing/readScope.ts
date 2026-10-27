@@ -54,10 +54,13 @@ export async function resolveBrowserMarketingReadScope(event: H3Event): Promise<
   return resolveMarketingReadScope({ userId: user.id, userRole: owner ? 'owner' : '', event })
 }
 export function requireMarketingReadPermission(scope: MarketingReadScope, family: Family): void {
-  const groups: PermissionGroup[] = family === 'lead_summary' ? ['CLIENTS', 'ADMIN', 'MANAGEMENT']
-    : family === 'pacing' ? ['MEDIA_BUYING', 'FINANCE', 'ADMIN', 'MANAGEMENT']
-    : family === 'social' ? ['CREATIVE', 'CLIENTS', 'ADMIN', 'MANAGEMENT']
-    : family === 'clients' ? ['CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'ADMIN', 'MANAGEMENT'] : ['MEDIA_BUYING', 'ADMIN', 'MANAGEMENT']
+  const groups: PermissionGroup[] = family === 'lead_summary'
+    ? ['CLIENTS', 'ADMIN', 'MANAGEMENT']
+    : family === 'pacing'
+      ? ['MEDIA_BUYING', 'FINANCE', 'ADMIN', 'MANAGEMENT']
+      : family === 'social'
+        ? ['CREATIVE', 'CLIENTS', 'ADMIN', 'MANAGEMENT']
+        : family === 'clients' ? ['CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'ADMIN', 'MANAGEMENT'] : ['MEDIA_BUYING', 'ADMIN', 'MANAGEMENT']
   if (!scope.ownerVerified && !(family !== 'lead_summary' && scope.reportingGranted) && !groups.some(g => scope.permissionGroups.includes(g))) {
     throw createError({ statusCode: 403, statusMessage: 'Reporting permission required' })
   }
@@ -68,7 +71,8 @@ export function clientScopeSql(scope: MarketingReadScope, column: string, params
   const conditions: string[] = []
   if (scope.clientIds !== null) {
     if (!scope.clientIds.length) return 'FALSE'
-    params.push([...scope.clientIds]); conditions.push(`${column} = ANY($${params.length}::uuid[])`)
+    params.push([...scope.clientIds])
+    conditions.push(`${column} = ANY($${params.length}::uuid[])`)
   }
   if (scope.activeClientsOnly) conditions.push(`EXISTS (SELECT 1 FROM agency_clients authorized_client WHERE authorized_client.id = ${column} AND authorized_client.is_active = true)`)
   return conditions.length ? conditions.join(' AND ') : 'TRUE'

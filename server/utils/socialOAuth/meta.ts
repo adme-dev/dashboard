@@ -134,14 +134,14 @@ export async function attachMetaGrantedScopes(pages: ManagedPage[], userToken: s
   let data: any = null
   try {
     const inspected = await graphJson(f, `${GRAPH}/debug_token?input_token=${encodeURIComponent(userToken)}`, {
-      headers:{Authorization:`Bearer ${appId}|${appSecret}`},signal:AbortSignal.timeout(10_000)
+      headers: { Authorization: `Bearer ${appId}|${appSecret}` }, signal: AbortSignal.timeout(10_000)
     })
-    if (inspected?.data?.is_valid === true && String(inspected.data.app_id) === appId) data=inspected.data
+    if (inspected?.data?.is_valid === true && String(inspected.data.app_id) === appId) data = inspected.data
   } catch { /* Unknown grant is stored as empty, never inherited on reconnect. */ }
-  const granted = new Set<string>(Array.isArray(data?.scopes) ? data.scopes.filter((s:unknown)=>typeof s==='string') : [])
+  const granted = new Set<string>(Array.isArray(data?.scopes) ? data.scopes.filter((s: unknown) => typeof s === 'string') : [])
   const granular = Array.isArray(data?.granular_scopes) ? data.granular_scopes : []
-  return pages.map(page=>({...page,grantedScopes:[...granted].filter(scope=>granular.some((entry:any)=>
-    entry.scope===scope && (!Object.prototype.hasOwnProperty.call(entry,'target_ids') || (Array.isArray(entry.target_ids) && entry.target_ids.includes(page.id)))))}))
+  return pages.map(page => ({ ...page, grantedScopes: [...granted].filter(scope => granular.some((entry: any) =>
+    entry.scope === scope && (!Object.prototype.hasOwnProperty.call(entry, 'target_ids') || (Array.isArray(entry.target_ids) && entry.target_ids.includes(page.id))))) }))
 }
 
 /**

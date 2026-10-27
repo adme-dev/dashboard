@@ -4,6 +4,7 @@ import { createError } from 'h3'
 import { queryOneFresh } from '~~/server/utils/db'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { assertGtmSite } from '~~/server/utils/ai/marketing/gtmAccess'
+
 const note = z.string().trim().min(10).max(1500)
 const publicUrl = z
   .string()
@@ -12,11 +13,11 @@ const publicUrl = z
   .refine((v) => {
     const u = new URL(v)
     return (
-      u.protocol === 'https:' &&
-      !u.username &&
-      !u.password &&
-      !u.search &&
-      !u.hash
+      u.protocol === 'https:'
+      && !u.username
+      && !u.password
+      && !u.search
+      && !u.hash
     )
   }, 'Use an exact public HTTPS endpoint without secrets or query strings')
 export const GtmOwnershipSchema = z
@@ -45,8 +46,8 @@ export const GtmOwnershipSchema = z
   })
   .superRefine((v, ctx) => {
     if (
-      v.siteKind === 'native_driveagent' &&
-      v.conversionOwner !== 'driveagent'
+      v.siteKind === 'native_driveagent'
+      && v.conversionOwner !== 'driveagent'
     )
       ctx.addIssue({
         code: 'custom',
@@ -62,7 +63,7 @@ export function gtmHash(value: unknown): string {
         ? Object.fromEntries(
             Object.keys(v)
               .sort()
-              .map((k) => [k, canonical(v[k])])
+              .map(k => [k, canonical(v[k])])
           )
         : v
   return createHash('sha256')
@@ -95,12 +96,12 @@ export async function recordGtmOwnership(
       key
     ]
   )
-  const row =
-    saved ??
-    (await queryOneFresh<any>(
-      'SELECT id,evidence_hash FROM gtm_tracking_ownership_evidence WHERE recorded_by=$1 AND idempotency_key=$2',
-      [ctx.userId, key]
-    ))
+  const row
+    = saved
+      ?? (await queryOneFresh<any>(
+        'SELECT id,evidence_hash FROM gtm_tracking_ownership_evidence WHERE recorded_by=$1 AND idempotency_key=$2',
+        [ctx.userId, key]
+      ))
   if (!row || row.evidence_hash !== hash)
     throw createError({
       statusCode: 409,

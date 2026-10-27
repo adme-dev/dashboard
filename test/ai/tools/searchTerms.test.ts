@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { getSearchTerms, searchTermsTool, type SearchTermsDeps } from '~~/server/utils/ai/tools/searchTerms'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
-vi.mock('~~/server/utils/db', async (original) => ({ ...(await original<any>()),
+vi.mock('~~/server/utils/db', async original => ({ ...(await original<any>()),
   queryOneFresh: vi.fn(async (sql: string, params: any[]) => sql.includes('team_members') ? { id: params[0] } : sql.includes('FROM leads') ? { total_submissions: 63, campaign_attributed: 4, ad_attributed: 3 } : { id: 'c1' }),
-  queryRowsFresh: vi.fn(async () => [{ id: 'c1', name: 'Acme' }]),
+  queryRowsFresh: vi.fn(async () => [{ id: 'c1', name: 'Acme' }])
 }))
 
 const ctx = { userId: '11111111-1111-4111-8111-111111111111', userRole: 'owner', event: { context: {} } as any } as ToolContext

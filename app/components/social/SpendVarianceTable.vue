@@ -593,9 +593,9 @@ const totalColSpan = computed(() => socialSpendColumnCount({
             <div class="flex flex-col items-end gap-0.5">
               <UButton
                 variant="ghost"
-                color="neutral"
-                class="inline-flex items-center gap-1 p-0 text-sm font-normal hover:text-primary transition-colors"
-                :disabled="!financeProjection"
+                  color="neutral"
+                  class="inline-flex items-center gap-1 p-0 text-sm font-normal hover:text-primary transition-colors"
+                  :disabled="!financeProjection"
                 @click="openBudgetModal(item)"
               >
                 <span v-if="item.budget > 0">{{ formatCurrency(item.budget) }}</span>

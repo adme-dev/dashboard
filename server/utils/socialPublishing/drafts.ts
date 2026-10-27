@@ -15,7 +15,6 @@ import { createError, type H3Event } from 'h3'
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { classifySocialPublishingAccountHealth } from '~~/server/utils/socialPublishing/accountHealth'
-import { productionReadyPublishPlatformsError } from '~~/server/utils/socialPublishing/platformReadiness'
 import {
   normalizePlatformOverrides,
   normalizePublishingTargets,
@@ -156,10 +155,10 @@ export async function listSocialPublishingAccounts(
       lastError: row.last_error,
       tokenExpiresAt: row.token_expires_at,
       hasRefreshToken: Boolean(row.has_refresh_token),
-      metadata, linkedFacebookAccountId:row.linked_facebook_account_id, linkedFacebookIsActive:row.linked_facebook_is_active
+      metadata, linkedFacebookAccountId: row.linked_facebook_account_id, linkedFacebookIsActive: row.linked_facebook_is_active
     })
     const operations = socialCapabilityReadiness({ platform: row.platform, isActive: row.is_active !== false,
-      lastError: row.last_error, tokenExpiresAt: row.token_expires_at, hasRefreshToken: Boolean(row.has_refresh_token), metadata, linkedFacebookAccountId:row.linked_facebook_account_id, linkedFacebookIsActive:row.linked_facebook_is_active }, actor.availability)
+      lastError: row.last_error, tokenExpiresAt: row.token_expires_at, hasRefreshToken: Boolean(row.has_refresh_token), metadata, linkedFacebookAccountId: row.linked_facebook_account_id, linkedFacebookIsActive: row.linked_facebook_is_active }, actor.availability)
     const readiness = operations.find(operation => operation.operation === 'organic_publish')!
 
     const unavailableReason = row.is_active === false
@@ -348,23 +347,23 @@ async function normalizeDraftFields(
 
 export async function bindTikTokDraftConsent(actor: SocialDraftActor, post: any, patch: SocialDraftInput, tx: SocialTxDb, initialCreation = false) {
   const targets = arrayValue<any>(post.publish_targets)
-  if (!targets.some(t=>t.platform==='tiktok')) return
-  const media = await resolveSocialMediaAssets({event:actor.event,clientId:post.client_id,refs:arrayValue(post.media_asset_refs)})
-  const effective = resolveEffectiveSocialTargets(buildSocialPostSnapshot(post,media),media)
-  for (const target of targets.filter(t=>t.platform==='tiktok')) {
-    const payload = effective.find(t=>t.accountId===target.accountId && t.platform==='tiktok')!
-    const account = (await tx.query("SELECT platform_account_id FROM social_accounts WHERE id=$1 AND client_id=$2 AND platform='tiktok' AND is_active=TRUE",[target.accountId,post.client_id])).rows[0]
+  if (!targets.some(t => t.platform === 'tiktok')) return
+  const media = await resolveSocialMediaAssets({ event: actor.event, clientId: post.client_id, refs: arrayValue(post.media_asset_refs) })
+  const effective = resolveEffectiveSocialTargets(buildSocialPostSnapshot(post, media), media)
+  for (const target of targets.filter(t => t.platform === 'tiktok')) {
+    const payload = effective.find(t => t.accountId === target.accountId && t.platform === 'tiktok')!
+    const account = (await tx.query('SELECT platform_account_id FROM social_accounts WHERE id=$1 AND client_id=$2 AND platform=\'tiktok\' AND is_active=TRUE', [target.accountId, post.client_id])).rows[0]
     if (!account) badRequest('TikTok account unavailable')
-    const supplied = arrayValue<any>(patch.targets).find(t=>t.platform==='tiktok' && t.accountId===target.accountId)?.options
+    const supplied = arrayValue<any>(patch.targets).find(t => t.platform === 'tiktok' && t.accountId === target.accountId)?.options
       ?? objectValue(objectValue(patch.platformOverrides).tiktok).options
-    payload.options = {...payload.options,consentAccountId:account.platform_account_id}
-    const identity = tikTokConsentIdentity(payload,media)
+    payload.options = { ...payload.options, consentAccountId: account.platform_account_id }
+    const identity = tikTokConsentIdentity(payload, media)
     const renewed = supplied?.consent === true && (supplied.consentPayload === identity || (initialCreation && !supplied.consentPayload))
     const valid = supplied?.consent !== false && payload.options.consent === true && (renewed || payload.options.consentPayload === identity)
-    target.options = {...payload.options,consent:valid,...(valid ? {consentPayload:identity} : {})}
+    target.options = { ...payload.options, consent: valid, ...(valid ? { consentPayload: identity } : {}) }
     if (!valid) delete target.options.consentPayload
   }
-  await tx.query('UPDATE social_posts SET publish_targets=$2::jsonb WHERE id=$1',[post.id,JSON.stringify(targets)])
+  await tx.query('UPDATE social_posts SET publish_targets=$2::jsonb WHERE id=$1', [post.id, JSON.stringify(targets)])
 }
 
 export interface CreateSocialDraftInput extends SocialDraftInput {
@@ -411,8 +410,8 @@ export async function createSocialPostDraft(
   )
   const id = inserted.rows[0]?.id as string | undefined
   if (!id) throw new Error('Social draft was not created')
-  const created = (await tx.query('SELECT * FROM social_posts WHERE id=$1',[id])).rows[0]
-  await bindTikTokDraftConsent(actor,created,fields,tx,true)
+  const created = (await tx.query('SELECT * FROM social_posts WHERE id=$1', [id])).rows[0]
+  await bindTikTokDraftConsent(actor, created, fields, tx, true)
   await tx.query(
     `INSERT INTO social_publishing_audit_events (client_id, post_id, actor_id, action, metadata)
      VALUES ($1, $2, $3, 'post_created', $4::jsonb)`,
@@ -493,8 +492,8 @@ export async function updateSocialPostDraft(
     params
   )
   if (!updated.rows[0]) throw createError({ statusCode: 409, statusMessage: 'Post changed state before this edit' })
-  const current = (await tx.query('SELECT * FROM social_posts WHERE id=$1',[post.id])).rows[0]
-  await bindTikTokDraftConsent(actor,current,patch,tx)
+  const current = (await tx.query('SELECT * FROM social_posts WHERE id=$1', [post.id])).rows[0]
+  await bindTikTokDraftConsent(actor, current, patch, tx)
   await tx.query(
     `INSERT INTO social_publishing_audit_events (client_id, post_id, actor_id, action, metadata)
      VALUES ($1, $2, $3, 'post_updated', $4::jsonb)`,
@@ -545,7 +544,7 @@ export async function getSocialPostStatus(
 ): Promise<SocialPostStatusView> {
   if (typeof postId !== 'string' || !UUID.test(postId)) notFound('Post')
   const params: unknown[] = [postId]
-  let scopeSql = ''
+  let scopeSql: string
   if (actor.clientIds !== null) {
     if (!actor.clientIds.length) notFound('Post')
     params.push([...actor.clientIds])
@@ -592,7 +591,7 @@ export async function getSocialPostStatus(
         providerStatus: text(result.providerStatus),
         providerReceipt: { code: text(objectValue(result.providerReceipt).code), logId: text(objectValue(result.providerReceipt).logId) },
         nextPollAt: toIsoOrNull(result.nextPollAt),
-        publicPostIds: arrayValue<string>(result.publicPostIds).filter(id => typeof id === 'string' && /^\d{1,64}$/.test(id)).slice(0,35)
+        publicPostIds: arrayValue<string>(result.publicPostIds).filter(id => typeof id === 'string' && /^\d{1,64}$/.test(id)).slice(0, 35)
       }
     }),
     rejectionReason: row.rejection_reason ?? null

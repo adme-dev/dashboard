@@ -1,19 +1,20 @@
 import { readFileSync } from 'node:fs'
 import { Pool } from 'pg'
+
 export const TASK4_DSN = process.env.MARKETING_TASK4_TEST_DSN ?? ''
 export function task4Pool(raw: string) {
   const url = new URL(raw),
     host = url.searchParams.get('host') ?? '',
     database = url.pathname.slice(1)
   if (
-    !['postgres:', 'postgresql:'].includes(url.protocol) ||
-    url.hostname !== 'localhost' ||
-    url.port ||
-    url.password ||
-    !host.startsWith('/private/tmp/marketing-task4-') ||
-    host.includes('..') ||
-    !/^marketing_task4_[a-z0-9_]+$/.test(database) ||
-    /(prod|main|shared)/.test(database)
+    !['postgres:', 'postgresql:'].includes(url.protocol)
+    || url.hostname !== 'localhost'
+    || url.port
+    || url.password
+    || !host.startsWith('/private/tmp/marketing-task4-')
+    || host.includes('..')
+    || !/^marketing_task4_[a-z0-9_]+$/.test(database)
+    || /(prod|main|shared)/.test(database)
   )
     throw new Error('Disposable Task4 private socket database required')
   return new Pool({

@@ -232,8 +232,18 @@ const primaryLabel = computed(() => ({
           variant="subtle"
         />
         <div v-if="accountsError" class="mb-5 space-y-2" role="alert">
-          <UAlert title="Could not load publishing accounts" description="Your saved targets are preserved. Retry before changing destinations or saving." color="error" variant="subtle" />
-          <UButton color="neutral" variant="outline" label="Retry accounts" @click="loadAccounts" />
+          <UAlert
+            title="Could not load publishing accounts"
+            description="Your saved targets are preserved. Retry before changing destinations or saving."
+            color="error"
+            variant="subtle"
+          />
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="Retry accounts"
+            @click="loadAccounts"
+          />
         </div>
         <SocialPublishingPostComposer
           :client-id="clientId"

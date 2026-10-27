@@ -26,7 +26,9 @@ const clientName = computed(() => client.value?.client?.name || client.value?.na
         {{ clientName }} — Website analytics
       </h1>
     </div>
-    <UButton to="/agency/marketing/reviews/gtm" variant="outline" icon="i-lucide-shield-check">Review tracking proposals</UButton>
+    <UButton to="/agency/marketing/reviews/gtm" variant="outline" icon="i-lucide-shield-check">
+      Review tracking proposals
+    </UButton>
     <TrackingAnalyticsContainer :client-id="clientId" />
   </div>
 </template>

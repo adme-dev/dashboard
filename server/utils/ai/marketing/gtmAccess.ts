@@ -1,9 +1,10 @@
 import { createError } from 'h3'
 import { queryOneFresh, queryRows } from '~~/server/utils/db'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
+
 export async function gtmScope(ctx: ToolContext) {
-  const { resolveMcpStaffContext } =
-    await import('~~/server/utils/ai/mcp/staffAuthority')
+  const { resolveMcpStaffContext }
+    = await import('~~/server/utils/ai/mcp/staffAuthority')
   const fresh = await resolveMcpStaffContext(ctx.event, ctx.userId, [
     ...(ctx.mcpScopes ?? [])
   ])
@@ -19,8 +20,8 @@ export async function assertGtmSite(
   siteId: string,
   write = false
 ) {
-  const { assertMarketingCapabilityAtBoundary, freshContextCoversClient } =
-    await import('./reviewAuthority')
+  const { assertMarketingCapabilityAtBoundary, freshContextCoversClient }
+    = await import('./reviewAuthority')
   const fresh = await gtmScope(ctx)
   const site = await queryOneFresh<{
     id: string

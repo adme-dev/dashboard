@@ -1,12 +1,14 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-const db = vi.hoisted(() => ({ queryRowsFresh: vi.fn(), queryOneFresh: vi.fn() }))
-vi.mock('~~/server/utils/db', () => db)
 import { resolveScopedClient } from '../../server/utils/ai/marketing/clientReads'
 import { resolveScopedSearchTermTarget, readScopedSearchTermSnapshot } from '../../server/utils/ai/marketing/searchTermReads'
 import { readAdSnapshots, selectScopedAdTargets } from '../../server/utils/ai/marketing/adReads'
+
+const db = vi.hoisted(() => ({ queryRowsFresh: vi.fn(), queryOneFresh: vi.fn() }))
+vi.mock('~~/server/utils/db', () => db)
+
 const scope: any = { clientIds: ['a', 'a2'], permissionGroups: ['MEDIA_BUYING'], reportingGranted: true }
 beforeEach(() => vi.clearAllMocks())
-it.each(['canonical', 'alias'])('unique exact %s wins over fuzzy neighbours before limit', async kind => {
+it.each(['canonical', 'alias'])('unique exact %s wins over fuzzy neighbours before limit', async (kind) => {
   const candidates = [{ id: 'a', name: 'Kia Northern', aliases: [] }, { id: 'a2', name: kind === 'canonical' ? 'KIA' : 'Other', aliases: kind === 'alias' ? ['KIA'] : [] }]
   db.queryRowsFresh.mockImplementation(async (sql, values) => values[0] === 'kia' ? candidates.filter(c => c.name.toLowerCase() === 'kia' || c.aliases.includes('KIA')) : candidates)
   expect((await resolveScopedClient(scope, 'kia'))?.id).toBe('a2')
@@ -17,25 +19,25 @@ it('genuine exact alias collisions reject ambiguity', async () => {
 })
 it('Google target prefers exact campaign name and excludes Meta before ambiguity limit', async () => {
   const candidates = [{ id: 'meta', client_id: 'a', platform: 'meta', campaign_id: 'same', campaign_name: 'Brand' }, { id: 'google', client_id: 'a', platform: 'google', campaign_id: 'same', campaign_name: 'Brand', campaign_type: 'search' }, { id: 'other', client_id: 'a', platform: 'google_ads', campaign_id: 'other', campaign_name: 'Brand Shopping' }]
-  db.queryRowsFresh.mockImplementation(async (sql, values) => candidates.filter(r => (!sql.includes("ms.platform IN ('google', 'google_ads')") || r.platform !== 'meta') && (!values.includes('Brand') || r.campaign_name === 'Brand')).slice(0, 2))
+  db.queryRowsFresh.mockImplementation(async (sql, values) => candidates.filter(r => (!sql.includes('ms.platform IN (\'google\', \'google_ads\')') || r.platform !== 'meta') && (!values.includes('Brand') || r.campaign_name === 'Brand')).slice(0, 2))
   expect(await resolveScopedSearchTermTarget(scope, { campaignName: 'Brand' })).toMatchObject({ mediaSpendId: 'google', campaignType: 'SEARCH', platform: 'google' })
 })
-it.each(['google', 'google_ads'])('ad stored windows match normalized %s media identities', async platform => {
+it.each(['google', 'google_ads'])('ad stored windows match normalized %s media identities', async (platform) => {
   db.queryRowsFresh.mockImplementation(async (sql, values) => {
     const selected = JSON.parse(values[2])[0]
-    const match = sql.includes("CASE WHEN ms.platform = 'google' THEN 'google_ads' ELSE ms.platform END") ? 'google_ads' : platform
+    const match = sql.includes('CASE WHEN ms.platform = \'google\' THEN \'google_ads\' ELSE ms.platform END') ? 'google_ads' : platform
     return selected.platform === match ? [{ client_id: 'a', platform, connection_id: 'c', campaign_id: 'same', ad_id: 'ad', spend: 7 }] : []
   })
   const result = await readAdSnapshots(scope, [{ clientId: 'a', platform, connectionId: 'c', campaignId: 'same' }], '2026-10-01', '2026-10-27')
   expect(result.snapshotCoverage.missingTargetCount).toBe(0)
 })
-it.each(['google', 'google_ads'])('search stored window joins normalize %s', async platform => {
-  db.queryOneFresh.mockImplementation(async (sql, values) => (sql.includes("CASE WHEN ms.platform = 'google' THEN 'google_ads' ELSE ms.platform END") ? 'google_ads' : platform) === values[1] ? { id: 'sync', coverage: 'full' } : null)
+it.each(['google', 'google_ads'])('search stored window joins normalize %s', async (platform) => {
+  db.queryOneFresh.mockImplementation(async (sql, values) => (sql.includes('CASE WHEN ms.platform = \'google\' THEN \'google_ads\' ELSE ms.platform END') ? 'google_ads' : platform) === values[1] ? { id: 'sync', coverage: 'full' } : null)
   db.queryRowsFresh.mockResolvedValue([{ search_term: 'stored', cost: 7 }])
   expect((await readScopedSearchTermSnapshot(scope, { clientId: 'a', platform, connectionId: 'c', campaignId: 'same' }, '2026-10-01', '2026-10-27'))?.terms[0].cost).toBe(7)
 })
 it('Google target filtering includes legacy google rows before target cap', async () => {
-  db.queryRowsFresh.mockImplementation(async (sql, values) => sql.includes("ms.platform IN ('google', 'google_ads')") ? [{ id: 'old', platform: 'google', client_id: 'a', campaign_id: 'same' }] : [])
+  db.queryRowsFresh.mockImplementation(async sql => sql.includes('ms.platform IN (\'google\', \'google_ads\')') ? [{ id: 'old', platform: 'google', client_id: 'a', campaign_id: 'same' }] : [])
   expect((await selectScopedAdTargets(scope, { campaignId: 'same', platform: 'google' } as any)).targets).toHaveLength(1)
 })
 

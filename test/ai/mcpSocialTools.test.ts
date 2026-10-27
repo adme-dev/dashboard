@@ -116,7 +116,7 @@ describe('MCP social draft suite and legacy social bypass closure', () => {
       if (sql.includes('FROM team_members')) return { role: actor.role, custom_role_id: CUSTOM_ROLE, name: 'Staff', email: 's@example.test' }
       if (sql.includes('FROM custom_roles')) return { is_read_only: actor.readOnly === true, permission_groups: actor.groups }
       if (sql.includes('ai_action_audit')) return { n: 0 }
-      if (sql.includes("UPDATE ai_pending_actions SET status='executed'")) return mocks.pending
+      if (sql.includes('UPDATE ai_pending_actions SET status=\'executed\'')) return mocks.pending
       if (sql.includes('INSERT INTO ai_pending_actions')) return { id: PROPOSAL_ID }
       return null
     })
@@ -210,8 +210,8 @@ describe('MCP social draft suite and legacy social bypass closure', () => {
     mocks.pending = { tool_name: 'propose_schedule_post', resolved_payload: { clientId: CLIENT_A, content: 'Stale', status: 'scheduled', scheduledAt: '2030-01-01T00:00:00.000Z' } }
     await expect(call('confirm_action', { proposalId: PROPOSAL_ID }))
       .resolves.toMatchObject({ ok: false, code: 'forbidden', error: expect.stringContaining('submit_social_post_for_review') })
-    expect(sqlSeen("UPDATE ai_pending_actions SET status='executed'")).toBe(true)
-    expect(mocks.execute.mock.calls.some(([sql]) => String(sql).includes("SET status='proposed'"))).toBe(true)
+    expect(sqlSeen('UPDATE ai_pending_actions SET status=\'executed\'')).toBe(true)
+    expect(mocks.execute.mock.calls.some(([sql]) => String(sql).includes('SET status=\'proposed\''))).toBe(true)
     expect(mocks.internalFetch).not.toHaveBeenCalled()
   })
 

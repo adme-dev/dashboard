@@ -6,6 +6,7 @@ import {
   verifyGtmManagedEntity,
   assertGtmOnlyManagedChanges
 } from '../../../server/utils/tracking/gtmTypedChanges'
+
 describe('bounded GTM contracts', () => {
   it('matches all three pinned Google-authored fixtures', () => {
     const fixtures = JSON.parse(

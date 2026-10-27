@@ -74,32 +74,32 @@ watch(
   { deep: true, immediate: true },
 )
 
-const tiktokAccountIds = computed(() => activeAccounts.value.filter(a => a.platform === 'tiktok' && state.value.accountIds.includes(a.id)).map(a=>a.id))
+const tiktokAccountIds = computed(() => activeAccounts.value.filter(a => a.platform === 'tiktok' && state.value.accountIds.includes(a.id)).map(a => a.id))
 function tiktokOptions(accountId: string): Record<string, unknown> {
   return {
     ...(state.value.customizePerNetwork ? state.value.platformOverrides.tiktok?.options : {}),
-    ...state.value.publishTargets.find(t=>t.platform==='tiktok' && t.accountId===accountId)?.options,
-    consentAccountId:props.accounts.find(a=>a.id===accountId)?.platform_account_id
+    ...state.value.publishTargets.find(t => t.platform === 'tiktok' && t.accountId === accountId)?.options,
+    consentAccountId: props.accounts.find(a => a.id === accountId)?.platform_account_id
   }
 }
 function setTikTokOptions(accountId: string, options: Record<string, unknown>) {
-  const others = state.value.publishTargets.filter(t=>!(t.platform==='tiktok' && t.accountId===accountId))
-  state.value.publishTargets = [...others,{platform:'tiktok',accountId,options}]
+  const others = state.value.publishTargets.filter(t => !(t.platform === 'tiktok' && t.accountId === accountId))
+  state.value.publishTargets = [...others, { platform: 'tiktok', accountId, options }]
 }
 function tiktokEffective(accountId: string) {
   return resolveEffectiveSocialTargets({
-    postId:state.value.id ?? 'unsaved',content:state.value.content,linkUrl:state.value.linkUrl,
-    hashtags:state.value.hashtags,firstComment:state.value.firstComment,
-    platformOverrides:state.value.customizePerNetwork ? state.value.platformOverrides : {},
-    targets:[{platform:'tiktok',accountId,options:{...tiktokOptions(accountId),consentAccountId:props.accounts.find(a=>a.id===accountId)?.platform_account_id}}]
-  },state.value.reviewPolicy === 'delegated_marketing' ? state.value.mediaIdentities : resolved('tiktok').mediaUrls.map(url=>({mediaType:isVideoMediaUrl(url)?'video':'image'})))[0]!
+    postId: state.value.id ?? 'unsaved', content: state.value.content, linkUrl: state.value.linkUrl,
+    hashtags: state.value.hashtags, firstComment: state.value.firstComment,
+    platformOverrides: state.value.customizePerNetwork ? state.value.platformOverrides : {},
+    targets: [{ platform: 'tiktok', accountId, options: { ...tiktokOptions(accountId), consentAccountId: props.accounts.find(a => a.id === accountId)?.platform_account_id } }]
+  }, state.value.reviewPolicy === 'delegated_marketing' ? state.value.mediaIdentities : resolved('tiktok').mediaUrls.map(url => ({ mediaType: isVideoMediaUrl(url) ? 'video' : 'image' })))[0]!
 }
 function tiktokConsentIdentity(accountId: string) {
-  return tikTokConsentIdentity(tiktokEffective(accountId),state.value.reviewPolicy === 'delegated_marketing' ? state.value.mediaIdentities : resolved('tiktok').mediaUrls)
+  return tikTokConsentIdentity(tiktokEffective(accountId), state.value.reviewPolicy === 'delegated_marketing' ? state.value.mediaIdentities : resolved('tiktok').mediaUrls)
 }
 const tiktokConsentAvailable = computed(() => Boolean(state.value.id) && (state.value.reviewPolicy !== 'delegated_marketing'
   || (state.value.mediaAssets.length > 0 && state.value.mediaAssets.length === state.value.mediaIdentities.length
-    && state.value.mediaAssets.every((ref,i)=>ref.id===state.value.mediaIdentities[i]?.id && ref.kind===state.value.mediaIdentities[i]?.kind))))
+    && state.value.mediaAssets.every((ref, i) => ref.id === state.value.mediaIdentities[i]?.id && ref.kind === state.value.mediaIdentities[i]?.kind))))
 const displayedMediaUrls = computed(() => state.value.reviewPolicy === 'delegated_marketing' ? state.value.mediaPreviewUrls : state.value.mediaUrls)
 
 // tightest character limit across selected networks, for the base counter
@@ -129,9 +129,9 @@ function addMedia() {
 function removeMedia(url: string) {
   if (state.value.reviewPolicy === 'delegated_marketing') {
     const index = state.value.mediaPreviewUrls.indexOf(url)
-    state.value.mediaPreviewUrls = state.value.mediaPreviewUrls.filter((_,i)=>i!==index)
-    state.value.mediaAssets = state.value.mediaAssets.filter((_,i)=>i!==index)
-    state.value.mediaIdentities = state.value.mediaIdentities.filter((_,i)=>i!==index)
+    state.value.mediaPreviewUrls = state.value.mediaPreviewUrls.filter((_, i) => i !== index)
+    state.value.mediaAssets = state.value.mediaAssets.filter((_, i) => i !== index)
+    state.value.mediaIdentities = state.value.mediaIdentities.filter((_, i) => i !== index)
     return
   }
   state.value.mediaUrls = state.value.mediaUrls.filter(u => u !== url)
@@ -279,11 +279,16 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
     <!-- Connected accounts -->
     <template v-if="clientId && state.platforms.includes('tiktok')">
       <SocialPublishingTikTokConsent
-        v-for="accountId in tiktokAccountIds" :key="accountId"
-        :model-value="tiktokOptions(accountId)" @update:model-value="setTikTokOptions(accountId, $event)"
-        :client-id="clientId" :account-id="accountId"
-        :content="tiktokEffective(accountId).content" :media-urls="resolved('tiktok').mediaUrls"
-        :payload-identity="tiktokConsentIdentity(accountId)" :consent-available="tiktokConsentAvailable"
+        v-for="accountId in tiktokAccountIds"
+        :key="accountId"
+        :model-value="tiktokOptions(accountId)"
+        :client-id="clientId"
+        :account-id="accountId"
+        :content="tiktokEffective(accountId).content"
+        :media-urls="resolved('tiktok').mediaUrls"
+        :payload-identity="tiktokConsentIdentity(accountId)"
+        :consent-available="tiktokConsentAvailable"
+        @update:model-value="setTikTokOptions(accountId, $event)"
       />
     </template>
     <div

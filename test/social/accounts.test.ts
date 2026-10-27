@@ -39,7 +39,7 @@ vi.mock('~~/server/utils/db', () => ({
 }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({
   requireSocialClientAccess: (...a: unknown[]) => mockRequireSocialClientAccess(...a),
-  requireFreshSocialClientAccess: async (...a: unknown[]) => ({user:await mockRequireSocialClientAccess(...a),context:{assistantReadOnly:false}}),
+  requireFreshSocialClientAccess: async (...a: unknown[]) => ({ user: await mockRequireSocialClientAccess(...a), context: { assistantReadOnly: false } }),
 }))
 
 const { default: listHandler } = await import('../../server/api/agency/social/publishing/accounts/index.get')

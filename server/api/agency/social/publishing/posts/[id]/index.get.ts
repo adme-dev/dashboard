@@ -14,8 +14,8 @@ export default defineEventHandler(async (event) => {
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
   await requireSocialClientAccess(event, (row as { client_id: string }).client_id)
   if (row.review_policy === 'delegated_marketing') {
-    const identities = await resolveSocialMediaAssets({event,clientId:row.client_id,refs:row.media_asset_refs ?? []})
-    return {...row,media_identities:identities,media_preview_urls:await Promise.all(identities.map(identity=>socialMediaDeliveryUrl(event,row.client_id,identity)))}
+    const identities = await resolveSocialMediaAssets({ event, clientId: row.client_id, refs: row.media_asset_refs ?? [] })
+    return { ...row, media_identities: identities, media_preview_urls: await Promise.all(identities.map(identity => socialMediaDeliveryUrl(event, row.client_id, identity))) }
   }
   return row
 })

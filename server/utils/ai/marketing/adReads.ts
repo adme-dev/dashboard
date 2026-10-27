@@ -5,8 +5,8 @@ import { resolveScopedClient, ownerClientNameSql } from './clientReads'
 import { leadSourceForPlatformSql } from '~~/server/utils/leads/portalAnalytics'
 import type { AdBreakdownArgs } from '../tools/adBreakdown'
 
-export type CampaignIdentity = Readonly<{ clientId: string | null; platform: string; connectionId: string | null; campaignId: string; mediaSpendId?: string; campaignName?: string; clientName?: string | null; campaignType?: string | null }>
-export type SnapshotCoverage = { selectedTargetCount: number; withSnapshotCount: number; missingTargetCount: number; missingTargets: CampaignIdentity[] }
+export type CampaignIdentity = Readonly<{ clientId: string | null, platform: string, connectionId: string | null, campaignId: string, mediaSpendId?: string, campaignName?: string, clientName?: string | null, campaignType?: string | null }>
+export type SnapshotCoverage = { selectedTargetCount: number, withSnapshotCount: number, missingTargetCount: number, missingTargets: CampaignIdentity[] }
 export function campaignIdentityKey(row: CampaignIdentity): string {
   return JSON.stringify([row.clientId, row.platform === 'google' ? 'google_ads' : row.platform, row.connectionId, row.campaignId])
 }
@@ -14,7 +14,10 @@ export async function selectScopedAdTargets(scope: MarketingReadScope, args: AdB
   requireMarketingReadPermission(scope, 'ads')
   const values: unknown[] = []
   const conditions = [clientScopeSql(scope, 'ms.client_id', values), 'ms.campaign_id IS NOT NULL']
-  const add = (column: string, value: unknown) => { values.push(value); conditions.push(`${column} $${values.length}`) }
+  const add = (column: string, value: unknown) => {
+    values.push(value)
+    conditions.push(`${column} $${values.length}`)
+  }
   const ownerName = ownerClientNameSql(scope, args.clientName, 'ms.client_id', values)
   if (ownerName) conditions.push(ownerName)
   else if (args.clientName) {
@@ -24,7 +27,7 @@ export async function selectScopedAdTargets(scope: MarketingReadScope, args: AdB
   }
   if (args.campaignId) add('ms.campaign_id =', args.campaignId)
   if (args.campaignName) add('ms.campaign_name ILIKE', `%${escapeLike(args.campaignName)}%`)
-  if (args.platform === 'google') conditions.push("ms.platform IN ('google', 'google_ads')")
+  if (args.platform === 'google') conditions.push('ms.platform IN (\'google\', \'google_ads\')')
   else if (args.platform) add('ms.platform =', args.platform)
   const rows = await queryRowsFresh<any>(`SELECT DISTINCT ON (ms.client_id, (CASE WHEN ms.platform = 'google' THEN 'google_ads' ELSE ms.platform END), ms.connection_id, ms.campaign_id)
     ms.id, ms.client_id, ms.platform, ms.connection_id, ms.campaign_id, ms.campaign_name, ms.campaign_type, client.name AS client_name
@@ -39,7 +42,8 @@ export async function readAdSnapshots(scope: MarketingReadScope, targets: Campai
   if (startDate > endDate) throw new Error('Invalid reporting range')
   const values: unknown[] = [startDate, endDate, JSON.stringify(targets.map(t => ({ client_id: t.clientId, platform: t.platform === 'google' ? 'google_ads' : t.platform, connection_id: t.connectionId, campaign_id: t.campaignId })))]
   const predicate = clientScopeSql(scope, 'ms.client_id', values)
-  const rows = targets.length ? await queryRowsFresh<any>(`WITH scoped_media AS (
+  const rows = targets.length
+    ? await queryRowsFresh<any>(`WITH scoped_media AS (
       SELECT ms.*, CASE WHEN ms.platform = 'google' THEN 'google_ads' ELSE ms.platform END AS reporting_platform FROM media_spend ms WHERE ${predicate}
     ), selected AS (SELECT * FROM jsonb_to_recordset($3::jsonb) AS t(client_id uuid, platform text, connection_id uuid, campaign_id text)), evidence AS (
       SELECT DISTINCT ON (ms.client_id, ms.reporting_platform, ms.connection_id, ms.campaign_id, aps.ad_id)
@@ -65,7 +69,8 @@ export async function readAdSnapshots(scope: MarketingReadScope, targets: Campai
         AND l.client_id = ms.client_id AND l.source = ${leadSourceForPlatformSql('ms')}
         AND l.campaign_id = ms.campaign_id AND l.ad_id = aps.ad_id
         AND l.submitted_at >= aps.range_start AND l.submitted_at < aps.range_end + INTERVAL '1 day'
-    ) la ON TRUE`, values) : []
+    ) la ON TRUE`, values)
+    : []
   const present = new Set(rows.map(row => campaignIdentityKey({ clientId: row.client_id, platform: row.platform, connectionId: row.connection_id, campaignId: row.campaign_id })))
   const missingTargets = targets.filter(t => !present.has(campaignIdentityKey(t)))
   const snapshotCoverage: SnapshotCoverage = { selectedTargetCount: targets.length, withSnapshotCount: targets.length - missingTargets.length, missingTargetCount: missingTargets.length, missingTargets }

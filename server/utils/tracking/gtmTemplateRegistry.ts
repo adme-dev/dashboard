@@ -15,7 +15,7 @@ const text = z
   .min(1)
   .max(200)
   .refine(
-    (v) => !/[<>{}]/.test(v),
+    v => !/[<>{}]/.test(v),
     'Scripts and variable interpolation are unsupported'
   )
 const id = z.string().regex(/^\d{1,20}$/)
@@ -26,7 +26,7 @@ const tag = {
     .array(id)
     .min(1)
     .max(10)
-    .refine((v) => new Set(v).size === v.length),
+    .refine(v => new Set(v).size === v.length),
   parentFolderId: id.optional()
 }
 export const GtmTemplateSchema = z.discriminatedUnion('templateId', [
@@ -53,7 +53,7 @@ export const GtmTemplateSchema = z.discriminatedUnion('templateId', [
         })
       )
       .max(25)
-      .refine((v) => new Set(v.map((x) => x.name)).size === v.length)
+      .refine(v => new Set(v.map(x => x.name)).size === v.length)
       .optional()
   }),
   z.strictObject({
@@ -106,7 +106,7 @@ export function compileGtmTemplate(raw: unknown): {
       parameter.push({
         type: 'list',
         key: 'eventSettingsTable',
-        list: input.eventParameters.map((p) => ({
+        list: input.eventParameters.map(p => ({
           type: 'map',
           map: [
             { type: 'template', key: 'parameter', value: p.name },

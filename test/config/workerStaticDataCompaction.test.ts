@@ -39,14 +39,14 @@ describe('lossless generated Worker data compaction', () => {
     expect(compactSsrMarkupSource(result.code).code).toBe(result.code)
   })
 
-  it.each([160, 400])('decodes bounded groups lazily and reuses them (%i repeats)', async repeats => {
+  it.each([160, 400])('decodes bounded groups lazily and reuses them (%i repeats)', async (repeats) => {
     const values = Array.from({ length: 96 }, (_, index) => `<p data-row="${index}">${'Exact static text 🚘 &amp; \\r\\n '.repeat(repeats)}</p>`)
     const source = `export function item(index) { switch(index) { ${values.map((value, index) => `case ${index}: return String(${JSON.stringify(value)});`).join('')} } }`
     const root = await directory()
     const probe = path.join(root, 'probe.mjs')
     await writeFile(probe, `import { brotliDecompressSync as inflate } from 'node:zlib'; export const sizes = []; export function brotliDecompressSync(value) { const result = inflate(value); sizes.push(result.byteLength); return result; }`)
     const result = compactSsrMarkupSource(source)
-    const module = await evaluate(result.code.replace("'node:zlib'", JSON.stringify(pathToFileURL(probe).href)))
+    const module = await evaluate(result.code.replace('\'node:zlib\'', JSON.stringify(pathToFileURL(probe).href)))
     const { sizes } = await import(pathToFileURL(probe).href)
     expect(sizes).toEqual([])
     expect(module.item(0)).toBe(values[0])

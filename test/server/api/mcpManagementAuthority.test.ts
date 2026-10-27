@@ -128,7 +128,7 @@ describe('ordinary MCP management authority corrections', () => {
           : null
       }
       if (sql.includes('ai_action_audit')) return { n: 0 }
-      if (sql.includes("UPDATE ai_pending_actions SET status='executed'")) return mocks.pending
+      if (sql.includes('UPDATE ai_pending_actions SET status=\'executed\'')) return mocks.pending
       if (sql.includes('INSERT INTO ai_pending_actions')) return { id: PROPOSAL_ID }
       if (sql.includes('FROM media_projects')) return mocks.cachedProject ?? mocks.project
       return null
@@ -165,7 +165,7 @@ describe('ordinary MCP management authority corrections', () => {
   })
 
   function reverted(): boolean {
-    return mocks.execute.mock.calls.some(([sql]) => typeof sql === 'string' && sql.includes("SET status='proposed'"))
+    return mocks.execute.mock.calls.some(([sql]) => typeof sql === 'string' && sql.includes('SET status=\'proposed\''))
   }
 
   it('refuses a banner proposal while the banner suite is off even though another suite projects confirm_action', async () => {
@@ -176,7 +176,7 @@ describe('ordinary MCP management authority corrections', () => {
     mocks.pending = { tool_name: 'banner_render', resolved_payload: { projectId: PROJECT_ID } }
     await expect(call('confirm_action', { proposalId: PROPOSAL_ID }))
       .resolves.toMatchObject({ ok: false, code: 'disabled' })
-    expect(sqlSeen("UPDATE ai_pending_actions SET status='executed'")).toBe(true)
+    expect(sqlSeen('UPDATE ai_pending_actions SET status=\'executed\'')).toBe(true)
     expect(mocks.bannerConfirm).not.toHaveBeenCalled()
     expect(reverted()).toBe(true)
 

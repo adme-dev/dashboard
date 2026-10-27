@@ -5,7 +5,7 @@ export type ScheduleMode = 'now' | 'schedule' | 'queue'
 export interface ComposerState {
   reviewPolicy: string
   publishTargets: SocialPublishTarget[]
-  mediaAssets: Array<{kind:'banner_asset'|'video_asset',id:string}>
+  mediaAssets: Array<{ kind: 'banner_asset' | 'video_asset', id: string }>
   mediaIdentities: SocialMediaAssetIdentity[]
   mediaPreviewUrls: string[]
   id: string | null
@@ -123,7 +123,7 @@ export function syncComposerTargets(
   accounts: ComposerAccount[]
 ): SocialPublishTarget[] {
   const byId = activeAccountById(accounts)
-  return [...new Set(accountIds)].flatMap(accountId => {
+  return [...new Set(accountIds)].flatMap((accountId) => {
     const account = byId.get(accountId)
     if (!account || !platforms.includes(account.platform)) return []
     const existing = targets.find(target => target.accountId === accountId && target.platform === account.platform)
@@ -177,7 +177,7 @@ export function useSocialComposer() {
     state.value = emptyComposerState()
   }
 
-  function loadFromPost(post: SocialPost & {media_identities?:SocialMediaAssetIdentity[],media_preview_urls?:string[]}) {
+  function loadFromPost(post: SocialPost & { media_identities?: SocialMediaAssetIdentity[], media_preview_urls?: string[] }) {
     const creativeId = post.metadata?.creativeId
     state.value = {
       reviewPolicy: post.review_policy ?? 'legacy',
@@ -212,7 +212,7 @@ export function useSocialComposer() {
   }
 
   const resolved = (platform: string) => state.value.reviewPolicy === 'delegated_marketing'
-    ? {...resolveComposerContent(state.value, platform), mediaUrls:state.value.mediaPreviewUrls}
+    ? { ...resolveComposerContent(state.value, platform), mediaUrls: state.value.mediaPreviewUrls }
     : resolveComposerContent(state.value, platform)
   const toBody = (clientId: string) => composerToBody(state.value, clientId)
 

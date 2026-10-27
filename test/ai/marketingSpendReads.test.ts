@@ -1,8 +1,10 @@
 import { expect, it, vi } from 'vitest'
+import { readSpendSummary } from '../../server/utils/ai/marketing/spendReads'
+
 const db = vi.hoisted(() => ({ queryOneFresh: vi.fn(), queryRowsFresh: vi.fn(async () => []) }))
 vi.mock('~~/server/utils/db', () => db)
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: vi.fn() }))
-import { readSpendSummary } from '../../server/utils/ai/marketing/spendReads'
+
 it('pacing_groups_only_assigned_rows_and_never_reads_finance_or_jobs', async () => {
   const result = await readSpendSummary({ clientIds: ['a'], permissionGroups: [], reportingGranted: true } as any, { month: 10, year: 2026 })
   expect(result.projection).toBe('marketing')

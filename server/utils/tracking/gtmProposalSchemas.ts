@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { GtmChangesSchema } from './gtmTypedChanges'
+
 const UUID = z.string().uuid()
 const base = { siteId: UUID, ownershipEvidenceId: UUID }
 export const GtmProposalInput = z.discriminatedUnion('action', [

@@ -153,7 +153,8 @@ export async function resolveSocialAccountAccessToken({
   const metadata: Record<string, unknown> = {}
   if (account.platform === 'tiktok' || refreshSeconds !== undefined) {
     metadata.refreshTokenExpiresAt = Number.isFinite(refreshSeconds) && refreshSeconds! >= 0
-      ? new Date(now() + refreshSeconds! * 1000).toISOString() : null
+      ? new Date(now() + refreshSeconds! * 1000).toISOString()
+      : null
   }
   if (account.platform === 'tiktok' || account.platform === 'linkedin') metadata.grantedScopes = (refreshed.scope ?? '').split(/[ ,]+/).filter(Boolean)
   const refreshToken = refreshed.refresh_token || account.refresh_token

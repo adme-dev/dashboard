@@ -394,7 +394,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       ...(priorPeriod ? { previousPeriod: priorPeriod } : {}),
       ...(comparisonStatus ? { comparisonStatus } : {}),
       source: 'synced_campaign_analytics',
-        coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
+      coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
       halted: false,
       ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),

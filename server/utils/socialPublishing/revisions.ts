@@ -205,7 +205,7 @@ export function buildSocialPostSnapshot(
   const policy = reviewPolicyOf(post)
   const targets = arrayValue<Record<string, unknown>>(post.publish_targets)
     .filter(target => typeof target?.platform === 'string' && typeof target?.accountId === 'string')
-    .map(target => {
+    .map((target) => {
       const options = objectValue(target.options)
       return Object.keys(options).length
         ? { platform: String(target.platform), accountId: String(target.accountId), options }
@@ -596,9 +596,9 @@ async function recordRevisionAudit(db: SocialTxDb, input: {
 // ---------------------------------------------------------------------------------------------------
 // Read projections
 
-export type SocialPostWorkflowStatus =
-  | 'draft' | 'awaiting_client' | 'awaiting_review' | 'rejected' | 'approved' | 'scheduled'
-  | 'publishing' | 'accepted' | 'published' | 'partially_published' | 'failed' | 'unknown' | 'cancelled'
+export type SocialPostWorkflowStatus
+  = | 'draft' | 'awaiting_client' | 'awaiting_review' | 'rejected' | 'approved' | 'scheduled'
+    | 'publishing' | 'accepted' | 'published' | 'partially_published' | 'failed' | 'unknown' | 'cancelled'
 
 export function socialWorkflowStatus(
   post: { status: string, client_approval_status?: string | null, metadata?: unknown, rejection_reason?: string | null },

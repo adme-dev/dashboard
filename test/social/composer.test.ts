@@ -108,7 +108,6 @@ describe('approved composer payload integrity', () => {
   })
 })
 
-
 describe('complete authoritative selected targets', () => {
   const accounts = [
     { id: 'fb', platform: 'facebook' as const, is_active: true },
@@ -130,7 +129,7 @@ describe('complete authoritative selected targets', () => {
       { platform: 'tiktok', accountId: 'new-tt', options: { consent: false } }
     ])
   })
-  it.each(['legacy', 'delegated_marketing'])('refuses a partial explicit target set before saving or treating it as approved: %s', reviewPolicy => {
+  it.each(['legacy', 'delegated_marketing'])('refuses a partial explicit target set before saving or treating it as approved: %s', (reviewPolicy) => {
     const state = { ...emptyComposerState(), reviewPolicy, id: 'saved', platforms: ['facebook' as const, 'linkedin' as const], accountIds: ['fb', 'li'], publishTargets: [{ platform: 'facebook' as const, accountId: 'fb' }] }
     expect(() => composerToBody(state, 'client')).toThrow(/selection is still updating/)
     expect(isApprovedComposerUnchanged(state, 'client', 'approved', '{}')).toBe(false)

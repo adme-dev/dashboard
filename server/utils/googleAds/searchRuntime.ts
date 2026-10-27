@@ -1346,7 +1346,7 @@ export async function executeSearchGoogleAdsControlAction(
       clientId: candidate.clientId,
       actorId: candidate.actorId,
       expectedStatus,
-      ...(candidate.reviewPolicy === 'delegated_marketing' ? {executorId:authority.executorId} : {})
+      ...(candidate.reviewPolicy === 'delegated_marketing' ? { executorId: authority.executorId } : {})
     })),
     validate: () => runMutation(true),
     mutate: () => runMutation(false),

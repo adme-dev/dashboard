@@ -156,7 +156,7 @@ export function buildGoogleAdsMcpToolDependencies(
   return {
     listInventory: async (kind, input, context) => {
       if (delegatedAdsContext(context)) {
-        const mapping = await assertGoogleAdsConnection(context,input.clientId,input.connectionId)
+        const mapping = await assertGoogleAdsConnection(context, input.clientId, input.connectionId)
         assertGoogleAdsResourceCustomers(input, mapping.customerId)
       }
       const session = await resolveGoogleAdsControlSession({
@@ -205,15 +205,15 @@ export function buildGoogleAdsMcpToolDependencies(
       }
     },
     resolveAccount: async (input, context) => {
-      const fresh = delegatedAdsContext(context) ? await resolveMcpStaffContext(context.event,context.userId,[...(context.mcpScopes??[])]) : context
-      if (delegatedAdsContext(context) && !(fresh.marketingCapabilities??[]).some(c=>c==='reporting'||c==='ads_plan')) throw new Error('Google Ads capability required')
-      return resolveGoogleAdsAccount({query:input.clientName,aggregate:input.aggregate,
-        activeBindingsOnly:delegatedAdsContext(context),
-        allowedClientIds:delegatedAdsContext(context) ? (fresh.assistantScope?.clientAccessMode==='all_active' ? undefined : fresh.assistantScope?.assignedClientIds??[]) : undefined,
-        ...(context.clientScope ? {clientId:context.clientScope} : {})})
+      const fresh = delegatedAdsContext(context) ? await resolveMcpStaffContext(context.event, context.userId, [...(context.mcpScopes ?? [])]) : context
+      if (delegatedAdsContext(context) && !(fresh.marketingCapabilities ?? []).some(c => c === 'reporting' || c === 'ads_plan')) throw new Error('Google Ads capability required')
+      return resolveGoogleAdsAccount({ query: input.clientName, aggregate: input.aggregate,
+        activeBindingsOnly: delegatedAdsContext(context),
+        allowedClientIds: delegatedAdsContext(context) ? (fresh.assistantScope?.clientAccessMode === 'all_active' ? undefined : fresh.assistantScope?.assignedClientIds ?? []) : undefined,
+        ...(context.clientScope ? { clientId: context.clientScope } : {}) })
     },
     readMeasurementHealth: async (input, context) => {
-      await assertGoogleAdsClientAccess(context,input.clientId)
+      await assertGoogleAdsClientAccess(context, input.clientId)
       const [freshness, reconciliation] = await Promise.all([
         measurementFreshnessRepository.list({ clientId: input.clientId }),
         measurementReconciliationRepository.list({ clientId: input.clientId })
@@ -229,7 +229,7 @@ export function buildGoogleAdsMcpToolDependencies(
       }
     },
     readReconciliation: async (input, context) => {
-      await assertGoogleAdsClientAccess(context,input.clientId)
+      await assertGoogleAdsClientAccess(context, input.clientId)
       const resolution = input.accountQuery
         ? await resolveGoogleAdsAccount({
             query: input.accountQuery,
@@ -251,9 +251,12 @@ export function buildGoogleAdsMcpToolDependencies(
         })
       }
     },
-    readCallSummary: async (input, context) => { await assertGoogleAdsClientAccess(context,input.clientId); return getGoogleAdsCallAnalytics(input) },
+    readCallSummary: async (input, context) => {
+      await assertGoogleAdsClientAccess(context, input.clientId)
+      return getGoogleAdsCallAnalytics(input)
+    },
     readSyncStatus: async (input, context) => {
-      await assertGoogleAdsClientAccess(context,input.clientId)
+      await assertGoogleAdsClientAccess(context, input.clientId)
       const [freshness, jobs] = await Promise.all([
         measurementFreshnessRepository.list({ clientId: input.clientId }),
         queryRows<{
@@ -287,7 +290,7 @@ export function buildGoogleAdsMcpToolDependencies(
       }
     },
     listRecommendations: async (input, context) => {
-      if (delegatedAdsContext(context)) await assertGoogleAdsConnection(context,input.clientId,input.connectionId)
+      if (delegatedAdsContext(context)) await assertGoogleAdsConnection(context, input.clientId, input.connectionId)
       const session = await resolveGoogleAdsControlSession({
         clientId: input.clientId,
         connectionId: input.connectionId

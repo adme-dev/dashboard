@@ -24,7 +24,7 @@ export type LeadCount = { status: string, source: string, count: number }
 export type LeadsDeps = {
   resolveClient: (name: string, ctx: ToolContext) => ReturnType<ResolveClient>
   list: (q: { clientId: string, status?: string, source?: string, fromISO: string, limit: number, offset: number }, ctx: ToolContext) => Promise<{ items: LeadRow[], total: number }>
-  summary: (clientId: string, fromISO: string, ctx: ToolContext, filters?: { status?: string; source?: string }) => Promise<LeadCount[]>
+  summary: (clientId: string, fromISO: string, ctx: ToolContext, filters?: { status?: string, source?: string }) => Promise<LeadCount[]>
 }
 
 const defaultDeps: LeadsDeps = {
@@ -71,8 +71,8 @@ function sumBy(rows: LeadCount[], field: 'status' | 'source'): Record<string, nu
 
 export async function getLeads(args: Args, ctx: ToolContext, deps: LeadsDeps = defaultDeps, now: Date = new Date()): Promise<ToolResult> {
   try {
-  if (!args.summary && !(await resolveMarketingReadScope(ctx)).ownerVerified) return fail('Lead lists are unavailable for ordinary reporting.', 'LEAD_LIST_NOT_AVAILABLE')
-  const client = await deps.resolveClient(args.clientName, ctx)
+    if (!args.summary && !(await resolveMarketingReadScope(ctx)).ownerVerified) return fail('Lead lists are unavailable for ordinary reporting.', 'LEAD_LIST_NOT_AVAILABLE')
+    const client = await deps.resolveClient(args.clientName, ctx)
   if (!client) return fail(`No matching client for "${args.clientName}".`)
   const fromISO = periodSinceISO(args.period as Period, now)
     if (args.summary) {

@@ -3,6 +3,7 @@ import * as api from '~~/server/utils/googleTagManagerClient'
 import { reserveGtmApiQuota } from '~~/server/utils/googleTagManagerStore'
 import { GtmTemplateSchema, compileGtmTemplate } from './gtmTemplateRegistry'
 import { gtmHash } from './gtmOwnership'
+
 export const GtmTypedChangeSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('create'), template: GtmTemplateSchema }),
   z.strictObject({
@@ -29,9 +30,9 @@ function normalized(value: any): any {
   if (Array.isArray(value)) {
     const rows = value.map(normalized)
     if (
-      rows.every((v) => v && typeof v === 'object' && typeof v.key === 'string')
+      rows.every(v => v && typeof v === 'object' && typeof v.key === 'string')
     ) {
-      if (new Set(rows.map((v) => v.key)).size !== rows.length)
+      if (new Set(rows.map(v => v.key)).size !== rows.length)
         throw new Error('Duplicate GTM parameter key')
       return rows.sort((a, b) => a.key.localeCompare(b.key))
     }
@@ -59,15 +60,15 @@ export function assertManagedGtmUpdate(
   const inspectParameter = (p: any) => {
     if (
       Object.keys(p).some(
-        (k) => !['type', 'key', 'value', 'list', 'map'].includes(k)
+        k => !['type', 'key', 'value', 'list', 'map'].includes(k)
       )
     )
       throw new Error('Unreviewed nested GTM parameter')
     for (const nested of [...(p.list ?? []), ...(p.map ?? [])])
       inspectParameter(nested)
     if (
-      p.type === 'map' &&
-      (p.map ?? []).some(
+      p.type === 'map'
+      && (p.map ?? []).some(
         (entry: any) => !['parameter', 'parameterValue'].includes(entry.key)
       )
     )
@@ -147,8 +148,8 @@ export async function executeGtmTypedChanges(
     api.createGtmWorkspace(token, container, { name })
   )
   if (
-    !workspace.path.startsWith(`${container}/workspaces/`) ||
-    !workspace.fingerprint
+    !workspace.path.startsWith(`${container}/workspaces/`)
+    || !workspace.fingerprint
   )
     throw new Error('Invalid workspace receipt')
   const managed: any[] = []
@@ -173,7 +174,7 @@ export async function executeGtmTypedChanges(
           'folders'
         )
       )
-    let update: { path: string; fingerprint: string } | undefined
+    let update: { path: string, fingerprint: string } | undefined
     if (change.action === 'update') {
       const path = `${workspace.path}/${kind}/${change.entityPath.split('/').at(-1)}`
       const current = await call(() => api.getGtmEntity(token, path, kind))
@@ -186,9 +187,9 @@ export async function executeGtmTypedChanges(
       api.writeGtmEntity(token, workspace.path, kind, body, update)
     )
     if (
-      !saved.path ||
-      !saved.fingerprint ||
-      !saved.path.startsWith(`${workspace.path}/${kind}/`)
+      !saved.path
+      || !saved.fingerprint
+      || !saved.path.startsWith(`${workspace.path}/${kind}/`)
     )
       throw new Error('Invalid GTM entity receipt')
     api.assertGtmEntityPath(saved.path, kind)
@@ -212,10 +213,10 @@ export async function executeGtmTypedChanges(
     api.quickPreviewGtmWorkspace(token, workspace.path)
   )
   if (
-    preview.compilerError ||
-    preview.syncStatus?.mergeConflict ||
-    preview.syncStatus?.syncError ||
-    !preview.containerVersion
+    preview.compilerError
+    || preview.syncStatus?.mergeConflict
+    || preview.syncStatus?.syncError
+    || !preview.containerVersion
   )
     throw new Error('GTM compile failed')
   assertGtmOnlyManagedChanges(base, preview.containerVersion, managed)
@@ -223,11 +224,11 @@ export async function executeGtmTypedChanges(
     api.createGtmVersion(token, workspace.path, { name })
   )
   if (
-    version.compilerError ||
-    version.syncStatus?.mergeConflict ||
-    version.syncStatus?.syncError ||
-    !version.containerVersion?.path ||
-    !version.containerVersion.fingerprint
+    version.compilerError
+    || version.syncStatus?.mergeConflict
+    || version.syncStatus?.syncError
+    || !version.containerVersion?.path
+    || !version.containerVersion.fingerprint
   )
     throw new Error('Invalid GTM version receipt')
   const exact = await call(() =>
@@ -293,8 +294,8 @@ export function assertGtmOnlyManagedChanges(
     'zone',
     'client',
     'transformation',
-    ...Object.keys(base).filter((key) => Array.isArray((base as any)[key])),
-    ...Object.keys(version).filter((key) =>
+    ...Object.keys(base).filter(key => Array.isArray((base as any)[key])),
+    ...Object.keys(version).filter(key =>
       Array.isArray((version as any)[key])
     )
   ])
@@ -302,22 +303,22 @@ export function assertGtmOnlyManagedChanges(
     const before: any[] = (base as any)[field] ?? [],
       after: any[] = (version as any)[field] ?? []
     const key = field === 'customTemplate' ? 'templateId' : `${field}Id`
-    const relevant = managed.filter((m) => m.kind.slice(0, -1) === field)
+    const relevant = managed.filter(m => m.kind.slice(0, -1) === field)
     const untouchedBefore = before.filter(
-      (e) => !relevant.some((m) => m.id === e[key])
+      e => !relevant.some(m => m.id === e[key])
     )
     const untouchedAfter = after.filter(
-      (e) => !relevant.some((m) => m.id === e[key])
+      e => !relevant.some(m => m.id === e[key])
     )
     const order = (rows: any[]) =>
       rows.map(clean).sort((a, b) => gtmHash(a).localeCompare(gtmHash(b)))
     if (gtmHash(order(untouchedBefore)) !== gtmHash(order(untouchedAfter)))
       throw new Error('Unreviewed changes in isolated GTM version')
     for (const item of relevant) {
-      const existed = before.some((e) => e[key] === item.id)
+      const existed = before.some(e => e[key] === item.id)
       if (
-        (item.action === 'create' && existed) ||
-        (item.action === 'update' && !existed)
+        (item.action === 'create' && existed)
+        || (item.action === 'update' && !existed)
       )
         throw new Error('GTM managed identity changed')
     }

@@ -2,7 +2,10 @@ import { queryRowsFresh } from '~~/server/utils/db'
 import { clientScopeSql, requireMarketingReadPermission, type MarketingReadScope } from './readScope'
 import { escapeLike } from '../toolContext'
 import type { AdCreativeTextArgs, AdCreativeTextRow } from '../tools/adCreativeText'
-function campaignNameLikePattern(value: string) { return `%${value.trim().split(/\s+/).filter(Boolean).map(escapeLike).join('%')}%` }
+
+function campaignNameLikePattern(value: string) {
+  return `%${value.trim().split(/\s+/).filter(Boolean).map(escapeLike).join('%')}%`
+}
 function scopeConditions(scope: MarketingReadScope, args: AdCreativeTextArgs): { conditions: string[], values: unknown[] } {
   const conditions = [`ms.platform = $1`]
   const values: unknown[] = [args.platform === 'google' ? 'google_ads' : 'meta']
@@ -44,7 +47,7 @@ export async function readCreativeText(scope: MarketingReadScope, args: AdCreati
   )
 }
 export async function findScopedUnsyncedCreatives(scope: MarketingReadScope, args: AdCreativeTextArgs) {
-requireMarketingReadPermission(scope, 'creatives')
+  requireMarketingReadPermission(scope, 'creatives')
   const { conditions, values } = scopeConditions(scope, args)
   values.push(20)
   const rows = await queryRowsFresh<{ id: string }>(

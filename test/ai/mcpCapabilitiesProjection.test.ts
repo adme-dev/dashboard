@@ -70,7 +70,7 @@ describe('get_capabilities parity for management MCP staff', () => {
     expect(reported).not.toContain('confirm_action')
     expect(reported.some(name => name.startsWith('propose_'))).toBe(false)
   })
-  it.each(['MANAGEMENT', 'ADMIN'] as const)('keeps %s granted staff suites in read and write catalog parity with validated local mutation modes', async group => {
+  it.each(['MANAGEMENT', 'ADMIN'] as const)('keeps %s granted staff suites in read and write catalog parity with validated local mutation modes', async (group) => {
     for (const capability of ['social_draft', 'ads_plan', 'tracking_plan'] as const) {
       for (const write of [false, true]) {
         const ctx = managementCtx([group, 'CREATIVE', 'MEDIA_BUYING'], { MCP_WRITE_TOOLS_ENABLED: 'true', GOOGLE_ADS_MCP_READ_ENABLED: 'true', GOOGLE_ADS_MCP_WRITE_ENABLED: 'true' }, write ? ['mcp:read', 'mcp:write'] : ['mcp:read'])
@@ -120,5 +120,4 @@ describe('get_capabilities parity for management MCP staff', () => {
     expect(() => projectStaffOnlyMcpTools(ctx, suite([{ ...descriptor, tool: { ...descriptor.tool, parameters: z.object({ other: z.string() }) } }]))).toThrow('schema conflicts')
     expect(() => projectStaffOnlyMcpTools(ctx, suite([{ ...descriptor, executionClass: 'external-provider' }]))).toThrow('only execute locally')
   })
-
 })

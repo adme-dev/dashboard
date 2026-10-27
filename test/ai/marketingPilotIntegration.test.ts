@@ -6,21 +6,28 @@ import { adCreativeTextTool } from '../../server/utils/ai/tools/adCreativeText'
 import { searchTermsTool } from '../../server/utils/ai/tools/searchTerms'
 import { adspendTool } from '../../server/utils/ai/tools/adspend'
 import { socialTool } from '../../server/utils/ai/tools/social'
+
 export const cases = [
   [campaignBreakdownTool, { clientName: 'Client A', startDate: '2026-10-01', endDate: '2026-10-27' }, 'A campaign'],
   [adBreakdownTool, { clientName: 'Client A', startDate: '2026-10-01', endDate: '2026-10-27' }, 'A ad'],
   [adCreativeTextTool, { clientId: A, platform: 'meta' }, 'A headline'],
   [searchTermsTool, { campaignId: 'same', clientName: 'Client A', startDate: '2026-10-01', endDate: '2026-10-27' }, 'A term'],
   [adspendTool, { clientName: 'Client A' }, 'Client A'],
-  [socialTool, { clientName: 'Client A' }, 'A content'],
+  [socialTool, { clientName: 'Client A' }, 'A content']
 ] as const
-beforeEach(() => { resetHarness(); vi.useFakeTimers(); vi.setSystemTime(new Date(fixture.now)) })
+beforeEach(() => {
+  resetHarness()
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date(fixture.now))
+})
 afterEach(() => vi.useRealTimers())
 it.each(cases)('actual registered $0.name default adapter reads A and never B', async (tool, args, expected) => {
   const result = await tool.handler(tool.parameters.parse(args) as never, fixture.context)
   expect(result.ok).toBe(true)
   const json = JSON.stringify(result)
-  expect(json).toContain(expected); expect(json).not.toContain(B); expect(json).not.toContain('Forbidden B')
+  expect(json).toContain(expected)
+  expect(json).not.toContain(B)
+  expect(json).not.toContain('Forbidden B')
   expectNoSideEffects()
 })
 it('revoked_assignment_changes_next_route_and_tool_call', async () => {
@@ -39,14 +46,16 @@ it('same_client_two_accounts_one_lead_marks_campaign_attribution_ambiguous', asy
   expect(result.data.campaigns[0]).toMatchObject({ leadCount: null, costPerLead: null, accountLeadAttribution: { status: 'ambiguous' } })
   expect(result.data.leadAttribution.totalSubmissions).toBe(1)
 })
-it.each(['current', 'prior'])('missing %s snapshot window halts without a zero baseline', async window => {
-  fixture.missing = window === 'current'; fixture.priorMissing = window === 'prior'
+it.each(['current', 'prior'])('missing %s snapshot window halts without a zero baseline', async (window) => {
+  fixture.missing = window === 'current'
+  fixture.priorMissing = window === 'prior'
   const result: any = await adBreakdownTool.handler(adBreakdownTool.parameters.parse({ campaignId: 'same', startDate: '2026-10-01', endDate: '2026-10-27', comparePrevious: true }), fixture.context)
   expect(result.data).toMatchObject({ halted: true, affectedWindow: window, ads: [], haltReason: 'missing_campaign_snapshots' })
   expectNoSideEffects()
 })
 it('truncated_mixed_snapshot_selection_halts_and_retains_truncation', async () => {
-  fixture.targets = 21; fixture.partialCurrent = true
+  fixture.targets = 21
+  fixture.partialCurrent = true
   const result: any = await adBreakdownTool.handler(adBreakdownTool.parameters.parse({ campaignId: 'same' }), fixture.context)
   expect(result.data).toMatchObject({ halted: true, truncatedAtSource: true, ads: [], snapshotCoverage: { current: { selectedTargetCount: 20, missingTargetCount: 1 } } })
 })
@@ -55,8 +64,10 @@ it('ambiguous_account_attribution_suppresses_cpl_and_fatigue', async () => {
   const result: any = await adBreakdownTool.handler(adBreakdownTool.parameters.parse({ campaignId: 'same' }), fixture.context)
   expect(result.data.ads[0]).toMatchObject({ leadCount: null, costPerLead: null, fatigueSignals: [], accountLeadAttribution: { status: 'ambiguous' } })
 })
-it.each(['current', 'prior'])('truncated_mixed_snapshot_selection_halts_and_retains_truncation %s', async window => {
-  fixture.targets = 21; fixture.partialCurrent = window === 'current'; fixture.partialPrior = window === 'prior'
+it.each(['current', 'prior'])('truncated_mixed_snapshot_selection_halts_and_retains_truncation %s', async (window) => {
+  fixture.targets = 21
+  fixture.partialCurrent = window === 'current'
+  fixture.partialPrior = window === 'prior'
   const result: any = await adBreakdownTool.handler(adBreakdownTool.parameters.parse({ campaignId: 'same', startDate: '2026-10-01', endDate: '2026-10-27', comparePrevious: true }), fixture.context)
   expect(result.data).toMatchObject({ halted: true, affectedWindow: window, truncatedAtSource: true, ads: [] })
   expect(result.data.snapshotCoverage[window]).toMatchObject({ selectedTargetCount: 20, missingTargetCount: 1, truncatedAtSource: true })
@@ -82,7 +93,10 @@ it('prior_window_only_contains_requested_client_and_b_only_prior_data_does_not_s
   expect(result.data.comparisonStatus).toBe('no_baseline')
   const periodQueries = fixture.queryRowsFresh.mock.calls.filter(([sql]) => sql.includes('FROM campaigns c'))
   expect(periodQueries).toHaveLength(2)
-  for (const [sql, params] of periodQueries) { expect(sql).toMatch(/ms.client_id = \$\d/); expect(params).toContain(A) }
+  for (const [sql, params] of periodQueries) {
+    expect(sql).toMatch(/ms.client_id = \$\d/)
+    expect(params).toContain(A)
+  }
 })
 it('same_name_same_campaign_across_accounts_keeps_separate_comparisons', async () => {
   fixture.accounts = 2
@@ -90,7 +104,7 @@ it('same_name_same_campaign_across_accounts_keeps_separate_comparisons', async (
   expect(result.data.campaigns.map((row: any) => row.comparison.spendDelta).sort((a: number, b: number) => a - b)).toEqual([90, 180])
 })
 
-it.each([A, B])('client overview reveals parent only when the parent itself is authorized: %s', async parentId => {
+it.each([A, B])('client overview reveals parent only when the parent itself is authorized: %s', async (parentId) => {
   fixture.parentClientId = parentId
   const { clientOverviewTool } = await import('../../server/utils/ai/tools/clients')
   const result: any = await clientOverviewTool.handler(clientOverviewTool.parameters.parse({ clientName: 'Client A' }), fixture.context)

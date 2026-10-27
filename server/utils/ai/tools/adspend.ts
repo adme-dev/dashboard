@@ -43,7 +43,7 @@ export type PacingCampaign = {
 export type AdspendDeps = {
   loadCoverageDeltas?: (ctx: ToolContext) => Promise<Record<string, unknown> | null>
 
-  pacing: (ctx: ToolContext, query?: { clientId?: string; clientName?: string; platform?: string }) => Promise<PacingCampaign[]>
+  pacing: (ctx: ToolContext, query?: { clientId?: string, clientName?: string, platform?: string }) => Promise<PacingCampaign[]>
   now?: () => Date
 }
 
@@ -78,7 +78,7 @@ export function projectPacingCampaign(it: any, now: Date): PacingCampaign {
     const rawPlatform = String(it?.platform ?? '')
     const platform: 'meta' | 'google' = rawPlatform.startsWith('google') ? 'google' : 'meta'
     return {
-      clientId: String(it?.groupKey ?? '').split(':client:')[1],
+    clientId: String(it?.groupKey ?? '').split(':client:')[1],
       client: String(it?.clientName ?? 'Unknown'),
       platform,
       spend,
@@ -201,7 +201,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
     return ok({
       period: currentPeriod(),
       source: 'synced_ad_platform_spend',
-        coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
+      coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
       halted: false,
       basis: {
         pacePct: `spend ÷ expected-to-date × 100, where expected-to-date = budget × (elapsedDays ÷ days in month); underpacing < ${UNDERPACE_PCT}, overpacing > ${OVERPACE_PCT}`,

@@ -259,7 +259,8 @@ export function effectiveSocialPayloadError(
 /** Exact, stable attestation identity; consent itself is excluded to avoid a self-reference. */
 export function tikTokConsentIdentity(target: Pick<EffectiveSocialTarget, 'accountId' | 'content' | 'options'>, media: readonly unknown[]): string {
   const { consent: _consent, consentPayload: _binding, ...options } = target.options
-  const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical)
-    : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])) : value
-  return JSON.stringify(canonical({v:1,accountId:target.accountId,content:target.content,media,options}))
+  const canonical = (value: any): any => Array.isArray(value)
+    ? value.map(canonical)
+    : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value
+  return JSON.stringify(canonical({ v: 1, accountId: target.accountId, content: target.content, media, options }))
 }

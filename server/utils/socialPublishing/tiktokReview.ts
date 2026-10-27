@@ -14,7 +14,7 @@ export async function validateTikTokReviewedTargets(event: H3Event, clientId: st
   for (const target of selected) {
     const account = accounts.find(a => a.id === target.accountId)
     if (!account) throw createError({ statusCode: 409, statusMessage: 'TikTok account changed; reconnect and review again' })
-    if (target.options.consentAccountId !== account.platform_account_id) throw createError({statusCode:409,statusMessage:'TikTok account changed; renew consent'})
+    if (target.options.consentAccountId !== account.platform_account_id) throw createError({ statusCode: 409, statusMessage: 'TikTok account changed; renew consent' })
     const token = await refreshableAccessToken(account, true, event)
     const creator = await queryTikTokCreatorPostCapabilities(token)
     const error = tikTokPayloadError(target.content, media, target.options, creator)

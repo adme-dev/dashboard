@@ -12,6 +12,21 @@ import {
   task4Pool,
   resetTask4Schema
 } from '../../helpers/marketingTask4Postgres'
+import { executeGoogleAdsSearchPlanningTool } from '../../../server/utils/ai/mcp/googleAdsSearchTools'
+import { resolveGtmAccessToken, reserveGtmApiQuota } from '../../../server/utils/googleTagManagerStore'
+import { resolveGoogleAdsAccount } from '../../../server/utils/googleAds/accountResolution'
+import { planSearchGoogleAdsControlAction } from '../../../server/utils/googleAds/searchRuntime'
+import { executeReviewedGoogleAdsPlan, reviewGoogleAdsPlan } from '../../../server/utils/googleAds/staffReview'
+import { assertGoogleAdsConnection } from '../../../server/utils/ai/marketing/googleAdsAccess'
+import { createGoogleAdsActionPlan } from '../../../server/utils/googleAds/actionStore'
+import {
+  createGtmChangeProposal,
+  reviewGtmChangeProposal,
+  executeApprovedGtmProposal,
+  getGtmChangeProposal
+} from '../../../server/utils/tracking/gtmProposals'
+import { recordGtmOwnership } from '../../../server/utils/tracking/gtmOwnership'
+
 const state = vi.hoisted(() => ({
   pool: null as any,
   replayBarrier: null as null | (() => Promise<void>),
@@ -32,7 +47,7 @@ const state = vi.hoisted(() => ({
   adsMutations: 0,
   adsValidations: 0
 }))
-vi.mock('h3', async (original) => ({
+vi.mock('h3', async original => ({
   ...(await original<any>()),
   getRequestURL: () => new URL(state.origin)
 }))
@@ -70,21 +85,22 @@ vi.mock('../../../server/utils/db', () => ({
   }
 }))
 vi.mock('../../../server/utils/googleTagManagerStore', async (original) => {
- const real = await original<any>()
- return ({
-  resolveGtmAccessToken: vi.fn(async () => {
-    state.providerCalls++
-    return {
-      token: 'test',
-      scopes: [
-        'https://www.googleapis.com/auth/tagmanager.edit.containers',
-        'https://www.googleapis.com/auth/tagmanager.edit.containerversions',
-        'https://www.googleapis.com/auth/tagmanager.publish'
-      ]
-    }
-  }),
-  reserveGtmApiQuota: vi.fn(async (count: number) => { if (state.realQuota) await real.reserveGtmApiQuota(count) })
-})})
+  const real = await original<any>()
+  return ({
+    resolveGtmAccessToken: vi.fn(async () => {
+      state.providerCalls++
+      return {
+        token: 'test',
+        scopes: [
+          'https://www.googleapis.com/auth/tagmanager.edit.containers',
+          'https://www.googleapis.com/auth/tagmanager.edit.containerversions',
+          'https://www.googleapis.com/auth/tagmanager.publish'
+        ]
+      }
+    }),
+    reserveGtmApiQuota: vi.fn(async (count: number) => { if (state.realQuota) await real.reserveGtmApiQuota(count) })
+  })
+})
 vi.mock(
   '../../../server/utils/googleTagManagerClient',
   async (importOriginal) => {
@@ -94,9 +110,9 @@ vi.mock(
       accountId: '1',
       containerId: '2',
       containerVersionId: id,
-      tag: id === '4' ? [...state.typedEntities.filter(e=>e.kind==='tags').map(e=>e.entity), ...(state.installTag ? [state.installTag] : [])] : [],
+      tag: id === '4' ? [...state.typedEntities.filter(e => e.kind === 'tags').map(e => e.entity), ...(state.installTag ? [state.installTag] : [])] : [],
       trigger: id === '4' && state.installTrigger ? [state.installTrigger] : [],
-      folder: id === '4' ? state.typedEntities.filter(e=>e.kind==='folders').map(e=>e.entity) : []
+      folder: id === '4' ? state.typedEntities.filter(e => e.kind === 'folders').map(e => e.entity) : []
     })
     return {
       ...(await importOriginal<any>()),
@@ -130,10 +146,10 @@ vi.mock(
           state.entity = {
             ...body,
             path: `${workspace}/${kind}/${id}`,
-            [`${kind.slice(0,-1)}Id`]: id,
+            [`${kind.slice(0, -1)}Id`]: id,
             fingerprint: `entity${id}`
           }
-          state.typedEntities.push({kind,entity:state.entity})
+          state.typedEntities.push({ kind, entity: state.entity })
           return state.entity
         }
       ),
@@ -161,8 +177,9 @@ vi.mock(
       }),
       getGtmEntity: vi.fn(async (_t: string, path: string) =>
         state.typedEntities.find(e => e.entity.path === path)?.entity
-          ?? (path.endsWith('/triggers/10') ? state.installTrigger
-            : path.endsWith('/tags/11') ? state.installTag : state.entity)
+        ?? (path.endsWith('/triggers/10')
+          ? state.installTrigger
+          : path.endsWith('/tags/11') ? state.installTag : state.entity)
       ),
       getGtmWorkspaceStatus: vi.fn(async () => ({})),
       quickPreviewGtmWorkspace: vi.fn(async () => ({
@@ -182,7 +199,7 @@ vi.mock(
     }
   }
 )
-vi.mock('../../../server/utils/measurement/reconciliationRepository', () => ({ measurementReconciliationRepository: { list: vi.fn(async () => ({items:[],summary:{}})) } }))
+vi.mock('../../../server/utils/measurement/reconciliationRepository', () => ({ measurementReconciliationRepository: { list: vi.fn(async () => ({ items: [], summary: {} })) } }))
 vi.mock('../../../server/utils/googleAds/controlSession', () => ({
   resolveGoogleAdsControlSession: vi.fn(async (input: any) => ({
     connection: {
@@ -194,7 +211,7 @@ vi.mock('../../../server/utils/googleAds/controlSession', () => ({
     auth: { accessToken: 'test', developerToken: 'test' }
   }))
 }))
-vi.mock('../../../server/utils/googleAds/searchState', async (original) => ({
+vi.mock('../../../server/utils/googleAds/searchState', async original => ({
   ...(await original<any>()),
   loadSearchGoogleAdsCurrentState: vi.fn(async () => ({
     resourceName: 'customers/123/campaigns/1',
@@ -205,7 +222,7 @@ vi.mock('../../../server/utils/googleAds/searchState', async (original) => ({
     status: state.adsStatus
   }))
 }))
-vi.mock('../../../server/utils/googleAds/mutate', async (original) => ({
+vi.mock('../../../server/utils/googleAds/mutate', async original => ({
   ...(await original<any>()),
   mutateGoogleAds: vi.fn(async (input: any) => {
     if (input.validateOnly) state.adsValidations++
@@ -220,21 +237,7 @@ vi.mock('../../../server/utils/googleAds/mutate', async (original) => ({
     }
   })
 }))
-import { executeGoogleAdsSearchPlanningTool } from '../../../server/utils/ai/mcp/googleAdsSearchTools'
-import { resolveGtmAccessToken, reserveGtmApiQuota } from '../../../server/utils/googleTagManagerStore'
-import { resolveGoogleAdsAccount } from '../../../server/utils/googleAds/accountResolution'
-import { planSearchGoogleAdsControlAction } from '../../../server/utils/googleAds/searchRuntime'
-import { executeReviewedGoogleAdsPlan } from '../../../server/utils/googleAds/staffReview'
-import { assertGoogleAdsConnection } from '../../../server/utils/ai/marketing/googleAdsAccess'
-import { createGoogleAdsActionPlan } from '../../../server/utils/googleAds/actionStore'
-import { reviewGoogleAdsPlan } from '../../../server/utils/googleAds/staffReview'
-import {
-  createGtmChangeProposal,
-  reviewGtmChangeProposal,
-  executeApprovedGtmProposal,
-  getGtmChangeProposal
-} from '../../../server/utils/tracking/gtmProposals'
-import { recordGtmOwnership } from '../../../server/utils/tracking/gtmOwnership'
+
 const C = '11111111-1111-4111-8111-111111111111',
   D = '22222222-2222-4222-8222-222222222222',
   U = '33333333-3333-4333-8333-333333333333',
@@ -362,15 +365,15 @@ suite('Task4 real SQL review boundaries', () => {
       [U, C]
     )
     await state.pool.query(
-      "INSERT INTO social_connections(id,client_id,account_id,platform,status) VALUES($1,$2,'123','google','active')",
+      'INSERT INTO social_connections(id,client_id,account_id,platform,status) VALUES($1,$2,\'123\',\'google\',\'active\')',
       [CON, C]
     )
     await state.pool.query(
-      "INSERT INTO google_ads_account_bindings(client_id,connection_id,operating_customer_id,account_role) VALUES($1,$2,'123','dealer')",
+      'INSERT INTO google_ads_account_bindings(client_id,connection_id,operating_customer_id,account_role) VALUES($1,$2,\'123\',\'dealer\')',
       [C, CON]
     )
     await state.pool.query(
-      "INSERT INTO tracking_sites(id,client_id,name,allowed_origins) VALUES($1,$2,'Test',ARRAY['https://example.test'])",
+      'INSERT INTO tracking_sites(id,client_id,name,allowed_origins) VALUES($1,$2,\'Test\',ARRAY[\'https://example.test\'])',
       [SITE, C]
     )
     await state.pool.query(
@@ -378,11 +381,11 @@ suite('Task4 real SQL review boundaries', () => {
       [GTM]
     )
     await state.pool.query(
-      "INSERT INTO gtm_connections(id,google_credential_profile_id,google_subject,google_email,connected_by) VALUES($1,$1,'subject','test@example.test',$2)",
+      'INSERT INTO gtm_connections(id,google_credential_profile_id,google_subject,google_email,connected_by) VALUES($1,$1,\'subject\',\'test@example.test\',$2)',
       [GTM, A]
     )
     await state.pool.query(
-      "INSERT INTO gtm_container_bindings(tracking_site_id,connection_id,account_path,account_name,container_path,container_public_id,container_name,bound_by) VALUES($1,$2,'accounts/1','test','accounts/1/containers/2','GTM-TEST','Test',$3)",
+      'INSERT INTO gtm_container_bindings(tracking_site_id,connection_id,account_path,account_name,container_path,container_public_id,container_name,bound_by) VALUES($1,$2,\'accounts/1\',\'test\',\'accounts/1/containers/2\',\'GTM-TEST\',\'Test\',$3)',
       [SITE, GTM, A]
     )
     state.realQuota = false
@@ -422,7 +425,7 @@ suite('Task4 real SQL review boundaries', () => {
     await createGoogleAdsActionPlan(plan())
     await expect(
       state.pool.query(
-        "UPDATE google_ads_action_plans SET review_policy='legacy' WHERE id=$1",
+        'UPDATE google_ads_action_plans SET review_policy=\'legacy\' WHERE id=$1',
         [PLAN]
       )
     ).rejects.toThrow('immutable')
@@ -448,7 +451,7 @@ suite('Task4 real SQL review boundaries', () => {
         })
       )
     )
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1)
     expect(
       (
         await state.pool.query(
@@ -486,7 +489,7 @@ suite('Task4 real SQL review boundaries', () => {
     ).toBe('0')
     await expect(
       state.pool.query(
-        "UPDATE gtm_change_proposals SET desired_state='{}' WHERE id=$1",
+        'UPDATE gtm_change_proposals SET desired_state=\'{}\' WHERE id=$1',
         [proposal.id]
       )
     ).rejects.toThrow('immutable')
@@ -584,7 +587,7 @@ suite('Task4 real SQL review boundaries', () => {
         })
       )
     )
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1)
     expect(state.publishes).toBe(1)
     const saved = await getGtmChangeProposal(ctx(), publish.id)
     expect(saved.status).toBe('verified')
@@ -764,9 +767,9 @@ suite('Task4 real SQL review boundaries', () => {
       )
     )
     const completed = results
-      .filter((r) => r.status === 'fulfilled')
-      .map((r) => (r as any).value)
-    expect(completed.some((r) => r.ok === true)).toBe(true)
+      .filter(r => r.status === 'fulfilled')
+      .map(r => (r as any).value)
+    expect(completed.some(r => r.ok === true)).toBe(true)
     expect(state.adsMutations).toBe(1)
     expect(state.adsValidations).toBe(1)
     expect(
@@ -817,7 +820,7 @@ suite('Task4 real SQL review boundaries', () => {
       'binding2'
     )
     await state.pool.query(
-      "UPDATE gtm_container_bindings SET container_path='accounts/1/containers/99' WHERE tracking_site_id=$1",
+      'UPDATE gtm_container_bindings SET container_path=\'accounts/1/containers/99\' WHERE tracking_site_id=$1',
       [SITE]
     )
     state.providerCalls = 0
@@ -831,8 +834,8 @@ suite('Task4 real SQL review boundaries', () => {
     expect(state.providerCalls).toBe(0)
   })
   it('rejects a changed reviewed installer binding before loading credentials', async () => {
-    const installer =
-      await import('../../../server/utils/googleTagManagerInstaller')
+    const installer
+      = await import('../../../server/utils/googleTagManagerInstaller')
     await expect(
       installer.installXeroFlowViaGtm(event, {
         siteId: SITE,
@@ -888,8 +891,8 @@ suite('Task4 real SQL review boundaries', () => {
       source_proposal_id: p.id,
       status: 'versioned'
     })
-    const installer =
-      await import('../../../server/utils/googleTagManagerInstaller')
+    const installer
+      = await import('../../../server/utils/googleTagManagerInstaller')
     const change = (
       await state.pool.query(
         'SELECT id FROM gtm_change_sets WHERE source_proposal_id=$1',
@@ -912,7 +915,7 @@ suite('Task4 real SQL review boundaries', () => {
     return { p, own }
   }
   async function held() {
-    return (await state.pool.query("SELECT metadata->>'reviewedExecution' AS hold FROM gtm_connections WHERE id=$1", [GTM])).rows[0].hold
+    return (await state.pool.query('SELECT metadata->>\'reviewedExecution\' AS hold FROM gtm_connections WHERE id=$1', [GTM])).rows[0].hold
   }
   const executeProposal = (p: any) => executeApprovedGtmProposal(ctx(A), { proposalId: p.id, expectedHash: p.request_hash })
   it('I1 rejects a publication between compilation and publish proposal creation', async () => {
@@ -922,174 +925,176 @@ suite('Task4 real SQL review boundaries', () => {
     await expect(createGtmChangeProposal(ctx(), { siteId: SITE, ownershipEvidenceId: own.id, action: 'publish', sourceProposalId: p.id }, 'stale-publish')).rejects.toMatchObject({ statusCode: 409 })
     expect(state.publishes).toBe(0)
   })
-  it.each(['publish','rollback'])('I2 rejects cross-client %s source before credential or quota', async (action) => {
-    const { p, own } = await prepare()
+  it.each(['publish', 'rollback'])('I2 rejects cross-client %s source before credential or quota', async (action) => {
+    const { p } = await prepare()
     // Source is real but now scoped to another client; authorization must finish before token/quota.
     await state.pool.query('UPDATE tracking_sites SET client_id=$1 WHERE id=$2', [D, SITE])
     const otherSite = '99999999-9999-4999-8999-999999999999'
-    await state.pool.query("INSERT INTO tracking_sites(id,client_id,name,allowed_origins) VALUES($1,$2,'Other',ARRAY['https://example.test'])", [otherSite,C])
-    await state.pool.query("INSERT INTO gtm_container_bindings(tracking_site_id,connection_id,account_path,account_name,container_path,container_public_id,container_name,bound_by) VALUES($1,$2,'accounts/1','test','accounts/1/containers/99','GTM-TEST','Test',$3)",[otherSite,GTM,A])
-    const otherOwn = await recordGtmOwnership(ctx(), {siteId:otherSite,evidence}, 'other-own')
-    vi.mocked(resolveGtmAccessToken).mockClear(); vi.mocked(reserveGtmApiQuota).mockClear()
-    await expect(createGtmChangeProposal(ctx(), {siteId:otherSite,ownershipEvidenceId:otherOwn.id,action,sourceProposalId:p.id}, 'wrong-source')).rejects.toThrow()
+    await state.pool.query('INSERT INTO tracking_sites(id,client_id,name,allowed_origins) VALUES($1,$2,\'Other\',ARRAY[\'https://example.test\'])', [otherSite, C])
+    await state.pool.query('INSERT INTO gtm_container_bindings(tracking_site_id,connection_id,account_path,account_name,container_path,container_public_id,container_name,bound_by) VALUES($1,$2,\'accounts/1\',\'test\',\'accounts/1/containers/99\',\'GTM-TEST\',\'Test\',$3)', [otherSite, GTM, A])
+    const otherOwn = await recordGtmOwnership(ctx(), { siteId: otherSite, evidence }, 'other-own')
+    vi.mocked(resolveGtmAccessToken).mockClear()
+    vi.mocked(reserveGtmApiQuota).mockClear()
+    await expect(createGtmChangeProposal(ctx(), { siteId: otherSite, ownershipEvidenceId: otherOwn.id, action, sourceProposalId: p.id }, 'wrong-source')).rejects.toThrow()
     expect(resolveGtmAccessToken).not.toHaveBeenCalled()
     expect(reserveGtmApiQuota).not.toHaveBeenCalled()
   })
   it.each([0, 15])('I3 reserves the whole operation with %i existing requests before any write', async (used) => {
     state.realQuota = true
     if (used) await reserveGtmApiQuota(used)
-    const own = await recordGtmOwnership(ctx(), {siteId:SITE,evidence}, 'ownership')
-    const p = await createGtmChangeProposal(ctx(), {siteId:SITE,ownershipEvidenceId:own.id,action:'workspace',changes:Array.from({length: used ? 1 : 5}, (_,i)=>({action:'create',template:{templateId:'tag.google.v1',name:`Tag ${i}`,tagId:'G-TEST',firingTriggerId:['7']}}))}, 'quota')
-    await reviewGtmChangeProposal(ctx(A), {proposalId:p.id,expectedHash:p.request_hash,decision:'approved'})
+    const own = await recordGtmOwnership(ctx(), { siteId: SITE, evidence }, 'ownership')
+    const p = await createGtmChangeProposal(ctx(), { siteId: SITE, ownershipEvidenceId: own.id, action: 'workspace', changes: Array.from({ length: used ? 1 : 5 }, (_, i) => ({ action: 'create', template: { templateId: 'tag.google.v1', name: `Tag ${i}`, tagId: 'G-TEST', firingTriggerId: ['7'] } })) }, 'quota')
+    await reviewGtmChangeProposal(ctx(A), { proposalId: p.id, expectedHash: p.request_hash, decision: 'approved' })
     await expect(executeProposal(p)).rejects.toThrow(used ? 'capacity is unavailable' : 'needs 21 GTM requests')
     expect(state.writes).toBe(0)
     expect(await held()).toBeNull()
-    expect((await getGtmChangeProposal(ctx(),p.id)).status).toBe('failed')
+    expect((await getGtmChangeProposal(ctx(), p.id)).status).toBe('failed')
     expect(Number((await state.pool.query('SELECT request_count FROM gtm_api_quota_windows')).rows[0].request_count)).toBe(used + 1)
   })
   it('I3 reserves read-back calls atomically under competing admission', async () => {
     state.realQuota = true
-    const results = await Promise.allSettled([reserveGtmApiQuota(12),reserveGtmApiQuota(12)])
-    expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1)
+    const results = await Promise.allSettled([reserveGtmApiQuota(12), reserveGtmApiQuota(12)])
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1)
     expect((await state.pool.query('SELECT request_count FROM gtm_api_quota_windows')).rows[0].request_count).toBe(12)
   })
   it('I4 treats an already-installed result as a verified no-op without a hold', async () => {
-    const {p}=await approvedInstallation()
-    const api=await import('../../../server/utils/googleTagManagerClient')
-    const marker=`xeroflow:tracking-site:${SITE}:v1`
-    vi.mocked(api.getLiveGtmVersion).mockResolvedValueOnce({path:p.base_live_path,fingerprint:p.base_live_fingerprint} as any)
-    vi.mocked(api.getLiveGtmVersion).mockResolvedValueOnce({path:p.base_live_path,fingerprint:p.base_live_fingerprint,tag:[{name:marker,notes:marker,parameter:[{key:'html',value:marker}]}]} as any)
-    const result=await executeProposal(p)
+    const { p } = await approvedInstallation()
+    const api = await import('../../../server/utils/googleTagManagerClient')
+    const marker = `xeroflow:tracking-site:${SITE}:v1`
+    vi.mocked(api.getLiveGtmVersion).mockResolvedValueOnce({ path: p.base_live_path, fingerprint: p.base_live_fingerprint } as any)
+    vi.mocked(api.getLiveGtmVersion).mockResolvedValueOnce({ path: p.base_live_path, fingerprint: p.base_live_fingerprint, tag: [{ name: marker, notes: marker, parameter: [{ key: 'html', value: marker }] }] } as any)
+    const result = await executeProposal(p)
     expect(result.status).toBe('verified')
     expect(result.result.status).toBe('already_installed')
     expect(state.writes).toBe(0)
     expect(await held()).toBeNull()
   })
   it('I4 releases an installation preflight quota failure without unknown effects', async () => {
-    const {p}=await approvedInstallation()
-    state.realQuota=true
+    const { p } = await approvedInstallation()
+    state.realQuota = true
     await reserveGtmApiQuota(19)
     await expect(executeProposal(p)).rejects.toThrow()
     expect(state.writes).toBe(0)
     expect(await held()).toBeNull()
-    expect((await getGtmChangeProposal(ctx(),p.id)).status).toBe('failed')
+    expect((await getGtmChangeProposal(ctx(), p.id)).status).toBe('failed')
   })
-  it.each(['spa','write_key','origin'])('I5 rejects approved installation %s drift before credentials', async (field) => {
-    const {p}=await approvedInstallation()
-    if(field==='origin') state.origin='https://different.example.test/'
-    else await state.pool.query(field==='spa' ? 'UPDATE tracking_sites SET spa=TRUE WHERE id=$1' : "UPDATE tracking_sites SET write_key='rotated' WHERE id=$1", [SITE])
+  it.each(['spa', 'write_key', 'origin'])('I5 rejects approved installation %s drift before credentials', async (field) => {
+    const { p } = await approvedInstallation()
+    if (field === 'origin') state.origin = 'https://different.example.test/'
+    else await state.pool.query(field === 'spa' ? 'UPDATE tracking_sites SET spa=TRUE WHERE id=$1' : 'UPDATE tracking_sites SET write_key=\'rotated\' WHERE id=$1', [SITE])
     vi.mocked(resolveGtmAccessToken).mockClear()
     await expect(executeProposal(p)).rejects.toThrow()
     expect(resolveGtmAccessToken).not.toHaveBeenCalled()
     expect(state.writes).toBe(0)
     expect(await held()).toBeNull()
-    expect((await getGtmChangeProposal(ctx(),p.id)).request_hash).toBe(p.request_hash)
+    expect((await getGtmChangeProposal(ctx(), p.id)).request_hash).toBe(p.request_hash)
   })
   it('I5 carries the installation managed manifest into separate publication and read-back', async () => {
-    const {p,own}=await approvedInstallation()
-    const compiled=await executeProposal(p)
+    const { p, own } = await approvedInstallation()
+    const compiled = await executeProposal(p)
     expect(compiled.result.managed).toHaveLength(2)
-    const pub=await createGtmChangeProposal(ctx(), {siteId:SITE,ownershipEvidenceId:own.id,action:'publish',sourceProposalId:p.id}, 'publish-install')
+    const pub = await createGtmChangeProposal(ctx(), { siteId: SITE, ownershipEvidenceId: own.id, action: 'publish', sourceProposalId: p.id }, 'publish-install')
     expect(pub.desired_state.target.managed).toHaveLength(2)
-    await reviewGtmChangeProposal(ctx(A), {proposalId:pub.id,expectedHash:pub.request_hash,decision:'approved'})
-    state.installTag.parameter[0].value='changed after review'
+    await reviewGtmChangeProposal(ctx(A), { proposalId: pub.id, expectedHash: pub.request_hash, decision: 'approved' })
+    state.installTag.parameter[0].value = 'changed after review'
     await expect(executeProposal(pub)).rejects.toThrow()
     expect(state.publishes).toBe(0)
     expect(await held()).toBeNull()
   })
-  it.each(['inactive','mismatch'])('I7 staff resolver excludes %s binding in actual SQL while owner can diagnose', async (mode) => {
-    await state.pool.query("ALTER TABLE social_connections ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}', ADD COLUMN IF NOT EXISTS account_name TEXT")
+  it.each(['inactive', 'mismatch'])('I7 staff resolver excludes %s binding in actual SQL while owner can diagnose', async (mode) => {
+    await state.pool.query('ALTER TABLE social_connections ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT \'{}\', ADD COLUMN IF NOT EXISTS account_name TEXT')
     await state.pool.query('ALTER TABLE google_ads_account_bindings ADD COLUMN IF NOT EXISTS alias_id UUID')
     await state.pool.query('CREATE TABLE IF NOT EXISTS agency_client_aliases(id UUID,client_id UUID,alias TEXT)')
-    await state.pool.query(mode==='inactive' ? "UPDATE social_connections SET status='inactive' WHERE id=$1" : "UPDATE social_connections SET account_id='456' WHERE id=$1",[CON])
-    const {buildGoogleAdsMcpToolDependencies}=await import('../../../server/utils/ai/mcp/googleAdsServer')
-    const deps=buildGoogleAdsMcpToolDependencies({read:true,write:true,automation:false,destructive:false})
-    expect((await deps.readReconciliation!({clientId:C,accountQuery:'A'},ctx()) as any).accountResolution.status).toBe('missing_mapping')
-    for(const aggregate of [false,true]) {
-      expect((await deps.resolveAccount!({clientName:'A',aggregate},ctx()) as any).status).toBe('missing_mapping')
-      expect((await resolveGoogleAdsAccount({query:'A',clientId:C,aggregate})).status).toBe('resolved')
+    await state.pool.query(mode === 'inactive' ? 'UPDATE social_connections SET status=\'inactive\' WHERE id=$1' : 'UPDATE social_connections SET account_id=\'456\' WHERE id=$1', [CON])
+    const { buildGoogleAdsMcpToolDependencies } = await import('../../../server/utils/ai/mcp/googleAdsServer')
+    const deps = buildGoogleAdsMcpToolDependencies({ read: true, write: true, automation: false, destructive: false })
+    expect((await deps.readReconciliation!({ clientId: C, accountQuery: 'A' }, ctx()) as any).accountResolution.status).toBe('missing_mapping')
+    for (const aggregate of [false, true]) {
+      expect((await deps.resolveAccount!({ clientName: 'A', aggregate }, ctx()) as any).status).toBe('missing_mapping')
+      expect((await resolveGoogleAdsAccount({ query: 'A', clientId: C, aggregate })).status).toBe('resolved')
     }
   })
 
   it.each([
-    ['google_ads_plan_pause',{entityType:'campaign',resourceName:'customers/456/campaigns/1'}],
-    ['google_ads_plan_set_asset_group_assets',{assetGroupResourceName:'customers/123/assetGroups/1',assets:[{fieldType:'HEADLINE',assetResourceName:'customers/456/assets/1'}]}],
-    ['google_ads_plan_set_pmax_audience_signals',{assetGroupResourceName:'customers/123/assetGroups/1',audienceResourceNames:['customers/123/audiences/1','customers/456/audiences/2']}]
-  ])('I2 %s rejects nested customer references before real session credential/refresh/discovery', async (tool,args) => {
+    ['google_ads_plan_pause', { entityType: 'campaign', resourceName: 'customers/456/campaigns/1' }],
+    ['google_ads_plan_set_asset_group_assets', { assetGroupResourceName: 'customers/123/assetGroups/1', assets: [{ fieldType: 'HEADLINE', assetResourceName: 'customers/456/assets/1' }] }],
+    ['google_ads_plan_set_pmax_audience_signals', { assetGroupResourceName: 'customers/123/assetGroups/1', audienceResourceNames: ['customers/123/audiences/1', 'customers/456/audiences/2'] }]
+  ])('I2 %s rejects nested customer references before real session credential/refresh/discovery', async (tool, args) => {
     const session = await vi.importActual<any>('../../../server/utils/googleAds/controlSession')
     const effects = {
-      loadConnection: vi.fn(async () => ({id:CON,client_id:C,account_id:'123',platform:'google',status:'active',metadata:{}})),
-      resolveCredential: vi.fn(async()=>({accessToken:'expired',refreshToken:'refresh',tokenExpiresAt:'2000-01-01T00:00:00Z',profileId:null,source:'legacy'})),
-      resolveConfig: ()=>({googleClientId:'test',googleClientSecret:'test',googleDeveloperToken:'test'}),
-      refreshGoogleToken: vi.fn(async()=>({access_token:'fresh',expires_in:3600})),
-      persistAccessToken: vi.fn(async()=>{}),
-      listAccessibleCustomers: vi.fn(async()=>['999','123'])
+      loadConnection: vi.fn(async () => ({ id: CON, client_id: C, account_id: '123', platform: 'google', status: 'active', metadata: {} })),
+      resolveCredential: vi.fn(async () => ({ accessToken: 'expired', refreshToken: 'refresh', tokenExpiresAt: '2000-01-01T00:00:00Z', profileId: null, source: 'legacy' })),
+      resolveConfig: () => ({ googleClientId: 'test', googleClientSecret: 'test', googleDeveloperToken: 'test' }),
+      refreshGoogleToken: vi.fn(async () => ({ access_token: 'fresh', expires_in: 3600 })),
+      persistAccessToken: vi.fn(async () => {}),
+      listAccessibleCustomers: vi.fn(async () => ['999', '123'])
     }
-    const resolveSession = (input:any)=>session.resolveGoogleAdsControlSession(input,effects)
+    const resolveSession = (input: any) => session.resolveGoogleAdsControlSession(input, effects)
     // Positive control: this fixture really refreshes/persists and discovers the manager when reached.
-    await resolveSession({clientId:C,connectionId:CON})
-    for(const name of ['loadConnection','resolveCredential','refreshGoogleToken','persistAccessToken','listAccessibleCustomers'] as const) {
-      expect(effects[name]).toHaveBeenCalledOnce(); effects[name].mockClear()
+    await resolveSession({ clientId: C, connectionId: CON })
+    for (const name of ['loadConnection', 'resolveCredential', 'refreshGoogleToken', 'persistAccessToken', 'listAccessibleCustomers'] as const) {
+      expect(effects[name]).toHaveBeenCalledOnce()
+      effects[name].mockClear()
     }
-    const result=await executeGoogleAdsSearchPlanningTool(tool as string, {clientId:C,connectionId:CON,idempotencyKey:'denied',...(args as any)}, {...ctx(),marketingCapabilities:['ads_plan']}, {read:true,write:true,automation:false,destructive:false}, true, {
-      plan:(input,authority,flags)=>planSearchGoogleAdsControlAction(input,authority,flags,{resolveSession})
+    const result = await executeGoogleAdsSearchPlanningTool(tool as string, { clientId: C, connectionId: CON, idempotencyKey: 'denied', ...(args as any) }, { ...ctx(), marketingCapabilities: ['ads_plan'] }, { read: true, write: true, automation: false, destructive: false }, true, {
+      plan: (input, authority, flags) => planSearchGoogleAdsControlAction(input, authority, flags, { resolveSession })
     })
-    expect(result).toMatchObject({ok:false,code:'handler_error'})
-    for(const name of ['loadConnection','resolveCredential','refreshGoogleToken','persistAccessToken','listAccessibleCustomers'] as const) expect(effects[name]).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ ok: false, code: 'handler_error' })
+    for (const name of ['loadConnection', 'resolveCredential', 'refreshGoogleToken', 'persistAccessToken', 'listAccessibleCustomers'] as const) expect(effects[name]).not.toHaveBeenCalled()
     expect(state.adsMutations).toBe(0)
   })
   it('I3 admits a complete supported operation with actual quota and reserved read-back', async () => {
-    state.realQuota=true
-    const {p}=await prepare() // one proposal-time read
-    const r=await executeProposal(p)
+    state.realQuota = true
+    const { p } = await prepare() // one proposal-time read
+    const r = await executeProposal(p)
     expect(r.status).toBe('versioned')
     expect((await state.pool.query('SELECT request_count FROM gtm_api_quota_windows')).rows[0].request_count).toBe(9)
     expect(await held()).toBeNull()
   })
-  it('I4 releases typed update preflight failure before creating a workspace', async()=>{
-    const own=await recordGtmOwnership(ctx(),{siteId:SITE,evidence},'own')
-    state.entity={name:'Before',path:'accounts/1/containers/2/workspaces/8/folders/9',fingerprint:'before'}
-    const p=await createGtmChangeProposal(ctx(),{siteId:SITE,ownershipEvidenceId:own.id,action:'workspace',changes:[{action:'update',entityPath:state.entity.path,expectedFingerprint:'before',template:{templateId:'folder.v1',name:'After'}}]},'update')
-    await reviewGtmChangeProposal(ctx(A),{proposalId:p.id,expectedHash:p.request_hash,decision:'approved'})
-    state.entity.fingerprint='changed'
+  it('I4 releases typed update preflight failure before creating a workspace', async () => {
+    const own = await recordGtmOwnership(ctx(), { siteId: SITE, evidence }, 'own')
+    state.entity = { name: 'Before', path: 'accounts/1/containers/2/workspaces/8/folders/9', fingerprint: 'before' }
+    const p = await createGtmChangeProposal(ctx(), { siteId: SITE, ownershipEvidenceId: own.id, action: 'workspace', changes: [{ action: 'update', entityPath: state.entity.path, expectedFingerprint: 'before', template: { templateId: 'folder.v1', name: 'After' } }] }, 'update')
+    await reviewGtmChangeProposal(ctx(A), { proposalId: p.id, expectedHash: p.request_hash, decision: 'approved' })
+    state.entity.fingerprint = 'changed'
     await expect(executeProposal(p)).rejects.toThrow()
     expect(state.writes).toBe(0)
     expect(await held()).toBeNull()
-    expect((await getGtmChangeProposal(ctx(),p.id)).status).toBe('failed')
+    expect((await getGtmChangeProposal(ctx(), p.id)).status).toBe('failed')
   })
-  it('I4 reports existing installation explicitly without creating an unknown connection hold',async()=>{
-    const {p}=await approvedInstallation()
-    await state.pool.query("INSERT INTO gtm_change_sets(binding_id,action_type,status,requested_by) VALUES($1,'install_xeroflow','executing',$2)",[p.binding_id,A])
-    const r=await executeProposal(p)
+  it('I4 reports existing installation explicitly without creating an unknown connection hold', async () => {
+    const { p } = await approvedInstallation()
+    await state.pool.query('INSERT INTO gtm_change_sets(binding_id,action_type,status,requested_by) VALUES($1,\'install_xeroflow\',\'executing\',$2)', [p.binding_id, A])
+    const r = await executeProposal(p)
     expect(r.status).toBe('failed')
-    expect(r.result).toMatchObject({status:'already_in_progress',effect:'none'})
+    expect(r.result).toMatchObject({ status: 'already_in_progress', effect: 'none' })
     expect(state.writes).toBe(0)
     expect(await held()).toBeNull()
   })
-  it('I6 returns exact pending installation, publication and rollback review projections',async()=>{
-    const {listGtmReviewProposals}=await import('../../../server/utils/tracking/gtmProposals')
-    const {p,own}=await approvedInstallation()
-    let rows=await listGtmReviewProposals(ctx(A))
-    expect(rows[0].review).toMatchObject({action:'installation',installation:{siteName:'Test',spa:false,collectorOrigin:'https://app.example.test'}})
+  it('I6 returns exact pending installation, publication and rollback review projections', async () => {
+    const { listGtmReviewProposals } = await import('../../../server/utils/tracking/gtmProposals')
+    const { p, own } = await approvedInstallation()
+    let rows = await listGtmReviewProposals(ctx(A))
+    expect(rows[0].review).toMatchObject({ action: 'installation', installation: { siteName: 'Test', spa: false, collectorOrigin: 'https://app.example.test' } })
     expect(rows[0].expires_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     expect(rows[0].review.installationHash).toMatch(/^[a-f0-9]{64}$/)
     expect(JSON.stringify(rows[0].review)).not.toContain('<script')
     await executeProposal(p)
-    const pub=await createGtmChangeProposal(ctx(),{siteId:SITE,ownershipEvidenceId:own.id,action:'publish',sourceProposalId:p.id},'pub')
-    rows=await listGtmReviewProposals(ctx(A))
-    const pending=rows.find(r=>r.id===pub.id)!
+    const pub = await createGtmChangeProposal(ctx(), { siteId: SITE, ownershipEvidenceId: own.id, action: 'publish', sourceProposalId: p.id }, 'pub')
+    rows = await listGtmReviewProposals(ctx(A))
+    const pending = rows.find(r => r.id === pub.id)!
     expect(pending.status).toBe('pending_review')
-    expect(pending.review).toMatchObject({base:{path:p.base_live_path,fingerprint:p.base_live_fingerprint},target:{path:'accounts/1/containers/2/versions/4',fingerprint:'live4'},sourceProposalId:p.id})
+    expect(pending.review).toMatchObject({ base: { path: p.base_live_path, fingerprint: p.base_live_fingerprint }, target: { path: 'accounts/1/containers/2/versions/4', fingerprint: 'live4' }, sourceProposalId: p.id })
     expect(pending.review.changes).toHaveLength(2)
     expect(JSON.stringify(pending)).not.toContain('<script')
-    await reviewGtmChangeProposal(ctx(A),{proposalId:pub.id,expectedHash:pub.request_hash,decision:'approved'})
+    await reviewGtmChangeProposal(ctx(A), { proposalId: pub.id, expectedHash: pub.request_hash, decision: 'approved' })
     await executeProposal(pub)
-    const rollback=await createGtmChangeProposal(ctx(),{siteId:SITE,ownershipEvidenceId:own.id,action:'rollback',sourceProposalId:pub.id},'rollback')
-    rows=await listGtmReviewProposals(ctx(A))
-    const undo=rows.find(r=>r.id===rollback.id)!.review
-    expect(undo.target).toMatchObject({path:p.base_live_path,fingerprint:p.base_live_fingerprint})
+    const rollback = await createGtmChangeProposal(ctx(), { siteId: SITE, ownershipEvidenceId: own.id, action: 'rollback', sourceProposalId: pub.id }, 'rollback')
+    rows = await listGtmReviewProposals(ctx(A))
+    const undo = rows.find(r => r.id === rollback.id)!.review
+    expect(undo.target).toMatchObject({ path: p.base_live_path, fingerprint: p.base_live_fingerprint })
     expect(undo.changes).toHaveLength(2)
-    expect(undo.changes.every((c:any)=>c.action==='remove')).toBe(true)
+    expect(undo.changes.every((c: any) => c.action === 'remove')).toBe(true)
   })
   it.each(['publish', 'tampered'] as const)('R1 projects every staff/browser response while raw installation evidence survives %s', async (mode) => {
     const writeKey = 'fixture-r1-write-key-DO-NOT-EXPOSE-7e419c'
@@ -1150,8 +1155,14 @@ suite('Task4 real SQL review boundaries', () => {
     const publishInput = { ...installInput, sourceProposalId: installation.id }
     // Both calls see no row before either INSERT; the losing real INSERT must take concurrent replay.
     let arrived = 0, release!: () => void
-    const bothSelected = new Promise<void>(resolve => { release = resolve })
-    state.replayBarrier = async () => { if (++arrived === 2) release(); await bothSelected }
+    const bothSelected = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    state.replayBarrier = async () => {
+      if (++arrived === 2)
+        release()
+      await bothSelected
+    }
     const [publication, concurrent] = await Promise.all([
       tool('propose_gtm_publish', publishInput, 'r1-publish', 'publication create/concurrent replay A'),
       tool('propose_gtm_publish', publishInput, 'r1-publish', 'publication create/concurrent replay B')
@@ -1211,58 +1222,57 @@ suite('Task4 real SQL review boundaries', () => {
     expect.soft(installation.desired_state.installation.review.writeKeyHash).toBe(originalInstall.desired_state.installation.review.writeKeyHash)
   })
 
-  it('I7 actual staff entry returns only active exact bindings before mixed aggregation',async()=>{
-    await state.pool.query("ALTER TABLE social_connections ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}', ADD COLUMN IF NOT EXISTS account_name TEXT")
+  it('I7 actual staff entry returns only active exact bindings before mixed aggregation', async () => {
+    await state.pool.query('ALTER TABLE social_connections ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT \'{}\', ADD COLUMN IF NOT EXISTS account_name TEXT')
     await state.pool.query('ALTER TABLE google_ads_account_bindings ADD COLUMN IF NOT EXISTS alias_id UUID')
     await state.pool.query('CREATE TABLE IF NOT EXISTS agency_client_aliases(id UUID,client_id UUID,alias TEXT)')
-    await state.pool.query("UPDATE social_connections SET status='inactive' WHERE id=$1",[CON])
-    await state.pool.query("INSERT INTO social_connections(id,client_id,account_id,platform,status) VALUES($1,$2,'789','google','active')",[PLAN,C])
-    await state.pool.query("INSERT INTO google_ads_account_bindings(client_id,connection_id,operating_customer_id,account_role) VALUES($1,$2,'789','dealer')",[C,PLAN])
-    const {buildGoogleAdsMcpToolDependencies}=await import('../../../server/utils/ai/mcp/googleAdsServer')
-    const result:any=await buildGoogleAdsMcpToolDependencies({read:true,write:true,automation:false,destructive:false}).resolveAccount!({clientName:'A',aggregate:true},ctx())
+    await state.pool.query('UPDATE social_connections SET status=\'inactive\' WHERE id=$1', [CON])
+    await state.pool.query('INSERT INTO social_connections(id,client_id,account_id,platform,status) VALUES($1,$2,\'789\',\'google\',\'active\')', [PLAN, C])
+    await state.pool.query('INSERT INTO google_ads_account_bindings(client_id,connection_id,operating_customer_id,account_role) VALUES($1,$2,\'789\',\'dealer\')', [C, PLAN])
+    const { buildGoogleAdsMcpToolDependencies } = await import('../../../server/utils/ai/mcp/googleAdsServer')
+    const result: any = await buildGoogleAdsMcpToolDependencies({ read: true, write: true, automation: false, destructive: false }).resolveAccount!({ clientName: 'A', aggregate: true }, ctx())
     expect(result.status).toBe('resolved')
     expect(result.accounts).toHaveLength(1)
-    expect(result.accounts[0]).toMatchObject({connectionId:PLAN,operatingCustomerId:'789'})
+    expect(result.accounts[0]).toMatchObject({ connectionId: PLAN, operatingCustomerId: '789' })
   })
 
-  it('I4 holds an ambiguous first provider attempt without automatic retry',async()=>{
-    const {p}=await prepare()
-    const api=await import('../../../server/utils/googleTagManagerClient')
+  it('I4 holds an ambiguous first provider attempt without automatic retry', async () => {
+    const { p } = await prepare()
+    const api = await import('../../../server/utils/googleTagManagerClient')
     vi.mocked(api.createGtmWorkspace).mockRejectedValueOnce(new Error('timeout after sending request'))
     await expect(executeProposal(p)).rejects.toThrow('requires inspection')
     expect(await held()).toBe(p.id)
-    expect((await getGtmChangeProposal(ctx(),p.id)).status).toBe('unknown')
+    expect((await getGtmChangeProposal(ctx(), p.id)).status).toBe('unknown')
   })
-  it('I4 releases binding validation failure before its database write',async()=>{
-    const own=await recordGtmOwnership(ctx(),{siteId:SITE,evidence},'own')
-    const p=await createGtmChangeProposal(ctx(),{siteId:SITE,ownershipEvidenceId:own.id,action:'binding',connectionId:GTM,containerPath:'accounts/1/containers/2'},'bind-invalid')
-    await reviewGtmChangeProposal(ctx(A),{proposalId:p.id,expectedHash:p.request_hash,decision:'approved'})
-    const api=await import('../../../server/utils/googleTagManagerClient')
-    vi.mocked(api.getGtmContainer).mockResolvedValueOnce({path:'accounts/1/containers/2',domainName:['example.test'],usageContext:['web'],publicId:'invalid'} as any)
+  it('I4 releases binding validation failure before its database write', async () => {
+    const own = await recordGtmOwnership(ctx(), { siteId: SITE, evidence }, 'own')
+    const p = await createGtmChangeProposal(ctx(), { siteId: SITE, ownershipEvidenceId: own.id, action: 'binding', connectionId: GTM, containerPath: 'accounts/1/containers/2' }, 'bind-invalid')
+    await reviewGtmChangeProposal(ctx(A), { proposalId: p.id, expectedHash: p.request_hash, decision: 'approved' })
+    const api = await import('../../../server/utils/googleTagManagerClient')
+    vi.mocked(api.getGtmContainer).mockResolvedValueOnce({ path: 'accounts/1/containers/2', domainName: ['example.test'], usageContext: ['web'], publicId: 'invalid' } as any)
     await expect(executeProposal(p)).rejects.toThrow('precondition failed')
     expect(await held()).toBeNull()
-    expect((await getGtmChangeProposal(ctx(),p.id)).status).toBe('failed')
+    expect((await getGtmChangeProposal(ctx(), p.id)).status).toBe('failed')
   })
 
-  it('I2 inventory resource filters also deny before the credential-capable session',async()=>{
-    const {buildGoogleAdsMcpToolDependencies}=await import('../../../server/utils/ai/mcp/googleAdsServer')
-    const {resolveGoogleAdsControlSession}=await import('../../../server/utils/googleAds/controlSession')
+  it('I2 inventory resource filters also deny before the credential-capable session', async () => {
+    const { buildGoogleAdsMcpToolDependencies } = await import('../../../server/utils/ai/mcp/googleAdsServer')
+    const { resolveGoogleAdsControlSession } = await import('../../../server/utils/googleAds/controlSession')
     vi.mocked(resolveGoogleAdsControlSession).mockClear()
-    await expect(buildGoogleAdsMcpToolDependencies({read:true,write:true,automation:false,destructive:false}).listInventory!('campaigns', {clientId:C,connectionId:CON,campaignResourceName:'customers/456/campaigns/1',maxResults:10},ctx())).rejects.toThrow('Cross-customer')
+    await expect(buildGoogleAdsMcpToolDependencies({ read: true, write: true, automation: false, destructive: false }).listInventory!('campaigns', { clientId: C, connectionId: CON, campaignResourceName: 'customers/456/campaigns/1', maxResults: 10 }, ctx())).rejects.toThrow('Cross-customer')
     expect(resolveGoogleAdsControlSession).not.toHaveBeenCalled()
   })
 
-  it('I3 admits all five tags when the entire batch fits with reserved verification capacity',async()=>{
-    state.realQuota=true
-    const own=await recordGtmOwnership(ctx(),{siteId:SITE,evidence},'own')
-    const p=await createGtmChangeProposal(ctx(),{siteId:SITE,ownershipEvidenceId:own.id,action:'workspace',changes:Array.from({length:5},(_,i)=>({action:'create',template:{templateId:'tag.google.v1',name:`Tag ${i}`,tagId:'G-TEST',firingTriggerId:['2147479553']}}))},'five-supported')
-    await reviewGtmChangeProposal(ctx(A),{proposalId:p.id,expectedHash:p.request_hash,decision:'approved'})
-    const r=await executeProposal(p)
+  it('I3 admits all five tags when the entire batch fits with reserved verification capacity', async () => {
+    state.realQuota = true
+    const own = await recordGtmOwnership(ctx(), { siteId: SITE, evidence }, 'own')
+    const p = await createGtmChangeProposal(ctx(), { siteId: SITE, ownershipEvidenceId: own.id, action: 'workspace', changes: Array.from({ length: 5 }, (_, i) => ({ action: 'create', template: { templateId: 'tag.google.v1', name: `Tag ${i}`, tagId: 'G-TEST', firingTriggerId: ['2147479553'] } })) }, 'five-supported')
+    await reviewGtmChangeProposal(ctx(A), { proposalId: p.id, expectedHash: p.request_hash, decision: 'approved' })
+    const r = await executeProposal(p)
     expect(r.status).toBe('versioned')
     expect(r.result.managed).toHaveLength(5)
     expect(state.writes).toBe(7) // workspace + five tags + version
     expect((await state.pool.query('SELECT request_count FROM gtm_api_quota_windows')).rows[0].request_count).toBe(17) // proposal read + 16 fully admitted execution calls
     expect(await held()).toBeNull()
   })
-
 })

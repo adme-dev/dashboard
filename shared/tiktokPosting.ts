@@ -24,7 +24,11 @@ export function normalizeTikTokOptions(raw: Record<string, unknown>): Record<str
   return { ...raw }
 }
 export function tikTokPayloadError(content: string, media: readonly { mediaType: string, durationSeconds?: number | null }[], options: Record<string, unknown>, creator?: TikTokCreatorCapabilities): string | null {
-  try { normalizeTikTokOptions(options) } catch (error) { return (error as Error).message }
+  try {
+    normalizeTikTokOptions(options)
+  } catch (error) {
+    return (error as Error).message
+  }
   const videos = media.filter(item => item.mediaType === 'video')
   if (!media.length || media.length > 35 || (videos.length && (videos.length !== 1 || media.length !== 1))) return 'TikTok requires one video or 1–35 photos, without mixed media'
   if (!TIKTOK_PRIVACY_LEVELS.includes(options.privacy_level as any)) return 'Choose an explicit TikTok privacy level'

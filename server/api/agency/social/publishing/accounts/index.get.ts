@@ -88,7 +88,7 @@ export default defineEventHandler(async (event) => {
       linked_facebook_account_id: row.linked_facebook_account_id,
       linked_facebook_account_name: row.linked_facebook_account_name,
       operations: socialCapabilityReadiness({ platform: row.platform, isActive: row.is_active,
-        lastError: row.last_error, tokenExpiresAt: row.token_expires_at, hasRefreshToken: row.has_refresh_token, metadata, linkedFacebookAccountId:row.linked_facebook_account_id, linkedFacebookIsActive:row.linked_facebook_is_active }, {channel:'browser',clientMapped:true,writable:context.assistantReadOnly !== true,canPublish}),
+        lastError: row.last_error, tokenExpiresAt: row.token_expires_at, hasRefreshToken: row.has_refresh_token, metadata, linkedFacebookAccountId: row.linked_facebook_account_id, linkedFacebookIsActive: row.linked_facebook_is_active }, { channel: 'browser', clientMapped: true, writable: context.assistantReadOnly !== true, canPublish }),
       connection_health: health.health,
       connection_health_label: health.healthLabel,
       connection_health_reason: health.healthReason,

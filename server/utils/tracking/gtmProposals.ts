@@ -31,9 +31,11 @@ import {
   gtmTypedChangeRequestCount,
   verifyGtmVersion
 } from './gtmTypedChanges'
+import { GtmProposalInput } from './gtmProposalSchemas'
+
 const UUID = z.string().uuid()
 export { GtmProposalInput } from './gtmProposalSchemas'
-import { GtmProposalInput } from './gtmProposalSchemas'
+
 const reviewInput = z.strictObject({
   proposalId: UUID,
   expectedHash: z.string().regex(/^[a-f0-9]{64}$/)
@@ -57,7 +59,7 @@ async function credential(
   ]
   if (
     needed.some(
-      (s) =>
+      s =>
         !value.scopes.includes(
           `https://www.googleapis.com/auth/tagmanager.${s}`
         )
@@ -82,15 +84,15 @@ async function loadAuthorizedGtmChangeProposal(ctx: ToolContext, id: string) {
   const site = await assertGtmSite(ctx, row.site_id)
   if (site.client_id !== row.client_id)
     conflict('Tracking site ownership changed')
-  const binding =
-    row.action_type === 'binding'
+  const binding
+    = row.action_type === 'binding'
       ? null
       : await assertGtmBindingForSite(ctx, row.site_id)
   if (
-    binding &&
-    (binding.id !== row.binding_id ||
-      binding.connection_id !== row.connection_id ||
-      binding.container_path !== row.desired_state.containerPath)
+    binding
+    && (binding.id !== row.binding_id
+      || binding.connection_id !== row.connection_id
+      || binding.container_path !== row.desired_state.containerPath)
   )
     conflict('Container binding changed')
   if (row.action_type === 'binding') {
@@ -100,9 +102,9 @@ async function loadAuthorizedGtmChangeProposal(ctx: ToolContext, id: string) {
     )
     if (row.status === 'verified') {
       if (
-        !current ||
-        current.connection_id !== row.connection_id ||
-        current.container_path !== row.desired_state.containerPath
+        !current
+        || current.connection_id !== row.connection_id
+        || current.container_path !== row.desired_state.containerPath
       )
         conflict('Applied binding changed')
     } else if (
@@ -133,9 +135,9 @@ export async function listGtmSiteInventory(
 ) {
   const binding = await assertGtmBindingForSite(ctx, siteId)
   if (
-    workspacePath &&
-    (!workspacePath.startsWith(`${binding.container_path}/workspaces/`) ||
-      api.assertGtmWorkspacePath(workspacePath) !== workspacePath)
+    workspacePath
+    && (!workspacePath.startsWith(`${binding.container_path}/workspaces/`)
+      || api.assertGtmWorkspacePath(workspacePath) !== workspacePath)
   )
     throw createError({
       statusCode: 403,
@@ -151,7 +153,7 @@ export async function listGtmSiteInventory(
   const summaries = (values: any[] = []) => {
     if (values.length > 500)
       conflict('Container exceeds bounded inventory limit')
-    return values.map((e) => ({
+    return values.map(e => ({
       id: e.tagId ?? e.triggerId ?? e.variableId ?? e.folderId,
       path: e.path,
       name: e.name,
@@ -203,17 +205,17 @@ export async function createGtmChangeProposal(
       conflict('Idempotency key already used')
     return getGtmChangeProposal(ctx, existing.id)
   }
-  const binding =
-    input.action === 'binding'
+  const binding
+    = input.action === 'binding'
       ? null
       : await assertGtmBindingForSite(ctx, site.id)
-  const connectionId =
-    binding?.connection_id ??
-    (input as Extract<typeof input, { action: 'binding' }>).connectionId
+  const connectionId
+    = binding?.connection_id
+      ?? (input as Extract<typeof input, { action: 'binding' }>).connectionId
   await assertGtmConnectionForClient(ctx, connectionId, site.client_id)
-  const containerPath =
-    binding?.container_path ??
-    (input as Extract<typeof input, { action: 'binding' }>).containerPath
+  const containerPath
+    = binding?.container_path
+      ?? (input as Extract<typeof input, { action: 'binding' }>).containerPath
   if (input.action === 'workspace')
     for (const change of input.changes)
       if (change.action === 'update') {
@@ -235,21 +237,21 @@ export async function createGtmChangeProposal(
       statusMessage: 'Container belongs to another client'
     })
   if (
-    evidence.evidence.siteKind === 'native_driveagent' &&
-    input.action === 'workspace' &&
-    input.changes.some(
-      (c) =>
-        c.template.templateId === 'tag.google_ads_conversion.v1' ||
-        (c.template.templateId === 'tag.ga4_event.v1' &&
-          ['generate_lead', 'purchase'].includes(c.template.eventName))
+    evidence.evidence.siteKind === 'native_driveagent'
+    && input.action === 'workspace'
+    && input.changes.some(
+      c =>
+        c.template.templateId === 'tag.google_ads_conversion.v1'
+        || (c.template.templateId === 'tag.ga4_event.v1'
+          && ['generate_lead', 'purchase'].includes(c.template.eventName))
     )
   )
     conflict(
       'Native accepted-lead conversions must use the supported server delivery path'
     )
   if (
-    input.action === 'installation' &&
-    evidence.evidence.siteKind === 'native_driveagent'
+    input.action === 'installation'
+    && evidence.evidence.siteKind === 'native_driveagent'
   )
     conflict(
       'Native DriveAgent uses its supported server delivery; XeroFlow installation is not permitted'
@@ -258,16 +260,16 @@ export async function createGtmChangeProposal(
   if (input.action === 'publish' || input.action === 'rollback') {
     source = await loadAuthorizedGtmChangeProposal(ctx, input.sourceProposalId)
     if (
-      source.site_id !== site.id ||
-      source.connection_id !== connectionId ||
-      source.desired_state.containerPath !== containerPath
+      source.site_id !== site.id
+      || source.connection_id !== connectionId
+      || source.desired_state.containerPath !== containerPath
     )
       conflict('Source proposal mapping mismatch')
     if (input.action === 'publish') {
       if (
-        source.status !== 'versioned' ||
-        !source.result?.versionPath ||
-        !source.result?.versionFingerprint
+        source.status !== 'versioned'
+        || !source.result?.versionPath
+        || !source.result?.versionFingerprint
       )
         conflict('Exact reviewed compiled version required')
       target = {
@@ -309,8 +311,8 @@ export async function createGtmChangeProposal(
         beforeChanges.push(
           Object.fromEntries(
             Object.keys(body)
-              .filter((k) => k in current)
-              .map((k) => [k, current[k]])
+              .filter(k => k in current)
+              .map(k => [k, current[k]])
           )
         )
       } else beforeChanges.push(null)
@@ -325,8 +327,8 @@ export async function createGtmChangeProposal(
     verifyGtmVersion(target.managed, version, containerPath)
     targetVersion = version
   }
-  const previousBinding =
-    input.action === 'binding'
+  const previousBinding
+    = input.action === 'binding'
       ? await queryOneFresh(
           `SELECT id,connection_id,container_path FROM gtm_container_bindings WHERE tracking_site_id=$1`,
           [site.id]
@@ -346,10 +348,13 @@ export async function createGtmChangeProposal(
       target: targetVersion ? gtmVersionReview(targetVersion) : null,
       sourceProposalId: source?.id ?? null,
       sourceProposalHref: source ? `/agency/marketing/reviews/gtm#proposal-${source.id}` : null,
-      changes: targetVersion ? gtmReplacementChanges(live, targetVersion) : input.action === 'workspace'
-        ? input.changes.map((change, i) => ({ action: change.action, ...compileGtmTemplate(change.template), before: beforeChanges[i], after: compileGtmTemplate(change.template).body }))
-        : input.action === 'installation' ? [{ action: 'install', name: installation!.review.siteName, before: gtmVersionReview(live), after: installation!.review }]
-        : [{ action: 'binding', before: previousBinding, after: { connectionId, containerPath } }],
+      changes: targetVersion
+        ? gtmReplacementChanges(live, targetVersion)
+        : input.action === 'workspace'
+          ? input.changes.map((change, i) => ({ action: change.action, ...compileGtmTemplate(change.template), before: beforeChanges[i], after: compileGtmTemplate(change.template).body }))
+          : input.action === 'installation'
+            ? [{ action: 'install', name: installation!.review.siteName, before: gtmVersionReview(live), after: installation!.review }]
+            : [{ action: 'binding', before: previousBinding, after: { connectionId, containerPath } }],
       installation: installation?.review ?? null,
       installationHash: installation?.hash ?? null,
       validation: 'Local schema and provider read snapshot only; execution compilation and live read-back are not yet available.',
@@ -515,13 +520,16 @@ export async function executeApprovedGtmProposal(
         conflict('Reviewed installation configuration changed')
     }
     // Reserve all reads, mutations and read-back before credentials or the first provider effect.
-    const requests = row.action_type === 'workspace' ? 1 + gtmTypedChangeRequestCount(row.desired_state.input.changes)
+    const requests = row.action_type === 'workspace'
+      ? 1 + gtmTypedChangeRequestCount(row.desired_state.input.changes)
       : row.action_type === 'installation' ? 11 : row.action_type === 'binding' ? 2 : 5
     if (requests > 20) {
       quotaFailure = `This operation needs ${requests} GTM requests; the supported bound is 20 per operation. Prepare a smaller separately reviewed proposal.`
       conflict(quotaFailure)
     }
-    try { await reserveGtmApiQuota(requests) } catch (error: any) {
+    try {
+      await reserveGtmApiQuota(requests)
+    } catch (error: any) {
       if (error?.statusCode === 429) quotaFailure = 'GTM capacity is unavailable for the whole operation. Wait for the quota window, then prepare a new proposal; no provider write was attempted.'
       throw error
     }
@@ -530,7 +538,9 @@ export async function executeApprovedGtmProposal(
       if (--remaining < 0) throw new Error('GTM admitted request budget exceeded')
       return fn()
     }
-    const beforeWrite = () => { writesStarted = true }
+    const beforeWrite = () => {
+      writesStarted = true
+    }
     const token = await credential(
       ctx,
       row.connection_id,
@@ -539,8 +549,8 @@ export async function executeApprovedGtmProposal(
     const container = row.desired_state.containerPath
     const live = await call(() => api.getLiveGtmVersion(token, container))
     if (
-      live.path !== row.base_live_path ||
-      live.fingerprint !== row.base_live_fingerprint
+      live.path !== row.base_live_path
+      || live.fingerprint !== row.base_live_fingerprint
     )
       conflict('Live GTM version drift; create a new proposal')
     let result: any,
@@ -572,8 +582,8 @@ export async function executeApprovedGtmProposal(
           [changeSetId, row.id]
         )
         if (
-          !compiled?.created_version_path ||
-          !compiled.created_version_fingerprint
+          !compiled?.created_version_path
+          || !compiled.created_version_fingerprint
         )
           conflict('Installation version evidence missing')
         result = {
@@ -589,12 +599,12 @@ export async function executeApprovedGtmProposal(
       const accountPath = container.split('/').slice(0, 2).join('/')
       const target = await call(() => api.getGtmContainer(token, container))
       if (
-        !target ||
-        target.path !== container ||
-        !target.domainName?.some((host) =>
+        !target
+        || target.path !== container
+        || !target.domainName?.some(host =>
           site.allowed_origins.includes(`https://${host}`)
-        ) ||
-        !target.usageContext?.includes('web')
+        )
+        || !target.usageContext?.includes('web')
       )
         conflict('Exact public host and web container ownership required')
       result = await upsertGtmContainerBinding({
@@ -646,8 +656,8 @@ export async function executeApprovedGtmProposal(
           api.getLiveGtmVersion(token, container)
         )
         if (
-          current.path !== row.base_live_path ||
-          current.fingerprint !== row.base_live_fingerprint
+          current.path !== row.base_live_path
+          || current.fingerprint !== row.base_live_fingerprint
         )
           conflict('Live GTM version drift')
         const published = await call(() => {
@@ -658,8 +668,8 @@ export async function executeApprovedGtmProposal(
           throw new Error('GTM publish compiler error')
         const after = await call(() => api.getLiveGtmVersion(token, container))
         if (
-          after.path !== target.path ||
-          after.fingerprint !== target.fingerprint
+          after.path !== target.path
+          || after.fingerprint !== target.fingerprint
         )
           throw new Error('GTM live read-back mismatch')
         verifyGtmVersion(target.managed, after, container)
@@ -711,7 +721,7 @@ export async function executeApprovedGtmProposal(
       result,
       conversionDelivery: 'not_verified'
     })
-  } catch (error) {
+  } catch {
     if (!writesStarted)
       await queryOneFresh(
         `UPDATE gtm_connections SET metadata=metadata-'reviewedExecution' WHERE id=$1 AND metadata->>'reviewedExecution'=$2 RETURNING id`,

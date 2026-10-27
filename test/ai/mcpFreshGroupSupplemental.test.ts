@@ -396,7 +396,7 @@ describe('ordinary Ads MCP cannot inherit destructive authority from ADMIN or re
     })
   }
 
-  it.each(['owner', 'admin'])('preserves %s destructive policy only at the actual policy boundary', actorRole => {
+  it.each(['owner', 'admin'])('preserves %s destructive policy only at the actual policy boundary', (actorRole) => {
     const policy = {
       operation: 'remove_campaign' as const, actorRole, hasMediaPermission: true,
       hasElevatedPermission: true, hasWriteScope: true, globalWriteEnabled: true,

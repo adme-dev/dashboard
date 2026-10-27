@@ -1,18 +1,26 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { A, B, fixture, context, resetHarness, expectNoSideEffects } from '../../ai/helpers/marketingReadHarness'
+
 Object.assign(globalThis, { defineEventHandler: (fn: any) => fn, eventHandler: (fn: any) => fn, getQuery: (event: any) => event.query || {}, createError: (input: any) => Object.assign(new Error(input.statusMessage), input) })
 const campaign = (await import('../../../server/api/agency/analytics/campaigns.get')).default
 const pacing = (await import('../../../server/api/agency/social/spend/summary.get')).default
 const social = (await import('../../../server/api/agency/social/reporting/overview.get')).default
-beforeEach(() => { resetHarness(); fixture.context.permissionGroups = ['MEDIA_BUYING', 'CLIENTS', 'CREATIVE']; vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-27T00:00:00Z')); fixture.now = '2026-10-27T00:00:00Z' })
+beforeEach(() => {
+  resetHarness()
+  fixture.context.permissionGroups = ['MEDIA_BUYING', 'CLIENTS', 'CREATIVE']
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-27T00:00:00Z'))
+  fixture.now = '2026-10-27T00:00:00Z'
+})
 afterEach(() => vi.useRealTimers())
 const event = (query: any) => ({ context: {}, query } as any)
-it.each([false, true])('ordinary_campaign_and_pacing_without_tenant_never_read_tokens_or_write finance=%s', async finance => {
+it.each([false, true])('ordinary_campaign_and_pacing_without_tenant_never_read_tokens_or_write finance=%s', async (finance) => {
   fixture.tenant = ''
   fixture.context = context({ permissionGroups: finance ? ['FINANCE', 'MEDIA_BUYING'] : ['MEDIA_BUYING'] })
   const a = await campaign(event({ startDate: '2026-10-01', endDate: '2026-10-27', clientId: A }))
   const b = await pacing(event({ month: 10, year: 2026, clientId: A }))
-  expect(a.campaigns[0].clientId).toBe(A); expect(a.campaigns[0].budgetActionable).toBe(false)
+  expect(a.campaigns[0].clientId).toBe(A)
+  expect(a.campaigns[0].budgetActionable).toBe(false)
   expect(b.projection).toBe(finance ? 'finance' : 'marketing')
   expectNoSideEffects()
 })

@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createError } from 'h3'
+
 const mocks = vi.hoisted(() => ({ rows: vi.fn(), session: vi.fn(), delegated: vi.fn(async () => null) }))
 vi.mock('~~/server/utils/db', () => ({ queryRowsFresh: mocks.rows }))
 vi.mock('~~/server/utils/auth', () => ({ validateSession: mocks.session, acceptGodModeInternalExecution: mocks.delegated, TransientAuthError: class extends Error {} }))
@@ -53,7 +54,7 @@ describe('generated signed WebM through actual auth middleware and media handler
     await expect(chain(url)).rejects.toMatchObject({ statusCode: 404 })
     expect(bucket.get).not.toHaveBeenCalled()
   })
-  it.each(['unsigned.webm', 'v1.payload.signature.webm/extra', 'v1.payload.signature.svg', 'v1..signature.webm'])('denies malformed or unsigned path %s at middleware', async path => {
+  it.each(['unsigned.webm', 'v1.payload.signature.webm/extra', 'v1.payload.signature.svg', 'v1..signature.webm'])('denies malformed or unsigned path %s at middleware', async (path) => {
     await expect(chain(`https://fixture.test/api/public/social-media/${path}`)).rejects.toMatchObject({ statusCode: 401 })
     expect(mocks.rows).not.toHaveBeenCalled()
     expect(bucket.get).not.toHaveBeenCalled()

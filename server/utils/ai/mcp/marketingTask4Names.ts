@@ -88,8 +88,8 @@ export const TASK4_STAFF_NAMES: readonly string[] = [
 export const isTask4StaffTool = (name: string) =>
   TASK4_STAFF_NAMES.includes(name)
 export const isTask4WriteTool = (name: string) =>
-  ADS_STAFF_PLAN_NAMES.includes(name as any) ||
-  name.startsWith('propose_gtm_') ||
-  name === 'record_gtm_tracking_ownership'
+  ADS_STAFF_PLAN_NAMES.includes(name as any)
+  || name.startsWith('propose_gtm_')
+  || name === 'record_gtm_tracking_ownership'
 export const isLegacyAdsMutation = (name: string) =>
   name === 'propose_google_ads_action' || name.startsWith('google_ads_run_')

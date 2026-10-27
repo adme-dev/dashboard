@@ -65,7 +65,10 @@ describe('portal social news decision request', () => {
     const app = createApp({ render: () => h(Approvals as never) })
     Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
     app.mount(host)
-    cleanup = () => { app.unmount(); host.remove() }
+    cleanup = () => {
+      app.unmount()
+      host.remove()
+    }
     await flush()
 
     const decide = async () => {

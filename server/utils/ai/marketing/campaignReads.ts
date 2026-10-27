@@ -14,7 +14,7 @@ import { buildCampaignBudgetIdentity } from '~~/server/utils/campaignBudgetIdent
 
 const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform', 'lead_count', 'cost_per_lead', 'reach', 'cost_per_result', 'end_date', 'health_score'] as const
 
-export type CampaignReadQuery = { startDate: string; endDate: string; clientId?: string; clientName?: string; platforms?: string[]; search?: string; showInactive: boolean; sortBy: string; sortDir: 'ASC' | 'DESC'; limit: number; offset: number }
+export type CampaignReadQuery = { startDate: string, endDate: string, clientId?: string, clientName?: string, platforms?: string[], search?: string, showInactive: boolean, sortBy: string, sortDir: 'ASC' | 'DESC', limit: number, offset: number }
 export async function readCampaignAnalytics(scope: MarketingReadScope, query: CampaignReadQuery) {
   requireMarketingReadPermission(scope, 'campaigns')
   const { startDate, endDate, clientId, platforms, search, showInactive } = query
@@ -38,7 +38,10 @@ export async function readCampaignAnalytics(scope: MarketingReadScope, query: Ca
     idx++
   }
   const ownerName = ownerClientNameSql(scope, query.clientName, 'ms.client_id', params)
-  if (ownerName) { conditions.push(ownerName); idx = params.length + 1 }
+  if (ownerName) {
+    conditions.push(ownerName)
+    idx = params.length + 1
+  }
   if (platforms && platforms.length > 0) {
     conditions.push(`ms.platform = ANY($${idx})`)
     params.push(platforms)
@@ -355,17 +358,26 @@ export async function readCampaignAnalytics(scope: MarketingReadScope, query: Ca
 }
 
 export async function readLeadAttribution(scope: MarketingReadScope, query: {
-  startDate: string; endDate: string; clientId?: string; clientName?: string; platform?: 'meta' | 'google'; campaignId?: string; campaignName?: string
+  startDate: string
+  endDate: string
+  clientId?: string
+  clientName?: string
+  platform?: 'meta' | 'google'
+  campaignId?: string
+  campaignName?: string
 }) {
   requireMarketingReadPermission(scope, 'campaigns')
   if (query.clientId) await requireScopedClient(scope, query.clientId)
   const values: unknown[] = [query.startDate, query.endDate]
-  const conditions = [clientScopeSql(scope, 'l.client_id', values), 'l.deleted_at IS NULL', 'l.is_test = false', 'l.submitted_at >= $1::date', "l.submitted_at < $2::date + INTERVAL '1 day'"]
+  const conditions = [clientScopeSql(scope, 'l.client_id', values), 'l.deleted_at IS NULL', 'l.is_test = false', 'l.submitted_at >= $1::date', 'l.submitted_at < $2::date + INTERVAL \'1 day\'']
   const ownerName = ownerClientNameSql(scope, query.clientName, 'l.client_id', values)
   if (ownerName) conditions.push(ownerName)
   const mediaScope = clientScopeSql(scope, 'matched.client_id', values)
   for (const [key, column] of [['clientId', 'l.client_id'], ['platform', 'l.source'], ['campaignId', 'l.campaign_id']] as const) {
-    if (query[key]) { values.push(query[key]); conditions.push(`${column} = $${values.length}`) }
+    if (query[key]) {
+      values.push(query[key])
+      conditions.push(`${column} = $${values.length}`)
+    }
   }
   if (query.campaignName) {
     values.push(`%${escapeLike(query.campaignName)}%`)

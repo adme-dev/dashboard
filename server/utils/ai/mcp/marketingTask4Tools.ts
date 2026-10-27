@@ -17,6 +17,7 @@ import {
 } from './marketingTask4Names'
 import { GtmProposalInput } from '~~/server/utils/tracking/gtmProposalSchemas'
 import { GtmOwnershipSchema } from '~~/server/utils/tracking/gtmOwnership'
+
 const site = z.strictObject({ siteId: z.string().uuid() })
 const gtmSchemas: Record<string, z.ZodType> = {
   list_client_gtm_connections: z.strictObject({}),
@@ -40,7 +41,7 @@ const actionByName: Record<string, string> = {
 for (const [name, action] of Object.entries(actionByName))
   gtmSchemas[name] = (
     GtmProposalInput.options.find(
-      (schema) => schema.shape.action.value === action
+      schema => schema.shape.action.value === action
     )! as z.ZodObject<any>
   ).omit({ action: true })
 /** One typed input contract for staff manifests, descriptors and dispatch. */
@@ -49,7 +50,8 @@ function task4StaffSchema(name: string): z.ZodType {
   if (name === 'google_ads_list_connections') return z.strictObject({ clientId: z.string().uuid() })
   const schema = getGoogleAdsToolSchema(name)!
   return schema instanceof z.ZodObject && 'requestedMode' in schema.shape
-    ? schema.extend({ requestedMode: z.enum(['proposal']).default('proposal') }) : schema
+    ? schema.extend({ requestedMode: z.enum(['proposal']).default('proposal') })
+    : schema
 }
 
 export function projectTask4StaffSuite(
@@ -57,7 +59,7 @@ export function projectTask4StaffSuite(
 ): McpToolManifest[] {
   const source = [...googleAdsReadTools, ...googleAdsSearchPlanningTools]
   const ads = [...ADS_STAFF_READ_NAMES, ...ADS_STAFF_PLAN_NAMES]
-    .filter((name) =>
+    .filter(name =>
       isTask4WriteTool(name) || name === 'google_ads_reverify_resource'
         ? context.suiteFlags.googleAdsWrite
         : context.suiteFlags.googleAdsRead
@@ -69,13 +71,13 @@ export function projectTask4StaffSuite(
         description:
           name === 'google_ads_list_connections'
             ? 'List exact active client/account connections.'
-            : (source.find((t) => t.name === name)?.description ?? name),
+            : (source.find(t => t.name === name)?.description ?? name),
         inputSchema
       }
     })
   return [
     ...ads,
-    ...GTM_STAFF_NAMES.map((name) => ({
+    ...GTM_STAFF_NAMES.map(name => ({
       name,
       description: actionByName[name]
         ? 'Prepare a local tracking proposal. A separate owner/admin reviews before any provider changes; publish requires its own review.'
@@ -90,7 +92,7 @@ export function projectTask4StaffSuite(
 export function resolveTask4StaffExecutions(
   context: McpProjectionContext
 ): McpExecutionDescriptor[] {
-  return projectTask4StaffSuite(context).map((m) => ({
+  return projectTask4StaffSuite(context).map(m => ({
     name: m.name,
     canonicalName: m.name,
     kind: 'supplemental',
@@ -122,8 +124,8 @@ export async function executeTask4StaffTool(
     if (name.startsWith('google_ads_')) {
       const { resolveMcpRuntimeConfig } = await import('./runtimeConfig')
       const flags = resolveMcpRuntimeConfig(ctx.event).suiteFlags
-      const write =
-        isTask4WriteTool(name) || name === 'google_ads_reverify_resource'
+      const write
+        = isTask4WriteTool(name) || name === 'google_ads_reverify_resource'
       if (write ? !flags.googleAdsWrite : !flags.googleAdsRead)
         return {
           ok: false,
@@ -132,8 +134,8 @@ export async function executeTask4StaffTool(
         }
     }
     if (name === 'google_ads_list_connections') {
-      const { listGoogleAdsConnections } =
-        await import('~~/server/utils/ai/marketing/googleAdsAccess')
+      const { listGoogleAdsConnections }
+        = await import('~~/server/utils/ai/marketing/googleAdsAccess')
       return {
         ok: true,
         data: await listGoogleAdsConnections(
@@ -152,8 +154,8 @@ export async function executeTask4StaffTool(
           destructive: false
         }
       if (ADS_STAFF_PLAN_NAMES.includes(name as any)) {
-        const { executeGoogleAdsSearchPlanningTool } =
-          await import('./googleAdsSearchTools')
+        const { executeGoogleAdsSearchPlanningTool }
+          = await import('./googleAdsSearchTools')
         // Server logical request identity, never assistant-selected idempotency, owns durable plan replay.
         const parsed = task4StaffSchema(name).parse(args) as Record<
           string,
@@ -168,8 +170,8 @@ export async function executeTask4StaffTool(
         )
       }
       const { executeGoogleAdsTool } = await import('./googleAdsTools'),
-        { buildGoogleAdsMcpToolDependencies } =
-          await import('./googleAdsServer')
+        { buildGoogleAdsMcpToolDependencies }
+          = await import('./googleAdsServer')
       return executeGoogleAdsTool(
         name,
         args,
@@ -180,8 +182,8 @@ export async function executeTask4StaffTool(
     }
     const input = gtmSchemas[name]!.parse(args) as any
     if (name === 'list_client_gtm_connections') {
-      const { listGtmConnectionsInScope } =
-        await import('~~/server/utils/ai/marketing/gtmAccess')
+      const { listGtmConnectionsInScope }
+        = await import('~~/server/utils/ai/marketing/gtmAccess')
       return { ok: true, data: await listGtmConnectionsInScope(ctx) }
     }
     const service = await import('~~/server/utils/tracking/gtmProposals')

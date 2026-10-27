@@ -143,13 +143,13 @@ describe('delegated social review endpoints', () => {
     await expect(patch({ body: { platformOverrides: { facebook: { mediaUrls: ['https://cdn.example/a.jpg'] } } } })).rejects.toMatchObject({ statusCode: 400 })
     await expect(patch({ body: { platforms: ['facebook', 'instagram'], accountIds: ['acct-1', 'acct-2'] } })).rejects.toMatchObject({ statusCode: 400 })
 
-    const txQuery = vi.fn(async () => ({rows:[{...mocks.existing,publish_targets:[]}]}))
-    mocks.transaction.mockImplementationOnce(async cb => cb({query:txQuery}))
+    const txQuery = vi.fn(async () => ({ rows: [{ ...mocks.existing, publish_targets: [] }] }))
+    mocks.transaction.mockImplementationOnce(async cb => cb({ query: txQuery }))
     await patch({ body: { scheduledAt: '2030-02-01T10:00:00.000Z', metadata: { source: 'manual' }, platforms: ['facebook'], accountIds: ['acct-1'], mediaUrls: null } })
-    const [sql, params] = (txQuery.mock.calls as unknown as Array<[string,unknown[]]>).find(([sql])=>sql.includes('UPDATE social_posts'))!
-    expect(sql).toContain("UPDATE social_post_revisions SET review_status = 'superseded'")
+    const [sql, params] = (txQuery.mock.calls as unknown as Array<[string, unknown[]]>).find(([sql]) => sql.includes('UPDATE social_posts'))!
+    expect(sql).toContain('UPDATE social_post_revisions SET review_status = \'superseded\'')
     expect(sql).toContain('approved_revision_id = NULL')
-    expect(sql).toContain("status = 'draft'")
+    expect(sql).toContain('status = \'draft\'')
     expect(sql).not.toMatch(/metadata = \$/)
     expect(sql).not.toMatch(/platforms = \$/)
     expect(JSON.stringify(params)).not.toContain('manual')
@@ -172,8 +172,8 @@ describe('delegated social review endpoints', () => {
     mocks.queryOne.mockResolvedValueOnce({ id: 'post-1', status: 'approved', approval_requested_by: null, scheduled_at: null, approved_revision_id: null })
     await expect(approve({})).resolves.toEqual({ ok: true })
     const [sql, params] = mocks.queryOne.mock.calls[0]!
-    expect(sql).toContain("review_policy IS DISTINCT FROM 'delegated_marketing'")
-    expect(sql).toContain("UPDATE social_post_revisions r")
+    expect(sql).toContain('review_policy IS DISTINCT FROM \'delegated_marketing\'')
+    expect(sql).toContain('UPDATE social_post_revisions r')
     expect(params).toEqual(['post-1', 'reviewer', 'client-1', null])
     expect(mocks.reviewer).not.toHaveBeenCalled()
   })

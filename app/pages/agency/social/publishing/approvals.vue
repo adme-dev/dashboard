@@ -343,7 +343,9 @@ async function confirmReject() {
 
             <div v-if="effectiveTargets.length" class="rounded-lg border border-default p-4">
               <div class="mb-1 flex items-center justify-between gap-3">
-                <h3 class="text-sm font-semibold">What each destination publishes</h3>
+                <h3 class="text-sm font-semibold">
+                  What each destination publishes
+                </h3>
                 <span class="text-xs text-muted">
                   {{ effectiveTargets.length }} {{ effectiveTargets.length === 1 ? 'destination' : 'destinations' }}
                 </span>
@@ -378,11 +380,41 @@ async function confirmReject() {
                     {{ target.content || 'No caption' }}
                   </p>
                   <dl v-if="target.platform === 'tiktok'" class="mt-2 space-y-1 text-xs">
-                    <div><dt class="inline text-muted">Privacy: </dt><dd class="inline">{{ target.options.privacy_level || 'Not selected' }}</dd></div>
-                    <div><dt class="inline text-muted">Photo title: </dt><dd class="inline">{{ target.options.title || 'None' }}</dd></div>
-                    <div><dt class="inline text-muted">Comments / Duet / Stitch: </dt><dd class="inline">{{ target.options.disable_comment === false ? 'On' : 'Off' }} / {{ target.options.disable_duet === false ? 'On' : 'Off' }} / {{ target.options.disable_stitch === false ? 'On' : 'Off' }}</dd></div>
-                    <div><dt class="inline text-muted">Disclosures: </dt><dd class="inline">Your brand {{ target.options.brand_organic_toggle === true ? 'on' : 'off' }}, paid partnership {{ target.options.brand_content_toggle === true ? 'on' : 'off' }}, AI-generated {{ target.options.is_aigc === true ? 'on' : 'off' }}</dd></div>
-                    <div><dt class="inline text-muted">Music / branded-content consent: </dt><dd class="inline">{{ target.options.consent === true ? 'Confirmed for this revision' : 'Missing' }}</dd></div>
+                    <div>
+                      <dt class="inline text-muted">
+                        Privacy:
+                      </dt><dd class="inline">
+                        {{ target.options.privacy_level || 'Not selected' }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="inline text-muted">
+                        Photo title:
+                      </dt><dd class="inline">
+                        {{ target.options.title || 'None' }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="inline text-muted">
+                        Comments / Duet / Stitch:
+                      </dt><dd class="inline">
+                        {{ target.options.disable_comment === false ? 'On' : 'Off' }} / {{ target.options.disable_duet === false ? 'On' : 'Off' }} / {{ target.options.disable_stitch === false ? 'On' : 'Off' }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="inline text-muted">
+                        Disclosures:
+                      </dt><dd class="inline">
+                        Your brand {{ target.options.brand_organic_toggle === true ? 'on' : 'off' }}, paid partnership {{ target.options.brand_content_toggle === true ? 'on' : 'off' }}, AI-generated {{ target.options.is_aigc === true ? 'on' : 'off' }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="inline text-muted">
+                        Music / branded-content consent:
+                      </dt><dd class="inline">
+                        {{ target.options.consent === true ? 'Confirmed for this revision' : 'Missing' }}
+                      </dd>
+                    </div>
                   </dl>
                   <p v-if="target.firstComment" class="mt-2 text-xs">
                     <span class="text-muted">First comment:</span> {{ target.firstComment }}
@@ -473,29 +505,45 @@ async function confirmReject() {
 
             <div v-if="selectedRevision" class="rounded-lg border border-default p-4">
               <div class="flex items-center justify-between gap-3 mb-3">
-                <h3 class="text-sm font-semibold">Exact revision</h3>
-                <UBadge color="neutral" variant="subtle" size="xs">#{{ selectedRevision.revision_number }}</UBadge>
+                <h3 class="text-sm font-semibold">
+                  Exact revision
+                </h3>
+                <UBadge color="neutral" variant="subtle" size="xs">
+                  #{{ selectedRevision.revision_number }}
+                </UBadge>
               </div>
               <dl class="space-y-2 text-sm">
                 <div class="flex justify-between gap-3">
-                  <dt class="text-muted">Fingerprint</dt>
-                  <dd class="font-mono text-xs" :title="selectedRevision.content_hash">{{ shortHash(selectedRevision.content_hash) }}</dd>
+                  <dt class="text-muted">
+                    Fingerprint
+                  </dt>
+                  <dd class="font-mono text-xs" :title="selectedRevision.content_hash">
+                    {{ shortHash(selectedRevision.content_hash) }}
+                  </dd>
                 </div>
                 <div class="flex justify-between gap-3">
-                  <dt class="text-muted">Submitted</dt>
+                  <dt class="text-muted">
+                    Submitted
+                  </dt>
                   <dd>{{ formatApprovalDate(selectedRevision.requested_at, selectedPost.timezone) }}</dd>
                 </div>
                 <div class="flex justify-between gap-3">
-                  <dt class="text-muted">Review closes</dt>
+                  <dt class="text-muted">
+                    Review closes
+                  </dt>
                   <dd>{{ formatApprovalDate(selectedRevision.expires_at, selectedPost.timezone) }}</dd>
                 </div>
                 <div v-if="selectedRevision.schedule?.scheduledAt" class="flex justify-between gap-3">
-                  <dt class="text-muted">Publishes at</dt>
+                  <dt class="text-muted">
+                    Publishes at
+                  </dt>
                   <dd>{{ formatApprovalDate(selectedRevision.schedule.scheduledAt, selectedRevision.schedule.timezone) }}</dd>
                 </div>
               </dl>
               <div v-if="revisionTargets.length" class="mt-3 space-y-1">
-                <p class="text-xs text-muted">Publishes to exactly</p>
+                <p class="text-xs text-muted">
+                  Publishes to exactly
+                </p>
                 <div class="flex flex-wrap gap-1">
                   <UBadge
                     v-for="target in revisionTargets"
@@ -510,7 +558,9 @@ async function confirmReject() {
                 </div>
               </div>
               <div v-if="selectedRevision.media?.length" class="mt-3 space-y-1">
-                <p class="text-xs text-muted">Reviewed media is pinned to these exact files</p>
+                <p class="text-xs text-muted">
+                  Reviewed media is pinned to these exact files
+                </p>
                 <ul class="space-y-1 text-xs">
                   <li v-for="media in selectedRevision.media" :key="`${media.kind}:${media.id}`" class="flex justify-between gap-3">
                     <span>{{ media.mediaType === 'video' ? 'Video' : 'Image' }} ({{ media.mimeType }})</span>

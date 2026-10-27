@@ -4,7 +4,7 @@ import { escapeLike } from '../toolContext'
 import { clientScopeSql, requireMarketingReadPermission, requireScopedClient, type MarketingReadScope } from './readScope'
 import type { LeadCount } from '../tools/leads'
 
-export type ClientMatch = { id: string; name: string; is_active?: boolean; aliases?: string[]; billing_type?: string | null; parent_client_id?: string | null; parent_client_name?: string | null }
+export type ClientMatch = { id: string, name: string, is_active?: boolean, aliases?: string[], billing_type?: string | null, parent_client_id?: string | null, parent_client_name?: string | null }
 export async function findScopedClients(scope: MarketingReadScope, name: string, limit = 25, exact = false): Promise<ClientMatch[]> {
   requireMarketingReadPermission(scope, 'clients')
   const values: unknown[] = [exact ? escapeLike(name) : `%${escapeLike(name)}%`]
@@ -59,7 +59,7 @@ export async function readMarginSnapshot(scope: MarketingReadScope, clientId: st
        GROUP BY project_id
      ) e ON p.id = e.project_id
      WHERE p.client_id = $1 AND ${predicate}`,
-    values,
+    values
   )
   // No projects → no profitability basis; surface null rather than a misleading 0%.
   if (!r || Number(r.project_count) === 0) return null
@@ -85,12 +85,16 @@ export async function readClientOverview(scope: MarketingReadScope, clientId: st
     briefCount: await readBriefCount(scope, clientId),
     ...(scope.financialReadAllowed ? { billingType: row.billing_type, marginSnapshot: await readMarginSnapshot(scope, clientId) } : {}) }
 }
-export async function readLeadSummary(scope: MarketingReadScope, query: { clientId: string; fromISO: string; status?: string; source?: string }): Promise<LeadCount[]> {
+export async function readLeadSummary(scope: MarketingReadScope, query: { clientId: string, fromISO: string, status?: string, source?: string }): Promise<LeadCount[]> {
   requireMarketingReadPermission(scope, 'lead_summary')
   await requireScopedClient(scope, query.clientId)
   const values: unknown[] = [query.clientId, query.fromISO]
   const conditions = ['l.client_id = $1', 'l.submitted_at >= $2', 'l.deleted_at IS NULL', 'l.is_test = false', clientScopeSql(scope, 'l.client_id', values)]
-  for (const key of ['status', 'source'] as const) if (query[key]) { values.push(query[key]); conditions.push(`l.${key} = $${values.length}`) }
+  for (const key of ['status', 'source'] as const)
+    if (query[key]) {
+      values.push(query[key])
+      conditions.push(`l.${key} = $${values.length}`)
+    }
   return queryRowsFresh<LeadCount>(`SELECT l.status, l.source, COUNT(DISTINCT l.id)::int AS count FROM leads l WHERE ${conditions.join(' AND ')} GROUP BY l.status, l.source`, values)
 }
 

@@ -22,7 +22,11 @@ const refreshFailed = ref(false)
 const loadFailed = computed(() => Boolean(error.value) || refreshFailed.value)
 async function refreshTools() {
   refreshFailed.value = false
-  try { await refresh() } catch { refreshFailed.value = true }
+  try {
+    await refresh()
+  } catch {
+    refreshFailed.value = true
+  }
 }
 
 const isGodMode = computed(() => data.value?.authority === 'god_mode')
@@ -77,7 +81,7 @@ const steps = {
   cursor: [
     'Open Cursor’s Customize page to manage MCP servers, or follow the official guide to add a remote server URL in mcp.json.',
     'Use the full connector URL with Streamable HTTP and complete XeroFlow OAuth using your own account.',
-    'Review the available tools and requested approvals before asking the agent to use XeroFlow.',
+    'Review the available tools and requested approvals before asking the agent to use XeroFlow.'
   ],
 }
 </script>
@@ -95,7 +99,9 @@ const steps = {
       <div class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
         <div class="max-w-3xl space-y-8">
           <div class="space-y-2">
-            <h1 class="text-lg font-semibold text-highlighted">Bring your assigned work into your AI assistant</h1>
+            <h1 class="text-lg font-semibold text-highlighted">
+              Bring your assigned work into your AI assistant
+            </h1>
             <p class="text-sm text-muted leading-relaxed">
               Connect with your XeroFlow login to read permitted campaign data and prepare reviewed work.
               Your current permissions, client assignments and capability grants determine the tools you can use.
@@ -107,11 +113,19 @@ const steps = {
             <p class="text-sm text-muted">Use this full URL in your assistant’s remote MCP setup.</p>
             <div class="flex flex-wrap items-center gap-2">
               <code class="flex-1 min-w-0 break-all rounded-md border border-default bg-elevated px-3 py-2 text-sm text-highlighted">{{ connectorUrl }}</code>
-              <UButton :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'" color="neutral" variant="subtle" :label="copied ? 'Copied' : 'Copy'" @click="copyUrl" />
+              <UButton
+                :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+                color="neutral"
+                variant="subtle"
+                :label="copied ? 'Copied' : 'Copy'"
+                @click="copyUrl"
+              />
             </div>
             <UTabs v-model="host" :items="hostTabs" :content="false" />
             <ol class="list-decimal space-y-3 pl-5 text-sm text-default leading-relaxed">
-              <li v-for="step in steps[host]" :key="step" class="pl-1">{{ step }}</li>
+              <li v-for="step in steps[host]" :key="step" class="pl-1">
+                {{ step }}
+              </li>
             </ol>
             <p v-if="host === 'claude'" class="text-sm text-muted">
               Custom remote connectors are available on Free (one connector), Pro, Max, Team and Enterprise.
@@ -121,56 +135,142 @@ const steps = {
               Full modify/write MCP support depends on your plan, workspace policy and rollout.
               Check official availability before enabling writes; this page does not verify your ChatGPT plan.
             </p>
-            <UButton :to="hostGuides[host]" target="_blank" rel="noopener noreferrer" color="neutral" variant="link" icon="i-lucide-external-link" label="Official setup guide" />
+            <UButton
+              :to="hostGuides[host]"
+              target="_blank"
+              rel="noopener noreferrer"
+              color="neutral"
+              variant="link"
+              icon="i-lucide-external-link"
+              label="Official setup guide"
+            />
           </section>
 
           <section aria-labelledby="access-heading" class="border-t border-default pt-6 space-y-4" :aria-busy="pending">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h2 id="access-heading" class="font-semibold text-highlighted">Your access preview</h2>
-              <UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="pending" label="Refresh access" @click="refreshTools" />
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-refresh-cw"
+                :loading="pending"
+                label="Refresh access"
+                @click="refreshTools"
+              />
             </div>
             <div v-if="pending" role="status" class="flex items-center gap-2 text-sm text-muted">
               <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin motion-reduce:animate-none" />
               Loading your access preview…
             </div>
             <div v-else-if="loadFailed" role="alert" class="space-y-3">
-              <UAlert color="error" variant="subtle" title="Could not load your access preview" description="Retry to check your current permissions. If this continues, sign in again or ask an administrator to check your account." />
-              <UButton color="neutral" variant="outline" label="Retry" @click="refreshTools" />
+              <UAlert
+                color="error"
+                variant="subtle"
+                title="Could not load your access preview"
+                description="Retry to check your current permissions. If this continues, sign in again or ask an administrator to check your account."
+              />
+              <UButton
+                color="neutral"
+                variant="outline"
+                label="Retry"
+                @click="refreshTools"
+              />
             </div>
             <template v-else-if="data">
               <p class="text-sm text-muted">
                 This is a preview, not a live OAuth grant or a test of your assistant connection.
                 Actual host tools can be narrower. XeroFlow checks current authority again on every request.
               </p>
-              <p class="text-xs text-muted">Assumed scopes: {{ data.preview.assumedScopes.join(', ') }}</p>
-              <UAlert v-if="!data.enabled" color="warning" variant="subtle" title="Connector is currently turned off" description="An administrator must enable the MCP server before connections work. The preview below describes configured access only." />
-              <UAlert v-if="isGodMode" color="warning" variant="subtle" title="Owner God mode is active" description="This separate owner preview includes the registered catalog and audited write suites. Provider gates and dedicated execution boundaries still apply; it is not evidence of an external host grant or a successful action." />
+              <p class="text-xs text-muted">
+                Assumed scopes: {{ data.preview.assumedScopes.join(', ') }}
+              </p>
+              <UAlert
+                v-if="!data.enabled"
+                color="warning"
+                variant="subtle"
+                title="Connector is currently turned off"
+                description="An administrator must enable the MCP server before connections work. The preview below describes configured access only."
+              />
+              <UAlert
+                v-if="isGodMode"
+                color="warning"
+                variant="subtle"
+                title="Owner God mode is active"
+                description="This separate owner preview includes the registered catalog and audited write suites. Provider gates and dedicated execution boundaries still apply; it is not evidence of an external host grant or a successful action."
+              />
               <template v-else>
                 <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
-                  <div><dt class="text-muted">Current role</dt><dd class="mt-1 text-highlighted">{{ data.role || 'No role' }}</dd></div>
-                  <div><dt class="text-muted">Client scope</dt><dd class="mt-1 text-highlighted">{{ clientScopeLabel }}</dd></div>
-                  <div><dt class="text-muted">Effective permission groups</dt><dd class="mt-1 text-highlighted">{{ data.access?.permissionGroups.join(', ') || 'None' }}</dd></div>
-                  <div><dt class="text-muted">Write policy</dt><dd class="mt-1 text-highlighted">{{ data.access?.readOnly ? 'Read-only policy' : 'Writes still require a grant, scope and operation checks' }}</dd></div>
-                  <div class="sm:col-span-2"><dt class="text-muted">Marketing capability grants</dt><dd class="mt-1 text-highlighted">{{ data.marketingCapabilities?.join(', ') || 'No marketing capabilities granted' }}</dd></div>
+                  <div>
+                    <dt class="text-muted">
+                      Current role
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ data.role || 'No role' }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-muted">
+                      Client scope
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ clientScopeLabel }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-muted">
+                      Effective permission groups
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ data.access?.permissionGroups.join(', ') || 'None' }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-muted">
+                      Write policy
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ data.access?.readOnly ? 'Read-only policy' : 'Writes still require a grant, scope and operation checks' }}
+                    </dd>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <dt class="text-muted">
+                      Marketing capability grants
+                    </dt><dd class="mt-1 text-highlighted">
+                      {{ data.marketingCapabilities?.join(', ') || 'No marketing capabilities granted' }}
+                    </dd>
+                  </div>
                 </dl>
                 <p v-if="data.access?.clientScope.mode === 'assigned' && !data.access.clientScope.assignedClientCount" class="text-sm text-muted">
                   Ask an administrator to assign your active clients. No assignments means no client data access.
                 </p>
               </template>
-              <p v-if="!tools.length" class="text-sm text-muted">No tools are available in this preview. Ask an administrator to check your permissions, assignments and grants.</p>
+              <p v-if="!tools.length" class="text-sm text-muted">
+                No tools are available in this preview. Ask an administrator to check your permissions, assignments and grants.
+              </p>
               <div v-else class="space-y-3">
-                <p class="text-sm font-medium text-highlighted">{{ tools.length }} tools in this preview</p>
+                <p class="text-sm font-medium text-highlighted">
+                  {{ tools.length }} tools in this preview
+                </p>
                 <ul class="divide-y divide-default">
                   <li v-for="tool in tools" :key="tool.name" class="py-3 space-y-1">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="text-sm font-medium text-highlighted">{{ toolTitle(tool.name) }}</span>
-                      <UBadge v-if="tool.requiresWriteScope" color="warning" variant="subtle" size="sm">Requires mcp:write</UBadge>
+                      <UBadge
+                        v-if="tool.requiresWriteScope"
+                        color="warning"
+                        variant="subtle"
+                        size="sm"
+                      >
+                        Requires mcp:write
+                      </UBadge>
                     </div>
-                    <p class="text-xs text-muted leading-relaxed">{{ tool.description }}</p>
+                    <p class="text-xs text-muted leading-relaxed">
+                      {{ tool.description }}
+                    </p>
                   </li>
                 </ul>
-                <p v-if="tools.some(tool => tool.name === 'get_campaign_breakdown')" class="text-sm text-muted">Try: “Show stored campaign performance for one of my assigned clients, including the reporting period and coverage gaps.”</p>
-                <p v-if="tools.some(tool => tool.name === 'create_social_post_draft')" class="text-sm text-muted">Try: “Prepare a social draft for my assigned client, then submit the exact revision for independent review.”</p>
+                <p v-if="tools.some(tool => tool.name === 'get_campaign_breakdown')" class="text-sm text-muted">
+                  Try: “Show stored campaign performance for one of my assigned clients, including the reporting period and coverage gaps.”
+                </p>
+                <p v-if="tools.some(tool => tool.name === 'create_social_post_draft')" class="text-sm text-muted">
+                  Try: “Prepare a social draft for my assigned client, then submit the exact revision for independent review.”
+                </p>
               </div>
             </template>
           </section>
@@ -186,8 +286,18 @@ const steps = {
               Edits, expiry or revoked access can require a new review. TikTok publishing remains unavailable pending product eligibility and app approval; OAuth alone cannot enable it.
             </p>
             <div class="flex flex-wrap gap-2">
-              <UButton to="/agency/social/publishing/accounts" color="neutral" variant="outline" label="Publishing account readiness" />
-              <UButton to="/agency/social" color="neutral" variant="outline" label="Advertising connections" />
+              <UButton
+                to="/agency/social/publishing/accounts"
+                color="neutral"
+                variant="outline"
+                label="Publishing account readiness"
+              />
+              <UButton
+                to="/agency/social"
+                color="neutral"
+                variant="outline"
+                label="Advertising connections"
+              />
             </div>
           </section>
         </div>

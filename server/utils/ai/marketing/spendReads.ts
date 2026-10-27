@@ -5,12 +5,13 @@ import { STALENESS_THRESHOLD_HOURS } from '../tools/responseContract'
 import { buildSpendSummaryItems, buildSpendSummaryTotals, type SpendSummaryRow, type SpendSummaryItem } from '~~/server/utils/socialSpendSummary'
 import { sanitizeSpendSyncFailureReason, sanitizeSpendSyncFailures } from '~~/server/utils/spendSyncFailureSanitizer'
 import { clientScopeSql, requireMarketingReadPermission, requireScopedClient, resolveStoredReportingTenant, type MarketingReadScope } from './readScope'
-export type SpendReadQuery = { month: number; year: number; platform?: string; clientId?: string; clientName?: string }
+
+export type SpendReadQuery = { month: number, year: number, platform?: string, clientId?: string, clientName?: string }
 export type MarketingSpendItem = Omit<SpendSummaryItem, 'commission' | 'commissionRate' | 'clientCode' | 'owner'>
-type CommonSummary = { month: number; year: number; platform: string; lastSyncedAt: string | null; coverageDeltaStatus: string }
-export type SpendSummaryResponse =
- | (CommonSummary & { projection: 'marketing'; items: MarketingSpendItem[]; totals: { budget: number; spend: number; variance: number } })
- | (CommonSummary & { projection: 'finance'; items: SpendSummaryItem[]; totals: ReturnType<typeof buildSpendSummaryTotals>; latestSyncJobs?: Array<{ platform: string; status: string; syncedCount: number; totalSpend: number; failures: Array<{ account: string; reason: string }>; error: string | null; startedAt: string; finishedAt: string | null; totalAccounts: number | null; processedAccounts: number }> })
+type CommonSummary = { month: number, year: number, platform: string, lastSyncedAt: string | null, coverageDeltaStatus: string }
+export type SpendSummaryResponse
+  = | (CommonSummary & { projection: 'marketing', items: MarketingSpendItem[], totals: { budget: number, spend: number, variance: number } })
+    | (CommonSummary & { projection: 'finance', items: SpendSummaryItem[], totals: ReturnType<typeof buildSpendSummaryTotals>, latestSyncJobs?: Array<{ platform: string, status: string, syncedCount: number, totalSpend: number, failures: Array<{ account: string, reason: string }>, error: string | null, startedAt: string, finishedAt: string | null, totalAccounts: number | null, processedAccounts: number }> })
 export async function readSpendSummary(scope: MarketingReadScope, query: SpendReadQuery): Promise<SpendSummaryResponse> {
   requireMarketingReadPermission(scope, 'pacing')
   const { month, year } = query
@@ -57,7 +58,10 @@ export async function readSpendSummary(scope: MarketingReadScope, query: SpendRe
   const params: unknown[] = [period, STALENESS_THRESHOLD_HOURS]
   if (scope.financialReadAllowed) params.push(tenantId)
   sql += ` AND ${clientScopeSql(scope, 'ms.client_id', params)}`
-  if (query.clientId) { params.push(query.clientId); sql += ` AND ms.client_id = $${params.length}` }
+  if (query.clientId) {
+    params.push(query.clientId)
+    sql += ` AND ms.client_id = $${params.length}`
+  }
 
   const ownerName = ownerClientNameSql(scope, query.clientName, 'ms.client_id', params)
   if (ownerName) sql += ` AND ${ownerName}`
@@ -70,27 +74,29 @@ export async function readSpendSummary(scope: MarketingReadScope, query: SpendRe
 
   const rows = await queryRows<SpendSummaryRow>(sql, params)
   const jobPlatform = platform === 'google_ads' ? 'google' : platform
-  const latestSyncJobs = scope.ownerVerified && scope.clientIds === null ? await queryRows<{
-    platform: string
-    status: string
-    synced_count: number
-    total_spend: string
-    failures: Array<{ account: string; reason: string }>
-    error: string | null
-    started_at: string
-    finished_at: string | null
-    total_accounts: number | null
-    processed_accounts: number
-  }>(
-    `SELECT DISTINCT ON (platform)
+  const latestSyncJobs = scope.ownerVerified && scope.clientIds === null
+    ? await queryRows<{
+        platform: string
+        status: string
+        synced_count: number
+        total_spend: string
+        failures: Array<{ account: string, reason: string }>
+        error: string | null
+        started_at: string
+        finished_at: string | null
+        total_accounts: number | null
+        processed_accounts: number
+      }>(
+        `SELECT DISTINCT ON (platform)
         platform, status, synced_count, total_spend, failures, error,
         started_at, finished_at, total_accounts, processed_accounts
      FROM spend_sync_jobs
      WHERE period = $1
      ${jobPlatform && jobPlatform !== 'all' ? 'AND platform = $2' : ''}
      ORDER BY platform, started_at DESC`,
-    jobPlatform && jobPlatform !== 'all' ? [period, jobPlatform] : [period]
-  ) : []
+        jobPlatform && jobPlatform !== 'all' ? [period, jobPlatform] : [period]
+      )
+    : []
 
   const summary = buildSpendSummaryItems(rows)
   const totals = buildSpendSummaryTotals(summary)
@@ -100,10 +106,12 @@ export async function readSpendSummary(scope: MarketingReadScope, query: SpendRe
     items: summary.map(({ commission, commissionRate, clientCode, owner, ...marketing }) => marketing),
     totals: { budget: totals.budget, spend: totals.spend, variance: totals.variance } }
   return { ...common, projection: 'finance', items: summary, totals,
-    ...(scope.ownerVerified && scope.clientIds === null ? { latestSyncJobs: latestSyncJobs.map(job => ({
-      platform: job.platform, status: job.status, syncedCount: Number(job.synced_count) || 0,
-      totalSpend: Number(job.total_spend) || 0, failures: sanitizeSpendSyncFailures(job.failures),
-      error: job.error ? sanitizeSpendSyncFailureReason(job.error) : null,
-      startedAt: job.started_at, finishedAt: job.finished_at, totalAccounts: job.total_accounts, processedAccounts: job.processed_accounts,
-    })) } : {}) }
+    ...(scope.ownerVerified && scope.clientIds === null
+      ? { latestSyncJobs: latestSyncJobs.map(job => ({
+          platform: job.platform, status: job.status, syncedCount: Number(job.synced_count) || 0,
+          totalSpend: Number(job.total_spend) || 0, failures: sanitizeSpendSyncFailures(job.failures),
+          error: job.error ? sanitizeSpendSyncFailureReason(job.error) : null,
+          startedAt: job.started_at, finishedAt: job.finished_at, totalAccounts: job.total_accounts, processedAccounts: job.processed_accounts
+        })) }
+      : {}) }
 }

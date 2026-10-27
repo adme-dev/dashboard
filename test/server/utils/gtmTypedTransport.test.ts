@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-const calls = vi.hoisted(() => ({ fetch: vi.fn(), quota: vi.fn() }))
-vi.mock('ofetch', () => ({ ofetch: calls.fetch }))
-vi.mock('../../../server/utils/googleTagManagerStore', () => ({
-  reserveGtmApiQuota: calls.quota
-}))
 import {
   writeGtmEntity,
   listGtmEntities,
   getGtmVersion
 } from '../../../server/utils/googleTagManagerClient'
+
+const calls = vi.hoisted(() => ({ fetch: vi.fn(), quota: vi.fn() }))
+vi.mock('ofetch', () => ({ ofetch: calls.fetch }))
+vi.mock('../../../server/utils/googleTagManagerStore', () => ({
+  reserveGtmApiQuota: calls.quota
+}))
+
 describe('GTM typed REST adapter', () => {
   beforeEach(() => {
     calls.fetch.mockReset()

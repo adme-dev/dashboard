@@ -18,10 +18,8 @@ import { providerAccountOperationEligibility } from '~~/server/utils/socialPubli
 import { classifySocialPublishingAccountHealth } from '~~/server/utils/socialPublishing/accountHealth'
 import { productionReadyPublishPlatformsError } from '~~/server/utils/socialPublishing/platformReadiness'
 import {
-  buildPublishContent,
   resolveEffectiveSocialTargets,
   tikTokConsentIdentity,
-  buildPublishOptions,
   resolvePlatformContent,
   resolvePlatformOptions,
   stampUtms,
@@ -235,8 +233,8 @@ async function prepareTarget(
     }
     const built = payload(target)
     if (platform === 'tiktok') {
-      if (built.options.consentAccountId !== account.platform_account_id) return {error:'TikTok account changed; renew consent'}
-      if (!reviewed && built.options.consentPayload !== tikTokConsentIdentity({accountId:account.id,content:built.content,options:built.options},mediaUrls)) return {error:'TikTok consent must be renewed for this exact payload'}
+      if (built.options.consentAccountId !== account.platform_account_id) return { error: 'TikTok account changed; renew consent' }
+      if (!reviewed && built.options.consentPayload !== tikTokConsentIdentity({ accountId: account.id, content: built.content, options: built.options }, mediaUrls)) return { error: 'TikTok consent must be renewed for this exact payload' }
       const creator = await queryTikTokCreatorPostCapabilities(target.accessToken)
       const problem = tikTokPayloadError(built.content, mediaIdentities ?? mediaUrls.map(url => ({ mediaType: mediaTypeForUrl(url) })), built.options, creator)
       if (problem) return { error: problem }
@@ -277,12 +275,12 @@ async function publishResolvedTarget(
   targetOptions: Record<string, unknown>,
   event?: H3Event
 ): Promise<TargetOutcome> {
-  const preparation = await prepareTarget(platform, account, resultKey, resolved.mediaUrls, target => {
+  const preparation = await prepareTarget(platform, account, resultKey, resolved.mediaUrls, (target) => {
     const effective = resolveEffectiveSocialTargets({
-      postId:post.id,content:resolved.content,hashtags:post.hashtags,linkUrl:post.link_url,firstComment:post.first_comment,
-      targets:[{platform,accountId:account.id,options:{...resolvePlatformOptions(post.platform_overrides ?? {},platform),...targetOptions,...target.options}}]
-    },post.media_identities ?? resolved.mediaUrls.map(url=>({mediaType:mediaTypeForUrl(url)})))[0]!
-    return {content:effective.content,options:effective.options,firstComment:effective.firstComment}
+      postId: post.id, content: resolved.content, hashtags: post.hashtags, linkUrl: post.link_url, firstComment: post.first_comment,
+      targets: [{ platform, accountId: account.id, options: { ...resolvePlatformOptions(post.platform_overrides ?? {}, platform), ...targetOptions, ...target.options } }]
+    }, post.media_identities ?? resolved.mediaUrls.map(url => ({ mediaType: mediaTypeForUrl(url) })))[0]!
+    return { content: effective.content, options: effective.options, firstComment: effective.firstComment }
   }, false, event, post.media_identities)
   if ('error' in preparation) {
     logPublishTargetFailure(post.id, platform, resultKey, account, preparation.error)
@@ -664,8 +662,9 @@ export async function refreshableAccessToken(account: PublishableAccount, review
   // Keep legacy refresh semantics, but scope delegated writes and read the winner uncached. A missing
   // binding must throw rather than letting the shared refresh helper fall back to the losing token.
   const currentBinding = async () => {
-    const current = account.client_id ? await queryOneFresh<PublishableAccount>(
-      `SELECT sa.id, sa.client_id, sa.platform, sa.platform_account_id, sa.access_token, sa.refresh_token,
+    const current = account.client_id
+      ? await queryOneFresh<PublishableAccount>(
+          `SELECT sa.id, sa.client_id, sa.platform, sa.platform_account_id, sa.access_token, sa.refresh_token,
               sa.token_expires_at, sa.account_name, sa.last_error, sa.metadata,
               linked_fb.id AS linked_facebook_account_id, linked_fb.is_active AS linked_facebook_is_active
          FROM social_accounts sa
@@ -675,22 +674,25 @@ export async function refreshableAccessToken(account: PublishableAccount, review
         AND linked_fb.platform = 'facebook'
         AND linked_fb.platform_account_id = sa.metadata->>'via_page_id'
         WHERE sa.id = $1 AND sa.client_id = $2 AND sa.platform = $3 AND sa.platform_account_id = $4 AND sa.is_active = TRUE`,
-      [account.id, account.client_id, account.platform, account.platform_account_id]
-    ) : null
+          [account.id, account.client_id, account.platform, account.platform_account_id]
+        )
+      : null
     if (!current || !current.access_token || publishingAccountError(current) || reviewedAccountEligibilityError(current)
       || linkedInAccountIsOrganization(current) !== linkedInAccountIsOrganization(account)) {
       throw new Error('Reviewed publishing account changed during token refresh; a new review is required')
     }
     return current
   }
-  const db = reviewed ? {
-    execute: (sql: string, params: unknown[] = []) => execute(
-      `${sql} AND client_id = $${params.length + 1} AND platform = $${params.length + 2}
+  const db = reviewed
+    ? {
+        execute: (sql: string, params: unknown[] = []) => execute(
+          `${sql} AND client_id = $${params.length + 1} AND platform = $${params.length + 2}
         AND platform_account_id = $${params.length + 3} AND is_active = TRUE`,
-      [...params, account.client_id, account.platform, account.platform_account_id]
-    ),
-    queryOne: async <T>() => await currentBinding() as T
-  } : { execute, queryOne }
+          [...params, account.client_id, account.platform, account.platform_account_id]
+        ),
+        queryOne: async <T>() => await currentBinding() as T
+      }
+    : { execute, queryOne }
   const token = await resolveSocialAccountAccessToken({
     event,
     db,

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { resolveMarketingReadScope, clientScopeSql, requireMarketingReadPermission, resolveStoredReportingTenant } from '../../server/utils/ai/marketing/readScope'
+
 const db = vi.hoisted(() => ({ queryOneFresh: vi.fn(), queryRowsFresh: vi.fn() }))
 vi.mock('~~/server/utils/db', () => ({ ...db, queryOne: vi.fn(), queryRows: vi.fn(), execute: vi.fn() }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: vi.fn() }))
 vi.mock('~~/server/utils/godMode/authority', () => ({ resolveGodModeAuthority: vi.fn(async () => ({ active: false })), isActiveGodModeAuthority: (a: any) => a.active }))
-import { resolveMarketingReadScope, clientScopeSql, requireMarketingReadPermission, resolveStoredReportingTenant } from '../../server/utils/ai/marketing/readScope'
+
 export const staff = (overrides: any = {}): any => ({ userId: 'staff', userRole: 'admin', permissionGroups: [], source: 'mcp', mcpStaffAuthority: 'fresh', marketingCapabilities: ['reporting'], assistantScope: { clientAccessMode: 'assigned', assignedClientIds: ['a'] }, event: {}, ...overrides })
 beforeEach(() => vi.clearAllMocks())
 describe('trusted reporting scope', () => {
@@ -34,7 +36,7 @@ describe('trusted reporting scope', () => {
   it('tenant_is_stored_identity_only', async () => {
     db.queryOneFresh.mockResolvedValue({ tenant_id: 'tenant' })
     expect(await resolveStoredReportingTenant(await resolveMarketingReadScope(staff()), 'campaigns')).toBe('tenant')
-    expect(db.queryOneFresh.mock.calls[0][0]).toContain("tenant_id <> '__default__'")
+    expect(db.queryOneFresh.mock.calls[0][0]).toContain('tenant_id <> \'__default__\'')
     expect(db.queryOneFresh.mock.calls[0][0]).not.toMatch(/token|secret/)
   })
 })
@@ -46,5 +48,6 @@ it('all_active_requires_management_and_applies_active_client_predicate', async (
 })
 it('finance_is_independent_and_never_enables_owner_refresh', async () => {
   const scope = await resolveMarketingReadScope(staff({ permissionGroups: ['FINANCE'], assistantReadOnly: false, mcpScopes: ['agency:read', 'agency:write'] }))
-  expect(scope.financialReadAllowed).toBe(true); expect(scope.ownerRefreshAllowed).toBe(false)
+  expect(scope.financialReadAllowed).toBe(true)
+  expect(scope.ownerRefreshAllowed).toBe(false)
 })

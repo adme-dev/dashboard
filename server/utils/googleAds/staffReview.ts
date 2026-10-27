@@ -16,7 +16,7 @@ const Request = z.strictObject({
 })
 async function load(event: H3Event, id: string, actorId: string) {
   const row = await queryOneFresh<{ client_id: string }>(
-    "SELECT client_id FROM google_ads_action_plans WHERE id=$1 AND review_policy='delegated_marketing'",
+    'SELECT client_id FROM google_ads_action_plans WHERE id=$1 AND review_policy=\'delegated_marketing\'',
     [id]
   )
   if (!row)
@@ -56,15 +56,15 @@ export async function listGoogleAdsReviewPlans(
   actorId: string,
   clientId?: string
 ) {
-  const { resolveMcpStaffContext } =
-    await import('~~/server/utils/ai/mcp/staffAuthority')
+  const { resolveMcpStaffContext }
+    = await import('~~/server/utils/ai/mcp/staffAuthority')
   const ctx = await resolveMcpStaffContext(event, actorId, [])
   if (!ctx.permissionGroups?.includes('ADMIN') || ctx.assistantReadOnly)
     throw createError({
       statusCode: 403,
       statusMessage: 'Reviewer authority required'
     })
-  const rows = await queryRows<{ id: string; client_id: string }>(
+  const rows = await queryRows<{ id: string, client_id: string }>(
     `SELECT p.id,p.client_id FROM google_ads_action_plans p JOIN agency_clients c ON c.id=p.client_id AND c.is_active=TRUE WHERE review_policy='delegated_marketing' AND actor_id<>$1 AND ($2::uuid IS NULL OR p.client_id=$2) AND ($3::uuid[] IS NULL OR p.client_id=ANY($3)) ORDER BY p.created_at DESC LIMIT 100`,
     [
       actorId,
@@ -75,7 +75,7 @@ export async function listGoogleAdsReviewPlans(
     ]
   )
   return Promise.all(
-    rows.map((r) =>
+    rows.map(r =>
       getGoogleAdsActionPlan(r.id, r.client_id, { queryOne: queryOneFresh })
     )
   )
@@ -131,9 +131,9 @@ export async function executeReviewedGoogleAdsPlan(
   const input = Request.parse(raw),
     plan = await load(event, input.actionPlanId, actorId)
   if (
-    plan.requestHash !== input.expectedRequestHash ||
-    !plan.reviewedBy ||
-    plan.reviewPolicy !== 'delegated_marketing'
+    plan.requestHash !== input.expectedRequestHash
+    || !plan.reviewedBy
+    || plan.reviewPolicy !== 'delegated_marketing'
   )
     throw createError({
       statusCode: 409,
@@ -150,8 +150,8 @@ export async function executeReviewedGoogleAdsPlan(
       statusMessage: 'Plan is not executable; inspect existing result'
     })
   const flags = resolveMcpRuntimeConfig(event).suiteFlags
-  const { resolveMcpStaffContext } =
-    await import('~~/server/utils/ai/mcp/staffAuthority')
+  const { resolveMcpStaffContext }
+    = await import('~~/server/utils/ai/mcp/staffAuthority')
   const executor = await resolveMcpStaffContext(event, actorId, [])
   return executeSearchGoogleAdsControlAction(
     plan,

@@ -184,7 +184,10 @@ async function listAll<T>(
   let pages = 0
   do {
     if (pages >= 5) throw new Error('GTM inventory exceeds bounded page limit')
-    if (reserveEachPage) { const { reserveGtmApiQuota } = await import('~~/server/utils/googleTagManagerStore'); await reserveGtmApiQuota(1) }
+    if (reserveEachPage) {
+      const { reserveGtmApiQuota } = await import('~~/server/utils/googleTagManagerStore')
+      await reserveGtmApiQuota(1)
+    }
     const response = await gtmFetch<Record<string, unknown>>(path, token, {
       query: pageToken ? { pageToken } : undefined,
     })
@@ -324,45 +327,46 @@ export function versionHasXeroFlowTag(
   })
 }
 
-export type GtmEntityKind = 'tags'|'triggers'|'variables'|'folders'
-export type GtmEntity = Record<string, any> & {path?:string,fingerprint?:string}
-export function assertGtmEntityPath(path:string,kind:GtmEntityKind):string {
- if(!['tags','triggers','variables','folders'].includes(kind)) throw new Error('Invalid GTM entity kind')
- return assertPath(path,new RegExp(`^accounts/\\d+/containers/\\d+/workspaces/\\d+/${kind}/\\d+$`),'entity')
+export type GtmEntityKind = 'tags' | 'triggers' | 'variables' | 'folders'
+export type GtmEntity = Record<string, any> & { path?: string, fingerprint?: string }
+export function assertGtmEntityPath(path: string, kind: GtmEntityKind): string {
+  if (!['tags', 'triggers', 'variables', 'folders'].includes(kind)) throw new Error('Invalid GTM entity kind')
+  return assertPath(path, new RegExp(`^accounts/\\d+/containers/\\d+/workspaces/\\d+/${kind}/\\d+$`), 'entity')
 }
 /** Every page reserves quota; truncation fails closed so review never hides an omitted entity. */
-export async function listGtmEntities(token:string,workspace:string,kind:GtmEntityKind):Promise<GtmEntity[]> {
- const parent=assertGtmWorkspacePath(workspace)
- assertGtmEntityPath(`${parent}/${kind}/1`,kind)
- const {reserveGtmApiQuota}=await import('~~/server/utils/googleTagManagerStore')
- const rows:GtmEntity[]=[];let pageToken:string|undefined
- for(let page=0;page<5;page++) {
-  await reserveGtmApiQuota(1)
-  const result=await gtmFetch<any>(`${parent}/${kind}`,token,{query:pageToken?{pageToken}:undefined})
-  rows.push(...(result[kind.slice(0,-1)]??[]))
-  if(rows.length>500) throw new Error('GTM inventory exceeds bounded review limit')
-  pageToken=result.nextPageToken
-  if(!pageToken) return rows
- }
- throw new Error('GTM inventory exceeds bounded page limit')
+export async function listGtmEntities(token: string, workspace: string, kind: GtmEntityKind): Promise<GtmEntity[]> {
+  const parent = assertGtmWorkspacePath(workspace)
+  assertGtmEntityPath(`${parent}/${kind}/1`, kind)
+  const { reserveGtmApiQuota } = await import('~~/server/utils/googleTagManagerStore')
+  const rows: GtmEntity[] = []
+  let pageToken: string | undefined
+  for (let page = 0; page < 5; page++) {
+    await reserveGtmApiQuota(1)
+    const result = await gtmFetch<any>(`${parent}/${kind}`, token, { query: pageToken ? { pageToken } : undefined })
+    rows.push(...(result[kind.slice(0, -1)] ?? []))
+    if (rows.length > 500) throw new Error('GTM inventory exceeds bounded review limit')
+    pageToken = result.nextPageToken
+    if (!pageToken) return rows
+  }
+  throw new Error('GTM inventory exceeds bounded page limit')
 }
-export function getGtmEntity(token:string,path:string,kind:GtmEntityKind):Promise<GtmEntity> {
- return gtmFetch(assertGtmEntityPath(path,kind),token)
+export function getGtmEntity(token: string, path: string, kind: GtmEntityKind): Promise<GtmEntity> {
+  return gtmFetch(assertGtmEntityPath(path, kind), token)
 }
-export function writeGtmEntity(token:string,workspace:string,kind:GtmEntityKind,body:Record<string,any>,update?:{path:string,fingerprint:string}):Promise<GtmEntity> {
- const parent=assertGtmWorkspacePath(workspace)
- assertGtmEntityPath(`${parent}/${kind}/1`,kind)
- if(update&&(!update.path.startsWith(`${parent}/${kind}/`)||!update.fingerprint)) throw new Error('Exact workspace and fingerprint required')
- return gtmFetch(update?assertGtmEntityPath(update.path,kind):`${parent}/${kind}`,token,{method:update?'PUT':'POST',body,query:update?{fingerprint:update.fingerprint}:undefined})
+export function writeGtmEntity(token: string, workspace: string, kind: GtmEntityKind, body: Record<string, any>, update?: { path: string, fingerprint: string }): Promise<GtmEntity> {
+  const parent = assertGtmWorkspacePath(workspace)
+  assertGtmEntityPath(`${parent}/${kind}/1`, kind)
+  if (update && (!update.path.startsWith(`${parent}/${kind}/`) || !update.fingerprint)) throw new Error('Exact workspace and fingerprint required')
+  return gtmFetch(update ? assertGtmEntityPath(update.path, kind) : `${parent}/${kind}`, token, { method: update ? 'PUT' : 'POST', body, query: update ? { fingerprint: update.fingerprint } : undefined })
 }
-export function getGtmVersion(token:string,path:string):Promise<GtmContainerVersion> {
- return gtmFetch(assertGtmVersionPath(path),token)
-}
-
-export function getGtmContainer(token:string,path:string):Promise<GtmContainer> {
- return gtmFetch(assertGtmContainerPath(path),token)
+export function getGtmVersion(token: string, path: string): Promise<GtmContainerVersion> {
+  return gtmFetch(assertGtmVersionPath(path), token)
 }
 
-export function listBoundedGtmWorkspaces(token:string,containerPath:string):Promise<GtmWorkspace[]> {
- return listAll<GtmWorkspace>(token,`${assertGtmContainerPath(containerPath)}/workspaces`,'workspace',true)
+export function getGtmContainer(token: string, path: string): Promise<GtmContainer> {
+  return gtmFetch(assertGtmContainerPath(path), token)
+}
+
+export function listBoundedGtmWorkspaces(token: string, containerPath: string): Promise<GtmWorkspace[]> {
+  return listAll<GtmWorkspace>(token, `${assertGtmContainerPath(containerPath)}/workspaces`, 'workspace', true)
 }

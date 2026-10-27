@@ -559,9 +559,11 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
       expect(submitted.ok, JSON.stringify(submitted)).toBe(true)
       const revisionId = (submitted.data as any).revision.id
       await approve(postId, revisionId)
-      installNetwork(call => call.url.endsWith('/ig-a/media') ? json({ id: 'linked-container' })
-        : call.url.endsWith('/ig-a/media_publish') ? json({ id: 'linked-post' })
-        : call.url.includes('/linked-post?') ? json({ permalink: 'https://instagram.example/p/linked' }) : null)
+      installNetwork(call => call.url.endsWith('/ig-a/media')
+        ? json({ id: 'linked-container' })
+        : call.url.endsWith('/ig-a/media_publish')
+          ? json({ id: 'linked-post' })
+          : call.url.includes('/linked-post?') ? json({ permalink: 'https://instagram.example/p/linked' }) : null)
       expect((await dispatch(postId, revisionId)).status).toBe('published')
       expect(netCalls.filter(call => call.url.endsWith('/ig-a/media_publish'))).toHaveLength(1)
       expect(JSON.parse(netCalls.find(call => call.url.endsWith('/ig-a/media'))!.body!).caption).toBe('Linked Page launch')
@@ -578,7 +580,9 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
       if (kind === 'reassigned') await pool.query(`UPDATE social_accounts SET client_id = $2 WHERE id = $1`, [FB_A, CLIENT_B])
       expect(await callTool('create_social_post_draft', { clientId: CLIENT_A, targets: [{ platform: 'instagram', accountId: IG_A }], content: 'Blocked' })).toMatchObject({ ok: false })
       expect(await callTool('submit_social_post_for_review', { postId: (other.data as any).postId })).toMatchObject({ ok: false })
-      installNetwork(() => { throw new Error('No provider request permitted') })
+      installNetwork(() => {
+        throw new Error('No provider request permitted')
+      })
       expect((await dispatch(postId, revisionId)).status).toBe('failed')
       expect(netCalls).toHaveLength(0)
       expect(providerCalls).toHaveLength(0)
@@ -586,7 +590,10 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
   })
 
   describe('Final I3: shared provider grant eligibility at reviewed publication', () => {
-    afterEach(() => { uninstallNetwork(); vi.unstubAllEnvs() })
+    afterEach(() => {
+      uninstallNetwork()
+      vi.unstubAllEnvs()
+    })
 
     it.each(['facebook', 'instagram', 'linkedin'])('preflights a later %s target with missing or revoked actual scope before any publication', async (platform) => {
       const id = platform === 'facebook' ? FB_A : platform === 'instagram' ? IG_A : LI_A
@@ -621,7 +628,7 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
       await freezeCachedTable(pool, 'social_accounts')
       const event = makeEvent()
       Object.assign(event.context.cloudflare.env, { LINKEDIN_ORGANIC_CLIENT_ID: 'fixture-id', LINKEDIN_ORGANIC_CLIENT_SECRET: 'fixture-secret' })
-      installNetwork(async call => {
+      installNetwork(async (call) => {
         if (call.url.endsWith('/oauth/v2/accessToken')) {
           if (kind === 'cas-winner') await pool.query(`UPDATE social_accounts SET access_token = 'winner-token', metadata = '{"grantedScopes":[]}'::jsonb, token_expires_at = NOW() + INTERVAL '1 day' WHERE id = $1`, [LI_A])
           return json({ access_token: 'refreshed-token', expires_in: 3600, ...(kind === 'missing' ? {} : { scope: ['cas-winner', 'comment-reduced'].includes(kind) ? 'w_organization_social' : 'r_organization_social' }) })
@@ -642,7 +649,8 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
     it('publishes every healthy approved target through real Facebook and LinkedIn adapters', async () => {
       const { postId, revisionId } = await draftAndSubmit({ targets: [{ platform: 'facebook', accountId: FB_A }, { platform: 'linkedin', accountId: LI_A }], mediaAssets: [] })
       await approve(postId, revisionId)
-      installNetwork(call => call.url.endsWith('/fb-page-a/feed') ? json({ id: 'fb-page-a_post' })
+      installNetwork(call => call.url.endsWith('/fb-page-a/feed')
+        ? json({ id: 'fb-page-a_post' })
         : call.url.endsWith('/rest/posts') ? json({}, 201, { 'x-restli-id': 'urn:li:share:healthy' }) : null)
       expect((await dispatch(postId, revisionId)).status).toBe('published')
       expect(netCalls.filter(isPublication)).toHaveLength(2)
@@ -897,7 +905,8 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
       { name: 'Facebook unpublished photo upload 500 (before publication)', platform: 'facebook', media: true, expected: 'failed', publicationRequests: 0,
         route: call => call.url.endsWith('/fb-page-a/photos') ? graphError(500, 2) : null },
       { name: 'Instagram media_publish 504', platform: 'instagram', media: true, expected: 'unknown', publicationRequests: 1,
-        route: call => call.url.endsWith('/ig-a/media') ? json({ id: 'container-1' })
+        route: call => call.url.endsWith('/ig-a/media')
+          ? json({ id: 'container-1' })
           : call.url.endsWith('/ig-a/media_publish') ? new Response('Gateway timeout', { status: 504 }) : null },
       { name: 'Instagram container creation 500 (before publication)', platform: 'instagram', media: true, expected: 'failed', publicationRequests: 0,
         route: call => call.url.endsWith('/ig-a/media') ? graphError(500, 1) : null },
@@ -966,7 +975,7 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
           token_expires_at = NOW() + INTERVAL '1 minute' WHERE id = $1`, [LI_A])
         await freezeCachedTable(pool, 'social_accounts')
         vi.stubEnv('LINKEDIN_ORGANIC_CLIENT_SECRET', 'fixture-only-secret')
-        installNetwork(async call => {
+        installNetwork(async (call) => {
           if (call.url.endsWith('/oauth/v2/accessToken')) {
             // A real reconnect/disconnect/reassignment wins while the old refresh is in flight.
             await pool.query(`UPDATE social_accounts SET access_token = 'winner-token',
@@ -1070,7 +1079,9 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
       await approve(postId, revisionId)
       const consoleCalls: unknown[][] = []
       for (const level of ['log', 'warn', 'error', 'info'] as const) {
-        vi.spyOn(console, level).mockImplementation((...args: unknown[]) => { consoleCalls.push(args) })
+        vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+          consoleCalls.push(args)
+        })
       }
       let imageInit = 0
       installNetwork((call) => {

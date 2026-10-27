@@ -280,25 +280,27 @@ describe('resolveSocialInboxAccessToken', () => {
   })
 })
 
-describe('TikTok rotated grant metadata CAS',()=>{
-  const original=()=>account({platform:'tiktok',metadata:{refreshTokenExpiresAt:'2099-01-01',grantedScopes:['video.publish']}})
-  const deps={now:()=>NOW,getTikTokContentOAuthConfig:()=>({clientKey:'fixture',clientSecret:'fixture',redirectUri:'/cb'}),refreshTikTokContentToken:async()=>({access_token:'new',refresh_token:'rotated',expires_in:3600,refresh_expires_in:120,scope:'video.publish'})}
-  it('stores scope/remaining refresh expiry on the same winning CAS, never a detached write',async()=>{
-    const execute=vi.fn().mockResolvedValue(1)
-    await resolveSocialInboxAccessToken({db:{execute},account:original(),deps})
+describe('TikTok rotated grant metadata CAS', () => {
+  const original = () => account({ platform: 'tiktok', metadata: { refreshTokenExpiresAt: '2099-01-01', grantedScopes: ['video.publish'] } })
+  const deps = { now: () => NOW, getTikTokContentOAuthConfig: () => ({ clientKey: 'fixture', clientSecret: 'fixture', redirectUri: '/cb' }), refreshTikTokContentToken: async () => ({ access_token: 'new', refresh_token: 'rotated', expires_in: 3600, refresh_expires_in: 120, scope: 'video.publish' }) }
+  it('stores scope/remaining refresh expiry on the same winning CAS, never a detached write', async () => {
+    const execute = vi.fn().mockResolvedValue(1)
+    await resolveSocialInboxAccessToken({ db: { execute }, account: original(), deps })
     expect(execute).toHaveBeenCalledTimes(1)
-    const [sql,args]=execute.mock.calls[0]!
-    expect(sql).toContain('access_token = $5');expect(sql).toContain('metadata = COALESCE')
-    expect(args[2]).toBe('rotated');expect(JSON.parse(args[5])).toEqual({refreshTokenExpiresAt:'2026-06-30T00:02:00.000Z',grantedScopes:['video.publish']})
+    const [sql, args] = execute.mock.calls[0]!
+    expect(sql).toContain('access_token = $5')
+    expect(sql).toContain('metadata = COALESCE')
+    expect(args[2]).toBe('rotated')
+    expect(JSON.parse(args[5])).toEqual({ refreshTokenExpiresAt: '2026-06-30T00:02:00.000Z', grantedScopes: ['video.publish'] })
   })
-  it('cannot overwrite scopes or expiry when reconnect wins',async()=>{
-    const execute=vi.fn().mockResolvedValue(0),queryOne=vi.fn().mockResolvedValue({access_token:'winner'})
-    expect(await resolveSocialInboxAccessToken({db:{execute,queryOne},account:original(),deps})).toBe('winner')
+  it('cannot overwrite scopes or expiry when reconnect wins', async () => {
+    const execute = vi.fn().mockResolvedValue(0), queryOne = vi.fn().mockResolvedValue({ access_token: 'winner' })
+    expect(await resolveSocialInboxAccessToken({ db: { execute, queryOne }, account: original(), deps })).toBe('winner')
     expect(execute).toHaveBeenCalledTimes(1)
   })
-  it('does not refresh an expired grant even with unexpired access',async()=>{
-    const refreshTikTokContentToken=vi.fn()
-    await expect(resolveSocialInboxAccessToken({db:{execute:vi.fn()},account:{...original(),token_expires_at:'2099-01-01',metadata:{refreshTokenExpiresAt:'2000-01-01'}},deps:{...deps,refreshTikTokContentToken}})).rejects.toThrow('Reconnect')
+  it('does not refresh an expired grant even with unexpired access', async () => {
+    const refreshTikTokContentToken = vi.fn()
+    await expect(resolveSocialInboxAccessToken({ db: { execute: vi.fn() }, account: { ...original(), token_expires_at: '2099-01-01', metadata: { refreshTokenExpiresAt: '2000-01-01' } }, deps: { ...deps, refreshTikTokContentToken } })).rejects.toThrow('Reconnect')
     expect(refreshTikTokContentToken).not.toHaveBeenCalled()
   })
 })

@@ -30,7 +30,7 @@ const InstagramOptions = z.object({
 }).strict()
 
 const TikTokOptions = z.object({
-  privacy_level: z.enum(['PUBLIC_TO_EVERYONE','MUTUAL_FOLLOW_FRIENDS','FOLLOWER_OF_CREATOR','SELF_ONLY']).optional(),
+  privacy_level: z.enum(['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY']).optional(),
   consent: z.boolean().optional(), title: z.string().max(90).optional(),
   disable_comment: z.boolean().optional(), disable_duet: z.boolean().optional(), disable_stitch: z.boolean().optional(),
   commercial_disclosure: z.boolean().optional(), brand_content_toggle: z.boolean().optional(), brand_organic_toggle: z.boolean().optional(),

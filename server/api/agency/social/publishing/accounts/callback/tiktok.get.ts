@@ -52,8 +52,8 @@ export default defineEventHandler(async (event) => {
   let accessToken: string
   let refreshToken: string | null = null
   let expiresAt: string | null = null
-  let scope = ''
-  let refreshExpiresAt: string | null = null
+  let scope: string
+  let refreshExpiresAt: string | null
   try {
     const token = await exchangeTikTokContentCode(
       String(q.code),
@@ -64,7 +64,8 @@ export default defineEventHandler(async (event) => {
     if (!token.access_token) return fail('tiktok_token_exchange_failed', state.clientId)
     scope = token.scope ?? ''
     refreshExpiresAt = Number.isFinite(token.refresh_expires_in) && token.refresh_expires_in! >= 0
-      ? new Date(Date.now() + token.refresh_expires_in! * 1000).toISOString() : null
+      ? new Date(Date.now() + token.refresh_expires_in! * 1000).toISOString()
+      : null
     accessToken = token.access_token
     refreshToken = token.refresh_token || null
     expiresAt = new Date(Date.now() + (token.expires_in || 86_400) * 1000).toISOString()

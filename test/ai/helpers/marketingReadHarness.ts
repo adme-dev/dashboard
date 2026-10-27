@@ -1,10 +1,11 @@
 import { expect, vi } from 'vitest'
+
 export const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 export const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 export const USER = '11111111-1111-4111-8111-111111111111'
 const fixture = vi.hoisted(() => ({
   queryOneFresh: vi.fn(), queryRowsFresh: vi.fn(), queryOne: vi.fn(), queryRows: vi.fn(), execute: vi.fn(), transaction: vi.fn(), kvPut: vi.fn(), cachedFetch: vi.fn(), tokenRead: vi.fn(), internalFetch: vi.fn(), sync: vi.fn(),
-  realAuthority: false, context: null as any, owner: false, now: '2026-10-27T00:00:00Z', missing: false, priorMissing: false, ambiguous: false, accounts: 1, targets: 1, partialCurrent: false, partialPrior: false, tenant: 'stored-tenant', parentClientId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  realAuthority: false, context: null as any, owner: false, now: '2026-10-27T00:00:00Z', missing: false, priorMissing: false, ambiguous: false, accounts: 1, targets: 1, partialCurrent: false, partialPrior: false, tenant: 'stored-tenant', parentClientId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: fixture.queryOneFresh, queryRowsFresh: fixture.queryRowsFresh, queryOne: fixture.queryOne, queryRows: fixture.queryRows, execute: fixture.execute, transaction: fixture.transaction }))
 vi.mock('~~/server/utils/kv', () => ({ kvPut: fixture.kvPut, cachedFetch: fixture.cachedFetch }))
@@ -12,7 +13,7 @@ vi.mock('~~/server/utils/session', () => ({ getSelectedTenant: fixture.tokenRead
 vi.mock('~~/server/utils/onDemandSync', () => ({ syncCampaignAdPerformance: fixture.sync, syncCampaignCreatives: fixture.sync, syncCampaignDeliveryDiagnostics: fixture.sync, refreshGoogleAccessTokenIfNeeded: fixture.tokenRead }))
 vi.mock('~~/server/utils/ai/internalFetch', () => ({ aiInternalFetch: fixture.internalFetch }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: async () => ({ id: '11111111-1111-4111-8111-111111111111' }) }))
-vi.mock('~~/server/utils/ai/mcp/staffAuthority', async importOriginal => {
+vi.mock('~~/server/utils/ai/mcp/staffAuthority', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../server/utils/ai/mcp/staffAuthority')>()
   return { resolveMcpStaffContext: (...args: Parameters<typeof actual.resolveMcpStaffContext>) => fixture.realAuthority ? actual.resolveMcpStaffContext(...args) : Promise.resolve(fixture.context) }
 })
@@ -22,17 +23,37 @@ export function context(overrides: any = {}) {
 }
 export function resetHarness() {
   vi.clearAllMocks()
-  fixture.realAuthority = false; fixture.context = context(); fixture.owner = false; fixture.missing = false; fixture.priorMissing = false; fixture.ambiguous = false; fixture.accounts = 1; fixture.targets = 1; fixture.partialCurrent = false; fixture.partialPrior = false; fixture.tenant = 'stored-tenant'; fixture.parentClientId = B
+  fixture.realAuthority = false
+  fixture.context = context()
+  fixture.owner = false
+  fixture.missing = false
+  fixture.priorMissing = false
+  fixture.ambiguous = false
+  fixture.accounts = 1
+  fixture.targets = 1
+  fixture.partialCurrent = false
+  fixture.partialPrior = false
+  fixture.tenant = 'stored-tenant'
+  fixture.parentClientId = B
   fixture.sync.mockResolvedValue({ available: true, syncedRows: 1, error: null })
-  for (const sink of [fixture.queryOne, fixture.queryRows, fixture.execute, fixture.transaction, fixture.kvPut, fixture.cachedFetch, fixture.tokenRead, fixture.internalFetch]) sink.mockImplementation(() => { throw Error('Forbidden legacy read or side effect') })
+  for (const sink of [fixture.queryOne, fixture.queryRows, fixture.execute, fixture.transaction, fixture.kvPut, fixture.cachedFetch, fixture.tokenRead, fixture.internalFetch])
+    sink.mockImplementation(() => {
+      throw Error('Forbidden legacy read or side effect')
+    })
   fixture.queryOneFresh.mockImplementation(async (sql: string, params: any[] = []) => {
     if (sql.includes('FROM team_members')) return fixture.owner ? { id: USER } : null
-    if (sql.includes('xero_org_connection')) { expect(sql).toMatch(/^SELECT tenant_id /); return fixture.tenant ? { tenant_id: fixture.tenant } : null }
-    if (sql.includes('FROM agency_clients c')) { assertScoped(sql, params, 'c.id'); return scopedRows(sql, params, [{ id: B }, { id: A }], 'c.id', 'id').find(row => row.id === params[0]) ?? null }
+    if (sql.includes('xero_org_connection')) {
+      expect(sql).toMatch(/^SELECT tenant_id /)
+      return fixture.tenant ? { tenant_id: fixture.tenant } : null
+    }
+    if (sql.includes('FROM agency_clients c')) {
+      assertScoped(sql, params, 'c.id')
+      return scopedRows(sql, params, [{ id: B }, { id: A }], 'c.id', 'id').find(row => row.id === params[0]) ?? null
+    }
     if (sql.includes('campaign_search_term_syncs')) {
       assertScoped(sql, params)
       expect(sql).toContain('ms.connection_id IS NOT DISTINCT FROM $3')
-      expect(sql).toContain("sync.coverage IN ('full', 'limited')")
+      expect(sql).toContain('sync.coverage IN (\'full\', \'limited\')')
       const candidates = [{ id: 'sync-b', client_id: B, coverage: 'full', synced_at: '2026-10-28', source_total: 9000 }, { id: 'sync-a', client_id: A, coverage: 'full', synced_at: fixture.now, source_total: 1 }]
       return scopedRows(sql, params, candidates).filter(row => row.client_id === params[0]).find(row => row.client_id !== A || !fixture.missing) ?? null
     }
@@ -44,8 +65,15 @@ export function resetHarness() {
       const total = leads.reduce((sum, row) => sum + row.count, 0)
       return { total_submissions: total, campaign_attributed: total, ad_attributed: total, account_ambiguous: fixture.ambiguous }
     }
-    if (sql.includes('WITH scoped_media') && sql.includes('COUNT(*) as count')) { assertScoped(sql, params); expect(sql).toMatch(/FROM daily_spend ds JOIN scoped_media sm ON sm.id = ds.media_spend_id/); return { count: scopedRows(sql, params, [{ client_id: B }, ...Array.from({ length: fixture.accounts }, () => ({ client_id: A }))]).length } }
-    if (sql.includes('FROM briefs')) { assertScoped(sql, params, 'b.client_id'); return { total: scopedRows(sql, params, [{ client_id: B, total: 9000 }, { client_id: A, total: 1 }], 'b.client_id').reduce((sum, row) => sum + row.total, 0) } }
+    if (sql.includes('WITH scoped_media') && sql.includes('COUNT(*) as count')) {
+      assertScoped(sql, params)
+      expect(sql).toMatch(/FROM daily_spend ds JOIN scoped_media sm ON sm.id = ds.media_spend_id/)
+      return { count: scopedRows(sql, params, [{ client_id: B }, ...Array.from({ length: fixture.accounts }, () => ({ client_id: A }))]).length }
+    }
+    if (sql.includes('FROM briefs')) {
+      assertScoped(sql, params, 'b.client_id')
+      return { total: scopedRows(sql, params, [{ client_id: B, total: 9000 }, { client_id: A, total: 1 }], 'b.client_id').reduce((sum, row) => sum + row.total, 0) }
+    }
     throw Error(`Unhandled one SQL: ${sql.slice(0, 90)}`)
   })
   fixture.queryRowsFresh.mockImplementation(async (sql: string, params: any[] = []) => {
@@ -54,7 +82,7 @@ export function resetHarness() {
       assertScoped(sql, params, 'parent.id')
       expect(sql).toMatch(/LEFT JOIN agency_clients parent ON parent.id = c.parent_client_id AND parent.id = ANY/)
       const clients = [{ id: B, name: 'Forbidden B', is_active: true }, { id: A, name: 'Client A', is_active: true }]
-      return scopedRows(sql, params, clients, 'c.id', 'id').map(row => {
+      return scopedRows(sql, params, clients, 'c.id', 'id').map((row) => {
         const parent = scopedRows(sql, params, clients, 'parent.id', 'id').find(candidate => candidate.id === fixture.parentClientId)
         return { ...row, parent_client_id: parent?.id ?? null, parent_client_name: parent?.name ?? null }
       }).slice(0, params.at(-1))
@@ -72,13 +100,15 @@ export function resetHarness() {
     }
     if (sql.includes('SELECT l.status, l.source')) {
       assertScoped(sql, params, 'l.client_id')
-      expect(sql).toContain('l.deleted_at IS NULL'); expect(sql).toContain('l.is_test = false')
+      expect(sql).toContain('l.deleted_at IS NULL')
+      expect(sql).toContain('l.is_test = false')
       return scopedRows(sql, params, [{ client_id: B, status: 'new', source: 'meta', count: 9000 }, { client_id: A, status: 'new', source: 'meta', count: 1 }], 'l.client_id')
     }
     assertScoped(sql, params)
     if (sql.includes('FALSE')) return []
     if (sql.includes('campaign_search_term_snapshots term')) {
-      expect(sql).toContain('JOIN campaign_search_term_syncs sync'); expect(sql).toContain('JOIN media_spend ms')
+      expect(sql).toContain('JOIN campaign_search_term_syncs sync')
+      expect(sql).toContain('JOIN media_spend ms')
       expect(sql).toContain('ms.client_id IS NOT DISTINCT FROM $1::uuid')
       return scopedRows(sql, params, [{ client_id: B, sync_id: 'sync-b', search_term: 'Forbidden B term', cost: 9000 }, { client_id: A, sync_id: 'sync-a', search_term: 'A term', cost: 7, clicks: 2 }])
         .filter(row => row.client_id === params[0] && row.sync_id === params.at(-1))
@@ -91,13 +121,16 @@ export function resetHarness() {
       expect(sql).toContain('ms.connection_id IS NOT DISTINCT FROM selected.connection_id')
       expect(sql).toContain('ms.campaign_id = selected.campaign_id')
       expect(sql).toContain('aps.synced_at DESC NULLS LAST, aps.id ASC')
-      expect(sql).toContain('l.client_id = ms.client_id'); expect(sql).toContain('l.campaign_id = ms.campaign_id'); expect(sql).toContain('l.ad_id = aps.ad_id')
-      expect(sql).toContain('FROM scoped_media other'); expect(sql).toContain('other.client_id = l.client_id')
+      expect(sql).toContain('l.client_id = ms.client_id')
+      expect(sql).toContain('l.campaign_id = ms.campaign_id')
+      expect(sql).toContain('l.ad_id = aps.ad_id')
+      expect(sql).toContain('FROM scoped_media other')
+      expect(sql).toContain('other.client_id = l.client_id')
       const identities = JSON.parse(params[2])
       const available = identities.filter((_: any, index: number) => !(fixture.missing || (fixture.priorMissing && params[0] < '2026-10-01')) && !(((params[0] >= '2026-10-01' && fixture.partialCurrent) || (params[0] < '2026-10-01' && fixture.partialPrior)) && index === identities.length - 1))
       const rows = [
         ...identities.map((t: any) => ({ ...t, client_id: B, ad_id: 'same-ad', ad_name: 'Forbidden B ad', spend: 9000, synced_at: '2026-10-28' })),
-        ...available.map((t: any) => ({ ...t, ad_id: 'same-ad', ad_name: 'A ad', client_name: 'Client A', media_spend_id: 'older-month', spend: 7, impressions: 20, clicks: 2, lead_count: 1, account_ambiguous: fixture.ambiguous, synced_at: fixture.now, approval_synced_at: fixture.now })),
+        ...available.map((t: any) => ({ ...t, ad_id: 'same-ad', ad_name: 'A ad', client_name: 'Client A', media_spend_id: 'older-month', spend: 7, impressions: 20, clicks: 2, lead_count: 1, account_ambiguous: fixture.ambiguous, synced_at: fixture.now, approval_synced_at: fixture.now }))
       ]
       return scopedRows(sql, params, rows).filter(row => identities.some((t: any) => t.client_id === row.client_id && t.platform === row.platform && t.connection_id === row.connection_id && t.campaign_id === row.campaign_id))
     }
@@ -122,7 +155,7 @@ export function resetHarness() {
       expect(sql).toMatch(/authorized_media AS \(SELECT ms\.\* FROM media_spend ms WHERE ms.client_id = ANY/)
       expect(sql).toMatch(/lifetime AS \([\s\S]*JOIN scoped_media ms ON ms.id = ds.media_spend_id[\s\S]*GROUP BY ms.client_id, ms.platform, COALESCE\(ms.connection_id/)
       expect(sql).toContain('lifetime.client_id IS NOT DISTINCT FROM ms.client_id AND lifetime.platform = ms.platform')
-      expect(sql).toContain("lifetime.connection_key = COALESCE(ms.connection_id::text, 'unlinked')")
+      expect(sql).toContain('lifetime.connection_key = COALESCE(ms.connection_id::text, \'unlinked\')')
       expect(sql).toContain('lifetime.campaign_key = COALESCE(ms.campaign_id, ms.id::text)')
       expect(sql).toContain('am.client_id = c.client_id AND am.platform = c.platform')
       expect(sql).toContain('l.client_id = c.client_id')

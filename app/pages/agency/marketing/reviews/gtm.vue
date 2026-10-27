@@ -56,8 +56,8 @@ async function submit() {
     toast.add({
       title: 'Action could not complete',
       description:
-        err.data?.statusMessage ??
-        'Refresh to inspect the current result before retrying.',
+        err.data?.statusMessage
+        ?? 'Refresh to inspect the current result before retrying.',
       color: 'error'
     })
     await refresh()
@@ -71,12 +71,16 @@ const pending = (p: any) =>
 
 <template>
   <UDashboardPanel id="gtm-reviews" :ui="{ root: 'max-h-svh' }">
-    <template #header><UDashboardNavbar title="Tracking reviews" /></template>
+    <template #header>
+      <UDashboardNavbar title="Tracking reviews" />
+    </template>
     <template #body>
       <div class="flex min-h-0 flex-1 flex-col">
         <div class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6">
           <div class="max-w-3xl space-y-2">
-            <h1 class="text-2xl font-semibold">Review the exact change</h1>
+            <h1 class="text-2xl font-semibold">
+              Review the exact change
+            </h1>
             <p class="text-muted">
               Check the client, account, requested change and expiry. Approval
               and execution are separate steps. The requester cannot approve
@@ -87,8 +91,9 @@ const pending = (p: any) =>
               icon="i-lucide-refresh-cw"
               :loading="status === 'pending'"
               @click="refresh()"
-              >Refresh results</UButton
             >
+              Refresh results
+            </UButton>
           </div>
           <UAlert
             v-if="error"
@@ -103,8 +108,8 @@ const pending = (p: any) =>
           />
           <section
             v-for="plan in plans || []"
-            :key="plan.id"
             :id="`proposal-${plan.id}`"
+            :key="plan.id"
             class="border-b border-default pb-6 space-y-4"
           >
             <div class="flex flex-wrap items-start justify-between gap-3">
@@ -116,25 +121,35 @@ const pending = (p: any) =>
                   Client {{ plan.clientId || plan.client_id }}
                 </p>
               </div>
-              <UBadge variant="subtle">{{ plan.status }}</UBadge>
+              <UBadge variant="subtle">
+                {{ plan.status }}
+              </UBadge>
             </div>
             <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
-                <dt class="text-muted">Account / container</dt>
+                <dt class="text-muted">
+                  Account / container
+                </dt>
                 <dd class="break-all">
                   {{ plan.customerId || plan.desired_state?.containerPath }}
                 </dd>
               </div>
               <div>
-                <dt class="text-muted">Connection</dt>
+                <dt class="text-muted">
+                  Connection
+                </dt>
                 <dd>{{ plan.connectionId || plan.connection_id }}</dd>
               </div>
               <div>
-                <dt class="text-muted">Requester</dt>
+                <dt class="text-muted">
+                  Requester
+                </dt>
                 <dd>{{ plan.actorId || plan.requester_id }}</dd>
               </div>
               <div>
-                <dt class="text-muted">Reviewer / executor</dt>
+                <dt class="text-muted">
+                  Reviewer / executor
+                </dt>
                 <dd>
                   {{
                     plan.reviewedBy || plan.reviewer_id || 'Awaiting review'
@@ -143,11 +158,15 @@ const pending = (p: any) =>
                 </dd>
               </div>
               <div>
-                <dt class="text-muted">Expires</dt>
+                <dt class="text-muted">
+                  Expires
+                </dt>
                 <dd>{{ plan.expiresAt || plan.expires_at }}</dd>
               </div>
               <div>
-                <dt class="text-muted">Risk / live base version</dt>
+                <dt class="text-muted">
+                  Risk / live base version
+                </dt>
                 <dd>{{ plan.riskTier || plan.base_live_path }}</dd>
               </div>
             </dl>
@@ -158,7 +177,7 @@ const pending = (p: any) =>
               </summary>
               <pre
                 class="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-elevated p-4 text-xs"
-                >{{
+              >{{
                   JSON.stringify(
                     {
                       diff: plan.diff || plan.state_diff,
@@ -170,30 +189,33 @@ const pending = (p: any) =>
                     null,
                     2
                   )
-                }}</pre>
+              }}</pre>
             </details>
             <div class="flex flex-wrap gap-2">
               <UButton
                 v-if="pending(plan)"
                 :disabled="!!busy || !plan.review || !!plan.review.unavailable"
                 @click="choose(plan, 'approve')"
-                >Approve exact change</UButton
               >
+                Approve exact change
+              </UButton>
               <UButton
                 v-if="pending(plan)"
                 variant="outline"
                 color="error"
                 :disabled="!!busy"
                 @click="choose(plan, 'reject')"
-                >Reject</UButton
               >
+                Reject
+              </UButton>
               <UButton
                 v-if="plan.status === 'approved'"
                 color="warning"
                 :disabled="!!busy"
                 @click="choose(plan, 'execute')"
-                >Execute approved change</UButton
               >
+                Execute approved change
+              </UButton>
             </div>
           </section>
           <p class="text-sm text-muted max-w-3xl">
@@ -223,19 +245,31 @@ const pending = (p: any) =>
               }}
             </p>
             <MarketingGtmReviewDetails v-if="selected" :review="selected.review" />
-            <UFormField v-if="decision !== 'execute'" label="Review note"
-              ><UTextarea v-model="reason" class="w-full" :maxlength="1000"
-            /></UFormField>
+            <UFormField
+              v-if="decision !== 'execute'"
+              label="Review note"
+            >
+              <UTextarea
+                v-model="reason"
+                class="w-full"
+                :maxlength="1000"
+              />
+            </UFormField>
           </div>
         </template>
-        <template #footer
-          ><UButton :loading="!!busy" @click="submit">{{
-            decision === 'execute' ? 'Execute approved change' : 'Save review'
-          }}</UButton
-          ><UButton variant="ghost" :disabled="!!busy" @click="selected = null"
-            >Cancel</UButton
-          ></template
-        >
+        <template #footer>
+          <UButton :loading="!!busy" @click="submit">
+            {{
+              decision === 'execute' ? 'Execute approved change' : 'Save review'
+            }}
+          </UButton><UButton
+            variant="ghost"
+            :disabled="!!busy"
+            @click="selected = null"
+          >
+            Cancel
+          </UButton>
+        </template>
       </UModal>
     </template>
   </UDashboardPanel>

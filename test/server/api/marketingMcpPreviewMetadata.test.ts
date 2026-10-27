@@ -26,7 +26,13 @@ vi.mock('~~/server/utils/ai/mcp/registry', () => ({
 const { default: handler } = await import('../../../../server/api/agency/ai/mcp/my-tools.get')
 const event = () => ({ context: { cloudflare: { env: { MCP_SERVER_ENABLED: 'true', MCP_MARKETING_STAFF_GRANTS: JSON.stringify({ '11111111-1111-4111-8111-111111111111': ['reporting', 'social_draft'] }) } } } }) as any
 
-beforeEach(() => { f.groups = ['CREATIVE']; f.readOnly = false; f.clients = ['22222222-2222-4222-8222-222222222222']; f.owner = false; f.unavailable = false })
+beforeEach(() => {
+  f.groups = ['CREATIVE']
+  f.readOnly = false
+  f.clients = ['22222222-2222-4222-8222-222222222222']
+  f.owner = false
+  f.unavailable = false
+})
 describe('fresh connector preview metadata', () => {
   it('reports effective groups and count without identity or client details, with shared projected tools', async () => {
     const result = await handler(event())
@@ -36,7 +42,9 @@ describe('fresh connector preview metadata', () => {
   })
   it('updates policy and assignment metadata on the next preview and removes unavailable writes/client tools', async () => {
     await handler(event())
-    f.readOnly = true; f.groups = []; f.clients = []
+    f.readOnly = true
+    f.groups = []
+    f.clients = []
     const result = await handler(event())
     expect(result).toMatchObject({ access: { permissionGroups: [], readOnly: true, clientScope: { mode: 'assigned', assignedClientCount: 0 } }, tools: [] })
   })
@@ -45,7 +53,8 @@ describe('fresh connector preview metadata', () => {
     expect(await handler(event())).toMatchObject({ preview: { projection: 'management' }, access: { clientScope: { mode: 'all_active', assignedClientCount: null } } })
   })
   it('preserves separate owner preview without staff metadata', async () => {
-    f.owner = true; f.unavailable = true
+    f.owner = true
+    f.unavailable = true
     const result = await handler(event())
     expect(result).toMatchObject({ authority: 'god_mode', preview: { projection: 'owner' }, tools: [{ name: 'owner_tool' }] })
     expect(result).not.toHaveProperty('access')

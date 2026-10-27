@@ -22,7 +22,7 @@ export function gtmVersionReview(version: any) {
 export function gtmReplacementChanges(before: any, after: any) {
   const fields = new Set([...Object.keys(before), ...Object.keys(after)].filter(k => Array.isArray(before[k]) || Array.isArray(after[k])))
   const changes: any[] = []
-  const content = (entity: any) => entity == null ? null : Object.fromEntries(Object.entries(entity).filter(([k]) => !['path','fingerprint','accountId','containerId','workspaceId','tagManagerUrl'].includes(k)))
+  const content = (entity: any) => entity == null ? null : Object.fromEntries(Object.entries(entity).filter(([k]) => !['path', 'fingerprint', 'accountId', 'containerId', 'workspaceId', 'tagManagerUrl'].includes(k)))
   for (const field of fields) {
     const id = (e: any) => String(e[field === 'customTemplate' ? 'templateId' : `${field}Id`] ?? e.name ?? gtmHash(e))
     const left = new Map((before[field] ?? []).map((e: any) => [id(e), e]))

@@ -1,8 +1,12 @@
 import { beforeEach, expect, it, vi } from 'vitest'
+import { readAdSnapshots, selectScopedAdTargets } from '../../server/utils/ai/marketing/adReads'
+
 const db = vi.hoisted(() => ({ queryRowsFresh: vi.fn(), queryOneFresh: vi.fn(), queryRows: vi.fn(), queryOne: vi.fn(), execute: vi.fn() }))
 vi.mock('~~/server/utils/db', () => db)
-vi.mock('~~/server/utils/onDemandSync', () => ({ syncCampaignAdPerformance: vi.fn(() => { throw Error('provider forbidden') }) }))
-import { readAdSnapshots, selectScopedAdTargets } from '../../server/utils/ai/marketing/adReads'
+vi.mock('~~/server/utils/onDemandSync', () => ({ syncCampaignAdPerformance: vi.fn(() => {
+  throw Error('provider forbidden')
+}) }))
+
 const scope: any = { clientIds: ['a'], permissionGroups: [], reportingGranted: true }
 const args: any = { campaignId: 'same', startDate: '2026-10-01', endDate: '2026-10-27' }
 const target = { clientId: 'a', platform: 'meta', connectionId: 'conn', campaignId: 'same', mediaSpendId: 'new-month' }
@@ -36,7 +40,7 @@ it('ad_account_ambiguity_is_checked_before_target_cap', async () => {
   expect(sql).toContain('other.client_id = l.client_id')
   expect(sql).not.toMatch(/FROM selected other/)
 })
-it.each(['current', 'prior'])('duplicate_monthly_windows_choose_deterministic_snapshot_without_summing %s', async window => {
+it.each(['current', 'prior'])('duplicate_monthly_windows_choose_deterministic_snapshot_without_summing %s', async (window) => {
   db.queryRowsFresh.mockResolvedValue([])
   await readAdSnapshots(scope, [target], window === 'current' ? '2026-10-01' : '2026-09-01', window === 'current' ? '2026-10-27' : '2026-09-27')
   const [sql] = db.queryRowsFresh.mock.calls[0]

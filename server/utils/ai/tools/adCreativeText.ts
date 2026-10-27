@@ -113,7 +113,9 @@ export async function getAdCreativeText(args: Args, ctx: ToolContext, deps: AdCr
       moreAtLeast: truncated ? 1 : 0,
       truncated,
       sync,
-      coverageNote: !scope.ownerRefreshAllowed ? 'Only stored creative rows are represented. Missing campaigns require an authorized sync.' : truncated
+      coverageNote: !scope.ownerRefreshAllowed
+        ? 'Only stored creative rows are represented. Missing campaigns require an authorized sync.'
+        : truncated
         ? 'The source cap was reached; narrow by campaignId before running an offer-expiry sweep.'
         : sync.failed > 0
           ? `Creatives for ${sync.failed} campaign(s) in scope could not be fetched from the provider${syncErrors.length ? ` (${syncErrors.slice(0, 3).join('; ')})` : ''}; rows for those campaigns are absent, not empty.`

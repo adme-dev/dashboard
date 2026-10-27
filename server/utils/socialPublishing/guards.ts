@@ -421,7 +421,11 @@ export function normalizeProviderOptions(platform: string, value: unknown): Reco
   const options = value as Record<string, unknown>
   if (Object.keys(options).length === 0) return {}
   if (platform === 'tiktok') {
-    try { return normalizeTikTokOptions(options) } catch (error) { throw createError({ statusCode: 400, statusMessage: (error as Error).message }) }
+    try {
+      return normalizeTikTokOptions(options)
+    } catch (error) {
+      throw createError({ statusCode: 400, statusMessage: (error as Error).message })
+    }
   }
   if (platform === 'instagram') return normalizeInstagramOptions(options)
   if (platform === 'google-business') return normalizeGoogleBusinessOptions(options)

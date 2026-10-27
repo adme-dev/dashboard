@@ -212,14 +212,16 @@ export default defineEventHandler(async (event) => {
     ? ` AND status NOT IN (${[...CONTENT_LOCKED_STATUSES].map(status => `'${status}'`).join(', ')})`
     : ''
   const sql = `${supersede}UPDATE social_posts SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND client_id = $${params.length}${lockedGuard} RETURNING *`
-  const row = delegated ? await transaction(async db => {
-    // Serialize edit and consent binding with submit/dispatch; no stale row can attest another edit.
-    await db.query('SELECT id FROM social_posts WHERE id=$1 AND client_id=$2 FOR UPDATE',[id,existing.client_id])
-    const updated = (await db.query(sql,params)).rows[0]
-    if (!updated) return null
-    await bindTikTokDraftConsent({actorId:user.id,clientIds:[existing.client_id],event},updated,b,db)
-    return (await db.query('SELECT * FROM social_posts WHERE id=$1 AND client_id=$2',[id,existing.client_id])).rows[0]
-  }) : await queryOne(sql,params)
+  const row = delegated
+    ? await transaction(async (db) => {
+        // Serialize edit and consent binding with submit/dispatch; no stale row can attest another edit.
+        await db.query('SELECT id FROM social_posts WHERE id=$1 AND client_id=$2 FOR UPDATE', [id, existing.client_id])
+        const updated = (await db.query(sql, params)).rows[0]
+        if (!updated) return null
+        await bindTikTokDraftConsent({ actorId: user.id, clientIds: [existing.client_id], event }, updated, b, db)
+        return (await db.query('SELECT * FROM social_posts WHERE id=$1 AND client_id=$2', [id, existing.client_id])).rows[0]
+      })
+    : await queryOne(sql, params)
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
   await recordSocialPublishingAudit({
     clientId: existing.client_id,

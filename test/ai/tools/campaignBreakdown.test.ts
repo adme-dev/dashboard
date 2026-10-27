@@ -3,9 +3,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { getCampaignBreakdown, getLeadAttributionSummary, type CampaignBreakdownDeps, type BreakdownCampaign } from '~~/server/utils/ai/tools/campaignBreakdown'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
-vi.mock('~~/server/utils/db', async (original) => ({ ...(await original<any>()),
+vi.mock('~~/server/utils/db', async original => ({ ...(await original<any>()),
   queryOneFresh: vi.fn(async (sql: string, params: any[]) => sql.includes('team_members') ? { id: params[0] } : sql.includes('FROM leads') ? { total_submissions: 63, campaign_attributed: 4, ad_attributed: 3 } : { id: 'c1' }),
-  queryRowsFresh: vi.fn(async (_sql: string, params: any[]) => [{ id: 'c1', name: String(params[0]).toLowerCase().includes('globex') ? 'Globex' : 'Acme' }]),
+  queryRowsFresh: vi.fn(async (_sql: string, params: any[]) => [{ id: 'c1', name: String(params[0]).toLowerCase().includes('globex') ? 'Globex' : 'Acme' }])
 }))
 
 const ctx = { userId: '11111111-1111-4111-8111-111111111111', userRole: 'owner', event: { context: {} } as any } as ToolContext
@@ -309,7 +309,7 @@ it('verified owner substring retains multiple client names', async () => {
   const matching = [
     { ...rows[0], clientName: 'Acme North', campaignId: 'north' },
     { ...rows[0], clientName: 'Acme South', campaignId: 'south' },
-    { ...rows[0], clientName: 'Other', campaignId: 'other' },
+    { ...rows[0], clientName: 'Other', campaignId: 'other' }
   ]
   const result = data(await getCampaignBreakdown({ clientName: 'acme', sortBy: 'spend' }, ctx, deps({ breakdown: async () => ({ campaigns: matching, total: matching.length }) })))
   expect(result.campaigns.map((row: any) => row.clientName)).toEqual(['Acme North', 'Acme South'])

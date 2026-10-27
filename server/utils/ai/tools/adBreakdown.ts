@@ -32,7 +32,7 @@ type Args = AdBreakdownArgs
 export type RawAdRecord = {
   clientId?: string | null
   connectionId?: string | null
-  accountLeadAttribution?: { status: string; leadCount: number | null; cpl: number | null; reason?: string }
+  accountLeadAttribution?: { status: string, leadCount: number | null, cpl: number | null, reason?: string }
   adId: string
   adName: string | null
   campaignId: string
@@ -278,8 +278,8 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
       period: currentPeriod,
       ...(previousPeriod ? { previousPeriod } : {}),
       source: 'stored_ad_performance_snapshots',
-        snapshotCoverage,
-        coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
+      snapshotCoverage,
+      coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
       halted: false,
       ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),

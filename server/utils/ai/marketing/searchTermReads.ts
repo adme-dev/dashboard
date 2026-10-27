@@ -9,8 +9,11 @@ import type { SearchTermSnapshot, SearchTermTarget, SearchTermTargetArgs } from 
 export async function resolveScopedSearchTermTarget(scope: MarketingReadScope, args: SearchTermTargetArgs): Promise<SearchTermTarget | null> {
   requireMarketingReadPermission(scope, 'search_terms')
   const values: unknown[] = []
-  const conditions = [clientScopeSql(scope, 'ms.client_id', values), 'ms.campaign_id IS NOT NULL', "ms.platform IN ('google', 'google_ads')"]
-  const add = (column: string, value: unknown) => { values.push(value); conditions.push(`${column} $${values.length}`) }
+  const conditions = [clientScopeSql(scope, 'ms.client_id', values), 'ms.campaign_id IS NOT NULL', 'ms.platform IN (\'google\', \'google_ads\')']
+  const add = (column: string, value: unknown) => {
+    values.push(value)
+    conditions.push(`${column} $${values.length}`)
+  }
   const ownerName = ownerClientNameSql(scope, args.clientName, 'ms.client_id', values)
   if (ownerName) conditions.push(ownerName)
   else if (args.clientName) {
