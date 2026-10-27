@@ -1,6 +1,6 @@
 # Marketing staff MCP release record — 28 October 2026
 
-Status: implementation prepared for review; production deployment and staff/provider acceptance remain outstanding. This record separates source, local qualification, canonical schema and live effects. The [operator runbook](marketing-staff-mcp.md) defines enrollment and the [implementation plan](../superpowers/plans/2026-10-27-marketing-staff-mcp.md) defines scope.
+Status: implementation and local corrective qualification complete; refreshed full-suite and remote PR checks are in progress. Production deployment and staff/provider acceptance remain outstanding. This record separates source, local qualification, canonical schema and live effects. The [operator runbook](marketing-staff-mcp.md) defines enrollment and the [implementation plan](../superpowers/plans/2026-10-27-marketing-staff-mcp.md) defines scope.
 
 ## Delivered scope
 
@@ -22,7 +22,7 @@ Build correction `b1ebf41dd` now groups already-selected immutable SQL/SSR strin
 - Repository: `adme-dev/dashboard`.
 - Candidate branch: `adme-dev/Garrix-Lopena-marketing-MCP-for-the-marketing-employees`.
 - Current-main comparison: `eb294e8600cc4054d1c9dd98eb46ec61c1ea9958`; fetched 27 October 2026 at 17:01 UTC, already an ancestor of the candidate.
-- Final executable-source commit: `b1ebf41dd`. The build started on `bbc0c5392` plus the exact reviewed four-file patch subsequently committed as `b1ebf41dd`; the frozen hash receipt proves parity. Documentation-only release bookkeeping follows this source commit. The PR head and local release receipt record final documentation identity.
+- Original qualified executable-source commit: `b1ebf41dd`. The original build started on `bbc0c5392` plus the exact reviewed four-file patch subsequently committed as `b1ebf41dd`. Resumed cleanup and deterministic CI test correction are committed as `ee3f5b797` and `e8e07af65`; the new build and source-review receipts are described below. Documentation-only release bookkeeping follows these source commits.
 - Claude contributed planning/review before its OAuth session expired; Codex implemented and independently reviewed, and Kimi researched current host setup and measured bundle compaction. No claim is made that Claude completed later reviews after its session expired.
 - Independent whole-branch review covered integrated authority/provider boundaries, frozen Task 6, subsequent corrections and final qualification. Its full report and source hashes are retained in the local artifact directory below. This is code review, not a production acceptance test.
 
@@ -43,18 +43,40 @@ Build correction `b1ebf41dd` now groups already-selected immutable SQL/SSR strin
 
 Raw build budget remains 25,468,928 bytes; gzip budget remains 9,750,000 bytes. Do not increase budgets or suppress lint/type failures to label the release clean.
 
+## Resumed qualification
+
+The 20:19 UTC fresh-main check still found `eb294e8600cc4054d1c9dd98eb46ec61c1ea9958` included in the candidate. The earlier qualification table records the original evidence; the following results qualify the subsequent source.
+
+Bounded lint cleanup removed 7,368 introduced diagnostics across 136 branch-owned files. A fresh same-config comparison over 241 changed JS/TS/Vue paths found 7,905 introduced diagnostics before cleanup and 537 after it. The remaining 526 explicit-any findings comprise 127 production-source and 399 fixture findings; nine formatting findings and one unused import point at unchanged baseline-owned lines, and one control-regex finding is the retained security guard. No rules, ignores, security checks or test assertions were suppressed. This is a changed-path comparison, not a fresh whole-repository lint pass. The added recovery-test correction introduces no net lint diagnostics.
+
+PR CI run `40547051260` failed one of 316 Page Studio expired-transfer recovery tests. The failing fixture and authority files were identical to current main. The fixture starts a one-second entitlement expiry before multi-step setup; a diagnostic-only 1,100 ms setup delay reproduced the same permission rejection. The production authority correctly rejects expired admission. The correction installs a clock only in the disposable test schema, pins it during real admission, then advances it to prove both current-plan and immutable retained-authority expiry. It also verifies unchanged retained intent/digest and a fresh original operator. Production authority is unchanged. The corrected test passes both normally and under the same delay; all four CI-step suites pass **316 tests with no skips**. A final formatting-only cleanup has exact AST parity and a passing final-byte targeted rerun. The original remote run's later steps did not execute; a new remote run is still required.
+
+| Resumed check | Result |
+| --- | --- |
+| Independent review | All 136 complete cleanup files mechanically read/parsed and compared directly with HEAD, plus manual review of every semantic exception, relevant control flow and template change; the recovery correction was read and reviewed separately. No open Critical or Important finding. Full manual rereview of every unchanged line is not claimed. |
+| Combined regressions | Initial rerun: 104 of 106 files passed, 1,381 tests passed, one gate-fingerprint failure and 39 Task4 tests blocked by the coordinator runner's temporary-directory prefix. The existing safety guard was retained; corrected runner passed all 39, and reviewed gate correction passed all eight tests. The 106-file selection is qualified across these runs, not a single green run. |
+| Gate inventory | Exactly one permission-group presentation row moved to its own line. All 1,657 rows retain their classifications/counts; the reviewed fingerprint is updated without weakening an assertion or gate. |
+| Typecheck | 951 diagnostics versus the same-main baseline's 952; zero added and one removed. Exit remains 2. |
+| Production build | `SEARCH_AUTHORITY_ENABLED=true pnpm build` passes with raw **25,299,703 / 25,468,928 bytes** (169,225 spare) and gzip **7,193,700 / 9,750,000 bytes**. Source hashes bind the reviewed dirty-source build to the subsequent commits. |
+| Deployment and artifact boundaries | `pnpm deploy:check` passes. Email-renderer artifact isolation passes after producing the required private Worker dry-run artifact; the initial local check correctly failed when that artifact was absent. No upload occurred. |
+| CI serial prechecks | CRM search endpoint and governance/browser suites pass 70 tests. The remaining repository-wide suite is running; remote CI acceptance remains pending. |
+
+Resumed receipts use `final-resume-*`; independent review is `resume-lint-independent-report.md` with reviewed file hashes. All disposable PostgreSQL fixtures were stopped after their runs. No prior failing receipt was overwritten.
+
 ## Canonical schema and live state
 
 Additive migrations 483–489 were applied by the coordinator to the canonical database and read back as committed/verified. Their exact hashes and exclusive mutation receipts are retained; do not reapply or edit them. This confirms schema only. It does not establish deployment, provider transport or customer-event delivery.
 
 No Pages or companion Worker deployment, staff enrollment, provider credential/configuration change, post publication or fabricated enquiry was performed in this workstream. Read-only public discovery returned an MCP Bearer challenge and valid OAuth metadata; this does not prove the candidate is deployed or that a staff host can authenticate and use it.
 
+The production check found Pages deployment `eb493158-0d78-4f9c-9102-89f20ae5a770` at source `c910df968ac1bef181f9aa99c14008ed2897edac`, which excludes the new staff-authority commit. A successful test of the existing owner MCP therefore does not prove this candidate is live. Names-only preflight at approximately 19:56 UTC still found no staff-grant binding, LinkedIn client secrets or Google Ads MCP read/write flags. Companion Worker version observations are retained in `resume-live-preflight.json`; no upload occurred.
+
 ## Remaining release and activation gates
 
 1. Review the draft release and explicitly account for the new lint debt. Fetch main again immediately before integration/release and reconcile if it changes. Preserve the current candidate until its unmerged work is accounted for.
 2. Supply actual staff-to-client assignments and individually reviewed capability grants. No assignments means no client access. Grant configuration remains absent; do not infer all clients or elevate staff to FINANCE/ADMIN. Follow the runbook for grant limits and empty-object revocation.
 3. Provision the actual matching LinkedIn app secrets and verify app IDs, granted scopes and account authority. Names-only production inventory refreshed at 16:16 UTC contained 102 secrets and lacked both LinkedIn secrets and the staff grant. No secret values were collected in these reports.
-4. Reconcile Pages text-binding capacity before adding settings. The observed estimate is 43 vars + 102 secrets + four generated bindings = 149. Adding both LinkedIn secrets and a staff grant gives 152. Removing two redundant public-ID bindings is only valid after private equality/runtime-pair verification; that conditional plan reaches exactly 150 with no spare slot. A scope override or TikTok credentials requires a separate capacity solution. Recount the actual generated deployment configuration immediately before release.
+4. Reconcile Pages text-binding capacity before adding settings. The observed estimate is 43 vars + 102 secrets + four generated bindings = 149. Adding both LinkedIn secrets and a staff grant gives 152. Removing two redundant public-ID bindings is only valid after private equality/runtime-pair verification; that conditional plan reaches exactly 150 with no spare slot. Google Ads MCP read/write suite activation, a scope override or TikTok credentials requires a separate capacity solution. A staff grant alone does not enable disabled suites. Recount the actual generated deployment configuration immediately before release.
 5. Release Pages through the guarded repository `pnpm deploy:*` workflow to `agency-dashboard`, with the corresponding agency-workflows revision-contract change and social-dispatch-cron reconciliation Worker. Record exact source/main commits, Pages deployment ID, both Worker versions, targets and matching bindings/secrets. Pages-only release with an old workflow contract is not a usable acceptance result. The standalone MCP Worker is unchanged and does not require an automatic redeploy.
 6. Complete authenticated host acceptance in the intended Claude/ChatGPT accounts, then real authorized provider-account acceptance for each operation being enabled. Verify revocation, client isolation, draft/review flow and exact approved dispatch. Configuration, validation, transport receipt and provider reporting are separate evidence levels.
 7. Keep TikTok readiness false until creator credentials, app audit/product/scopes, current account consent and actual permitted-account acceptance are established. Local tests of its dormant implementation do not authorize activation.
