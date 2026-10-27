@@ -10,14 +10,14 @@ On 27 October, the user explicitly requested updates to the related marketing jo
 
 | Item | Verified status | Posted update ID |
 | --- | --- | --- |
-| Northern Nissan PMAX | Working On It (06:09 UTC) | `5667276388` |
+| Northern Nissan PMAX | **QA** (06:33 UTC) | `5667297106` |
 | Astoria ORC | Awaiting Client | `5667031182` |
 | Fairfield Foton setup | **Done** (05:49 UTC) | `5667260266` |
 | Driveagent conversion tracking | QA | `5667031486` |
 
 | Parent job | Exact Monday item | Remaining scope |
 | --- | --- | --- |
-| Northern Nissan Google PMAX Inventory | [3948720818](https://adme2.monday.com/boards/13392458/pulses/3948720818) | Campaign diagnostics, native conversion configuration and delivery; current Merchant fetch and bounded ingest-cycle acceptance passed |
+| Northern Nissan Google PMAX Inventory | [3948720818](https://adme2.monday.com/boards/13392458/pulses/3948720818) | Genuine paid-ad attribution remains; campaign Eligible, warnings cleared and exact native contact-to-GA4 delivery passed; prior Merchant and bounded ingest-cycle checks passed |
 | Re: Google Sponsored Vehicles - Error ORC | [13307911988](https://adme2.monday.com/boards/13392458/pulses/13307911988) | Astoria price/year verification, missing compliance data and canonical duplicate decision |
 | New Client Set-up: Fairfield Foton | [13156840770](https://adme2.monday.com/boards/13392458/pulses/13156840770) | Acceptance passed: direct and embedded Analytics access, contact-to-GA4 delivery, sitemap and GBP checks; see bounded proof below |
 | Driveagent Conversion tracking setup | [13225458455](https://adme2.monday.com/boards/13392458/pulses/13225458455) | Astoria accepted-enquiry cutover acceptance and provider proof |
@@ -39,9 +39,9 @@ Astoria's portal hostname does not establish native DriveAgent conversion routin
 | ID | Monday item / work | State | Owner and next action | Evidence required to close |
 | --- | --- | --- | --- | --- |
 | ITA-NN-01 | Nissan Merchant Center feed | 136-item provider fetch clean; unfiltered product and account diagnostics clear | Complete within current provider scope; retain temporary photo holds and their restoration criteria | Exact source `10437231713` in account `5434742817` processes current inventory and has no outstanding blocking product/account errors |
-| ITA-NN-02 | Nissan campaign destinations / goals | Repaired; final live verification open | Coordinator: recheck campaign `21711826789`, customer `5253781131`, after asset review and tracking cutover | Correct landing URLs, current eligibility/reasons and preserved budget/action ownership |
-| ITA-NN-03 | Nissan native GA4 | Client-ID repair deployed; end-to-end delivery unproven | Native tracking owner: trace permitted traffic against the deployed repair | Valid consented GA identity, one accepted native enquiry, matching delivery record, then GA4 reporting; HTTP receipt alone is insufficient |
-| ITA-NN-04 | Nissan Ads conversion ownership | Native GA4 import enabled and selected for PMAX; delivery proof open | Coordinator traces the native GA4 event into the existing Ads import; no direct Ads connection/mapping is needed for this selected route | Exact property/event/action ownership read back; matching GA4 event and eventual real Ads attribution |
+| ITA-NN-02 | Nissan campaign destinations / goals | Repaired; Google now reports Eligible | Campaign `21711826789`, customer `5253781131`: both campaign warning reasons cleared; active asset group eligible | Exact saved goals, working URLs, campaign Eligible, empty campaign reason list and preserved budget verified |
+| ITA-NN-03 | Nissan native GA4 | Verified for one approved contact enquiry | Complete within ordinary contact-to-GA4 scope; exact event ID reported once | Native acceptance and ledger match GA4 Realtime event `2b114ae1-a543-4fd2-8b34-5e89ad5f0540`, count 1 |
+| ITA-NN-04 | Nissan Ads conversion ownership | GA4 import enabled and selected; native GA4 delivery proved; Ads attribution open | Observe the next genuine eligible ad-driven enquiry through Google Ads reporting; no direct Ads connection/mapping is needed for this selected route | Configuration and exact GA4 event passed; real attributable conversion remains the final Ads reporting check |
 | ITA-NN-05 | Upstream inventory ownership relocation | Repair live; independent natural-cycle acceptance passed | Complete within sampled ownership-repair scope; retain rollback and monitor subsequent cycles | One scheduled writer; original seller membership and active counts preserved through the sampled natural refresh; public feed remains complete; no claim of atomic four-source publication |
 | ITA-AS-01 | Astoria Google year/title mismatch | Live alignment verified | Coordinator: retain Google model-year semantics; recheck target stocks on final feed | Matching title/model year with preserved prices; do not call model year a recovered compliance date |
 | ITA-AS-02 | Astoria actual compliance month | Importer and separate JSON fields live; full coverage unresolved | Coordinator: obtain supplier provenance for remaining missing dates, including J660450 | Complete justified coverage or documented supplier absence; actual compliance month exposed separately in JSON from Google model year; no VDP rendering claim; no invented dates or blind backfill |
@@ -249,6 +249,8 @@ Initial durable ledger [PR711](https://github.com/adme-dev/dashboard/pull/711) m
 
 ## Northern Nissan PMAX conversion repair — 27 October, 06:00–06:08 UTC
 
+**Historical checkpoint:** the later approved enquiry proof below supersedes the pending test approval, unproved GA4 delivery and campaign Limited state recorded in this section. Retain the mutation receipts as configuration history.
+
 This supersedes the earlier requirement to add a native direct Google Ads connection. The selected owner is **native accepted enquiry → server-side GA4 Measurement Protocol `generate_lead` → existing GA4-to-Google Ads import**. No application deployment, new browser tag, direct Ads uploader, customer replay or fabricated ad-click identifier was introduced by this repair.
 
 ### Provider configuration applied and independently read back
@@ -274,3 +276,32 @@ Sanitized provider receipts and readbacks are retained in [Nissan PMAX evidence]
 
 
 Monday update **5667276388** was posted to Nissan item **3948720818** and independently read back at **06:09:11 UTC**. The **Campaign URL** field now contains the verified `/cars-for-sale?condition=new,demo&sort=year_desc` destination. Status remains **Working On It**; assignee Paul and due date **27 October** were preserved. The post links committed evidence and explicitly leaves Google review/recalculation and enquiry/attribution proof open.
+
+
+## Northern Nissan approved enquiry proof — 27 October, 06:26–06:31 UTC
+
+The user explicitly approved the previously disclosed **single labelled Northern Nissan operator QA enquiry**. It was submitted once through `https://www.northernnissan.com.au/contact-us`, using the approved real operator identity, no phone number, General Enquiry and preferred contact Email. The message starts **OPERATOR QA TEST**, says it is not a purchase enquiry, requests **no sales follow-up**, and includes reference **ITA-NISSAN-QA-20261027**. This is an operational test record, not genuine customer demand. No advertisement was clicked, no attribution identifier was fabricated and no customer enquiry was replayed.
+
+| Stage | Verified evidence |
+| --- | --- |
+| Website policy and identity | Same-origin `/api/consent/policy` returned `defaultAllowed=true`; browser had a valid GA identity. User expressly approved analytics measurement. No consent cookie was manufactured. |
+| Accepted form | One **POST `/api/enquiries`**, HTTP **200**, `success=true`; browser displayed “Thank you! We'll be in touch soon.” |
+| Enquiry | **78bd3a51-21a7-4bfa-aee6-6b84da76597c**, accepted **06:27:04.426 UTC**, correct dealer, `contact_form_block` / `general_enquiry`; conversion classification `contact_us`, transaction `enquiry-78bd3a51-21a7-4bfa-aee6-6b84da76597c` |
+| Canonical event | **2b114ae1-a543-4fd2-8b34-5e89ad5f0540** |
+| Native delivery | One matching conversion row **26bc529c-068f-4249-b583-f9c5309750a8**, valid GA identity, `ga4_sent=true`, `ga4_sent_at=06:27:09.955 UTC`, no GA4 error |
+| Provider reporting | Authenticated GA4 account **100341175**, property **308088672**: Realtime **generate_lead → event_id** displayed the **exact same event UUID with count 1**, verified **06:29:37 UTC**. The key-event card also showed **generate_lead = 1**. |
+
+This proves the native accepted-contact → server-side GA4 reporting path for this test. `google_ads_sent=false` is expected for the chosen GA4-import owner; it is not proof of a failed direct upload. Paid-ad attribution remains separate and needs an actual eligible ad interaction. The operator test must not be described as an Ads conversion or a customer lead.
+
+### Campaign and live source
+
+- Google Ads campaign **21711826789** reports **ENABLED / ELIGIBLE**, first verified **06:26:07 UTC**. At **06:30:24 UTC**, its primary-status reason list is **empty**: both `MISSING_LEAD_FORM_EXTENSION` and `HAS_ASSET_GROUPS_LIMITED_BY_POLICY` have cleared. Budget remains **AUD 16.20/day**. Active group **6695638883** is **ENABLED / ELIGIBLE**; each historical group remains paused with only `ASSET_GROUP_PAUSED`, and the repaired legacy group is no longer under review.
+- The shared release owner promoted another application artifact after the previous checkpoint. Exact Nissan-host health at **06:28:35 UTC** reports **healthy**, source **1fdb4a59b7d72d00c2158b0cf94b91ee213fb7e9**. Its shared production evidence records deployment URL **https://d03dab87.dealer-network.pages.dev**, artifact SHA-256 **c8d418d31aa690a101dc3d151dde0fdb9bbb562681f5056961c6b52426346f3f**, verified **06:13:50 UTC**. This marketing task did not deploy or alter that application artifact.
+- The privacy footer click did not visibly open its panel during this run. The accepted policy and operator consent are recorded above; this test does not claim denied-consent controls, anonymous-user behavior, blocked-script resilience or every enquiry form was tested.
+
+Durable proof: [sanitized acceptance and exact-event receipt](evidence/nissan-pmax-20261027/live-enquiry-proof.json), [GA4 event screenshot](evidence/nissan-pmax-20261027/exact-event-id.png). The screenshot visually truncates the UUID; the independent DOM readback in the receipt retains the entire matching value.
+
+Technical repair and ordinary contact-to-GA4 acceptance have passed. Keep the parent in QA while the final genuine paid-ad attribution check remains open; no further operator enquiry is authorized or needed for this bounded test.
+
+
+Monday update **5667297106** and the change to **QA** were independently read back at **06:33:22 UTC** on item **3948720818**. The saved post links the committed exact-event proof, records that both campaign warnings cleared, and keeps genuine Ads attribution open. Assignee Paul and due date **27 October** were preserved.
