@@ -7,6 +7,9 @@ import { contentSecurityPolicy, DOCUMENT_URL, PINNED_FONT_PATH, parseResourceMan
 import { encodedDimensions, gifEncoder } from './codec'
 
 type BannerRendererEnv = BannerRendererProductionEnv | BannerRendererStagingEnv
+// Workers validates the native receiver. Keep a lexical global call when this
+// function is invoked as a method on the dependency object.
+export const fetchBannerRenderResource: typeof fetch = (input, init) => fetch(input, init)
 export interface RenderDependencies {
   launch: () => Promise<Browser>
   fetchResource: typeof fetch
@@ -346,7 +349,7 @@ export function renderWithBinding(input: unknown, env: BannerRendererEnv, ctx: P
         throw new BannerRenderError('UNAVAILABLE')
       return puppeteer.launch(env.BROWSER)
     },
-    fetchResource: fetch,
+    fetchResource: fetchBannerRenderResource,
     retainCleanup: promise => ctx.waitUntil(promise)
   })
 }

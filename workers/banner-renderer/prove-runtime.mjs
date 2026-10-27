@@ -9,9 +9,17 @@ const config = JSON.parse(await readFile(new URL('wrangler.production.jsonc', ro
 await buildBundle('proof/codec.ts', 'dist/proof-codec.js')
 let launches = 0
 let outbound = 0
+let resourceCalls = 0
 const mf = new Miniflare({
   workers: [
-    { name: 'codec', modules: true, scriptPath: new URL('dist/proof-codec.js', root).pathname, compatibilityDate: config.compatibility_date, compatibilityFlags: config.compatibility_flags },
+    { name: 'codec', modules: true, scriptPath: new URL('dist/proof-codec.js', root).pathname, compatibilityDate: config.compatibility_date, compatibilityFlags: config.compatibility_flags,
+      outboundService: (request) => {
+        assert.equal(request.url, 'https://resource.fixture.invalid/font')
+        assert.equal(request.headers.has('cookie'), false)
+        assert.equal(request.headers.has('authorization'), false)
+        resourceCalls++
+        return new Response('resource-fixture')
+      } },
     { name: 'caller', modules: true, compatibilityDate: config.compatibility_date, compatibilityFlags: config.compatibility_flags,
       script: `export default { async fetch(request, env) { if (new URL(request.url).pathname === '/named') return env.RENDERER.fetch(request); return Response.json(await env.RENDERER.render(await request.json())); } }`,
       serviceBindings: { RENDERER: { name: 'renderer', entrypoint: 'BannerRenderer' } } },
@@ -31,6 +39,10 @@ const mf = new Miniflare({
 try {
   await mf.ready
   const codecWorker = await mf.getWorker('codec')
+  const resource = await codecWorker.fetch('https://codec.invalid/resource')
+  assert.equal(resource.status, 200)
+  assert.equal(await resource.text(), 'resource-fixture')
+  assert.equal(resourceCalls, 1)
   const png = new PNG({ width: 2, height: 2 })
   png.data.fill(255)
   const encoded = await codecWorker.fetch('https://codec.invalid/', { method: 'POST', body: PNG.sync.write(png) })
@@ -51,5 +63,5 @@ try {
   assert.equal((await invoke(input)).error.code, 'BROWSER_UNAVAILABLE')
   assert.equal(launches, 1)
   assert.equal(outbound, 0)
-  console.log(JSON.stringify({ proof: 'actual bundled Worker in workerd', defaultFetch: 404, namedFetch: 404, invalidInput: true, environmentIsolation: true, realPuppeteerBindingLaunches: launches, outboundRequests: outbound, browserRenderProof: false, actualWorkerdPngDecodeGifEncode: true }))
+  console.log(JSON.stringify({ proof: 'actual bundled Worker in workerd', defaultFetch: 404, namedFetch: 404, invalidInput: true, environmentIsolation: true, realPuppeteerBindingLaunches: launches, outboundRequests: outbound, browserRenderProof: false, actualWorkerdPngDecodeGifEncode: true, actualWorkerdResourceFetch: true }))
 } finally { await mf.dispose() }
