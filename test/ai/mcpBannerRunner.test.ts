@@ -229,3 +229,11 @@ describe('dispatchBannerConfirm', () => {
     expect(order).toEqual(['prepared', 'checkpoint', 'send'])
   })
 })
+
+it('refuses protected canvas metadata from a custom MCP loader', async () => {
+  const runner = buildBannerReadRunner({
+    loadProjectsRows: async () => [{ id: 'private', name: 'Private', updated_at: 'now', canvas_data: { mrec: { layers: [], dissectionSource: { jobId: 'job', sourceSha256: 'a'.repeat(64) } } } }],
+    loadProjectRow: async () => null,
+  })
+  await expect(runner.list_banner_projects({} as never, {} as never)).rejects.toMatchObject({ statusCode: 409 })
+})

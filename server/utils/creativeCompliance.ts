@@ -1,4 +1,6 @@
-import { queryOne } from '~~/server/utils/db'
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '#shared/bannerScopedCanvas'
+import { createError } from 'h3'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { getFileMetadata, getPresignedDownloadUrl } from '~~/server/utils/storage'
 import { assertResolvableSources, loadSourceAssetsByIds } from '~~/server/utils/video-generation/sourceAssetStore'
 import { resolveGroqGatewayBaseUrl, buildGatewayAuthHeaders } from '~~/server/utils/groqClient'
@@ -105,6 +107,7 @@ export async function requestCreativeComplianceVerdict(
   input: VisionComplianceRequest,
   deps: VisionComplianceDeps,
 ): Promise<CreativeComplianceVerdict> {
+  if (hasScopedCanvas(input.imageUrls)) throw createError({ statusCode: 409, statusMessage: SCOPED_DISSECTION_EXCLUSION })
   if (input.imageUrls.length < 1 || input.imageUrls.length > 5) throw new Error('Vision checks require 1-5 images')
   if (input.subjectType === 'vehicle' && input.imageUrls.length < 2) {
     throw new Error('Vehicle checks require the proposed asset plus an approved reference')
@@ -179,15 +182,17 @@ export interface RunCreativeComplianceInput {
 }
 
 export async function runCreativeComplianceCheck(input: RunCreativeComplianceInput) {
-  const bannerTarget = await queryOne<{ id: string, r2_key: string, client_id: string | null, file_size: number, mime_type: string }>(
-    `SELECT id, r2_key, client_id, file_size, mime_type FROM banner_assets WHERE id = $1`, [input.assetId],
+  const bannerTarget = await queryOneFresh<{ id: string, r2_key: string, url: string, client_id: string | null, file_size: number, mime_type: string }>(
+    `SELECT id, r2_key, url, client_id, file_size, mime_type FROM banner_assets WHERE id = $1`, [input.assetId],
   )
+  if (hasScopedCanvas(bannerTarget)) throw createError({ statusCode: 409, statusMessage: SCOPED_DISSECTION_EXCLUSION })
   const sourceTarget = bannerTarget ? null : await queryOne<{
     id: string, r2_key: string, client_id: string | null, status: string, content_type: string
   }>(
     `SELECT id, r2_key, client_id, status, content_type
        FROM video_gen_source_assets WHERE id = $1`, [input.assetId],
   )
+  if (hasScopedCanvas(sourceTarget)) throw createError({ statusCode: 409, statusMessage: SCOPED_DISSECTION_EXCLUSION })
   if (!bannerTarget && !sourceTarget) throw new Error('Creative asset not found in Banner Studio or approved video sources')
   if (sourceTarget && sourceTarget.status !== 'approved') throw new Error('Video source asset is not approved')
   const target = bannerTarget
@@ -209,6 +214,7 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
     effectiveReferenceIds,
     tenantId,
   )
+  if (hasScopedCanvas(referenceRows)) throw createError({ statusCode: 409, statusMessage: SCOPED_DISSECTION_EXCLUSION })
   const referenceMetadata = await Promise.all(referenceRows.map(row => getFileMetadata(row.r2_key)))
   for (let index = 0; index < referenceRows.length; index++) {
     const metadata = referenceMetadata[index]

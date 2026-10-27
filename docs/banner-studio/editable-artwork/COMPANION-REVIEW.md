@@ -1,0 +1,66 @@
+# Companion wording workflow independent review
+
+27 October 2026. Independent review against `COMPANION-REVIEW-PLAN.md`, the current `HANDOFF.md`, and the previous Linux native review. The reviewer changed only this document; implementation and runtime execution remained with their assigned owners. No Docker/server operation, fetch/rebase, commit, deployment, database or provider action was performed by this reviewer.
+
+## Verdict
+
+**The bounded local companion wording workflow passes independent review. No unresolved P1/P2 finding remains in this slice.** Final evidence is `output/editable-artwork-companion/ui-2026-10-27T04-32-30-268Z/`. All 21 source/runtime hashes match before, after and independently re-read current files. The actual Nuxt UI accepts a real Linux CLI proposal, requires review, applies only selected wording and descriptive provenance, and passes undo/redo plus fixture save/reopen. Both explicit window-error capture and browser page-error capture are empty after the final resize correction.
+
+Source is the existing dirty `adme-dev/banner-editable-artwork` worktree, HEAD `47ec30c3522f6ab660d730776709770c8a22d7c8`, with local remote-tracking main `4469d6a2fb873c2d7b90ece9a359dd571def0ba2`. Remote freshness and release are coordinator responsibilities; this review did not fetch or authorize deployment. The supported heading is deliberately added to the local fixture, not recovery of the original Arial artwork font.
+
+## Initial design assessment
+
+The proposed boundary is feasible: the browser retains the original full canonical project and transient request authority; imported JSON supplies only bounded proposed wording and descriptive declarations. A file cannot establish session authority, native fidelity or permission to change other canvas properties. Exact font bytes and fresh browser fit measurement remain prerequisites for explicit human review and one atomic apply.
+
+Early concerns sent to the coordinator and implementation owners before code acceptance:
+
+- Invalidate on every project/epoch/revision/selection/canvas transition, including change away and back, close/unmount/new request and competing async reads. Final source equality alone does not fence obsolete operations.
+- Verify exact font bytes before installing the face; reject competing family/weight registrations and fallback, and measure actual ink plus line placement inside the unchanged layer box. The real Nuxt proof must serve the platform asset without intercepting its bytes.
+- Keep provenance explicitly descriptive and unauthenticated, and ensure saving it does not make a second supported companion edit impossible.
+- Root-owned CLI must bind request/source identity and owned fresh operation/output paths before native execution; returned native measurements and canvas data must never become browser authority.
+
+## Findings and independent closure
+
+- **Server export font URL:** initial server builder emitted a relative pinned-font URL despite accepting a trusted `baseUrl`. This would fail off-origin HTML rendering. Owner now passes `options.baseUrl`; source and the absolute-origin regression were independently checked.
+- **Exact request size:** initial download prettified a request whose compact representation alone had passed the 64 MiB bound. Owner now downloads the same compact representation validated by the parser. Independently rechecked the source.
+- **Explicit QR invariant:** requested an invariant check in addition to the two-field mutation. Apply now constructs the exact proposed canvas and calls `assertManagedQrTransition` before consuming authority and updating the selected layer.
+- **Unknown-key contract:** an independent run found Zod silently ignored a JSON `__proto__` key despite the strict schema. Closed: original own-key validation now runs before each request/proposal/engine schema; the rejecting regression passes independently.
+- **Font test harness:** the initial happy-dom suite imported a Node runtime using a transformed non-file `import.meta.url` and failed collection. Owner split real font-byte verification into a Node test and corrected a negative-zero assertion. The byte, loader and geometry suites now pass independently.
+- **Capability guidance:** shared bridge assessment initially allowed font sizes up to 1000 px, while browser measurement allows 512 px. Closed: upfront heading guidance now rejects above 512 px; all 50 contract cases pass independently, including this boundary and dangerous own-key rejection at each schema boundary.
+- **Dark-mode preview contrast:** actual screenshot review found dark source text nearly invisible on the dark inspector background. Closed: coordinator now chooses a contrasting preview surface while preserving source text color/style and explicitly labels the surface choice. Independently rerun component tests and lint pass; the final before/after screenshot visibly resolves the contrast problem.
+- **Preview resize diagnostics:** coordinator found `ResizeObserver loop completed with undelivered notifications` in development logs after the first functional pass. The unchanged-source run `ui-2026-10-27T04-31-02-279Z/` reproduced two window errors, one at each preview import, despite an empty `pageerror` list. Closed: stable section width observation now uses a coalesced animation-frame update, target identity check and scope cancellation instead of changing the measured preview height during observer delivery. The reviewer inspected the installed VueUse behavior and source correction, reran component tests/lint, and independently checked the new final run's empty `windowErrors` and `pageErrors` alongside all functional checks.
+
+Reviewed the contract, component-local composable, inspector, font loader/measurement module, font catalog changes, both HTML builders, root CLI and selected-only native adapter change, including follow-up fixes. The CLI checks UTF-8 and bounded regular files with `O_NOFOLLOW`, rejects symbolic path components, verifies full snapshot hash and selected face, reserves a new output directory, runs fixed native commands, verifies the exact expected project difference, and rechecks request bytes before emitting a wording-only proposal. Whole-board dependency assessment precedes selected-layer narrowing.
+
+The browser composable retains frozen request/proposal objects; synchronous deep watchers invalidate project, saved revision, canvas and selection changes. Async file read, source hash and font measurement continuations recheck captured identity/revision/source, and apply consumes authority before the synchronous existing store update. Independent tests prove these paths, including transient changes, frozen reviewed data, cancellation, review revocation and repeated apply.
+
+Independent baseline execution passed 67 bridge/editor/copy/QR tests with one optional native-artifact skip. After the source fixes, `companionContract.test.ts`, `companionProposal.test.ts`, `companionCli.test.ts`, `pinnedFont.test.ts`, `pinnedFontBytes.test.ts`, `documentBridgeLinux.test.ts` and `bannerCompanionUi.test.ts` passed **157 tests across seven files**. Scoped ESLint also passed for the two new shared contracts, composable, font utility, inspector component, CLI and browser proof. The asset and license hashes were recomputed as `9214b9d95e4231c609802815c2646c98174e2102d0d37f88978a7f8e71006e6a` and `89ad2c4f66dd29127527493e729c31e731f111cf10faf5774c3db9275ed0c22c` respectively.
+
+After each final preview-only change, all three component tests and lint on the component/proof passed again. The coordinator's retained `output/editable-artwork-companion/final-tests.json` records a broader 273-test, 19-file regression with one optional skip; the reviewer inspected this result but did not execute that broader suite. No broad typecheck or full-build pass is claimed here.
+
+Compatibility caveat sent to the coordinator: the existing font catalog/export paths reserve `Source Sans 3` normal 700 globally, ignoring custom Bold uploads with the same identity. Such previously sourced headings now use pinned 3.052 bytes; this does not establish original-font fidelity. Other families and Source Sans weights remain available. Unsupported original Arial/multiline headings are not silently converted by the companion.
+
+## Actual Linux and Nuxt evidence
+
+The reviewer independently parsed the final retained evidence and archives, recomputed hashes, compared saved project fields and visually inspected the final review screenshot plus the earlier applied/reopened screenshots. The coordinator ran the browser and Docker processes; this reviewer did not repeat those operations.
+
+- Final evidence records nine passing assertions, six fixture API saves, no window errors, no page errors and no fixture errors. A Google Fonts stylesheet request was blocked and fulfilled with empty CSS; there was no remote font delivery for the accepted heading. This is not a claim of zero attempted external requests.
+- The first downloaded request exports only Banner layer 125, mapped to native layer 3. The exported ZIP contains `COME CELEBRATE OUR NEW HOME`; the edited/reopened ZIP contains `COME CELEBRATE WITH US`. The exact exported archive hash matches the trusted sidecar, and the returned proposal identity matches the browser request.
+- The second real CLI run starts from the saved heading with descriptive `companionEdit`, exports `COME CELEBRATE WITH US` and returns `DISCOVER OUR NEW HOME`. This proves the metadata does not prevent subsequent supported native export. The second proposal is previewed but not applied in the final saved project.
+- Baseline versus final saved canvas comparison independently finds only layer 125's `text` and `companionEdit` changed. Every other canonical layer, including the managed QR fixture, remains exact. All supplied fields of the original 124 layers remain exact; normal legacy-load defaults are already present in the baseline.
+- Proof source drives one Undo to the exact baseline, Redo to the exact changed canvas, reload and fixture save/reopen, then close/reselection invalidation. Unit tests separately suspend each file/hash/font stage and prove transient away-and-back changes cannot revive authority.
+- Two normally served platform-font responses each contain exactly 428,176 bytes with the pinned SHA-256. Chrome reports only custom `SourceSans3-Bold`, with 22 glyphs, for both the review preview and the actual applied canvas text element. The font URL is passed through to Nuxt, not fulfilled with test font bytes.
+- Both native operations use image `sha256:370ffe56ef1865a370f988ecc315f060d5288b982093c718b5942a9e6cb40dc6`. Fourteen retained execution-receipt objects independently match PhotoCraft executable SHA-256 `486d0d83d6cdacec3ec76ff6e30e47d5d2c207ad15084631a61902df157e8c8d` and the pinned font, unprivileged user `65532:65532`, network `none` and read-only root. The retained runtime manifest binds the prior accepted capability-proof digests. Live process cleanup is coordinator-owned.
+- The final before/after preview is readable on its explicitly contrasting surface. The added test heading overlaps the fixture's existing address area; this fixture establishes selected-wording behavior, not acceptance of a customer layout or print composition.
+
+Earlier failed artifacts remain diagnostic only: the first run failed during a cold render while files were being edited; the next used a nested file-input selector even though Nuxt UI places attributes on the input itself; another queried the canvas wrapper rather than its text element for CDP fonts. The earlier functional pass at `ui-2026-10-27T04-27-32-228Z/` was superseded when explicit window capture exposed the resize diagnostics above. The final run uses the correct actual controls/text node, passes the stronger diagnostic gate and retains unchanged source hashes.
+
+## Remaining acceptance limits
+
+- This is an operator-run local Linux companion with manual download/import and human review. Wording is operator supplied; it is not evidence of AI-generated copy or hosted engine automation.
+- Auth and API persistence are fixtures. Hosted tenancy, durable jobs/queues, owned production storage, live authorization and database persistence are separate acceptance gates.
+- Imported engine declarations and saved provenance remain unauthenticated descriptive metadata. Neither the JSON file nor its declared hashes establish browser authority or authenticated engine execution.
+- One pinned static font and the bounded plain single-line subset are accepted. Other original fonts, arbitrary scripts/styles, whole-artwork interchange, visual parity and commercial print are not accepted.
+- QR equality here establishes preservation of the local fixture, not live client ownership, scanability, redirect delivery, analytics or print safety. Copy screening is conservative and does not replace human review of meaning or unfamiliar claims.
+- Global reservation of Source Sans 3 normal 700 can change legacy rendering from another same-family font source; the compatibility behavior is explicitly documented in `COMPANION-WORDING.md` and `COMPANION-FONTS.md`.
+- No commit, merge, deployment or publication is implied. OpenUI remains separately documented and pending in `docs/ai-chat/openui-rollout.md`.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FORMATS, TEXT_SHADOW_PRESETS, TEXT_STROKE_PRESETS } from '~/utils/banner-constants'
+import { TEXT_SHADOW_PRESETS, TEXT_STROKE_PRESETS } from '~/utils/banner-constants'
 import { bannerFontWeightOptions } from '~/utils/banner-font-weights'
 import type { FontCategory } from '~/composables/useBannerFonts'
 
@@ -9,47 +9,17 @@ const {
   customFonts, isCustomFont, fetchCustomFonts, uploadCustomFont, deleteCustomFont,
 } = useBannerFonts()
 const toast = useToast()
-const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
-// AI copy generation
+// Reuse the existing inspector; proposals are tied to a captured selection.
 const showAiSuggest = ref(false)
-const aiLoading = ref(false)
-const aiSuggestions = ref<{ text: string; tone: string; charCount: number }[]>([])
-
-async function fetchAiCopy() {
-  if (!selectedLayer.value?.text) return
-  aiLoading.value = true
-  aiSuggestions.value = []
-  showAiSuggest.value = true
-
-  try {
-    const fmt = state.activeKey ? FORMATS[state.activeKey] : null
-    const result = await apiFetch<{ suggestions: typeof aiSuggestions.value }>('/api/agency/banner-studio/ai/copy-suggest', {
-      method: 'POST',
-      body: {
-        text: selectedLayer.value.text,
-        projectId: state.project?.id,
-        context: {
-          projectName: state.project?.name,
-          clientName: state.project?.clientName,
-          clientId: state.project?.clientId || undefined,
-          format: fmt ? `${fmt.w}x${fmt.h}` : undefined,
-        },
-      },
-    })
-    aiSuggestions.value = result.suggestions
-  } catch {
-    toast.add({ title: 'AI unavailable', description: 'Could not generate suggestions', color: 'warning' })
-    showAiSuggest.value = false
-  } finally {
-    aiLoading.value = false
-  }
-}
-
-function applyAiSuggestion(text: string) {
-  set('text', text)
+const copyProposal = useBannerCopyProposal()
+const { instruction, suggestions: aiSuggestions, loading: aiLoading, error: copyError, protectedCopy, previewLayer } = copyProposal
+const previewScale = computed(() => Math.min(1, 264 / (previewLayer.value?.w || 264)))
+onUnmounted(copyProposal.dispose)
+function applyAiSuggestion() {
+  if (!copyProposal.apply()) return
   showAiSuggest.value = false
-  toast.add({ title: 'Applied', description: 'Text updated', color: 'success' })
+  toast.add({ title: 'Applied', description: 'Heading updated. Undo restores the original.', color: 'success' })
 }
 
 const TONE_COLORS: Record<string, string> = {
@@ -220,51 +190,86 @@ function toggleGradient() {
       </summary>
       <div class="pt-1.5 space-y-3">
     <div>
-      <label class="text-[10px] text-(--ui-text-muted)">Content</label>
-      <UInput size="xs" :model-value="selectedLayer.text ?? ''" @update:model-value="v => set('text', v)" />
-      <UPopover v-model:open="showAiSuggest">
-        <UButton
-          size="xs"
-          variant="soft"
-          color="primary"
-          icon="i-lucide-sparkles"
-          class="mt-1 w-full"
-          :loading="aiLoading"
-          :disabled="!selectedLayer.text"
-          @click="fetchAiCopy"
-        >
-          AI Suggest Copy
-        </UButton>
-        <template #content>
-          <div class="w-72 p-3 space-y-2">
-            <div class="text-xs font-semibold flex items-center gap-1.5">
-              <UIcon name="i-lucide-sparkles" class="w-3.5 h-3.5 text-(--ui-primary)" />
-              AI Suggestions
-            </div>
-            <div v-if="aiLoading" class="flex items-center justify-center py-6">
-              <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-(--ui-text-muted)" />
-            </div>
-            <template v-else>
-              <button
-                v-for="(s, si) in aiSuggestions"
-                :key="si"
-                class="w-full text-left px-3 py-2 rounded-md text-xs hover:bg-(--ui-bg-accented) transition-colors border border-(--ui-border)/50 space-y-1"
-                @click="applyAiSuggestion(s.text)"
-              >
-                <div class="font-medium text-(--ui-text)">{{ s.text }}</div>
-                <div class="flex items-center gap-1.5">
-                  <UBadge size="xs" variant="subtle" :color="(TONE_COLORS[s.tone] as any) || 'neutral'">{{ s.tone }}</UBadge>
-                  <span class="text-[10px] text-(--ui-text-dimmed) font-mono">{{ s.charCount }} chars</span>
-                </div>
-              </button>
-              <div v-if="!aiSuggestions.length" class="text-center text-xs text-(--ui-text-muted) py-4">
-                No suggestions generated
+          <UFormField label="Content">
+            <UTextarea
+              size="xs"
+              class="w-full"
+              :model-value="selectedLayer.text ?? ''"
+              @update:model-value="v => set('text', v)"
+            />
+          </UFormField>
+          <UPopover v-model:open="showAiSuggest">
+            <UButton
+              size="xs"
+              variant="soft"
+              color="primary"
+              icon="i-lucide-sparkles"
+              class="mt-1 w-full"
+              :disabled="!selectedLayer.text"
+            >
+              AI Suggest Copy
+            </UButton>
+            <template #content>
+              <div class="w-80 max-h-[75vh] overflow-y-auto p-4 space-y-3">
+                <p class="text-sm font-semibold">
+                  Rewrite selected heading
+                </p>
+                <UAlert
+                  v-if="protectedCopy"
+                  color="neutral"
+                  title="Approved copy is protected"
+                  description="Approved blocks, detected facts, merge fields and feed-bound text are excluded from creative rewrites."
+                />
+                <UFormField v-else label="What should change?">
+                  <UTextarea
+                    v-model="instruction"
+                    class="w-full"
+                    :maxlength="1000"
+                    size="sm"
+                  />
+                </UFormField>
+                <UButton
+                  class="w-full"
+                  :loading="aiLoading"
+                  :disabled="protectedCopy || !instruction.trim()"
+                  @click="copyProposal.generate"
+                >
+                  Generate alternatives
+                </UButton>
+                <UAlert v-if="copyError" color="warning" :title="copyError" />
+                <UButton
+                  v-for="(suggestion, index) in aiSuggestions"
+                  :key="index"
+                  color="neutral"
+                  variant="outline"
+                  class="w-full text-left whitespace-normal justify-start"
+                  @click="copyProposal.preview(suggestion)"
+                >
+                  <span class="space-y-1">
+                    <span class="block">{{ suggestion.text }}</span>
+                    <UBadge size="xs" variant="subtle" :color="(TONE_COLORS[suggestion.tone] as any) || 'neutral'">{{ suggestion.tone }}</UBadge>
+                  </span>
+                </UButton>
+                <template v-if="previewLayer">
+                  <p class="text-xs text-muted">
+                    Preview with the selected font and effects
+                  </p>
+                  <div class="relative overflow-hidden border border-default" :style="{ height: `${previewLayer.h * previewScale}px`, background: state.sets[state.activeKey]?.bgColor || '#ffffff' }">
+                    <div :style="{ width: `${previewLayer.w}px`, height: `${previewLayer.h}px`, transform: `scale(${previewScale})`, transformOrigin: 'top left', pointerEvents: 'none' }">
+                      <BannerLayersText :layer="previewLayer" :is-active="false" />
+                    </div>
+                  </div>
+                  <p class="text-xs text-muted">
+                    Check the wording and fit before applying. Other layers stay unchanged.
+                  </p>
+                  <UButton class="w-full" @click="applyAiSuggestion">
+                    Apply heading
+                  </UButton>
+                </template>
               </div>
             </template>
-          </div>
-        </template>
-      </UPopover>
-    </div>
+          </UPopover>
+        </div>
 
     <div class="grid grid-cols-1 gap-1.5 @lg:grid-cols-2">
       <UFormField label="Font">

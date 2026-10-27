@@ -1,13 +1,28 @@
+import { assertScopedCanvasAccess } from '~~/server/utils/banner/scopedCanvasAccess'
+import { hasScopedCanvas } from '#shared/bannerScopedCanvas'
 import { queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { hasAllSocialClientAccess, hasSocialClientPermission, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+
+const RESTRICTED_NAME = 'Restricted artwork'
+function pageNumber(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  const text = String(value)
+  if (!/^\d{1,9}$/.test(text)) throw createError({ statusCode: 400, statusMessage: 'Invalid pagination' })
+  return Number(text)
+}
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   setHeader(event, 'Cache-Control', 'private, no-store')
 
   const query = getQuery(event)
-  const { clientId, status, search, limit, offset } = query
+  const { clientId, status, search } = query
+  const limit = pageNumber(query.limit)
+  const offset = pageNumber(query.offset)
+  // Search matches only the projection the caller may see, so it runs after
+  // redaction as a literal case-insensitive substring (no LIKE wildcards).
+  const term = search ? String(search).toLowerCase() : ''
   if (clientId) await requireSocialClientAccess(event, String(clientId))
 
   try {
@@ -28,7 +43,7 @@ export default defineEventHandler(async (event) => {
       WHERE 1=1
     `
 
-    const params: any[] = []
+    const params: unknown[] = []
     let paramIndex = 1
     if (!hasAllSocialClientAccess(user)) {
       sql += ` AND ((p.client_id IS NULL AND p.created_by = $${paramIndex})`
@@ -54,28 +69,50 @@ export default defineEventHandler(async (event) => {
       paramIndex++
     }
 
-    if (search) {
-      sql += ` AND p.name ILIKE $${paramIndex}`
-      params.push(`%${search}%`)
-      paramIndex++
-    }
-
     sql += ' ORDER BY p.updated_at DESC'
 
-    if (limit) {
+    // Without a search every SQL slot is returned (restricted rows keep their
+    // position), so SQL pagination is exact. With a search, a stored name must
+    // never decide SQL membership or page boundaries: page over visible matches.
+    if (!term && limit !== undefined) {
       sql += ` LIMIT $${paramIndex}`
-      params.push(Number(limit))
+      params.push(limit)
       paramIndex++
     }
 
-    if (offset) {
+    if (!term && offset !== undefined) {
       sql += ` OFFSET $${paramIndex}`
-      params.push(Number(offset))
+      params.push(offset)
       paramIndex++
     }
 
-    return await queryRowsFresh(sql, params)
-  } catch (error: any) {
+    const rows = await queryRowsFresh(sql, params)
+    // Keep every pagination slot, but never project private fields on source
+    // denial. Only explicit access denials are redacted; outages still surface.
+    // Every row up to the page end is authorized in order, whatever the search,
+    // so neither results nor authority work depend on a hidden name.
+    const projects = []
+    let skipped = 0
+    for (const row of rows) {
+      if (term && limit !== undefined && projects.length >= limit) break
+      let visible
+      try {
+        await assertScopedCanvasAccess(user.id, row.canvasData, row.id)
+        visible = hasScopedCanvas(row.canvasData) ? { ...row, thumbnailUrl: null } : row
+      } catch (error) {
+        if ((error as { statusCode?: number } | null)?.statusCode !== 403 || !hasScopedCanvas(row.canvasData)) throw error
+        visible = { id: row.id, name: RESTRICTED_NAME, status: 'restricted', restricted: true }
+      }
+      if (term && !String(visible.name ?? '').toLowerCase().includes(term)) continue
+      if (term && skipped < (offset ?? 0)) {
+        skipped++
+        continue
+      }
+      projects.push(visible)
+    }
+    return projects
+  } catch (error) {
+    if ((error as { statusCode?: number } | null)?.statusCode) throw error
     console.error('Failed to fetch banner projects:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch banner projects' })
   }

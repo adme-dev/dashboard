@@ -1,4 +1,5 @@
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
+import { assertNoScopedDissectionReferences } from '~~/server/utils/banner/scopedExport'
 import type { BannerPlayback } from '~~/app/types/banner-studio'
 import { resolveBannerFormat } from '~~/app/utils/banner-constants'
 
@@ -11,8 +12,9 @@ export function resolveOverlayFormatKey(width: number, height: number): string {
 }
 
 export async function loadBannerLayers(projectId: string, formatKey: string): Promise<{ layers: any[]; width: number; height: number; playback?: BannerPlayback }> {
-  const row = await queryOne(`SELECT canvas_data AS "canvasData" FROM banner_projects WHERE id = $1`, [projectId])
+  const row = await queryOneFresh(`SELECT canvas_data AS "canvasData" FROM banner_projects WHERE id = $1`, [projectId])
   if (!row) throw new Error(`banner project not found: ${projectId}`)
+  assertNoScopedDissectionReferences(row.canvasData)
   const artboard = (row as any).canvasData?.[formatKey]
   if (!artboard?.layers) throw new Error(`banner project ${projectId} has no format "${formatKey}"`)
   const fmt = resolveBannerFormat(formatKey)

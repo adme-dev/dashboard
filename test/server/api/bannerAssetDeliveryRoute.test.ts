@@ -353,4 +353,21 @@ describe('GET /api/public/banner-assets/:token', () => {
     await expect(handler(await request({ bucket }))).rejects.toMatchObject({ statusCode: 404 })
     expect(bucket.get).not.toHaveBeenCalled()
   })
+  it.each(['scoped-dissection-assets', 'scoped-banner-exports'])('rejects a valid signed capability for private %s storage', async prefix => {
+    queryOne.mockResolvedValueOnce({ id: ASSET_ID, r2Key: `${prefix}/${ASSET_ID}/output.png`, uploadedBy: UPLOADER_ID })
+    const bucket = { get: vi.fn(), head: vi.fn() }
+    const handler = await loadHandler()
+    expect(handler).toBeTypeOf('function')
+    await expect(handler!(await request({ bucket }))).rejects.toMatchObject({ statusCode: 404 })
+    expect(bucket.get).not.toHaveBeenCalled(); expect(bucket.head).not.toHaveBeenCalled()
+  })
+
+  it('preserves signed managed-QR compatibility with non-null client ownership', async () => {
+    queryOne.mockResolvedValueOnce({ id: ASSET_ID, r2Key: KEY, uploadedBy: UPLOADER_ID,
+      clientId: ASSET_ID, tags: ['platform-qr'] })
+    const bucket = { get: vi.fn(async () => objectBody()), head: vi.fn(async () => objectBody()) }
+    const handler = await loadHandler()
+    expect((await handler!(await request({ bucket }))).status).toBe(200)
+  })
+
 })

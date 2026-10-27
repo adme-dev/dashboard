@@ -81,3 +81,74 @@ describe('Banner Studio revisions', () => {
     expect(studio.state.sets.mrec.layers).toEqual([])
   })
 })
+
+describe('Saved artwork proposal revisions', () => {
+  it('retains the returned saved revision without overwriting newer in-flight edits', async () => {
+    let finish!: (value: unknown) => void
+    fetchMock.mockImplementation(() => new Promise((resolve) => {
+      finish = resolve
+    }))
+    const studio = useBannerStudio()
+    studio.loadProject({ ...project('revision'), updatedAt: '2026-10-26T00:00:00.000Z' })
+    const layer = studio.addLayer({ type: 'text', text: 'First' })
+    const saving = studio.saveProject()
+    studio.updateLayer(layer.id, { text: 'Second' })
+    finish({ ...project('revision'), updatedAt: '2026-10-26T00:01:00.000Z' })
+    await saving
+    expect(studio.state.project?.updatedAt).toBe('2026-10-26T00:01:00.000Z')
+    expect(studio.activeLayers.value[0]?.text).toBe('Second')
+    expect(studio.state.isDirty).toBe(true)
+  })
+
+  it('does not attach the previous save revision after switching projects', async () => {
+    let finish!: (value: unknown) => void
+    fetchMock.mockImplementation(() => new Promise((resolve) => {
+      finish = resolve
+    }))
+    const studio = useBannerStudio()
+    studio.loadProject({ ...project('first'), updatedAt: '2026-10-26T00:00:00.000Z' })
+    const saving = studio.saveProject()
+    studio.loadProject({ ...project('second'), updatedAt: '2026-10-25T00:00:00.000Z' })
+    finish({ ...project('first'), updatedAt: '2026-10-26T00:01:00.000Z' })
+    await saving
+    expect(studio.state.project?.updatedAt).toBe('2026-10-25T00:00:00.000Z')
+  })
+
+  it('rolls back a failed grouped edit and retains its prior selection and undo/redo', () => {
+    const studio = useBannerStudio()
+    studio.loadProject(project('atomic'))
+    const first = studio.addLayer({ type: 'text', text: 'Original' })
+    studio.updateLayer(first.id, { text: 'Other' })
+    studio.undo()
+    studio.selectLayer(first.id)
+    const before = studio.getCanvasData()
+    const dirty = studio.state.isDirty
+    expect(() => studio.withCanvasUndo(() => {
+      studio.updateLayer(first.id, { hidden: true })
+      studio.addLayer({ type: 'image', src: '/partial.png' })
+      throw new Error('incomplete replacement')
+    })).toThrow('incomplete replacement')
+    expect(studio.getCanvasData()).toEqual(before)
+    expect(studio.state.selectedLayerId).toBe(first.id)
+    expect(studio.state.isDirty).toBe(dirty)
+    expect(studio.canRedo.value).toBe(true)
+    studio.redo()
+    expect(studio.activeLayers.value[0]?.text).toBe('Other')
+  })
+  it('invalidates raster-reference recipe after manual native type edits and restores it on undo', () => {
+    const studio = useBannerStudio()
+    studio.loadProject(project('recipe'))
+    const layer = studio.addLayer({ type: 'text', text: 'Original', fontSize: 40 })
+    const recipe = { version: 1, mode: 'native', wording: 'Original', instruction: 'Bold', reference: '/original.png', sourceRevision: 'revision', proposal: {} }
+    studio.updateLayer(layer.id, { letteringRecipe: recipe as never })
+    const sendLayerUpdate = vi.fn()
+    vi.stubGlobal('useBannerRealtime', () => ({ sendLayerUpdate }))
+    studio.updateLayer(layer.id, { fontSize: 60 })
+    expect(sendLayerUpdate).toHaveBeenLastCalledWith(layer.id, 'mrec', { fontSize: 60, letteringRecipe: null })
+    expect(studio.activeLayers.value[0]?.letteringRecipe).toBeUndefined()
+    studio.undo()
+    expect(studio.activeLayers.value[0]?.letteringRecipe).toEqual(recipe)
+    studio.updateLayer(layer.id, { x: 40 })
+    expect(studio.activeLayers.value[0]?.letteringRecipe).toEqual(recipe)
+  })
+})

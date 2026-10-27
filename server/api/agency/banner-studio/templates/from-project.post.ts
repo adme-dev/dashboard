@@ -1,4 +1,5 @@
-import { queryOne } from '~~/server/utils/db'
+import { assertProjectAllowsUnprotectedFlow, assertNoScopedDissectionReferences } from '~~/server/utils/banner/scopedExport'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -17,14 +18,18 @@ export default defineEventHandler(async (event) => {
   const VALID_CATEGORIES = ['automotive', 'real-estate', 'retail', 'food', 'finance', 'lifestyle', 'minimal', 'custom']
   const safeCategory = VALID_CATEGORIES.includes(category) ? category : 'custom'
 
+  await assertProjectAllowsUnprotectedFlow(projectId, body)
+
   // Fetch project canvas data
-  const project = await queryOne(
+  const project = await queryOneFresh(
     'SELECT canvas_data AS "canvasData", thumbnail_url AS "thumbnailUrl" FROM banner_projects WHERE id = $1',
     [projectId]
   )
   if (!project) {
     throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   }
+
+  assertNoScopedDissectionReferences(project)
 
   // Extract format keys from canvas data
   const canvasData = typeof project.canvasData === 'string'

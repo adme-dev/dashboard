@@ -5,7 +5,7 @@ import { CustomEase } from 'gsap/CustomEase'
 import { parseCubicEase, cubicEaseToSvg } from '~/utils/banner-ease'
 import type { Layer, Keyframe, KeyframeProperty, BannerPlayback } from '~/types/banner-studio'
 import { ANIM_IN, ANIM_OUT } from '~/utils/banner-constants'
-import { computeAnimatedClipPath } from '~/utils/banner-mask'
+import { computeAnimatedClipPath, computeClipPath } from '~/utils/banner-mask'
 import { registerTimelineMaskUpdate, updateTimelineMasks } from '~/utils/bannerTimelineMasks'
 
 gsap.registerPlugin(MotionPathPlugin, CustomEase)
@@ -217,7 +217,8 @@ function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Lay
 
   // Preserve zero-time opacity when seeking backwards to the first frame.
   const firstOpacity = [...(kfs.opacity || [])].sort((a, b) => a.time - b.time)[0]
-  const initialOpacity = firstOpacity?.time === 0 ? firstOpacity.value : 0
+  const initialOpacity = firstOpacity?.time === 0 ? firstOpacity.value
+    : (kfs.opacity?.length || 0) < 2 && (layer.startTime || 0) === 0 ? layer.opacity : 0
   if (isBg) {
     tl.set(el, { autoAlpha: initialOpacity, immediateRender: false }, 0)
   } else {
@@ -262,7 +263,8 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const opKey = isBg ? 'autoAlpha' : 'opacity'
 
   // Initial hidden state — skip x/y when motion path drives position
-  const init: Record<string, any> = { [opKey]: 0, scale: 1, rotation: layer.rotation || 0, immediateRender: false }
+  const initialOpacity = startTime === 0 && (!layer.animIn || layer.animIn === 'none') ? layer.opacity : 0
+  const init: Record<string, any> = { [opKey]: initialOpacity, scale: 1, rotation: layer.rotation || 0, immediateRender: false }
   if (!hasMP) { init.x = 0; init.y = 0 }
   tl.set(el, init, 0)
 
@@ -443,6 +445,9 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
       tl.to(el, {
         motionPath: {
           path: layer.motionPath.map(p => ({ x: p.x, y: p.y })),
+          // Stored points describe the complete path, including its start.
+          // Prepending the current transform for each segment changes the path mid-animation.
+          fromCurrent: false,
           curviness: layer.motionPathCurviness ?? 1,
           autoRotate: layer.motionPathAutoRotate || false,
           start: tw.pathStart,
@@ -485,10 +490,13 @@ export function useBannerTimeline() {
         // reapply unchanged rotation bindings after an imperative style reset.
         gsap.set(el, { clearProps: 'transform' })
         gsap.set(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: layer.rotation || 0 })
-        el.style.removeProperty('opacity')
+        // The Artboard wrapper owns opacity in both resting and animated states.
+        gsap.set(el, { opacity: layer.opacity ?? 1 })
         if (layer.clipToPresence) el.style.visibility = layer.hidden || state.currentTime < layer.startTime || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[state.activeKey]?.playback?.duration) ? 'hidden' : 'visible'
         else el.style.removeProperty('visibility')
-        el.style.removeProperty('clip-path')
+        const mask = [...layers].reverse().find(candidate => candidate.isMask && candidate.maskTargetIds?.includes(layer.id))
+        if (mask) el.style.clipPath = computeClipPath(mask, layer, mask.maskShape || 'rect', mask.maskInvert || false)
+        else el.style.removeProperty('clip-path')
         // Pause and reset audio elements
         const audioEl = el.querySelector('audio') as HTMLAudioElement
         if (audioEl) { audioEl.pause(); audioEl.currentTime = 0 }

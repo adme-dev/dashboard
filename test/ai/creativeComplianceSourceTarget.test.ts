@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   recordInvocation: vi.fn()
 }))
 
-vi.mock('~~/server/utils/db', () => ({ queryOne: (...args: unknown[]) => mocks.queryOne(...args) }))
+vi.mock('~~/server/utils/db', () => ({ queryOne: (...args: unknown[]) => mocks.queryOne(...args), queryOneFresh: (...args: unknown[]) => mocks.queryOne(...args) }))
 vi.mock('~~/server/utils/storage', () => ({
   getFileMetadata: (...args: unknown[]) => mocks.getFileMetadata(...args),
   getPresignedDownloadUrl: (...args: unknown[]) => mocks.getPresignedDownloadUrl(...args)

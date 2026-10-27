@@ -24,7 +24,9 @@ export default defineEventHandler(async (event) => {
         client_id AS "clientId",
         created_at AS "createdAt"
       FROM banner_assets
-      WHERE 1=1
+      WHERE r2_key NOT LIKE 'scoped-dissection-assets/%'
+        AND r2_key NOT LIKE 'scoped-banner-exports/%'
+        AND url NOT LIKE '/api/agency/banner-studio/dissect/%'
     `
 
     const params: any[] = []

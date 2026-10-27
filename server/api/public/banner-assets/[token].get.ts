@@ -1,4 +1,5 @@
 import { createError, getRouterParam } from 'h3'
+import { isProtectedDissectionStorageKey } from '../../../../shared/bannerDissectionDelivery'
 import { getDevR2BucketAdapter } from '~~/server/utils/storage'
 
 import { queryOne } from '~~/server/utils/db'
@@ -200,6 +201,7 @@ export default defineEventHandler(async (event) => {
     || typeof asset.r2Key !== 'string'
     || typeof asset.uploadedBy !== 'string'
     || asset.id.toLowerCase() !== capability.assetId
+    || isProtectedDissectionStorageKey(asset.r2Key)
     || !isBannerAssetDeliveryKey(asset.r2Key, asset.uploadedBy)) {
     throw createError({ statusCode: 404, statusMessage: 'Banner asset not found' })
   }

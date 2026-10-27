@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { DesignCanvas } from '../../../server/utils/banner/designAssistant'
 import handler from '../../../server/api/agency/banner-studio/ai/design-assist.post'
 
 const mocks = vi.hoisted(() => ({ write: vi.fn(), scope: vi.fn(), project: vi.fn(), assets: vi.fn(), kit: vi.fn(), edge: vi.fn(), groq: vi.fn(), assignment: vi.fn(), references: vi.fn(), styleGuide: vi.fn() }))
@@ -19,7 +20,7 @@ function canvas() {
   return { fb_sq: { layers: [{ id: 1, name: 'Artwork', type: 'image', src: url, x: 0, y: 0, w: 1080, h: 1080, zIndex: 0, opacity: 1, animIn: 'none', animInDur: 0, startTime: 0, endTime: 5 }] } }
 }
 const valid = JSON.stringify({ reply: 'Move the artwork.', updates: [{ formatKey: 'fb_sq', layerId: 1, changes: { x: 20 } }] })
-const request = (overrides = {}) => ({ body: { projectId, prompt: 'Move the artwork', canvasData: canvas(), activeKey: 'fb_sq', model: 'auto', ...overrides } })
+const request = <T extends object>(overrides = {} as T) => ({ body: { projectId, prompt: 'Move the artwork', canvasData: canvas(), activeKey: 'fb_sq', model: 'auto', ...overrides } })
 const call = (event = request()) => handler(event as never)
 
 beforeEach(() => {
@@ -158,5 +159,48 @@ describe('Banner native AI proposal endpoint', () => {
     await expect(call(request({ clientId: 'foreign' }))).rejects.toMatchObject({ statusCode: 400 })
     mocks.project.mockResolvedValue(null)
     await expect(call()).rejects.toMatchObject({ statusCode: 404 })
+  })
+})
+
+describe('scoped design source revision', () => {
+  const revision = '2026-10-26T15:00:00.000Z'
+  const native = (): DesignCanvas => ({ fb_sq: { layers: [{ ...canvas().fb_sq.layers[0], type: 'text', name: 'Headline', src: undefined, text: 'Welcome home', x: 20, y: 20, w: 400, h: 80 }] } })
+  const scoped = () => request({ canvasData: native(), sourceRevision: revision, scope: { formatKey: 'fb_sq', layerIds: [1], region: { x: 0, y: 0, w: 800, h: 600 }, approvedCopy: ['PIZZA • DRINKS • TEST DRIVES'] } })
+  it('rejects stale source before sending canvas to the provider', async () => {
+    mocks.project.mockResolvedValue({ name: 'Native', client_id: clientId, canvas_data: native(), updated_at: '2026-10-26T15:01:00.000Z' })
+    await expect(call(scoped())).rejects.toMatchObject({ statusCode: 409 })
+    expect(mocks.edge).not.toHaveBeenCalled()
+  })
+  it('echoes the reviewed scope and inventory while retaining source revision', async () => {
+    mocks.project.mockResolvedValue({ name: 'Native', client_id: clientId, canvas_data: native(), updated_at: revision })
+    mocks.edge.mockResolvedValue(JSON.stringify({ reply: 'Invitation for review', updates: [{ formatKey: 'fb_sq', layerId: 1, changes: { text: 'PIZZA • DRINKS • TEST DRIVES' } }] }))
+    const result = await call(scoped())
+    expect(result).toMatchObject({ sourceRevision: revision, scope: { layerIds: [1] }, inventory: { affectedLayerIds: [1], protectedLayerIds: [] } })
+  })
+  it('rejects saved commercial-copy relabelling before provider context', async () => {
+    const saved = native()
+    saved.fb_sq.layers.push({ ...saved.fb_sq.layers[0], id: 2, name: 'Terms', text: '$500 OFF*', y: 700, copyLocked: true })
+    mocks.project.mockResolvedValue({ name: 'Native', client_id: clientId, canvas_data: saved, updated_at: revision })
+    const supplied = structuredClone(saved)
+    Object.assign(supplied.fb_sq.layers[1], { name: 'Heading', text: 'Hello', copyLocked: false })
+    await expect(call(request({ ...scoped().body, canvasData: supplied, scope: { ...scoped().body.scope, layerIds: [2] } }))).rejects.toMatchObject({ statusCode: 400 })
+    expect(mocks.edge).not.toHaveBeenCalled()
+  })
+  it('rejects invented provider wording even with the correct source revision and scope', async () => {
+    mocks.project.mockResolvedValue({ name: 'Native', client_id: clientId, canvas_data: native(), updated_at: revision })
+    mocks.edge.mockResolvedValue(JSON.stringify({ reply: 'Invented', updates: [{ formatKey: 'fb_sq', layerId: 1, changes: { text: 'FREE DRINKS AT 6PM' } }] }))
+    await expect(call(scoped())).rejects.toMatchObject({ statusCode: 502 })
+  })
+  it('rejects changed saved canvas after generation even if the revision is unchanged', async () => {
+    const changed = native()
+    changed.fb_sq.layers[0]!.text = 'Concurrent change'
+    mocks.project.mockResolvedValueOnce({ name: 'Native', client_id: clientId, canvas_data: native(), updated_at: revision }).mockResolvedValueOnce({ client_id: clientId, canvas_data: changed, updated_at: revision })
+    mocks.edge.mockResolvedValue(JSON.stringify({ reply: 'Invitation for review', updates: [{ formatKey: 'fb_sq', layerId: 1, changes: { text: 'PIZZA • DRINKS • TEST DRIVES' } }] }))
+    await expect(call(scoped())).rejects.toMatchObject({ statusCode: 409 })
+  })
+  it('rejects a project saved or reassigned while the provider was running', async () => {
+    mocks.project.mockResolvedValueOnce({ name: 'Native', client_id: clientId, canvas_data: native(), updated_at: revision }).mockResolvedValueOnce({ client_id: clientId, updated_at: '2026-10-26T15:02:00.000Z' })
+    mocks.edge.mockResolvedValue(JSON.stringify({ reply: 'Invitation for review', updates: [{ formatKey: 'fb_sq', layerId: 1, changes: { text: 'PIZZA • DRINKS • TEST DRIVES' } }] }))
+    await expect(call(scoped())).rejects.toMatchObject({ statusCode: 409 })
   })
 })

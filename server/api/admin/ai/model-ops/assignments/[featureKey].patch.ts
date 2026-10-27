@@ -12,7 +12,7 @@ import {
   cloudflareModelProviderMatches,
 } from '~~/server/utils/ai/cloudflareModelCatalog'
 
-const PROVIDERS = new Set(['groq', 'anthropic', 'workers_ai', 'minimax', 'aigateway'])
+const PROVIDERS = new Set(['groq', 'anthropic', 'workers_ai', 'minimax', 'aigateway', 'openai'])
 
 function cleanString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''

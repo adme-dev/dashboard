@@ -2,6 +2,8 @@
 import { LAYER_COLORS, LAYER_TYPE_COLORS } from '~/utils/banner-constants'
 import type { KeyframeProperty, Keyframe, Layer } from '~/types/banner-studio'
 import { hasKeyframes } from '~/composables/useBannerTimeline'
+import type { BannerAnimationTarget } from '~/composables/useBannerStudio'
+import { preventContextMenuRelease } from '~/utils/banner-context-menu'
 
 const { state, activeLayers, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
 const { remoteLocks } = useBannerRealtime()
@@ -14,10 +16,14 @@ const { openGenerate: openAiGenerate } = useAiImageGenerate()
 // ── Layer context menu ──
 const contextMenuLayer = ref<Layer | null>(null)
 const contextMenuPos = ref({ x: 0, y: 0 })
+const animationActions = useBannerAnimationActions()
+const contextAnimationTarget = shallowRef<BannerAnimationTarget | null>(null)
 
 function onLayerContextMenu(e: MouseEvent, layer: Layer) {
   e.preventDefault()
+  preventContextMenuRelease(e)
   contextMenuLayer.value = layer
+  contextAnimationTarget.value = animationActions.captureTarget(layer)
   contextMenuPos.value = { x: e.clientX, y: e.clientY }
 }
 
@@ -49,7 +55,7 @@ function handleContextSendToBack(layer: Layer) {
 }
 
 function handleContextEditWithAi(layer: Layer) {
-  openAiEdit(layer)
+  useBannerLettering().open(layer)
   contextMenuLayer.value = null
 }
 
@@ -779,6 +785,7 @@ onUnmounted(() => {
     <div class="flex items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2a2a2e] shrink-0">
       <UButton
         :icon="state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
+        :aria-label="state.isPlaying ? 'Pause timeline' : 'Play timeline'"
         variant="ghost"
         size="xs"
         @click="togglePlay"
@@ -832,6 +839,8 @@ onUnmounted(() => {
           <template v-for="(layer, i) in sortedLayers" :key="layer.id">
             <!-- Main layer label -->
             <div
+              data-testid="banner-timeline-layer"
+              :data-layer-id="layer.id"
               class="flex items-center gap-1 px-1 border-b border-(--ui-border)/30 cursor-pointer hover:bg-(--ui-bg-accented) transition-colors"
               :class="[
                 state.selectedLayerId === layer.id ? 'bg-(--ui-bg-accented)' : '',
@@ -921,6 +930,7 @@ onUnmounted(() => {
           <!-- Ruler -->
           <div
             ref="rulerEl"
+            data-testid="banner-timeline-ruler"
             class="border-b border-(--ui-border) relative cursor-pointer"
             :style="{ height: `${RULER_H}px` }"
             @mousedown="onRulerMouseDown"
@@ -1187,6 +1197,7 @@ onUnmounted(() => {
     <!-- Layer context menu -->
     <BannerLayerContextMenu
       :layer="contextMenuLayer"
+      :animation-target="contextAnimationTarget"
       :x="contextMenuPos.x"
       :y="contextMenuPos.y"
       :is-decomposing="decomposingLayerId === contextMenuLayer?.id"

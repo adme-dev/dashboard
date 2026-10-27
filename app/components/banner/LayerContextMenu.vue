@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Layer } from '~/types/banner-studio'
+import type { BannerAnimationTarget } from '~/composables/useBannerStudio'
 
 const props = defineProps<{
   layer: Layer | null
@@ -8,6 +9,7 @@ const props = defineProps<{
   isDecomposing: boolean
   isAiEditing?: boolean
   multiSelectCount?: number
+  animationTarget?: BannerAnimationTarget | null
 }>()
 
 const emit = defineEmits<{
@@ -23,17 +25,20 @@ const emit = defineEmits<{
 }>()
 
 const isImageLayer = computed(() => {
-  return props.layer?.type === 'image' && !!props.layer.src
+  return props.layer?.type === 'image' && !!props.layer.src && !props.layer.platformQr
 })
+const animationActions = useBannerAnimationActions()
 
 const items = computed(() => {
   if (!props.layer) return []
   const groups: any[][] = []
+  const animationItems = animationActions.menuItems(props.animationTarget ?? null, () => emit('close'))
+  if (animationItems.length) groups.push(animationItems)
 
   const group1: any[] = []
 
-  // Edit with AI (image layers only)
-  if (isImageLayer.value) {
+  // Lettering editing is available for native text and selected images.
+  if (!props.layer.platformQr && (isImageLayer.value || props.layer.type === 'text')) {
     group1.push({
       label: props.isAiEditing ? 'Editing...' : 'Edit with AI',
       icon: props.isAiEditing ? 'i-lucide-loader-2' : 'i-lucide-wand-2',
@@ -53,7 +58,7 @@ const items = computed(() => {
   }
 
   // Merge Layers (multi-select only)
-  if ((props.multiSelectCount ?? 0) >= 2) {
+  if (!props.layer.platformQr && (props.multiSelectCount ?? 0) >= 2) {
     group1.push({
       label: `Merge ${props.multiSelectCount} Layers`,
       icon: 'i-lucide-combine',

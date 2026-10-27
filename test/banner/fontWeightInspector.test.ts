@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { computed, createApp, defineComponent, h, nextTick, onMounted, ref } from 'vue'
+import { computed, createApp, defineComponent, h, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import ButtonInspector from '../../app/components/banner/inspector/Button.vue'
 import TextInspector from '../../app/components/banner/inspector/Text.vue'
 
@@ -12,7 +12,8 @@ describe('editable imported font weights', () => {
     const available = ref<number[]>()
     const updateLayer = vi.fn((_id, change) => Object.assign(selectedLayer.value, change))
     for (const [name, value] of Object.entries({
-      computed, ref, onMounted, $fetch: vi.fn(), useToast: () => ({ add: vi.fn() }),
+      computed, ref, onMounted, onUnmounted, $fetch: vi.fn(), useToast: () => ({ add: vi.fn() }),
+      useBannerCopyProposal: () => ({ instruction: ref(''), suggestions: ref([]), loading: ref(false), error: ref(''), protectedCopy: ref(false), previewLayer: ref(null), dispose: vi.fn() }),
       useBannerStudio: () => ({ state: {}, selectedLayer, updateLayer }),
       useBannerFonts: () => ({
         getFont: () => ({ weights: available.value }), fetchCustomFonts: async () => {},
@@ -27,7 +28,7 @@ describe('editable imported font weights', () => {
       props: ['modelValue', 'items'], emits: ['update:modelValue'],
       setup: (props, { emit }) => () => h('div', { 'data-selected': props.modelValue }, props.items.map((item: { value: string, label: string }) => h('button', { 'data-weight': item.value, 'onClick': () => emit('update:modelValue', item.value) }, item.label)))
     }))
-    for (const name of ['UInput', 'UPopover', 'UButton', 'UIcon', 'UBadge', 'UCheckbox']) app.component(name, defineComponent({ setup: (_props, { slots }) => () => h('div', slots.default?.()) }))
+    for (const name of ['UTextarea', 'UAlert', 'UInput', 'UPopover', 'UButton', 'UIcon', 'UBadge', 'UCheckbox']) app.component(name, defineComponent({ setup: (_props, { slots }) => () => h('div', slots.default?.()) }))
     try {
       app.mount(host)
       const field = () => host.querySelector('[data-label="Weight"]')!

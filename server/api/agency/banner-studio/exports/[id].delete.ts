@@ -1,4 +1,5 @@
-import { queryOne, execute } from '~~/server/utils/db'
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '#shared/bannerScopedCanvas'
+import { queryOneFresh, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { deleteBannerFile } from '~~/server/utils/bannerStorage'
 
@@ -11,11 +12,12 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const exportRow = await queryOne('SELECT id, r2_key FROM banner_exports WHERE id = $1', [id])
+    const exportRow = await queryOneFresh('SELECT id, r2_key, url FROM banner_exports WHERE id = $1', [id])
     if (!exportRow) {
       throw createError({ statusCode: 404, statusMessage: 'Export not found' })
     }
 
+    if (hasScopedCanvas(exportRow)) throw createError({ statusCode: 409, statusMessage: SCOPED_DISSECTION_EXCLUSION })
     await deleteBannerFile(exportRow.r2_key)
     await execute('DELETE FROM banner_exports WHERE id = $1', [id])
 

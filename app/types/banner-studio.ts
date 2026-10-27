@@ -58,6 +58,8 @@ export interface MotionPathTween {
 }
 
 export interface Layer {
+  /** Deterministic platform QR artwork; destination and scans remain in QR Codes. */
+  platformQr?: import('~~/shared/bannerQr').BannerPlatformQr
   id: number
   type: LayerType
   name: string
@@ -77,7 +79,15 @@ export interface Layer {
   hidden?: boolean
   /** Imported hard-cut scenes use an explicit presence window. */
   clipToPresence?: boolean
+  /** Clip reviewed scoped proposals to their checked layer geometry. */
+  clipToBounds?: boolean
   // Text properties
+  /** Approved/legal copy cannot be changed by creative AI suggestions. */
+  letteringRecipe?: import('../composables/useBannerLettering').BannerLetteringRecipe
+  letteringRepair?: import('../../shared/bannerLetteringRepair').LetteringRepairMetadata
+  /** Unverified, descriptive local companion declaration; never authorization. */
+  companionEdit?: import('../../shared/bannerCompanion').CompanionEditMetadata
+  copyLocked?: boolean
   text?: string
   /** Safe inline superscripts; rendered only while their text matches the layer. */
   textRuns?: Array<{ text: string, fontSize?: number, top?: number }>
@@ -161,6 +171,9 @@ export interface BannerPlayback {
 }
 
 export interface ArtboardState {
+  dissectionSource?: { jobId: string; sourceSha256: string }
+  artworkCreation?: import('../utils/banner-artwork-creation').ArtworkCreationMetadata
+  reconstruction?: import('../../shared/bannerReconstruction').ReconstructionMetadata
   playback?: BannerPlayback
   layers: Layer[]
   bgColor?: string
@@ -173,7 +186,8 @@ export interface BannerProject {
   clientName?: string
   canvasData: Record<string, ArtboardState>
   thumbnailUrl: string | null
-  status: 'draft' | 'published'
+  status: 'draft' | 'published' | 'restricted'
+  restricted?: boolean
   tags: string[]
   createdBy: string
   createdAt: string
@@ -552,6 +566,36 @@ export interface DesignToken {
 
 export type DissectorLayerType = 'graphic_text' | 'live_text' | 'vehicle' | 'logo' | 'background'
 
+export type DissectionStatus = 'queued' | 'analyzing' | 'segmenting' | 'review_ready' | 'complete' | 'failed' | 'cancelled' | 'imported'
+
+export interface DissectionJob extends Partial<Omit<DissectorManifest, 'jobId' | 'status'>> {
+  jobId: string
+  status: DissectionStatus
+  source?: { width: number, height: number, mimeType: string, byteLength: number, sha256: string }
+  ingestion?: {
+    ownerKind: 'user' | 'client' | 'project'
+    projectId?: string
+    clientId?: string
+    physical: null | { preset: 'A4', orientation: 'portrait' | 'landscape', unit: 'mm', widthMm: number, heightMm: number }
+  }
+  createdAt?: string
+  updatedAt?: string
+  bannerSize?: string
+  resultId?: string
+  execution?: {
+    attemptId?: string
+    attempt?: number
+    maxAttempts?: number
+    stage?: string
+    startedAt?: string
+    updatedAt?: string
+    finishedAt?: string
+    deadlineAt?: string
+    resultId?: string
+  }
+  progress?: { stage?: string, completed?: number, total?: number }
+}
+
 export interface DissectorLayer {
   id: string
   type: DissectorLayerType
@@ -567,6 +611,8 @@ export interface DissectorLayer {
   typography?: Record<string, { font_weight: string; font_size: string; color: string }>
   font_notes?: string
   mask?: string // Gemini segmentation mask (base64 PNG)
+  extraction_status?: 'extracted' | 'unresolved'
+  extraction_warning?: string
 }
 
 export interface DissectorManifest {
@@ -576,8 +622,9 @@ export interface DissectorManifest {
   campaign_type: string
   banner_size: string
   processed_at: string
-  status: 'analyzing' | 'segmenting' | 'complete' | 'failed'
+  status: DissectionStatus
   error?: string
+  warnings?: string[]
   tokens: Record<string, DesignToken>
   layers: DissectorLayer[]
 }

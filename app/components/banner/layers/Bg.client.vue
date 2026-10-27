@@ -4,6 +4,7 @@ import type { Layer } from '~/types/banner-studio'
 const props = defineProps<{
   layer: Layer
   isActive: boolean
+  opacityManaged?: boolean
 }>()
 
 const { getFeedOverride } = useBannerFeeds()
@@ -15,7 +16,7 @@ const displaySrc = computed(() => getFeedOverride(props.layer.id, 'src') ?? prop
     class="absolute inset-0"
     :style="{
       background: layer.bgColor || '#0a0a10',
-      opacity: layer.opacity,
+      opacity: opacityManaged ? 1 : layer.opacity,
       pointerEvents: 'none',
     }"
   >

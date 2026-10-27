@@ -162,7 +162,7 @@ const categories = [
     iconColor: 'text-rose-600',
     features: [
       { title: 'Visual Editor', slug: 'banner-editor', icon: 'i-lucide-pen-tool', description: 'Create editable animated banners with font-preserving 3D headings, reviewed AI text textures, layers, collapsible navigation and multi-format support.' },
-      { title: 'Animation & Timeline', slug: 'banner-animation', icon: 'i-lucide-clapperboard', description: 'GSAP-powered keyframe timeline with entry/exit animations, easing curves, and motion paths.' },
+      { title: 'Animation & Timeline', slug: 'banner-animation', icon: 'i-lucide-clapperboard', description: 'Keyframes, entry/exit effects and motion paths, with local-preview right-click Animate and Add Tween actions.' },
       { title: 'Motion Paths', slug: 'motion-paths', icon: 'i-lucide-spline', description: 'SVG-based motion path editor with draggable waypoints, curviness control, and auto-rotate.' },
       { title: 'Static & GIF Export', slug: 'banner-export', icon: 'i-lucide-image', description: 'Export to PNG/JPG at 1x/2x via headless Chromium, or animated GIF with configurable FPS.' },
       { title: 'Video Export', slug: 'video-export', icon: 'i-lucide-film', description: 'MP4 video export with frame-by-frame GSAP capture and ffmpeg encoding.' },
@@ -171,7 +171,7 @@ const categories = [
       { title: 'Template Marketplace', slug: 'template-marketplace', icon: 'i-lucide-store', description: 'Save designs as templates. Browse a categorised gallery with search, tags, and usage tracking.' },
       { title: 'Data Feeds & DCO', slug: 'data-feeds-dco', icon: 'i-lucide-database', description: 'Upload CSV/JSON feeds, bind columns to layers, and auto-generate per-row banner variants at scale.' },
       { title: 'Design Precision', slug: 'design-precision', icon: 'i-lucide-grid-3x3', description: 'Google Fonts, custom font upload, pixel grid, snap-to-grid, smart guides, and layer alignment tools.' },
-      { title: 'AI Creative Assistant', slug: 'ai-creative-assistant', icon: 'i-lucide-sparkles', description: 'AI text-to-image generation, layer editing & decomposition, copy suggestions, URL-to-banner, auto-resize, and image recommendations.' },
+      { title: 'AI Creative Assistant', slug: 'ai-creative-assistant', icon: 'i-lucide-sparkles', description: 'Reference-led campaign concepts, reusable styles, native text and image-lettering proposals, raster layer separation, and reviewed edits with undo. Local previews add reviewed lettering-region repair, manual companion wording review with a pinned font, private Craft engine preview job development, scoped layer edits, protected artwork and saved analysis jobs with cancellation, asynchronous retries, PNG source integrity checks and optional recovery of interrupted queue delivery. Project-owned analysis and private saved exports are in local validation; project uploads remain unavailable until hosted acceptance.' },
       { title: 'Real-Time Collaboration', slug: 'banner-collaboration', icon: 'i-lucide-users', description: 'Multi-user editing with live cursors, soft layer locking, presence indicators, and version history.' }
     ]
   },
@@ -208,6 +208,7 @@ const categories = [
       { title: 'Safe Zone Overlays', slug: 'safe-zones', icon: 'i-lucide-scan', description: 'Platform-specific safe zone guides for 11 ad platforms to ensure text and logos stay visible.' },
       { title: 'Meta Upload Wizard', slug: 'meta-upload-wizard', icon: 'i-lucide-upload', description: 'Five-step wizard to publish directly to Meta — select account, campaign, ad set, creatives, and go live.' },
       { title: 'Dealer Inventory Feeds', slug: 'dealer-inventory-feeds', icon: 'i-lucide-boxes', description: 'Map database-backed vehicle inventory to a client, verify Meta catalogue access, reuse an existing Meta product feed by ID, and retain provider-readback evidence inside XeroFlow.' },
+      { title: 'Creative Studio', slug: 'creative-studio', icon: 'i-lucide-panels-top-left', description: 'The local preview adds one starting point for Banner Studio, Video Studio and Audio Studio, with shortcuts to existing templates, brand kits and projects. Hosted availability is pending.' },
       { title: 'Audio Studio', slug: 'audio-studio', icon: 'i-lucide-mic', description: 'Generate owned AI voiceover and music that run legally across radio, TikTok and Meta — no clearance, no takedowns. Drops straight into Banner Studio audio layers.' },
       { title: 'Video Studio', slug: 'video-studio', icon: 'i-lucide-clapperboard', description: 'Assemble social video in the browser — footage, stills, overlays from Banner Studio, AI clips, voiceover and music on one docked timeline, then render Reels, Square and YouTube cuts in a single pass.' },
       { title: 'Media Studio Editor', slug: 'media-studio-editor', icon: 'i-lucide-film', description: 'Browser-based multitrack audio editor — drag, trim, slice, and layer clips on a pixel-accurate timeline with undo/redo, autosave, and named version snapshots.' },
@@ -251,7 +252,7 @@ const categories = [
       { title: 'On-Demand Sync', slug: 'on-demand-sync', icon: 'i-lucide-refresh-cw', description: 'Pull the latest data from ad platforms on demand — no waiting for scheduled syncs.' },
       { title: 'Export & Reporting', slug: 'export-reporting', icon: 'i-lucide-file-down', description: 'Export analytics to CSV with date ranges, breakdowns, and AI-generated summaries.' },
       { title: 'GA4 Funnel & Website Analytics', slug: 'ga4-funnel', icon: 'i-lucide-filter', description: 'Connect Google Analytics 4 for channel-level reporting, with optional edit authorization for key-event setup.' },
-      { title: 'Dynamic QR Codes', slug: 'qr-codes', icon: 'i-lucide-qr-code', description: 'Print-ready QR codes with editable destinations, scan analytics, inline client creation and separate team access.' },
+      { title: 'Dynamic QR Codes', slug: 'qr-codes', icon: 'i-lucide-qr-code', description: 'Managed QR codes with editable destinations, scan analytics, client access and separate-layer insertion into Banner Studio artwork.' },
       { title: 'Website Audience Intelligence', slug: 'website-audience-intelligence', icon: 'i-lucide-radio-tower', description: 'Connect client-owned audience evidence to a non-exhaustive list of up to 20 nearby dealerships, with human approval required before monitoring public competitor changes.' },
       { title: 'Ask Your Data', slug: 'analytics-ask', icon: 'i-lucide-sparkles', description: 'Ask a plain-English question about any client\'s performance and get an answer grounded only in your real numbers — with the per-channel figures it used one click away.' },
       { title: 'Portfolio Benchmarks', slug: 'analytics-benchmarks', icon: 'i-lucide-gauge', description: 'See exactly where a client sits against the rest of your book — engagement, conversion rate, CPL and CPA as percentile rankings, plus an agency-wide leaderboard.' },

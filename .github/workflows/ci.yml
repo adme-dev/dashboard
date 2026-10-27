@@ -90,6 +90,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Private Banner renderer package and runtime proof
+        run: |
+          npm ci --prefix workers/banner-renderer --ignore-scripts --no-audit --no-fund
+          node workers/banner-renderer/generate-types.mjs
+          git diff --exit-code -- workers/banner-renderer/worker-staging.d.ts workers/banner-renderer/worker-production.d.ts
+          pnpm --dir workers/banner-renderer run typecheck
+          node workers/banner-renderer/deploy.mjs staging --check-only
+          node workers/banner-renderer/deploy.mjs production --check-only
+          pnpm --dir workers/banner-renderer run build
+          pnpm --dir workers/banner-renderer run prove:runtime
+        timeout-minutes: 5
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_LOG_PATH: ${{ runner.temp }}/banner-renderer.log
+
       - name: Private email renderer types, target guards and transport tests
         run: |
           pnpm --dir workers/email-rendering run types

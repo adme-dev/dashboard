@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 const queryOneMock = vi.fn()
-vi.mock('~~/server/utils/db', () => ({ queryOne: (...a: any[]) => queryOneMock(...a) }))
+vi.mock('~~/server/utils/db', () => ({ queryOneFresh: (...a: any[]) => queryOneMock(...a) }))
 import { resolveOverlayFormatKey, loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
 
 describe('resolveOverlayFormatKey', () => {
@@ -27,4 +27,9 @@ describe('loadBannerLayers', () => {
     queryOneMock.mockResolvedValue({ canvasData: {} })
     await expect(loadBannerLayers('proj', 'fb_story')).rejects.toThrow()
   })
+})
+
+it('does not flatten protected source text into an audio/video overlay', async () => {
+  queryOneMock.mockResolvedValue({ canvasData: { fb_story: { layers: [{ type: 'text', text: 'Private copy' }], dissectionSource: { jobId: 'job', sourceSha256: 'a'.repeat(64) } } } })
+  await expect(loadBannerLayers('proj', 'fb_story')).rejects.toMatchObject({ statusCode: 409 })
 })

@@ -1,28 +1,49 @@
 <script setup lang="ts">
 import { layerTransformOrigin } from '~/utils/banner-transform'
 import type { Layer } from '~/types/banner-studio'
+import type { CSSProperties } from 'vue'
 import { FORMATS } from '~/utils/banner-constants'
 import { computeClipPath } from '~/utils/banner-mask'
 import { catmullRomToSvgPath, motionPathToAbsolute, motionPathPositionAt, motionPathSliceSvg, tweenIndexForWaypoint } from '~/utils/banner-motion-path'
 import { SAFE_ZONE_MAP, FORMAT_SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
+import type { BannerAnimationTarget } from '~/composables/useBannerStudio'
+import { useBannerAnimationActions } from '~/composables/useBannerAnimationActions'
+import { preventContextMenuRelease } from '~/utils/banner-context-menu'
+import { useBannerLetteringRepair } from '~/composables/useBannerLetteringRepair'
 
 const props = defineProps<{
   formatKey: string
   isActive: boolean
 }>()
 
-const { state, selectLayer, activeLayers, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
+const { state, selectLayer, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
 const { openEffects } = useBannerInspector()
-const effectMenu = ref<{ id: number, x: number, y: number } | null>(null)
-const effectMenuItems = computed(() => [[{ label: 'Effects and AI artwork', icon: 'i-lucide-sparkles', onSelect: () => {
-  if (effectMenu.value) openEffects(effectMenu.value.id)
-  effectMenu.value = null
-} }]])
+const animationActions = useBannerAnimationActions()
+const effectMenu = shallowRef<{ id: number, x: number, y: number, target: BannerAnimationTarget | null } | null>(null)
+const effectMenuItems = computed(() => {
+  const menu = effectMenu.value
+  if (!menu) return []
+  const groups = [animationActions.menuItems(menu.target, () => {
+    effectMenu.value = null
+  })]
+  const layer = layers.value.find(layer => layer.id === menu.id)
+  if (!layer || layer.platformQr || !['text', 'image'].includes(layer.type)) return groups
+  groups.push([{ label: 'Edit with AI', icon: 'i-lucide-wand-sparkles', onSelect: () => {
+    const layer = layers.value.find(layer => layer.id === effectMenu.value?.id)
+    if (layer) lettering.open(layer)
+    effectMenu.value = null
+  } }, { label: 'Effects and AI artwork', icon: 'i-lucide-sparkles', onSelect: () => {
+    if (effectMenu.value) openEffects(effectMenu.value.id)
+    effectMenu.value = null
+  } }])
+  return groups
+})
 function onLayerContextMenu(event: MouseEvent, layer: Layer) {
-  if (!props.isActive || layer.locked || !['text', 'image'].includes(layer.type)) return
+  if (!props.isActive || layer.locked || layer.platformQr || layer.type === 'bg' || layer.type === 'audio') return
   event.preventDefault()
   event.stopPropagation()
-  effectMenu.value = { id: layer.id, x: event.clientX, y: event.clientY }
+  preventContextMenuRelease(event)
+  effectMenu.value = { id: layer.id, x: event.clientX, y: event.clientY, target: animationActions.captureTarget(layer) }
 }
 const { remoteLocks } = useBannerRealtime()
 const artboardEl = ref<HTMLElement | null>(null)
@@ -30,10 +51,15 @@ const { dragState, guides, onLayerMouseDown, onResizeHandleMouseDown } = useBann
 
 const format = computed(() => FORMATS[props.formatKey])
 
+const lettering = useBannerLettering()
+const letteringRepair = useBannerLetteringRepair()
+onUnmounted(lettering.dispose)
 const layers = computed(() => {
   const artboard = state.sets[props.formatKey]
   if (!artboard) return []
-  return [...artboard.layers].sort((a, b) => a.zIndex - b.zIndex)
+  const repair = props.formatKey === state.activeKey ? letteringRepair.previewLayers.value : null
+  if (repair) return [...artboard.layers.map(layer => layer.id === repair.background.id ? repair.background : layer), repair.text].sort((a, b) => a.zIndex - b.zIndex)
+  return artboard.layers.map(layer => props.formatKey === state.activeKey && lettering.previewLayer.value?.id === layer.id ? lettering.previewLayer.value : layer).sort((a, b) => a.zIndex - b.zIndex)
 })
 
 // Compute clip-path for masked layers based on mask positions
@@ -49,6 +75,33 @@ const maskClipPaths = computed(() => {
   }
   return map
 })
+
+// Vue owns resting CSS variables; GSAP owns the animated inline properties.
+// Re-rendering an overlay must never overwrite transform, opacity or clip-path.
+const layerStyles = computed(() => Object.fromEntries(layers.value.map(layer => [layer.id, {
+  left: `${layer.x}px`,
+  top: `${layer.y}px`,
+  width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
+  height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
+  zIndex: layer.zIndex,
+  '--banner-layer-opacity': layer.opacity ?? 1,
+  mixBlendMode: layer.mixBlendMode || 'normal',
+  overflow: layer.clipToBounds ? 'hidden' : undefined,
+  boxSizing: layer.clipToBounds ? 'border-box' : undefined,
+  pointerEvents: props.isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
+  display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
+  transformOrigin: layerTransformOrigin(layer.transformOrigin),
+  '--banner-layer-transform': layer.rotation ? `rotate(${layer.rotation}deg)` : 'none',
+  cursor: props.isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
+  '--banner-layer-clip': maskClipPaths.value.get(layer.id) || 'none',
+  outline: layer.isMask ? '2px dashed #e84aff' : undefined,
+  outlineOffset: layer.isMask ? '-1px' : undefined,
+} as CSSProperties])))
+
+function outsidePresence(layer: Layer) {
+  return layer.clipToPresence && (state.currentTime < layer.startTime
+    || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[props.formatKey]?.playback?.duration))
+}
 
 function onLayerClick(e: MouseEvent, layer: Layer) {
   if (!props.isActive) return
@@ -407,36 +460,23 @@ defineExpose({ artboardEl })
       v-for="layer in layers"
       :id="`lyr-${layer.id}`"
       :key="layer.id"
-      class="absolute"
-      :style="{
-        left: `${layer.x}px`,
-        top: `${layer.y}px`,
-        width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
-        height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
-        zIndex: layer.zIndex,
-        mixBlendMode: layer.mixBlendMode || 'normal',
-        pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
-        display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
-        visibility: (layer.hidden && layer.type !== 'audio') || (layer.clipToPresence && (state.currentTime < layer.startTime || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[formatKey]?.playback?.duration))) ? 'hidden' : 'visible',
-        transformOrigin: layerTransformOrigin(layer.transformOrigin),
-        transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
-        cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
-        clipPath: maskClipPaths.get(layer.id) || undefined,
-        outline: layer.isMask ? '2px dashed #e84aff' : undefined,
-        outlineOffset: layer.isMask ? '-1px' : undefined,
-      }"
+      class="absolute banner-layer"
+      :class="{ 'banner-layer-outside-presence': outsidePresence(layer) }"
+      :style="layerStyles[layer.id]"
       @click="onLayerClick($event, layer)"
       @contextmenu="onLayerContextMenu($event, layer)"
       @mousedown="$event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
     >
-      <!-- Layer type renderers -->
-      <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" />
-      <BannerLayersText v-else-if="layer.type === 'text'" :layer="layer" :is-active="isActive" />
-      <BannerLayersImage v-else-if="layer.type === 'image'" :layer="layer" :is-active="isActive" />
-      <BannerLayersVideo v-else-if="layer.type === 'video'" :layer="layer" :is-active="isActive" />
-      <BannerLayersButton v-else-if="layer.type === 'button'" :layer="layer" :is-active="isActive" />
-      <BannerLayersRect v-else-if="layer.type === 'rect'" :layer="layer" :is-active="isActive" />
-      <BannerLayersAudio v-else-if="layer.type === 'audio'" :layer="layer" :is-active="isActive" />
+      <!-- Masks clip artwork; their fill is not part of the composition. -->
+      <template v-if="!layer.isMask">
+        <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" :opacity-managed="true" />
+        <BannerLayersText v-else-if="layer.type === 'text'" :layer="layer" :is-active="isActive" :opacity-managed="true" />
+        <BannerLayersImage v-else-if="layer.type === 'image'" :layer="layer" :is-active="isActive" :opacity-managed="true" />
+        <BannerLayersVideo v-else-if="layer.type === 'video'" :layer="layer" :is-active="isActive" :opacity-managed="true" />
+        <BannerLayersButton v-else-if="layer.type === 'button'" :layer="layer" :is-active="isActive" :opacity-managed="true" />
+        <BannerLayersRect v-else-if="layer.type === 'rect'" :layer="layer" :is-active="isActive" :opacity-managed="true" />
+        <BannerLayersAudio v-else-if="layer.type === 'audio'" :layer="layer" :is-active="isActive" />
+      </template>
 
       <!-- Remote lock indicator -->
       <template v-if="getRemoteLock(layer.id) && !isSelected(layer)">
@@ -519,3 +559,12 @@ defineExpose({ artboardEl })
     </template>
   </div>
 </template>
+
+<style scoped>
+.banner-layer {
+  transform: var(--banner-layer-transform, none);
+  opacity: var(--banner-layer-opacity, 1);
+  clip-path: var(--banner-layer-clip, none);
+}
+.banner-layer-outside-presence { visibility: hidden !important; }
+</style>

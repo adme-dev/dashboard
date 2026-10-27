@@ -19,6 +19,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      { find: '#shared', replacement: resolve(__dirname, 'shared') },
       // More-specific prefixes must come before the bare ~ catch-all
       { find: '~~/server', replacement: resolve(__dirname, 'server') },
       { find: '~/utils', replacement: resolve(__dirname, 'app/utils') },

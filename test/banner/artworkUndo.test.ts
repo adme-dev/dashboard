@@ -31,4 +31,17 @@ describe('Artwork canvas edit history', () => {
     expect(studio.activeLayers.value).toHaveLength(1)
     expect(studio.activeLayers.value[0].x).toBe(53)
   })
+  it('undo removes newly introduced properties instead of leaving a layer hidden', () => {
+    const studio = useBannerStudio()
+    const text = { id: 1, name: 'Heading', type: 'text', text: 'Hello', x: 0, y: 0, w: 500, h: 100, opacity: 1, zIndex: 1, startTime: 0, endTime: 5 } as Layer
+    studio.loadProject({ id: 'restore', name: 'Restore', canvasData: { custom_1000x1000: { layers: [text] } } } as BannerProject)
+    const before = studio.getCanvasData()
+    studio.updateLayer(1, { hidden: true, textRuns: [{ text: 'Hello', fontSize: 20 }] })
+    studio.undo()
+    expect(studio.getCanvasData()).toEqual(before)
+    expect(Object.hasOwn(studio.activeLayers.value[0]!, 'hidden')).toBe(false)
+    studio.redo()
+    expect(studio.activeLayers.value[0]).toMatchObject({ hidden: true, textRuns: [{ text: 'Hello', fontSize: 20 }] })
+  })
+
 })

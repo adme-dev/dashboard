@@ -5,6 +5,7 @@ import { bannerFontFamily } from '~/utils/banner-font-family'
 const props = defineProps<{
   layer: Layer
   isActive: boolean
+  opacityManaged?: boolean
 }>()
 
 const { getFeedOverride } = useBannerFeeds()
@@ -19,7 +20,7 @@ const displayTextColor = computed(() => getFeedOverride(props.layer.id, 'color')
     :style="{
       backgroundColor: displayBgColor,
       borderRadius: `${layer.borderRadius ?? 2}px`,
-      opacity: layer.opacity,
+      opacity: opacityManaged ? 1 : layer.opacity,
       boxSizing: 'border-box',
       border: layer.borderWidth !== undefined ? `${layer.borderWidth}px solid ${layer.borderColor || 'transparent'}` : layer.bgColor === 'transparent' ? '1px solid rgba(255,255,255,0.3)' : 'none'
     }"

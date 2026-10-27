@@ -16,6 +16,30 @@ export function compactSsrMarkupSource(source, { decoderSpecifier } = {}) {
   return compactStaticSource(source, 'XEROFLOW_STATIC_SSR_DATA', value => value.includes('<') && value.includes('>'), MIN_LITERAL_CHARACTERS, false, decoderSpecifier)
 }
 
+/** Nuxt Icon serializes its complete collection as one JSON.parse argument.
+ * Encode the immutable data only; retain every icon and registration call. */
+export function compactIconBundleSource(source) {
+  return compactStaticSource(source, 'XEROFLOW_STATIC_ICON_DATA', (value) => {
+    if (!value.startsWith('[{"prefix":')) return false
+    try {
+      const collections = JSON.parse(value)
+      return Array.isArray(collections) && collections.length > 0
+        && collections.every(collection => typeof collection.prefix === 'string'
+          && collection.icons && typeof collection.icons === 'object' && !Array.isArray(collection.icons))
+    } catch {
+      return false
+    }
+  }, 1024)
+}
+
+export async function compactIconBundleModule(workerDirectory) {
+  const file = path.join(workerDirectory, 'chunks', 'virtual', 'entry.mjs')
+  const source = await readFile(file, 'utf8')
+  const result = compactIconBundleSource(source)
+  if (result.code !== source) await writeFile(file, result.code)
+  return { literals: result.literals, savedBytes: Buffer.byteLength(source) - Buffer.byteLength(result.code) }
+}
+
 /** SQL text is immutable data, not executed by the build. Preserve all whitespace,
  * parameters and escape sequences. Dynamic/tagged templates are never encoded.
  * Medium static statements also benefit when their combined savings exceed the

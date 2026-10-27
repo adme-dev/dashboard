@@ -1,3 +1,6 @@
+import { BANNER_PINNED_FONT, bannerPinnedFontCss, bannerPinnedFontUrl, isBannerPinnedFace, isBannerPinnedFamily } from '~~/shared/bannerPinnedFont'
+import { loadBannerPinnedFont } from '~/utils/banner-pinned-font'
+
 // Google Fonts + Custom Font integration for Banner Studio
 // Embeds curated list of 120+ popular fonts with on-demand loading
 // Supports custom font uploads via R2 with @font-face injection
@@ -225,6 +228,7 @@ export function useBannerFonts() {
   const customFontEntries = computed<GoogleFont[]>(() => {
     const families = new Map<string, Set<number>>()
     for (const font of customFonts.value) {
+      if (isBannerPinnedFace(font.name, parseFontTags(font.tags).weight)) continue
       if (!families.has(font.name)) families.set(font.name, new Set())
       families.get(font.name)!.add(parseFontTags(font.tags).weight)
     }
@@ -233,7 +237,15 @@ export function useBannerFonts() {
     }))
   })
 
-  const allFonts = computed(() => [...customFontEntries.value, ...GOOGLE_FONTS, ...SYSTEM_FONTS])
+  const allFonts = computed(() => {
+    const catalog = new Map<string, GoogleFont>()
+    for (const font of [...customFontEntries.value, ...GOOGLE_FONTS, ...SYSTEM_FONTS]) {
+      const family = isBannerPinnedFamily(font.family) ? BANNER_PINNED_FONT.family : font.family
+      const previous = catalog.get(family)
+      catalog.set(family, previous ? { ...previous, weights: [...new Set([...previous.weights, ...font.weights])].sort((a, b) => a - b) } : { ...font, family })
+    }
+    return [...catalog.values()]
+  })
 
   /** Check if a font family is a custom upload */
   function isCustomFont(family: string): boolean {
@@ -274,6 +286,7 @@ export function useBannerFonts() {
   /** Load a custom font by injecting @font-face CSS */
   function loadCustomFont(cf: CustomFont): Promise<void> {
     const family = cf.name
+    if (isBannerPinnedFace(family, parseFontTags(cf.tags).weight)) return loadBannerPinnedFont().then(() => {})
     const key = customFontKey(cf)
     if (loadedCustomFonts.has(key)) return Promise.resolve()
     if (!isSafeUrl(cf.url)) return Promise.resolve()
@@ -296,16 +309,27 @@ export function useBannerFonts() {
 
   /** Load a Google Font by injecting a <link> element. Returns a promise that resolves when loaded. */
   function loadFont(family: string, weights?: number[]): Promise<void> {
-    // Every recorded weight is needed when the editor changes text weight later.
+    // Reserve exactly the pinned normal Bold face, while retaining other weights.
+    const requested = weights?.length ? weights : [400, 700]
+    if (isBannerPinnedFamily(family) && requested.includes(700)) {
+      const otherWeights = requested.filter(weight => weight !== 700)
+      return Promise.all([
+        loadBannerPinnedFont(),
+        ...(otherWeights.length ? [loadFont(family, otherWeights)] : [])
+      ]).then(() => {})
+    }
     const custom = getUsedCustomFonts([{ fontFamily: family }])
-    if (custom.length) return Promise.all(custom.map(loadCustomFont)).then(() => {})
+    if (custom.length && !isBannerPinnedFamily(family)) return Promise.all(custom.map(loadCustomFont)).then(() => {})
     if (SYSTEM_FONT_FAMILIES.has(family)) return Promise.resolve()
-
-    const key = family
+    const matchingCustom = custom.filter(font => requested.includes(parseFontTags(font.tags).weight))
+    const wts = requested.filter(weight => !matchingCustom.some(font => parseFontTags(font.tags).weight === weight))
+    if (matchingCustom.length) {
+      return Promise.all([...matchingCustom.map(loadCustomFont), ...(wts.length ? [loadFont(family, wts)] : [])]).then(() => {})
+    }
+    const key = JSON.stringify([family, [...wts].sort()])
     if (loadedFonts.has(key)) return Promise.resolve()
     loadedFonts.add(key)
 
-    const wts = weights?.length ? weights : [400, 700]
     const familyParam = family.replace(/ /g, '+')
     const wgts = wts.join(';')
     const url = `https://fonts.googleapis.com/css2?family=${familyParam}:wght@${wgts}&display=swap`
@@ -332,8 +356,7 @@ export function useBannerFonts() {
   /** Load + track a font selection */
   function selectFont(family: string) {
     const font = getFont(family)
-    if (font) loadFont(family, font.weights)
-    else loadFont(family)
+    void loadFont(family, font?.weights).catch(error => console.warn('Banner font unavailable:', error))
     trackRecent(family)
   }
 
@@ -347,7 +370,7 @@ export function useBannerFonts() {
       for (const style of loadedCustomFonts.values()) style.remove()
       loadedCustomFonts.clear()
       customFonts.value = data || []
-      for (const font of customFonts.value) loadCustomFont(font)
+      await Promise.all(customFonts.value.map(loadCustomFont))
     })()
     customFontsFetch = request
     void request.catch(() => {
@@ -382,7 +405,7 @@ export function useBannerFonts() {
       if (customFontsFetch) await customFontsFetch
       customFonts.value = [result, ...customFonts.value.filter(font => font.id !== result.id)]
       unloadCustomFont(result)
-      loadCustomFont(result)
+      await loadCustomFont(result)
       return result
     } catch (e) {
       console.error('Font upload failed:', e)
@@ -399,7 +422,7 @@ export function useBannerFonts() {
       customFonts.value.splice(idx, 1)
       unloadCustomFont(removed)
       const replacement = customFonts.value.find(font => customFontKey(font) === customFontKey(removed))
-      if (replacement) loadCustomFont(replacement)
+      if (replacement) await loadCustomFont(replacement)
     }
   }
 
@@ -409,7 +432,9 @@ export function useBannerFonts() {
     for (const l of layers) {
       if (!l.fontFamily) continue
       if (SYSTEM_FONT_FAMILIES.has(l.fontFamily)) continue
-      if (isCustomFont(l.fontFamily)) continue // custom fonts handled separately
+      if (isBannerPinnedFace(l.fontFamily, l.fontWeight)) continue
+      if (!isBannerPinnedFamily(l.fontFamily) && isCustomFont(l.fontFamily)) continue
+      if (getUsedCustomFonts([l]).some(font => parseFontTags(font.tags).weight === (l.fontWeight || 400))) continue // custom face handled separately
       if (!fonts.has(l.fontFamily)) fonts.set(l.fontFamily, new Set())
       fonts.get(l.fontFamily)!.add(l.fontWeight || 400)
     }
@@ -424,7 +449,7 @@ export function useBannerFonts() {
     // The catalog is newest-first. Export one source per family/weight, keeping all weights.
     for (const font of customFonts.value) {
       const key = customFontKey(font)
-      if (!families.has(font.name) || seen.has(key)) continue
+      if (!families.has(font.name) || seen.has(key) || isBannerPinnedFace(font.name, parseFontTags(font.tags).weight)) continue
       used.push(font)
       seen.add(key)
     }
@@ -432,25 +457,26 @@ export function useBannerFonts() {
   }
 
   /** Get custom fonts used in layers, formatted for HTML export options */
-  function getExportCustomFonts(layers: { fontFamily?: string }[]): { family: string, url: string, format: string, weight: number }[] {
-    return getUsedCustomFonts(layers)
+  function getExportCustomFonts(layers: { fontFamily?: string, fontWeight?: number }[]): { family: string, url: string, format: string, weight: number }[] {
+    const fonts = getUsedCustomFonts(layers)
       .filter(cf => isSafeUrl(cf.url))
       .map((cf) => {
         const { weight, format } = parseFontTags(cf.tags)
         return { family: cf.name, url: cf.url, format, weight }
       })
+    if (layers.some(layer => isBannerPinnedFace(layer.fontFamily, layer.fontWeight))) {
+      fonts.push({ family: BANNER_PINNED_FONT.family, url: bannerPinnedFontUrl(), format: 'truetype', weight: 700 })
+    }
+    return fonts
   }
 
   /** Build @font-face CSS rules for custom fonts used in layers (for HTML export) */
-  function buildCustomFontsCss(layers: { fontFamily?: string }[]): string {
-    const fonts = getUsedCustomFonts(layers).filter(cf => isSafeUrl(cf.url))
-    if (fonts.length === 0) return ''
-
-    return fonts.map((cf) => {
-      const { weight, format } = parseFontTags(cf.tags)
-      const family = cf.name.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
-      return `@font-face { font-family: '${family}'; src: url('${cf.url}') format('${format}'); font-weight: ${weight}; font-display: swap; }`
-    }).join('\n')
+  function buildCustomFontsCss(layers: { fontFamily?: string, fontWeight?: number }[]): string {
+    const fonts = getExportCustomFonts(layers).filter(font => !isBannerPinnedFace(font.family, font.weight))
+    return [bannerPinnedFontCss(layers), ...fonts.map((font) => {
+      const family = font.family.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
+      return `@font-face { font-family: '${family}'; src: url('${font.url}') format('${font.format}'); font-weight: ${font.weight}; font-display: swap; }`
+    })].filter(Boolean).join('\n')
   }
 
   /** Build Google Fonts CSS URL for HTML export */
@@ -471,6 +497,9 @@ export function useBannerFonts() {
 
   /** Load all fonts used in layers (for editor preview) */
   function loadUsedFonts(layers: { fontFamily?: string, fontWeight?: number }[]) {
+    if (layers.some(layer => isBannerPinnedFace(layer.fontFamily, layer.fontWeight))) {
+      void loadBannerPinnedFont().catch(error => console.warn('Pinned Banner font unavailable:', error))
+    }
     const fonts = getUsedFonts(layers)
     for (const [family, weights] of fonts) {
       loadFont(family, Array.from(weights))

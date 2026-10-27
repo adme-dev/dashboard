@@ -1,4 +1,5 @@
-import { queryOne } from '~~/server/utils/db'
+import { assertNoScopedDissectionReferences, assertProjectAllowsUnprotectedFlow } from '~~/server/utils/banner/scopedExport'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -10,6 +11,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event)
+  assertNoScopedDissectionReferences(body)
+  if (body.projectId) await assertProjectAllowsUnprotectedFlow(body.projectId, body)
+  const saved = await queryOneFresh('SELECT canvas_data, thumbnail_url FROM banner_templates WHERE id = $1', [id])
+  if (!saved) throw createError({ statusCode: 404, statusMessage: 'Template not found' })
+  assertNoScopedDissectionReferences(saved)
   const { name, category, thumbnailUrl } = body
 
   try {

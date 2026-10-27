@@ -6,6 +6,7 @@ import type { Layer } from '~/types/banner-studio'
 const props = defineProps<{
   layer: Layer
   isActive: boolean
+  opacityManaged?: boolean
 }>()
 
 const { getFeedOverride } = useBannerFeeds()
@@ -16,7 +17,7 @@ const displaySrc = computed(() => getFeedOverride(props.layer.id, 'src') ?? prop
 <template>
   <div
     class="relative w-full h-full overflow-hidden"
-    :style="{ opacity: layer.opacity, filter: effects.visualFilter }"
+    :style="{ opacity: opacityManaged ? 1 : layer.opacity, filter: effects.visualFilter }"
   >
     <img
       v-if="displaySrc"

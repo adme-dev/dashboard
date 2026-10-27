@@ -1,11 +1,19 @@
 import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } from '~/utils/banner-constants'
 import { brandColor, brandFont, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
+import { assertManagedQrTransition } from '~~/shared/bannerQrProtection'
 
 // Module-scope singleton state
 let _uid = 1
 let projectEpoch = 0
 let pendingSave: Promise<void> | null = null
+
+/** A menu action belongs to this exact document, artboard and layer instance. */
+export interface BannerAnimationTarget {
+  epoch: number
+  formatKey: string
+  layer: Layer
+}
 
 // Animation clipboard (module-scope singleton)
 const animClipboard = ref<{
@@ -161,13 +169,34 @@ export function useBannerStudio() {
   function updateLayer(id: number, props: Partial<Layer>) {
     const layer = activeLayers.value.find(l => l.id === id)
     if (!layer) return
+    const animationFields = ['motionPath', 'motionPathTweens', 'motionPathCurviness', 'motionPathAutoRotate', 'animIn', 'animOut', 'animInDur', 'outDur', 'ease', 'animOutEase', 'startTime', 'endTime', 'keyframes']
+    if (Object.keys(props).some(key => animationFields.includes(key)) && !canEditAnimation(layer)) return
+    // Keep managed codes deterministic. Position/box size remain editable; contain
+    // fit preserves the SVG's intrinsic ratio. Replace a code through the picker.
+    if (layer.platformQr) {
+      const editable = new Set(['x', 'y', 'w', 'h', 'name', 'hidden', 'locked', 'zIndex'])
+      if (Object.keys(props).some(key => !editable.has(key)
+        && JSON.stringify(props[key as keyof Layer]) !== JSON.stringify(layer[key as keyof Layer]))) return
+    }
+    if (props.maskTargetIds) {
+      const managed = new Set(activeLayers.value.filter(l => l.platformQr).map(l => l.id))
+      props = { ...props, maskTargetIds: props.maskTargetIds.filter(target => !managed.has(target)) }
+    }
     const before = { ...layer }
+    let invalidatedLettering = false
+    const letteringFields: (keyof Layer)[] = ['text', 'textRuns', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'color', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textShadow', 'textStroke', 'textDepth', 'textTexture', 'gradientColors', 'lineBoxFontSize', 'textAntialias', 'bgColor', 'visualFilter', 'effectOrigin', 'type', 'src']
+    if (layer.letteringRecipe && !Object.hasOwn(props, 'letteringRecipe')
+      && letteringFields.some(key => Object.hasOwn(props, key) && JSON.stringify(props[key]) !== JSON.stringify(layer[key]))) {
+      // Manual typography edits supersede the previous AI proposal. Undo retains it.
+      delete layer.letteringRecipe
+      invalidatedLettering = true
+    }
     Object.assign(layer, props)
     pushUndo({ type: 'updateLayer', before, after: { ...layer } })
     state.isDirty = true
 
     // Broadcast to collaborators
-    try { useBannerRealtime().sendLayerUpdate(id, state.activeKey, props) } catch {}
+    try { useBannerRealtime().sendLayerUpdate(id, state.activeKey, invalidatedLettering ? { ...props, letteringRecipe: null } : props) } catch {}
   }
 
   function reorderLayer(id: number, newZIndex: number) {
@@ -197,6 +226,7 @@ export function useBannerStudio() {
   }
 
   function selectLayer(id: number | null) {
+    if (state.selectedLayerId !== id) resetAnimationSelection()
     state.selectedLayerId = id
 
     // Broadcast selection (acquires/releases soft lock)
@@ -218,6 +248,7 @@ export function useBannerStudio() {
 
   function setActiveArtboard(key: string) {
     if (!state.sets[key]) return
+    resetAnimationSelection()
     state.selectedLayerId = null
     state.activeKey = key
     zoomToFitFormat(key)
@@ -450,6 +481,14 @@ export function useBannerStudio() {
     return pasted
   }
 
+  // Undo must remove fields introduced by an edit as well as restore old values.
+  function restoreLayerSnapshot(layer: Layer, snapshot: Layer) {
+    for (const key of Object.keys(layer) as (keyof Layer)[]) {
+      if (!Object.hasOwn(snapshot, key)) delete layer[key]
+    }
+    Object.assign(layer, snapshot)
+  }
+
   // ── Undo / Redo ───────────────────────
 
   function undo() {
@@ -471,7 +510,7 @@ export function useBannerStudio() {
       state.sets[action.formatKey || state.activeKey]?.layers.push(action.before)
     } else if (action.type === 'updateLayer' && action.before) {
       const layer = state.sets[action.formatKey || state.activeKey]?.layers.find(l => l.id === action.before.id)
-      if (layer) Object.assign(layer, action.before)
+      if (layer) restoreLayerSnapshot(layer, action.before)
     } else if (action.type === 'applyBrandKit' && action.before) {
       // Restore all artboard states and global colors
       state.sets = JSON.parse(JSON.stringify(action.before.sets))
@@ -499,7 +538,7 @@ export function useBannerStudio() {
       }
     } else if (action.type === 'updateLayer' && action.after) {
       const layer = state.sets[action.formatKey || state.activeKey]?.layers.find(l => l.id === action.after.id)
-      if (layer) Object.assign(layer, action.after)
+      if (layer) restoreLayerSnapshot(layer, action.after)
     } else if (action.type === 'applyBrandKit' && action.after) {
       state.sets = JSON.parse(JSON.stringify(action.after.sets))
       state.accentColor = action.after.accentColor
@@ -511,6 +550,7 @@ export function useBannerStudio() {
 
   function loadProject(project: BannerProject) {
     projectEpoch++
+    resetAnimationSelection()
     undoStack.value = []
     redoStack.value = []
     state.clipboard = null
@@ -567,6 +607,7 @@ export function useBannerStudio() {
 
   function applyAssistantCanvas(canvasData: Record<string, ArtboardState>) {
     const before = { canvasData: getCanvasData(), activeKey: state.activeKey }
+    assertManagedQrTransition(before.canvasData, canvasData)
     restoreCanvasData(canvasData)
     if (state.sets[before.activeKey]) state.activeKey = before.activeKey
     pushUndo({ type: 'assistantCanvas', before, after: { canvasData: getCanvasData(), activeKey: state.activeKey } })
@@ -576,7 +617,20 @@ export function useBannerStudio() {
   function withCanvasUndo(change: () => void) {
     const before = { canvasData: getCanvasData(), activeKey: state.activeKey }
     const previousActions = undoStack.value.slice()
-    change()
+    const previousRedo = redoStack.value.slice()
+    const previousSelection = state.selectedLayerId
+    const previousDirty = state.isDirty
+    try {
+      change()
+    } catch (error) {
+      restoreCanvasData(before.canvasData)
+      state.activeKey = before.activeKey
+      state.selectedLayerId = previousSelection
+      state.isDirty = previousDirty
+      undoStack.value = previousActions
+      redoStack.value = previousRedo
+      throw error
+    }
     undoStack.value = previousActions
     pushUndo({ type: 'assistantCanvas', before, after: { canvasData: getCanvasData(), activeKey: state.activeKey } })
   }
@@ -592,14 +646,16 @@ export function useBannerStudio() {
     const projectId = state.project.id
     const epoch = projectEpoch
     const name = state.project.name
+    const expectedRevision = state.project.updatedAt
     const canvasData = getCanvasData()
     const snapshot = JSON.stringify(canvasData)
     state.isSaving = true
     const operation = (async () => {
-      await $fetch(`/api/agency/banner-studio/projects/${projectId}`, {
-        method: 'PATCH', body: { canvasData, name }
+      const saved = await $fetch<Partial<BannerProject>>(`/api/agency/banner-studio/projects/${projectId}`, {
+        method: 'PATCH', body: { canvasData, name, ...(expectedRevision ? { expectedRevision } : {}) }
       })
       if (epoch === projectEpoch && state.project?.id === projectId) {
+        if (saved?.id === projectId && typeof saved.updatedAt === 'string') state.project.updatedAt = saved.updatedAt
         state.isDirty = JSON.stringify(getCanvasData()) !== snapshot || state.project.name !== name
       }
     })()
@@ -652,6 +708,7 @@ export function useBannerStudio() {
 
       let logoApplied = false
       artboard.layers.forEach((layer) => {
+        if (layer.platformQr) return
         if (layer.type === 'bg' && background) layer.bgColor = background
         if (layer.type === 'text') {
           const isHeadline = layer === headline
@@ -730,9 +787,83 @@ export function useBannerStudio() {
 
   // ── Motion path operations ────────────
 
+  function resetAnimationSelection() {
+    state.selectedTween = null
+    state.selectedKeyframe = null
+    state.soloMotionPath = false
+  }
+
+  function canEditAnimation(layer: Layer | null | undefined): layer is Layer {
+    if (!layer || !activeLayers.value.includes(layer) || layer.platformQr || layer.locked) return false
+    try {
+      if (useBannerRealtime().isLayerLockedByOther(layer.id)) return false
+    } catch { /* Realtime is optional in offline editors. */ }
+    return true
+  }
+
+  function canAnimateLayer(layer: Layer | null | undefined): layer is Layer {
+    if (!canEditMotionPath(layer) || layer.isMask
+      || activeLayers.value.some(mask => mask.isMask && mask.maskTargetIds?.includes(layer.id))) return false
+    return true
+  }
+
+  function canEditMotionPath(layer: Layer | null | undefined): layer is Layer {
+    return canEditAnimation(layer) && ['text', 'image', 'video', 'button', 'rect'].includes(layer.type)
+  }
+
+  function captureAnimationTarget(layer: Layer): BannerAnimationTarget | null {
+    return canAnimateLayer(layer) ? { epoch: projectEpoch, formatKey: state.activeKey, layer } : null
+  }
+
+  function resolveAnimationTarget(target: BannerAnimationTarget | null | undefined): Layer | null {
+    if (!target || target.epoch !== projectEpoch || target.formatKey !== state.activeKey) return null
+    return canAnimateLayer(target.layer) ? target.layer : null
+  }
+
+  function tweenAddition(layer: Layer): { updates: Partial<Layer>, tweenIndex: number } | null {
+    // Preserve established inspector editing of existing mask/target paths.
+    // Creating a path through the new action retains the narrower eligibility.
+    if (!(layer.motionPath?.length ? canEditMotionPath(layer) : canAnimateLayer(layer))) return null
+    const start = layer.startTime === undefined ? 0 : layer.startTime
+    const end = layer.endTime === undefined ? start + 3 : layer.endTime
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end - start < 0.05) return null
+    if (!layer.motionPath?.length) {
+      // Independent offsets keep native wording, base geometry and keyframes intact.
+      const distance = Math.min(100, Math.max(10, (FORMATS[state.activeKey]?.w || 1000) / 10))
+      return { updates: {
+        motionPath: [{ x: 0, y: 0 }, { x: distance, y: 0 }],
+        motionPathCurviness: 1,
+        motionPathTweens: [{ startTime: start, endTime: end, pathStart: 0, pathEnd: 1, ease: 'power2.inOut' }]
+      }, tweenIndex: 0 }
+    }
+    const path = layer.motionPath
+    if (path.length < 2 || path.some(pt => !Number.isFinite(pt.x) || !Number.isFinite(pt.y))
+      || path.every(pt => pt.x === path[0]!.x && pt.y === path[0]!.y)) return null
+    const tweens = getMotionPathTweens(layer).map(tw => ({ ...tw }))
+    if (tweens.some((tw, index) => ![tw.startTime, tw.endTime, tw.pathStart, tw.pathEnd].every(Number.isFinite)
+      || tw.startTime < start || tw.endTime > end || tw.endTime - tw.startTime < 0.05
+      || tw.pathStart < 0 || tw.pathStart > 1 || tw.pathEnd < 0 || tw.pathEnd > 1
+      || (index > 0 && tw.startTime < tweens[index - 1]!.endTime))) return null
+    const last = tweens[tweens.length - 1]!
+    if (end - last.endTime >= 0.2 && last.pathEnd !== 1) {
+      tweens.push({ startTime: last.endTime, endTime: Math.min(last.endTime + 1, end), pathStart: last.pathEnd, pathEnd: 1, ease: 'power2.inOut' })
+    } else {
+      const midTime = (last.startTime + last.endTime) / 2
+      const midPath = (last.pathStart + last.pathEnd) / 2
+      if (midTime - last.startTime < 0.05 || last.endTime - midTime < 0.05 || last.pathStart === last.pathEnd) return null
+      tweens[tweens.length - 1] = { ...last, endTime: midTime, pathEnd: midPath }
+      tweens.push({ ...last, startTime: midTime, pathStart: midPath })
+    }
+    return { updates: { motionPathTweens: tweens }, tweenIndex: tweens.length - 1 }
+  }
+
+  function canAddMotionPathTween(layer: Layer | null | undefined) {
+    return !!layer && !!tweenAddition(layer)
+  }
+
   function toggleMotionPath(layerId: number) {
     const layer = activeLayers.value.find(l => l.id === layerId)
-    if (!layer) return
+    if (!canEditMotionPath(layer)) return
     if (layer.motionPath?.length) {
       // Disable
       updateLayer(layerId, {
@@ -804,24 +935,12 @@ export function useBannerStudio() {
 
   function addMotionPathTween(layerId: number) {
     const layer = activeLayers.value.find(l => l.id === layerId)
-    if (!layer?.motionPath?.length) return
-    const tweens = [...getMotionPathTweens(layer)]
-    const last = tweens[tweens.length - 1]
-    const end = layer.endTime || ((layer.startTime || 0) + 3)
-    const gap = end - last.endTime
-    if (gap >= 0.2) {
-      // Free time after the last tween: append there, covering the remaining path
-      const newEnd = Math.min(last.endTime + 1, end)
-      tweens.push({ startTime: last.endTime, endTime: newEnd, pathStart: last.pathEnd, pathEnd: 1, ease: 'power2.inOut' })
-    } else {
-      // No room: split the last tween in half (time + path), like inserting a keyframe mid-tween
-      const midTime = Math.round((last.startTime + last.endTime) / 2 * 20) / 20
-      const midPath = (last.pathStart + last.pathEnd) / 2
-      if (midTime - last.startTime < 0.05) return
-      tweens[tweens.length - 1] = { ...last, endTime: midTime, pathEnd: midPath }
-      tweens.push({ startTime: midTime, endTime: last.endTime, pathStart: midPath, pathEnd: last.pathEnd, ease: last.ease || 'power2.inOut' })
-    }
-    updateLayer(layerId, { motionPathTweens: tweens } as any)
+    const addition = layer && tweenAddition(layer)
+    if (!addition) return false
+    updateLayer(layerId, addition.updates)
+    selectLayer(layerId)
+    state.selectedTween = { layerId, tweenIndex: addition.tweenIndex }
+    return true
   }
 
   function updateMotionPathTween(layerId: number, tweenIndex: number, updates: Partial<MotionPathTween>) {
@@ -980,6 +1099,12 @@ export function useBannerStudio() {
     toggleMask,
     setMaskTargets,
     // Motion path
+    canEditAnimation,
+    canEditMotionPath,
+    canAnimateLayer,
+    canAddMotionPathTween,
+    captureAnimationTarget,
+    resolveAnimationTarget,
     toggleMotionPath,
     addPathPoint,
     updatePathPoint,

@@ -539,7 +539,10 @@ async function readOptionalText(
   } catch (error) {
     if (hasErrorCode(error, 'ENOENT')
       || hasErrorCode(error, 'EISDIR')
-      || hasErrorCode(error, 'ENOTDIR')) return null
+      || hasErrorCode(error, 'ENOTDIR')
+      // APFS can report EINVAL while the containing symlink is removed.
+      // Missing lease evidence never establishes ownership or recovery authority.
+      || hasErrorCode(error, 'EINVAL')) return null
     throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
   }
 }
