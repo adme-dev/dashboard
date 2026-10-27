@@ -1,0 +1,532 @@
+{
+  "dealerId": "fda2904a-5c22-4adc-8611-ae8e8463a04c",
+  "host": "www.northernnissan.com.au",
+  "customerId": "5253781131",
+  "campaignId": "21711826789",
+  "receipts": {
+    "import": {
+      "at": "2026-10-27T06:01:53.462Z",
+      "before": {
+        "results": [
+          {
+            "conversionAction": {
+              "resourceName": "customers/5253781131/conversionActions/7872836591",
+              "status": "HIDDEN",
+              "id": "7872836591",
+              "primaryForGoal": false,
+              "googleAnalytics4Settings": {
+                "eventName": "generate_lead",
+                "propertyId": "308088672"
+              }
+            }
+          }
+        ]
+      },
+      "payload": {
+        "operations": [
+          {
+            "update": {
+              "resourceName": "customers/5253781131/conversionActions/7872836591",
+              "status": "ENABLED"
+            },
+            "updateMask": "status"
+          }
+        ],
+        "validateOnly": false
+      },
+      "result": {
+        "results": [
+          {
+            "resourceName": "customers/5253781131/conversionActions/7872836591"
+          }
+        ]
+      },
+      "after": {
+        "results": [
+          {
+            "conversionAction": {
+              "resourceName": "customers/5253781131/conversionActions/7872836591",
+              "status": "ENABLED",
+              "id": "7872836591",
+              "primaryForGoal": false
+            }
+          }
+        ]
+      }
+    },
+    "customGoal": {
+      "at": "2026-10-27T06:02:21.908Z",
+      "payload": {
+        "operations": [
+          {
+            "create": {
+              "name": "Northern Nissan PMAX - native accepted leads",
+              "status": "ENABLED",
+              "conversionActions": [
+                "customers/5253781131/conversionActions/7872836591"
+              ]
+            }
+          }
+        ]
+      },
+      "validated": {},
+      "result": {
+        "results": [
+          {
+            "resourceName": "customers/5253781131/customConversionGoals/6459659700"
+          }
+        ]
+      },
+      "after": {
+        "results": [
+          {
+            "customConversionGoal": {
+              "resourceName": "customers/5253781131/customConversionGoals/6459659700",
+              "id": "6459659700",
+              "name": "Northern Nissan PMAX - native accepted leads",
+              "conversionActions": [
+                "customers/5253781131/conversionActions/7872836591"
+              ],
+              "status": "ENABLED"
+            }
+          }
+        ]
+      }
+    },
+    "campaignGoals": {
+      "at": "2026-10-27T06:02:55.380Z",
+      "before": {
+        "results": [
+          {
+            "conversionGoalCampaignConfig": {
+              "resourceName": "customers/5253781131/conversionGoalCampaignConfigs/21711826789",
+              "goalConfigLevel": "CAMPAIGN"
+            }
+          }
+        ]
+      },
+      "payload": {
+        "partialFailure": false,
+        "mutateOperations": [
+          {
+            "conversionGoalCampaignConfigOperation": {
+              "update": {
+                "resourceName": "customers/5253781131/conversionGoalCampaignConfigs/21711826789",
+                "customConversionGoal": "customers/5253781131/customConversionGoals/6459659700"
+              },
+              "updateMask": "custom_conversion_goal"
+            }
+          },
+          {
+            "campaignConversionGoalOperation": {
+              "update": {
+                "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~SUBMIT_LEAD_FORM~WEBSITE",
+                "biddable": false
+              },
+              "updateMask": "biddable"
+            }
+          },
+          {
+            "campaignConversionGoalOperation": {
+              "update": {
+                "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~SUBMIT_LEAD_FORM~GOOGLE_HOSTED",
+                "biddable": false
+              },
+              "updateMask": "biddable"
+            }
+          }
+        ]
+      },
+      "validated": {},
+      "result": {
+        "mutateOperationResponses": [
+          {
+            "conversionGoalCampaignConfigResult": {
+              "resourceName": "customers/5253781131/conversionGoalCampaignConfigs/21711826789"
+            }
+          },
+          {
+            "campaignConversionGoalResult": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~SUBMIT_LEAD_FORM~WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoalResult": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~SUBMIT_LEAD_FORM~GOOGLE_HOSTED"
+            }
+          }
+        ]
+      },
+      "after": {
+        "results": [
+          {
+            "conversionGoalCampaignConfig": {
+              "resourceName": "customers/5253781131/conversionGoalCampaignConfigs/21711826789",
+              "goalConfigLevel": "CAMPAIGN",
+              "customConversionGoal": "customers/5253781131/customConversionGoals/6459659700"
+            }
+          }
+        ]
+      },
+      "goals": {
+        "results": [
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~DEFAULT~WEBSITE",
+              "category": "DEFAULT",
+              "origin": "WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~PURCHASE~WEBSITE",
+              "category": "PURCHASE",
+              "origin": "WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~PAGE_VIEW~WEBSITE",
+              "category": "PAGE_VIEW",
+              "origin": "WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~PAGE_VIEW~GOOGLE_HOSTED",
+              "category": "PAGE_VIEW",
+              "origin": "GOOGLE_HOSTED"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~DOWNLOAD~APP",
+              "category": "DOWNLOAD",
+              "origin": "APP"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~PHONE_CALL_LEAD~WEBSITE",
+              "category": "PHONE_CALL_LEAD",
+              "origin": "WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~PHONE_CALL_LEAD~CALL_FROM_ADS",
+              "category": "PHONE_CALL_LEAD",
+              "origin": "CALL_FROM_ADS",
+              "biddable": true
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~SUBMIT_LEAD_FORM~WEBSITE",
+              "category": "SUBMIT_LEAD_FORM",
+              "origin": "WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~SUBMIT_LEAD_FORM~GOOGLE_HOSTED",
+              "category": "SUBMIT_LEAD_FORM",
+              "origin": "GOOGLE_HOSTED"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~REQUEST_QUOTE~WEBSITE",
+              "category": "REQUEST_QUOTE",
+              "origin": "WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~GET_DIRECTIONS~GOOGLE_HOSTED",
+              "category": "GET_DIRECTIONS",
+              "origin": "GOOGLE_HOSTED"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~CONTACT~WEBSITE",
+              "category": "CONTACT",
+              "origin": "WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~CONTACT~GOOGLE_HOSTED",
+              "category": "CONTACT",
+              "origin": "GOOGLE_HOSTED"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~ENGAGEMENT~WEBSITE",
+              "category": "ENGAGEMENT",
+              "origin": "WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~ENGAGEMENT~GOOGLE_HOSTED",
+              "category": "ENGAGEMENT",
+              "origin": "GOOGLE_HOSTED"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~ENGAGEMENT~YOUTUBE_HOSTED",
+              "category": "ENGAGEMENT",
+              "origin": "YOUTUBE_HOSTED"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~STORE_VISIT~STORE",
+              "category": "STORE_VISIT",
+              "origin": "STORE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~QUALIFIED_LEAD~WEBSITE",
+              "category": "QUALIFIED_LEAD",
+              "origin": "WEBSITE"
+            }
+          },
+          {
+            "campaignConversionGoal": {
+              "resourceName": "customers/5253781131/campaignConversionGoals/21711826789~YOUTUBE_FOLLOW_ON_VIEWS~YOUTUBE_HOSTED",
+              "category": "YOUTUBE_FOLLOW_ON_VIEWS",
+              "origin": "YOUTUBE_HOSTED"
+            }
+          }
+        ]
+      }
+    },
+    "legacyDestination": {
+      "at": "2026-10-27T06:03:55.181Z",
+      "before": {
+        "results": [
+          {
+            "assetGroup": {
+              "resourceName": "customers/5253781131/assetGroups/6517324168",
+              "finalUrls": [
+                "https://northernnissan.com.au/car-sales?condition=new,demo&sortby=year"
+              ],
+              "status": "PAUSED",
+              "id": "6517324168"
+            }
+          }
+        ]
+      },
+      "payload": {
+        "operations": [
+          {
+            "update": {
+              "resourceName": "customers/5253781131/assetGroups/6517324168",
+              "finalUrls": [
+                "https://www.northernnissan.com.au/cars-for-sale?condition=new,demo&sort=year_desc"
+              ]
+            },
+            "updateMask": "final_urls"
+          }
+        ]
+      },
+      "validated": {},
+      "result": {
+        "results": [
+          {
+            "resourceName": "customers/5253781131/assetGroups/6517324168"
+          }
+        ]
+      },
+      "after": {
+        "results": [
+          {
+            "assetGroup": {
+              "resourceName": "customers/5253781131/assetGroups/6517324168",
+              "finalUrls": [
+                "https://www.northernnissan.com.au/cars-for-sale?condition=new,demo&sort=year_desc"
+              ],
+              "status": "PAUSED",
+              "id": "6517324168",
+              "primaryStatus": "PAUSED",
+              "primaryStatusReasons": [
+                "ASSET_GROUP_PAUSED",
+                "ASSET_GROUP_UNDER_REVIEW"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ga4Reporting": {
+      "observedAt": "2026-10-27T06:02:01.100Z",
+      "property": "properties/308088672",
+      "readOnly": true,
+      "httpStatus": 200,
+      "result": {
+        "dimensionHeaders": [
+          {
+            "name": "eventName"
+          },
+          {
+            "name": "hostName"
+          }
+        ],
+        "metricHeaders": [
+          {
+            "name": "eventCount",
+            "type": "TYPE_INTEGER"
+          }
+        ],
+        "metadata": {
+          "currencyCode": "AUD",
+          "timeZone": "Australia/Melbourne"
+        },
+        "kind": "analyticsData#runReport"
+      },
+      "request": {
+        "dateRanges": [
+          {
+            "startDate": "2026-10-26",
+            "endDate": "2026-10-27"
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "eventName"
+          },
+          {
+            "name": "hostName"
+          }
+        ],
+        "metrics": [
+          {
+            "name": "eventCount"
+          }
+        ],
+        "dimensionFilter": {
+          "filter": {
+            "fieldName": "eventName",
+            "stringFilter": {
+              "matchType": "EXACT",
+              "value": "generate_lead"
+            }
+          }
+        },
+        "limit": "100"
+      }
+    },
+    "credentialValidation": {
+      "at": "2026-10-27T06:05:42.579Z",
+      "measurementId": "G-J9VSGZMTKQ",
+      "streamMeasurementId": "G-J9VSGZMTKQ",
+      "streamUrl": "https://www.northernnissan.com.au",
+      "credentialMatchesActiveProviderSecret": true,
+      "secretListError": null
+    },
+    "providerStatus": {
+      "observedAt": "2026-10-27T06:07:52.100Z",
+      "groups": {
+        "results": [
+          {
+            "assetGroup": {
+              "resourceName": "customers/5253781131/assetGroups/6517324168",
+              "name": "Pmax | inventory",
+              "status": "PAUSED",
+              "id": "6517324168",
+              "primaryStatus": "PAUSED",
+              "primaryStatusReasons": [
+                "ASSET_GROUP_PAUSED",
+                "ASSET_GROUP_UNDER_REVIEW"
+              ]
+            }
+          },
+          {
+            "assetGroup": {
+              "resourceName": "customers/5253781131/assetGroups/6527376552",
+              "name": "EOFY - 2024",
+              "status": "PAUSED",
+              "id": "6527376552",
+              "primaryStatus": "PAUSED",
+              "primaryStatusReasons": [
+                "ASSET_GROUP_PAUSED"
+              ]
+            }
+          },
+          {
+            "assetGroup": {
+              "resourceName": "customers/5253781131/assetGroups/6546236223",
+              "name": "2024 Plate Clearance Cash Back",
+              "status": "PAUSED",
+              "id": "6546236223",
+              "primaryStatus": "PAUSED",
+              "primaryStatusReasons": [
+                "ASSET_GROUP_PAUSED"
+              ]
+            }
+          },
+          {
+            "assetGroup": {
+              "resourceName": "customers/5253781131/assetGroups/6695638883",
+              "name": "Convert_PMaxInventory_Brand_Focused",
+              "status": "ENABLED",
+              "id": "6695638883",
+              "primaryStatus": "ELIGIBLE"
+            }
+          }
+        ]
+      },
+      "campaign": {
+        "results": [
+          {
+            "campaign": {
+              "resourceName": "customers/5253781131/campaigns/21711826789",
+              "status": "ENABLED",
+              "id": "21711826789",
+              "primaryStatus": "LIMITED",
+              "primaryStatusReasons": [
+                "HAS_ASSET_GROUPS_LIMITED_BY_POLICY",
+                "MISSING_LEAD_FORM_EXTENSION"
+              ]
+            },
+            "campaignBudget": {
+              "resourceName": "customers/5253781131/campaignBudgets/13924476861",
+              "amountMicros": "16200000"
+            }
+          }
+        ]
+      }
+    },
+    "preflight": {
+      "observedAt": "2026-10-27T06:00:41.251Z",
+      "customer": {
+        "results": [
+          {
+            "customer": {
+              "resourceName": "customers/5253781131",
+              "conversionTrackingSetting": {
+                "acceptedCustomerDataTerms": true,
+                "googleAdsConversionCustomer": "customers/5253781131"
+              },
+              "id": "5253781131",
+              "descriptiveName": "Northern Nissan"
+            }
+          }
+        ]
+      },
+      "customGoals": {
+        "results": []
+      },
+      "accountLeadForms": {
+        "results": []
+      }
+    }
+  },
+  "scope": "Configuration proof only. No submitted operator test or customer payload. Exact event delivery and Ads attribution not yet proved."
+}
