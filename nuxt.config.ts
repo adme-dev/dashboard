@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { compactPublicAssetsPlugin } from './scripts/compact-worker-static-data.mjs'
 import { workerProcessCompatibilityPlugin } from './scripts/worker-process-compatibility.mjs'
 import { bannerEnginePagesGuardPlugin } from './scripts/banner-engine-pages-guard.mjs'
+import { pngCodecInteropPlugin } from './scripts/png-codec-interop.mjs'
 import { NUXT_PAYLOAD_EXTRACTION, shouldIgnorePrerenderRoute } from './lib/prerender-ignore'
 
 // @flyhub/* email-builder packages are CLIENT-ONLY (the visual editor runs in the
@@ -436,7 +437,9 @@ export default defineNuxtConfig({
     // Bundle it for both alias and relative imports; deployed Workers have no
     // checkout filesystem from which to load this module.
     externals: {
-      inline: [/[/\\]shared[/\\]pageStudio[/\\]generated[/\\]/]
+      // PNG validation is required at runtime; Workers cannot resolve npm
+      // packages left as bare imports in the final deployed module graph.
+      inline: ['pngjs', /[/\\]shared[/\\]pageStudio[/\\]generated[/\\]/]
     },
     // Keep @flyhub/* out of the server bundle (client-only editor packages).
     alias: {
@@ -455,8 +458,8 @@ export default defineNuxtConfig({
       ignore: [shouldIgnorePrerenderRoute]
     },
     rollupConfig: {
-      plugins: [compactPublicAssetsPlugin(), workerProcessCompatibilityPlugin(), bannerEnginePagesGuardPlugin()],
-      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native'],
+      plugins: [compactPublicAssetsPlugin(), workerProcessCompatibilityPlugin(), bannerEnginePagesGuardPlugin(), pngCodecInteropPlugin()],
+      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pg-native'],
       onwarn(warning, warn) {
         if (isKnownThirdPartyRollupWarning(warning)) return
         warn(warning)

@@ -6,7 +6,7 @@
     "node": "24.18.0"
   },
   "scripts": {
-    "build": "NODE_OPTIONS='--max-old-space-size=16384' nuxt build && node scripts/wrap-worker.mjs && node scripts/check-worker-size.mjs",
+    "build": "NODE_OPTIONS='--max-old-space-size=16384' nuxt build && node scripts/wrap-worker.mjs && node scripts/check-worker-imports.mjs && node scripts/check-worker-size.mjs && pnpm check:worker-startup",
     "dev": "NODE_OPTIONS='--max-old-space-size=16384' nuxt dev",
     "graphify:rebuild": "sh scripts/regenerate-graphify.sh",
     "graphify:upload": "node --env-file=.env scripts/upload-graphify.mjs graphify-out",
@@ -79,7 +79,8 @@
     "env:secrets:list": "npx wrangler pages secret list",
     "env:secrets:list:prod": "npx wrangler pages secret list --env production",
     "env:secrets:put": "npx wrangler pages secret put",
-    "env:dev": "npx wrangler pages dev -- npm run dev"
+    "env:dev": "npx wrangler pages dev -- npm run dev",
+    "check:worker-startup": "vitest run test/workers/builtWorkerStartup.test.ts --maxWorkers=1"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.96",

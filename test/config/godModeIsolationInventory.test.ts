@@ -82,10 +82,14 @@ const API_INVENTORY = {
   // Banner recovery adds six routes (five mutations) and eight explicit write
   // gates. Preset creation, design/reference generation, export retry and social
   // handoff retain client/project authority; none registers a mutation bypass.
-  totalRouteFiles: 2283,
-  mutationRouteFiles: 1245,
-  explicitlyGuardedMutationFiles: 410,
-  guardedMutationFilesWithTransactionCall: 49
+  // Editable artwork adds eleven routes (nine mutations); delegated artwork/QR
+  // gates and machine credentials remain required. Twelve additional mutations
+  // now have inline write gates; dissection import adds a guarded transaction.
+  // These lexical counts do not register any God mode mutation bypass.
+  totalRouteFiles: 2294,
+  mutationRouteFiles: 1254,
+  explicitlyGuardedMutationFiles: 422,
+  guardedMutationFilesWithTransactionCall: 50
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -133,10 +137,10 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2283,
-      mutationRouteFiles: 1245,
-      explicitlyGuardedMutationFiles: 410,
-      guardedMutationFilesWithTransactionCall: 49
+      totalRouteFiles: 2294,
+      mutationRouteFiles: 1254,
+      explicitlyGuardedMutationFiles: 422,
+      guardedMutationFilesWithTransactionCall: 50
     })
   })
 
