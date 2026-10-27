@@ -1,0 +1,54 @@
+# PNG ingestion integration review — 28 October 2026
+
+**Verdict: no concrete correctness, security or compatibility blocker found in this increment; acceptable for candidate integration within the PNG-only boundary below.** This is a source review with inspection of the coordinator's existing test receipts, not hosted acceptance or full R01 completion. Root owns integration and any subsequent fixes.
+
+Reviewed the original dirty workspace at `adme-dev/banner-editable-artwork`, HEAD `47ec30c3522f6ab660d730776709770c8a22d7c8`, against clean sibling `../banner-artwork-release-20261027` at `7eb52a6736989aacb3c4bd62ac086baf8a1bf0f4`. No fetch was performed under the no-network constraint. The uncommitted file hashes, rather than the original HEAD alone, identify this review.
+
+## Findings and source evidence
+
+No blocking finding or material defect reproducer is outstanding. The following checks explain the bounded acceptance:
+
+| Concern | Source and conclusion |
+| --- | --- |
+| Validation before side effects | `server/api/agency/banner-studio/dissect/upload.post.ts:37–53` awaits the actual validator and hashes the same buffer before creating the source key, writing storage, inserting the row or dispatching. The upload tests assert HTTP 400 and no storage/DB/queue calls for malformed PNGs, and byte-for-byte original preservation. |
+| Container bounds | `server/utils/banner/dissectionPngValidation.ts:35–129` checks signature, dimensions, 8-bit/noninterlaced methods, chunk bounds/type/CRC/order, palette/transparency rules, allowed metadata and final IEND/EOF. Input is limited to 10 MiB, 4096px per edge, 10 million pixels and 10,000 chunks. Compressed IDAT data is re-walked by offsets without concatenation or an attacker-sized chunk array. |
+| Streaming consumption and cleanup | Validator lines 138–217 submit at most one 8 KiB write at a time and consume 8 KiB output chunks immediately. Excess output fails before processing that chunk; all explicit stream failures and successful completion destroy the inflater. The settled guard prevents later data, error and write callbacks from restarting the pump or settling twice. The final count uses the engine's `bytesWritten`, not submitted input bytes, to reject trailing data and second streams. |
+| Scanline/filter handling | Validator lines 131–185 require exact output length and completed rows, validate every filter byte, and reverse indexed filters with one previous/current row and a saved upper-left byte. Paeth tie-breaking and modulo-256 reconstruction are correct by inspection. Non-indexed 8-bit samples need no palette lookup or retained RGBA raster. Tests exercise all filters, first rows, output chunk boundaries, palette overflow and independent pngjs pixel oracles. |
+| Original integrity before inference | `server/utils/bannerDissectorPipeline.ts:43–73` performs only bounded dimension inspection before checking persisted source version, detected MIME, byte length, dimensions, PNG limits and exact SHA-256. Mismatch, including a present null source, fails before `analyzeImage` or segmentation; missing source alone retains legacy behavior. Existing download bounds and reader cancellation remain unchanged. |
+| DB-owned identity across lifecycle | `server/utils/banner/dissectionJobs.ts:93–108` preserves the existing row's source during explicit retry while clearing old artwork/receipt state. Lines 254–272 merge the current database source into stage/terminal writes. Claim, dispatch, expiry and cancellation update nested execution state and retain source. No caller/model-supplied source is accepted by `dissectionArtwork` at lines 235–241. The actual PostgreSQL cases verify both preservation and attempted model spoofing. |
+| Legacy IDs and compatibility | `dissectionResultId` at lines 250–251 and snapshot result derivation are unchanged from the sibling; source is excluded by the existing artwork projection, so adding source metadata does not change legacy result IDs. JPEG/WebP production branches are unchanged. Upload tests cover both small and A4 JPEG originals without verified-source metadata. |
+| Public claims | The two additions in `app/pages/features/index.vue:174` and `app/pages/features/[slug].vue:2786` remain under local-preview wording. The detail page states the static/noninterlaced/8-bit, edge and pixel limits and preserves the JPEG/WebP and hosted/provider caveats. |
+
+The source and test files, including their existing content, and both complete feature pages were read for the requested pre-commit review; findings remain scoped to this diff. No new server/frontend alias mismatch, changed form control, reactive control, duplicate UI section, constructed color value or URL-fetch path was introduced. The changed page content is copy-only. No source, sibling, provider, database or deployment mutation was made by this review.
+
+## Accepted boundary
+
+- This validates uploads whose multipart part declares `image/png`. JPEG and WebP remain legacy, with no verified-source metadata. A caller can declare PNG bytes as `image/jpeg` or `image/webp` and take that existing path (`upload.post.ts:25–40`); this is consequently not a universal image-validation or MIME-spoof prevention barrier. That limitation is accepted for this expressly PNG-only increment, not closed by it.
+- Supported PNGs are static, noninterlaced, 8-bit color types 0/2/3/4/6, with PLTE/tRNS and fixed-size sRGB/gAMA/cHRM/pHYs metadata as applicable. Unsupported metadata/encodings, including ICC/text/EXIF/APNG, are rejected even when otherwise valid PNG. No color conversion or physical print-size guarantee is added. cHRM is checked for encoded integer bounds and sRGB consistency, not arbitrary color-science validity.
+- Bounded validation does not bound total request memory: `readMultipartFormData` still buffers before the file-size check, storage creates a further bounded copy, and later inference/segmentation has its own resource costs. Full R01 ownership, multipart prebuffer limits and production concurrency/CPU headroom remain open.
+- The original bytes are retained, not normalized or re-encoded. Processing trusts an upload-validated source only after exact content identity matches. Source integrity is not a proof of extraction quality, editability, print readiness or current user authorization beyond the existing access contracts.
+
+## Evidence and provenance
+
+Inspected `/private/tmp/banner-ingest-integrated-runtime.log`: **9 files, 259 tests passed**, including the validator suite whose source runs the actual helper in local workerd with the application's compatibility date and flags. Inspected `/private/tmp/banner-ingest-sql-streaming.log`: **45 tests passed** against an owned disposable PostgreSQL cluster, with `sourcesUnchangedDuringProof: true`, successful test exit and cluster cleanup. These are coordinator-produced receipts, not tests rerun by this reviewer. No full test repetition was needed because this review found no concrete defect.
+
+The SQL receipt's hashes match the current upload endpoint, jobs utility, pipeline and their three modified integration test files. The validator and validator-test hashes differ; the coordinator explicitly reports formatting-only lint fixes after the runs, and later reports all ten changed source/test/page files lint clean. This review inspected the current files but does not claim a new post-format execution receipt. The SQL receipt does not hash the public feature pages.
+
+The earlier `INGEST-VALIDATION-REVIEW.md` reviewed the abandoned normalizer-based implementation. Its A4 JPEG rejection, PNG full-raster allocation and needless JPEG re-encoding blockers are addressed in this replacement by preserving the JPEG legacy path and using a separate streaming PNG validator. Its R01, multipart and hosted acceptance exclusions remain applicable; that historical report is preserved unchanged.
+
+Snapshots and sibling diffs for all ten reviewed files are retained under `/private/tmp/banner-ingest-integration-review`, with the complete inventory in `source-sha256.json`. Current production-file SHA-256 values:
+
+| File | SHA-256 |
+| --- | --- |
+| `server/api/agency/banner-studio/dissect/upload.post.ts` | `f6d57c73464ff471b472aaaf04a4b76c39f4613c5fea9e31933492097d7ff2bc` |
+| `server/utils/banner/dissectionPngValidation.ts` | `70b515b8e91050559c306b127183fc9f15af054ec1cb12237cc1f14a41a64e62` |
+| `server/utils/banner/dissectionJobs.ts` | `eae831a8e2077eb7a9be65643051fff6a0b5fb3f86dbb53a5bfce031cd0c957d` |
+| `server/utils/bannerDissectorPipeline.ts` | `d0f6530a3bf679b4173891a6d1444ee279d61c1e90670e834a208660a22f2900` |
+
+## Remaining release gates
+
+Root must integrate only the reviewed increment onto the current release base and retain exact candidate provenance. Candidate build/CI, deployment-target guard, existing feature/navigation checks including QR Codes, hosted upload/queue/storage behavior and provider acceptance remain separate release evidence. This review neither runs nor settles those gates, and does not authorize treating the broad original dirty worktree as a release artifact. Universal image validation, full R01 ownership and multipart resource limits require their own qualification rather than being inferred from this review.
+
+## Coordinator addendum — 27 October, 15:08 UTC
+
+After this independent review settled, root tightened the declared-MIME boundary identified above: the shared byte-signature detector must match the declared allowed MIME before any storage/dispatch. Two new regressions first showed PNG bytes labelled JPEG/WebP reaching the legacy path; both now return 400 before side effects. All 15 upload tests pass, including valid A4 JPEG preservation. This closes the stated PNG MIME-bypass limitation without claiming full JPEG/WebP decoding. Root reread the complete changed route and shared detector; candidate verification remains next. The two PNG fixtures were also changed to construct the typed PNG object before encoding, with identical image bytes. These small follow-up edits are coordinator-reviewed, not silently attributed to the earlier independent snapshot.

@@ -1,10 +1,12 @@
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { execute } from '~~/server/utils/db'
 import { resolveBannerAssetDelivery } from '~~/server/utils/banner/assetDelivery'
 import { uploadFile } from '~~/server/utils/storage'
 import { dispatchDissection } from '~~/server/utils/banner/dissectionDispatch'
-import { dissectionSnapshot, loadDissection, queuedDissectionManifest } from '~~/server/utils/banner/dissectionJobs'
+import { dissectionSnapshot, loadDissection, queuedDissectionManifest, type DissectionSourceIdentity } from '~~/server/utils/banner/dissectionJobs'
+import { validateDissectionPng } from '~~/server/utils/banner/dissectionPngValidation'
+import { detectBannerAssetMime } from '~~/shared/utils/bannerAssetIdentity'
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -32,12 +34,28 @@ export default defineEventHandler(async (event) => {
   if (fileField.data.length > maxSize) {
     throw createError({ statusCode: 400, statusMessage: 'File size exceeds 10MB limit' })
   }
+  // A declared legacy MIME must not bypass the PNG validation boundary.
+  if (detectBannerAssetMime(fileField.data) !== fileField.type) {
+    throw createError({ statusCode: 400, statusMessage: 'The file type does not match the uploaded image' })
+  }
+
+  // PNG-only verification: JPEG/WebP retain their existing unverified path.
+  // The existing JPEG decoder cannot validate A4 within its memory budget.
+  let source: DissectionSourceIdentity | undefined
+  if (fileField.type === 'image/png') {
+    try {
+      const { width, height } = await validateDissectionPng(fileField.data)
+      source = { version: 1, mimeType: fileField.type, byteLength: fileField.data.length, width, height, sha256: createHash('sha256').update(fileField.data).digest('hex') }
+    } catch {
+      throw createError({ statusCode: 400, statusMessage: 'PNG must be valid, static, noninterlaced 8-bit with supported metadata, up to 4096px and 10 megapixels' })
+    }
+  }
 
   const jobId = randomUUID()
   const ext = fileField.type === 'image/png' ? 'png' : fileField.type === 'image/webp' ? 'webp' : 'jpg'
   const r2Key = `banner-dissector/${jobId}/original.${ext}`
   const brand = brandField?.data?.toString('utf-8') || ''
-  const manifest = queuedDissectionManifest()
+  const manifest = { ...queuedDissectionManifest(), ...(source ? { source } : {}) }
 
   // Persist the private source using this request's bucket. Generic S3 writes
   // are a local fallback only; Pages must never silently use the filesystem.

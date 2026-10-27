@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PNG } from 'pngjs'
+import { createHash } from 'node:crypto'
+import type { DissectionSourceIdentity } from '../../server/utils/banner/dissectionJobs'
 import type { DissectorManifest, DissectorLayer } from '../../app/types/banner-studio'
 
 const mocks = vi.hoisted(() => ({ query: vi.fn(), execute: vi.fn(), upload: vi.fn(), download: vi.fn(), analyze: vi.fn(), segment: vi.fn() }))
@@ -12,7 +14,7 @@ const layer = (type: DissectorLayer['type'], id = type): DissectorLayer => ({ id
 const manifest = (layers: DissectorLayer[]): DissectorManifest => ({ jobId: 'analysis-job', version: '2.0', brand: 'Fixture', campaign_type: 'offer', banner_size: '', processed_at: '2026-10-26T00:00:00.000Z', status: 'segmenting', tokens: {}, layers })
 const source = PNG.sync.write(new PNG({ width: 2, height: 2 }))
 let writes: Array<{ sql: string, args: unknown[] }>
-let record: { job_id: string, user_id: string, source_r2_key: string, status: string, error?: string | null, manifest: { execution: { attemptId: string, attempt: number, maxAttempts?: number, stage: string, startedAt?: unknown, updatedAt?: unknown }, layers?: DissectorLayer[], importReceipt?: unknown } }
+let record: { job_id: string, user_id: string, source_r2_key: string, status: string, error?: string | null, manifest: { execution: { attemptId: string, attempt: number, maxAttempts?: number, stage: string, startedAt?: unknown, updatedAt?: unknown }, source?: DissectionSourceIdentity | null, layers?: DissectorLayer[], importReceipt?: unknown } }
 beforeEach(() => {
   vi.resetAllMocks()
   vi.stubEnv('R2_ACCOUNT_ID', 'fixture-only')
@@ -62,6 +64,28 @@ function savedManifest(): DissectorManifest {
 }
 
 describe('Dissector persists honest extraction states', () => {
+  it.each(['hash', 'size', 'dimensions', 'mime', 'version', 'null'])('rejects a %s source identity mismatch before inference', async (mode) => {
+    const identity = { version: 1, mimeType: 'image/png', width: 2, height: 2, byteLength: source.length, sha256: createHash('sha256').update(source).digest('hex') }
+    if (mode === 'hash') identity.sha256 = 'a'.repeat(64)
+    if (mode === 'size') identity.byteLength++
+    if (mode === 'dimensions') identity.width++
+    if (mode === 'mime') identity.mimeType = 'image/jpeg'
+    if (mode === 'version') identity.version = 2
+    record.manifest.source = (mode === 'null' ? null : identity) as DissectionSourceIdentity | null
+    mocks.analyze.mockResolvedValue(manifest([layer('logo')]))
+    await expect(runDissectionPipeline(null, 'job', { attemptId: 'initial' })).rejects.toThrow()
+    expect(mocks.analyze).not.toHaveBeenCalled()
+    expect(mocks.segment).not.toHaveBeenCalled()
+    expect(mocks.upload).not.toHaveBeenCalled()
+  })
+
+  it('allows the exact verified source bytes to reach inference', async () => {
+    record.manifest.source = { version: 1, mimeType: 'image/png', width: 2, height: 2, byteLength: source.length, sha256: createHash('sha256').update(source).digest('hex') }
+    mocks.analyze.mockResolvedValue(manifest([layer('background')]))
+    await runDissectionPipeline(null, 'job', { attemptId: 'initial' })
+    expect(mocks.analyze).toHaveBeenCalledTimes(1)
+    expect(mocks.analyze.mock.calls[0][1]).toBe(source.toString('base64'))
+  })
   it('keeps the full source out of background layers and marks the result for review', async () => {
     mocks.analyze.mockResolvedValue(manifest([layer('background'), layer('logo')]))
     const result = await runDissectionPipeline(null, 'job', { attemptId: 'initial' })

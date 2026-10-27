@@ -4,6 +4,11 @@ import { readFile, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { FORMATS } from '../../../shared/bannerFormats'
+import { PNG } from 'pngjs'
+
+const sourcePng = new PNG({ width: 2, height: 2 })
+sourcePng.data.fill(255)
+const sourceImage = PNG.sync.write(sourcePng)
 
 // Only the owned-cluster runner opts in. A normal test run cannot touch a database.
 const enabled = !!process.env.BANNER_JOBS_PROOF_URL
@@ -20,7 +25,7 @@ vi.mock('~~/server/utils/social/clientAccess', () => ({
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('readBody', async (event: { body: unknown }) => event.body)
 vi.stubGlobal('getRouterParam', (event: { jobId: string }) => event.jobId)
-vi.stubGlobal('readMultipartFormData', async () => [{ name: 'file', type: 'image/png', data: Buffer.from('synthetic image') }])
+vi.stubGlobal('readMultipartFormData', async () => [{ name: 'file', type: 'image/png', data: sourceImage }])
 vi.mock('@aws-sdk/client-s3', () => ({
   GetObjectCommand: class { constructor(readonly input: unknown) {} },
   S3Client: class {
@@ -31,10 +36,13 @@ vi.mock('@aws-sdk/client-s3', () => ({
     }
   }
 }))
-vi.mock('~~/server/utils/storage', () => ({ uploadFile: boundary.upload }))
-vi.mock('~~/server/utils/bannerDissector', () => ({
-  analyzeImage: boundary.analyze, segmentLayer: boundary.segment,
-  getImageDimensions: () => ({ width: 300, height: 250 })
+vi.mock('~~/server/utils/storage', () => ({
+  uploadFile: boundary.upload,
+  readStoredObject: async () => ({ size: sourceImage.length, body: new Blob([sourceImage]).stream() })
+}))
+vi.mock('~~/server/utils/bannerDissector', async original => ({
+  ...await original<typeof import('../../../server/utils/bannerDissector')>(),
+  analyzeImage: boundary.analyze, segmentLayer: boundary.segment
 }))
 vi.mock('~~/server/utils/db', () => {
   const rows = async (sql: string, values?: unknown[]) => {
@@ -79,9 +87,9 @@ const importJob = (await import('../../../server/api/agency/banner-studio/dissec
 const owner = '11111111-1111-4111-8111-111111111111'
 const outsider = '22222222-2222-4222-8222-222222222222'
 const sql = async (query: string, values?: unknown[]) => transport.pool!.query(query, values)
-async function queued() {
+async function queued(source?: Record<string, unknown>) {
   const id = randomUUID()
-  const manifest = jobs.queuedDissectionManifest()
+  const manifest = { ...jobs.queuedDissectionManifest(), ...(source ? { source } : {}) }
   await sql(`INSERT INTO banner_dissections (job_id, user_id, source_r2_key, status, manifest)
     VALUES ($1, $2, $4, 'queued', $3::jsonb)`, [id, owner, JSON.stringify(manifest), `banner-dissector/${id}/original.png`])
   return { id, manifest }
@@ -101,7 +109,14 @@ function importEvent(jobId: string, body: Record<string, unknown>, user = owner)
 }
 type TransportJob = Parameters<typeof ledger.startJobExecution>[0]
 function queueEvent(send: (job: TransportJob) => Promise<void>) {
-  return { context: { cloudflare: { env: { JOBS_QUEUE: { send } } } } } as never
+  return { context: { cloudflare: { env: {
+    JOBS_QUEUE: { send }, RENDER_LINK_SECRET: 's'.repeat(32),
+    MEDIA_BUCKET: {
+      put: async () => ({}), head: async () => ({ size: sourceImage.length }),
+      delete: async () => {},
+      get: async () => ({ size: sourceImage.length, body: new Blob([sourceImage]).stream() })
+    }
+  } } } } as never
 }
 async function rawJob(jobId: string) {
   return (await sql('SELECT * FROM banner_dissections WHERE job_id = $1', [jobId])).rows[0]
@@ -166,6 +181,29 @@ describe.skipIf(!enabled)('Dissection jobs: actual SQL in an owned local Postgre
     expect(claims.filter(Boolean)).toHaveLength(1)
     expect(claims.find(Boolean)!.manifest!.execution).toMatchObject({ attempt: 1, attemptId: job.manifest.execution.attemptId })
     expect(await jobs.claimDissectionAttempt(job.id, { attemptId: job.manifest.execution.attemptId })).toBeNull()
+  })
+
+  it('preserves source identity from the database across stage writes and ignores model identity', async () => {
+    const source = { version: 1, mimeType: 'image/png', byteLength: 120, width: 2, height: 2, sha256: 'a'.repeat(64) }
+    const job = await queued(source)
+    const claim = (await jobs.claimDissectionAttempt(job.id, { attemptId: job.manifest.execution.attemptId }))!
+    await jobs.writeDissectionAttempt(job.id, claim.manifest!.execution!, 'review_ready', {
+      layers: [], source: { ...source, sha256: 'b'.repeat(64) }
+    } as never)
+    expect((await rawJob(job.id)).manifest.source).toEqual(source)
+  })
+
+  it('preserves source identity on explicit retry while clearing the old artwork and receipt', async () => {
+    const source = { version: 1, mimeType: 'image/jpeg', byteLength: 613, width: 2, height: 2, sha256: 'c'.repeat(64) }
+    const job = await queued(source)
+    await sql(`UPDATE banner_dissections SET status = 'failed', manifest = manifest || $2::jsonb WHERE job_id = $1`, [job.id, JSON.stringify({ layers: [{ id: 'stale' }], importReceipt: { id: 'stale' } })])
+    const retried = await jobs.prepareDissectionRetry(job.id, owner, job.manifest.execution.attemptId)
+    expect(retried).not.toBeNull()
+    const stored = (await rawJob(job.id)).manifest
+    expect(stored.source).toEqual(source)
+    expect(stored).not.toHaveProperty('layers')
+    expect(stored).not.toHaveProperty('importReceipt')
+    expect(stored.execution.attemptId).not.toBe(job.manifest.execution.attemptId)
   })
 
   it('cancellation wins before a pending completion and prevents later stage writes', async () => {

@@ -1,5 +1,12 @@
 import type { DissectionRecord } from '../../../server/utils/banner/dissectionJobs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PNG } from 'pngjs'
+import { encode as encodeJpeg } from 'jpeg-js'
+import { createHash } from 'node:crypto'
+
+const sourcePng = new PNG({ width: 2, height: 2 })
+sourcePng.data.fill(255)
+const sourceImage = PNG.sync.write(sourcePng)
 
 const m = vi.hoisted(() => ({ auth: vi.fn(), execute: vi.fn(), query: vi.fn(), upload: vi.fn(), pipeline: vi.fn(), multipart: vi.fn(), queued: vi.fn(), start: vi.fn(), finish: vi.fn() }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -11,13 +18,13 @@ vi.mock('~~/server/utils/jobExecutionLedger', () => ({ recordJobQueued: m.queued
 vi.mock('~~/server/utils/bannerDissectorPipeline', () => ({ runDissectionPipeline: m.pipeline }))
 const upload = (await import('../../../server/api/agency/banner-studio/dissect/upload.post')).default
 let row: DissectionRecord
-const nativeBucket = () => ({ put: vi.fn().mockResolvedValue({}), head: vi.fn().mockResolvedValue({ size: Buffer.byteLength('local fixture') }), delete: vi.fn() })
+const nativeBucket = () => ({ put: vi.fn().mockResolvedValue({}), head: vi.fn().mockResolvedValue({ size: sourceImage.length }), delete: vi.fn() })
 const hostedEnv = (extra = {}) => ({ MEDIA_BUCKET: nativeBucket(), RENDER_LINK_SECRET: 's'.repeat(32), ...extra })
 const local = { path: '/', node: { req: { headers: { host: 'localhost' }, url: '/' } } }
 beforeEach(() => {
   vi.resetAllMocks()
   m.auth.mockResolvedValue({ id: 'owner' })
-  m.multipart.mockResolvedValue([{ name: 'file', type: 'image/png', data: Buffer.from('local fixture') }])
+  m.multipart.mockResolvedValue([{ name: 'file', type: 'image/png', data: sourceImage }])
   m.upload.mockResolvedValue({ url: 'https://fixture.invalid/source.png' })
   m.execute.mockImplementation(async (_sql, args: string[]) => {
     if (_sql.startsWith('INSERT INTO banner_dissections')) row = { job_id: args[0], status: 'queued', manifest: JSON.parse(args[4]) }
@@ -90,6 +97,52 @@ describe('Dissection upload using the shared dispatcher (local mocked DB)', () =
 
 afterEach(() => vi.unstubAllEnvs())
 describe('Dissection source upload native persistence', () => {
+  it.each(['image/jpeg', 'image/webp'])('rejects PNG bytes labelled %s before storage or dispatch', async (mimeType) => {
+    m.multipart.mockResolvedValue([{ name: 'file', type: mimeType, data: sourceImage }])
+    const bucket = nativeBucket()
+    const send = vi.fn()
+    await expect(upload({ ...local, context: { cloudflare: { env: hostedEnv({ MEDIA_BUCKET: bucket, JOBS_QUEUE: { send } }) } } } as never)).rejects.toMatchObject({ statusCode: 400 })
+    expect(bucket.put).not.toHaveBeenCalled()
+    expect(m.execute).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+  it('validates PNG and stores the exact original with its content identity', async () => {
+    const mimeType = 'image/png'
+    const data = sourceImage
+    m.multipart.mockResolvedValue([{ name: 'file', type: mimeType, data }])
+    const bucket = nativeBucket()
+    bucket.head.mockResolvedValue({ size: data.length })
+    await upload({ ...local, context: { cloudflare: { env: hostedEnv({ MEDIA_BUCKET: bucket, JOBS_QUEUE: { send: vi.fn() } }) } } } as never)
+    expect(Buffer.from(bucket.put.mock.calls[0][1])).toEqual(data)
+    expect(JSON.parse(m.execute.mock.calls[0][1][4]).source).toEqual({
+      version: 1, mimeType, byteLength: data.length, width: 2, height: 2,
+      sha256: createHash('sha256').update(data).digest('hex')
+    })
+  })
+  it.each([[2, 2], [2480, 3508]])('preserves legacy JPEG %i×%i original bytes without claiming verified source identity', async (width, height) => {
+    const data = Buffer.from(encodeJpeg({ width, height, data: Buffer.alloc(width * height * 4, 255) }, 80).data)
+    m.multipart.mockResolvedValue([{ name: 'file', type: 'image/jpeg', data }])
+    const bucket = nativeBucket()
+    bucket.head.mockResolvedValue({ size: data.length })
+    await upload({ ...local, context: { cloudflare: { env: hostedEnv({ MEDIA_BUCKET: bucket, JOBS_QUEUE: { send: vi.fn() } }) } } } as never)
+    expect(Buffer.from(bucket.put.mock.calls[0][1])).toEqual(data)
+    expect(JSON.parse(m.execute.mock.calls[0][1][4])).not.toHaveProperty('source')
+  })
+  it.each([
+    ['empty', Buffer.alloc(0)],
+    ['declared PNG containing text', Buffer.from('not an image')],
+    ['truncated PNG', sourceImage.subarray(0, 30)]
+  ])('rejects %s before storage or dispatch', async (_name, data) => {
+    m.multipart.mockResolvedValue([{ name: 'file', type: 'image/png', data }])
+    const bucket = nativeBucket()
+    bucket.head.mockResolvedValue({ size: data.length })
+    const send = vi.fn()
+    await expect(upload({ ...local, context: { cloudflare: { env: hostedEnv({ MEDIA_BUCKET: bucket, JOBS_QUEUE: { send } }) } } } as never)).rejects.toMatchObject({ statusCode: 400 })
+    expect(bucket.put).not.toHaveBeenCalled()
+    expect(m.upload).not.toHaveBeenCalled()
+    expect(m.execute).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
   it('writes and verifies the native source before inserting or dispatching with no process credentials', async () => {
     vi.stubEnv('R2_ACCOUNT_ID', '')
     vi.stubEnv('R2_ACCESS_KEY_ID', '')

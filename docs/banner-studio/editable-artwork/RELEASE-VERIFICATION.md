@@ -1,3 +1,7 @@
+## Superseding CI checkpoint — 27 October 2026, 15:12 UTC
+
+Corrected full CI `40519026264` succeeded on `7eb52a6736989aacb3c4bd62ac086baf8a1bf0f4`, including production build, all six exact-artifact startup/codec checks, 20,631 passing tests / 3,809 optional skips, and remaining mandatory checks. Production app source remains `fb065b7d2fabc4c94c2aff490b1f35114a6aab7f` at this checkpoint. The next reviewed PNG source-integrity increment is candidate-qualified locally in [INGEST-SOURCE-INTEGRITY.md](INGEST-SOURCE-INTEGRITY.md); its release remains separate. Native canary admission remains disabled and the specific one-run approval unanswered. Production OpenAI key presence is false; no live provider request occurred.
+
 # Banner release verification — 28 October 2026
 
 The editor/export release is deployed and passes the bounded synthetic checks below. The full editable-artwork PRD is incomplete. Native execution and live AI-provider acceptance require the specific approvals described below.

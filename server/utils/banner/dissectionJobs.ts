@@ -36,12 +36,20 @@ export interface DissectionExecution {
   dispatchState?: 'reserved' // Legacy metadata is never eligible for autonomous recovery.
   dispatch?: DissectionDispatch
 }
+export interface DissectionSourceIdentity {
+  version: 1
+  mimeType: 'image/png'
+  byteLength: number
+  width: number
+  height: number
+  sha256: string
+}
 export interface DissectionRecord {
   job_id: string
   status: string
   source_r2_key?: string
   brand?: string
-  manifest?: Partial<DissectorManifest> & { execution?: DissectionExecution, importReceipt?: unknown } | null
+  manifest?: Partial<DissectorManifest> & { execution?: DissectionExecution, source?: DissectionSourceIdentity, importReceipt?: unknown } | null
   error?: string | null
   created_at?: string
   updated_at?: string
@@ -87,7 +95,8 @@ export async function prepareDissectionRetry(jobId: string, userId: string, expe
   const manifest = queuedDissectionManifest()
   return await queryOneFresh<DissectionRecord>(
     `UPDATE banner_dissections SET status = 'queued', error = NULL,
-       manifest = jsonb_build_object('execution', $4::jsonb || jsonb_build_object(
+       manifest = CASE WHEN manifest ? 'source' THEN jsonb_build_object('source', manifest->'source') ELSE '{}'::jsonb END
+         || jsonb_build_object('execution', $4::jsonb || jsonb_build_object(
          'attempt', COALESCE((manifest->'execution'->>'attempt')::int, 1) + 1,
          'updatedAt', clock_timestamp(), 'deadlineAt', clock_timestamp() + interval '10 minutes',
          'dispatch', ($4::jsonb)->'dispatch' || jsonb_build_object('nextAttemptAt', clock_timestamp()))), updated_at = NOW()
@@ -254,7 +263,9 @@ export async function writeDissectionAttempt(
       ...(['complete', 'review_ready'].includes(status) ? { resultId: dissectionResultId(artwork, execution.attemptId) } : {}) }
   }
   return await queryOneFresh<DissectionRecord>(
-    `UPDATE banner_dissections SET status = $1, manifest = $2::jsonb, error = $3, updated_at = NOW()
+    `UPDATE banner_dissections SET status = $1, manifest = $2::jsonb
+       || CASE WHEN manifest ? 'source' THEN jsonb_build_object('source', manifest->'source') ELSE '{}'::jsonb END,
+       error = $3, updated_at = NOW()
      WHERE job_id = $4 AND manifest->'execution'->>'attemptId' = $5
        AND status IN ('analyzing', 'segmenting')
        AND COALESCE((manifest->'execution'->>'deadlineAt')::timestamptz, updated_at + interval '10 minutes') > clock_timestamp() RETURNING *`,

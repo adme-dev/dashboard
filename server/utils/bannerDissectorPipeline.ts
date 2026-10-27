@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createError } from 'h3'
 import { claimDissectionAttempt, dissectionArtwork, dissectionSnapshot, isDissectionAttemptActive, loadDissection, writeDissectionAttempt, type DissectionAttemptOptions } from '~~/server/utils/banner/dissectionJobs'
 import { readStoredObject, type R2BucketBinding } from '~~/server/utils/storage'
@@ -9,6 +9,7 @@ import { bannerAssetDeliveryUrl, createBannerAssetStorageKey, uploadBannerAsset,
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { analyzeImage, segmentLayer, getImageDimensions } from '~~/server/utils/bannerDissector'
 import type { DissectorManifest } from '~~/app/types/banner-studio'
+import { detectBannerAssetMime } from '~~/shared/utils/bannerAssetIdentity'
 
 /**
  * Run the full dissection pipeline: fetch image → analyze → segment → upload assets.
@@ -46,6 +47,24 @@ export async function runDissectionPipeline(
     }
     const imageWidth = dims.width
     const imageHeight = dims.height
+
+    // Only newly verified uploads have this server-owned identity. A present
+    // malformed record must never fall back to legacy handling. Matching the
+    // original hash avoids decoding the same trusted pixels a second time.
+    if (Object.prototype.hasOwnProperty.call(record.manifest, 'source')) {
+      const source = record.manifest!.source
+      if (!source || source.version !== 1
+        || source.mimeType !== 'image/png'
+        || source.mimeType !== detectBannerAssetMime(imageBuffer)
+        || source.byteLength !== imageBuffer.length
+        || source.width !== imageWidth || source.height !== imageHeight
+        || source.width > 4096 || source.height > 4096
+        || source.width * source.height > 10_000_000
+        || !/^[a-f0-9]{64}$/.test(source.sha256)
+        || createHash('sha256').update(imageBuffer).digest('hex') !== source.sha256) {
+        throw new Error('Dissection source identity no longer matches the verified original')
+      }
+    }
 
     // 4. Analyze with AI vision
     const imageBase64 = imageBuffer.toString('base64')
