@@ -123,7 +123,7 @@ describe('LinkedIn organic publishing account callback', () => {
       })
       await callbackH({ query: { code: 'CODE', state: 'STATE' } } as never)
       expect(mockMapLinkedInOrganizationsToAccountRows).toHaveBeenCalledWith(
-        expect.any(Array), 'AT', 'RT', '2026-12-25T00:00:00.000Z', '2027-10-26T00:00:00.000Z'
+        expect.any(Array), 'AT', 'RT', '2026-12-25T00:00:00.000Z', '2027-10-26T00:00:00.000Z', undefined
       )
 
       mockDiscoverLinkedInOrganizations.mockResolvedValueOnce([

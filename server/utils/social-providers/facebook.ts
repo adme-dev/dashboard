@@ -427,13 +427,13 @@ export const facebookProvider: SocialPostProvider = {
     const { accessToken, postId, content } = params
 
     try {
-      const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${postId}/comments`, {
+      const res = await publicationRequest(() => providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${postId}/comments`, {
         method: 'POST',
         body: {
           message: content,
           access_token: accessToken
         }
-      })
+      }))
 
       return {
         platformPostId: res.id,

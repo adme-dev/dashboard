@@ -1,238 +1,90 @@
-/**
- * TikTok Social Media Provider
- *
- * Implements the Content Posting API for publishing videos and photos to TikTok.
- * Uses "pull from URL" for videos (TikTok downloads from our public R2 URL)
- * and direct photo URLs for photo posts.
- *
- * API Reference: https://developers.tiktok.com/doc/content-posting-api-reference-direct-post
- *
- * Rate limits: 6 requests per minute per user token
- */
-
-import type { SocialPostProvider, PostParams, PostResult, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
+/** TikTok Direct Post: init acceptance is never a publication receipt. */
+import type { SocialPostProvider, PostParams, PostResult, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
-import { providerFetch } from './http'
-
+import { providerFetch, isAmbiguousHttpOutcome } from './http'
+import { tikTokPayloadError, type TikTokCreatorCapabilities } from '~~/shared/tiktokPosting'
 const TIKTOK_API_BASE = 'https://open.tiktokapis.com/v2'
-
-interface TikTokApiResponse {
-  data: {
-    publish_id?: string
-  }
-  error: {
-    code: string
-    message: string
-    log_id: string
-  }
+type TikTokResponse = { data?: Record<string, any>, error?: { code?: string, log_id?: string } }
+export function tikTokReceipt(response: TikTokResponse) {
+  const safe = (value: unknown) => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value) ? value : null
+  return { code: safe(response.error?.code), logId: safe(response.error?.log_id) }
 }
-
-/**
- * Publish a video to TikTok using the Direct Post (pull from URL) method.
- * TikTok will download the video from the provided public URL.
- */
-async function postVideo(params: PostParams, videoUrl: string): Promise<PostResult> {
-  const {
-    privacy_level = 'PUBLIC_TO_EVERYONE',
-    disable_comment = false,
-    disable_duet = false,
-    disable_stitch = false,
-    brand_content_toggle = false,
-    brand_organic_toggle = false,
-    video_cover_timestamp_ms = 0,
-  } = params.options || {}
-
+const headers = (token: string) => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' })
+export const usableTikTokPublishId = (id: unknown): id is string => typeof id === 'string' && id.length > 0 && id.length <= 64 && !/[\s\x00-\x1f\x7f]/.test(id)
+export async function queryTikTokCreatorPostCapabilities(accessToken: string): Promise<TikTokCreatorCapabilities> {
+  const response = await providerFetch<TikTokResponse>(`${TIKTOK_API_BASE}/post/publish/creator_info/query/`, { method: 'POST', headers: headers(accessToken), body: {}, retry: 0, timeout: 12000 })
+  const d = response.data
+  if (response.error?.code !== 'ok' || !d || !Array.isArray(d.privacy_level_options)
+    || !d.privacy_level_options.every((v: unknown) => typeof v === 'string')
+    || !['comment_disabled', 'duet_disabled', 'stitch_disabled'].every(k => typeof d[k] === 'boolean')
+    || !Number.isFinite(d.max_video_post_duration_sec) || d.max_video_post_duration_sec <= 0) {
+    throw new Error(`TikTok creator unavailable: ${tikTokReceipt(response).code ?? 'invalid_response'}`)
+  }
+  return { creator_nickname: String(d.creator_nickname ?? ''), creator_username: String(d.creator_username ?? ''),
+    creator_avatar_url: typeof d.creator_avatar_url === 'string' ? d.creator_avatar_url : undefined,
+    privacy_level_options: d.privacy_level_options, comment_disabled: d.comment_disabled, duet_disabled: d.duet_disabled,
+    stitch_disabled: d.stitch_disabled, max_video_post_duration_sec: d.max_video_post_duration_sec }
+}
+export interface TikTokStatusResult {
+  state: 'accepted' | 'published' | 'failed' | 'unknown'
+  providerStatus: string
+  providerReceipt: ReturnType<typeof tikTokReceipt>
+  publicPostIds?: string[]
+  error?: string
+}
+export async function fetchTikTokPublishStatus(accessToken: string, publishId: string): Promise<TikTokStatusResult> {
+  if (!usableTikTokPublishId(publishId)) return { state: 'unknown', providerStatus: 'invalid_publish_id', providerReceipt: { code: null, logId: null } }
   try {
-    const response = await providerFetch<TikTokApiResponse>(
-      `${TIKTOK_API_BASE}/post/publish/video/init/`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${params.accessToken}`,
-          'Content-Type': 'application/json; charset=UTF-8',
-        },
-        body: {
-          post_info: {
-            title: params.content.slice(0, 2200),
-            privacy_level,
-            disable_comment,
-            disable_duet,
-            disable_stitch,
-            brand_content_toggle,
-            brand_organic_toggle,
-            video_cover_timestamp_ms,
-          },
-          source_info: {
-            source: 'PULL_FROM_URL',
-            video_url: videoUrl,
-          },
-        },
-      }
-    )
-
-    if (response.error?.code && response.error.code !== 'ok') {
-      console.error('[TikTok] Video post error:', response.error)
-      return {
-        platformPostId: '',
-        url: '',
-        status: 'failed',
-        error: `TikTok error ${response.error.code}: ${response.error.message}`,
-      }
-    }
-
-    const publishId = response.data?.publish_id || ''
-
-    return {
-      platformPostId: publishId,
-      url: `https://www.tiktok.com/@${params.accountId}`,
-      status: 'success',
-    }
-  } catch (error: unknown) {
-    const err = error as { data?: TikTokApiResponse; statusCode?: number; message?: string }
-    const apiError = err.data?.error
-    const message = apiError
-      ? `TikTok error ${apiError.code}: ${apiError.message}`
-      : err.message || 'Unknown TikTok API error'
-
-    console.error('[TikTok] Video post failed:', message)
-    return {
-      platformPostId: '',
-      url: '',
-      status: 'failed',
-      error: message,
-    }
+    const r = await providerFetch<TikTokResponse>(`${TIKTOK_API_BASE}/post/publish/status/fetch/`, { method: 'POST', headers: headers(accessToken), body: { publish_id: publishId }, retry: 0, timeout: 12000 })
+    const receipt = tikTokReceipt(r)
+    if (r.error?.code !== 'ok') return { state: ['invalid_publish_id', 'token_not_authorized_for_specified_publish_id'].includes(receipt.code ?? '') ? 'unknown' : 'accepted', providerStatus: 'lookup_error', providerReceipt: receipt }
+    const status = typeof r.data?.status === 'string' && /^[A-Z_]{1,64}$/.test(r.data.status) ? r.data.status : 'INVALID_STATUS'
+    const state = status === 'PUBLISH_COMPLETE' ? 'published' : status === 'FAILED' ? 'failed' : ['PROCESSING_DOWNLOAD', 'PROCESSING_UPLOAD'].includes(status) ? 'accepted' : 'unknown'
+    return { state, providerStatus: status, providerReceipt: receipt,
+      publicPostIds: Array.isArray(r.data?.publicaly_available_post_id) ? r.data.publicaly_available_post_id.map((id: unknown) => typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? String(id) : id).filter((id: unknown): id is string => typeof id === 'string' && /^\d{1,64}$/.test(id)).slice(0, 35) : [],
+      ...(state === 'failed' ? { error: typeof r.data?.fail_reason === 'string' && /^[a-z_]{1,80}$/.test(r.data.fail_reason) ? r.data.fail_reason : 'provider_failed' } : {}) }
+  } catch (error: any) {
+    const receipt = tikTokReceipt(error?.data ?? {})
+    return { state: ['invalid_publish_id', 'token_not_authorized_for_specified_publish_id'].includes(receipt.code ?? '') ? 'unknown' : 'accepted', providerStatus: 'lookup_unavailable', providerReceipt: receipt }
   }
 }
-
-/**
- * Publish a photo post to TikTok using the Content Posting API.
- * Supports up to 35 images per post.
- */
-async function postPhotos(params: PostParams, imageUrls: string[]): Promise<PostResult> {
-  const {
-    privacy_level = 'PUBLIC_TO_EVERYONE',
-    disable_comment = false,
-    brand_content_toggle = false,
-    brand_organic_toggle = false,
-  } = params.options || {}
-
-  try {
-    const response = await providerFetch<TikTokApiResponse>(
-      `${TIKTOK_API_BASE}/post/publish/content/init/`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${params.accessToken}`,
-          'Content-Type': 'application/json; charset=UTF-8',
-        },
-        body: {
-          post_info: {
-            title: params.content.slice(0, 2200),
-            privacy_level,
-            disable_comment,
-            brand_content_toggle,
-            brand_organic_toggle,
-          },
-          source_info: {
-            source: 'PULL_FROM_URL',
-            photo_cover_index: 0,
-            photo_images: imageUrls,
-          },
-          post_mode: 'DIRECT_POST',
-          media_type: 'PHOTO',
-        },
-      }
-    )
-
-    if (response.error?.code && response.error.code !== 'ok') {
-      console.error('[TikTok] Photo post error:', response.error)
-      return {
-        platformPostId: '',
-        url: '',
-        status: 'failed',
-        error: `TikTok error ${response.error.code}: ${response.error.message}`,
-      }
-    }
-
-    const publishId = response.data?.publish_id || ''
-
-    return {
-      platformPostId: publishId,
-      url: `https://www.tiktok.com/@${params.accountId}`,
-      status: 'success',
-    }
-  } catch (error: unknown) {
-    const err = error as { data?: TikTokApiResponse; statusCode?: number; message?: string }
-    const apiError = err.data?.error
-    const message = apiError
-      ? `TikTok error ${apiError.code}: ${apiError.message}`
-      : err.message || 'Unknown TikTok API error'
-
-    console.error('[TikTok] Photo post failed:', message)
-    return {
-      platformPostId: '',
-      url: '',
-      status: 'failed',
-      error: message,
-    }
-  }
-}
-
-/**
- * TikTok social media provider.
- *
- * Supports video posts (via pull-from-URL) and photo posts.
- * Text-only posts are not supported by TikTok — at least one media item is required.
- *
- * @example
- * ```ts
- * const result = await tiktokProvider.post({
- *   accountId: 'user123',
- *   accessToken: 'tok_abc',
- *   content: 'Check out our latest vehicle! 🚗',
- *   media: [{ url: 'https://r2.example.com/video.mp4', type: 'video' }],
- *   options: { privacy_level: 'PUBLIC_TO_EVERYONE' },
- * })
- * ```
- */
 export const tiktokProvider: SocialPostProvider = {
-  identifier: 'tiktok',
-  name: 'TikTok',
-
+  identifier: 'tiktok', name: 'TikTok',
   async post(params: PostParams): Promise<PostResult> {
-    const media = params.media || []
-
-    // TikTok requires at least one media item
-    if (media.length === 0) {
-      return {
-        platformPostId: '',
-        url: '',
-        status: 'failed',
-        error: 'TikTok requires at least one image or video. Text-only posts are not supported.',
-      }
+    const fail = (error: string, indeterminate = false): PostResult => ({ status: 'failed', platformPostId: '', url: '', error, indeterminate })
+    const media = params.media ?? []
+    const options = params.options ?? {}
+    const mapped = media.map(m => ({ mediaType: m.type, durationSeconds: m.durationSeconds }))
+    const problem = tikTokPayloadError(params.content, mapped, options)
+    if (problem) return fail(problem)
+    if (media.some(m => { try { return new URL(m.url).protocol !== 'https:' } catch { return true } })) return fail('TikTok media requires HTTPS')
+    try {
+      const creator = await queryTikTokCreatorPostCapabilities(params.accessToken)
+      const error = tikTokPayloadError(params.content, mapped, options, creator)
+      if (error) return fail(error)
+    } catch { return fail('TikTok creator capabilities are unavailable; nothing was submitted') }
+    const video = media[0]!.type === 'video'
+    const common = { privacy_level: options.privacy_level, disable_comment: options.disable_comment !== false,
+      brand_content_toggle: options.brand_content_toggle === true, brand_organic_toggle: options.brand_organic_toggle === true }
+    const body = video ? {
+      post_info: { ...common, title: params.content, disable_duet: options.disable_duet !== false, disable_stitch: options.disable_stitch !== false,
+        video_cover_timestamp_ms: options.video_cover_timestamp_ms ?? 0, is_aigc: options.is_aigc === true },
+      source_info: { source: 'PULL_FROM_URL', video_url: media[0]!.url }
+    } : {
+      post_info: { ...common, title: options.title ?? '', description: params.content, auto_add_music: options.auto_add_music === true },
+      source_info: { source: 'PULL_FROM_URL', photo_cover_index: options.photo_cover_index ?? 0, photo_images: media.map(m => m.url) },
+      post_mode: 'DIRECT_POST', media_type: 'PHOTO', is_aigc: options.is_aigc === true
     }
-
-    const videos = media.filter((m: MediaItem) => m.type === 'video')
-    const images = media.filter((m: MediaItem) => m.type === 'image')
-
-    // Video post — use the first video
-    if (videos.length > 0) {
-      return postVideo(params, videos[0]!.url)
+    try {
+      const r = await providerFetch<TikTokResponse>(`${TIKTOK_API_BASE}/post/publish/${video ? 'video' : 'content'}/init/`, { method: 'POST', headers: headers(params.accessToken), body, retry: 0, timeout: 12000 })
+      const providerReceipt = tikTokReceipt(r)
+      if (r.error?.code && r.error.code !== 'ok') return { ...fail(`TikTok rejected init: ${providerReceipt.code ?? 'rejected'}`), providerReceipt }
+      if (r.error?.code !== 'ok' || !usableTikTokPublishId(r.data?.publish_id)) return { ...fail('TikTok init outcome unknown; do not retry', true), providerReceipt }
+      return { status: 'accepted', platformPostId: r.data!.publish_id, url: '', providerStatus: 'INIT_ACCEPTED', providerReceipt }
+    } catch (error: any) {
+      return fail('TikTok init request did not return a usable receipt', isAmbiguousHttpOutcome(error?.statusCode ?? error?.status))
     }
-
-    // Photo post — send all image URLs
-    if (images.length > 0) {
-      const imageUrls = images.map((m: MediaItem) => m.url)
-      return postPhotos(params, imageUrls)
-    }
-
-    return {
-      platformPostId: '',
-      url: '',
-      status: 'failed',
-      error: 'No supported media found. Provide at least one image or video.',
-    }
-  },
+  }
 }
 
 // --- Slice 2 inbox: TikTok video comments (best-effort) ---

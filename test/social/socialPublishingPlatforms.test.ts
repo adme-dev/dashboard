@@ -29,7 +29,7 @@ describe('social publishing platform registry', () => {
 
   it('documents why paid-media OAuth cannot be used as organic publishing readiness', () => {
     expect(socialPublishingPlatformReadiness('linkedin')).toContain('Ready for Company Page connection')
-    expect(socialPublishingPlatformReadiness('tiktok')).toContain('Content Posting creator OAuth foundation is available')
+    expect(socialPublishingPlatformReadiness('tiktok')).toContain('actual product eligibility')
     expect(socialPublishingPlatformReadiness('youtube')).toContain('OAuth channel discovery foundation is available')
     expect(socialPublishingPlatformReadiness('facebook')).toBe('Ready for publishing account connection')
   })

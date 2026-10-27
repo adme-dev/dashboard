@@ -329,12 +329,16 @@ describe('God mode gate inventory', () => {
     // predicates are replaced by delegated-grant versus legacy branches, with unchanged
     // governance count. No owner bypass or provider/identity gate is removed. Exact diff:
     // .superpowers/sdd/2026-10-27-marketing-staff-mcp/task-4-gate-inventory-diff.json.
-    expect(inventory.rows).toHaveLength(1652)
+    // I2: fresh browser policy adds exactly one permission-group read; no bypass changes.
+    expect(inventory.rows).toContain("server/utils/social/clientAccess.ts\tconst groups = context.permissionGroups ?? []\tordinary_user_behavior")
+    // R3 adds the current CREATIVE operation check; reads retain their existing authority boundary.
+    expect(inventory.rows).toContain("server/api/agency/social/publishing/accounts/index.get.ts\tconst canPublish = context.permissionGroups?.includes('CREATIVE') === true\tordinary_user_behavior")
+    expect(inventory.rows).toHaveLength(1654)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 127,
       provider_infrastructure_availability: 222,
       application_governance_bypass: 1620,
-      ordinary_user_behavior: 251,
+      ordinary_user_behavior: 253,
       unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -354,7 +358,7 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows.filter(row => row.startsWith('server/utils/socialPublishing/mediaAssets.ts\t'))).toEqual([
       "server/utils/socialPublishing/mediaAssets.ts\tconst secret = typeof bound === 'string' ? bound : (env && 'RENDER_LINK_SECRET' in env ? null : process.env.RENDER_LINK_SECRET)\tprovider_infrastructure_availability"
     ])
-    expect(inventory.digest).toBe('895025a784eb5e082b5d8d0c2e6786a55d573fff3ca6bedb83520e9acf4c8222')
+    expect(inventory.digest).toBe('ef70e070b1b766c934101ed984b094c9c66952d74f7e74932434af3fd7aeabe5')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

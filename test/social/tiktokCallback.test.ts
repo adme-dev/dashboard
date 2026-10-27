@@ -87,7 +87,8 @@ describe('TikTok Content Posting account callback', () => {
       expect.objectContaining({ openId: 'open-1' }),
       'AT',
       'RT',
-      expect.any(String)
+      expect.any(String),
+      { scope: '', refreshExpiresAt: null }
     )
     expect(sendRedirectMock).toHaveBeenCalledWith(
       event,

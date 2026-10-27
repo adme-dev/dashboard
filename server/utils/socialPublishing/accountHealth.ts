@@ -60,15 +60,10 @@ export function classifySocialPublishingAccountHealth(
     }
   }
 
-  const platformStatus = socialPublishingPlatformProductionStatus(input.platform)
-  if (platformStatus && !platformStatus.productionReady) {
-    return {
-      health: 'attention',
-      healthLabel: 'Publishing disabled',
-      healthReason: `${platformStatus.label} publishing is not production-ready: ${platformStatus.reason}`,
-      requiresReconnect: false,
-      daysUntilExpiry: days
-    }
+  // Preserve planned YouTube health; TikTok now distinguishes expired/missing grants below.
+  if (input.platform === 'youtube') {
+    const status = socialPublishingPlatformProductionStatus(input.platform)!
+    return { health: 'attention', healthLabel: 'Publishing disabled', healthReason: `${status.label} publishing is not production-ready: ${status.reason}`, requiresReconnect: false, daysUntilExpiry: days }
   }
 
   if (tokenExpiresAt && tokenExpiresAt.getTime() <= now.getTime() && !hasRefreshToken) {
@@ -103,6 +98,25 @@ export function classifySocialPublishingAccountHealth(
       healthLabel: 'Reconnect soon',
       healthReason: 'The access token expires within 7 days.',
       requiresReconnect: true,
+      daysUntilExpiry: days
+    }
+  }
+
+  if (input.platform === 'tiktok') {
+    const expiry = toDate(typeof input.metadata?.refreshTokenExpiresAt === 'string' ? input.metadata.refreshTokenExpiresAt : null)
+    const scopes = Array.isArray(input.metadata?.grantedScopes) ? input.metadata.grantedScopes : []
+    if (!scopes.includes('video.publish') || !expiry || expiry.getTime() <= now.getTime() || !hasRefreshToken) {
+      return { health: 'reconnect', healthLabel: 'Reconnect required', healthReason: 'TikTok requires video.publish and a valid refresh grant.', requiresReconnect: true, daysUntilExpiry: days }
+    }
+  }
+
+  const platformStatus = socialPublishingPlatformProductionStatus(input.platform)
+  if (platformStatus && !platformStatus.productionReady) {
+    return {
+      health: 'attention',
+      healthLabel: 'Publishing disabled',
+      healthReason: `${platformStatus.label} publishing is not production-ready: ${platformStatus.reason}`,
+      requiresReconnect: false,
       daysUntilExpiry: days
     }
   }

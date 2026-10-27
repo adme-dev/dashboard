@@ -1,3 +1,4 @@
+import { normalizeTikTokOptions } from '~~/shared/tiktokPosting'
 import { isNewsroomOwned } from '~~/server/utils/newsroomSocialSource'
 import { createError, type H3Event } from 'h3'
 import { queryOneFresh, queryRows } from '~~/server/utils/db'
@@ -239,7 +240,7 @@ export async function requireSocialPostClientAccess(event: H3Event, postId: stri
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
   await requireSocialClientAccess(event, row.client_id)
-  if (isNewsroomOwned(row) && !['GET', 'HEAD'].includes(event.method ?? '')) {
+  if (isNewsroomOwned({ ...row, metadata: row.metadata ?? undefined }) && !['GET', 'HEAD'].includes(event.method ?? '')) {
     throw createError({ statusCode: 409, statusMessage: 'Manage this approved post in the DriveAgent newsroom' })
   }
   return row
@@ -403,6 +404,9 @@ export function normalizeProviderOptions(platform: string, value: unknown): Reco
   }
   const options = value as Record<string, unknown>
   if (Object.keys(options).length === 0) return {}
+  if (platform === 'tiktok') {
+    try { return normalizeTikTokOptions(options) } catch (error) { throw createError({ statusCode: 400, statusMessage: (error as Error).message }) }
+  }
   if (platform === 'instagram') return normalizeInstagramOptions(options)
   if (platform === 'google-business') return normalizeGoogleBusinessOptions(options)
   if (platform === 'youtube') return normalizeYouTubeOptions(options)

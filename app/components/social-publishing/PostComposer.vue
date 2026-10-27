@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { resolveEffectiveSocialTargets, tikTokConsentIdentity } from '~~/shared/socialEffectivePayload'
 import { isVideoMediaUrl } from '~/utils/social/videoMedia'
 import type { DateValue } from '@internationalized/date'
 import { isoToScheduleParts, partsToIso } from '~/utils/socialSchedule'
@@ -10,7 +11,7 @@ import {
   socialPublishingPlatformLimit
 } from '~/utils/socialPublishingPlatforms'
 import type { SocialAccount, SocialPublishPlatform } from '~/types'
-import { syncComposerAccountIds, useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
+import { syncComposerAccountIds, syncComposerTargets, useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
 
 const { state, setOverride, resolved } = useSocialComposer()
 const apiFetch = $fetch as <T = unknown>(
@@ -22,6 +23,8 @@ const props = defineProps<{
   clientId: string | null
   accounts: SocialAccount[]
   accountsLoading?: boolean
+  /** True only after successful account discovery for this client, never merely !loading. */
+  accountsResolved: boolean
 }>()
 
 const PLATFORM_OPTIONS = LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS
@@ -59,13 +62,45 @@ const accountsRoute = computed(() => props.clientId
   : '/agency/social/publishing/accounts')
 
 watch(
-  () => [state.value.platforms, props.accounts] as const,
+  () => [state.value.platforms, state.value.accountIds, props.accounts, props.accountsResolved, props.accountsLoading] as const,
   () => {
+    // A saved post can arrive before its accounts. Keep exact options until the result is authoritative.
+    if (!props.accountsResolved || props.accountsLoading) return
     const next = syncComposerAccountIds(state.value.platforms, state.value.accountIds, props.accounts)
     if (next.join('|') !== state.value.accountIds.join('|')) state.value.accountIds = next
+    state.value.publishTargets = syncComposerTargets(
+      state.value.platforms, next, state.value.publishTargets, props.accounts)
   },
   { deep: true, immediate: true },
 )
+
+const tiktokAccountIds = computed(() => activeAccounts.value.filter(a => a.platform === 'tiktok' && state.value.accountIds.includes(a.id)).map(a=>a.id))
+function tiktokOptions(accountId: string): Record<string, unknown> {
+  return {
+    ...(state.value.customizePerNetwork ? state.value.platformOverrides.tiktok?.options : {}),
+    ...state.value.publishTargets.find(t=>t.platform==='tiktok' && t.accountId===accountId)?.options,
+    consentAccountId:props.accounts.find(a=>a.id===accountId)?.platform_account_id
+  }
+}
+function setTikTokOptions(accountId: string, options: Record<string, unknown>) {
+  const others = state.value.publishTargets.filter(t=>!(t.platform==='tiktok' && t.accountId===accountId))
+  state.value.publishTargets = [...others,{platform:'tiktok',accountId,options}]
+}
+function tiktokEffective(accountId: string) {
+  return resolveEffectiveSocialTargets({
+    postId:state.value.id ?? 'unsaved',content:state.value.content,linkUrl:state.value.linkUrl,
+    hashtags:state.value.hashtags,firstComment:state.value.firstComment,
+    platformOverrides:state.value.customizePerNetwork ? state.value.platformOverrides : {},
+    targets:[{platform:'tiktok',accountId,options:{...tiktokOptions(accountId),consentAccountId:props.accounts.find(a=>a.id===accountId)?.platform_account_id}}]
+  },state.value.reviewPolicy === 'delegated_marketing' ? state.value.mediaIdentities : resolved('tiktok').mediaUrls.map(url=>({mediaType:isVideoMediaUrl(url)?'video':'image'})))[0]!
+}
+function tiktokConsentIdentity(accountId: string) {
+  return tikTokConsentIdentity(tiktokEffective(accountId),state.value.reviewPolicy === 'delegated_marketing' ? state.value.mediaIdentities : resolved('tiktok').mediaUrls)
+}
+const tiktokConsentAvailable = computed(() => Boolean(state.value.id) && (state.value.reviewPolicy !== 'delegated_marketing'
+  || (state.value.mediaAssets.length > 0 && state.value.mediaAssets.length === state.value.mediaIdentities.length
+    && state.value.mediaAssets.every((ref,i)=>ref.id===state.value.mediaIdentities[i]?.id && ref.kind===state.value.mediaIdentities[i]?.kind))))
+const displayedMediaUrls = computed(() => state.value.reviewPolicy === 'delegated_marketing' ? state.value.mediaPreviewUrls : state.value.mediaUrls)
 
 // tightest character limit across selected networks, for the base counter
 const tightestLimit = computed(() => {
@@ -92,6 +127,13 @@ function addMedia() {
   newMediaUrl.value = ''
 }
 function removeMedia(url: string) {
+  if (state.value.reviewPolicy === 'delegated_marketing') {
+    const index = state.value.mediaPreviewUrls.indexOf(url)
+    state.value.mediaPreviewUrls = state.value.mediaPreviewUrls.filter((_,i)=>i!==index)
+    state.value.mediaAssets = state.value.mediaAssets.filter((_,i)=>i!==index)
+    state.value.mediaIdentities = state.value.mediaIdentities.filter((_,i)=>i!==index)
+    return
+  }
   state.value.mediaUrls = state.value.mediaUrls.filter(u => u !== url)
 }
 
@@ -218,7 +260,7 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="@container space-y-6">
     <!-- Networks -->
     <UFormField label="Networks" help="Pick which connected accounts this post goes to.">
       <USelectMenu
@@ -227,6 +269,7 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
         value-key="value"
         label-key="label"
         multiple
+        :disabled="!props.accountsResolved"
         placeholder="Select networks"
         icon="i-lucide-share-2"
         class="w-full"
@@ -234,6 +277,15 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
     </UFormField>
 
     <!-- Connected accounts -->
+    <template v-if="clientId && state.platforms.includes('tiktok')">
+      <SocialPublishingTikTokConsent
+        v-for="accountId in tiktokAccountIds" :key="accountId"
+        :model-value="tiktokOptions(accountId)" @update:model-value="setTikTokOptions(accountId, $event)"
+        :client-id="clientId" :account-id="accountId"
+        :content="tiktokEffective(accountId).content" :media-urls="resolved('tiktok').mediaUrls"
+        :payload-identity="tiktokConsentIdentity(accountId)" :consent-available="tiktokConsentAvailable"
+      />
+    </template>
     <div
       v-if="state.platforms.length"
       class="rounded-lg border border-default p-4 space-y-3"
@@ -274,6 +326,7 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
           value-key="value"
           label-key="label"
           :loading="props.accountsLoading"
+          :disabled="!props.accountsResolved"
           class="min-w-56 flex-1"
           placeholder="Select account"
           @update:model-value="(value: string | null) => setPlatformAccount(platform, value)"
@@ -367,7 +420,7 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
     </div>
 
     <!-- Link + media -->
-    <div class="grid grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
       <UFormField label="Link (optional)" help="UTM params are added per network on publish.">
         <UInput v-model="state.linkUrl" placeholder="https://…" class="w-full" />
       </UFormField>
@@ -377,7 +430,7 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
     </div>
 
     <UFormField label="Media" help="Export a banner as MP4 to create a social draft, or attach an image URL.">
-      <div class="flex gap-2">
+      <div v-if="state.reviewPolicy !== 'delegated_marketing'" class="flex gap-2">
         <UButton icon="i-lucide-image" color="neutral" variant="subtle" @click="openBanner">Banner Studio</UButton>
         <UButton icon="i-lucide-sparkles"
                  color="primary"
@@ -388,8 +441,8 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
         <UInput v-model="newMediaUrl" placeholder="https://…/image.jpg" class="flex-1" @keydown.enter.prevent="addMedia" />
         <UButton icon="i-lucide-plus" color="neutral" variant="subtle" @click="addMedia">Add</UButton>
       </div>
-      <div v-if="state.mediaUrls.length" class="mt-2 flex flex-wrap gap-2">
-        <div v-for="url in state.mediaUrls" :key="url" class="relative group/media">
+      <div v-if="displayedMediaUrls.length" class="mt-2 flex flex-wrap gap-2">
+        <div v-for="url in displayedMediaUrls" :key="url" class="relative group/media">
           <video
             v-if="isVideoMediaUrl(url)"
             :src="url"
@@ -486,7 +539,7 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
     </UModal>
 
     <!-- Tags + hashtags -->
-    <div class="grid grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
       <UFormField label="Hashtags" help="Comma-separated.">
         <UInput v-model="hashtagsModel" placeholder="launch, sale" class="w-full" />
       </UFormField>

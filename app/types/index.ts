@@ -2223,6 +2223,7 @@ export interface PortalSocialNewsDraft {
 }
 
 export interface SocialAccount {
+  operations?: Array<{ operation: string, providerState: string, state: string, reason: string }>
   id: string
   client_id: string
   platform: SocialPublishPlatform

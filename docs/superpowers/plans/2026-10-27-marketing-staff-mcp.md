@@ -79,9 +79,9 @@ Task 1 does not claim the six reads execute yet: Task 2 delivers that before pil
 
 ## Task 5: Remaining providers and capability readiness
 
-- [ ] Audit and implement missing Meta/LinkedIn/TikTok operations through existing providers, separating paid ads, organic publishing, reporting and inbox.
-- [ ] Finish TikTok refresh/processing/receipt handling and tests; do not flip readiness until actual app review and live-account acceptance are satisfied.
-- [ ] Publish per-operation readiness and actionable unavailable reasons. No generic "all platforms supported" claim from UI registration or mocks.
+- [x] Audit and implement missing Meta/LinkedIn/TikTok operations through existing providers, separating paid ads, organic publishing, reporting and inbox.
+- [x] Finish TikTok refresh/processing/receipt handling and tests; do not flip readiness until actual app review and live-account acceptance are satisfied.
+- [x] Publish per-operation readiness and actionable unavailable reasons. No generic "all platforms supported" claim from UI registration or mocks.
 
 ## Task 6: Staff setup, public documentation and release evidence
 

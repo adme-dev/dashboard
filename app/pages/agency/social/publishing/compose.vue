@@ -27,6 +27,11 @@ const { clientId } = useSocialPublishingClient()
 const pageName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || '')
 const accounts = ref<SocialAccount[]>([])
 const accountsLoading = ref(false)
+const accountsError = ref(false)
+const accountsClientId = ref<string | null>(null)
+const accountsResolved = computed(() => Boolean(clientId.value)
+  && accountsClientId.value === clientId.value && !accountsLoading.value && !accountsError.value)
+let accountRequest = 0
 const bannerSuggestedSchedule = computed(() => typeof state.value.metadata.bannerSuggestedSchedule === 'string' ? state.value.metadata.bannerSuggestedSchedule : '')
 
 const saving = ref(false)
@@ -45,15 +50,25 @@ const platformLabel: Record<string, string> = {
 }
 
 async function loadAccounts() {
-  if (!clientId.value) {
+  const requestedClient = clientId.value
+  const request = ++accountRequest
+  accountsClientId.value = null
+  accountsError.value = false
+  if (!requestedClient) {
     accounts.value = []
+    accountsLoading.value = false
     return
   }
   accountsLoading.value = true
   try {
-    accounts.value = await api.listAccounts(clientId.value)
+    const result = await api.listAccounts(requestedClient)
+    if (request !== accountRequest || clientId.value !== requestedClient) return
+    accounts.value = result
+    accountsClientId.value = requestedClient
+  } catch {
+    if (request === accountRequest && clientId.value === requestedClient) accountsError.value = true
   } finally {
-    accountsLoading.value = false
+    if (request === accountRequest) accountsLoading.value = false
   }
 }
 
@@ -100,6 +115,10 @@ onMounted(async () => {
 
 function guard(requireAccounts = true): string | null {
   if (!clientId.value) { toast.add({ title: 'Pick a client first', color: 'warning' }); return null }
+  if (!accountsResolved.value) {
+    toast.add({ title: 'Publishing accounts are not ready', description: 'Wait for account discovery or retry before saving.', color: 'warning' })
+    return null
+  }
   if (!state.value.platforms.length) { toast.add({ title: 'Select at least one network', color: 'warning' }); return null }
   const missing = missingAccountPlatforms(state.value.platforms, state.value.accountIds, accounts.value)
   if (requireAccounts && missing.length) {
@@ -212,10 +231,15 @@ const primaryLabel = computed(() => ({
           color="info"
           variant="subtle"
         />
+        <div v-if="accountsError" class="mb-5 space-y-2" role="alert">
+          <UAlert title="Could not load publishing accounts" description="Your saved targets are preserved. Retry before changing destinations or saving." color="error" variant="subtle" />
+          <UButton color="neutral" variant="outline" label="Retry accounts" @click="loadAccounts" />
+        </div>
         <SocialPublishingPostComposer
           :client-id="clientId"
           :accounts="accounts"
           :accounts-loading="accountsLoading"
+          :accounts-resolved="accountsResolved"
         />
 
         <div class="mt-8 flex flex-wrap items-center gap-3 border-t border-default pt-5">

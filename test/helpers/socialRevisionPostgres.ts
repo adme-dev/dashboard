@@ -105,7 +105,11 @@ const MIGRATIONS = [
   'server/database/migrations/216_social_publishing_audit_events.sql',
   'server/database/migrations/217_social_post_publish_targets.sql',
   'server/database/migrations/255_social_news_portal_approvals.sql',
-  'server/database/migrations/483_social_post_revision_review.sql'
+  'server/database/migrations/483_social_post_revision_review.sql',
+  'server/database/migrations/486_tiktok_publish_reconciliation.sql',
+  'server/database/migrations/487_tiktok_opaque_publish_id.sql',
+  'server/database/migrations/488_social_target_initial_receipts.sql',
+  'server/database/migrations/489_social_first_comment_receipts.sql'
 ]
 
 export async function resetSocialTask3Schema(pool: Pool): Promise<void> {

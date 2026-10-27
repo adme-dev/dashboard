@@ -1,8 +1,13 @@
-import type { SocialAccount, SocialPublishPlatform, SocialPlatformOverride, SocialPost } from '~/types'
+import type { SocialAccount, SocialPublishPlatform, SocialPlatformOverride, SocialPost, SocialPublishTarget, SocialMediaAssetIdentity } from '~/types'
 
 export type ScheduleMode = 'now' | 'schedule' | 'queue'
 
 export interface ComposerState {
+  reviewPolicy: string
+  publishTargets: SocialPublishTarget[]
+  mediaAssets: Array<{kind:'banner_asset'|'video_asset',id:string}>
+  mediaIdentities: SocialMediaAssetIdentity[]
+  mediaPreviewUrls: string[]
   id: string | null
   content: string
   mediaUrls: string[]
@@ -23,6 +28,7 @@ export interface ComposerState {
 
 export function emptyComposerState(): ComposerState {
   return {
+    reviewPolicy: 'legacy', publishTargets: [], mediaAssets: [], mediaIdentities: [], mediaPreviewUrls: [],
     id: null,
     content: '',
     mediaUrls: [],
@@ -57,10 +63,20 @@ export function resolveComposerContent(
 /** Pure: serialize composer state to the posts API body. */
 export function composerToBody(state: ComposerState, clientId: string): Record<string, unknown> {
   const { creativeId: _previousCreativeId, ...metadata } = state.metadata ?? {}
+  const explicitTargets = state.reviewPolicy === 'delegated_marketing' || state.publishTargets.length > 0
+  const targets = state.publishTargets.filter(target =>
+    state.platforms.includes(target.platform) && state.accountIds.includes(target.accountId))
+  // The component resolves account -> platform identities. Never let a stale/partial target list
+  // silently override the larger selection at the API's authoritative `targets` boundary.
+  if (explicitTargets && state.accountIds.some(id => !targets.some(target => target.accountId === id))) {
+    throw new Error('Publishing account selection is still updating. Reselect the accounts before saving.')
+  }
   return {
     clientId,
     content: state.content,
-    mediaUrls: state.mediaUrls.length ? state.mediaUrls : null,
+    ...(state.reviewPolicy === 'delegated_marketing'
+      ? { targets, mediaAssets: state.mediaAssets }
+      : { mediaUrls: state.mediaUrls.length ? state.mediaUrls : null, ...(explicitTargets ? { targets } : {}) }),
     linkUrl: state.linkUrl || null,
     hashtags: state.hashtags.length ? state.hashtags : null,
     firstComment: state.firstComment || null,
@@ -76,8 +92,12 @@ export function composerToBody(state: ComposerState, clientId: string): Record<s
 
 /** Only the exact saved, approved payload may be dispatched without another review. */
 export function isApprovedComposerUnchanged(state: ComposerState, clientId: string, status: string | null, approvedBody: string | null): boolean {
-  return Boolean(state.id && clientId && status === 'approved' && approvedBody
-    && approvedBody === JSON.stringify(composerToBody(state, clientId)))
+  if (!state.id || !clientId || status !== 'approved' || !approvedBody) return false
+  try {
+    return approvedBody === JSON.stringify(composerToBody(state, clientId))
+  } catch {
+    return false
+  }
 }
 
 type ComposerAccount = Pick<SocialAccount, 'id' | 'platform' | 'is_active' | 'last_error' | 'requires_reconnect' | 'connection_health'>
@@ -93,6 +113,27 @@ function activeAccountById(accounts: ComposerAccount[]) {
   return new Map(accounts
     .filter(isSelectablePublishingAccount)
     .map(account => [account.id, account]))
+}
+
+/** Complete selected identities; options belong only to an unchanged platform/account pair. */
+export function syncComposerTargets(
+  platforms: SocialPublishPlatform[],
+  accountIds: string[],
+  targets: SocialPublishTarget[],
+  accounts: ComposerAccount[]
+): SocialPublishTarget[] {
+  const byId = activeAccountById(accounts)
+  return [...new Set(accountIds)].flatMap(accountId => {
+    const account = byId.get(accountId)
+    if (!account || !platforms.includes(account.platform)) return []
+    const existing = targets.find(target => target.accountId === accountId && target.platform === account.platform)
+    return [existing ?? {
+      platform: account.platform,
+      accountId,
+      // Override any platform-wide attestation: a newly selected account has not consented.
+      ...(account.platform === 'tiktok' ? { options: { consent: false } } : {})
+    }]
+  })
 }
 
 export function syncComposerAccountIds(
@@ -136,9 +177,14 @@ export function useSocialComposer() {
     state.value = emptyComposerState()
   }
 
-  function loadFromPost(post: SocialPost) {
+  function loadFromPost(post: SocialPost & {media_identities?:SocialMediaAssetIdentity[],media_preview_urls?:string[]}) {
     const creativeId = post.metadata?.creativeId
     state.value = {
+      reviewPolicy: post.review_policy ?? 'legacy',
+      publishTargets: structuredClone(post.publish_targets ?? []),
+      mediaAssets: structuredClone(post.media_asset_refs ?? []),
+      mediaIdentities: structuredClone(post.media_identities ?? []),
+      mediaPreviewUrls: [...(post.media_preview_urls ?? [])],
       id: post.id,
       content: post.content ?? '',
       mediaUrls: post.media_urls ?? [],
@@ -165,7 +211,9 @@ export function useSocialComposer() {
     }
   }
 
-  const resolved = (platform: string) => resolveComposerContent(state.value, platform)
+  const resolved = (platform: string) => state.value.reviewPolicy === 'delegated_marketing'
+    ? {...resolveComposerContent(state.value, platform), mediaUrls:state.value.mediaPreviewUrls}
+    : resolveComposerContent(state.value, platform)
   const toBody = (clientId: string) => composerToBody(state.value, clientId)
 
   return { state, reset, loadFromPost, setOverride, resolved, toBody }

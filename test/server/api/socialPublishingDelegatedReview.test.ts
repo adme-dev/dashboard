@@ -143,9 +143,10 @@ describe('delegated social review endpoints', () => {
     await expect(patch({ body: { platformOverrides: { facebook: { mediaUrls: ['https://cdn.example/a.jpg'] } } } })).rejects.toMatchObject({ statusCode: 400 })
     await expect(patch({ body: { platforms: ['facebook', 'instagram'], accountIds: ['acct-1', 'acct-2'] } })).rejects.toMatchObject({ statusCode: 400 })
 
-    mocks.queryOne.mockResolvedValueOnce({ id: 'post-1' })
+    const txQuery = vi.fn(async () => ({rows:[{...mocks.existing,publish_targets:[]}]}))
+    mocks.transaction.mockImplementationOnce(async cb => cb({query:txQuery}))
     await patch({ body: { scheduledAt: '2030-02-01T10:00:00.000Z', metadata: { source: 'manual' }, platforms: ['facebook'], accountIds: ['acct-1'], mediaUrls: null } })
-    const [sql, params] = mocks.queryOne.mock.calls.at(-1)!
+    const [sql, params] = (txQuery.mock.calls as unknown as Array<[string,unknown[]]>).find(([sql])=>sql.includes('UPDATE social_posts'))!
     expect(sql).toContain("UPDATE social_post_revisions SET review_status = 'superseded'")
     expect(sql).toContain('approved_revision_id = NULL')
     expect(sql).toContain("status = 'draft'")

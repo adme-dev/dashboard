@@ -22,6 +22,7 @@ export interface SocialInboxTokenAccount {
   access_token: string
   refresh_token: string | null
   token_expires_at: string | null
+  metadata?: Record<string, unknown> | null
 }
 
 interface SocialInboxTokenDb {
@@ -48,6 +49,8 @@ interface RefreshTokenResponse {
   expires_in?: number
   /** LinkedIn: remaining lifetime of the (non-rotating) refresh token, in seconds. */
   refresh_token_expires_in?: number
+  refresh_expires_in?: number
+  scope?: string
 }
 
 type OAuthRefreshFn = (
@@ -113,6 +116,10 @@ export async function resolveSocialAccountAccessToken({
   deps = {}
 }: ResolveSocialInboxAccessTokenInput): Promise<string> {
   const now = deps.now ?? Date.now
+  if (account.platform === 'tiktok') {
+    const refreshExpiry = Date.parse(String(account.metadata?.refreshTokenExpiresAt ?? ''))
+    if (!Number.isFinite(refreshExpiry) || refreshExpiry <= now()) throw new Error('TikTok refresh grant expired or unknown. Reconnect the account.')
+  }
   if (!shouldRefreshToken(account.token_expires_at, now())) {
     return account.access_token
   }
@@ -138,6 +145,17 @@ export async function resolveSocialAccountAccessToken({
     throw error
   }
 
+  if (!refreshed.access_token) {
+    await recordTokenRefreshFailure(db, account, `${adapter.label} invalid token refresh response. Reconnect the account.`)
+    throw new Error(`${adapter.label} invalid token refresh response`)
+  }
+  const refreshSeconds = account.platform === 'tiktok' ? refreshed.refresh_expires_in : refreshed.refresh_token_expires_in
+  const metadata: Record<string, unknown> = {}
+  if (account.platform === 'tiktok' || refreshSeconds !== undefined) {
+    metadata.refreshTokenExpiresAt = Number.isFinite(refreshSeconds) && refreshSeconds! >= 0
+      ? new Date(now() + refreshSeconds! * 1000).toISOString() : null
+  }
+  if (account.platform === 'tiktok' || account.platform === 'linkedin') metadata.grantedScopes = (refreshed.scope ?? '').split(/[ ,]+/).filter(Boolean)
   const refreshToken = refreshed.refresh_token || account.refresh_token
   const expiresAt = resolveTokenExpiry(now(), refreshed)
 
@@ -148,10 +166,11 @@ export async function resolveSocialAccountAccessToken({
        SET access_token = $2,
            refresh_token = $3,
            token_expires_at = $4,
+           metadata = COALESCE(metadata, '{}'::jsonb) || $6::jsonb,
            last_error = NULL,
            updated_at = NOW()
      WHERE id = $1 AND access_token = $5`,
-    [account.id, refreshed.access_token, refreshToken, expiresAt, account.access_token]
+    [account.id, refreshed.access_token, refreshToken, expiresAt, account.access_token, JSON.stringify(metadata)]
   )
 
   if (updated === 0) {
@@ -160,18 +179,6 @@ export async function resolveSocialAccountAccessToken({
       [account.id]
     )
     return current?.access_token || refreshed.access_token
-  }
-
-  if (refreshed.refresh_token_expires_in) {
-    // metadata is JSONB; record when the refresh token itself lapses so health checks can warn.
-    await db.execute(
-      `UPDATE social_accounts
-          SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
-        WHERE id = $1`,
-      [account.id, JSON.stringify({
-        refreshTokenExpiresAt: new Date(now() + refreshed.refresh_token_expires_in * 1000).toISOString()
-      })]
-    )
   }
 
   return refreshed.access_token
@@ -187,6 +194,7 @@ async function recordTokenRefreshFailure(
     await db.execute(
       `UPDATE social_accounts
           SET last_error = $2,
+              metadata = CASE WHEN platform IN ('linkedin','tiktok') THEN COALESCE(metadata,'{}'::jsonb) || '{"grantedScopes":[]}'::jsonb ELSE metadata END,
               updated_at = NOW()
         WHERE id = $1 AND access_token = $3`,
       [account.id, message, account.access_token]

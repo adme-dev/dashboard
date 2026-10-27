@@ -289,7 +289,7 @@ describe('publishPost', () => {
     )
     expect(tokenRefreshMocks.execute).toHaveBeenCalledWith(
       expect.stringContaining('last_error = NULL'),
-      ['gbp1', 'new-gbp-token', 'new-gbp-refresh', expect.any(String), 'old-gbp-token']
+      ['gbp1', 'new-gbp-token', 'new-gbp-refresh', expect.any(String), 'old-gbp-token', '{}']
     )
     expect(providerMocks.post).toHaveBeenCalledWith('google-business', expect.objectContaining({
       accessToken: 'new-gbp-token'
@@ -480,11 +480,11 @@ describe('publishPost — LinkedIn Company Pages', () => {
     expect(tokenRefreshMocks.refreshLinkedInOrganicToken).toHaveBeenCalledWith('stored-li-refresh', 'li-client-id', 'li-client-secret')
     expect(tokenRefreshMocks.execute).toHaveBeenCalledWith(
       expect.stringContaining('last_error = NULL'),
-      ['li1', 'new-li-token', 'stored-li-refresh', expect.any(String), 'stored-li-token']
+      ['li1', 'new-li-token', 'stored-li-refresh', expect.any(String), 'stored-li-token', expect.stringContaining('refreshTokenExpiresAt')]
     )
     expect(tokenRefreshMocks.execute).toHaveBeenCalledWith(
-      expect.stringContaining('metadata = COALESCE(metadata, \'{}\'::jsonb) || $2::jsonb'),
-      ['li1', expect.stringContaining('refreshTokenExpiresAt')]
+      expect.stringContaining('metadata = COALESCE'),
+      ['li1', 'new-li-token', 'stored-li-refresh', expect.any(String), 'stored-li-token', expect.stringContaining('refreshTokenExpiresAt')]
     )
     expect(providerMocks.post).toHaveBeenCalledWith('linkedin', expect.objectContaining({ accessToken: 'new-li-token' }))
   })

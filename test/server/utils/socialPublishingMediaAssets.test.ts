@@ -63,8 +63,8 @@ describe('typed client-owned media references', () => {
     expect(() => normalizeSocialMediaAssetRefs([{ kind: 'url', id: ASSET }])).toThrow('Invalid media asset kind')
     expect(() => normalizeSocialMediaAssetRefs([{ kind: 'banner_asset', id: ASSET, url: 'https://x' }])).toThrow('Invalid media asset reference')
     expect(() => normalizeSocialMediaAssetRefs(['https://cdn.example/a.jpg'])).toThrow('Invalid media asset reference')
-    expect(() => normalizeSocialMediaAssetRefs(Array.from({ length: 11 }, (_, i) => ({ kind: 'banner_asset', id: ASSET.replace(/1$/, String(i % 10)) }))))
-      .toThrow('at most 10')
+    expect(() => normalizeSocialMediaAssetRefs(Array.from({ length: 36 }, (_, i) => ({ kind: 'banner_asset', id: ASSET.replace(/1$/, String(i % 10)) }))))
+      .toThrow('at most 35')
   })
 
   it('filters by owning client at the query and captures the stored object identity', async () => {

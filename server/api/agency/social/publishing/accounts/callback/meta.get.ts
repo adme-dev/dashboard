@@ -1,7 +1,7 @@
 import { queryOne, execute } from '~~/server/utils/db'
 import { verifyState, signState, expiredMetaStateContext } from '~~/server/utils/socialOAuth/state'
 import { exchangeMetaCode, exchangeForLongLivedToken } from '~~/server/utils/metaClient'
-import { listManagedPages, mapPagesToAccountRows, subscribePageWebhook, type ManagedPage } from '~~/server/utils/socialOAuth/meta'
+import { attachMetaGrantedScopes, listManagedPages, mapPagesToAccountRows, subscribePageWebhook, type ManagedPage } from '~~/server/utils/socialOAuth/meta'
 import { upsertSocialAccount, markWebhookSubscribed } from '~~/server/utils/socialOAuth/store'
 import { putPending } from '~~/server/utils/socialOAuth/pending'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
@@ -65,7 +65,7 @@ export default defineEventHandler(async (event) => {
 
   let pages: ManagedPage[]
   try {
-    pages = await listManagedPages(userToken)
+    pages = await attachMetaGrantedScopes(await listManagedPages(userToken), userToken, appId, appSecret)
   } catch (err) {
     logOAuthFailure('meta', 'page_list_failed', err, state.clientId)
     return fail('page_list_failed', state.clientId)

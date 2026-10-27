@@ -562,7 +562,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Rewrite and Route With Control',
-        content: 'Cherry-pick a story, keep the source intact or rewrite it in the client’s approved voice, then target specific connected accounts across Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business. Save it as a draft, choose an exact time, or use the client’s next available posting slot.'
+        content: 'Cherry-pick a story, keep the source intact or rewrite it in the client’s approved voice, then target supported connected Facebook, Instagram, LinkedIn and Google Business accounts. TikTok and YouTube publishing remain unavailable. Save it as a draft, choose an exact time, or use the client’s next available posting slot.'
       },
       {
         title: 'Client Knowledge With a Review Gate',
@@ -586,7 +586,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-share-2',
     categoryIconBg: 'bg-sky-50',
     categoryIconColor: 'text-sky-600',
-    description: 'Author a post once and tailor it per network — Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business — with live per-network previews as you type.',
+    description: 'Author once and tailor supported Facebook, Instagram, LinkedIn and Google Business posts. Staff submit exact content and accounts for independent review; TikTok and YouTube publishing remain unavailable.',
     details: [
       {
         title: 'Customise Per Network',

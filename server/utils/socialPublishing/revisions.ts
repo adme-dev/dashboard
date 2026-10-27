@@ -1,3 +1,5 @@
+import { STAFF_REVIEWED_PUBLISH_PLATFORMS } from '~~/shared/socialCapabilityReadiness'
+import { validateTikTokReviewedTargets } from '~~/server/utils/socialPublishing/tiktokReview'
 // server/utils/socialPublishing/revisions.ts
 // Immutable, revision-bound review for social posts (migration 483).
 //
@@ -27,7 +29,7 @@ export type SocialReviewPolicy = 'legacy' | 'delegated_marketing'
 export type SocialRevisionStatus = 'pending' | 'approved' | 'rejected' | 'superseded' | 'expired' | 'dispatch_claimed'
 
 /** Organic platforms the delegated staff workflow supports. */
-export const DELEGATED_SOCIAL_PLATFORMS = Object.freeze(['facebook', 'instagram', 'linkedin'] as const)
+export const DELEGATED_SOCIAL_PLATFORMS = Object.freeze(STAFF_REVIEWED_PUBLISH_PLATFORMS)
 const DELEGATED_PLATFORM_SET = new Set<string>(DELEGATED_SOCIAL_PLATFORMS)
 
 /** Statuses whose content is frozen: already dispatched, ambiguous or terminal. */
@@ -307,6 +309,7 @@ async function validateDelegatedSubmission(
   assertProviderCompatibleMedia(targets.platforms, media, { content, instagramTypes })
   const payloadError = effectiveSocialPayloadError(effective, media)
   if (payloadError) badRequest(payloadError)
+  await validateTikTokReviewedTargets(event, post.client_id, effective, media)
   return media
 }
 
@@ -489,6 +492,8 @@ export async function reviewSocialPostRevision(
       if (socialSnapshotHash(current) !== revision.content_hash) {
         conflict('The post changed after submission. Resubmit it for review.')
       }
+      await validateTikTokReviewedTargets(input.event, post.client_id,
+        resolveEffectiveSocialTargets(revision.snapshot, revision.snapshot.media ?? []), revision.snapshot.media ?? [])
       await (input.assertMediaCurrent ?? assertSocialMediaAssetsCurrent)({
         event: input.event,
         clientId: post.client_id,

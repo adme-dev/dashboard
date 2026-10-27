@@ -143,7 +143,9 @@ export interface PostResult {
   platformPostId: string
   /** Direct URL to the published post */
   url: string
-  status: 'success' | 'failed'
+  status: 'success' | 'accepted' | 'failed'
+  providerStatus?: string
+  providerReceipt?: { code: string | null, logId: string | null }
   error?: string
   /**
    * True when the publication request may have taken effect but no definitive answer came back
@@ -160,6 +162,7 @@ export interface MediaItem {
   type: 'image' | 'video'
   alt?: string
   mimeType?: string
+  durationSeconds?: number | null
 }
 
 /** Platform content limits */

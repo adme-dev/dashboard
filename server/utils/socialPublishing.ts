@@ -1,3 +1,6 @@
+import type { H3Event } from 'h3'
+import { queryTikTokCreatorPostCapabilities } from '~~/server/utils/social-providers/tiktok'
+import { tikTokPayloadError } from '~~/shared/tiktokPosting'
 /**
  * Social publishing core — shared by the manual publish endpoint and the dispatcher cron.
  *
@@ -15,6 +18,8 @@ import { classifySocialPublishingAccountHealth } from '~~/server/utils/socialPub
 import { productionReadyPublishPlatformsError } from '~~/server/utils/socialPublishing/platformReadiness'
 import {
   buildPublishContent,
+  resolveEffectiveSocialTargets,
+  tikTokConsentIdentity,
   buildPublishOptions,
   resolvePlatformContent,
   resolvePlatformOptions,
@@ -50,7 +55,9 @@ export interface PublishableAccount {
 export interface PublishablePost {
   id: string
   content: string
+  hashtags?: string[] | null
   media_urls: string[] | null
+  media_identities?: Array<{ mediaType: string, durationSeconds?: number | null }>
   link_url: string | null
   first_comment?: string | null
   platforms: string[]
@@ -93,6 +100,10 @@ export interface PublishTargetResult {
   platformPostId?: string
   url?: string
   error?: string | null
+  providerStatus?: string
+  providerReceipt?: { code: string | null, logId: string | null }
+  publicPostIds?: string[]
+  nextPollAt?: string | null
   firstComment?: {
     status: string
     platformPostId?: string
@@ -107,13 +118,13 @@ export interface PublishTargetResult {
  * never re-claimed automatically. An explicit provider rejection remains `failed`.
  */
 export interface PublishOutcome {
-  status: 'published' | 'partially_published' | 'failed' | 'unknown'
+  status: 'published' | 'partially_published' | 'failed' | 'unknown' | 'accepted'
   platformResults: Record<string, PublishTargetResult>
 }
 
 /** Publish a post across every platform it targets, aggregating per-network results. */
-export async function publishPost(post: PublishablePost): Promise<PublishOutcome> {
-  if (post.reviewed) return await publishReviewedPost(post, post.reviewed)
+export async function publishPost(post: PublishablePost, event?: H3Event, onTargetResult?: (key: string, result: PublishTargetResult) => Promise<void>, onFirstCommentResult?: (key: string, result: NonNullable<PublishTargetResult['firstComment']>) => Promise<void>): Promise<PublishOutcome> {
+  if (post.reviewed) return await publishReviewedPost(post, post.reviewed, event, onTargetResult, onFirstCommentResult)
   const base: BaseContent = { content: post.content, mediaUrls: post.media_urls ?? [] }
   const results: PublishOutcome['platformResults'] = {}
   let ok = 0
@@ -138,7 +149,7 @@ export async function publishPost(post: PublishablePost): Promise<PublishOutcome
         continue
       }
       const resolved = resolvePlatformContent(base, post.platform_overrides ?? {}, target.platform)
-      const targetOutcome = await publishResolvedTarget(post, target.platform, account, resultKey, resolved, target.options ?? {})
+      const targetOutcome = await publishResolvedTarget(post, target.platform, account, resultKey, resolved, target.options ?? {}, event)
       results[resultKey] = targetOutcome.result
       ok += targetOutcome.ok
       fail += targetOutcome.fail
@@ -156,7 +167,7 @@ export async function publishPost(post: PublishablePost): Promise<PublishOutcome
       const resolved = resolvePlatformContent(base, post.platform_overrides ?? {}, platform)
       for (const account of accounts) {
         const resultKey = publishResultKey(platform, account, accounts.length)
-        const targetOutcome = await publishResolvedTarget(post, platform, account, resultKey, resolved, {})
+        const targetOutcome = await publishResolvedTarget(post, platform, account, resultKey, resolved, {}, event)
         results[resultKey] = targetOutcome.result
         ok += targetOutcome.ok
         fail += targetOutcome.fail
@@ -165,13 +176,13 @@ export async function publishPost(post: PublishablePost): Promise<PublishOutcome
     }
   }
 
-  return { status: outcomeStatus(ok, fail, unknown), platformResults: results }
+  return { status: outcomeStatus(ok, fail, unknown, Object.values(results).filter(r => r.status === 'accepted').length), platformResults: results }
 }
 
-function outcomeStatus(ok: number, fail: number, unknown: number): PublishOutcome['status'] {
+export function outcomeStatus(ok: number, fail: number, unknown: number, accepted = 0): PublishOutcome['status'] {
   return unknown > 0
     ? 'unknown'
-    : fail === 0 ? 'published' : ok === 0 ? 'failed' : 'partially_published'
+    : accepted > 0 ? 'accepted' : fail === 0 ? 'published' : ok === 0 ? 'failed' : 'partially_published'
 }
 
 type TargetOutcome = { result: PublishTargetResult, ok: number, fail: number, unknown?: number }
@@ -184,7 +195,7 @@ interface PreparedTarget {
   accountId: string
   accessToken: string
   content: string
-  media: Array<{ url: string, type: 'video' | 'image' }>
+  media: Array<{ url: string, type: 'video' | 'image', durationSeconds?: number | null }>
   options: Record<string, unknown>
   firstComment: string | null
   reviewed: boolean
@@ -200,14 +211,23 @@ async function prepareTarget(
   resultKey: string,
   mediaUrls: string[],
   payload: (target: { options: Record<string, unknown> }) => { content: string, options: Record<string, unknown>, firstComment: string | null },
-  reviewed: boolean
+  reviewed: boolean,
+  event?: H3Event,
+  mediaIdentities?: PublishablePost['media_identities']
 ): Promise<{ prepared: PreparedTarget } | { error: string }> {
   const localError = publishTargetPreflightError(platform, account, mediaUrls)
   if (localError) return { error: localError }
   try {
     const provider = getProviderOrThrow(platform)
-    const target = await resolvePublishTarget(account, reviewed)
+    const target = await resolvePublishTarget(account, reviewed, event)
     const built = payload(target)
+    if (platform === 'tiktok') {
+      if (built.options.consentAccountId !== account.platform_account_id) return {error:'TikTok account changed; renew consent'}
+      if (!reviewed && built.options.consentPayload !== tikTokConsentIdentity({accountId:account.id,content:built.content,options:built.options},mediaUrls)) return {error:'TikTok consent must be renewed for this exact payload'}
+      const creator = await queryTikTokCreatorPostCapabilities(target.accessToken)
+      const problem = tikTokPayloadError(built.content, mediaIdentities ?? mediaUrls.map(url => ({ mediaType: mediaTypeForUrl(url) })), built.options, creator)
+      if (problem) return { error: problem }
+    }
     return {
       prepared: {
         platform,
@@ -217,7 +237,7 @@ async function prepareTarget(
         accountId: target.accountId,
         accessToken: target.accessToken,
         content: built.content,
-        media: mediaUrls.map(url => ({ url, type: mediaTypeForUrl(url) })),
+        media: mediaUrls.map((url, index) => ({ url, type: mediaTypeForUrl(url), ...(mediaIdentities?.[index]?.durationSeconds != null ? { durationSeconds: mediaIdentities[index]!.durationSeconds } : {}) })),
         options: built.options,
         firstComment: built.firstComment,
         reviewed
@@ -241,22 +261,16 @@ async function publishResolvedTarget(
   account: PublishableAccount,
   resultKey: string,
   resolved: BaseContent,
-  targetOptions: Record<string, unknown>
+  targetOptions: Record<string, unknown>,
+  event?: H3Event
 ): Promise<TargetOutcome> {
-  const link = stampUtms(post.link_url, platform, post.id)
-  const preparation = await prepareTarget(platform, account, resultKey, resolved.mediaUrls, target => ({
-    content: buildPublishContent(platform, resolved.content, link, resolved.mediaUrls.length > 0),
-    options: buildPublishOptions(
-      platform,
-      {
-        ...resolvePlatformOptions(post.platform_overrides ?? {}, platform),
-        ...targetOptions,
-        ...target.options
-      },
-      link
-    ),
-    firstComment: normalizeOptionalText(post.first_comment)
-  }), false)
+  const preparation = await prepareTarget(platform, account, resultKey, resolved.mediaUrls, target => {
+    const effective = resolveEffectiveSocialTargets({
+      postId:post.id,content:resolved.content,hashtags:post.hashtags,linkUrl:post.link_url,firstComment:post.first_comment,
+      targets:[{platform,accountId:account.id,options:{...resolvePlatformOptions(post.platform_overrides ?? {},platform),...targetOptions,...target.options}}]
+    },post.media_identities ?? resolved.mediaUrls.map(url=>({mediaType:mediaTypeForUrl(url)})))[0]!
+    return {content:effective.content,options:effective.options,firstComment:effective.firstComment}
+  }, false, event, post.media_identities)
   if ('error' in preparation) {
     logPublishTargetFailure(post.id, platform, resultKey, account, preparation.error)
     return { result: publishResult(account, { status: 'failed', error: preparation.error }), ok: 0, fail: 1 }
@@ -269,7 +283,7 @@ async function publishResolvedTarget(
  * whole post before a single publication request (no partial fan-out a reviewer did not approve).
  * Phase 2 publishes the effective reviewed payload target by target.
  */
-async function publishReviewedPost(post: PublishablePost, reviewed: ReviewedPublishContract): Promise<PublishOutcome> {
+async function publishReviewedPost(post: PublishablePost, reviewed: ReviewedPublishContract, event?: H3Event, onTargetResult?: (key: string, result: PublishTargetResult) => Promise<void>, onFirstCommentResult?: (key: string, result: NonNullable<PublishTargetResult['firstComment']>) => Promise<void>): Promise<PublishOutcome> {
   const targets = normalizeStoredPublishTargets(post.publish_targets)
   const accountsById = new Map(post.accounts.map(account => [account.id, account]))
   const mediaUrls = post.media_urls ?? []
@@ -296,7 +310,7 @@ async function publishReviewedPost(post: PublishablePost, reviewed: ReviewedPubl
       // Account-derived options (LinkedIn author) are added last, exactly as for legacy posts.
       options: { ...payload.options, ...accountTarget.options },
       firstComment: normalizeOptionalText(payload.firstComment)
-    }), true)
+    }), true, event, post.media_identities)
     if ('error' in preparation) {
       preflightFailure = { resultKey, platform: target.platform, accountId: target.accountId, account, error: preparation.error }
       break
@@ -320,6 +334,7 @@ async function publishReviewedPost(post: PublishablePost, reviewed: ReviewedPubl
         : { status: 'failed', platform: target.platform, accountId: target.accountId, error: targetError }
     }
     if (!targets.length) results[failed.resultKey] = { status: 'failed', error }
+    for (const [key, result] of Object.entries(results)) await onTargetResult?.(key, result)
     return { status: 'failed', platformResults: results }
   }
 
@@ -328,17 +343,20 @@ async function publishReviewedPost(post: PublishablePost, reviewed: ReviewedPubl
   let fail = 0
   let unknown = 0
   for (const target of prepared) {
-    const outcome = await executePreparedTarget(post.id, target)
+    const outcome = await executePreparedTarget(post.id, target, onTargetResult, onFirstCommentResult)
     results[target.resultKey] = outcome.result
     ok += outcome.ok
     fail += outcome.fail
     unknown += outcome.unknown ?? 0
   }
-  return { status: outcomeStatus(ok, fail, unknown), platformResults: results }
+  return { status: outcomeStatus(ok, fail, unknown, Object.values(results).filter(r => r.status === 'accepted').length), platformResults: results }
 }
 
 /** The provider request(s) for one prepared target, then its first comment. */
-async function executePreparedTarget(postId: string, target: PreparedTarget): Promise<TargetOutcome> {
+async function executePreparedTarget(postId: string, target: PreparedTarget,
+  onTargetResult?: (key: string, result: PublishTargetResult) => Promise<void>,
+  onFirstCommentResult?: (key: string, result: NonNullable<PublishTargetResult['firstComment']>) => Promise<void>
+): Promise<TargetOutcome> {
   const { platform, account, resultKey, provider } = target
   let r: Awaited<ReturnType<typeof provider.post>>
   try {
@@ -354,19 +372,30 @@ async function executePreparedTarget(postId: string, target: PreparedTarget): Pr
     // The request may have reached the provider: hold for read-back, never retry blindly.
     const error = redact(errorMessage(e))
     logPublishTargetFailure(postId, platform, resultKey, account, error)
-    return { result: publishResult(account, { status: 'unknown', error }), ok: 0, fail: 0, unknown: 1 }
+    const result = publishResult(account, { status: 'unknown', error })
+    await onTargetResult?.(resultKey, result)
+    return { result, ok: 0, fail: 0, unknown: 1 }
   }
-  if ((r.status !== 'success' && r.indeterminate) || (r.status === 'success' && !r.platformPostId)) {
+  if ((r.status !== 'success' && r.indeterminate) || (['success', 'accepted'].includes(r.status) && !r.platformPostId)) {
     const error = redact(r.error ?? 'Provider accepted the request without a post receipt')
     logPublishTargetFailure(postId, platform, resultKey, account, error)
-    return { result: publishResult(account, { status: 'unknown', error }), ok: 0, fail: 0, unknown: 1 }
+    const result = publishResult(account, { status: 'unknown', error, ...(r.providerReceipt ? { providerReceipt: r.providerReceipt } : {}) })
+    await onTargetResult?.(resultKey, result)
+    return { result, ok: 0, fail: 0, unknown: 1 }
   }
   const result = publishResult(account, {
     status: r.status,
     platformPostId: r.platformPostId,
     url: r.url,
+    ...(r.providerStatus ? { providerStatus: r.providerStatus } : {}),
+    ...(r.providerReceipt ? { providerReceipt: r.providerReceipt } : {}),
     error: r.error ? redact(r.error) : null
   })
+  // Publication evidence is committed before any subsequent provider request. Until a separate
+  // comment receipt arrives, its delivery is unknown and must never be retried automatically.
+  if (r.status === 'success' && target.firstComment) result.firstComment = { status: 'unknown' }
+  await onTargetResult?.(resultKey, result)
+  if (r.status === 'accepted') return { result, ok: 0, fail: 0 }
   if (r.status !== 'success') {
     logPublishTargetFailure(postId, platform, resultKey, account, result.error ?? `Provider returned ${r.status}`)
     return { result, ok: 0, fail: 1 }
@@ -393,10 +422,11 @@ async function executePreparedTarget(postId: string, target: PreparedTarget): Pr
     }
   } catch (e: unknown) {
     const error = redact(errorMessage(e))
-    result.firstComment = { status: 'failed', error }
+    result.firstComment = { status: 'unknown', error }
     logPublishTargetFailure(postId, platform, resultKey, account, error)
     fail++
   }
+  if (result.firstComment) await onFirstCommentResult?.(resultKey, result.firstComment)
   return { result, ok: 1, fail }
 }
 
@@ -462,12 +492,12 @@ async function publishFirstComment(params: {
 
   return {
     result: {
-      status: result.status,
+      status: result.indeterminate || (result.status === 'success' && !result.platformPostId) ? 'unknown' : result.status,
       platformPostId: result.platformPostId,
       url: result.url,
       error: result.error ? redact(result.error) : null
     },
-    failed: result.status !== 'success'
+    failed: result.status !== 'success' || !result.platformPostId
   }
 }
 
@@ -499,6 +529,7 @@ export function publishedTargetsForAccount(
   for (const [key, raw] of Object.entries(platformResults)) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
     const result = raw as Record<string, unknown>
+    if (['accepted', 'unknown', 'failed'].includes(String(result.status))) continue
     const [keyPlatform, keyAccountId] = key.split(':')
     const resultPlatform = typeof result.platform === 'string' ? result.platform : keyPlatform
     if (resultPlatform !== account.platform) continue
@@ -509,6 +540,13 @@ export function publishedTargetsForAccount(
     if (!resultAccountId && keyAccountId && keyAccountId !== account.id) continue
     if (!resultAccountId && !keyAccountId && resultPlatformAccountId && resultPlatformAccountId !== account.platform_account_id) continue
 
+    // TikTok publish_id identifies processing, never a metrics post. Use confirmed public IDs only.
+    if (resultPlatform === 'tiktok') {
+      if (result.providerStatus === 'PUBLISH_COMPLETE' && Array.isArray(result.publicPostIds)) {
+        for (const id of result.publicPostIds) if (typeof id === 'string' && /^\d{1,64}$/.test(id)) targets.push({ postId, platformPostId: id })
+      }
+      continue
+    }
     const platformPostId = typeof result.platformPostId === 'string' ? result.platformPostId : ''
     if (platformPostId) targets.push({ postId, platformPostId })
   }
@@ -546,7 +584,7 @@ function normalizeOptionalText(value: string | null | undefined): string | null 
   return text ? text : null
 }
 
-async function resolvePublishTarget(account: PublishableAccount, reviewed = false): Promise<{
+async function resolvePublishTarget(account: PublishableAccount, reviewed = false, event?: H3Event): Promise<{
   accountId: string
   accessToken: string
   options: Record<string, unknown>
@@ -554,10 +592,12 @@ async function resolvePublishTarget(account: PublishableAccount, reviewed = fals
   if (account.platform === 'linkedin') {
     return {
       accountId: account.platform_account_id,
-      accessToken: await refreshableAccessToken(account, reviewed),
+      accessToken: await refreshableAccessToken(account, reviewed, event),
       options: { isOrganization: linkedInAccountIsOrganization(account) }
     }
   }
+
+  if (account.platform === 'tiktok') return { accountId: account.platform_account_id, accessToken: await refreshableAccessToken(account, reviewed, event), options: {} }
 
   if (account.platform !== 'google-business') {
     return { accountId: account.platform_account_id, accessToken: account.access_token, options: {} }
@@ -573,7 +613,7 @@ async function resolvePublishTarget(account: PublishableAccount, reviewed = fals
 
   return {
     accountId,
-    accessToken: await refreshableAccessToken(account, reviewed),
+    accessToken: await refreshableAccessToken(account, reviewed, event),
     options: { locationId }
   }
 }
@@ -587,7 +627,8 @@ export function linkedInAccountIsOrganization(account: Pick<PublishableAccount, 
 }
 
 /** Refresh an expired/near-expiry OAuth token (when a refresh token exists) and persist it. */
-async function refreshableAccessToken(account: PublishableAccount, reviewed: boolean): Promise<string> {
+export async function refreshableAccessToken(account: PublishableAccount, reviewed: boolean, event?: H3Event): Promise<string> {
+  if (account.platform === 'tiktok' && publishingAccountError(account)) throw new Error('TikTok account requires reconnect')
   if (!account.refresh_token) return account.access_token
   // Refresh can await a provider while an operator reconnects, disconnects or reassigns the account.
   // Keep legacy refresh semantics, but scope delegated writes and read the winner uncached. A missing
@@ -615,12 +656,14 @@ async function refreshableAccessToken(account: PublishableAccount, reviewed: boo
     queryOne: async <T>() => await currentBinding() as T
   } : { execute, queryOne }
   const token = await resolveSocialAccountAccessToken({
+    event,
     db,
     account: {
       id: account.id,
       platform: account.platform,
       access_token: account.access_token,
       refresh_token: account.refresh_token,
+      metadata: account.metadata,
       token_expires_at: account.token_expires_at ?? null
     }
   })

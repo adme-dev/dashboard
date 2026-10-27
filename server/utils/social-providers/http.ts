@@ -11,6 +11,7 @@ export type SocialProviderFetchOptions = {
   responseType?: string
   ignoreResponseError?: boolean
   retry?: number
+  timeout?: number
   onResponse?: unknown
 }
 

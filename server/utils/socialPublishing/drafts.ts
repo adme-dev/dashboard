@@ -1,3 +1,7 @@
+import { socialCapabilityReadiness, type StaffSocialAvailability, type OperationReadiness } from './capabilityReadiness'
+import { resolveEffectiveSocialTargets, tikTokConsentIdentity } from './effectivePayload'
+import { buildSocialPostSnapshot } from './revisions'
+import { hasWriteScope } from '~~/server/utils/ai/mcp/scope'
 // server/utils/socialPublishing/drafts.ts
 // Scoped draft services for delegated (staff / MCP) social publishing.
 //
@@ -50,6 +54,7 @@ export interface SocialDraftActor {
   /** Freshly authorized clients; null = all ACTIVE clients (fresh MANAGEMENT/ADMIN only). */
   clientIds: readonly string[] | null
   event: H3Event
+  availability?: StaffSocialAvailability
 }
 
 export interface SocialDraftDb {
@@ -79,7 +84,11 @@ export function socialDraftActorFromToolContext(ctx: ToolContext): SocialDraftAc
     ? null
     : [...ctx.assistantScope.assignedClientIds]
   if (ctx.clientScope) clientIds = clientIds === null || clientIds.includes(ctx.clientScope) ? [ctx.clientScope] : []
-  return { actorId: ctx.userId, clientIds, event: ctx.event }
+  const scopes = ctx.mcpScopes instanceof Set ? ctx.mcpScopes : new Set(ctx.mcpScopes ?? [])
+  return { actorId: ctx.userId, clientIds, event: ctx.event, availability: {
+    clientMapped: true, socialDraft: (ctx.marketingCapabilities ?? []).includes('social_draft') && ctx.assistantReadOnly !== true,
+    reporting: (ctx.marketingCapabilities ?? []).includes('reporting'), signedRead: scopes.has('mcp:read'), signedWrite: hasWriteScope(scopes)
+  } }
 }
 
 /** Authorize one client for the actor before any client data is read. Unknown and forbidden look alike. */
@@ -104,6 +113,7 @@ export interface ScopedAccountSummary {
   healthReason: string | null
   publishReady: boolean
   unavailableReason: string | null
+  operations?: OperationReadiness[]
   linkedinAuthorType?: 'organization' | 'person'
 }
 
@@ -115,6 +125,8 @@ interface AccountRow {
   is_active: boolean | null
   last_error: string | null
   token_expires_at: string | null
+  linked_facebook_account_id?: string | null
+  linked_facebook_is_active?: boolean | null
   has_refresh_token: boolean | null
   metadata: unknown
 }
@@ -127,8 +139,10 @@ export async function listSocialPublishingAccounts(
   const clientId = await assertDraftClient(actor, input.clientId, db)
   const rows = await db.queryRows<AccountRow>(
     `SELECT id, platform, platform_account_id, account_name, is_active, last_error, token_expires_at, metadata,
-            (NULLIF(refresh_token, '') IS NOT NULL) AS has_refresh_token
-       FROM social_accounts
+            (NULLIF(refresh_token, '') IS NOT NULL) AS has_refresh_token,
+            (SELECT fb.id FROM social_accounts fb WHERE fb.client_id=a.client_id AND fb.platform='facebook' AND fb.platform_account_id=a.metadata->>'via_page_id' LIMIT 1) AS linked_facebook_account_id,
+            (SELECT fb.is_active FROM social_accounts fb WHERE fb.client_id=a.client_id AND fb.platform='facebook' AND fb.platform_account_id=a.metadata->>'via_page_id' LIMIT 1) AS linked_facebook_is_active
+       FROM social_accounts a
       WHERE client_id = $1 AND platform = ANY($2::text[])
       ORDER BY platform, account_name NULLS LAST, id
       LIMIT 100`,
@@ -142,14 +156,17 @@ export async function listSocialPublishingAccounts(
       lastError: row.last_error,
       tokenExpiresAt: row.token_expires_at,
       hasRefreshToken: Boolean(row.has_refresh_token),
-      metadata
+      metadata, linkedFacebookAccountId:row.linked_facebook_account_id, linkedFacebookIsActive:row.linked_facebook_is_active
     })
-    const readiness = productionReadyPublishPlatformsError([row.platform])
+    const operations = socialCapabilityReadiness({ platform: row.platform, isActive: row.is_active !== false,
+      lastError: row.last_error, tokenExpiresAt: row.token_expires_at, hasRefreshToken: Boolean(row.has_refresh_token), metadata, linkedFacebookAccountId:row.linked_facebook_account_id, linkedFacebookIsActive:row.linked_facebook_is_active }, actor.availability)
+    const readiness = operations.find(operation => operation.operation === 'organic_publish')!
+
     const unavailableReason = row.is_active === false
       ? 'Account is disconnected'
       : health.requiresReconnect || health.health === 'reconnect'
         ? 'Account requires reconnect in the dashboard'
-        : readiness
+        : readiness.state === 'available' ? null : readiness.reason
     return {
       id: row.id,
       platform: row.platform,
@@ -157,6 +174,7 @@ export async function listSocialPublishingAccounts(
       name: row.account_name,
       health: health.health,
       healthReason: health.healthReason,
+      operations,
       publishReady: !unavailableReason,
       unavailableReason: unavailableReason ?? null,
       ...(row.platform === 'linkedin'
@@ -328,6 +346,27 @@ async function normalizeDraftFields(
   return out
 }
 
+export async function bindTikTokDraftConsent(actor: SocialDraftActor, post: any, patch: SocialDraftInput, tx: SocialTxDb, initialCreation = false) {
+  const targets = arrayValue<any>(post.publish_targets)
+  if (!targets.some(t=>t.platform==='tiktok')) return
+  const media = await resolveSocialMediaAssets({event:actor.event,clientId:post.client_id,refs:arrayValue(post.media_asset_refs)})
+  const effective = resolveEffectiveSocialTargets(buildSocialPostSnapshot(post,media),media)
+  for (const target of targets.filter(t=>t.platform==='tiktok')) {
+    const payload = effective.find(t=>t.accountId===target.accountId && t.platform==='tiktok')!
+    const account = (await tx.query("SELECT platform_account_id FROM social_accounts WHERE id=$1 AND client_id=$2 AND platform='tiktok' AND is_active=TRUE",[target.accountId,post.client_id])).rows[0]
+    if (!account) badRequest('TikTok account unavailable')
+    const supplied = arrayValue<any>(patch.targets).find(t=>t.platform==='tiktok' && t.accountId===target.accountId)?.options
+      ?? objectValue(objectValue(patch.platformOverrides).tiktok).options
+    payload.options = {...payload.options,consentAccountId:account.platform_account_id}
+    const identity = tikTokConsentIdentity(payload,media)
+    const renewed = supplied?.consent === true && (supplied.consentPayload === identity || (initialCreation && !supplied.consentPayload))
+    const valid = supplied?.consent !== false && payload.options.consent === true && (renewed || payload.options.consentPayload === identity)
+    target.options = {...payload.options,consent:valid,...(valid ? {consentPayload:identity} : {})}
+    if (!valid) delete target.options.consentPayload
+  }
+  await tx.query('UPDATE social_posts SET publish_targets=$2::jsonb WHERE id=$1',[post.id,JSON.stringify(targets)])
+}
+
 export interface CreateSocialDraftInput extends SocialDraftInput {
   clientId: string
 }
@@ -372,6 +411,8 @@ export async function createSocialPostDraft(
   )
   const id = inserted.rows[0]?.id as string | undefined
   if (!id) throw new Error('Social draft was not created')
+  const created = (await tx.query('SELECT * FROM social_posts WHERE id=$1',[id])).rows[0]
+  await bindTikTokDraftConsent(actor,created,fields,tx,true)
   await tx.query(
     `INSERT INTO social_publishing_audit_events (client_id, post_id, actor_id, action, metadata)
      VALUES ($1, $2, $3, 'post_created', $4::jsonb)`,
@@ -452,6 +493,8 @@ export async function updateSocialPostDraft(
     params
   )
   if (!updated.rows[0]) throw createError({ statusCode: 409, statusMessage: 'Post changed state before this edit' })
+  const current = (await tx.query('SELECT * FROM social_posts WHERE id=$1',[post.id])).rows[0]
+  await bindTikTokDraftConsent(actor,current,patch,tx)
   await tx.query(
     `INSERT INTO social_publishing_audit_events (client_id, post_id, actor_id, action, metadata)
      VALUES ($1, $2, $3, 'post_updated', $4::jsonb)`,
@@ -480,7 +523,7 @@ export interface SocialPostStatusView {
   attempts: number
   lastAttemptAt: string | null
   publishedAt: string | null
-  results: Array<{ key: string, status: string, platform: string | null, accountId: string | null, platformPostId: string | null, url: string | null, error: string | null }>
+  results: Array<{ key: string, status: string, platform: string | null, accountId: string | null, platformPostId: string | null, url: string | null, error: string | null, providerStatus?: string | null, providerReceipt?: { code: string | null, logId: string | null }, nextPollAt?: string | null, publicPostIds?: string[] }>
   rejectionReason: string | null
 }
 
@@ -545,7 +588,11 @@ export async function getSocialPostStatus(
         accountId: text(result.accountId),
         platformPostId: text(result.platformPostId),
         url: text(result.url),
-        error: text(result.error)
+        error: text(result.error),
+        providerStatus: text(result.providerStatus),
+        providerReceipt: { code: text(objectValue(result.providerReceipt).code), logId: text(objectValue(result.providerReceipt).logId) },
+        nextPollAt: toIsoOrNull(result.nextPollAt),
+        publicPostIds: arrayValue<string>(result.publicPostIds).filter(id => typeof id === 'string' && /^\d{1,64}$/.test(id)).slice(0,35)
       }
     }),
     rejectionReason: row.rejection_reason ?? null

@@ -252,7 +252,17 @@ async function uploadVideo(
       }
     })
 
-    return { videoUrn }
+    // Finalization acknowledges bytes only. The Posts API must wait for AVAILABLE.
+    for (let poll = 0; poll < 6; poll++) {
+      const video = await providerFetch<{ status?: string }>(`${LINKEDIN_API_BASE}/rest/videos/${encodeURIComponent(videoUrn)}`, {
+        headers: linkedinHeaders(accessToken), retry: 0, timeout: 5000
+      })
+      if (video.status === 'AVAILABLE') return { videoUrn }
+      if (video.status === 'PROCESSING_FAILED') return { error: 'LinkedIn video processing failed; no post was created' }
+      if (!['WAITING_UPLOAD', 'PROCESSING'].includes(video.status ?? '')) return { error: 'LinkedIn video readiness is unknown; no post was created' }
+      if (poll < 5) await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    return { error: 'LinkedIn video is still processing; no post was created' }
   } catch (error: unknown) {
     const message = linkedInUploadError('video', stage, error)
     console.error('[LinkedIn] Video upload failed:', message)

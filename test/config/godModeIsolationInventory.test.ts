@@ -8,10 +8,13 @@ import {
 } from '../../server/utils/godMode/featureGate'
 
 const API_INVENTORY = {
+  // Task5 adds client-scoped creator-info GET and machine-secret reconciliation POST.
+  // Both retain downstream fresh authority; neither registers a God mode bypass.
   // Task4 adds eight authenticated Ads/GTM review routes, six mutations. Only the
   // three GTM mutation adapters contain the lexical user.role token; all eight
   // delegate to fresh scope/reviewer services. Direct transaction count stays 52;
   // service-owned claims do not create route-level God mode bypasses.
+  // Task5 R2 adds one transaction to generic social PATCH for atomic edit/consent binding.
   // Page Studio publication now delegates its selected-tenant permission check
   // to requireAgencyPageStudioAccess; this lexical inventory counts inline gates.
   // Delegated permission gates do not register a God mode mutation bypass.
@@ -94,10 +97,10 @@ const API_INVENTORY = {
   // owner, expiry and stored-ETag checks, no session or bypass). Request-approval, approve and reject
   // now commit their revision decision in one transaction for delegated/news posts (+3 transactional
   // guarded mutations); their role gates are unchanged and none registers a God mode bypass.
-  totalRouteFiles: 2292,
-  mutationRouteFiles: 1251,
+  totalRouteFiles: 2294,
+  mutationRouteFiles: 1252,
   explicitlyGuardedMutationFiles: 411,
-  guardedMutationFilesWithTransactionCall: 52
+  guardedMutationFilesWithTransactionCall: 53
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -145,11 +148,24 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2292,
-      mutationRouteFiles: 1251,
+      totalRouteFiles: 2294,
+      mutationRouteFiles: 1252,
       explicitlyGuardedMutationFiles: 411,
-      guardedMutationFilesWithTransactionCall: 52
+      guardedMutationFilesWithTransactionCall: 53
     })
+  })
+
+  it('pins Task5 creator reads and reconciliation to existing authority boundaries', () => {
+    const creator = readFileSync('server/api/agency/social/publishing/accounts/[id]/creator-info.get.ts', 'utf8')
+    expect(creator).toContain('await requireFreshSocialClientAccess(event, clientId)')
+    expect(creator).toContain('WHERE id=$1 AND client_id=$2')
+    expect(creator.indexOf('await requireFreshSocialClientAccess')).toBeLessThan(creator.indexOf('await queryOneFresh'))
+    const cron = readFileSync('server/api/cron/reconcile-social-posts.post.ts', 'utf8')
+    expect(cron).toContain('requireSocialCronAuth(event)')
+    const service = readFileSync('server/utils/socialPublishing/reconciliation.ts', 'utf8')
+    expect(service).toContain('await assertMarketingCapabilityAtBoundary(')
+    expect(service).toContain('await requireIndependentMarketingReviewer(')
+    expect(creator + cron).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
   })
 
   it('pins all eight marketing review adapters to authentication and their fresh authority services', () => {

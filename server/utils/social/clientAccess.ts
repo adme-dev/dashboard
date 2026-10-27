@@ -63,3 +63,20 @@ export async function requireAllSocialClientAccess(event: H3Event) {
 export async function requireSocialClientScope(event: H3Event, clientId: string | undefined) {
   return clientId ? requireSocialClientAccess(event, clientId) : requireAllSocialClientAccess(event)
 }
+
+/** Provider-capable browser boundaries use current DB policy, never cached session groups/assignment.
+ * Reuse the fresh resolver with NO connector scopes; browser permission is a separate authority.
+ */
+export async function requireFreshSocialClientAccess(event: H3Event, clientId: string | undefined) {
+  const user = await requireAuth(event)
+  if (!isSocialClientId(clientId)) throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
+  const [{resolveMcpStaffContext},{freshContextCoversClient}] = await Promise.all([
+    import('~~/server/utils/ai/mcp/staffAuthority'), import('~~/server/utils/ai/marketing/reviewAuthority')
+  ])
+  const context = await resolveMcpStaffContext(event, user.id, [])
+  const groups = context.permissionGroups ?? []
+  if (!SOCIAL_PERMISSION_GROUPS.some(group => groups.includes(group)) || !await freshContextCoversClient(context, clientId!)) {
+    throw createError({ statusCode: 403, statusMessage: 'No current access to this client' })
+  }
+  return { user, context }
+}

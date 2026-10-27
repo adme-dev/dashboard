@@ -1,6 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { queryOne } from '~~/server/utils/db'
+import { bindTikTokDraftConsent } from '~~/server/utils/socialPublishing/drafts'
+import { queryOne, transaction } from '~~/server/utils/db'
 import {
   assertNoControlledSocialPostFields,
   assertPublishingTargets,
@@ -11,7 +12,7 @@ import {
   requireSocialPostClientAccess
 } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
-import { SOCIAL_POST_CONTENT_LOCKED_STATUSES } from '~~/server/utils/socialPublishing/revisions'
+import { DELEGATED_SOCIAL_PLATFORMS, SOCIAL_POST_CONTENT_LOCKED_STATUSES } from '~~/server/utils/socialPublishing/revisions'
 
 /**
  * PATCH /api/agency/social/publishing/posts/:id
@@ -117,7 +118,7 @@ export default defineEventHandler(async (event) => {
     if (!explicitTargets) {
       throw createError({ statusCode: 400, statusMessage: 'targets must be an array' })
     }
-    if (delegated && explicitTargets.platforms.some(platform => !['facebook', 'instagram', 'linkedin'].includes(platform))) {
+    if (delegated && explicitTargets.platforms.some(platform => !(DELEGATED_SOCIAL_PLATFORMS as readonly string[]).includes(platform))) {
       throw createError({ statusCode: 400, statusMessage: 'Delegated drafts support Facebook, Instagram and LinkedIn' })
     }
     b.targets = explicitTargets.targets
@@ -210,10 +211,15 @@ export default defineEventHandler(async (event) => {
   const lockedGuard = shouldResetApproval
     ? ` AND status NOT IN (${[...CONTENT_LOCKED_STATUSES].map(status => `'${status}'`).join(', ')})`
     : ''
-  const row = await queryOne(
-    `${supersede}UPDATE social_posts SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND client_id = $${params.length}${lockedGuard} RETURNING *`,
-    params
-  )
+  const sql = `${supersede}UPDATE social_posts SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND client_id = $${params.length}${lockedGuard} RETURNING *`
+  const row = delegated ? await transaction(async db => {
+    // Serialize edit and consent binding with submit/dispatch; no stale row can attest another edit.
+    await db.query('SELECT id FROM social_posts WHERE id=$1 AND client_id=$2 FOR UPDATE',[id,existing.client_id])
+    const updated = (await db.query(sql,params)).rows[0]
+    if (!updated) return null
+    await bindTikTokDraftConsent({actorId:user.id,clientIds:[existing.client_id],event},updated,b,db)
+    return (await db.query('SELECT * FROM social_posts WHERE id=$1 AND client_id=$2',[id,existing.client_id])).rows[0]
+  }) : await queryOne(sql,params)
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
   await recordSocialPublishingAudit({
     clientId: existing.client_id,

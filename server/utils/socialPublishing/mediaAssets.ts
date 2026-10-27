@@ -28,6 +28,7 @@ export interface SocialMediaAssetIdentity extends SocialMediaAssetRef {
   byteSize: number
   /** Normalized strong ETag of the stored object (no quotes / weak prefix). */
   etag: string
+  durationSeconds?: number | null
 }
 
 export interface SocialMediaAssetSummary extends SocialMediaAssetRef {
@@ -38,12 +39,13 @@ export interface SocialMediaAssetSummary extends SocialMediaAssetRef {
   createdAt: string | null
 }
 
-export const MAX_SOCIAL_MEDIA_ASSETS = 10
+export const MAX_SOCIAL_MEDIA_ASSETS = 35
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 const VIDEO_MIME_BY_EXTENSION: Readonly<Record<string, string>> = Object.freeze({
   mp4: 'video/mp4',
   m4v: 'video/mp4',
+  webm: 'video/webm',
   mov: 'video/quicktime'
 })
 const EXTENSION_BY_MIME: Readonly<Record<string, string>> = Object.freeze({
@@ -52,6 +54,7 @@ const EXTENSION_BY_MIME: Readonly<Record<string, string>> = Object.freeze({
   'image/gif': 'gif',
   'image/webp': 'webp',
   'video/mp4': 'mp4',
+  'video/webm': 'webm',
   'video/quicktime': 'mov'
 })
 const MB = 1024 * 1024
@@ -99,6 +102,7 @@ interface StoredAssetRow {
   uploaded_by: string | null
   byte_size: number | string | null
   created_at: string | null
+  duration_sec?: number | string | null
 }
 
 function badRequest(message: string): never {
@@ -118,7 +122,7 @@ export function normalizeEtag(value: unknown): string | null {
   return /^[\x21\x23-\x7e]{1,128}$/.test(trimmed) ? trimmed : null
 }
 
-/** Validate untrusted `[{ kind, id }]` input (≤10, deduplicated by kind/id, order preserved). */
+/** Validate untrusted `[{ kind, id }]` input (≤35; per-provider caps are checked before submission, deduplicated by kind/id, order preserved). */
 export function normalizeSocialMediaAssetRefs(value: unknown): SocialMediaAssetRef[] {
   if (value == null) return []
   if (!Array.isArray(value)) badRequest('mediaAssets must be an array')
@@ -167,13 +171,13 @@ function rowStorageValid(row: StoredAssetRow): boolean {
 const ASSET_SELECT = `
   SELECT 'banner_asset'::text AS kind, b.id::text AS id, b.client_id::text AS client_id, b.r2_key,
          b.mime_type, b.name, b.uploaded_by::text AS uploaded_by, b.file_size AS byte_size,
-         b.created_at::text AS created_at
+         b.created_at::text AS created_at, NULL::numeric AS duration_sec
     FROM banner_assets b
    WHERE b.client_id = $1 AND b.id = ANY($2::uuid[])
   UNION ALL
   SELECT 'video_asset'::text AS kind, v.id::text AS id, v.client_id::text AS client_id, v.r2_key,
          NULL::text AS mime_type, v.title AS name, v.created_by::text AS uploaded_by, NULL::bigint AS byte_size,
-         v.created_at::text AS created_at
+         v.created_at::text AS created_at, v.duration_sec
     FROM video_assets v
    WHERE v.client_id = $1 AND v.id = ANY($3::uuid[])`
 
@@ -260,7 +264,8 @@ export async function resolveSocialMediaAssets(input: ResolveSocialMediaAssetsIn
       mediaType: mimeType.startsWith('video/') ? 'video' : 'image',
       mimeType,
       byteSize: head.size,
-      etag: head.etag
+      etag: head.etag,
+      ...(mimeType.startsWith('video/') ? { durationSeconds: row.duration_sec == null ? null : Number(row.duration_sec) } : {})
     })
   }
   return identities
@@ -291,7 +296,8 @@ export async function assertSocialMediaAssetsCurrent(input: {
   for (const [index, expected] of input.identities.entries()) {
     const actual = current[index]
     if (!actual || actual.kind !== expected.kind || actual.id !== expected.id || actual.etag !== expected.etag
-      || actual.byteSize !== expected.byteSize || actual.mimeType !== expected.mimeType) {
+      || actual.byteSize !== expected.byteSize || actual.mimeType !== expected.mimeType
+      || (expected.durationSeconds !== undefined && actual.durationSeconds !== expected.durationSeconds)) {
       mediaChanged()
     }
   }
@@ -308,14 +314,18 @@ export function assertProviderCompatibleMedia(
 ): void {
   const images = identities.filter(item => item.mediaType === 'image')
   const videos = identities.filter(item => item.mediaType === 'video')
-  for (const item of images) {
-    if (item.byteSize > LIMITS.image) badRequest('Images must be 10 MB or smaller')
-  }
-  for (const item of videos) {
-    if (item.byteSize > LIMITS.video) badRequest('Videos must be 300 MB or smaller')
-  }
   for (const platform of new Set(platforms)) {
-    if (platform === 'instagram') {
+    if (platform !== 'tiktok') {
+      if (identities.length > 10) badRequest(`${platform} supports at most 10 media assets`)
+      if (images.some(item => item.byteSize > LIMITS.image)) badRequest('Images must be 10 MB or smaller')
+      if (videos.some(item => item.byteSize > LIMITS.video)) badRequest('Videos must be 300 MB or smaller')
+    }
+    if (platform === 'tiktok') {
+      if (!identities.length || identities.length > 35 || (videos.length && (videos.length !== 1 || images.length))) badRequest('TikTok requires one video or 1–35 photos')
+      if (images.some(item => !['image/jpeg', 'image/webp'].includes(item.mimeType) || item.byteSize > 20 * MB)) badRequest('TikTok photos must be JPEG/WebP and at most 20 MB')
+      if (videos.some(item => !['video/mp4', 'video/webm', 'video/quicktime'].includes(item.mimeType) || item.byteSize > 4 * 1024 * MB)) badRequest('TikTok video must be MP4/WebM/MOV and at most 4 GB')
+      if (videos.some(item => !Number.isFinite(item.durationSeconds) || Number(item.durationSeconds) <= 0 || Number(item.durationSeconds) > 600)) badRequest('TikTok video requires known duration of at most 600 seconds')
+    } else if (platform === 'instagram') {
       if (!identities.length) badRequest('Instagram requires at least one image or video')
       if (images.some(item => item.mimeType !== 'image/jpeg')) badRequest('Instagram images must be JPEG')
       if (images.some(item => item.byteSize > LIMITS.instagramImage)) badRequest('Instagram images must be 8 MB or smaller')
@@ -458,7 +468,7 @@ export async function socialMediaDeliveryUrl(
   return `${origin}/api/public/social-media/${token}.${EXTENSION_BY_MIME[identity.mimeType] ?? 'bin'}`
 }
 
-export const SOCIAL_MEDIA_CAPABILITY_PATH = /^\/api\/public\/social-media\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.(?:jpg|png|gif|webp|mp4|mov)$/
+export const SOCIAL_MEDIA_CAPABILITY_PATH = /^\/api\/public\/social-media\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.(?:jpg|png|gif|webp|mp4|mov|webm)$/
 
 /**
  * Stream the exact reviewed object for a verified token. Returns null when the asset, owner, size or

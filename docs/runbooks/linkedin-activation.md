@@ -83,11 +83,11 @@ already be set; the `CACHE` KV binding is needed for multi-Page selection.
 - Publish with a first comment; confirm the comment is authored by the Page.
 - Comment on the post from a personal profile; run inbox sync; reply from the inbox; confirm the reply is nested and authored by the Page.
 - Run metrics sync; confirm follower count and post impressions populate (a 403 here means `rw_organization_admin` isn't granted — see §3).
-- Video: post a short video. LinkedIn processes video asynchronously; if the post call fails right after upload, retry after processing completes.
+- Video: use one reviewed short video. The adapter reads the encoded Videos API URN after finalize, at most six times (one-second intervals, five-second read timeout), and calls Posts only after `AVAILABLE`. A processing/readiness failure creates no post; an ambiguous Posts response stays held and must never be blindly retried.
 - Ads: run spend sync; confirm rows attribute to the right client and any failure shows as a failure, not `synced: 0`.
 
 ## Not verifiable without live credentials
 
 - Exact scope names granted to the app (handled by `LINKEDIN_ORGANIC_SCOPES`).
-- Video post immediately after `finalizeUpload` (no `AVAILABLE` polling yet).
+- Actual hosted video processing, `AVAILABLE` receipt and the subsequent Posts receipt/read-back; local polling fixtures do not establish these.
 - Comment ordering on very busy posts: inbox reads up to 2×50 comments per post across the latest 10 posts.

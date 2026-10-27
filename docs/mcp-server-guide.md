@@ -284,3 +284,19 @@ Google Ads conversion templates exclude raw HTML/JavaScript, arbitrary variables
 and unknown settings. Native DriveAgent accepted enquiries retain their supported
 server delivery. See [the review runbook](runbooks/marketing-ads-tracking-review.md)
 for exact capabilities, uncertain outcomes and provider acceptance requirements.
+
+### Social operation readiness
+
+Staff social tools create/edit local drafts, submit an exact revision for independent review, and read
+scoped accounts/media/status. They do not expose live publishing, comment sending or inbox sending.
+Provider adapter presence is separate from connector coverage: account readiness intersects current
+staff grants, signed scope, assigned clients, actual provider grants and account health. Missing grant
+evidence is unavailable, never inferred from a connection badge. Paid reporting uses existing scoped
+reporting tools and advertiser connections; Meta/LinkedIn/TikTok paid mutations are unsupported.
+
+TikTok Direct Post implementation retains accepted processing receipts and bounded status reconciliation,
+but production publishing remains unavailable pending actual product eligibility, app audit/scopes,
+verified media delivery and live acceptance. Internal team upload utilities are excluded by TikTok's
+published guidelines. See [TikTok activation boundaries](runbooks/tiktok-publishing-activation.md).
+LinkedIn video is referenced in a Posts call only after its Videos API reports `AVAILABLE`; ambiguous
+publication outcomes remain held and cannot be blindly retried.

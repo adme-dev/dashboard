@@ -219,7 +219,7 @@ async function publishClaimedPost(
       [post.account_ids ?? [], post.client_id]
     )
     return {
-      outcome: await publishPost({ ...post, accounts }),
+      outcome: await publishPost({ ...post, accounts }, input.event ?? undefined),
       accountsCount: accounts.length
     }
   } catch (error) {
@@ -326,34 +326,41 @@ async function publishDelegatedClaim(
 
   let outcome: PublishOutcome
   let accountsCount = 0
+  let reserved = false
   try {
     const prepared = await prepareDelegatedPublishablePost(event, claimed, snapshot, { assertSocialMediaAssetsCurrent, socialMediaDeliveryUrl }, effectivePayload)
     if ('error' in prepared) {
       outcome = singleFailure(prepared.error)
     } else {
       accountsCount = prepared.post.accounts.length
-      outcome = await publishPost(prepared.post)
+      const { reserveSocialTargetAttempts, recordSocialTargetOutcome, recordSocialFirstCommentOutcome } = await import('~~/server/utils/socialPublishing/reconciliation')
+      await reserveSocialTargetAttempts(claimed.client_id, claimed.id, revision.id, attempt, prepared.post)
+      reserved = true
+      outcome = await publishPost(prepared.post, event, (key,result) => recordSocialTargetOutcome(claimed.id,claimed.client_id,revision.id,attempt,key,result),
+        (key,result) => recordSocialFirstCommentOutcome(claimed.id,claimed.client_id,revision.id,attempt,key,result))
     }
   } catch (error) {
-    // Only local preparation can throw here (provider results are captured per target).
+    // Once reserved, a storage failure or interruption must leave durable evidence held.
+    if (reserved) throw error
+    // Only local preparation can fail safely before reservation.
     const message = dispatchErrorMessage(error)
     log.error('social-publishing.dispatch.failed', { source: input.source, postId: claimed.id, clientId: claimed.client_id, error: message })
     outcome = singleFailure(message)
   }
 
-  await execute(
-    `UPDATE social_posts SET status=$2, platform_results=$3::jsonb,
-       publish_attempts=publish_attempts+1,
-       published_at=CASE WHEN $2 IN ('published','partially_published') THEN COALESCE(published_at, NOW()) ELSE published_at END,
-       updated_at=NOW()
-     WHERE id=$1 AND client_id=$4`,
-    [claimed.id, outcome.status, JSON.stringify(outcome.platformResults), claimed.client_id]
-  )
-  await execute(
-    `UPDATE social_post_revisions SET dispatch_outcome = $4
-      WHERE id = $1 AND post_id = $2 AND client_id = $3 AND dispatch_outcome IS NULL`,
-    [revision.id, claimed.id, claimed.client_id, outcome.status]
-  )
+  if (reserved) {
+    const { finalizeSocialDispatch } = await import('~~/server/utils/socialPublishing/reconciliation')
+    outcome = await finalizeSocialDispatch(claimed.id,claimed.client_id,revision.id,attempt,outcome)
+  } else {
+    await transaction(async db => {
+      await db.query('SELECT id FROM social_posts WHERE id=$1 AND client_id=$2 FOR UPDATE',[claimed.id,claimed.client_id])
+      await db.query(`UPDATE social_post_revisions SET dispatch_outcome=$4 WHERE id=$1 AND post_id=$2 AND client_id=$3
+        AND dispatch_attempt=$5 AND review_status='dispatch_claimed' AND dispatch_outcome IS NULL`,[revision.id,claimed.id,claimed.client_id,outcome.status,attempt])
+      await db.query(`UPDATE social_posts SET status=$2,platform_results=$3::jsonb,publish_attempts=publish_attempts+1,updated_at=NOW()
+        WHERE id=$1 AND client_id=$4 AND current_revision_id=$5 AND approved_revision_id=$5`,
+      [claimed.id,outcome.status,JSON.stringify(outcome.platformResults),claimed.client_id,revision.id])
+    })
+  }
   const targets = Object.keys(outcome.platformResults)
   await recordSocialPublishingAudit({
     clientId: claimed.client_id,
@@ -439,6 +446,7 @@ async function prepareDelegatedPublishablePost(
       id: claimed.id,
       content: snapshot.content ?? '',
       media_urls: mediaUrls,
+      media_identities: media,
       link_url: snapshot.linkUrl ?? null,
       first_comment: snapshot.firstComment ?? null,
       platforms: [...new Set(targets.map(target => target.platform))],

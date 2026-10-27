@@ -377,6 +377,13 @@ async function confirmReject() {
                   <p class="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-elevated p-3 text-sm">
                     {{ target.content || 'No caption' }}
                   </p>
+                  <dl v-if="target.platform === 'tiktok'" class="mt-2 space-y-1 text-xs">
+                    <div><dt class="inline text-muted">Privacy: </dt><dd class="inline">{{ target.options.privacy_level || 'Not selected' }}</dd></div>
+                    <div><dt class="inline text-muted">Photo title: </dt><dd class="inline">{{ target.options.title || 'None' }}</dd></div>
+                    <div><dt class="inline text-muted">Comments / Duet / Stitch: </dt><dd class="inline">{{ target.options.disable_comment === false ? 'On' : 'Off' }} / {{ target.options.disable_duet === false ? 'On' : 'Off' }} / {{ target.options.disable_stitch === false ? 'On' : 'Off' }}</dd></div>
+                    <div><dt class="inline text-muted">Disclosures: </dt><dd class="inline">Your brand {{ target.options.brand_organic_toggle === true ? 'on' : 'off' }}, paid partnership {{ target.options.brand_content_toggle === true ? 'on' : 'off' }}, AI-generated {{ target.options.is_aigc === true ? 'on' : 'off' }}</dd></div>
+                    <div><dt class="inline text-muted">Music / branded-content consent: </dt><dd class="inline">{{ target.options.consent === true ? 'Confirmed for this revision' : 'Missing' }}</dd></div>
+                  </dl>
                   <p v-if="target.firstComment" class="mt-2 text-xs">
                     <span class="text-muted">First comment:</span> {{ target.firstComment }}
                   </p>

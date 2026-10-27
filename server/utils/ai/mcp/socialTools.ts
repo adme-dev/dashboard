@@ -1,3 +1,4 @@
+import { STAFF_REVIEWED_PUBLISH_PLATFORMS } from '~~/shared/socialCapabilityReadiness'
 // server/utils/ai/mcp/socialTools.ts
 // Staff social draft/review suite (Facebook, Instagram, LinkedIn organic posts).
 //
@@ -21,17 +22,27 @@ import { hasWriteScope } from './scope'
 import { isSocialMcpWriteToolName, SOCIAL_MCP_TOOL_NAMES } from './socialToolNames'
 
 const UUID = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Expected a UUID')
-const Platform = z.enum(['facebook', 'instagram', 'linkedin'])
+const Platform = z.enum(STAFF_REVIEWED_PUBLISH_PLATFORMS)
 
 const InstagramOptions = z.object({
   type: z.enum(['post', 'reel', 'story']).optional(),
   collaborators: z.array(z.string().min(1).max(100)).max(20).optional()
 }).strict()
 
+const TikTokOptions = z.object({
+  privacy_level: z.enum(['PUBLIC_TO_EVERYONE','MUTUAL_FOLLOW_FRIENDS','FOLLOWER_OF_CREATOR','SELF_ONLY']).optional(),
+  consent: z.boolean().optional(), title: z.string().max(90).optional(),
+  disable_comment: z.boolean().optional(), disable_duet: z.boolean().optional(), disable_stitch: z.boolean().optional(),
+  commercial_disclosure: z.boolean().optional(), brand_content_toggle: z.boolean().optional(), brand_organic_toggle: z.boolean().optional(),
+  is_aigc: z.boolean().optional(), auto_add_music: z.boolean().optional(),
+  photo_cover_index: z.number().int().min(0).max(34).optional(), video_cover_timestamp_ms: z.number().int().min(0).optional()
+}).strict()
+const ProviderOptions = z.union([InstagramOptions, TikTokOptions])
+
 const Target = z.object({
   platform: Platform,
   accountId: UUID.describe('Publishing account id from list_social_publishing_accounts'),
-  options: InstagramOptions.optional().describe('Instagram only: { type: post|reel|story, collaborators }')
+  options: ProviderOptions.optional().describe('Explicit reviewed provider options; TikTok remains externally gated')
 }).strict()
 
 const MediaAsset = z.object({
@@ -41,7 +52,7 @@ const MediaAsset = z.object({
 
 const Override = z.object({
   content: z.string().max(10_000).optional(),
-  options: InstagramOptions.optional()
+  options: ProviderOptions.optional()
 }).strict()
 
 const DraftFields = z.object({
@@ -53,7 +64,7 @@ const DraftFields = z.object({
   linkUrl: z.string().max(2_000).nullable().optional(),
   hashtags: z.array(z.string().min(1).max(100)).max(30).optional(),
   firstComment: z.string().max(2_200).nullable().optional(),
-  mediaAssets: z.array(MediaAsset).max(10).optional()
+  mediaAssets: z.array(MediaAsset).max(35).optional()
     .describe('Client-owned media asset references (never URLs)'),
   scheduledAt: z.string().max(64).nullable().optional()
     .describe('Requested publish time (ISO 8601). Intent only: nothing is scheduled until a reviewer approves.'),
