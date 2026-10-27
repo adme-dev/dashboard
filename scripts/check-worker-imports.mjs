@@ -12,8 +12,7 @@ import { init, parse } from 'es-module-lexer'
 const deferredOptionalLimits = new Map([
   ['@react-email/render', 1],
   ['@cloudflare/puppeteer', 3],
-  ['puppeteer', 2],
-  ['gifenc', 1]
+  ['puppeteer', 2]
 ])
 // node-postgres' `pg.native` getter keeps `require("pg-native")` (a reviewed
 // Rollup external). Server code never reads `pg.native`; in workerd the call

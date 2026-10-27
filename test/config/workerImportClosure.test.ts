@@ -55,7 +55,7 @@ describe('deployed Worker import closure', () => {
     expect((await checkWorkerImports(root)).errors).toContainEqual(expect.objectContaining({ reason: 'optional dynamic import count exceeds reviewed bound (1)' }))
   })
 
-  it.each(['import("pngjs")', 'import("new-optional-package")', 'import(name)', 'import("https://example.com/module.js")'])('fails closed on unreviewed dependencies: %s', async (source) => {
+  it.each(['import("pngjs")', 'import("gifenc")', 'import("new-optional-package")', 'import(name)', 'import("https://example.com/module.js")'])('fails closed on unreviewed dependencies: %s', async (source) => {
     const root = await artifact({ 'index.js': source })
     expect((await checkWorkerImports(root)).errors).toHaveLength(1)
   })

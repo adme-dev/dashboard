@@ -437,9 +437,9 @@ export default defineNuxtConfig({
     // Bundle it for both alias and relative imports; deployed Workers have no
     // checkout filesystem from which to load this module.
     externals: {
-      // PNG validation is required at runtime; Workers cannot resolve npm
-      // packages left as bare imports in the final deployed module graph.
-      inline: ['pngjs', /[/\\]shared[/\\]pageStudio[/\\]generated[/\\]/]
+      // PNG validation and GIF encoding are required at runtime; Workers cannot
+      // resolve npm packages left as bare imports in the final deployed module graph.
+      inline: ['pngjs', 'gifenc', /[/\\]shared[/\\]pageStudio[/\\]generated[/\\]/]
     },
     // Keep @flyhub/* out of the server bundle (client-only editor packages).
     alias: {
@@ -459,7 +459,7 @@ export default defineNuxtConfig({
     },
     rollupConfig: {
       plugins: [compactPublicAssetsPlugin(), workerProcessCompatibilityPlugin(), bannerEnginePagesGuardPlugin(), pngCodecInteropPlugin()],
-      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pg-native'],
+      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'pg-native'],
       onwarn(warning, warn) {
         if (isKnownThirdPartyRollupWarning(warning)) return
         warn(warning)
