@@ -11,7 +11,8 @@ export function validateBannerRendererTarget(config, environment) {
   assert.equal(config.name, `banner-renderer-${environment}`)
   assert.equal(config.main, 'dist/index.js')
   assert.equal(config.compatibility_date, '2026-07-15')
-  assert.deepEqual(config.compatibility_flags, ['nodejs_compat'])
+  // Public font and signed-asset URLs must reach Pages even when the RPC caller shares its zone.
+  assert.deepEqual(config.compatibility_flags, ['nodejs_compat', 'global_fetch_strictly_public'])
   assert.equal(config.workers_dev, false)
   assert.equal(config.preview_urls, false)
   assert.deepEqual(config.routes, [])
