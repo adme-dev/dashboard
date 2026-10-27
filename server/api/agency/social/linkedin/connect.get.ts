@@ -1,6 +1,7 @@
 import { setCookie, getRequestURL } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { getLinkedInAuthUrl } from '~~/server/utils/linkedinClient'
+import { getLinkedInAdsOAuthConfig } from '~~/server/utils/socialOAuth/env'
 
 /**
  * GET /api/agency/social/linkedin/connect
@@ -9,7 +10,7 @@ import { getLinkedInAuthUrl } from '~~/server/utils/linkedinClient'
 export default eventHandler(async (event) => {
   await requireAuth(event)
 
-  const config = useRuntimeConfig()
+  const config = getLinkedInAdsOAuthConfig(event)
   if (!config.linkedinClientId || !config.linkedinClientSecret) {
     throw createError({ statusCode: 500, statusMessage: 'LinkedIn app credentials not configured' })
   }

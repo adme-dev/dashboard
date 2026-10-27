@@ -1,6 +1,7 @@
 import { getCookie, deleteCookie, sendRedirect, getRequestURL } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { getLinkedInAdsOAuthConfig } from '~~/server/utils/socialOAuth/env'
 import {
   exchangeLinkedInToken,
   getLinkedInAdAccounts
@@ -26,7 +27,7 @@ export default eventHandler(async (event) => {
 
     deleteCookie(event, 'linkedin_oauth_state', { path: '/' })
 
-    const config = useRuntimeConfig()
+    const config = getLinkedInAdsOAuthConfig(event)
 
     // Build absolute redirect URI (must match the one used in connect.get.ts)
     const reqUrl = getRequestURL(event)
