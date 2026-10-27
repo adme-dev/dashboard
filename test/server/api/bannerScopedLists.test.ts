@@ -45,7 +45,9 @@ describe.each([
 
   it('keeps search and client parameters separate from the caller identity', async () => {
     await handler(request({ clientId: 'assigned-client', search: 'Launch' }))
-    expect(mocks.rows.mock.calls[0]?.[1]).toEqual(['staff-id', 'assigned-client', '%Launch%'])
+    // Project search runs after redaction (bannerProjectListSearchRedaction), never in SQL.
+    expect(mocks.rows.mock.calls[0]?.[1]).toEqual(_name === 'projects' ? ['staff-id', 'assigned-client'] : ['staff-id', 'assigned-client', '%Launch%'])
+    if (_name === 'projects') expect(mocks.rows.mock.calls[0]?.[0]).not.toContain('ILIKE')
   })
 
   it('permits all-client staff to browse without an assignment restriction', async () => {

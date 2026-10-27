@@ -72,6 +72,21 @@ describe('project deletion retains immutable dissection provenance', () => {
     expect(survivingJob.project_id).toBe(project)
     expect(m.db.mock.calls.filter(([sql]) => /^\s*(UPDATE|DELETE)/.test(sql))).toEqual([])
   })
+  it('takes the project FOR UPDATE right after job locks, before authority, so it never upgrades FOR SHARE', async () => {
+    await expect(remove({} as any)).resolves.toMatchObject({ success: true })
+    const sqls = m.db.mock.calls.map(([sql]) => sql as string)
+    const projectLocks = sqls.filter(sql => sql.includes('FROM banner_projects') && /FOR (UPDATE|SHARE)/.test(sql))
+    expect(projectLocks[0]).toMatch(/FOR UPDATE/)
+    expect(sqls.indexOf(projectLocks[0]!)).toBe(1)
+    expect(sqls.findIndex(sql => sql.includes('FROM team_members'))).toBeGreaterThan(1)
+  })
+  it('reports a project deleted while waiting for its lock as not found, without mutations', async () => {
+    const original = m.db.getMockImplementation()!
+    m.db.mockImplementation(async (sql, ...args) => /^SELECT id FROM banner_projects .*FOR UPDATE/.test(sql) ? { rows: [] } : original(sql, ...args))
+    await expect(remove({} as any)).rejects.toMatchObject({ statusCode: 404 })
+    expect(m.db.mock.calls.some(([sql]) => sql.includes('FROM team_members'))).toBe(false)
+    expect(m.db.mock.calls.filter(([sql]) => /^\s*(UPDATE|DELETE)/.test(sql))).toEqual([])
+  })
   it('propagates target authority outages without mutations', async () => {
     const original = m.db.getMockImplementation()!
     m.db.mockImplementation(async (sql, ...args) => {

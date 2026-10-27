@@ -63,7 +63,7 @@ export default defineEventHandler(async (event) => {
     // Unlocked preflight discovers the entire source set before actor/project locks.
     // A new-project receipt can have acquired its target while this request waited.
     const observedTargetId = projectId || (await db.query(
-      "SELECT project_id FROM banner_dissections WHERE job_id = $1 AND user_id = $2 AND status = 'imported'", [jobId, user.id]
+      'SELECT project_id FROM banner_dissections WHERE job_id = $1 AND user_id = $2 AND status = \'imported\'', [jobId, user.id]
     )).rows[0]?.project_id
     const readProject = async (id: string): Promise<ImportProject | undefined> =>
       (await db.query('SELECT canvas_data, client_id, created_by, updated_at FROM banner_projects WHERE id = $1', [id])).rows[0] as ImportProject | undefined
@@ -81,6 +81,13 @@ export default defineEventHandler(async (event) => {
     }
     if (!record) throw createError({ statusCode: 404, statusMessage: 'Dissection job not found' })
     const targetId = record.status === 'imported' ? record.project_id : projectId
+    // Lock the target row at full strength straight after the sorted source locks
+    // and before any authority (whose project reads take FOR SHARE). Later share
+    // locks and the snapshot fence re-enter this lock, so concurrent imports or
+    // an import racing deletion serialize here instead of deadlocking on upgrade.
+    if (targetId && !(await db.query('SELECT id FROM banner_projects WHERE id = $1 FOR UPDATE', [targetId])).rows.length) {
+      throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+    }
     // Replay is against today's canvas, not the revision used for the original
     // write. Only already-locked sources may be discovered after waiting.
     if (record.status === 'imported' && targetId) existing = await readProject(targetId)

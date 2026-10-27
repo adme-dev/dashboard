@@ -239,10 +239,10 @@ describe('bounded engine service', () => {
       for (let n = 0; claims.length < count && n < 500; n++) await realDelay(2)
       expect(claims).toHaveLength(count)
       for (let n = 0; n < 500; n++) {
-        if ((await journal()).phase === 'idle') {
-          await realDelay(10)
-          return
-        }
+        const state = await journal()
+        // A durable idle write can become visible before its fsync finishes.
+        // Advance fake time only after this cycle has armed its idle timer.
+        if (state.phase === 'idle' && state.cycle === count && vi.getTimerCount() === 1) return
         await realDelay(2)
       }
       throw new Error('Idle journal missing')

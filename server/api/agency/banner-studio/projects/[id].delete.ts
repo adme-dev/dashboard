@@ -11,12 +11,18 @@ export default defineEventHandler(async (event) => {
   const project = await queryOneFresh<{ canvasData: unknown, clientId: string | null, createdBy: string, updatedAt: string }>(
     'SELECT canvas_data AS "canvasData", client_id AS "clientId", created_by AS "createdBy", updated_at AS "updatedAt" FROM banner_projects WHERE id = $1', [id])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
-  await transactionWithoutRetry(async db => {
+  await transactionWithoutRetry(async (db) => {
     // Deleting the container does not grant source access. Only jobs whose
     // import destination is detached are mutated, so lock those first in order;
     // do not parse or authorize revoked/malformed source content for cleanup.
     const locked = (await db.query<{ job_id: string }>(`SELECT job_id FROM banner_dissections
       WHERE project_id = $1 ORDER BY job_id FOR UPDATE`, [id])).rows
+    // Take the project's strongest lock now, after sources and before authority.
+    // Authority's FOR SHARE and the snapshot fence's FOR UPDATE then re-enter it;
+    // two deletes (or delete + import) never both hold FOR SHARE and deadlock upgrading.
+    if (!(await db.query('SELECT id FROM banner_projects WHERE id = $1 FOR UPDATE', [id])).rows.length) {
+      throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+    }
     await resolveDissectionContext(db, user.id, { projectId: id }, 'write')
     await assertScopedProjectUnchanged(db, id, project)
     // A new import may have committed between initial job selection and the

@@ -98,6 +98,7 @@ const processDissection = (await import('../../../server/api/agency/banner-studi
 const uploadDissection = (await import('../../../server/api/agency/banner-studio/dissect/upload.post')).default
 const recoverEndpoint = (await import('../../../server/api/cron/banner-dissection-recovery.post')).default
 const importJob = (await import('../../../server/api/agency/banner-studio/dissect/[jobId]/import.post')).default
+const removeProject = (await import('../../../server/api/agency/banner-studio/projects/[id].delete')).default
 const owner = '11111111-1111-4111-8111-111111111111'
 const outsider = '22222222-2222-4222-8222-222222222222'
 const sql = async (query: string, values?: unknown[]) => transport.pool!.query(query, values)
@@ -969,6 +970,55 @@ describe.skipIf(!enabled)('Dissection jobs: actual SQL in an owned local Postgre
     } finally {
       await sql('DROP TRIGGER reject_proof_receipt ON banner_dissections; DROP FUNCTION reject_proof_receipt()')
     }
+  })
+
+  // Hold each transaction just after its first project FOR SHARE until both
+  // arrive (or 400 ms pass). Pre-fix both then upgrade to FOR UPDATE and
+  // PostgreSQL aborts one with 40P01; post-fix the second waits on the
+  // up-front target row lock and settles with an ordinary HTTP error.
+  function holdAfterProjectShare() {
+    let arrived = 0
+    let release!: () => void
+    const both = new Promise<void>(resolve => { release = resolve })
+    transport.observe = async (query) => {
+      if (!/FROM banner_projects WHERE id = \$1 FOR SHARE/.test(query)) return
+      if (++arrived >= 2) release()
+      await Promise.race([both, new Promise(resolve => setTimeout(resolve, 400))])
+    }
+  }
+  function expectOneWinnerWithoutDeadlock(results: PromiseSettledResult<unknown>[], statusCodes: number[]) {
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    for (const result of results) if (result.status === 'rejected') {
+      expect(result.reason.code).not.toBe('40P01')
+      expect(statusCodes).toContain(result.reason.statusCode)
+    }
+  }
+
+  it('serializes two different-job imports into one unprotected project instead of deadlocking', async () => {
+    const [first, second] = [await complete(), await complete()]
+    const { rows: [project] } = await sql(`INSERT INTO banner_projects (created_by, canvas_data) VALUES ($1, '{}') RETURNING id, updated_at`, [owner])
+    const body = (job: { expectedResultId: string }) => ({ projectId: project.id, expectedRevision: project.updated_at.toISOString(), expectedResultId: job.expectedResultId })
+    holdAfterProjectShare()
+    const results = await Promise.allSettled([importJob(importEvent(first.id, body(first))), importJob(importEvent(second.id, body(second)))])
+    expectOneWinnerWithoutDeadlock(results, [409])
+    const statuses = [(await rawJob(first.id)).status, (await rawJob(second.id)).status].sort()
+    expect(statuses).toEqual(['complete', 'imported'])
+  })
+
+  it('serializes project deletion racing an import into it instead of deadlocking', async () => {
+    const job = await complete()
+    const { rows: [project] } = await sql(`INSERT INTO banner_projects (created_by, canvas_data) VALUES ($1, '{}') RETURNING id, updated_at`, [owner])
+    holdAfterProjectShare()
+    const results = await Promise.allSettled([
+      importJob(importEvent(job.id, { projectId: project.id, expectedRevision: project.updated_at.toISOString(), expectedResultId: job.expectedResultId })),
+      removeProject({ jobId: project.id, user: owner } as never)
+    ])
+    expectOneWinnerWithoutDeadlock(results, [404, 409])
+    const record = await rawJob(job.id)
+    const remaining = (await sql('SELECT count(*)::int AS count FROM banner_projects WHERE id = $1', [project.id])).rows[0].count
+    // Either the import won (project kept, job imported) or deletion won (no project, job untouched).
+    expect([record.status, remaining]).toEqual(results[0]!.status === 'fulfilled' ? ['imported', 1] : ['complete', 0])
+    expect(record.project_id).toBe(results[0]!.status === 'fulfilled' ? project.id : null)
   })
 
   it('rejects cancelled jobs, stale accepted results, other owners and unauthorized targets', async () => {

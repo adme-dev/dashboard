@@ -194,13 +194,42 @@ describe('Dissection owner, review and atomic import boundary (local mocked DB)'
 
 
 describe('import ownership and exact dimensions', () => {
-  it('denies revoked source authority before project locks or mutation, including receipt replay', async () => {
+  it('denies revoked source authority before project mutation, including receipt replay', async () => {
     await existing()
     m.authorize.mockRejectedValue(Object.assign(new Error('Revoked'), { statusCode: 403 }))
     m.tx.mockClear()
     await expect(existing()).rejects.toMatchObject({ statusCode: 403 })
-    expect(m.tx.mock.calls.filter(([sql]) => sql.includes('banner_projects') && /FOR (UPDATE|SHARE)|UPDATE banner_projects/.test(sql))).toHaveLength(0)
+    // Only the single pre-authority target row lock (see below); no share lock, snapshot fence or write.
+    expect(m.tx.mock.calls.filter(([sql]) => sql.includes('banner_projects') && /FOR (UPDATE|SHARE)|UPDATE banner_projects/.test(sql)).map(([sql]) => sql))
+      .toEqual(['SELECT id FROM banner_projects WHERE id = $1 FOR UPDATE'])
     expect(projectWrites).toBe(1)
+  })
+  it.each(['first import', 'receipt replay'])('locks the target FOR UPDATE after sorted source locks and before authority on %s', async (mode) => {
+    if (mode === 'receipt replay') await existing()
+    m.tx.mockClear()
+    const order: string[] = []
+    m.authorize.mockImplementation(async () => { order.push('authority') })
+    m.context.mockImplementation(async (_db, actor, input) => {
+      order.push('authority')
+      return { owner: input.projectId ? { kind: 'project', projectId: input.projectId, projectOwnerId: project.created_by, clientId: project.client_id, userId: actor }
+        : { kind: 'user', userId: actor }, sessionsInvalidatedAt: null }
+    })
+    const impl = m.tx.getMockImplementation()!
+    m.tx.mockImplementation(async (sql, args) => {
+      if (/FOR (UPDATE|SHARE)/.test(sql)) order.push(sql.includes('banner_projects') ? `project ${sql.match(/FOR (UPDATE|SHARE)/)![0]}` : 'source')
+      return impl(sql, args)
+    })
+    await existing()
+    expect(order.slice(0, 3)).toEqual(['source', 'project FOR UPDATE', 'authority'])
+    expect(order).not.toContain('project FOR SHARE')
+  })
+  it('reports a target deleted before its lock as not found without authority or mutation', async () => {
+    const impl = m.tx.getMockImplementation()!
+    m.tx.mockImplementation(async (sql, args) => sql === 'SELECT id FROM banner_projects WHERE id = $1 FOR UPDATE' ? { rows: [] } : impl(sql, args))
+    await expect(existing()).rejects.toMatchObject({ statusCode: 404 })
+    expect(m.authorize).not.toHaveBeenCalled()
+    expect(m.context).not.toHaveBeenCalled()
+    expect(projectWrites).toBe(0)
   })
   it('does not permit legacy personal results to be moved into a client context', async () => {
     project.client_id = '33333333-3333-4333-8333-333333333333'

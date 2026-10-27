@@ -1,5 +1,13 @@
 # Protected ingestion integration — 28 October 2026
 
+## Current candidate checkpoint — 27 October 2026, 21:56 UTC
+
+Protected ingestion, private derived delivery, saved exports, restricted-project cleanup and source lineage are implemented in the isolated release candidate. R1–R4 are closed or mitigated as specified; follow-up search-probe and delete/import deadlock regressions are fixed. Current main `5e3f5b5472bf6827d094bae2bae029aa4e6f5820` is included through merge `926ac205f61402db4bbb116b4c2dba8f28688b06`. The original shared dirty workspace remains intact.
+
+The merged full suite passed **21,731 tests / 4,065 skipped**, with **2,624 files passed / 118 skipped**. Worker proofs passed **75 actual PostgreSQL job/import tests** and **30 actual PostgreSQL canvas tests**, including three deadlocks first reproduced against the old code and then closed. Real local Chrome exports passed 10 cases; real workerd/R2 passed 14. Counts overlap and must not be summed. The final guarded build is pending. Scoped admission remains disabled. Production is still source `c910df968ac1bef181f9aa99c14008ed2897edac`, Pages `eb493158-0d78-4f9c-9102-89f20ae5a770`; no new deployment is claimed.
+
+See [integration evidence](OWNED-INGEST-INTEGRATION.md), [residual review](INGEST-RESIDUAL-CLOSURE.md), and [the exact Craft tool deployment status](TOOLS-DEPLOYMENT-STATUS.md). PhotoCraft/VectorCraft have a disabled private canary, not an active hosted integration; the other four Craft adapters are unimplemented. Full PRD, provider/native hosted acceptance and print readiness remain incomplete. Earlier release checkpoints below are historical.
+
 This increment is implemented locally and integrated into the existing release candidate, but has not been released. Project/client upload admission remains statically disabled in `shared/bannerDissectionCapabilities.ts`. Personal legacy upload remains supported. The full editable-artwork PRD and hosted provider/print acceptance remain incomplete.
 
 ## Behavior

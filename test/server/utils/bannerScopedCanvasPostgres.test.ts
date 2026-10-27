@@ -113,6 +113,17 @@ describe.skipIf(!process.env.BANNER_CANVAS_PROOF_URL)('scoped canvas transaction
       (await query('SELECT canvas_data FROM banner_projects WHERE id=$1', [project])).rows[0].canvas_data, project))
       .rejects.toMatchObject({ statusCode: 403 })
   })
+  it('does not let a source-denied colleague recover the hidden name or use wildcards through search', async () => {
+    m.auth.mockResolvedValue({ id: other })
+    const probe = async (search: string) => list({ query: { search, limit: '5' } } as any)
+    expect(await probe('Synthetic proj')).toEqual([])
+    expect(await probe('Synthetic proj')).toEqual(await probe('Zzzzzzzzz proj'))
+    expect(await probe('%')).toEqual([])
+    expect(await probe('_')).toEqual([])
+    expect(await probe('RESTRICTED')).toEqual([{ id: project, name: 'Restricted artwork', status: 'restricted', restricted: true }])
+    m.auth.mockResolvedValue({ id: actor })
+    expect((await probe('synthetic PROJ')).map((row: any) => row.id)).toEqual([project])
+  })
   it('copies canonical locators and source markers without thumbnail or registry rebinding', async () => {
     const result = await copy(event())
     expect(result.canvasData).toEqual(canvas)
@@ -187,6 +198,32 @@ describe.skipIf(!process.env.BANNER_CANVAS_PROOF_URL)('scoped canvas transaction
       expect(result.reason.code).not.toBe('40P01')
     }
     expect((await query('SELECT manifest FROM banner_dissections WHERE job_id=$1', [job])).rows[0].manifest).toEqual(manifest)
+  })
+  it('serializes concurrent deletes of a job-less project on its row lock instead of deadlocking on FOR SHARE upgrade', async () => {
+    const target = '99999999-9999-4999-8999-999999999999'
+    await query(`INSERT INTO banner_projects(id,name,client_id,created_by,canvas_data) VALUES($1,'Job-less project',$2,$3,'{}')`, [target, client, actor])
+    // Hold each transaction just after its project FOR SHARE until both arrive
+    // (or 400 ms pass). Pre-fix both then upgrade to FOR UPDATE and PostgreSQL
+    // aborts one with 40P01; post-fix the second waits on the up-front row lock.
+    let arrived = 0
+    let release!: () => void
+    const both = new Promise<void>(resolve => { release = resolve })
+    const transaction = m.tx.getMockImplementation()!
+    const held = (fn: any) => transaction((db: pg.PoolClient) => fn({ query: async (sql: string, params: unknown[]) => {
+      const result = await db.query(sql, params)
+      if (/FROM banner_projects WHERE id = \$1 FOR SHARE/.test(sql)) {
+        if (++arrived >= 2) release()
+        await Promise.race([both, new Promise(resolve => setTimeout(resolve, 400))])
+      }
+      return result
+    } }))
+    m.tx.mockImplementationOnce(held).mockImplementationOnce(held)
+    const results = await Promise.allSettled([remove(event({}, target)), remove(event({}, target))])
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    const rejected = results.find(result => result.status === 'rejected') as PromiseRejectedResult
+    expect(rejected.reason.code).not.toBe('40P01')
+    expect(rejected.reason.statusCode).toBe(404)
+    expect((await query('SELECT id FROM banner_projects WHERE id=$1', [target])).rows).toEqual([])
   })
   it('creates a public review link only for freshly authorized unprotected content', async () => {
     await query("UPDATE banner_projects SET canvas_data='{}' WHERE id=$1", [project])
