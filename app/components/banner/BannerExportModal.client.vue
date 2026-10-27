@@ -9,6 +9,7 @@ import type { ExportJob } from '~/utils/bannerExportPoll'
 import { describeBannerVideoExportError } from '~/utils/bannerExportError'
 import { createBannerVideoExportSession } from '~/utils/bannerVideoExport'
 import { bannerRenderSuggestions, snapshotBannerSocialSuggestion } from '~/utils/bannerRenderSuggestions'
+import { fetchBannerRasterExport } from '~/utils/bannerRasterExportDownload'
 
 const props = defineProps<{ open: boolean, initialType?: 'html5' | 'png' | 'jpg' | 'gif' | 'mp4', socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
@@ -137,8 +138,14 @@ function downloadBlob(blob: Blob, filename: string) {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
+  a.hidden = true
+  document.body.append(a)
+  try {
+    a.click()
+  } finally {
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
 }
 
 function downloadHTML(html: string, filename: string) {
@@ -198,8 +205,12 @@ async function exportZip() {
 }
 
 async function exportImages() {
+  if (isExporting.value) return
   const keys = [...selected.value]
   if (!keys.length) return
+  const output = exportType.value === 'jpg' ? 'jpg' : 'png'
+  const quality = imageQuality.value
+  const projectName = state.project?.name || 'banners'
 
   if (!state.project?.id) {
     toast.add({ title: 'Save first', description: 'Save the project before exporting images', color: 'warning' })
@@ -227,29 +238,27 @@ async function exportImages() {
       body: {
         projectId: state.project.id,
         formats,
-        quality: imageQuality.value,
-        format: exportType.value,
-        jpgQuality: exportType.value === 'jpg' ? jpgQuality.value : undefined
+        quality,
+        format: output,
+        jpgQuality: output === 'jpg' ? jpgQuality.value : undefined
       }
     })
 
     exportProgress.value = 80
+    if (results.length !== keys.length) throw new Error('Some export files are missing. Please try again.')
 
     if (results.length === 1) {
-      // Single image — open in new tab for download
-      window.open(results[0].url, '_blank')
+      const fmt = FORMATS[results[0].formatKey]
+      const blob = await fetchBannerRasterExport(results[0], output)
+      downloadBlob(blob, `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.${output}`)
     } else if (results.length > 1) {
       // Multiple images — download as ZIP
       const zip = new JSZip()
-      const projectName = state.project?.name || 'banners'
-      const ext = exportType.value === 'jpg' ? 'jpg' : 'png'
 
       for (const result of results) {
         const fmt = FORMATS[result.formatKey]
-        const filename = `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.${ext}`
-        // Fetch the image blob
-        const response = await fetch(result.url)
-        const blob = await response.blob()
+        const filename = `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.${output}`
+        const blob = await fetchBannerRasterExport(result, output)
         zip.file(filename, blob)
       }
 
@@ -261,10 +270,10 @@ async function exportImages() {
 
     exportProgress.value = 100
 
-    const qualityLabel = imageQuality.value === 2 ? '@2x' : ''
+    const qualityLabel = quality === 2 ? '@2x' : ''
     toast.add({
       title: 'Export complete',
-      description: `${results.length} ${exportType.value.toUpperCase()}${qualityLabel} images exported`,
+      description: `${results.length} ${output.toUpperCase()}${qualityLabel} images exported`,
       color: 'success'
     })
     emit('update:open', false)
@@ -278,8 +287,11 @@ async function exportImages() {
 }
 
 async function exportGifs() {
+  if (isExporting.value) return
   const keys = [...selected.value]
   if (!keys.length) return
+  const fps = gifFps.value
+  const projectName = state.project?.name || 'banners'
 
   if (!state.project?.id) {
     toast.add({ title: 'Save first', description: 'Save the project before exporting GIFs', color: 'warning' })
@@ -311,23 +323,24 @@ async function exportGifs() {
       body: {
         projectId: state.project.id,
         formats,
-        fps: gifFps.value
+        fps
       }
     })
 
     exportProgress.value = 80
+    if (results.length !== keys.length) throw new Error('Some export files are missing. Please try again.')
 
     if (results.length === 1) {
-      window.open(results[0].url, '_blank')
+      const fmt = FORMATS[results[0].formatKey]
+      const blob = await fetchBannerRasterExport(results[0], 'gif')
+      downloadBlob(blob, `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.gif`)
     } else if (results.length > 1) {
       const zip = new JSZip()
-      const projectName = state.project?.name || 'banners'
 
       for (const result of results) {
         const fmt = FORMATS[result.formatKey]
         const filename = `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.gif`
-        const response = await fetch(result.url)
-        const blob = await response.blob()
+        const blob = await fetchBannerRasterExport(result, 'gif')
         zip.file(filename, blob)
       }
 
@@ -340,7 +353,7 @@ async function exportGifs() {
     exportProgress.value = 100
     toast.add({
       title: 'Export complete',
-      description: `${results.length} GIF${results.length > 1 ? 's' : ''} exported at ${gifFps.value}fps`,
+      description: `${results.length} GIF${results.length > 1 ? 's' : ''} exported at ${fps}fps`,
       color: 'success'
     })
     emit('update:open', false)
