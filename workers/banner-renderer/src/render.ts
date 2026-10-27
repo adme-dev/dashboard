@@ -125,20 +125,25 @@ async function prepare(page: Page, item: BannerRenderItem, request: BannerRender
         return
       }
       // Only reviewed manifest URLs reach fetch, without browser cookies or caller headers.
-      const response = await deadline.run(deps.fetchResource(req.url(), { method: 'GET', redirect: 'manual', credentials: 'omit', signal: deadline.controller.signal }), L.NAVIGATION_TIMEOUT_MS)
+      let response: Response
+      try {
+        response = await deadline.run(deps.fetchResource(req.url(), { method: 'GET', redirect: 'manual', credentials: 'omit', signal: deadline.controller.signal }), L.NAVIGATION_TIMEOUT_MS)
+      } catch (error) {
+        throw error instanceof BannerRenderError ? error : new BannerRenderError('RESOURCE_FAILED', { stage: 'resource-transport' })
+      }
       if (response.status >= 300 && response.status < 400) {
         await response.body?.cancel()
         throw new BannerRenderError('RESOURCE_BLOCKED')
       }
       if (!response.ok) {
         await response.body?.cancel()
-        throw new BannerRenderError('RESOURCE_FAILED')
+        throw new BannerRenderError('RESOURCE_FAILED', { stage: 'resource-http', status: response.status })
       }
       const bytes = await readResource(response, budget, deadline)
       if (new URL(req.url()).pathname === PINNED_FONT_PATH) {
         const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes).buffer)
         const hash = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('')
-        if (bytes.length !== 428176 || hash !== '9214b9d95e4231c609802815c2646c98174e2102d0d37f88978a7f8e71006e6a') throw new BannerRenderError('RESOURCE_FAILED')
+        if (bytes.length !== 428176 || hash !== '9214b9d95e4231c609802815c2646c98174e2102d0d37f88978a7f8e71006e6a') throw new BannerRenderError('RESOURCE_FAILED', { stage: 'font-integrity' })
       }
       await req.respond({ status: 200, contentType: response.headers.get('content-type') || 'application/octet-stream', headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }, body: Buffer.from(bytes) })
     } catch (error) {
@@ -190,7 +195,7 @@ async function prepare(page: Page, item: BannerRenderItem, request: BannerRender
   try {
     await deadline.run(settle(), L.SETTLE_TIMEOUT_MS)
   } catch (error) {
-    throw resourceError ?? (error instanceof BannerRenderError ? error : new BannerRenderError('RESOURCE_FAILED'))
+    throw resourceError ?? (error instanceof BannerRenderError ? error : new BannerRenderError('RESOURCE_FAILED', { stage: 'resource-decode' }))
   }
   if (resourceError)
     throw resourceError
@@ -321,7 +326,7 @@ export async function handleBannerRender(input: unknown, config: RenderConfigura
     return { version: 1, ok: true, value: { items } }
   } catch (error) {
     const code = error instanceof BannerRenderError ? error.code : 'RENDER_FAILED'
-    return { version: 1, ok: false, error: { code, message: `Banner rendering failed: ${code}.`, ...(itemKey ? { itemKey } : {}) } }
+    return { version: 1, ok: false, error: { code, message: `Banner rendering failed: ${code}.`, ...(itemKey ? { itemKey } : {}), ...(error instanceof BannerRenderError && error.diagnostic ? { diagnostic: error.diagnostic } : {}) } }
   } finally {
     deadline.controller.abort()
     if (page) {

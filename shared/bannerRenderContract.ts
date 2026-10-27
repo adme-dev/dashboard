@@ -10,6 +10,10 @@ export const BANNER_RENDER_LIMITS = Object.freeze({
 export type BannerRenderEnvironment = 'staging' | 'production'
 export type BannerRenderOutput = 'png' | 'jpeg' | 'gif'
 export type BannerRenderErrorCode = 'INVALID_INPUT' | 'LIMIT_EXCEEDED' | 'UNAVAILABLE' | 'BROWSER_UNAVAILABLE' | 'RESOURCE_BLOCKED' | 'RESOURCE_FAILED' | 'UNSUPPORTED_TIMELINE' | 'TIMEOUT' | 'RENDER_FAILED'
+export interface BannerRenderDiagnostic {
+  stage: 'resource-transport' | 'resource-http' | 'font-integrity' | 'resource-decode'
+  status?: number
+}
 export interface BannerRenderItem {
   key: string
   width: number
@@ -54,13 +58,14 @@ export type BannerRenderResponse = {
     code: BannerRenderErrorCode
     message: string
     itemKey?: string
+    diagnostic?: BannerRenderDiagnostic
   }
 }
 export interface BannerRendererClient {
   render(request: BannerRenderRequest): Promise<BannerRenderResponse>
 }
 export class BannerRenderError extends Error {
-  constructor(readonly code: BannerRenderErrorCode) {
+  constructor(readonly code: BannerRenderErrorCode, readonly diagnostic?: BannerRenderDiagnostic) {
     super(code)
     this.name = 'BannerRenderError'
   }

@@ -108,6 +108,13 @@ describe.skipIf(!existsSync(executable))('real local Chromium renderer (no hoste
     expect(reply.ok ? undefined : reply.error).toBeUndefined()
     expect(reply.ok).toBe(true)
   })
+  it('reports only the stage and HTTP status when an allowed font resource fails', async () => {
+    const html = `<style>@font-face{font-family:ProofFont;src:url(https://app.xeroflow.io${PINNED_FONT_PATH})}body{font-family:ProofFont}</style><body>HELLO</body>`
+    const reply = await handleBannerRender(input('png', html), config, { launch, fetchResource: async () => new Response('private response body', { status: 403 }) })
+    expect(reply).toMatchObject({ ok: false, error: { code: 'RESOURCE_FAILED', diagnostic: { stage: 'resource-http', status: 403 } } })
+    expect(JSON.stringify(reply)).not.toContain('private response body')
+    expect(JSON.stringify(reply)).not.toContain('https://')
+  })
   it('fails closed when an HTTP200 font cannot decode instead of exporting fallback text', async () => {
     const html = '<style>@font-face{font-family:BadFont;src:url(https://fonts.gstatic.com/s/test/font.ttf)}body{font-family:BadFont}</style><body>HELLO</body>'
     const reply = await handleBannerRender(input('png', html), config, { launch, fetchResource: async () => new Response('NOT A FONT', { headers: { 'content-type': 'font/ttf' } }) })
