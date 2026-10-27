@@ -13,11 +13,18 @@ other products, so use two apps:
 
 | App | Product | Used for | Env vars |
 | --- | --- | --- | --- |
-| Organic | Community Management API (Development tier → Standard tier) | Page discovery, posts, comments, share/follower statistics | `LINKEDIN_ORGANIC_CLIENT_ID`, `LINKEDIN_ORGANIC_CLIENT_SECRET` |
-| Ads | Advertising API | `r_ads`, `r_ads_reporting` spend sync | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` |
+| Organic | Community Management API (Development tier → Standard tier) | Page discovery, posts, comments, share/follower statistics | `LINKEDIN_ORGANIC_CLIENT_SECRET` |
+| Ads | Advertising API | `r_ads`, `r_ads_reporting` spend sync | `LINKEDIN_CLIENT_SECRET` |
+
+Created 2026-10-26: "XeroFlow Page Publishing" (app 264187076, client ID
+`86f03s18de7z8p`) and "XeroFlow Ads Reporting" (app 264175233, client ID
+`86j76jtfd3bdbf`). Client IDs are public and built into
+`server/utils/socialOAuth/env.ts`; `LINKEDIN_ORGANIC_CLIENT_ID` /
+`LINKEDIN_CLIENT_ID` still override them but cost a text binding each.
 
 Both apps must be associated with the ADME Advertising Company Page
 (linkedin.com/company/adme-advertising), verified by a Page super admin.
+Products cannot be requested until that verification is approved.
 
 Development tier limits: 500 requests/app/day, 100/member/day. Inbox sync uses
 up to ~21 calls per account per run — request Standard tier (screencast of each
@@ -38,20 +45,26 @@ Organic requests, by default:
 Requesting a scope the app isn't granted fails the whole consent screen
 (`unauthorized_scope_error`). Compare with the app's **Auth → OAuth 2.0 scopes**
 list; if it differs, set `LINKEDIN_ORGANIC_SCOPES` (space- or comma-separated)
-to exactly what the app shows. No redeploy needed — it's read per request.
+to exactly what the app shows, then redeploy. Production has one spare text
+binding (see below), so this override uses it.
 
 Ads requests `r_ads r_ads_reporting`.
 
 ## 4. Cloudflare Pages secrets (`agency-dashboard`, Production)
 
+Cloudflare Pages allows **150 text bindings** (plain vars + secrets) per
+environment, and production is budgeted to 149 with LinkedIn
+(`test/config/pagesProductionTextBindings.test.ts`). Going over fails every
+deploy with `Too many text bindings`. Recount live secrets
+(`wrangler pages secret list`) before adding any.
+
 ```bash
-npx wrangler pages secret put LINKEDIN_ORGANIC_CLIENT_ID     --project-name agency-dashboard
-npx wrangler pages secret put LINKEDIN_ORGANIC_CLIENT_SECRET --project-name agency-dashboard
-npx wrangler pages secret put LINKEDIN_CLIENT_ID             --project-name agency-dashboard
-npx wrangler pages secret put LINKEDIN_CLIENT_SECRET         --project-name agency-dashboard
-# optional
-npx wrangler pages secret put LINKEDIN_ORGANIC_SCOPES        --project-name agency-dashboard
+pbpaste | npx wrangler pages secret put LINKEDIN_ORGANIC_CLIENT_SECRET --project-name agency-dashboard
+pbpaste | npx wrangler pages secret put LINKEDIN_CLIENT_SECRET         --project-name agency-dashboard
 ```
+
+Copy each app's Primary Client Secret (Auth tab) to the clipboard first.
+Secrets apply to the next deployment, so redeploy afterwards.
 
 `SOCIAL_OAUTH_STATE_SECRET` (or a fallback such as `META_APP_SECRET`) must
 already be set; the `CACHE` KV binding is needed for multi-Page selection.
