@@ -62,10 +62,10 @@ Task 1 does not claim the six reads execute yet: Task 2 delivers that before pil
 **Files:** new governed MCP social suite and services; existing publishing draft/request/approve/publish/dispatch boundaries; targeted tests. Exact storage reuse and file list will be recorded in a subordinate plan after source inspection.
 **Consumes:** Tasks 1–2 authority and scope. **Produces:** scoped account/post discovery, media-capable drafts, submission and status, and revision-bound independent approval using existing social provider services.
 
-- [ ] Produce exact subordinate plan for existing storage, immutable revisions, metadata compatibility, dispatch and client approval.
-- [ ] Add tests before implementation for account/media cross-client denial, draft-only creation, Instagram media, edited approvals, self-review, revoked users, missing scope and duplicate dispatch.
-- [ ] Implement staff tools that never publish directly; owner/admin browser review authorizes the exact content and targets without granting God mode. Existing client sign-off remains required.
-- [ ] Exercise real service/SQL boundaries and scheduler enforcement with mocked provider dispatch; update UI and docs with accurate platform readiness.
+- [x] Produce exact subordinate plan for existing storage, immutable revisions, metadata compatibility, dispatch and client approval.
+- [x] Add tests before implementation for account/media cross-client denial, draft-only creation, Instagram media, edited approvals, self-review, revoked users, missing scope and duplicate dispatch.
+- [x] Implement staff tools that never publish directly; owner/admin browser review authorizes the exact content and targets without granting God mode. Existing client sign-off remains required.
+- [x] Exercise real service/SQL boundaries and scheduler enforcement with mocked provider dispatch; update UI and docs with accurate platform readiness.
 
 ## Task 4: Google Ads and GTM workflows
 

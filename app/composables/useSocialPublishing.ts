@@ -1,4 +1,4 @@
-import type { SocialPost, SocialAccount, SocialSlot } from '~/types'
+import type { SocialPost, SocialAccount, SocialSlot, SocialApprovalPost } from '~/types'
 
 /**
  * Thin API client for the social publishing module. Reads use apiFetch directly so callers
@@ -34,11 +34,15 @@ export function useSocialPublishing() {
   const requestApproval = (id: string) =>
     apiFetch(`${base}/posts/${id}/request-approval`, { method: 'POST' })
 
-  const approve = (id: string) =>
-    apiFetch(`${base}/posts/${id}/approve`, { method: 'POST' })
+  /** `revisionId` binds the decision to the exact submitted revision (required for delegated posts). */
+  const approve = (id: string, revisionId?: string | null) =>
+    apiFetch<{ ok: true, revisionId?: string }>(`${base}/posts/${id}/approve`, {
+      method: 'POST',
+      body: revisionId ? { revisionId } : {}
+    })
 
-  const reject = (id: string, reason: string) =>
-    apiFetch(`${base}/posts/${id}/reject`, { method: 'POST', body: { reason } })
+  const reject = (id: string, reason: string, revisionId?: string | null) =>
+    apiFetch(`${base}/posts/${id}/reject`, { method: 'POST', body: { reason, ...(revisionId ? { revisionId } : {}) } })
 
   const listAccounts = (clientId: string) =>
     apiFetch<SocialAccount[]>(`${base}/accounts`, { query: { clientId } })
@@ -74,7 +78,7 @@ export function useSocialPublishing() {
     apiFetch<SocialPost[]>(`${base}/calendar`, { query: { clientId, from, to } })
 
   const getApprovals = (clientId?: string) =>
-    apiFetch<SocialPost[]>(`${base}/approvals`, { query: clientId ? { clientId } : {} })
+    apiFetch<SocialApprovalPost[]>(`${base}/approvals`, { query: clientId ? { clientId } : {} })
 
   const getApprovalsBadge = (clientId?: string) =>
     apiFetch<{ count: number }>(`${base}/approvals/badge`, { query: clientId ? { clientId } : {} })

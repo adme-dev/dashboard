@@ -46,7 +46,8 @@ vi.mock('~~/server/utils/socialPublishing', () => ({ publishPost: (...a: unknown
 vi.mock('~~/server/utils/social/clientAccess', () => ({
   requireSocialClientAccess: (...a: unknown[]) => mockRequireSocialClientAccess(...a)
 }))
-vi.mock('~~/server/utils/agencyWorkflows/client', () => ({
+vi.mock('~~/server/utils/agencyWorkflows/client', async importOriginal => ({
+  ...(await importOriginal<typeof import('~~/server/utils/agencyWorkflows/client')>()),
   startSocialPublishingWorkflow: (...a: unknown[]) => mockStartSocialPublishingWorkflow(...a)
 }))
 // the cron imports these from 'h3'
@@ -84,7 +85,7 @@ describe('manual publish endpoint', () => {
     expect(mockPublishPost).toHaveBeenCalledOnce()
     expect(mockQueryOne.mock.calls[1][0]).toContain('UPDATE social_posts')
     expect(mockQueryOne.mock.calls[1][0]).toContain('status = ANY($3::text[])')
-    expect(mockQueryOne.mock.calls[1][1]).toEqual(['P1', 'C1', ['approved'], null, null])
+    expect(mockQueryOne.mock.calls[1][1]).toEqual(['P1', 'C1', ['approved'], null, null, null])
     expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('last_error'), [['a1'], 'C1'])
     // final UPDATE persists status + platform_results
     const finalUpdate = mockExecute.mock.calls.find(call => String(call[0]).includes('published_at=CASE'))!
@@ -144,7 +145,7 @@ describe('dispatcher cron — idempotent claim', () => {
     expect(mockQueryOne.mock.calls[0][0]).toContain('UPDATE social_posts')
     expect(mockQueryOne.mock.calls[0][0]).toContain('status = ANY($3::text[])')
     expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at = $5::timestamptz')
-    expect(mockQueryOne.mock.calls[0][1]).toEqual(['P1', null, ['scheduled'], 3, '2026-07-02T00:00:00.000Z'])
+    expect(mockQueryOne.mock.calls[0][1]).toEqual(['P1', null, ['scheduled'], 3, '2026-07-02T00:00:00.000Z', null])
     expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('last_error'), [['a1'], 'C1'])
   })
 
@@ -178,6 +179,28 @@ describe('dispatcher cron — idempotent claim', () => {
       requestedBy: 'social-dispatch-cron'
     })
     expect(mockPublishPost).not.toHaveBeenCalled()
+  })
+
+  it('reads the workflow-primary switches from request bindings before process env', async () => {
+    const bindingEvt = { ...evt, context: { cloudflare: { env: { AGENCY_WORKFLOWS_ENABLED: 'true', AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY: 'true' } } } }
+
+    const res = await cronH(bindingEvt as TestEvent)
+
+    expect(res.results).toEqual([{ id: 'P1', status: 'workflow_started', workflowInstanceId: 'social-publish-C1-P1' }])
+    expect(mockStartSocialPublishingWorkflow).toHaveBeenCalledOnce()
+    expect(mockPublishPost).not.toHaveBeenCalled()
+  })
+
+  it('lets an explicit false binding override workflow-primary process env', async () => {
+    process.env.AGENCY_WORKFLOWS_ENABLED = 'true'
+    process.env.AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY = 'true'
+    mockExecute.mockResolvedValue(1)
+    const bindingEvt = { ...evt, context: { cloudflare: { env: { AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY: 'false' } } } }
+
+    const res = await cronH(bindingEvt as TestEvent)
+
+    expect(mockStartSocialPublishingWorkflow).not.toHaveBeenCalled()
+    expect(res.results).toEqual([{ id: 'P1', status: 'published' }])
   })
 
   it('falls back to direct cron publish when workflow-primary kickoff fails', async () => {

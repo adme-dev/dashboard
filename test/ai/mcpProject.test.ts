@@ -19,6 +19,7 @@ import {
   resolveGodModeMcpExecutions,
   projectRegisteredMcpTools,
   registeredMcpSuites,
+  staffOnlyMcpSuites,
   type RegisteredMcpSuite
 } from '~~/server/utils/ai/mcp/registry'
 import { registry as applicationRegistry } from '~~/server/utils/ai/tools'
@@ -448,18 +449,21 @@ describe('authoritative registered MCP suite projection', () => {
     const exportedProjectors = modules.flatMap(module => Object.entries(module))
       .filter(([name, value]) => name.endsWith('McpSuite') && typeof value === 'function')
       .map(([, value]) => value)
-    const registeredProjectors = registeredMcpSuites.map(suite => suite.project)
+    // Owner-union suites plus the explicit staff-only suites (Task 3 social drafts); disjoint.
+    const allSuites = [...registeredMcpSuites, ...staffOnlyMcpSuites]
+    expect(staffOnlyMcpSuites.every(suite => !registeredMcpSuites.some(owner => owner.key === suite.key || owner.project === suite.project))).toBe(true)
+    const registeredProjectors = allSuites.map(suite => suite.project)
     const exportedSourceProjectors = modules.flatMap(module => Object.entries(module))
       .filter(([name, value]) => name.startsWith('project') && name.endsWith('Tools') && typeof value === 'function')
       .map(([, value]) => value)
-    const registeredSourceProjectors = registeredMcpSuites.flatMap(suite => suite.sourceProjectors ?? [])
+    const registeredSourceProjectors = allSuites.flatMap(suite => suite.sourceProjectors ?? [])
     const exportedExecutionResolvers = modules.flatMap(module => Object.entries(module))
       .filter(([name, value]) => name.startsWith('resolve') && name.endsWith('McpExecutions') && typeof value === 'function')
       .map(([, value]) => value)
-    const registeredExecutionResolvers = registeredMcpSuites.map(suite => suite.executions)
+    const registeredExecutionResolvers = allSuites.map(suite => suite.executions)
 
     expect(projectCatalogMcpSuite).toBeTypeOf('function')
-    expect(new Set(registeredMcpSuites.map(suite => suite.key)).size).toBe(registeredMcpSuites.length)
+    expect(new Set(allSuites.map(suite => suite.key)).size).toBe(allSuites.length)
     expect(registeredProjectors).toHaveLength(exportedProjectors.length)
     for (const projector of exportedProjectors) {
       expect(registeredProjectors.filter(candidate => candidate === projector)).toHaveLength(1)

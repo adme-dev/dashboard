@@ -11,7 +11,7 @@
 import type { SocialPostProvider, PostParams, PostResult, CommentParams, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { mapFbPostInsights, mapFbAccountInsights } from '~~/server/utils/socialReporting/normalize'
-import { fetchWithTimeout, providerFetch } from './http'
+import { fetchWithTimeout, isAmbiguousHttpOutcome, isPublicationStageError, providerFetch, publicationRequest } from './http'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 const INBOX_FETCH_TIMEOUT_MS = 12_000
@@ -114,6 +114,7 @@ interface GraphAPIError {
     code?: number
     error_subcode?: number
     fbtrace_id?: string
+    is_transient?: boolean
   }
 }
 
@@ -150,7 +151,16 @@ function parseGraphError(err: unknown): PostResult {
 
   // Generic fallback
   const msg = graphErr?.message || raw?.message || 'Unknown Facebook API error'
-  return failResult(msg)
+  // The publication request itself got no definitive answer (transport loss, timeout, 5xx or a transient
+  // Graph error): the post may exist, so it is held for read-back. Earlier upload failures are effect-free.
+  return isPublicationStageError(err) && isAmbiguousGraphOutcome(raw?.statusCode, graphErr)
+    ? { ...failResult(msg), indeterminate: true }
+    : failResult(msg)
+}
+
+/** Ambiguous HTTP outcome, or Meta's documented unknown/temporary-service errors (codes 1 and 2). */
+export function isAmbiguousGraphOutcome(statusCode: number | undefined, graphErr: GraphAPIError['error'] | undefined): boolean {
+  return isAmbiguousHttpOutcome(statusCode) || graphErr?.is_transient === true || graphErr?.code === 1 || graphErr?.code === 2
 }
 
 function failResult(error: string): PostResult {
@@ -308,14 +318,14 @@ export const facebookProvider: SocialPostProvider = {
     try {
       // ── Link post ────────────────────────────────────
       if (options?.link && !media?.length) {
-        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
+        const res = await publicationRequest(() => providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
           method: 'POST',
           body: {
             message: content,
             link: options.link,
             access_token: accessToken
           }
-        })
+        }))
         return {
           platformPostId: res.id,
           url: buildPostUrl(res.id),
@@ -325,13 +335,13 @@ export const facebookProvider: SocialPostProvider = {
 
       // ── No media: text-only post ─────────────────────
       if (!media?.length) {
-        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
+        const res = await publicationRequest(() => providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
           method: 'POST',
           body: {
             message: content,
             access_token: accessToken
           }
-        })
+        }))
         return {
           platformPostId: res.id,
           url: buildPostUrl(res.id),
@@ -343,14 +353,15 @@ export const facebookProvider: SocialPostProvider = {
       const videos = media.filter(m => m.type === 'video')
       if (videos.length > 0) {
         const video = videos[0]!
-        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/videos`, {
+        // A /videos upload publishes immediately, so this is the publication request.
+        const res = await publicationRequest(() => providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/videos`, {
           method: 'POST',
           body: {
             file_url: video.url,
             description: content,
             access_token: accessToken
           }
-        })
+        }))
         return {
           platformPostId: res.id,
           url: `https://www.facebook.com/${accountId}/videos/${res.id}`,
@@ -364,14 +375,14 @@ export const facebookProvider: SocialPostProvider = {
         // Upload as unpublished, then attach to a feed post for consistent URL format
         const photoId = await uploadUnpublishedPhoto(accountId, accessToken, images[0]!.url)
 
-        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
+        const res = await publicationRequest(() => providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
           method: 'POST',
           body: {
             message: content,
             attached_media: [{ media_fbid: photoId }],
             access_token: accessToken
           }
-        })
+        }))
 
         return {
           platformPostId: res.id,
@@ -389,14 +400,14 @@ export const facebookProvider: SocialPostProvider = {
 
         const attachedMedia = photoIds.map(id => ({ media_fbid: id }))
 
-        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
+        const res = await publicationRequest(() => providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
           method: 'POST',
           body: {
             message: content,
             attached_media: attachedMedia,
             access_token: accessToken
           }
-        })
+        }))
 
         return {
           platformPostId: res.id,

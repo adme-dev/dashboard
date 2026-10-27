@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // The providers stopped using the global $fetch after the Meta-524 fix —
 // they call providerFetch/fetchWithTimeout from ./http (ofetch), so the
 // network layer must be mocked at that module, not via stubGlobal.
-vi.mock('../../server/utils/social-providers/http', () => ({
+vi.mock('../../server/utils/social-providers/http', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../server/utils/social-providers/http')>()),
   providerFetch: vi.fn(async () => ({ id: '123_456' })),
   providerFetchRaw: vi.fn(async () => ({ _data: { id: '123_456' }, status: 200, ok: true })),
   fetchWithTimeout: vi.fn(async () => new Response(JSON.stringify({ id: '123_456' }), { status: 200 })),

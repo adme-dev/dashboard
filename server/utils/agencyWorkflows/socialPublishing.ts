@@ -9,6 +9,8 @@ export interface SocialPublishingWorkflowPayload {
   scheduledAt?: string
   trigger: SocialPublishingWorkflowTrigger
   requestedBy?: string
+  /** Approved revision this run may publish (delegated posts); bound into the instance id. */
+  revisionId?: string
 }
 
 const WORKFLOW_INSTANCE_ID_MAX_LENGTH = 100
@@ -25,6 +27,7 @@ export function normalizeSocialPublishingWorkflowPayload(input: unknown): Social
   const trigger = normalizeTrigger(body.trigger)
   const scheduledAt = optionalIsoDateTime(body.scheduledAt, 'scheduledAt')
   const requestedBy = optionalText(body.requestedBy)
+  const revisionId = optionalRevisionId(body.revisionId)
 
   return {
     kind: SOCIAL_PUBLISHING_WORKFLOW_KIND,
@@ -32,14 +35,26 @@ export function normalizeSocialPublishingWorkflowPayload(input: unknown): Social
     clientId,
     trigger,
     ...(scheduledAt ? { scheduledAt } : {}),
-    ...(requestedBy ? { requestedBy } : {})
+    ...(requestedBy ? { requestedBy } : {}),
+    ...(revisionId ? { revisionId } : {})
   }
 }
 
 export function buildSocialPublishingWorkflowInstanceId(payload: SocialPublishingWorkflowPayload): string {
   const attempt = payload.scheduledAt ? `-${workflowInstancePart(payload.scheduledAt)}` : ''
+  // Revision ids are unique per submission, so a new reviewed revision always gets a new instance.
+  if (payload.revisionId) {
+    return `social-publish-rev-${workflowInstancePart(payload.revisionId)}${attempt}`.slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
+  }
   return `social-publish-${workflowInstancePart(payload.clientId)}-${workflowInstancePart(payload.postId)}${attempt}`
     .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
+}
+
+function optionalRevisionId(input: unknown): string | undefined {
+  const value = optionalText(input)
+  if (!value) return undefined
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) throw new Error('revisionId must be a UUID')
+  return value.toLowerCase()
 }
 
 export function socialPublishingWorkflowClaimStatuses(

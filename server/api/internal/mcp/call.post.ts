@@ -71,6 +71,12 @@ import {
 } from '~~/server/utils/ai/mcp/marketingPolicy'
 import { executeOrdinaryMcpRememberMutation } from '~~/server/utils/ai/tools/remember'
 import { persistMcpProposalResult, replayExecutedMcpProposal } from '~~/server/utils/ai/mcp/proposalReplay'
+import {
+  isSocialMcpToolName,
+  LEGACY_MCP_SOCIAL_PROPOSAL_REDIRECT,
+  LEGACY_MCP_SOCIAL_PROPOSAL_TOOL
+} from '~~/server/utils/ai/mcp/socialToolNames'
+import { executeSocialMcpTool } from '~~/server/utils/ai/mcp/socialTools'
 
 export default defineEventHandler(async (event) => {
   const runtime = resolveMcpRuntimeConfig(event)
@@ -217,8 +223,20 @@ export default defineEventHandler(async (event) => {
   // labels the owner's audited scope bypass. A read-only role policy blocks the same class.
   const isWriteScopeTool = isWriteScopeToolName(toolName)
 
+  const runSocialTool = async () => await executeSocialMcpTool({
+    toolName,
+    args,
+    ctx,
+    userId,
+    idempotencyKey,
+    sessionDigest: claim.bodyDigest
+  })
+
   let outcome: { ok: boolean, data?: unknown, error?: string, code?: string }
-  if (isWriteScopeTool && !hasWriteScope(grantedScopes)) {
+  if (toolName === LEGACY_MCP_SOCIAL_PROPOSAL_TOOL) {
+    // Ordinary staff (management included) never create a legacy, self-approvable social post over MCP.
+    outcome = { ok: false, error: LEGACY_MCP_SOCIAL_PROPOSAL_REDIRECT, code: 'review_required' }
+  } else if (isWriteScopeTool && !hasWriteScope(grantedScopes)) {
     outcome = { ok: false, error: 'This action requires write access. Reconnect your AI assistant and grant write (mcp:write) to use it.', code: 'insufficient_scope' }
   } else if (isWriteScopeTool && ctx.assistantReadOnly === true) {
     outcome = { ok: false, error: 'Your role is read-only.', code: 'read_only' }
@@ -235,11 +253,17 @@ export default defineEventHandler(async (event) => {
         args,
         ctx
       })
+    } else if (isSocialMcpToolName(toolName)) {
+      outcome = await runSocialTool()
     } else {
       outcome = await executeStaffMcpReadTool(registry as AiTool<unknown>[], toolName, args, ctx)
     }
   } else if (managementCeiling && !managementCeiling.has(toolName)) {
     outcome = { ok: false, error: 'Not permitted.', code: 'forbidden' }
+  } else if (isSocialMcpToolName(toolName)) {
+    // Management staff reach the same reviewed suite, re-admitted against their fresh grant/scope.
+    const admission = evaluateStaffToolAdmission(toolName, ctx)
+    outcome = admission.allowed ? await runSocialTool() : { ok: false, error: admission.error, code: admission.code }
   } else if (isRemember) {
     // Unlike proposal writes, remember is an immediate private write. Its coordinator atomically owns
     // the idempotency claim, memory upsert, action audit, and terminal ledger state, so do not append

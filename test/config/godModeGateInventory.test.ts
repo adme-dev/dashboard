@@ -308,13 +308,29 @@ describe('God mode gate inventory', () => {
     // Scoped marketing reads add seven fresh permission-group wiring/check rows.
     // These are lexical ordinary-user rows; scope and role predicates remain
     // mandatory and no God-mode bypass is registered by the shared services.
+    // Task 3 delegated social review adds four rows, none a bypass: the fresh ADMIN reviewer check
+    // (reviewAuthority) and the approvals queue's advisory owner/admin hint (+3 ordinary rows; the
+    // approve/reject/publish endpoints still re-resolve fresh authority), and the binding-first
+    // RENDER_LINK_SECRET read for content-pinned media links (+1 provider row).
+    // The reviewed workflow correction replaces four process-env rows with the
+    // binding-first helper. Both enable checks, primary selection and callback
+    // authentication remain mandatory; bracket-access fallback is outside this
+    // lexical pattern and does not register a God mode bypass.
+    const publishingCron = readFileSync('server/api/cron/publish-social-posts.post.ts', 'utf8')
+    const publishingCallback = readFileSync('server/api/internal/workflows/social-publishing/publish.post.ts', 'utf8')
+    expect(publishingCron).toContain("agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_ENABLED') === 'true'")
+    expect(publishingCron).toContain("agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY') === 'true'")
+    expect(publishingCallback).toContain("agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_ENABLED') !== 'true'")
+    expect(publishingCallback).toContain("agencyWorkflowConfigText(event, 'WORKFLOW_CALLBACK_SECRET')")
+    expect(publishingCallback).toContain("agencyWorkflowConfigText(event, 'WORKFLOW_SERVICE_SECRET')")
+    expect(publishingCallback).toContain("getHeader(event, 'x-workflow-secret') !== expected")
     expect(inventory.rows).toHaveLength(1645)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 127,
       provider_infrastructure_availability: 222,
-      application_governance_bypass: 1622,
-      ordinary_user_behavior: 241,
-      unrelated_configuration: 432
+      application_governance_bypass: 1620,
+      ordinary_user_behavior: 244,
+      unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -329,7 +345,11 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('75b08e3e3c9bd7d3fe8ae0e8c607a785eee7888954ac2a20a22dcfdac7bd727b')
+    expect(inventory.rows).toContain("server/utils/ai/marketing/reviewAuthority.ts\tif (!(ctx.permissionGroups ?? []).includes('ADMIN')) {\tordinary_user_behavior")
+    expect(inventory.rows.filter(row => row.startsWith('server/utils/socialPublishing/mediaAssets.ts\t'))).toEqual([
+      "server/utils/socialPublishing/mediaAssets.ts\tconst secret = typeof bound === 'string' ? bound : (env && 'RENDER_LINK_SECRET' in env ? null : process.env.RENDER_LINK_SECRET)\tprovider_infrastructure_availability"
+    ])
+    expect(inventory.digest).toBe('60a26a71413acd031f91759d641cb238b30bee840356edba2f540c06f9a5a5f3')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

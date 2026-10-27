@@ -32,7 +32,21 @@ const CONTROLLED_SOCIAL_POST_FIELDS = new Set([
   'approval_requested_by',
   'approved_at',
   'approved_by',
-  'rejection_reason'
+  'rejection_reason',
+  // Server-controlled review policy and revision bindings (migration 483). Neither browser metadata
+  // nor generic edits may select, clear or re-point them.
+  'reviewPolicy',
+  'review_policy',
+  'currentRevisionId',
+  'current_revision_id',
+  'approvedRevisionId',
+  'approved_revision_id',
+  'clientApprovalRevisionId',
+  'client_approval_revision_id',
+  'mediaAssetRefs',
+  'media_asset_refs',
+  'clientApprovalStatus',
+  'client_approval_status'
 ])
 
 export interface SocialPostClientRef {
@@ -45,6 +59,11 @@ export interface SocialPostClientRef {
   approval_requested_at?: string | null
   client_approval_status?: string | null
   metadata?: Record<string, any> | null
+  review_policy?: 'legacy' | 'delegated_marketing' | null
+  current_revision_id?: string | null
+  approved_revision_id?: string | null
+  client_approval_revision_id?: string | null
+  scheduled_at?: string | null
 }
 
 export interface NormalizedPublishingTarget {
@@ -213,7 +232,8 @@ export function assertNoControlledSocialPostFields(body: Record<string, unknown>
 export async function requireSocialPostClientAccess(event: H3Event, postId: string): Promise<SocialPostClientRef> {
   const row = await queryOneFresh<SocialPostClientRef>(
     `SELECT id, client_id, platforms, account_ids, status, approval_requested_at,
-            client_approval_status, metadata, created_by
+            client_approval_status, metadata, created_by, review_policy, current_revision_id,
+            approved_revision_id, client_approval_revision_id, scheduled_at
        FROM social_posts WHERE id = $1`,
     [postId]
   )
@@ -255,9 +275,18 @@ export async function assertPublishingTargets(
   return accountIds
 }
 
+export interface PublishingTargetReadOptions {
+  /**
+   * Account reader. Defaults to the cached binding for legacy browser callers; delegated submission
+   * passes the uncached reader so a cached pre-disconnect / pre-reassignment row cannot authorize a target.
+   */
+  queryRows?: <T>(sql: string, params?: unknown[]) => Promise<T[]>
+}
+
 export async function normalizePublishingTargets(
   clientId: string,
-  value: unknown
+  value: unknown,
+  options: PublishingTargetReadOptions = {}
 ): Promise<NormalizedPublishingTargets | null> {
   if (value == null) return null
   if (!Array.isArray(value)) {
@@ -293,13 +322,14 @@ export async function normalizePublishingTargets(
     seenTargets.add(key)
     accountIds.push(accountId)
 
-    const options = 'options' in target ? normalizeProviderOptions(platform, target.options) : {}
-    targets.push(Object.keys(options).length
-      ? { platform, accountId, options }
+    const providerOptions = 'options' in target ? normalizeProviderOptions(platform, target.options) : {}
+    targets.push(Object.keys(providerOptions).length
+      ? { platform, accountId, options: providerOptions }
       : { platform, accountId })
   }
 
-  const rows = await queryRows<PublishingAccountValidationRow>(
+  const readRows = options.queryRows ?? queryRows
+  const rows = await readRows<PublishingAccountValidationRow>(
     `SELECT id, platform, is_active, last_error, token_expires_at, metadata,
             (NULLIF(refresh_token, '') IS NOT NULL) AS has_refresh_token
        FROM social_accounts

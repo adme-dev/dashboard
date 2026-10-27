@@ -15,7 +15,8 @@ const http = vi.hoisted(() => ({
   providerFetch: vi.fn(),
   providerFetchRaw: vi.fn()
 }))
-vi.mock('../../server/utils/social-providers/http', () => ({
+vi.mock('../../server/utils/social-providers/http', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../server/utils/social-providers/http')>()),
   providerFetch: (...args: unknown[]) => http.providerFetch(...args),
   providerFetchRaw: (...args: unknown[]) => http.providerFetchRaw(...args),
   fetchWithTimeout: vi.fn()

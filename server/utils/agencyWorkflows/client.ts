@@ -77,6 +77,8 @@ export interface StartSocialPublishingWorkflowInput {
   scheduledAt?: string
   trigger: SocialPublishingWorkflowTrigger
   requestedBy?: string
+  /** Approved revision the run may publish (delegated posts). */
+  revisionId?: string
   fetchImpl?: (request: Request) => Promise<Response>
 }
 
@@ -254,7 +256,8 @@ export async function startSocialPublishingWorkflow(
       clientId: input.clientId,
       scheduledAt: input.scheduledAt,
       trigger: input.trigger,
-      requestedBy: input.requestedBy
+      requestedBy: input.requestedBy,
+      revisionId: input.revisionId
     })
   } catch (error) {
     const result = failedResult('request_failed', { error: safeError(error) })
@@ -788,6 +791,23 @@ function getCloudflareEnv(event: AgencyWorkflowEvent): Record<string, unknown> {
 function envText(env: Record<string, unknown>, key: string): string {
   const bindingValue = env[key]
   if (typeof bindingValue === 'string') return bindingValue.trim()
+  return process.env[key]?.trim() ?? ''
+}
+
+/**
+ * Request-binding-first workflow configuration for event-bearing callers (the Pages callback and the
+ * publishing cron). A binding that is present always wins — including an explicit `false`, empty or
+ * otherwise invalid value — and the local process environment is only the fallback when the request
+ * carries no such binding. JSON-typed boolean/number bindings are read as their text form.
+ */
+export function agencyWorkflowConfigText(event: AgencyWorkflowEvent, key: string): string {
+  const env = getCloudflareEnv(event)
+  if (Object.prototype.hasOwnProperty.call(env, key)) {
+    const bindingValue = env[key]
+    if (typeof bindingValue === 'string') return bindingValue.trim()
+    if (typeof bindingValue === 'boolean' || typeof bindingValue === 'number') return String(bindingValue)
+    return ''
+  }
   return process.env[key]?.trim() ?? ''
 }
 

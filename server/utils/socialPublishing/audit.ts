@@ -12,6 +12,11 @@ export type SocialPublishingAuditAction
     | 'post_scheduled'
     | 'post_published'
     | 'account_disconnected'
+    | 'revision_submitted'
+    | 'revision_approved'
+    | 'revision_rejected'
+    | 'dispatch_held'
+    | 'dispatch_outcome_unknown'
 
 export interface SocialPublishingAuditInput {
   clientId: string

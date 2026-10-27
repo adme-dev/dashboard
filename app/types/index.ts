@@ -2014,9 +2014,84 @@ export * from './office'
 // NB: distinct from the spend-side `SocialPlatform` (meta/google/…) above.
 export type SocialPublishPlatform = 'facebook' | 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'google-business'
 
+/** `accepted` = provider accepted, receipt pending; `unknown` = indeterminate outcome held for read-back. */
 export type SocialPostStatus =
-  | 'draft' | 'approved' | 'scheduled' | 'publishing'
-  | 'published' | 'partially_published' | 'failed' | 'cancelled'
+  | 'draft' | 'approved' | 'scheduled' | 'publishing' | 'accepted'
+  | 'published' | 'partially_published' | 'failed' | 'unknown' | 'cancelled'
+
+/** Server-controlled: delegated (staff/MCP) posts need an independent owner/admin review of an exact revision. */
+export type SocialReviewPolicy = 'legacy' | 'delegated_marketing'
+
+export type SocialRevisionReviewStatus = 'pending' | 'approved' | 'rejected' | 'superseded' | 'expired' | 'dispatch_claimed'
+
+export interface SocialMediaAssetIdentity {
+  kind: 'banner_asset' | 'video_asset'
+  id: string
+  mediaType: 'image' | 'video'
+  mimeType: string
+  byteSize: number
+  etag: string
+}
+
+/** The immutable submitted revision as projected for review (snapshot internals omitted). */
+export interface SocialPostRevisionSummary {
+  id: string
+  post_id: string
+  client_id: string
+  revision_number: number
+  review_policy: SocialReviewPolicy
+  content_hash: string
+  requested_by: string
+  requested_at: string
+  review_status: SocialRevisionReviewStatus
+  reviewed_by: string | null
+  reviewed_at: string | null
+  review_reason: string | null
+  expires_at: string
+  dispatch_claimed_at: string | null
+  dispatch_attempt: number
+  dispatch_outcome: 'accepted' | 'published' | 'partially_published' | 'failed' | 'unknown' | null
+  targets: SocialPublishTarget[] | null
+  media: SocialMediaAssetIdentity[] | null
+  schedule: { scheduledAt: string | null, timezone: string } | null
+}
+
+export interface SocialApprovalReviewHint {
+  policy: SocialReviewPolicy
+  independentReviewRequired: boolean
+  revisionId: string | null
+  canDecide: boolean
+  blockedReason: string | null
+}
+
+/** One reviewed destination exactly as it will publish (resolved server-side; no credentials). */
+export interface SocialApprovalEffectiveTarget {
+  key: string
+  platform: SocialPublishPlatform
+  accountId: string
+  /** Client-scoped display identity; null when the account is no longer this client's on that platform. */
+  account: {
+    name: string | null
+    platformAccountId: string
+    connected: boolean
+    authorType?: 'organization' | 'person'
+  } | null
+  /** post | story | reel | carousel (Instagram); text | link | image | multi_image | video. */
+  mode: string
+  content: string
+  link: string | null
+  hashtags: string[]
+  firstComment: string | null
+  options: Record<string, unknown>
+  notes: string[]
+}
+
+export interface SocialApprovalMediaPreview {
+  kind: 'banner_asset' | 'video_asset'
+  id: string
+  mediaType: 'image' | 'video'
+  url: string | null
+}
 
 export interface SocialPlatformOverride {
   content?: string
@@ -2077,6 +2152,11 @@ export interface SocialPost {
   client_approval_responded_by?: string | null
   client_approval_responded_at?: string | null
   client_approval_feedback?: string | null
+  review_policy?: SocialReviewPolicy
+  media_asset_refs?: Array<{ kind: 'banner_asset' | 'video_asset', id: string }>
+  current_revision_id?: string | null
+  approved_revision_id?: string | null
+  client_approval_revision_id?: string | null
   queue_position: number | null
   campaign_id: string | null
   assigned_to: string | null
@@ -2084,6 +2164,15 @@ export interface SocialPost {
   metadata: Record<string, any>
   created_at: string
   updated_at: string
+}
+
+/** One row of the approvals queue: the post plus its current revision and an advisory review hint. */
+export interface SocialApprovalPost extends SocialPost {
+  current_revision: SocialPostRevisionSummary | null
+  review: SocialApprovalReviewHint
+  media_previews: SocialApprovalMediaPreview[]
+  /** Delegated revisions only: every exact destination with its effective mode, options and copy. */
+  effective_targets?: SocialApprovalEffectiveTarget[]
 }
 
 export type PortalSocialNewsApprovalStatus = 'pending' | 'approved' | 'rejected' | 'revision_requested'
@@ -2117,6 +2206,9 @@ export interface PortalSocialNewsDraft {
     respondedBy: string | null
     feedback: string | null
     internalStatus: string
+    /** Revision the client is shown and decides; null only for pre-revision requests. */
+    revisionId: string | null
+    revisionNumber: number | null
   }
   package: {
     name: string

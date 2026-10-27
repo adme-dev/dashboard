@@ -65,7 +65,9 @@ vi.mock('~~/server/utils/ai/mcp/project', () => ({
 }))
 vi.mock('~~/server/utils/ai/mcp/registry', () => ({
   projectRegisteredMcpTools: mocks.projectRegistered,
-  projectGodModeTools: mocks.projectGodMode
+  projectGodModeTools: mocks.projectGodMode,
+  // Task 3 staff-only suites (social drafts) are covered by test/ai/mcpSocialTools.test.ts.
+  projectStaffOnlyMcpTools: () => []
 }))
 vi.mock('~~/server/utils/ai/mcp/directExecution', () => ({
   executeGodModeMcpCall: mocks.executeGodModeMcpCall

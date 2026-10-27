@@ -96,6 +96,13 @@ cursor-paginated where applicable, and source caps/truncation are declared.
 **`confirm_action(proposalId)`** executes it. Financial writes (budget/quote/EOM/expense) are **excluded**
 (held for decision D4).
 
+`propose_schedule_post` is **not** available to ordinary staff (including leads/project managers and
+admins without owner God mode): it is withheld from their catalog, a direct call returns
+`review_required`, and `confirm_action` refuses — and restores untouched — any retained ordinary-MCP
+`propose_schedule_post` proposal. Ordinary staff prepare social posts through the reviewed draft suite
+(§4.5), so no MCP path can create a legacy post its own requester could approve. Owner God mode and the
+in-app (browser/chat) legacy flows are unchanged.
+
 For ordinary users, this confirmation behavior is unchanged. For a freshly revalidated active owner,
 registered write tools execute through the direct audited owner coordinator and do not require a second
 `confirm_action` or rich acknowledgement. Authentication, tenant/client validation, schemas, provider
@@ -120,6 +127,43 @@ availability, durable idempotency, and immutable attempt/outcome audit remain ma
 
 > Video spend is its **own** confirm action under its **own** flags — it is *not* part of the 2c financial
 > set and is never reachable via `MCP_WRITE_TOOLS_ENABLED`.
+
+### 4.5 Reviewed social drafts (staff `social_draft` grant) · Facebook, Instagram, LinkedIn organic posts
+Available to ordinary staff whose operator-owned `MCP_MARKETING_STAFF_GRANTS` entry includes
+`social_draft`, for their **assigned** clients (fresh MANAGEMENT/ADMIN staff: active clients). Grants,
+assignments, role policy and active status are re-read on every list, call and replay.
+
+**Reads:** `list_social_publishing_accounts(clientId)` (connected accounts + readiness, never tokens),
+`list_social_media_assets(clientId, kind?, limit?, cursor?)` (client-owned banner/video assets),
+`get_social_post_status(postId)`.
+
+**Local writes (signed `mcp:write` + writable role; durably idempotent per MCP request):**
+`create_social_post_draft`, `update_social_post_draft`, `submit_social_post_for_review`.
+
+Semantics:
+- A draft targets **exact** client-owned accounts. Media are typed asset references, never URLs.
+  `scheduledAt` is only the requested time — nothing is scheduled by the staff tool.
+- `submit_social_post_for_review` freezes an immutable revision (content, ordered targets and options,
+  overrides, link, hashtags, first comment, schedule/timezone, campaign/package, and the stored ETag/size of
+  every media file) with a SHA-256 fingerprint. Instagram needs JPEG image or video media; Facebook and
+  LinkedIn reject media mixes their providers would drop.
+- A **different**, currently active owner/admin approves or rejects that exact revision in XeroFlow
+  (Social → Approvals). The requester and draft creator can never review it; leads/project managers are
+  not reviewers. News drafts additionally need the client-portal decision on the **same** revision.
+- Approval is single-use and expires (24h for immediate posts, one hour after the slot for scheduled ones);
+  an expired approval returns the post to draft instead of publishing late. Any edit supersedes the review.
+- Publishing runs through the existing dispatcher (manual publish by an owner/admin, scheduled workflow or
+  cron). Immediately before the provider call it re-checks the requester's grant/assignment, the
+  reviewer's authority, the approved revision hash, every target account's client binding and the reviewed
+  media bytes; providers fetch content-pinned links that refuse replaced files.
+- Statuses: `draft`, `awaiting_client`, `awaiting_review`, `rejected`, `approved`, `scheduled`,
+  `publishing`, `accepted`, `published`, `partially_published`, `failed`, `unknown`. `unknown` means the
+  request may have reached the provider without a definitive answer: it is held for read-back, never
+  retried automatically, and cannot be edited or resubmitted. A `failed` dispatch had no successful
+  provider effect and may be edited and resubmitted for a new review.
+- There is no staff publish, schedule or confirm tool. Connecting Claude/ChatGPT does not connect any social
+  account: provider OAuth stays in the XeroFlow dashboard. TikTok, YouTube, Google Business, paid social and
+  inbox replies are not part of this suite.
 
 ## 5. Using it — an ordinary-user video generation walk-through
 
@@ -212,6 +256,9 @@ baked into `[vars]` and a tenant with video-gen enabled — otherwise the engine
 - Read projection + guard: `server/utils/ai/mcp/project.ts`
 - Generation (2a): `server/utils/ai/mcp/generationTools.ts` + `generationRunner.ts`
 - Writes (2c): `server/utils/ai/mcp/writeTools.ts`
+- Reviewed social drafts: `server/utils/ai/mcp/socialTools.ts` (+ `socialToolNames.ts`), services in
+  `server/utils/socialPublishing/{drafts,revisions,mediaAssets,dispatch}.ts`, reviewer authority in
+  `server/utils/ai/marketing/reviewAuthority.ts`, migration `483_social_post_revision_review.sql`
 - Video (2b): `server/utils/ai/mcp/videoTools.ts` + `videoRunner.ts`
 - Rate limit: `server/utils/ai/mcp/rateLimit.ts`
 - Internal endpoints: `server/api/internal/mcp/{tools,call,exchange}.post.ts`

@@ -5,6 +5,7 @@ import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { ActionExecutor } from '~~/server/utils/ai/executors/types'
 import { hasMcpPermission, mcpContextHasPermission, type McpExecutionDescriptor, type McpProjectionContext, type McpSuiteFlags, type McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
+import { LEGACY_MCP_SOCIAL_PROPOSAL_REDIRECT, LEGACY_MCP_SOCIAL_PROPOSAL_TOOL } from './socialToolNames'
 
 // ---------------------------------------------------------------------------
 // Shared confirm plumbing (used by both 2c and D4 branches)
@@ -416,6 +417,11 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   }
   if (!freshStaffMayConfirm(row, ctx, deps)) {
     return await rejectAndRevert({ ok: false, error: 'Not permitted.', code: 'forbidden' })
+  }
+  // A retained ordinary-MCP social proposal can never be executed by staff (management included): it
+  // would create a legacy row its requester could self-approve. The row is restored untouched.
+  if (ctx.mcpStaffAuthority === 'fresh' && row.tool_name === LEGACY_MCP_SOCIAL_PROPOSAL_TOOL) {
+    return await rejectAndRevert({ ok: false, error: LEGACY_MCP_SOCIAL_PROPOSAL_REDIRECT, code: 'forbidden' })
   }
 
   // 2b: video confirm-tier actions get their own dispatch (returns jobId / projectId / cap_exceeded).

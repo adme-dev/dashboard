@@ -26,6 +26,12 @@ function errorMessage(error: unknown) {
   return (error as { data?: { statusMessage?: string } }).data?.statusMessage || null
 }
 
+function isConflict(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+  const cause = error as { statusCode?: number, data?: { statusCode?: number } }
+  return cause.statusCode === 409 || cause.data?.statusCode === 409
+}
+
 const modalTitle = computed(() => ({
   approve: 'Approve social content',
   request_changes: 'Request content changes',
@@ -78,7 +84,12 @@ async function submitDecision() {
   try {
     await apiFetch(`/api/portal/social/news-drafts/${decision.value.draft.id}/respond`, {
       method: 'POST',
-      body: { action: decision.value.action, feedback: notes || undefined }
+      // Bind the decision to the exact revision on screen; a newer submission answers 409 and reloads.
+      body: {
+        action: decision.value.action,
+        feedback: notes || undefined,
+        revisionId: decision.value.draft.approval.revisionId ?? undefined
+      }
     })
     toast.add({
       title: decision.value.action === 'approve' ? 'Content approved' : decision.value.action === 'reject' ? 'Content rejected' : 'Changes requested',
@@ -91,6 +102,17 @@ async function submitDecision() {
     feedback.value = ''
     await load()
   } catch (cause: unknown) {
+    if (isConflict(cause)) {
+      toast.add({
+        title: 'Content updated',
+        description: errorMessage(cause) || 'This content changed after you opened it. Review the latest version.',
+        color: 'warning'
+      })
+      decision.value = null
+      feedback.value = ''
+      await load()
+      return
+    }
     toast.add({ title: 'Decision not recorded', description: errorMessage(cause) || 'Try again.', color: 'error' })
   } finally {
     respondingId.value = null

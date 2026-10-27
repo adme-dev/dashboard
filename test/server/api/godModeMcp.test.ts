@@ -21,7 +21,9 @@ vi.mock('~~/server/utils/godMode/authority', () => ({
 vi.mock('~~/server/utils/ai/tools', () => ({ registry: [{ name: 'registry-tool' }] }))
 vi.mock('~~/server/utils/ai/mcp/registry', () => ({
   projectGodModeTools: mocks.projectGodMode,
-  projectRegisteredMcpTools: mocks.projectRegistered
+  projectRegisteredMcpTools: mocks.projectRegistered,
+  // Task 3 staff-only suites (social drafts) are covered by test/ai/mcpSocialTools.test.ts.
+  projectStaffOnlyMcpTools: () => []
 }))
 vi.mock('~~/server/utils/ai/mcp/staffAuthority', () => ({ resolveMcpStaffContext: mocks.resolveStaff }))
 

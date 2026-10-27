@@ -35,6 +35,7 @@ const isCurrentContext = (id: string, generation: number) =>
 const STATUS_COLOR: Record<string, string> = {
   draft: 'neutral', approved: 'info', scheduled: 'primary', publishing: 'warning',
   published: 'success', partially_published: 'warning', failed: 'error', cancelled: 'neutral',
+  accepted: 'info', unknown: 'warning',
 }
 
 // Visible date range for the active view (also drives what we fetch).

@@ -86,10 +86,14 @@ const API_INVENTORY = {
   // lexical role read; both now resolve fresh staff authority through
   // server/utils/ai/mcp/staffAuthority.ts after the service secret and signed
   // request claim. Their guard is stronger, not removed; no bypass is registered.
-  totalRouteFiles: 2283,
+  // Task 3 delegated social review adds one public GET (content-pinned reviewed media; HMAC token,
+  // owner, expiry and stored-ETag checks, no session or bypass). Request-approval, approve and reject
+  // now commit their revision decision in one transaction for delegated/news posts (+3 transactional
+  // guarded mutations); their role gates are unchanged and none registers a God mode bypass.
+  totalRouteFiles: 2284,
   mutationRouteFiles: 1245,
   explicitlyGuardedMutationFiles: 408,
-  guardedMutationFilesWithTransactionCall: 49
+  guardedMutationFilesWithTransactionCall: 52
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -137,10 +141,10 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2283,
+      totalRouteFiles: 2284,
       mutationRouteFiles: 1245,
       explicitlyGuardedMutationFiles: 408,
-      guardedMutationFilesWithTransactionCall: 49
+      guardedMutationFilesWithTransactionCall: 52
     })
   })
 

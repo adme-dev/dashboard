@@ -38,6 +38,7 @@ import {
   resolveGoogleAdsMcpExecutions
 } from './googleAdsRegistryTools'
 import { projectGoogleAdsTools } from './googleAdsTools'
+import { projectSocialMcpSuite, resolveSocialMcpExecutions } from './socialTools'
 
 export interface RegisteredMcpSuite {
   key: string
@@ -111,6 +112,27 @@ const suiteDefinitions: RegisteredMcpSuite[] = [
 
 export const registeredMcpSuites: readonly RegisteredMcpSuite[] = Object.freeze(
   suiteDefinitions.map(suite => Object.freeze({
+    ...suite,
+    sourceProjectors: suite.sourceProjectors ? Object.freeze([...suite.sourceProjectors]) : undefined
+  }))
+)
+
+/**
+ * Staff-only supplemental suites. They are validated and deduplicated by the same projection machinery
+ * but are deliberately NOT part of the owner God-mode union: their tools exist for delegated staff work
+ * that a separate reviewer approves, and they expose no provider-capable descriptor. marketingPolicy
+ * projects and admits them per fresh staff context (grant, client coverage, write scope).
+ */
+const staffSuiteDefinitions: RegisteredMcpSuite[] = [
+  {
+    key: 'social-drafts',
+    project: projectSocialMcpSuite,
+    executions: resolveSocialMcpExecutions
+  }
+]
+
+export const staffOnlyMcpSuites: readonly RegisteredMcpSuite[] = Object.freeze(
+  staffSuiteDefinitions.map(suite => Object.freeze({
     ...suite,
     sourceProjectors: suite.sourceProjectors ? Object.freeze([...suite.sourceProjectors]) : undefined
   }))
@@ -260,6 +282,28 @@ export function projectRegisteredMcpTools(
   return context.requireWriteScope && !hasWriteScope(signedScopes)
     ? tools.filter(tool => !isWriteScopeToolName(tool.name))
     : tools
+}
+
+/**
+ * Validated staff-only supplemental manifests (unfiltered — callers apply staff admission). Each
+ * manifest must have exactly one matching local execution descriptor with an identical schema.
+ */
+export function projectStaffOnlyMcpTools(
+  context: McpProjectionContext,
+  suites: readonly RegisteredMcpSuite[] = staffOnlyMcpSuites
+): McpToolManifest[] {
+  const manifests = projectSuites({ ...context, governanceBypass: false }, suites)
+  const names = new Set(manifests.map(manifest => manifest.name))
+  for (const suite of suites) {
+    for (const descriptor of suite.executions(context)) {
+      if (!names.has(descriptor.name)) throw new Error(`MCP execution resolver has no projected manifest: ${descriptor.name}`)
+      if (descriptor.executionClass && descriptor.executionClass !== 'local-transactional') {
+        throw new Error(`Staff-only MCP suites may only execute locally: ${descriptor.name}`)
+      }
+      if (descriptor.executeSupplemental) throw new Error(`Staff-only MCP suites expose no dispatch executor: ${descriptor.name}`)
+    }
+  }
+  return manifests
 }
 
 /**

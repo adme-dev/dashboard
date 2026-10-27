@@ -21,7 +21,8 @@ import {
   type McpProjectionContext,
   type McpToolManifest
 } from './project'
-import { projectRegisteredMcpTools, type RegisteredMcpSuite } from './registry'
+import { projectRegisteredMcpTools, projectStaffOnlyMcpTools, type RegisteredMcpSuite } from './registry'
+import { LEGACY_MCP_SOCIAL_PROPOSAL_TOOL, SOCIAL_MCP_TOOL_NAMES } from './socialToolNames'
 
 export type { MarketingCapability } from '~~/server/utils/ai/toolContext'
 
@@ -59,6 +60,14 @@ export interface StaffToolPolicyEntry {
   legacyRoleSensitive: boolean
 }
 
+/** Delegated social drafting (Task 3): local drafts/revisions only; review happens in XeroFlow. */
+const socialDraft: StaffToolPolicyEntry = Object.freeze({
+  capability: 'social_draft',
+  status: 'reviewed',
+  clientScoped: true,
+  legacyRoleSensitive: false
+})
+
 const pilotRead: StaffToolPolicyEntry = Object.freeze({
   capability: 'reporting',
   // Task 2: real scoped services, stored-only staff reads, adapter/SQL-contract tests.
@@ -74,8 +83,12 @@ export const MCP_STAFF_TOOL_POLICY: Readonly<Record<string, StaffToolPolicyEntry
   // Pinned to the caller's own assigned tasks for non-manager legacy roles (tasks.ts).
   get_tasks: Object.freeze({ capability: null, status: 'reviewed', clientScoped: false, legacyRoleSensitive: true }),
   get_client_overview: pilotRead,
-  ...Object.fromEntries(MARKETING_PILOT_READ_TOOLS.map(name => [name, pilotRead]))
+  ...Object.fromEntries(MARKETING_PILOT_READ_TOOLS.map(name => [name, pilotRead])),
+  ...Object.fromEntries(SOCIAL_MCP_TOOL_NAMES.map(name => [name, socialDraft]))
 })
+
+/** Staff-only suite tools management staff may also reach (still grant/scope/client admitted). */
+const MANAGEMENT_ADMITTED_STAFF_SUITE_TOOLS = new Set<string>(SOCIAL_MCP_TOOL_NAMES)
 
 // ---------------------------------------------------------------------------------------------------
 // Grant configuration
@@ -188,7 +201,9 @@ export function evaluateStaffToolAdmission(
       return deny('insufficient_scope', 'This action requires write access. Reconnect your AI assistant and grant write (mcp:write) to use it.')
     }
   }
-  if (entry.clientScoped && (
+  // Fresh MANAGEMENT/ADMIN staff resolve to all ACTIVE clients; everyone else needs ≥1 assignment.
+  const allActive = ctx.assistantScope?.clientAccessMode === 'all_active' && isMcpManagementStaff(ctx)
+  if (entry.clientScoped && !allActive && (
     ctx.assistantScope?.clientAccessMode !== 'assigned'
     || ctx.assistantScope.assignedClientIds.length === 0
   )) {
@@ -223,10 +238,16 @@ export function projectMcpToolsForStaff(input: StaffProjectionInput): McpToolMan
   const groups = staff.permissionGroups ?? []
   const registryByName = new Map(input.context.tools.map(tool => [tool.name, tool]))
 
+  const staffSuiteManifests = projectStaffOnlyMcpTools(input.context)
+    .filter(manifest => evaluateStaffToolAdmission(manifest.name, staff, input.policy).allowed)
+
   if (!isMcpManagementStaff(staff)) {
-    return input.context.tools
-      .filter(tool => evaluateStaffToolAdmission(tool.name, staff, input.policy).allowed)
-      .map(toMcpToolManifest)
+    return [
+      ...input.context.tools
+        .filter(tool => evaluateStaffToolAdmission(tool.name, staff, input.policy).allowed)
+        .map(toMcpToolManifest),
+      ...staffSuiteManifests
+    ]
   }
 
   const managementContext: McpProjectionContext = {
@@ -242,15 +263,21 @@ export function projectMcpToolsForStaff(input: StaffProjectionInput): McpToolMan
     ? projectRegisteredMcpTools(managementContext, input.suites)
     : projectRegisteredMcpTools(managementContext)
 
-  return manifests.filter((manifest) => {
-    // Suite projectors still filter by legacy role; re-apply the fresh group ceiling for any manifest
-    // backed by a registry tool (catalog reads and their propose_* aliases).
-    const registryTool = registryByName.get(manifest.name)
-      ?? registryByName.get(resolveProposeAction(manifest.name) ?? '')
-    if (registryTool?.requiredPermission && !groups.includes(registryTool.requiredPermission)) return false
-    if (staff.assistantReadOnly === true && isMutatingManifestName(manifest.name, registryTool)) return false
-    return true
-  })
+  return [
+    ...manifests.filter((manifest) => {
+      // Ordinary MCP social preparation goes through the reviewed draft suite, management included:
+      // the legacy self-approvable proposal is never offered to ordinary staff.
+      if (manifest.name === LEGACY_MCP_SOCIAL_PROPOSAL_TOOL) return false
+      // Suite projectors still filter by legacy role; re-apply the fresh group ceiling for any manifest
+      // backed by a registry tool (catalog reads and their propose_* aliases).
+      const registryTool = registryByName.get(manifest.name)
+        ?? registryByName.get(resolveProposeAction(manifest.name) ?? '')
+      if (registryTool?.requiredPermission && !groups.includes(registryTool.requiredPermission)) return false
+      if (staff.assistantReadOnly === true && isMutatingManifestName(manifest.name, registryTool)) return false
+      return true
+    }),
+    ...staffSuiteManifests.filter(manifest => MANAGEMENT_ADMITTED_STAFF_SUITE_TOOLS.has(manifest.name))
+  ]
 }
 
 /** Execute one admitted read for a NON-management staff member (admission is re-evaluated here). */

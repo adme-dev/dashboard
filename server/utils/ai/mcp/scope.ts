@@ -12,6 +12,7 @@ import { resolveVideoProposeAction } from './videoTools'
 import { resolveBannerProposeAction } from './bannerTools'
 import { generationTools, isGenerationReadToolName } from './generationTools'
 import { isGoogleAdsWriteToolName } from './googleAdsTools'
+import { isSocialMcpWriteToolName } from './socialToolNames'
 
 export const MCP_READ_SCOPE = 'mcp:read'
 export const MCP_WRITE_SCOPE = 'mcp:write'
@@ -42,5 +43,6 @@ export function isWriteScopeToolName(name: string): boolean {
     || resolveVideoProposeAction(name) !== null
     || resolveBannerProposeAction(name) !== null
     || isGoogleAdsWriteToolName(name)
+    || isSocialMcpWriteToolName(name)
     || GEN_WRITE_NAMES.has(name)
 }
