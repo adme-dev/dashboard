@@ -1,3 +1,4 @@
+import { assertNoScopedDissectionReferences } from '~~/server/utils/banner/scopedExport'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { buildPlatformHTML, validateForPlatform, buildExportZip } from '~~/server/utils/adPlatformExporter'
@@ -39,6 +40,8 @@ export default defineEventHandler(async (event) => {
   if (instance.created_by !== user.id && !['admin', 'owner'].includes(user.role)) {
     throw createError({ statusCode: 403, statusMessage: 'Not authorized' })
   }
+
+  assertNoScopedDissectionReferences(instance)
 
   const variables = typeof instance.variables === 'string'
     ? JSON.parse(instance.variables) : (instance.variables || [])

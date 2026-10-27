@@ -116,3 +116,10 @@ describe('Qwen raster layer import', () => {
     expect(studio.getCanvasData()).toEqual(changed)
   })
 })
+
+it('blocks decomposition of a protected artboard before loading pixels or sending a request', async () => {
+  studio.state.sets.mrec!.dissectionSource = { jobId: '11111111-1111-4111-8111-111111111111', sourceSha256: 'a'.repeat(64) }
+  expect(await useDecompose().decomposeFromUrl('/source.png', 'Source', 1, 'layer')).toBe(false)
+  expect(fetcher).not.toHaveBeenCalled()
+  expect(toast.mock.calls.at(-1)?.[0].title).toBe('Protected artwork')
+})

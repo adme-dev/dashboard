@@ -1,3 +1,4 @@
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '#shared/bannerScopedCanvas'
 import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
@@ -13,10 +14,11 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const { name, tags } = body
-  const existing = await queryOneFresh<{ client_id: string | null, uploaded_by: string, tags: unknown }>(
-    'SELECT client_id, uploaded_by, tags FROM banner_assets WHERE id = $1', [id]
+  const existing = await queryOneFresh<{ client_id: string | null, uploaded_by: string, tags: unknown, r2_key: string, url: string }>(
+    'SELECT client_id, uploaded_by, tags, r2_key, url FROM banner_assets WHERE id = $1', [id]
   )
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'Asset not found' })
+  if (hasScopedCanvas(existing) || hasScopedCanvas(body)) throw createError({ statusCode: 409, statusMessage: SCOPED_DISSECTION_EXCLUSION })
   if (existing.client_id) await requireSocialClientAccess(event, existing.client_id)
   else if (existing.uploaded_by !== user.id && !hasAllSocialClientAccess(user)) {
     throw createError({ statusCode: 403, statusMessage: 'No access to this asset' })

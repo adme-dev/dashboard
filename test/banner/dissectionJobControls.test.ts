@@ -235,4 +235,97 @@ describe('saved dissection job controls', () => {
     expect(jobs.importReady.value).toBe(false)
     jobs.suspend()
   })
+  it.each([401, 403, 404])('clears saved findings and history after a %s refresh', async (statusCode) => {
+    let denied = false
+    const jobs = useBannerDissectionJob(async (url) => {
+      if (url.endsWith('/history')) return { dissections: [{ jobId: 'saved', status: 'complete' }] }
+      if (denied) throw { statusCode }
+      return { jobId: 'saved', status: 'complete', resultId: 'a'.repeat(64), warnings: ['Private finding'], layers: [{ extraction_status: 'extracted' }], tokens: {} }
+    })
+    await jobs.resume()
+    expect(jobs.importReady.value).toBe(true)
+    denied = true
+    await jobs.select('saved')
+    expect(jobs.current.value).toBeNull()
+    expect(jobs.history.value).toEqual([])
+    expect(jobs.manifest.value).toBeNull()
+    expect(jobs.importReady.value).toBe(false)
+    jobs.suspend()
+  })
+
+  it('invalidates an old detail request immediately when project/client scope changes', async () => {
+    const old = deferred()
+    const fetcher = vi.fn(async (url: string) => url.endsWith('/history') ? { dissections: [] } : old.promise)
+    const jobs = useBannerDissectionJob(fetcher)
+    await jobs.resume({ projectId: 'first', clientId: 'client-a' })
+    const selecting = jobs.select('old')
+    await jobs.resume({ projectId: 'second', clientId: 'client-b' })
+    old.resolve({ jobId: 'old', status: 'complete', resultId: 'a'.repeat(64), layers: [{ extraction_status: 'extracted' }], tokens: {} })
+    await selecting
+    expect(jobs.current.value).toBeNull()
+    expect(jobs.history.value).toEqual([])
+    expect(jobs.importReady.value).toBe(false)
+    expect(fetcher).toHaveBeenLastCalledWith('/api/agency/banner-studio/dissect/history', { query: { projectId: 'second', clientId: 'client-b' } })
+    jobs.suspend()
+  })
+
+  it('discards late history and upload responses after a scope change', async () => {
+    const oldHistory = deferred()
+    const oldUpload = deferred()
+    let histories = 0
+    const jobs = useBannerDissectionJob(async (url) => {
+      if (url.endsWith('/history')) return ++histories === 2 ? oldHistory.promise : { dissections: [] }
+      if (url.endsWith('/upload')) return oldUpload.promise
+      throw new Error('Unexpected detail fetch')
+    })
+    await jobs.resume({ projectId: 'first' })
+    const uploading = jobs.upload(new FormData())
+    const loading = jobs.resume({ projectId: 'first' })
+    await jobs.resume({ projectId: 'second' })
+    oldHistory.resolve({ dissections: [{ jobId: 'old', status: 'complete', warnings: ['Private finding'] }] })
+    oldUpload.resolve({ jobId: 'old-upload', status: 'queued' })
+    await Promise.all([loading, uploading])
+    expect(jobs.current.value).toBeNull()
+    expect(jobs.history.value).toEqual([])
+    expect(jobs.error.value).toBe('')
+    jobs.suspend()
+  })
+
+  it.each(['history', 'cancel', 'retry', 'recovery'])('clears all findings when access is revoked during %s', async (operation) => {
+    let denied = false
+    const fetcher = vi.fn(async (url: string) => {
+      if (denied && ((operation === 'history' && url.endsWith('/history'))
+        || (operation === 'cancel' && url.endsWith('/cancel'))
+        || (operation === 'retry' && url.endsWith('/process'))
+        || (operation === 'recovery' && url.endsWith('/saved')))) throw { data: { statusCode: 403 } }
+      if (url.endsWith('/history')) return { dissections: [{ jobId: 'saved', status: 'failed' }] }
+      if (url.endsWith('/process')) throw new Error('Response lost')
+      return { jobId: 'saved', status: 'review_ready', warnings: ['Private finding'], execution: { attemptId: 'old', attempt: 1, maxAttempts: 3 }, tokens: {}, layers: [] }
+    })
+    const jobs = useBannerDissectionJob(fetcher)
+    await jobs.resume()
+    denied = true
+    if (operation === 'history') await jobs.resume()
+    else if (operation === 'cancel') await jobs.cancel()
+    else await jobs.retry()
+    expect(jobs.current.value).toBeNull()
+    expect(jobs.history.value).toEqual([])
+    expect(jobs.importReady.value).toBe(false)
+    expect(jobs.canRetry.value).toBe(false)
+    expect(jobs.error.value).toContain('no longer available')
+    jobs.suspend()
+  })
+
+  it('drops a cached selection when the refreshed history no longer contains it', async () => {
+    let removed = false
+    const jobs = useBannerDissectionJob(async url => url.endsWith('/history')
+      ? { dissections: removed ? [] : [{ jobId: 'saved', status: 'complete' }] }
+      : { jobId: 'saved', status: 'complete', resultId: 'a'.repeat(64), layers: [{ extraction_status: 'extracted' }], tokens: {} })
+    await jobs.resume()
+    removed = true
+    await jobs.resume()
+    expect(jobs.current.value).toBeNull()
+    expect(jobs.importReady.value).toBe(false)
+    jobs.suspend()
+  })
 })

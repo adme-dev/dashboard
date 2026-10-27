@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 const entrySuffix = '/nitropack/dist/presets/cloudflare/runtime/cloudflare-pages.mjs'
 const reviewedSha256 = '63767bf521317b7224e0105f9259e3bb901b276aeed50e0465cba6c041c9ee49'
 const guardPath = fileURLToPath(new URL('../server/runtime/banner-engine-pages-guard.ts', import.meta.url))
+const dissectionGuardPath = fileURLToPath(new URL('../server/runtime/banner-dissection-pages-guard.ts', import.meta.url))
 const changed = () => new Error('[banner-engine-pages] Reviewed Pages entry changed or guard placement missing; review the entry guard before building')
 
 /** Pin the reviewed runtime, not node_modules. Upgrades require explicit review. */
@@ -29,7 +30,10 @@ export function bannerEnginePagesGuardPlugin() {
     const platformRequest = request;
     const guardedRequest = await guardBannerEnginePagesRequest(request, env);
     if (guardedRequest instanceof Response) return guardedRequest;
-    request = guardedRequest;`],
+    request = guardedRequest;
+    const boundedUpload = await guardBannerDissectionPagesRequest(request);
+    if (boundedUpload instanceof Response) return boundedUpload;
+    request = boundedUpload;`],
         ['cf: request.cf,', 'cf: platformRequest.cf,'],
         ['cloudflare: {\n            request,', 'cloudflare: {\n            request: platformRequest,']
       ]
@@ -38,8 +42,10 @@ export function bannerEnginePagesGuardPlugin() {
         if (code.split(before).length !== 2) throw changed()
         code = code.replace(before, after)
       }
-      code = `import { guardBannerEnginePagesRequest } from ${JSON.stringify(guardPath)};\n${code}`
-      if (code.indexOf('await guardBannerEnginePagesRequest') > code.indexOf('await request.arrayBuffer()')) throw changed()
+      code = `import { guardBannerEnginePagesRequest } from ${JSON.stringify(guardPath)};\nimport { guardBannerDissectionPagesRequest } from ${JSON.stringify(dissectionGuardPath)};\n${code}`
+      for (const guard of ['guardBannerEnginePagesRequest', 'guardBannerDissectionPagesRequest']) {
+        if (code.indexOf(`await ${guard}`) > code.indexOf('await request.arrayBuffer()')) throw changed()
+      }
       transformed = true
       return { code, map: null }
     },

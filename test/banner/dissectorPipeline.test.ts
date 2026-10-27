@@ -4,8 +4,14 @@ import { createHash } from 'node:crypto'
 import type { DissectionSourceIdentity } from '../../server/utils/banner/dissectionJobs'
 import type { DissectorManifest, DissectorLayer } from '../../app/types/banner-studio'
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), execute: vi.fn(), upload: vi.fn(), download: vi.fn(), analyze: vi.fn(), segment: vi.fn() }))
-vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.query, queryOne: mocks.query, execute: mocks.execute }))
+const mocks = vi.hoisted(() => ({ query: vi.fn(), execute: vi.fn(), upload: vi.fn(), download: vi.fn(), analyze: vi.fn(), segment: vi.fn(), authorize: vi.fn() }))
+vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.query, queryOne: mocks.query, execute: mocks.execute,
+  transactionWithoutRetry: async callback => callback({ query: async (sql, args) => {
+    const row = await mocks.query(sql, args)
+    return { rows: row ? [row] : [] }
+  } })
+}))
+vi.mock('~~/server/utils/banner/dissectionAccess', () => ({ assertDissectionAccess: mocks.authorize }))
 vi.mock('~~/server/utils/storage', () => ({ uploadFile: mocks.upload, readStoredObject: mocks.download, deleteFile: vi.fn() }))
 vi.mock('~~/server/utils/bannerDissector', async original => ({ ...await original<typeof import('../../server/utils/bannerDissector')>(), analyzeImage: mocks.analyze, segmentLayer: mocks.segment }))
 const { runDissectionPipeline } = await import('../../server/utils/bannerDissectorPipeline')
@@ -39,7 +45,8 @@ beforeEach(() => {
     } else {
       if (!['analyzing', 'segmenting'].includes(record.status) || record.manifest.execution.attemptId !== args[4]) return null
       record.status = String(args[0])
-      record.manifest = JSON.parse(String(args[1]))
+      const immutable = Object.fromEntries(['source', 'ingestion', 'delivery'].filter(key => Object.prototype.hasOwnProperty.call(record.manifest, key)).map(key => [key, record.manifest[key]]))
+      record.manifest = { ...JSON.parse(String(args[1])), ...immutable }
       record.error = args[2] as string | null
     }
     return structuredClone(record)

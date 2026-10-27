@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const m = vi.hoisted(() => ({ auth: vi.fn(), query: vi.fn(), execute: vi.fn(), transaction: vi.fn(), tx: vi.fn(), scope: vi.fn(), all: vi.fn(), pipeline: vi.fn() }))
+const m = vi.hoisted(() => ({ auth: vi.fn(), query: vi.fn(), execute: vi.fn(), transaction: vi.fn(), tx: vi.fn(), scope: vi.fn(), all: vi.fn(), pipeline: vi.fn(), authorize: vi.fn(), context: vi.fn() }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('readBody', async (event: { body?: unknown }) => event.body)
 vi.stubGlobal('getRouterParam', () => 'job')
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: m.auth, requireWriteAccess: m.auth }))
-vi.mock('~~/server/utils/db', () => ({ queryOne: m.query, queryOneFresh: m.query, execute: m.execute, transaction: m.transaction }))
+vi.mock('~~/server/utils/db', () => ({ queryOne: m.query, queryOneFresh: m.query, execute: m.execute, transaction: m.transaction, transactionWithoutRetry: m.transaction }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: m.scope, hasAllSocialClientAccess: m.all }))
+vi.mock('~~/server/utils/banner/dissectionAccess', () => ({ assertDissectionAccess: m.authorize, resolveDissectionContext: m.context }))
 vi.mock('~~/server/utils/bannerDissectorPipeline', () => ({ runDissectionPipeline: m.pipeline }))
 const { dissectionResultId } = await import('../../../server/utils/banner/dissectionJobs')
 const get = (await import('../../../server/api/agency/banner-studio/dissect/[jobId].get')).default
@@ -17,15 +18,20 @@ const projectId = '11111111-1111-4111-8111-111111111111'
 const revision = '2026-10-26T00:00:00.000Z'
 const nextRevision = '2026-10-26T00:00:00.001Z'
 const graphic = { id: 'graphic', type: 'graphic_text', description: 'Main headline', extraction_status: 'extracted', r2_url: 'https://asset.test/graphic.png', region: { x: 0, y: 0, width: 1, height: 1 }, z_index: 1 }
-let job: { job_id: string, source_r2_key: string, status: string, manifest: Record<string, unknown>, project_id?: string } | null
+let job: { job_id: string, user_id: string, source_r2_key: string, status: string, manifest: Record<string, unknown>, project_id?: string } | null
 let project: { id: string, created_by: string, client_id: string | null, canvas_data: Record<string, unknown>, updated_at: string }
 let projectWrites: number, receiptWrites: number
 beforeEach(() => {
   vi.resetAllMocks()
   m.auth.mockResolvedValue({ id: 'user' })
   m.all.mockReturnValue(true)
-  job = { job_id: 'job', source_r2_key: 'banner-dissector/job/original.png', status: 'complete', manifest: { status: 'complete', tokens: {}, layers: [graphic] } }
+  job = { job_id: 'job', user_id: 'user', source_r2_key: 'banner-dissector/job/original.png', status: 'complete', manifest: { status: 'complete', tokens: {}, layers: [graphic] } }
   project = { id: projectId, created_by: 'user', client_id: null, canvas_data: {}, updated_at: revision }
+  m.context.mockImplementation(async (_db, actor, input) => {
+    if (input.projectId && project.created_by !== actor && !m.all()) throw Object.assign(new Error('No access'), { statusCode: 403 })
+    return { owner: input.projectId ? { kind: 'project', projectId: input.projectId, projectOwnerId: project.created_by, clientId: project.client_id, userId: actor }
+      : input.clientId ? { kind: 'client', clientId: input.clientId, userId: actor } : { kind: 'user', userId: actor }, sessionsInvalidatedAt: null }
+  })
   projectWrites = receiptWrites = 0
   m.query.mockImplementation(async sql => sql.startsWith('UPDATE') ? null : structuredClone(job))
   // Deterministic local transaction double; not evidence of real DB concurrency.
@@ -40,6 +46,9 @@ beforeEach(() => {
   })
   m.tx.mockImplementation(async (sql: string, args: string[]) => {
     if (sql.includes('SELECT') && sql.includes('FROM banner_dissections')) return { rows: job ? [structuredClone(job)] : [] }
+    if (sql.includes('SELECT') && sql.includes('canvas_data AS "canvasData"')) return { rows: project ? [{
+      canvasData: structuredClone(project.canvas_data), clientId: project.client_id, createdBy: project.created_by, updatedAt: project.updated_at
+    }] : [] }
     if (sql.includes('SELECT') && sql.includes('FROM banner_projects')) return { rows: project ? [structuredClone(project)] : [] }
     if (sql.includes('UPDATE banner_projects')) {
       if (new Date(project.updated_at).getTime() !== Date.parse(args[2])) return { rows: [] }
@@ -52,6 +61,7 @@ beforeEach(() => {
       projectWrites++
       return { rows: [{ id: projectId, updated_at: nextRevision }] }
     }
+    if (sql.includes('expire dissection') || sql.includes("SET status = 'cancelled'")) return { rows: [] }
     if (sql.includes('UPDATE banner_dissections')) {
       receiptWrites++
       job.project_id = args[0]
@@ -71,7 +81,7 @@ describe('Dissection owner, review and atomic import boundary (local mocked DB)'
     job.status = 'review_ready'
     job.manifest = { status: 'complete', jobId: 'spoof', layers: [], warnings: ['Background needs reconstruction'], execution: { attemptId: 'a', completed: 2, total: 2 } }
     expect(await get({} as never)).toMatchObject({ jobId: 'job', status: 'review_ready', warnings: ['Background needs reconstruction'], progress: { stage: 'review_ready', completed: 2, total: 2 } })
-    expect(m.query).toHaveBeenCalledWith(expect.stringContaining('user_id = $2'), ['job', 'user'])
+    expect(m.tx).toHaveBeenCalledWith(expect.stringContaining('user_id = $2'), ['job', 'user'])
   })
   it.each(['review_ready', 'complete'])('blocks %s manifests without verified extraction', async (status) => {
     job.status = status
@@ -102,7 +112,7 @@ describe('Dissection owner, review and atomic import boundary (local mocked DB)'
     expect(await existing()).toEqual(result)
     expect(projectWrites).toBe(1)
     expect(receiptWrites).toBe(1)
-    expect(m.tx.mock.calls[0][0]).toContain('FOR UPDATE')
+    expect(m.tx.mock.calls.find(([sql]) => sql.includes('FOR UPDATE'))![0]).toContain('banner_dissections')
   })
   it('rejects changed intent after import', async () => {
     await existing()
@@ -164,7 +174,7 @@ describe('Dissection owner, review and atomic import boundary (local mocked DB)'
     expect(projectWrites).toBe(0)
   })
   it.each([get, processJob, cancelJob])('owner isolation on read/process/cancel', async (handler) => {
-    m.query.mockResolvedValue(null)
+    job = null
     await expect(handler({ body: { jobId: 'job' } } as never)).rejects.toMatchObject({ statusCode: 404 })
     expect(m.pipeline).not.toHaveBeenCalled()
   })
@@ -179,5 +189,60 @@ describe('Dissection owner, review and atomic import boundary (local mocked DB)'
     expect(await cancelJob({} as never)).toMatchObject({ status: 'cancelled' })
     job.status = 'imported'
     await expect(cancelJob({} as never)).rejects.toMatchObject({ statusCode: 409 })
+  })
+})
+
+
+describe('import ownership and exact dimensions', () => {
+  it('denies revoked source authority before project locks or mutation, including receipt replay', async () => {
+    await existing()
+    m.authorize.mockRejectedValue(Object.assign(new Error('Revoked'), { statusCode: 403 }))
+    m.tx.mockClear()
+    await expect(existing()).rejects.toMatchObject({ statusCode: 403 })
+    expect(m.tx.mock.calls.filter(([sql]) => sql.includes('banner_projects') && /FOR (UPDATE|SHARE)|UPDATE banner_projects/.test(sql))).toHaveLength(0)
+    expect(projectWrites).toBe(1)
+  })
+  it('does not permit legacy personal results to be moved into a client context', async () => {
+    project.client_id = '33333333-3333-4333-8333-333333333333'
+    await expect(existing()).rejects.toMatchObject({ statusCode: 403 })
+    expect(projectWrites).toBe(0)
+  })
+  it('requires a project-bound result to retain its original project', async () => {
+    job.manifest.ingestion = { owner: { kind: 'project', projectId, clientId: null } }
+    await expect(newTarget()).rejects.toMatchObject({ statusCode: 403 })
+    job.manifest.ingestion = { owner: { kind: 'project', projectId: 'other', clientId: null } }
+    await expect(existing()).rejects.toMatchObject({ statusCode: 403 })
+    expect(projectWrites).toBe(0)
+  })
+  it('derives a new client project from stored ownership and rejects caller client substitution', async () => {
+    const clientId = '33333333-3333-4333-8333-333333333333'
+    job.manifest.source = { version: 1, width: 2, height: 2, mimeType: 'image/png', byteLength: 100, sha256: 'a'.repeat(64) }
+    job.manifest.layers = [{ ...graphic, r2_url: undefined, type: 'live_text', token_bindings: ['copy'] }]
+    job.manifest.tokens = { copy: { value: 'Synthetic text' } }
+    job.manifest.ingestion = { owner: { kind: 'client', clientId } }
+    await expect(importJob({ body: { expectedResultId: resultId(), clientId: projectId } } as never)).rejects.toMatchObject({ statusCode: 403 })
+    const imported = await importJob({ body: { expectedResultId: resultId(), clientId } } as never)
+    expect(imported.dissectionSource).toEqual({ jobId: 'job', sourceSha256: 'a'.repeat(64) })
+    const insertion = m.tx.mock.calls.find(([sql]) => sql.includes('INSERT INTO banner_projects'))!
+    expect(insertion[0]).toContain('client_id')
+    expect(insertion[1][4]).toBe(clientId)
+  })
+  it('uses custom source dimensions without silently rounding to a banner preset', async () => {
+    const result = await existing({ formatKey: 'custom_2480x3508' })
+    expect(result.formatKey).toBe('custom_2480x3508')
+    expect(result.layers[0]).toMatchObject({ w: 2480, h: 3508 })
+  })
+  it('preserves a committed receipt when its acknowledgement is lost without transaction replay', async () => {
+    const transaction = m.transaction.getMockImplementation()!
+    m.transaction.mockImplementation(async callback => {
+      await transaction(callback)
+      throw new Error('Synthetic lost commit acknowledgement')
+    })
+    await expect(existing()).rejects.toThrow('Synthetic lost commit acknowledgement')
+    expect(m.transaction).toHaveBeenCalledOnce()
+    expect(projectWrites).toBe(1)
+    m.transaction.mockImplementation(transaction)
+    expect((await existing()).projectId).toBe(projectId)
+    expect(projectWrites).toBe(1)
   })
 })

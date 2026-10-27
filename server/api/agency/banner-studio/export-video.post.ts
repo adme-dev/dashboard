@@ -1,3 +1,4 @@
+import { assertProjectAllowsUnprotectedFlow } from '~~/server/utils/banner/scopedExport'
 import { createError, readBody } from 'h3'
 import { dispatchBannerRenderJob, RECORD_BANNER_DISPATCH_FAILURE_SQL } from '~~/server/utils/banner/renderDispatch'
 import { requireAuth } from '~~/server/utils/auth'
@@ -17,6 +18,8 @@ export default defineEventHandler(async (event) => {
     quality?: 1 | 2
     crf?: number
   }
+
+  await assertProjectAllowsUnprotectedFlow(projectId, body)
 
   try {
     const { jobIds } = await executeGodModeBannerRender(event, formats?.length ?? 0, async (genId, markDispatched) => {

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
-const m = vi.hoisted(() => ({ reserve: vi.fn(), fail: vi.fn(), queued: vi.fn(), dispatchFailed: vi.fn(), start: vi.fn(), finish: vi.fn(), acknowledge: vi.fn(), insert: vi.fn(), pipeline: vi.fn() }))
-vi.mock('~~/server/utils/banner/dissectionJobs', () => ({ reserveDissectionDispatch: m.reserve, failDissectionDispatch: m.fail, acknowledgeDissectionDispatch: m.acknowledge }))
+const m = vi.hoisted(() => ({ reserve: vi.fn(), authorize: vi.fn(), fail: vi.fn(), queued: vi.fn(), dispatchFailed: vi.fn(), start: vi.fn(), finish: vi.fn(), acknowledge: vi.fn(), insert: vi.fn(), pipeline: vi.fn() }))
+vi.mock('~~/server/utils/banner/dissectionJobs', () => ({ reserveDissectionDispatch: m.reserve, isDissectionDispatchAuthorized: m.authorize, failDissectionDispatch: m.fail, acknowledgeDissectionDispatch: m.acknowledge }))
 vi.mock('~~/server/utils/db', () => ({ execute: m.insert }))
 vi.mock('~~/server/utils/jobExecutionLedger', () => ({ recordJobQueued: m.queued, markJobDispatchFailed: m.dispatchFailed, startJobExecution: m.start, finishJobExecution: m.finish }))
 vi.mock('~~/server/utils/bannerDissectorPipeline', () => ({ runDissectionPipeline: m.pipeline }))
@@ -14,6 +14,7 @@ const tick = async () => {
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  m.authorize.mockResolvedValue(true)
   m.reserve.mockResolvedValue(queued)
   m.fail.mockResolvedValue({ ...queued, status: 'failed' })
   m.start.mockResolvedValue({ executionId: 'execution', jobId: 'ledger' })
@@ -158,4 +159,23 @@ it('keeps send acknowledgement persistence loss recoverable without failing the 
   expect(send).toHaveBeenCalledTimes(1)
   expect(m.fail).not.toHaveBeenCalled()
   expect(m.pipeline).not.toHaveBeenCalled()
+})
+
+
+describe('dispatch access revocation', () => {
+  it('does not enqueue or create transport metadata after a revoked source', async () => {
+    m.authorize.mockRejectedValue(Object.assign(new Error('Revoked'), { statusCode: 403 }))
+    const send = vi.fn()
+    await expect(dispatchDissection(event({ cloudflare: { env: { JOBS_QUEUE: { send } } } }), 'job', 'generation')).rejects.toMatchObject({ statusCode: 403 })
+    expect(send).not.toHaveBeenCalled()
+    expect(m.insert).not.toHaveBeenCalled()
+  })
+  it('rechecks after transport ledger delay and before sending, without retrying', async () => {
+    m.authorize.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    const send = vi.fn()
+    await dispatchDissection(event({ cloudflare: { env: { JOBS_QUEUE: { send } } } }), 'job', 'generation')
+    expect(m.insert).toHaveBeenCalledOnce()
+    expect(send).not.toHaveBeenCalled()
+    expect(m.acknowledge).not.toHaveBeenCalled()
+  })
 })

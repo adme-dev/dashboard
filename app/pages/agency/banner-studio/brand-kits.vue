@@ -18,11 +18,12 @@ watch(applyKit, async (k) => {
 })
 const projectMatches = computed(() => {
   const q = projectQuery.value.toLowerCase()
-  const list = projects.value.filter(p => !q || p.name.toLowerCase().includes(q) || (p.clientName || '').toLowerCase().includes(q))
+  const list = projects.value.filter(p => !p.restricted && (!q || p.name.toLowerCase().includes(q) || (p.clientName || '').toLowerCase().includes(q)))
   // Same-client projects first
   return list.sort((a, b) => Number(b.clientId === applyKit.value?.clientId) - Number(a.clientId === applyKit.value?.clientId)).slice(0, 12)
 })
 function openProject(p: BannerProject) {
+  if (p.restricted) return
   const id = applyKit.value!.id
   applyKit.value = null
   router.push(`/agency/banner-studio/${p.id}?applyKit=${id}`)

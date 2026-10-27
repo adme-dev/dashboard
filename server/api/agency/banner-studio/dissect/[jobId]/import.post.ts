@@ -1,12 +1,16 @@
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { transaction } from '~~/server/utils/db'
+import { transactionWithoutRetry } from '~~/server/utils/db'
 import { createHash, randomUUID } from 'node:crypto'
 import { dissectionResultId } from '~~/server/utils/banner/dissectionJobs'
-import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { assertDissectionAccess, resolveDissectionContext } from '~~/server/utils/banner/dissectionAccess'
+import { assertScopedCanvasAccessInTransaction, assertScopedCanvasLineage, assertScopedProjectUnchanged } from '~~/server/utils/banner/scopedCanvasAccess'
+import { collectScopedCanvasLocators, collectScopedCanvasSources, hasScopedCanvas } from '../../../../../../shared/bannerScopedCanvas'
+import { dissectionSourceSchema, type DissectionIngestion } from '../../../../../../shared/bannerDissectionIngestion'
 import { z } from 'zod'
+import { dissectionDeliverySchema, parseScopedDissectionAssetLocator, scopedDissectionAssetKey } from '../../../../../../shared/bannerDissectionDelivery'
 import { canImportDissection } from '../../../../../../shared/bannerDissectionReadiness'
 import { assertManagedQrTransition } from '../../../../../../shared/bannerQrProtection'
-import { FORMATS } from '../../../../../../shared/bannerFormats'
+import { resolveBannerFormat } from '../../../../../../shared/bannerFormats'
 import type { Layer, DissectorManifest, DissectorLayer, DesignToken } from '~~/app/types/banner-studio'
 
 /**
@@ -16,13 +20,31 @@ import type { Layer, DissectorManifest, DissectorLayer, DesignToken } from '~~/a
 const importSchema = z.object({
   expectedResultId: z.string().regex(/^[a-f0-9]{64}$/),
   projectId: z.string().uuid().optional(),
+  clientId: z.string().uuid().optional(),
   formatKey: z.string().min(1).optional(),
   expectedRevision: z.string().refine(value => Number.isFinite(Date.parse(value)), 'Invalid project revision').optional(),
   layerTypeOverrides: z.record(z.string(), z.enum(['bg', 'text', 'button', 'rect', 'image'])).optional()
 }).strict()
 
-interface ImportResponse { projectId: string, formatKey: string, layers: Layer[], revision: string, receiptId: string }
-interface ImportReceipt { intentHash: string, sourceResultId: string, response: ImportResponse }
+interface ImportResponse { projectId: string, formatKey: string, layers: Layer[], revision: string, receiptId: string, dissectionSource?: { jobId: string, sourceSha256: string } }
+interface ImportReceipt { intentHash: string, sourceResultId: string, response: ImportResponse, target?: { clientId: string | null, createdBy: string } }
+interface ImportProject { canvas_data: Record<string, unknown>, client_id: string | null, created_by: string, updated_at: string }
+
+/** Preflight only: source authority is checked under the complete job lock union. */
+function canvasJobIds(canvas: unknown): string[] {
+  if (!hasScopedCanvas(canvas)) return []
+  try {
+    const value = typeof canvas === 'string' ? JSON.parse(canvas) : canvas
+    const ids = [...new Set([
+      ...collectScopedCanvasSources(value).map(source => source.jobId),
+      ...collectScopedCanvasLocators(value).map(locator => parseScopedDissectionAssetLocator(locator)!.jobId)
+    ])]
+    if (!ids.length || ids.length > 8) throw new Error('Invalid protected dependencies')
+    return ids
+  } catch {
+    throw createError({ statusCode: 403, statusMessage: 'No access to protected artwork' })
+  }
+}
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -30,42 +52,81 @@ export default defineEventHandler(async (event) => {
   if (!jobId) throw createError({ statusCode: 400, statusMessage: 'Missing jobId' })
   const parsed = importSchema.safeParse(await readBody(event) || {})
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid dissection import options' })
-  const { projectId, expectedRevision, layerTypeOverrides } = parsed.data
+  const { projectId, clientId, expectedRevision, layerTypeOverrides } = parsed.data
   const targetKey = parsed.data.formatKey || 'mrec'
-  const format = Object.prototype.hasOwnProperty.call(FORMATS, targetKey) ? FORMATS[targetKey] : undefined
-  if (!format) throw createError({ statusCode: 400, statusMessage: 'Unknown format' })
+  const format = resolveBannerFormat(targetKey)
+  if (!format || format.w > 4096 || format.h > 4096 || format.w * format.h > 10_000_000) throw createError({ statusCode: 400, statusMessage: 'Unknown format' })
   if (projectId && !expectedRevision) throw createError({ statusCode: 409, statusMessage: 'Reload and review the saved project before importing; its expectedRevision is required' })
   if (!projectId && expectedRevision) throw createError({ statusCode: 400, statusMessage: 'A project revision requires an existing target' })
 
-  return await transaction(async (db): Promise<ImportResponse> => {
-    // Job lock serializes duplicate imports, cancellation, retry and their receipts.
-    const { rows: [record] } = await db.query(
-      'SELECT * FROM banner_dissections WHERE job_id = $1 AND user_id = $2 FOR UPDATE', [jobId, user.id]
-    )
+  return await transactionWithoutRetry(async (db): Promise<ImportResponse> => {
+    // Unlocked preflight discovers the entire source set before actor/project locks.
+    // A new-project receipt can have acquired its target while this request waited.
+    const observedTargetId = projectId || (await db.query(
+      "SELECT project_id FROM banner_dissections WHERE job_id = $1 AND user_id = $2 AND status = 'imported'", [jobId, user.id]
+    )).rows[0]?.project_id
+    const readProject = async (id: string): Promise<ImportProject | undefined> =>
+      (await db.query('SELECT canvas_data, client_id, created_by, updated_at FROM banner_projects WHERE id = $1', [id])).rows[0] as ImportProject | undefined
+    let existing = observedTargetId ? await readProject(observedTargetId) : undefined
+    const lockedJobIds = [...new Set([jobId, ...canvasJobIds(existing?.canvas_data)])].sort()
+    let record
+    for (const sourceJobId of lockedJobIds) {
+      const incoming = sourceJobId === jobId
+      const { rows: [row] } = await db.query(
+        `SELECT * FROM banner_dissections WHERE job_id = $1${incoming ? ' AND user_id = $2' : ''} FOR UPDATE`,
+        incoming ? [sourceJobId, user.id] : [sourceJobId]
+      )
+      if (incoming) record = row
+      else if (!row) throw createError({ statusCode: 403, statusMessage: 'No access to protected artwork' })
+    }
     if (!record) throw createError({ statusCode: 404, statusMessage: 'Dissection job not found' })
+    const targetId = record.status === 'imported' ? record.project_id : projectId
+    // Replay is against today's canvas, not the revision used for the original
+    // write. Only already-locked sources may be discovered after waiting.
+    if (record.status === 'imported' && targetId) existing = await readProject(targetId)
+    if (targetId && !existing) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+    if (canvasJobIds(existing?.canvas_data).some(id => !lockedJobIds.includes(id))) {
+      throw createError({ statusCode: 409, statusMessage: 'Artwork sources changed elsewhere. Reload before importing.' })
+    }
+    if (existing) await assertScopedCanvasAccessInTransaction(db, user.id, existing.canvas_data, targetId, 'write')
+    await assertDissectionAccess(db, user.id, record, 'write')
     if (typeof record.source_r2_key !== 'string' || !record.source_r2_key.startsWith(`banner-dissector/${jobId}/original.`)) {
       throw createError({ statusCode: 409, statusMessage: 'The original source is not owned by this job' })
     }
-    const manifest = record.manifest as DissectorManifest & { execution?: Record<string, unknown>, importReceipt?: ImportReceipt }
+    const manifest = record.manifest as DissectorManifest & { execution?: Record<string, unknown>, ingestion?: DissectionIngestion, importReceipt?: ImportReceipt }
     if (!manifest) throw createError({ statusCode: 409, statusMessage: 'This job has no reviewed result' })
     const sourceResultId = dissectionResultId(manifest, manifest.execution?.attemptId as string | undefined)
     if (parsed.data.expectedResultId !== sourceResultId) throw createError({ statusCode: 409, statusMessage: 'The analysis result changed since review. Reload and review before importing again.' })
     const overrides = Object.fromEntries(Object.entries(layerTypeOverrides || {}).sort(([a], [b]) => a.localeCompare(b)))
     const intentHash = createHash('sha256').update(JSON.stringify({
       jobId, source: record.source_r2_key, sourceResultId, projectId: projectId || null,
+      ...(clientId ? { clientId } : {}),
       expectedRevision: expectedRevision ? new Date(expectedRevision).toISOString() : null,
       formatKey: targetKey, layerTypeOverrides: overrides
     })).digest('hex')
     const receipt = manifest.importReceipt
-    const targetId = record.status === 'imported' ? record.project_id : projectId
-    let existing: { canvas_data: Record<string, unknown>, client_id: string | null, created_by: string, updated_at: string } | undefined
-    if (targetId) {
-      const result = await db.query('SELECT canvas_data, client_id, created_by, updated_at FROM banner_projects WHERE id = $1 FOR UPDATE', [targetId])
-      existing = result.rows[0]
-      if (!existing) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
-      if (existing.client_id) await requireSocialClientAccess(event, existing.client_id)
-      else if (existing.created_by !== user.id && !hasAllSocialClientAccess(user)) throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
+    // The uploaded ownership never changes to follow a requested destination.
+    const owner = manifest.ingestion?.owner
+    const expectedClient = owner && owner.kind !== 'user' ? owner.clientId : null
+    if ((owner?.kind === 'project' && targetId !== owner.projectId)
+      || (clientId !== undefined && clientId !== expectedClient)
+      || (existing && existing.client_id !== expectedClient)) {
+      throw createError({ statusCode: 403, statusMessage: 'Import target differs from the original ownership context' })
     }
+    const target = await resolveDissectionContext(db, user.id, {
+      ...(targetId ? { projectId: targetId } : {}),
+      ...(expectedClient ? { clientId: expectedClient } : {})
+    }, 'write')
+    const targetIdentity = { clientId: expectedClient, createdBy: existing?.created_by || user.id }
+    if (target.owner.kind === 'project' && target.owner.clientId !== expectedClient) {
+      throw createError({ statusCode: 403, statusMessage: 'Import target ownership changed' })
+    }
+    if (receipt?.target && (receipt.target.clientId !== targetIdentity.clientId || receipt.target.createdBy !== targetIdentity.createdBy)) {
+      throw createError({ statusCode: 403, statusMessage: 'Imported project ownership changed' })
+    }
+    if (targetId && existing) await assertScopedProjectUnchanged(db, targetId, {
+      canvasData: existing.canvas_data, clientId: existing.client_id, createdBy: existing.created_by, updatedAt: existing.updated_at
+    })
     if (record.status === 'imported') {
       if (!targetId || !receipt || receipt.intentHash !== intentHash || receipt.sourceResultId !== sourceResultId || receipt.response.projectId !== targetId) {
         throw createError({ statusCode: 409, statusMessage: 'This result was already imported with a different intent' })
@@ -78,12 +139,36 @@ export default defineEventHandler(async (event) => {
     if (existing && new Date(existing.updated_at).getTime() !== Date.parse(expectedRevision!)) {
       throw createError({ statusCode: 409, statusMessage: 'Artwork changed since review. Reload and review before importing again.' })
     }
+    const scoped = owner && owner.kind !== 'user'
+    const source = scoped ? dissectionSourceSchema.parse((manifest as unknown as { source: unknown }).source) : null
+    if (scoped) {
+      const visual = manifest.layers.filter(layer => layer.r2_url || layer.asset_path)
+      const registry = visual.length ? dissectionDeliverySchema.parse((manifest as unknown as { delivery: unknown }).delivery) : null
+      for (const layer of visual) {
+        const ref = parseScopedDissectionAssetLocator(layer.r2_url)
+        const entry = ref && registry?.assets[ref.assetId]
+        if (!ref || ref.jobId !== jobId || !entry || entry.attemptId !== manifest.execution?.attemptId
+          || entry.key !== scopedDissectionAssetKey(jobId, entry.attemptId, entry.assetId)
+          || layer.asset_path !== entry.key) {
+          throw createError({ statusCode: 409, statusMessage: 'Reviewed asset provenance differs from this result' })
+        }
+        const { rows: [asset] } = await db.query(
+          'SELECT id, r2_key, uploaded_by, client_id, mime_type, file_size, url FROM banner_assets WHERE id = $1 FOR SHARE', [entry.assetId]
+        )
+        if (!asset || asset.r2_key !== entry.key || asset.uploaded_by !== user.id || asset.client_id !== expectedClient
+          || asset.url !== layer.r2_url || asset.mime_type !== entry.mimeType || asset.file_size !== entry.byteLength) {
+          throw createError({ statusCode: 409, statusMessage: 'Reviewed asset is unavailable' })
+        }
+      }
+    }
+    const dissectionSource = source ? { jobId, sourceSha256: source.sha256 } : undefined
     const layers = convertLayers(manifest.layers, manifest.tokens, format.w, format.h, layerTypeOverrides)
     let importedProjectId: string
     let revision: string
     if (existing && projectId) {
       const canvasData = structuredClone(existing.canvas_data || {})
-      canvasData[targetKey] = { layers }
+      canvasData[targetKey] = { layers, ...(dissectionSource ? { dissectionSource } : {}) }
+      assertScopedCanvasLineage(existing.canvas_data, canvasData)
       try {
         assertManagedQrTransition(existing.canvas_data, canvasData)
       } catch {
@@ -100,18 +185,18 @@ export default defineEventHandler(async (event) => {
       revision = new Date(updated.updated_at).toISOString()
     } else {
       const { rows: [created] } = await db.query(
-        `INSERT INTO banner_projects (name, canvas_data, tags, created_by)
-         VALUES ($1, $2, $3, $4) RETURNING id, updated_at`,
-        [`Dissected — ${manifest.brand || 'Banner'}`, JSON.stringify({ [targetKey]: { layers } }), ['dissected', manifest.brand].filter(Boolean), user.id]
+        `INSERT INTO banner_projects (name, canvas_data, tags, created_by, client_id)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, updated_at`,
+        [`Dissected — ${manifest.brand || 'Banner'}`, JSON.stringify({ [targetKey]: { layers, ...(dissectionSource ? { dissectionSource } : {}) } }), ['dissected', manifest.brand].filter(Boolean), user.id, expectedClient]
       )
       importedProjectId = created.id
       revision = new Date(created.updated_at).toISOString()
     }
-    const response: ImportResponse = { projectId: importedProjectId, formatKey: targetKey, layers, revision, receiptId: randomUUID() }
+    const response: ImportResponse = { projectId: importedProjectId, formatKey: targetKey, layers, revision, receiptId: randomUUID(), ...(dissectionSource ? { dissectionSource } : {}) }
     const importedManifest = {
       ...manifest, status: 'imported',
       ...(manifest.execution ? { execution: { ...manifest.execution, stage: 'imported', updatedAt: new Date().toISOString() } } : {}),
-      importReceipt: { intentHash, sourceResultId, response } satisfies ImportReceipt
+      importReceipt: { intentHash, sourceResultId, response, target: targetIdentity } satisfies ImportReceipt
     }
     // This write and the project mutation commit or roll back together.
     await db.query(

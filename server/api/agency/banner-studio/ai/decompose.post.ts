@@ -7,6 +7,7 @@ import { decomposeImageLayers } from '~~/server/utils/qwenLayerDecomposer'
 import { resolveBannerAssetDelivery } from '~~/server/utils/banner/assetDelivery'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { assertNoScopedDissectionReferences } from '~~/server/utils/banner/scopedExport'
 
 // Suffix-based allowlist — prevents substring bypass (e.g. evil-pub-lic.com)
 const ALLOWED_DOMAIN_SUFFIXES = [
@@ -32,6 +33,8 @@ export default defineEventHandler(async (event) => {
   if (activeDecompositions >= MAX_CONCURRENT) {
     throw createError({ statusCode: 429, statusMessage: 'Too many decomposition requests in progress — try again shortly' })
   }
+  const raw = await readBody(event)
+  assertNoScopedDissectionReferences(raw)
   const parsed = z.object({
     imageUrl: z.string().url().max(4096),
     numLayers: z.number().int().min(2).max(8).optional(),
@@ -39,7 +42,7 @@ export default defineEventHandler(async (event) => {
     negPrompt: z.string().max(500).optional(),
     guidanceScale: z.number().min(1).max(10).optional(),
     steps: z.number().int().min(1).max(50).optional()
-  }).safeParse(await readBody(event))
+  }).safeParse(raw)
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid decomposition request' })
   const body = parsed.data
 
@@ -78,6 +81,7 @@ export default defineEventHandler(async (event) => {
     source = await queryOne<SourceAsset>(`SELECT ${columns} FROM banner_assets WHERE url = $1`, [body.imageUrl])
   }
   if (!source) throw createError({ statusCode: 404, statusMessage: 'Banner asset not found' })
+  assertNoScopedDissectionReferences(source.r2Key)
   if (source.clientId) await requireSocialClientAccess(event, source.clientId)
   else if (source.uploadedBy !== user.id && !hasAllSocialClientAccess(user)) {
     throw createError({ statusCode: 403, statusMessage: 'No access to this asset' })

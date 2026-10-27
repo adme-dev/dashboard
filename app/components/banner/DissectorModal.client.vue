@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import type { Layer } from '~/types/banner-studio'
-import { FORMATS, migrateLayer } from '~/utils/banner-constants'
+import { FORMATS, migrateLayer, resolveBannerFormat } from '~/utils/banner-constants'
 import { useBannerDissectionJob, dissectionFailureMessage as failureMessage } from '~/composables/useBannerDissectionJob'
 import { canImportDissection } from '../../../shared/bannerDissectionReadiness'
+import { SCOPED_DISSECTION_ADMISSION_ENABLED } from '../../../shared/bannerDissectionCapabilities'
 
 const open = defineModel<boolean>('open', { default: false })
 
 const toast = useToast()
 const { state, nextId, getCanvasData, applyAssistantCanvas, withCanvasUndo } = useBannerStudio()
-const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown, query?: { projectId?: string, clientId?: string } }) => Promise<T>
 
 const jobs = useBannerDissectionJob(apiFetch)
 const { current, history, busy, error: jobError, loadingHistory, manifest, importReady, resultId, canCancel, canRetry, cancellationRequested } = jobs
@@ -17,6 +18,16 @@ const step = computed(() => !current.value ? 'upload' : manifest.value ? 'result
 const selectedFile = ref<File | null>(null)
 const previewUrl = ref<string | null>(null)
 const brandName = ref('')
+const physicalPreset = ref<'unknown' | 'A4'>('unknown')
+const orientation = ref<'portrait' | 'landscape'>('portrait')
+const capturedScope = ref<{ projectId?: string, clientId?: string }>({})
+const scopedUploadUnavailable = computed(() => !SCOPED_DISSECTION_ADMISSION_ENABLED && !!(capturedScope.value.projectId || capturedScope.value.clientId))
+const pngOnly = computed(() => !!capturedScope.value.projectId || !!capturedScope.value.clientId || physicalPreset.value === 'A4')
+const uploadOwnerText = computed(() => capturedScope.value.projectId
+  ? 'Saved to this project. Imports stay in this project.'
+  : capturedScope.value.clientId ? 'Saved for this client. Imports stay with this client.' : 'Personal analysis. Imports stay in personal projects.')
+const physicalOptions = [{ label: 'Unknown', value: 'unknown' }, { label: 'A4', value: 'A4' }]
+const orientationOptions = [{ label: 'Portrait (210 × 297 mm)', value: 'portrait' }, { label: 'Landscape (297 × 210 mm)', value: 'landscape' }]
 const isUploading = computed(() => busy.value === 'upload')
 const needsReconstruction = computed(() => !!manifest.value && !canImportDissection(manifest.value))
 const hasResultIdentity = computed(() => /^[a-f0-9]{64}$/i.test(resultId.value))
@@ -46,7 +57,7 @@ const editorTypeOptions = [
 ]
 
 // Import state
-const selectedFormat = ref('')
+const selectedFormat = ref<string | undefined>()
 const isImporting = ref(false)
 
 // An open session captures the reviewed saved editor context, independently of job polls.
@@ -56,25 +67,50 @@ let reviewedRevision: string | undefined
 let reviewedCanvas = ''
 let reviewedKey = ''
 const appliedReceipts = new Set<string>()
-watch(open, (value) => {
+watch([open, () => state.project?.id, () => state.project?.clientId], ([value]) => {
   openEpoch++
   isImporting.value = false
+  const nextScope = {
+    ...(state.project?.id ? { projectId: state.project.id } : {}),
+    ...(state.project?.clientId ? { clientId: state.project.clientId } : {})
+  }
+  if (capturedScope.value.projectId !== nextScope.projectId || capturedScope.value.clientId !== nextScope.clientId) {
+    clearPreview()
+    brandName.value = ''
+    physicalPreset.value = 'unknown'
+    orientation.value = 'portrait'
+    layerTypeOverrides.value = {}
+    selectedFormat.value = undefined
+  }
+  capturedScope.value = nextScope
+  jobs.setContext(nextScope)
   if (value) {
     reviewedProject = state.project
     reviewedRevision = state.project?.updatedAt
     reviewedCanvas = JSON.stringify(getCanvasData())
     reviewedKey = state.activeKey
-    selectedFormat.value ||= state.activeKey || 'mrec'
-    void jobs.resume()
+    void jobs.resume(nextScope)
   } else jobs.suspend()
 }, { immediate: true, flush: 'sync' })
+
+function ownershipAllows(createProject: boolean) {
+  const owner = current.value?.ingestion
+  const kind = owner?.ownerKind ?? 'user' // Legacy jobs are user-private only.
+  if (kind === 'project') return !createProject && !!owner?.projectId
+    && owner.projectId === capturedScope.value.projectId && state.project?.id === owner.projectId
+    && (owner.clientId || undefined) === capturedScope.value.clientId
+  if (kind === 'client') return !!owner?.clientId && owner.clientId === capturedScope.value.clientId
+    && (createProject || state.project?.clientId === owner.clientId)
+  return kind === 'user' && !capturedScope.value.clientId && (createProject || !state.project?.clientId)
+}
+const createProjectReady = computed(() => importReady.value && formatImportReady.value && !isImporting.value && ownershipAllows(true))
 
 function editorContextMatches() {
   return !!reviewedProject?.id && !!reviewedRevision && state.project === reviewedProject
     && state.project?.updatedAt === reviewedRevision && !state.isDirty && !state.isSaving
     && state.activeKey === reviewedKey && JSON.stringify(getCanvasData()) === reviewedCanvas
 }
-const editorImportReady = computed(() => importReady.value && !isImporting.value && editorContextMatches())
+const editorImportReady = computed(() => importReady.value && formatImportReady.value && !isImporting.value && ownershipAllows(false) && editorContextMatches())
 function chooseSavedJob(id: string) {
   if (isImporting.value || busy.value) return
   clearPreview()
@@ -91,10 +127,37 @@ function startAnother() {
   jobs.newUpload()
 }
 
+watch(current, (job, previous) => {
+  if (previous && (!job || job.jobId !== previous.jobId)) clearPreview()
+}, { flush: 'sync' })
+
+watch(jobs.accessRevision, () => {
+  clearPreview()
+  brandName.value = ''
+  physicalPreset.value = 'unknown'
+  orientation.value = 'portrait'
+})
+
+const sourceFormat = computed(() => {
+  const source = current.value?.source
+  const legacy = manifest.value?.banner_size?.match(/^(\d+)x(\d+)$/)
+  const width = source ? source.width : Number(legacy?.[1])
+  const height = source ? source.height : Number(legacy?.[2])
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) return undefined
+  return Object.values(FORMATS).find(format => format.w === width && format.h === height)
+    ?? resolveBannerFormat(`custom_${width}x${height}`)
+})
+
 // Auto-initialize layer type overrides when manifest loads
 let lastReviewedResult = ''
-watch(manifest, (m) => {
-  if (!m) return
+watch([manifest, sourceFormat], ([m, format]) => {
+  if (current.value?.source) selectedFormat.value = format?.key
+  if (!m) {
+    layerTypeOverrides.value = {}
+    selectedFormat.value = undefined
+    lastReviewedResult = ''
+    return
+  }
   const identity = `${m.jobId}:${resultId.value || m.status}`
   if (identity === lastReviewedResult) return
   lastReviewedResult = identity
@@ -119,39 +182,21 @@ watch(manifest, (m) => {
   }
   layerTypeOverrides.value = defaults
 
-  // Auto-detect closest format from source banner_size
-  if (m.banner_size) {
-    const [sw, sh] = m.banner_size.split('x').map(Number)
-    if (sw && sh) {
-      // Find exact or closest format match
-      let bestKey = ''
-      let bestDelta = Infinity
-      for (const f of Object.values(FORMATS)) {
-        if (f.w === sw && f.h === sh) {
-          bestKey = f.key
-          bestDelta = 0
-          break
-        }
-        const delta = Math.abs(f.w - sw) + Math.abs(f.h - sh)
-        if (delta < bestDelta) {
-          bestDelta = delta
-          bestKey = f.key
-        }
-      }
-      if (bestKey) {
-        selectedFormat.value = bestKey
-      }
-    }
-  }
+  // Verified pixels take precedence over model-reported banner_size.
+  selectedFormat.value = sourceFormat.value?.key
 })
 
-// Available formats
-const formatOptions = computed(() =>
-  Object.values(FORMATS).map(f => ({
-    label: `${f.name} (${f.w}x${f.h})`,
-    value: f.key
-  }))
-)
+// A verified source stays at its exact dimensions; physical metadata never selects pixels.
+const formatOptions = computed(() => {
+  const source = sourceFormat.value
+  if (current.value?.source) return source ? [{ label: `Source pixels (${source.w} × ${source.h})`, value: source.key }] : []
+  const formats = Object.values(FORMATS)
+  if (source && !FORMATS[source.key]) formats.unshift(source)
+  return formats.map(f => ({ label: `${f.name} (${f.w} × ${f.h})`, value: f.key }))
+})
+
+const formatImportReady = computed(() => !!selectedFormat.value && !!resolveBannerFormat(selectedFormat.value)
+  && (!current.value?.source || selectedFormat.value === sourceFormat.value?.key))
 
 // Layer type colors for bounding box overlay
 const typeColors: Record<string, string> = {
@@ -170,9 +215,9 @@ function selectFile(file: File | null) {
   previewUrl.value = null
   selectedFile.value = null
   if (!file) return
-  const allowed = ['image/jpeg', 'image/png', 'image/webp']
+  const allowed = pngOnly.value ? ['image/png'] : ['image/jpeg', 'image/png', 'image/webp']
   if (!allowed.includes(file.type)) {
-    toast.add({ title: 'Invalid file', description: 'Only JPEG, PNG, and WebP images are accepted', color: 'error' })
+    toast.add({ title: 'Invalid file', description: pngOnly.value ? 'Project, client and physical-size analyses require PNG.' : 'Only JPEG, PNG, and WebP images are accepted', color: 'error' })
     return
   }
   if (file.size > 10 * 1024 * 1024) {
@@ -183,19 +228,27 @@ function selectFile(file: File | null) {
   previewUrl.value = URL.createObjectURL(file)
 }
 
+watch(pngOnly, (required) => {
+  if (required && selectedFile.value?.type !== 'image/png') clearPreview()
+})
+
 // ── Upload & analyze ──
 
 async function handleAnalyze() {
-  if (!selectedFile.value || busy.value || isImporting.value) return
+  if (scopedUploadUnavailable.value || !selectedFile.value || busy.value || isImporting.value || (pngOnly.value && selectedFile.value.type !== 'image/png')) return
   const formData = new FormData()
   formData.append('file', selectedFile.value)
   if (brandName.value.trim()) formData.append('brand', brandName.value.trim())
+  if (capturedScope.value.projectId) formData.append('projectId', capturedScope.value.projectId)
+  if (capturedScope.value.clientId) formData.append('clientId', capturedScope.value.clientId)
+  if (physicalPreset.value === 'A4') formData.append('physical', JSON.stringify({ preset: 'A4', orientation: orientation.value }))
   await jobs.upload(formData)
 }
 
 // The backend persists once; the local editor receives at most one atomic apply per receipt.
 async function importJob(createProject: boolean) {
-  if (!importReady.value || isImporting.value || !FORMATS[selectedFormat.value]) return
+  if (!importReady.value || isImporting.value || !formatImportReady.value || !selectedFormat.value || !ownershipAllows(createProject)) return
+  if (current.value?.source && selectedFormat.value !== sourceFormat.value?.key) return
   if (!createProject && !editorContextMatches()) {
     toast.add({ title: 'Save and reopen before importing', description: 'Review the current saved artwork before replacing a format.', color: 'warning' })
     return
@@ -216,10 +269,18 @@ async function importJob(createProject: boolean) {
     && state.project?.updatedAt === revision && JSON.stringify(getCanvasData()) === canvas
     && state.activeKey === key && (!createProject ? !state.isDirty && !state.isSaving : true)
   try {
-    const result = await apiFetch<{ projectId: string, formatKey: string, layers: Layer[], revision: string, receiptId: string }>(
+    const result = await apiFetch<{
+      projectId: string
+      formatKey: string
+      layers: Layer[]
+      revision: string
+      receiptId: string
+      dissectionSource?: { jobId: string, sourceSha256: string }
+    }>(
       `/api/agency/banner-studio/dissect/${encodeURIComponent(id)}/import`, {
         method: 'POST', body: {
           ...(!createProject ? { projectId: project!.id, expectedRevision: revision } : {}),
+          ...(createProject && job?.ingestion?.ownerKind === 'client' ? { clientId: job.ingestion.clientId } : {}),
           formatKey: targetKey, layerTypeOverrides: overrides, expectedResultId
         }
       }
@@ -232,6 +293,13 @@ async function importJob(createProject: boolean) {
       || (!createProject && (result.projectId !== project!.id || !Array.isArray(result.layers)))) {
       throw new Error('Incomplete import receipt')
     }
+    const scoped = job?.ingestion?.ownerKind === 'project' || job?.ingestion?.ownerKind === 'client'
+    const provenance = result.dissectionSource
+    if ((scoped && !provenance) || (provenance && (provenance.jobId !== id
+      || !/^[a-f0-9]{64}$/i.test(provenance.sourceSha256)
+      || (job?.source && provenance.sourceSha256 !== job.source.sha256)))) {
+      throw new Error('Incomplete import provenance')
+    }
     if (appliedReceipts.has(result.receiptId)) return
     if (createProject) {
       appliedReceipts.add(result.receiptId)
@@ -239,7 +307,10 @@ async function importJob(createProject: boolean) {
       await navigateTo(`/agency/banner-studio/${result.projectId}`)
     } else {
       const canvasData = getCanvasData()
-      canvasData[targetKey] = { layers: result.layers.map(layer => migrateLayer({ ...layer, id: nextId() })) }
+      canvasData[targetKey] = {
+        layers: result.layers.map(layer => migrateLayer({ ...layer, id: nextId() })),
+        ...(provenance ? { dissectionSource: { jobId: provenance.jobId, sourceSha256: provenance.sourceSha256 } } : {})
+      }
       withCanvasUndo(() => {
         applyAssistantCanvas(canvasData)
         state.activeKey = targetKey
@@ -251,6 +322,7 @@ async function importJob(createProject: boolean) {
       open.value = false
     }
   } catch (cause) {
+    if (epoch === openEpoch) jobs.rejectAccess(cause)
     if (epoch === openEpoch) toast.add({ title: 'Import failed', description: failureMessage(cause, 'Could not import artwork. Reopen the saved project if the request was interrupted.'), color: 'error' })
   } finally { if (epoch === openEpoch) isImporting.value = false }
 }
@@ -282,7 +354,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <UModal v-model:open="open">
+  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-4xl' }">
     <template #content>
       <div class="p-5 space-y-4 max-h-[80vh] overflow-y-auto @container">
         <div class="flex items-center gap-2 mb-2">
@@ -392,23 +464,73 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <p v-if="current?.source" class="text-sm text-muted">
+          Verified source: {{ current.source.width }} × {{ current.source.height }} pixels.
+        </p>
+        <p v-if="current?.ingestion" class="text-sm text-muted">
+          Owner: {{ current.ingestion.ownerKind }}.
+          <template v-if="current.ingestion.physical">
+            Selected physical size: {{ current.ingestion.physical.preset }} {{ current.ingestion.physical.orientation }}
+            ({{ current.ingestion.physical.widthMm }} × {{ current.ingestion.physical.heightMm }} mm).
+          </template>
+          <template v-else>
+            Physical size unknown.
+          </template>
+        </p>
+
+        <p v-if="current?.ingestion?.physical" class="text-sm text-muted">
+          Physical size was selected by the uploader. DPI, print readiness and ICC colour profiles have not been verified.
+        </p>
+
         <!-- Step 1: Upload -->
         <template v-if="step === 'upload'">
           <p class="text-xs text-(--ui-text-muted)">
             Analyze the visible copy and image regions. A clean background and complete extraction are required before import; some artwork needs manual reconstruction.
           </p>
 
+          <p class="text-sm font-medium">
+            {{ uploadOwnerText }}
+          </p>
+          <div class="grid grid-cols-1 @lg:grid-cols-2 gap-4">
+            <UFormField label="Physical size" description="Choose only if known. Pixel dimensions do not establish paper size or DPI.">
+              <USelectMenu
+                v-model="physicalPreset"
+                :items="physicalOptions"
+                value-key="value"
+                :disabled="!!busy"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField v-if="physicalPreset === 'A4'" label="Orientation">
+              <USelectMenu
+                v-model="orientation"
+                :items="orientationOptions"
+                value-key="value"
+                :disabled="!!busy"
+                class="w-full"
+              />
+            </UFormField>
+          </div>
+          <p v-if="physicalPreset === 'A4'" class="text-sm text-muted">
+            Physical size is a user selection. Print readiness and ICC colour profiles have not been verified.
+          </p>
           <UFormField label="Banner image">
             <UFileUpload
               :model-value="selectedFile"
-              :disabled="!!busy"
-              accept="image/jpeg,image/png,image/webp"
+              :disabled="!!busy || scopedUploadUnavailable"
+              :accept="pngOnly ? 'image/png' : 'image/jpeg,image/png,image/webp'"
               label="Drop a banner image or click to browse"
-              description="JPEG, PNG, WebP · Maximum 10 MB"
+              :description="pngOnly ? 'PNG · Maximum 10 MB' : 'JPEG, PNG, WebP · Maximum 10 MB'"
               class="w-full"
               @update:model-value="selectFile"
             />
           </UFormField>
+          <UAlert
+            v-if="scopedUploadUnavailable"
+            color="info"
+            title="Project uploads aren’t available yet"
+            description="You can still review saved analyses."
+          />
 
           <!-- Brand name -->
           <UFormField label="Brand name (optional)">
@@ -434,7 +556,7 @@ onUnmounted(() => {
               icon="i-lucide-scan-line"
               size="sm"
               :loading="isUploading"
-              :disabled="!selectedFile || !!busy || loadingHistory"
+              :disabled="!selectedFile || !!busy || loadingHistory || scopedUploadUnavailable"
               @click="handleAnalyze"
             />
           </div>
@@ -606,7 +728,13 @@ onUnmounted(() => {
             v-if="importReady && !editorImportReady && !isImporting"
             color="info"
             title="Save and reopen before importing to the editor"
-            description="Import replaces one format of the reviewed saved project. You can also create a new project."
+            :description="current?.ingestion?.ownerKind === 'project' ? 'This analysis can only replace a format in its original saved project.' : 'Import replaces one format of an eligible saved project with the same owner.'"
+          />
+          <UAlert
+            v-if="current?.source && !sourceFormat"
+            color="warning"
+            title="Source dimensions cannot be imported"
+            description="No supported editor format matches these verified source pixels."
           />
           <!-- Import options -->
           <div class="border-t border-(--ui-border) pt-3 mt-3">
@@ -628,7 +756,7 @@ onUnmounted(() => {
                   size="sm"
                   icon="i-lucide-plus"
                   :loading="isImporting"
-                  :disabled="!importReady || isImporting"
+                  :disabled="!createProjectReady"
                   @click="handleCreateProject"
                 />
                 <UButton

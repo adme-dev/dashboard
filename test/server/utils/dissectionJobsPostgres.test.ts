@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import pg from 'pg'
 import { readFile, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import { FORMATS } from '../../../shared/bannerFormats'
 import { PNG } from 'pngjs'
 
@@ -14,7 +14,8 @@ const sourceImage = PNG.sync.write(sourcePng)
 const enabled = !!process.env.BANNER_JOBS_PROOF_URL
 const transport = vi.hoisted(() => ({
   pool: null as pg.Pool | null,
-  fault: null as { when: 'before' | 'after', matches: string } | null
+  fault: null as { when: 'before' | 'after', matches: string } | null,
+  observe: null as ((sql: string, values?: unknown[]) => Promise<void>) | null
 }))
 const boundary = vi.hoisted(() => ({ analyze: vi.fn(), segment: vi.fn(), upload: vi.fn() }))
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: async (event: { user?: string }) => ({ id: event.user || '11111111-1111-4111-8111-111111111111' }) }))
@@ -36,6 +37,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
     }
   }
 }))
+vi.mock('~~/server/runtime/banner-dissection-pages-guard', () => ({ ensureBoundedDissectionUploadBody: async () => {} }))
 vi.mock('~~/server/utils/storage', () => ({
   uploadFile: boundary.upload,
   readStoredObject: async () => ({ size: sourceImage.length, body: new Blob([sourceImage]).stream() })
@@ -58,8 +60,19 @@ vi.mock('~~/server/utils/db', () => {
     const client = await transport.pool!.connect()
     try {
       await client.query('BEGIN')
-      const result = await callback(client)
+      let lostAfterCommit = false
+      const adapter = { query: async (sql: string, values?: unknown[]) => {
+        const fault = transport.fault && sql.includes(transport.fault.matches) ? transport.fault : null
+        if (fault) transport.fault = null
+        if (fault?.when === 'before') throw new Error('Synthetic lost connection before SQL commit')
+        const result = await client.query(sql, values)
+        await transport.observe?.(sql, values)
+        if (fault?.when === 'after') lostAfterCommit = true
+        return result
+      } }
+      const result = await callback(adapter as pg.PoolClient)
       await client.query('COMMIT')
+      if (lostAfterCommit) throw new Error('Synthetic lost acknowledgement after SQL commit')
       return result
     } catch (error) {
       await client.query('ROLLBACK')
@@ -74,9 +87,10 @@ vi.mock('~~/server/utils/db', () => {
   }
 })
 
+const { resolveScopedDissectionAsset } = await import('../../../server/utils/banner/dissectionDelivery')
 const jobs = await import('../../../server/utils/banner/dissectionJobs')
 const { runDissectionPipeline } = await import('../../../server/utils/bannerDissectorPipeline')
-const { dispatchDissection } = await import('../../../server/utils/banner/dissectionDispatch')
+const { dispatchDissection, sendDissectionDispatch } = await import('../../../server/utils/banner/dissectionDispatch')
 const { recoverDissectionDispatches } = await import('../../../server/utils/banner/dissectionRecovery')
 const { processJob } = await import('../../../server/utils/queueConsumer')
 const ledger = await import('../../../server/utils/jobExecutionLedger')
@@ -104,8 +118,48 @@ async function complete() {
   }))!
   return { ...job, expectedResultId: saved.manifest!.execution!.resultId! }
 }
+
+async function ownedJob() {
+  const clientId = randomUUID(), roleId = randomUUID()
+  await sql('INSERT INTO agency_clients (id) VALUES ($1)', [clientId])
+  await sql('INSERT INTO custom_roles (id, slug) VALUES ($1, $2)', [roleId, `role-${roleId}`])
+  await sql("INSERT INTO role_permission_groups (role_id, permission_group) VALUES ($1, 'CREATIVE')", [roleId])
+  await sql('UPDATE team_members SET custom_role_id = $1 WHERE id = $2', [roleId, owner])
+  await sql('INSERT INTO client_team_assignments (client_id, team_member_id) VALUES ($1, $2)', [clientId, owner])
+  const { rows: [project] } = await sql('INSERT INTO banner_projects (created_by, client_id) VALUES ($1, $2) RETURNING id, updated_at', [owner, clientId])
+  const source = { version: 1, mimeType: 'image/png', width: 2, height: 2, byteLength: sourceImage.length, sha256: createHash('sha256').update(sourceImage).digest('hex') }
+  const job = await queued(source)
+  const ingestion = { version: 1, owner: { kind: 'project', userId: owner, projectId: project.id, projectOwnerId: owner, clientId },
+    physical: null, ingestedAt: new Date().toISOString(), sessionsInvalidatedAt: null }
+  await sql("UPDATE banner_dissections SET manifest = manifest || jsonb_build_object('ingestion', $2::jsonb) WHERE job_id = $1", [job.id, JSON.stringify(ingestion)])
+  return { ...job, source, ingestion, project, clientId, roleId }
+}
+function ownedAsset(job: Awaited<ReturnType<typeof ownedJob>>) {
+  const assetId = randomUUID(), attemptId = job.manifest.execution.attemptId
+  return { assetId, attemptId, key: `scoped-dissection-assets/${job.id}/${attemptId}/${assetId}.png`,
+    mimeType: 'image/png' as const, byteLength: sourceImage.length, sha256: job.source.sha256 }
+}
 function importEvent(jobId: string, body: Record<string, unknown>, user = owner) {
   return { jobId, body, user } as never
+}
+async function protectedImportFixture() {
+  const job = await ownedJob()
+  const claim = (await jobs.claimDissectionAttempt(job.id, { attemptId: job.manifest.execution.attemptId }))!
+  const saved = (await jobs.writeDissectionAttempt(job.id, claim.manifest!.execution!, 'complete', {
+    status: 'complete', tokens: { t: { value: 'Owned synthetic text' } }, layers: [{ id: 'text', type: 'live_text',
+      extraction_status: 'extracted', token_bindings: ['t'], region: { x: 0, y: 0, width: 1, height: 1 }, z_index: 1 }],
+  } as never))!
+  const dependencyId = randomUUID()
+  const dependencyManifest = structuredClone(saved.manifest!)
+  dependencyManifest.source = { ...job.source, sha256: 'b'.repeat(64) }
+  await sql(`INSERT INTO banner_dissections (job_id, user_id, source_r2_key, status, manifest)
+    VALUES ($1, $2, $3, 'complete', $4::jsonb)`, [dependencyId, owner, `banner-dissector/${dependencyId}/original.png`, JSON.stringify(dependencyManifest)])
+  const marker = { jobId: dependencyId, sourceSha256: 'b'.repeat(64) }
+  await sql('UPDATE banner_projects SET canvas_data = $1::jsonb WHERE id = $2',
+    [JSON.stringify({ mrec: { layers: [], dissectionSource: marker } }), job.project.id])
+  const body = { expectedResultId: saved.manifest!.execution!.resultId!, projectId: job.project.id,
+    expectedRevision: job.project.updated_at.toISOString(), formatKey: 'leader' }
+  return { job, dependencyId, dependencyManifest, marker, body }
 }
 type TransportJob = Parameters<typeof ledger.startJobExecution>[0]
 function queueEvent(send: (job: TransportJob) => Promise<void>) {
@@ -148,8 +202,16 @@ describe.skipIf(!enabled)('Dissection jobs: actual SQL in an owned local Postgre
     const identity = (await sql(`SELECT current_database() AS database, current_setting('data_directory') AS directory`)).rows[0]
     if (identity.database !== marker.database || await realpath(identity.directory) !== await realpath(marker.data))
       throw new Error('Connected cluster does not belong to this proof runner')
-    await sql(`CREATE TABLE team_members (id uuid PRIMARY KEY);
+    await sql(`CREATE TABLE team_members (id uuid PRIMARY KEY, user_role text NOT NULL DEFAULT 'admin',
+        custom_role_id uuid, is_active boolean NOT NULL DEFAULT TRUE, sessions_invalidated_at timestamptz);
+      CREATE TABLE custom_roles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slug text UNIQUE, is_system boolean NOT NULL DEFAULT TRUE, is_read_only boolean NOT NULL DEFAULT FALSE);
+      CREATE TABLE role_permission_groups (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), role_id uuid REFERENCES custom_roles(id), permission_group text);
+      CREATE TABLE client_team_assignments (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), client_id uuid, team_member_id uuid REFERENCES team_members(id));
+      INSERT INTO custom_roles (slug) VALUES ('admin');
+      INSERT INTO role_permission_groups (role_id, permission_group) SELECT id, unnest(ARRAY['ADMIN','CREATIVE']) FROM custom_roles;
       CREATE TABLE agency_clients (id uuid PRIMARY KEY);
+      CREATE TABLE banner_assets (id uuid PRIMARY KEY, name text, mime_type text, file_size integer,
+        r2_key text, url text, uploaded_by uuid REFERENCES team_members(id), client_id uuid, tags text[]);
       CREATE TABLE banner_projects (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text,
         canvas_data jsonb DEFAULT '{}'::jsonb, tags text[], created_by uuid REFERENCES team_members(id),
@@ -168,10 +230,13 @@ describe.skipIf(!enabled)('Dissection jobs: actual SQL in an owned local Postgre
   beforeEach(async () => {
     vi.resetAllMocks()
     transport.fault = null
+    transport.observe = null
     vi.stubEnv('R2_ACCOUNT_ID', 'synthetic')
     vi.stubEnv('R2_ACCESS_KEY_ID', 'synthetic')
     vi.stubEnv('R2_SECRET_ACCESS_KEY', 'synthetic')
-    await sql('TRUNCATE banner_dissections, banner_projects, team_members, platform_jobs, platform_job_executions CASCADE')
+    await sql('TRUNCATE banner_dissections, banner_projects, team_members, platform_jobs, platform_job_executions, custom_roles, role_permission_groups, agency_clients CASCADE')
+    await sql(`INSERT INTO custom_roles (slug) VALUES ('admin');
+      INSERT INTO role_permission_groups (role_id, permission_group) SELECT id, unnest(ARRAY['ADMIN','CREATIVE']) FROM custom_roles`)
     await sql('INSERT INTO team_members (id) VALUES ($1), ($2)', [owner, outsider])
   })
 
@@ -194,7 +259,7 @@ describe.skipIf(!enabled)('Dissection jobs: actual SQL in an owned local Postgre
   })
 
   it('preserves source identity on explicit retry while clearing the old artwork and receipt', async () => {
-    const source = { version: 1, mimeType: 'image/jpeg', byteLength: 613, width: 2, height: 2, sha256: 'c'.repeat(64) }
+    const source = { version: 1, mimeType: 'image/png', byteLength: 613, width: 2, height: 2, sha256: 'c'.repeat(64) }
     const job = await queued(source)
     await sql(`UPDATE banner_dissections SET status = 'failed', manifest = manifest || $2::jsonb WHERE job_id = $1`, [job.id, JSON.stringify({ layers: [{ id: 'stale' }], importReceipt: { id: 'stale' } })])
     const retried = await jobs.prepareDissectionRetry(job.id, owner, job.manifest.execution.attemptId)
@@ -963,4 +1028,269 @@ describe.skipIf(!enabled)('Dissection jobs: actual SQL in an owned local Postgre
     const imported = await importJob(importEvent(job.id, { expectedResultId: completed.manifest!.execution!.resultId }))
     expect(imported.projectId).toBeTruthy()
   })
+  it.each(['assignment', 'permission', 'role', 'inactive', 'session', 'project-client', 'project-creator'])(
+    'denies %s revocation at every lifecycle before provider or state effects', async change => {
+      const job = await ownedJob()
+      if (change === 'assignment') await sql('DELETE FROM client_team_assignments WHERE client_id = $1', [job.clientId])
+      if (change === 'permission') await sql('DELETE FROM role_permission_groups WHERE role_id = $1', [job.roleId])
+      if (change === 'role') await sql('UPDATE team_members SET custom_role_id = $1 WHERE id = $2', [randomUUID(), owner])
+      if (change === 'inactive') await sql('UPDATE team_members SET is_active = FALSE WHERE id = $1', [owner])
+      if (change === 'session') await sql('UPDATE team_members SET sessions_invalidated_at = clock_timestamp() WHERE id = $1', [owner])
+      if (change === 'project-client') await sql('UPDATE banner_projects SET client_id = NULL WHERE id = $1', [job.project.id])
+      if (change === 'project-creator') await sql('UPDATE banner_projects SET created_by = $1 WHERE id = $2', [outsider, job.project.id])
+      const before = await rawJob(job.id)
+      const operations = [
+        () => jobs.loadDissection(job.id, owner), () => jobs.cancelDissection(job.id, owner),
+        () => jobs.prepareDissectionRetry(job.id, owner, job.manifest.execution.attemptId),
+        () => jobs.claimDissectionAttempt(job.id, { attemptId: job.manifest.execution.attemptId }),
+        () => jobs.writeDissectionAttempt(job.id, job.manifest.execution, 'complete', { layers: [] }),
+        () => jobs.reserveDissectionDispatch(job.id, job.manifest.execution.attemptId),
+        () => runDissectionPipeline(queueEvent(async () => {}), job.id, { attemptId: job.manifest.execution.attemptId }),
+      ]
+      for (const operation of operations) await expect(operation()).rejects.toMatchObject({ statusCode: 403 })
+      expect(await rawJob(job.id)).toEqual(before)
+      expect(boundary.analyze).not.toHaveBeenCalled()
+      expect(boundary.segment).not.toHaveBeenCalled()
+    })
+
+  it('does not send an already-reserved queue lease after assignment revocation', async () => {
+    const job = await ownedJob()
+    const lease = await jobs.reserveDissectionDispatch(job.id, job.manifest.execution.attemptId)
+    await sql('DELETE FROM client_team_assignments WHERE client_id = $1', [job.clientId])
+    const send = vi.fn()
+    await expect(sendDissectionDispatch(queueEvent(send), lease!)).rejects.toMatchObject({ statusCode: 403 })
+    expect(send).not.toHaveBeenCalled()
+    expect((await sql('SELECT count(*)::int AS count FROM platform_jobs')).rows[0].count).toBe(0)
+  })
+
+  it('registers private asset and immutable source atomically amid concurrent stage writes', async () => {
+    const job = await ownedJob(), entry = ownedAsset(job)
+    const claim = (await jobs.claimDissectionAttempt(job.id, { attemptId: job.manifest.execution.attemptId }))!
+    await Promise.all([
+      jobs.registerScopedDissectionAsset(job.id, entry.attemptId, entry),
+      jobs.writeDissectionAttempt(job.id, claim.manifest!.execution!, 'segmenting', { layers: [], ingestion: { forged: true }, delivery: { forged: true } } as never),
+    ])
+    const record = await rawJob(job.id)
+    expect(record.manifest.ingestion).toEqual(job.ingestion)
+    expect(record.manifest.source).toEqual(job.source)
+    expect(record.manifest.delivery.assets[entry.assetId]).toEqual(entry)
+    const asset = (await sql('SELECT * FROM banner_assets WHERE id = $1', [entry.assetId])).rows[0]
+    expect(asset).toMatchObject({ r2_key: entry.key, uploaded_by: owner, client_id: job.clientId,
+      url: `/api/agency/banner-studio/dissect/${job.id}/assets/${entry.assetId}` })
+    await jobs.writeDissectionAttempt(job.id, claim.manifest!.execution!, 'review_ready', { layers: [] })
+    await jobs.prepareDissectionRetry(job.id, owner, entry.attemptId)
+    const retried = await rawJob(job.id)
+    expect(retried.manifest.delivery.assets[entry.assetId]).toEqual(entry)
+    expect(retried.manifest.ingestion).toEqual(job.ingestion)
+    await expect(jobs.registerScopedDissectionAsset(job.id, entry.attemptId, { ...entry, assetId: randomUUID() })).rejects.toThrow()
+  })
+
+  it('rolls back registry publication when the catalogue row cannot be inserted', async () => {
+    const job = await ownedJob(), entry = ownedAsset(job)
+    await jobs.claimDissectionAttempt(job.id, { attemptId: entry.attemptId })
+    await sql('INSERT INTO banner_assets (id) VALUES ($1)', [entry.assetId])
+    await expect(jobs.registerScopedDissectionAsset(job.id, entry.attemptId, entry)).rejects.toThrow()
+    expect((await rawJob(job.id)).manifest.delivery).toBeUndefined()
+  })
+
+  it('retains a committed registry after lost acknowledgement and never replays its insert', async () => {
+    const job = await ownedJob(), entry = ownedAsset(job)
+    await jobs.claimDissectionAttempt(job.id, { attemptId: entry.attemptId })
+    transport.fault = { when: 'after', matches: 'INSERT INTO banner_assets' }
+    await expect(jobs.registerScopedDissectionAsset(job.id, entry.attemptId, entry)).rejects.toThrow('Synthetic lost acknowledgement')
+    expect((await rawJob(job.id)).manifest.delivery.assets[entry.assetId]).toEqual(entry)
+    expect((await sql('SELECT count(*)::int AS count FROM banner_assets WHERE id = $1', [entry.assetId])).rows[0].count).toBe(1)
+    await expect(jobs.registerScopedDissectionAsset(job.id, entry.attemptId, entry)).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it.each(['other uploader', 'revoked dependency', 'malformed dependency', 'missing dependency', 'replaced saved marker', 'malformed saved marker', 'malformed saved locator', 'erase source'])('rejects protected import with %s without project or receipt mutation', async reason => {
+    const { job, dependencyId, dependencyManifest, body } = await protectedImportFixture()
+    if (reason === 'other uploader') await sql('UPDATE banner_dissections SET user_id = $1 WHERE job_id = $2', [outsider, dependencyId])
+    if (reason === 'revoked dependency') {
+      dependencyManifest.ingestion!.sessionsInvalidatedAt = '2026-10-27T00:00:00.000Z'
+      await sql('UPDATE banner_dissections SET manifest = $1::jsonb WHERE job_id = $2', [JSON.stringify(dependencyManifest), dependencyId])
+    }
+    if (reason === 'malformed dependency') await sql("UPDATE banner_dissections SET manifest = jsonb_set(manifest, '{ingestion}', '{}'::jsonb) WHERE job_id = $1", [dependencyId])
+    if (reason === 'missing dependency') await sql('DELETE FROM banner_dissections WHERE job_id = $1', [dependencyId])
+    if (reason === 'replaced saved marker') await sql(`UPDATE banner_projects SET canvas_data = jsonb_set(canvas_data, '{mrec,dissectionSource,sourceSha256}', $1::jsonb) WHERE id = $2`, [JSON.stringify('c'.repeat(64)), job.project.id])
+    if (reason === 'malformed saved marker') await sql(`UPDATE banner_projects SET canvas_data = jsonb_set(canvas_data, '{mrec,dissectionSource}', '{}'::jsonb) WHERE id = $1`, [job.project.id])
+    if (reason === 'malformed saved locator') await sql(`UPDATE banner_projects SET canvas_data = jsonb_set(canvas_data, '{mrec,layers}', $1::jsonb) WHERE id = $2`, [JSON.stringify([{ src: '/api/agency/banner-studio/dissect/bad/assets/bad' }]), job.project.id])
+    if (reason === 'erase source') body.formatKey = 'mrec'
+    const beforeProject = (await sql('SELECT * FROM banner_projects WHERE id = $1', [job.project.id])).rows[0]
+    const beforeJob = await rawJob(job.id)
+    await expect(importJob(importEvent(job.id, body))).rejects.toMatchObject({ statusCode: reason === 'erase source' ? 409 : 403 })
+    expect((await sql('SELECT * FROM banner_projects WHERE id = $1', [job.project.id])).rows[0]).toEqual(beforeProject)
+    expect(await rawJob(job.id)).toEqual(beforeJob)
+  })
+
+  it('allows an authorized additional source in another format and reauthorizes dependencies on exact replay', async () => {
+    const { job, dependencyId, marker, body } = await protectedImportFixture()
+    const receipt = await importJob(importEvent(job.id, body))
+    const project = (await sql('SELECT * FROM banner_projects WHERE id = $1', [job.project.id])).rows[0]
+    expect(project.canvas_data.mrec.dissectionSource).toEqual(marker)
+    expect(project.canvas_data.leader.dissectionSource).toEqual({ jobId: job.id, sourceSha256: job.source.sha256 })
+    await sql("UPDATE banner_projects SET updated_at = updated_at + interval '1 second' WHERE id = $1", [job.project.id])
+    expect(await importJob(importEvent(job.id, body))).toEqual(receipt)
+    await sql('UPDATE banner_dissections SET user_id = $1 WHERE job_id = $2', [outsider, dependencyId])
+    await expect(importJob(importEvent(job.id, body))).rejects.toMatchObject({ statusCode: 403 })
+    expect((await rawJob(job.id)).manifest.importReceipt.response).toEqual(receipt)
+  })
+
+  it('allows replacement retaining the identical source marker', async () => {
+    const { job, body } = await protectedImportFixture()
+    await sql('UPDATE banner_projects SET canvas_data = $1::jsonb WHERE id = $2',
+      [JSON.stringify({ mrec: { layers: [], dissectionSource: { jobId: job.id, sourceSha256: job.source.sha256 } } }), job.project.id])
+    const receipt = await importJob(importEvent(job.id, { ...body, formatKey: 'mrec' }))
+    expect(receipt.dissectionSource).toEqual({ jobId: job.id, sourceSha256: job.source.sha256 })
+    expect(receipt.layers[0]).toMatchObject({ type: 'text', text: 'Owned synthetic text' })
+  })
+
+  it('locks the complete source union in sorted order before authority and never acquires a new source afterwards', async () => {
+    const { job, dependencyId, body } = await protectedImportFixture()
+    const firstLocks: string[] = []
+    let authorityStarted = false
+    transport.observe = async (query, values) => {
+      if (query.includes('FROM team_members')) authorityStarted = true
+      if (query.includes('FROM banner_dissections') && query.includes('FOR UPDATE')) {
+        const id = values![0] as string
+        if (!firstLocks.includes(id)) {
+          expect(authorityStarted).toBe(false)
+          firstLocks.push(id)
+        }
+      }
+    }
+    await importJob(importEvent(job.id, body))
+    expect(firstLocks).toEqual([job.id, dependencyId].sort())
+  })
+
+  it('serializes concurrent scoped new-target imports into one protected project and exact receipt', async () => {
+    const { job, body } = await protectedImportFixture()
+    const ingestion = { ...job.ingestion, owner: { kind: 'client', userId: owner, clientId: job.clientId } }
+    await sql("UPDATE banner_dissections SET manifest = jsonb_set(manifest, '{ingestion}', $1::jsonb) WHERE job_id = $2", [JSON.stringify(ingestion), job.id])
+    const request = { expectedResultId: body.expectedResultId }
+    const beforeCount = (await sql('SELECT count(*)::int AS count FROM banner_projects')).rows[0].count
+    const receipts = await Promise.all(Array.from({ length: 8 }, () => importJob(importEvent(job.id, request))))
+    for (const receipt of receipts) expect(receipt).toEqual(receipts[0])
+    expect((await sql('SELECT count(*)::int AS count FROM banner_projects')).rows[0].count).toBe(beforeCount + 1)
+    expect((await sql('SELECT canvas_data FROM banner_projects WHERE id = $1', [receipts[0].projectId])).rows[0].canvas_data.mrec.dissectionSource)
+      .toEqual({ jobId: job.id, sourceSha256: job.source.sha256 })
+    expect(await importJob(importEvent(job.id, request))).toEqual(receipts[0])
+  })
+
+  it('fences a canvas replaced after preflight without importing or overwriting the concurrent edit', async () => {
+    const { job, body } = await protectedImportFixture()
+    const changed = { mrec: { layers: [], dissectionSource: { jobId: randomUUID(), sourceSha256: 'c'.repeat(64) } } }
+    let changedOnce = false
+    const locks: string[] = []
+    transport.observe = async (query, values) => {
+      if (query.includes('FROM banner_dissections') && query.includes('FOR UPDATE')) locks.push(values![0] as string)
+      if (!changedOnce && query.includes('FROM banner_projects') && !query.includes('FOR ')) {
+        changedOnce = true
+        await sql('UPDATE banner_projects SET canvas_data = $1::jsonb WHERE id = $2', [JSON.stringify(changed), job.project.id])
+      }
+    }
+    const before = await rawJob(job.id)
+    await expect(importJob(importEvent(job.id, body))).rejects.toMatchObject({ statusCode: 409 })
+    expect(changedOnce).toBe(true)
+    expect(locks).not.toContain(changed.mrec.dissectionSource.jobId)
+    expect((await sql('SELECT canvas_data FROM banner_projects WHERE id = $1', [job.project.id])).rows[0].canvas_data).toEqual(changed)
+    expect(await rawJob(job.id)).toEqual(before)
+  })
+
+  it('rejects a newly discovered replay dependency without late locks or changing the exact receipt', async () => {
+    const { job, body } = await protectedImportFixture()
+    const receipt = await importJob(importEvent(job.id, body))
+    const extraId = randomUUID()
+    const extra = { layers: [], dissectionSource: { jobId: extraId, sourceSha256: 'c'.repeat(64) } }
+    let changedOnce = false
+    const locks: string[] = []
+    transport.observe = async (query, values) => {
+      if (query.includes('FROM banner_dissections') && query.includes('FOR UPDATE')) locks.push(values![0] as string)
+      if (!changedOnce && query.includes('FROM banner_projects') && !query.includes('FOR ')) {
+        changedOnce = true
+        await sql("UPDATE banner_projects SET canvas_data = canvas_data || jsonb_build_object('wide', $1::jsonb) WHERE id = $2", [JSON.stringify(extra), job.project.id])
+      }
+    }
+    const before = await rawJob(job.id)
+    await expect(importJob(importEvent(job.id, body))).rejects.toMatchObject({ statusCode: 409 })
+    expect(changedOnce).toBe(true)
+    expect(locks).not.toContain(extraId)
+    expect((await rawJob(job.id)).manifest.importReceipt.response).toEqual(receipt)
+    expect(await rawJob(job.id)).toEqual(before)
+    expect((await sql('SELECT canvas_data FROM banner_projects WHERE id = $1', [job.project.id])).rows[0].canvas_data.wide).toEqual(extra)
+  })
+
+  it('imports scoped native text with provenance and denies replay after scope revocation', async () => {
+    const job = await ownedJob()
+    const claim = (await jobs.claimDissectionAttempt(job.id, { attemptId: job.manifest.execution.attemptId }))!
+    const saved = (await jobs.writeDissectionAttempt(job.id, claim.manifest!.execution!, 'complete', {
+      status: 'complete', tokens: { t: { value: 'Owned synthetic text' } }, layers: [{ id: 'text', type: 'live_text',
+        extraction_status: 'extracted', token_bindings: ['t'], region: { x: 0, y: 0, width: 1, height: 1 }, z_index: 1 }],
+    } as never))!
+    const body = { expectedResultId: saved.manifest!.execution!.resultId!, projectId: job.project.id,
+      expectedRevision: job.project.updated_at.toISOString(), formatKey: 'custom_2480x3508' }
+    const imported = await importJob(importEvent(job.id, body))
+    expect(imported.dissectionSource).toEqual({ jobId: job.id, sourceSha256: job.source.sha256 })
+    const project = (await sql('SELECT canvas_data FROM banner_projects WHERE id = $1', [job.project.id])).rows[0]
+    expect(project.canvas_data.custom_2480x3508.dissectionSource).toEqual(imported.dissectionSource)
+    expect(project.canvas_data.custom_2480x3508.layers[0]).toMatchObject({ type: 'text', text: 'Owned synthetic text', w: 2480, h: 3508 })
+    await sql('DELETE FROM client_team_assignments WHERE client_id = $1', [job.clientId])
+    await expect(importJob(importEvent(job.id, body))).rejects.toMatchObject({ statusCode: 403 })
+    expect((await sql('SELECT canvas_data FROM banner_projects WHERE id = $1', [job.project.id])).rows[0]).toEqual(project)
+  })
+
+  it('runs synthetic extraction through private storage, registry, snapshot and fresh delivery', async () => {
+    const job = await ownedJob()
+    const objects = new Map([[`banner-dissector/${job.id}/original.png`, sourceImage]])
+    const reads: string[] = [], writes: string[] = []
+    const bucket = {
+      put: async (key: string, bytes: Uint8Array) => { writes.push(key); objects.set(key, Buffer.from(bytes)); return {} },
+      get: async (key: string) => { reads.push(key); const bytes = objects.get(key); return bytes ? { size: bytes.length, body: new Blob([bytes]).stream(), httpMetadata: { contentType: 'image/png' } } : null },
+      head: async (key: string) => ({ size: objects.get(key)?.length }), delete: async () => {},
+    }
+    const event = { context: { cloudflare: { env: { MEDIA_BUCKET: bucket, RENDER_LINK_SECRET: 's'.repeat(32) } } } } as never
+    boundary.analyze.mockResolvedValue({ tokens: {}, layers: [{ id: 'logo', type: 'logo', description: 'Synthetic shape',
+      region: { x: 0, y: 0, width: 1, height: 1 }, z_index: 1, export_as_png: true }] })
+    boundary.segment.mockResolvedValue(sourceImage)
+    const result = await runDissectionPipeline(event, job.id, { attemptId: job.manifest.execution.attemptId })
+    expect(result.status).toBe('review_ready')
+    const locator = result.layers![0]!.r2_url!
+    expect(locator).toMatch(/^\/api\/agency\/banner-studio\/dissect\//)
+    expect(result.layers![0]).not.toHaveProperty('asset_path')
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toMatch(/^scoped-dissection-assets\//)
+    const asset = await resolveScopedDissectionAsset(event, owner, locator)
+    expect(Buffer.from(asset.bytes)).toEqual(sourceImage)
+    expect(asset.sourceSha256).toBe(job.source.sha256)
+    const readsBefore = reads.length
+    await sql('DELETE FROM client_team_assignments WHERE client_id = $1', [job.clientId])
+    await expect(resolveScopedDissectionAsset(event, owner, locator)).rejects.toMatchObject({ statusCode: 403 })
+    expect(reads).toHaveLength(readsBefore)
+  })
+
+  it('does not publish private output after assignment changes during storage, preserving uncertain bytes', async () => {
+    const job = await ownedJob()
+    const objects = new Map([[`banner-dissector/${job.id}/original.png`, sourceImage]])
+    const remove = vi.fn()
+    const bucket = {
+      put: async (key: string, bytes: Uint8Array) => {
+        objects.set(key, Buffer.from(bytes))
+        await sql('DELETE FROM client_team_assignments WHERE client_id = $1', [job.clientId])
+        return {}
+      },
+      get: async (key: string) => { const bytes = objects.get(key); return bytes ? { size: bytes.length, body: new Blob([bytes]).stream(), httpMetadata: { contentType: 'image/png' } } : null },
+      head: async (key: string) => ({ size: objects.get(key)?.length }), delete: remove,
+    }
+    const event = { context: { cloudflare: { env: { MEDIA_BUCKET: bucket, RENDER_LINK_SECRET: 's'.repeat(32) } } } } as never
+    boundary.analyze.mockResolvedValue({ tokens: {}, layers: [{ id: 'logo', type: 'logo', region: { x: 0, y: 0, width: 1, height: 1 }, z_index: 1, export_as_png: true }] })
+    boundary.segment.mockResolvedValue(sourceImage)
+    await expect(runDissectionPipeline(event, job.id, { attemptId: job.manifest.execution.attemptId })).rejects.toMatchObject({ statusCode: 403 })
+    expect(objects.size).toBe(2)
+    expect(remove).not.toHaveBeenCalled()
+    expect((await rawJob(job.id)).manifest.delivery).toBeUndefined()
+    expect((await sql('SELECT count(*)::int AS count FROM banner_assets')).rows[0].count).toBe(0)
+    expect(boundary.analyze).toHaveBeenCalledOnce()
+    expect(boundary.segment).toHaveBeenCalledOnce()
+  })
+
 })

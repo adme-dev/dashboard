@@ -240,7 +240,8 @@ describe('banner video God mode coordination', () => {
     vi.doMock('~~/server/utils/storage', () => ({ uploadFile: vi.fn() }))
     vi.doMock('~~/server/utils/db', async importOriginal => ({
       ...await importOriginal<typeof import('~~/server/utils/db')>(),
-      execute: vi.fn()
+      execute: vi.fn(),
+      queryOneFresh: vi.fn(async () => ({ canvas_data: {} }))
     }))
     vi.doMock('~~/server/utils/banner/renderJob', async importOriginal => ({
       ...await importOriginal<typeof import('~~/server/utils/banner/renderJob')>(),

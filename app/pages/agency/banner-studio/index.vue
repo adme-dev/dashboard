@@ -50,6 +50,7 @@ const allProjects = computed(() => projectsData.value || [])
 const clients = computed(() => {
   const records = new Map<string, { id: string, name: string, count: number }>()
   for (const project of allProjects.value) {
+    if (project.restricted) continue
     const id = project.clientId || 'unassigned'
     const current = records.get(id)
     records.set(id, { id, name: project.clientId ? project.clientName || 'Unnamed client' : 'Unassigned', count: (current?.count || 0) + 1 })
@@ -65,10 +66,10 @@ const projects = computed(() => sortLibrary(filterBannerProjects(clientProjects.
 }).filter(p => folderFilter.value === 'all' || p.tags?.includes(folderFilter.value)), sort.value))
 const visibleProjects = computed(() => projects.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 const libraryItems = computed(() => visibleProjects.value.map(p => ({
-  id: p.id, name: p.name, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
+  id: p.id, name: p.name, client: p.restricted ? 'Restricted' : p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
   category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status, dimensions: bannerDimensions(p.canvasData), type: 'Native editable',
   date: p.updatedAt || p.createdAt, thumbnailUrl: p.thumbnailUrl, canvasData: p.canvasData,
-  to: `/agency/banner-studio/${p.id}`
+  to: p.restricted ? undefined : `/agency/banner-studio/${p.id}`
 })))
 const projectById = computed(() => new Map(allProjects.value.map(p => [p.id, p])))
 watch([searchQuery, statusFilter, clientFilter, folderFilter, tagFilter, sort], () => {
@@ -92,10 +93,12 @@ function newProject() {
 }
 
 function editProject(p: BannerProject) {
+  if (p.restricted) return
   router.push(`/agency/banner-studio/${p.id}`)
 }
 
 async function duplicateProject(p: BannerProject) {
+  if (p.restricted) return
   const idempotencyKey = duplicateIdempotencyKeys.get(p.id) || crypto.randomUUID()
   duplicateIdempotencyKeys.set(p.id, idempotencyKey)
   try {
@@ -143,10 +146,10 @@ const statusItems = [
 ]
 
 const dropdownItems = (p: BannerProject) => [
-  [
+  ...(!p.restricted ? [[
     { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => editProject(p) },
     { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => duplicateProject(p) }
-  ],
+  ]] : []),
   [
     { label: 'Delete', icon: 'i-lucide-trash-2', onSelect: () => confirmDelete(p) }
   ]

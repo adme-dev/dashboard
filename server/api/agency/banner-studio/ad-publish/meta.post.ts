@@ -1,3 +1,4 @@
+import { assertProjectAllowsUnprotectedFlow } from '~~/server/utils/banner/scopedExport'
 /**
  * Publish banner to Meta Ads as a real ad creative + ad.
  * POST /api/agency/banner-studio/ad-publish/meta
@@ -11,7 +12,7 @@
  * 6. Create ad in ad set → get ad_id
  * 7. INSERT banner_ad_publishes with all IDs
  */
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import {
   uploadAdImage,
@@ -95,6 +96,19 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Primary texts and headlines cannot be empty after sanitization' })
   }
 
+  // --- Fetch published banner ---
+  const published = await queryOneFresh(`
+    SELECT id, project_id AS "projectId", format_key AS "formatKey",
+      url, width, height, click_url AS "clickUrl"
+    FROM banner_published WHERE id = $1
+  `, [publishedId]) as any
+
+  if (!published) {
+    throw createError({ statusCode: 404, statusMessage: 'Published banner not found' })
+  }
+
+  await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
+
   // --- Fetch connection and verify scope ---
   const connection = await queryOne(`
     SELECT id, account_id AS "accountId", account_name AS "accountName",
@@ -120,23 +134,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // --- Fetch published banner ---
-  const published = await queryOne(`
-    SELECT id, project_id AS "projectId", format_key AS "formatKey",
-      url, width, height, click_url AS "clickUrl"
-    FROM banner_published WHERE id = $1
-  `, [publishedId]) as any
-
-  if (!published) {
-    throw createError({ statusCode: 404, statusMessage: 'Published banner not found' })
-  }
-
   const actId = connection.metadata?.actId || `act_${connection.accountId}`
   const creativeName = adName || `Banner ${published.formatKey} - ${new Date().toISOString().slice(0, 10)}`
   const finalAdName = adName || `Ad ${published.formatKey} - ${new Date().toISOString().slice(0, 10)}`
   const finalStatus = adStatus || 'PAUSED'
 
   try {
+    await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
     // Step 1: Upload image to Meta
     // Try URL-based upload first (faster, avoids downloading the image), fall back to buffer
     let imageResult: { hash: string; url: string }
@@ -145,11 +149,13 @@ export default defineEventHandler(async (event) => {
         imageResult = await uploadAdImageByUrl(actId, connection.accessToken, published.url)
       } catch {
         // Fallback: fetch the image and upload as buffer
+        await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
         const imageResponse = await fetch(published.url)
         if (!imageResponse.ok) {
           throw new Error(`Failed to fetch banner image: ${imageResponse.status}`)
         }
         const imageBuffer = Buffer.from(await imageResponse.arrayBuffer())
+        await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
         imageResult = await uploadAdImage(actId, connection.accessToken, imageBuffer)
       }
     } else {
@@ -159,6 +165,7 @@ export default defineEventHandler(async (event) => {
     await delay(200) // Rate limit spacing
 
     // Step 2: Create ad creative
+    await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
     const creative = await createAdCreative(actId, connection.accessToken, {
       name: creativeName,
       imageHash: imageResult.hash,
@@ -173,6 +180,7 @@ export default defineEventHandler(async (event) => {
     await delay(200)
 
     // Step 3: Create ad
+    await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
     const ad = await createAd(actId, connection.accessToken, {
       name: finalAdName,
       adsetId: adSetId,
@@ -181,6 +189,7 @@ export default defineEventHandler(async (event) => {
     })
 
     // Step 4: Record in DB
+    await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
     const adPublish = await queryOne(`
       INSERT INTO banner_ad_publishes (
         project_id, published_id, platform, account_id, campaign_id, ad_group_id,
@@ -233,6 +242,7 @@ export default defineEventHandler(async (event) => {
 
     // Log the error and record failure in DB
     console.error('[Meta Ad Publish] Error:', err.message || err)
+    await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
 
     await queryOne(`
       INSERT INTO banner_ad_publishes (

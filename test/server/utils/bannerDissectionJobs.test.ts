@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const db = vi.hoisted(() => ({ query: vi.fn(), rows: vi.fn() }))
-vi.mock('~~/server/utils/db', () => ({ queryOneFresh: db.query, queryRowsFresh: db.rows }))
+vi.mock('~~/server/utils/db', () => ({ queryOneFresh: db.query, queryRowsFresh: db.rows,
+  transactionWithoutRetry: async callback => callback({ query: async (sql, args) => {
+    if (/SELECT \* FROM banner_dissections.*FOR UPDATE/.test(sql)) return { rows: [{ job_id: 'job', user_id: 'owner' }] }
+    const row = await db.query(sql, args)
+    return { rows: row ? [row] : [] }
+  } })
+}))
+vi.mock('~~/server/utils/banner/dissectionAccess', () => ({ assertDissectionAccess: async () => {} }))
 const jobs = await import('../../../server/utils/banner/dissectionJobs')
 beforeEach(() => vi.resetAllMocks())
 

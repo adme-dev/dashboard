@@ -1,3 +1,4 @@
+import { hasScopedCanvas } from '#shared/bannerScopedCanvas'
 /**
  * Restore a project to a specific version
  * POST /api/agency/banner-studio/versions/restore
@@ -40,6 +41,9 @@ export default defineEventHandler(async (event) => {
   if (currentProject.clientId) await requireSocialClientAccess(event, currentProject.clientId)
   else if (currentProject.createdBy !== user.id && !hasAllSocialClientAccess(user)) {
     throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
+  }
+  if (hasScopedCanvas(currentProject.canvasData) || hasScopedCanvas(version.canvasData)) {
+    throw createError({ statusCode: 409, statusMessage: 'Restoring protected artwork is unavailable. Open the saved project instead.' })
   }
   if (expectedRevision && new Date(currentProject.updatedAt).getTime() !== Date.parse(expectedRevision)) {
     throw createError({ statusCode: 409, statusMessage: 'Artwork changed elsewhere. Reload before restoring.' })

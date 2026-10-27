@@ -1,3 +1,5 @@
+import { hasScopedCanvas } from '#shared/bannerScopedCanvas'
+import { withScopedCanvasAccess, assertScopedProjectUnchanged } from '~~/server/utils/banner/scopedCanvasAccess'
 import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
@@ -13,7 +15,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const source = await queryOneFresh(`
-      SELECT name, client_id AS "clientId", canvas_data AS "canvasData", tags, created_by AS "createdBy"
+      SELECT name, client_id AS "clientId", canvas_data AS "canvasData", tags, created_by AS "createdBy", updated_at AS "updatedAt"
       FROM banner_projects WHERE id = $1
     `, [id])
 
@@ -26,7 +28,7 @@ export default defineEventHandler(async (event) => {
     }
     await validateBannerPlatformQrCanvas(event, {}, source.canvasData, source.clientId)
 
-    const row = await queryOne(`
+    const copy = async (query: typeof queryOne) => query(`
       INSERT INTO banner_projects (name, client_id, canvas_data, tags, created_by)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING
@@ -46,7 +48,13 @@ export default defineEventHandler(async (event) => {
       user.id
     ])
 
-    return row
+    if (hasScopedCanvas(source.canvasData)) {
+      return await withScopedCanvasAccess(user.id, source.canvasData, id, 'write', async db => {
+        await assertScopedProjectUnchanged(db, id, source)
+        return copy(async (sql, params) => (await db.query<any>(sql, params)).rows[0] ?? null)
+      })
+    }
+    return await copy(queryOne)
   } catch (error) {
     if ((error as { statusCode?: number })?.statusCode) throw error
     console.error('Failed to duplicate banner project:', error)

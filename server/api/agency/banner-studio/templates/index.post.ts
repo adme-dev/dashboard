@@ -1,9 +1,13 @@
+import { assertNoScopedDissectionReferences, assertProjectAllowsUnprotectedFlow } from '~~/server/utils/banner/scopedExport'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const body = await readBody(event)
+
+  assertNoScopedDissectionReferences(body)
+  if (body.projectId) await assertProjectAllowsUnprotectedFlow(body.projectId, body)
 
   const { name, category, canvasData, thumbnailUrl } = body
 

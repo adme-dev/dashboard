@@ -1,3 +1,4 @@
+import { assertProjectAllowsUnprotectedFlow } from '~~/server/utils/banner/scopedExport'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { uploadFile } from '~~/server/utils/storage'
@@ -38,6 +39,8 @@ export default defineEventHandler(async (event) => {
   if (!project) {
     throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   }
+
+  await assertProjectAllowsUnprotectedFlow(projectId, body)
 
   // Check for existing published version
   const existing = await queryOne(

@@ -321,11 +321,23 @@ describe('God mode gate inventory', () => {
     // gates retain project/client authority and register no new bypass.
     expect(inventory.rows).toContain('server/api/agency/banner-studio/export-image.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
     expect(inventory.rows).toContain('server/api/agency/banner-studio/export-gif.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
-    expect(inventory.rows).toHaveLength(1627)
+    // Protected ingestion adds four explicit write gates and four fresh role rows.
+    // Source ownership remains independent; no God mode mutation bypass is registered.
+    for (const row of [
+      'server/api/agency/banner-studio/export-html.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/links/index.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/projects/[id].delete.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/projects/upload-banners.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/utils/banner/dissectionAccess.ts\tuser_role: string\tidentity_tenant_hard_boundary',
+      'server/utils/banner/dissectionAccess.ts\tconst actor = (await rows<Actor>(db, `SELECT id, user_role, custom_role_id, is_active, sessions_invalidated_at\tidentity_tenant_hard_boundary',
+      'server/utils/banner/dissectionAccess.ts\t[actor.custom_role_id || actor.user_role]))[0]\tidentity_tenant_hard_boundary',
+      'server/utils/banner/dissectionAccess.ts\tif (mode !== \'read\' && (role.is_read_only || [\'viewer\', \'guest\'].includes(actor.user_role))) throw denied()\tidentity_tenant_hard_boundary'
+    ]) expect(inventory.rows).toContain(row)
+    expect(inventory.rows).toHaveLength(1635)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 128,
+      identity_tenant_hard_boundary: 132,
       provider_infrastructure_availability: 221,
-      application_governance_bypass: 1650,
+      application_governance_bypass: 1654,
       ordinary_user_behavior: 192,
       unrelated_configuration: 435
     })
@@ -342,7 +354,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('63509634b313ef7888c61578325b6d6ac8e58c031701873516c331fc827e8603')
+    expect(inventory.digest).toBe('a05419bbcc5d1fb595d2ad3e440a4d22f93ea9237dbc65fa63b6315f230814e7')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

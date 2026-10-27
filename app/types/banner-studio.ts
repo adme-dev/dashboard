@@ -171,6 +171,7 @@ export interface BannerPlayback {
 }
 
 export interface ArtboardState {
+  dissectionSource?: { jobId: string; sourceSha256: string }
   artworkCreation?: import('../utils/banner-artwork-creation').ArtworkCreationMetadata
   reconstruction?: import('../../shared/bannerReconstruction').ReconstructionMetadata
   playback?: BannerPlayback
@@ -185,7 +186,8 @@ export interface BannerProject {
   clientName?: string
   canvasData: Record<string, ArtboardState>
   thumbnailUrl: string | null
-  status: 'draft' | 'published'
+  status: 'draft' | 'published' | 'restricted'
+  restricted?: boolean
   tags: string[]
   createdBy: string
   createdAt: string
@@ -569,6 +571,13 @@ export type DissectionStatus = 'queued' | 'analyzing' | 'segmenting' | 'review_r
 export interface DissectionJob extends Partial<Omit<DissectorManifest, 'jobId' | 'status'>> {
   jobId: string
   status: DissectionStatus
+  source?: { width: number, height: number, mimeType: string, byteLength: number, sha256: string }
+  ingestion?: {
+    ownerKind: 'user' | 'client' | 'project'
+    projectId?: string
+    clientId?: string
+    physical: null | { preset: 'A4', orientation: 'portrait' | 'landscape', unit: 'mm', widthMm: number, heightMm: number }
+  }
   createdAt?: string
   updatedAt?: string
   bannerSize?: string

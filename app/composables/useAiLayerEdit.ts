@@ -1,3 +1,4 @@
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '#shared/bannerScopedCanvas'
 import type { EditLayerResult } from '~/types/banner-studio'
 
 // Module-scope singleton state — shared across all callers
@@ -15,7 +16,7 @@ const _editSeedInput = ref(0)
 const _lastSeed = ref<number | null>(null)
 
 export function useAiLayerEdit() {
-  const { activeLayers, updateLayer } = useBannerStudio()
+  const { state, activeLayers, updateLayer } = useBannerStudio()
   const toast = useToast()
   const apiFetch = $fetch as <T = unknown>(
     request: string,
@@ -23,6 +24,10 @@ export function useAiLayerEdit() {
   ) => Promise<T>
 
   function openEdit(layer: { id: number }) {
+    if (hasScopedCanvas(state.sets) || hasScopedCanvas(state.project?.canvasData)) {
+      toast.add({ title: 'Protected artwork', description: SCOPED_DISSECTION_EXCLUSION, color: 'warning' })
+      return
+    }
     if (activeLayers.value.find(candidate => candidate.id === layer.id)?.platformQr) {
       toast.add({ title: 'Managed QR protected', description: 'Update this code in QR Codes.', color: 'warning' })
       return
@@ -41,6 +46,7 @@ export function useAiLayerEdit() {
   }
 
   async function submitEdit() {
+    if (hasScopedCanvas(state.sets) || hasScopedCanvas(state.project?.canvasData)) { _editError.value = SCOPED_DISSECTION_EXCLUSION; return }
     const layerId = _editingLayerId.value
     if (!layerId || !_editPrompt.value.trim()) return
 
@@ -88,6 +94,7 @@ export function useAiLayerEdit() {
   }
 
   function applyEdit() {
+    if (hasScopedCanvas(state.sets) || hasScopedCanvas(state.project?.canvasData)) { cancelEdit(); return }
     const layerId = _editingLayerId.value
     const previewUrl = _editPreviewUrl.value
     if (!layerId || !previewUrl) return

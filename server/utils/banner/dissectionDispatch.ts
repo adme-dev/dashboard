@@ -1,7 +1,7 @@
 import { createError, getRequestURL, type H3Event } from 'h3'
 import { getQueue, type QueueJob } from '~~/server/utils/queue'
 import { startJobExecution, finishJobExecution } from '~~/server/utils/jobExecutionLedger'
-import { acknowledgeDissectionDispatch, failDissectionDispatch, reserveDissectionDispatch, type DissectionRecord } from '~~/server/utils/banner/dissectionJobs'
+import { acknowledgeDissectionDispatch, failDissectionDispatch, isDissectionDispatchAuthorized, reserveDissectionDispatch, type DissectionRecord } from '~~/server/utils/banner/dissectionJobs'
 import { execute } from '~~/server/utils/db'
 import { runDissectionPipeline } from '~~/server/utils/bannerDissectorPipeline'
 
@@ -88,9 +88,11 @@ export async function sendDissectionDispatch(event: H3Event, row: DissectionReco
   const queue = getQueue(event)
   if (!queue) throw createError({ statusCode: 503, statusMessage: EXECUTOR_UNAVAILABLE })
   const job = transportJob(row)
+  if (!await isDissectionDispatchAuthorized(row.job_id, row.manifest!.execution!.attemptId, job.jobId!)) return 'uncertain'
   let accepted = false
   try {
     await recordTransport(job, 'queue')
+    if (!await isDissectionDispatchAuthorized(row.job_id, row.manifest!.execution!.attemptId, job.jobId!)) return 'uncertain'
     await queue.send(job, { contentType: 'json' })
     accepted = true
   } catch { /* Reservation remains recoverable even if acceptance was ambiguous. */ }

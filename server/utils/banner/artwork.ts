@@ -41,6 +41,7 @@ import {
 } from '../../../shared/bannerArtwork'
 import { letteringRepairRequestSchema, letteringRepairEligibilityIssue, type LetteringRepairProposal } from '../../../shared/bannerLetteringRepair'
 import { isProtectedBannerCopy } from '../../../shared/bannerCopyProtection'
+import { assertNoScopedDissectionReferences } from './scopedExport'
 
 interface SavedLayer {
   id: number
@@ -91,6 +92,7 @@ async function scopedProject(
       statusMessage: 'No access to this project'
     })
   assertArtworkRevision(project.updated_at, revision)
+  assertNoScopedDissectionReferences(project.canvas_data)
   return project
 }
 async function ownedReference(
@@ -120,6 +122,8 @@ async function ownedReference(
       statusMessage:
         'Reference image is not owned in this project client scope'
     })
+  assertNoScopedDissectionReferences(asset.r2_key)
+  assertNoScopedDissectionReferences(asset.url)
   if (selectedSrc && asset.url !== selectedSrc)
     throw createError({
       statusCode: 409,

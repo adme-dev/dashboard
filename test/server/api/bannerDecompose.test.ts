@@ -116,3 +116,18 @@ describe('Complete decomposition asset delivery', () => {
     expect(m.decompose).not.toHaveBeenCalled()
   })
 })
+
+it('rejects protected source URLs before lookup, reads, credentials or provider calls', async () => {
+  const request = event()
+  request.body.imageUrl = 'https://app.xeroflow.io/api/agency/banner-studio/dissect/11111111-1111-4111-8111-111111111111/assets/22222222-2222-4222-8222-222222222222'
+  await expect(handler(request as never)).rejects.toMatchObject({ statusCode: 409 })
+  expect(m.query).not.toHaveBeenCalled()
+  expect(m.bucketGet).not.toHaveBeenCalled()
+  expect(m.decompose).not.toHaveBeenCalled()
+})
+it('rejects a protected storage key even when a legacy signed token names its asset', async () => {
+  m.query.mockResolvedValue({ ...source(), r2Key: 'scoped-dissection-assets/job/attempt/asset.png' })
+  await expect(handler(await signedEvent() as never)).rejects.toMatchObject({ statusCode: 409 })
+  expect(m.bucketGet).not.toHaveBeenCalled()
+  expect(m.decompose).not.toHaveBeenCalled()
+})

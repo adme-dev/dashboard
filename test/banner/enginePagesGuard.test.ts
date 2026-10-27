@@ -8,6 +8,7 @@ import { fetchNodeRequestHandler } from 'node-mock-http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bannerEnginePagesGuardPlugin } from '../../scripts/banner-engine-pages-guard.mjs'
 import { guardBannerEnginePagesRequest } from '../../server/runtime/banner-engine-pages-guard'
+import { guardBannerDissectionPagesRequest } from '../../server/runtime/banner-dissection-pages-guard'
 
 const require = createRequire(import.meta.url)
 const presetPath = require.resolve('nitropack/package.json').replace(/package\.json$/, 'dist/presets/cloudflare/runtime/cloudflare-pages.mjs')
@@ -37,8 +38,8 @@ async function runtime(handler: (event: H3Event) => unknown = () => 'ok', guarde
   } }
   const code = source.replace(/^import .*;\n/gm, '').replaceAll('import.meta._websocket', 'false')
     .replaceAll('import.meta._tasks', 'false').replace('export default', 'return')
-  const entry = new Function('useNitroApp', 'requestHasBody', 'isPublicAssetURL', 'guardBannerEnginePagesRequest', code)(
-    () => nitroApp, (r: Request) => r.body !== null, () => false, guardBannerEnginePagesRequest
+  const entry = new Function('useNitroApp', 'requestHasBody', 'isPublicAssetURL', 'guardBannerEnginePagesRequest', 'guardBannerDissectionPagesRequest', code)(
+    () => nitroApp, (r: Request) => r.body !== null, () => false, guardBannerEnginePagesRequest, guardBannerDissectionPagesRequest
   )
   return { entry, calls }
 }

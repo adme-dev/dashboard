@@ -1,4 +1,53 @@
+## Protected ingestion checkpoint — 27 October 2026, 21:16 UTC
+
+Fresh ownership/lifecycle checks, bounded multipart ingress, authenticated result delivery, saved protected exports and managed-flow exclusions are now implemented locally. The candidate contains the owned changes on current main; production is unchanged. The combined focused suite passed 1,023 tests, the final lifecycle PostgreSQL proof passed 59, and the flow PostgreSQL proof passed 16 (counts overlap with other reported runs). A cancellation-edge regression was reproduced and fixed. Independent review, actual local browser export proof and full guarded build remain in progress. **Scoped admission remains disabled; this is not full PRD or hosted provider acceptance.** See [the integration record](OWNED-INGEST-INTEGRATION.md) for authoritative scope, evidence and remaining gates. Earlier completed-release statements below describe the previous PNG source-only release.
+
+## Final PNG release verification — 27 October 2026, 16:13 UTC
+
+**This bounded PNG source-integrity release is deployed and verified. The full editable-artwork PRD remains incomplete.** CI [40529448515](https://github.com/adme-dev/dashboard/actions/runs/40529448515) completed successfully on exact deployed source `c910df968ac1bef181f9aa99c14008ed2897edac`: 20,770 tests passed / 3,811 skipped, 2,558 files passed / 113 skipped. All preceding database stages, Linux production build, six exact-artifact startup/codec checks, 891 social regressions and 21 deployment guards passed. Linux bundle bytes are 25,399,514 raw and 7,444,499 gzip, below unchanged limits. These Linux bytes are distinct from the actually uploaded macOS artifact recorded below.
+
+Canonical Pages readback still identifies `eb493158-0d78-4f9c-9102-89f20ae5a770` on the exact source above, and the release worktree is clean. Seven hosted invalid uploads, fresh unchanged job history, preserved saved-download hashes, authenticated/unauthenticated access, editor/QR navigation and the unchanged customer canvas are recorded in the [review packet](../../../output/banner-release-acceptance-20261027/index.html). Draft PR [720](https://github.com/adme-dev/dashboard/pull/720) is ready for user review of this bounded release and has not been merged. The owned browser verification tab is closed; no supervised worker awaits release.
+
+Native canary readback remains admission-disabled. The prior automatic-review rejection of paid one-time native execution is unresolved, and its explicit approval question remains unanswered. Live AI-provider acceptance also remains unexecuted after automatic-review rejection; production OpenAI credentials are absent. Neither missing approval nor elapsed time was treated as execution permission.
+
+Next implementation work is the fresh ownership and protected-result-delivery boundary in [OWNED-INGEST-PLAN.md](OWNED-INGEST-PLAN.md), followed by bounded multipart ingress and explicit physical context. Full creative reconstruction, broader adapters, provider quality and print acceptance remain open. Valid hosted Dissector upload was deliberately not used as a validation probe because it automatically dispatches inference. The completed source-only checks must not be represented as hosted provider or full R01 acceptance.
+
+## PNG ingestion release — 27 October 2026, 15:27 UTC
+
+Source `c910df968ac1bef181f9aa99c14008ed2897edac` includes fresh main `eb294e8600cc4054d1c9dd98eb46ec61c1ea9958` and is now canonical production Pages deployment `eb493158-0d78-4f9c-9102-89f20ae5a770`. The guarded release passed 282 focused tests, lint on ten source/test/page files, 45 actual disposable PostgreSQL tests, full build and six exact-artifact startup/codec tests. Raw modules are 25,399,666 / 25,468,928 bytes; gzip 7,444,610 / 9,750,000. Limits were not changed. Final module manifest SHA-256 is `f4efb2425bd3e5cde099dd593186c4bbbbf6311bb22df071f5084b94a3a5a330`.
+
+The live upload endpoint rejects seven synthetic invalid inputs with 400: empty, text, truncated PNG, bad CRC, invalid scanline filter, PNG labelled JPEG and PNG labelled WebP. No job was returned and fresh job history is unchanged. The bounded validator records exact original PNG identity; progress/retry retain it and the pipeline checks it before inference. JPEG/WebP retain valid legacy upload behavior without verified-source metadata. This is PNG source integrity, not full R01 owned ingestion or bounded multipart transport.
+
+After release, the editor reloaded, QR Codes rendered and all three existing synthetic PNG/JPG/GIF downloads matched their hashes with authenticated GET/HEAD 200 and private/no-store headers. Browser requests with credentials omitted return 401; Python's default client is separately denied by Cloudflare with 1010/403. The customer baseline revision and canvas hash remain unchanged. No valid hosted Dissector job or AI-provider call was submitted. [Review packet](../../../output/banner-release-acceptance-20261027/index.html) and `output/editable-artwork-ingest/hosted-rejection-evidence.json` retain exact observations.
+
+Baseline CI `40519026264` passed (20,631 tests); new-source CI `40529448515` is still running. Draft PR 720 remains unmerged. All supervised workers are settled: 81 released, two user-retained, none reclaimable, inbox empty. Native admission remains disabled and its one-run approval remains unanswered after automatic-review rejection. Production OpenAI key is absent and provider acceptance is also blocked by the earlier automatic review. The full PRD remains incomplete; [owned-ingestion plan](OWNED-INGEST-PLAN.md) records the next implementation boundaries.
+
+## Current checkpoint — 27 October 2026, 14:23 UTC
+
+Production export/history source `fb065b7d2fabc4c94c2aff490b1f35114a6aab7f` remains deployed as Pages `7aed0def-b310-4d4b-85e9-8ed8a3ef73cb`, with live synthetic PNG/JPG/GIF, private downloads, immediate history and unchanged customer baseline verified. Full CI `40508897634` failed only two 4×3 browser fixtures: Linux classic scrollbars reduced the screenshot area to zero width. Corrected test-only source `7eb52a6736989aacb3c4bd62ac086baf8a1bf0f4` passes 67 focused checks, including real font glyph and GIF pixel assertions; full CI `40519026264` is running. Application source is unchanged by that commit.
+
+The native image was published successfully using bounded serial registry transport. Exact manifest `sha256:12158e33bb5a22ed0ff01b0f9d1cde28e24d44904f3c1819e4ef379fe4f47472` and config `sha256:e7bfa3ca18487c5c231229ca24164de533eff36934f1a78c29b96b57f1301805` were independently read back. Private canary version `90f29fcc-73b6-461a-922d-5181b2ca061b` is deployed with admission disabled and status `record:null`; no native invocation occurred. Automatic approval review rejected activation because potential paid external compute and irreversible one-time consumption need specific approval. A concrete one-run approval question is pending; no activation may proceed without its answer.
+
+Production OpenAI key presence was checked again and remains false. Live provider acceptance remains unexecuted, with the prior automatic-review rejection unresolved. The review packet is `output/banner-release-acceptance-20261027/index.html`; draft PR 720 remains open. Full PRD completion is not claimed. A supervised read-only R01 ownership/validated-ingestion plan is in progress as `ctx_8d05bf70fd41`; it must not alter the release candidate while CI runs.
+
 # Editable artwork completion audit
+
+## Superseding release checkpoint — 27 October 2026, 13:41 UTC
+
+The full PRD remains incomplete. The audit below is a historical snapshot; its blanket statement that no hosted acceptance exists and its engine-job/R09 implementation gaps have been superseded for the bounded work listed here. Unlisted requirements remain open as recorded below.
+
+| Area | Current evidence and remaining boundary |
+| --- | --- |
+| Production editor and raster exports | Pages source `fb065b7d2fabc4c94c2aff490b1f35114a6aab7f` is deployed as `7aed0def-b310-4d4b-85e9-8ed8a3ef73cb`. Actual synthetic PNG, JPG 2×, animated GIF, signed-asset rendering, authenticated downloads, immediate export-history reads, save/reopen, undo/redo and Banner/QR navigation pass. Customer baseline revision/hash is unchanged. See [hosted raster acceptance](HOSTED-RASTER-ACCEPTANCE.md). This does not accept all four original creative sides, other roles or print output. |
+| Full build / CI | The guarded full Pages build and all six exact-artifact checks pass without changing size limits. Earlier full CI `40500087799` passed; latest-source CI `40508897634` remains running. No clean global typecheck or full PRD acceptance is claimed. |
+| R09 saved-revision contract | Implemented, reviewed and included in the deployed source: explicit saved revision, current project/client authority, before/after inference checks and response revision matching. [Copy revision repair](COPY-REVISION-REPAIR.md) records 50 passing focused tests. Live provider race/output acceptance remains open; the missing wire revision in the historical R09 row is no longer a code gap. |
+| Engine-job authority and private result integration | Completed locally, independently reviewed and included as default-off APIs. [Engine jobs](ENGINE-JOBS.md) records 370 disjoint tests and actual disposable PostgreSQL/authenticated HTTP/native-engine integration with explicit fixture auth/storage boundaries. The historical steps 1 and 2 below are implemented; hosted activation and execution remain open. |
+| Native Cloudflare qualification | Exact retained image attested locally. Serial registry publication is being verified after Docker transport failures; no native Worker or hosted invocation is accepted. See [serial transport plan](CANARY-SERIAL-TRANSPORT-PLAN.md). A registry image alone will not close hosted-engine acceptance. |
+| External AI provider acceptance | Still unexecuted after automatic approval review rejected live provider transmission/spend. Full reconstruction, live lettering/generation quality and evaluation remain open. |
+
+The unchanged broader gaps include owned client/project/A4 ingest, automatic clean-background and editable reconstruction across all four sides, scoped general image/vector edits, the remaining engine adapters, model/cost governance, MCP exposure, duplex/ICC/print and the required creative evaluation set. These are not represented as completed by the raster release.
+
+## Historical audit
 
 27 October 2026. Read-only audit of the current worktree and retained evidence against `PRD.md` R01–R26 and A01–A14, plus the Creative Studio / Craft engine direction.
 

@@ -6,7 +6,8 @@ import { loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
 import { buildBannerHTML } from '~~/server/utils/banner/htmlBuilder'
 import { enqueueBannerRender, projectJobStatus, type BannerJobRow, type BannerRenderInput } from '~~/server/utils/banner/renderJob'
 import { proposeAction } from '~~/server/utils/ai/pendingActions'
-import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { queryRows, queryRowsFresh, queryOneFresh, execute } from '~~/server/utils/db'
+import { assertNoScopedDissectionReferences } from '~~/server/utils/banner/scopedExport'
 import { FORMATS } from '~~/app/utils/banner-constants'
 import { uploadFile } from '~~/server/utils/storage'
 import { randomUUID } from 'uncrypto'
@@ -148,9 +149,11 @@ export const BANNER_JOB_STATUS_CAP = 20
 
 function defaultLoaders(): BannerProjectLoaders {
   return {
-    loadProjectsRows: () => queryRows<LoadProjectsRow>(
-      `SELECT id, name, canvas_data, updated_at FROM banner_projects ORDER BY updated_at DESC LIMIT ${BANNER_PROJECT_LIST_CAP + 1}`, []),
-    loadProjectRow: (nameOrId: string) => queryOne<LoadProjectRow>(
+    loadProjectsRows: () => queryRowsFresh<LoadProjectsRow>(
+      `SELECT id, name, canvas_data, updated_at FROM banner_projects
+       WHERE canvas_data::text !~* '(dissectionSource|scoped-dissection-assets|scoped-banner-exports|banner-studio/dissect)'
+       ORDER BY updated_at DESC LIMIT ${BANNER_PROJECT_LIST_CAP + 1}`, []),
+    loadProjectRow: (nameOrId: string) => queryOneFresh<LoadProjectRow>(
       `SELECT id, name, canvas_data FROM banner_projects WHERE id::text = $1 OR name ILIKE $2 ORDER BY (id::text = $1) DESC, name ASC LIMIT 1`,
       [nameOrId, `%${escapeLike(nameOrId)}%`]),
   }
@@ -161,6 +164,7 @@ function defaultLoaders(): BannerProjectLoaders {
 async function resolveBannerProject(nameOrId: string, loaders: BannerProjectLoaders): Promise<{ id: string, name: string, formats: string[] } | null> {
   const row = await loaders.loadProjectRow(nameOrId)
   if (!row) return null
+  assertNoScopedDissectionReferences(row.canvas_data)
   return { id: row.id, name: row.name, formats: extractFormats(row.canvas_data) }
 }
 
@@ -169,6 +173,7 @@ export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerRea
   return {
     list_banner_projects: async () => {
       const all = await l.loadProjectsRows()
+      for (const row of all) assertNoScopedDissectionReferences(row.canvas_data)
       const truncatedAtSource = all.length > BANNER_PROJECT_LIST_CAP
       const rows = truncatedAtSource ? all.slice(0, BANNER_PROJECT_LIST_CAP) : all
       return {
@@ -211,6 +216,7 @@ export interface BannerConfirmDeps {
 export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload, ctx: ToolContext, deps: BannerConfirmDeps): Promise<{ ok: true, data: { jobIds: string[] } } | { ok: false, error: string, code: 'handler_error' }> {
   try {
     const { layers, width, height, playback } = await deps.loadLayers(payload.projectId, payload.format)
+    assertNoScopedDissectionReferences(layers)
     const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? process.env.R2_PUBLIC_URL ?? ''
     const html = deps.buildHtml(payload.format, layers, { baseUrl, ...(playback ? { playback } : {}) })
     const enqueueDeps = {

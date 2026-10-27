@@ -1,7 +1,8 @@
 import { createError, type H3Event } from 'h3'
 import { BANNER_RENDER_LIMITS as LIMITS, BannerRenderError, parseBannerRenderRequest, type BannerRenderedItem, type BannerRenderRequest, type BannerRendererClient } from '#shared/bannerRenderContract'
 import type { User } from '~~/server/utils/auth'
-import { queryOne, queryOneFresh } from '~~/server/utils/db'
+import { prepareScopedExport, recheckScopedExport, scopedExportMetadata } from '~~/server/utils/banner/scopedExport'
+import { queryOne, queryOneFresh, transactionWithoutRetry } from '~~/server/utils/db'
 import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 export const RASTER_EXPORT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -9,9 +10,9 @@ export const RASTER_EXPORT_MIME = { png: 'image/png', jpg: 'image/jpeg', gif: 'i
 const MAX_FORMATS = 25
 // Bound the complete HTTP payload as well as each RPC batch.
 const MAX_TOTAL_HTML_BYTES = LIMITS.MAX_REQUEST_HTML_BYTES
-interface ProjectAccess { client_id: string | null, created_by: string | null }
+interface ProjectAccess { client_id: string | null, created_by: string | null, canvas_data?: unknown, updated_at?: string }
 interface WriteBucket {
-  put(key: string, bytes: Uint8Array, options: { httpMetadata: { contentType: string, cacheControl: string }, sha256: string }): Promise<unknown>
+  put(key: string, bytes: Uint8Array, options: { httpMetadata: { contentType: string, cacheControl: string }, sha256: string, customMetadata?: Record<string, string> }): Promise<unknown>
   delete(key: string): Promise<void>
 }
 
@@ -46,7 +47,7 @@ function record(value: unknown): Record<string, unknown> {
 
 function parseRequest(body: unknown, mode: 'image' | 'gif') {
   const input = record(body)
-  const allowed = mode === 'image' ? ['projectId', 'formats', 'quality', 'format', 'jpgQuality'] : ['projectId', 'formats', 'fps']
+  const allowed = mode === 'image' ? ['projectId', 'formats', 'quality', 'format', 'jpgQuality', 'sourceRevision'] : ['projectId', 'formats', 'fps', 'sourceRevision']
   if (Object.keys(input).some(key => !allowed.includes(key))) invalid()
   if (typeof input.projectId !== 'string' || !RASTER_EXPORT_UUID.test(input.projectId)) invalid()
   if (!Array.isArray(input.formats) || input.formats.length < 1 || input.formats.length > MAX_FORMATS) invalid()
@@ -228,10 +229,13 @@ async function verifyResponse(value: unknown, request: BannerRenderRequest): Pro
 }
 
 export async function renderBannerExports(event: H3Event, user: User, body: unknown, mode: 'image' | 'gif') {
-  const parsed = parseRequest(body, mode)
-  const project = await queryOneFresh<ProjectAccess>('SELECT client_id, created_by FROM banner_projects WHERE id = $1', [parsed.projectId])
+  const input = record(body)
+  if (typeof input.projectId !== 'string' || !RASTER_EXPORT_UUID.test(input.projectId)) invalid()
+  const project = await queryOneFresh<ProjectAccess>('SELECT client_id, created_by, canvas_data, updated_at FROM banner_projects WHERE id = $1', [input.projectId])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
-  await requireRasterProjectAccess(event, user, project)
+  const scoped = await prepareScopedExport(event, user.id, input, project, mode)
+  const parsed = parseRequest(scoped?.body || body, mode)
+  if (!scoped) await requireRasterProjectAccess(event, user, project)
   const env = (event.context as { cloudflare?: { env?: { BANNER_RENDERER_PRODUCTION?: BannerRendererClient, BANNER_RENDERER_STAGING?: BannerRendererClient, MEDIA_BUCKET?: WriteBucket } } }).cloudflare?.env
   // Binding presence selects the deployment environment without another Pages text variable.
   const production = env && Object.hasOwn(env, 'BANNER_RENDERER_PRODUCTION')
@@ -245,6 +249,7 @@ export async function renderBannerExports(event: H3Event, user: User, body: unkn
   const results: Array<{ formatKey: string, url: string, fileSize: number }> = []
   for (const batch of parsed.batches) {
     batch.expectedEnvironment = environment
+    if (scoped) await recheckScopedExport(user.id, scoped.provenance, true)
     let response: unknown
     try {
       response = await renderer.render(batch)
@@ -253,35 +258,44 @@ export async function renderBannerExports(event: H3Event, user: User, body: unkn
     const items = await verifyResponse(response, batch)
     for (const item of items) {
       const id = crypto.randomUUID()
-      const key = `banner-raster-exports/${parsed.projectId}/${id}.${parsed.format}`
+      const key = `${scoped ? 'scoped-banner-exports' : 'banner-raster-exports'}/${parsed.projectId}/${id}.${parsed.format}`
+      const customMetadata = scoped ? scopedExportMetadata(scoped.provenance, id, item.sha256) : undefined
+      if (scoped) await recheckScopedExport(user.id, scoped.provenance, true)
       const url = `/api/agency/banner-studio/exports/${id}/download`
       try {
-        const stored = await bucket.put(key, item.bytes, { httpMetadata: { contentType: item.mime, cacheControl: 'private, no-store' }, sha256: item.sha256 })
+        const stored = await bucket.put(key, item.bytes, { httpMetadata: { contentType: item.mime, cacheControl: 'private, no-store' }, sha256: item.sha256, ...(customMetadata ? { customMetadata } : {}) })
         if (!stored) unavailable()
       } catch {
-        // No insert was attempted, so even an ambiguous put can be safely cleaned.
-        await cleanupUnrecordedExport(bucket, key, id)
+        // Preserve legacy cleanup; scoped acknowledgement uncertainty never deletes evidence.
+        if (scoped) console.error('Protected export storage acknowledgement unresolved', { exportId: id })
+        else await cleanupUnrecordedExport(bucket, key, id)
         unavailable()
       }
+      if (scoped) await recheckScopedExport(user.id, scoped.provenance, true)
       try {
-        const row = await queryOne<{ id: string }>(`
+        // Scoped inserts use the non-retrying transaction: acknowledgement loss never replays writes.
+        const insert = scoped ? async (sql: string, params: unknown[]) => transactionWithoutRetry(async db => (await db.query(sql, params)).rows[0]) : queryOne
+        const row = await insert(`
           INSERT INTO banner_exports (id, project_id, format_key, r2_key, url, file_size, export_type, quality, exported_by)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id
         `, [id, parsed.projectId, item.key, key, url, item.byteLength, parsed.format, parsed.quality, user.id])
         if (!row || row.id !== id) unavailable()
       } catch {
-        // An INSERT can commit and lose its reply. Delete only after a fresh read proves no row.
+        // An INSERT can commit and lose its reply. Scoped writes never retry/delete;
+        // legacy cleanup still requires a fresh read proving no row.
         let persisted: { id: string } | null | undefined
         try {
           persisted = await queryOneFresh<{ id: string }>('SELECT id FROM banner_exports WHERE id = $1', [id])
         } catch {
           console.error('Banner raster export persistence unresolved', { exportId: id })
         }
-        if (persisted === null) await cleanupUnrecordedExport(bucket, key, id)
+        if (scoped) console.error('Protected export database acknowledgement unresolved', { exportId: id })
+        if (!scoped && persisted === null) await cleanupUnrecordedExport(bucket, key, id)
         unavailable()
       }
       results.push({ formatKey: item.key, url, fileSize: item.byteLength })
     }
   }
+  if (scoped) await recheckScopedExport(user.id, scoped.provenance, true)
   return results
 }

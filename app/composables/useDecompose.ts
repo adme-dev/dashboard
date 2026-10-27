@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue'
 import type { DecomposeResult, Layer } from '~/types/banner-studio'
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '../../shared/bannerScopedCanvas'
 
 /** Load every frame before changing the canvas; a broken image is not a layer. */
 function loadFrame(url: string): Promise<{ width: number, height: number }> {
@@ -46,6 +47,10 @@ export function useDecompose() {
     numLayers?: number,
     prompt?: string
   ): Promise<boolean> {
+    if (hasScopedCanvas(state.sets) || hasScopedCanvas(imageUrl)) {
+      toast.add({ title: 'Protected artwork', description: SCOPED_DISSECTION_EXCLUSION, color: 'warning' })
+      return false
+    }
     const managedSource = Object.entries(state.sets).some(([formatKey, board]) => board.layers.some(layer => layer.platformQr && (
       layer.src === imageUrl || (sourceType === 'layer' && formatKey === state.activeKey && layer.id === Number(sourceId))
       || (sourceType === 'asset' && layer.platformQr.assetId === String(sourceId))

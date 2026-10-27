@@ -276,3 +276,11 @@ describe('flat lettering repair proposal boundary', () => {
     expect(m.image).not.toHaveBeenCalled()
   })
 })
+
+it('rejects protected text-only source markers before references, budget or provider', async () => {
+  Object.assign(project.canvas_data.mrec, { dissectionSource: { jobId: projectId, sourceSha256: 'a'.repeat(64) } })
+  await expect(run()).rejects.toMatchObject({ statusCode: 409 })
+  expect(m.read).not.toHaveBeenCalled()
+  expect(m.assignment).not.toHaveBeenCalled()
+  expect(m.image).not.toHaveBeenCalled()
+})

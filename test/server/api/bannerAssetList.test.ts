@@ -50,4 +50,13 @@ describe('GET /api/agency/banner-studio/assets', () => {
       assets: [expect.objectContaining({ id: 'asset-1' })]
     })
   })
+  it('excludes private dissection and export namespaces before pagination', async () => {
+    await handler({ query: { limit: '10', offset: '20' } })
+    const sql = mockQueryRows.mock.calls[0][0] as string
+    expect(sql).toContain("r2_key NOT LIKE 'scoped-dissection-assets/%'")
+    expect(sql).toContain("r2_key NOT LIKE 'scoped-banner-exports/%'")
+    expect(sql).toContain("url NOT LIKE '/api/agency/banner-studio/dissect/%'")
+    expect(sql.indexOf("r2_key NOT LIKE")).toBeLessThan(sql.indexOf('LIMIT'))
+  })
+
 })

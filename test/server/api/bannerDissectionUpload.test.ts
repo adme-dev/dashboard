@@ -8,11 +8,15 @@ const sourcePng = new PNG({ width: 2, height: 2 })
 sourcePng.data.fill(255)
 const sourceImage = PNG.sync.write(sourcePng)
 
-const m = vi.hoisted(() => ({ auth: vi.fn(), execute: vi.fn(), query: vi.fn(), upload: vi.fn(), pipeline: vi.fn(), multipart: vi.fn(), queued: vi.fn(), start: vi.fn(), finish: vi.fn() }))
+const capability = vi.hoisted(() => ({ enabled: true }))
+vi.mock('../../../shared/bannerDissectionCapabilities', () => ({ get SCOPED_DISSECTION_ADMISSION_ENABLED() { return capability.enabled } }))
+const m = vi.hoisted(() => ({ auth: vi.fn(), execute: vi.fn(), query: vi.fn(), upload: vi.fn(), pipeline: vi.fn(), multipart: vi.fn(), queued: vi.fn(), start: vi.fn(), finish: vi.fn(), resolveOwner: vi.fn(), authorize: vi.fn(), boundedBody: vi.fn(), transaction: vi.fn() }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('readMultipartFormData', m.multipart)
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: m.auth }))
-vi.mock('~~/server/utils/db', () => ({ execute: m.execute, queryOneFresh: m.query }))
+vi.mock('~~/server/utils/db', () => ({ execute: m.execute, queryOneFresh: m.query, transactionWithoutRetry: m.transaction }))
+vi.mock('~~/server/utils/banner/dissectionAccess', () => ({ resolveDissectionOwner: m.resolveOwner, assertDissectionAccess: m.authorize }))
+vi.mock('~~/server/runtime/banner-dissection-pages-guard', () => ({ ensureBoundedDissectionUploadBody: m.boundedBody }))
 vi.mock('~~/server/utils/storage', () => ({ uploadFile: m.upload }))
 vi.mock('~~/server/utils/jobExecutionLedger', () => ({ recordJobQueued: m.queued, markJobDispatchFailed: vi.fn(), startJobExecution: m.start, finishJobExecution: m.finish }))
 vi.mock('~~/server/utils/bannerDissectorPipeline', () => ({ runDissectionPipeline: m.pipeline }))
@@ -23,11 +27,18 @@ const hostedEnv = (extra = {}) => ({ MEDIA_BUCKET: nativeBucket(), RENDER_LINK_S
 const local = { path: '/', node: { req: { headers: { host: 'localhost' }, url: '/' } } }
 beforeEach(() => {
   vi.resetAllMocks()
+  capability.enabled = true
   m.auth.mockResolvedValue({ id: 'owner' })
+  m.resolveOwner.mockResolvedValue({ owner: { kind: 'user', userId: 'owner' }, sessionsInvalidatedAt: null })
+  m.authorize.mockResolvedValue(undefined)
+  m.transaction.mockImplementation(async callback => callback({ query: async (sql: string, args: string[]) => {
+    if (sql.includes('INSERT INTO banner_dissections')) { await m.execute(sql.trim(), args); return { rows: [] } }
+    const result = await m.query(sql, args); return { rows: result ? [result] : [] }
+  } }))
   m.multipart.mockResolvedValue([{ name: 'file', type: 'image/png', data: sourceImage }])
   m.upload.mockResolvedValue({ url: 'https://fixture.invalid/source.png' })
   m.execute.mockImplementation(async (_sql, args: string[]) => {
-    if (_sql.startsWith('INSERT INTO banner_dissections')) row = { job_id: args[0], status: 'queued', manifest: JSON.parse(args[4]) }
+    if (_sql.startsWith('INSERT INTO banner_dissections')) row = { job_id: args[0], user_id: args[1], status: 'queued', manifest: JSON.parse(args[4]) }
   })
   // Only models the DB boundary needed for upload; actual CAS is proved in PostgreSQL.
   m.query.mockImplementation(async (sql, args) => {
@@ -169,4 +180,69 @@ describe('Dissection source upload native persistence', () => {
     expect(m.execute).not.toHaveBeenCalled()
     expect(send).not.toHaveBeenCalled()
   })
+})
+
+
+describe('Dissection ownership admission boundary', () => {
+  it('checks current ownership before source storage and again before insertion', async () => {
+    const bucket = nativeBucket()
+    await upload({ ...local, context: { cloudflare: { env: hostedEnv({ MEDIA_BUCKET: bucket, JOBS_QUEUE: { send: vi.fn() } }) } } } as never)
+    expect(m.resolveOwner).toHaveBeenCalledTimes(2)
+    expect(m.resolveOwner.mock.invocationCallOrder[0]).toBeLessThan(bucket.put.mock.invocationCallOrder[0])
+    expect(m.resolveOwner.mock.invocationCallOrder[1]).toBeGreaterThan(bucket.head.mock.invocationCallOrder[0])
+    expect(JSON.parse(m.execute.mock.calls[0][1][4]).ingestion).toMatchObject({ version: 1, owner: { kind: 'user', userId: 'owner' }, physical: null })
+  })
+  it('denies a revoked assignment before storage or sending a job', async () => {
+    m.resolveOwner.mockRejectedValueOnce(Object.assign(new Error('Revoked'), { statusCode: 403 }))
+    const bucket = nativeBucket(), send = vi.fn()
+    await expect(upload({ ...local, context: { cloudflare: { env: hostedEnv({ MEDIA_BUCKET: bucket, JOBS_QUEUE: { send } }) } } } as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(bucket.put).not.toHaveBeenCalled()
+    expect(m.execute).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+  it('rejects changed ownership between preflight and final admission', async () => {
+    m.resolveOwner.mockResolvedValueOnce({ owner: { kind: 'user', userId: 'owner' }, sessionsInvalidatedAt: null })
+      .mockResolvedValueOnce({ owner: { kind: 'user', userId: 'owner' }, sessionsInvalidatedAt: '2026-10-27T00:00:00.000Z' })
+    const bucket = nativeBucket(), send = vi.fn()
+    await expect(upload({ ...local, context: { cloudflare: { env: hostedEnv({ MEDIA_BUCKET: bucket, JOBS_QUEUE: { send } }) } } } as never)).rejects.toMatchObject({ statusCode: 409 })
+    expect(bucket.put).toHaveBeenCalledOnce()
+    expect(m.execute).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+  it('rejects duplicated source parts instead of silently choosing the first', async () => {
+    m.multipart.mockResolvedValue([{ name: 'file', type: 'image/png', data: sourceImage }, { name: 'file', type: 'image/png', data: sourceImage }])
+    await expect(upload({ ...local, context: {} } as never)).rejects.toMatchObject({ statusCode: 400 })
+    expect(m.upload).not.toHaveBeenCalled()
+    expect(m.execute).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('protected source storage admission', () => {
+  it('does not fall back to a public local upload for scoped sources', async () => {
+    m.resolveOwner.mockResolvedValue({ owner: { kind: 'client', userId: 'owner', clientId: 'client' }, sessionsInvalidatedAt: null })
+    await expect(upload({ ...local, context: {} } as never)).rejects.toMatchObject({ statusCode: 503 })
+    expect(m.upload).not.toHaveBeenCalled()
+    expect(m.execute).not.toHaveBeenCalled()
+  })
+  it('denies assignment revocation after storage without persisting or dispatching a job', async () => {
+    m.resolveOwner.mockResolvedValueOnce({ owner: { kind: 'client', userId: 'owner', clientId: 'client' }, sessionsInvalidatedAt: null })
+      .mockRejectedValueOnce({ statusCode: 403 })
+    const bucket = nativeBucket(), send = vi.fn()
+    await expect(upload({ ...local, context: { cloudflare: { env: hostedEnv({ MEDIA_BUCKET: bucket, JOBS_QUEUE: { send } }) } } } as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(bucket.put).toHaveBeenCalledOnce()
+    expect(bucket.delete).not.toHaveBeenCalled()
+    expect(m.execute).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+})
+
+it('keeps scoped admission off before ownership, storage or dispatch effects', async () => {
+  capability.enabled = false
+  m.multipart.mockResolvedValue([{ name: 'file', type: 'image/png', data: sourceImage }, { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') }])
+  const bucket = nativeBucket()
+  await expect(upload({ ...local, context: { cloudflare: { env: hostedEnv({ MEDIA_BUCKET: bucket }) } } } as never)).rejects.toMatchObject({ statusCode: 409 })
+  expect(m.resolveOwner).not.toHaveBeenCalled()
+  expect(bucket.put).not.toHaveBeenCalled()
+  expect(m.execute).not.toHaveBeenCalled()
 })

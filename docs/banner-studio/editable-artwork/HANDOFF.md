@@ -1,4 +1,12 @@
+## Protected ingestion checkpoint — 27 October 2026, 21:16 UTC
+
+Fresh ownership/lifecycle checks, bounded multipart ingress, authenticated result delivery, saved protected exports and managed-flow exclusions are now implemented locally. The candidate contains the owned changes on current main; production is unchanged. The combined focused suite passed 1,023 tests, the final lifecycle PostgreSQL proof passed 59, and the flow PostgreSQL proof passed 16 (counts overlap with other reported runs). A cancellation-edge regression was reproduced and fixed. Independent review, actual local browser export proof and full guarded build remain in progress. **Scoped admission remains disabled; this is not full PRD or hosted provider acceptance.** See [the integration record](OWNED-INGEST-INTEGRATION.md) for authoritative scope, evidence and remaining gates. Earlier completed-release statements below describe the previous PNG source-only release.
+
 # Orca receiving-agent handoff
+
+## Current continuation — autonomous release and remaining product work
+
+27 October: Paul requested the whole job run autonomously. Resume from [AUTONOMOUS-RUN.md](AUTONOMOUS-RUN.md), which supersedes the older authorization/checkpoint statements below. The isolated release candidate is current with main; reviewed corrections are integrated and focused tests pass, but the full build now fails the immutable Pages size budget. Size repair, persistent engine service and AMD64 qualification are active under the existing Orca Run. No new deployment or complete-PRD acceptance is claimed.
 
 Related approved workstream: [OpenUI chat rollout](../../ai-chat/openui-rollout.md). Paul requested its inclusion for finance, analytics, reports, dashboards and presentations. Keep it documented while continuing Banner Studio/Craft implementation; no OpenUI rollout is claimed.
 

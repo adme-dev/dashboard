@@ -1,7 +1,8 @@
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '#shared/bannerScopedCanvas'
 const _isMerging = ref(false)
 
 export function useMergeLayers() {
-  const { activeLayers, addLayer, removeLayer, activeFormat } = useBannerStudio()
+  const { state, activeLayers, addLayer, removeLayer, activeFormat } = useBannerStudio()
   const toast = useToast()
   const apiFetch = $fetch as <T = unknown>(
     request: string,
@@ -9,6 +10,11 @@ export function useMergeLayers() {
   ) => Promise<T>
 
   async function mergeLayers(layerIds: number[]): Promise<void> {
+    if (hasScopedCanvas(state.sets) || hasScopedCanvas(state.project?.canvasData)) {
+      toast.add({ title: 'Protected artwork', description: SCOPED_DISSECTION_EXCLUSION, color: 'warning' })
+      return
+    }
+    const protectedNow = () => hasScopedCanvas(state.sets) || hasScopedCanvas(state.project?.canvasData)
     const hasManagedQr = () => activeLayers.value.some(layer => layerIds.includes(layer.id) && layer.platformQr)
     if (hasManagedQr()) {
       toast.add({ title: 'Managed QR protected', description: 'Remove the managed QR from this selection to keep its platform link intact.', color: 'warning' })
@@ -60,6 +66,7 @@ export function useMergeLayers() {
 
       // Draw each layer
       for (const layer of imageLayers) {
+        if (protectedNow()) throw new Error(SCOPED_DISSECTION_EXCLUSION)
         const img = await loadImage(layer.src!)
         if (!img) continue
 
@@ -89,6 +96,8 @@ export function useMergeLayers() {
         return
       }
 
+      if (protectedNow()) throw new Error(SCOPED_DISSECTION_EXCLUSION)
+
       // Upload via existing asset endpoint
       const formData = new FormData()
       formData.append('file', blob, `merged-${Date.now()}.png`)
@@ -102,6 +111,8 @@ export function useMergeLayers() {
         toast.add({ title: 'Failed to upload merged image', color: 'error' })
         return
       }
+
+      if (protectedNow()) throw new Error(SCOPED_DISSECTION_EXCLUSION)
 
       // Calculate bounding box of merged layers
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity

@@ -1,6 +1,9 @@
 import { randomUUID, createHash } from 'node:crypto'
 import { createError } from 'h3'
-import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
+import { queryOneFresh, queryRowsFresh, transactionWithoutRetry } from '~~/server/utils/db'
+import { assertDissectionAccess, type DissectionAccessDb, type DissectionAccessMode } from './dissectionAccess'
+import { dissectionIngestionSchema, dissectionSourceSchema, type DissectionIngestion } from '../../../shared/bannerDissectionIngestion'
+import { dissectionDeliverySchema, scopedDissectionAssetSchema, scopedDissectionAssetKey, scopedDissectionAssetLocator, type ScopedDissectionAsset } from '../../../shared/bannerDissectionDelivery'
 import type { DissectorManifest } from '~~/app/types/banner-studio'
 
 export const MAX_DISSECTION_ATTEMPTS = 3
@@ -46,10 +49,11 @@ export interface DissectionSourceIdentity {
 }
 export interface DissectionRecord {
   job_id: string
+  user_id?: string
   status: string
   source_r2_key?: string
   brand?: string
-  manifest?: Partial<DissectorManifest> & { execution?: DissectionExecution, source?: DissectionSourceIdentity, importReceipt?: unknown } | null
+  manifest?: Partial<DissectorManifest> & { execution?: DissectionExecution, source?: DissectionSourceIdentity, ingestion?: DissectionIngestion, delivery?: unknown, importReceipt?: unknown } | null
   error?: string | null
   created_at?: string
   updated_at?: string
@@ -64,9 +68,33 @@ export function queuedDissectionManifest(attemptId = randomUUID()) {
   } satisfies DissectionExecution }
 }
 
+/** All user/executor transitions authorize the locked persisted job before effects.
+ * This transaction is never automatically replayed after acknowledgement loss.
+ */
+export async function withDissectionAuthority<T>(
+  jobId: string, userId: string | undefined, mode: DissectionAccessMode,
+  action: (db: DissectionAccessDb, row: DissectionRecord & { user_id: string }) => Promise<T>
+): Promise<T | null> {
+  return transactionWithoutRetry(async (db) => {
+    const { rows: [row] } = await db.query<DissectionRecord>(
+      `SELECT * FROM banner_dissections WHERE job_id = $1${userId ? ' AND user_id = $2::uuid' : ''} FOR UPDATE`,
+      userId ? [jobId, userId] : [jobId]
+    )
+    if (!row) return null
+    if (!row.user_id) throw createError({ statusCode: 403, statusMessage: 'Dissection ownership is unavailable' })
+    const owned = row as DissectionRecord & { user_id: string }
+    await assertDissectionAccess(db, userId || row.user_id, owned, mode)
+    return action(db, owned)
+  })
+}
+
+async function one<T = DissectionRecord>(db: DissectionAccessDb, sql: string, args: unknown[]): Promise<T | null> {
+  return (await db.query<T>(sql, args)).rows[0] ?? null
+}
+
 /** Poll/process admission expires abandoned work; expiry never starts another provider attempt. */
-export async function expireDissectionAttempt(jobId: string, userId?: string) {
-  return await queryOneFresh(
+async function expireLocked(db: DissectionAccessDb, jobId: string, userId?: string) {
+  return one(db,
     `UPDATE banner_dissections /* expire dissection */ SET status = 'failed',
        error = 'Dissection attempt timed out. Retry explicitly after reviewing provider availability.',
        manifest = jsonb_set(COALESCE(manifest, '{}'::jsonb), '{execution}',
@@ -79,23 +107,29 @@ export async function expireDissectionAttempt(jobId: string, userId?: string) {
   )
 }
 
+export async function expireDissectionAttempt(jobId: string, userId?: string) {
+  return withDissectionAuthority(jobId, userId, 'read', db => expireLocked(db, jobId, userId))
+}
+
 export async function loadDissection(jobId: string, userId?: string): Promise<DissectionRecord> {
-  await expireDissectionAttempt(jobId, userId)
-  const row = await queryOneFresh<DissectionRecord>(
-    `SELECT * FROM banner_dissections WHERE job_id = $1${userId ? ' AND user_id = $2' : ''}`,
-    userId ? [jobId, userId] : [jobId]
-  )
+  const row = await withDissectionAuthority(jobId, userId, 'read', async (db) => {
+    await expireLocked(db, jobId, userId)
+    return one(db, 'SELECT * FROM banner_dissections WHERE job_id = $1', [jobId])
+  })
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Dissection job not found' })
   return row
 }
 
 /** Reserve a new generation before dispatch; repeated requests must name the old generation. */
 export async function prepareDissectionRetry(jobId: string, userId: string, expectedAttemptId: string) {
-  await expireDissectionAttempt(jobId, userId)
-  const manifest = queuedDissectionManifest()
-  return await queryOneFresh<DissectionRecord>(
-    `UPDATE banner_dissections SET status = 'queued', error = NULL,
+  return withDissectionAuthority(jobId, userId, 'write', async (db) => {
+    await expireLocked(db, jobId, userId)
+    const manifest = queuedDissectionManifest()
+    return one<DissectionRecord>(db,
+      `UPDATE banner_dissections SET status = 'queued', error = NULL,
        manifest = CASE WHEN manifest ? 'source' THEN jsonb_build_object('source', manifest->'source') ELSE '{}'::jsonb END
+         || CASE WHEN manifest ? 'ingestion' THEN jsonb_build_object('ingestion', manifest->'ingestion') ELSE '{}'::jsonb END
+         || CASE WHEN manifest ? 'delivery' THEN jsonb_build_object('delivery', manifest->'delivery') ELSE '{}'::jsonb END
          || jsonb_build_object('execution', $4::jsonb || jsonb_build_object(
          'attempt', COALESCE((manifest->'execution'->>'attempt')::int, 1) + 1,
          'updatedAt', clock_timestamp(), 'deadlineAt', clock_timestamp() + interval '10 minutes',
@@ -105,8 +139,9 @@ export async function prepareDissectionRetry(jobId: string, userId: string, expe
        AND status IN ('failed', 'cancelled', 'review_ready')
        AND COALESCE((manifest->'execution'->>'attempt')::int, 1) < $5
      RETURNING *`,
-    [jobId, userId, expectedAttemptId, JSON.stringify(manifest.execution), MAX_DISSECTION_ATTEMPTS]
-  )
+      [jobId, userId, expectedAttemptId, JSON.stringify(manifest.execution), MAX_DISSECTION_ATTEMPTS]
+    )
+  })
 }
 
 /** Unknown legacy dispatch metadata is deliberately not inferred or upgraded here. */
@@ -135,12 +170,25 @@ function dispatchLease(prefix = '') {
 
 /** Initial dispatch and recovery acquire the same lease; neither creates a generation. */
 export async function reserveDissectionDispatch(jobId: string, attemptId: string) {
-  return await queryOneFresh<DissectionRecord>(
+  return await withDissectionAuthority(jobId, undefined, 'execute', db => one<DissectionRecord>(db,
     `UPDATE banner_dissections SET manifest = ${dispatchLease()}, updated_at = NOW()
      WHERE job_id = $1 AND manifest->'execution'->>'attemptId' = $2 AND ${dispatchEligible()}
      RETURNING *`,
     [jobId, attemptId]
-  )
+  ))
+}
+
+/** Reauthorize a persisted lease immediately before an external queue effect. */
+export async function isDissectionDispatchAuthorized(jobId: string, attemptId: string, leaseToken: string) {
+  return !!await withDissectionAuthority(jobId, undefined, 'execute', db => one(db,
+    `SELECT job_id FROM banner_dissections WHERE job_id = $1 AND status = 'queued'
+     AND manifest->'execution'->>'attemptId' = $2
+     AND manifest->'execution'->'dispatch'->>'state' = 'leased'
+     AND manifest->'execution'->'dispatch'->>'leaseToken' = $3
+     AND (manifest->'execution'->'dispatch'->>'leaseUntil')::timestamptz > clock_timestamp()
+     AND (manifest->'execution'->>'deadlineAt')::timestamptz > clock_timestamp()`,
+    [jobId, attemptId, leaseToken]
+  ))
 }
 
 export function dissectionRecoveryLimit(limit = DISSECTION_RECOVERY_BATCH_SIZE) {
@@ -219,17 +267,19 @@ export async function failDissectionDispatch(jobId: string, attemptId: string, e
 /** Execution can only claim its exact queued generation; retry admission is separate. */
 export async function claimDissectionAttempt(jobId: string, options: DissectionAttemptOptions = {}) {
   if (!options.attemptId) return null
-  await expireDissectionAttempt(jobId, options.userId)
-  return await queryOneFresh<DissectionRecord>(
-    `UPDATE banner_dissections SET status = 'analyzing', error = NULL,
+  return withDissectionAuthority(jobId, options.userId, 'execute', async (db) => {
+    await expireLocked(db, jobId, options.userId)
+    return one<DissectionRecord>(db,
+      `UPDATE banner_dissections SET status = 'analyzing', error = NULL,
        manifest = jsonb_set(manifest, '{execution}', manifest->'execution' || jsonb_build_object(
          'stage', 'analyzing', 'startedAt', $3::text, 'updatedAt', $3::text)), updated_at = NOW()
      WHERE job_id = $1 AND ($4::uuid IS NULL OR user_id = $4::uuid)
        AND status = 'queued' AND manifest->'execution'->>'attemptId' = $2
        AND (manifest->'execution'->>'deadlineAt')::timestamptz > clock_timestamp()
      RETURNING *`,
-    [jobId, options.attemptId, new Date().toISOString(), options.userId || null]
-  )
+      [jobId, options.attemptId, new Date().toISOString(), options.userId || null]
+    )
+  })
 }
 
 /** Authoritative metadata never comes from a model-generated manifest. */
@@ -262,24 +312,79 @@ export async function writeDissectionAttempt(
     execution: { ...execution, stage: status, updatedAt: now, ...(terminal ? { finishedAt: now } : {}),
       ...(['complete', 'review_ready'].includes(status) ? { resultId: dissectionResultId(artwork, execution.attemptId) } : {}) }
   }
-  return await queryOneFresh<DissectionRecord>(
+  return withDissectionAuthority(jobId, undefined, 'execute', db => one<DissectionRecord>(db,
     `UPDATE banner_dissections SET status = $1, manifest = $2::jsonb
-       || CASE WHEN manifest ? 'source' THEN jsonb_build_object('source', manifest->'source') ELSE '{}'::jsonb END,
+       || CASE WHEN manifest ? 'source' THEN jsonb_build_object('source', manifest->'source') ELSE '{}'::jsonb END
+       || CASE WHEN manifest ? 'ingestion' THEN jsonb_build_object('ingestion', manifest->'ingestion') ELSE '{}'::jsonb END
+       || CASE WHEN manifest ? 'delivery' THEN jsonb_build_object('delivery', manifest->'delivery') ELSE '{}'::jsonb END,
        error = $3, updated_at = NOW()
      WHERE job_id = $4 AND manifest->'execution'->>'attemptId' = $5
        AND status IN ('analyzing', 'segmenting')
        AND COALESCE((manifest->'execution'->>'deadlineAt')::timestamptz, updated_at + interval '10 minutes') > clock_timestamp() RETURNING *`,
     [status, JSON.stringify(next), error, jobId, execution.attemptId]
-  )
+  ))
 }
 
 export async function isDissectionAttemptActive(jobId: string, attemptId: string): Promise<boolean> {
-  return !!await queryOneFresh(
+  return !!await withDissectionAuthority(jobId, undefined, 'execute', db => one(db,
     `SELECT job_id FROM banner_dissections WHERE job_id = $1
      AND manifest->'execution'->>'attemptId' = $2 AND status IN ('analyzing', 'segmenting')
      AND COALESCE((manifest->'execution'->>'deadlineAt')::timestamptz, updated_at + interval '10 minutes') > clock_timestamp()`,
     [jobId, attemptId]
-  )
+  ))
+}
+
+/** Private storage may already exist. Register once, atomically; never compensate
+ * or automatically replay if the commit acknowledgement is lost. */
+export async function registerScopedDissectionAsset(jobId: string, attemptId: string, candidate: ScopedDissectionAsset) {
+  const entry = scopedDissectionAssetSchema.parse(candidate)
+  if (entry.attemptId !== attemptId || entry.key !== scopedDissectionAssetKey(jobId, attemptId, entry.assetId)) {
+    throw createError({ statusCode: 409, statusMessage: 'Dissection asset generation differs' })
+  }
+  const saved = await withDissectionAuthority(jobId, undefined, 'execute', async (db, row) => {
+    const ingestion = dissectionIngestionSchema.parse(row.manifest?.ingestion)
+    if (ingestion.owner.kind === 'user') throw createError({ statusCode: 409, statusMessage: 'Dissection asset ownership differs' })
+    const registry = dissectionDeliverySchema.parse(row.manifest?.delivery ?? { version: 1, assets: {} })
+    if (registry.assets[entry.assetId]) throw createError({ statusCode: 409, statusMessage: 'Dissection asset is already registered' })
+    const next = dissectionDeliverySchema.parse({ version: 1, assets: { ...registry.assets, [entry.assetId]: entry } })
+    const changed = await one(db,
+      `UPDATE banner_dissections SET manifest = jsonb_set(manifest, '{delivery}', $3::jsonb), updated_at = NOW()
+       WHERE job_id = $1 AND manifest->'execution'->>'attemptId' = $2
+         AND status IN ('analyzing', 'segmenting')
+         AND (manifest->'execution'->>'deadlineAt')::timestamptz > clock_timestamp() RETURNING job_id`,
+      [jobId, attemptId, JSON.stringify(next)]
+    )
+    if (!changed) throw createError({ statusCode: 409, statusMessage: 'Dissection attempt is no longer active' })
+    await db.query(
+      `INSERT INTO banner_assets (id, name, mime_type, file_size, r2_key, url, uploaded_by, client_id, tags)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [entry.assetId, `dissection-${entry.assetId}.png`, entry.mimeType, entry.byteLength, entry.key,
+        scopedDissectionAssetLocator(jobId, entry.assetId), row.user_id, ingestion.owner.clientId, ['dissected', 'protected-source']]
+    )
+    return entry
+  })
+  if (!saved) throw createError({ statusCode: 404, statusMessage: 'Dissection job not found' })
+  return saved
+}
+
+/** Explicit outward fields: never expose uploader/session markers or storage keys. */
+export function dissectionIngestionProjection(row: DissectionRecord) {
+  const source = dissectionSourceSchema.safeParse(row.manifest?.source)
+  const ingestion = dissectionIngestionSchema.safeParse(row.manifest?.ingestion)
+  return {
+    ...(source.success
+      ? { source: { width: source.data.width, height: source.data.height,
+          mimeType: source.data.mimeType, byteLength: source.data.byteLength, sha256: source.data.sha256 } }
+      : {}),
+    ...(ingestion.success
+      ? { ingestion: {
+          ownerKind: ingestion.data.owner.kind,
+          ...(ingestion.data.owner.kind === 'project' ? { projectId: ingestion.data.owner.projectId } : {}),
+          ...(ingestion.data.owner.kind !== 'user' && ingestion.data.owner.clientId ? { clientId: ingestion.data.owner.clientId } : {}),
+          physical: ingestion.data.physical
+        } }
+      : {})
+  }
 }
 
 export function dissectionSnapshot(row: DissectionRecord) {
@@ -291,8 +396,13 @@ export function dissectionSnapshot(row: DissectionRecord) {
         stage: row.status, startedAt: null, updatedAt: row.updated_at || row.created_at || ''
       }
   const reviewable = ['complete', 'review_ready', 'imported'].includes(row.status)
+  const artwork = reviewable && row.manifest ? dissectionArtwork(row.manifest) : {}
+  if (row.manifest?.ingestion?.owner.kind !== 'user' && row.manifest?.ingestion && Array.isArray(artwork.layers)) {
+    artwork.layers = artwork.layers.map(({ asset_path: _privateKey, ...layer }) => layer)
+  }
   return {
-    ...(reviewable && row.manifest ? dissectionArtwork(row.manifest) : {}),
+    ...artwork,
+    ...dissectionIngestionProjection(row),
     jobId: row.job_id, status: row.status, execution,
     ...(reviewable && row.manifest ? { resultId: dissectionResultId(row.manifest, persistedExecution?.attemptId) } : {}),
     progress: { stage: row.status, completed: execution?.completed || 0, total: execution?.total || 0 },
@@ -301,14 +411,17 @@ export function dissectionSnapshot(row: DissectionRecord) {
 }
 
 export async function cancelDissection(jobId: string, userId: string) {
-  await queryOneFresh(
-    `UPDATE banner_dissections SET status = 'cancelled', error = NULL,
-       manifest = jsonb_set(COALESCE(manifest, '{}'::jsonb), '{execution}',
-         COALESCE(manifest->'execution', '{}'::jsonb) || jsonb_build_object('stage', 'cancelled', 'updatedAt', $3::text, 'finishedAt', $3::text)), updated_at = NOW()
-     WHERE job_id = $1 AND user_id = $2 AND status NOT IN ('cancelled', 'imported') RETURNING job_id`,
-    [jobId, userId, new Date().toISOString()]
-  )
-  const row = await loadDissection(jobId, userId)
-  if (row.status === 'imported') throw createError({ statusCode: 409, statusMessage: 'Imported artwork cannot be cancelled' })
+  const row = await withDissectionAuthority(jobId, userId, 'write', async (db, current) => {
+    if (current.status === 'imported') throw createError({ statusCode: 409, statusMessage: 'Imported artwork cannot be cancelled' })
+    await one(db,
+      `UPDATE banner_dissections SET status = 'cancelled', error = NULL,
+         manifest = jsonb_set(COALESCE(manifest, '{}'::jsonb), '{execution}',
+           COALESCE(manifest->'execution', '{}'::jsonb) || jsonb_build_object('stage', 'cancelled', 'updatedAt', $3::text, 'finishedAt', $3::text)), updated_at = NOW()
+       WHERE job_id = $1 AND user_id = $2 AND status NOT IN ('cancelled', 'imported') RETURNING job_id`,
+      [jobId, userId, new Date().toISOString()]
+    )
+    return one(db, 'SELECT * FROM banner_dissections WHERE job_id = $1', [jobId])
+  })
+  if (!row) throw createError({ statusCode: 404, statusMessage: 'Dissection job not found' })
   return dissectionSnapshot(row)
 }

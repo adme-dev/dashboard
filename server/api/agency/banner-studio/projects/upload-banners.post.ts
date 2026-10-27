@@ -1,7 +1,9 @@
 import { readMultipartFormData } from 'h3'
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { uploadBannerAsset } from '~~/server/utils/bannerStorage'
+import { hasScopedCanvas } from '#shared/bannerScopedCanvas'
 
 const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 
@@ -31,7 +33,7 @@ const KNOWN_FORMATS: Record<string, { w: number; h: number; name: string }> = {
 }
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
 
   const formData = await readMultipartFormData(event)
   if (!formData || formData.length === 0) {
@@ -59,6 +61,7 @@ export default defineEventHandler(async (event) => {
   // Extract client ID (optional)
   const clientIdField = formData.find(f => f.name === 'clientId')
   const clientId = clientIdField?.data?.toString()?.trim() || null
+  if (clientId) await requireSocialClientAccess(event, clientId)
 
   // Collect image files
   const files = formData.filter(f => f.name === 'files' && f.data && f.filename)
@@ -66,12 +69,24 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'No image files provided' })
   }
 
-  if (dimensions.length !== files.length) {
+  if (!Array.isArray(dimensions) || dimensions.length !== files.length) {
     throw createError({ statusCode: 400, statusMessage: 'Dimensions count must match file count' })
   }
 
-  // Validate mime types
+  // Validate the entire batch before the first storage write. Dimensions become
+  // canvas keys and filenames become URL paths, so neither may carry locators.
+  for (const dim of dimensions) {
+    if (!dim || !Number.isSafeInteger(dim.w) || dim.w <= 0 || !Number.isSafeInteger(dim.h) || dim.h <= 0) {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid image dimensions' })
+    }
+  }
   for (const file of files) {
+    const filename = file.filename!
+    if (!filename.trim() || filename.length > 255 || filename === '.' || filename === '..'
+      || /[/\\?#\u0000-\u001f\u007f]/.test(filename) || /%[0-9a-f]{2}/i.test(filename)
+      || hasScopedCanvas(filename)) {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid image filename' })
+    }
     const mimeType = file.type || 'application/octet-stream'
     if (!ALLOWED_TYPES.has(mimeType)) {
       throw createError({

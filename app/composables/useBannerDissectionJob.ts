@@ -2,7 +2,8 @@ import { computed, ref } from 'vue'
 import type { DissectionJob, DissectorManifest } from '~/types/banner-studio'
 import { canImportDissection } from '../../shared/bannerDissectionReadiness'
 
-type FetchJob = (url: string, options?: { method?: string, body?: unknown }) => Promise<unknown>
+type JobScope = { projectId?: string, clientId?: string }
+type FetchJob = (url: string, options?: { method?: string, body?: unknown, query?: JobScope }) => Promise<unknown>
 const base = '/api/agency/banner-studio/dissect'
 const running = (job: DissectionJob | null) => !!job && ['queued', 'analyzing', 'segmenting'].includes(job.status)
 
@@ -20,9 +21,11 @@ export function useBannerDissectionJob(fetcher: FetchJob) {
   const loadingHistory = ref(false)
   const loadingCurrent = ref(false)
   const verified = ref(false)
+  const accessRevision = ref(0)
   const cancellationRequested = ref(false)
   const cancelledJobs = new Set<string>()
   let visible = false
+  let scope: JobScope = {}
   let epoch = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   const valid = (token: number, id?: string) => visible && epoch === token && (!id || current.value?.jobId === id)
@@ -48,6 +51,32 @@ export function useBannerDissectionJob(fetcher: FetchJob) {
   const canRetry = computed(() => !!current.value?.execution?.attemptId && ['failed', 'cancelled', 'review_ready'].includes(current.value.status)
     && (current.value.execution?.attempt ?? 0) < (current.value.execution?.maxAttempts ?? 3))
 
+  function clear() {
+    invalidate()
+    current.value = null
+    history.value = []
+    cancellationRequested.value = false
+    error.value = ''
+  }
+  function setContext(next: JobScope) {
+    if (scope.projectId === next.projectId && scope.clientId === next.clientId) return
+    clear()
+    scope = { ...next }
+  }
+  function rejectAccess(cause: unknown) {
+    const failure = cause as { statusCode?: number, status?: number, response?: { status?: number }, data?: { statusCode?: number } }
+    const status = failure?.statusCode ?? failure?.status ?? failure?.response?.status ?? failure?.data?.statusCode
+    if (![401, 403, 404].includes(Number(status))) return false
+    clear()
+    accessRevision.value++
+    error.value = 'This analysis or its owner is no longer available. Reopen an accessible project to continue.'
+    return true
+  }
+  function fail(cause: unknown, fallback: string) {
+    verified.value = false
+    if (!rejectAccess(cause)) error.value = dissectionFailureMessage(cause, fallback)
+  }
+
   function accept(job: DissectionJob) {
     if (cancelledJobs.has(job.jobId) && !['cancelled', 'failed', 'imported'].includes(job.status)) return
     verified.value = true
@@ -71,7 +100,7 @@ export function useBannerDissectionJob(fetcher: FetchJob) {
       accept(result)
       error.value = ''
     } catch (cause) {
-      if (valid(token, id)) error.value = dissectionFailureMessage(cause, 'Could not refresh this job. Reopen it to try again.')
+      if (valid(token, id)) fail(cause, 'Could not refresh this job. Reopen it to try again.')
     } finally { schedule(token, id) }
   }
   async function select(id: string) {
@@ -89,21 +118,21 @@ export function useBannerDissectionJob(fetcher: FetchJob) {
       await poll(token, id)
     } finally { if (valid(token, id)) loadingCurrent.value = false }
   }
-  async function resume() {
+  async function resume(next: JobScope = scope) {
+    setContext(next)
     invalidate()
     visible = true
     const token = epoch
     loadingHistory.value = true
     try {
-      const result = await fetcher(`${base}/history`) as { dissections: DissectionJob[] }
+      const result = await fetcher(`${base}/history`, { query: { ...scope } }) as { dissections: DissectionJob[] }
       if (!valid(token)) return
-      history.value = result.dissections.map(job => ({
-        ...history.value.find(previous => previous.jobId === job.jobId), ...job
-      }))
-      const id = current.value?.jobId || history.value[0]?.jobId
+      history.value = result.dissections
+      const id = history.value.find(job => job.jobId === current.value?.jobId)?.jobId || history.value[0]?.jobId
       if (id) await select(id)
+      else current.value = null
     } catch (cause) {
-      if (valid(token)) error.value = dissectionFailureMessage(cause, 'Could not load saved jobs. Reopen to try again.')
+      if (valid(token)) fail(cause, 'Could not load saved jobs. Reopen to try again.')
     } finally { if (valid(token)) loadingHistory.value = false }
   }
   function suspend() {
@@ -129,7 +158,7 @@ export function useBannerDissectionJob(fetcher: FetchJob) {
       accept(result)
       schedule(token, result.jobId)
     } catch (cause) {
-      if (valid(token)) error.value = dissectionFailureMessage(cause, 'Could not upload image.')
+      if (valid(token)) fail(cause, 'Could not upload image.')
     } finally { if (valid(token)) busy.value = '' }
   }
   async function cancel() {
@@ -147,7 +176,7 @@ export function useBannerDissectionJob(fetcher: FetchJob) {
       if (result.jobId !== id || !['cancelled', 'failed', 'imported'].includes(result.status)) throw new Error('Cancellation not confirmed')
       accept({ ...current.value, ...result })
     } catch (cause) {
-      if (valid(token, id)) error.value = dissectionFailureMessage(cause, 'Cancellation was not confirmed. Try Cancel job again; import remains blocked.')
+      if (valid(token, id)) fail(cause, 'Cancellation was not confirmed. Try Cancel job again; import remains blocked.')
     } finally { if (valid(token, id)) busy.value = '' }
   }
   async function retry() {
@@ -168,6 +197,7 @@ export function useBannerDissectionJob(fetcher: FetchJob) {
       schedule(token, id)
     } catch (cause) {
       if (!valid(token, id)) return
+      if (rejectAccess(cause)) return
       // A lost response does not prove submission failed. Read once; never replay POST.
       let recovered = false
       try {
@@ -183,11 +213,16 @@ export function useBannerDissectionJob(fetcher: FetchJob) {
         accept(saved)
         recovered = newer
         schedule(token, id)
-      } catch { /* Keep the reviewed findings and cancellation latch on failed recovery. */ }
+      } catch (recoveryCause) {
+        if (!valid(token, id)) return
+        verified.value = false
+        if (rejectAccess(recoveryCause)) return
+        // Transient failures retain findings, but cannot authorize import.
+      }
       if (valid(token, id)) error.value = recovered
         ? 'The retry response was interrupted. Showing the saved job status.'
         : dissectionFailureMessage(cause, 'Could not confirm the retry. Reopen to check saved progress before trying again.')
     } finally { if (valid(token, id)) busy.value = '' }
   }
-  return { current, history, error, busy, loadingHistory, loadingCurrent, manifest, importReady, resultId, cancellationRequested, canCancel, canRetry, resume, suspend, select, upload, cancel, retry, newUpload }
+  return { current, history, error, busy, loadingHistory, loadingCurrent, manifest, importReady, resultId, cancellationRequested, canCancel, canRetry, resume, suspend, select, upload, cancel, retry, newUpload, setContext, rejectAccess, accessRevision }
 }

@@ -1,27 +1,35 @@
-import { queryOne, execute } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { queryOneFresh, transactionWithoutRetry } from '~~/server/utils/db'
+import { requireWriteAccess } from '~~/server/utils/auth'
+import { resolveDissectionContext } from '~~/server/utils/banner/dissectionAccess'
+import { assertScopedProjectUnchanged } from '~~/server/utils/banner/scopedCanvasAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
+  if (!id) throw createError({ statusCode: 400, statusMessage: 'Project ID is required' })
 
-  if (!id) {
-    throw createError({ statusCode: 400, statusMessage: 'Project ID is required' })
-  }
-
-  try {
-    const project = await queryOne('SELECT id FROM banner_projects WHERE id = $1', [id])
-    if (!project) {
-      throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+  const project = await queryOneFresh<{ canvasData: unknown, clientId: string | null, createdBy: string, updatedAt: string }>(
+    'SELECT canvas_data AS "canvasData", client_id AS "clientId", created_by AS "createdBy", updated_at AS "updatedAt" FROM banner_projects WHERE id = $1', [id])
+  if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+  await transactionWithoutRetry(async db => {
+    // Deleting the container does not grant source access. Only jobs whose
+    // import destination is detached are mutated, so lock those first in order;
+    // do not parse or authorize revoked/malformed source content for cleanup.
+    const locked = (await db.query<{ job_id: string }>(`SELECT job_id FROM banner_dissections
+      WHERE project_id = $1 ORDER BY job_id FOR UPDATE`, [id])).rows
+    await resolveDissectionContext(db, user.id, { projectId: id }, 'write')
+    await assertScopedProjectUnchanged(db, id, project)
+    // A new import may have committed between initial job selection and the
+    // project lock. Do not lock an extra job after authority/project locks.
+    const linked = (await db.query<{ job_id: string }>('SELECT job_id FROM banner_dissections WHERE project_id = $1', [id])).rows
+    const lockedIds = new Set(locked.map(row => row.job_id))
+    if (linked.some(row => !lockedIds.has(row.job_id))) {
+      throw createError({ statusCode: 409, statusMessage: 'Project imports changed. Reload before deleting.' })
     }
-
-    await execute('DELETE FROM banner_dissections WHERE project_id = $1', [id])
-    await execute('DELETE FROM banner_projects WHERE id = $1', [id])
-
-    return { success: true, message: 'Project deleted' }
-  } catch (error: any) {
-    if (error.statusCode) throw error
-    console.error('Failed to delete banner project:', error)
-    throw createError({ statusCode: 500, statusMessage: 'Failed to delete banner project' })
-  }
+    // Only the eventual import destination is nullable. Immutable source owner,
+    // source identity and delivery registry survive deletion untouched.
+    await db.query('UPDATE banner_dissections SET project_id = NULL WHERE project_id = $1', [id])
+    await db.query('DELETE FROM banner_projects WHERE id = $1', [id])
+  })
+  return { success: true, message: 'Project deleted' }
 })

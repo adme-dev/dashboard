@@ -1,3 +1,5 @@
+import { assertScopedCanvasAccess } from '~~/server/utils/banner/scopedCanvasAccess'
+import { hasScopedCanvas } from '#shared/bannerScopedCanvas'
 import { queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { hasAllSocialClientAccess, hasSocialClientPermission, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
@@ -74,8 +76,23 @@ export default defineEventHandler(async (event) => {
       paramIndex++
     }
 
-    return await queryRowsFresh(sql, params)
+    const rows = await queryRowsFresh(sql, params)
+    // Keep every pagination slot, but never project private fields on source
+    // denial. Only explicit access denials are redacted; outages still surface.
+    const projects = []
+    for (const row of rows) {
+      try {
+        await assertScopedCanvasAccess(user.id, row.canvasData, row.id)
+      } catch (error: any) {
+        if (error?.statusCode !== 403 || !hasScopedCanvas(row.canvasData)) throw error
+        projects.push({ id: row.id, name: 'Restricted artwork', status: 'restricted', restricted: true })
+        continue
+      }
+      projects.push(hasScopedCanvas(row.canvasData) ? { ...row, thumbnailUrl: null } : row)
+    }
+    return projects
   } catch (error: any) {
+    if (error.statusCode) throw error
     console.error('Failed to fetch banner projects:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch banner projects' })
   }

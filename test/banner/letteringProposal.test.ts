@@ -293,3 +293,12 @@ describe('Raster decode boundary', () => {
     )
   })
 })
+
+it('blocks lettering generation for protected source text before provider requests', async () => {
+  studio.state.sets.mrec!.dissectionSource = { jobId: '11111111-1111-4111-8111-111111111111', sourceSha256: 'a'.repeat(64) }
+  const lettering = useBannerLettering(fetcher as never)
+  lettering.open(studio.activeLayers.value[0]!)
+  await lettering.generate()
+  expect(fetcher).not.toHaveBeenCalled()
+  expect(lettering.error.value).toMatch(/Protected Dissector artwork/)
+})

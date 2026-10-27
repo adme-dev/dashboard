@@ -1,3 +1,4 @@
+import { assertProjectAllowsUnprotectedFlow } from '~~/server/utils/banner/scopedExport'
 import { readMultipartFormData } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
@@ -35,6 +36,8 @@ export default defineEventHandler(async (event) => {
     if (!project) {
       throw createError({ statusCode: 404, statusMessage: 'Project not found' })
     }
+
+    await assertProjectAllowsUnprotectedFlow(projectId)
 
     const buffer = Buffer.from(file.data)
     const { key, url, size } = await uploadBannerExport(buffer, projectId, file.filename || 'export.zip')

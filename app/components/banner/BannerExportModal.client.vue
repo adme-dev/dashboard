@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '#shared/bannerScopedCanvas'
 import JSZip from 'jszip'
 import { apiErrorDescription, apiErrorStatus } from '~/utils/apiError'
-import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
+import { PLATFORM_META, resolveBannerFormat } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import type { Layer, ImageExportResult } from '~/types/banner-studio'
 import { exportFormatLabel } from '~/utils/bannerExportPoll'
@@ -18,6 +19,29 @@ const { state, activeLayers } = useBannerStudio()
 const { estimateSize } = useBannerFileSize()
 const { getExportCustomFonts } = useBannerFonts()
 const toast = useToast()
+const scopedCanvas = computed(() => hasScopedCanvas(state.sets) || hasScopedCanvas(state.project?.canvasData))
+let exportSnapshot: string | null = null
+const currentExportSnapshot = () => JSON.stringify([state.project?.id, state.project?.updatedAt, state.sets])
+function readyForScopedExport(): boolean {
+  if (!scopedCanvas.value) { exportSnapshot = null; return true }
+  if (exportType.value === 'mp4') {
+    toast.add({ title: 'Protected artwork', description: SCOPED_DISSECTION_EXCLUSION, color: 'warning' })
+    return false
+  }
+  if (state.isDirty || state.isSaving || !state.project?.updatedAt) {
+    toast.add({ title: 'Save before exporting', description: 'Save your changes before exporting protected artwork.', color: 'warning' })
+    return false
+  }
+  exportSnapshot = currentExportSnapshot()
+  return true
+}
+async function savedHtml(keys: string[]) {
+  const result = await apiFetch<{ formats: { key: string, html: string }[] }>('/api/agency/banner-studio/export-html', {
+    method: 'POST', body: { projectId: state.project?.id, sourceRevision: state.project?.updatedAt, formats: keys.map(key => ({ key })) }
+  })
+  if (result.formats.length !== keys.length) throw new Error('Some saved export files are missing')
+  return new Map(result.formats.map(item => [item.key, item.html]))
+}
 const videoExportSession = createBannerVideoExportSession()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: {
   method?: string
@@ -73,7 +97,7 @@ const estimatedVideoFrames = computed(() => Math.ceil(state.duration * videoFps.
 const platformGroups = computed(() => {
   const groups: Record<string, string[]> = {}
   state.setKeys.forEach((key) => {
-    const fmt = FORMATS[key]
+    const fmt = resolveBannerFormat(key)
     if (!fmt) return
     const platform = isVideoExport.value && ['Facebook', 'Instagram'].includes(fmt.platform) ? 'Social formats' : fmt.platform
     if (!groups[platform]) groups[platform] = []
@@ -110,8 +134,8 @@ function getScaledLayers(fmtKey: string): Layer[] {
   if (state.sets[fmtKey]?.layers) return state.sets[fmtKey].layers
 
   // Otherwise proportionally scale from active artboard
-  const srcFmt = FORMATS[state.activeKey]
-  const tgtFmt = FORMATS[fmtKey]
+  const srcFmt = resolveBannerFormat(state.activeKey)
+  const tgtFmt = resolveBannerFormat(fmtKey)
   if (!srcFmt || !tgtFmt) return []
 
   const srcLayers = activeLayers.value
@@ -134,6 +158,9 @@ function getScaledLayers(fmtKey: string): Layer[] {
 }
 
 function downloadBlob(blob: Blob, filename: string) {
+  if (exportSnapshot !== null && (state.isDirty || state.isSaving || currentExportSnapshot() !== exportSnapshot)) {
+    throw new Error('Artwork changed during export. Save your changes and export again.')
+  }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -152,7 +179,8 @@ function downloadHTML(html: string, filename: string) {
   downloadBlob(new Blob([html], { type: 'text/html' }), filename)
 }
 
-function exportCurrent() {
+async function exportCurrent() {
+  if (isExporting.value || !readyForScopedExport()) return
   if (isVideoExport.value || isGifExport.value || isImageExport.value) {
     // For image/gif/video export of single size, use the bulk flow with just one format
     const keys = new Set([state.activeKey])
@@ -164,13 +192,25 @@ function exportCurrent() {
     })
     return
   }
+  if (scopedCanvas.value) {
+    isExporting.value = true
+    try {
+      const files = await savedHtml([state.activeKey])
+      downloadHTML(files.get(state.activeKey)!, `${state.project?.name || 'banner'}_${state.activeKey}.html`)
+    } catch (error) {
+      toast.add({ title: 'Export failed', description: apiErrorDescription(error, 'Saved HTML export failed'), color: 'error' })
+    } finally { isExporting.value = false }
+    return
+  }
   const html = buildExportHTML(state.activeKey, activeLayers.value)
-  const fmt = FORMATS[state.activeKey]
+  const fmt = resolveBannerFormat(state.activeKey)
+  if (!fmt) return
   downloadHTML(html, `${state.project?.name || 'banner'}_${fmt.w}x${fmt.h}.html`)
   toast.add({ title: 'Exported', description: `${fmt.w}x${fmt.h} exported as HTML`, color: 'success' })
 }
 
 async function exportZip() {
+  if (isExporting.value || !readyForScopedExport()) return
   const keys = [...selected.value]
   if (!keys.length) return
 
@@ -180,13 +220,14 @@ async function exportZip() {
   try {
     const zip = new JSZip()
     const projectName = state.project?.name || 'banners'
+    const protectedHtml = scopedCanvas.value ? await savedHtml(keys) : null
 
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i]
-      const fmt = FORMATS[key]
+      const fmt = resolveBannerFormat(key)
       if (!fmt) continue
       const layers = getScaledLayers(key)
-      const html = buildExportHTML(key, layers)
+      const html = protectedHtml ? protectedHtml.get(key)! : buildExportHTML(key, layers)
       zip.file(`${projectName}_${fmt.w}x${fmt.h}.html`, html)
       exportProgress.value = Math.round(((i + 1) / keys.length) * 100)
     }
@@ -196,8 +237,8 @@ async function exportZip() {
 
     toast.add({ title: 'Export complete', description: `${keys.length} banners exported as ZIP`, color: 'success' })
     emit('update:open', false)
-  } catch {
-    toast.add({ title: 'Export failed', description: 'Something went wrong during export', color: 'error' })
+  } catch (error) {
+    toast.add({ title: 'Export failed', description: apiErrorDescription(error, 'HTML export failed'), color: 'error' })
   } finally {
     isExporting.value = false
     exportProgress.value = 0
@@ -205,7 +246,7 @@ async function exportZip() {
 }
 
 async function exportImages() {
-  if (isExporting.value) return
+  if (isExporting.value || !readyForScopedExport()) return
   const keys = [...selected.value]
   if (!keys.length) return
   const output = exportType.value === 'jpg' ? 'jpg' : 'png'
@@ -222,8 +263,8 @@ async function exportImages() {
 
   try {
     // Build HTML for each selected format (static, no animations)
-    const formats = keys.map((key) => {
-      const fmt = FORMATS[key]
+    const formats = scopedCanvas.value ? keys.map(key => ({ key })) : keys.map((key) => {
+      const fmt = resolveBannerFormat(key)
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildExportHTML(key, layers)
@@ -238,6 +279,7 @@ async function exportImages() {
       body: {
         projectId: state.project.id,
         formats,
+        ...(scopedCanvas.value ? { sourceRevision: state.project.updatedAt } : {}),
         quality,
         format: output,
         jpgQuality: output === 'jpg' ? jpgQuality.value : undefined
@@ -248,7 +290,7 @@ async function exportImages() {
     if (results.length !== keys.length) throw new Error('Some export files are missing. Please try again.')
 
     if (results.length === 1) {
-      const fmt = FORMATS[results[0].formatKey]
+      const fmt = resolveBannerFormat(results[0].formatKey)
       const blob = await fetchBannerRasterExport(results[0], output)
       downloadBlob(blob, `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.${output}`)
     } else if (results.length > 1) {
@@ -256,7 +298,7 @@ async function exportImages() {
       const zip = new JSZip()
 
       for (const result of results) {
-        const fmt = FORMATS[result.formatKey]
+        const fmt = resolveBannerFormat(result.formatKey)
         const filename = `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.${output}`
         const blob = await fetchBannerRasterExport(result, output)
         zip.file(filename, blob)
@@ -287,7 +329,7 @@ async function exportImages() {
 }
 
 async function exportGifs() {
-  if (isExporting.value) return
+  if (isExporting.value || !readyForScopedExport()) return
   const keys = [...selected.value]
   if (!keys.length) return
   const fps = gifFps.value
@@ -303,8 +345,8 @@ async function exportGifs() {
 
   try {
     // Build HTML for each selected format (WITH animations for GSAP)
-    const formats = keys.map((key) => {
-      const fmt = FORMATS[key]
+    const formats = scopedCanvas.value ? keys.map(key => ({ key })) : keys.map((key) => {
+      const fmt = resolveBannerFormat(key)
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
@@ -323,6 +365,7 @@ async function exportGifs() {
       body: {
         projectId: state.project.id,
         formats,
+        ...(scopedCanvas.value ? { sourceRevision: state.project.updatedAt } : {}),
         fps
       }
     })
@@ -331,14 +374,14 @@ async function exportGifs() {
     if (results.length !== keys.length) throw new Error('Some export files are missing. Please try again.')
 
     if (results.length === 1) {
-      const fmt = FORMATS[results[0].formatKey]
+      const fmt = resolveBannerFormat(results[0].formatKey)
       const blob = await fetchBannerRasterExport(results[0], 'gif')
       downloadBlob(blob, `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.gif`)
     } else if (results.length > 1) {
       const zip = new JSZip()
 
       for (const result of results) {
-        const fmt = FORMATS[result.formatKey]
+        const fmt = resolveBannerFormat(result.formatKey)
         const filename = `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.gif`
         const blob = await fetchBannerRasterExport(result, 'gif')
         zip.file(filename, blob)
@@ -367,7 +410,8 @@ async function exportGifs() {
 }
 
 async function exportVideos() {
-  if (isExporting.value || videoJobsBlocked.value) return
+  if (isExporting.value || !readyForScopedExport()) return
+  if (videoJobsBlocked.value) return
   const keys = [...selected.value]
   if (!keys.length) return
 
@@ -385,7 +429,7 @@ async function exportVideos() {
 
   try {
     const formats = keys.map((key) => {
-      const fmt = FORMATS[key]
+      const fmt = resolveBannerFormat(key)
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
@@ -476,11 +520,15 @@ const exportButtonLabel = computed(() => {
           />
         </div>
 
+        <UAlert v-if="scopedCanvas" class="mb-4" color="info" variant="subtle" title="Protected artwork"
+          :description="state.isDirty || state.isSaving ? 'Save your changes before exporting. PNG, JPG, GIF and HTML use your saved artwork.' : 'PNG, JPG, GIF and HTML download your saved artwork. MP4 and publishing are unavailable.'" />
+
         <!-- Export type selector -->
         <div class="flex gap-1.5 mb-4 p-1 bg-(--ui-bg) rounded-lg">
-          <button
+          <UButton
             v-for="opt in exportTypeOptions"
             :key="opt.value"
+            :disabled="scopedCanvas && opt.value === 'mp4'"
             class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
             :class="exportType === opt.value
               ? 'bg-(--ui-bg-elevated) text-(--ui-text) shadow-sm'
@@ -489,155 +537,49 @@ const exportButtonLabel = computed(() => {
           >
             <UIcon :name="opt.icon" class="w-3.5 h-3.5" />
             {{ opt.label }}
-          </button>
+          </UButton>
         </div>
 
-        <!-- Image export options -->
-        <div v-if="isImageExport" class="space-y-3 mb-4 p-3 bg-(--ui-bg) rounded-lg">
-          <!-- Resolution -->
-          <div>
-            <label class="text-xs font-medium text-(--ui-text-muted) mb-1.5 block">Resolution</label>
+        <!-- Options retain the dashboard typography and one-column modal spacing. -->
+        <div v-if="isImageExport" class="space-y-3 mb-4 p-3 bg-elevated rounded-lg">
+          <UFormField label="Resolution">
             <div class="flex gap-2">
-              <button
-                class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
-                :class="imageQuality === 1
-                  ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
-                  : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="() => { imageQuality = 1 }"
-              >
-                Standard (1x)
-              </button>
-              <button
-                class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
-                :class="imageQuality === 2
-                  ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
-                  : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="() => { imageQuality = 2 }"
-              >
-                Retina (2x)
-              </button>
+              <UButton v-for="scale in [1, 2]" :key="scale" class="flex-1 justify-center" size="xs"
+                :variant="imageQuality === scale ? 'soft' : 'ghost'" @click="imageQuality = scale as 1 | 2">
+                {{ scale === 1 ? 'Standard (1x)' : 'Retina (2x)' }}
+              </UButton>
             </div>
-          </div>
-
-          <!-- JPG quality slider -->
-          <div v-if="exportType === 'jpg'">
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-xs font-medium text-(--ui-text-muted)">Quality</label>
-              <span class="text-xs font-mono text-(--ui-text-muted)">{{ jpgQuality }}%</span>
-            </div>
-            <input
-              v-model.number="jpgQuality"
-              type="range"
-              min="60"
-              max="100"
-              step="5"
-              class="w-full accent-(--ui-primary)"
-            >
-          </div>
+          </UFormField>
+          <UFormField v-if="exportType === 'jpg'" :label="`Quality: ${jpgQuality}%`">
+            <USlider v-model="jpgQuality" :min="60" :max="100" :step="5" class="w-full" />
+          </UFormField>
         </div>
 
-        <!-- GIF export options -->
-        <div v-if="isGifExport" class="space-y-3 mb-4 p-3 bg-(--ui-bg) rounded-lg">
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-xs font-medium text-(--ui-text-muted)">Frame Rate</label>
-              <span class="text-xs font-mono text-(--ui-text-muted)">{{ gifFps }} fps</span>
-            </div>
-            <input
-              v-model.number="gifFps"
-              type="range"
-              min="5"
-              max="15"
-              step="1"
-              class="w-full accent-(--ui-primary)"
-            >
-          </div>
-          <div class="flex items-center justify-between text-[11px]">
-            <span class="text-(--ui-text-muted)">
-              Est. frames: <span class="font-mono">{{ estimatedGifFrames }}</span>
-            </span>
-            <span v-if="estimatedGifFrames > 50" class="text-amber-500 flex items-center gap-1">
-              <UIcon name="i-lucide-alert-triangle" class="w-3 h-3" />
-              May take a while
-            </span>
-          </div>
+        <div v-if="isGifExport" class="space-y-3 mb-4 p-3 bg-elevated rounded-lg">
+          <UFormField :label="`Frame rate: ${gifFps} fps`" :description="`Estimated frames: ${estimatedGifFrames}`">
+            <USlider v-model="gifFps" :min="5" :max="15" :step="1" class="w-full" />
+          </UFormField>
         </div>
 
-        <!-- MP4 export options -->
-        <div v-if="isVideoExport" class="space-y-3 mb-4 p-3 bg-(--ui-bg) rounded-lg">
-          <!-- Frame rate -->
-          <div>
-            <label class="text-xs font-medium text-(--ui-text-muted) mb-1.5 block">Frame Rate</label>
+        <div v-if="isVideoExport" class="space-y-3 mb-4 p-3 bg-elevated rounded-lg">
+          <UFormField label="Frame rate">
             <div class="flex gap-2">
-              <button
-                v-for="fps in [24, 30, 60]"
-                :key="fps"
-                class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
-                :class="videoFps === fps
-                  ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
-                  : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="() => { videoFps = fps }"
-              >
-                {{ fps }}fps
-              </button>
+              <UButton v-for="fps in [24, 30, 60]" :key="fps" class="flex-1 justify-center" size="xs"
+                :variant="videoFps === fps ? 'soft' : 'ghost'" @click="videoFps = fps">{{ fps }} fps</UButton>
             </div>
-          </div>
-
-          <!-- Resolution -->
-          <div>
-            <label class="text-xs font-medium text-(--ui-text-muted) mb-1.5 block">Resolution</label>
+          </UFormField>
+          <UFormField label="Resolution">
             <div class="flex gap-2">
-              <button
-                class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
-                :class="videoQuality === 1
-                  ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
-                  : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="() => { videoQuality = 1 }"
-              >
-                Standard (1x)
-              </button>
-              <button
-                class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
-                :class="videoQuality === 2
-                  ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
-                  : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-text-muted)'"
-                @click="() => { videoQuality = 2 }"
-              >
-                Retina (2x)
-              </button>
+              <UButton v-for="scale in [1, 2]" :key="scale" class="flex-1 justify-center" size="xs"
+                :variant="videoQuality === scale ? 'soft' : 'ghost'" @click="videoQuality = scale as 1 | 2">
+                {{ scale === 1 ? 'Standard (1x)' : 'Retina (2x)' }}
+              </UButton>
             </div>
-          </div>
-
-          <!-- CRF quality -->
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-xs font-medium text-(--ui-text-muted)">Quality (CRF)</label>
-              <span class="text-xs font-mono text-(--ui-text-muted)">{{ videoCrf }}</span>
-            </div>
-            <input
-              v-model.number="videoCrf"
-              type="range"
-              min="15"
-              max="35"
-              step="1"
-              class="w-full accent-(--ui-primary)"
-            >
-            <div class="flex justify-between text-[10px] text-(--ui-text-dimmed) mt-0.5">
-              <span>Higher quality</span>
-              <span>Smaller file</span>
-            </div>
-          </div>
-
-          <!-- Estimated frames -->
-          <div class="flex items-center justify-between text-[11px]">
-            <span class="text-(--ui-text-muted)">
-              Est. frames: <span class="font-mono">{{ estimatedVideoFrames }}</span>
-            </span>
-            <span v-if="estimatedVideoFrames > 300" class="text-amber-500 flex items-center gap-1">
-              <UIcon name="i-lucide-alert-triangle" class="w-3 h-3" />
-              May take a while
-            </span>
-          </div>
+          </UFormField>
+          <UFormField :label="`Quality (CRF): ${videoCrf}`" description="Lower values give higher quality; higher values give smaller files.">
+            <USlider v-model="videoCrf" :min="15" :max="35" :step="1" class="w-full" />
+          </UFormField>
+          <p class="text-xs text-muted">Estimated frames: {{ estimatedVideoFrames }}</p>
         </div>
 
         <!-- Platform checkboxes -->
@@ -664,10 +606,10 @@ const exportButtonLabel = computed(() => {
                   :model-value="selected.has(key)"
                   @update:model-value="toggleSize(key)"
                 />
-                <span class="text-xs">{{ exportFormatLabel(key, FORMATS[key]?.name) }}</span>
-                <span class="text-[11px] font-mono text-(--ui-text-muted)">{{ FORMATS[key]?.w }}x{{ FORMATS[key]?.h }}</span>
+                <span class="text-xs">{{ exportFormatLabel(key, resolveBannerFormat(key)?.name) }}</span>
+                <span class="text-[11px] font-mono text-(--ui-text-muted)">{{ resolveBannerFormat(key)?.w }}x{{ resolveBannerFormat(key)?.h }}</span>
                 <span v-if="isImageExport && imageQuality === 2" class="text-[10px] text-(--ui-text-dimmed)">
-                  ({{ (FORMATS[key]?.w || 0) * 2 }}x{{ (FORMATS[key]?.h || 0) * 2 }})
+                  ({{ (resolveBannerFormat(key)?.w || 0) * 2 }}x{{ (resolveBannerFormat(key)?.h || 0) * 2 }})
                 </span>
                 <BannerFileSizeMeter
                   v-if="exportType === 'html5' && state.sets[key]"

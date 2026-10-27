@@ -8,6 +8,7 @@ import {
 } from 'vue'
 import type { Layer } from '~/types/banner-studio'
 import { useBannerStudio } from './useBannerStudio'
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '../../shared/bannerScopedCanvas'
 import {
   isBannerCopyLayerProtected,
   isSafeBannerRewrite
@@ -208,6 +209,12 @@ export function useBannerLettering(
       })
   )
   function open(layer: Layer) {
+    if (hasScopedCanvas(studio.state.sets)) {
+      discard()
+      opened.value = false
+      error.value = SCOPED_DISSECTION_EXCLUSION
+      return
+    }
     if (layer.platformQr) {
       discard()
       opened.value = false
@@ -232,6 +239,10 @@ export function useBannerLettering(
   async function generate() {
     discard()
     error.value = ''
+    if (hasScopedCanvas(studio.state.sets)) {
+      error.value = SCOPED_DISSECTION_EXCLUSION
+      return
+    }
     const layer = studio.selectedLayer.value as LetteringLayer | null
     if (
       !layer

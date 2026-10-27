@@ -1,3 +1,6 @@
+import { hasScopedCanvas } from '#shared/bannerScopedCanvas'
+import { assertScopedCanvasAccess, withScopedCanvasAccess } from '~~/server/utils/banner/scopedCanvasAccess'
+import type { GodModeTransactionDb } from '~~/server/utils/godMode/transactionCoordinator'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { executeGodModeBannerProjectCreation } from '~~/server/utils/banner/godModeProjectCreation'
 import { findExistingTheBriefProject, readTheBriefProjectIdentity } from '~~/server/utils/banner/thebriefProjectImport'
@@ -20,15 +23,18 @@ export default defineEventHandler(async (event) => {
   await validateBannerPlatformQrCanvas(event, {}, canvasData || {}, destinationClientId)
 
   try {
-    const row = await executeGodModeBannerProjectCreation(event, async (db) => {
+    const create = async (db: GodModeTransactionDb) => {
       if (importIdentity) {
         const existing = await findExistingTheBriefProject(db, importIdentity)
         if (existing) {
+          if (hasScopedCanvas(existing.canvasData)) {
+            throw createError({ statusCode: 409, statusMessage: 'Protected artwork cannot be reused through this import' })
+          }
           await validateBannerPlatformQrCanvas(event, {}, existing.canvasData, existing.clientId)
           return existing
         }
       }
-      const result = await db.query(`
+      const result = await db.query<any>(`
         INSERT INTO banner_projects (name, client_id, canvas_data, tags, created_by)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING
@@ -48,11 +54,15 @@ export default defineEventHandler(async (event) => {
         user.id
       ])
       return result.rows[0]
-    })
+    }
+    const row = hasScopedCanvas(canvasData)
+      ? await withScopedCanvasAccess(user.id, canvasData, undefined, 'write', create, { clientId: destinationClientId })
+      : await executeGodModeBannerProjectCreation(event, create)
     if (!row) throw new Error('Banner project insert returned no row')
     // Coordinator replay may return a saved document without running the create callback.
     if (row.clientId) await requireSocialClientAccess(event, row.clientId)
     await validateBannerPlatformQrCanvas(event, {}, row.canvasData, row.clientId || null)
+    await assertScopedCanvasAccess(user.id, row.canvasData, row.id)
     return row
   } catch (error) {
     if ((error as { statusCode?: number })?.statusCode) throw error

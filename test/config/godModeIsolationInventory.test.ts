@@ -88,10 +88,14 @@ const API_INVENTORY = {
   // These lexical counts do not register any God mode mutation bypass.
   // Private raster downloads add GET/HEAD; two existing export mutations gain
   // native write gates while fresh project/client access remains independent.
-  totalRouteFiles: 2296,
-  mutationRouteFiles: 1254,
-  explicitlyGuardedMutationFiles: 424,
-  guardedMutationFilesWithTransactionCall: 50
+  // Protected asset GET/HEAD and saved HTML POST add three routes; four write
+  // gates retain independent fresh authority without a mutation bypass.
+  // Import now uses transactionWithoutRetry. This lexical counter only
+  // matches transaction(...); the non-retrying atomic boundary remains tested.
+  totalRouteFiles: 2299,
+  mutationRouteFiles: 1255,
+  explicitlyGuardedMutationFiles: 428,
+  guardedMutationFilesWithTransactionCall: 49
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -139,17 +143,17 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2296,
-      mutationRouteFiles: 1254,
-      explicitlyGuardedMutationFiles: 424,
-      guardedMutationFilesWithTransactionCall: 50
+      totalRouteFiles: 2299,
+      mutationRouteFiles: 1255,
+      explicitlyGuardedMutationFiles: 428,
+      guardedMutationFilesWithTransactionCall: 49
     })
   })
 
   it('pins transfer and verification bootstrap routes to native authority without a bypass', () => {
     const routes = {
-      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/admission.post.ts': "handleTransferOperatorHttp(event, 'POST', 'recovery-admission')",
-      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': "handleTransferOperatorHttp(event, 'POST', 'recovery-review')",
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/admission.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'recovery-admission\')',
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'recovery-review\')',
       'server/api/portal/page-studio/customer/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': 'handleTransferReviewOwnerHttp(event)',
       'server/api/agency/page-studio/sites/[siteId]/adoption-grant.get.ts': 'handleTransferOperatorHttp(event, \'GET\', \'adoption-grant\')',
       'server/api/agency/page-studio/sites/[siteId]/adoption-grant.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'adoption-grant\')',

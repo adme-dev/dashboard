@@ -1,9 +1,10 @@
+import { assertProjectAllowsUnprotectedFlow } from '~~/server/utils/banner/scopedExport'
 /**
  * Publish banner to Google Ads as a responsive display ad or HTML5 ad.
  * POST /api/agency/banner-studio/ad-publish/google
  * Body: { publishedId, connectionId, campaignId, adGroupId }
  */
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOne, queryOneFresh, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import {
   GOOGLE_CREDENTIAL_PROFILE_JOIN,
@@ -28,7 +29,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Get the published banner
-  const published = await queryOne(`
+  const published = await queryOneFresh(`
     SELECT id, project_id AS "projectId", format_key AS "formatKey",
       url, width, height, click_url AS "clickUrl"
     FROM banner_published WHERE id = $1
@@ -37,6 +38,8 @@ export default defineEventHandler(async (event) => {
   if (!published) {
     throw createError({ statusCode: 404, statusMessage: 'Published banner not found' })
   }
+
+  await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
 
   // Get the Google Ads connection
   const connection = await queryOne(`
@@ -60,6 +63,7 @@ export default defineEventHandler(async (event) => {
   if (credential.refreshToken && credential.tokenExpiresAt && new Date(credential.tokenExpiresAt) <= new Date(Date.now() + 300000)) {
     try {
       const { refreshGoogleToken } = await import('~~/server/utils/googleAdsClient')
+      await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
       const tokens = await refreshGoogleToken(
         credential.refreshToken,
         config.googleClientId,
@@ -73,7 +77,8 @@ export default defineEventHandler(async (event) => {
         accessToken,
         expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
       })
-    } catch {
+    } catch (error: any) {
+      if (error.statusCode === 409) throw error
       throw createError({ statusCode: 401, statusMessage: 'Failed to refresh Google Ads token' })
     }
   }
@@ -95,6 +100,7 @@ export default defineEventHandler(async (event) => {
     //
     // We track the publish in our DB for status sync and store the intent.
 
+    await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
     const adPublish = await queryOne(`
       INSERT INTO banner_ad_publishes (project_id, published_id, platform, account_id, campaign_id, ad_group_id, status, published_by, published_at)
       VALUES ($1, $2, 'google_ads', $3, $4, $5, 'pending', $6, NOW())
@@ -107,6 +113,8 @@ export default defineEventHandler(async (event) => {
 
     return adPublish
   } catch (err: any) {
+    if (err.statusCode) throw err
+    await assertProjectAllowsUnprotectedFlow(published.projectId, { body, published })
     // Record the error
     await queryOne(`
       INSERT INTO banner_ad_publishes (project_id, published_id, platform, account_id, campaign_id, ad_group_id, status, error_message, published_by)

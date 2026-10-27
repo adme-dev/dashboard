@@ -1,7 +1,9 @@
 import type { H3Event } from 'h3'
 import { createHash, randomUUID } from 'node:crypto'
 import { createError } from 'h3'
-import { claimDissectionAttempt, dissectionArtwork, dissectionSnapshot, isDissectionAttemptActive, loadDissection, writeDissectionAttempt, type DissectionAttemptOptions } from '~~/server/utils/banner/dissectionJobs'
+import { claimDissectionAttempt, dissectionArtwork, dissectionSnapshot, isDissectionAttemptActive, loadDissection, registerScopedDissectionAsset, writeDissectionAttempt, type DissectionAttemptOptions, type DissectionRecord } from '~~/server/utils/banner/dissectionJobs'
+import { readBoundedBannerObjectBody } from '~~/server/utils/banner/boundedObjectBody'
+import { uploadScopedDissectionAsset } from '~~/server/utils/banner/dissectionDelivery'
 import { readStoredObject, type R2BucketBinding } from '~~/server/utils/storage'
 import { execute } from '~~/server/utils/db'
 import { resolveBannerAssetDelivery } from '~~/server/utils/banner/assetDelivery'
@@ -34,6 +36,7 @@ export async function runDissectionPipeline(
 
   try {
     // 2. Fetch original image from R2
+    if (!await isDissectionAttemptActive(jobId, execution.attemptId)) return await current()
     const delivery = resolveBannerAssetDelivery(event || { context: {} })
     const imageBuffer = await downloadFromR2(record.source_r2_key!, jobId, delivery.nativeUpload?.bucket)
     if (!imageBuffer) {
@@ -161,35 +164,32 @@ async function downloadFromR2(key: string, jobId: string, bucket?: R2BucketBindi
     if (object?.body) void object.body.cancel().catch(() => {})
     throw new Error('Source is unavailable or exceeds its byte limit')
   }
-  const reader = object.body.getReader()
-  const bytes = Buffer.allocUnsafe(object.size)
-  let length = 0
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      if (!(value instanceof Uint8Array) || value.byteLength > bytes.length - length) throw new Error('Source exceeds its declared byte limit')
-      bytes.set(value, length)
-      length += value.byteLength
-    }
-    if (length !== object.size) throw new Error('Source was truncated')
-    return bytes
-  } finally {
-    void reader.cancel().catch(() => {})
-    reader.releaseLock()
-  }
+  const bytes = await readBoundedBannerObjectBody(object.body, object.size, MAX_SOURCE_BYTES)
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 }
 
 async function persistLayer(
   bytes: Buffer,
   event: H3Event | null,
-  record: { job_id: string },
+  record: DissectionRecord,
   attemptId: string,
   delivery: ReturnType<typeof resolveBannerAssetDelivery>
 ) {
   // Claims RETURNING * carry the persisted uploader. Queue payloads and models
   // have no authority to choose the catalogue owner or destination key.
   const userId = (record as { user_id?: string }).user_id
+  const owner = record.manifest?.ingestion?.owner
+  if (owner && owner.kind !== 'user') {
+    if (!event || !await isDissectionAttemptActive(record.job_id, attemptId)) throw new Error('Dissection attempt is no longer active')
+    const assetId = randomUUID()
+    const uploaded = await uploadScopedDissectionAsset(event, { jobId: record.job_id, attemptId, assetId, bytes })
+    await registerScopedDissectionAsset(record.job_id, attemptId, {
+      assetId, attemptId, key: uploaded.key, mimeType: uploaded.mimeType, byteLength: uploaded.size, sha256: uploaded.sha256
+    })
+    // A later write/access failure retains private bytes and durable registration
+    // for reconciliation. It never creates a public URL or retries the write.
+    return uploaded
+  }
   if (!userId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)
     || !delivery.signingSecret || !bytes.length || bytes.length > MAX_LAYER_BYTES) throw new Error('Extracted asset storage is unavailable')
   const id = randomUUID()

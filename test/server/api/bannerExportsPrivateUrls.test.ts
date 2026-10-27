@@ -13,6 +13,9 @@ g.defineEventHandler = handler => handler
 g.getQuery = event => event.query ?? {}
 g.createError = input => Object.assign(new Error(input.statusMessage), input)
 
+const scoped = vi.hoisted(() => ({ context: vi.fn(), parse: vi.fn(), check: vi.fn() }))
+vi.mock('~~/server/utils/banner/dissectionAccess', () => ({ resolveDissectionContext: scoped.context }))
+vi.mock('~~/server/utils/banner/scopedExport', () => ({ parseScopedExportProvenance: scoped.parse, recheckScopedExport: scoped.check }))
 const requireAuth = vi.fn()
 const queryRowsFresh = vi.fn()
 const queryRowsCached = vi.fn()
@@ -29,6 +32,7 @@ vi.mock('~~/server/utils/auth', () => ({
 }))
 
 vi.mock('~~/server/utils/db', () => ({
+  transactionWithoutRetry: async callback => callback({}),
   queryRows: (...args: unknown[]) => queryRowsCached(...args),
   queryRowsFresh: (...args: unknown[]) => queryRowsFresh(...args),
   queryOneFresh: (...args: unknown[]) => queryOneFresh(...args)
@@ -122,4 +126,26 @@ describe('GET /agency/banner-studio/exports', () => {
 
     expect(result[0].url).toBeNull()
   })
+})
+
+it('authorizes retained protected dependencies before listing and never exposes private keys', async () => {
+  const row = { id: 'export-1', projectId: 'project-1', r2Key: 'scoped-banner-exports/project-1/export-1.png', exportedBy: 'user-1', url: 'unexpected persisted URL' }
+  queryRowsFresh.mockResolvedValue([row])
+  scoped.parse.mockReturnValue({ dependencies: ['old source removed from canvas'] })
+  const head = vi.fn().mockResolvedValue({ customMetadata: { provenance: 'private' } })
+  const input = { query: { projectId: 'project-1' }, context: { cloudflare: { env: { MEDIA_BUCKET: { head } } } } }
+  const result = await handler(input as never)
+  expect(result[0]).not.toHaveProperty('r2Key')
+  expect(result[0].url).toBe('/api/agency/banner-studio/exports/export-1/download')
+  expect(scoped.check).toHaveBeenCalledWith('user-1', { dependencies: ['old source removed from canvas'] }, false)
+  expect(queryRowsFresh.mock.calls[0][0]).toContain("e.r2_key NOT LIKE 'scoped-banner-exports/%' OR e.exported_by = $2")
+  scoped.check.mockRejectedValueOnce({ statusCode: 403 })
+  const legacy = { id: 'legacy', r2Key: 'banner-exports/legacy.zip', url: 'https://files.example/legacy.zip', exportType: 'html5', renderJobId: null }
+  queryRowsFresh.mockResolvedValue([row, legacy])
+  await expect(handler(input as never)).resolves.toEqual([
+    { id: 'export-1', restricted: true, url: null },
+    legacy
+  ])
+  scoped.check.mockRejectedValueOnce({ statusCode: 503 })
+  await expect(handler(input as never)).rejects.toMatchObject({ statusCode: 503 })
 })
