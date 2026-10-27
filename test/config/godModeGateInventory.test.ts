@@ -282,19 +282,46 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain('server/utils/pageStudio/sessionVerificationKeyHttp.ts\t: process.env.PAGE_STUDIO_SESSION_ISSUER\tunrelated_configuration')
     // Existing-source adoption exposes only a validated configured customer origin.
     // This presentation URL read does not register an authority bypass.
-    expect(inventory.rows).toContain("server/utils/pageStudio/transferControlsHttp.ts\tconst origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ORIGIN') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)\tunrelated_configuration")
+    expect(inventory.rows).toContain('server/utils/pageStudio/transferControlsHttp.ts\tconst origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, \'PAGE_STUDIO_CUSTOMER_ORIGIN\') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)\tunrelated_configuration')
     // LinkedIn Ads OAuth credentials (connect, callback, insights refresh, spend
     // sync) now resolve through getLinkedInAdsOAuthConfig in socialOAuth/env.ts.
     // Four direct runtime-config reads collapse into its one; no gate or bypass.
     expect(inventory.rows.some(row => row.startsWith('server/api/agency/social/linkedin/') && row.includes('useRuntimeConfig('))).toBe(false)
     expect(inventory.rows.filter(row => row.startsWith('server/utils/socialOAuth/env.ts\tconst config = useRuntimeConfig()'))).toHaveLength(6)
-    // Released Banner routes retain eight additional explicit write gates.
-    // Combined with the recovery origin row above, this pins both inventories.
-    expect(inventory.rows).toHaveLength(1613)
+    // Editable artwork adds explicit staff write checks without registering a
+    // new governance bypass. Hosted provider/storage settings now use request
+    // bindings; four ambient S3 reads disappear. Freeze the reviewed net delta.
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/ai/copy-suggest.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/ai/decompose.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/assets/[id].patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/dissect/[jobId]/cancel.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/dissect/[jobId]/import.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/dissect/process.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/dissect/upload.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/engine-jobs/[jobId]/cancel.post.ts\tconst actor = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/engine-jobs/index.post.ts\tconst actor = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/projects/[id].patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/projects/[id]/duplicate.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/projects/index.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/versions/restore.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/internal/process-job.post.ts\tconst expected = cloudflare ? cloudflare.env?.CRON_SECRET : process.env.CRON_SECRET\tprovider_infrastructure_availability')
+    expect(inventory.rows).toContain('server/utils/banner/artwork.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/utils/banner/artworkProvider.ts\tconst apiKey = cloudflare ? cloudflare.env?.OPENAI_API_KEY : process.env.OPENAI_API_KEY\tprovider_infrastructure_availability')
+    expect(inventory.rows).toContain('server/utils/banner/dissectionDispatch.ts\tif (![\'development\', \'test\'].includes(process.env.NODE_ENV || \'\')) return null\tunrelated_configuration')
+    expect(inventory.rows).toContain('server/utils/banner/platformQr.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/utils/bannerDissector.ts\treturn useRuntimeConfig(event || undefined)\tunrelated_configuration')
+    expect(inventory.rows).not.toContain('server/api/agency/banner-studio/projects/index.post.ts\tawait requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).not.toContain('server/api/internal/process-job.post.ts\tconst expected = process.env.CRON_SECRET\tprovider_infrastructure_availability')
+    expect(inventory.rows).not.toContain('server/utils/bannerDissector.ts\tconst config = useRuntimeConfig()\tunrelated_configuration')
+    expect(inventory.rows).not.toContain('server/utils/bannerDissectorPipeline.ts\tconst R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || \'\'\tprovider_infrastructure_availability')
+    expect(inventory.rows).not.toContain('server/utils/bannerDissectorPipeline.ts\tconst R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || \'\'\tprovider_infrastructure_availability')
+    expect(inventory.rows).not.toContain('server/utils/bannerDissectorPipeline.ts\tconst R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || \'\'\tprovider_infrastructure_availability')
+    expect(inventory.rows).not.toContain('server/utils/bannerDissectorPipeline.ts\tconst R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || \'agency-files\'\tprovider_infrastructure_availability')
+    expect(inventory.rows).toHaveLength(1625)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 128,
-      provider_infrastructure_availability: 224,
-      application_governance_bypass: 1633,
+      provider_infrastructure_availability: 221,
+      application_governance_bypass: 1648,
       ordinary_user_behavior: 192,
       unrelated_configuration: 435
     })
@@ -311,7 +338,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('cef85f34a2fd968996632bfc6e7377f6e4b960c7a7bf61dd22a4d0b2bad5fbf4')
+    expect(inventory.digest).toBe('3d200d48926a51804066ebd3bd4753b88515ef95169b791dd83f7990a16d8cd5')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
