@@ -139,6 +139,10 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
     await markDelivered(deliveryId, result.response_meta)
     return
   }
+  if (result.status === 'skipped') {
+    await markSkipped(deliveryId, result.reason)
+    return
+  }
 
   // Failure: retry policy
   const next = claimed.retry_count + 1

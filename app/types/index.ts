@@ -2007,6 +2007,8 @@ export interface EmailLeadIngestion {
 export type DispatchResult =
   | { status: 'delivered'; response_meta?: any }
   | { status: 'failed'; error: string; retry_after_ms?: number; final?: boolean }
+  // A deliberate, policy-driven no-send (e.g. auto-acknowledgement abuse gates).
+  | { status: 'skipped', reason: string }
 
 export * from './office'
 

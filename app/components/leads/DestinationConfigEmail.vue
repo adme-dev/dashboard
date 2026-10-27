@@ -16,7 +16,10 @@ watch(toCsv, (v) => {
     </div>
     <div class="space-y-1">
       <label class="text-xs text-muted">Subject template</label>
-      <UInput v-model="config.subject_template" placeholder="New lead from {{ field.first_name }}" />
+      <UInput v-model="config.subject_template" placeholder="New lead — {{ form_name }}" />
+      <p v-pre class="text-xs text-muted">
+        Subjects only fill {{ form_name }} and {{ source }}; lead details belong in the body.
+      </p>
     </div>
     <div class="space-y-1">
       <label class="text-xs text-muted">Body template (HTML)</label>

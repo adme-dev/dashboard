@@ -34,6 +34,9 @@ function resolve(lead: Lead, path: string): string | undefined {
 
 export interface RenderOptions {
   html?: boolean
+  // When set, only these token paths resolve; any other token renders empty
+  // with a `blocked:<path>` warning.
+  allowedTokens?: ReadonlySet<string>
 }
 
 export function renderTemplate(
@@ -43,6 +46,10 @@ export function renderTemplate(
 ): RenderResult {
   const warnings: string[] = []
   const text = template.replace(TOKEN, (_match, path: string) => {
+    if (opts.allowedTokens && !opts.allowedTokens.has(path)) {
+      warnings.push(`blocked:${path}`)
+      return ''
+    }
     const v = resolve(lead, path)
     if (v === undefined) {
       warnings.push(path)

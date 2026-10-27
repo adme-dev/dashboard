@@ -5,6 +5,7 @@
 
 import { queryOne, execute } from '~~/server/utils/db'
 import { recordSuppressionEvent } from './audit'
+import { suppressBouncedLeadAck } from '~~/server/utils/leads/ack/events'
 
 // Resend event type → our normalized event_type, the campaigns counter column to
 // bump (null = don't bump; 'sent' is already counted at send time), and whether
@@ -63,7 +64,13 @@ export async function handleResendEvent(
     'SELECT campaign_id, subscriber_id FROM campaign_recipients WHERE resend_message_id = $1',
     [messageId]
   )
-  if (!recipient) return { status: 'unmatched' }
+  if (!recipient) {
+    // Not a campaign send: a visitor auto-acknowledgement may still bounce.
+    if (rule.suppress && await suppressBouncedLeadAck({
+      messageId, reason: rule.suppress, to: payload.data?.to, eventId, resendType: payload.type
+    })) return { status: 'recorded' }
+    return { status: 'unmatched' }
+  }
 
   const url = typeof payload.data?.click?.link === 'string' ? payload.data.click.link : null
 

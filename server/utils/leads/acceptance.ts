@@ -19,6 +19,7 @@ import {
   reserveSubmissionIntentForLead
 } from '~~/server/utils/leads/submissionIntent'
 import { leadCaptureTestRepository } from '~~/server/utils/leads/captureTestRepository'
+import { withLeadAckVerification, type LeadAckVerification } from '~~/server/utils/leads/ack/policy'
 
 export type LeadCaptureMode = 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm'
 
@@ -46,9 +47,16 @@ export async function acceptLead(event: H3Event, input: {
   testRunId?: string | null
   conversionEventName?: 'lead_created' | 'web_conversion'
   enquiryType?: CanonicalEnquiryType | null
+  // Server-side proof the submission came from a real person (ad platform
+  // lead form, or a passed Turnstile check). Only trusted ingest paths pass it.
+  ackVerification?: LeadAckVerification
 }): Promise<AcceptLeadResult> {
   if (input.leadCaptureMode === 'analytics_only') {
     return { status: 'mode_skipped' }
+  }
+  input = {
+    ...input,
+    lead: { ...input.lead, attribution: withLeadAckVerification(input.lead.attribution, input.ackVerification) }
   }
 
   const testRunId = input.testRunId ?? input.lead.test_run_id ?? null

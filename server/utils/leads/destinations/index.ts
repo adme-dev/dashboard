@@ -6,13 +6,14 @@ import email from './email'
 import sheets from './sheets'
 import assignUser from './assignUser'
 import autogate from './autogate'
+import autoresponderEmail from './autoresponderEmail'
 import { registeredAdapterTypes, resolveAdapter } from './registry'
 import type { DestinationAdapter } from './types'
 
 // Nitro prunes side-effect-only registration imports. Reference the adapter
 // values directly so every built-in survives the production bundle.
 const builtins = new Map<string, DestinationAdapter>(
-  [portal, webhook, slack, email, sheets, assignUser, autogate]
+  [portal, webhook, slack, email, sheets, assignUser, autogate, autoresponderEmail]
     .map(adapter => [adapter.type, adapter])
 )
 

@@ -95,7 +95,8 @@ export default defineEventHandler(async (event) => {
     const accepted = await acceptLead(event, {
       lead: { ...norm, client_id: ep.client_id },
       leadCaptureMode: ep.lead_capture_mode,
-      consentDecision: 'unknown'
+      consentDecision: 'unknown',
+      ackVerification: 'platform_lead_form'
     })
     if (norm.form_id) {
       await upsertFormMetadata('google', norm.form_id, norm.form_name, norm.field_data)

@@ -67,7 +67,7 @@ const SLACK_LEAD_ALERT_TEMPLATE = `🆕 *New lead* — {{ field.full_name }}
 ✉️ {{ field.email }} · 📞 {{ field.phone_number }}
 Form: {{ form_name }} · {{ source }}`
 
-const EMAIL_SUBJECT_TEMPLATE = 'New lead from {{ field.full_name }} — {{ form_name }}'
+const EMAIL_SUBJECT_TEMPLATE = 'New lead — {{ form_name }}'
 const EMAIL_BODY_TEMPLATE = `<h2 style="margin:0 0 12px;">New lead</h2>
 <p><strong>{{ field.full_name }}</strong> just submitted {{ form_name }}.</p>
 <ul style="line-height:1.6;">
