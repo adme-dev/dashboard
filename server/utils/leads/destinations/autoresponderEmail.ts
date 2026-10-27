@@ -105,7 +105,7 @@ const adapter: DestinationAdapter<unknown> = {
   type: 'autoresponder_email',
   validateConfig(config) {
     const checked = checkLeadAckConfig(config)
-    return checked.valid ? { valid: true } : { valid: false, errors: checked.errors }
+    return 'errors' in checked ? { valid: false, errors: checked.errors } : { valid: true }
   },
   dispatch(delivery, lead, config) {
     return dispatchLeadAck(delivery, lead, config)
