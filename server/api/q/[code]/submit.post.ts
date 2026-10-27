@@ -53,7 +53,8 @@ async function handleSubmit(event: any) {
   if (!raw || typeof raw !== 'object') return fail(event, 400, 'Please fill in the form')
   if (typeof raw.website === 'string' && raw.website.trim()) return { ok: true } // honeypot: pretend success
 
-  if (isTurnstileEnabled()) {
+  const turnstileVerified = isTurnstileEnabled()
+  if (turnstileVerified) {
     const token = typeof raw['cf-turnstile-response'] === 'string' ? raw['cf-turnstile-response'] : null
     if (!await verifyTurnstile(token, ip || undefined)) return fail(event, 400, 'Please complete the verification and try again')
   }
@@ -138,7 +139,9 @@ async function handleSubmit(event: any) {
       created_by: null
     },
     consentDecision: consent.tracking,
-    leadCaptureMode: await resolveLeadCaptureMode(hosted.clientId)
+    leadCaptureMode: await resolveLeadCaptureMode(hosted.clientId),
+    // Visitor auto-acknowledgements require a passed Turnstile check.
+    ...(turnstileVerified ? { ackVerification: 'turnstile' as const } : {})
   })
   if (result.status === 'created') {
     await execute(`UPDATE qr_pages SET submissions_count = submissions_count + 1 WHERE id = $1`, [hosted.page.id]).catch(() => {})

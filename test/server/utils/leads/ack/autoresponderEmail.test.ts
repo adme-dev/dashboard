@@ -6,7 +6,7 @@ vi.mock('~~/server/utils/leads/destinations/registry', () => ({ registerAdapter:
 vi.mock('~~/server/utils/db', () => ({ execute: vi.fn(), queryOne: vi.fn(), transaction: vi.fn() }))
 vi.mock('resend', () => ({ Resend: class { emails = { send: vi.fn() } } }))
 
-const { default: adapter, dispatchLeadAck } = await import('~~/server/utils/leads/destinations/autoresponderEmail')
+const { default: adapter, dispatchLeadAck, isDefinitiveResendRejection } = await import('~~/server/utils/leads/destinations/autoresponderEmail')
 const { LEAD_ACK_DEFAULT_COPY, LEAD_ACK_FROM_ENV, leadAckSenderAddress } = await import('~~/server/utils/leads/ack/config')
 
 const CLIENT = '11111111-1111-4111-8111-111111111111'
@@ -25,7 +25,8 @@ function makeLead(overrides: Partial<Lead> = {}): Lead {
     id: `lead-${seq}`, client_id: CLIENT, source: 'meta', source_lead_id: `src-${seq}`,
     form_id: 'form-a', form_name: 'Quote', status: 'new', is_test: false, test_run_id: null,
     field_data: { email: 'visitor@example.net', full_name: 'Jane Visitor', message: VISITOR_SECRET },
-    attribution: null,
+    attribution: { xf_ack_verification: 'platform_lead_form' },
+    created_by: null,
     ...overrides
   } as Lead
 }
@@ -131,6 +132,25 @@ describe('auto-acknowledgement abuse gates', () => {
     await expect(ack(makeLead({ source }))).resolves.toMatchObject({ status: 'delivered' })
   })
 
+  it('treats a QR submission that passed Turnstile as verified', async () => {
+    const lead = makeLead({ source: 'qr', attribution: { xf_ack_verification: 'turnstile' } })
+    await expect(ack(lead)).resolves.toMatchObject({ status: 'delivered' })
+  })
+
+  it.each([
+    ['a meta/google source without server evidence (CSV import, generic webhook)', { source: 'meta', attribution: null }],
+    ['google without server evidence', { source: 'google', attribution: { utm_source: 'google' } }],
+    ['a staff-created lead carrying the evidence key', { created_by: 'staff-1' }],
+    ['platform evidence on a website source', { source: 'webhook' }],
+    ['platform evidence on a CSV source', { source: 'csv' }],
+    ['Turnstile evidence on a non-QR source', { source: 'page_studio', attribution: { xf_ack_verification: 'turnstile' } }],
+    ['Turnstile evidence on a platform source', { source: 'meta', attribution: { xf_ack_verification: 'turnstile' } }],
+    ['an unknown evidence value', { attribution: { xf_ack_verification: 'toString' } }]
+  ] as const)('skips %s', async (_label, patch) => {
+    await expect(ack(makeLead(patch as Partial<Lead>))).resolves.toEqual({ status: 'skipped', reason: 'ack_unverified' })
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it('skips spam-suspected leads', async () => {
     await expect(ack(makeLead({ status: 'spam_suspected' }))).resolves.toEqual({ status: 'skipped', reason: 'ack_spam_suspected' })
   })
@@ -207,15 +227,59 @@ describe('auto-acknowledgement abuse gates', () => {
     await expect(at('four@example.net')).resolves.toMatchObject({ status: 'delivered' })
   })
 
-  it('does not count failed sends, and a retry reuses the submission key', async () => {
-    send.mockResolvedValueOnce({ id: null, error: 'provider down' })
+  it('does not count rejected sends, and a retry reuses the submission key', async () => {
+    send.mockResolvedValueOnce({ id: null, error: 'invalid to', rejected: true })
     const lead = makeLead()
-    await expect(ack(lead, { ...config, daily_cap: 1 })).resolves.toEqual({ status: 'failed', error: 'resend_error: provider down' })
+    await expect(ack(lead, { ...config, daily_cap: 1 })).resolves.toEqual({ status: 'failed', error: 'resend_error: invalid to' })
     expect(fake.rows[0]!.status).toBe('failed')
     await expect(ack(lead, { ...config, daily_cap: 1 })).resolves.toMatchObject({ status: 'delivered' })
     expect(send).toHaveBeenCalledTimes(2)
     expect(send.mock.calls[0]![2]).toBe(send.mock.calls[1]![2])
     expect(fake.rows).toHaveLength(1)
+  })
+
+  it('keeps counting a send whose provider error is ambiguous', async () => {
+    send.mockResolvedValueOnce({ id: null, error: 'Unable to fetch data', rejected: false })
+    const lead = makeLead()
+    await expect(ack(lead, { ...config, daily_cap: 1 })).resolves.toMatchObject({ status: 'failed' })
+    expect(fake.rows[0]!.status).toBe('reserved')
+    // Another visitor cannot take the cap, and this visitor gets no second ack.
+    const other = makeLead()
+    other.field_data = { ...other.field_data, email: 'other@example.net' }
+    await expect(ack(other, { ...config, daily_cap: 1 })).resolves.toEqual({ status: 'skipped', reason: 'ack_daily_cap' })
+    await expect(ack(makeLead())).resolves.toEqual({ status: 'skipped', reason: 'ack_recipient_window' })
+  })
+
+  it.each([
+    [{ statusCode: 422, name: 'validation_error' }, true],
+    [{ statusCode: 429, name: 'rate_limit_exceeded' }, true],
+    [{ statusCode: 409, name: 'concurrent_idempotent_requests' }, false],
+    [{ statusCode: 500, name: 'internal_server_error' }, false],
+    [{ statusCode: null, name: 'application_error' }, false]
+  ] as const)('classifies Resend error %j as definitive=%s', (error, definitive) => {
+    expect(isDefinitiveResendRejection(error)).toBe(definitive)
+  })
+
+  it('counts the recipient window from the send, not the first reservation', async () => {
+    send.mockRejectedValueOnce(new Error('socket hang up'))
+    const lead = makeLead()
+    await ack(lead)
+    clock += 5 * 60_000
+    await expect(ack(lead)).resolves.toMatchObject({ status: 'delivered' })
+    clock += 24 * 3_600_000 - 60_000
+    await expect(ack(makeLead())).resolves.toEqual({ status: 'skipped', reason: 'ack_recipient_window' })
+  })
+
+  it('re-checks the limits before resending a reservation that aged out', async () => {
+    send.mockRejectedValueOnce(new Error('socket hang up'))
+    const stale = makeLead()
+    await ack(stale, { ...config, daily_cap: 1 })
+    clock += 25 * 3_600_000
+    const fresh = makeLead()
+    fresh.field_data = { ...fresh.field_data, email: 'other@example.net' }
+    await expect(ack(fresh, { ...config, daily_cap: 1 })).resolves.toMatchObject({ status: 'delivered' })
+    await expect(ack(stale, { ...config, daily_cap: 1 })).resolves.toEqual({ status: 'skipped', reason: 'ack_daily_cap' })
+    expect(send).toHaveBeenCalledTimes(2)
   })
 
   it('resends an ambiguous reservation under the same provider idempotency key', async () => {

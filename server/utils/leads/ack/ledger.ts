@@ -19,7 +19,8 @@ export interface LeadAckReservationInput {
 }
 
 export interface LeadAckLedgerTx {
-  findByKey(idempotencyKey: string): Promise<{ status: LeadAckLedgerStatus } | null>
+  /** `fresh`: the row was reserved or sent within the last `windowHours`. */
+  findByKey(idempotencyKey: string, windowHours: number): Promise<{ status: LeadAckLedgerStatus, fresh: boolean } | null>
   hasRecentForRecipient(input: { clientId: string, formKey: string, recipientHash: string, excludeKey: string, windowHours: number }): Promise<boolean>
   countRecentForClient(input: { clientId: string, excludeKey: string, windowHours: number }): Promise<number>
   insertReserved(input: LeadAckReservationInput): Promise<void>
@@ -42,13 +43,14 @@ export async function reserveLeadAck(
   input: LeadAckReservationInput
 ): Promise<LeadAckReservation> {
   return ledger.withClientLock(input.clientId, async (tx) => {
-    const existing = await tx.findByKey(input.idempotencyKey)
+    const windowHours = LEAD_ACK_RECIPIENT_WINDOW_HOURS
+    const existing = await tx.findByKey(input.idempotencyKey, windowHours)
     if (existing?.status === 'sent') return { outcome: 'already_sent' }
     // An earlier attempt may have reached the provider before failing to
     // record it. It already counts toward the limits; resend under the same
-    // provider idempotency key so the provider drops a true duplicate.
-    if (existing?.status === 'reserved') return { outcome: 'reserved' }
-    const windowHours = LEAD_ACK_RECIPIENT_WINDOW_HOURS
+    // provider idempotency key so the provider drops a true duplicate. Once
+    // it has aged out of the window it no longer counts, so re-check limits.
+    if (existing?.status === 'reserved' && existing.fresh) return { outcome: 'reserved' }
     if (await tx.hasRecentForRecipient({
       clientId: input.clientId,
       formKey: input.formKey,
@@ -78,10 +80,11 @@ export function createPostgresLeadAckLedger(): LeadAckLedger {
         const rows = async <T>(sql: string, params: unknown[]) => ((await db.query(sql, params)).rows ?? []) as T[]
         await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`lead-ack-client:${clientId}`])
         return work({
-          async findByKey(key) {
-            const [row] = await rows<{ status: LeadAckLedgerStatus }>(
-              'SELECT status FROM lead_ack_sends WHERE idempotency_key = $1', [key])
-            return row ?? null
+          async findByKey(key, windowHours) {
+            const [row] = await rows<{ status: LeadAckLedgerStatus, fresh: boolean }>(
+              `SELECT status, created_at > NOW() - ($2::integer * INTERVAL '1 hour') AS fresh
+                 FROM lead_ack_sends WHERE idempotency_key = $1`, [key, windowHours])
+            return row ? { status: row.status, fresh: row.fresh === true } : null
           },
           async hasRecentForRecipient(i) {
             const found = await rows(
@@ -111,7 +114,7 @@ export function createPostgresLeadAckLedger(): LeadAckLedger {
           async markReserved(key) {
             await db.query(
               `UPDATE lead_ack_sends SET status = 'reserved', created_at = NOW(), updated_at = NOW()
-                WHERE idempotency_key = $1 AND status = 'failed'`, [key])
+                WHERE idempotency_key = $1 AND status IN ('failed', 'reserved')`, [key])
           }
         })
       })
@@ -121,9 +124,10 @@ export function createPostgresLeadAckLedger(): LeadAckLedger {
         'SELECT TRUE AS suppressed FROM suppression_list WHERE email = $1 LIMIT 1', [address])
       return row?.suppressed === true
     },
+    // created_at moves to the send time: both rolling limits count from it.
     async markSent(key, providerMessageId) {
       await execute(
-        `UPDATE lead_ack_sends SET status = 'sent', provider_message_id = $2, updated_at = NOW()
+        `UPDATE lead_ack_sends SET status = 'sent', provider_message_id = $2, created_at = NOW(), updated_at = NOW()
           WHERE idempotency_key = $1`, [key, providerMessageId])
     },
     async markFailed(key) {

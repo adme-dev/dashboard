@@ -187,4 +187,19 @@ describe('canonical lead acceptance side effects', () => {
       publishConversion: true
     }))
   })
+
+  it('drops a caller-supplied acknowledgement verification key', async () => {
+    const forged = input('capture_only')
+    forged.lead = { ...forged.lead, source: 'meta' as never, attribution: { browserEventId: 'browser-event-1', xf_ack_verification: 'platform_lead_form' } }
+    await acceptLead({} as never, forged)
+    expect(mocks.ingest.mock.calls[0]![0].lead.attribution).toEqual({ browserEventId: 'browser-event-1' })
+  })
+
+  it('records acknowledgement verification only from the trusted argument', async () => {
+    await acceptLead({} as never, { ...input('capture_only'), ackVerification: 'platform_lead_form' })
+    expect(mocks.ingest.mock.calls[0]![0].lead.attribution).toEqual({
+      browserEventId: 'browser-event-1',
+      xf_ack_verification: 'platform_lead_form'
+    })
+  })
 })

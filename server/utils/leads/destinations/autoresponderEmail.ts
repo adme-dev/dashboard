@@ -31,7 +31,16 @@ export interface LeadAckDependencies {
   apiKey: () => string | undefined
   sender: () => string | null
   send: (apiKey: string, payload: Parameters<Resend['emails']['send']>[0], idempotencyKey: string)
-  => Promise<{ id: string | null, error: string | null }>
+  => Promise<{ id: string | null, error: string | null, rejected?: boolean }>
+}
+
+/** Only a 4xx answer proves Resend did not accept the message. Network and
+ * decoding failures (no status), 5xx, and an in-flight duplicate (409) may
+ * still have been sent, so their reservation must keep counting. */
+export function isDefinitiveResendRejection(error: { statusCode?: number | null, name?: string }): boolean {
+  const status = error.statusCode
+  return typeof status === 'number' && status >= 400 && status < 500
+    && error.name !== 'concurrent_idempotent_requests'
 }
 
 const defaultDependencies = (): LeadAckDependencies => ({
@@ -40,7 +49,8 @@ const defaultDependencies = (): LeadAckDependencies => ({
   sender: leadAckSenderAddress,
   async send(apiKey, payload, idempotencyKey) {
     const { data, error } = await new Resend(apiKey).emails.send(payload, { idempotencyKey })
-    return { id: data?.id ?? null, error: error ? (error.message || 'resend_error') : null }
+    if (!error) return { id: data?.id ?? null, error: null }
+    return { id: null, error: error.message || 'resend_error', rejected: isDefinitiveResendRejection(error) }
   }
 })
 
@@ -89,7 +99,9 @@ export async function dispatchLeadAck(
       headers: { 'X-Leads-Idempotency-Key': delivery.idempotency_key }
     }, `lead-ack/${idempotencyKey}`)
     if (sent.error) {
-      await deps.ledger.markFailed(idempotencyKey)
+      // An ambiguous error keeps the reservation counted; a retry resends
+      // under the same provider idempotency key.
+      if (sent.rejected) await deps.ledger.markFailed(idempotencyKey)
       return { status: 'failed', error: `resend_error: ${sent.error}` }
     }
     await deps.ledger.markSent(idempotencyKey, sent.id)

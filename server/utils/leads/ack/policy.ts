@@ -6,21 +6,47 @@ import { createHash } from 'node:crypto'
 import type { Lead, LeadDelivery } from '~~/app/types'
 import { singleEmailAddress } from '../emailHeaders'
 
-export type LeadAckVerification = 'platform_lead_form'
+export type LeadAckVerification = 'platform_lead_form' | 'turnstile'
+
+/** Reserved attribution key holding server-side verification evidence. Only
+ * acceptLead writes it, from its trusted `ackVerification` argument, and it
+ * strips any caller-supplied value first (see withLeadAckVerification). */
+export const LEAD_ACK_VERIFICATION_KEY = 'xf_ack_verification'
+
+// Each method is only evidence for the ingest path that can produce it.
+const VERIFIED_SOURCES: Record<LeadAckVerification, ReadonlySet<Lead['source']>> = {
+  // The ad platform's own lead form, fetched or delivered by its signed webhook.
+  platform_lead_form: new Set(['meta', 'google']),
+  // A hosted QR form whose Turnstile token passed server-side verification.
+  turnstile: new Set(['qr'])
+}
+
+/** Drops any caller-supplied verification key, then records `method` when the
+ * trusted ingest path supplies one. */
+export function withLeadAckVerification(
+  attribution: Record<string, string> | null,
+  method: LeadAckVerification | undefined
+): Record<string, string> | null {
+  const { [LEAD_ACK_VERIFICATION_KEY]: _dropped, ...rest } = attribution ?? {}
+  if (method) return { ...rest, [LEAD_ACK_VERIFICATION_KEY]: method }
+  return attribution ? rest : null
+}
 
 /**
- * Whether the submission is verified as coming from a real person, without
- * trusting anything the browser sent. `attribution` and `field_data` are
- * visitor-influenced on website sources, so they are never consulted.
- *
- * - meta / google: submitted through the ad platform's own lead form by a
- *   signed-in platform user and delivered by a signed provider webhook.
- * - Website sources (page_studio, qr, webhook, email, csv, manual) have no
- *   persisted, server-side Turnstile proof on the lead today, so they are not
- *   eligible until one exists.
+ * Whether the submission is verified as coming from a real person. `source`
+ * alone is not evidence: CSV imports, manual entry and generic webhooks can
+ * all claim `meta` or `google`. Only the server-written key counts, and only
+ * for the source that can produce it, on a lead no staff member created.
+ * Page Studio forms pass mandatory Turnstile, but that proof is not linked to
+ * the lead yet, so they stay ineligible.
  */
-export function leadAckVerification(lead: Pick<Lead, 'source'>): LeadAckVerification | null {
-  return lead.source === 'meta' || lead.source === 'google' ? 'platform_lead_form' : null
+export function leadAckVerification(
+  lead: Pick<Lead, 'source' | 'attribution' | 'created_by'>
+): LeadAckVerification | null {
+  if (lead.created_by) return null
+  const method = lead.attribution?.[LEAD_ACK_VERIFICATION_KEY] as LeadAckVerification | undefined
+  if (!method || !Object.hasOwn(VERIFIED_SOURCES, method)) return null
+  return VERIFIED_SOURCES[method].has(lead.source) ? method : null
 }
 
 /** Synthetic leads: flagged test data, capture-test runs, and the rule

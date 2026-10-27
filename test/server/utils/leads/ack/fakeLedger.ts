@@ -14,9 +14,9 @@ export function createFakeLedger(now: () => number = Date.now) {
     withClientLock(clientId, work) {
       const previous = locks.get(clientId) ?? Promise.resolve()
       const next = previous.catch(() => {}).then(() => work({
-        async findByKey(key) {
+        async findByKey(key, windowHours) {
           const row = rows.find(r => r.idempotencyKey === key)
-          return row ? { status: row.status } : null
+          return row ? { status: row.status, fresh: within(row, windowHours) } : null
         },
         async hasRecentForRecipient(i) {
           await Promise.resolve()
@@ -34,7 +34,7 @@ export function createFakeLedger(now: () => number = Date.now) {
           rows.push({ ...i, status: 'reserved', createdAt: now() })
         },
         async markReserved(key) {
-          const row = rows.find(r => r.idempotencyKey === key && r.status === 'failed')
+          const row = rows.find(r => r.idempotencyKey === key && r.status !== 'sent')
           if (row) Object.assign(row, { status: 'reserved', createdAt: now() })
         }
       }))
@@ -46,7 +46,7 @@ export function createFakeLedger(now: () => number = Date.now) {
     },
     async markSent(key, providerId) {
       const row = rows.find(r => r.idempotencyKey === key)
-      if (row) Object.assign(row, { status: 'sent', providerId })
+      if (row) Object.assign(row, { status: 'sent', providerId, createdAt: now() })
     },
     async markFailed(key) {
       const row = rows.find(r => r.idempotencyKey === key && r.status === 'reserved')

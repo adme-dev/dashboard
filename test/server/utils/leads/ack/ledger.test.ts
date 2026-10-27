@@ -65,14 +65,38 @@ describe('Postgres lead ack ledger', () => {
   })
 
   it('returns already_sent for a sent key without further checks', async () => {
-    script([{ match: /SELECT status FROM lead_ack_sends/, rows: [{ status: 'sent' }] }])
+    script([{ match: /FROM lead_ack_sends WHERE idempotency_key/, rows: [{ status: 'sent' }] }])
     await expect(reserveLeadAck(createPostgresLeadAckLedger(), input)).resolves.toEqual({ outcome: 'already_sent' })
     expect(sqlCalls()).toHaveLength(2)
   })
 
+  it('reads freshness for an existing key over the recipient window', async () => {
+    script([{ match: /FROM lead_ack_sends WHERE idempotency_key/, rows: [{ status: 'reserved', fresh: true }] }])
+    await expect(reserveLeadAck(createPostgresLeadAckLedger(), input)).resolves.toEqual({ outcome: 'reserved' })
+    const [sql, params] = db.query.mock.calls.find(([s]) => /WHERE idempotency_key = \$1/.test(String(s)))!
+    expect(sql).toContain(`created_at > NOW() - ($2::integer * INTERVAL '1 hour') AS fresh`)
+    expect(params).toEqual([input.idempotencyKey, 24])
+    expect(sqlCalls().some(s => /COUNT|INSERT|UPDATE/.test(s))).toBe(false)
+  })
+
+  it('re-checks limits and refreshes a reservation that aged out', async () => {
+    script([
+      { match: /FROM lead_ack_sends WHERE idempotency_key/, rows: [{ status: 'reserved', fresh: false }] },
+      { match: /COUNT/, rows: [{ n: 0 }] }
+    ])
+    await expect(reserveLeadAck(createPostgresLeadAckLedger(), input)).resolves.toEqual({ outcome: 'reserved' })
+    expect(sqlCalls().some(s => s.includes('COUNT'))).toBe(true)
+    expect(sqlCalls().at(-1)).toContain(`status IN ('failed', 'reserved')`)
+  })
+
+  it('counts the limits from the send time', async () => {
+    await createPostgresLeadAckLedger().markSent(input.idempotencyKey, 'msg-1')
+    expect(db.execute.mock.calls[0]![0]).toContain('created_at = NOW()')
+  })
+
   it('re-reserves a failed key instead of inserting a duplicate', async () => {
     script([
-      { match: /SELECT status FROM lead_ack_sends/, rows: [{ status: 'failed' }] },
+      { match: /FROM lead_ack_sends WHERE idempotency_key/, rows: [{ status: 'failed' }] },
       { match: /COUNT/, rows: [{ n: 0 }] }
     ])
     await expect(reserveLeadAck(createPostgresLeadAckLedger(), input)).resolves.toEqual({ outcome: 'reserved' })

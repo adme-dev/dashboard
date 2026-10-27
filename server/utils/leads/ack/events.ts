@@ -17,20 +17,27 @@ export async function suppressBouncedLeadAck(input: {
   eventId: string
   resendType: string
 }): Promise<boolean> {
+  // Acknowledgements have exactly one recipient; it must be the one we hashed.
+  const to = Array.isArray(input.to) && input.to.length === 1 ? input.to[0] : input.to
+  const address = singleEmailAddress(to)
+  if (!address) return false
+  const recipientHash = leadAckRecipientHash(address)
   let row: { recipient_hash: string } | null
   try {
+    // A bounce can arrive before markSent stores the provider id; then match
+    // a recent, still-reserved acknowledgement to the same recipient.
     row = await queryOne<{ recipient_hash: string }>(
-      'SELECT recipient_hash FROM lead_ack_sends WHERE provider_message_id = $1 LIMIT 1', [input.messageId])
+      `SELECT recipient_hash FROM lead_ack_sends
+        WHERE provider_message_id = $1
+           OR (provider_message_id IS NULL AND status = 'reserved' AND recipient_hash = $2
+               AND created_at > NOW() - INTERVAL '1 hour')
+        LIMIT 1`, [input.messageId, recipientHash])
   } catch (error) {
     // Before migration 483 is applied there are no acknowledgements to match.
     if ((error as { code?: string })?.code === UNDEFINED_TABLE) return false
     throw error
   }
-  if (!row) return false
-  // Acknowledgements have exactly one recipient; it must be the one we hashed.
-  const to = Array.isArray(input.to) && input.to.length === 1 ? input.to[0] : input.to
-  const address = singleEmailAddress(to)
-  if (!address || leadAckRecipientHash(address) !== row.recipient_hash) return false
+  if (!row || row.recipient_hash !== recipientHash) return false
   const inserted = await execute(`
     INSERT INTO suppression_list (email, reason)
     VALUES ($1, $2)
