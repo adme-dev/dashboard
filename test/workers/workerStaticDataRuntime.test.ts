@@ -53,14 +53,14 @@ export default { fetch(request) {
 it('preserves medium SQL and parameters in actual Workers after full compaction', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pages-sql-runtime-'))
   let worker: Miniflare | undefined
-  const queries = Array.from({ length: 4 }, (_, index) => `SELECT ${index}, 'Text 🚘\\n' AS note\r\nFROM owned_site WHERE id=$1\n${'AND active = TRUE\n'.repeat(35)}FOR UPDATE`)
+  const queries = Array.from({ length: 19 }, (_, index) => `SELECT ${index}, 'Text 🚘\\n' AS note\r\nFROM owned_site WHERE id=$1\n${'AND active = TRUE\n'.repeat(35)}FOR UPDATE`)
   try {
     await mkdir(path.join(directory, 'chunks/nitro'), { recursive: true })
     const source = `export function run(args) { const db = { query(sql, values) { return { sql, values }; } }; return [${queries.map(query => `db.query(${JSON.stringify(query)}, args)`).join(',')}]; }`
     await writeFile(path.join(directory, 'chunks/nitro/nitro.mjs'), source)
     const entry = path.join(directory, 'index.js')
     await writeFile(entry, 'import { run } from \'./chunks/nitro/nitro.mjs\'; export default { fetch() { return Response.json(run([\'customer-native\'])); } };')
-    expect(await compactNitroSqlModule(directory)).toMatchObject({ literals: 4 })
+    expect(await compactNitroSqlModule(directory)).toMatchObject({ literals: 19 })
     await compactDeployedWorkerModules(directory)
     await compactWorkerModuleFilenames(directory)
     worker = new Miniflare({ scriptPath: entry, modulesRoot: directory, modules: true,

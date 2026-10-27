@@ -27,6 +27,40 @@ const metadata = () => Object.fromEntries(Array.from({ length: 100 }, (_, index)
 ]))
 
 describe('lossless generated Worker data compaction', () => {
+  it('shares compression across distinct static strings without changing their values', async () => {
+    const values = Array.from({ length: 64 }, (_, index) => `<section class="campaign-summary"><h2>Campaign ${index}</h2><p>${'Stored campaign results &amp; reviewed work 🚘. '.repeat(12)}</p></section>`)
+    const source = `export function render(push) { ${values.map(value => `push(${JSON.stringify(value)});`).join('')} }`
+    const result = compactSsrMarkupSource(source)
+    // Independent compression repeats the same dictionary for every paragraph.
+    expect(Buffer.byteLength(result.code)).toBeLessThan(3500)
+    const output: string[] = []
+    ;(await evaluate(result.code)).render((value: string) => output.push(value))
+    expect(output).toEqual(values)
+    expect(compactSsrMarkupSource(result.code).code).toBe(result.code)
+  })
+
+  it.each([160, 400])('decodes bounded groups lazily and reuses them (%i repeats)', async repeats => {
+    const values = Array.from({ length: 96 }, (_, index) => `<p data-row="${index}">${'Exact static text 🚘 &amp; \\r\\n '.repeat(repeats)}</p>`)
+    const source = `export function item(index) { switch(index) { ${values.map((value, index) => `case ${index}: return String(${JSON.stringify(value)});`).join('')} } }`
+    const root = await directory()
+    const probe = path.join(root, 'probe.mjs')
+    await writeFile(probe, `import { brotliDecompressSync as inflate } from 'node:zlib'; export const sizes = []; export function brotliDecompressSync(value) { const result = inflate(value); sizes.push(result.byteLength); return result; }`)
+    const result = compactSsrMarkupSource(source)
+    const module = await evaluate(result.code.replace("'node:zlib'", JSON.stringify(pathToFileURL(probe).href)))
+    const { sizes } = await import(pathToFileURL(probe).href)
+    expect(sizes).toEqual([])
+    expect(module.item(0)).toBe(values[0])
+    expect(module.item(1)).toBe(values[1])
+    expect(sizes).toHaveLength(1)
+    expect(module.item(0)).toBe(values[0])
+    expect(sizes).toHaveLength(1)
+    expect(module.item(values.length - 1)).toBe(values.at(-1))
+    expect(sizes).toHaveLength(2)
+    expect(sizes.every((size: number) => size <= 128 * 1024)).toBe(true)
+    for (const index of [16, 15, 17, 94, 32, 31, 0]) expect(module.item(index)).toBe(values[index])
+    expect(sizes.every((size: number) => size <= 128 * 1024)).toBe(true)
+  })
+
   it('losslessly compacts repeated medium fragments with complete decoder overhead included', async () => {
     const fragment = '<span class="text-muted">Saved &amp; ready 🚘</span>'.repeat(8)
     expect(fragment.length).toBeLessThan(1024)

@@ -58,7 +58,7 @@ it('leaves a lone short SQL candidate unchanged when a new helper would grow the
 
 it('amortizes one helper across short route candidates and preserves SQL and parameter identity', async () => {
   const directory = await fixture()
-  const routes = await Promise.all(Array.from({ length: 6 }, (_, index) =>
+  const routes = await Promise.all(Array.from({ length: 12 }, (_, index) =>
     writeRoute(directory, `api/${index % 2 ? 'nested/' : ''}${index}.mjs`, shortSql + `\n-- route ${index}`)))
   const untouched = path.join(directory, 'chunks/routes/api/tiny.mjs')
   const tinySource = routeSource('SELECT 1')
@@ -121,7 +121,7 @@ it('runs short shared SQL routes in workerd after minification and filename comp
   const directory = await fixture()
   let worker: Miniflare | undefined
   try {
-    const routes = await Promise.all(Array.from({ length: 6 }, (_, index) =>
+    const routes = await Promise.all(Array.from({ length: 12 }, (_, index) =>
       writeRoute(directory, `api/${index}.mjs`, shortSql + `\n-- runtime ${index}`)))
     const entry = path.join(directory, 'index.js')
     await writeFile(entry, `${routes.map((_, index) => `import { run as run${index} } from './chunks/routes/api/${index}.mjs';`).join('\n')}
