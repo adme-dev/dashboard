@@ -10,7 +10,7 @@ On 27 October, the user explicitly requested updates to the related marketing jo
 
 | Item | Verified status | Posted update ID |
 | --- | --- | --- |
-| Northern Nissan PMAX | Working On It (06:09 UTC) | `5667276388` |
+| Northern Nissan PMAX | **QA** (06:33 UTC) | `5667297106` |
 | Astoria ORC | Awaiting Client | `5667031182` |
 | Fairfield Foton setup | **Done** (05:49 UTC) | `5667260266` |
 | Driveagent conversion tracking | QA | `5667031486` |
@@ -302,3 +302,6 @@ This proves the native accepted-contact → server-side GA4 reporting path for t
 Durable proof: [sanitized acceptance and exact-event receipt](evidence/nissan-pmax-20261027/live-enquiry-proof.json), [GA4 event screenshot](evidence/nissan-pmax-20261027/exact-event-id.png). The screenshot visually truncates the UUID; the independent DOM readback in the receipt retains the entire matching value.
 
 Technical repair and ordinary contact-to-GA4 acceptance have passed. Keep the parent in QA while the final genuine paid-ad attribution check remains open; no further operator enquiry is authorized or needed for this bounded test.
+
+
+Monday update **5667297106** and the change to **QA** were independently read back at **06:33:22 UTC** on item **3948720818**. The saved post links the committed exact-event proof, records that both campaign warnings cleared, and keeps genuine Ads attribution open. Assignee Paul and due date **27 October** were preserved.

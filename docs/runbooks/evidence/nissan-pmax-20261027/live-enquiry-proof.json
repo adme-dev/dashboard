@@ -148,5 +148,13 @@
     "Direct-navigation operator test is not a customer enquiry or ad-attributed conversion.",
     "No ad click was generated or invented and no customer record replayed.",
     "Privacy footer did not visibly open a panel; consent-controls and blocked-script acceptance are not proved by this test."
-  ]
+  ],
+  "monday": {
+    "itemId": "3948720818",
+    "updateId": "5667297106",
+    "status": "QA",
+    "verifiedAt": "2026-10-27T06:33:22.401Z",
+    "bodyVerified": true,
+    "assigneeAndDuePreserved": true
+  }
 }
