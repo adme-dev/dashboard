@@ -347,6 +347,7 @@ export interface VideoProposeDeps {
 }
 
 function modelSupports(model: VideoGenerationModel, p: z.infer<typeof VideoGenParams>): boolean {
+  if (model.maxPromptLength && p.prompt.length > model.maxPromptLength) return false
   if (!model.modes.includes(p.mode)) return false
   if (!model.durationsSeconds.includes(p.durationSeconds)) return false
   if (!model.aspectRatios.includes(p.aspectRatio)) return false
@@ -486,6 +487,7 @@ export async function executeVideoPropose(
             resolution: p.resolution ?? null,
             subjectType: p.subjectType,
             sourceAssetCount: p.sourceAssetIds.length,
+            ...(model.maxPromptLength ? { promptLength: p.prompt.length, maxPromptLength: model.maxPromptLength } : {}),
           }
         }
       }

@@ -896,7 +896,7 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     surface: 'video-generation Worker',
     owner: 'Media Studio',
     provider: 'aigateway',
-    modelId: 'bytedance/seedance-2.0-fast',
+    modelId: 'bytedance/seedance-2.5',
     modality: 'video',
     riskTier: 'high',
     sourceFile: 'workers/video-generation/src/worker.ts'
@@ -907,7 +907,7 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     surface: 'video-generation webhook/reconcile',
     owner: 'Media Studio',
     provider: 'aigateway',
-    modelId: 'bytedance/seedance-2.0-fast',
+    modelId: 'bytedance/seedance-2.5',
     modality: 'video',
     riskTier: 'high',
     sourceFile: 'server/utils/video-generation/finalize.ts'

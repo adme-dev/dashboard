@@ -39,6 +39,9 @@ function assertEnabled() {
 }
 
 function assertModelSupportsRequest(model: NonNullable<ReturnType<typeof getVideoGenerationModel>>, body: z.infer<typeof BodySchema>) {
+  if (model.maxPromptLength && body.prompt.length > model.maxPromptLength) {
+    throw createError({ statusCode: 400, statusMessage: `Model prompt must be ${model.maxPromptLength} characters or fewer` })
+  }
   if (!model.modes.includes(body.mode)) {
     throw createError({ statusCode: 400, statusMessage: 'Model does not support the requested generation mode' })
   }

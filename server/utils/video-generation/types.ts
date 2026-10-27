@@ -35,6 +35,8 @@ export interface VideoGenerationModel {
   capabilities: VideoGenerationCapabilities
   safetyClass: VideoGenerationSafetyClass
   defaultEnabled: boolean
+  /** Provider-specific prompt limit, validated before reserving budget. */
+  maxPromptLength?: number
   /** Legacy-only MuAPI mapping. The active model registry is Cloudflare AI Gateway only. */
   muapi?: {
     endpoint: string            // muapi model endpoint slug, e.g. 'generate_kling_i2v'
@@ -43,7 +45,7 @@ export interface VideoGenerationModel {
   cfModel?: string
   /** Where the model may be offered. 'internal' models are never tenant-selectable. */
   surface?: 'tenant' | 'internal'
-  /** Generation modality (governance: tenant path is i2v-only — enforced in Slice 2B). */
+  /** Generation modality; vehicle generation still requires an approved source image. */
   modality?: 'i2v' | 't2v' | 'i2v+t2v'
 }
 
