@@ -22,6 +22,9 @@ const executable = [
   '/usr/bin/chromium', '/usr/bin/chromium-browser'
 ].find(path => existsSync(path))
 const config = { environment: 'production', appOrigins: '["https://app.xeroflow.io"]', assetOrigins: '[]' }
+// Exercise Linux-style scrollbar layout even on macOS, where overlay scrollbars
+// otherwise hide overflow bugs in tiny screenshot fixtures.
+const classicScrollbars = '::-webkit-scrollbar{width:15px;height:15px}'
 const input = (output = 'png', html = '<html><body style="margin:0;background:#ff0000"></body></html>') => ({ version: 1, expectedEnvironment: 'production', requestId: 'browser_proof', output, ...(output === 'jpeg' ? { jpegQuality: 90 } : {}), ...(output === 'gif' ? { fps: 5 } : {}), items: [{ key: 'tiny', width: 4, height: 3, scale: 2, html }] })
 describe.skipIf(!executable)('real local Chromium renderer (no hosted proof)', () => {
   let chrome: ReturnType<typeof spawn>
@@ -115,12 +118,26 @@ describe.skipIf(!executable)('real local Chromium renderer (no hosted proof)', (
     expect([...decoded.data.subarray(0, 4)]).toEqual([255, 0, 0, 255])
   })
   it('loads and decodes the real pinned font with JavaScript disabled', async () => {
-    const html = `<style>@font-face{font-family:ProofFont;src:url(https://app.xeroflow.io${PINNED_FONT_PATH})}body{font-family:ProofFont}</style><body>HELLO</body>`
+    const html = `<style>${classicScrollbars}@font-face{font-family:ProofFont;src:url(https://app.xeroflow.io${PINNED_FONT_PATH})}body{margin:0;font:20px/24px ProofFont;color:black;background:white}</style><body>HELLO</body>`
     const font = readFileSync(`public${PINNED_FONT_PATH}`)
     expect(font.length).toBe(428176)
-    const reply = await handleBannerRender(input('png', html), config, { launch, fetchResource: async () => new Response(font, { headers: { 'content-type': 'font/ttf' } }) })
+    // The old 4x3 canvas placed all glyphs outside the screenshot and its
+    // default body margin let classic scrollbars consume the entire viewport.
+    const request = input('png', html)
+    request.items[0].width = 160
+    request.items[0].height = 40
+    const reply = await handleBannerRender(request, config, { launch, fetchResource: async () => new Response(font, { headers: { 'content-type': 'font/ttf' } }) })
     expect(reply.ok ? undefined : reply.error).toBeUndefined()
     expect(reply.ok).toBe(true)
+    if (reply.ok) {
+      const decoded = PNG.sync.read(Buffer.from(reply.value.items[0].bytes))
+      expect([decoded.width, decoded.height]).toEqual([320, 80])
+      let inkPixels = 0
+      for (let offset = 0; offset < decoded.data.length; offset += 4) {
+        if (decoded.data[offset] < 128 && decoded.data[offset + 3] === 255) inkPixels++
+      }
+      expect(inkPixels).toBeGreaterThan(100)
+    }
   })
   it('reports only the stage and HTTP status when an allowed font resource fails', async () => {
     const html = `<style>@font-face{font-family:ProofFont;src:url(https://app.xeroflow.io${PINNED_FONT_PATH})}body{font-family:ProofFont}</style><body>HELLO</body>`
@@ -135,10 +152,19 @@ describe.skipIf(!executable)('real local Chromium renderer (no hosted proof)', (
     expect(reply).toMatchObject({ ok: false, error: { code: 'RESOURCE_FAILED' } })
   })
   it('removes non-HTTP network APIs before GIF script execution', async () => {
-    const html = '<body><script>if(["RTCPeerConnection","webkitRTCPeerConnection","WebTransport","WebSocket","EventSource","Worker","SharedWorker","open"].some(key=>globalThis[key]!==undefined))throw Error("API exposed");window.__engagrFrame={ready:true,duration:0.2,seek(){},getDiagnostics(){return {hasTimeline:true,events:[]}}}</script></body>'
+    const html = `<style>${classicScrollbars}body{margin:0}</style><body><script>if(["RTCPeerConnection","webkitRTCPeerConnection","WebTransport","WebSocket","EventSource","Worker","SharedWorker","open"].some(key=>globalThis[key]!==undefined))throw Error("API exposed");document.body.style.background="red";window.__engagrFrame={ready:true,duration:0.2,seek(){},getDiagnostics(){return {hasTimeline:true,events:[]}}}</script></body>`
     const request = input('gif', html)
     request.items[0].scale = 1
-    expect(await handleBannerRender(request, config, { launch, fetchResource })).toMatchObject({ ok: true })
+    const reply = await handleBannerRender(request, config, { launch, fetchResource })
+    expect(reply.ok ? undefined : reply.error).toBeUndefined()
+    expect(reply).toMatchObject({ ok: true })
+    if (reply.ok) {
+      expect(reply.value.items[0]).toMatchObject({ frames: 1, pixelWidth: 4, pixelHeight: 3 })
+      const { data, info } = await sharp(Buffer.from(reply.value.items[0].bytes)).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+      expect([info.width, info.height]).toEqual([4, 3])
+      // Red is set only after the inline script verifies every forbidden API.
+      expect([...data.subarray(0, 4)]).toEqual([255, 0, 0, 255])
+    }
   })
   it('fails GIF fetch and iframe attempts under CSP without network access', async () => {
     const html = '<body><iframe src="https://forbidden.example/"></iframe><script>fetch("https://fonts.googleapis.com/css2").catch(()=>{});window.__engagrFrame={ready:true,duration:0.2,seek(){},getDiagnostics(){return {hasTimeline:true,events:[]}}}</script></body>'
