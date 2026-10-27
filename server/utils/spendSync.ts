@@ -952,7 +952,8 @@ export async function syncLinkedinSpend(month: number, year: number): Promise<Sy
   const { getLinkedInCampaignInsights, getLinkedInCampaignDailyInsights, ensureLinkedInAccessToken } = await import('~~/server/utils/linkedinClient')
 
   const period = `${year}-${String(month).padStart(2, '0')}`
-  const config = useRuntimeConfig()
+  const { getLinkedInAdsOAuthConfig } = await import('~~/server/utils/socialOAuth/env')
+  const config = getLinkedInAdsOAuthConfig()
 
   const connections = await queryRows<{
     id: string
