@@ -528,5 +528,15 @@
       }
     }
   },
-  "scope": "Configuration proof only. No submitted operator test or customer payload. Exact event delivery and Ads attribution not yet proved."
+  "scope": "Configuration proof only. No submitted operator test or customer payload. Exact event delivery and Ads attribution not yet proved.",
+  "monday": {
+    "updateId": "5667276388",
+    "verifiedAt": "2026-10-27T06:09:11.843Z",
+    "complete": true,
+    "urlVerified": true,
+    "itemId": "3948720818",
+    "status": "Working On It",
+    "campaignUrl": "https://www.northernnissan.com.au/cars-for-sale?condition=new,demo&sort=year_desc",
+    "assigneeAndDuePreserved": true
+  }
 }

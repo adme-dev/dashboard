@@ -10,7 +10,7 @@ On 27 October, the user explicitly requested updates to the related marketing jo
 
 | Item | Verified status | Posted update ID |
 | --- | --- | --- |
-| Northern Nissan PMAX | Working On It | `5667031021` |
+| Northern Nissan PMAX | Working On It (06:09 UTC) | `5667276388` |
 | Astoria ORC | Awaiting Client | `5667031182` |
 | Fairfield Foton setup | **Done** (05:49 UTC) | `5667260266` |
 | Driveagent conversion tracking | QA | `5667031486` |
@@ -271,3 +271,6 @@ This supersedes the earlier requirement to add a native direct Google Ads connec
 - Graph freshness still fails because provenance/output is missing; the GitHub wiki repository lookup still returns not found. Current pinned source and this maintained ledger provide the audit basis; no wiki refresh is claimed.
 
 Sanitized provider receipts and readbacks are retained in [Nissan PMAX evidence](evidence/nissan-pmax-20261027/proof.json). Parent task stays open until the remaining provider diagnostics and delivery criteria are evidenced.
+
+
+Monday update **5667276388** was posted to Nissan item **3948720818** and independently read back at **06:09:11 UTC**. The **Campaign URL** field now contains the verified `/cars-for-sale?condition=new,demo&sort=year_desc` destination. Status remains **Working On It**; assignee Paul and due date **27 October** were preserved. The post links committed evidence and explicitly leaves Google review/recalculation and enquiry/attribution proof open.
