@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="ad.size" content="width=640,height=360">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+
+<style>
+@font-face { font-family: 'Source Sans 3'; src: url('https://app.xeroflow.io/fonts/banner/SourceSans3-Bold.9214b9d95e4231c609802815c2646c98174e2102d0d37f88978a7f8e71006e6a.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: block; }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+.ad { position: relative; width: 640px; height: 360px; overflow: hidden; background: #ffffff; }
+.layer { position: absolute; }
+</style>
+</head>
+<body>
+<div class="ad">
+    <div class="layer" data-id="1" style="position:absolute;left:20px;top:20px;width:600px;height:320px;opacity:1;background:#e8eef7;"></div>
+    <div class="layer" data-id="2" style="position:absolute;left:40px;top:65px;width:560px;height:80px;opacity:1;white-space:pre-wrap;word-break:break-word;font-size:48px;font-weight:700;font-family:'Source Sans 3',sans-serif;color:#ffffff;line-height:1.2;text-shadow:0px 0px 8px #22d3ee, 0px 0px 20px #22d3ee;">Welcome tomorrow</div>
+    <div class="layer" data-id="3" style="position:absolute;left:40px;top:240px;width:560px;height:55px;opacity:1;white-space:pre-wrap;word-break:break-word;font-size:18px;font-weight:400;font-family:'Arial',sans-serif;color:#334455;line-height:1.2;">Synthetic release check. No customer offer.</div>
+</div>
+<script>
+  const tl = gsap.timeline();
+  const maskUpdates = [];
+  window.__engagrTimeline = tl;
+  tl.set('[data-id="1"]', { opacity: 1, scale: 1, rotation: 0, x: 0, y: 0, immediateRender: false }, 0);
+  tl.to('[data-id="1"]', { opacity: 1, duration: 0.1 }, 0);
+  tl.to('[data-id="1"]', { opacity: 0, duration: 0.05 }, 4.95);
+  tl.set('[data-id="2"]', { opacity: 0, scale: 1, rotation: 0, x: 0, y: 0, immediateRender: false }, 0);
+  tl.fromTo('[data-id="2"]', { opacity: 0 }, { opacity: 1, scale: 1, rotation: 0, x: 0, y: 0, duration: 0.6, ease: 'power2.out', immediateRender: false }, 0);
+  tl.to('[data-id="2"]', { opacity: 0, duration: 0.05 }, 4.95);
+  tl.set('[data-id="3"]', { opacity: 1, scale: 1, rotation: 0, x: 0, y: 0, immediateRender: false }, 0);
+  tl.to('[data-id="3"]', { opacity: 1, duration: 0.1 }, 0);
+  tl.to('[data-id="3"]', { opacity: 0, duration: 0.05 }, 4.95);
+  window.__engagrUpdateMasks = function() { maskUpdates.forEach(function(update) { update(); }); };
+  tl.eventCallback('onUpdate', window.__engagrUpdateMasks);
+</script>
+<script>
+(function(){
+  var diagnostics = [];
+  var visibleElements = [{"id":"1","type":"rect","start":0,"end":5},{"id":"2","type":"text","start":0,"end":5},{"id":"3","type":"text","start":0,"end":5}];
+  var fixedCycleDuration = false;
+  var fallbackDuration = 5.000;
+  function record(code, message) {
+    diagnostics.push({ code: code, message: String(message || ''), at: Date.now() });
+    if (diagnostics.length > 50) diagnostics.shift();
+  }
+  function timeline() {
+    if (window.__engagrTimeline) return window.__engagrTimeline;
+    var g = window.gsap;
+    var children = g && g.globalTimeline && g.globalTimeline.getChildren ? g.globalTimeline.getChildren(false) : null;
+    return children && children[0] ? children[0] : null;
+  }
+  function readDuration() {
+    if (fixedCycleDuration) return fallbackDuration;
+    var tl = timeline();
+    var d = null;
+    try {
+      if (tl && typeof tl.totalDuration === 'function') d = tl.totalDuration();
+      if (!(typeof d === 'number' && isFinite(d) && d > 0) && tl && typeof tl.duration === 'function') d = tl.duration();
+    } catch (err) {
+      record('duration_failed', err && err.message ? err.message : err);
+    }
+    return (typeof d === 'number' && isFinite(d) && d > 0) ? d : fallbackDuration;
+  }
+  function pauseMedia() {
+    document.querySelectorAll('video,audio').forEach(function(el) {
+      try { if (typeof el.pause === 'function') el.pause(); } catch (err) { record('media_pause_failed', err && err.message ? err.message : err); }
+    });
+  }
+  var runtime = {
+    ready: false,
+    duration: fallbackDuration,
+    fps: undefined,
+    seek: function(timeSeconds) {
+      var seekTime = Number(timeSeconds);
+      if (!isFinite(seekTime) || seekTime < 0) throw new Error('Invalid seek time');
+      var tl = timeline();
+      try {
+        if (tl && typeof tl.pause === 'function') tl.pause();
+        if (tl && typeof tl.seek === 'function') tl.seek(seekTime, false);
+        if (typeof window.__engagrUpdateMasks === 'function') window.__engagrUpdateMasks();
+        pauseMedia();
+        runtime.duration = readDuration();
+      } catch (err) {
+        record('seek_failed', err && err.message ? err.message : err);
+        throw err;
+      }
+    },
+    getDiagnostics: function() {
+      return { events: diagnostics.slice(), duration: runtime.duration, hasTimeline: !!timeline() };
+    },
+    getVisibleElements: function() {
+      return visibleElements.slice();
+    }
+  };
+  window.__engagrFrame = runtime;
+  runtime.duration = readDuration();
+  runtime.ready = true;
+})();
+</script>
+
+</body>
+</html>

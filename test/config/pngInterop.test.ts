@@ -51,7 +51,8 @@ export default defineEventHandler(() => {
   }
   const uncheckedCrcAccepted = PNG.sync.read(corrupt, { checkCRC: false }).width === 2
 
-  const compressed = deflateSync(Buffer.alloc(128))
+  // Exceed the fixed native allocation headroom as well as accepted image size.
+  const compressed = deflateSync(Buffer.alloc(128 * 1024))
   const idat = Buffer.alloc(compressed.length + 12)
   idat.writeUInt32BE(compressed.length, 0)
   idat.write('IDAT', 4)

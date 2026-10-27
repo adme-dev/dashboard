@@ -1,25 +1,39 @@
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import puppeteer from '../../workers/banner-renderer/node_modules/@cloudflare/puppeteer'
 import { PNG } from 'pngjs'
 import jpeg from 'jpeg-js'
 import { PINNED_FONT_PATH } from '../../workers/banner-renderer/src/resourcePolicy'
 import { handleBannerRender } from '../../workers/banner-renderer/src/render'
+import { buildBundle } from '../../workers/banner-renderer/build.mjs'
+import { Miniflare, Response as MiniflareResponse, WebSocketPair } from 'miniflare'
+import WebSocket from 'ws'
+import sharp from 'sharp'
 
-const executable = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+const executable = [
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium', '/usr/bin/chromium-browser'
+].find(path => existsSync(path))
 const config = { environment: 'production', appOrigins: '["https://app.xeroflow.io"]', assetOrigins: '[]' }
 const input = (output = 'png', html = '<html><body style="margin:0;background:#ff0000"></body></html>') => ({ version: 1, expectedEnvironment: 'production', requestId: 'browser_proof', output, ...(output === 'jpeg' ? { jpegQuality: 90 } : {}), ...(output === 'gif' ? { fps: 5 } : {}), items: [{ key: 'tiny', width: 4, height: 3, scale: 2, html }] })
-describe.skipIf(!existsSync(executable))('real local Chromium renderer (no hosted proof)', () => {
+describe.skipIf(!executable)('real local Chromium renderer (no hosted proof)', () => {
   let chrome: ReturnType<typeof spawn>
   let directory: string
   let endpoint: string
+  let bundledRender: typeof handleBannerRender
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), 'banner-renderer-browser-'))
-    chrome = spawn(executable, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${directory}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] })
+    const bundlePath = join(directory, 'render.mjs')
+    await buildBundle('src/render.ts', bundlePath)
+    bundledRender = (await import(/* @vite-ignore */ pathToFileURL(bundlePath).href)).handleBannerRender
+    chrome = spawn(executable!, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${directory}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] })
     endpoint = await new Promise<string>((resolve, reject) => {
       let stderr = ''
       const timer = setTimeout(() => reject(new Error('Chrome startup timeout')), 10000)
@@ -146,4 +160,97 @@ describe.skipIf(!existsSync(executable))('real local Chromium renderer (no hoste
     oversized.items[0].scale = 1
     expect(await handleBannerRender(oversized, config, { launch, fetchResource })).toMatchObject({ ok: false, error: { code: 'LIMIT_EXCEEDED' } })
   })
+  it.each(['source', 'bundle'])('renders the actual UI-generated animated HTML with real GSAP and the pinned font (%s)', async (mode) => {
+    const html = readFileSync('test/fixtures/banner/generated-animated-export.html', 'utf8')
+    const gsap = readFileSync('test/fixtures/banner/gsap-3.12.2.min.js')
+    const font = readFileSync(`public${PINNED_FONT_PATH}`)
+    const errors: string[] = []
+    const render = mode === 'source' ? handleBannerRender : bundledRender
+    const reply = await render({
+      version: 1, expectedEnvironment: 'production', requestId: 'generated_html_proof',
+      output: 'gif', fps: 10,
+      items: [{ key: 'generated', width: 640, height: 360, scale: 1, html }]
+    }, config, { launch: async () => {
+      const browser = await launch()
+      const newPage = browser.newPage.bind(browser)
+      browser.newPage = async () => {
+        const page = await newPage()
+        page.on('pageerror', error => errors.push(String(error)))
+        return page
+      }
+      return browser
+    }, fetchResource: async (url) => {
+      if (url === 'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js')
+        return new Response(gsap, { headers: { 'content-type': 'application/javascript' } })
+      if (url === `https://app.xeroflow.io${PINNED_FONT_PATH}`)
+        return new Response(font, { headers: { 'content-type': 'font/ttf' } })
+      throw new Error(`Unexpected resource: ${url}`)
+    } })
+    expect(errors).toEqual([])
+    expect(reply.ok ? undefined : reply.error).toBeUndefined()
+    if (reply.ok) {
+      expect(reply.value.items[0]).toMatchObject({ frames: 50, durationSec: 5, frameDelayMs: 100, pixelWidth: 640, pixelHeight: 360 })
+      expect(Buffer.from(reply.value.items[0].bytes).subarray(0, 6).toString()).toBe('GIF89a')
+    }
+  }, 60000)
+  it('renders generated HTML through the actual bundled workerd renderer and local Chrome', async () => {
+    const bundlePath = join(directory, 'workerd.mjs')
+    await buildBundle('../../test/fixtures/banner/renderer-local-workerd.ts', bundlePath)
+    const runtime = new Miniflare({
+      modules: true, modulesRoot: directory, scriptPath: bundlePath, compatibilityDate: '2026-07-15',
+      compatibilityFlags: ['nodejs_compat', 'global_fetch_strictly_public'],
+      outboundService: () => { throw new Error('Unexpected outbound request') },
+      serviceBindings: {
+        CHROME: async (request) => {
+          expect(request.url).toBe('https://fake.host/v1/devtools/browser/local')
+          const ws = new WebSocket(endpoint)
+          await new Promise<void>((resolve, reject) => {
+            ws.once('open', resolve)
+            ws.once('error', reject)
+          })
+          const pair = new WebSocketPair()
+          pair[1].accept()
+          pair[1].addEventListener('message', event => ws.send(event.data))
+          pair[1].addEventListener('close', () => ws.close())
+          ws.on('message', data => pair[1].send(data.toString()))
+          ws.on('close', () => pair[1].close())
+          return new MiniflareResponse(null, { status: 101, webSocket: pair[0] })
+        },
+        RESOURCES: async (request) => {
+          if (request.url === 'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js')
+            return new MiniflareResponse(readFileSync('test/fixtures/banner/gsap-3.12.2.min.js'), { headers: { 'content-type': 'application/javascript' } })
+          if (request.url === `https://app.xeroflow.io${PINNED_FONT_PATH}`)
+            return new MiniflareResponse(readFileSync(`public${PINNED_FONT_PATH}`), { headers: { 'content-type': 'font/ttf' } })
+          throw new Error(`Unexpected resource: ${request.url}`)
+        }
+      }
+    })
+    try {
+      const response = await runtime.dispatchFetch('https://local-proof.invalid/', {
+        method: 'POST', body: JSON.stringify({
+          version: 1, expectedEnvironment: 'production', requestId: 'workerd_browser_proof', output: 'gif', fps: 10,
+          items: [{ key: 'generated', width: 640, height: 360, scale: 1, html: readFileSync('test/fixtures/banner/generated-animated-export.html', 'utf8') }]
+        })
+      })
+      const bytes = Buffer.from(await response.arrayBuffer())
+      expect(response.status, response.status === 200 ? undefined : bytes.toString()).toBe(200)
+      const metadata = await sharp(bytes, { animated: true }).metadata()
+      expect(metadata).toMatchObject({ format: 'gif', width: 640, pageHeight: 360, pages: 50, delay: Array(50).fill(100), loop: 0 })
+      const first = await sharp(bytes, { page: 0 }).ensureAlpha().raw().toBuffer()
+      const visible = await sharp(bytes, { page: 6 }).ensureAlpha().raw().toBuffer()
+      let changedPixels = 0
+      for (let offset = 0; offset < first.length; offset += 4) {
+        if (first[offset] !== visible[offset] || first[offset + 1] !== visible[offset + 1] || first[offset + 2] !== visible[offset + 2]) changedPixels++
+      }
+      expect(changedPixels).toBeGreaterThan(500)
+      expect([...visible.subarray(0, 4)]).toEqual([255, 255, 255, 255])
+      const browser = await launch()
+      try {
+        expect(await browser.pages()).toHaveLength(1)
+      } finally {
+        await browser.close()
+      }
+      console.info(`[generated-html-workerd] bytes=${bytes.length} sha256=${createHash('sha256').update(bytes).digest('hex')} frames=${metadata.pages} changedPixels=${changedPixels}`)
+    } finally { await runtime.dispose() }
+  }, 60000)
 })

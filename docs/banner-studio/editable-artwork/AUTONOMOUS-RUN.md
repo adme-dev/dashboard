@@ -1,5 +1,11 @@
 ## 27 October 2026, 11:57 UTC — final-artifact gate stopped upload
 
+## Current checkpoint — 12:38 UTC
+
+PNG and JPG exports now pass actual hosted editor download checks, including pinned font, neon styling and 2× JPG dimensions. Signed synthetic asset rendering and authenticated/unauthenticated private download checks pass. Pages remains source `09bc4d2e9`, deployment `44decd8f-7e44-4513-b99b-cf3309d39ab0`; private renderer is source `86ebf6fd3`, version `cb00095b-73af-4cfb-acef-9b54aa52de11`. Native fetch receiver and public resource routing repairs are tested and independently reviewed. Customer baseline hash remains unchanged. See [hosted raster evidence](HOSTED-RASTER-ACCEPTANCE.md) for exact artifact hashes, test boundaries and HEAD-header limitation.
+
+GIF still returns RENDER_FAILED with the real generated animated HTML. Supervised worker `ctx_3590cb49d0d1` owns the local reproduction/repair; previous routing reviewer `ctx_5079e7bcb9d0` is settled and released. CI `40500087799` is still running on Pages source; renderer commits await final push. Native registry push and provider approval blockers remain. Full PRD completion is not claimed.
+
 The `ea780dbcc` Pages build completed, but its unchanged codec execution gate failed: 135 Banner handlers loaded, while the real PNG class had become internal to Nitro runtime chunk 0 after raster rendering moved out of Pages. No Pages upload occurred. Production remains `6c3548c1-8404-4547-8e63-0d3beb40c371`; private renderer version `ebbd8a3b-a5d1-4907-bc48-a6e18741745c` exists but is not yet bound by production Pages.
 
 The packaging repair emits the actual existing PNG adapter as a strict Rollup source chunk. Two minimal route/runtime layouts now prove the same exported codec is used by real Banner validation; 11 focused checks pass. No final gate relaxation or artifact-byte edit was made. Independently reviewed browser download handling now avoids async popup dependency and rejects HTTP error/truncated bodies before a Blob or ZIP download. See PNG-CHUNK-REPAIR.md and RASTER-DOWNLOAD-REVIEW.md. Root is integrating and rebuilding with the existing full guards.

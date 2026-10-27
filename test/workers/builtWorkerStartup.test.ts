@@ -18,7 +18,7 @@ const codecMarker = 'bad png - invalid inflate data response'
 
 type Module = { type: 'ESModule', path: string, contents: string }
 type WorkerConfig = { compatibility_date: string, compatibility_flags?: string[] }
-type Fixtures = Record<'valid' | 'corrupt' | 'inflated', string>
+type Fixtures = Record<'valid' | 'corrupt' | 'inflated' | 'oneByteExcess' | 'fullSize', string>
 type RouteHandler = { chunk: string, exportName?: string }
 
 async function artifactModules(root: string) {
@@ -119,6 +119,8 @@ export default {
       if (codecs.length !== 1) return Response.json({ routes, codecs })
       const PNG = [...found.keys()][0]
       const decoded = PNG.sync.read(bytes(fixtures.valid), { checkCRC: true })
+      const fullSize = PNG.sync.read(bytes(fixtures.fullSize), { checkCRC: true })
+      const fullSizeHash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(fullSize.data)))].map(n => n.toString(16).padStart(2, '0')).join('')
       const image = new PNG({ width: 2, height: 1 })
       image.data.set([255, 0, 0, 255, 0, 0, 0, 0])
       const encoded = PNG.sync.write(image)
@@ -127,10 +129,12 @@ export default {
         routes,
         codecs,
         decoded: { width: decoded.width, height: decoded.height, data: [...decoded.data] },
+        fullSize: { width: fullSize.width, height: fullSize.height, byteLength: fullSize.data.length, sha256: fullSizeHash },
         roundTrip: { signature: [...encoded.subarray(0, 8)], width: roundTrip.width, height: roundTrip.height, data: [...roundTrip.data] },
         corrupt: rejection(() => PNG.sync.read(bytes(fixtures.corrupt), { checkCRC: true })),
         corruptUnchecked: rejection(() => PNG.sync.read(bytes(fixtures.corrupt), { checkCRC: false })),
-        inflated: rejection(() => PNG.sync.read(bytes(fixtures.inflated), { checkCRC: true }))
+        inflated: rejection(() => PNG.sync.read(bytes(fixtures.inflated), { checkCRC: true })),
+        oneByteExcess: rejection(() => PNG.sync.read(bytes(fixtures.oneByteExcess), { checkCRC: true }))
       })
     } catch (error) {
       return new Response(String(error?.stack || error), { status: 500 })
@@ -165,6 +169,26 @@ function chunk(type: string, data: Buffer) {
 
 // 3x3 RGBA, transparent except one opaque centre pixel; built without pngjs.
 const centrePixel = [200, 20, 10, 255]
+// Chrome screenshots are RGB PNGs. This compressible 640x360 fixture expands
+// to 691560 scanline bytes: the real-size boundary the old tiny gate missed.
+function fullSizePngFixture() {
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(640, 0)
+  header.writeUInt32BE(360, 4)
+  header[8] = 8
+  header[9] = 2
+  const scanlines = Buffer.alloc(360 * (1 + 640 * 3))
+  const rgba = Buffer.alloc(640 * 360 * 4)
+  for (let y = 0; y < 360; y++) for (let x = 0; x < 640; x++) {
+    const rgb = x > 40 && x < 600 && y > 80 && y < 140 ? [255, 255, 255] : y < 180 ? [32, 80, 160] : [224, 96, 64]
+    scanlines.set(rgb, y * 1921 + 1 + x * 3)
+    rgba.set([...rgb, 255], (y * 640 + x) * 4)
+  }
+  return {
+    png: Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(scanlines)), chunk('IEND', Buffer.alloc(0))]),
+    sha256: createHash('sha256').update(rgba).digest('hex')
+  }
+}
 function pngFixtures(): Fixtures {
   const header = Buffer.alloc(13)
   header.writeUInt32BE(3, 0)
@@ -184,8 +208,10 @@ function pngFixtures(): Fixtures {
   corrupt[valid.length - 13]! ^= 1 // IDAT CRC
   // CRC-valid IDAT inflating far beyond the image size. pngjs rejects excess
   // data after an unbounded inflate too, so the proof is which error fires.
-  const inflated = png(Buffer.concat([scanlines, Buffer.alloc(64 * 1024)]))
-  return { valid: valid.toString('base64'), corrupt: corrupt.toString('base64'), inflated: inflated.toString('base64') }
+  const inflated = png(Buffer.concat([scanlines, Buffer.alloc(128 * 1024)]))
+  const oneByteExcess = png(Buffer.concat([scanlines, Buffer.alloc(1)]))
+  return { valid: valid.toString('base64'), corrupt: corrupt.toString('base64'), inflated: inflated.toString('base64'),
+    oneByteExcess: oneByteExcess.toString('base64'), fullSize: fullSizePngFixture().png.toString('base64') }
 }
 
 it('starts the exact final Pages modules and reaches real auth rejection without outbound calls', async () => {
@@ -211,13 +237,15 @@ it('loads the exact Banner route chunks and runs their emitted PNG codec in work
   expect(report.codecs).toHaveLength(1)
   const pixels = Array.from({ length: 9 }, (_, index) => index === 4 ? centrePixel : [0, 0, 0, 0]).flat()
   expect(report.decoded).toEqual({ width: 3, height: 3, data: pixels })
+  expect(report.fullSize).toEqual({ width: 640, height: 360, byteLength: 921600, sha256: fullSizePngFixture().sha256 })
   expect(report.roundTrip).toEqual({ signature: [137, 80, 78, 71, 13, 10, 26, 10], width: 2, height: 1, data: [255, 0, 0, 255, 0, 0, 0, 0] })
   // Rejected only because of the flipped CRC byte.
   expect(report.corrupt).toMatchObject({ rejected: true })
   expect(report.corruptUnchecked).toEqual({ rejected: false })
-  // workerd's zlib maxOutputLength stops the inflate at the image size; without
-  // the bound pngjs would inflate everything, then report trailing content.
+  // Native allocation remains capped at image size plus fixed headroom; the
+  // adapter separately rejects even one excess byte before pngjs parses it.
   expect(report.inflated).toEqual({ rejected: true, message: expect.stringMatching(/Memory limit exceeded|Cannot create a Buffer larger than/) })
+  expect(report.oneByteExcess).toEqual({ rejected: true, message: 'Inflated data exceeds output limit' })
   expect(result.outboundCalls).toBe(0)
 }, 180_000)
 
@@ -253,7 +281,8 @@ describe('codec probe harness', () => {
     const { config, modules, files } = await artifactModules(root)
     const oversized = Buffer.alloc(300)
     oversized[1] = 80
-    const result = await runCodecProbe(root, config, modules, files, { ...pngFixtures(), corrupt: Buffer.from('xx').toString('base64'), inflated: oversized.toString('base64') })
+    const fixtures = pngFixtures()
+    const result = await runCodecProbe(root, config, modules, files, { ...fixtures, fullSize: fixtures.valid, corrupt: Buffer.from('xx').toString('base64'), inflated: oversized.toString('base64') })
     const routeChunk = path.join('chunks', 'm', '1.js')
     expect(result.routes.map(route => [route.method, route.chunk, route.exportName])).toEqual([
       ['get', routeChunk, undefined],
