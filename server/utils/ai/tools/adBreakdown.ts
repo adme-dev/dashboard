@@ -1,10 +1,12 @@
 import { z } from 'zod'
-import { queryOne, queryRows } from '~~/server/utils/db'
 import { syncCampaignAdPerformance } from '~~/server/utils/onDemandSync'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 import { buildDataHealth, buildSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
-import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
+import { resolveMarketingReadScope, requireMarketingReadPermission, loadMarketingCoverageDelta } from '../marketing/readScope'
+import { resolveScopedClient } from '../marketing/clientReads'
+import { readLeadAttribution } from '../marketing/campaignReads'
+import { readAdSnapshots, selectScopedAdTargets, type SnapshotCoverage } from '../marketing/adReads'
 import { diagnosticDataStatus, type PolicyIssue } from '~~/server/utils/adDiagnostics'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -24,9 +26,13 @@ const params = z.object({
   if (!value.campaignId && !value.campaignName && !value.clientName) issue.addIssue({ code: 'custom', message: 'Provide campaignId, campaignName, or clientName.' })
   if (Boolean(value.startDate) !== Boolean(value.endDate)) issue.addIssue({ code: 'custom', message: 'startDate and endDate must be supplied together.' })
 })
-type Args = z.infer<typeof params>
+export type AdBreakdownArgs = z.infer<typeof params>
+type Args = AdBreakdownArgs
 
-type RawAdRecord = {
+export type RawAdRecord = {
+  clientId?: string | null
+  connectionId?: string | null
+  accountLeadAttribution?: { status: string, leadCount: number | null, cpl: number | null, reason?: string }
   adId: string
   adName: string | null
   campaignId: string
@@ -39,7 +45,7 @@ type RawAdRecord = {
   impressions: number
   clicks: number
   conversions: number
-  leadCount: number
+  leadCount: number | null
   reach: number | null
   frequency: number | null
   cpm: number | null
@@ -63,51 +69,18 @@ type RawAdRecord = {
 }
 
 export type AdBreakdownDeps = {
-  fetch: (args: Args, ctx: ToolContext) => Promise<{ records: RawAdRecord[], targetCount: number, available: boolean }>
+  fetch: (args: Args, ctx: ToolContext) => Promise<{ records: RawAdRecord[], targetCount: number, available: boolean, snapshotCoverage?: SnapshotCoverage, truncatedAtSource?: boolean }>
   leadAttribution?: (args: Args, ctx: ToolContext) => Promise<{ totalSubmissions: number, adAttributed: number }>
-  loadCoverageDeltas?: () => Promise<Record<string, unknown> | null>
+  loadCoverageDeltas?: (ctx: ToolContext) => Promise<Record<string, unknown> | null>
   now?: () => Date
 }
 
-export async function getAdLeadAttributionSummary(
-  args: Args,
-  load: typeof queryOne = queryOne,
-): Promise<{ totalSubmissions: number, adAttributed: number }> {
+export async function getAdLeadAttributionSummary(args: Args, ctx: ToolContext) {
+  const scope = await resolveMarketingReadScope(ctx)
   const window = period(args)
-  const conditions = [
-    'l.deleted_at IS NULL',
-    'l.is_test = false',
-    'l.submitted_at >= $1::date',
-    "l.submitted_at < $2::date + INTERVAL '1 day'",
-  ]
-  const values: unknown[] = [window.start, window.end]
-  const add = (sql: string, value: unknown) => {
-    values.push(value)
-    conditions.push(sql.replace('?', `$${values.length}`))
-  }
-  if (args.platform) add('l.source = ?', args.platform)
-  if (args.clientName) add('client.name ILIKE ?', `%${escapeLike(args.clientName)}%`)
-  if (args.campaignId) add('l.campaign_id = ?', args.campaignId)
-  if (args.campaignName) add(
-    `EXISTS (
-       SELECT 1 FROM media_spend matched
-        WHERE matched.campaign_id = l.campaign_id
-          AND matched.campaign_name ILIKE ?
-     )`,
-    `%${escapeLike(args.campaignName)}%`,
-  )
-  const row = await load<any>(
-    `SELECT COUNT(*)::int AS total_submissions,
-            COUNT(*) FILTER (WHERE l.ad_id IS NOT NULL)::int AS ad_attributed
-       FROM leads l
-       LEFT JOIN agency_clients client ON client.id = l.client_id
-      WHERE ${conditions.join(' AND ')}`,
-    values,
-  )
-  return {
-    totalSubmissions: Number(row?.total_submissions || 0),
-    adAttributed: Number(row?.ad_attributed || 0),
-  }
+  const clientId = !scope.ownerVerified && args.clientName ? (await resolveScopedClient(scope, args.clientName))?.id : undefined
+  if (!scope.ownerVerified && args.clientName && !clientId) throw new Error('Client not found')
+  return readLeadAttribution(scope, { ...args, clientId, startDate: window.start, endDate: window.end })
 }
 
 function period(args: Args) {
@@ -140,84 +113,33 @@ function parsePolicyIssues(value: unknown): PolicyIssue[] | null {
 }
 
 const defaultDeps: AdBreakdownDeps = {
-  fetch: async (args) => {
+  fetch: async (args, ctx) => {
+    const scope = await resolveMarketingReadScope(ctx)
+    requireMarketingReadPermission(scope, 'ads')
+    if (args.refresh && !scope.ownerRefreshAllowed) throw new Error('MARKETING_REFRESH_REQUIRES_REVIEW')
     const window = period(args)
-    const conditions: string[] = []
-    const values: unknown[] = []
-    const push = (sql: string, value: unknown) => { values.push(value); conditions.push(sql.replace('?', `$${values.length}`)) }
-    if (args.campaignId) push('ms.campaign_id = ?', args.campaignId)
-    if (args.campaignName) push('ms.campaign_name ILIKE ?', `%${escapeLike(args.campaignName)}%`)
-    if (args.clientName) push('client.name ILIKE ?', `%${escapeLike(args.clientName)}%`)
-    if (args.platform) push('ms.platform = ?', args.platform === 'google' ? 'google_ads' : 'meta')
-    const targets = await queryRows<{ id: string }>(
-      `SELECT DISTINCT ON (ms.connection_id, ms.campaign_id) ms.id
-         FROM media_spend ms
-         LEFT JOIN agency_clients client ON client.id = ms.client_id
-        WHERE ${conditions.join(' AND ')}
-        ORDER BY ms.connection_id, ms.campaign_id, ms.synced_at DESC
-        LIMIT 20`,
-      values,
-    )
-    const targetIds = targets.map(target => target.id)
-    if (!targetIds.length) return { records: [], targetCount: 0, available: true }
-    const existing = await queryRows<{ n: number, diagnostic_n: number }>(
-      `SELECT COUNT(DISTINCT aps.media_spend_id)::int AS n,
-              COUNT(DISTINCT aps.media_spend_id) FILTER (
-                WHERE aps.approval_synced_at >= NOW() - INTERVAL '24 hours'
-                  AND (
-                    ms.platform = 'google_ads'
-                    OR (
-                      aps.learning_stage_synced_at >= NOW() - INTERVAL '24 hours'
-                      AND aps.ad_set_metrics_synced_at >= NOW() - INTERVAL '24 hours'
-                    )
-                  )
-              )::int AS diagnostic_n
-         FROM ad_performance_snapshots aps
-         JOIN media_spend ms ON ms.id = aps.media_spend_id
-        WHERE aps.media_spend_id = ANY($1) AND aps.range_start = $2 AND aps.range_end = $3`,
-      [targetIds, window.start, window.end],
-    )
-    let available = true
-    if (
-      args.refresh
-      || Number(existing[0]?.n || 0) < targetIds.length
-      || Number(existing[0]?.diagnostic_n || 0) < targetIds.length
-    ) {
-      const syncs = await Promise.all(targetIds.map(id => syncCampaignAdPerformance(id, window.start, window.end)))
-      available = syncs.some(sync => sync.available)
+    const { targets, truncatedAtSource } = await selectScopedAdTargets(scope, args)
+    let evidence = await readAdSnapshots(scope, targets, window.start, window.end)
+    if (scope.ownerRefreshAllowed && (args.refresh || evidence.snapshotCoverage.missingTargetCount > 0 || evidence.rows.some(row => !row.approval_synced_at || Date.parse(row.approval_synced_at) < Date.now() - 86400000))) {
+      // Targets came from the scoped relation; recheck membership immediately before dispatch.
+      const authorized = await selectScopedAdTargets(scope, args)
+      const ids = new Set(authorized.targets.map(t => t.mediaSpendId))
+      await Promise.all(targets.filter(t => t.mediaSpendId && ids.has(t.mediaSpendId)).map(t => syncCampaignAdPerformance(t.mediaSpendId!, window.start, window.end)))
+      evidence = await readAdSnapshots(scope, targets, window.start, window.end)
     }
-    const rows = await queryRows<any>(
-      `SELECT aps.*, ms.campaign_id, ms.campaign_name, ms.platform,
-              client.name AS client_name, COALESCE(aps.creative_id, cc.creative_id) AS creative_id,
-              COALESCE(cc.title, cc.ad_name) AS creative_name,
-              COALESCE(leads.lead_count, 0)::int AS lead_count
-         FROM ad_performance_snapshots aps
-         JOIN media_spend ms ON ms.id = aps.media_spend_id
-         LEFT JOIN agency_clients client ON client.id = ms.client_id
-         LEFT JOIN LATERAL (
-           SELECT creative_id, title, ad_name FROM campaign_creatives
-            WHERE media_spend_id = ms.id AND ad_id = aps.ad_id
-            ORDER BY synced_at DESC LIMIT 1
-         ) cc ON TRUE
-         LEFT JOIN LATERAL (
-           SELECT COUNT(*)::int AS lead_count FROM leads l
-            WHERE l.deleted_at IS NULL AND l.is_test = false AND l.ad_id = aps.ad_id
-              AND l.submitted_at >= aps.range_start
-              AND l.submitted_at < aps.range_end + INTERVAL '1 day'
-         ) leads ON TRUE
-        WHERE aps.media_spend_id = ANY($1) AND aps.range_start = $2 AND aps.range_end = $3`,
-      [targetIds, window.start, window.end],
-    )
+    const rows = evidence.rows
     return {
-      targetCount: targetIds.length,
-      available,
+      targetCount: targets.length, available: evidence.snapshotCoverage.missingTargetCount === 0,
+      snapshotCoverage: evidence.snapshotCoverage, truncatedAtSource,
       records: rows.map((row): RawAdRecord => ({
+        clientId: row.client_id, connectionId: row.connection_id,
+        accountLeadAttribution: row.account_ambiguous ? { status: 'ambiguous', leadCount: null, cpl: null, reason: 'multiple_accounts_match_lead_identity' } : { status: 'available', leadCount: Number(row.lead_count || 0), cpl: Number(row.lead_count) > 0 ? Number(row.spend) / Number(row.lead_count) : null },
         adId: String(row.ad_id), adName: row.ad_name || null,
         campaignId: String(row.campaign_id), campaignName: row.campaign_name || null,
         clientName: row.client_name || null, platform: String(row.platform).startsWith('google') ? 'google' : 'meta',
         creativeId: row.creative_id || null, creativeName: row.creative_name || null,
         spend: Number(row.spend || 0), impressions: Number(row.impressions || 0), clicks: Number(row.clicks || 0),
-        conversions: Number(row.conversions || 0), leadCount: Number(row.lead_count || 0), reach: row.reach == null ? null : Number(row.reach),
+        conversions: Number(row.conversions || 0), leadCount: row.account_ambiguous ? null : Number(row.lead_count || 0), reach: row.reach == null ? null : Number(row.reach),
         frequency: row.frequency == null ? null : Number(row.frequency), firstServedDate: row.first_served_date || null,
         lastServedDate: row.last_served_date || null, lastSyncedAt: row.synced_at || null,
         cpm: row.cpm == null ? null : Number(row.cpm), adSetId: row.ad_set_id || null, adSetName: row.ad_set_name || null,
@@ -232,13 +154,16 @@ const defaultDeps: AdBreakdownDeps = {
       })),
     }
   },
-  leadAttribution: async (args) => getAdLeadAttributionSummary(args),
+  leadAttribution: async (args, ctx) => getAdLeadAttributionSummary(args, ctx),
 }
 
 const round = (value: number) => Math.round(value * 100) / 100
 
 export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreakdownDeps = defaultDeps): Promise<ToolResult> {
   try {
+    const scope = await resolveMarketingReadScope(ctx)
+    requireMarketingReadPermission(scope, 'ads')
+    if (args.refresh && !scope.ownerRefreshAllowed) return fail('Refreshing requires a reviewed owner operation.', 'MARKETING_REFRESH_REQUIRES_REVIEW')
     const result = await deps.fetch(args, ctx)
     const currentPeriod = period(args)
     const leadCounts = deps.leadAttribution
@@ -251,14 +176,19 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
     const previousResult = previousPeriod
       ? await deps.fetch({ ...args, startDate: previousPeriod.start, endDate: previousPeriod.end, comparePrevious: false, refresh: false }, ctx)
       : null
-    const priorByAd = new Map((previousResult?.records ?? []).map(row => [row.adId, row]))
+    const snapshotCoverage = { current: { ...result.snapshotCoverage, truncatedAtSource: Boolean(result.truncatedAtSource) }, ...(previousResult ? { prior: { ...previousResult.snapshotCoverage, truncatedAtSource: Boolean(previousResult.truncatedAtSource) } } : {}) }
+    const truncatedAtSource = Boolean(result.truncatedAtSource || previousResult?.truncatedAtSource)
+    const missingWindow = result.snapshotCoverage?.missingTargetCount ? 'current' : previousResult?.snapshotCoverage?.missingTargetCount ? 'prior' : null
+    if (missingWindow) return ok({ period: currentPeriod, previousPeriod, halted: true, haltReason: 'missing_campaign_snapshots', haltDetail: `Stored evidence is missing for the ${missingWindow} window.`, affectedWindow: missingWindow, snapshotCoverage, truncatedAtSource, ads: [], total: 0, more: 0, nextCursor: null, appliedLimit: args.limit, coverageDeltaStatus: 'unavailable_for_client_scope' })
+    const adKey = (row: RawAdRecord) => JSON.stringify([row.clientId ?? row.clientName, row.platform, row.connectionId, row.campaignId, row.adId])
+    const priorByAd = new Map((previousResult?.records ?? []).map(row => [adKey(row), row]))
     const today = (deps.now?.() ?? new Date()).getTime()
     const ads = result.records.map(row => {
       const ageDays = row.firstServedDate ? Math.max(0, Math.floor((today - Date.parse(`${row.firstServedDate}T00:00:00Z`)) / 86_400_000)) : null
       const ctr = row.impressions > 0 ? row.clicks / row.impressions : null
       const cpc = row.clicks > 0 ? round(row.spend / row.clicks) : null
-      const cpl = row.leadCount > 0 ? round(row.spend / row.leadCount) : null
-      const prior = priorByAd.get(row.adId)
+      const cpl = row.leadCount != null && row.leadCount > 0 ? round(row.spend / row.leadCount) : null
+      const prior = priorByAd.get(adKey(row))
       const priorCtr = prior && prior.impressions > 0 ? prior.clicks / prior.impressions : null
       const ctrDeltaPct = ctr != null && priorCtr ? round(((ctr - priorCtr) / priorCtr) * 100) : null
       const frequencyDelta = row.frequency != null && prior?.frequency != null ? round(row.frequency - prior.frequency) : null
@@ -290,7 +220,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
         cpc,
         costPerLead: cpl,
         ageDays,
-        fatigueSignals,
+        fatigueSignals: row.accountLeadAttribution?.status === 'ambiguous' ? [] : fatigueSignals,
         metricsAsOf: row.lastSyncedAt,
         approvalDataStatus: row.approvalStatus == null
           ? 'unavailable'
@@ -300,7 +230,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
         learningStageUnavailableReason,
         adSetMetricsDataStatus: diagnosticDataStatus({ supported: row.platform === 'meta', asOf: row.adSetMetricsAsOf, unavailableReason: adSetMetricsUnavailableReason, now: deps.now?.() }),
         adSetMetricsUnavailableReason,
-        ...(prior ? { comparison: { frequencyDelta, ctrDeltaPct, spendDelta: round(row.spend - prior.spend), leadDelta: row.leadCount - prior.leadCount } } : {}),
+        ...(prior ? { comparison: { frequencyDelta, ctrDeltaPct, spendDelta: round(row.spend - prior.spend), leadDelta: row.leadCount == null || prior.leadCount == null ? null : row.leadCount - prior.leadCount } } : {}),
       }
     })
     const metric = (row: any) => args.sortBy === 'leads' ? row.leadCount : args.sortBy === 'cpl' ? row.costPerLead : args.sortBy === 'age' ? row.ageDays : row[args.sortBy]
@@ -314,7 +244,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
     const withFrequency = ads.filter(ad => ad.frequency != null).length
     const health = buildDataHealth({ configured: result.targetCount > 0, available: result.available, expected: ads.length, withData: withFrequency })
     const freshness = buildSyncFreshness(ads.map(ad => ad.lastSyncedAt), { now: deps.now?.() })
-    const coverageDelta = await (deps.loadCoverageDeltas ?? getSpendCoverageDeltas)().catch(() => null)
+    const coverageDelta = await (deps.loadCoverageDeltas ? deps.loadCoverageDeltas(ctx) : loadMarketingCoverageDelta(scope)).catch(() => null)
     // P-02: untrusted data ⇒ say so and return no figures; keep the coverage universe visible (P-13).
     const halt = evaluateHalt(freshness, {
       haltAfterHours: PACING_HALT_HOURS,
@@ -325,7 +255,9 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
     if (halt.halted) {
       return ok({
         period: currentPeriod,
-        source: 'meta_marketing_api/google_ads_api',
+        source: 'stored_ad_performance_snapshots',
+        snapshotCoverage,
+        coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
         halted: true,
         haltReason: halt.haltReason,
         haltDetail: halt.haltDetail,
@@ -339,13 +271,15 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
         appliedLimit: args.limit ?? 20,
         nextCursor: null,
         more: 0,
-        truncatedAtSource: false,
+        truncatedAtSource,
       })
     }
     return ok({
       period: currentPeriod,
       ...(previousPeriod ? { previousPeriod } : {}),
-      source: 'meta_marketing_api/google_ads_api',
+      source: 'stored_ad_performance_snapshots',
+      snapshotCoverage,
+      coverageDeltaStatus: scope.ownerVerified && scope.clientIds === null ? 'owner_global_available' : 'unavailable_for_client_scope',
       halted: false,
       ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),
@@ -371,7 +305,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
       appliedLimit: args.limit ?? 20,
       nextCursor: page.nextCursor,
       more: page.more,
-      truncatedAtSource: page.truncatedAtSource,
+      truncatedAtSource: truncatedAtSource || page.truncatedAtSource,
     })
   } catch {
     return fail('Could not load ad-level performance for the requested campaign window.')
@@ -380,7 +314,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
 
 export const adBreakdownTool: AiTool<Args> = {
   name: 'get_ad_breakdown',
-  description: 'Ad-level delivery, approval/policy, and creative-fatigue evidence for a campaign or client and date window: ad/creative/ad-set IDs, spend, impressions, Meta ad-set frequency/CPM and learning state, Google/Meta approval status and policy issues, CTR, CPC, attributed submitted leads/CPL, delivery dates, creative age, and fatigue signals. Each diagnostic family has its own asOf/dataStatus/unavailableReason; absent never means healthy. `spend_without_leads` is suppressed until real non-test lead attribution coverage exists, and provider conversions remain null pending historical resync. Supports cursor pagination and performs a bounded read-through platform sync when rows are missing.',
+  description: 'Ad-level delivery, approval/policy, and creative-fatigue evidence for a campaign or client and date window: ad/creative/ad-set IDs, spend, impressions, Meta ad-set frequency/CPM and learning state, Google/Meta approval status and policy issues, CTR, CPC, attributed submitted leads/CPL, delivery dates, creative age, and fatigue signals. Each diagnostic family has its own asOf/dataStatus/unavailableReason; absent never means healthy. `spend_without_leads` is suppressed until real non-test lead attribution coverage exists, and provider conversions remain null pending historical resync. Supports cursor pagination. Ordinary staff read stored evidence only; missing campaign windows halt without figures. A verified owner may refresh authorized campaigns.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   returnsUntrusted: true,

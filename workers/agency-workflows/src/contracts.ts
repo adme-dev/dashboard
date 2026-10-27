@@ -33,6 +33,8 @@ export interface SocialPublishingWorkflowPayload {
   scheduledAt?: string
   trigger: SocialPublishingWorkflowTrigger
   requestedBy?: string
+  /** Approved revision this run may publish (delegated posts); bound into the instance id. */
+  revisionId?: string
 }
 
 export interface SocialInboxAutomationWorkflowPayload {
@@ -169,6 +171,10 @@ export function normalizeSocialPublishingWorkflowPayload(input: unknown): Social
   const scheduledAt = optionalIsoDateTime(body.scheduledAt, 'scheduledAt')
   const requestedBy = optionalText(body.requestedBy)
   const trigger = normalizeTrigger(body.trigger)
+  const revisionId = optionalText(body.revisionId)
+  if (revisionId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(revisionId)) {
+    throw new Error('revisionId must be a UUID')
+  }
 
   return {
     kind: SOCIAL_PUBLISHING_WORKFLOW_KIND,
@@ -176,12 +182,17 @@ export function normalizeSocialPublishingWorkflowPayload(input: unknown): Social
     clientId,
     ...(scheduledAt ? { scheduledAt } : {}),
     trigger,
-    ...(requestedBy ? { requestedBy } : {})
+    ...(requestedBy ? { requestedBy } : {}),
+    // Forwarded unchanged to the Pages callback so a stale run cannot publish a newer revision.
+    ...(revisionId ? { revisionId: revisionId.toLowerCase() } : {})
   }
 }
 
 export function buildSocialPublishingWorkflowInstanceId(payload: SocialPublishingWorkflowPayload): string {
   const attempt = payload.scheduledAt ? `-${instancePart(payload.scheduledAt)}` : ''
+  if (payload.revisionId) {
+    return `social-publish-rev-${instancePart(payload.revisionId)}${attempt}`.slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
+  }
   return `social-publish-${instancePart(payload.clientId)}-${instancePart(payload.postId)}${attempt}`
     .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
 }

@@ -11,7 +11,9 @@ import { resolveProposeAction, isFinancialAction, MCP_CONFIRM_TOOL } from './wri
 import { resolveVideoProposeAction } from './videoTools'
 import { resolveBannerProposeAction } from './bannerTools'
 import { generationTools, isGenerationReadToolName } from './generationTools'
+import { isTask4WriteTool } from './marketingTask4Names'
 import { isGoogleAdsWriteToolName } from './googleAdsTools'
+import { isSocialMcpWriteToolName } from './socialToolNames'
 
 export const MCP_READ_SCOPE = 'mcp:read'
 export const MCP_WRITE_SCOPE = 'mcp:write'
@@ -42,5 +44,6 @@ export function isWriteScopeToolName(name: string): boolean {
     || resolveVideoProposeAction(name) !== null
     || resolveBannerProposeAction(name) !== null
     || isGoogleAdsWriteToolName(name)
+    || isTask4WriteTool(name) || isSocialMcpWriteToolName(name)
     || GEN_WRITE_NAMES.has(name)
 }

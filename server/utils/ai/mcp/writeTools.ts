@@ -1,10 +1,11 @@
 import { z } from 'zod'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { ActionExecutor } from '~~/server/utils/ai/executors/types'
-import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
+import { hasMcpPermission, mcpContextHasPermission, type McpExecutionDescriptor, type McpProjectionContext, type McpSuiteFlags, type McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
+import { LEGACY_MCP_SOCIAL_PROPOSAL_REDIRECT, LEGACY_MCP_SOCIAL_PROPOSAL_TOOL } from './socialToolNames'
 
 // ---------------------------------------------------------------------------
 // Shared confirm plumbing (used by both 2c and D4 branches)
@@ -68,15 +69,25 @@ export function isFinancialAction(name: string): boolean {
   return (MCP_FINANCIAL_ACTIONS as readonly string[]).includes(name)
 }
 
+export interface McpWriteProjectionOptions {
+  bypassPermissions?: boolean
+  confirmDescription?: string
+  /** Fresh staff groups / write policy; when present they supersede the legacy role. */
+  permissionGroups?: readonly PermissionGroup[]
+  readOnly?: boolean
+}
+
 /** The financial tools a role may call, as MCP manifests — empty unless the financial flag is on. */
 export function projectFinancialTools(
   registryTools: AiTool<unknown>[],
   role: string,
   enabled: boolean,
-  options: { bypassPermissions?: boolean, confirmDescription?: string } = {}
+  options: McpWriteProjectionOptions = {}
 ): McpToolManifest[] {
   if (!enabled) return []
-  const allowed = options.bypassPermissions ? registryTools : filterToolsForUser(registryTools, role)
+  const allowed = options.bypassPermissions
+    ? registryTools
+    : filterToolsForUser(registryTools, role, options.permissionGroups, options.readOnly)
   const picks = MCP_FINANCIAL_ACTIONS
     .map(a => allowed.find(t => t.name === a))
     .filter((t): t is AiTool<unknown> => !!t && !!t.mutates)
@@ -100,10 +111,11 @@ export function resolveRegisteredConfirmDescription(context: McpProjectionContex
   const writeEmitsConfirm = projectWriteTools(
     context.tools,
     context.role,
-    context.suiteFlags.writes
+    context.suiteFlags.writes,
+    { permissionGroups: context.permissionGroups, readOnly: context.readOnly }
   ).some(tool => tool.name === MCP_CONFIRM_TOOL)
   if (writeEmitsConfirm) return MCP_WRITE_CONFIRM_DESCRIPTION
-  const creativeAllowed = roleHasPermission(context.role, 'CREATIVE')
+  const creativeAllowed = hasMcpPermission(context.role, 'CREATIVE', context.permissionGroups)
   if (creativeAllowed && context.suiteFlags.video && context.suiteFlags.videoGeneration) {
     return MCP_VIDEO_CONFIRM_DESCRIPTION
   }
@@ -119,7 +131,9 @@ export function projectFinancialMcpSuite(context: McpProjectionContext): McpTool
     context.governanceBypass || context.suiteFlags.financial,
     {
       bypassPermissions: context.governanceBypass,
-      confirmDescription: resolveRegisteredConfirmDescription(context)
+      confirmDescription: resolveRegisteredConfirmDescription(context),
+      permissionGroups: context.permissionGroups,
+      readOnly: context.readOnly
     }
   )
 }
@@ -173,10 +187,12 @@ export function projectWriteTools(
   registryTools: AiTool<unknown>[],
   role: string,
   enabled: boolean,
-  options: { bypassPermissions?: boolean, confirmDescription?: string } = {}
+  options: McpWriteProjectionOptions = {}
 ): McpToolManifest[] {
   if (!enabled) return []
-  const allowed = options.bypassPermissions ? registryTools : filterToolsForUser(registryTools, role)
+  const allowed = options.bypassPermissions
+    ? registryTools
+    : filterToolsForUser(registryTools, role, options.permissionGroups, options.readOnly)
   const picks = MCP_WRITE_SAFE_ACTIONS
     .map(a => allowed.find(t => t.name === a))
     .filter((t): t is AiTool<unknown> => !!t && !!t.mutates)
@@ -199,7 +215,9 @@ export function projectWriteMcpSuite(context: McpProjectionContext): McpToolMani
     context.governanceBypass || context.suiteFlags.writes,
     {
       bypassPermissions: context.governanceBypass,
-      confirmDescription: resolveRegisteredConfirmDescription(context)
+      confirmDescription: resolveRegisteredConfirmDescription(context),
+      permissionGroups: context.permissionGroups,
+      readOnly: context.readOnly
     }
   )
 }
@@ -253,6 +271,61 @@ export type WriteConfirmOutcome
 /** The single row the atomic claim returns (UPDATE … SET status='executed' … RETURNING). */
 export interface ClaimedProposal { tool_name: string, resolved_payload: unknown }
 
+/**
+ * Permission each supplemental confirm-tier pending action was proposed under. Literals (not imports)
+ * because those suites import this module; test/ai/mcpFreshGroupSupplemental.test.ts pins this map to
+ * VIDEO_/BANNER_/FEED_CONFIRM_ACTIONS and GOOGLE_ADS_PENDING_ACTION.
+ */
+export const MCP_SUPPLEMENTAL_PENDING_PERMISSIONS: Readonly<Record<string, PermissionGroup>> = Object.freeze({
+  video_generation: 'CREATIVE',
+  video_project_create: 'CREATIVE',
+  video_timeline_edit: 'CREATIVE',
+  video_source_promote: 'CREATIVE',
+  banner_render: 'CREATIVE',
+  feed_attach_catalog: 'MEDIA_BUYING',
+  feed_set_product_set_rules: 'MEDIA_BUYING',
+  google_ads_action: 'MEDIA_BUYING'
+})
+
+/**
+ * Suite switch(es) each pending action's OWN suite needs at confirmation — the same switches its propose
+ * tool is gated by. confirm_action is shared, so reaching it through one enabled suite must never run an
+ * action whose suite is off. Literals for the same import-cycle reason as the map above.
+ */
+const MCP_PENDING_ACTION_SUITES: Readonly<Record<string, readonly (keyof McpSuiteFlags)[]>> = Object.freeze({
+  video_generation: ['video', 'videoGeneration'],
+  video_project_create: ['video', 'videoGeneration'],
+  video_timeline_edit: ['video', 'videoGeneration'],
+  video_source_promote: ['video', 'videoGeneration'],
+  banner_render: ['banners'],
+  feed_attach_catalog: ['feeds'],
+  feed_set_product_set_rules: ['feeds'],
+  google_ads_action: ['googleAdsWrite'],
+  ...Object.fromEntries(MCP_FINANCIAL_ACTIONS.map(name => [name, ['financial'] as const])),
+  ...Object.fromEntries(MCP_WRITE_SAFE_ACTIONS.map(name => [name, ['writes'] as const]))
+})
+
+/** Whether a pending action's own suite is on; null for names no suite owns (the dispatchers refuse those). */
+export function mcpPendingActionSuiteEnabled(toolName: string, flags: McpSuiteFlags): boolean | null {
+  const switches = MCP_PENDING_ACTION_SUITES[toolName]
+  return switches ? switches.every(key => flags[key] === true) : null
+}
+
+/**
+ * Fresh MCP staff only: re-authorize a just-claimed pending row against the CURRENT groups, so a user
+ * who still reaches confirm_action through another permitted suite cannot execute an action whose own
+ * permission (CREATIVE / MEDIA_BUYING / FINANCE / …) has since been revoked. Owner God mode and legacy
+ * contexts keep their existing per-dispatcher checks unchanged.
+ */
+function freshStaffMayConfirm(row: ClaimedProposal, ctx: ToolContext, deps: Pick<ConfirmDeps, 'getExecutor'>): boolean {
+  if (ctx.mcpStaffAuthority !== 'fresh') return true
+  const required = [
+    MCP_SUPPLEMENTAL_PENDING_PERMISSIONS[row.tool_name],
+    deps.getExecutor(row.tool_name)?.requiredPermission
+  ].filter((group): group is PermissionGroup => !!group)
+  return required.every(group => mcpContextHasPermission(ctx, group))
+}
+
 export interface ConfirmDeps {
   /** confirm_action is available when ANY confirm-tier group is on (2c writes OR 2b video gen). */
   enabled: boolean
@@ -279,12 +352,17 @@ export interface ConfirmDeps {
   /** Optional: restore a just-claimed row to 'proposed' when a PRE-execution gate rejects (ack/permission),
    *  so the proposal isn't burned and the user can retry (e.g. with ack:true). Never called after execution. */
   revertClaim?: (proposalId: string, userId: string) => Promise<void>
+  /** Current runtime suite switches. When supplied, a claimed row whose own suite is off is refused
+   *  (and reverted) before any dispatcher, regardless of which suite projected confirm_action. */
+  suiteFlags?: McpSuiteFlags
   execution?: TrustedSupplementalExecutionServices
 }
 
 /**
  * Execute a confirmed MCP write proposal. Defense-in-depth, never throws:
  *  - flag off → disabled · bad args → bad_args · nothing claimable → expired (atomic, single-use)
+ *  - the claimed row's own suite off (suiteFlags) → disabled · fresh permission revoked → forbidden;
+ *    both refuse before any dispatcher and restore the row
  *  - 2b video/banner: own dispatch branch (returns its own outcome)
  *  - D4 financial branch: financialEnabled gate → ack gate (money-movers) → permission → dispatch
  *    Returns BEFORE the 2c path — financial actions NEVER fall through to the 2c safe-action check.
@@ -334,11 +412,27 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
     return o
   }
 
+  if (deps.suiteFlags && mcpPendingActionSuiteEnabled(row.tool_name, deps.suiteFlags) === false) {
+    return await rejectAndRevert({ ok: false, error: 'This action\'s tool suite is not enabled over MCP.', code: 'disabled' })
+  }
+  if (!freshStaffMayConfirm(row, ctx, deps)) {
+    return await rejectAndRevert({ ok: false, error: 'Not permitted.', code: 'forbidden' })
+  }
+  // A retained ordinary-MCP social proposal can never be executed by staff (management included): it
+  // would create a legacy row its requester could self-approve. The row is restored untouched.
+  if (ctx.mcpStaffAuthority === 'fresh' && row.tool_name === LEGACY_MCP_SOCIAL_PROPOSAL_TOOL) {
+    return await rejectAndRevert({ ok: false, error: LEGACY_MCP_SOCIAL_PROPOSAL_REDIRECT, code: 'forbidden' })
+  }
+
   // 2b: video confirm-tier actions get their own dispatch (returns jobId / projectId / cap_exceeded).
-  // It returns null for non-video tool_names, so the financial/2c paths below handle those.
+  // It returns null for non-video tool_names, so the financial/2c paths below handle those. Its
+  // 'forbidden' refusals (flag, timeline review, project re-authorization) all precede any effect.
   if (deps.videoDispatch) {
     const vo = await deps.videoDispatch(row, ctx)
-    if (vo) return await persistSuccess(vo)
+    if (vo) {
+      if (vo.ok === false && vo.code === 'forbidden') return await rejectAndRevert(vo)
+      return await persistSuccess(vo)
+    }
   }
 
   // 2b: banner confirm-tier actions get their own dispatch (returns jobIds).
@@ -383,7 +477,7 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
     if (ex.riskTier === 'rich_confirm' && !parsed.data.ack) {
       return rejectAndRevert({ ok: false, error: 'This action requires explicit ack:true.', code: 'confirm_required' })
     }
-    if (ex.requiredPermission && !roleHasPermission(ctx.userRole, ex.requiredPermission)) {
+    if (ex.requiredPermission && !mcpContextHasPermission(ctx, ex.requiredPermission)) {
       return rejectAndRevert({ ok: false, error: 'Not permitted.', code: 'forbidden' })
     }
     try {
@@ -406,7 +500,7 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   if (ex.riskTier === 'rich_confirm' && !parsed.data.ack) {
     return rejectAndRevert({ ok: false, error: 'This action requires explicit ack:true.', code: 'confirm_required' })
   }
-  if (ex.requiredPermission && !roleHasPermission(ctx.userRole, ex.requiredPermission)) {
+  if (ex.requiredPermission && !mcpContextHasPermission(ctx, ex.requiredPermission)) {
     return rejectAndRevert({ ok: false, error: 'Not permitted.', code: 'forbidden' })
   }
 

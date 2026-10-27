@@ -1,5 +1,5 @@
 import { createError, type H3Event } from 'h3'
-import { execute, queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { execute, queryOne, queryOneFresh, queryRows, transaction } from '~~/server/utils/db'
 import { decryptToken, encryptToken } from '~~/server/utils/tokenCrypto'
 import { hashGoogleOAuthState } from '~~/server/utils/googleCredentialProfiles'
 import { refreshGoogleToken } from '~~/server/utils/googleAdsClient'
@@ -178,7 +178,7 @@ export async function storeGtmConnection(input: {
 }
 
 async function loadCredential(connectionId: string): Promise<GtmCredentialRow | null> {
-  return queryOne<GtmCredentialRow>(
+  return queryOneFresh<GtmCredentialRow>(
     `SELECT gc.id AS connection_id,
             gc.google_subject,
             gc.google_email,

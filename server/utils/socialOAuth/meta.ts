@@ -78,6 +78,8 @@ export interface ManagedPage {
   category?: string
   igId?: string
   igUsername?: string
+  /** Actual token inspection, scoped to this Page; absent evidence clears old reconnect claims. */
+  grantedScopes?: string[]
 }
 
 /** Pure: a managed Page → its social_accounts rows (a facebook row, plus an instagram row if linked). */
@@ -88,7 +90,7 @@ export function mapPagesToAccountRows(page: ManagedPage, expiresAt: string | nul
     account_name: page.name,
     access_token: page.accessToken,
     token_expires_at: expiresAt,
-    metadata: { webhook_subscribed: false, page_category: page.category ?? null, linked_ig_id: page.igId ?? null },
+    metadata: { grantedScopes: page.grantedScopes ?? [], webhook_subscribed: false, page_category: page.category ?? null, linked_ig_id: page.igId ?? null },
   }]
   if (page.igId) {
     rows.push({
@@ -97,7 +99,7 @@ export function mapPagesToAccountRows(page: ManagedPage, expiresAt: string | nul
       account_name: page.igUsername || page.name,
       access_token: page.accessToken,
       token_expires_at: expiresAt,
-      metadata: { webhook_subscribed: false, via_page_id: page.id },
+      metadata: { grantedScopes: page.grantedScopes ?? [], webhook_subscribed: false, via_page_id: page.id },
     })
   }
   return rows
@@ -123,6 +125,23 @@ export async function listManagedPages(userToken: string, f: FetchLike = fetch a
     id: p.id, name: p.name, accessToken: p.access_token, category: p.category,
     igId: p.instagram_business_account?.id, igUsername: p.instagram_business_account?.username,
   }))
+}
+
+/** Inspect the actual user grant before discarding that token. Requested scopes are never evidence.
+ * A present granted entry with omitted target_ids means all Pages; missing entries stay blocked.
+ */
+export async function attachMetaGrantedScopes(pages: ManagedPage[], userToken: string, appId: string, appSecret: string, f: FetchLike = fetch as any): Promise<ManagedPage[]> {
+  let data: any = null
+  try {
+    const inspected = await graphJson(f, `${GRAPH}/debug_token?input_token=${encodeURIComponent(userToken)}`, {
+      headers: { Authorization: `Bearer ${appId}|${appSecret}` }, signal: AbortSignal.timeout(10_000)
+    })
+    if (inspected?.data?.is_valid === true && String(inspected.data.app_id) === appId) data = inspected.data
+  } catch { /* Unknown grant is stored as empty, never inherited on reconnect. */ }
+  const granted = new Set<string>(Array.isArray(data?.scopes) ? data.scopes.filter((s: unknown) => typeof s === 'string') : [])
+  const granular = Array.isArray(data?.granular_scopes) ? data.granular_scopes : []
+  return pages.map(page => ({ ...page, grantedScopes: [...granted].filter(scope => granular.some((entry: any) =>
+    entry.scope === scope && (!Object.prototype.hasOwnProperty.call(entry, 'target_ids') || (Array.isArray(entry.target_ids) && entry.target_ids.includes(page.id))))) }))
 }
 
 /**

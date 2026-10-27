@@ -1,6 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { queryOne } from '~~/server/utils/db'
+import { bindTikTokDraftConsent } from '~~/server/utils/socialPublishing/drafts'
+import { queryOne, transaction } from '~~/server/utils/db'
 import {
   assertNoControlledSocialPostFields,
   assertPublishingTargets,
@@ -11,10 +12,17 @@ import {
   requireSocialPostClientAccess
 } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
+import { DELEGATED_SOCIAL_PLATFORMS, SOCIAL_POST_CONTENT_LOCKED_STATUSES } from '~~/server/utils/socialPublishing/revisions'
 
 /**
  * PATCH /api/agency/social/publishing/posts/:id
  * Partial update of a post's editable fields (content, media, overrides, tags, schedule, …).
+ *
+ * Delegated (staff/MCP, `review_policy = 'delegated_marketing'`) rows: the review policy, revision
+ * bindings and provenance metadata are server-controlled; media must be client-owned `mediaAssets`
+ * (never URLs); exact targets cannot be widened through the legacy platform/account arrays; and every
+ * approval-sensitive edit — including schedule, timezone and campaign — supersedes the submitted
+ * revision and clears the approval it carried.
  */
 
 // body key → { column, json? }
@@ -51,8 +59,18 @@ const APPROVAL_SENSITIVE_FIELDS = new Set([
   'metadata'
 ])
 
-const CONTENT_LOCKED_STATUSES = new Set(['publishing', 'published', 'partially_published', 'cancelled'])
+// Snapshot fields that are additionally approval-sensitive for delegated rows.
+const DELEGATED_SENSITIVE_FIELDS = new Set([...APPROVAL_SENSITIVE_FIELDS, 'scheduledAt', 'timezone', 'campaignId', 'mediaAssets'])
+
+// Accepted/unknown dispatches are held evidence: never editable (and so never resubmittable).
+const CONTENT_LOCKED_STATUSES = new Set<string>(SOCIAL_POST_CONTENT_LOCKED_STATUSES)
 const APPROVAL_RESET_STATUSES = new Set(['approved', 'scheduled', 'failed'])
+
+function sameSet(left: unknown, right: unknown): boolean {
+  const a = new Set(Array.isArray(left) ? left.map(String) : [])
+  const b = new Set(Array.isArray(right) ? right.map(String) : [])
+  return a.size === b.size && [...a].every(value => b.has(value))
+}
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
@@ -61,11 +79,47 @@ export default defineEventHandler(async (event) => {
   const b = await readBody(event)
   assertNoControlledSocialPostFields(b)
   const existing = await requireSocialPostClientAccess(event, id)
+  const delegated = existing.review_policy === 'delegated_marketing'
+
+  if (delegated) {
+    // Server-owned provenance: the composer's metadata echo is ignored, never merged.
+    delete b.metadata
+    if ('mediaUrls' in b) {
+      if (Array.isArray(b.mediaUrls) && b.mediaUrls.length) {
+        throw createError({ statusCode: 400, statusMessage: 'Delegated drafts use client media assets, not media URLs' })
+      }
+      delete b.mediaUrls
+    }
+    if (b.platformOverrides && typeof b.platformOverrides === 'object'
+      && Object.values(b.platformOverrides as Record<string, { mediaUrls?: unknown[] }>).some(o => Array.isArray(o?.mediaUrls) && o.mediaUrls.length)) {
+      throw createError({ statusCode: 400, statusMessage: 'Delegated drafts use client media assets, not media URLs' })
+    }
+    if (!('targets' in b) && ('platforms' in b || 'accountIds' in b)) {
+      const unchanged = (!('platforms' in b) || sameSet(b.platforms, existing.platforms))
+        && (!('accountIds' in b) || sameSet(b.accountIds, existing.account_ids))
+      if (!unchanged) {
+        throw createError({ statusCode: 400, statusMessage: 'Delegated drafts publish to exact targets; send targets to change accounts' })
+      }
+      delete b.platforms
+      delete b.accountIds
+    }
+    if ('mediaAssets' in b) {
+      const { normalizeSocialMediaAssetRefs, resolveSocialMediaAssets } = await import('~~/server/utils/socialPublishing/mediaAssets')
+      const refs = normalizeSocialMediaAssetRefs(b.mediaAssets)
+      await resolveSocialMediaAssets({ event, clientId: existing.client_id, refs })
+      b.mediaAssets = refs
+    }
+  } else if ('mediaAssets' in b) {
+    throw createError({ statusCode: 400, statusMessage: 'mediaAssets is only available for delegated drafts' })
+  }
 
   if ('targets' in b) {
     const explicitTargets = await normalizePublishingTargets(existing.client_id, b.targets)
     if (!explicitTargets) {
       throw createError({ statusCode: 400, statusMessage: 'targets must be an array' })
+    }
+    if (delegated && explicitTargets.platforms.some(platform => !(DELEGATED_SOCIAL_PLATFORMS as readonly string[]).includes(platform))) {
+      throw createError({ statusCode: 400, statusMessage: 'Delegated drafts support Facebook, Instagram and LinkedIn' })
     }
     b.targets = explicitTargets.targets
     b.platforms = explicitTargets.platforms
@@ -96,12 +150,14 @@ export default defineEventHandler(async (event) => {
     )
   }
 
-  const touchesApprovalSensitiveFields = Object.keys(b).some(key => APPROVAL_SENSITIVE_FIELDS.has(key))
+  const sensitiveFields = delegated ? DELEGATED_SENSITIVE_FIELDS : APPROVAL_SENSITIVE_FIELDS
+  const touchesApprovalSensitiveFields = Object.keys(b).some(key => sensitiveFields.has(key))
   if (touchesApprovalSensitiveFields && existing.status && CONTENT_LOCKED_STATUSES.has(existing.status)) {
     throw createError({ statusCode: 409, statusMessage: `Cannot edit content for a ${existing.status} post` })
   }
   const shouldResetApproval = touchesApprovalSensitiveFields && (
-    Boolean(existing.approval_requested_at)
+    delegated
+    || Boolean(existing.approval_requested_at)
     || (existing.status ? APPROVAL_RESET_STATUSES.has(existing.status) : false)
   )
   const shouldResetClientApproval = shouldResetApproval
@@ -115,6 +171,10 @@ export default defineEventHandler(async (event) => {
     params.push(def.json ? JSON.stringify(b[key] ?? {}) : b[key])
     sets.push(`${def.col} = $${params.length}${def.json ? '::jsonb' : ''}`)
   }
+  if (delegated && 'mediaAssets' in b) {
+    params.push(JSON.stringify(b.mediaAssets))
+    sets.push(`media_asset_refs = $${params.length}::jsonb`)
+  }
   if (shouldResetApproval) {
     sets.push(
       'status = \'draft\'',
@@ -122,7 +182,9 @@ export default defineEventHandler(async (event) => {
       'approved_at = NULL',
       'approval_requested_at = NULL',
       'approval_requested_by = NULL',
-      'rejection_reason = NULL'
+      'rejection_reason = NULL',
+      'approved_revision_id = NULL',
+      'client_approval_revision_id = NULL'
     )
   }
   if (shouldResetClientApproval) {
@@ -138,10 +200,28 @@ export default defineEventHandler(async (event) => {
   sets.push('updated_at = NOW()')
   params.push(id)
   params.push(existing.client_id)
-  const row = await queryOne(
-    `UPDATE social_posts SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND client_id = $${params.length} RETURNING *`,
-    params
-  )
+  // The superseding CTE shares the row's id/client params, so it commits atomically with the edit.
+  const supersede = shouldResetApproval
+    ? `WITH superseded AS (
+         UPDATE social_post_revisions SET review_status = 'superseded'
+          WHERE post_id = $${params.length - 1} AND client_id = $${params.length}
+            AND review_status IN ('pending', 'approved')
+       ) `
+    : ''
+  const lockedGuard = shouldResetApproval
+    ? ` AND status NOT IN (${[...CONTENT_LOCKED_STATUSES].map(status => `'${status}'`).join(', ')})`
+    : ''
+  const sql = `${supersede}UPDATE social_posts SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND client_id = $${params.length}${lockedGuard} RETURNING *`
+  const row = delegated
+    ? await transaction(async (db) => {
+        // Serialize edit and consent binding with submit/dispatch; no stale row can attest another edit.
+        await db.query('SELECT id FROM social_posts WHERE id=$1 AND client_id=$2 FOR UPDATE', [id, existing.client_id])
+        const updated = (await db.query(sql, params)).rows[0]
+        if (!updated) return null
+        await bindTikTokDraftConsent({ actorId: user.id, clientIds: [existing.client_id], event }, updated, b, db)
+        return (await db.query('SELECT * FROM social_posts WHERE id=$1 AND client_id=$2', [id, existing.client_id])).rows[0]
+      })
+    : await queryOne(sql, params)
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
   await recordSocialPublishingAudit({
     clientId: existing.client_id,
@@ -149,7 +229,7 @@ export default defineEventHandler(async (event) => {
     actorId: user.id,
     action: 'post_updated',
     metadata: {
-      fields: Object.keys(b).filter(key => key in FIELDS),
+      fields: Object.keys(b).filter(key => key in FIELDS || key === 'mediaAssets'),
       approvalReset: shouldResetApproval,
       clientApprovalReset: shouldResetClientApproval
     }

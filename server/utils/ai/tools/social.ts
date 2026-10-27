@@ -1,10 +1,9 @@
 import { z } from 'zod'
-// Use Nitro's global $fetch (auto-imported), NOT raw ofetch — it resolves relative internal routes
-// on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
-import { queryOne } from '~~/server/utils/db'
+import { resolveMarketingReadScope } from '../marketing/readScope'
+import { resolveScopedClient } from '../marketing/clientReads'
+import { readSocialOverview } from '../marketing/socialReads'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
-import { aiInternalFetch } from '../internalFetch'
+import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -22,14 +21,14 @@ export function socialPeriodWindow(period: Args['period'], now: Date = new Date(
 }
 
 // Mirrors the shape returned by GET /api/agency/social/reporting/overview (socialReporting/aggregate.ts).
-type Kpi = { value: number, deltaPct: number | null }
+type Kpi = { value: number | null, deltaPct: number | null }
 type BestContent = {
   postId: string
   content?: string | null
   permalink?: string | null
-  engagements: number
-  reach: number
-  engagementRate: number
+  engagements: number | null
+  reach: number | null
+  engagementRate: number | null
 }
 export type SocialOverview = {
   range: { from: string, to: string }
@@ -50,22 +49,15 @@ export type SocialDeps = {
   overview: (q: { clientName?: string, period: Args['period'], from: string, to: string }, ctx: ToolContext) => Promise<SocialOverview>
 }
 
-// Real wiring: the KPI rollup is computed inside the overview endpoint from per-post metric rows
-// (only the DB can supply PostMetricRow[]; the pure aggregate fns aren't independently callable here).
-// Resolve clientName→clientId, then internal-$fetch the overview endpoint forwarding the caller's auth
-// headers (mirrors finance.ts; the endpoint computes the prior-period deltas from from/to).
+// Browser and tool callers share the scoped, stored reporting service.
 const defaultDeps: SocialDeps = {
   overview: async ({ clientName, from, to }, ctx) => {
     // Require an explicit client — never silently report an arbitrary one.
     if (!clientName) throw new Error('A client name is required for social performance.')
-    const row = await queryOne<{ id: string }>(
-      'SELECT id FROM agency_clients WHERE name ILIKE $1 ORDER BY name ASC LIMIT 1',
-      [`%${escapeLike(clientName)}%`],
-    )
-    if (!row?.id) throw new Error('no matching client')
-    return await aiInternalFetch<SocialOverview>('/api/agency/social/reporting/overview', {
-      query: { clientId: row.id, from, to },
-    }, ctx)
+    const scope = await resolveMarketingReadScope(ctx)
+    const row = await resolveScopedClient(scope, clientName)
+    if (!row) throw new Error('Client not found')
+    return readSocialOverview(scope, { clientId: row.id, from, to })
   },
 }
 

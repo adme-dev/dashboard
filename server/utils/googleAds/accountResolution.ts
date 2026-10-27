@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { queryRows } from '~~/server/utils/db'
+import { queryRows, queryRowsFresh } from '~~/server/utils/db'
 
 export const GoogleAdsAccountRoleSchema = z.enum([
   'dealer',
@@ -30,8 +30,8 @@ export interface GoogleAdsAccountBinding {
 }
 
 export interface GoogleAdsAccountResolutionDependencies {
-  findCandidates(query: string, clientId?: string): Promise<GoogleAdsAccountResolutionCandidate[]>
-  listBindings(clientId: string): Promise<GoogleAdsAccountBinding[]>
+  findCandidates(query: string, clientId?: string, allowedClientIds?: string[]): Promise<GoogleAdsAccountResolutionCandidate[]>
+  listBindings(clientId: string, activeBindingsOnly?: boolean): Promise<GoogleAdsAccountBinding[]>
 }
 
 export type GoogleAdsAccountResolutionResult
@@ -55,6 +55,8 @@ export type GoogleAdsAccountResolutionResult
 const ResolveInputSchema = z.strictObject({
   query: z.string().trim().min(1).max(200),
   aggregate: z.boolean().default(false),
+  activeBindingsOnly: z.boolean().default(false),
+  allowedClientIds: z.array(z.string().uuid()).optional(),
   clientId: z.string().uuid().optional()
 })
 
@@ -77,8 +79,8 @@ export async function resolveGoogleAdsAccount(
   dependencies: GoogleAdsAccountResolutionDependencies = postgresDependencies
 ): Promise<GoogleAdsAccountResolutionResult> {
   const input = ResolveInputSchema.parse(rawInput)
-  const candidates = (await dependencies.findCandidates(input.query, input.clientId))
-    .filter(candidate => !input.clientId || candidate.clientId === input.clientId)
+  const candidates = (await dependencies.findCandidates(input.query, input.clientId, input.allowedClientIds))
+    .filter(candidate => (!input.clientId || candidate.clientId === input.clientId) && (!input.allowedClientIds || input.allowedClientIds.includes(candidate.clientId)))
   const exact = candidates.filter(candidate => normalized(candidate.matchedName) === normalized(input.query))
   const eligible = exact.length > 0 ? exact : candidates
 
@@ -92,7 +94,7 @@ export async function resolveGoogleAdsAccount(
   }
 
   const candidate = eligible[0]!
-  const allBindings = (await dependencies.listBindings(candidate.clientId))
+  const allBindings = (await dependencies.listBindings(candidate.clientId, input.activeBindingsOnly))
     .filter(binding => binding.clientId === candidate.clientId)
   const selected = input.aggregate
     ? allBindings
@@ -116,7 +118,7 @@ export async function resolveGoogleAdsAccount(
 }
 
 const postgresDependencies: GoogleAdsAccountResolutionDependencies = {
-  async findCandidates(search, clientId) {
+  async findCandidates(search, clientId, allowedClientIds) {
     return queryRows<GoogleAdsAccountResolutionCandidate>(`
       SELECT c.id AS "clientId",
              c.name AS "canonicalName",
@@ -126,6 +128,7 @@ const postgresDependencies: GoogleAdsAccountResolutionDependencies = {
         FROM agency_clients c
        WHERE c.name ILIKE '%' || $1 || '%'
          AND ($2::uuid IS NULL OR c.id = $2::uuid)
+         AND c.is_active=TRUE AND ($3::uuid[] IS NULL OR c.id=ANY($3))
       UNION ALL
       SELECT c.id AS "clientId",
              c.name AS "canonicalName",
@@ -136,13 +139,14 @@ const postgresDependencies: GoogleAdsAccountResolutionDependencies = {
         JOIN agency_clients c ON c.id = a.client_id
        WHERE a.alias ILIKE '%' || $1 || '%'
          AND ($2::uuid IS NULL OR c.id = $2::uuid)
+         AND c.is_active=TRUE AND ($3::uuid[] IS NULL OR c.id=ANY($3))
        ORDER BY "matchedName" ASC, "clientId" ASC
        LIMIT 25
-    `, [search, clientId ?? null])
+    `, [search, clientId ?? null, allowedClientIds ?? null])
   },
 
-  async listBindings(clientId) {
-    const rows = await queryRows<GoogleAdsAccountBinding>(`
+  async listBindings(clientId, activeBindingsOnly) {
+    const rows = await (activeBindingsOnly ? queryRowsFresh : queryRows)<GoogleAdsAccountBinding>(`
       SELECT b.id,
              b.client_id AS "clientId",
              b.alias_id AS "aliasId",
@@ -163,8 +167,9 @@ const postgresDependencies: GoogleAdsAccountResolutionDependencies = {
          AND sc.client_id = b.client_id
          AND sc.platform = 'google'
        WHERE b.client_id = $1
+         AND (NOT $2::boolean OR (sc.status='active' AND b.operating_customer_id=REPLACE(sc.account_id,'-','')))
        ORDER BY b.account_role ASC, b.operating_customer_id ASC
-    `, [clientId])
+    `, [clientId, activeBindingsOnly ?? false])
     return rows.map(row => ({
       ...row,
       accountRole: GoogleAdsAccountRoleSchema.parse(row.accountRole)

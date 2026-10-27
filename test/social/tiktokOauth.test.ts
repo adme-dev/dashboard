@@ -76,6 +76,8 @@ describe('mapTikTokCreatorToAccountRow', () => {
       refresh_token: 'RT',
       token_expires_at: '2026-01-01T00:00:00.000Z',
       metadata: {
+        grantedScopes: [],
+        refreshTokenExpiresAt: null,
         tiktokOpenId: 'open-1',
         tiktokUsername: 'acme',
         avatarUrl: 'https://example.test/avatar.jpg',

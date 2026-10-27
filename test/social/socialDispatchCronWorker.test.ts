@@ -11,7 +11,8 @@ describe('social dispatch cron worker', () => {
     await run()
     expect(fetcher.mock.calls.map(call => call[0])).toEqual([
       'https://example.test/api/cron/publish-social-posts',
-      'https://example.test/api/cron/replenish-social-news'
+      'https://example.test/api/cron/replenish-social-news',
+      'https://example.test/api/cron/reconcile-social-posts'
     ])
     for (const [, init] of fetcher.mock.calls) expect(init).toMatchObject({ method: 'POST', headers: { 'x-cron-secret': 'secret' } })
   })
@@ -19,9 +20,9 @@ describe('social dispatch cron worker', () => {
     const fetcher = vi.fn()
     if (failure === 'http') fetcher.mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
     else fetcher.mockRejectedValueOnce(new Error('unreachable'))
-    fetcher.mockResolvedValueOnce(new Response('{}'))
+    fetcher.mockResolvedValue(new Response('{}'))
     vi.stubGlobal('fetch', fetcher)
     await expect(run()).rejects.toThrow('Social cron job failed: publish-social-posts')
-    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(fetcher).toHaveBeenCalledTimes(3)
   })
 })

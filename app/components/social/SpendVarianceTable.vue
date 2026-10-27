@@ -59,15 +59,16 @@ interface PacingReviewItem {
 }
 
 const props = defineProps<{
+  projection: 'marketing' | 'finance'
   items: Array<{
     groupKey?: string
     platform: string
     clientName: string
-    clientCode: string | null
+    clientCode?: string | null
     owner?: { id: string; name: string | null } | null
     budget: number
     spend: number
-    commission: number
+    commission?: number
     commissionRate?: number
     variance: number
     variancePercent: number
@@ -79,7 +80,7 @@ const props = defineProps<{
     rolling?: boolean
     lastSyncedAt?: string | null
   }>
-  totals: { budget: number; spend: number; commission: number; variance: number }
+  totals: { budget: number; spend: number; commission?: number; variance: number }
   search?: string
   monthProgress?: number
   pacingReviewItems?: PacingReviewItem[]
@@ -115,6 +116,9 @@ const READABLE_BADGE_CLASS = 'text-[11px] leading-4 font-semibold'
 const columnVisibility = ref(defaultSocialSpendColumnVisibility())
 const activePreset = ref<SocialSpendViewPresetId>('pacing')
 const ownerFilter = ref('all')
+const financeProjection = computed(() => props.projection === 'finance')
+const financeColumns = new Set(['commission', 'owner', 'bankCharged'])
+const viewPresets = computed(() => SOCIAL_SPEND_VIEW_PRESETS.filter(preset => financeProjection.value || preset.id !== 'finance'))
 
 // Active pacing alerts, matched to rows by media_spend id.
 const { alertsFor } = useSpendAlerts()
@@ -131,6 +135,7 @@ const selectedHistoryItem = computed(() => {
 })
 
 function openBudgetModal(item: typeof props.items[0]) {
+  if (!financeProjection.value || item.commission == null) return
   budgetModalTarget.value = {
     title: item.clientName,
     subtitle: platformLabel(item.platform),
@@ -204,12 +209,12 @@ function reviewStatusColor(item: PacingReviewItem) {
 }
 
 const hasBankData = computed(() => {
-  if (!props.bankCharges?.connected) return false
+  if (!financeProjection.value || !props.bankCharges?.connected) return false
   return props.bankCharges.total > 0 || (props.bankCharges.metaBilling?.total ?? 0) > 0
 })
 
 const columnOptions = computed(() =>
-  SOCIAL_SPEND_OPTIONAL_COLUMNS.filter(column => column.id !== 'bankCharged' || hasBankData.value)
+  SOCIAL_SPEND_OPTIONAL_COLUMNS.filter(column => (financeProjection.value || !financeColumns.has(column.id)) && (column.id !== 'bankCharged' || hasBankData.value))
 )
 
 const columnMenuItems = computed(() => [
@@ -236,6 +241,7 @@ const columnMenuItems = computed(() => [
 ])
 
 function isColumnVisible(columnId: SocialSpendOptionalColumnId): boolean {
+  if (!financeProjection.value && financeColumns.has(columnId)) return false
   if (columnId === 'bankCharged' && !hasBankData.value) return false
   return columnVisibility.value[columnId]
 }
@@ -354,7 +360,7 @@ function toggleSort(key: string) {
 
 const filtered = computed(() => {
   let items = [...props.items]
-  if (ownerFilter.value !== 'all') {
+  if (financeProjection.value && ownerFilter.value !== 'all') {
     items = items.filter((item) => {
       if (ownerFilter.value === '__unassigned__') return !item.owner?.id
       return item.owner?.id === ownerFilter.value
@@ -364,8 +370,8 @@ const filtered = computed(() => {
     const q = props.search.toLowerCase()
     items = items.filter(i =>
       i.clientName.toLowerCase().includes(q) ||
-      (i.clientCode && i.clientCode.toLowerCase().includes(q)) ||
-      (i.owner?.name && i.owner.name.toLowerCase().includes(q)) ||
+      (financeProjection.value && i.clientCode && i.clientCode.toLowerCase().includes(q)) ||
+      (financeProjection.value && i.owner?.name && i.owner.name.toLowerCase().includes(q)) ||
       platformLabel(i.platform).toLowerCase().includes(q)
     )
   }
@@ -476,7 +482,7 @@ const combinedBankTotal = computed(() => {
 
 const totalColSpan = computed(() => socialSpendColumnCount({
   hasBankData: hasBankData.value,
-  visibility: columnVisibility.value,
+  visibility: Object.fromEntries(SOCIAL_SPEND_OPTIONAL_COLUMNS.map(column => [column.id, isColumnVisible(column.id)])) as typeof columnVisibility.value,
 }))
 </script>
 
@@ -485,7 +491,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div class="flex flex-wrap items-center gap-1">
         <UButton
-          v-for="preset in SOCIAL_SPEND_VIEW_PRESETS"
+          v-for="preset in viewPresets"
           :key="preset.id"
           :label="preset.label"
           size="xs"
@@ -496,6 +502,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <USelect
+          v-if="financeProjection"
           v-model="ownerFilter"
           :items="ownerOptions"
           size="sm"
@@ -584,14 +591,17 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           <!-- Budget cell — click to open the budget editor modal -->
           <td class="py-2 px-3 text-right">
             <div class="flex flex-col items-end gap-0.5">
-              <button
-                class="inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+              <UButton
+                variant="ghost"
+                  color="neutral"
+                  class="inline-flex items-center gap-1 p-0 text-sm font-normal hover:text-primary transition-colors"
+                  :disabled="!financeProjection"
                 @click="openBudgetModal(item)"
               >
                 <span v-if="item.budget > 0">{{ formatCurrency(item.budget) }}</span>
                 <span v-else class="text-muted/50 text-xs">Set budget</span>
                 <UIcon name="i-lucide-pencil" class="size-3 opacity-0 group-hover:opacity-50" />
-              </button>
+              </UButton>
               <UBadge v-if="item.rolling" size="sm" color="info" variant="subtle" class="gap-0.5" :class="READABLE_BADGE_CLASS">
                 <UIcon name="i-lucide-repeat" class="size-3" />
                 Rolling

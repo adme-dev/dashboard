@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { queryOne as databaseQueryOne } from '~~/server/utils/db'
+import { queryOneFresh as databaseQueryOne } from '~~/server/utils/db'
 import {
   GoogleAdsActionPlanSchema,
   GoogleAdsActionStatusSchema,
@@ -71,6 +71,8 @@ const PLAN_COLUMNS = `
   request_hash AS "requestHash",
   idempotency_key AS "idempotencyKey",
   status,
+  review_policy AS "reviewPolicy", reviewed_by AS "reviewedBy", reviewed_at::text AS "reviewedAt",
+  rejection_reason AS "rejectionReason", executed_by AS "executedBy",
   approval_id AS "approvalId",
   provider_request_id AS "providerRequestId",
   verification_summary AS "verificationSummary",
@@ -141,11 +143,11 @@ export async function createGoogleAdsActionPlan(
       resource_type, resource_name, operation, current_state, desired_state,
       current_state_fingerprint, state_diff, provider_operations, risk_tier,
       execution_mode, policy_version, policy_decision, request_hash, idempotency_key,
-      status, approval_id, expires_at, created_at, updated_at
+      status, approval_id, expires_at, created_at, updated_at, review_policy
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb,
       $14, $15::jsonb, $16::jsonb, $17, $18, $19, $20::jsonb, $21, $22,
-      $23, $24, $25::timestamptz, $26::timestamptz, $27::timestamptz
+      $23, $24, $25::timestamptz, $26::timestamptz, $27::timestamptz, $28
     )
     ON CONFLICT (client_id, idempotency_key) DO NOTHING
     RETURNING ${PLAN_COLUMNS}
@@ -176,7 +178,8 @@ export async function createGoogleAdsActionPlan(
     plan.approvalId ?? null,
     plan.expiresAt,
     plan.createdAt,
-    plan.updatedAt ?? plan.createdAt
+    plan.updatedAt ?? plan.createdAt,
+    plan.reviewPolicy ?? 'legacy'
   ])
 
   if (row) return parsePlan(row)
@@ -283,6 +286,7 @@ export interface ClaimGoogleAdsActionPlanInput {
   clientId: string
   actorId: string
   expectedStatus: 'planned' | 'approved'
+  executorId?: string
 }
 
 export async function claimGoogleAdsActionPlan(
@@ -302,14 +306,15 @@ export async function claimGoogleAdsActionPlan(
   }
   const row = await dependencies.queryOne<Record<string, unknown>>(`
     UPDATE google_ads_action_plans
-    SET status = 'executing', claimed_at = NOW()
+    SET status = 'executing', claimed_at = NOW()${input.executorId ? ', executed_by = $5' : ''}
     WHERE id = $1
       AND client_id = $2
       AND actor_id = $3
       AND status = $4
+      AND ${input.executorId ? 'review_policy=\'delegated_marketing\' AND reviewed_by IS NOT NULL AND reviewed_by<>actor_id AND $5::uuid<>actor_id' : 'review_policy=\'legacy\''}
       AND expires_at > NOW()
     RETURNING ${PLAN_COLUMNS}
-  `, [id, clientId, actorId, expectedStatus])
+  `, [id, clientId, actorId, expectedStatus, ...(input.executorId ? [UuidSchema.parse(input.executorId)] : [])])
   return row ? parsePlan(row) : null
 }
 

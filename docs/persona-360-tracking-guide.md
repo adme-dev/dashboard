@@ -83,7 +83,7 @@ as general-purpose advertising identifiers.
 
 Each event carries a browser-generated `event_id`, anonymous ID, optional
 session ID, page and referrer context, timestamp, attribution, and event data.
-The browser event ID is the canonical cross-system deduplication key.
+The browser event ID supports XeroFlow ingestion deduplication. It is not proof that every advertising provider deduplicates browser and server conversions; verify the exact destination contract and event mapping before enabling overlapping senders.
 
 Supported attribution includes UTMs, Google click IDs, Meta click IDs, TikTok,
 Microsoft, LinkedIn, and email click identifiers.
@@ -318,3 +318,35 @@ The broader 360 lakehouse is the next analytical plane for cross-application
 events, point-in-time features, trends, market intelligence, AI, mobile, voice,
 and MCP. It must consume versioned identity decisions; it must not independently
 guess identity or bypass tenant, consent, and purpose controls.
+
+## Independently reviewed GTM changes (27 October 2026)
+
+Staff tracking grants permit scoped inventory and local proposals. They do not
+permit workspace writes, installation, publish or rollback without a separate
+current owner/admin review. The requester cannot review their own change.
+Workspace creation and compilation produce a version; publishing that exact
+version needs another proposal and review. Changed bindings, live fingerprints,
+expired evidence, revoked authority and uncertain outcomes fail closed.
+
+Native DriveAgent accepted enquiries retain the native server conversion route.
+The XeroFlow installer is not a substitute for repairing that route. Browser
+requirements and consent ownership must be documented separately. External sites
+need exact host/form/backend and existing-provider-hook evidence. Never fabricate
+an enquiry to establish delivery. Each proposal pins current ownership evidence;
+documentary age alone is not an automatic blocker when stale areas are disclosed
+and current source establishes actual ownership and consent.
+
+The bounded registry supports googtag/tagId, gaawe/measurementIdOverride and awct
+ID/label, plus folders and windowLoaded triggers. It rejects unknown fields,
+custom HTML/JavaScript, legacy gaawc, GtagConfig and unregistered variables. The
+three Google-authored fixtures establish representation and deterministic
+compilation; live create/update acceptance is still an external gate. See
+`docs/runbooks/marketing-ads-tracking-review.md` for operator evidence boundaries.
+
+Documentation source base: `40f551f5fe14b1bb8723e599d1a6fb4292c6b8ca` plus
+Task 4 source changes. No maintained graph/wiki checkout was present in this
+workspace; generated graph and GitHub wiki revisions were not verified or
+refreshed in this dispatch. Their staff-GTM, review and template descriptions may
+be stale and are not release evidence. No dealer/container was selected here;
+dealer-specific current-source, guide, wiki and Conversion Delivery inspection
+remains required before recording actual ownership evidence.

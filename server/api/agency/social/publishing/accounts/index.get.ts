@@ -1,5 +1,6 @@
-import { queryRows } from '~~/server/utils/db'
-import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { socialCapabilityReadiness } from '~~/server/utils/socialPublishing/capabilityReadiness'
+import { queryRowsFresh } from '~~/server/utils/db'
+import { requireFreshSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { classifySocialPublishingAccountHealth } from '~~/server/utils/socialPublishing/accountHealth'
 
 interface SocialAccountRow {
@@ -40,8 +41,9 @@ function parseMetadata(value: SocialAccountRow['metadata']): Record<string, unkn
 export default defineEventHandler(async (event) => {
   const clientId = getQuery(event).clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
-  await requireSocialClientAccess(event, clientId)
-  const rows = await queryRows<SocialAccountRow>(
+  const { context } = await requireFreshSocialClientAccess(event, clientId)
+  const canPublish = context.permissionGroups?.includes('CREATIVE') === true
+  const rows = await queryRowsFresh<SocialAccountRow>(
     `SELECT sa.id, sa.client_id, sa.platform, sa.platform_account_id, sa.account_name, sa.is_active,
             sa.last_error, sa.token_expires_at, sa.last_synced_at, sa.metadata, sa.created_at,
             (NULLIF(sa.refresh_token, '') IS NOT NULL) AS has_refresh_token,
@@ -85,6 +87,8 @@ export default defineEventHandler(async (event) => {
       has_refresh_token: row.has_refresh_token,
       linked_facebook_account_id: row.linked_facebook_account_id,
       linked_facebook_account_name: row.linked_facebook_account_name,
+      operations: socialCapabilityReadiness({ platform: row.platform, isActive: row.is_active,
+        lastError: row.last_error, tokenExpiresAt: row.token_expires_at, hasRefreshToken: row.has_refresh_token, metadata, linkedFacebookAccountId: row.linked_facebook_account_id, linkedFacebookIsActive: row.linked_facebook_is_active }, { channel: 'browser', clientMapped: true, writable: context.assistantReadOnly !== true, canPublish }),
       connection_health: health.health,
       connection_health_label: health.healthLabel,
       connection_health_reason: health.healthReason,

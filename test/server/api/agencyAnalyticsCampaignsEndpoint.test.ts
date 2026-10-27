@@ -27,6 +27,8 @@ vi.mock('~~/server/utils/auth', () => ({
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
+  queryOneFresh: (sql: string, params: any[]) => sql.includes('team_members') ? Promise.resolve({ id: params[0] }) : sql.includes('xero_org_connection') ? Promise.resolve({ tenant_id: 'tenant-1' }) : mockQueryOne(sql, params),
 }))
 
 vi.mock('~~/server/utils/session', () => ({
@@ -38,7 +40,7 @@ const { default: campaignsHandler } = await import('../../../../server/api/agenc
 describe('GET /api/agency/analytics/campaigns', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRequireAuth.mockResolvedValue({ id: 'user-1' })
+    mockRequireAuth.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' })
     mockGetSelectedTenant.mockResolvedValue('tenant-1')
     mockQueryOne.mockResolvedValue({ count: '2' })
     mockQueryRows
@@ -146,6 +148,7 @@ describe('GET /api/agency/analytics/campaigns', () => {
 
   it('returns stable unique row keys and counts grouped campaign rows, not raw campaign IDs', async () => {
     const result = await campaignsHandler({
+      context: {},
       query: { startDate: '2026-06-01', endDate: '2026-06-30' },
     })
 

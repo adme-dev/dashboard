@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { campaignNameLikePattern, getAdCreativeText } from '../../../server/utils/ai/tools/adCreativeText'
 import type { ToolContext } from '../../../server/utils/ai/toolContext'
 
-const ctx = { userId: 'user-1', userRole: 'owner' } as ToolContext
+vi.mock('~~/server/utils/db', async original => ({ ...(await original<any>()),
+  queryOneFresh: vi.fn(async (sql: string, params: any[]) => sql.includes('team_members') ? { id: params[0] } : sql.includes('FROM leads') ? { total_submissions: 63, campaign_attributed: 4, ad_attributed: 3 } : { id: 'c1' }),
+  queryRowsFresh: vi.fn(async () => [{ id: 'c1', name: 'Acme' }])
+}))
+
+const ctx = { userId: '11111111-1111-4111-8111-111111111111', userRole: 'owner', event: { context: {} } as any } as ToolContext
 const noSync = { findUnsynced: vi.fn().mockResolvedValue([]), syncCreatives: vi.fn() }
 
 describe('get_ad_creative_text', () => {
@@ -52,7 +57,7 @@ describe('get_ad_creative_text', () => {
     const syncCreatives = vi.fn().mockResolvedValue({ syncedRows: 1, error: null })
     const result = await getAdCreativeText({ platform: 'google', campaignName: 'July Drive Away' }, ctx, { load, findUnsynced, syncCreatives })
     expect(findUnsynced).toHaveBeenCalledTimes(1)
-    expect(syncCreatives).toHaveBeenCalledWith('ms-1')
+    expect(syncCreatives).toHaveBeenCalledWith('ms-1', ctx)
     expect(load).toHaveBeenCalledTimes(1)
     expect(load.mock.invocationCallOrder[0]).toBeGreaterThan(syncCreatives.mock.invocationCallOrder[0])
     const data = (result as any).data

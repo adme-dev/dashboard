@@ -28,7 +28,6 @@ vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...a: unknown[]) => mockRequireAuth(...a),
   requireRole: (...a: unknown[]) => mockRequireRole(...a)
 }))
-vi.mock('~~/server/utils/permissions', () => ({ PERMISSIONS: { CREATIVE: ['owner'] } }))
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
   queryRowsFresh: (...a: unknown[]) => mockQueryRows(...a),
@@ -53,7 +52,7 @@ const delH = deleteHandler as TestHandler
 
 describe('publishing posts CRUD', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     mockRequireAuth.mockResolvedValue({ id: 'U1' })
     mockRequireRole.mockResolvedValue({ id: 'U1' })
     mockQueryRows.mockResolvedValue([])

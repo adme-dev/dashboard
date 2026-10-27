@@ -13,7 +13,7 @@ const clientName = computed(() => client.value?.client?.name || client.value?.na
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
+  <div class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
     <div class="flex items-center gap-2">
       <UButton
         icon="i-lucide-arrow-left"
@@ -26,6 +26,9 @@ const clientName = computed(() => client.value?.client?.name || client.value?.na
         {{ clientName }} — Website analytics
       </h1>
     </div>
+    <UButton to="/agency/marketing/reviews/gtm" variant="outline" icon="i-lucide-shield-check">
+      Review tracking proposals
+    </UButton>
     <TrackingAnalyticsContainer :client-id="clientId" />
   </div>
 </template>

@@ -196,6 +196,17 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'marketing-reviews': {
+    title: 'Reviewed Marketing Changes', slug: 'marketing-reviews', icon: 'i-lucide-shield-check',
+    category: 'AI & Intelligence', categoryIcon: 'i-lucide-brain', categoryIconBg: 'bg-amber-50 dark:bg-amber-500/10', categoryIconColor: 'text-amber-600 dark:text-amber-400',
+    description: 'Prepare client-scoped advertising and tracking changes with independent review before execution. Availability depends on staff grants and connected provider accounts.',
+    details: [
+      { title: 'Your assigned client accounts', content: 'Staff discover and inspect only the client accounts covered by their current permissions and marketing grants. Connecting an assistant does not connect an advertising account or grant wider agency access.' },
+      { title: 'Exact Google Ads proposals', content: 'Campaign changes are saved with the account, desired change, risk, expiry and diff. A different active owner or admin reviews that exact plan in XeroFlow. Approval and execution are separate actions; staff cannot self-confirm advertising changes.' },
+      { title: 'Bounded tracking changes', content: 'Tracking proposals require documented website ownership, consent and existing conversion routing. Supported templates cover a bounded Google tag, GA4 event and Google Ads conversion, plus folders and a window-loaded trigger. Native DriveAgent accepted enquiries retain their server delivery path. Arbitrary HTML, JavaScript and unregistered templates are excluded.' },
+      { title: 'Results you can inspect', content: 'Workspace compilation, publish, live read-back and actual conversion delivery are separate evidence. Publishing a compiled version requires another review. Drift blocks execution and uncertain outcomes stay held for inspection. Provider scopes, permissions and live account acceptance remain activation requirements.' }
+    ]
+  },
   'page-studio': {
     title: 'Page Studio',
     slug: 'page-studio',
@@ -551,7 +562,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Rewrite and Route With Control',
-        content: 'Cherry-pick a story, keep the source intact or rewrite it in the client’s approved voice, then target specific connected accounts across Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business. Save it as a draft, choose an exact time, or use the client’s next available posting slot.'
+        content: 'Cherry-pick a story, keep the source intact or rewrite it in the client’s approved voice, then target supported connected Facebook, Instagram, LinkedIn and Google Business accounts. TikTok and YouTube publishing remain unavailable. Save it as a draft, choose an exact time, or use the client’s next available posting slot.'
       },
       {
         title: 'Client Knowledge With a Review Gate',
@@ -575,7 +586,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-share-2',
     categoryIconBg: 'bg-sky-50',
     categoryIconColor: 'text-sky-600',
-    description: 'Author a post once and tailor it per network — Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business — with live per-network previews as you type.',
+    description: 'Author once and tailor supported Facebook, Instagram, LinkedIn and Google Business posts. Staff submit exact content and accounts for independent review; TikTok and YouTube publishing remain unavailable.',
     details: [
       {
         title: 'Customise Per Network',
@@ -651,19 +662,19 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-share-2',
     categoryIconBg: 'bg-sky-50',
     categoryIconColor: 'text-sky-600',
-    description: 'Every comment, mention, and message across your social networks in one unified inbox — read, triage, and reply without leaving the dashboard.',
+    description: 'Read and triage supported comments, messages and reviews in one dashboard. Reply availability depends on the network, operation, account permissions and provider grants.',
     details: [
       {
-        title: 'One Inbox, Every Network',
-        content: 'Comments on the posts you publish, plus mentions and direct messages, flow into a single conversation view across Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business. Each thread keeps the full back-and-forth so your team always has context before they reply.'
+        title: 'Supported Conversations in One Inbox',
+        content: 'Supported Meta conversations, LinkedIn Company Page comments and Google Business reviews share a conversation view. Coverage differs by provider and granted operation; TikTok organic inbox and replies are unavailable, and YouTube publishing is disabled. The marketing staff MCP connector does not expose inbox or comment sending.'
       },
       {
         title: 'Reply In Place',
-        content: 'Respond to a comment or message straight from the dashboard — the reply posts back to the originating network through the same connection that powers publishing. No tab-switching, no copy-paste, no missed replies.'
+        content: 'For a supported reply operation, respond from the dashboard using the required provider grant. Publishing permission alone does not authorize replies. Review account readiness and the returned delivery result; an uncertain response is not proof of delivery.'
       },
       {
         title: 'Real-Time, Reliable Ingestion',
-        content: 'Webhooks bring Meta comments in the moment they happen, while a steady background sync pulls comments and reviews from the other networks — de-duplicated so nothing shows up twice and nothing slips through.'
+        content: 'Meta webhooks and supported provider polling feed stored conversations. Synchronization depends on the provider, account health and granted scopes; check sync errors and coverage before treating the inbox as complete.'
       },
       {
         title: 'Built For What’s Next',
@@ -1958,6 +1969,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'marketing-staff-mcp': {
+    title: 'Marketing Staff MCP',
+    slug: 'marketing-staff-mcp',
+    icon: 'i-lucide-user-check',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50 dark:bg-amber-500/10',
+    categoryIconColor: 'text-amber-600 dark:text-amber-400',
+    description: 'Use your AI assistant for assigned-client reporting and reviewed marketing preparation, with your own login, current permissions and clear provider readiness.',
+    details: [
+      {
+        title: 'Connect with your own account',
+        content: 'The setup page guides staff through connecting Claude, ChatGPT or Cursor to XeroFlow. It previews effective permission groups, client scope and narrow capability grants, and names the OAuth scopes it assumes. Your actual host grant can be narrower; host plan and workspace policies still apply. Owner access stays separate from staff enrollment.'
+      },
+      {
+        title: 'Understand assigned campaign performance',
+        content: 'Read stored campaign, ad, search-term, pacing and social performance for your permitted clients. Reporting keeps source dates, coverage gaps and unavailable data visible instead of treating missing data as zero. Ordinary reporting reads do not refresh provider data or expand access to unassigned clients.'
+      },
+      {
+        title: 'Prepare work for independent review',
+        content: 'Granted staff can create social drafts with exact account and media choices, submit immutable revisions, and prepare supported Google Ads or tracking proposals. A separate authorized owner or administrator reviews the exact change in XeroFlow. Changes, expiry or revoked access can require a new review; the staff connector cannot publish a social post directly.'
+      },
+      {
+        title: 'See what each provider supports',
+        content: 'Assistant authorization and provider OAuth are separate. Account readiness distinguishes publishing, comments, inbox, organic reporting and paid operations, with explicit reasons when an operation is unavailable. Facebook, Page-linked Instagram and LinkedIn still need their required grants and account authority. TikTok publishing remains unavailable pending product eligibility and app approval; the staff connector does not send inbox replies.'
+      }
+    ]
+  },
   'ai-connectors': {
     title: 'AI Assistant Connectors',
     slug: 'ai-connectors',
@@ -1966,10 +2005,10 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Connect Claude, Cursor, or ChatGPT to a governed Godmode view of XeroFlow. Operational answers carry coverage, fresh/stale/mixed status and attribution; creative workflows can discover current approved source assets before choosing source-bound video, static, transform or audio models, while owners can query the immutable action ledger directly.',
+    description: 'Connect Claude, Cursor, or ChatGPT to XeroFlow with your own login. Marketing staff receive scoped reporting and reviewed preparation; the owner workflows below require separately verified active owner authority, including operational evidence, approved creative sources and the immutable action ledger.',
     details: [
       {
-        title: 'Campaign and Creative Godmode',
+        title: 'Owner Campaign and Creative Godmode',
         content: 'Add one connector URL and ask which campaigns are lagging, which live ads show fatigue, what artwork is attached, when it was delivered, or where the design team has capacity. Campaign and ad views include status, first and last delivery, honest no-baseline date comparisons, attributable leads and CPL, freshness classified as fresh, stale or mixed, creative links, and continuation cursors across the full portfolio. Current Monday item and update assets are resolved at read time with usable source URLs, screenshot filtering, and deduplicated client IDs.'
       },
       {

@@ -53,7 +53,7 @@ describe('Google Tag Manager management endpoints', () => {
   it('records quota and credential failures instead of leaving executing change sets behind', () => {
     const installer = source('server/utils/googleTagManagerInstaller.ts')
     const draftTry = installer.indexOf('try {\n    // Remaining calls: workspace')
-    const draftQuota = installer.indexOf('await reserveGtmApiQuota(input.publish ? 8 : 6)')
+    const draftQuota = installer.indexOf('await reserveGtmApiQuota(input.reviewed ? 9 : input.publish ? 8 : 6)')
     expect(draftTry).toBeGreaterThan(-1)
     expect(draftQuota).toBeGreaterThan(draftTry)
 

@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { getSearchTerms, searchTermsTool, type SearchTermsDeps } from '~~/server/utils/ai/tools/searchTerms'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
-const ctx = { userId: 'u1', userRole: 'media_buyer', source: 'mcp', event: {} as any } as ToolContext
+vi.mock('~~/server/utils/db', async original => ({ ...(await original<any>()),
+  queryOneFresh: vi.fn(async (sql: string, params: any[]) => sql.includes('team_members') ? { id: params[0] } : sql.includes('FROM leads') ? { total_submissions: 63, campaign_attributed: 4, ad_attributed: 3 } : { id: 'c1' }),
+  queryRowsFresh: vi.fn(async () => [{ id: 'c1', name: 'Acme' }])
+}))
+
+const ctx = { userId: '11111111-1111-4111-8111-111111111111', userRole: 'owner', event: { context: {} } as any } as ToolContext
 const target = {
   mediaSpendId: 'ms-1', campaignId: '123', campaignName: 'July Drive Away', campaignType: 'SEARCH',
   platform: 'google' as const, clientId: 'client-1', clientName: 'Geelong Kia', connectionId: 'conn-1',

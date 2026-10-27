@@ -38,8 +38,9 @@ describe('AI internal fetch inventory', () => {
       visit(source)
     }
 
+    // Scoped marketing reporting calls shared services directly; its campaign,
+    // social overview and spend reads no longer cross the internal HTTP bridge.
     expect(calls.sort()).toEqual([
-      'GET /api/agency/analytics/campaigns',
       'GET /api/agency/budget-alerts/health',
       'GET /api/agency/capacity',
       'GET /api/agency/social/inbox/analytics/overview',
@@ -50,8 +51,6 @@ describe('AI internal fetch inventory', () => {
       'GET /api/agency/social/news/profiles/${}/context',
       'GET /api/agency/social/news/profiles/${}',
       'GET /api/agency/social/publishing/accounts',
-      'GET /api/agency/social/reporting/overview',
-      'GET /api/agency/social/spend/summary',
       'GET /api/crm/pipeline',
       'GET /api/crm/stages',
       'GET /api/email/campaigns',

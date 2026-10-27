@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent {
   query?: Record<string, string>
+  context?: Record<string, unknown>
 }
 
 const testGlobal = globalThis as typeof globalThis & {
@@ -22,6 +23,10 @@ testGlobal.createError = input => Object.assign(new Error(input.statusMessage), 
 const mockRequireAuth = vi.fn()
 const mockQueryRows = vi.fn()
 const mockQueryOne = vi.fn()
+const mockQueryOneFresh = vi.fn()
+const mockQueryRowsFresh = vi.fn()
+const USER_ID = '11111111-1111-4111-8111-111111111111'
+const CLIENT_ID = '22222222-2222-4222-8222-222222222222'
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
@@ -29,7 +34,9 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
-  queryOne: (...args: unknown[]) => mockQueryOne(...args)
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryOneFresh: (...args: unknown[]) => mockQueryOneFresh(...args),
+  queryRowsFresh: (...args: unknown[]) => mockQueryRowsFresh(...args)
 }))
 
 vi.mock('~~/server/utils/session', () => ({
@@ -60,10 +67,22 @@ const { default: exportHandler } = await import(
 
 describe('agency analytics lead metrics', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockRequireAuth.mockResolvedValue({ id: 'user-1' })
+    vi.resetAllMocks()
+    mockRequireAuth.mockResolvedValue({ id: USER_ID })
     mockQueryRows.mockResolvedValue([])
     mockQueryOne.mockResolvedValue({ count: '0' })
+    // Keep real fresh authority and assigned-client scoping without consuming analytics fixtures.
+    mockQueryOneFresh.mockImplementation((sql: string, params: unknown[]) => {
+      if (sql.includes('user_role = \'owner\'')) return Promise.resolve(null)
+      if (sql.includes('FROM team_members')) return Promise.resolve({ role: 'media_buyer', custom_role_id: null })
+      if (sql.includes('FROM custom_roles')) return Promise.resolve({ permission_groups: ['MEDIA_BUYING'], is_read_only: false })
+      if (sql.includes('FROM xero_org_connection')) return Promise.resolve({ tenant_id: 'tenant-1' })
+      return mockQueryOne(sql, params)
+    })
+    mockQueryRowsFresh.mockImplementation((sql: string, params: unknown[]) => {
+      if (sql.includes('FROM client_team_assignments')) return Promise.resolve([{ client_id: CLIENT_ID }])
+      return mockQueryRows(sql, params)
+    })
   })
 
   it('adds all matching lead metrics to campaign rows without portal visibility filtering', async () => {
@@ -75,7 +94,7 @@ describe('agency analytics lead metrics', () => {
         platform: 'google_ads',
         campaign_type: 'SEARCH',
         campaign_status: 'ENABLED',
-        client_id: 'client-1',
+        client_id: CLIENT_ID,
         client_name: 'Client One',
         spend: '200',
         budget: '500',
@@ -96,6 +115,7 @@ describe('agency analytics lead metrics', () => {
     ])
 
     const result = await campaignsHandler({
+      context: { cloudflare: { env: { GOD_MODE_DISABLED: 'false', MCP_MARKETING_STAFF_GRANTS: '' } } },
       query: {
         startDate: '2026-05-01',
         endDate: '2026-05-27',
@@ -115,6 +135,9 @@ describe('agency analytics lead metrics', () => {
     expect(sql).toContain('l.is_test = false')
     expect(sql).not.toContain('destination_type = \'portal\'')
     expect(sql).toContain('ORDER BY cost_per_lead DESC')
+    expect(sql).toContain('ms.client_id = ANY(')
+    expect(sql).toContain('l.client_id = c.client_id')
+    expect(mockQueryRows.mock.calls[0]?.[1]).toContainEqual([CLIENT_ID])
   })
 
   it('adds all matching lead totals to agency overview', async () => {

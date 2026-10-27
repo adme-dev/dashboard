@@ -8,6 +8,9 @@ import { startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/c
 /**
  * POST /api/agency/social/publishing/posts/:id/schedule
  * Explicitly schedule an approved post for dispatcher pickup.
+ *
+ * A delegated (staff/MCP) approval covers one exact schedule: this endpoint can only re-arm the same
+ * reviewed time — it never moves the time, approves new content or extends the approval's expiry.
  */
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
@@ -25,9 +28,20 @@ export default defineEventHandler(async (event) => {
   if (new Date(scheduledAt).getTime() <= Date.now()) {
     throw createError({ statusCode: 400, statusMessage: 'scheduledAt must be in the future' })
   }
-  const timezone = typeof body.timezone === 'string' && body.timezone.trim()
+  const delegated = existing.review_policy === 'delegated_marketing'
+  // A delegated approval also covers its timezone, so only the reviewed value is kept.
+  const timezone = !delegated && typeof body.timezone === 'string' && body.timezone.trim()
     ? body.timezone.trim()
     : null
+  if (delegated) {
+    const reviewed = existing.scheduled_at ? new Date(existing.scheduled_at).toISOString() : null
+    if (reviewed !== scheduledAt) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'This post was approved for a specific time. Edit the schedule and resubmit it for review.'
+      })
+    }
+  }
 
   const row = await queryOne(
     `UPDATE social_posts
@@ -54,7 +68,10 @@ export default defineEventHandler(async (event) => {
     clientId: existing.client_id,
     scheduledAt,
     trigger: 'schedule',
-    requestedBy: user.id
+    requestedBy: user.id,
+    ...(delegated && existing.approved_revision_id
+      ? { revisionId: existing.approved_revision_id }
+      : {})
   })
   return row
 })

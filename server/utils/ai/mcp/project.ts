@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
@@ -79,8 +79,37 @@ export interface McpProjectionContext {
   scopes: readonly string[]
   requireWriteScope: boolean
   suiteFlags: McpSuiteFlags
+  /** Freshly resolved groups/write policy for ordinary staff; when present they supersede `role`. */
+  permissionGroups?: readonly PermissionGroup[]
+  readOnly?: boolean
   /** Set only by projectGodModeTools after runtime-branded authority has passed at the route. */
   governanceBypass?: boolean
+}
+
+/**
+ * Projection-time permission: freshly resolved groups (ordinary MCP staff) supersede the legacy role;
+ * without them the legacy role defaults apply unchanged. Owner projections bypass via governanceBypass.
+ */
+export function hasMcpPermission(
+  role: string,
+  group: PermissionGroup,
+  permissionGroups?: readonly PermissionGroup[]
+): boolean {
+  return permissionGroups ? permissionGroups.includes(group) : roleHasPermission(role, group)
+}
+
+/**
+ * Execution-time permission for MCP suites. A context resolved by resolveMcpStaffContext is authorized
+ * ONLY by its fresh groups (a custom role that narrows a broad legacy role must not inherit the legacy
+ * role's suites). Every other context — owner God mode, legacy non-MCP callers — keeps role semantics.
+ */
+export function mcpContextHasPermission(
+  ctx: Pick<ToolContext, 'userRole' | 'permissionGroups' | 'mcpStaffAuthority'>,
+  group: PermissionGroup
+): boolean {
+  return ctx.mcpStaffAuthority === 'fresh'
+    ? (ctx.permissionGroups ?? []).includes(group)
+    : roleHasPermission(ctx.userRole, group)
 }
 
 /**
@@ -103,6 +132,15 @@ function mcpDescription(t: AiTool<unknown>): string {
     : t.description
 }
 
+/** One registry tool as an MCP manifest — the shared shape for every catalog projection path. */
+export function toMcpToolManifest(tool: AiTool<unknown>): McpToolManifest {
+  return {
+    name: tool.name,
+    description: mcpDescription(tool),
+    inputSchema: z.toJSONSchema(tool.parameters) as Record<string, unknown>
+  }
+}
+
 /** Complete base AiTool registry projection for a freshly branded owner authority. */
 export function projectGodModeCatalogTools(
   tools: AiTool<unknown>[],
@@ -110,24 +148,19 @@ export function projectGodModeCatalogTools(
 ): McpToolManifest[] {
   return tools
     .filter(tool => options.includeWrites || !tool.mutates)
-    .map(tool => ({
-      name: tool.name,
-      description: mcpDescription(tool),
-      inputSchema: z.toJSONSchema(tool.parameters) as Record<string, unknown>
-    }))
+    .map(toMcpToolManifest)
 }
 
 /** Authoritative base-registry suite adapter. Future AiTool registrations flow through automatically. */
 export function projectCatalogMcpSuite(context: McpProjectionContext): McpToolManifest[] {
   if (context.governanceBypass) return projectGodModeCatalogTools(context.tools, { includeWrites: true })
-  const immediateMutations = filterToolsForUser(context.tools, context.role)
+  const immediateMutations = filterToolsForUser(context.tools, context.role, context.permissionGroups, context.readOnly)
     .filter(tool => !!tool.directMutation)
-    .map(tool => ({
-      name: tool.name,
-      description: mcpDescription(tool),
-      inputSchema: z.toJSONSchema(tool.parameters) as Record<string, unknown>
-    }))
-  return [...projectReadOnlyTools(context.tools, context.role), ...immediateMutations]
+    .map(toMcpToolManifest)
+  return [
+    ...projectReadOnlyTools(context.tools, context.role, context.permissionGroups),
+    ...immediateMutations
+  ]
 }
 
 /** Base AiTools automatically receive one catalog execution descriptor. */
@@ -147,14 +180,14 @@ export function resolveCatalogMcpExecutions(context: McpProjectionContext): McpE
 }
 
 /** The read-only tools a role may call, as MCP manifests. Mutating tools are filtered out unconditionally. */
-export function projectReadOnlyTools(tools: AiTool<unknown>[], role: string): McpToolManifest[] {
-  return filterToolsForUser(tools, role)
+export function projectReadOnlyTools(
+  tools: AiTool<unknown>[],
+  role: string,
+  permissionGroups?: readonly PermissionGroup[]
+): McpToolManifest[] {
+  return filterToolsForUser(tools, role, permissionGroups)
     .filter(t => !t.mutates)
-    .map(t => ({
-      name: t.name,
-      description: mcpDescription(t),
-      inputSchema: z.toJSONSchema(t.parameters) as Record<string, unknown>
-    }))
+    .map(toMcpToolManifest)
 }
 
 export type ExecuteOutcome
@@ -180,12 +213,28 @@ export async function executeReadOnlyTool(
   if (tool.mutates) return { ok: false, error: `Tool ${name} is not available over MCP (read-only).`, code: 'write_blocked' }
 
   // Same ceiling as in-app: the tool must be in the role's allowed set AND its permission re-checked.
-  const allowed = filterToolsForUser(tools, ctx.userRole).some(t => t.name === name)
+  // Freshly resolved groups (ordinary MCP staff) supersede the legacy role, exactly as in-app chat.
+  const allowed = filterToolsForUser(tools, ctx.userRole, ctx.permissionGroups, ctx.assistantReadOnly)
+    .some(t => t.name === name)
   if (!allowed) return { ok: false, error: 'Not permitted.', code: 'forbidden' }
-  if (tool.requiredPermission && !roleHasPermission(ctx.userRole, tool.requiredPermission)) {
-    return { ok: false, error: 'Not permitted.', code: 'forbidden' }
-  }
+  const permissionGranted = !tool.requiredPermission || (ctx.permissionGroups
+    ? ctx.permissionGroups.includes(tool.requiredPermission)
+    : roleHasPermission(ctx.userRole, tool.requiredPermission))
+  if (!permissionGranted) return { ok: false, error: 'Not permitted.', code: 'forbidden' }
 
+  return await runReadToolHandler(tool, args, ctx)
+}
+
+/**
+ * Validate untrusted arguments and run one read handler. Callers own admission: executeReadOnlyTool
+ * (role/group ceiling) and marketingPolicy.executeStaffMcpReadTool (reviewed staff policy).
+ */
+export async function runReadToolHandler(
+  tool: AiTool<unknown>,
+  args: unknown,
+  ctx: ToolContext
+): Promise<ExecuteOutcome> {
+  if (tool.mutates) return { ok: false, error: `Tool ${tool.name} is not available over MCP (read-only).`, code: 'write_blocked' }
   const parsed = tool.parameters.safeParse(args)
   if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
 

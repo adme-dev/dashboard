@@ -1,3 +1,5 @@
+import { resolveMcpStaffContext } from './staffAuthority'
+import { assertGoogleAdsClientAccess, assertGoogleAdsConnection, assertGoogleAdsResourceCustomers, delegatedAdsContext } from '~~/server/utils/ai/marketing/googleAdsAccess'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import {
@@ -30,6 +32,7 @@ import {
   inspectGoogleAdsActionPlanDrift,
   reverifyGoogleAdsActionPlan
 } from '~~/server/utils/googleAds/reverification'
+import { mcpGoogleAdsControlAuthority } from './googleAdsSearchTools'
 import {
   GOOGLE_ADS_PENDING_ACTION,
   type GoogleAdsConfirmDependencies,
@@ -151,7 +154,11 @@ export function buildGoogleAdsMcpToolDependencies(
   flags: GoogleAdsMcpFlags = googleAdsMcpFlagsFromEnv()
 ): GoogleAdsMcpToolDependencies {
   return {
-    listInventory: async (kind, input) => {
+    listInventory: async (kind, input, context) => {
+      if (delegatedAdsContext(context)) {
+        const mapping = await assertGoogleAdsConnection(context, input.clientId, input.connectionId)
+        assertGoogleAdsResourceCustomers(input, mapping.customerId)
+      }
       const session = await resolveGoogleAdsControlSession({
         clientId: input.clientId,
         connectionId: input.connectionId
@@ -197,11 +204,16 @@ export function buildGoogleAdsMcpToolDependencies(
         }
       }
     },
-    resolveAccount: input => resolveGoogleAdsAccount({
-      query: input.clientName,
-      aggregate: input.aggregate
-    }),
-    readMeasurementHealth: async (input) => {
+    resolveAccount: async (input, context) => {
+      const fresh = delegatedAdsContext(context) ? await resolveMcpStaffContext(context.event, context.userId, [...(context.mcpScopes ?? [])]) : context
+      if (delegatedAdsContext(context) && !(fresh.marketingCapabilities ?? []).some(c => c === 'reporting' || c === 'ads_plan')) throw new Error('Google Ads capability required')
+      return resolveGoogleAdsAccount({ query: input.clientName, aggregate: input.aggregate,
+        activeBindingsOnly: delegatedAdsContext(context),
+        allowedClientIds: delegatedAdsContext(context) ? (fresh.assistantScope?.clientAccessMode === 'all_active' ? undefined : fresh.assistantScope?.assignedClientIds ?? []) : undefined,
+        ...(context.clientScope ? { clientId: context.clientScope } : {}) })
+    },
+    readMeasurementHealth: async (input, context) => {
+      await assertGoogleAdsClientAccess(context, input.clientId)
       const [freshness, reconciliation] = await Promise.all([
         measurementFreshnessRepository.list({ clientId: input.clientId }),
         measurementReconciliationRepository.list({ clientId: input.clientId })
@@ -216,10 +228,12 @@ export function buildGoogleAdsMcpToolDependencies(
         reconciliationSummary: reconciliation.summary
       }
     },
-    readReconciliation: async (input) => {
+    readReconciliation: async (input, context) => {
+      await assertGoogleAdsClientAccess(context, input.clientId)
       const resolution = input.accountQuery
         ? await resolveGoogleAdsAccount({
             query: input.accountQuery,
+            activeBindingsOnly: delegatedAdsContext(context),
             aggregate: false,
             clientId: input.clientId
           })
@@ -237,8 +251,12 @@ export function buildGoogleAdsMcpToolDependencies(
         })
       }
     },
-    readCallSummary: input => getGoogleAdsCallAnalytics(input),
-    readSyncStatus: async (input) => {
+    readCallSummary: async (input, context) => {
+      await assertGoogleAdsClientAccess(context, input.clientId)
+      return getGoogleAdsCallAnalytics(input)
+    },
+    readSyncStatus: async (input, context) => {
+      await assertGoogleAdsClientAccess(context, input.clientId)
       const [freshness, jobs] = await Promise.all([
         measurementFreshnessRepository.list({ clientId: input.clientId }),
         queryRows<{
@@ -271,7 +289,8 @@ export function buildGoogleAdsMcpToolDependencies(
         more: jobs.length > SYNC_JOB_CAP
       }
     },
-    listRecommendations: async (input) => {
+    listRecommendations: async (input, context) => {
+      if (delegatedAdsContext(context)) await assertGoogleAdsConnection(context, input.clientId, input.connectionId)
       const session = await resolveGoogleAdsControlSession({
         clientId: input.clientId,
         connectionId: input.connectionId
@@ -316,24 +335,15 @@ export function buildGoogleAdsMcpToolDependencies(
         })
       }
     }),
-    executeAutomatic: (plan, context) => executeSearchGoogleAdsControlAction(plan, {
-      actorRole: context.userRole,
-      hasWriteScope: true
-    }, flags),
+    executeAutomatic: (plan, context) => executeSearchGoogleAdsControlAction(plan, mcpGoogleAdsControlAuthority(context, true), flags),
     runSearchTermPolicy: (input, context) => runGoogleAdsSearchTermPolicy({
       ...input,
       actorId: context.userId
-    }, {
-      actorRole: context.userRole,
-      hasWriteScope: true
-    }, flags),
+    }, mcpGoogleAdsControlAuthority(context, true), flags),
     runPausePolicy: (input, context) => runGoogleAdsPausePolicy({
       ...input,
       actorId: context.userId
-    }, {
-      actorRole: context.userRole,
-      hasWriteScope: true
-    }, flags),
+    }, mcpGoogleAdsControlAuthority(context, true), flags),
     inspectDrift: (plan, context) => inspectGoogleAdsActionPlanDrift(
       plan, context.userId
     ),
@@ -355,9 +365,6 @@ export function buildGoogleAdsConfirmDependencies(
       actorId: plan.actorId,
       approvalId
     }),
-    executeConfirmed: (plan, context) => executeSearchGoogleAdsControlAction(plan, {
-      actorRole: context.userRole,
-      hasWriteScope: true
-    }, flags)
+    executeConfirmed: (plan, context) => executeSearchGoogleAdsControlAction(plan, mcpGoogleAdsControlAuthority(context, true), flags)
   }
 }

@@ -1,8 +1,7 @@
 import { z } from 'zod'
-import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
-import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
+import { hasMcpPermission, mcpContextHasPermission, type McpExecutionDescriptor, type McpProjectionContext, type McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 import {
   MCP_BANNER_CONFIRM_DESCRIPTION,
@@ -120,17 +119,18 @@ export function projectBannerTools(
     bypassPermissions?: boolean
     confirmDescription?: string
     includeDirectMutations?: boolean
+    permissionGroups?: readonly PermissionGroup[]
   } = {}
 ): McpToolManifest[] {
   if (!enabled) return []
-  if (!options.bypassPermissions && !roleHasPermission(role, 'CREATIVE')) return []
+  if (!options.bypassPermissions && !hasMcpPermission(role, 'CREATIVE', options.permissionGroups)) return []
   const all = [
     ...bannerReadTools,
     ...bannerProposeTools,
     ...(options.includeDirectMutations && options.bypassPermissions ? bannerDirectMutationTools : []),
   ]
   const tools = all
-    .filter(t => options.bypassPermissions || roleHasPermission(role, t.requiredPermission))
+    .filter(t => options.bypassPermissions || hasMcpPermission(role, t.requiredPermission, options.permissionGroups))
     .map(t => ({
       name: t.name,
       description: t.description,
@@ -150,7 +150,8 @@ export function projectBannerMcpSuite(context: McpProjectionContext): McpToolMan
     {
       bypassPermissions: context.governanceBypass,
       includeDirectMutations: context.governanceBypass,
-      confirmDescription: resolveRegisteredConfirmDescription(context)
+      confirmDescription: resolveRegisteredConfirmDescription(context),
+      permissionGroups: context.permissionGroups
     }
   )
 }
@@ -200,7 +201,7 @@ export async function executeBannerTool(
   const tool = bannerReadTools.find(t => t.name === name)
   if (!tool) return { ok: false, error: `Unknown banner tool: ${name}`, code: 'not_found' }
 
-  if (!options.bypassPermissions && !roleHasPermission(ctx.userRole, tool.requiredPermission)) {
+  if (!options.bypassPermissions && !mcpContextHasPermission(ctx, tool.requiredPermission)) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
@@ -249,7 +250,7 @@ export async function executeBannerPropose(
   options: { bypassPermissions?: boolean } = {}
 ): Promise<BannerProposeOutcome> {
   if (!enabled) return { ok: false, error: 'Banner tools are not enabled over MCP.', code: 'disabled' }
-  if (!options.bypassPermissions && !roleHasPermission(ctx.userRole, 'CREATIVE')) {
+  if (!options.bypassPermissions && !mcpContextHasPermission(ctx, 'CREATIVE')) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 

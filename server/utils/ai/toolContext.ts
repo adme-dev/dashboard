@@ -1,6 +1,9 @@
 import type { H3Event } from 'h3'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 
+/** Operator-granted marketing capability for ordinary MCP staff (see ai/mcp/marketingPolicy.ts). */
+export type MarketingCapability = 'reporting' | 'social_draft' | 'ads_plan' | 'tracking_plan'
+
 /**
  * Runtime context the tool layer injects into every handler. `userId`/`userRole` are always set by
  * the loop and are the authorization basis — handlers must filter by them and never trust
@@ -36,6 +39,11 @@ export type ToolContext = {
     assignedClientIds: string[]
     catalogReleaseIds: string[]
   }
+  /** Explicit marketing grants resolved per MCP request. Never implies a permission group or client. */
+  marketingCapabilities?: MarketingCapability[]
+  /** Set only by resolveMcpStaffContext: `permissionGroups` are the fresh, authoritative MCP staff
+   *  authority, so MCP suites authorize by them instead of the legacy `userRole` string. */
+  mcpStaffAuthority?: 'fresh'
   /** Optional — set when the co-pilot is docked in a virtual office room (Mode A). Read-only context;
    *  membership is verified server-side before these are populated (see office/roomContext.ts §7). */
   officeId?: string

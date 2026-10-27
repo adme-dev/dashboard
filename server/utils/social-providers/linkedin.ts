@@ -29,12 +29,15 @@ import type {
   AccountMetric
 } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
-import { providerFetch, providerFetchRaw } from './http'
+import { isAmbiguousHttpOutcome, providerFetch, providerFetchRaw, redactSocialMediaCapabilities } from './http'
 import { LINKEDIN_API_VERSION } from '~~/server/utils/linkedinApiVersion'
 
 const LINKEDIN_API_BASE = 'https://api.linkedin.com'
 const LINKEDIN_VERSION = LINKEDIN_API_VERSION
 const MAX_MULTI_IMAGES = 20
+/** Posts API commentary and Comments API message limits (characters). */
+export const LINKEDIN_POST_TEXT_LIMIT = 3000
+export const LINKEDIN_COMMENT_TEXT_LIMIT = 1250
 
 /** Inbox polling budget: most-recent posts scanned and comment pages read per post. */
 export const LINKEDIN_INBOX_MAX_POSTS = 10
@@ -93,11 +96,25 @@ function headerValue(headers: Headers | undefined, name: string): string {
  * 3. PUT binary to LinkedIn's uploadUrl
  * 4. Return the image URN for use in post creation
  */
+type LinkedInUploadStage = 'initialize' | 'download' | 'upload' | 'finalize'
+
+/**
+ * Bounded, capability-free description of a media preparation failure. Our own media URLs can be signed
+ * reviewed-media capabilities, and ofetch embeds the full request URL in `err.message`, so the message is
+ * redacted before it is logged, returned or persisted. Stage and HTTP status are kept for diagnosis.
+ */
+function linkedInUploadError(kind: 'image' | 'video', stage: LinkedInUploadStage, error: unknown): string {
+  const err = error as { message?: string, statusCode?: number }
+  const detail = redactSocialMediaCapabilities(err?.message || `Unknown error during LinkedIn ${kind} upload`).slice(0, 300)
+  return `LinkedIn ${kind} ${stage} failed${err?.statusCode ? ` (HTTP ${err.statusCode})` : ''}: ${detail}`
+}
+
 async function uploadImage(
   accessToken: string,
   ownerUrn: string,
   imageUrl: string
 ): Promise<{ imageUrn: string } | { error: string }> {
+  let stage: LinkedInUploadStage = 'initialize'
   try {
     const initResponse = await providerFetch<{
       value: {
@@ -123,10 +140,12 @@ async function uploadImage(
       }
     }
 
+    stage = 'download'
     const imageBuffer = await providerFetch<ArrayBuffer>(imageUrl, {
       responseType: 'arrayBuffer'
     })
 
+    stage = 'upload'
     await providerFetch(uploadUrl, {
       method: 'PUT',
       headers: {
@@ -138,8 +157,7 @@ async function uploadImage(
 
     return { imageUrn }
   } catch (error: unknown) {
-    const err = error as { message?: string }
-    const message = err.message || 'Unknown error during LinkedIn image upload'
+    const message = linkedInUploadError('image', stage, error)
     console.error('[LinkedIn] Image upload failed:', message)
     return { error: message }
   }
@@ -165,6 +183,7 @@ async function uploadVideo(
   ownerUrn: string,
   videoUrl: string
 ): Promise<{ videoUrn: string } | { error: string }> {
+  let stage: LinkedInUploadStage = 'download'
   try {
     const videoBuffer = await providerFetch<ArrayBuffer>(videoUrl, {
       responseType: 'arrayBuffer'
@@ -174,6 +193,7 @@ async function uploadVideo(
       return { error: 'LinkedIn video upload failed: source video is empty' }
     }
 
+    stage = 'initialize'
     const initResponse = await providerFetch<{
       value: {
         uploadInstructions: LinkedInVideoUploadInstruction[]
@@ -203,6 +223,7 @@ async function uploadVideo(
       }
     }
 
+    stage = 'upload'
     const uploadedPartIds: string[] = []
     for (const instruction of uploadInstructions) {
       const part = videoBuffer.slice(instruction.firstByte, instruction.lastByte + 1)
@@ -218,6 +239,7 @@ async function uploadVideo(
       uploadedPartIds.push(etag)
     }
 
+    stage = 'finalize'
     await providerFetch(`${LINKEDIN_API_BASE}/rest/videos?action=finalizeUpload`, {
       method: 'POST',
       headers: linkedinHeaders(accessToken),
@@ -230,10 +252,19 @@ async function uploadVideo(
       }
     })
 
-    return { videoUrn }
+    // Finalization acknowledges bytes only. The Posts API must wait for AVAILABLE.
+    for (let poll = 0; poll < 6; poll++) {
+      const video = await providerFetch<{ status?: string }>(`${LINKEDIN_API_BASE}/rest/videos/${encodeURIComponent(videoUrn)}`, {
+        headers: linkedinHeaders(accessToken), retry: 0, timeout: 5000
+      })
+      if (video.status === 'AVAILABLE') return { videoUrn }
+      if (video.status === 'PROCESSING_FAILED') return { error: 'LinkedIn video processing failed; no post was created' }
+      if (!['WAITING_UPLOAD', 'PROCESSING'].includes(video.status ?? '')) return { error: 'LinkedIn video readiness is unknown; no post was created' }
+      if (poll < 5) await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    return { error: 'LinkedIn video is still processing; no post was created' }
   } catch (error: unknown) {
-    const err = error as { message?: string }
-    const message = err.message || 'Unknown error during LinkedIn video upload'
+    const message = linkedInUploadError('video', stage, error)
     console.error('[LinkedIn] Video upload failed:', message)
     return { error: message }
   }
@@ -250,13 +281,22 @@ async function createPost(
   content: Record<string, unknown> | null,
   context: string
 ): Promise<PostResult> {
+  // A reviewed payload is never truncated: over-limit approved copy fails before the publication request.
+  if (params.reviewed && params.content.length > LINKEDIN_POST_TEXT_LIMIT) {
+    return {
+      platformPostId: '',
+      url: '',
+      status: 'failed',
+      error: `Reviewed LinkedIn copy is ${params.content.length} characters; LinkedIn allows ${LINKEDIN_POST_TEXT_LIMIT}.`
+    }
+  }
   try {
     const response = await providerFetchRaw<{ id?: string }>(`${LINKEDIN_API_BASE}/rest/posts`, {
       method: 'POST',
       headers: linkedinHeaders(params.accessToken),
       body: {
         author,
-        commentary: params.content.slice(0, 3000),
+        commentary: params.content.slice(0, LINKEDIN_POST_TEXT_LIMIT),
         visibility,
         distribution: {
           feedDistribution: 'MAIN_FEED',
@@ -275,7 +315,9 @@ async function createPost(
         platformPostId: '',
         url: '',
         status: 'failed',
-        error: `LinkedIn accepted the ${context} but returned no post id`
+        error: `LinkedIn accepted the ${context} but returned no post id`,
+        // Accepted without a receipt: the post may exist, so it must be reconciled, not retried.
+        indeterminate: true
       }
     }
 
@@ -285,14 +327,15 @@ async function createPost(
       status: 'success'
     }
   } catch (error: unknown) {
-    return handleLinkedInError(error, context)
+    return handleLinkedInError(error, context, { publication: true })
   }
 }
 
 /**
- * Standardised error handler for LinkedIn API errors.
+ * Standardised error handler for LinkedIn API errors. `publication` marks the `/rest/posts` request that
+ * makes a post public: an ambiguous answer there (no response, 408 or 5xx) may still have created it.
  */
-function handleLinkedInError(error: unknown, context: string): PostResult {
+function handleLinkedInError(error: unknown, context: string, stage: { publication?: boolean } = {}): PostResult {
   const err = error as { statusCode?: number, data?: { message?: string }, message?: string }
   let message: string
 
@@ -313,7 +356,8 @@ function handleLinkedInError(error: unknown, context: string): PostResult {
     platformPostId: '',
     url: '',
     status: 'failed',
-    error: message
+    error: message,
+    ...(stage.publication && isAmbiguousHttpOutcome(err.statusCode) ? { indeterminate: true } : {})
   }
 }
 
@@ -337,7 +381,7 @@ async function createLinkedInComment(
   const body: Record<string, unknown> = {
     actor,
     object: threadUrn ?? targetUrn,
-    message: { text: text.slice(0, 1250) }
+    message: { text: text.slice(0, LINKEDIN_COMMENT_TEXT_LIMIT) }
   }
   if (threadUrn) body.parentComment = targetUrn
 
@@ -379,6 +423,9 @@ export const linkedinProvider: SocialPostProvider = {
     const media = params.media || []
     const images = media.filter((m: MediaItem) => m.type === 'image').slice(0, MAX_MULTI_IMAGES)
     const videos = media.filter((m: MediaItem) => m.type === 'video')
+    if (params.reviewed && (videos.length > 1 || (videos.length && images.length) || images.length < media.filter(m => m.type === 'image').length)) {
+      return { platformPostId: '', url: '', status: 'failed', error: 'The reviewed LinkedIn media combination cannot be posted as approved.' }
+    }
 
     // --- Video post ---
     if (videos.length > 0) {
@@ -396,6 +443,19 @@ export const linkedinProvider: SocialPostProvider = {
       const uploadResults = await Promise.all(
         images.map(img => uploadImage(params.accessToken, author, img.url))
       )
+
+      // A reviewed post publishes every approved image or none: never a silently reduced subset.
+      if (params.reviewed) {
+        const failedIndex = uploadResults.findIndex(result => 'error' in result)
+        if (failedIndex >= 0) {
+          return {
+            platformPostId: '',
+            url: '',
+            status: 'failed',
+            error: `Reviewed image ${failedIndex + 1} of ${images.length} could not be prepared; nothing was posted. ${(uploadResults[failedIndex] as { error: string }).error}`
+          }
+        }
+      }
 
       const successfulUrns = uploadResults.flatMap((result, index) =>
         'imageUrn' in result ? [{ urn: result.imageUrn, alt: images[index]?.alt }] : []
@@ -438,6 +498,14 @@ export const linkedinProvider: SocialPostProvider = {
   },
 
   async comment(params: CommentParams): Promise<PostResult> {
+    if (params.reviewed && params.content.length > LINKEDIN_COMMENT_TEXT_LIMIT) {
+      return {
+        platformPostId: '',
+        url: '',
+        status: 'failed',
+        error: `Reviewed LinkedIn comment is ${params.content.length} characters; LinkedIn allows ${LINKEDIN_COMMENT_TEXT_LIMIT}.`
+      }
+    }
     try {
       const commentId = await createLinkedInComment(
         params.accessToken,

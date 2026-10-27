@@ -16,9 +16,9 @@
 
 import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, ReplyParams, ReplyResult, FetchInboxParams, FetchInboxResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
-import { buildMessengerSend } from './facebook'
+import { buildMessengerSend, isAmbiguousGraphOutcome } from './facebook'
 import { mapIgMediaInsights, mapIgAccountInsights } from '~~/server/utils/socialReporting/normalize'
-import { fetchWithTimeout, providerFetch } from './http'
+import { fetchWithTimeout, isPublicationStageError, providerFetch, publicationRequest } from './http'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 const INBOX_FETCH_TIMEOUT_MS = 12_000
@@ -69,6 +69,7 @@ interface GraphAPIError {
     type?: string
     code?: number
     error_subcode?: number
+    is_transient?: boolean
   }
 }
 
@@ -119,7 +120,11 @@ function parseGraphError(err: unknown): PostResult {
   }
 
   const msg = graphErr?.message || raw?.message || 'Unknown Instagram API error'
-  return failResult(msg)
+  // media_publish got no definitive answer (transport loss, timeout, 5xx or a transient Graph error): the
+  // post may exist, so it is held for read-back. Container creation/processing failures are effect-free.
+  return isPublicationStageError(err) && isAmbiguousGraphOutcome(raw?.statusCode, graphErr)
+    ? { ...failResult(msg), indeterminate: true }
+    : failResult(msg)
 }
 
 function failResult(error: string): PostResult {
@@ -230,13 +235,13 @@ async function publishContainer(
   accessToken: string,
   containerId: string
 ): Promise<{ id: string }> {
-  return await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media_publish`, {
+  return await publicationRequest(() => providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media_publish`, {
     method: 'POST',
     body: {
       creation_id: containerId,
       access_token: accessToken
     }
-  })
+  }))
 }
 
 /**
@@ -275,6 +280,13 @@ export const instagramProvider: SocialPostProvider = {
       if (!media?.length) {
         return failResult('Instagram requires at least one image or video.')
       }
+      // A reviewed payload is delivered whole or not at all: never publish a subset of approved media.
+      if (params.reviewed && (postType === 'story' || postType === 'reel') && media.length !== 1) {
+        return failResult(`Instagram ${postType}s take exactly one media item; the reviewed post has ${media.length}.`)
+      }
+      if (params.reviewed && postType === 'reel' && media[0]!.type !== 'video') {
+        return failResult('Instagram reels require a video.')
+      }
 
       // ── Story ────────────────────────────────────────
       if (postType === 'story') {
@@ -304,13 +316,13 @@ export const instagramProvider: SocialPostProvider = {
     const { accessToken, postId, content } = params
 
     try {
-      const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${postId}/comments`, {
+      const res = await publicationRequest(() => providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${postId}/comments`, {
         method: 'POST',
         body: {
           message: content,
           access_token: accessToken
         }
-      })
+      }))
 
       return {
         platformPostId: res.id,

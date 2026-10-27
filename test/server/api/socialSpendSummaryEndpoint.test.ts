@@ -15,6 +15,8 @@ vi.mock('~~/server/utils/session', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
+  queryOneFresh: (sql: string, params: any[]) => sql.includes('team_members') ? Promise.resolve({ id: params[0] }) : sql.includes('xero_org_connection') ? Promise.resolve({ tenant_id: 'tenant-1' }) : Promise.resolve(null),
 }))
 
 vi.mock('~~/server/utils/kv', () => ({
@@ -29,7 +31,7 @@ describe('GET /api/agency/social/spend/summary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockQuery = { month: 6, year: 2026, platform: 'meta' }
-    mockRequireAuth.mockResolvedValue({ id: 'user-1' })
+    mockRequireAuth.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' })
     mockGetSelectedTenant.mockResolvedValue('tenant-1')
     mockQueryRows
       .mockResolvedValueOnce([
@@ -90,13 +92,13 @@ describe('GET /api/agency/social/spend/summary', () => {
   it('returns one stable summary item per mapped client/platform', async () => {
     const handler = (await import('~~/server/api/agency/social/spend/summary.get')).default
 
-    const result = await handler({} as any)
+    const result = await handler({ context: {} } as any)
 
     expect(mockRequireAuth).toHaveBeenCalled()
     expect(String(mockQueryRows.mock.calls[0][0])).toContain('budgeted_campaign_count')
     expect(String(mockQueryRows.mock.calls[0][0])).toContain('MIN(ms.synced_at)')
-    expect(String(mockQueryRows.mock.calls[0][0])).toContain('MAKE_INTERVAL(hours => $3)')
-    expect(mockQueryRows.mock.calls[0][1]).toEqual(['2026-06', 'tenant-1', 48, 'meta'])
+    expect(String(mockQueryRows.mock.calls[0][0])).toContain('MAKE_INTERVAL(hours => $2)')
+    expect(mockQueryRows.mock.calls[0][1]).toEqual(['2026-06', 48, 'tenant-1', 'meta'])
     expect(result.items).toHaveLength(1)
     expect(result.items[0]).toMatchObject({
       groupKey: 'meta:client:client-1',
@@ -139,7 +141,7 @@ describe('GET /api/agency/social/spend/summary', () => {
       }])
 
     const handler = (await import('~~/server/api/agency/social/spend/summary.get')).default
-    const result = await handler({} as any)
+    const result = await handler({ context: {} } as any)
     const serialized = JSON.stringify(result.latestSyncJobs)
 
     expect(serialized).toContain('[redacted]')

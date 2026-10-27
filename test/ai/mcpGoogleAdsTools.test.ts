@@ -99,7 +99,7 @@ function schemaPropertyNames(value: unknown): string[] {
 
 const context: ToolContext = {
   userId: ACTOR_ID,
-  userRole: 'media_buyer',
+  userRole: 'owner',
   event: {} as never,
   source: 'mcp'
 }

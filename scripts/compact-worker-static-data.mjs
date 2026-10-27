@@ -72,7 +72,7 @@ function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LI
     if (index === undefined) {
       index = values.length
       indexes.set(value, index)
-      values.push(encoded)
+      values.push(value)
     }
     const call = `${prefix}(${index})`
     replacements.push({ start, end, value: template ? '${' + call + '}' : call })
@@ -112,32 +112,65 @@ function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LI
   for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
     body = body.slice(0, replacement.start) + replacement.value + body.slice(replacement.end)
   }
-  // Cache only immutable, compile-time strings. No request data enters this cache.
-  // Decode lazily once per string so cold routes need no up-front decompression.
+  // Share compression within bounded groups of immutable build-time strings.
+  // The original AST selection and individual profitability checks stay intact.
+  const data = JSON.stringify(packStaticStrings(values))
   const decoder = decoderSpecifier
     ? `import { createStaticDecoder as ${prefix}Create } from ${JSON.stringify(decoderSpecifier)};
-const ${prefix} = ${prefix}Create(${JSON.stringify(values)});`
-    : `import { brotliDecompressSync as ${prefix}Inflate } from 'node:zlib';
-import { Buffer as ${prefix}Buffer } from 'node:buffer';
-const ${prefix}Data = ${JSON.stringify(values)};
-const ${prefix}Cache = [];
-function ${prefix}(index) {
-  return ${prefix}Cache[index] ??= ${prefix}Inflate(${prefix}Buffer.from(${prefix}Data[index], 'base64')).toString('utf8');
-}`
+const ${prefix} = ${prefix}Create(${data});`
+    : `${staticDecoderSource(prefix + 'Create', prefix)}
+const ${prefix} = ${prefix}Create(${data});`
   const code = `// ${marker}\n${decoder}\n${body}`
   return Buffer.byteLength(code) < Buffer.byteLength(source)
     ? { code, literals: replacements.length }
     : unchanged
 }
 
-// One implementation, with a separate lazy cache per calling module. Only
-// immutable build-time strings reach it; query arguments never enter the cache.
-const SHARED_STATIC_DECODER = `import { brotliDecompressSync } from 'node:zlib';
-import { Buffer } from 'node:buffer';
-export function createStaticDecoder(data) {
-  const cache = [];
-  return index => cache[index] ??= brotliDecompressSync(Buffer.from(data[index], 'base64')).toString('utf8');
+// Bound new grouped decompression to 128 KiB and 16 strings. An already-large
+// individual string retains its original plain-string encoding and expansion.
+function packStaticStrings(values) {
+  const blocks = []
+  let group = [], bytes = 2, end = 0
+  const flush = () => {
+    if (!group.length) return
+    blocks.push(group.length === 1
+      ? [end, compress(group[0]), 1]
+      : [end, compress(JSON.stringify(group))])
+    group = []
+    bytes = 2
+  }
+  for (const value of values) {
+    const length = Buffer.byteLength(JSON.stringify(value))
+    if (group.length && (group.length === 16 || bytes + 1 + length > 128 * 1024)) flush()
+    group.push(value)
+    bytes += length + (group.length > 1 ? 1 : 0)
+    end++
+    if (bytes > 128 * 1024) flush()
+  }
+  flush()
+  return blocks
 }
+
+// Each tuple contains the exclusive end index, encoded payload, and an optional
+// plain-singleton flag. Only exact immutable strings escape the lazy block cache.
+function staticDecoderSource(name, prefix) {
+  return `import { brotliDecompressSync as ${prefix}Inflate } from 'node:zlib';
+import { Buffer as ${prefix}Buffer } from 'node:buffer';
+function ${name}(data) {
+  const cache = [];
+  return index => {
+    const block = data.findIndex(value => index < value[0]);
+    const entry = data[block];
+    if (!cache[block]) {
+      const text = ${prefix}Inflate(${prefix}Buffer.from(entry[1], 'base64')).toString('utf8');
+      cache[block] = entry[2] ? [text] : JSON.parse(text);
+    }
+    return cache[block][index - (block ? data[block - 1][0] : 0)];
+  };
+}`
+}
+const SHARED_STATIC_DECODER = `${staticDecoderSource('createStaticDecoder', 'd')}
+export { createStaticDecoder };
 `
 
 function sharedDecoderSpecifier(workerDirectory, file) {

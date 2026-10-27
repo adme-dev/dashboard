@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
-import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
+import { hasMcpPermission, mcpContextHasPermission, type McpExecutionDescriptor, type McpProjectionContext, type McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 import {
   projectConfirmActionManifest,
@@ -337,7 +337,7 @@ export async function executeFeedReadTool(
   if (!deps.enabled) return { ok: false, error: 'Feed tools are not enabled over MCP.', code: 'disabled' }
   const tool = feedReadTools.find(candidate => candidate.name === name)
   if (!tool) return { ok: false, error: `Unknown feed tool: ${name}`, code: 'not_found' }
-  if (!deps.bypassPermissions && !roleHasPermission(ctx.userRole, tool.requiredPermission)) {
+  if (!deps.bypassPermissions && !mcpContextHasPermission(ctx, tool.requiredPermission)) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
   const parsed = tool.parameters.safeParse(args)
@@ -426,7 +426,7 @@ export async function executeFeedPropose(
   if (!deps.suiteEnabled) return { ok: false, error: 'Feed tools are not enabled over MCP.', code: 'disabled' }
   const tool = feedProposeTools.find(candidate => candidate.name === name)
   if (!tool) return { ok: false, error: `Unknown feed tool: ${name}`, code: 'not_found' }
-  if (!deps.bypassPermissions && !roleHasPermission(ctx.userRole, tool.requiredPermission)) {
+  if (!deps.bypassPermissions && !mcpContextHasPermission(ctx, tool.requiredPermission)) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
@@ -525,10 +525,10 @@ export async function dispatchFeedConfirm(
 export function projectFeedTools(
   role: string,
   suiteEnabled: boolean,
-  options: { bypassPermissions?: boolean, confirmDescription?: string } = {}
+  options: { bypassPermissions?: boolean, confirmDescription?: string, permissionGroups?: readonly PermissionGroup[] } = {}
 ): McpToolManifest[] {
   if (!suiteEnabled) return []
-  if (!options.bypassPermissions && !roleHasPermission(role, 'MEDIA_BUYING')) return []
+  if (!options.bypassPermissions && !hasMcpPermission(role, 'MEDIA_BUYING', options.permissionGroups)) return []
   const manifests = [...feedReadTools, ...feedProposeTools].map(tool => ({
     name: tool.name,
     description: tool.description,
@@ -544,7 +544,8 @@ export function projectFeedMcpSuite(context: McpProjectionContext): McpToolManif
     context.governanceBypass || context.suiteFlags.feeds,
     {
       bypassPermissions: context.governanceBypass,
-      confirmDescription: resolveRegisteredConfirmDescription(context)
+      confirmDescription: resolveRegisteredConfirmDescription(context),
+      permissionGroups: context.permissionGroups
     }
   )
 }

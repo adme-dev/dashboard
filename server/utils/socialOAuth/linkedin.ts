@@ -150,7 +150,8 @@ export function mapLinkedInOrganizationsToAccountRows(
   accessToken: string,
   refreshToken: string | null,
   expiresAt: string | null,
-  refreshTokenExpiresAt: string | null = null
+  refreshTokenExpiresAt: string | null = null,
+  grantedScope?: string
 ): AccountRow[] {
   return organizations.map(organization => ({
     platform: 'linkedin',
@@ -164,7 +165,8 @@ export function mapLinkedInOrganizationsToAccountRows(
       linkedinVanityName: organization.vanityName,
       linkedinRole: organization.role,
       linkedinAuthorType: 'organization',
-      ...(refreshTokenExpiresAt ? { refreshTokenExpiresAt } : {}),
+      refreshTokenExpiresAt,
+      grantedScopes: [...new Set((grantedScope ?? '').split(/[\s,]+/).filter(Boolean))],
       publishingReadiness: 'publish_enabled'
     }
   }))

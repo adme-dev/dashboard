@@ -39,7 +39,7 @@ const TASK_3_OWNED_FILES = new Set([
   'server/plugins/godModeAudit.ts',
   'server/api/crm/ai/status.get.ts'
 ])
-const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|isReadOnlyRole\(|GOD_MODE_DISABLED|AI_GATEWAY_URL/i
+const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasMcpPermission\(|mcpContextHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|isReadOnlyRole\(|GOD_MODE_DISABLED|AI_GATEWAY_URL/i
 
 const CENTRAL_HELPER_BY_CLASS = {
   identity_tenant_hard_boundary: 'unchanged independent scope helper',
@@ -77,7 +77,7 @@ function classifyGate(file: string, line: string): GateClass {
     || (file === 'server/utils/godMode/authority.ts' && /process\.env/.test(line))) {
     return 'provider_infrastructure_availability'
   }
-  if (/requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|roleHasPermission\(|hasRole\(|isReadOnlyRole\(|feature.?flag|suite.?enabled|(?:^|[_A-Z])ENABLED(?:\b|_)/i.test(line)) {
+  if (/requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|roleHasPermission\(|hasMcpPermission\(|mcpContextHasPermission\(|hasRole\(|isReadOnlyRole\(|feature.?flag|suite.?enabled|(?:^|[_A-Z])ENABLED(?:\b|_)/i.test(line)) {
     return 'application_governance_bypass'
   }
   if (/secret|api.?key|token|binding|provider|credential|database_url|account_id|bucket|r2_|resend|groq|anthropic|xero|google.?maps/i.test(line)) {
@@ -333,13 +333,59 @@ describe('God mode gate inventory', () => {
       'server/utils/banner/dissectionAccess.ts\t[actor.custom_role_id || actor.user_role]))[0]\tidentity_tenant_hard_boundary',
       'server/utils/banner/dissectionAccess.ts\tif (mode !== \'read\' && (role.is_read_only || [\'viewer\', \'guest\'].includes(actor.user_role))) throw denied()\tidentity_tenant_hard_boundary'
     ]) expect(inventory.rows).toContain(row)
-    expect(inventory.rows).toHaveLength(1635)
+    // Released Banner routes retain eight additional explicit write gates.
+    // Combined with the recovery origin row above, this pins both inventories.
+    // Marketing staff MCP: the tools/list, tools/call and my-tools routes no longer read suite flags,
+    // the master switch or MCP_REQUIRE_WRITE_SCOPE inline from process.env; one binding-first resolver
+    // (server/utils/ai/mcp/runtimeConfig.ts) supplies the identical gates. Ordinary staff identity and
+    // role policy move to the fresh staffAuthority resolver, and MCP read execution honours freshly
+    // resolved permission groups. No gate is removed and none registers a God mode bypass.
+    // Task 1 corrections: MCP suite role checks now go through hasMcpPermission (projection) and
+    // mcpContextHasPermission (execution), which the pattern above tracks as governance gates, so fresh
+    // staff groups govern supplemental suites (+5 governance rows net, +25 permissionGroups wiring
+    // rows). The internal-route MCP_INTERNAL_SECRET reads moved to the binding-first runtime reader
+    // (-2 provider rows); the ingress check itself is unchanged and fails closed.
+    // Task 1 review round 1: confirm_action checks each claimed row's own suite switch
+    // (mcpPendingActionSuiteEnabled, +2) and the video dispatcher needs both video switches (+1);
+    // fresh MCP staff carry their groups into the Google Ads policy — two risk-tier checks (+2) and one
+    // fresh-or-role permission helper (+1) replace four inline legacy-role derivations (-4), plus four
+    // permissionGroups wiring rows. No gate is removed or turned into a God mode bypass.
+    // Scoped marketing reads add seven fresh permission-group wiring/check rows.
+    // These are lexical ordinary-user rows; scope and role predicates remain
+    // mandatory and no God-mode bypass is registered by the shared services.
+    // Task 3 delegated social review adds four rows, none a bypass: the fresh ADMIN reviewer check
+    // (reviewAuthority) and the approvals queue's advisory owner/admin hint (+3 ordinary rows; the
+    // approve/reject/publish endpoints still re-resolve fresh authority), and the binding-first
+    // RENDER_LINK_SECRET read for content-pinned media links (+1 provider row).
+    // The reviewed workflow correction replaces four process-env rows with the
+    // binding-first helper. Both enable checks, primary selection and callback
+    // authentication remain mandatory; bracket-access fallback is outside this
+    // lexical pattern and does not register a God mode bypass.
+    const publishingCron = readFileSync('server/api/cron/publish-social-posts.post.ts', 'utf8')
+    const publishingCallback = readFileSync('server/api/internal/workflows/social-publishing/publish.post.ts', 'utf8')
+    expect(publishingCron).toContain('agencyWorkflowConfigText(event, \'AGENCY_WORKFLOWS_ENABLED\') === \'true\'')
+    expect(publishingCron).toContain('agencyWorkflowConfigText(event, \'AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY\') === \'true\'')
+    expect(publishingCallback).toContain('agencyWorkflowConfigText(event, \'AGENCY_WORKFLOWS_ENABLED\') !== \'true\'')
+    expect(publishingCallback).toContain('agencyWorkflowConfigText(event, \'WORKFLOW_CALLBACK_SECRET\')')
+    expect(publishingCallback).toContain('agencyWorkflowConfigText(event, \'WORKFLOW_SERVICE_SECRET\')')
+    expect(publishingCallback).toContain('getHeader(event, \'x-workflow-secret\') !== expected')
+    // Task4: seven explicit ordinary wiring/reviewer rows (four GTM review handlers,
+    // two Ads review service rows and one GTM reviewer gate). Three existing MEDIA_BUYING
+    // predicates are replaced by delegated-grant versus legacy branches, with unchanged
+    // governance count. No owner bypass or provider/identity gate is removed. Exact diff:
+    // .superpowers/sdd/2026-10-27-marketing-staff-mcp/task-4-gate-inventory-diff.json.
+    // I2: fresh browser policy adds exactly one permission-group read; no bypass changes.
+    expect(inventory.rows).toContain('server/utils/social/clientAccess.ts\tconst groups = context.permissionGroups ?? []\tordinary_user_behavior')
+    // R3 adds the current CREATIVE operation check; reads retain their existing authority boundary.
+    expect(inventory.rows).toContain('server/api/agency/social/publishing/accounts/index.get.ts\tconst canPublish = context.permissionGroups?.includes(\'CREATIVE\') === true\tordinary_user_behavior')
+    // Task6 adds exactly three lexical permission-group presentation/metadata rows. No gate or classifier changes.
+    expect(inventory.rows).toHaveLength(1679)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 132,
-      provider_infrastructure_availability: 221,
-      application_governance_bypass: 1654,
-      ordinary_user_behavior: 192,
-      unrelated_configuration: 435
+      identity_tenant_hard_boundary: 131,
+      provider_infrastructure_availability: 219,
+      application_governance_bypass: 1641,
+      ordinary_user_behavior: 256,
+      unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -354,7 +400,13 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('a05419bbcc5d1fb595d2ad3e440a4d22f93ea9237dbc65fa63b6315f230814e7')
+    expect(inventory.rows).toContain('server/utils/ai/marketing/reviewAuthority.ts\tif (!(ctx.permissionGroups ?? []).includes(\'ADMIN\')) {\tordinary_user_behavior')
+    expect(inventory.rows.filter(row => row.startsWith('server/utils/socialPublishing/mediaAssets.ts\t'))).toEqual([
+      'server/utils/socialPublishing/mediaAssets.ts\tconst secret = typeof bound === \'string\' ? bound : (env && \'RENDER_LINK_SECRET\' in env ? null : process.env.RENDER_LINK_SECRET)\tprovider_infrastructure_availability'
+    ])
+    // Formatting connectors.vue changes one lexical permission-group presentation row;
+    // its existing rows retain their classifications; the merged Banner delta is pinned below.
+    expect(inventory.digest).toBe('b1e6c2779e6500dc14400e38a09de72b55dec986ee1a97fe00d245496977d9ae')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

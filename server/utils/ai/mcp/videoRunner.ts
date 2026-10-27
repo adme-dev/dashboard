@@ -1,17 +1,19 @@
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import {
+  avProjectActor,
+  canUseAvProject,
   filterUsableAvProjects,
   type VideoReadRunner,
   type VideoConfirmAction,
+  type VideoConfirmProjectTarget,
   type VideoGenerationPendingPayload,
   type VideoProjectPendingPayload,
   type CreativePromotionPendingPayload
 } from './videoTools'
-import { listProjects, getProjectWithCurrentTimeline, createProject, listRenderJobs } from '~~/server/utils/audio/projects'
+import { listProjects, getProjectWithCurrentTimeline, getProjectFresh, createProject, listRenderJobs } from '~~/server/utils/audio/projects'
 import { listSelectableVideoGenerationModels, getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { selectableVideoModelOptions } from '~~/app/utils/video/modelPresentation'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
-import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
 import { getVideoGenerationJob, listVideoGenerationJobsForProject, listVideoGenerationJobsForProjects, markVideoGenerationJobFailed } from '~~/server/utils/video-generation/jobs'
 import { listApprovedVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssetStore'
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
@@ -48,7 +50,7 @@ interface TimelineContextArgs { projectId: string }
 export async function authorizedProject(projectId: string, ctx: ToolContext) {
   const existing = await getProjectWithCurrentTimeline(projectId)
   if (!existing || existing.project.mediaType !== 'av') return null
-  if (!canUseVideoGenerationProject({ id: ctx.userId, role: ctx.userRole }, existing.project)) return null
+  if (!canUseAvProject(avProjectActor(ctx), existing.project)) return null
   return existing
 }
 
@@ -65,7 +67,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
   return {
     list_av_projects: async (_raw, ctx) => {
       const all = await listProjects()
-      return filterUsableAvProjects(all, { id: ctx.userId, role: ctx.userRole }).map(p => ({
+      return filterUsableAvProjects(all, avProjectActor(ctx)).map(p => ({
         id: p.id,
         title: p.title,
         clientId: p.clientId ?? null,
@@ -95,7 +97,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
         if (!existing) throw new Error('project not usable')
         jobs = await listVideoGenerationJobsForProject(a.projectId, 50)
       } else {
-        const projects = filterUsableAvProjects(await listProjects(), { id: ctx.userId, role: ctx.userRole })
+        const projects = filterUsableAvProjects(await listProjects(), avProjectActor(ctx))
         jobs = await listVideoGenerationJobsForProjects(projects.map(project => project.id), 50)
       }
       return jobs.map(j => ({
@@ -287,9 +289,18 @@ export function buildVideoProposeDeps() {
  * Injected engine deps for dispatchVideoConfirm (the execute half). genEnabled is supplied by the
  * endpoint. The confirmed payload carries an idempotencyKey injected by the endpoint (derived from the
  * proposalId) so a double-confirm cannot double-bill — belt-and-braces over the 2c atomic single-use claim.
+ * authorizeProject re-runs the propose-time project gate against the CURRENT actor and the CURRENT
+ * project row at confirmation: the row is read uncached so a project moved to another client since the
+ * proposal cannot match its retained tenant through a stale cached read.
  */
 export function buildVideoConfirmDeps() {
   return {
+    authorizeProject: async (target: VideoConfirmProjectTarget, ctx: ToolContext) => {
+      const project = await getProjectFresh(target.projectId)
+      return !!project && project.mediaType === 'av'
+        && canUseAvProject(avProjectActor(ctx), project)
+        && (project.clientId ?? 'agency') === target.tenantId
+    },
     reserve: async (payload: VideoGenerationPendingPayload, ctx: ToolContext) => {
       // The endpoint injects idempotencyKey (mcp:<proposalId>) before dispatch; defensive narrow.
       const idempotencyKey = payload.idempotencyKey

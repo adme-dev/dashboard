@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 interface TestEvent {
   headers?: Record<string, string>
   body?: unknown
+  context?: { cloudflare?: { env?: Record<string, unknown> } }
 }
 
 interface WorkflowCallbackResult {
@@ -98,6 +99,69 @@ describe('social publishing workflow callback', () => {
     expect(mockPublishPost).not.toHaveBeenCalled()
   })
 
+  describe('request Cloudflare bindings come first', () => {
+    const claimed = () => mockQueryOne.mockResolvedValueOnce({
+      id: 'post-1', client_id: 'client-1', status: 'publishing', content: 'Scheduled post', media_urls: [],
+      link_url: null, platforms: ['facebook'], platform_overrides: {}, account_ids: ['acct-1']
+    })
+    const withEnv = (env: Record<string, unknown>, secret: string) => ({
+      headers: { 'x-workflow-secret': secret },
+      body: validPayload(),
+      context: { cloudflare: { env } }
+    })
+
+    it('publishes with binding-only configuration (Pages: secrets are not in process env)', async () => {
+      delete process.env.AGENCY_WORKFLOWS_ENABLED
+      delete process.env.WORKFLOW_CALLBACK_SECRET
+      delete process.env.WORKFLOW_SERVICE_SECRET
+      claimed()
+      const result = await workflowCallback(withEnv({ AGENCY_WORKFLOWS_ENABLED: 'true', WORKFLOW_CALLBACK_SECRET: 'binding-secret' }, 'binding-secret'))
+      expect(result.result).toMatchObject({ ok: true, status: 'published' })
+      expect(mockPublishPost).toHaveBeenCalledOnce()
+    })
+
+    it('uses the binding secret over a conflicting process secret', async () => {
+      await expect(workflowCallback(withEnv({ AGENCY_WORKFLOWS_ENABLED: 'true', WORKFLOW_CALLBACK_SECRET: 'binding-secret' }, 'workflow-secret')))
+        .rejects.toMatchObject({ statusCode: 401 })
+      claimed()
+      const result = await workflowCallback(withEnv({ AGENCY_WORKFLOWS_ENABLED: 'true', WORKFLOW_SERVICE_SECRET: 'binding-service' }, 'workflow-secret'))
+      // A binding without WORKFLOW_CALLBACK_SECRET falls back to the process callback secret, not the binding service secret.
+      expect(result.result).toMatchObject({ ok: true })
+      expect(mockPublishPost).toHaveBeenCalledOnce()
+    })
+
+    it.each([
+      ['an explicit "false" string', 'false'],
+      ['an empty string', ''],
+      ['an invalid value', 'yes'],
+      ['a JSON false', false],
+      ['a JSON object', {}],
+      ['a JSON array', []],
+      ['a JSON null', null],
+      ['an explicitly present undefined', undefined]
+    ])('stays disabled when the enable binding is %s even though process env says true', async (_label, value) => {
+      await expect(workflowCallback(withEnv({ AGENCY_WORKFLOWS_ENABLED: value }, 'workflow-secret')))
+        .rejects.toMatchObject({ statusCode: 503 })
+      expect(mockQueryOne).not.toHaveBeenCalled()
+      expect(mockPublishPost).not.toHaveBeenCalled()
+    })
+
+    it.each([{}, [], null])('refuses an invalid secret binding without falling back to the process secret: %j', async (value) => {
+      delete process.env.WORKFLOW_SERVICE_SECRET
+      await expect(workflowCallback(withEnv({ AGENCY_WORKFLOWS_ENABLED: 'true', WORKFLOW_CALLBACK_SECRET: value }, 'workflow-secret')))
+        .rejects.toMatchObject({ statusCode: 503 })
+      expect(mockQueryOne).not.toHaveBeenCalled()
+      expect(mockPublishPost).not.toHaveBeenCalled()
+    })
+
+    it('treats an explicitly empty secret binding as unset rather than reading a stale process secret', async () => {
+      delete process.env.WORKFLOW_SERVICE_SECRET
+      await expect(workflowCallback(withEnv({ AGENCY_WORKFLOWS_ENABLED: 'true', WORKFLOW_CALLBACK_SECRET: '' }, 'workflow-secret')))
+        .rejects.toMatchObject({ statusCode: 503 })
+      expect(mockPublishPost).not.toHaveBeenCalled()
+    })
+  })
+
   it('accepts WORKFLOW_SERVICE_SECRET as the callback secret fallback', async () => {
     delete process.env.WORKFLOW_CALLBACK_SECRET
     process.env.WORKFLOW_SERVICE_SECRET = 'service-secret'
@@ -136,10 +200,12 @@ describe('social publishing workflow callback', () => {
     }
     mockQueryOne.mockResolvedValueOnce(claimedPost)
 
-    const result = await workflowCallback({
+    const event = {
       headers: { 'x-workflow-secret': 'workflow-secret' },
-      body: validPayload()
-    })
+      body: validPayload(),
+      context: { cloudflare: { env: { AGENCY_WORKFLOWS_ENABLED: 'true', WORKFLOW_CALLBACK_SECRET: 'workflow-secret' } } }
+    }
+    const result = await workflowCallback(event)
 
     expect(result).toMatchObject({
       ok: true,
@@ -155,12 +221,13 @@ describe('social publishing workflow callback', () => {
     expect(mockQueryOne.mock.calls[0][0]).toContain('status = ANY($3::text[])')
     expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at = $5::timestamptz')
     expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at <= NOW()')
-    expect(mockQueryOne.mock.calls[0][1]).toEqual(['post-1', 'client-1', ['scheduled'], 3, '2026-07-02T00:00:00.000Z'])
+    expect(mockQueryOne.mock.calls[0][1]).toEqual(['post-1', 'client-1', ['scheduled'], 3, '2026-07-02T00:00:00.000Z', null])
     expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('last_error'), [['acct-1'], 'client-1'])
     expect(mockPublishPost).toHaveBeenCalledWith(expect.objectContaining({
       id: 'post-1',
       accounts: [expect.objectContaining({ id: 'acct-1', platform: 'facebook' })]
-    }))
+    }), event)
+    expect(mockPublishPost.mock.calls[0][1]).toBe(event)
     expect(mockExecute).toHaveBeenCalledWith(expect.stringContaining('published_at=CASE'), [
       'post-1',
       'published',
@@ -215,7 +282,7 @@ describe('social publishing workflow callback', () => {
     })
     expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at = $5::timestamptz')
     expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at <= NOW()')
-    expect(mockQueryOne.mock.calls[0][1]).toEqual(['post-1', 'client-1', ['scheduled'], 3, '2026-07-02T00:00:00.000Z'])
+    expect(mockQueryOne.mock.calls[0][1]).toEqual(['post-1', 'client-1', ['scheduled'], 3, '2026-07-02T00:00:00.000Z', null])
     expect(mockPublishPost).not.toHaveBeenCalled()
   })
 

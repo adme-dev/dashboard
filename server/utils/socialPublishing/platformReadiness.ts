@@ -1,3 +1,4 @@
+import { platformPublishingSupport } from '~~/shared/socialCapabilityReadiness'
 import { createError } from 'h3'
 
 export interface SocialPublishingPlatformProductionStatus {
@@ -8,43 +9,9 @@ export interface SocialPublishingPlatformProductionStatus {
 }
 
 export const SOCIAL_PUBLISHING_PLATFORM_PRODUCTION_STATUS: SocialPublishingPlatformProductionStatus[] = [
-  {
-    value: 'facebook',
-    label: 'Facebook',
-    productionReady: true,
-    reason: 'Ready for publishing account connection'
-  },
-  {
-    value: 'instagram',
-    label: 'Instagram',
-    productionReady: true,
-    reason: 'Connects through a linked Facebook Page'
-  },
-  {
-    value: 'google-business',
-    label: 'Google Business',
-    productionReady: true,
-    reason: 'Ready for publishing account connection'
-  },
-  {
-    value: 'linkedin',
-    label: 'LinkedIn',
-    productionReady: true,
-    reason: 'Ready for Company Page connection (organization admins): publishing, comments inbox, and Page analytics'
-  },
-  {
-    value: 'tiktok',
-    label: 'TikTok',
-    productionReady: false,
-    reason: 'Content Posting creator OAuth foundation is available; publishing, refresh hardening, app audit, and live provider smoke remain disabled'
-  },
-  {
-    value: 'youtube',
-    label: 'YouTube',
-    productionReady: false,
-    reason: 'OAuth channel discovery foundation is available; upload publishing, refresh hardening, and live provider smoke remain disabled'
-  }
-]
+  ['facebook', 'Facebook'], ['instagram', 'Instagram'], ['google-business', 'Google Business'],
+  ['linkedin', 'LinkedIn'], ['tiktok', 'TikTok'], ['youtube', 'YouTube']
+].map(([value, label]) => ({ value: value!, label: label!, ...platformPublishingSupport(value!) }))
 
 export const PRODUCTION_READY_SOCIAL_PUBLISH_PLATFORMS = SOCIAL_PUBLISHING_PLATFORM_PRODUCTION_STATUS
   .filter(platform => platform.productionReady)

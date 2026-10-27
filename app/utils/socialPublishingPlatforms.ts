@@ -1,3 +1,4 @@
+import { platformPublishingSupport } from '~~/shared/socialCapabilityReadiness'
 import type { SocialPublishPlatform } from '~/types'
 
 export interface SocialPublishingPlatformOption {
@@ -59,7 +60,7 @@ export const SOCIAL_PUBLISHING_PLATFORM_OPTIONS: SocialPublishingPlatformOption[
     limit: 2200,
     live: false,
     connectable: false,
-    readiness: 'Content Posting creator OAuth foundation is available; publishing, refresh hardening, app audit, and live provider smoke remain disabled',
+    readiness: platformPublishingSupport('tiktok').reason,
     docsUrl: 'https://developers.tiktok.com/doc/content-posting-api-get-started/'
   },
   {
@@ -72,7 +73,7 @@ export const SOCIAL_PUBLISHING_PLATFORM_OPTIONS: SocialPublishingPlatformOption[
     readiness: 'OAuth channel discovery foundation is available; upload publishing, refresh hardening, and live provider smoke remain disabled',
     docsUrl: 'https://developers.google.com/youtube/v3/guides/uploading_a_video'
   }
-]
+].map(option => ({ ...option, live: platformPublishingSupport(option.value).productionReady, readiness: platformPublishingSupport(option.value).reason })) as SocialPublishingPlatformOption[]
 
 export const LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS = SOCIAL_PUBLISHING_PLATFORM_OPTIONS
   .filter(option => option.live)

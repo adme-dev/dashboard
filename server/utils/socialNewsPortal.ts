@@ -24,6 +24,8 @@ interface PortalSocialNewsActionInput {
   postId: string
   action: PortalSocialNewsAction
   feedback: string | null
+  /** The revision the client was shown (list projection `approval.revisionId`); null only pre-migration. */
+  revisionId?: string | null
 }
 
 const CLIENT_APPROVAL_STATUSES = new Set(['pending', 'approved', 'rejected', 'revision_requested'])
@@ -99,6 +101,9 @@ export async function listPortalSocialNewsDrafts(
        p.approval_requested_at, p.due_at,
        p.client_approval_status, p.client_approval_responded_at,
        p.client_approval_feedback, responder.name AS client_approval_responded_by,
+       p.client_approval_revision_id,
+       (SELECT r.revision_number FROM social_post_revisions r
+         WHERE r.id = p.client_approval_revision_id AND r.post_id = p.id AND r.client_id = p.client_id) AS client_approval_revision_number,
        COALESCE(p.metadata->'newsAttribution'->>'title', n.title) AS source_title,
        COALESCE(p.metadata->'newsAttribution'->>'url', n.source_url) AS source_url,
        COALESCE(p.metadata->'newsAttribution'->>'author', n.author) AS source_author,
@@ -191,7 +196,9 @@ export async function listPortalSocialNewsDrafts(
         respondedAt: row.client_approval_responded_at || null,
         respondedBy: row.client_approval_responded_by || null,
         feedback: row.client_approval_feedback || null,
-        internalStatus: row.internal_status
+        internalStatus: row.internal_status,
+        revisionId: row.client_approval_revision_id || null,
+        revisionNumber: row.client_approval_revision_number == null ? null : Number(row.client_approval_revision_number)
       },
       package: row.package_name
         ? {
@@ -242,7 +249,7 @@ export async function respondToPortalSocialNewsDraft(
   return db.transaction(async (client) => {
     const ownedResult = await client.query(
       `SELECT p.id, p.client_id, p.status, p.approved_at, p.client_approval_status,
-              p.account_ids, p.platforms, p.metadata
+              p.account_ids, p.platforms, p.metadata, p.current_revision_id, p.client_approval_revision_id
          FROM social_posts p
         WHERE p.id = $1 AND p.client_id = $2
           AND p.metadata->>'source' = 'mcp_news'
@@ -254,6 +261,32 @@ export async function respondToPortalSocialNewsDraft(
     if (!post) throw createError({ statusCode: 404, statusMessage: 'News draft not found' })
     if (post.status !== 'draft' || post.approved_at || post.client_approval_status !== 'pending') {
       throw createError({ statusCode: 409, statusMessage: 'News draft is no longer awaiting client approval' })
+    }
+    // A revision-bound request: the client decides the exact revision they were SHOWN, which must still
+    // be both the requested and the current, pending revision (all locked with the post). A stale view —
+    // the agency resubmitted after the client opened it — or a request without the displayed revision is
+    // refused so the client reloads; nothing is recorded against a revision they never saw.
+    const revisionId = typeof post.client_approval_revision_id === 'string' ? post.client_approval_revision_id : null
+    const shownRevisionId = typeof input.revisionId === 'string' && input.revisionId ? input.revisionId : null
+    if (post.current_revision_id || revisionId) {
+      if (!shownRevisionId) {
+        throw createError({ statusCode: 409, statusMessage: 'Reload to review the latest version before deciding' })
+      }
+      if (!revisionId || revisionId !== post.current_revision_id || shownRevisionId !== revisionId) {
+        throw createError({ statusCode: 409, statusMessage: 'This content changed after you opened it. Reload to review the latest version.' })
+      }
+      const revisionResult = await client.query(
+        `SELECT id FROM social_post_revisions
+          WHERE id = $1 AND post_id = $2 AND client_id = $3 AND review_status = 'pending'
+          FOR UPDATE`,
+        [revisionId, input.postId, input.clientId]
+      )
+      if (!revisionResult.rows?.[0]) {
+        throw createError({ statusCode: 409, statusMessage: 'News draft changed since it was sent for approval' })
+      }
+    } else if (shownRevisionId) {
+      // Compatibility only for genuinely pre-revision requests: a revision id with no pointers is stale.
+      throw createError({ statusCode: 409, statusMessage: 'This content changed after you opened it. Reload to review the latest version.' })
     }
 
     const metadata = objectValue(post.metadata)
@@ -347,15 +380,22 @@ export async function respondToPortalSocialNewsDraft(
               client_approval_feedback = $3,
               updated_at = NOW()
         WHERE id = $4 AND client_id = $5 AND client_approval_status = 'pending'
+          AND client_approval_revision_id IS NOT DISTINCT FROM $6::uuid
+          AND current_revision_id IS NOT DISTINCT FROM $6::uuid
         RETURNING id, client_approval_status`,
-      [status, input.clientUserId, feedback || null, input.postId, input.clientId]
+      [status, input.clientUserId, feedback || null, input.postId, input.clientId, shownRevisionId]
     )
     if (!updateResult.rows?.[0]) {
       throw createError({ statusCode: 409, statusMessage: 'News draft approval changed before this response' })
     }
 
     const actorId = `client:${input.clientUserId}`
-    const auditMetadata = JSON.stringify({ source: 'client_portal', hasFeedback: Boolean(feedback), feedback: feedback || undefined })
+    const auditMetadata = JSON.stringify({
+      source: 'client_portal',
+      hasFeedback: Boolean(feedback),
+      feedback: feedback || undefined,
+      revisionId: shownRevisionId ?? undefined
+    })
     await client.query(
       `INSERT INTO social_publishing_audit_events
          (client_id, post_id, actor_id, action, metadata)

@@ -33,6 +33,7 @@ describe('social publishing account health', () => {
   it('keeps planned providers visible as connected but not publishing-ready', () => {
     const result = classifySocialPublishingAccountHealth({
       platform: 'tiktok',
+      metadata: { grantedScopes: ['video.publish'], refreshTokenExpiresAt: '2027-01-01T00:00:00Z' },
       isActive: true,
       tokenExpiresAt: '2026-08-01T00:00:00.000Z',
       hasRefreshToken: true,
