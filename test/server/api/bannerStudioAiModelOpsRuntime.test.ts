@@ -16,8 +16,11 @@ const mockEdgeGenerate = vi.fn()
 const mockGenerateGroqInsight = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
+  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
+  requireWriteAccess: (...args: unknown[]) => mockRequireAuth(...args)
 }))
+
+vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientScope: vi.fn() }))
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),

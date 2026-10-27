@@ -1,3 +1,4 @@
+import { bannerPinnedFontCss, isBannerPinnedFace, isBannerPinnedFamily } from '~~/shared/bannerPinnedFont'
 import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
 import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
 import { resolveBannerPlayback, bannerPlaybackRepeat } from '~/utils/banner-playback'
@@ -30,15 +31,18 @@ export interface ExportCustomFont {
 }
 
 /** Build dynamic Google Fonts <link> based on fonts actually used in layers (excludes custom fonts) */
-function buildFontLink(layers: Layer[], customFontFamilies: Set<string>): string {
+function buildFontLink(layers: Layer[], customFonts: ExportCustomFont[]): string {
+  const customFontFamilies = new Set(customFonts.filter(cf => !isBannerPinnedFamily(cf.family)).map(cf => cf.family))
   const fonts = new Map<string, Set<number>>()
   for (const l of layers) {
     if (!l.fontFamily || SYSTEM_FONTS.has(l.fontFamily)) continue
+    if (isBannerPinnedFace(l.fontFamily, l.fontWeight)) continue
+    if (isBannerPinnedFamily(l.fontFamily) && customFonts.some(cf => isBannerPinnedFamily(cf.family) && cf.weight === (l.fontWeight || 400) && isSafeCssUrl(cf.url))) continue
     if (customFontFamilies.has(l.fontFamily)) continue // handled by @font-face
     if (!fonts.has(l.fontFamily)) fonts.set(l.fontFamily, new Set())
     fonts.get(l.fontFamily)!.add(l.fontWeight || 400)
     // Also include common weights for flexibility
-    fonts.get(l.fontFamily)!.add(700)
+    if (!isBannerPinnedFamily(l.fontFamily)) fonts.get(l.fontFamily)!.add(700)
   }
   if (fonts.size === 0) return ''
   const families = Array.from(fonts.entries())
@@ -65,7 +69,7 @@ function isSafeCssUrl(url: string): boolean {
 function buildCustomFontFaces(layers: Layer[], customFonts: ExportCustomFont[]): string {
   if (!customFonts.length) return ''
   const usedFamilies = new Set(layers.filter(l => l.fontFamily).map(l => l.fontFamily!))
-  const used = customFonts.filter(cf => usedFamilies.has(cf.family) && isSafeCssUrl(cf.url))
+  const used = customFonts.filter(cf => usedFamilies.has(cf.family) && isSafeCssUrl(cf.url) && !isBannerPinnedFace(cf.family, cf.weight))
   if (!used.length) return ''
   return used.map(cf => {
     const family = cf.family.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -105,7 +109,8 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
   // A zero-time hold must restore its first opacity when scrubbing backwards.
   // Hiding first at the same timestamp otherwise wins GSAP's reverse seek.
   const firstOpacity = [...(kfs.opacity || [])].sort((a, b) => a.time - b.time)[0]
-  const initialOpacity = firstOpacity?.time === 0 ? firstOpacity.value : 0
+  const initialOpacity = firstOpacity?.time === 0 ? firstOpacity.value
+    : (kfs.opacity?.length || 0) < 2 && (l.startTime || 0) === 0 ? l.opacity : 0
   if (isBg) {
     lines.push(`  tl.set(${sel}, { autoAlpha: ${initialOpacity} }, 0);`)
   } else {
@@ -139,6 +144,15 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
     if (l.endTime !== cycleEnd) lines.push(`  tl.set(${sel}, { visibility: 'hidden' }, ${l.endTime});`)
   }
 
+  // Missing property tracks retain the same resting values as the editor.
+  const defaults: Record<KeyframeProperty, number> = {
+    opacity: l.opacity, x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: l.rotation || 0,
+  }
+  for (const [prop, value] of Object.entries(defaults)) {
+    if ((kfs[prop as KeyframeProperty]?.length || 0) >= 2) continue
+    lines.push(`  tl.set(${sel}, { ${kfGsapProp(prop as KeyframeProperty, isBg)}: ${value}, immediateRender: false }, ${l.startTime || 0});`)
+  }
+
   // Motion path tweens (chained)
   if (l.motionPath && l.motionPath.length >= 2) {
     const startTime = l.startTime || 0
@@ -155,7 +169,7 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
       const startEnd = tw.pathStart !== 0 || tw.pathEnd !== 1
         ? `, start: ${tw.pathStart}, end: ${tw.pathEnd}`
         : ''
-      lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(tw.ease)} }, ${tw.startTime});`)
+      lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, fromCurrent: false, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(tw.ease)} }, ${tw.startTime});`)
     }
   }
 
@@ -178,7 +192,6 @@ export function buildBannerHTML(
 ): string {
   const { includeAnimations = true, bgColor = '#0a0a10', feedUrl, feedBindings, customFonts = [] } = options
   const playback = resolveBannerPlayback(options.playback)
-  const customFontFamilies = new Set(customFonts.map(cf => cf.family))
   const fmt = resolveBannerFormat(fmtKey)
   if (!fmt) return ''
 
@@ -186,6 +199,7 @@ export function buildBannerHTML(
     .sort((a, b) => a.zIndex - b.zIndex)
     .map((l) => {
       let style = `position:absolute;left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;opacity:${l.opacity};`
+      if (l.clipToBounds) style += 'overflow:hidden;box-sizing:border-box;'
       const transformOrigin = layerTransformOrigin(l.transformOrigin)
       if (transformOrigin) style += `transform-origin:${transformOrigin};`
       if (l.hidden) style += 'display:none!important;'
@@ -200,7 +214,7 @@ export function buildBannerHTML(
       // Apply initial clip-path from mask layer targeting this layer
       const maskLayer = layers.find(m => m.isMask && m.maskTargetIds?.includes(l.id))
       if (maskLayer) {
-        style += `clip-path:${computeClipPathPx(maskLayer, l, maskLayer.maskShape || 'rect', maskLayer.maskInvert || false)};`
+        style += `clip-path:${escapeHtml(computeClipPathPx(maskLayer, l, maskLayer.maskShape || 'rect', maskLayer.maskInvert || false))};`
       }
 
       if (l.type === 'bg') {
@@ -305,12 +319,10 @@ export function buildBannerHTML(
       const preset = ANIM_IN.find((a: any) => a.id === l.animIn)
       const hasMP = (l.motionPath?.length ?? 0) >= 2
 
-      // Initial hidden state
-      if (isBg) {
-        lines.push(`  tl.set(${sel}, { autoAlpha: 0 }, 0);`)
-      } else {
-        lines.push(`  tl.set(${sel}, { opacity: 0 }, 0);`)
-      }
+      // Match the editor resting transform when seeking backwards to zero.
+      const initialPosition = hasMP ? '' : ', x: 0, y: 0'
+      const initialOpacity = startTime === 0 && (!l.animIn || l.animIn === 'none') ? l.opacity : 0
+      lines.push(`  tl.set(${sel}, { ${isBg ? 'autoAlpha' : 'opacity'}: ${initialOpacity}, scale: 1, rotation: ${l.rotation || 0}${initialPosition}, immediateRender: false }, 0);`)
 
       // Animate in
       if (preset?.special === 'kenBurns') {
@@ -331,11 +343,8 @@ export function buildBannerHTML(
           .filter(([k]) => !hasMP || (k !== 'x' && k !== 'y'))
         if (fromEntries.length > 0) {
           const fromProps = fromEntries.map(([k, v]) => `${k}: ${v}`).join(', ')
-          if (isBg) {
-            lines.push(`  tl.from(${sel}, { ${fromProps}, autoAlpha: 0, duration: ${animDur}, ease: ${easeToExportExpr(ease)} }, ${startTime});`)
-          } else {
-            lines.push(`  tl.from(${sel}, { ${fromProps}, duration: ${animDur}, ease: ${easeToExportExpr(ease)} }, ${startTime});`)
-          }
+          const opEntrance = isBg ? 'autoAlpha' : 'opacity'
+          lines.push(`  tl.fromTo(${sel}, { ${fromProps} }, { ${opEntrance}: ${l.opacity}, scale: 1, rotation: ${l.rotation || 0}${initialPosition}, duration: ${animDur}, ease: ${easeToExportExpr(ease)}, immediateRender: false }, ${startTime});`)
         } else {
           // Preset only had x/y (e.g. slideL) — do simple opacity reveal
           const opReveal = isBg ? 'autoAlpha' : 'opacity'
@@ -391,7 +400,7 @@ export function buildBannerHTML(
           const startEnd = tw.pathStart !== 0 || tw.pathEnd !== 1
             ? `, start: ${tw.pathStart}, end: ${tw.pathEnd}`
             : ''
-          lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(tw.ease)} }, ${tw.startTime});`)
+          lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, fromCurrent: false, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(tw.ease)} }, ${tw.startTime});`)
         }
       }
 
@@ -424,7 +433,9 @@ export function buildBannerHTML(
     }
     function clip(m, t) {
       ${shape === 'ellipse'
-        ? `var rx=m.w/2, ry=m.h/2, cx=(m.x-t.x)+rx, cy=(m.y-t.y)+ry; return 'ellipse('+rx+'px '+ry+'px at '+cx+'px '+cy+'px)';`
+        ? invert
+          ? `var rx=m.w/2, ry=m.h/2, cx=(m.x-t.x)+rx, cy=(m.y-t.y)+ry; return 'path(evenodd, "M0 0H'+t.w+'V'+t.h+'H0Z M'+(cx+rx)+' '+cy+'A'+rx+' '+ry+' 0 1 0 '+(cx-rx)+' '+cy+'A'+rx+' '+ry+' 0 1 0 '+(cx+rx)+' '+cy+'Z")';`
+          : `var rx=m.w/2, ry=m.h/2, cx=(m.x-t.x)+rx, cy=(m.y-t.y)+ry; return 'ellipse('+rx+'px '+ry+'px at '+cx+'px '+cy+'px)';`
         : invert
           ? `var il=Math.max(0,Math.min(t.w,m.x-t.x)), it=Math.max(0,Math.min(t.h,m.y-t.y)), ir=Math.max(0,Math.min(t.w,m.x-t.x+m.w)), ib=Math.max(0,Math.min(t.h,m.y-t.y+m.h)); return 'polygon(0px 0px,'+t.w+'px 0px,'+t.w+'px '+t.h+'px,0px '+t.h+'px,0px 0px,'+il+'px '+it+'px,'+il+'px '+ib+'px,'+ir+'px '+ib+'px,'+ir+'px '+it+'px,'+il+'px '+it+'px)';`
           : `var tp=Math.max(0,m.y-t.y), rt=Math.max(0,t.w-(m.x-t.x+m.w)), bt=Math.max(0,t.h-(m.y-t.y+m.h)), lt=Math.max(0,m.x-t.x); return 'inset('+tp+'px '+rt+'px '+bt+'px '+lt+'px)';`}
@@ -510,8 +521,9 @@ export function buildBannerHTML(
 <meta name="ad.size" content="width=${fmt.w},height=${fmt.h}">
 ${gsapScript}
 ${motionPathScript}${customEaseScript}
-${buildFontLink(layers, customFontFamilies)}
+${buildFontLink(layers, customFonts)}
 <style>
+${bannerPinnedFontCss(layers)}
 ${buildCustomFontFaces(layers, customFonts)}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 .ad { position: relative; width: ${fmt.w}px; height: ${fmt.h}px; overflow: hidden; background: ${bgColor}; }

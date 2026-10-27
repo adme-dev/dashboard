@@ -1,10 +1,11 @@
-import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
 import { executeGodModeBannerProjectCreation } from '~~/server/utils/banner/godModeProjectCreation'
 import { findExistingTheBriefProject, readTheBriefProjectIdentity } from '~~/server/utils/banner/thebriefProjectImport'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { validateBannerPlatformQrCanvas } from '~~/server/utils/banner/platformQrCanvas'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
   const body = await readBody(event)
 
   const { name, clientId, canvasData, tags } = body
@@ -14,18 +15,18 @@ export default defineEventHandler(async (event) => {
   }
 
   const importIdentity = readTheBriefProjectIdentity(clientId, tags)
-  if (importIdentity) {
-    // Deduplication can return saved canvas data, including on coordinator replay.
-    // Check current write and client authority before either path can run.
-    await requireWriteAccess(event)
-    await requireSocialClientAccess(event, importIdentity.clientId)
-  }
+  const destinationClientId = importIdentity?.clientId || clientId || null
+  if (destinationClientId) await requireSocialClientAccess(event, destinationClientId)
+  await validateBannerPlatformQrCanvas(event, {}, canvasData || {}, destinationClientId)
 
   try {
     const row = await executeGodModeBannerProjectCreation(event, async (db) => {
       if (importIdentity) {
         const existing = await findExistingTheBriefProject(db, importIdentity)
-        if (existing) return existing
+        if (existing) {
+          await validateBannerPlatformQrCanvas(event, {}, existing.canvasData, existing.clientId)
+          return existing
+        }
       }
       const result = await db.query(`
         INSERT INTO banner_projects (name, client_id, canvas_data, tags, created_by)
@@ -41,7 +42,7 @@ export default defineEventHandler(async (event) => {
           updated_at AS "updatedAt"
       `, [
         name.trim(),
-        importIdentity?.clientId || clientId || null,
+        destinationClientId,
         JSON.stringify(canvasData || {}),
         importIdentity?.tags || tags || [],
         user.id
@@ -49,9 +50,12 @@ export default defineEventHandler(async (event) => {
       return result.rows[0]
     })
     if (!row) throw new Error('Banner project insert returned no row')
+    // Coordinator replay may return a saved document without running the create callback.
+    if (row.clientId) await requireSocialClientAccess(event, row.clientId)
+    await validateBannerPlatformQrCanvas(event, {}, row.canvasData, row.clientId || null)
     return row
   } catch (error) {
-    if ((error as { statusCode?: number })?.statusCode === 400) throw error
+    if ((error as { statusCode?: number })?.statusCode) throw error
     console.error('Failed to create banner project:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to create banner project' })
   }

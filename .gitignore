@@ -50,3 +50,18 @@ server/uploads/
 
 # Graphify knowledge-graph output (generated locally; not source)
 graphify-out/
+
+# Local editable-artwork pilot and browser evidence (no client assets in git)
+/output/editable-artwork-pilot/
+
+/output/lettering-workflow/
+/output/editable-artwork-v2/
+
+/output/banner-provider-benchmarks/
+
+/output/editable-artwork-animation/
+output/editable-artwork-online-engine/
+
+output/editable-artwork-linux-native/
+
+output/editable-artwork-companion/

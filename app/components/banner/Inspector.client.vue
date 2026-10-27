@@ -1,5 +1,8 @@
 <script setup lang="ts">
-const { selectedLayer } = useBannerStudio()
+const { selectedLayer, updateLayer, canAnimateLayer, canEditAnimation, canAddMotionPathTween } = useBannerStudio()
+const animationActions = useBannerAnimationActions()
+const canAnimate = computed(() => canAnimateLayer(selectedLayer.value))
+const canEdit = computed(() => canEditAnimation(selectedLayer.value))
 const { feedsState } = useBannerFeeds()
 
 const { inspectorTab: activeTab } = useBannerInspector()
@@ -10,9 +13,17 @@ const tabs = [
   { label: 'Background', value: 'background' },
   { label: 'Effects', value: 'effects' }
 ]
+const visibleTabs = computed(() => selectedLayer.value?.platformQr ? tabs.slice(0, 1) : tabs.filter(tab => tab.value !== 'animation' || canEdit.value))
+const qrFields = [{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }, { key: 'w', label: 'Width' }, { key: 'h', label: 'Height' }] as const
+function setQrGeometry(key: 'x' | 'y' | 'w' | 'h', value: unknown) {
+  const number = Number(value)
+  if (!selectedLayer.value?.platformQr || !Number.isFinite(number) || (['w', 'h'].includes(key) && number <= 0)) return
+  updateLayer(selectedLayer.value.id, { [key]: number })
+}
 
 // When a layer is selected, switch to properties if on background tab
 watch(selectedLayer, (layer) => {
+  if (layer?.platformQr) activeTab.value = 'properties'
   if (layer && activeTab.value === 'background') {
     activeTab.value = 'properties'
   }
@@ -23,7 +34,7 @@ watch(selectedLayer, (layer) => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col overflow-hidden">
+  <div class="h-full flex flex-col overflow-hidden" :data-inspector-layer-id="selectedLayer?.id">
     <!-- No selection: show Background tab directly -->
     <template v-if="!selectedLayer">
       <!-- Tab bar with only Background active -->
@@ -43,7 +54,7 @@ watch(selectedLayer, (layer) => {
     <template v-else>
       <UTabs
         v-model="activeTab"
-        :items="tabs"
+        :items="visibleTabs"
         :content="false"
         size="xs"
         class="shrink-0 min-w-0"
@@ -54,33 +65,67 @@ watch(selectedLayer, (layer) => {
       <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 inspector-content">
         <!-- Properties tab -->
         <template v-if="activeTab === 'properties'">
-          <BannerInspectorPosition />
+          <div v-if="canAnimate" class="flex gap-2">
+            <UButton
+              label="Animate"
+              icon="i-lucide-clapperboard"
+              variant="soft"
+              size="xs"
+              @click="animationActions.animate(animationActions.captureTarget(selectedLayer))"
+            />
+            <UButton
+              label="Add Tween"
+              icon="i-lucide-spline"
+              variant="ghost"
+              size="xs"
+              :disabled="!canAddMotionPathTween(selectedLayer)"
+              @click="animationActions.addTween(animationActions.captureTarget(selectedLayer))"
+            />
+          </div>
+          <section v-if="selectedLayer.platformQr" class="space-y-2 border-b border-default pb-3">
+            <p class="text-sm font-semibold">Managed QR code</p>
+            <p class="text-xs text-muted">{{ selectedLayer.platformQr.name }}</p>
+            <p class="text-xs break-all">{{ selectedLayer.platformQr.shortUrl }}</p>
+            <p class="text-xs text-muted">Move or resize this layer. Manage its destination in QR Codes; changes there keep this code usable. Scan the final exported artwork before printing.</p>
+            <UButton :to="`/agency/qr-codes/${selectedLayer.platformQr.qrCodeId}`" target="_blank" label="Manage QR code" icon="i-lucide-external-link" variant="soft" size="xs" />
+            <div class="@container">
+              <div class="grid grid-cols-1 @lg:grid-cols-2 gap-3">
+                <UFormField v-for="field in qrFields" :key="field.key" :label="field.label">
+                  <UInput :model-value="selectedLayer[field.key]" type="number" class="w-full" size="xs" @update:model-value="value => setQrGeometry(field.key, value)" />
+                </UFormField>
+              </div>
+            </div>
+          </section>
+          <BannerInspectorLettering />
+          <BannerInspectorPosition v-if="!selectedLayer.platformQr" />
 
           <BannerInspectorAlignment />
 
           <BannerInspectorText v-if="selectedLayer.type === 'text'" />
-          <BannerInspectorImage v-else-if="selectedLayer.type === 'image'" />
+          <BannerInspectorImage v-else-if="selectedLayer.type === 'image' && !selectedLayer.platformQr" />
           <BannerInspectorVideo v-else-if="selectedLayer.type === 'video'" />
           <BannerInspectorButton v-else-if="selectedLayer.type === 'button'" />
           <BannerInspectorRect v-else-if="selectedLayer.type === 'rect'" />
           <BannerInspectorAudio v-else-if="selectedLayer.type === 'audio'" />
 
+          <BannerInspectorCompanion v-if="selectedLayer.type === 'text'" />
+
           <!-- Mask inspector -->
-          <BannerInspectorMask />
+          <BannerInspectorMask v-if="!selectedLayer.platformQr" />
 
           <!-- Feed Bindings (Phase 3a) -->
-          <BannerInspectorFeedBindings v-if="feedsState.feeds.length > 0" />
+          <BannerInspectorFeedBindings v-if="feedsState.feeds.length > 0 && !selectedLayer.platformQr" />
         </template>
 
         <!-- Animation tab -->
-        <template v-if="activeTab === 'animation'">
+        <template v-if="activeTab === 'animation' && canEdit">
           <BannerInspectorAnimation />
           <BannerInspectorPresence />
           <!-- Motion path + tweens belong with animation, not static properties -->
           <BannerInspectorMotionPath />
         </template>
 
-        <BannerInspectorEffects v-show="activeTab === 'effects'" />
+        <BannerInspectorEffects v-if="!selectedLayer.platformQr" v-show="activeTab === 'effects'" />
 
         <!-- Background tab -->
         <template v-if="activeTab === 'background'">

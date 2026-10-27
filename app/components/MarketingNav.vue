@@ -654,6 +654,7 @@ const featuresCol3b = [
   { title: 'Client News Intelligence', subtitle: 'News selection & opt-in auto-posting', icon: 'i-lucide-newspaper', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/social-news-intelligence' },
   { title: 'Engagement Inbox', subtitle: 'Comments, messages & reviews in one place', icon: 'i-lucide-messages-square', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/social-inbox' },
   { title: 'Reply Automation', subtitle: 'AI-assisted replies with approval guardrails', icon: 'i-lucide-bot', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/social-automation' },
+  { title: 'Creative Studio', subtitle: 'Artwork, video and audio home · local preview', icon: 'i-lucide-panels-top-left', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/creative-studio' },
   { title: 'Audio Studio', subtitle: 'Owned AI voiceover & music for every channel', icon: 'i-lucide-mic', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/audio-studio' },
   { title: 'AI Video Generation', subtitle: 'Brand-safe image-to-video & B-roll clips', icon: 'i-lucide-video', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/ai-video-generation' },
   { title: 'Video Studio', subtitle: 'Multitrack social video editor & multi-format render', icon: 'i-lucide-clapperboard', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/video-studio' },

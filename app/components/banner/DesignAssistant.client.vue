@@ -4,12 +4,14 @@ import { useElementSize } from '@vueuse/core'
 import type { ArtboardState } from '~/types/banner-studio'
 import { resolveBannerFormat } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
+import { assertScopedDesignTransition, isDesignScopeProtected, validateDesignScope, type BannerDesignScope } from '~~/shared/bannerDesignScope'
+import { assertScopedPreviewFits } from '~/utils/banner-scoped-preview'
 import { apiErrorDescription } from '~/utils/apiError'
 
 type Canvas = Record<string, ArtboardState>
 type Message = { role: 'user' | 'assistant', content: string }
 type DesignReference = { id: string, name: string, kind: 'image' | 'guide', description: string, url?: string, guideCharacterCount?: number, analysisModel?: string }
-type Proposal = { reply: string, model: string, canvasData: Canvas, caption?: string, suggestedSchedule?: string, context?: { brandKit: string | null, clientStyleGuide: boolean, references: Array<{ id: string, name: string, kind: 'image' | 'guide' }> } }
+type Proposal = { scope?: BannerDesignScope, sourceRevision?: string, inventory?: { affectedLayerIds: number[], protectedLayerIds: number[] }, reply: string, model: string, canvasData: Canvas, caption?: string, suggestedSchedule?: string, context?: { brandKit: string | null, clientStyleGuide: boolean, references: Array<{ id: string, name: string, kind: 'image' | 'guide' }> } }
 const props = defineProps<{ open: boolean, projectId: string }>()
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -45,12 +47,56 @@ const previewKey = ref('')
 const replay = ref(0)
 let requestVersion = 0
 let controller: AbortController | undefined
+const scoped = ref(false)
+const scopeLayerIds = ref<number[]>([])
+const scopeRegion = ref({ x: 0, y: 0, w: 300, h: 250 })
+const approvedCopyText = ref('')
+const reviewedCopy = ref(false)
+const applying = ref(false)
+const fit = ref<'pending' | 'passed' | 'failed'>('pending')
+const fitError = ref('')
+let mounted = true
+const requestedScope = ref<BannerDesignScope | null>(null)
+const requestedRevision = ref('')
+const sourceCanvas = ref<Canvas | null>(null)
+const scopeBoard = computed(() => state.sets[state.activeKey])
+const editableScopeLayers = computed(() => (scopeBoard.value?.layers || []).filter(layer => !isDesignScopeProtected(layer, scopeBoard.value!)).map(layer => ({ label: `${layer.name} (#${layer.id})`, value: layer.id })))
+const currentScope = computed<BannerDesignScope>(() => ({ formatKey: state.activeKey, layerIds: scopeLayerIds.value, region: { ...scopeRegion.value }, approvedCopy: approvedCopyText.value.split('\n').map(line => line.trim()).filter(Boolean) }))
+const scopeProblem = computed(() => {
+  if (!scoped.value) return ''
+  if (!state.project?.updatedAt) return 'Save this project before requesting a scoped edit.'
+  try {
+    validateDesignScope(getCanvasData(), currentScope.value)
+    return ''
+  } catch (cause) {
+    return cause instanceof Error ? cause.message : 'Choose editable layers and a bounded region.'
+  }
+})
+const scopeChanged = computed(() => !!requestedScope.value && (!scoped.value || JSON.stringify(currentScope.value) !== JSON.stringify(requestedScope.value) || state.project?.updatedAt !== requestedRevision.value))
+function useSelectedLayer() {
+  scopeLayerIds.value = state.selectedLayerId != null && editableScopeLayers.value.some(layer => layer.value === state.selectedLayerId) ? [state.selectedLayerId] : []
+  const format = resolveBannerFormat(state.activeKey)
+  if (format) scopeRegion.value = { x: 0, y: 0, w: format.w, h: format.h }
+}
+watch(scoped, () => {
+  if (scoped.value) useSelectedLayer()
+  reviewedCopy.value = false
+})
+watch([currentScope, () => state.project?.updatedAt], () => {
+  reviewedCopy.value = false
+}, { deep: true })
+const changedLayers = computed(() => {
+  if (!proposal.value?.inventory || !requestedScope.value) return []
+  const key = requestedScope.value.formatKey
+  return proposal.value.inventory.affectedLayerIds.map(id => ({ id, before: sourceCanvas.value?.[key]?.layers.find(layer => layer.id === id), after: proposal.value?.canvasData[key]?.layers.find(layer => layer.id === id) }))
+})
+const protectedLayers = computed(() => requestedScope.value ? sourceCanvas.value?.[requestedScope.value.formatKey]?.layers.filter(layer => !requestedScope.value!.layerIds.includes(layer.id)) || [] : [])
 const snapshot = computed(() => JSON.stringify(getCanvasData()))
-const stale = computed(() => !!proposal.value && (proposalProjectId.value !== props.projectId || proposalClientId.value !== clientId.value || sourceSnapshot.value !== snapshot.value))
+const stale = computed(() => !!proposal.value && (proposalProjectId.value !== props.projectId || proposalClientId.value !== clientId.value || sourceSnapshot.value !== snapshot.value || scopeChanged.value))
 const applied = computed(() => !!appliedSnapshot.value && appliedSnapshot.value === snapshot.value && proposalProjectId.value === props.projectId && proposalClientId.value === clientId.value)
-const canRequest = computed(() => !!prompt.value.trim() && !uploadingReference.value && !pending.value && props.projectId !== 'new' && state.project?.id === props.projectId)
+const canRequest = computed(() => !!prompt.value.trim() && !uploadingReference.value && !pending.value && !scopeProblem.value && props.projectId !== 'new' && state.project?.id === props.projectId)
 const canAttach = computed(() => !pending.value && !uploadingReference.value && references.value.length < 6 && props.projectId !== 'new' && state.project?.id === props.projectId)
-const formats = computed(() => Object.keys(proposal.value?.canvasData || {}).flatMap((key) => {
+const formats = computed(() => (requestedScope.value ? [requestedScope.value.formatKey] : Object.keys(proposal.value?.canvasData || {})).flatMap((key) => {
   const format = resolveBannerFormat(key)
   if (!format) return []
   const label = ['Facebook', 'Instagram'].includes(format.platform)
@@ -69,10 +115,16 @@ const preview = computed(() => {
     format, scale,
     html: buildBannerHTML(previewKey.value, artboard.layers, {
       playback: artboard.playback,
-      includeAnimations: true, bgColor: artboard.bgColor || state.bgColor,
+      includeAnimations: !requestedScope.value, bgColor: artboard.bgColor || state.bgColor,
       customFonts: getExportCustomFonts(artboard.layers)
     })
   }
+})
+
+const beforePreview = computed(() => {
+  const artboard = sourceCanvas.value?.[previewKey.value]
+  if (!requestedScope.value || !artboard) return null
+  return buildBannerHTML(previewKey.value, artboard.layers, { playback: artboard.playback, includeAnimations: false, bgColor: artboard.bgColor || state.bgColor, customFonts: getExportCustomFonts(artboard.layers) })
 })
 
 function storageKey(id: string) {
@@ -100,6 +152,11 @@ watch([() => props.projectId, clientId], () => {
   prompt.value = ''
   error.value = ''
   allowLocked.value = false
+  scoped.value = false
+  scopeLayerIds.value = []
+  requestedScope.value = null
+  reviewedCopy.value = false
+  sourceCanvas.value = null
   messages.value = []
   brief.value = ''
   try {
@@ -121,6 +178,7 @@ watch([() => props.projectId, clientId], () => {
   } catch { /* Invalid history can be replaced by the next successful request. */ }
 }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => {
+  mounted = false
   requestVersion++
   controller?.abort()
   uploadVersion++
@@ -206,7 +264,9 @@ async function requestProposal() {
   const projectId = props.projectId
   const requestClientId = clientId.value
   const original = JSON.stringify(getCanvasData())
-  const canvasData = proposal.value && !stale.value && !applied.value ? proposal.value.canvasData : getCanvasData()
+  const canvasData = !scoped.value && proposal.value && !stale.value && !applied.value ? proposal.value.canvasData : getCanvasData()
+  const editScope = scoped.value ? JSON.parse(JSON.stringify(currentScope.value)) as BannerDesignScope : undefined
+  const revision = state.project?.updatedAt
   const text = prompt.value.trim()
   const history = messages.value.slice(-12)
   controller = new AbortController()
@@ -215,15 +275,25 @@ async function requestProposal() {
   try {
     const result = await $fetch<Proposal>('/api/agency/banner-studio/ai/design-assist', {
       method: 'POST', signal: controller.signal,
-      body: { projectId, prompt: text, brief: brief.value, history, canvasData, activeKey: state.activeKey, model: model.value, allowLocked: allowLocked.value, referenceIds: references.value.map(item => item.id) }
+      body: { projectId, prompt: text, brief: brief.value, history, canvasData, activeKey: state.activeKey, model: model.value, allowLocked: editScope ? false : allowLocked.value, ...(editScope ? { scope: editScope, sourceRevision: revision } : {}), referenceIds: references.value.map(item => item.id) }
     })
     if (version !== requestVersion || props.projectId !== projectId || clientId.value !== requestClientId) return
+    if (editScope) {
+      if (JSON.stringify(result.scope) !== JSON.stringify(editScope) || result.sourceRevision !== revision) throw new Error('Proposal scope or source revision could not be confirmed')
+      result.inventory = assertScopedDesignTransition(canvasData, result.canvasData, editScope)
+    }
+    requestedScope.value = editScope || null
+    requestedRevision.value = revision || ''
+    reviewedCopy.value = false
+    sourceCanvas.value = JSON.parse(original)
+    fit.value = 'pending'
+    fitError.value = ''
     proposal.value = result
     sourceSnapshot.value = original
     proposalProjectId.value = projectId
     proposalClientId.value = requestClientId
     appliedSnapshot.value = ''
-    previewKey.value = Object.hasOwn(result.canvasData, state.activeKey) ? state.activeKey : Object.keys(result.canvasData)[0] || ''
+    previewKey.value = editScope?.formatKey || (Object.hasOwn(result.canvasData, state.activeKey) ? state.activeKey : Object.keys(result.canvasData)[0] || '')
     replay.value++
     messages.value = [...messages.value, { role: 'user', content: text }, { role: 'assistant', content: result.reply.slice(0, 4000) }].slice(-20) as Message[]
     prompt.value = ''
@@ -231,15 +301,49 @@ async function requestProposal() {
   } catch (cause: unknown) {
     if (version !== requestVersion) return
     const failure = cause as { data?: { statusMessage?: string } }
-    error.value = failure.data?.statusMessage || 'Could not prepare a design. Your canvas is unchanged. Try again.'
+    error.value = failure.data?.statusMessage || (cause instanceof Error ? `Could not prepare a design. ${cause.message}` : 'Could not prepare a design. Your canvas is unchanged. Try again.')
   } finally {
     if (version === requestVersion) pending.value = false
   }
 }
-function apply() {
-  if (!proposal.value || stale.value || applied.value || pending.value || state.project?.id !== props.projectId) return
-  applyAssistantCanvas(proposal.value.canvasData)
-  appliedSnapshot.value = JSON.stringify(getCanvasData())
+async function measurePreview(event: Event) {
+  if (!requestedScope.value || !proposal.value || previewKey.value !== requestedScope.value.formatKey) return
+  const expected = proposal.value
+  const frame = event.target as HTMLIFrameElement
+  fit.value = 'pending'
+  reviewedCopy.value = false
+  try {
+    const board = expected.canvasData[requestedScope.value.formatKey]!
+    const ids = new Set([...requestedScope.value.layerIds, ...(expected.inventory?.affectedLayerIds || [])])
+    await assertScopedPreviewFits(frame, board.layers.filter(layer => ids.has(layer.id)))
+    if (mounted && proposal.value === expected && frame.isConnected) fit.value = 'passed'
+  } catch (cause) {
+    if (mounted && proposal.value === expected && frame.isConnected) {
+      fit.value = 'failed'
+      fitError.value = cause instanceof Error ? cause.message : 'Preview text could not be measured.'
+    }
+  }
+}
+async function apply() {
+  if (applying.value || !mounted || !proposal.value || stale.value || applied.value || pending.value || state.project?.id !== props.projectId) return
+  if (requestedScope.value && (!reviewedCopy.value || fit.value !== 'passed' || previewKey.value !== requestedScope.value.formatKey)) return
+  applying.value = true
+  const version = requestVersion
+  try {
+    if (requestedScope.value) {
+      const expected = proposal.value
+      const source = sourceSnapshot.value
+      const project = await $fetch<{ id: string, clientId: string | null, updatedAt: string }>(`/api/agency/banner-studio/projects/${encodeURIComponent(props.projectId)}`)
+      if (!mounted || !props.open || version !== requestVersion || pending.value || !reviewedCopy.value || fit.value !== 'passed' || previewKey.value !== requestedScope.value?.formatKey || proposal.value !== expected || stale.value || source !== snapshot.value || project.id !== props.projectId || project.clientId !== proposalClientId.value || project.updatedAt !== requestedRevision.value) throw new Error('Saved project or edit scope changed; request a new proposal before applying')
+      assertScopedDesignTransition(getCanvasData(), proposal.value.canvasData, requestedScope.value)
+    }
+    applyAssistantCanvas(proposal.value.canvasData)
+    appliedSnapshot.value = JSON.stringify(getCanvasData())
+  } catch (cause) {
+    error.value = apiErrorDescription(cause, 'Proposal could not be applied; request a new preview.')
+  } finally {
+    applying.value = false
+  }
 }
 function discard() {
   proposal.value = null
@@ -279,6 +383,59 @@ const quickActions = [
         <p class="text-sm text-muted">
           Uses this project's client, brand and current artwork. Apply a proposal when you're ready; each application can be undone.
         </p>
+        <UFormField label="Edit boundary" help="Keep a reviewed region separate from the rest of the artwork.">
+          <UCheckbox v-model="scoped" label="Limit changes to a region" :disabled="pending" />
+        </UFormField>
+        <section v-if="scoped" aria-label="Scoped edit boundary" class="space-y-4 border-l-2 border-primary pl-4">
+          <UFormField label="Editable layers" help="Everything outside this selection is protected, including its position and pixels.">
+            <USelectMenu
+              v-model="scopeLayerIds"
+              :items="editableScopeLayers"
+              value-key="value"
+              multiple
+              class="w-full"
+              :disabled="pending"
+            />
+          </UFormField>
+          <UButton
+            label="Use selected canvas layer"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            :disabled="pending"
+            @click="useSelectedLayer"
+          />
+          <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+            <UFormField v-for="field in (['x', 'y', 'w', 'h'] as const)" :key="field" :label="({ x: 'Region left', y: 'Region top', w: 'Region width', h: 'Region height' })[field]">
+              <UInput
+                v-model.number="scopeRegion[field]"
+                type="number"
+                :min="field === 'w' || field === 'h' ? 1 : 0"
+                class="w-full"
+                :disabled="pending"
+              />
+            </UFormField>
+          </div>
+          <UFormField label="Approved wording" help="One exact text block per line. Shorten noncommercial letter copy here for human review; facts, greeting, sign-off and locked copy stay exact.">
+            <UTextarea
+              v-model="approvedCopyText"
+              class="w-full"
+              :rows="5"
+              :maxlength="12000"
+              :disabled="pending"
+              placeholder="PIZZA • DRINKS • TEST DRIVES"
+            />
+          </UFormField>
+          <UAlert
+            v-if="scopeProblem"
+            title="Choose a safe edit boundary"
+            :description="scopeProblem"
+            color="warning"
+          />
+          <p class="text-xs text-muted">
+            A flattened original needs reviewed extraction and clean-background repair first. Use owned approved imagery; any proposed lifestyle scene needs review and must not portray an invented showroom as the actual dealership. Keep launch dates separate from sale dates; no unapproved time or free claim.
+          </p>
+        </section>
         <UAlert
           v-if="projectId === 'new'"
           title="Save this project first"
@@ -425,7 +582,7 @@ const quickActions = [
               :disabled="pending"
             />
           </UFormField>
-          <UFormField label="Locked layers">
+          <UFormField v-if="!scoped" label="Locked layers">
             <UCheckbox v-model="allowLocked" label="Allow this request to change locked layers" :disabled="pending" />
           </UFormField>
         </div>
@@ -478,18 +635,63 @@ const quickActions = [
           <UFormField label="Preview format">
             <USelect v-model="previewKey" :items="formats" class="w-full" />
           </UFormField>
+          <section v-if="requestedScope" aria-label="Affected and protected layers" class="space-y-2 text-sm">
+            <p class="font-medium">
+              Affected layers: {{ changedLayers.map(item => `${item.after?.name} (#${item.id})`).join(', ') }}
+            </p>
+            <article v-for="item in changedLayers" :key="item.id" class="border-b border-default py-2">
+              <p>{{ item.after?.name }} · {{ item.before ? 'Edit' : 'Add' }}</p>
+              <p v-if="item.before?.text !== item.after?.text" class="whitespace-pre-wrap text-muted">
+                Before: {{ item.before?.text || 'No text' }}<br>After: {{ item.after?.text || 'No text' }}
+              </p>
+              <p class="text-xs text-muted">
+                {{ item.before ? `${item.before.x}, ${item.before.y} · ${item.before.w}×${item.before.h}` : 'New layer' }} → {{ item.after?.x }}, {{ item.after?.y }} · {{ item.after?.w }}×{{ item.after?.h }}
+              </p>
+            </article>
+            <details>
+              <summary class="cursor-pointer">
+                Protected layers unchanged ({{ protectedLayers.length }})
+              </summary>
+              <p v-for="layer in protectedLayers" :key="layer.id" class="whitespace-pre-wrap break-words py-1 text-xs text-muted">
+                #{{ layer.id }} {{ layer.name }}{{ layer.text ? `: ${layer.text}` : '' }}
+              </p>
+            </details>
+          </section>
+          <p v-if="requestedScope" class="text-sm font-medium">
+            Before
+          </p>
+          <div v-if="beforePreview && preview" class="flex w-full justify-center overflow-hidden rounded-lg bg-elevated">
+            <div class="relative shrink-0" :style="{ width: `${preview.format.w * preview.scale}px`, height: `${preview.format.h * preview.scale}px` }">
+              <iframe
+                data-vue-devtools-ignore
+                title="Design before scoped edit"
+                :srcdoc="beforePreview"
+                :width="preview.format.w"
+                :height="preview.format.h"
+                :sandbox="requestedScope ? 'allow-same-origin' : 'allow-scripts'"
+                referrerpolicy="no-referrer"
+                class="absolute left-0 top-0 origin-top-left border-0 pointer-events-none"
+                :style="{ transform: `scale(${preview.scale})` }"
+              />
+            </div>
+          </div>
+          <p v-if="requestedScope" class="text-sm font-medium">
+            After
+          </p>
           <div ref="previewContainer" class="flex w-full justify-center overflow-hidden rounded-lg bg-elevated">
             <div v-if="preview" class="relative shrink-0" :style="{ width: `${preview.format.w * preview.scale}px`, height: `${preview.format.h * preview.scale}px` }">
               <iframe
                 :key="`${previewKey}-${replay}`"
-                title="Animated design proposal"
+                data-vue-devtools-ignore
+                :title="requestedScope ? 'Scoped design proposal' : 'Animated design proposal'"
                 :srcdoc="preview.html"
                 :width="preview.format.w"
                 :height="preview.format.h"
-                sandbox="allow-scripts"
+                :sandbox="requestedScope ? 'allow-same-origin' : 'allow-scripts'"
                 referrerpolicy="no-referrer"
                 class="absolute left-0 top-0 origin-top-left border-0 pointer-events-none"
                 :style="{ transform: `scale(${preview.scale})` }"
+                @load="measurePreview"
               />
             </div>
           </div>
@@ -507,8 +709,17 @@ const quickActions = [
             description="Request a new proposal using your latest canvas before applying."
             color="warning"
           />
+          <UAlert
+            v-if="requestedScope && fit !== 'passed'"
+            :title="fit === 'failed' ? 'Text needs more room' : 'Checking text fit'"
+            :description="fitError || 'Checking that every proposed text block remains readable.'"
+            :color="fit === 'failed' ? 'error' : 'info'"
+          />
+          <UFormField v-if="requestedScope" label="Human review">
+            <UCheckbox v-model="reviewedCopy" label="I reviewed the wording, layout and proposed imagery; protected artwork is unchanged" :disabled="stale || applied || pending || fit !== 'passed'" />
+          </UFormField>
           <div class="flex flex-wrap gap-2">
-            <UButton :label="applied ? 'Applied' : 'Apply to canvas'" :disabled="stale || applied || pending" @click="apply" />
+            <UButton :label="applied ? 'Applied' : 'Apply to canvas'" :disabled="stale || applied || pending || applying || (!!requestedScope && (!reviewedCopy || fit !== 'passed'))" @click="apply" />
             <UButton
               label="Discard preview"
               variant="outline"

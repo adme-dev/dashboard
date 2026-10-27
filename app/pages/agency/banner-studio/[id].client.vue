@@ -487,6 +487,8 @@ const moreMenuItems = computed(() => [[
 ]])
 
 // File size estimation
+const managedQrRef = ref<{ show: () => void } | null>(null)
+const artworkCreationRef = ref<{ show: () => void } | null>(null)
 const { activeSize } = useBannerFileSize()
 </script>
 
@@ -566,6 +568,8 @@ const { activeSize } = useBannerFileSize()
             />
           </UButton>
         </UTooltip>
+        <UButton label="Add QR" icon="i-lucide-qr-code" variant="soft" size="xs" @click="managedQrRef?.show()" />
+        <UButton label="Create artwork" icon="i-lucide-sparkles" variant="soft" size="xs" @click="artworkCreationRef?.show()" />
         <div class="hidden @5xl:flex items-center gap-1">
           <UButton
             label="Create with AI"
@@ -907,6 +911,8 @@ const { activeSize } = useBannerFileSize()
     <BannerAiEditSlideover />
 
     <!-- AI Generate Image Slideover -->
+    <BannerQrSlideover ref="managedQrRef" />
+    <BannerArtworkCreateSlideover ref="artworkCreationRef" />
     <BannerAiGenerateSlideover />
 
     <!-- Save Version Modal -->

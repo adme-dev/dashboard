@@ -724,6 +724,34 @@ const features: Record<string, Feature> = {
     ]
   },
   // ─── Creative Production ──────────────────────────────────────
+  'creative-studio': {
+    title: 'Creative Studio',
+    slug: 'creative-studio',
+    icon: 'i-lucide-panels-top-left',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'One starting point for campaign artwork, video and audio. The new home is in local preview; hosted availability is pending.',
+    details: [
+      {
+        title: 'Choose A Studio',
+        content: 'Open Banner Studio for images and editable artwork, the existing video project list for timelines, or Audio Studio for voiceover and music. Each link keeps the established project and asset workflow.'
+      },
+      {
+        title: 'Reuse Existing Resources',
+        content: 'Reach banner templates, brand kits, audio projects and banner uploads from the same home. Your existing libraries remain the source of reusable creative.'
+      },
+      {
+        title: 'Available To Your Creative Team',
+        content: 'The home follows existing creative-role permissions and supports light and dark appearance, with a scrolling layout for smaller screens. Generation features still depend on the providers and permissions configured for each studio.'
+      },
+      {
+        title: 'Local Preview Status',
+        content: 'Navigation and role access have been checked in the local application with fixture data. Hosted rollout remains pending. This home does not enable new generation models, 3D tools or external editing engines.'
+      }
+    ]
+  },
   'audio-studio': {
     title: 'Audio Studio',
     slug: 'audio-studio',
@@ -2466,8 +2494,12 @@ const features: Record<string, Feature> = {
     description: 'GSAP-powered keyframe timeline with entry and exit animations, easing curves, and frame-accurate playback for rich HTML5 ad production.',
     details: [
       {
+        title: 'Animate a Selected Layer',
+        content: 'The local editor preview adds Animate and Add Tween to layer menus on the canvas and timeline. Open the existing animation controls, create a motion path or add a tween, then adjust its timing and easing. Each addition supports undo and saved-project reload, while the heading remains editable text. Managed QR codes and locked layers are excluded from these actions. Hosted acceptance remains pending.'
+      },
+      {
         title: 'Keyframe Timeline',
-        content: 'A visual timeline at the bottom of the editor shows every layer as a row with diamond-shaped keyframe markers. Drag keyframes to adjust timing, click between them to add new property changes, and use the playhead to scrub through the animation in real time. Each keyframe can animate position, scale, rotation, opacity, colour, and more — all rendered by GSAP for buttery smooth playback.'
+        content: 'A visual timeline at the bottom of the editor shows every layer as a row with diamond-shaped keyframe markers. Drag keyframes to adjust timing, click between them to add new property changes, and use the playhead to scrub through the animation in real time. Keyframe tracks control position, scale, rotation and opacity through GSAP playback.'
       },
       {
         title: 'Entry & Exit Animations',
@@ -2503,7 +2535,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'GSAP MotionPath Integration',
-        content: 'Motion paths are powered by GSAP MotionPathPlugin, ensuring pixel-accurate rendering across all browsers. The path data is serialised into the banner HTML so animations work identically in the editor, in preview, and in the published ad tag. When a motion path is active, it replaces manual x/y keyframes — the timeline UI hides position tracks to avoid conflicts.'
+        content: 'Motion paths use GSAP MotionPathPlugin and are retained in exported banner HTML. Chained tweens follow the same stored path across segment boundaries. When a motion path is active, it controls position; existing x/y keyframes remain saved but do not drive that motion. Check the exported animation in the target environment before publication.'
       },
       {
         title: 'Export-Ready',
@@ -2723,8 +2755,36 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'AI text-to-image generation, layer editing & decomposition, copy suggestions, URL-to-banner, auto-resize, and image recommendations — built into the editor.',
+    description: 'Create reference-led campaign concepts, save reusable styles and review selected-lettering changes inside Banner Studio. Generation and editing require a configured provider.',
     details: [
+      {
+        title: 'Reference-Led Campaign Concepts',
+        content: 'Combine a campaign brief, exact approved copy and owned reference images to request a complete concept through the configured OpenAI provider. Review the visible wording, products and layout before importing the flattened image. Keep the references and request details with the saved project. Generating a concept does not automatically convert its lettering into editable text.'
+      },
+      {
+        title: 'Reusable Artwork Styles',
+        content: 'Save the design guidance from a reviewed concept as a named, versioned style. Reuse it for accessible projects in the same client scope, with fresh campaign copy and explicitly chosen references. Composition guidance and optional example artwork remain separate from the previous campaign’s commercial details.'
+      },
+      {
+        title: 'Selected Lettering with Preview and Undo',
+        content: 'Select native text or an isolated transparent lettering image and open Edit with AI in the inspector. Request editable native typography or an image redraw, review the proposal in the composition, then apply with undo. Saved recipes retain the original reference and requested wording. For lettering baked into a flat image, the local repair preview lets you mark a rectangle, supply exact wording and review a repaired background with separate native text. Choose its font, size and colour, compare the original and apply both changes with one undo. Image redraws remain raster artwork. Live repair quality and hosted availability still need acceptance.'
+      },
+      {
+        title: 'Companion Wording Review — Local Preview',
+        content: 'A local companion workflow exchanges a selected plain Source Sans 3 Bold heading with the Linux native editor. Download a request, import the returned wording and compare it with the original before one undoable apply. The platform checks its exact font and the unchanged heading box; other artwork and managed QR codes stay unchanged. Saved source details describe the edit but do not authenticate an external engine. This is a manual local preview; hosted processing and live persistence are not yet accepted.'
+      },
+      {
+        title: 'Private Craft Engine Previews — In Development',
+        content: 'PhotoCraft and VectorCraft native files can now pass through a locally tested private preview job workflow. It checks current project access and saved source, supports cancellation and holds uncertain attempts for review. Results are PNG previews; they do not replace editable artwork. Hosted availability and the other Craft engines remain pending.'
+      },
+      {
+        title: 'Review Edits Within a Chosen Area',
+        content: 'The local design-assistant preview lets you choose editable layers and an area for a layout change. Review the additional wording, affected layers and before/after composition before applying with undo. Unselected artwork stays unchanged, including managed QR codes, maps and offer terms. The workflow checks the saved source before applying; flattened posters still need reviewed reconstruction and a clean background. Hosted acceptance remains pending.'
+      },
+      {
+        title: 'Resume an Artwork Analysis',
+        content: 'The local Dissector preview retains analysis jobs so you can reopen progress, cancel a job or explicitly retry a failed attempt. A retry queues a new attempt and keeps progress and cancellation in the same dialog. If its response is interrupted, the editor checks the saved status before offering another action. Optional queue recovery can resume a saved attempt that has not started; failed AI work still requires an explicit retry. Timed-out work cannot replace a newer result. Import checks the reviewed result and saved project, avoids duplicate writes and supports one-step undo in the editor. Incomplete extraction still needs reconstruction before import. Hosted processing and provider quality remain pending acceptance.'
+      },
       {
         title: 'AI Text-to-Image Generation',
         content: 'Describe an image and AI generates it directly in the editor. Powered by Qwen-Image-2512, the generator supports five aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4), adjustable guidance and inference steps, optional prompt enhancement, and reproducible seed control. Generated images upload to your asset library and drop onto the canvas with one click. Use the "Reuse Seed" button to create variations of a result you like.'
@@ -2735,7 +2795,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'AI Layer Decomposition',
-        content: 'Break a flat image into individual editable layers with one click. The AI identifies distinct visual elements — foreground objects, backgrounds, text, logos — and extracts each as a transparent PNG layer on the canvas. Supports prompt-guided decomposition for targeted extraction, and exports PPTX and ZIP bundles of the decomposed layers for use outside the editor.'
+        content: 'Separate an image into transparent raster layers for review. Complete results retain their shared alignment and import with one-step undo; incomplete or incompatible results leave the canvas unchanged. Lettering within these images remains pixels, so native text must be reconstructed separately. Provider availability and extraction quality vary. PPTX and ZIP exports contain raster layers when supplied by the provider.'
       },
       {
         title: 'Merge Layers',
@@ -2743,7 +2803,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'AI Copy Suggest',
-        content: 'Select any text layer and click the AI icon to generate copy variations. The AI analyses the banner context — other text layers, brand name, and ad format — to suggest headlines, CTAs, and body copy that fit the available space. Powered by Workers AI with Groq fallback for fast response times. Suggestions appear in a popover and apply with one click.'
+        content: 'Select a saved heading, describe the change and request alternatives through the configured copy model. Preview the wording with its native font and effects before applying; undo restores the original. Changing the selection or document invalidates the proposal. Approved blocks, detected commercial or merge-field text and feed-bound copy are excluded from creative rewrites. Review alternatives before applying. Provider failures are reported without fabricated suggestions.'
       },
       {
         title: 'URL-to-Banner',
@@ -3128,8 +3188,12 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-chart-area',
     categoryIconBg: 'bg-cyan-50',
     categoryIconColor: 'text-cyan-600',
-    description: 'Print-ready SVG QR codes with editable destinations and per-scan analytics — change the link, never reprint.',
+    description: 'Managed SVG QR codes with editable destinations, scan analytics and separate-layer placement in Banner Studio artwork.',
     details: [
+      {
+        title: 'Place managed codes in artwork',
+        content: 'In Banner Studio, choose an existing active QR code for the project’s client and insert it as a separate image layer. The code keeps its platform record, destination management and scan tracking. AI editing and decomposition preserve the managed code, while you can move, resize or remove the layer with undo. Review placement and scan the final export before printing; insertion does not repair a QR code already baked into a flat image.'
+      },
       {
         title: 'Print once, redirect forever',
         content: 'Every code encodes a short XeroFlow link rather than the destination itself. Change where it points from the dashboard and the update takes effect instantly — no reprinting a poster, a menu, or a vehicle wrap because a landing page moved. A full change history records every destination it has ever pointed to and who changed it.'

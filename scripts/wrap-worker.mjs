@@ -13,7 +13,7 @@ import { build } from 'esbuild'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { compactSsrMarkupDirectory, compactNitroSqlModule, compactRouteSqlDirectory, compactSqlTemplateDirectory } from './compact-worker-static-data.mjs'
+import { compactIconBundleModule, compactSsrMarkupDirectory, compactNitroSqlModule, compactRouteSqlDirectory, compactSqlTemplateDirectory } from './compact-worker-static-data.mjs'
 import {
   buildCompressedPrecomputedManifestModule,
   buildWorkerDispatcherModule,
@@ -102,6 +102,8 @@ await build({
 console.log('[wrap-worker] bundled worker-ws → _ws.js')
 
 if (!await exists(compactChunksDirectory)) {
+  const icons = await compactIconBundleModule(distDir)
+  console.log(`[wrap-worker] encoded ${icons.literals} static icon collections, saved ${icons.savedBytes} bytes`)
   const staticMarkup = await compactSsrMarkupDirectory(distDir)
   console.log(
     `[wrap-worker] compacted ${staticMarkup.literals} static SSR strings in `

@@ -9,6 +9,11 @@ export function useMergeLayers() {
   ) => Promise<T>
 
   async function mergeLayers(layerIds: number[]): Promise<void> {
+    const hasManagedQr = () => activeLayers.value.some(layer => layerIds.includes(layer.id) && layer.platformQr)
+    if (hasManagedQr()) {
+      toast.add({ title: 'Managed QR protected', description: 'Remove the managed QR from this selection to keep its platform link intact.', color: 'warning' })
+      return
+    }
     if (layerIds.length < 2) {
       toast.add({ title: 'Select at least 2 layers', color: 'warning' })
       return
@@ -109,6 +114,10 @@ export function useMergeLayers() {
 
       const maxZ = Math.max(...imageLayers.map(l => l.zIndex))
 
+      if (hasManagedQr()) {
+        toast.add({ title: 'Managed QR protected', description: 'The selection changed to include a managed QR. No layers were replaced.', color: 'warning' })
+        return
+      }
       // Remove original layers
       for (const l of imageLayers) {
         removeLayer(l.id)

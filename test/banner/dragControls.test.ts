@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
+
+vi.mock('../../app/composables/useBannerLetteringRepair', () => ({
+  useBannerLetteringRepair: () => ({ previewLayers: { value: null } })
+}))
 import * as Vue from 'vue'
 import NumericField from '../../app/components/banner/inspector/NumericField.vue'
 import Artboard from '../../app/components/banner/Artboard.client.vue'
@@ -56,6 +60,9 @@ beforeAll(async () => {
   useKeyboard = (await import('../../app/composables/useBannerKeyboard')).useBannerKeyboard
   const { useBannerStudio } = await import('../../app/composables/useBannerStudio')
   const { useBannerDrag } = await import('../../app/composables/useBannerDrag')
+  const { useBannerLettering } = await import('../../app/composables/useBannerLettering')
+  vi.stubGlobal('$fetch', vi.fn())
+  vi.stubGlobal('useBannerLettering', useBannerLettering)
   vi.stubGlobal('useBannerStudio', useBannerStudio)
   vi.stubGlobal('useBannerDrag', useBannerDrag)
   studio = useBannerStudio()

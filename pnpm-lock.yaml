@@ -175,6 +175,9 @@ importers:
       ofetch:
         specifier: ^1.5.1
         version: 1.5.1
+      openai:
+        specifier: 6.46.0
+        version: 6.46.0(@aws-sdk/credential-provider-node@3.972.66)(@smithy/signature-v4@5.6.4)(ws@8.21.0)(zod@4.4.3)
       pg:
         specifier: ^8.22.0
         version: 8.22.0

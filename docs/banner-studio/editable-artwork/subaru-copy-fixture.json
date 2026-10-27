@@ -1,0 +1,60 @@
+{
+  "status": "Brief-derived proof copy; not final client/legal production approval",
+  "campaign": "The Great Eastern Subaru Relocation Sale",
+  "saleDates": "11–14 November 2026",
+  "voucherDates": "11 November–13 December 2026",
+  "offer": "$500 OFF*",
+  "offerEligibility": "ANY NEW SUBARU OR XPENG",
+  "salesAddress": "99–101 Maroondah Highway, Ringwood VIC 3134",
+  "serviceAddress": "350–354 Main Street, Lilydale VIC 3140",
+  "phone": "(03) 9126 0251",
+  "rearAccess": "Seymour Street",
+  "headlines": {
+    "boldFront": [
+      "THE GREAT EASTERN SUBARU",
+      "RELOCATION SALE"
+    ],
+    "lifestyleFront": [
+      "NEW HOME.",
+      "NEW ADVENTURES."
+    ],
+    "reverse": [
+      "WE’VE MOVED.",
+      "YOU’RE INVITED."
+    ]
+  },
+  "letter": [
+    "Dear [First Name],",
+    "Eastern Subaru sales has a new home at 99–101 Maroondah Highway, Ringwood. Our Service & Parts team remains at 350–354 Main Street, Lilydale.",
+    "Discover our new 1,600sqm showroom, explore Subaru and XPENG, and celebrate with us at The Great Eastern Subaru Relocation Sale, 11–14 November.",
+    "Join our launch night on Thursday 12 November for pizza, drinks and test drives. Call (03) 9126 0251 to RSVP and confirm the time.",
+    "As an existing customer, bring your voucher for $500 off any new Subaru or XPENG.* We look forward to welcoming you to our new home.",
+    "Sincerely,",
+    "Luke Tabone",
+    "General Sales Manager"
+  ],
+  "proofTerms": "*Valid for new Subaru or XPENG orders at Eastern Subaru Ringwood / XPENG Ringwood, 99–101 Maroondah Hwy, Ringwood VIC 3134, from 11 Nov to 13 Dec 2026. One voucher per customer and vehicle. Present at time of order. Private buyers only. Excludes fleet, government, rental, ABN-registered fleet purchases, demonstrators and stock already on order. Cannot be combined with other dealer offers. Not redeemable for cash. LMCT 13001.",
+  "mergeFields": [
+    "[First Name]",
+    "[Surname]",
+    "[Address line 1]",
+    "[Suburb]",
+    "[State]",
+    "[Postcode]",
+    "[UNIQUE CODE]"
+  ],
+  "pending": [
+    "Final full terms/URL and QR destination",
+    "Luke portrait/signature",
+    "Launch-night time",
+    "Mailhouse bleed/perforation/fold and ICC",
+    "Approved print-quality logo"
+  ],
+  "assetSources": {
+    "dealer": "https://www.easternsubaru.com.au/",
+    "trailseeker": "https://www.easternsubaru.com.au/new-vehicles/trailseeker/",
+    "xpeng": "https://www.xpengringwood.com.au/",
+    "map": "https://www.openstreetmap.org/copyright"
+  },
+  "creativeCorrection": "Local leafy summer family lifestyle; no beach or coastal scenery; no invented dealer facade"
+}

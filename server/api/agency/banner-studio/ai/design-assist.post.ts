@@ -1,3 +1,4 @@
+import { assertScopedDesignSource, validateDesignScope } from '~~/shared/bannerDesignScope'
 import { createError, defineEventHandler, readBody } from 'h3'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
@@ -25,11 +26,16 @@ export default defineEventHandler(async (event) => {
   const parsed = designAssistRequestSchema.safeParse(rawBody)
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid design request (prompt/brief: 4000 characters; history: 12 messages of 4000 characters)' })
   const body = parsed.data
-  const project = await queryOneFresh<{ name: string, client_id: string | null, canvas_data: unknown }>(
-    'SELECT name, client_id, canvas_data FROM banner_projects WHERE id = $1', [body.projectId]
+  const project = await queryOneFresh<{ name: string, client_id: string | null, canvas_data: unknown, updated_at: string | Date }>(
+    'SELECT name, client_id, canvas_data, updated_at FROM banner_projects WHERE id = $1', [body.projectId]
   )
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Banner project not found' })
   await requireSocialClientScope(event, project.client_id ?? undefined)
+
+  const revision = (value: string | Date) => new Date(value).toISOString()
+  if (body.scope && (!project.updated_at || revision(project.updated_at) !== body.sourceRevision)) {
+    throw createError({ statusCode: 409, statusMessage: 'Project changed; save/reload and request a new scoped proposal' })
+  }
 
   // Saved source assets and the client library are authority. Never derive scope
   // from a client ID, an asset ID or an arbitrary URL supplied in the request.
@@ -77,10 +83,19 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Canvas has unsupported layers, invalid timing or assets outside the project/client' })
   }
 
+  if (body.scope) {
+    try {
+      validateDesignScope(canvas, body.scope)
+      assertScopedDesignSource(project.canvas_data as typeof canvas, canvas, body.scope)
+    } catch (cause) {
+      throw createError({ statusCode: 400, statusMessage: cause instanceof Error ? cause.message : 'Invalid edit scope' })
+    }
+  }
+
   const prompt = JSON.stringify({
     project: project.name, brand: brandContextBlock(kit), clientStyleGuide, brief: body.brief || '',
     references: references.references, guideText: references.guideText,
-    activeKey: body.activeKey, allowLocked: body.allowLocked, canvasData: canvas, formats: designCanvasDimensions(canvas),
+    scope: body.scope, sourceRevision: body.sourceRevision, activeKey: body.activeKey, allowLocked: body.allowLocked, canvasData: canvas, formats: designCanvasDimensions(canvas),
     assets: authorizedAssets.slice(0, 60), history: body.history, request: body.prompt
   })
   // Native design has its own assignment; legacy code-assist routing is unchanged.
@@ -118,8 +133,19 @@ export default defineEventHandler(async (event) => {
     } catch { /* Try only the finite, configured fallback. */ }
   }
   if (!raw) throw createError({ statusCode: 502, statusMessage: 'Design assistant returned no proposal; your canvas has not changed' })
+  if (body.scope) {
+    const fresh = await queryOneFresh<{ client_id: string | null, updated_at: string | Date, canvas_data: typeof canvas }>('SELECT client_id, updated_at, canvas_data FROM banner_projects WHERE id = $1', [body.projectId])
+    if (!fresh || fresh.client_id !== project.client_id || !fresh.updated_at || revision(fresh.updated_at) !== body.sourceRevision) {
+      throw createError({ statusCode: 409, statusMessage: 'Project changed while preparing the proposal; reload and try again' })
+    }
+    try {
+      assertScopedDesignSource(fresh.canvas_data, canvas, body.scope)
+    } catch {
+      throw createError({ statusCode: 409, statusMessage: 'Saved source changed while preparing the proposal; reload and try again' })
+    }
+  }
   try {
-    return { ...applyDesignProposal(raw, canvas, allowedUrls, body.allowLocked), model, context: { brandKit: kit?.name || null, clientStyleGuide: Boolean(clientStyleGuide), references: references.references.map(({ id, name, kind }) => ({ id, name, kind })) } }
+    return { ...applyDesignProposal(raw, canvas, allowedUrls, body.allowLocked, body.scope), ...(body.scope ? { sourceRevision: body.sourceRevision } : {}), model, context: { brandKit: kit?.name || null, clientStyleGuide: Boolean(clientStyleGuide), references: references.references.map(({ id, name, kind }) => ({ id, name, kind })) } }
   } catch {
     throw createError({ statusCode: 502, statusMessage: 'Design assistant returned an invalid proposal; your canvas has not changed. Try a smaller edit.' })
   }

@@ -1,34 +1,40 @@
 <script setup lang="ts">
-import type { Layer, DissectorManifest } from '~/types/banner-studio'
+import type { Layer } from '~/types/banner-studio'
 import { FORMATS, migrateLayer } from '~/utils/banner-constants'
+import { useBannerDissectionJob, dissectionFailureMessage as failureMessage } from '~/composables/useBannerDissectionJob'
+import { canImportDissection } from '../../../shared/bannerDissectionReadiness'
 
 const open = defineModel<boolean>('open', { default: false })
 
 const toast = useToast()
-const { state, nextId } = useBannerStudio()
-const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
+const { state, nextId, getCanvasData, applyAssistantCanvas, withCanvasUndo } = useBannerStudio()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
-const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
-
-// Step state
-type Step = 'upload' | 'analyzing' | 'results' | 'import'
-const step = ref<Step>('upload')
-
-// Upload state
-const dragOver = ref(false)
+const jobs = useBannerDissectionJob(apiFetch)
+const { current, history, busy, error: jobError, loadingHistory, manifest, importReady, resultId, canCancel, canRetry, cancellationRequested } = jobs
+const jobId = computed(() => current.value?.jobId || '')
+const step = computed(() => !current.value ? 'upload' : manifest.value ? 'results' : 'analyzing')
 const selectedFile = ref<File | null>(null)
 const previewUrl = ref<string | null>(null)
 const brandName = ref('')
-
-// Analysis state
-const jobId = ref('')
-const manifest = ref<DissectorManifest | null>(null)
-const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)
-const statusText = ref('Analyzing layers...')
-const isUploading = ref(false)
-
-// Token editing state
-const editedTokens = ref<Record<string, string>>({})
+const isUploading = computed(() => busy.value === 'upload')
+const needsReconstruction = computed(() => !!manifest.value && !canImportDissection(manifest.value))
+const hasResultIdentity = computed(() => /^[a-f0-9]{64}$/i.test(resultId.value))
+const statusText = computed(() => ({
+  queued: 'Waiting to analyze', analyzing: 'Analyzing layers', segmenting: 'Extracting layers',
+  failed: 'Analysis failed', cancelled: 'Job cancelled', review_ready: 'Ready for review',
+  complete: 'Extraction complete', imported: 'Artwork imported'
+}[current.value?.status || 'queued']))
+const progressText = computed(() => {
+  const progress = current.value?.progress
+  return progress && typeof progress.completed === 'number' && typeof progress.total === 'number'
+    ? `${progress.completed} of ${progress.total}`
+    : ''
+})
+const savedJobOptions = computed(() => history.value.map(job => ({
+  label: `${job.brand || 'Banner'} — ${job.status}${job.createdAt ? ` (${new Date(job.createdAt).toLocaleDateString()})` : ''}`,
+  value: job.jobId
+})))
 
 // Layer type override state
 const layerTypeOverrides = ref<Record<string, string>>({})
@@ -36,47 +42,79 @@ const editorTypeOptions = [
   { label: 'Text', value: 'text' },
   { label: 'Image', value: 'image' },
   { label: 'Button', value: 'button' },
-  { label: 'Rect', value: 'rect' },
-  { label: 'Background', value: 'bg' },
+  { label: 'Background', value: 'bg' }
 ]
 
 // Import state
 const selectedFormat = ref('')
 const isImporting = ref(false)
 
-// Reset on open
-watch(open, (val) => {
-  if (val) {
-    step.value = 'upload'
-    selectedFile.value = null
-    previewUrl.value = null
-    brandName.value = ''
-    jobId.value = ''
-    manifest.value = null
-    editedTokens.value = {}
-    layerTypeOverrides.value = {}
-    selectedFormat.value = state.activeKey || 'mrec'
-    isUploading.value = false
-    isImporting.value = false
-    stopPolling()
-  } else {
-    stopPolling()
-  }
-})
+// An open session captures the reviewed saved editor context, independently of job polls.
+let openEpoch = 0
+let reviewedProject: typeof state.project = null
+let reviewedRevision: string | undefined
+let reviewedCanvas = ''
+let reviewedKey = ''
+const appliedReceipts = new Set<string>()
+watch(open, (value) => {
+  openEpoch++
+  isImporting.value = false
+  if (value) {
+    reviewedProject = state.project
+    reviewedRevision = state.project?.updatedAt
+    reviewedCanvas = JSON.stringify(getCanvasData())
+    reviewedKey = state.activeKey
+    selectedFormat.value ||= state.activeKey || 'mrec'
+    void jobs.resume()
+  } else jobs.suspend()
+}, { immediate: true, flush: 'sync' })
+
+function editorContextMatches() {
+  return !!reviewedProject?.id && !!reviewedRevision && state.project === reviewedProject
+    && state.project?.updatedAt === reviewedRevision && !state.isDirty && !state.isSaving
+    && state.activeKey === reviewedKey && JSON.stringify(getCanvasData()) === reviewedCanvas
+}
+const editorImportReady = computed(() => importReady.value && !isImporting.value && editorContextMatches())
+function chooseSavedJob(id: string) {
+  if (isImporting.value || busy.value) return
+  clearPreview()
+  void jobs.select(id)
+}
+function clearPreview() {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+  previewUrl.value = null
+  selectedFile.value = null
+}
+function startAnother() {
+  if (isImporting.value || busy.value) return
+  clearPreview()
+  jobs.newUpload()
+}
 
 // Auto-initialize layer type overrides when manifest loads
+let lastReviewedResult = ''
 watch(manifest, (m) => {
   if (!m) return
+  const identity = `${m.jobId}:${resultId.value || m.status}`
+  if (identity === lastReviewedResult) return
+  lastReviewedResult = identity
   const defaults: Record<string, string> = {}
   for (const layer of m.layers) {
     switch (layer.type) {
-      case 'background': defaults[layer.id] = 'bg'; break
-      case 'live_text': defaults[layer.id] = 'text'; break
-      case 'graphic_text': defaults[layer.id] = 'text'; break
+      case 'background':
+        defaults[layer.id] = 'bg'
+        break
+      case 'live_text':
+        defaults[layer.id] = 'text'
+        break
+      case 'graphic_text':
+        defaults[layer.id] = 'image'
+        break
       case 'vehicle':
       case 'logo':
       default:
-        defaults[layer.id] = 'image'; break
+        defaults[layer.id] = 'image'
+        break
     }
   }
   layerTypeOverrides.value = defaults
@@ -111,7 +149,7 @@ watch(manifest, (m) => {
 const formatOptions = computed(() =>
   Object.values(FORMATS).map(f => ({
     label: `${f.name} (${f.w}x${f.h})`,
-    value: f.key,
+    value: f.key
   }))
 )
 
@@ -121,24 +159,17 @@ const typeColors: Record<string, string> = {
   vehicle: '#3b82f6',
   graphic_text: '#f59e0b',
   live_text: '#10b981',
-  logo: '#8b5cf6',
+  logo: '#8b5cf6'
 }
 
 // ── File handling ──
 
-function handleFileDrop(e: DragEvent) {
-  dragOver.value = false
-  const file = e.dataTransfer?.files[0]
-  if (file) selectFile(file)
-}
-
-function handleFileInput(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) selectFile(file)
-}
-
-function selectFile(file: File) {
+function selectFile(file: File | null) {
+  if (busy.value) return
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+  previewUrl.value = null
+  selectedFile.value = null
+  if (!file) return
   const allowed = ['image/jpeg', 'image/png', 'image/webp']
   if (!allowed.includes(file.type)) {
     toast.add({ title: 'Invalid file', description: 'Only JPEG, PNG, and WebP images are accepted', color: 'error' })
@@ -155,158 +186,79 @@ function selectFile(file: File) {
 // ── Upload & analyze ──
 
 async function handleAnalyze() {
-  if (!selectedFile.value) return
-  isUploading.value = true
+  if (!selectedFile.value || busy.value || isImporting.value) return
+  const formData = new FormData()
+  formData.append('file', selectedFile.value)
+  if (brandName.value.trim()) formData.append('brand', brandName.value.trim())
+  await jobs.upload(formData)
+}
 
-  try {
-    const formData = new FormData()
-    formData.append('file', selectedFile.value)
-    if (brandName.value.trim()) {
-      formData.append('brand', brandName.value.trim())
-    }
-
-    const result = await apiFetch<{ jobId: string; status: string }>(
-      '/api/agency/banner-studio/dissect/upload',
-      { method: 'POST', body: formData }
-    )
-
-    jobId.value = result.jobId
-    step.value = 'analyzing'
-    statusText.value = 'Analyzing layers...'
-    startPolling()
-  } catch (e: any) {
-    toast.add({ title: 'Upload failed', description: e.data?.statusMessage || 'Could not upload image', color: 'error' })
-  } finally {
-    isUploading.value = false
+// The backend persists once; the local editor receives at most one atomic apply per receipt.
+async function importJob(createProject: boolean) {
+  if (!importReady.value || isImporting.value || !FORMATS[selectedFormat.value]) return
+  if (!createProject && !editorContextMatches()) {
+    toast.add({ title: 'Save and reopen before importing', description: 'Review the current saved artwork before replacing a format.', color: 'warning' })
+    return
   }
-}
-
-// ── Polling ──
-
-function startPolling() {
-  pollTimer.value = setInterval(async () => {
-    try {
-      const result = await apiFetch<any>(`/api/agency/banner-studio/dissect/${jobId.value}`)
-
-      if (result.status === 'segmenting') {
-        statusText.value = 'Segmenting layers...'
-      } else if (result.status === 'failed') {
-        stopPolling()
-        toast.add({ title: 'Analysis failed', description: result.error || 'Unknown error', color: 'error' })
-        step.value = 'upload'
-      } else if (result.version === '2.0' || result.status === 'complete') {
-        // Got the full manifest
-        stopPolling()
-        manifest.value = result as DissectorManifest
-        // Initialize token editors
-        if (manifest.value?.tokens) {
-          for (const [key, token] of Object.entries(manifest.value.tokens)) {
-            editedTokens.value[key] = token.value
-          }
-        }
-        step.value = 'results'
-      }
-    } catch {
-      // Polling error — keep trying
-    }
-  }, 2000)
-}
-
-function stopPolling() {
-  if (pollTimer.value) {
-    clearInterval(pollTimer.value)
-    pollTimer.value = null
-  }
-}
-
-// ── Import ──
-
-async function handleImportToEditor() {
-  if (!manifest.value) return
+  const epoch = openEpoch
+  const id = jobId.value
+  const job = current.value
+  const project = state.project
+  const revision = project?.updatedAt
+  const canvas = JSON.stringify(getCanvasData())
+  const key = state.activeKey
+  const targetKey = selectedFormat.value
+  const overrides = { ...layerTypeOverrides.value }
+  const expectedResultId = resultId.value
   isImporting.value = true
-
+  const contextMatches = () => open.value && epoch === openEpoch && jobId.value === id
+    && current.value === job && importReady.value && state.project === project
+    && state.project?.updatedAt === revision && JSON.stringify(getCanvasData()) === canvas
+    && state.activeKey === key && (!createProject ? !state.isDirty && !state.isSaving : true)
   try {
-    // Apply edited token values back to manifest
-    if (manifest.value.tokens) {
-      for (const [key, val] of Object.entries(editedTokens.value)) {
-        if (manifest.value.tokens[key]) {
-          manifest.value.tokens[key].value = val
+    const result = await apiFetch<{ projectId: string, formatKey: string, layers: Layer[], revision: string, receiptId: string }>(
+      `/api/agency/banner-studio/dissect/${encodeURIComponent(id)}/import`, {
+        method: 'POST', body: {
+          ...(!createProject ? { projectId: project!.id, expectedRevision: revision } : {}),
+          formatKey: targetKey, layerTypeOverrides: overrides, expectedResultId
         }
       }
-    }
-
-    const result = await apiFetch<{ projectId: string; layers: Layer[] }>(
-      `/api/agency/banner-studio/dissect/${jobId.value}/import`,
-      {
-        method: 'POST',
-        body: {
-          projectId: state.project?.id,
-          formatKey: selectedFormat.value,
-          layerTypeOverrides: layerTypeOverrides.value,
-        },
-      }
     )
-
-    // Load layers into current artboard
-    const targetKey = selectedFormat.value
-    const fmt = FORMATS[targetKey]
-    if (fmt && result.layers) {
-      const migrated = result.layers.map((l: any) =>
-        migrateLayer({ ...l, id: nextId() })
-      )
-
-      // Add format if not in current set
-      if (!state.setKeys.includes(targetKey)) {
-        state.setKeys.push(targetKey)
-      }
-      state.sets[targetKey] = { layers: migrated }
-      state.activeKey = targetKey
-      state.selectedLayerId = null
-      state.isDirty = true
-
-      toast.add({
-        title: 'Imported',
-        description: `${migrated.length} layers imported from dissected banner`,
-        color: 'success',
+    if (!contextMatches()) {
+      toast.add({ title: 'Import saved', description: 'The editor context changed. Reopen the saved project to review the imported artwork.', color: 'warning' })
+      return
+    }
+    if (!result.receiptId || !result.revision || result.formatKey !== targetKey || !result.projectId
+      || (!createProject && (result.projectId !== project!.id || !Array.isArray(result.layers)))) {
+      throw new Error('Incomplete import receipt')
+    }
+    if (appliedReceipts.has(result.receiptId)) return
+    if (createProject) {
+      appliedReceipts.add(result.receiptId)
+      open.value = false
+      await navigateTo(`/agency/banner-studio/${result.projectId}`)
+    } else {
+      const canvasData = getCanvasData()
+      canvasData[targetKey] = { layers: result.layers.map(layer => migrateLayer({ ...layer, id: nextId() })) }
+      withCanvasUndo(() => {
+        applyAssistantCanvas(canvasData)
+        state.activeKey = targetKey
+        state.selectedLayerId = null
       })
+      state.project!.updatedAt = result.revision
+      appliedReceipts.add(result.receiptId)
+      toast.add({ title: 'Imported', description: `${result.layers.length} layers imported. Undo restores the previous artwork.`, color: 'success' })
+      open.value = false
     }
-
-    open.value = false
-  } catch (e: any) {
-    toast.add({ title: 'Import failed', description: e.data?.statusMessage || 'Could not import layers', color: 'error' })
-  } finally {
-    isImporting.value = false
-  }
+  } catch (cause) {
+    if (epoch === openEpoch) toast.add({ title: 'Import failed', description: failureMessage(cause, 'Could not import artwork. Reopen the saved project if the request was interrupted.'), color: 'error' })
+  } finally { if (epoch === openEpoch) isImporting.value = false }
 }
-
-async function handleCreateProject() {
-  if (!manifest.value) return
-  isImporting.value = true
-
-  try {
-    const result = await apiFetch<{ projectId: string }>(
-      `/api/agency/banner-studio/dissect/${jobId.value}/import`,
-      {
-        method: 'POST',
-        body: {
-          formatKey: selectedFormat.value,
-          layerTypeOverrides: layerTypeOverrides.value,
-        },
-      }
-    )
-
-    toast.add({
-      title: 'Project created',
-      description: 'Navigating to new project...',
-      color: 'success',
-    })
-    open.value = false
-    await navigateTo(`/agency/banner-studio/${result.projectId}`)
-  } catch (e: any) {
-    toast.add({ title: 'Error', description: e.data?.statusMessage || 'Could not create project', color: 'error' })
-  } finally {
-    isImporting.value = false
-  }
+function handleImportToEditor() {
+  return importJob(false)
+}
+function handleCreateProject() {
+  return importJob(true)
 }
 
 // Layer type icons
@@ -323,102 +275,219 @@ function layerIcon(type: string): string {
 
 // Cleanup
 onUnmounted(() => {
-  stopPolling()
-  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+  openEpoch++
+  jobs.suspend()
+  clearPreview()
 })
 </script>
 
 <template>
   <UModal v-model:open="open">
     <template #content>
-      <div class="p-5 space-y-4 max-h-[80vh] overflow-y-auto min-w-[500px]">
+      <div class="p-5 space-y-4 max-h-[80vh] overflow-y-auto @container">
         <div class="flex items-center gap-2 mb-2">
           <UIcon name="i-lucide-scan-line" class="text-(--ui-primary) w-5 h-5" />
-          <h3 class="text-base font-bold">Banner Dissector</h3>
-          <UBadge variant="subtle" size="xs" color="info">AI</UBadge>
+          <h3 class="text-base font-bold">
+            Banner Dissector
+          </h3>
+          <UBadge variant="subtle" size="xs" color="info">
+            AI
+          </UBadge>
+          <UButton
+            label="Close"
+            icon="i-lucide-x"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            class="ml-auto"
+            @click="open = false"
+          />
+        </div>
+
+        <UFormField v-if="savedJobOptions.length" label="Saved analyses">
+          <USelectMenu
+            :model-value="jobId || undefined"
+            :items="savedJobOptions"
+            value-key="value"
+            :disabled="!!busy || isImporting"
+            class="w-full"
+            placeholder="Resume an analysis"
+            @update:model-value="chooseSavedJob"
+          />
+        </UFormField>
+        <p v-if="loadingHistory" class="text-sm text-muted" role="status">
+          Loading saved analyses…
+        </p>
+        <UAlert
+          v-if="jobError"
+          color="error"
+          title="Job update failed"
+          :description="jobError"
+        />
+        <UAlert
+          v-if="busy === 'retry'"
+          color="info"
+          title="Submitting retry"
+          description="Waiting for the job to be accepted. Progress and cancellation will appear here when it is queued."
+        />
+        <div v-if="current" class="space-y-3" aria-live="polite">
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-sm font-medium">
+              {{ statusText }}
+            </p>
+            <UBadge variant="subtle" color="neutral">
+              {{ current.status }}
+            </UBadge>
+          </div>
+          <p v-if="current.execution?.attempt" class="text-sm text-muted">
+            Attempt {{ current.execution.attempt }} of {{ current.execution.maxAttempts || 3 }}
+          </p>
+          <p v-if="progressText" class="text-sm text-muted">
+            {{ progressText }}
+          </p>
+          <UAlert
+            v-if="current.error"
+            color="error"
+            title="Analysis details"
+            :description="current.error"
+          />
+          <UAlert
+            v-if="cancellationRequested && current.status !== 'cancelled'"
+            color="warning"
+            title="Cancellation requested"
+            description="Import is blocked while cancellation is being confirmed."
+          />
+          <ul v-if="!manifest && current.warnings?.length" class="list-disc pl-5 text-sm text-muted">
+            <li v-for="warning in current.warnings" :key="warning">
+              {{ warning }}
+            </li>
+          </ul>
+          <div class="flex gap-2 flex-wrap">
+            <UButton
+              v-if="canCancel"
+              label="Cancel job"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :loading="busy === 'cancel'"
+              :disabled="!!busy || isImporting"
+              @click="jobs.cancel"
+            />
+            <UButton
+              v-if="canRetry"
+              label="Retry analysis"
+              variant="outline"
+              size="sm"
+              :loading="busy === 'retry'"
+              :disabled="!!busy || isImporting"
+              @click="jobs.retry"
+            />
+            <UButton
+              label="Analyze another image"
+              variant="ghost"
+              size="sm"
+              :disabled="!!busy || isImporting"
+              @click="startAnother"
+            />
+          </div>
         </div>
 
         <!-- Step 1: Upload -->
         <template v-if="step === 'upload'">
           <p class="text-xs text-(--ui-text-muted)">
-            Upload a banner image to analyze its layers, extract editable tokens, and import into your project.
+            Analyze the visible copy and image regions. A clean background and complete extraction are required before import; some artwork needs manual reconstruction.
           </p>
 
-          <!-- Drop zone -->
-          <div
-            class="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors"
-            :class="dragOver ? 'border-(--ui-primary) bg-(--ui-primary)/5' : 'border-(--ui-border) hover:border-(--ui-text-muted)'"
-            @dragover.prevent="dragOver = true"
-            @dragleave="dragOver = false"
-            @drop.prevent="handleFileDrop"
-            @click="fileInput?.click()"
-          >
-            <input
-              ref="fileInput"
-              type="file"
+          <UFormField label="Banner image">
+            <UFileUpload
+              :model-value="selectedFile"
+              :disabled="!!busy"
               accept="image/jpeg,image/png,image/webp"
-              class="hidden"
-              @change="handleFileInput"
+              label="Drop a banner image or click to browse"
+              description="JPEG, PNG, WebP · Maximum 10 MB"
+              class="w-full"
+              @update:model-value="selectFile"
             />
-
-            <template v-if="selectedFile && previewUrl">
-              <img :src="previewUrl" class="max-h-40 mx-auto rounded mb-2 border border-(--ui-border)" />
-              <div class="text-sm font-medium">{{ selectedFile.name }}</div>
-              <div class="text-xs text-(--ui-text-muted)">{{ (selectedFile.size / 1024).toFixed(0) }}KB</div>
-            </template>
-            <template v-else>
-              <UIcon name="i-lucide-upload" class="w-8 h-8 mx-auto text-(--ui-text-muted) mb-2" />
-              <div class="text-sm text-(--ui-text-muted)">Drop a banner image or click to browse</div>
-              <div class="text-xs text-(--ui-text-dimmed) mt-1">JPEG, PNG, WebP &middot; Max 10MB</div>
-            </template>
-          </div>
+          </UFormField>
 
           <!-- Brand name -->
-          <div>
-            <label class="text-xs text-(--ui-text-muted) mb-1 block">Brand name (optional)</label>
-            <UInput v-model="brandName" size="sm" placeholder="e.g. Toyota, Nike" />
-          </div>
+          <UFormField label="Brand name (optional)">
+            <UInput
+              v-model="brandName"
+              :disabled="!!busy"
+              size="sm"
+              placeholder="e.g. Toyota, Nike"
+              class="w-full"
+            />
+          </UFormField>
 
           <!-- Actions -->
           <div class="flex justify-end gap-2 pt-2">
-            <UButton label="Cancel" variant="ghost" size="sm" @click="open = false" />
+            <UButton
+              label="Cancel"
+              variant="ghost"
+              size="sm"
+              @click="open = false"
+            />
             <UButton
               label="Analyze"
               icon="i-lucide-scan-line"
               size="sm"
               :loading="isUploading"
-              :disabled="!selectedFile"
+              :disabled="!selectedFile || !!busy || loadingHistory"
               @click="handleAnalyze"
             />
           </div>
         </template>
 
         <!-- Step 2: Analyzing (polling) -->
-        <template v-if="step === 'analyzing'">
+        <template v-if="step === 'analyzing' && ['queued', 'analyzing', 'segmenting'].includes(current?.status || '')">
           <div class="py-8 text-center space-y-4">
             <div class="w-12 h-12 mx-auto rounded-full bg-(--ui-primary)/10 flex items-center justify-center">
               <UIcon name="i-lucide-loader-2" class="w-6 h-6 text-(--ui-primary) animate-spin" />
             </div>
-            <div class="text-sm font-medium">{{ statusText }}</div>
+            <div class="text-sm font-medium">
+              {{ statusText }}
+            </div>
             <div class="text-xs text-(--ui-text-muted)">
-              This may take 10-30 seconds depending on banner complexity.
+              Analysis and extraction can take several minutes. Provider failures will be shown here.
             </div>
 
             <!-- Preview of uploaded image -->
             <div v-if="previewUrl" class="mt-4">
-              <img :src="previewUrl" class="max-h-32 mx-auto rounded border border-(--ui-border) opacity-60" />
+              <img :src="previewUrl" class="max-h-32 mx-auto rounded border border-(--ui-border) opacity-60">
             </div>
           </div>
         </template>
 
         <!-- Step 3: Results -->
         <template v-if="step === 'results' && manifest">
-          <div class="grid grid-cols-2 gap-4">
+          <UAlert
+            v-if="needsReconstruction"
+            color="warning"
+            variant="subtle"
+            title="Needs reconstruction before import"
+            description="The detected regions are a starting point. Missing extractions or the original lettering must be resolved before these layers can replace your artwork."
+          />
+          <UAlert
+            v-if="!needsReconstruction && !hasResultIdentity"
+            color="warning"
+            title="Refresh this analysis before importing"
+            description="Reopen the saved analysis to load its result identity. Your current artwork is unchanged."
+          />
+          <ul v-if="manifest.warnings?.length" class="list-disc pl-5 space-y-1 text-sm text-muted">
+            <li v-for="warning in manifest.warnings" :key="warning">
+              {{ warning }}
+            </li>
+          </ul>
+          <div class="grid grid-cols-1 @lg:grid-cols-2 gap-4">
             <!-- Left: Original with overlaid regions -->
             <div>
-              <div class="text-[10px] font-bold uppercase tracking-wider text-(--ui-text-muted) mb-2">Detected Layers</div>
-              <div class="relative border border-(--ui-border) rounded overflow-hidden bg-black/10">
-                <img v-if="previewUrl" :src="previewUrl" class="w-full" />
+              <div class="text-[10px] font-bold uppercase tracking-wider text-(--ui-text-muted) mb-2">
+                Detected Layers
+              </div>
+              <div v-if="previewUrl" class="relative border border-(--ui-border) rounded overflow-hidden bg-black/10">
+                <img :src="previewUrl" class="w-full" alt="Original banner with detected regions">
                 <!-- Bounding box overlays -->
                 <div
                   v-for="layer in manifest.layers"
@@ -429,7 +498,7 @@ onUnmounted(() => {
                     top: `${layer.region.y * 100}%`,
                     width: `${layer.region.width * 100}%`,
                     height: `${layer.region.height * 100}%`,
-                    borderColor: typeColors[layer.type] || '#9ca3af',
+                    borderColor: typeColors[layer.type] || '#9ca3af'
                   }"
                 >
                   <span
@@ -443,9 +512,15 @@ onUnmounted(() => {
 
               <!-- Meta info -->
               <div class="mt-2 flex gap-2 flex-wrap">
-                <UBadge variant="subtle" size="xs">{{ manifest.brand }}</UBadge>
-                <UBadge variant="subtle" size="xs" color="neutral">{{ manifest.campaign_type }}</UBadge>
-                <UBadge variant="subtle" size="xs" color="neutral">{{ manifest.banner_size }}</UBadge>
+                <UBadge variant="subtle" size="xs">
+                  {{ manifest.brand }}
+                </UBadge>
+                <UBadge variant="subtle" size="xs" color="neutral">
+                  {{ manifest.campaign_type }}
+                </UBadge>
+                <UBadge variant="subtle" size="xs" color="neutral">
+                  {{ manifest.banner_size }}
+                </UBadge>
               </div>
             </div>
 
@@ -453,7 +528,9 @@ onUnmounted(() => {
             <div class="space-y-3 max-h-[400px] overflow-y-auto">
               <!-- Layer list -->
               <div>
-                <div class="text-[10px] font-bold uppercase tracking-wider text-(--ui-text-muted) mb-1">Layers ({{ manifest.layers.length }})</div>
+                <div class="text-[10px] font-bold uppercase tracking-wider text-(--ui-text-muted) mb-1">
+                  Layers ({{ manifest.layers.length }})
+                </div>
                 <div class="space-y-1">
                   <div
                     v-for="layer in manifest.layers"
@@ -467,24 +544,39 @@ onUnmounted(() => {
                     />
                     <!-- Thumbnail or icon -->
                     <div class="w-8 h-8 flex-shrink-0 rounded bg-(--ui-bg-elevated) flex items-center justify-center overflow-hidden">
-                      <img v-if="layer.r2_url" :src="layer.r2_url" class="w-full h-full object-contain" />
+                      <img v-if="layer.r2_url" :src="layer.r2_url" class="w-full h-full object-contain">
                       <UIcon v-else :name="layerIcon(layer.type)" class="w-4 h-4 text-(--ui-text-muted)" />
                     </div>
                     <div class="flex-1 min-w-0">
-                      <div class="truncate font-medium">{{ layer.description }}</div>
+                      <div class="truncate font-medium">
+                        {{ layer.description }}
+                      </div>
+                      <p v-if="layer.extraction_warning" class="text-warning mt-1">
+                        {{ layer.extraction_warning }}
+                      </p>
                       <div class="flex items-center gap-1 mt-0.5">
                         <UBadge variant="subtle" size="xs" :color="layer.editable ? 'success' : 'neutral'">
                           {{ layer.type }}
                         </UBadge>
                         <UIcon name="i-lucide-arrow-right" class="w-3 h-3 text-(--ui-text-dimmed) flex-shrink-0" />
-                        <USelectMenu
-                          v-model="layerTypeOverrides[layer.id]"
-                          :items="editorTypeOptions"
+                        <UFormField label="Layer type">
+                          <USelectMenu
+                            v-model="layerTypeOverrides[layer.id]"
+                            :disabled="!importReady || isImporting"
+                            :items="editorTypeOptions"
+                            size="xs"
+                            value-key="value"
+                            class="w-full"
+                          />
+                        </UFormField>
+                        <UBadge
+                          v-if="layer.export_as_png && layer.r2_url"
+                          variant="subtle"
                           size="xs"
-                          value-key="value"
-                          class="w-20"
-                        />
-                        <UBadge v-if="layer.export_as_png && layer.r2_url" variant="subtle" size="xs" color="info">PNG</UBadge>
+                          color="info"
+                        >
+                          PNG
+                        </UBadge>
                       </div>
                     </div>
                   </div>
@@ -493,33 +585,42 @@ onUnmounted(() => {
 
               <!-- Token editor -->
               <div v-if="Object.keys(manifest.tokens).length > 0">
-                <div class="text-[10px] font-bold uppercase tracking-wider text-(--ui-text-muted) mb-1">Editable Tokens</div>
+                <div class="text-[10px] font-bold uppercase tracking-wider text-(--ui-text-muted) mb-1">
+                  Detected copy
+                </div>
                 <div class="space-y-2">
-                  <div v-for="(token, key) in manifest.tokens" :key="key">
-                    <label class="text-xs text-(--ui-text-muted)">{{ token.label }}</label>
-                    <UInput
-                      v-model="editedTokens[key]"
+                  <UFormField v-for="(token, key) in manifest.tokens" :key="key" :label="token.label">
+                    <UTextarea
+                      :model-value="token.value"
+                      readonly
                       size="sm"
-                      :placeholder="token.label"
+                      class="w-full"
                     />
-                  </div>
+                  </UFormField>
                 </div>
               </div>
             </div>
           </div>
 
+          <UAlert
+            v-if="importReady && !editorImportReady && !isImporting"
+            color="info"
+            title="Save and reopen before importing to the editor"
+            description="Import replaces one format of the reviewed saved project. You can also create a new project."
+          />
           <!-- Import options -->
           <div class="border-t border-(--ui-border) pt-3 mt-3">
-            <div class="flex items-end gap-3">
-              <div class="flex-1">
-                <label class="text-xs text-(--ui-text-muted) mb-1 block">Import as format</label>
+            <div class="flex flex-col @lg:flex-row @lg:items-end gap-3">
+              <UFormField label="Import as format" class="w-full @lg:flex-1">
                 <USelectMenu
                   v-model="selectedFormat"
+                  :disabled="!importReady || isImporting"
+                  class="w-full"
                   :items="formatOptions"
                   size="sm"
                   value-key="value"
                 />
-              </div>
+              </UFormField>
               <div class="flex gap-2">
                 <UButton
                   label="New Project"
@@ -527,6 +628,7 @@ onUnmounted(() => {
                   size="sm"
                   icon="i-lucide-plus"
                   :loading="isImporting"
+                  :disabled="!importReady || isImporting"
                   @click="handleCreateProject"
                 />
                 <UButton
@@ -534,6 +636,7 @@ onUnmounted(() => {
                   size="sm"
                   icon="i-lucide-download"
                   :loading="isImporting"
+                  :disabled="!editorImportReady"
                   @click="handleImportToEditor"
                 />
               </div>

@@ -1,19 +1,43 @@
 import type { H3Event } from 'h3'
 import { randomUUID } from 'crypto'
+import { z } from 'zod'
 import type {
   DissectorManifest,
   DissectorLayer,
   DissectorLayerType,
   DesignToken,
   TokenType,
-} from '~/types/banner-studio'
+} from '~~/app/types/banner-studio'
 
 /**
  * Banner Dissector — AI-powered banner analysis and layer segmentation.
  *
- * Vision chain: Gemini 2.5 Flash (primary) → Workers AI → Groq Scout → fallback manifest
+ * Vision chain: Gemini 2.5 Flash (primary) → Workers AI → Groq Scout → explicit failure
  * Pixel extraction: Gemini segmentation masks → crop + RMBG fallback
  */
+
+// Model responses are untrusted. Missing geometry must not turn into a full-image layer.
+const regionSchema = z.object({
+  x: z.number().finite().min(0).max(1), y: z.number().finite().min(0).max(1),
+  width: z.number().finite().positive().max(1), height: z.number().finite().positive().max(1)
+}).refine(r => r.x + r.width <= 1.000001 && r.y + r.height <= 1.000001)
+const analysisSchema = z.object({
+  brand: z.string().max(200).optional(), campaign_type: z.string().max(100).optional(),
+  layers: z.array(z.object({
+    type: z.enum(['graphic_text', 'live_text', 'vehicle', 'logo', 'background']),
+    description: z.string().min(1).max(4000), region: regionSchema,
+    editable: z.boolean().optional(), font_notes: z.string().max(2000).optional(),
+    typography: z.record(z.string(), z.object({ font_weight: z.string(), font_size: z.string(), color: z.string() })).optional()
+  })).min(1).max(100),
+  editable_fields: z.array(z.object({
+    type: z.enum(['price', 'price_label', 'model_name', 'brand', 'campaign_label', 'color', 'font_size', 'disclaimer', 'cta_label', 'image_asset']),
+    value: z.string().min(1).max(10000), label: z.string().max(200).optional()
+  })).max(200).default([])
+})
+function validateAnalysis(value: unknown) {
+  const result = analysisSchema.safeParse(value)
+  return result.success ? result.data : null
+}
 
 // ── Workers AI access ──
 
@@ -24,6 +48,19 @@ function getAI(event: H3Event | null): any | null {
   } catch {
     return null
   }
+}
+
+/** A present Pages context is authoritative, including missing/empty secrets. */
+function providerConfig(event: H3Event | null) {
+  const cloudflare = event?.context.cloudflare
+  if (cloudflare) {
+    const value = (name: string) => {
+      const binding = cloudflare.env?.[name]
+      return typeof binding === 'string' ? binding : ''
+    }
+    return { geminiApiKey: value('GEMINI_API_KEY'), groqApiKey: value('GROQ_API_KEY'), hfApiToken: value('HF_API_TOKEN') }
+  }
+  return useRuntimeConfig(event || undefined)
 }
 
 // ── Vision prompt (per v2 spec) ──
@@ -79,9 +116,9 @@ async function analyzeWithWorkersAI(
       max_tokens: 1024,
       temperature: 0.2,
     })
-    return parseAIResponse(result?.description || result?.response || '', true)
-  } catch (err) {
-    console.warn('[Dissector] Workers AI vision failed:', err)
+    return validateAnalysis(parseAIResponse(result?.description || result?.response || '', true))
+  } catch {
+    console.warn('[Dissector] Workers AI vision failed')
     return null
   }
 }
@@ -120,8 +157,7 @@ async function analyzeWithGemini(
       )
 
       if (!response.ok) {
-        const errText = await response.text()
-        console.warn(`[Dissector] Gemini ${model} returned ${response.status}: ${errText.substring(0, 200)}`)
+        console.warn(`[Dissector] Gemini ${model} returned ${response.status}`)
         continue
       }
 
@@ -130,13 +166,13 @@ async function analyzeWithGemini(
       if (!text) continue
 
       console.log(`[Dissector] Gemini ${model} response: ${text.length} chars`)
-      const parsed = parseAIResponse(text)
+      const parsed = validateAnalysis(parseAIResponse(text))
       if (parsed) {
         console.log(`[Dissector] Gemini ${model}: ${parsed.layers?.length || 0} layers, ${parsed.editable_fields?.length || 0} fields`)
         return parsed
       }
-    } catch (err) {
-      console.warn(`[Dissector] Gemini ${model} failed:`, err)
+    } catch {
+      console.warn(`[Dissector] Gemini ${model} failed`)
     }
   }
 
@@ -174,7 +210,7 @@ async function analyzeWithGroq(
     })
 
     if (!response.ok) {
-      console.warn(`[Dissector] Groq ${model} returned ${response.status}: ${await response.text()}`)
+      console.warn(`[Dissector] Groq ${model} returned ${response.status}`)
       return null
     }
 
@@ -184,13 +220,13 @@ async function analyzeWithGroq(
 
     if (!content) return null
 
-    const parsed = parseAIResponse(content)
+    const parsed = validateAnalysis(parseAIResponse(content))
     if (parsed) {
       console.log(`[Dissector] Groq: ${parsed.layers?.length || 0} layers, ${parsed.editable_fields?.length || 0} fields`)
     }
     return parsed
-  } catch (err) {
-    console.warn('[Dissector] Groq vision failed:', err)
+  } catch {
+    console.warn('[Dissector] Groq vision failed')
     return null
   }
 }
@@ -235,7 +271,7 @@ async function getGeminiSegmentationMasks(
     )
 
     if (!response.ok) {
-      console.warn(`[Dissector] Gemini segmentation returned ${response.status}: ${(await response.text()).substring(0, 200)}`)
+      console.warn(`[Dissector] Gemini segmentation returned ${response.status}`)
       return { masks, refinedRegions }
     }
 
@@ -293,13 +329,13 @@ async function getGeminiSegmentationMasks(
           height: segBox.h,
         })
         usedLayers.add(bestMatch)
-        console.log(`[Dissector] Mask matched to ${layerId} (IoU: ${bestIoU.toFixed(2)}, label: ${item.label})`)
+        console.log(`[Dissector] Mask matched to ${layerId} (IoU: ${bestIoU.toFixed(2)})`)
       }
     }
 
     console.log(`[Dissector] ${masks.size}/${analysisLayers.length} layers matched with masks`)
-  } catch (err) {
-    console.warn('[Dissector] Gemini segmentation failed:', err)
+  } catch {
+    console.warn('[Dissector] Gemini segmentation failed')
   }
 
   return { masks, refinedRegions }
@@ -381,8 +417,8 @@ async function applyGeminiMask(
     const result = Buffer.from(PNG.sync.write(out))
     console.log(`[Dissector] applyGeminiMask: ${cropW}x${cropH} → ${result.length} bytes`)
     return result
-  } catch (err) {
-    console.warn('[Dissector] applyGeminiMask failed:', err)
+  } catch {
+    console.warn('[Dissector] applyGeminiMask failed')
     return null
   }
 }
@@ -396,7 +432,7 @@ export async function analyzeImage(
 ): Promise<DissectorManifest> {
   const jobId = randomUUID()
   const now = new Date().toISOString()
-  const config = useRuntimeConfig()
+  const config = providerConfig(event)
 
   // Detect MIME type from base64 header bytes
   const mimeType = detectMimeType(imageBase64) || 'image/png'
@@ -421,25 +457,8 @@ export async function analyzeImage(
     rawResult = await analyzeWithGroq(config.groqApiKey, imageBase64, brand)
   }
 
-  // Last resort: generate a multi-layer fallback structure
   if (!rawResult) {
-    console.warn('[Dissector] All AI models failed — generating fallback multi-layer manifest')
-    rawResult = {
-      brand: brand || 'Unknown',
-      campaign_type: 'other',
-      layers: [
-        { type: 'background', description: 'Background', region: { x: 0, y: 0, width: 1, height: 1 }, editable: false },
-        { type: 'graphic_text', description: 'Main headline', region: { x: 0.05, y: 0.05, width: 0.9, height: 0.3 }, editable: false },
-        { type: 'vehicle', description: 'Product image', region: { x: 0.1, y: 0.25, width: 0.6, height: 0.5 }, editable: false },
-        { type: 'live_text', description: 'Price and details', region: { x: 0.5, y: 0.7, width: 0.45, height: 0.2 }, editable: true },
-        { type: 'logo', description: 'Brand logo', region: { x: 0.02, y: 0.85, width: 0.25, height: 0.12 }, editable: false },
-      ],
-      editable_fields: [
-        { type: 'brand', value: brand || 'Brand', label: 'Brand' },
-        { type: 'price', value: '$XX,XXX', label: 'Price' },
-        { type: 'cta_label', value: 'Learn More', label: 'CTA' },
-      ],
-    }
+    throw new Error('Valid image analysis is unavailable. No layers were generated; check provider access and retry.')
   }
 
   // Build typed manifest
@@ -470,8 +489,9 @@ export async function analyzeImage(
     if (!layer.token_bindings?.length) continue
     const resolvedBindings: string[] = []
     for (const rawBinding of layer.token_bindings) {
-      // Find token whose type matches the raw binding
-      const matchingTokenId = Object.keys(tokens).find(tid => tokens[tid]?.type === rawBinding)
+      // Repeated prices/dates must not silently bind to the first occurrence.
+      const matchingTokenIds = Object.keys(tokens).filter(tid => tokens[tid]?.type === rawBinding)
+      const matchingTokenId = matchingTokenIds.length === 1 ? matchingTokenIds[0] : undefined
       const matchingToken = matchingTokenId ? tokens[matchingTokenId] : undefined
       if (matchingTokenId && matchingToken) {
         resolvedBindings.push(matchingTokenId)
@@ -514,7 +534,7 @@ export async function analyzeImage(
 // ── segmentLayer ──
 
 export async function segmentLayer(
-  _event: H3Event | null,
+  event: H3Event | null,
   imageBuffer: Buffer,
   region: { x: number; y: number; width: number; height: number },
   layerId: string,
@@ -522,12 +542,12 @@ export async function segmentLayer(
   imageHeight: number,
   mask?: string
 ): Promise<Buffer | null> {
-  const config = useRuntimeConfig()
+  const config = providerConfig(event)
 
   // If we have a Gemini segmentation mask, use it for precise extraction
   if (mask) {
     const masked = await applyGeminiMask(imageBuffer, mask, region, imageWidth, imageHeight)
-    if (masked) {
+    if (masked && await isAlphaCutout(masked)) {
       console.log(`[Dissector] Layer ${layerId}: extracted with Gemini mask, ${masked.length} bytes`)
       return masked
     }
@@ -552,11 +572,32 @@ export async function segmentLayer(
   // Step 2: Remove background from the cropped region using RMBG
   if (config.hfApiToken) {
     const cleaned = await removeBackground(cropped, config.hfApiToken, layerId)
-    if (cleaned) return cleaned
+    if (cleaned && await isAlphaCutout(cleaned, cropped)) return cleaned
   }
 
-  // Fallback: return the rectangular crop (includes background)
-  return cropped
+  // A rectangular crop still contains baked-in artwork. It is not an extracted object.
+  return null
+}
+
+/** Reject opaque crops, empty masks and changed registration from an extraction provider. */
+async function isAlphaCutout(buffer: Buffer, registeredCrop?: Buffer): Promise<boolean> {
+  try {
+    const { PNG } = await import('pngjs' as string)
+    const dims = getImageDimensions(buffer)
+    if (!dims || dims.width <= 0 || dims.height <= 0 || dims.width * dims.height > 40_000_000) return false
+    if (registeredCrop) {
+      const expected = getImageDimensions(registeredCrop)
+      if (!expected || expected.width !== dims.width || expected.height !== dims.height) return false
+    }
+    const image = PNG.sync.read(buffer)
+    let visible = false, transparent = false
+    for (let i = 3; i < image.data.length; i += 4) {
+      visible ||= image.data[i] > 0
+      transparent ||= image.data[i] === 0
+      if (visible && transparent) return true
+    }
+    return false
+  } catch { return false }
 }
 
 /**
@@ -581,7 +622,7 @@ async function removeBackground(
     )
 
     if (!response.ok) {
-      console.warn(`[Dissector] RMBG returned ${response.status} for layer ${layerId}: ${await response.text()}`)
+      console.warn(`[Dissector] RMBG returned ${response.status} for layer ${layerId}`)
       return null
     }
 
@@ -592,8 +633,8 @@ async function removeBackground(
     }
 
     return null
-  } catch (err) {
-    console.warn(`[Dissector] RMBG failed for layer ${layerId}:`, err)
+  } catch {
+    console.warn(`[Dissector] RMBG failed for layer ${layerId}`)
     return null
   }
 }
@@ -688,7 +729,7 @@ function parseAIResponse(text: string, silent = false): any {
   }
 
   if (!silent) {
-    console.warn('[Dissector] Could not parse AI response as JSON. First 200 chars:', text.substring(0, 200))
+    console.warn('[Dissector] Could not parse AI response as JSON')
   }
   return null
 }
@@ -790,8 +831,8 @@ async function decodeImageToRGBA(
       const { PNG } = await import('pngjs' as string)
       const png = PNG.sync.read(imageBuffer)
       return { data: png.data, width: png.width, height: png.height }
-    } catch (err) {
-      console.warn('[Dissector] PNG decode failed:', err)
+    } catch {
+      console.warn('[Dissector] PNG decode failed')
     }
   }
 
@@ -813,8 +854,8 @@ async function decodeImageToRGBA(
       const decoded = jpegDecode(imageBuffer, { useTArray: true, formatAsRGBA: true })
       console.log(`[Dissector] JPEG decoded: ${decoded.width}x${decoded.height}, data length: ${decoded.data.length}`)
       return { data: decoded.data, width: decoded.width, height: decoded.height }
-    } catch (err) {
-      console.warn('[Dissector] JPEG decode failed:', err)
+    } catch {
+      console.warn('[Dissector] JPEG decode failed')
     }
   }
 
@@ -870,8 +911,8 @@ async function cropRegion(
     const result = Buffer.from(PNG.sync.write(out))
     console.log(`[Dissector] cropRegion: success — ${cropW}x${cropH} PNG, ${result.length} bytes`)
     return result
-  } catch (err) {
-    console.warn('[Dissector] cropRegion failed:', err)
+  } catch {
+    console.warn('[Dissector] cropRegion failed')
     return null
   }
 }
@@ -881,7 +922,7 @@ async function cropRegion(
  */
 export function getImageDimensions(buffer: Buffer): { width: number; height: number } | null {
   // PNG: width at bytes 16-19, height at bytes 20-23 (big-endian, after 8-byte signature + 4-byte chunk length + 4-byte IHDR)
-  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+  if (buffer.length >= 24 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
     const width = buffer.readUInt32BE(16)
     const height = buffer.readUInt32BE(20)
     return { width, height }

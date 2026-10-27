@@ -61,6 +61,11 @@ const DEFAULT_AI_LOOP_FALLBACK_MODEL = 'groq/openai/gpt-oss-20b'
 const DEFAULT_PLATFORM_AGENT_THINK_MODEL = '@cf/moonshotai/kimi-k2.7-code'
 
 const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
+  'openai/gpt-image-1.5': { status: 'preview' },
+  'openai/gpt-image-1': { status: 'preview' },
+  'openai/gpt-image-1-mini': { status: 'preview' },
+  'openai/gpt-4.1-mini': { status: 'preview' },
+  'openai/gpt-4.1': { status: 'preview' },
   [GROQ_MODELS.REASONING_120B]: {
     status: 'production',
     pricing: { inputPricePerMillionUsd: 0.15, outputPricePerMillionUsd: 0.60 }
@@ -624,6 +629,9 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     riskTier: 'medium',
     sourceFile: 'server/api/agency/banner-studio/ai/copy-suggest.post.ts'
   },
+  { featureKey: 'banner_artwork_generate', label: 'Banner Studio concept generation', surface: '/agency/banner-studio', owner: 'Creative', provider: 'openai', modelId: 'openai/gpt-image-1.5', modality: 'image', riskTier: 'high', sourceFile: 'server/utils/banner/artworkProvider.ts' },
+  { featureKey: 'banner_lettering_native', label: 'Banner Studio editable lettering', surface: '/agency/banner-studio', owner: 'Creative', provider: 'openai', modelId: 'openai/gpt-4.1-mini', modality: 'vision', riskTier: 'high', sourceFile: 'server/utils/banner/artworkProvider.ts' },
+  { featureKey: 'banner_lettering_raster', label: 'Banner Studio raster lettering', surface: '/agency/banner-studio', owner: 'Creative', provider: 'openai', modelId: 'openai/gpt-image-1.5', modality: 'image', riskTier: 'high', sourceFile: 'server/utils/banner/artworkProvider.ts' },
   {
     featureKey: 'banner_design_assist',
     label: 'Banner Studio native design assistant',
@@ -1025,6 +1033,7 @@ export function buildWarnings(modelId: string, entry: ModelCatalogEntry): string
 }
 
 export function providerForModel(modelId: string) {
+  if (/^openai\/(?:gpt-image-1(?:\.5|-mini)?|gpt-4\.1(?:-mini)?)$/.test(modelId)) return 'openai'
   if (modelId.startsWith('@cf/')) return 'workers_ai'
   if (modelId.startsWith('groq/')) return 'groq'
   if (modelId.startsWith('anthropic/')) return 'anthropic'

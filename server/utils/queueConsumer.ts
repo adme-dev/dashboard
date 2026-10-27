@@ -79,7 +79,7 @@ export async function processJob(job: QueueConsumerJob, event?: H3Event): Promis
         break
 
       case 'dissect.analyze':
-        await processDissectAnalyze(job.payload)
+        await processDissectAnalyze(job.payload, event)
         break
 
       case 'embed.financial.expenses':
@@ -261,10 +261,13 @@ async function processTrainingExtract(payload: Record<string, any>): Promise<voi
   await extractAndUpload(payload.datasetType, payload.options || {}, payload.userId)
 }
 
-async function processDissectAnalyze(payload: Record<string, any>): Promise<void> {
+async function processDissectAnalyze(payload: Record<string, any>, event?: H3Event): Promise<void> {
+  // Legacy/unbound deliveries must never claim a newer queued generation.
+  if (typeof payload.jobId !== 'string' || typeof payload.attemptId !== 'string' || !payload.attemptId) return
   const { runDissectionPipeline } = await import('./bannerDissectorPipeline')
-  // event is null in queue context — pipeline will skip Workers AI and use Groq directly
-  await runDissectionPipeline(null, payload.jobId)
+  // The authenticated queue-to-HTTP ingress owns the Pages capabilities; never use payload._event.
+  const result = await runDissectionPipeline(event || null, payload.jobId, { attemptId: payload.attemptId })
+  if (result.status === 'failed') throw new Error('Dissection attempt failed; explicit retry is required')
 }
 
 async function processFinancialEmbed(payload: Record<string, any>, type: string): Promise<void> {

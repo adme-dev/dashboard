@@ -1,8 +1,12 @@
 // @vitest-environment happy-dom
 import { createApp, h, nextTick, reactive, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { BannerDesignScope } from '../../shared/bannerDesignScope'
+import type { Layer } from '../../app/types/banner-studio'
 import DesignAssistant from '~~/app/components/banner/DesignAssistant.client.vue'
 
+const fitMock = vi.hoisted(() => vi.fn(async () => {}))
+vi.mock('~/utils/banner-scoped-preview', () => ({ assertScopedPreviewFits: fitMock }))
 vi.mock('~/utils/banner-html-builder', () => ({ buildBannerHTML: vi.fn((key: string) => `<html><body>${key}</body></html>`) }))
 const initialCanvas = () => ({ mrec: { layers: [], bgColor: '#ffffff' } })
 const response = () => ({ reply: 'Refined the headline and added a story.', model: 'configured-quality', canvasData: { mrec: { layers: [], bgColor: '#000000' }, custom_500x800: { layers: [], bgColor: '#000000' } }, caption: 'Meet DriveAgent', suggestedSchedule: 'Next Tuesday morning' })
@@ -28,6 +32,8 @@ async function mount(projectId = 'project-1') {
   app.component('UButton', { props: ['label', 'disabled'], emits: ['click'], template: '<button :disabled="disabled" @click="$emit(\'click\')">{{ label }}</button>' })
   app.component('UTextarea', { props: ['modelValue', 'disabled'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" :disabled="disabled" @input="$emit(\'update:modelValue\', $event.target.value)" />' })
   app.component('USelect', { props: ['modelValue', 'items'], emits: ['update:modelValue'], template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option></select>' })
+  app.component('UInput', { props: ['modelValue', 'disabled'], emits: ['update:modelValue'], template: '<input type="number" :value="modelValue" :disabled="disabled" @input="$emit(\'update:modelValue\', Number($event.target.value))" />' })
+  app.component('USelectMenu', { props: ['modelValue', 'items', 'disabled'], emits: ['update:modelValue'], template: '<select multiple :disabled="disabled" @change="$emit(\'update:modelValue\', Array.from($event.target.selectedOptions).map(o => Number(o.value)))"><option v-for="item in items" :key="item.value" :value="item.value" :selected="modelValue.includes(item.value)">{{ item.label }}</option></select>' })
   app.component('UCheckbox', { props: ['modelValue', 'label'], emits: ['update:modelValue'], template: '<label><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)"/>{{ label }}</label>' })
   app.component('UAlert', { props: ['title', 'description'], template: '<p role="alert">{{ title }} {{ description }}</p>' })
   app.component('UBadge', { props: ['label'], template: '<span>{{ label }}</span>' })
@@ -61,6 +67,7 @@ async function mount(projectId = 'project-1') {
   return { host, id, button, click, prompt, request, social, app, upload }
 }
 beforeEach(() => {
+  fitMock.mockReset().mockResolvedValue(undefined)
   sessionStorage.clear()
   fetchMock.mockReset().mockResolvedValue(response())
   applyMock.mockReset().mockImplementation((canvas) => {
@@ -218,7 +225,7 @@ describe('native Banner Studio design assistant', () => {
   it('requires explicit opt-in for locked layers and passes selected model preference', async () => {
     const view = await mount()
     await view.click('Advanced options')
-    const checkbox = view.host.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    const checkbox = [...view.host.querySelectorAll('label')].find(el => el.textContent === 'Allow this request to change locked layers')!.querySelector('input')!
     checkbox.checked = true
     checkbox.dispatchEvent(new Event('change'))
     const model = view.host.querySelector('select')!
@@ -338,5 +345,124 @@ describe('native Banner Studio design assistant', () => {
     expect(view.host.querySelectorAll('article')).toHaveLength(0)
     expect(view.host.textContent).not.toContain('Old client reference')
     expect(sessionStorage.getItem('banner-design-chat:v2:project-1:client-2')).toBeNull()
+  })
+})
+
+describe('scoped native proposals', () => {
+  const heading = { id: 7, type: 'text', name: 'Invitation heading', text: 'Welcome home', x: 10, y: 10, w: 200, h: 40, zIndex: 7, opacity: 1, animIn: 'none', animInDur: 0, startTime: 0, endTime: 5 }
+  const revision = '2026-10-26T15:00:00.000Z'
+  async function scopedView() {
+    Object.assign(state.project, { updatedAt: revision })
+    ;(state.sets.mrec.layers as unknown[]) = [structuredClone(heading)]
+    const view = await mount()
+    const toggle = [...view.host.querySelectorAll('label')].find(el => el.textContent?.trim() === 'Limit changes to a region')!.querySelector('input')!
+    toggle.checked = true
+    toggle.dispatchEvent(new Event('change'))
+    await settle()
+    const selection = view.host.querySelector('select[multiple]')!
+    selection.querySelector('option')!.selected = true
+    selection.dispatchEvent(new Event('change'))
+    await settle()
+    const copy = [...view.host.querySelectorAll('label')].find(el => el.textContent?.startsWith('Approved wording'))!.querySelector('textarea')!
+    copy.value = 'PIZZA • DRINKS • TEST DRIVES'
+    copy.dispatchEvent(new Event('input'))
+    const prompt = [...view.host.querySelectorAll('label')].find(el => el.textContent?.startsWith('What would you like'))!.querySelector('textarea')!
+    prompt.value = 'Promote the approved invitation'
+    prompt.dispatchEvent(new Event('input'))
+    await settle()
+    fetchMock.mockImplementation(async (url: string, options?: { body?: { scope: BannerDesignScope } }) => {
+      if (!options?.body) return { id: 'project-1', clientId: 'client-1', updatedAt: revision }
+      return { reply: 'Invitation proposed for review', model: 'fixture', sourceRevision: revision, scope: options.body.scope, canvasData: { mrec: { ...state.sets.mrec, layers: [{ ...heading, text: 'PIZZA • DRINKS • TEST DRIVES', clipToBounds: true }] } } }
+    })
+    return view
+  }
+  async function review(view: Awaited<ReturnType<typeof mount>>) {
+    view.host.querySelector('iframe[title="Scoped design proposal"]')!.dispatchEvent(new Event('load'))
+    await settle()
+    const input = [...view.host.querySelectorAll('label')].find(el => el.textContent?.trim() === 'I reviewed the wording, layout and proposed imagery; protected artwork is unchanged')!.querySelector('input')!
+    input.checked = true
+    input.dispatchEvent(new Event('change'))
+    await settle()
+  }
+  it('previews a bounded diff, requires review, then applies only after fresh revision check', async () => {
+    const view = await scopedView()
+    await view.click('Preview proposal')
+    expect(applyMock).not.toHaveBeenCalled()
+    expect(view.host.querySelectorAll('iframe')).toHaveLength(2)
+    for (const frame of view.host.querySelectorAll('iframe')) {
+      expect(frame.hasAttribute('data-vue-devtools-ignore')).toBe(true)
+      expect(frame.getAttribute('sandbox')).toBe('allow-same-origin')
+    }
+    expect(view.host.textContent).toContain('Affected layers: Invitation heading (#7)')
+    expect(view.host.textContent).toContain('Before: Welcome home')
+    expect(view.button('Apply to canvas').disabled).toBe(true)
+    await review(view)
+    expect(view.button('Apply to canvas').disabled).toBe(false)
+    await view.click('Apply to canvas')
+    expect(applyMock).toHaveBeenCalledOnce()
+    expect((state.sets.mrec.layers[0] as Layer).text).toBe('PIZZA • DRINKS • TEST DRIVES')
+  })
+  it('does not apply if human review is revoked during the fresh project request', async () => {
+    const view = await scopedView()
+    await view.click('Preview proposal')
+    await review(view)
+    let resolve!: (value: unknown) => void
+    fetchMock.mockImplementationOnce(() => new Promise((done) => {
+      resolve = done
+    }))
+    await view.click('Apply to canvas')
+    expect(view.button('Apply to canvas').disabled).toBe(true)
+    const checkbox = [...view.host.querySelectorAll('label')].find(el => el.textContent?.trim() === 'I reviewed the wording, layout and proposed imagery; protected artwork is unchanged')!.querySelector('input')!
+    checkbox.checked = false
+    checkbox.dispatchEvent(new Event('change'))
+    resolve({ id: 'project-1', clientId: 'client-1', updatedAt: revision })
+    await settle()
+    expect(applyMock).not.toHaveBeenCalled()
+  })
+  it('limits scoped preview to the measured format even when variants reuse text IDs', async () => {
+    const view = await scopedView()
+    ;(state.sets as Record<string, unknown>).custom_500x800 = { layers: [structuredClone(heading)] }
+    fetchMock.mockImplementationOnce(async (_url, options) => ({ reply: 'Scoped', model: 'fixture', sourceRevision: revision, scope: options.body.scope, canvasData: { ...JSON.parse(JSON.stringify(state.sets)), mrec: { ...state.sets.mrec, layers: [{ ...heading, text: 'PIZZA • DRINKS • TEST DRIVES', clipToBounds: true }] } } }))
+    await view.click('Preview proposal')
+    const variants = [...view.host.querySelectorAll('select:not([multiple]) option')].map(option => option.getAttribute('value'))
+    expect(variants).not.toContain('custom_500x800')
+    await review(view)
+    expect(view.button('Apply to canvas').disabled).toBe(false)
+  })
+  it('blocks a proposal whose rendered wording does not fit', async () => {
+    const view = await scopedView()
+    await view.click('Preview proposal')
+    fitMock.mockRejectedValueOnce(new Error('Text does not fit'))
+    await review(view)
+    expect(view.button('Apply to canvas').disabled).toBe(true)
+    expect(view.host.textContent).toContain('Text does not fit')
+  })
+  it('invalidates the proposal when the reviewed region changes', async () => {
+    const view = await scopedView()
+    await view.click('Preview proposal')
+    await review(view)
+    const input = view.host.querySelector('input[type="number"]')!
+    input.value = '5'
+    input.dispatchEvent(new Event('input'))
+    await settle()
+    expect(view.button('Apply to canvas').disabled).toBe(true)
+    expect(view.host.textContent).toContain('Canvas changed')
+  })
+  it('checks the latest saved revision before applying and rejects concurrent edits', async () => {
+    const view = await scopedView()
+    await view.click('Preview proposal')
+    await review(view)
+    fetchMock.mockResolvedValueOnce({ id: 'project-1', clientId: 'client-1', updatedAt: '2026-10-26T16:00:00.000Z' })
+    await view.click('Apply to canvas')
+    expect(applyMock).not.toHaveBeenCalled()
+    expect(view.host.textContent).toContain('request a new proposal')
+  })
+  it('rejects malformed response scope instead of allowing an unrestricted apply', async () => {
+    const view = await scopedView()
+    fetchMock.mockResolvedValueOnce(response())
+    await view.click('Preview proposal')
+    expect(view.host.querySelector('iframe')).toBeNull()
+    expect(applyMock).not.toHaveBeenCalled()
+    expect(view.host.textContent).toContain('scope or source revision')
   })
 })

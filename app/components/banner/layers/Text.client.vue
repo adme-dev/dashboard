@@ -7,6 +7,7 @@ import { bannerFontFamily } from '~/utils/banner-font-family'
 const props = defineProps<{
   layer: Layer
   isActive: boolean
+  opacityManaged?: boolean
 }>()
 
 const { updateLayer } = useBannerStudio()
@@ -21,6 +22,9 @@ const texture = computed(() => safeBannerTextTexture(props.layer.textTexture))
 const depthShadow = computed(() => bannerTextBackdropShadow(props.layer as unknown as Record<string, unknown>))
 const isEditing = ref(false)
 const textEl = ref<HTMLDivElement | null>(null)
+// Contenteditable can replace nodes that Vue's glyph component still references.
+// Recreate the editable subtree only when editing ends, preserving the live caret.
+const editRevision = ref(0)
 
 function onDoubleClick() {
   if (!props.isActive || props.layer.locked) return
@@ -58,11 +62,13 @@ function onBlur() {
     }
     updateLayer(props.layer.id, { text: newText, ...(props.layer.textRuns ? { textRuns: textRuns.map(run => run.text).join('') === newText ? textRuns : undefined } : {}) })
   }
+  editRevision.value++
 }
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     isEditing.value = false
+    editRevision.value++
     textEl.value?.blur()
   }
   // Prevent layer deletion keys while editing
@@ -74,7 +80,7 @@ function onKeydown(e: KeyboardEvent) {
   <div
     class="w-full h-full select-none"
     :style="{
-      opacity: layer.opacity,
+      opacity: opacityManaged ? 1 : layer.opacity,
       backgroundColor: layer.bgColor || 'transparent',
       padding: layer.bgColor ? `${layer.paddingV ?? 4}px ${layer.paddingH ?? 10}px` : undefined
     }"
@@ -95,6 +101,7 @@ function onKeydown(e: KeyboardEvent) {
         />
       </div>
       <div
+        :key="editRevision"
         ref="textEl"
         :contenteditable="isEditing"
         :class="{ 'pointer-events-none': !isEditing }"

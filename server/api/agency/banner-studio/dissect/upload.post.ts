@@ -1,11 +1,13 @@
 import { randomUUID } from 'crypto'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
 import { execute } from '~~/server/utils/db'
+import { resolveBannerAssetDelivery } from '~~/server/utils/banner/assetDelivery'
 import { uploadFile } from '~~/server/utils/storage'
-import { enqueue } from '~~/server/utils/queue'
+import { dispatchDissection } from '~~/server/utils/banner/dissectionDispatch'
+import { dissectionSnapshot, loadDissection, queuedDissectionManifest } from '~~/server/utils/banner/dissectionJobs'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
 
   const formData = await readMultipartFormData(event)
   if (!formData || formData.length === 0) {
@@ -35,26 +37,34 @@ export default defineEventHandler(async (event) => {
   const ext = fileField.type === 'image/png' ? 'png' : fileField.type === 'image/webp' ? 'webp' : 'jpg'
   const r2Key = `banner-dissector/${jobId}/original.${ext}`
   const brand = brandField?.data?.toString('utf-8') || ''
+  const manifest = queuedDissectionManifest()
 
-  // Upload to R2
-  await uploadFile(Buffer.from(fileField.data), r2Key, fileField.type)
+  // Persist the private source using this request's bucket. Generic S3 writes
+  // are a local fallback only; Pages must never silently use the filesystem.
+  if (event.context.cloudflare) {
+    const bucket = resolveBannerAssetDelivery(event).nativeUpload!.bucket
+    try {
+      await bucket.put(r2Key, new Uint8Array(fileField.data), { httpMetadata: { contentType: fileField.type } })
+      const stored = await bucket.head(r2Key)
+      if (!stored || stored.size !== fileField.data.length) throw new Error('Source was not persisted')
+    } catch {
+      throw createError({ statusCode: 503, statusMessage: 'Dissection source storage is unavailable' })
+    }
+  } else {
+    await uploadFile(Buffer.from(fileField.data), r2Key, fileField.type)
+  }
 
   // Insert DB record
   await execute(
-    `INSERT INTO banner_dissections (job_id, user_id, source_r2_key, brand, status)
-     VALUES ($1, $2, $3, $4, 'analyzing')`,
-    [jobId, user.id, r2Key, brand || null]
+    `INSERT INTO banner_dissections (job_id, user_id, source_r2_key, brand, status, manifest)
+     VALUES ($1, $2, $3, $4, 'queued', jsonb_set($5::jsonb, '{execution}',
+       ($5::jsonb)->'execution' || jsonb_build_object(
+         'updatedAt', clock_timestamp(), 'deadlineAt', clock_timestamp() + interval '10 minutes',
+         'dispatch', ($5::jsonb)->'execution'->'dispatch' || jsonb_build_object('nextAttemptAt', clock_timestamp()))))`,
+    [jobId, user.id, r2Key, brand || null, JSON.stringify(manifest)]
   )
 
-  // Queue the analysis job — with synchronous fallback for dev
-  const capturedEvent = event
-  await enqueue(event, 'dissect.analyze', { jobId, r2Key, brand }, async () => {
-    // Synchronous fallback: run the pipeline inline
-    const { runDissectionPipeline } = await import('../../../../utils/bannerDissectorPipeline')
-    await runDissectionPipeline(capturedEvent, jobId).catch(err =>
-      console.error('[Dissector] Sync fallback failed:', err)
-    )
-  })
+  await dispatchDissection(event, jobId, manifest.execution.attemptId)
 
-  return { jobId, status: 'analyzing' }
+  return dissectionSnapshot(await loadDissection(jobId, user.id))
 })

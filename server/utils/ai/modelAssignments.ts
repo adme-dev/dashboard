@@ -71,7 +71,7 @@ export interface AssignmentSummary {
   runtimeControllableCount: number
 }
 
-export type RuntimeModelProvider = 'groq' | 'anthropic' | 'workers_ai' | 'minimax' | 'aigateway'
+export type RuntimeModelProvider = 'groq' | 'anthropic' | 'workers_ai' | 'minimax' | 'aigateway' | 'openai'
 export type RuntimeRoutingStatus = 'runtime_routed' | 'partial' | 'worker_side' | 'direct'
 
 export interface ResolvedAiModelAssignment {
@@ -122,6 +122,9 @@ const FEATURE_RUNTIME_SUPPORTED_PROVIDERS: Record<string, RuntimeModelProvider[]
   crm_followup_draft: ['groq'],
   banner_image_suggest: ['workers_ai', 'groq'],
   banner_copy_suggest: ['workers_ai', 'groq'],
+  banner_artwork_generate: ['openai'],
+  banner_lettering_native: ['openai'],
+  banner_lettering_raster: ['openai'],
   banner_code_assist: ['workers_ai', 'groq'],
   banner_design_assist: ['workers_ai', 'groq'],
   task_wiki_summary: ['groq'],

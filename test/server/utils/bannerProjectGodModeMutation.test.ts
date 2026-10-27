@@ -19,8 +19,11 @@ testGlobal.readBody = async event => event.body ?? {}
 testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
 
 vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
+  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
+  requireWriteAccess: (...args: unknown[]) => mockRequireAuth(...args)
 }))
+
+vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: vi.fn() }))
 
 vi.mock('~~/server/utils/banner/godModeProjectCreation', () => ({
   executeGodModeBannerProjectCreation: (...args: unknown[]) => mockExecuteGodModeBannerProjectCreation(...args)
@@ -204,7 +207,8 @@ describe('God mode banner project creation coordination', () => {
       '~~/server/utils/auth',
       '~~/server/utils/banner/godModeProjectCreation',
       '~~/server/utils/banner/thebriefProjectImport',
-      '~~/server/utils/social/clientAccess'
+      '~~/server/utils/social/clientAccess',
+      '~~/server/utils/banner/platformQrCanvas'
     ])
     expect(projectCreationRouteSource).not.toMatch(/\b(?:render(?:Job|Banner)?|publish(?:Banner|ToAdPlatform)?|enqueue|queue|export(?:Banner)?|upload(?:Asset)?)[A-Za-z0-9_]*\s*\(/i)
   })

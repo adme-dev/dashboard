@@ -1,10 +1,10 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
 
-  const rows = await queryRows(
+  const rows = await queryRowsFresh(
     `SELECT
        job_id AS "jobId",
        status,

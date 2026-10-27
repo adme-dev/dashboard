@@ -23,6 +23,10 @@ export function useAiLayerEdit() {
   ) => Promise<T>
 
   function openEdit(layer: { id: number }) {
+    if (activeLayers.value.find(candidate => candidate.id === layer.id)?.platformQr) {
+      toast.add({ title: 'Managed QR protected', description: 'Update this code in QR Codes.', color: 'warning' })
+      return
+    }
     _editingLayerId.value = layer.id
     _editPrompt.value = ''
     _editPreviewUrl.value = null
@@ -41,6 +45,10 @@ export function useAiLayerEdit() {
     if (!layerId || !_editPrompt.value.trim()) return
 
     const layer = activeLayers.value.find(l => l.id === layerId)
+    if (layer?.platformQr) {
+      _editError.value = 'Managed QR codes must be updated in QR Codes.'
+      return
+    }
     if (!layer?.src) {
       _editError.value = 'Layer has no image source'
       return
@@ -86,6 +94,7 @@ export function useAiLayerEdit() {
 
     // Check layer still exists
     const layer = activeLayers.value.find(l => l.id === layerId)
+    if (layer?.platformQr) { cancelEdit(); return }
     if (!layer) {
       toast.add({ title: 'Layer removed', description: 'The layer was deleted while editing', color: 'warning' })
       cancelEdit()

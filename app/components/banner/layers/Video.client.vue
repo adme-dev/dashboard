@@ -4,13 +4,14 @@ import type { Layer } from '~/types/banner-studio'
 defineProps<{
   layer: Layer
   isActive: boolean
+  opacityManaged?: boolean
 }>()
 </script>
 
 <template>
   <div
     class="absolute overflow-hidden"
-    :style="{ opacity: layer.opacity }"
+    :style="{ opacity: opacityManaged ? 1 : layer.opacity }"
   >
     <video
       v-if="layer.src"
